@@ -23,7 +23,7 @@ Le premier job, `changements`, appelle `scripts/ci-changements.sh` avec les chem
 `**/*.md` et non `**.md`) ; les autres jobs ne tournent que si la PR touche l'un d'eux. Hors `pull_request`, tout est lancé.
 Le dernier job porte le nom du workflow (`estompe-backend-rs`, `estompe-frontend`) : il est toujours créé et échoue si un job a échoué ou a été annulé.
 
-Branche protégée (ruleset `main`, posé par `scripts/configurer-github.sh`) : contrôles obligatoires `npm`, `changelog`, `estompe-backend-rs`,
+Branche protégée (ruleset `main`, posé par `scripts/configurer-github.sh`) : contrôles obligatoires `npm`, `changelog`, `conventions`, `estompe-backend-rs`,
 `estompe-frontend`, `pli-ci`, `permission-ci`, `security-ci` et `ui-ci`. Un nouveau workflow de PR suit le même modèle et ajoute son contrôle à ce script.
 
 ## Ce que fait chaque workflow

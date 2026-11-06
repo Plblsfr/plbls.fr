@@ -26,12 +26,17 @@ depuis la racine du dépôt (`docker build -f apps/pli/Dockerfile .`).
 Les réglages du dépôt public se posent avec `scripts/configurer-github.sh` (`gh` connecté avec un compte admin du dépôt), relançable sans effet de bord :
 
 - fusion en merge classique seulement, avec le message par défaut (`Merge pull request #N from <compte>/<branche>`, lu par le calcul de version d'Estompe) ;
-- ruleset `main` : PR obligatoire, ni suppression ni force-push, contrôles requis `npm`, `changelog`, `estompe-backend-rs`, `estompe-frontend`,
+- ruleset `main` : PR obligatoire, ni suppression ni force-push, contrôles requis `npm`, `changelog`, `conventions`, `estompe-backend-rs`, `estompe-frontend`,
   `pli-ci`, `permission-ci`, `security-ci`, `ui-ci`, branche à jour avant fusion ;
 - ruleset `tags de livraison` (`*-v*`) : création, déplacement et suppression réservés aux admins, releases immuables ;
 - Actions : `GITHUB_TOKEN` en lecture par défaut, approbation des workflows de tout contributeur externe, actions épinglées par SHA ;
 - environnement `livraison` (branche `main` et tags `*-v*`) pour les secrets de signature et le webhook Dokploy ;
 - signalement privé des failles, alertes Dependabot, secret scanning avec push protection, CodeQL.
+
+Le contrôle `conventions` (`pr-conventions.yml`, `scripts/ci-conventions-pr.mjs`) refuse une PR dont la branche n'est pas
+`<type>/<slug-court>` (type parmi `feat`, `fix`, `chore`, `docs`, `ci` ; slug en minuscules séparé par des tirets, sans numéro de ticket)
+ou `release/api-vA.B.C-app-vX.Y.Z` / `release/<composant>-vX.Y.Z`, et une PR sans description. Les branches `dependabot/` sont dispensées ;
+modifier la description relance le contrôle.
 
 Ni historique linéaire (incompatible avec le merge classique) ni commits signés obligatoires (le commit de `estompe-version` n'est pas signé).
 

@@ -119,6 +119,7 @@ ruleset main <<'EOF'
         "required_status_checks": [
           { "context": "npm", "integration_id": 15368 },
           { "context": "changelog", "integration_id": 15368 },
+          { "context": "conventions", "integration_id": 15368 },
           { "context": "estompe-backend-rs", "integration_id": 15368 },
           { "context": "estompe-frontend", "integration_id": 15368 },
           { "context": "pli-ci", "integration_id": 15368 },
