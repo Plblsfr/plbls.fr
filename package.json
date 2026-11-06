@@ -21,7 +21,7 @@
     "ui:check": "node scripts/sync-ui.mjs --check"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.2"
+    "@biomejs/biome": "2.6.4"
   },
   "overrides": {
     "glob": "^14.0.4"
