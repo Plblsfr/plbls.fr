@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "apps/security",
   "apps/permission/backend",
+  "apps/pli/server",
   "apps/estompe/backend/estompe-api",
   "apps/estompe/backend/core",
   "apps/estompe/backend/block",

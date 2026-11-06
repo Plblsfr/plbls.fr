@@ -1,4 +1,4 @@
-# Contrôles communs du workspace Cargo racine (security, permission, estompe) : toolchain de rust-toolchain.toml,
+# Contrôles communs du workspace Cargo racine (security, permission, pli, estompe) : toolchain de rust-toolchain.toml,
 # version de Rust des Dockerfiles, cargo fmt, clippy -D warnings, cargo deny.
 name: _rust-lint
 on:

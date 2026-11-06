@@ -13,6 +13,7 @@
 !apps/permission/frontend
 !apps/permission/backend
 !apps/permission/docs
+!apps/pli/server
 **/node_modules
 **/target
 **/dist

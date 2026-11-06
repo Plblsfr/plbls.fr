@@ -3,9 +3,10 @@ on:
   push:
     branches: [main]
     tags: ["pli-v*"]
-    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml"]
+    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml", ".github/workflows/_rust-lint.yml"]
   pull_request:
-    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml"]
+    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml", ".github/workflows/_rust-lint.yml"]
+  workflow_dispatch:
 
 concurrency:
   group: pli-${{ github.ref }}
@@ -15,32 +16,62 @@ permissions:
   contents: write
   packages: write
 
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_TERM_COLOR: always
+
 jobs:
+  lint:
+    uses: ./.github/workflows/_rust-lint.yml
+    with:
+      name: pli
+      packages: -p pli
+
   test:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: pli
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: pli_test
+          POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U pli" --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - id: cargo
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: pli-test-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: pli-test-v1-
+      - run: cargo test --locked -p pli
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm test --workspace apps/pli
-        env:
-          TEST_DATABASE_URL: postgres://pli:test@localhost:5432/pli_test
+      - name: Tests du front (public/*.test.js)
+        run: npm test --workspace apps/pli
 
   image:
-    needs: test
+    needs: [lint, test]
     uses: ./.github/workflows/_image.yml
     with:
       component: pli
