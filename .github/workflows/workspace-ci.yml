@@ -28,6 +28,8 @@ jobs:
         run: npm run ui:check
       - name: Tests des scripts communs
         run: node --test "scripts/*.test.mjs"
+      - name: Liens Markdown internes
+        run: node scripts/check-links.mjs
       - name: packages/ui (estompe, permission et pli ont leur propre workflow)
         run: |
           for script in check test build; do
