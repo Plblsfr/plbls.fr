@@ -41,7 +41,9 @@ jobs:
           git commit -m "chore(version): mise à jour de .version" .version
           git push origin "$b"
           title="chore(version): $(node -p 'Object.entries(JSON.parse(require("fs").readFileSync(".version","utf8"))).map(([k,x])=>k+" "+x).join(", ")')"
-          gh pr create --base main --head "$b" --title "$title" --body "Versions calculées par estompe-version.yml après la fusion du dernier commit de main. La fusion de cette PR ne change aucune version (seul .version est modifié)."
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" --jq .html_url \
+            -f base=main -f head="$b" -f title="$title" \
+            -f body="Versions calculées par estompe-version.yml après la fusion du dernier commit de main. La fusion de cette PR ne change aucune version (seul .version est modifié)."
       - run: |
           f=backend/core/src/notes_version/changelog.json
           v=$(node -p 'JSON.parse(require("fs").readFileSync(".version", "utf8")).api')
