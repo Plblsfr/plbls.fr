@@ -6,13 +6,13 @@
     "node": "^26"
   },
   "scripts": {
-    "lint": "echo \"lint : aucun linter configuré pour l’instant\"",
-    "check": "for f in server/*.js public/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "node --test",
-    "build": "echo \"build : rien à construire (public/ est servi tel quel)\"",
-    "start": "node server/index.js"
+    "lint": "biome ci .",
+    "check": "tsc -p tsconfig.json",
+    "test": "vitest run --dir public",
+    "build": "echo \"build : rien à construire (public/ est servi tel quel ; serveur : cargo build -p pli)\""
   },
-  "dependencies": {
-    "pg": "^8.23.1"
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
   }
 }

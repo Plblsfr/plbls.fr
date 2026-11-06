@@ -8,6 +8,7 @@ COPY apps/estompe/frontend/package.json apps/estompe/frontend/
 COPY apps/permission/frontend/package.json apps/permission/frontend/
 COPY apps/pli/package.json apps/pli/
 RUN npm ci --no-audit --no-fund --workspace apps/permission/frontend
+COPY tsconfig.base.json ./
 COPY apps/permission/frontend apps/permission/frontend/
 RUN npm run build --workspace apps/permission/frontend
 

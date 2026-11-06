@@ -1,16 +1,23 @@
-# Contexte de build : la racine du dépôt (docker build -f apps/pli/Dockerfile .), pour le package-lock.json commun.
-FROM node:26-alpine
+# Contexte de build = racine du dépôt (docker build -f apps/pli/Dockerfile .), liste dans Dockerfile.dockerignore.
+# Rust : version de ../../rust-toolchain.toml. public/ est servi tel quel, copies de @plbls/ui comprises (vendor/plbls-ui).
+FROM rust:1.99.0-slim AS chef
+RUN cargo install cargo-chef --locked --version 0.1.78
+WORKDIR /src
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS build
+COPY --from=planner /src/recipe.json recipe.json
+RUN cargo chef cook --release --locked --recipe-path recipe.json -p pli
+COPY . .
+RUN cargo build --release --locked -p pli
+
+FROM gcr.io/distroless/cc-debian12:nonroot
 WORKDIR /app
-COPY package.json package-lock.json ./
-COPY packages/ui/package.json packages/ui/
-COPY apps/estompe/frontend/package.json apps/estompe/frontend/
-COPY apps/permission/frontend/package.json apps/permission/frontend/
-COPY apps/pli/package.json apps/pli/
-RUN npm ci --omit=dev --workspace apps/pli && npm cache clean --force
-COPY apps/pli/server/ apps/pli/server/
-COPY apps/pli/public/ apps/pli/public/
-WORKDIR /app/apps/pli
+COPY --from=build /src/target/release/pli /app/pli
+COPY apps/pli/public /app/public
 ENV PORT=8080
 EXPOSE 8080
-USER node
-CMD ["node", "server/index.js"]
+ENTRYPOINT ["/app/pli"]

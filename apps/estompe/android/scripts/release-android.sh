@@ -16,9 +16,9 @@ sed -i 's|^crate-type = \["rlib"\]|crate-type = ["rlib", "cdylib"]|' src-tauri/C
 tauri android build --apk --target aarch64 --ci
 UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-unsigned.apk' | head -1)
 OUT=../web/dist-updates
-mkdir -p $OUT
-"$(ls -d "${ANDROID_HOME:?}"/build-tools/*/apksigner | sort -V | tail -1)" sign --ks "$KEYSTORE" --ks-key-alias estompe --ks-pass env:ANDROID_KEYSTORE_PASSWORD --out $OUT/Estompe.apk "$UNSIGNED"
+mkdir -p "$OUT"
+"$(find "${ANDROID_HOME:?}/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -1)" sign --ks "$KEYSTORE" --ks-key-alias estompe --ks-pass env:ANDROID_KEYSTORE_PASSWORD --out "$OUT/Estompe.apk" "$UNSIGNED"
 # android.json : version publiée, somme SHA-256 de l'APK (vérifiée par l'app avant l'installation) et politique de mise à jour (backend/core/updates.json)
-SHA=$(sha256sum $OUT/Estompe.apk | cut -d' ' -f1)
-node -e 'console.log(JSON.stringify({ version: require("./src-tauri/tauri.conf.json").version, notes: process.argv[1], sha256: process.argv[2], ...JSON.parse(process.argv[3]) }))' "${1:-}" "$SHA" "$(node ../frontend/scripts/update-policy.mjs android)" > $OUT/android.json
+SHA=$(sha256sum "$OUT/Estompe.apk" | cut -d' ' -f1)
+node -e 'console.log(JSON.stringify({ version: require("./src-tauri/tauri.conf.json").version, notes: process.argv[1], sha256: process.argv[2], ...JSON.parse(process.argv[3]) }))' "${1:-}" "$SHA" "$(node ../frontend/scripts/update-policy.mjs android)" > "$OUT/android.json"
 echo "Prêt : web/dist-updates/Estompe.apk, android.json"

@@ -179,6 +179,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   `ContextMenu` / `Modal` plutôt qu'un menu local, et ne pas régler un souci d'empilement par un `z-index` arbitraire.
 - **Composants partagés obligatoires** : `Modal`, `ConfirmModal`, `ContextMenu`, `Icon`, `Avatar`… avant d'en écrire un autre ; jamais `window.confirm`, `alert` ni `prompt`.
 - **Films (Jellyfin)** : les applications n'appellent que l'API ; ne jamais renvoyer une réponse Jellyfin telle quelle ni un identifiant ou chemin Jellyfin (identifiants publics `films_items`) ; tout flux passe par une session de flux signée (`flux.rs`) ; un nouveau type de fichier autorisé s'ajoute dans `filtre.rs` avec ses tests.
+  La demande HLS à Jellyfin (`master.m3u8`) porte toujours `VideoBitrate` : sans lui, Jellyfin calcule un débit nul et réduit la vidéo transcodée à 416 px de large.
 - **Salons vocaux** : un salon `cinema` est aussi un salon vocal (LiveKit). Toute règle propre au vocal teste `servers::est_vocal` (backend, `kind = ANY($n)` lié à `servers::TYPES_VOCAUX` en SQL) et `isVoiceKind` (front), jamais `kind == 'voice'` seul.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.

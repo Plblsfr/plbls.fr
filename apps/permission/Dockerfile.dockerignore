@@ -1,6 +1,7 @@
 *
 !package.json
 !package-lock.json
+!tsconfig.base.json
 !packages/ui/package.json
 !apps/estompe/frontend/package.json
 !apps/permission/frontend/package.json
@@ -13,6 +14,7 @@
 !apps/permission/frontend
 !apps/permission/backend
 !apps/permission/docs
+!apps/pli/server
 **/node_modules
 **/target
 **/dist

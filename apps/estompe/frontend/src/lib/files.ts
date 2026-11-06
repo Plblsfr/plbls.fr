@@ -33,7 +33,7 @@ export async function prepareUpload(file: File): Promise<{ blob: Blob; name: str
     canvas.getContext('2d')!.drawImage(bmp, 0, 0, w, h)
     bmp.close()
     const out: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/webp', 0.82))
-    if (!out || out.type !== 'image/webp' || out.size >= file.size) return keep
+    if (out?.type !== 'image/webp' || out.size >= file.size) return keep
     return { blob: out, name: swapExt(file.name, 'webp') }
   } catch {
     return keep

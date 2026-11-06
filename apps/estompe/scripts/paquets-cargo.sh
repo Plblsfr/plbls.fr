@@ -1,6 +1,6 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 cd "$(dirname "$0")/../backend"
 for manifeste in */Cargo.toml blocks/*/Cargo.toml; do
-  sed -n 's/^name = "\(.*\)"/-p \1/p' "$manifeste" | head -n 1
+  awk -F'"' '/^name = /{print "-p " $2; exit}' "$manifeste"
 done | tr '\n' ' '
