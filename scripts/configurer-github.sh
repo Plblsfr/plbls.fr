@@ -38,9 +38,9 @@ api -X PATCH "repos/$depot" --silent --input - <<'EOF'
 }
 EOF
 
-etape "CodeQL (default setup)"
-api -X PATCH "repos/$depot/code-scanning/default-setup" --silent -f state=configured -f query_suite=default \
-  || echo "CodeQL non configuré : l'activer dans Settings > Code security"
+etape "CodeQL : default setup désactivé (analyse par .github/workflows/codeql.yml)"
+api -X PATCH "repos/$depot/code-scanning/default-setup" --silent -f state=not-configured \
+  || echo "Default setup de CodeQL non désactivé : le faire dans Settings > Code security"
 
 etape "Releases immuables"
 api -X PUT "repos/$depot/immutable-releases" --silent \

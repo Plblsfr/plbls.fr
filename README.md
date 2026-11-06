@@ -48,7 +48,7 @@ Les réglages du dépôt public se posent avec `scripts/configurer-github.sh` (`
 - ruleset `tags de livraison` (`*-v*`) : création, déplacement et suppression réservés aux admins, releases immuables ;
 - Actions : `GITHUB_TOKEN` en lecture par défaut, approbation des workflows de tout contributeur externe, actions épinglées par SHA ;
 - environnement `livraison` (branche `main` et tags `*-v*`) pour les secrets de signature et le webhook Dokploy ;
-- signalement privé des failles, alertes Dependabot, secret scanning avec push protection, CodeQL.
+- signalement privé des failles, alertes Dependabot, secret scanning avec push protection, CodeQL (`.github/workflows/codeql.yml`, default setup désactivé).
 
 Le contrôle `conventions` (`pr-conventions.yml`, `scripts/ci-conventions-pr.mjs`) refuse une PR dont la branche n'est pas
 `<type>/<slug-court>` (type parmi `feat`, `fix`, `chore`, `docs`, `ci` ; slug en minuscules séparé par des tirets, sans numéro de ticket)
