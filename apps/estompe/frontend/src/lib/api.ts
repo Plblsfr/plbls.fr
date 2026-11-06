@@ -9,10 +9,6 @@ import type {
   Server, ServerDetail, ServerInvite, Role, RoleInput, Override, AuditEntry, Ban, PermKey, VoiceParticipant, VoiceToken, WatchView, SessionKind, MusicTrack, CustomEmoji, GifResult, Status, NotifySettings,
   NewPoll, Read, Report, ReportInput, ReportStatus, ChannelKind, NewChannel, VideosBoard, VideoList, WatchSession, Rsvp,
 } from './types'
-import type {
-  CairnComment, CairnPage, CairnSpace, CairnUser, DepGraph, LinkedPage, LinkedTicket, PageItem, PageVersion, SearchHit,
-  Ticket, TicketEvent, TicketPatch, TrashItem,
-} from '../blocks/cairn/cairn'
 
 export const API_URL = config.apiUrl
 
@@ -379,58 +375,6 @@ export const api = {
 
 }
 
-
-/** Cairn (tickets et docs), relayé par le proxy `/cairn/…` du backend avec la session de l'utilisateur. */
-const cg = <T>(p: string) => get<T>('/cairn' + p)
-const cs = <T>(m: string, p: string, b?: unknown) => request<T>(m, '/cairn' + p, b ?? (m === 'DELETE' ? undefined : {}))
-const qs = (o: Record<string, string | undefined>) => {
-  const q = Object.entries(o).filter(([, v]) => v).map(([k, v]) => `${k}=${enc(v!)}`).join('&')
-  return q ? '?' + q : ''
-}
-export const cairnApi = {
-  permissions: () => cg<{ actions: string[] }>('/me/permissions'),
-  spaces: () => cg<CairnSpace[]>('/spaces'),
-  users: (email: string) => cg<{ users: CairnUser[] }>(`/users?email=${enc(email)}&max=8`),
-  tickets: (space: string, f: Record<string, string | undefined>) => cg<Ticket[]>(`/spaces/${space}/tickets${qs(f)}`),
-  myTickets: () => cg<Ticket[]>('/me/tickets'),
-  ticket: (key: string) => cg<Ticket>(`/tickets/${key}`),
-  createTicket: (space: string, t: TicketPatch) => cs<Ticket>('POST', `/spaces/${space}/tickets`, t),
-  updateTicket: (key: string, version: number, t: TicketPatch) => cs<Ticket>('PATCH', `/tickets/${key}`, { version, ...t }),
-  deleteTicket: (key: string) => cs<void>('DELETE', `/tickets/${key}`),
-  comments: (key: string) => cg<CairnComment[]>(`/tickets/${key}/comments`),
-  addComment: (key: string, content: string) => cs<CairnComment>('POST', `/tickets/${key}/comments`, { content }),
-  editComment: (key: string, id: string, content: string) => cs<CairnComment>('PATCH', `/tickets/${key}/comments/${id}`, { content }),
-  deleteComment: (key: string, id: string) => cs<void>('DELETE', `/tickets/${key}/comments/${id}`),
-  events: (key: string) => cg<TicketEvent[]>(`/tickets/${key}/events`),
-  dependencies: (key: string) => cg<DepGraph>(`/tickets/${key}/dependencies`),
-  addDependency: (key: string, direction: 'blocks' | 'blocked_by', keys: string[]) => cs<void>('POST', `/tickets/${key}/dependencies`, { direction, keys }),
-  removeDependency: (key: string, other: string, direction: 'blocks' | 'blocked_by') => cs<void>('DELETE', `/tickets/${key}/dependencies/${other}?direction=${direction}`),
-  ticketPages: (key: string) => cg<LinkedPage[]>(`/tickets/${key}/pages`),
-  pages: (space: string) => cg<PageItem[]>(`/spaces/${space}/pages`),
-  page: (id: string) => cg<CairnPage>(`/pages/${id}`),
-  createPage: (space: string, title: string, parent_id: string | null, content: string) => cs<CairnPage>('POST', `/spaces/${space}/pages`, { title, parent_id, content }),
-  updatePage: (id: string, version: number, p: { title?: string; content?: string }) => cs<CairnPage>('PATCH', `/pages/${id}`, { version, ...p }),
-  movePage: (id: string, parent_id: string | null, position: number) => cs<void>('POST', `/pages/${id}/move`, { parent_id, position }),
-  deletePage: (id: string) => cs<void>('DELETE', `/pages/${id}`),
-  trash: (space: string) => cg<TrashItem[]>(`/spaces/${space}/trash`),
-  restorePage: (id: string) => cs<void>('POST', `/pages/${id}/restore`),
-  versions: (id: string) => cg<PageVersion[]>(`/pages/${id}/versions`),
-  version: (id: string, n: number) => cg<PageVersion>(`/pages/${id}/versions/${n}`),
-  restoreVersion: (id: string, n: number) => cs<CairnPage>('POST', `/pages/${id}/versions/${n}/restore`),
-  pageTickets: (id: string) => cg<LinkedTicket[]>(`/pages/${id}/tickets`),
-  linkTicket: (id: string, key: string) => cs<void>('POST', `/pages/${id}/tickets`, { key }),
-  unlinkTicket: (id: string, key: string) => cs<void>('DELETE', `/pages/${id}/tickets/${key}`),
-  search: (q: string, space?: string, type?: string, titles?: boolean) => cg<SearchHit[]>(`/search${qs({ q, space, type, titles: titles ? 'true' : undefined })}`),
-  /** Image d'une page en URL locale (mode Bearer : une <img> ne peut pas envoyer l'en-tête). */
-  imageBlobUrl: (id: string) => imageUrl(`/cairn/files/${id}`),
-  /** Envoie une image dans une page ; renvoie le Markdown à insérer. */
-  uploadImage: async (pageId: string, img: Blob) => {
-    const res = await fetch(`${API_URL}/cairn/pages/${pageId}/files`, { method: 'POST', credentials: 'include', headers: { ...(await headers(false)), 'Content-Type': img.type }, body: img })
-    const e = await res.json().catch(() => ({}))
-    if (!res.ok) throw new ApiError(res.status, e.error ?? 'http_' + res.status, e.message ?? res.statusText)
-    return `${API_URL}/cairn/files/${e.id}`
-  },
-}
 
 export const filmsApi = {
   library: (f: Record<string, string>) => get<{ items: FilmItem[]; total: number }>(`/films/library?${new URLSearchParams(f)}`),

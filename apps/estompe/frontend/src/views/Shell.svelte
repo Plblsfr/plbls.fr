@@ -13,8 +13,6 @@
   import HomeView from './HomeView.svelte'
   import JoinView from './JoinView.svelte'
   import AdminSpace from '../components/AdminSpace.svelte'
-  import CairnSpace from '../blocks/cairn/CairnSpace.svelte'
-  import { cairn } from '../blocks/cairn/cairn.svelte'
   import FilmsSpace from '../blocks/films/FilmsSpace.svelte'
   import CreateJoinModal from '../components/CreateJoinModal.svelte'
   import NewDMModal from '../components/NewDMModal.svelte'
@@ -77,10 +75,6 @@
     if (route.name === 'channel' || route.name === 'dm') saveLastView(app.meId, location.hash)
   })
 
-  if (app.cairn) void cairn.init()
-  // Entrée Cairn réservée à ceux qui ont space.read (Cairn revérifie toujours).
-  $effect(() => { if (route.name === 'cairn' && cairn.actions.length && !cairn.visible) router.go('#/') })
-
   // Espace réservé aux admins : retour à l'accueil sinon (le serveur refuse de toute façon).
   $effect(() => { if (route.name === 'admin' && !app.isAdmin) router.go('#/') })
   $effect(() => { if (route.name === 'films' && !app.movies) router.go('#/') })
@@ -97,7 +91,7 @@
 </script>
 
 <svelte:window onkeydown={(e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && route.name !== 'cairn') { e.preventDefault(); openSearch() } // dans Cairn, Ctrl+K cherche dans Cairn
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openSearch() }
   if (platform.reportShortcut && e.ctrlKey && e.altKey && e.code === 'KeyB') { e.preventDefault(); void openReport() }
 }} />
 <a class="skip-link" href="#main" onclick={(e) => { e.preventDefault(); document.getElementById("main")?.focus() }}>Aller au contenu</a>
@@ -122,8 +116,6 @@
     {/if}
     {#if route.name === 'admin' && app.isAdmin}
       <AdminSpace section={route.section} onmenu={() => (nav = true)} />
-    {:else if route.name === 'cairn' && cairn.visible}
-      <CairnSpace section={route.section} id={route.id} onmenu={() => (nav = true)} />
     {:else if route.name === 'films' && app.movies}
       <FilmsSpace section={route.section} id={route.id} onmenu={() => (nav = true)} />
     {:else if route.name === 'space' && space?.visible()}

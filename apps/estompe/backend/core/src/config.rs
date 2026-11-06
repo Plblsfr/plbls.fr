@@ -35,8 +35,6 @@ pub struct Config {
     pub transcribe_model: String,
     pub transcribe_alpha: bool,
     pub transcribe_language: String,
-    pub cairn_url: String,
-    pub cairn_origin: String,
     pub jellyfin_url: String,
     pub jellyfin_api_key: String,
     pub stream_secret: String,
@@ -126,10 +124,6 @@ impl Config {
             transcribe_model: env("TRANSCRIBE_MODEL", "Systran/faster-whisper-small"),
             transcribe_alpha: get("TRANSCRIBE_ALPHA") != "false",
             transcribe_language: get("TRANSCRIBE_LANGUAGE"),
-            cairn_url: env("CAIRN_URL", "https://cairn.plbls.fr/api")
-                .trim_end_matches('/')
-                .to_string(),
-            cairn_origin: env("CAIRN_ORIGIN", "https://estompe.plbls.fr"),
             jellyfin_url: get("JELLYFIN_URL").trim_end_matches('/').to_string(),
             jellyfin_api_key: get("JELLYFIN_API_KEY"),
             stream_secret: get("STREAM_SECRET"),
@@ -268,8 +262,6 @@ mod tests {
         assert_eq!(c.transcribe_model, "Systran/faster-whisper-small");
         assert!(c.transcribe_alpha);
         assert_eq!(c.transcribe_language, "");
-        assert_eq!(c.cairn_url, "https://cairn.plbls.fr/api");
-        assert_eq!(c.cairn_origin, "https://estompe.plbls.fr");
         assert_eq!(c.livekit.url, "wss://lk");
         assert_eq!(c.livekit.api_url, "http://livekit:7880");
         assert_eq!(
@@ -306,8 +298,6 @@ mod tests {
             ("TRANSCRIBE_MODEL", "mod"),
             ("TRANSCRIBE_ALPHA", "false"),
             ("TRANSCRIBE_LANGUAGE", "fr"),
-            ("CAIRN_URL", "http://cairn/api//"),
-            ("CAIRN_ORIGIN", "http://o"),
             ("LIVEKIT_API_URL", "http://lk:1"),
             ("VOICE_MAX_SCREEN_FPS", "30"),
             ("VOICE_MAX_SCREEN_HEIGHT", "1080"),
@@ -336,8 +326,6 @@ mod tests {
         assert_eq!(c.transcribe_model, "mod");
         assert!(!c.transcribe_alpha);
         assert_eq!(c.transcribe_language, "fr");
-        assert_eq!(c.cairn_url, "http://cairn/api");
-        assert_eq!(c.cairn_origin, "http://o");
         assert_eq!(c.livekit.api_url, "http://lk:1");
         assert_eq!(
             (c.livekit.max_screen_fps, c.livekit.max_screen_height),

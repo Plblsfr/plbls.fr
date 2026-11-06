@@ -55,7 +55,7 @@ describe('accès aux films', () => {
   })
 
   describe('app restée ouverte depuis un démarrage sans films', () => {
-    const plusTard = (movies: boolean, blocks: string[]) => Object.assign(api, { me: vi.fn(async () => ({ activated: true, allowed: true, id: 'me', pseudo: 'moi', admin: true, cairn: false, movies, blocks })) })
+    const plusTard = (movies: boolean, blocks: string[]) => Object.assign(api, { me: vi.fn(async () => ({ activated: true, allowed: true, id: 'me', pseudo: 'moi', admin: true, movies, blocks })) })
     beforeEach(async () => {
       expect(await avec(false, ['vocal', 'regarder-ensemble'])).toBe(false)
       expect(s.isAdmin).toBe(false)

@@ -33,7 +33,6 @@ estompe-block-emojis.workspace = true
 estompe-block-avatars.workspace = true
 estompe-block-badges.workspace = true
 estompe-block-signalements.workspace = true
-estompe-block-cairn.workspace = true
 estompe-block-activite-statut.workspace = true
 
 [dev-dependencies]
