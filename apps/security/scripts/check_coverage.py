@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Chaque route du code (src/) et de config/dev.toml doit apparaître dans une requête de la suite Bruno."""
-import pathlib, re, sys, tomllib
+import pathlib
+import re
+import sys
+import tomllib
 
 root = pathlib.Path(__file__).resolve().parent.parent
 code = "".join(p.read_text() for p in (root / "src").rglob("*.rs"))

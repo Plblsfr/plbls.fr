@@ -5,7 +5,7 @@ import type { FilmDetail, FilmItem, FilmPlayback, FilmReject } from '../blocks/f
 import type {
   AdminLive, AdminOverview, AdminBadge, Badge, BadgeInput, AdminUser, AdminStats, AdminLogEntry, AdminError,
   Person,
-  Attachment, Channel, DM, LinkPreview, Me, Member, Mention, Message, MessagePage,
+  Attachment, Channel, DM, LinkPreview, Me, Mention, Message, MessagePage,
   Server, ServerDetail, ServerInvite, Role, RoleInput, Override, AuditEntry, Ban, PermKey, VoiceParticipant, VoiceToken, WatchView, SessionKind, MusicTrack, CustomEmoji, GifResult, Status, NotifySettings,
   NewPoll, Read, Report, ReportInput, ReportStatus, ChannelKind, NewChannel, VideosBoard, VideoList, WatchSession, Rsvp,
 } from './types'

@@ -7,7 +7,7 @@
     "node": "^26"
   },
   "scripts": {
-    "lint": "echo \"lint : aucun linter configuré pour l’instant\"",
+    "lint": "biome ci ..",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "build": "vite build",

@@ -30,7 +30,9 @@ Choix qui en découlent :
 
 ## Choix techniques
 
-Les mêmes que le hub : **Node 26 + Postgres** (une seule dépendance, `pg`), front sans build, schéma créé au démarrage. Le chiffré est stocké en `BYTEA` (25 Mo max par défaut, `MAX_BYTES`).
+Serveur en **Rust** (axum, tokio, sqlx, serde, tracing), membre du workspace Cargo racine comme les autres backends : code dans [`server/`](server), crate `pli`. Front sans build (`public/`), servi par le serveur. Schéma Postgres appliqué au démarrage par les migrations sqlx de [`server/migrations`](server/migrations), idempotentes (`IF NOT EXISTS`) : une base créée par l'ancien serveur Node est reprise telle quelle. Le chiffré est stocké en `BYTEA` (25 Mo max par défaut, `MAX_BYTES`).
+
+Variables d'environnement : `DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50), `RUST_LOG` (`info`).
 
 ## Connexion et permissions
 
@@ -50,7 +52,9 @@ cp .env.example .env            # renseigner DATABASE_URL, PERMISSION_*
 docker compose up -d            # http://127.0.0.1:8080
 ```
 
-Sans Docker : `npm ci` à la racine du dépôt (workspace npm), puis `npm start` dans ce dossier avec les variables du `.env` exportées. Tests : `TEST_DATABASE_URL=postgres://… npm test` (base de test jetable ; sans cette variable, seuls les tests sans base tournent). L'image se construit depuis la racine du dépôt : `docker build -f apps/pli/Dockerfile .`.
+Sans Docker, depuis la racine du dépôt : `cargo run -p pli` avec les variables du `.env` exportées. L'image se construit depuis la racine : `docker build -f apps/pli/Dockerfile .` (fichiers envoyés : [`Dockerfile.dockerignore`](Dockerfile.dockerignore), workspace Cargo et `public/`).
+
+Tests : `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres cargo test -p pli` (une base jetable est créée puis supprimée par test ; sans cette variable, les tests passent par testcontainers et sont ignorés si Docker manque). Tests du front (`public/*.test.js`) : `npm ci` à la racine du dépôt (workspace npm), puis `npm test --workspace apps/pli` (Node 26, voir `.nvmrc`).
 
 ## Design system
 

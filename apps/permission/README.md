@@ -17,12 +17,14 @@ make dev-run     # backend sur 127.0.0.1:8090
 make seed        # données de départ : applications chat et radar (autre terminal)
 make front-dev   # front sur http://127.0.0.1:3000, Vite dans Docker (pas besoin de Node)
 make smoke       # test de bout en bout de l'API
-make e2e         # test du front dans Chromium headless (Docker) ; démarre et arrête tout seul
-make e2e-gateway # idem avec le vrai auth-gateway + Keycloak de ../security.plbls.fr (connexion admin et demo)
+make e2e         # e2e Playwright du front (frontend/e2e) : démarre Postgres, backend, seed et Vite, puis arrête tout
+make e2e-gateway # idem avec le vrai auth-gateway + Keycloak de ../security (connexion admin et demo)
 make test        # tests unitaires Rust
 npm run check --workspace apps/permission/frontend   # svelte-check (depuis la racine du dépôt, après npm ci)
 npm test --workspace apps/permission/frontend        # tests unitaires du front (vitest + Testing Library)
 ```
+
+Les e2e sont rangés comme ceux d'Estompe : `frontend/e2e/*.spec.ts`, `frontend/playwright.config.ts`, lancés par `npm run e2e --workspace apps/permission/frontend` (`make e2e`). `e2e/global-setup.ts` démarre Postgres (Docker, ou la base de `E2E_DATABASE_URL`, vide, si elle est définie), compile et lance le backend, puis `scripts/seed.py` ; Playwright lance Vite. `E2E_GATEWAY=1` ne joue que `gateway.spec.ts`, avec le gateway et Keycloak de `../security` (Docker). Navigateur : `npx playwright install chromium` la première fois.
 
 En dev, le proxy de Vite signe lui-même les en-têtes d'identité comme auth-gateway (secret de `deploy/dev.env`) : ni gateway ni Keycloak nécessaires. Utilisateur et rôles modifiables : `DEV_USER_ID`, `DEV_USER_ROLES` (mettre `user` pour voir l'écran « accès réservé »).
 

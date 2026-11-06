@@ -7,17 +7,19 @@
     "node": "^26"
   },
   "scripts": {
-    "lint": "echo \"lint : aucun linter configuré pour l’instant\"",
+    "lint": "biome ci .",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "build": "vite build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "svelte": "^5.57.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/svelte": "^5.4.2",

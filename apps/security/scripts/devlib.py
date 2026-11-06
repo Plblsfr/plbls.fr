@@ -1,27 +1,20 @@
-"""Utilitaires communs aux scripts de test (stdlib seulement) : login BFF complet, Redis via docker, tokens."""
-import hashlib, http.client, json, re, subprocess, urllib.parse, urllib.request
+"""Utilitaires des scripts de test de security (stdlib seulement) : login BFF complet, Redis via docker, tokens."""
+import hashlib
+import json
+import re
+import subprocess
+import sys
+import urllib.parse
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "python"))
+from devcommun import Checks, req
+
+__all__ = ["GW", "KC", "REALM", "Checks", "login", "password_token", "redis", "req", "session_key"]
 
 GW = "http://localhost:8080"
 KC = "http://localhost:8180"
 REALM = f"{KC}/realms/plbls/protocol/openid-connect"
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **k):
-        return None
-
-
-_opener = urllib.request.build_opener(_NoRedirect)
-
-
-def req(url, method="GET", headers=None, data=None):
-    """Retourne (status, headers, body) sans suivre les redirections."""
-    r = urllib.request.Request(url, method=method, headers=headers or {}, data=data)
-    try:
-        resp = _opener.open(r, timeout=30)
-    except urllib.error.HTTPError as e:
-        resp = e
-    return resp.status if hasattr(resp, "status") else resp.code, resp.headers, resp.read()
 
 
 def login(user="demo", password="demo"):
@@ -52,16 +45,3 @@ def redis(*args):
 
 def session_key(sid):
     return "sess:" + hashlib.sha256(sid.encode()).hexdigest()
-
-
-class Checks:
-    def __init__(self):
-        self.failed = 0
-
-    def check(self, name, ok, detail=""):
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -> {detail}"))
-        self.failed += not ok
-
-    def done(self):
-        print("OK" if not self.failed else f"{self.failed} échec(s)")
-        raise SystemExit(1 if self.failed else 0)

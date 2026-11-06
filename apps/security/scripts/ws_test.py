@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Proxy WebSocket vers traefik/whoami (/echo) : auth avant upgrade, Origin, aller-retour."""
-import base64, os, socket
+import base64
+import os
+import socket
 
 from devlib import Checks, login, password_token
 

@@ -24,7 +24,7 @@ case "${1:-}" in
       sleep 1
     done
     echo "le gateway ne répond pas, voir $LOG" >&2; tail -20 "$LOG" >&2; exit 1 ;;
-  stop)  running && kill "$(cat "$PID")" && echo "gateway arrêté" || true; rm -f "$PID" ;;
+  stop)  if running && kill "$(cat "$PID")"; then echo "gateway arrêté"; fi; rm -f "$PID" ;;
   logs)  tail -f "$LOG" ;;
   status)
     $COMPOSE ps
