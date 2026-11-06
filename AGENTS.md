@@ -9,6 +9,12 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Ne jamais forcer un push ; ne pas pousser directement sur `main`, passer par une PR.
 - Tags de livraison : `<composant>-vX.Y.Z` (`pli`, `security`, `permission`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
 
+## CI
+- Workflows de PR sans filtre `paths` : premier job `changements` (`scripts/ci-changements.sh <chemins>`), jobs conditionnés à sa sortie,
+  dernier job nommé comme le workflow (contrôle obligatoire). Un nouveau contrôle s'ajoute au ruleset de `scripts/configurer-github.sh`.
+- Toute PR : branche `<type>/<slug-court>` (`feat`, `fix`, `chore`, `docs`, `ci`) ou `release/…`, et une description ; vérifié par `pr-conventions.yml`.
+- Actions épinglées par SHA complet (`uses: owner/action@<sha> # vX.Y.Z`) ; `permissions: contents: read` en tête, droits d'écriture au seul job qui publie.
+
 ## Rust
 - Workspace Cargo unique à la racine (`Cargo.toml`) : membres `apps/security`, `apps/permission/backend`, `apps/pli/server`, `apps/estompe/backend/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
