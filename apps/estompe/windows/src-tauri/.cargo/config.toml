@@ -1,0 +1,4 @@
+# Cible MSVC (spike EST-14, SDK LiveKit) : libwebrtc est précompilé en /MT, donc CRT statique ; ucrt.lib explicite car le crate
+# webrtc-sys exclut libucrt tout en laissant rustc exclure ucrt, ce qui laisse strlen, pow… non résolus.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=ucrt.lib"]

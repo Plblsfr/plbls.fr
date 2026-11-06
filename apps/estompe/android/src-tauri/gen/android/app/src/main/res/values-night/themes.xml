@@ -1,0 +1,9 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.estompe" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- fond aux couleurs de l'app : plus de blanc derrière le clavier ni sous la barre de navigation (EST-27) -->
+        <item name="android:windowBackground">@color/fond</item>
+        <item name="android:navigationBarColor">@color/fond</item>
+        <item name="android:statusBarColor">@color/fond</item>
+    </style>
+</resources>

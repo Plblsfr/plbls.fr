@@ -1,0 +1,31 @@
+[package]
+name = "estompe-block-videos"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum.workspace = true
+estompe-block-apercu-liens.workspace = true
+estompe-block-musique.workspace = true
+estompe-block-regarder-ensemble.workspace = true
+estompe-core.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+
+[dev-dependencies]
+estompe-core = { workspace = true, features = ["testutil"] }
+testcontainers.workspace = true
+testcontainers-modules.workspace = true
+tower.workspace = true

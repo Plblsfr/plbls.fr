@@ -1,0 +1,39 @@
+// Balise : <plbls-pagination page="2" total="9"></plbls-pagination>
+//
+// <nav class="plbls-pagination" aria-label="Pagination">
+//   <button class="plbls-pagination__fleche" aria-label="Page précédente">←</button>
+//   <span class="plbls-pagination__etat">2 / 9</span>
+//   <button class="plbls-pagination__fleche" aria-label="Page suivante">→</button>
+// </nav>
+
+.plbls-pagination {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  &__fleche {
+    width: 38px;
+    height: 38px;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--ombre-1);
+    color: var(--noir);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--rose);
+    }
+
+    &:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+  }
+
+  &__etat {
+    font-size: 13px;
+    color: var(--gris);
+    font-variant-numeric: tabular-nums;
+  }
+}

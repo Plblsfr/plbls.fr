@@ -1,0 +1,32 @@
+// <span class="plbls-avatar plbls-avatar--lg" role="img" aria-label="Ada Lovelace">AL</span>
+// <img class="plbls-avatar" src="…" alt="Ada Lovelace">
+// Tailles : (défaut = md) · --sm · --lg
+
+.plbls-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+  background: var(--rose);
+  color: var(--noir);
+  font-family: var(--font-titre);
+  font-weight: 500;
+  letter-spacing: 0;
+
+  &--sm {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  &--lg {
+    width: 64px;
+    height: 64px;
+    font-size: 20px;
+  }
+}

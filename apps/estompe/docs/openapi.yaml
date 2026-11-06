@@ -1,0 +1,2536 @@
+openapi: 3.0.3
+info:
+  title: Estompe API
+  version: 0.1.0
+  description: |
+    API du service de chat Estompe (v0). Voir aussi `docs/realtime.md` pour les évènements WebSocket.
+
+    **Authentification utilisateur** : identité Keycloak via auth-gateway. Le client envoie soit le cookie de
+    session `__Secure-plbls_sid` (web, PWA), soit `Authorization: Bearer <access_token>` (Windows). Le service
+    interroge `GET /auth/me` du gateway. Les requêtes modifiantes portant un cookie doivent avoir un `Origin`
+    autorisé (sinon 403 `bad_origin`).
+
+    **Permission** : l'accès à Estompe est accordé dans permission.plbls.fr (permission `estompe:access` par défaut,
+    `PERMISSION_NAME`). Le service interroge `POST /v1/check` avec un Bearer de service (cache 30 s). Sans la permission,
+    `/activate` et toutes les routes du chat répondent 403 `forbidden` (503 `permission_unavailable` si permission est injoignable).
+
+    **Compte activé** : toutes les routes, sauf `/me`, `/activate` et `/ws`, répondent 403 `not_activated`
+    tant que l'utilisateur n'a pas choisi son pseudo (`POST /activate`).
+
+    **Version du client** : les apps envoient `X-Estompe-Version` (x.y.z) et `X-Estompe-Platform` (`web`, `pwa`, `windows`,
+    `android`) ; à l'ouverture du WebSocket, les paramètres `v` et `platform`. Si la version est inférieure au minimum de la
+    plateforme (`backend/core/updates.json`), toute route répond 426 `upgrade_required`
+    (`{error, message, min_version}`) et l'app affiche l'écran « Mise à jour requise ». Sans en-tête, la requête passe.
+
+    **Erreurs** : `{"error": "<code>", "message": "<texte>"}`. Un non-membre qui vise un serveur, un salon, un message
+    ou un fichier reçoit 404 (on ne révèle pas leur existence). Les identifiants de message sont des entiers
+    sérialisés en chaînes ; les autres sont des UUID.
+servers:
+  - url: https://chat.plbls.fr
+security:
+  - bearer: []
+  - session: []
+tags:
+  - name: compte
+  - name: serveurs
+  - name: messages
+  - name: fichiers
+  - name: vocal
+  - name: vidéos
+  - name: temps réel
+  - name: cairn
+  - name: films
+    description: "Proxy vers l'API REST de cairn-service (tickets et docs). Réservé à la permission `estompe:cairn.admin` (403 `forbidden` sinon). Le Bearer (app Windows) ou le cookie `__Secure-plbls_sid` (web) de l'utilisateur est relayé à Cairn ; les écritures portent `Origin: CAIRN_ORIGIN`. Les codes et corps d'erreur de Cairn sont renvoyés tels quels. Hors liste blanche : `/tokens`, `/mcp`, gestion des espaces."
+paths:
+  /healthz:
+    get: {summary: Liveness, security: [], responses: {"200": {description: ok}}}
+  /readyz:
+    get: {summary: Readiness (base de données), security: [], responses: {"200": {description: ok}, "503": {description: Base injoignable}}}
+
+  /me:
+    get:
+      tags: [compte]
+      summary: État du compte Estompe de l'utilisateur connecté
+      responses:
+        "200":
+          description: "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed: {type: boolean}
+                  admin: {type: boolean, description: "permission `estompe:admin` (tableau de bord d'administration)"}
+                  activated: {type: boolean}
+                  cairn: {type: boolean, description: "permission `estompe:cairn.admin` : accès à Cairn (tickets et docs) depuis Estompe"}
+                  movies: {type: boolean, description: "permission `estompe:movies` et Jellyfin configuré : accès à l'onglet Films et séries"}
+                  max_video_size: {type: integer, description: "taille maximale d'une vidéo en octets (`MAX_VIDEO_SIZE_MB`, 100 Mo par défaut)"}
+                  transcription: {type: string, enum: ["", alpha, "on"], description: "transcription des messages vocaux : désactivée (`TRANSCRIBE_URL` vide), `alpha` (`TRANSCRIBE_ALPHA`, défaut : réservée aux fonctions alpha débloquées côté client) ou `on` pour tous"}
+                  blocks: {type: array, items: {type: string}, description: "blocs actifs du backend (variables `BLOCK_<NOM>=false` pour en désactiver) : un bloc absent n'a pas ses routes"}
+                  sub: {type: string, description: "identifiant du compte dans le gateway (auteur des tickets et commentaires Cairn)"}
+                  id: {type: string, format: uuid}
+                  pseudo: {type: string}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /activate:
+    post:
+      tags: [compte]
+      summary: Créer le compte Estompe (pseudo), réservé aux détenteurs de la permission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pseudo]
+              properties:
+                pseudo: {type: string, pattern: '^[A-Za-z0-9_.-]{3,20}$'}
+      responses:
+        "201": {description: Compte créé, content: {application/json: {schema: {$ref: "#/components/schemas/Person"}}}}
+        "400": {description: "`invalid_pseudo`", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "403": {description: "`forbidden` : permission non accordée", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "409": {description: "`pseudo_taken` ou `already_activated`", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /notifications:
+    get:
+      tags: [messages]
+      summary: Mentions non lues (200 max, récentes d'abord)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Mention"}}}}}
+        "403": {$ref: "#/components/responses/NotActivated"}
+  /notifications/read:
+    post:
+      tags: [messages]
+      summary: Marquer des mentions comme lues
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message_ids: {type: array, items: {type: string}, description: Vide ou absent = toutes}
+      responses:
+        "204": {description: ok}
+
+  /unread:
+    get:
+      tags: [messages]
+      summary: Conversations contenant des messages non lus
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {channels: {type: array, items: {type: string}}, dms: {type: array, items: {type: string}}, counts: {type: object, additionalProperties: {type: integer}}}}}}}
+  /channels/{cid}/read:
+    post:
+      tags: [messages]
+      summary: Marquer un salon texte comme lu (ses mentions sont lues avec lui)
+      parameters: [{name: cid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+        "404": {description: introuvable}
+  /dms/{id}/read:
+    post:
+      tags: [messages]
+      summary: Marquer une conversation privée comme lue (ses mentions sont lues avec elle)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+        "404": {description: introuvable}
+  /channels/{cid}/reads:
+    get:
+      tags: [messages]
+      summary: Dernier message vu par chaque membre d'un salon texte
+      parameters: [{name: cid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: "liste de {user_id, pseudo, last_id, read_at}", content: {application/json: {schema: {type: array, items: {type: object, properties: {user_id: {type: string}, pseudo: {type: string}, last_id: {type: string}, read_at: {type: string, format: date-time}}}}}}}
+        "404": {description: introuvable}
+  /dms/{id}/reads:
+    get:
+      tags: [messages]
+      summary: Dernier message vu par chaque personne d'une conversation privée
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: "liste de {user_id, pseudo, last_id, read_at}", content: {application/json: {schema: {type: array, items: {type: object, properties: {user_id: {type: string}, pseudo: {type: string}, last_id: {type: string}, read_at: {type: string, format: date-time}}}}}}}
+        "404": {description: introuvable}
+  /avatars:
+    get:
+      tags: [comptes]
+      summary: Versions d'avatar des personnes côtoyées (même serveur ou message privé), soi-même compris
+      responses:
+        "200": {description: "ok — {user_id: version}", content: {application/json: {schema: {type: object, additionalProperties: {type: integer}}}}}
+  /me/avatar:
+    put:
+      tags: [comptes]
+      summary: Définir son avatar (PNG ou JPEG, 256 Ko et 512 px au plus)
+      requestBody:
+        required: true
+        content:
+          image/png: {schema: {type: string, format: binary}}
+          image/jpeg: {schema: {type: string, format: binary}}
+      responses:
+        "204": {description: ok (évènement `avatar.updated`)}
+        "400": {description: invalid_image}
+        "413": {description: too_large}
+    delete:
+      tags: [comptes]
+      summary: Supprimer son avatar
+      responses:
+        "204": {description: ok}
+  /me/camera-background:
+    put:
+      tags: [comptes]
+      summary: Définir son fond de caméra personnalisé (PNG ou JPEG, 1 Mo et 1920 px au plus)
+      requestBody:
+        required: true
+        content:
+          image/png: {schema: {type: string, format: binary}}
+          image/jpeg: {schema: {type: string, format: binary}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_image}
+        "413": {description: too_large}
+    get:
+      tags: [comptes]
+      summary: Son fond de caméra personnalisé (visible de soi seul)
+      responses:
+        "200": {description: image, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}}}
+        "404": {description: aucun fond enregistré}
+    delete:
+      tags: [comptes]
+      summary: Supprimer son fond de caméra personnalisé
+      responses:
+        "204": {description: ok}
+  /users/{id}/avatar:
+    get:
+      tags: [comptes]
+      summary: Image d'avatar d'une personne côtoyée
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: image, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}}}
+        "404": {description: pas d'avatar, ou personne non côtoyée}
+  /push/key:
+    get:
+      tags: [comptes]
+      summary: Clé publique VAPID pour s'abonner aux notifications push
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {public_key: {type: string}}}}}}
+        "501": {description: no_push (VAPID non configuré)}
+  /push/fcm:
+    put:
+      tags: [comptes]
+      summary: Enregistrer le jeton FCM de l'app Android
+      description: "Le service de notifications (réglages de la personne, aucun envoi si elle est active ailleurs) envoie des messages FCM « data » seuls : title, body, tag, url, conv, msg, kind (dm, mention, channel, voice), silent, et sender, room, text, attach (image ou file) quand l'aperçu n'est pas masqué. L'app construit la notification (canal par kind, fil MessagingStyle par conversation pour Android Auto, actions Répondre / Marquer comme lu) et le mode conduite lit sender, room, text, attach."
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [token], properties: {token: {type: string, maxLength: 512}, previous: {type: string, maxLength: 512, description: "ancien jeton (rotation) : retiré dans le même appel"}}}}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_subscription}
+        "501": {description: no_push (FCM_SERVICE_ACCOUNT non configuré)}
+    delete:
+      tags: [comptes]
+      summary: Supprimer le jeton FCM de cet appareil
+      requestBody:
+        content: {application/json: {schema: {type: object, properties: {token: {type: string}}}}}
+      responses:
+        "204": {description: ok}
+  /push/desktop:
+    put:
+      tags: [comptes]
+      summary: Enregistrer l'installation de l'app Windows
+      description: "L'app PC notifie localement : le serveur ne lui envoie aucune notification push. L'enregistrement sert à connaître les appareils de la personne."
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [id], properties: {id: {type: string, maxLength: 128}}}}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_subscription}
+    delete:
+      tags: [comptes]
+      summary: Retirer cette installation (à la déconnexion)
+      requestBody:
+        content: {application/json: {schema: {type: object, properties: {id: {type: string}}}}}
+      responses:
+        "204": {description: ok}
+  /push/test:
+    post:
+      tags: [comptes]
+      summary: Envoyer une notification de test aux abonnements Web Push du compte
+      responses:
+        "204": {description: "ok — au moins un envoi accepté par le service de push"}
+        "404": {description: no_subscription}
+        "501": {description: no_push}
+        "502": {description: "push_failed — message = réponse du service de push"}
+  /push/subscription:
+    put:
+      tags: [comptes]
+      summary: Enregistrer l'abonnement push de ce navigateur (PushSubscription.toJSON())
+      description: "Une notification est envoyée aux destinataires hors ligne (aucun WebSocket ouvert) pour une mention ou un message privé."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+              properties:
+                endpoint: {type: string, description: URL https}
+                keys: {type: object, properties: {p256dh: {type: string}, auth: {type: string}}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_subscription}
+        "501": {description: no_push}
+    delete:
+      tags: [comptes]
+      summary: Supprimer l'abonnement push de ce navigateur
+      requestBody:
+        content: {application/json: {schema: {type: object, properties: {endpoint: {type: string}}}}}
+      responses:
+        "204": {description: ok}
+
+  /channels/{cid}/pins:
+    get:
+      tags: [messages]
+      summary: Messages épinglés d'un salon (les plus récemment épinglés d'abord)
+      parameters: [{name: cid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: "ok — {messages: [...]}"}
+  /dms/{id}/pins:
+    get:
+      tags: [messages]
+      summary: Messages épinglés d'une conversation privée
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: "ok — {messages: [...]}"}
+  /search:
+    get:
+      tags: [messages]
+      summary: Rechercher des messages dans tous les salons visibles et les messages privés de l'utilisateur
+      description: |
+        Plein texte PostgreSQL en français (sans tenir compte des accents ni de la casse, racines des mots, mots vides ignorés).
+        `q` (200 caractères au plus) mêle texte et filtres : `"expression exacte"`, `-exclu`, `de:pseudo`, `dans:#salon`, `serveur:nom` (contient),
+        `mentionne:pseudo`, `avant:AAAA-MM-JJ`, `après:AAAA-MM-JJ`, `pendant:AAAA-MM-JJ` (jours en UTC), `a:fichier|image|vidéo|lien|sondage`, `épinglé:oui`
+        (valeur avec espaces entre guillemets : `serveur:"Mon serveur"`). Les filtres se combinent ; le texte seul demande 2 caractères, une saisie composée de filtres seuls est permise.
+        Les droits sont recalculés à chaque recherche (permissions et exceptions par salon) ; un message supprimé n'apparaît plus, un message modifié suit son nouveau texte.
+        Portée : `server_id`, `channel_id` ou `dm_id` (un seul ; rien : partout) ; une portée inaccessible ne donne aucun résultat.
+        Tri `date` (défaut, du plus récent au plus ancien) ou `relevance` (parmi les 2000 correspondances les plus récentes). 30 recherches par minute, comptées dans `estompe_search_duration_seconds` (`GET /metrics`).
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string, maxLength: 200}}
+        - {name: server_id, in: query, schema: {type: string}}
+        - {name: channel_id, in: query, schema: {type: string}}
+        - {name: dm_id, in: query, schema: {type: string}}
+        - {name: sort, in: query, schema: {type: string, enum: [date, relevance]}}
+        - {name: before, in: query, description: "seulement les messages d'identifiant inférieur", schema: {type: string}}
+        - {name: offset, in: query, description: "0 à 1000, pour les pages suivantes", schema: {type: integer}}
+        - {name: limit, in: query, description: "1 à 50, 25 par défaut", schema: {type: integer}}
+      responses:
+        "200": {description: "ok — {messages, has_more}"}
+        "400": {description: "invalid_query (saisie vide, texte d'un caractère, date illisible, a: inconnu) ou paramètre invalide"}
+        "429": {description: too_many_requests}
+  /channels/{cid}/search:
+    get:
+      tags: [messages]
+      summary: Rechercher dans un salon (comme `GET /search` limité à ce salon)
+      parameters: [{name: cid, in: path, required: true, schema: {type: string}}, {name: q, in: query, required: true, schema: {type: string}}, {name: sort, in: query, schema: {type: string}}, {name: before, in: query, schema: {type: string}}, {name: offset, in: query, schema: {type: integer}}, {name: limit, in: query, schema: {type: integer}}]
+      responses:
+        "200": {description: "ok — {messages, has_more}"}
+        "400": {description: invalid_query}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {description: too_many_requests}
+  /dms/{id}/search:
+    get:
+      tags: [messages]
+      summary: Rechercher dans une conversation privée (comme `GET /search` limité à cette conversation)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: q, in: query, required: true, schema: {type: string}}, {name: sort, in: query, schema: {type: string}}, {name: before, in: query, schema: {type: string}}, {name: offset, in: query, schema: {type: integer}}, {name: limit, in: query, schema: {type: integer}}]
+      responses:
+        "200": {description: "ok — {messages, has_more}"}
+        "400": {description: invalid_query}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /channels/{cid}/typing:
+    post:
+      tags: [messages]
+      summary: Signaler que l'on écrit (évènement `typing` aux autres participants, 2 par 3 secondes au plus)
+      parameters: [{name: cid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+  /dms/{id}/typing:
+    post:
+      tags: [messages]
+      summary: Signaler que l'on écrit dans une conversation privée
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+  /messages/{id}/pin:
+    put:
+      tags: [messages]
+      summary: Épingler un message (tout participant ; évènement `message.updated`, champ `pinned_at`)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+    delete:
+      tags: [messages]
+      summary: Désépingler un message
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+  /emojis:
+    get:
+      tags: [serveurs]
+      summary: Emojis personnalisés de tous les serveurs de l'utilisateur
+      responses:
+        "200": {description: "ok — [{id, server_id, name, created_by}]"}
+  /servers/{id}/emojis:
+    post:
+      tags: [serveurs]
+      summary: Ajouter un emoji (corps = image PNG, JPEG ou GIF de 256 px et 128 Ko au plus ; ?name=2 à 32 caractères a-z 0-9 _)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: name, in: query, required: true, schema: {type: string}}]
+      responses:
+        "201": {description: ok (évènement `emoji.updated`)}
+        "400": {description: invalid_name ou invalid_image}
+        "404": {description: serveur introuvable}
+        "409": {description: emoji_taken ou too_many_emojis (50 par serveur)}
+        "413": {description: too_large (128 Ko au plus)}
+  /servers/{id}/emojis/{eid}:
+    patch:
+      tags: [serveurs]
+      summary: Renommer un emoji (créateur du serveur ou auteur de l'emoji)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: eid, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {name: {type: string, pattern: "^[a-z0-9_]{2,32}$"}}}}}
+      responses:
+        "204": {description: ok (évènement `emoji.updated`)}
+        "400": {description: invalid_name}
+        "404": {description: introuvable ou non modifiable}
+        "409": {description: emoji_taken}
+    delete:
+      tags: [serveurs]
+      summary: Supprimer un emoji (créateur du serveur ou auteur de l'emoji)
+      parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: eid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok (évènement `emoji.updated`)}
+        "404": {description: introuvable ou non modifiable}
+  /emojis/{eid}/image:
+    get:
+      tags: [serveurs]
+      summary: Image d'un emoji (membres du serveur)
+      parameters: [{name: eid, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: image}
+  /gifs/search:
+    get:
+      tags: [messages]
+      summary: Rechercher un GIF (Giphy, par le serveur) ; `q` de 1 à 100 caractères, `offset` de 0 à 480 (sinon 0), 24 résultats, 30 requêtes par minute et par utilisateur
+      parameters:
+        - {name: q, in: query, required: true, schema: {type: string}}
+        - {name: offset, in: query, required: false, schema: {type: integer}}
+      responses:
+        "200": {description: "ok — [{id, title, preview, url, width, height}]"}
+        "400": {description: invalid_query}
+        "429": {description: too_many_requests (en-tête Retry-After)}
+        "501": {description: no_gifs (GIPHY_API_KEY absente)}
+        "502": {description: gif_unavailable (Giphy injoignable)}
+  /gifs/trending:
+    get:
+      tags: [messages]
+      summary: GIF du moment (Giphy, par le serveur), mêmes limites que la recherche
+      parameters:
+        - {name: offset, in: query, required: false, schema: {type: integer}}
+      responses:
+        "200": {description: "ok — [{id, title, preview, url, width, height}]"}
+        "429": {description: too_many_requests (en-tête Retry-After)}
+        "501": {description: no_gifs (GIPHY_API_KEY absente)}
+        "502": {description: gif_unavailable (Giphy injoignable)}
+  /gifs/import:
+    post:
+      tags: [messages]
+      summary: Copier un GIF choisi comme fichier en attente (à joindre avec file_ids) ; seuls les hôtes media*.giphy.com en https sont acceptés
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {url: {type: string}}}}}
+      responses:
+        "201": {description: "ok — pièce jointe"}
+        "400": {description: bad_request ou invalid_url}
+        "429": {description: too_many_pending_files ou quota}
+        "501": {description: no_gifs (GIPHY_API_KEY absente)}
+        "502": {description: gif_unavailable (GIF indisponible)}
+  /admin/live:
+    get:
+      tags: [administration]
+      summary: "Activité en direct : connexions temps réel, appareils connectés (pseudo, plateforme, version), salons vocaux actifs et leurs participants. Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — {connections, online: [{pseudo, platform, version}], voice: [{server, channel, participants}]}"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden (sans la permission estompe:admin)}
+  /users/{id}/badges:
+    get:
+      tags: [compte]
+      summary: "Badges d'un utilisateur affichés dans son profil ; liste vide si l'on ne partage ni serveur ni message privé avec lui"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: "ok — [{id, name, icon, color, description, icon_version, sort_order, created_at}] ; `icon_version` 0 : emoji `icon`, sinon image `GET /badges/{id}/icon`"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+  /admin/badges:
+    get:
+      tags: [administration]
+      summary: "Badges et pseudos qui les portent. Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — [{id, name, icon, color, description, icon_version, sort_order, created_at, holders: [{id, pseudo}]}], triés par ordre d'affichage"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+    post:
+      tags: [administration]
+      summary: "Crée un badge : nom (2 à 32), couleur `#rrggbb`, description (200 au plus), ordre d'affichage (0 à 9999), emoji de repli `icon` (facultatif, 🏅 par défaut) ; l'image se règle ensuite avec `PUT /admin/badges/{id}/icon`. Journalisé. Permission `estompe:admin`"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [name, color], properties: {name: {type: string}, icon: {type: string}, color: {type: string}, description: {type: string}, sort_order: {type: integer}}}}}
+      responses:
+        "201": {description: "ok — le badge"}
+        "400": {description: invalid_name / invalid_icon / invalid_color / invalid_description / invalid_order}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "409": {description: badge_exists}
+  /admin/badges/{id}:
+    put:
+      tags: [administration]
+      summary: "Modifie nom, couleur, description et ordre d'affichage (mêmes champs et contrôles que la création). Journalisé. Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — le badge"}
+        "400": {description: invalid_name / invalid_color / invalid_description / invalid_order}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+        "409": {description: badge_exists}
+    delete:
+      tags: [administration]
+      summary: "Supprime le badge et le retire à tous. Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+  /admin/badges/{id}/icon:
+    put:
+      tags: [administration]
+      summary: "Remplace l'image du badge ; corps = le fichier, `Content-Type` = son type. SVG (64 Ko au plus, nettoyé : scripts, `on*`, `foreignObject`, liens externes supprimés ; `viewBox` requis), WebP fixe, PNG ou JPEG (256 Ko, 512 px au plus). Journalisé. Permission `estompe:admin`"
+      requestBody:
+        required: true
+        content: {image/svg+xml: {}, image/webp: {}, image/png: {}, image/jpeg: {}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_image}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+        "413": {description: too_large}
+    delete:
+      tags: [administration]
+      summary: "Supprime l'image du badge (l'emoji s'affiche à nouveau). Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+  /badges/{id}/icon:
+    get:
+      tags: [compte]
+      summary: "Image du badge (SVG nettoyé, WebP, PNG ou JPEG), à charger quand `icon_version` > 0"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: "ok — l'image"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {description: "pas d'image"}
+  /admin/badges/{id}/users:
+    post:
+      tags: [administration]
+      summary: "Attribue le badge à plusieurs pseudos (1 à 100 ; sans effet pour ceux qui l'ont déjà). Journalisé. Permission `estompe:admin`"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [pseudos], properties: {pseudos: {type: array, items: {type: string}}}}}}
+      responses:
+        "200": {description: "ok — {granted, missing: [pseudos inconnus]}"}
+        "400": {description: invalid_pseudos}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: "badge inconnu"}
+  /admin/badges/{id}/users/{pseudo}:
+    put:
+      tags: [administration]
+      summary: "Attribue le badge au pseudo (sans effet s'il l'a déjà). Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: "badge ou pseudo inconnu"}
+    delete:
+      tags: [administration]
+      summary: "Retire le badge au pseudo. Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: "badge non porté par ce pseudo"}
+  /admin/users:
+    get:
+      tags: [administration]
+      summary: "Recherche de comptes par pseudo (`?q=`, 50 au plus, compte système exclu). Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — [{id, pseudo, created_at, suspended, servers, messages}]"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+  /admin/users/{id}/suspension:
+    put:
+      tags: [administration]
+      summary: "Suspend le compte : l'API répond 403 `suspended` et ses connexions temps réel sont coupées. Journalisé. Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+        "409": {description: "admin_account — un administrateur ne peut pas être suspendu"}
+    delete:
+      tags: [administration]
+      summary: "Rétablit le compte. Journalisé. Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+  /admin/servers/{id}:
+    delete:
+      tags: [administration]
+      summary: "Supprime n'importe quel serveur (évènement `server.deleted` aux membres). Journalisé. Permission `estompe:admin`"
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+  /admin/stats:
+    get:
+      tags: [administration]
+      summary: "Compteurs généraux. Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — {users, new_users_7d, suspended, servers, messages, messages_24h, files, storage_bytes, errors_24h}"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+  /admin/log:
+    get:
+      tags: [administration]
+      summary: "Journal des actions d'administration (100 dernières : qui, quoi, sur quoi, quand). Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — [{at, actor, action, target}]"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+  /admin/errors:
+    get:
+      tags: [administration]
+      summary: "Réponses 5xx et paniques de l'API (100 dernières, conservées 30 jours). Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — [{at, method, path, status}]"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+  /admin/bot:
+    get:
+      tags: [administration]
+      summary: "Compte du bot Estompe et notes de version déjà envoyées. Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — {pseudo, releases: [version]}"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+  /admin/bot/messages:
+    post:
+      tags: [administration]
+      summary: "Envoie un message privé du bot (1 à 4000 caractères) à un pseudo, ou à tous les comptes si `to` est vide. Journalisé. Permission `estompe:admin`"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [content], properties: {content: {type: string}, to: {type: string}}}}}
+      responses:
+        "200": {description: "ok — {sent}"}
+        "400": {description: invalid_message}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: "pseudo inconnu"}
+  /admin/overview:
+    get:
+      tags: [administration]
+      summary: "Serveurs (membres, salons, messages, dernière activité), configuration sans secret et version du backend. Lecture seule, permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — {version, servers, config: {settings, max_file_size, max_participants, screen_max_fps, screen_max_height}}"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden (sans la permission estompe:admin)}
+  /reports:
+    post:
+      tags: [comptes]
+      summary: "Signaler un bug (limite : 5 par heure). Les captures (images, 5 au plus) sont d'abord envoyées par `POST /files` puis jointes par `file_ids` ; les logs (40 000 caractères au plus) sont masqués côté serveur"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [title, description], properties: {title: {type: string, maxLength: 120}, description: {type: string, maxLength: 4000}, category: {type: string, enum: [messages, vocal, ecran, notifications, bobyn, autre]}, platform: {type: string, enum: [web, pwa, desktop, android]}, tech: {type: object, additionalProperties: {type: string}, description: "20 entrées au plus"}, logs: {type: string}, file_ids: {type: array, items: {type: string, format: uuid}}}}}}
+      responses:
+        "201": {description: "créé — {id, status}"}
+        "400": {description: "invalid_report / invalid_files"}
+        "429": {description: too_many_reports}
+    get:
+      tags: [comptes]
+      summary: "Mes signalements et leur statut (sans logs ni notes internes)"
+      responses:
+        "200": {description: "ok — [{id, created_at, title, category, platform, status, duplicate_of}] ; statut : new, in_progress, resolved, rejected, duplicate"}
+  /admin/reports:
+    get:
+      tags: [administration]
+      summary: "Signalements (200 au plus) filtrés par `status`, `category`, `platform`, `author` (pseudo) et `q` (titre et description). Permission `estompe:admin`"
+      responses:
+        "200": {description: "ok — [{id, author, created_at, title, category, platform, status, duplicate_of, seen}]"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+  /admin/reports/{id}:
+    get:
+      tags: [administration]
+      summary: "Détail d'un signalement (description, informations techniques, logs, notes, captures lisibles par `GET /files/{id}`) ; le marque comme consulté. Permission `estompe:admin`"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+    patch:
+      tags: [administration]
+      summary: "Change le statut, le signalement d'origine (`duplicate_of`, obligatoire pour `duplicate`) et les notes internes. Journalisé ; le passage à « résolu » envoie un message privé du bot à l'auteur. Permission `estompe:admin`"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [status], properties: {status: {type: string, enum: [new, in_progress, resolved, rejected, duplicate]}, duplicate_of: {type: string, format: uuid}, notes: {type: string, maxLength: 4000}}}}}
+      responses:
+        "200": {description: "ok — le signalement"}
+        "400": {description: "invalid_report / invalid_duplicate"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+    delete:
+      tags: [administration]
+      summary: "Supprime un signalement (ses captures sont purgées ensuite). Journalisé. Permission `estompe:admin`"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "204": {description: supprimé}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "404": {description: not_found}
+  /statuses:
+    get:
+      tags: [comptes]
+      summary: Statuts (idle, dnd) des personnes côtoyées, soi-même compris ; absent = en ligne
+      responses:
+        "200": {description: "ok — {user_id: statut}"}
+  /me/status:
+    put:
+      tags: [comptes]
+      summary: Choisir son statut (online, idle, dnd) ; « dnd » coupe aussi les notifications push
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {status: {type: string, enum: [online, idle, dnd]}}}}}
+      responses:
+        "204": {description: ok (évènement `status.updated`)}
+        "400": {description: invalid_status}
+  /me/banner:
+    put:
+      tags: [comptes]
+      summary: Couleur de la bannière du profil (`#rrggbb`, vide pour reprendre la couleur du rôle le plus élevé)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {color: {type: string, pattern: "^(#[0-9a-fA-F]{6})?$"}}}}}
+      responses:
+        "204": {description: ok (évènement `banner.updated`)}
+        "400": {description: invalid_color}
+  /me/activity:
+    put:
+      tags: [comptes]
+      summary: Annoncer le jeu en cours (vide pour l'effacer) ; éphémère, effacé à la déconnexion
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {name: {type: string, maxLength: 64}}}}}
+      responses:
+        "204": {description: ok (évènement `activity.updated`)}
+        "400": {description: invalid_activity}
+        "409": {description: offline — pas de connexion temps réel}
+  /me/notify-settings:
+    get:
+      tags: [comptes]
+      summary: Réglages de notifications (identiques sur tous les appareils)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/NotifySettings"}}}}
+    put:
+      tags: [comptes]
+      summary: Remplacer les réglages de notifications
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/NotifySettings"}}}
+      responses:
+        "204": {description: ok (évènement `notify_settings.updated` aux appareils de l'utilisateur)}
+        "400": {description: invalid_settings (niveau inconnu, identifiant de plus de 64 caractères, plus de 1000 niveaux)}
+  /metrics:
+    get:
+      tags: [supervision]
+      summary: Métriques Prometheus (Bearer METRICS_TOKEN ; 404 si le jeton n'est pas configuré)
+      responses:
+        "200": {description: texte Prometheus}
+        "401": {description: jeton absent ou incorrect}
+
+  /servers:
+    get:
+      tags: [serveurs]
+      summary: Serveurs de l'utilisateur
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Server"}}}}}
+    post:
+      tags: [serveurs]
+      summary: Créer un serveur (avec un salon texte « général » et un salon vocal « vocal »)
+      requestBody: {$ref: "#/components/requestBodies/Name50"}
+      responses:
+        "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Server"}}}}
+        "400": {description: invalid_name}
+  /servers/{id}:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [serveurs]
+      summary: Détail d'un serveur (membre uniquement)
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  server: {$ref: "#/components/schemas/Server"}
+                  channels:
+                    type: array
+                    description: Seulement les salons que vous voyez (« Voir le salon »)
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Channel"
+                        - type: object
+                          properties: {permissions: {$ref: "#/components/schemas/Permissions", description: vos permissions dans ce salon (rôles + exceptions)}}
+                  members:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/Person"
+                        - type: object
+                          properties:
+                            online: {type: boolean}
+                            roles: {type: array, items: {type: string, format: uuid}, description: "rôles du membre, du plus élevé au plus bas, hors « @tout le monde »"}
+                  roles: {type: array, items: {$ref: "#/components/schemas/Role"}, description: "du plus élevé à « @tout le monde »"}
+                  permissions: {$ref: "#/components/schemas/Permissions", description: vos permissions au niveau du serveur}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      tags: [serveurs]
+      summary: Renommer (permission `manage_server`)
+      requestBody: {$ref: "#/components/requestBodies/Name50"}
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+    delete:
+      tags: [serveurs]
+      summary: Supprimer (créateur)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/leave:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    post:
+      tags: [serveurs]
+      summary: Quitter un serveur
+      responses:
+        "204": {description: ok}
+        "409": {description: "`owner_cannot_leave` : le créateur peut supprimer son serveur"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /servers/{id}/channels:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    post:
+      tags: [serveurs]
+      summary: Créer un salon (permission `manage_channels` ; 50 max par serveur)
+      description: "`cinema` : salon vocal dédié aux films et séries de la bibliothèque (session `/voice/{cid}/cinema`), accepté seulement si le bloc `films` est actif (sinon 400 `invalid_channel`)."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 30}
+                kind: {type: string, enum: [text, voice, videos, music, cinema]}
+                topic: {type: string, maxLength: 200, description: Sujet du salon}
+                slowmode: {type: integer, description: "Mode lent en secondes, salon texte : 0 ou de 5 à 21600"}
+                user_limit: {type: integer, description: "Participants maximum, salon vocal ou cinéma : de 2 à 10 (0 : 10)"}
+                after: {type: string, format: uuid, description: "Salon du même type après lequel placer le nouveau (sinon à la fin)"}
+                private: {type: boolean, description: "Salon visible seulement par `roles`, `members` et son créateur : la création le refuse à « @tout le monde » (EST-159)"}
+                roles: {type: array, items: {type: string, format: uuid}, description: "Rôles qui voient le salon privé"}
+                members: {type: array, items: {type: string, format: uuid}, description: "Membres qui voient le salon privé"}
+      responses:
+        "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Channel"}}}}
+        "400": {description: "invalid_channel, invalid_topic, invalid_slowmode ou invalid_user_limit"}
+        "409": {description: "`name_taken` (même nom et même type) ou `too_many_channels`"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /servers/{id}/channels/order:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    put:
+      tags: [serveurs]
+      summary: Réordonner les salons d'un type (permission `manage_channels`)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [kind, ids], properties: {kind: {type: string, enum: [text, voice, videos, music, cinema]}, ids: {type: array, items: {type: string, format: uuid}, description: "tous les salons de ce type, dans le nouvel ordre"}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_order}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/channels/{cid}:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {$ref: "#/components/parameters/ChannelId"}]
+    patch:
+      tags: [serveurs]
+      summary: Renommer un salon (permission `manage_channels`)
+      requestBody: {$ref: "#/components/requestBodies/Name50"}
+      responses: {"204": {description: ok}, "409": {description: name_taken}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+    delete:
+      tags: [serveurs]
+      summary: Supprimer un salon et ses messages (permission `manage_channels`)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/invites:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [serveurs]
+      summary: Liens d'invitation actifs (permission `create_invites`)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ServerInvite"}}}}}
+    post:
+      tags: [serveurs]
+      summary: Créer un lien d'invitation, réutilisable jusqu'à révocation, épuisement ou expiration (permission `create_invites`)
+      requestBody:
+        required: false
+        content: {application/json: {schema: {type: object, properties: {max_uses: {type: integer, minimum: 0, maximum: 1000, description: "0 ou absent : illimité"}, expires_in: {type: integer, minimum: 0, maximum: 31536000, description: "secondes ; 0 ou absent : sans expiration"}}}}}
+      responses:
+        "400": {description: invalid_invite}
+        "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/ServerInvite"}}}}
+  /servers/{id}/invites/{code}:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: code, in: path, required: true, schema: {type: string}}]
+    delete:
+      tags: [serveurs]
+      summary: Révoquer un lien (permission `create_invites`)
+      responses: {"204": {description: ok}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/roles:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    post:
+      tags: [serveurs]
+      summary: Créer un rôle, placé juste au-dessus de « @tout le monde » (permission `manage_roles` ; 50 max). On n'accorde que des permissions qu'on a soi-même.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RoleInput"}}}}
+      responses:
+        "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Role"}}}}
+        "400": {description: "`invalid_role` (nom, couleur, icône ou permission inconnue)"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {description: "`name_taken` ou `too_many_roles`"}
+  /servers/{id}/roles/{rid}:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: rid, in: path, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      tags: [serveurs]
+      summary: Modifier un rôle situé sous son rôle le plus élevé (seules les permissions de « @tout le monde » changent)
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RoleInput"}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Role"}}}}
+        "400": {description: invalid_role}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {description: name_taken}
+    delete:
+      tags: [serveurs]
+      summary: Supprimer un rôle situé sous son rôle le plus élevé
+      responses:
+        "204": {description: ok}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {description: "`default_role` : « @tout le monde » ne se supprime pas"}
+  /servers/{id}/roles-order:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    put:
+      tags: [serveurs]
+      summary: Réordonner les rôles (permission `manage_roles`) ; les rôles au niveau du vôtre ou au-dessus ne bougent pas
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties: {ids: {type: array, items: {type: string, format: uuid}, description: "tous les rôles sauf « @tout le monde », du plus élevé au plus bas"}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_order}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /servers/{id}/members/{uid}/roles/{rid}:
+    parameters:
+      - $ref: "#/components/parameters/ServerId"
+      - {name: uid, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: rid, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      tags: [serveurs]
+      summary: Donner un rôle à un membre (permission `manage_roles` ; rôle et membre sous son rôle le plus élevé)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}, "409": {description: default_role}}
+    delete:
+      tags: [serveurs]
+      summary: Retirer un rôle à un membre (mêmes règles)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/channels/{cid}/overrides:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [serveurs]
+      summary: Exceptions de permissions du salon par rôle (permission `manage_channels`)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Override"}}}}}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /servers/{id}/channels/{cid}/overrides/{rid}:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {$ref: "#/components/parameters/ChannelId"}, {name: rid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [serveurs]
+      summary: Autoriser ou refuser des permissions à un rôle sur ce salon ; deux listes vides = hériter (permission `manage_channels`, et on n'y met que des permissions qu'on a)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {allow: {$ref: "#/components/schemas/Permissions"}, deny: {$ref: "#/components/schemas/Permissions"}}}}}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_override}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /servers/{id}/audit-log:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [serveurs]
+      summary: Journal d'administration et de modération — rôles, expulsions, bannissements, exclusions, avertissements, déplacements vocaux, suppressions de messages ; 200 dernières actions (permission `view_audit_log`)
+      parameters:
+        - {name: actor, in: query, schema: {type: string, format: uuid}, description: auteur de l'action}
+        - {name: target, in: query, schema: {type: string, format: uuid}, description: membre visé}
+        - {name: action, in: query, schema: {type: string}, description: "action exacte (`member.ban`) ou préfixe (`member`, `role`)"}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    at: {type: string, format: date-time}
+                    actor: {type: string, description: pseudo}
+                    actor_id: {type: string, format: uuid}
+                    action: {type: string, enum: [role.create, role.update, role.delete, role.reorder, role.assign, role.unassign, channel.override, channel.moderation, member.kick, member.ban, member.unban, member.timeout, member.untimeout, member.warn, member.nickname, voice.move, voice.disconnect, message.delete, message.bulk_delete, server.transfer]}
+                    target: {type: string, description: "libellé (pseudo, avec l'échéance d'un ban ou d'une exclusion)"}
+                    target_id: {type: string, description: identifiant du membre visé, vide sinon}
+                    reason: {type: string}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /server-invites/{code}/join:
+    parameters: [{name: code, in: path, required: true, schema: {type: string}}]
+    post:
+      tags: [serveurs]
+      summary: Rejoindre un serveur avec un code (sans effet si déjà membre)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Server"}}}}
+        "403": {description: "`banned` : banni de ce serveur"}
+        "404": {description: "`invalid_code` : invitation inconnue, révoquée, expirée ou épuisée"}
+  /servers/{id}/members/{uid}/kick:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [serveurs]
+      summary: Expulser un membre (permission `kick_members`) ; il peut revenir avec une invitation. Ni soi-même, ni le créateur, ni un rang égal ou supérieur (403)
+      requestBody: {required: false, content: {application/json: {schema: {type: object, properties: {reason: {type: string, maxLength: 200}}}}}}
+      responses:
+        "204": {description: ok}
+        "400": {description: invalid_reason}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /servers/{id}/members/{uid}/ban:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [serveurs]
+      summary: Bannir un membre (permission `ban_members`, même hiérarchie que l'expulsion) ; il est retiré du serveur et ne peut plus rejoindre jusqu'à la levée ou l'échéance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: {type: string, maxLength: 200}
+                duration: {type: integer, minimum: 0, description: "secondes ; 0 : définitif ; 10 ans au plus"}
+                delete_messages: {type: integer, enum: [0, 3600, 86400, 604800], description: "supprime ses messages des N dernières secondes"}
+      responses:
+        "204": {description: ok}
+        "400": {description: "`invalid_ban` ou `invalid_reason`"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /servers/{id}/bans:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [serveurs]
+      summary: Bannissements en cours (permission `ban_members`)
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    user_id: {type: string, format: uuid}
+                    pseudo: {type: string}
+                    by: {type: string, description: pseudo de l'auteur}
+                    reason: {type: string}
+                    at: {type: string, format: date-time}
+                    expires_at: {type: string, format: date-time, nullable: true}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /servers/{id}/bans/{uid}:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    delete:
+      tags: [serveurs]
+      summary: Lever un bannissement (permission `ban_members`)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/members/{uid}/timeout:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [serveurs]
+      summary: Exclure temporairement un membre (permission `timeout_members`, même hiérarchie) — il reste membre et lit, mais ne peut plus écrire, modifier, réagir, joindre des fichiers, voter ni utiliser le vocal et la musique ; déconnecté du vocal
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [duration], properties: {duration: {type: integer, minimum: 1, maximum: 2419200, description: secondes}, reason: {type: string, maxLength: 200}}}}}}
+      responses:
+        "204": {description: ok}
+        "400": {description: "`invalid_timeout` ou `invalid_reason`"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    delete:
+      tags: [serveurs]
+      summary: Lever l'exclusion avant l'échéance (permission `timeout_members`)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/members/{uid}/warn:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [serveurs]
+      summary: Avertir un membre (permission `timeout_members`, même hiérarchie) ; consigné dans l'historique et notifié au membre
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [reason], properties: {reason: {type: string, minLength: 1, maxLength: 200}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_reason}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/members/{uid}/nickname:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [serveurs]
+      summary: "Changer le pseudo d'un membre sur ce serveur (permission `manage_nicknames`, même hiérarchie) ; chaîne vide : retire le pseudo de serveur"
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {nickname: {type: string, maxLength: 32}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_name}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /servers/{id}/members/{uid}/history:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      tags: [serveurs]
+      summary: Historique de modération d'un membre — avertissements, exclusions, expulsions, bannissements (permission `view_audit_log`) ; mêmes entrées que le journal
+      responses: {"200": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}}
+  /servers/{id}/channels/{cid}/moderation:
+    parameters: [{$ref: "#/components/parameters/ServerId"}, {name: cid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [serveurs]
+      summary: Mode lent et verrouillage d'un salon texte (permission `manage_channels`). Mode lent ignoré pour ceux qui ont `manage_messages` ; salon verrouillé = lecture seule sauf pour eux
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {slowmode: {type: integer, description: "secondes : 0 (désactivé) ou 5 à 21600"}, locked: {type: boolean}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_slowmode}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /channels/{cid}/messages/bulk-delete:
+    parameters: [{name: cid, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [messages]
+      summary: Supprimer plusieurs messages d'un salon (permission `manage_messages`) — `ids` (100 au plus) ou les `last` derniers (100 au plus), éventuellement d'un seul `author`
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {ids: {type: array, items: {type: string}}, last: {type: integer, minimum: 1, maximum: 100}, author: {type: string, format: uuid}}}}}}
+      responses:
+        "200": {description: "ok — {deleted: [ids]}"}
+        "400": {description: "invalid_bulk, invalid_ids"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /servers/{id}/transfer:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    post:
+      tags: [serveurs]
+      summary: Donner le serveur à un autre membre (créateur seulement) ; l'ancien créateur devient un membre ordinaire
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [user_id], properties: {user_id: {type: string, format: uuid}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_user}, "403": {$ref: "#/components/responses/Forbidden"}}
+  /voice/{cid}/participants/{uid}/move:
+    parameters: [{name: cid, in: path, required: true, schema: {type: string, format: uuid}}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [vocal]
+      summary: Déplacer un participant vers un autre salon vocal du serveur (permission `move_members`, même hiérarchie). Le serveur l'invite (évènement `voice.moved`) à rejoindre le salon cible
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [channel_id], properties: {channel_id: {type: string, format: uuid}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_channel}, "403": {$ref: "#/components/responses/Forbidden"}, "409": {description: "`not_in_voice` ou `cannot_join`"}}
+  /voice/{cid}/participants/{uid}/disconnect:
+    parameters: [{name: cid, in: path, required: true, schema: {type: string, format: uuid}}, {name: uid, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [vocal]
+      summary: Déconnecter un participant du vocal sans l'expulser du serveur (permission `disconnect_members`, même hiérarchie)
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "409": {description: not_in_voice}}
+  /servers/{id}/voice:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [vocal]
+      summary: Participants présents dans chaque salon vocal
+      responses:
+        "200":
+          description: Dictionnaire id de salon vocal → participants
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: object
+                    properties: {user_id: {type: string}, pseudo: {type: string}, since: {type: string, format: date-time, description: heure d'arrivée dans le salon}}
+        "502": {description: voice_unavailable}
+  /servers/{id}/voice/moderation-log:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [vocal]
+      summary: Journal des coupures de micro ou de son (100 dernières, les plus récentes d'abord ; permission `view_audit_log`)
+      responses:
+        "200": {description: "ok — [{at, channel_id, actor, target, mic_off, sound_off}]"}
+        "403": {description: forbidden — permission manquante}
+        "404": {description: serveur introuvable ou non membre}
+  /servers/{id}/voice/stats:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [vocal]
+      summary: Temps passé en vocal (secondes) par membre dans ce serveur, session en cours comprise
+      responses:
+        "200": {description: "ok — {user_id: secondes}", content: {application/json: {schema: {type: object, additionalProperties: {type: integer}}}}}
+        "404": {description: serveur introuvable ou non membre}
+  /servers/{id}/avatars:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [comptes]
+      summary: Versions de la photo propre à ce serveur, pour les membres qui en ont une
+      responses:
+        "200": {description: "ok — {user_id: version}", content: {application/json: {schema: {type: object, additionalProperties: {type: integer}}}}}
+        "404": {description: serveur introuvable ou non membre}
+  /servers/{id}/me/avatar:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    put:
+      tags: [comptes]
+      summary: Définir sa photo de profil pour ce serveur (mêmes règles que `/me/avatar`)
+      requestBody:
+        required: true
+        content:
+          image/png: {schema: {type: string, format: binary}}
+          image/jpeg: {schema: {type: string, format: binary}}
+      responses:
+        "204": {description: ok (évènement `server_avatar.updated`)}
+        "400": {description: invalid_image}
+        "404": {description: serveur introuvable ou non membre}
+        "413": {description: too_large}
+    delete:
+      tags: [comptes]
+      summary: Retirer sa photo de ce serveur (retour à la photo globale)
+      responses:
+        "204": {description: ok}
+        "404": {description: serveur introuvable ou non membre}
+  /servers/{id}/users/{uid}/avatar:
+    parameters:
+      - $ref: "#/components/parameters/ServerId"
+      - {name: uid, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [comptes]
+      summary: Image de la photo propre à ce serveur d'un membre
+      responses:
+        "200": {description: image PNG ou JPEG}
+        "404": {description: pas de photo propre au serveur, ou non membre}
+  /servers/{id}/icon:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [serveurs]
+      summary: Icône du serveur (réservée aux membres)
+      responses:
+        "200": {description: image PNG ou JPEG}
+        "404": {description: pas d'icône, ou non membre}
+    put:
+      tags: [serveurs]
+      summary: Définir l'icône du serveur (PNG ou JPEG, 256 Ko et 512 px au plus) — créateur ou administrateur d'Estompe
+      requestBody:
+        required: true
+        content:
+          image/png: {schema: {type: string, format: binary}}
+          image/jpeg: {schema: {type: string, format: binary}}
+      responses:
+        "204": {description: ok (évènement `server_icon.updated`)}
+        "400": {description: invalid_image}
+        "403": {description: réservé au créateur du serveur}
+        "404": {description: serveur introuvable ou non membre}
+        "413": {description: too_large}
+    delete:
+      tags: [serveurs]
+      summary: Supprimer l'icône du serveur — créateur ou administrateur d'Estompe
+      responses:
+        "204": {description: ok (évènement `server_icon.updated`, version 0)}
+        "403": {description: réservé au créateur du serveur}
+        "404": {description: serveur introuvable ou non membre}
+
+  /channels/{cid}/messages:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [messages]
+      summary: Historique d'un salon texte, du plus ancien au plus récent, par pages
+      description: "`after=<id>` : au lieu de remonter, les messages qui suivent ce message (du plus ancien au plus récent) ; sert à atteindre un message ancien trouvé par la recherche."
+      parameters: [{$ref: "#/components/parameters/Before"}, {name: after, in: query, schema: {type: string}}, {$ref: "#/components/parameters/Limit"}]
+      responses:
+        "200": {$ref: "#/components/responses/MessagePage"}
+        "400": {description: "`not_text_channel` ou paramètre invalide"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    post:
+      tags: [messages]
+      summary: Envoyer un message
+      description: "Les codes `:nom:` connus (`:joy:`, `:thumbsup:`…) sont remplacés par le smiley, sauf dans les blocs de code, le code en ligne et les URL ; un code inconnu, ou le nom d'un smiley personnalisé de l'utilisateur, reste tel quel. Même règle pour `PATCH /messages/{id}`."
+      requestBody: {$ref: "#/components/requestBodies/NewMessage"}
+      responses:
+        "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Message"}}}}
+        "400": {description: "`invalid_message` ou `invalid_files`"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {description: "`too_many_messages` : 20 messages / 10 s"}
+  /dms:
+    get:
+      tags: [messages]
+      summary: Conversations privées, la plus récemment active d'abord
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/DM"}}}}}
+    post:
+      tags: [messages]
+      summary: Ouvrir (ou retrouver) la conversation privée avec un utilisateur
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [pseudo], properties: {pseudo: {type: string}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/DM"}}}}
+        "400": {description: self_dm}
+        "404": {description: user_not_found}
+  /dms/{id}/messages:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      tags: [messages]
+      summary: Historique d'une conversation privée
+      parameters: [{$ref: "#/components/parameters/Before"}, {$ref: "#/components/parameters/Limit"}]
+      responses: {"200": {$ref: "#/components/responses/MessagePage"}, "404": {$ref: "#/components/responses/NotFound"}}
+    post:
+      tags: [messages]
+      summary: Envoyer un message privé
+      requestBody: {$ref: "#/components/requestBodies/NewMessage"}
+      responses: {"201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Message"}}}}, "404": {$ref: "#/components/responses/NotFound"}, "429": {description: too_many_messages}}
+  /messages/{id}:
+    parameters: [{$ref: "#/components/parameters/MessageId"}]
+    patch:
+      tags: [messages]
+      summary: Modifier son message
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [content], properties: {content: {type: string, maxLength: 4000}, file_ids: {type: array, maxItems: 10, items: {type: string, format: uuid}, description: "Liste finale et ordonnée des pièces jointes (déjà jointes au message ou envoyées par l'auteur). Absent : inchangées. Les fichiers retirés sont supprimés du stockage. Message vide refusé sans pièce jointe."}}}}}
+      responses: {"200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Message"}}}}, "400": {$ref: "#/components/responses/BadRequest"}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+    delete:
+      tags: [messages]
+      summary: Supprimer son message
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /messages/{id}/vote:
+    parameters: [{$ref: "#/components/parameters/MessageId"}]
+    put:
+      tags: [messages]
+      summary: "Voter pour un choix d'un sondage (en choix unique, il remplace le précédent)"
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [option_id], properties: {option_id: {type: string}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_option}, "404": {$ref: "#/components/responses/NotFound"}, "409": {description: poll_closed}}
+    delete:
+      tags: [messages]
+      summary: "Retirer son vote (sans `option_id` : tous ses votes)"
+      requestBody:
+        content: {application/json: {schema: {type: object, properties: {option_id: {type: string}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_option}, "404": {$ref: "#/components/responses/NotFound"}, "409": {description: poll_closed}}
+  /messages/{id}/poll/close:
+    parameters: [{$ref: "#/components/parameters/MessageId"}]
+    post:
+      tags: [messages]
+      summary: "Clore un sondage sans attendre l'échéance (lanceur, modérateur « Gérer les messages » ou admin)"
+      responses: {"204": {description: ok}, "403": {$ref: "#/components/responses/Forbidden"}, "404": {$ref: "#/components/responses/NotFound"}}
+  /messages/{id}/poll/votes:
+    parameters: [{$ref: "#/components/parameters/MessageId"}]
+    get:
+      tags: [messages]
+      summary: Votants de chaque choix d'un sondage (tout participant de la conversation)
+      responses: {"200": {description: "objet `{id_du_choix: [{id, pseudo}]}`, les choix sans vote sont absents", content: {application/json: {schema: {type: object, additionalProperties: {type: array, items: {$ref: "#/components/schemas/Person"}}}}}}, "404": {$ref: "#/components/responses/NotFound"}}
+  /messages/{id}/reactions/{emoji}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+      - {name: emoji, in: path, required: true, schema: {type: string}, description: Emoji encodé en URL}
+    put:
+      tags: [messages]
+      summary: Ajouter sa réaction (idempotent)
+      responses: {"204": {description: ok}, "400": {description: invalid_emoji}, "409": {description: "too_many_reactions : 20 emojis différents par message"}, "404": {$ref: "#/components/responses/NotFound"}}
+    delete:
+      tags: [messages]
+      summary: Retirer sa réaction
+      responses: {"204": {description: ok}, "404": {$ref: "#/components/responses/NotFound"}}
+
+  /files:
+    post:
+      tags: [fichiers]
+      summary: Envoyer un fichier (10 Mo max ; une vidéo, la limite vidéo), à joindre ensuite à un message via `file_ids`
+      description: |
+        Le type est détecté côté serveur. Une extension d'image dont le contenu n'est pas cette image est refusée (415).
+        Seules les images PNG, JPEG, GIF et WebP sont servies en ligne ; tout le reste est téléchargé.
+        20 fichiers en attente au maximum par utilisateur ; les fichiers jamais joints sont purgés après 1 h.
+        Le stockage est plafonné (20 Go par défaut) : au-delà, les plus anciens fichiers sont supprimés du serveur.
+        Leur pièce jointe reste sur le message avec `expired: true` et leur téléchargement répond 410.
+        Message vocal : `kind` = `voice`, avec `duration_ms` (1 à 300 000) et `waveform` (1 à 100 valeurs de 0 à 100, séparées par des virgules) envoyés avant le fichier ; contenu Opus/Ogg, WebM ou MP4 (AAC), 5 Mo au plus. Il s'envoie seul, sans texte ni autre fichier (`invalid_voice`).
+        Vidéo (replay) : `kind` = `video`, taille au plus `max_video_size` (`GET /me`, 100 Mo par défaut) au lieu de 10 Mo, et comptée dans les quotas. Le contenu doit être un MP4 : H.264, HEVC ou AV1, avec AAC ou Opus (415 `unsupported_video` sinon) ; la durée est lue par le serveur (`duration_ms`). `thumb` : miniature JPEG de 64 Ko au plus, placée avant le fichier (400 `invalid_thumb`), servie par `GET /files/{id}/thumb` (`thumb: true` sur la pièce jointe). La pièce jointe d'une vidéo se joint comme les autres (permission « joindre des fichiers », mode lent du salon). 4 envois de vidéos simultanés au plus (429 `too_many_video_uploads`).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                kind: {type: string, enum: [file, voice, video], description: "« voice » pour un message vocal, « video » pour une vidéo MP4 (champ à placer avant « file »)"}
+                thumb: {type: string, format: binary, description: "Miniature JPEG d'une vidéo (64 Ko au plus), à placer avant « file »"}
+                duration_ms: {type: integer, minimum: 1, maximum: 300000, description: Durée déclarée par le client, bornée par le serveur}
+                waveform: {type: string, description: "Valeurs de 0 à 100 séparées par des virgules (100 au plus)"}
+                file: {type: string, format: binary}
+      responses:
+        "201": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Attachment"}}}}
+        "400": {description: "bad_request ou invalid_voice (durée ou forme d'onde hors bornes)"}
+        "413": {description: "file_too_large (10 Mo, 5 Mo pour un message vocal, limite vidéo pour une vidéo), ou quota_exceeded (quota de stockage de l'utilisateur, MAX_USER_STORAGE_MB)"}
+        "415": {description: "type_mismatch, unsupported_voice (format de message vocal non pris en charge) ou unsupported_video (MP4 H.264/HEVC/AV1 + AAC/Opus attendu)"}
+        "429": {description: "too_many_pending_files, ou upload_rate_limited (plus de 200 Mo en une heure ou 1 Go en un jour)"}
+        "507": {description: "storage_full : le stockage est plein (aucun fichier n'est supprimé pour faire de la place)"}
+  /files/{id}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+    get:
+      tags: [fichiers]
+      summary: Télécharger un fichier (participants de la conversation, ou expéditeur tant qu'il n'est pas joint)
+      description: |
+        Les requêtes partielles (`Range`, réponse 206) sont prises en charge : une vidéo se lit sans être téléchargée en entier.
+        `?t=<jeton>` (jeton de `POST /files/{id}/link`) remplace l'identité : pour `<video>` et `<img>` des applications, qui n'envoient pas l'en-tête Bearer (403 `invalid_link` si le jeton est expiré ou altéré).
+        `?download=1` force le téléchargement (`Content-Disposition: attachment`).
+      parameters: [{name: t, in: query, schema: {type: string}}, {name: download, in: query, schema: {type: string, enum: ["1"]}}]
+      responses:
+        "200": {description: Contenu, content: {"*/*": {schema: {type: string, format: binary}}}}
+        "206": {description: Contenu partiel (en-tête Range)}
+        "403": {description: "invalid_link : lien signé expiré ou altéré"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "410": {description: "file_expired : contenu supprimé du serveur"}
+  /files/{id}/thumb:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}, {name: t, in: query, schema: {type: string}}]
+    get:
+      tags: [fichiers]
+      summary: Miniature JPEG d'une vidéo (mêmes droits que le fichier ; `?t=` accepté)
+      responses:
+        "200": {description: Image JPEG, content: {image/jpeg: {schema: {type: string, format: binary}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /files/{id}/link:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [fichiers]
+      summary: Jeton de lien signé (1 h) pour lire ou télécharger ce fichier sans en-tête d'authentification (`?t=` sur `/files/{id}` et `/files/{id}/thumb`)
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {token: {type: string}}}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /files/{id}/transcript:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+    post:
+      tags: [fichiers]
+      summary: Transcrire un message vocal (visible par l'appelant) avec le serveur de reconnaissance vocale
+      description: |
+        Calculée une fois, enregistrée pour tous et diffusée par `message.updated` si le message est envoyé ; une transcription déjà présente est renvoyée sans recalcul.
+        20 demandes par heure et par utilisateur, 2 transcriptions simultanées au plus.
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Transcript"}}}}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "410": {description: "file_expired"}
+        "422": {description: "no_speech : aucune parole détectée"}
+        "429": {description: "rate_limited ou transcription_busy"}
+        "501": {description: "transcription_disabled : `TRANSCRIBE_URL` absent"}
+        "502": {description: "transcription_failed"}
+    put:
+      tags: [fichiers]
+      summary: Corriger ou retirer (texte vide) la transcription d'un message vocal, avant ou après l'envoi (auteur seul)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [text], properties: {text: {type: string, maxLength: 4000}}}}}
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/Transcript"}}}}
+        "400": {description: invalid_transcript}
+        "403": {description: forbidden}
+        "404": {$ref: "#/components/responses/NotFound"}
+  /link-preview:
+    get:
+      tags: [messages]
+      summary: Aperçu d'un lien (titre, description, image) — à afficher comme du texte, jamais comme du HTML
+      description: "Adresses non publiques et ports autres que 80/443 refusés. 20 demandes par minute et par utilisateur. Paramètres de suivi (`si`, `utm_*`…) retirés de l'URL de l'aperçu ; liens YouTube et YouTube Music par oEmbed (backend Go ; dans le backend Rust, fournis par les blocs `videos` et `musique`) ; pages d'erreur, de consentement ou de blocage : `no_preview`. Aperçus mis en cache 10 minutes."
+      parameters: [{name: url, in: query, required: true, schema: {type: string}}, {name: refresh, in: query, schema: {type: string}, description: "non vide : ignore le cache"}]
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/LinkPreview"}}}}
+        "400": {description: "`invalid_url` ou `blocked_url`"}
+        "404": {description: no_preview}
+        "429": {description: too_many_requests}
+
+  # --- Cairn : proxy vers cairn-service ---
+  /cairn/me/permissions:
+    get:
+      tags: [cairn]
+      summary: "Actions Cairn permises à l'appelant (`space.read`, `ticket.write`…)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/users:
+    get:
+      tags: [cairn]
+      summary: "Recherche de comptes par début d'e-mail (`email`, `first`, `max`) pour l'assignation"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/spaces:
+    get:
+      tags: [cairn]
+      summary: "Espaces Cairn"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/search:
+    get:
+      tags: [cairn]
+      summary: "Recherche tickets et pages (`q`, `space`, `type`, `titles`)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/me/tickets:
+    get:
+      tags: [cairn]
+      summary: "Tickets assignés à l'appelant"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/spaces/{key}/tickets:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Tickets d'un espace (filtres `status`, `type`, `priority`, `assignee` dont `me`, `label`, `blocked`)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    post:
+      tags: [cairn]
+      summary: "Crée un ticket"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Ticket"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    patch:
+      tags: [cairn]
+      summary: "Modifie un ticket (`version` obligatoire, `409` si périmée)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    delete:
+      tags: [cairn]
+      summary: "Supprime un ticket"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}/comments:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Commentaires"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    post:
+      tags: [cairn]
+      summary: "Ajoute un commentaire"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}/comments/{id}:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}, {name: id, in: path, required: true, schema: {type: string}}]
+    patch:
+      tags: [cairn]
+      summary: "Modifie son commentaire"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    delete:
+      tags: [cairn]
+      summary: "Supprime son commentaire"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}/events:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Historique du ticket"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}/pages:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Pages liées au ticket"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}/dependencies:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Dépendances sur deux niveaux"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    post:
+      tags: [cairn]
+      summary: "Ajoute des dépendances (`409` en cas de cycle)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/tickets/{key}/dependencies/{other}:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}, {name: other, in: path, required: true, schema: {type: string}}]
+    delete:
+      tags: [cairn]
+      summary: "Retire une dépendance (`direction` en query)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/spaces/{key}/pages:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Pages d'un espace, à plat (arbre via `parent_id`)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    post:
+      tags: [cairn]
+      summary: "Crée une page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/spaces/{key}/trash:
+    parameters: [{name: key, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Corbeille des pages (30 jours)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    patch:
+      tags: [cairn]
+      summary: "Modifie une page (`version` obligatoire, `409` si périmée)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    delete:
+      tags: [cairn]
+      summary: "Supprime une page et ses descendantes (corbeille)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/move:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    post:
+      tags: [cairn]
+      summary: "Déplace une page (`parent_id`, `position`)"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/restore:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    post:
+      tags: [cairn]
+      summary: "Restaure une page de la corbeille"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/versions:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Versions d'une page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/versions/{n}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: n, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Une version d'une page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/versions/{n}/restore:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: n, in: path, required: true, schema: {type: string}}]
+    post:
+      tags: [cairn]
+      summary: "Restaure une version"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/tickets:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Tickets liés à la page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+    post:
+      tags: [cairn]
+      summary: "Lie un ticket à la page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/tickets/{key}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}, {name: key, in: path, required: true, schema: {type: string}}]
+    delete:
+      tags: [cairn]
+      summary: "Retire un lien manuel"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/pages/{id}/files:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    post:
+      tags: [cairn]
+      summary: "Envoie une image (corps = octets, 5 Mo max) ; l'`url` renvoyée commence par `/api/files/` : la réécrire en `/cairn/files/{id}`"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+  /cairn/files/{id}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [cairn]
+      summary: "Image d'une page"
+      responses:
+        "200": {description: "Réponse de cairn-service, relayée telle quelle"}
+        "403": {description: "Droit Cairn manquant, ou `forbidden` (permission `estompe:cairn.admin` absente)"}
+        "503": {description: "`cairn_unavailable` : Cairn injoignable"}
+
+  /voice/{cid}/token:
+    parameters:
+      - {$ref: "#/components/parameters/ChannelId"}
+      - {name: screen, in: query, required: false, schema: {type: string, enum: ["1"]}, description: "`1` : jeton du second participant `<userId>#screen`, qui publie le partage d'écran natif de l'app Windows (EST-18). Ne réserve pas de place et ne renvoie que `url`, `token` et `room`."}
+    post:
+      tags: [vocal]
+      summary: Jeton pour rejoindre un salon vocal avec le client LiveKit
+      description: "En v0 le jeton n'autorise que le micro ; caméra et partage d'écran arrivent en v1."
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: {type: string, example: "wss://voice.plbls.fr"}
+                  token: {type: string}
+                  room: {type: string}
+                  max_participants: {type: integer, example: 10}
+        "400": {description: not_voice_channel}
+        "409": {description: "voice_full : limite du salon atteinte (10 participants au plus)"}
+        "502": {description: voice_unavailable}
+  /servers/{id}/watch:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [vocal]
+      summary: Sessions « Regarder ensemble » en cours dans les salons vocaux visibles
+      description: "Dictionnaire id de salon → `{state, now}` (voir `GET /voice/{cid}/watch`) ; les salons sans session sont absents."
+      responses: {"200": {description: ok}, "404": {description: serveur introuvable}}
+  /voice/{cid}/watch:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [vocal]
+      summary: Session « Regarder ensemble » du salon (EST-143)
+      description: "`{state, now}` : `state` est nul sans session ; `now` est l'heure du serveur, pour mesurer le décalage d'horloge. Position courante = `pos` + (heure − `at`) × `rate` tant que `playing`. L'état est en mémoire : une session ne survit pas à un redémarrage de l'API."
+      responses: {"200": {description: ok}, "404": {description: salon introuvable}}
+    put:
+      tags: [vocal]
+      summary: Lancer la session (l'auteur devient l'hôte) ou changer de vidéo
+      description: "Corps `{video, queue?}` : lien YouTube (watch, youtu.be, shorts, embed, live) ou identifiant de 11 caractères, Twitch (rediffusion, clip, direct), Vimeo, Dailymotion ou fichier vidéo direct en https (.mp4, .m4v, .webm, .ogv, .m3u8), validé côté serveur ; `queue` (50 liens au plus) remplace la file. Les liens YouTube Music (`music.youtube.com`) ne sont pas lus ici : voir `/voice/{cid}/music` (Music2gether, EST-168). Un morceau `music.youtube.com/watch?v=…` reste lisible comme vidéo YouTube. Les films et séries (`film:<id>`) ne sont pas lus ici (400 `invalid_video`) : voir `/voice/{cid}/cinema`. L'état porte `provider` (youtube, twitch_vod, twitch_clip, twitch_live, vimeo, dailymotion, file) et `video` (identifiant propre à la source, ou lien du fichier). Exige d'être présent dans la salle vocale. 30 actions par 10 s et par personne (429). Évènement `watch.state`. Le serveur ne télécharge ni ne relaie aucune vidéo."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}, queue: {type: array, maxItems: 50, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_video}, "403": {description: "`not_in_voice` ou hôte seul"}, "429": {description: rate_limited}}
+    delete:
+      tags: [vocal]
+      summary: Arrêter la session (elle s'arrête aussi quand le salon est vide)
+      responses: {"204": {description: ok}, "403": {description: "`not_in_voice` ou hôte seul"}, "404": {description: no_watch}}
+  /voice/{cid}/watch/action:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Piloter la lecture
+      description: "`action` : `play`, `pause`, `seek` (avec `position`, en secondes), `rate` (`rate` parmi 0,25 à 2), `previous` (morceau précédent de l'historique, sinon retour au début), `shuffle` (mélange la file), `ended`. `ended` est envoyé par chaque client à la fin de la vidéo avec la `rev` connue : seul le premier avance la file, les autres sont ignorés. Les autres actions sont réservées à l'hôte si `host_only`. `video` (facultatif) est la vidéo sur laquelle la commande s'appuie : sur une autre vidéo elle est rejetée (409), sinon elle est absolue (position, vitesse) et s'applique à l'état courant."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action], properties: {action: {type: string, enum: [play, pause, seek, rate, previous, shuffle, ended]}, position: {type: number}, rate: {type: number}, rev: {type: integer}, video: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: "position, vitesse ou action invalide"}, "403": {description: "`not_in_voice` ou hôte seul"}, "404": {description: no_watch}, "409": {description: "la vidéo a changé"}, "429": {description: rate_limited}}
+  /voice/{cid}/watch/ready:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Indiquer que son lecteur est prêt ou en chargement
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ready], properties: {ready: {type: boolean}}}}}}
+      responses: {"204": {description: ok}, "403": {description: not_in_voice}, "404": {description: no_watch}}
+  /voice/{cid}/watch/options:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    put:
+      tags: [vocal]
+      summary: Options de la session — « seul l'hôte pilote » (hôte) et répétition (qui pilote)
+      description: "Corps `{host_only?, repeat?}` : `repeat` vaut \"\" (non), `one` (le morceau) ou `all` (la file). Champ absent : option inchangée."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {host_only: {type: boolean}, repeat: {type: string, enum: ["", one, all]}}}}}}
+      responses: {"204": {description: ok}, "400": {description: mode de répétition inconnu}, "403": {description: forbidden}, "404": {description: no_watch}}
+  /voice/{cid}/watch/queue:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Ajouter une vidéo à la file (50 au plus)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_video}, "404": {description: no_watch}, "409": {description: file pleine}}
+    put:
+      tags: [vocal]
+      summary: Réordonner la file (ceux qui pilotent)
+      description: "`ids` doit être une permutation de la file actuelle (409 sinon)."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ids], properties: {ids: {type: array, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "409": {description: la file a changé}}
+  /voice/{cid}/watch/queue/{id}:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: id, in: path, required: true, schema: {type: string}}]
+    delete:
+      tags: [vocal]
+      summary: Retirer une vidéo de la file (son auteur, ou qui pilote)
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /voice/{cid}/draw:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [vocal]
+      summary: Partie Draw2Gether du salon (EST-182)
+      description: "`{state, now, me?, drawing?}` : `state` est nul sans partie ; `now` est l'heure du serveur en millisecondes Unix. `state` : `{rev, server_id, host, phase (lobby, choosing, drawing, turn_end, ended), settings{rounds, turn_secs, word_choices, max_players, lang, custom_only, custom_count}, players[{id, pseudo, points, turn_points, connected, spectator, found}], round, drawer, deadline (fin de la phase, ms Unix), mask, word_len, reveal, reason, draw_seq, reports, skip_votes, winners}`. `mask` : une position par caractère du mot, `_` pour une lettre cachée, espaces et signes conservés. Le mot n'apparaît dans `reveal` qu'à la fin du tour. `me` ne concerne que le dessinateur : `{choices}` pendant le choix, `{word}` pendant le dessin. `drawing` : `{seq, strokes[{id, tool, color, size, pts}]}`, pour redessiner l'état complet en arrivant en cours de tour. Parties en mémoire : elles ne survivent pas à un redémarrage de l'API."
+      responses: {"200": {description: ok}, "404": {description: salon introuvable}}
+    put:
+      tags: [vocal]
+      summary: Créer la partie (l'auteur devient l'hôte) ou la rejoindre
+      description: "Exige d'être présent dans la salle vocale. Rejoindre une partie commencée donne le statut de spectateur jusqu'à la manche suivante ; un joueur déconnecté qui revient reprend ses points. 12 joueurs au plus (409), 30 actions par 10 s et par personne (429). Évènement `draw.state`."
+      responses: {"204": {description: ok}, "403": {description: "`not_in_voice` ou exclu"}, "409": {description: partie pleine}, "429": {description: rate_limited}}
+    delete:
+      tags: [vocal]
+      summary: Arrêter la partie (hôte ; elle s'arrête aussi quand plus personne n'est dans le salon)
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: no_draw}}
+  /voice/{cid}/draw/settings:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    put:
+      tags: [vocal]
+      summary: Régler la partie (hôte, salle d'attente ou partie terminée)
+      description: "Corps facultatif champ par champ : `rounds` (1 à 10, 3 par défaut), `turn_secs` (20 à 240, 80), `word_choices` (1 à 5, 3), `max_players` (2 à 12), `lang` (`fr` ou `en`), `custom_only`, `custom_words` (200 au plus, 2 à 32 caractères ; jamais renvoyés, seul `custom_count` l'est)."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {rounds: {type: integer}, turn_secs: {type: integer}, word_choices: {type: integer}, max_players: {type: integer}, lang: {type: string, enum: [fr, en]}, custom_only: {type: boolean}, custom_words: {type: array, maxItems: 200, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "400": {description: réglage invalide}, "403": {description: forbidden}, "404": {description: no_draw}, "409": {description: la partie a commencé}}
+  /voice/{cid}/draw/start:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Lancer la partie, ou rejouer (hôte, 2 joueurs connectés au moins)
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: no_draw}, "409": {description: moins de 2 joueurs ou partie commencée}}
+  /voice/{cid}/draw/choose:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Choisir le mot à dessiner (dessinateur)
+      description: "`index` parmi `me.choices`. Sans choix au bout de 15 s, le serveur tire l'un des mots."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [index], properties: {index: {type: integer}}}}}}
+      responses: {"204": {description: ok}, "400": {description: choix invalide}, "403": {description: forbidden}, "404": {description: no_draw}, "409": {description: pas de choix en cours}}
+  /voice/{cid}/draw/guess:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Proposer un mot, ou écrire dans le chat de la partie
+      description: "`text` de 1 à 100 caractères. Comparé sans tenir compte de la casse, des accents, des espaces ni de la ponctuation. Bonne réponse : évènement `draw.chat` `found` pour tous, sans le texte. Mot proche (1 ou 2 lettres de différence) : `close` au seul joueur. Messages du dessinateur et de ceux qui ont trouvé : `chat_private`, reçus par ce groupe seul. Les spectateurs ne peuvent pas écrire. 5 messages par 5 s et par personne (429)."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [text], properties: {text: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: message invalide}, "403": {description: forbidden}, "404": {description: no_draw}, "429": {description: rate_limited}}
+  /voice/{cid}/draw/draw:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Transmettre un lot de points, annuler ou effacer (dessinateur)
+      description: "Corps `{op: stroke, id, tool (pen, eraser, fill), color (#rrggbb), size (1 à 64), pts}` : `pts` est un lot de 64 points `[x, y]` au plus, normalisés entre 0 et 1 ; un même `id` ajoute des points à un trait existant (même outil, couleur et épaisseur) ; `fill` porte un seul point. `{op: undo}` retire le dernier trait, `{op: clear}` efface tout. 1000 traits et 20000 points au plus par tour (409). 120 requêtes par 5 s et par personne (429). Évènement `draw.ops`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [op], properties: {op: {type: string, enum: [stroke, undo, clear]}, id: {type: string}, tool: {type: string, enum: [pen, eraser, fill]}, color: {type: string}, size: {type: integer}, pts: {type: array, maxItems: 64, items: {type: array, items: {type: number}}}}}}}}
+      responses: {"204": {description: ok}, "400": {description: trait invalide}, "403": {description: forbidden}, "404": {description: no_draw}, "409": {description: dessin trop chargé}, "429": {description: rate_limited}}
+  /voice/{cid}/draw/vote:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Signaler le dessin, voter pour passer le tour ou exclure un joueur
+      description: "`kind` : `report` (signale le dessin ; le nombre est dans `reports`), `skip` (passe le tour ; immédiat pour l'hôte, sinon aux deux tiers des devineurs connectés), `kick` (avec `target` ; immédiat pour l'hôte, sinon aux deux tiers des autres joueurs connectés ; l'exclu ne peut plus rejoindre la partie). Réservé aux joueurs, pas aux spectateurs."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [kind], properties: {kind: {type: string, enum: [report, skip, kick]}, target: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: vote inconnu ou cible invalide}, "403": {description: forbidden}, "404": {description: no_draw}, "409": {description: aucun tour à passer}}
+  /music/search:
+    get:
+      tags: [vocal]
+      summary: Rechercher des morceaux (Music2gether)
+      description: "Paramètre `q` (2 à 100 caractères). Renvoie jusqu'à 8 morceaux de la catégorie Musique de YouTube, `[{id, title, artist, album, duration, cover}]` ; l'ajout se fait avec le lien `https://music.youtube.com/watch?v={id}`. Exige `YOUTUBE_API_KEY` (503 `no_music_api` sinon) ; 30 recherches par minute et par personne (429)."
+      parameters: [{name: q, in: query, required: true, schema: {type: string, minLength: 2, maxLength: 100}}]
+      responses: {"200": {description: ok}, "400": {description: bad_request}, "429": {description: too_many_requests}, "502": {description: music_unavailable}, "503": {description: no_music_api}}
+  /music/resolve:
+    get:
+      tags: [vocal]
+      summary: Morceaux d'un lien YouTube Music (écoute seul)
+      description: "Paramètre `url` : morceau, album ou playlist de `music.youtube.com`. Renvoie `{title, tracks: [{id, title, artist, album, duration, cover}]}` ; seules des métadonnées, la lecture se fait par le lecteur officiel YouTube côté client. Les albums et playlists exigent `YOUTUBE_API_KEY` (503 `no_music_api` sinon) ; 30 requêtes par minute et par personne, partagées avec la recherche (429)."
+      parameters: [{name: url, in: query, required: true, schema: {type: string}}]
+      responses: {"200": {description: ok}, "400": {description: bad_request}, "404": {description: not_found}, "429": {description: too_many_requests}, "503": {description: no_music_api}}
+  /music/cover/{id}:
+    get:
+      tags: [vocal]
+      summary: Pochette d'un morceau YouTube Music (Music2gether)
+      description: "Publique (balise `<img>`) : `id` est un identifiant de vidéo YouTube de 11 caractères ; l'image est récupérée sur YouTube une fois, puis servie depuis un cache mémoire (JPEG). 404 si l'identifiant est invalide ou la pochette absente, 502 si YouTube est injoignable."
+      parameters: [{name: id, in: path, required: true, schema: {type: string, pattern: '^[A-Za-z0-9_-]{11}$'}}]
+      responses: {"200": {description: image/jpeg}, "404": {description: introuvable}, "502": {description: cover_unavailable}}
+  /servers/{id}/music:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [vocal]
+      summary: Sessions Music2gether en cours dans les salons vocaux visibles
+      description: "Dictionnaire id de salon → `{state, now}` (voir `GET /voice/{cid}/music`) ; les salons sans session sont absents."
+      responses: {"200": {description: ok}, "404": {description: serveur introuvable}}
+  /voice/{cid}/music:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [vocal]
+      summary: Session Music2gether du salon (EST-168), distincte de « Regarder ensemble »
+      description: "`{state, now}` : `state` est nul sans session ; `now` est l'heure du serveur, pour mesurer le décalage d'horloge. Position courante = `pos` + (heure − `at`) × `rate` tant que `playing`. L'état est en mémoire : une session ne survit pas à un redémarrage de l'API."
+      responses: {"200": {description: ok}, "404": {description: salon introuvable}}
+    put:
+      tags: [vocal]
+      summary: Lancer la session musique (l'auteur devient l'hôte) ou changer de morceau
+      description: "Corps `{video, queue?}` : liens de **music.youtube.com** uniquement — morceau (`/watch?v=…`) ou liste/album (`/playlist?list=…`, 50 morceaux au plus ; exige `YOUTUBE_API_KEY`, sinon 400) ; tout autre lien (youtube.com, youtu.be, autre site) : 400 `invalid_video`. Le morceau est lu avec le lecteur YouTube ; l'état porte `meta` `{title, artist, album, duration, cover}` (`cover` : `GET /music/cover/{id}`), `repeat` (\"\", `one`, `all`) et `history` (morceaux déjà lus). Un album/une playlist lance le premier titre et place les suivants devant la file. Mêmes droits, mêmes actions et mêmes limites que `/voice/{cid}/watch` (30 actions par 10 s et par personne), mais état, file, hôte et droits propres : une session musique et une session vidéo coexistent dans un salon. Évènement `music.state`. Le serveur ne télécharge ni ne relaie aucun média."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}, queue: {type: array, maxItems: 50, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_video}, "403": {description: "`not_in_voice` ou hôte seul"}, "429": {description: rate_limited}}
+    delete:
+      tags: [vocal]
+      summary: Arrêter la session (elle s'arrête aussi quand le salon est vide)
+      responses: {"204": {description: ok}, "403": {description: "`not_in_voice` ou hôte seul"}, "404": {description: no_music}}
+  /voice/{cid}/music/action:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Piloter la lecture
+      description: "`action` : `play`, `pause`, `seek` (avec `position`, en secondes), `rate` (`rate` parmi 0,25 à 2), `previous` (morceau précédent de l'historique, sinon retour au début), `shuffle` (mélange la file), `ended`. `ended` est envoyé par chaque client à la fin de la vidéo avec la `rev` connue : seul le premier avance la file, les autres sont ignorés. Les autres actions sont réservées à l'hôte si `host_only`. `video` (facultatif) est la vidéo sur laquelle la commande s'appuie : sur une autre vidéo elle est rejetée (409), sinon elle est absolue (position, vitesse) et s'applique à l'état courant."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action], properties: {action: {type: string, enum: [play, pause, seek, rate, previous, shuffle, ended]}, position: {type: number}, rate: {type: number}, rev: {type: integer}, video: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: "position, vitesse ou action invalide"}, "403": {description: "`not_in_voice` ou hôte seul"}, "404": {description: no_music}, "409": {description: "la vidéo a changé"}, "429": {description: rate_limited}}
+  /voice/{cid}/music/ready:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Indiquer que son lecteur est prêt ou en chargement
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ready], properties: {ready: {type: boolean}}}}}}
+      responses: {"204": {description: ok}, "403": {description: not_in_voice}, "404": {description: no_music}}
+  /voice/{cid}/music/options:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    put:
+      tags: [vocal]
+      summary: Options de la session — « seul l'hôte pilote » (hôte) et répétition (qui pilote)
+      description: "Corps `{host_only?, repeat?}` : `repeat` vaut \"\" (non), `one` (le morceau) ou `all` (la file). Champ absent : option inchangée."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {host_only: {type: boolean}, repeat: {type: string, enum: ["", one, all]}}}}}}
+      responses: {"204": {description: ok}, "400": {description: mode de répétition inconnu}, "403": {description: forbidden}, "404": {description: no_music}}
+  /voice/{cid}/music/queue:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Ajouter une vidéo à la file (50 au plus)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_video}, "404": {description: no_music}, "409": {description: file pleine}}
+    put:
+      tags: [vocal]
+      summary: Réordonner la file (ceux qui pilotent)
+      description: "`ids` doit être une permutation de la file actuelle (409 sinon)."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ids], properties: {ids: {type: array, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "409": {description: la file a changé}}
+  /voice/{cid}/music/queue/{id}:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: id, in: path, required: true, schema: {type: string}}]
+    delete:
+      tags: [vocal]
+      summary: Retirer une vidéo de la file (son auteur, ou qui pilote)
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /servers/{id}/cinema:
+    parameters: [{$ref: "#/components/parameters/ServerId"}]
+    get:
+      tags: [vocal]
+      summary: Séances en cours dans les salons cinéma visibles
+      description: "Bloc `films`. Dictionnaire id de salon → `{state, now}` (voir `GET /voice/{cid}/cinema`) ; les salons sans séance sont absents."
+      responses: {"200": {description: ok}, "404": {description: serveur introuvable}}
+  /voice/{cid}/cinema:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [vocal]
+      summary: Séance du salon cinéma (bloc `films`)
+      description: "`{state, now}` comme `GET /voice/{cid}/watch` ; `state.provider` vaut toujours `film`. 400 `not_cinema_channel` si le salon n'est pas un salon cinéma. L'état est en mémoire."
+      responses: {"200": {description: ok}, "404": {description: salon introuvable}}
+    put:
+      tags: [vocal]
+      summary: Lancer un film ou une série (l'auteur devient l'hôte et pilote seul)
+      description: "Corps `{video, queue?}` : `video` vaut `film:<id>` (identifiant public d'un titre de la bibliothèque) ; tout autre lien : 400 `invalid_video`. Exige la permission `estompe:movies` et d'être présent dans le salon cinéma (vocal LiveKit). Pour un épisode sans `queue`, les épisodes suivants sont placés dans la file. `host_only` vaut toujours `true` : seul l'hôte (celui qui a lancé le titre ; au départ de l'hôte, un spectateur qui a l'accès aux films) pilote lecture, pause et position, synchronisées pour tous. 30 actions par 10 s et par personne. Évènement `cinema.state`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}, queue: {type: array, maxItems: 50, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "400": {description: "invalid_video ou not_cinema_channel"}, "403": {description: "`not_in_voice` ou hôte seul"}, "429": {description: rate_limited}}
+    delete:
+      tags: [vocal]
+      summary: Arrêter la séance (hôte ; elle s'arrête aussi quand le salon est vide)
+      responses: {"204": {description: ok}, "403": {description: "`not_in_voice` ou hôte seul"}, "404": {description: no_watch}}
+  /voice/{cid}/cinema/action:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Piloter la lecture (hôte seul, sauf `ended`)
+      description: "Mêmes actions que `POST /voice/{cid}/watch/action`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [action], properties: {action: {type: string, enum: [play, pause, seek, rate, previous, shuffle, ended]}, position: {type: number}, rate: {type: number}, rev: {type: integer}, video: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: "position, vitesse ou action invalide"}, "403": {description: "`not_in_voice` ou hôte seul"}, "404": {description: no_watch}, "409": {description: "la vidéo a changé"}, "429": {description: rate_limited}}
+  /voice/{cid}/cinema/ready:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Indiquer que son lecteur est prêt ou en chargement
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ready], properties: {ready: {type: boolean}}}}}}
+      responses: {"204": {description: ok}, "403": {description: not_in_voice}, "404": {description: no_watch}}
+  /voice/{cid}/cinema/options:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    put:
+      tags: [vocal]
+      summary: Options de la séance (répétition) ; « seul l'hôte pilote » ne peut pas être désactivé
+      requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {host_only: {type: boolean}, repeat: {type: string, enum: ["", one, all]}}}}}}
+      responses: {"204": {description: ok}, "400": {description: mode de répétition inconnu}, "403": {description: forbidden}, "404": {description: no_watch}}
+  /voice/{cid}/cinema/queue:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vocal]
+      summary: Ajouter un titre (`film:<id>`) à la file (hôte)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_video}, "404": {description: no_watch}, "409": {description: file pleine}}
+    put:
+      tags: [vocal]
+      summary: Réordonner la file (hôte)
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ids], properties: {ids: {type: array, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "409": {description: la file a changé}}
+  /voice/{cid}/cinema/queue/{id}:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: id, in: path, required: true, schema: {type: string}}]
+    delete:
+      tags: [vocal]
+      summary: Retirer un titre de la file
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /channels/{cid}/videos:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    get:
+      tags: [vidéos]
+      summary: "Contenu d'un salon « Vidéos » (EST-149) : cartes, listes, séances à venir"
+      description: "Routes communes aux salons Vidéos (`videos`) et Musique (`music`). Dans un salon Musique, seuls les liens YouTube Music (provider `ytmusic`) deviennent des cartes (`site` : « Artiste · Album · durée »), les séances n'acceptent que ces cartes et leurs morceaux sont marqués vus (« écoutés ») au lancement. `{posts, lists, sessions}`. Chaque message du salon qui contient un lien devient une carte (`POST /channels/{cid}/messages` comme dans un salon texte : réactions et réponses sont celles du message). `provider` : youtube, twitch_vod, twitch_clip, twitch_live, vimeo, dailymotion, file, page (page de site inconnu qui annonce un fichier vidéo direct, `ref` en est le lien), simple (carte sans lecteur, pas de « Regarder ensemble »). Le titre et la miniature sont récupérés en arrière-plan par l'aperçu de liens (miniature : `GET …/videos/posts/{mid}/thumb`). 300 cartes au plus, les plus récentes. Séances : à venir, ou commencées depuis moins de 3 h. Évènement `videos.changed`."
+      responses: {"200": {description: ok}, "400": {description: not_videos_channel}, "404": {description: salon introuvable}}
+  /channels/{cid}/videos/posts/{mid}/thumb:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: mid, in: path, required: true, schema: {type: string}}]
+    get:
+      tags: [vidéos]
+      summary: Miniature d'une carte
+      description: "`{thumb}` : URI `data:` (200 Ko au plus), en cache privé 24 h. 404 sans miniature."
+      responses: {"200": {description: ok}, "404": {description: introuvable}}
+  /channels/{cid}/videos/posts/{mid}/watched:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: mid, in: path, required: true, schema: {type: string}}]
+    put:
+      tags: [vidéos]
+      summary: Marquer une vidéo comme vue (ou non) par le groupe
+      description: "Corps `{watched}`. Permission `organize_watch` ou `manage_messages`. Évènement `videos.changed`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [watched], properties: {watched: {type: boolean}}}}}}
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /channels/{cid}/videos/lists:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vidéos]
+      summary: Créer une liste partagée (30 au plus par salon)
+      description: "Corps `{name, collaborative?}` (1 à 60 caractères ; `collaborative` vrai par défaut : tout membre qui écrit peut la modifier, sinon seuls son créateur et `manage_messages`). Permission `send_messages`. Évènement `videos.changed`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, collaborative: {type: boolean}}}}}}
+      responses: {"201": {description: "`{id, name, created_by, collaborative, items}`"}, "400": {description: invalid_name}, "403": {description: forbidden}, "409": {description: limit_reached}}
+  /channels/{cid}/videos/lists/{lid}:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: lid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [vidéos]
+      summary: Renommer une liste, ou changer son partage
+      description: "Corps `{name, collaborative?}`. Une liste réservée à son créateur n'est modifiable (nom, contenu `…/items`) que par lui et par `manage_messages` ; seuls ceux-ci changent `collaborative`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, collaborative: {type: boolean}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_name}, "403": {description: forbidden}, "404": {description: introuvable}}
+    delete:
+      tags: [vidéos]
+      summary: Supprimer une liste (son auteur, ou `manage_messages`)
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /channels/{cid}/videos/lists/{lid}/items:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: lid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [vidéos]
+      summary: Remplacer le contenu ordonné d'une liste (ajouter, retirer, réordonner)
+      description: "Corps `{ids}` : identifiants de messages du salon qui sont des cartes, sans doublon, 100 au plus (404 si l'un n'est pas une carte du salon). Permission `send_messages`."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ids], properties: {ids: {type: array, items: {type: string}}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_items}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /channels/{cid}/videos/sessions:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}]
+    post:
+      tags: [vidéos]
+      summary: Planifier une séance « Regarder ensemble »
+      description: "Corps `{title, starts_at, voice_channel_id, remind_minutes, list_id | message_ids}`. Permission `organize_watch`. Titre 1 à 60 caractères, `starts_at` dans l'année à venir, rappel de 0 (aucun) à 1440 minutes avant, 1 à 50 vidéos lisibles du salon (pas de carte simple), salon vocal du même serveur que l'on peut rejoindre. L'organisateur est inscrit « yes ». Rappel : notification aux inscrits « yes » et « maybe » à l'heure `starts_at − remind_minutes`. Lancement : à `starts_at`, dès que quelqu'un est dans le salon vocal (jusqu'à 2 h après), la file prévue devient la session du salon (ajoutée à la file si une session est déjà en cours) ; hôte : l'organisateur. 20 séances en attente au plus par salon (409)."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [title, starts_at, voice_channel_id], properties: {title: {type: string}, starts_at: {type: string, format: date-time}, voice_channel_id: {type: string, format: uuid}, remind_minutes: {type: integer}, list_id: {type: string, format: uuid}, message_ids: {type: array, items: {type: string}}}}}}}
+      responses: {"201": {description: "`{id, title, starts_at, voice_channel_id, remind_minutes, videos, created_by, started_at, rsvps}`"}, "400": {description: invalid_session}, "403": {description: forbidden}, "409": {description: limit_reached}}
+  /channels/{cid}/videos/sessions/{sid}:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: sid, in: path, required: true, schema: {type: string, format: uuid}}]
+    delete:
+      tags: [vidéos]
+      summary: Annuler une séance (son organisateur, ou `manage_messages`)
+      responses: {"204": {description: ok}, "403": {description: forbidden}, "404": {description: introuvable}}
+  /channels/{cid}/videos/sessions/{sid}/rsvp:
+    parameters: [{$ref: "#/components/parameters/ChannelId"}, {name: sid, in: path, required: true, schema: {type: string, format: uuid}}]
+    put:
+      tags: [vidéos]
+      summary: Répondre à une séance
+      description: "Corps `{answer}` : yes (je viens), maybe (peut-être), no."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [answer], properties: {answer: {type: string, enum: [yes, maybe, no]}}}}}}
+      responses: {"204": {description: ok}, "400": {description: invalid_answer}, "404": {description: introuvable}}
+  /voice/{cid}/participants/{uid}/mod:
+    parameters:
+      - {$ref: "#/components/parameters/ChannelId"}
+      - {name: uid, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      tags: [vocal]
+      summary: Couper ou rétablir le micro et/ou le son d'un participant pour tout le salon (EST-102)
+      description: "Réservé au créateur du serveur, qui ne peut pas viser ni lui-même ni un autre créateur. Le serveur change aussitôt les droits LiveKit du participant présent (`canPublishSources` sans micro, `canSubscribe` à faux) ; la modération persiste par salon et s'applique au jeton de la prochaine connexion. Évènement `voice.mod`."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mic_off, sound_off]
+              properties:
+                mic_off: {type: boolean}
+                sound_off: {type: boolean}
+      responses:
+        "204": {description: ok}
+        "400": {description: corps invalide}
+        "403": {description: "forbidden : réservé au créateur, cible protégée (soi-même, créateur)"}
+        "409": {description: not_in_voice — le participant n'est plus dans le salon}
+        "502": {description: voice_unavailable}
+  /voice/webhook:
+    post:
+      tags: [vocal]
+      summary: Webhook LiveKit (signé), relayé en évènement `voice.state`
+      security: []
+      responses: {"204": {description: ok}, "401": {description: bad_signature}}
+
+  /ws-ticket:
+    post:
+      tags: [temps réel]
+      summary: Ticket à usage unique (30 s) pour ouvrir le WebSocket
+      responses:
+        "200": {description: ok, content: {application/json: {schema: {type: object, properties: {ticket: {type: string}}}}}}
+  /ws:
+    get:
+      tags: [temps réel]
+      summary: WebSocket d'évènements (voir docs/realtime.md)
+      security: []
+      parameters: [{name: ticket, in: query, required: true, schema: {type: string}}]
+      responses: {"101": {description: Switching Protocols}, "401": {description: bad_ticket}}
+
+
+  /films/library:
+    get:
+      tags: [films]
+      summary: "Bibliothèque : recherche (`q`), filtres (`kind=movie|series`, `genre`, `year=2024` ou `year=2010-2019`), tri (`sort=recent|title|year`), pagination (`start`, `limit`). Réponse `{items, total}`"
+      responses:
+        "200": {description: ok}
+        "400": {description: paramètre invalide}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/genres:
+    get:
+      tags: [films]
+      summary: "Genres proposés par la bibliothèque : `{genres}`"
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/continue:
+    get:
+      tags: [films]
+      summary: "Lectures commencées et non vues, les plus récentes d'abord : `{items}`"
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/seen:
+    get:
+      tags: [films]
+      summary: "Titres déjà vus, les plus récents d'abord : `{items}`"
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/items/{id}:
+    get:
+      tags: [films]
+      summary: "Fiche d'un film, d'une série ou d'un épisode, avec `audio` et `subtitles` ; identifiants publics Estompe, jamais d'identifiant ni de chemin Jellyfin"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/series/{id}/seasons:
+    get:
+      tags: [films]
+      summary: "Saisons d'une série : `{items}`"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/seasons/{id}/episodes:
+    get:
+      tags: [films]
+      summary: "Épisodes d'une saison : `{items}`"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/items/{id}/image:
+    get:
+      tags: [films]
+      summary: "Affiche ou image de fond relayée (`type=poster|fond`, `w=240|480|1280`)"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: image}
+        "400": {description: paramètre invalide}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+        "429": {description: rate_limited}
+        "502": {description: jellyfin_unavailable}
+  /films/items/{id}/progress:
+    put:
+      tags: [films]
+      summary: "Enregistre sa position : `{position, duration}` en secondes ; « vu » à 90 %"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "204": {description: ok}
+        "400": {description: position ou durée invalide}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+  /films/items/{id}/playback:
+    post:
+      tags: [films]
+      summary: "Ouvre un flux signé : corps `{direct, audio}` (lecture directe seulement si le client et le serveur sont d'accord). Réponse `{stream_id, mode, url, duration, audio, subtitles}`"
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: ok}
+        "400": {description: piste audio invalide}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+        "429": {description: "`too_many_streams`"}
+        "502": {description: jellyfin_unavailable}
+        "503": {description: "`serveur_charge`"}
+  /films/streams/{flux}:
+    delete:
+      tags: [films]
+      summary: "Ferme son flux de lecture"
+      parameters: [{name: flux, in: path, required: true, schema: {type: string}}]
+      responses:
+        "204": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
+        "404": {description: not_found}
+  /films/stream/{jeton}/direct:
+    get:
+      tags: [films]
+      summary: "Lecture directe (Range accepté, jamais de `Content-Disposition`). Le jeton signé suffit ; il expire après 5 minutes d'inactivité et 12 heures au plus"
+      security: []
+      parameters: [{name: jeton, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: flux}
+        "206": {description: plage}
+        "401": {description: "`stream_expired`"}
+        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
+        "502": {description: jellyfin_unavailable}
+  /films/stream/{jeton}/hls.m3u8:
+    get:
+      tags: [films]
+      summary: "Playlist HLS réécrite : aucun identifiant ni chemin Jellyfin"
+      security: []
+      parameters: [{name: jeton, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: playlist}
+        "401": {description: "`stream_expired`"}
+        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
+        "502": {description: jellyfin_unavailable}
+  /films/stream/{jeton}/u/{n}:
+    get:
+      tags: [films]
+      summary: "Playlist ou segment HLS du flux"
+      security: []
+      parameters:
+        - {name: jeton, in: path, required: true, schema: {type: string}}
+        - {name: "n", in: path, required: true, schema: {type: integer}}
+      responses:
+        "200": {description: flux}
+        "206": {description: plage}
+        "401": {description: "`stream_expired`"}
+        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
+        "404": {description: not_found}
+        "502": {description: jellyfin_unavailable}
+  /films/stream/{jeton}/sub/{n}:
+    get:
+      tags: [films]
+      summary: "Sous-titres en WebVTT nettoyé"
+      security: []
+      parameters:
+        - {name: jeton, in: path, required: true, schema: {type: string}}
+        - {name: "n", in: path, required: true, schema: {type: integer}}
+      responses:
+        "200": {description: WebVTT}
+        "401": {description: "`stream_expired`"}
+        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
+        "404": {description: not_found}
+        "502": {description: jellyfin_unavailable}
+  /admin/films/rejets:
+    get:
+      tags: [administration]
+      summary: "Fichiers écartés (500 au plus) : `{items: [{name, reason, seen_at}]}`"
+      responses:
+        "200": {description: ok}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: "`forbidden` : réservé aux administrateurs"}
+components:
+  securitySchemes:
+    bearer: {type: http, scheme: bearer, description: Access token Keycloak (client plbls-desktop)}
+    session: {type: apiKey, in: cookie, name: __Secure-plbls_sid, description: Cookie de session posé par auth-gateway}
+  parameters:
+    ServerId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    ChannelId: {name: cid, in: path, required: true, schema: {type: string, format: uuid}}
+    MessageId: {name: id, in: path, required: true, schema: {type: string}, description: Entier sérialisé en chaîne}
+    Before: {name: before, in: query, schema: {type: string}, description: "Id de message : renvoie les messages plus anciens (pagination vers le passé)"}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+  requestBodies:
+    Name50:
+      required: true
+      content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string, minLength: 1, maxLength: 50}}}}}
+    NewMessage:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              content: {type: string, maxLength: 4000, description: "Markdown brut ; vide accepté s'il y a des fichiers. Le client doit le sanitiser (DOMPurify)."}
+              file_ids: {type: array, maxItems: 10, items: {type: string, format: uuid}}
+              reply_to: {type: string, description: "Id d'un message de la même conversation (400 invalid_reply sinon)"}
+  responses:
+    Unauthorized: {description: Identité absente ou invalide, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    NotActivated: {description: "`not_activated` : choisir un pseudo (POST /activate)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    Forbidden: {description: Réservé au créateur du serveur ou à l'auteur du message, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    NotFound: {description: Introuvable, ou non visible par l'utilisateur, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+    MessagePage:
+      description: Page de messages
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              messages: {type: array, items: {$ref: "#/components/schemas/Message"}}
+              has_more: {type: boolean}
+  schemas:
+    NotifySettings:
+      type: object
+      properties:
+        levels: {type: object, additionalProperties: {type: string, enum: [all, mentions, none]}, description: "serveur, salon ou conversation privée → niveau ; absent = défaut (tout en privé, mentions en salon)"}
+        types:
+          type: object
+          properties: {dm: {type: boolean}, mention: {type: boolean}, channel: {type: boolean}, voice: {type: boolean}}
+        preview: {type: boolean, description: "false : « Nouveau message de X » sans contenu"}
+        sound: {type: boolean}
+        ignore_group: {type: array, items: {type: string, format: uuid}, description: "serveurs dont @everyone et @here sont ignorés (ni notification, ni compteur) ; absent = aucun"}
+    Error:
+      type: object
+      properties: {error: {type: string}, message: {type: string}}
+    Person:
+      type: object
+      properties: {id: {type: string, format: uuid}, pseudo: {type: string}}
+    Server:
+      type: object
+      properties: {id: {type: string, format: uuid}, name: {type: string}, owner_id: {type: string, format: uuid}, icon_version: {type: integer, description: "0 = pas d'icône"}}
+    Channel:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        kind: {type: string, enum: [text, voice, videos, music, cinema]}
+        position: {type: integer}
+        topic: {type: string}
+        slowmode: {type: integer}
+        locked: {type: boolean}
+        user_limit: {type: integer, description: "Participants maximum d'un salon vocal (0 : limite du serveur vocal)"}
+    Permissions:
+      type: array
+      description: |
+        Clés de permission. Général : manage_server, manage_roles, manage_channels, create_invites, view_audit_log. Membres : kick_members,
+        ban_members, manage_nicknames, timeout_members (exclure temporairement, avertir). Texte : view_channel, send_messages, attach_files (pièces jointes et messages vocaux), add_reactions,
+        mention_everyone (@everyone, @here et @rôle ; @here : membres voyant le salon et connectés ; ignorés dans le code ; une telle mention par membre et par salon toutes les 2 minutes sauf manage_messages, sinon 429 `rate_limited`), manage_messages (supprimer, épingler et clore les sondages des autres), create_polls.
+        Vocal : connect, speak, video, share_screen, mute_members, deafen_members, move_members, disconnect_members. Salons vidéos : organize_watch (planifier une séance, marquer une vidéo comme vue ; les autres droits suivent ceux des salons texte). Le créateur du serveur les a toutes.
+      items: {type: string}
+    Role:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        color: {type: string, description: "#rrggbb, vide = pas de couleur"}
+        icon: {type: string, description: emoji facultatif}
+        position: {type: integer, description: "0 pour « @tout le monde », plus haut = plus élevé"}
+        hoist: {type: boolean, description: afficher séparément dans la liste des membres}
+        permissions: {$ref: "#/components/schemas/Permissions"}
+        is_default: {type: boolean, description: "« @tout le monde » : appliqué à tous, non supprimable"}
+    RoleInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 30}
+        color: {type: string, pattern: "^#[0-9a-fA-F]{6}$"}
+        icon: {type: string, maxLength: 8}
+        hoist: {type: boolean}
+        permissions: {$ref: "#/components/schemas/Permissions"}
+    Override:
+      type: object
+      properties:
+        role_id: {type: string, format: uuid}
+        allow: {$ref: "#/components/schemas/Permissions"}
+        deny: {$ref: "#/components/schemas/Permissions"}
+    ServerInvite:
+      type: object
+      properties: {code: {type: string}, created_at: {type: string}, created_by: {type: string, description: pseudo du créateur}, uses: {type: integer}, max_uses: {type: integer, nullable: true}, expires_at: {type: string, format: date-time, nullable: true}}
+    Invitation:
+      type: object
+      properties:
+        code: {type: string}
+        created_at: {type: string, format: date-time}
+        used_at: {type: string, format: date-time, nullable: true}
+        revoked_at: {type: string, format: date-time, nullable: true}
+    Attachment:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        mime: {type: string}
+        size: {type: integer}
+        expired: {type: boolean, description: Contenu supprimé du serveur}
+        kind: {type: string, enum: [file, voice, video]}
+        thumb: {type: boolean, description: "Miniature disponible (`GET /files/{id}/thumb`), pour une vidéo"}
+        duration_ms: {type: integer, description: Présent pour un message vocal ou une vidéo}
+        waveform: {type: array, items: {type: integer, minimum: 0, maximum: 100}, description: Présent pour un message vocal}
+        transcript: {type: string, description: Transcription d'un message vocal, si elle existe (recherchée par `GET /search`)}
+        transcript_auto: {type: boolean, description: Transcription automatique non corrigée}
+    Transcript:
+      type: object
+      properties:
+        transcript: {type: string}
+        transcript_auto: {type: boolean, description: Vrai tant que l'auteur n'a pas corrigé le texte}
+    Reaction:
+      type: object
+      properties: {emoji: {type: string}, count: {type: integer}, me: {type: boolean}, users: {type: array, items: {$ref: "#/components/schemas/Person"}, description: Personnes ayant réagi, dans l'ordre}}
+    Message:
+      type: object
+      properties:
+        id: {type: string}
+        channel_id: {type: string, format: uuid, description: Présent pour un salon}
+        dm_id: {type: string, format: uuid, description: Présent pour un message privé}
+        author: {$ref: "#/components/schemas/Person"}
+        content: {type: string}
+        created_at: {type: string, format: date-time}
+        edited_at: {type: string, format: date-time, nullable: true}
+        attachments: {type: array, items: {$ref: "#/components/schemas/Attachment"}}
+        reactions: {type: array, items: {$ref: "#/components/schemas/Reaction"}}
+        mentions: {type: array, items: {type: string, format: uuid}, description: Utilisateurs mentionnés}
+        reply_to:
+          type: object
+          nullable: true
+          description: Message cité (début de 120 caractères) ; null si le message d'origine a été supprimé
+          properties: {id: {type: string}, author: {$ref: "#/components/schemas/Person"}, content: {type: string}}
+        pinned_at: {type: string, format: date-time, nullable: true}
+    DM:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        other: {$ref: "#/components/schemas/Person"}
+        online: {type: boolean, description: L'interlocuteur a une connexion temps réel ouverte}
+    Mention:
+      type: object
+      properties:
+        message_id: {type: string}
+        channel_id: {type: string, format: uuid}
+        server_id: {type: string, format: uuid}
+        dm_id: {type: string, format: uuid}
+        author: {$ref: "#/components/schemas/Person"}
+        content: {type: string}
+        created_at: {type: string, format: date-time}
+        group: {type: boolean, description: "présent si la personne n'est mentionnée que par @everyone ou @here"}
+    LinkPreview:
+      type: object
+      properties: {url: {type: string}, title: {type: string}, description: {type: string}, image: {type: string, description: "URI data: (PNG, JPEG, GIF, WebP, 400 Ko max) récupérée par le serveur"}, site_name: {type: string}, video: {type: string, description: "fichier vidéo direct annoncé par la page (https uniquement)"}}

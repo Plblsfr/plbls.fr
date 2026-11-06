@@ -1,0 +1,24 @@
+meta {
+  name: /api/scan avec cookie : le rôle client suit l'utilisateur, pas le client OAuth
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{gw}}/api/scan/x
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid={{sid}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("200", function () { expect(res.status).to.equal(200); });
+}

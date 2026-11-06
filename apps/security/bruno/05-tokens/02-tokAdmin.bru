@@ -1,0 +1,31 @@
+meta {
+  name: token tokAdmin (plbls-mobile/admin)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{kc}}/realms/plbls/protocol/openid-connect/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: plbls-mobile
+  username: admin
+  password: admin
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+script:post-response {
+  bru.setVar("tokAdmin", res.body.access_token || "");
+}
+
+tests {
+  test("token obtenu", function () { expect(res.status).to.equal(200); });
+}

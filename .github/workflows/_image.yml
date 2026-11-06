@@ -1,0 +1,103 @@
+# Cycle commun à pli, security, permission, ui :
+#   PR            tests / build à blanc
+#   push main     image :edge + :<sha>
+#   tag <composant>-vX.Y.Z   image :X.Y.Z + :latest + :<sha>, puis release GitHub
+name: _image
+on:
+  workflow_call:
+    inputs:
+      name: { required: true, type: string }        # image ghcr.io/plblsfr/<name>
+      component: { required: true, type: string }   # préfixe de tag : <component>-vX.Y.Z
+      context: { required: true, type: string }
+      dockerfile: { type: string, default: '' }     # vide = <context>/Dockerfile
+      dir: { type: string, default: '' }            # dossier du projet (version, CHANGELOG.md) ; vide = context
+      test_target: { type: string, default: '' }    # étape Dockerfile construite comme test ; vide = pas de test
+    secrets:
+      DOKPLOY_WEBHOOK_URL: { required: false }
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: v
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#${{ inputs.component }}-v}"
+            [ "$version" != "$GITHUB_REF_NAME" ] || { echo "tag ${GITHUB_REF_NAME} hors convention ${{ inputs.component }}-vX.Y.Z" >&2; exit 1; }
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "le tag doit pointer un commit de main" >&2; exit 1; }
+            cd "${{ inputs.dir || inputs.context }}"
+            if [ -f package.json ] && declared="$(node -p "require('./package.json').version || ''")" && [ -n "$declared" ] && [ "$declared" != "$version" ]; then
+              echo "package.json ($declared) != tag ($version)" >&2; exit 1
+            fi
+            if [ -f Cargo.toml ] && declared="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)" && [ -n "$declared" ] && [ "$declared" != "$version" ]; then
+              echo "Cargo.toml ($declared) != tag ($version)" >&2; exit 1
+            fi
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-buildx-action@v4
+      - if: inputs.test_target != ''
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          target: ${{ inputs.test_target }}
+          cache-from: type=gha,scope=${{ inputs.name }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/plblsfr/${{ inputs.name }}
+          tags: |
+            type=edge,branch=main
+            type=raw,value=${{ steps.v.outputs.version }},enable=${{ steps.v.outputs.version != '' }}
+            type=raw,value=latest,enable=${{ steps.v.outputs.version != '' }}
+            type=sha,format=long,prefix=
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.name }}
+          cache-to: type=gha,scope=${{ inputs.name }},mode=max
+      # Dokploy ne doit déployer la prod que sur tag
+      - if: steps.v.outputs.version != ''
+        env:
+          URL: ${{ secrets.DOKPLOY_WEBHOOK_URL }}
+        run: '[ -z "$URL" ] || curl -fsS -X POST "$URL" >/dev/null'
+
+  release:
+    needs: build
+    if: needs.build.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cl="${{ inputs.dir || inputs.context }}/CHANGELOG.md"
+          notes=(--generate-notes)
+          if [ -f "$cl" ] && awk -v v="${{ needs.build.outputs.version }}" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## /{f=0} f' "$cl" | grep -q .; then
+            awk -v v="${{ needs.build.outputs.version }}" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## /{f=0} f' "$cl" > notes.md
+            notes=(--notes-file notes.md)
+          fi
+          case "${{ needs.build.outputs.version }}" in *-*) pre=--prerelease;; *) pre=;; esac
+          # idempotent : ui-release peut avoir déjà créé la release
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" "${notes[@]}" $pre || gh release view "$GITHUB_REF_NAME" >/dev/null

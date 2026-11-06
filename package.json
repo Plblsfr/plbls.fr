@@ -1,0 +1,22 @@
+{
+  "name": "plbls-fr",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^26"
+  },
+  "workspaces": [
+    "packages/ui",
+    "apps/estompe/frontend",
+    "apps/permission/frontend",
+    "apps/pli"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces",
+    "check": "node scripts/check-node.mjs && node scripts/sync-ui.mjs --check && npm run check --workspaces",
+    "test": "node --test \"scripts/*.test.mjs\" && npm run test --workspaces",
+    "build": "npm run build --workspaces",
+    "ui:sync": "node scripts/sync-ui.mjs",
+    "ui:check": "node scripts/sync-ui.mjs --check"
+  }
+}

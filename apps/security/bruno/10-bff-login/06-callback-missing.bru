@@ -1,0 +1,20 @@
+meta {
+  name: GET /auth/callback sans paramètres
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{gw}}/auth/callback
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("400", function () { expect(res.status).to.equal(400); });
+}

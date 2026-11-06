@@ -1,0 +1,442 @@
+[
+  {
+    "version": "0.85.0",
+    "date": "2026-11-05",
+    "new": [
+      "Nouvel onglet Films et séries : parcourez la bibliothèque, regardez seul en reprenant où vous en étiez, ou ensemble dans un salon vocal. Il faut l'autorisation d'accès."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "0.84.3",
+    "date": "2026-11-04",
+    "new": [],
+    "fixes": [
+      "Site web et application installée (PWA) : correction de l'erreur « Oups » qui empêchait d'ouvrir Estompe."
+    ]
+  },
+  {
+    "version": "0.84.0",
+    "date": "2026-11-03",
+    "new": [
+      "Draw2Gether : un jeu de dessin et de devinettes, de 2 à 12 joueurs, à lancer depuis un salon vocal.",
+      "@everyone et @here : mentionnez tout le monde, ou seulement les personnes en ligne, dans un salon (avec la permission). Un réglage permet de les ignorer.",
+      "Android : le vocal continue quand l'application passe en arrière-plan ou que l'écran s'éteint, avec une notification pour couper le micro, le son ou raccrocher.",
+      "Android : en quittant l'application pendant une lecture 2Gether, le lecteur reste dans une petite fenêtre flottante."
+    ],
+    "fixes": [
+      "Mobile : la page ne zoome plus quand on touche un champ de saisie, et le clavier ne la décale plus.",
+      "Messages vocaux : on peut se déplacer dans l'enregistrement en touchant la barre, et un message illisible propose maintenant le téléchargement."
+    ]
+  },
+  {
+    "version": "0.83.0",
+    "date": "2026-10-29",
+    "new": [
+      "Mini-lecteurs de musique (écoute seul et Écouter ensemble) : temps écoulé et durée affichés, barre de progression sur laquelle on clique ou glisse pour se déplacer, volume derrière une icône haut-parleur.",
+      "Les cartes de playlist YouTube Music affichent le nom, l'auteur, le nombre de titres et la pochette, y compris pour les playlists non répertoriées.",
+      "La fenêtre « Écouter ensemble dans… » liste les salons vocaux avec les personnes présentes et la session en cours."
+    ],
+    "fixes": [
+      "Boutons : l'icône s'affiche maintenant à gauche du texte, sur une seule ligne, dans toute l'application.",
+      "Écoute seul : ajouter un morceau à la file ne relance plus le morceau en cours.",
+      "Écouter ensemble : lire un album ou une playlist ne provoque plus une avalanche d'erreurs « Trop de demandes »."
+    ]
+  },
+  {
+    "version": "0.82.1",
+    "date": "2026-10-28",
+    "new": [
+      "Nouveau type de salon « Musique », rangé avec les vidéos dans la catégorie « Esquisses » : vos morceaux YouTube Music y sont des cartes, avec des playlists que l'on peut partager ou garder pour soi, et des séances planifiées.",
+      "Musique : vous pouvez écouter seul, sans passer par le vocal, avec un mini-lecteur dans la barre latérale (pause, suivant, volume, partager dans le vocal). Le réglage « Afficher ce que j'écoute » est désactivé par défaut.",
+      "Musique : la vue « Écouter ensemble » est refaite avec un carrousel de pochettes (précédent et suivant sur les côtés) et une file d'attente repliable."
+    ],
+    "fixes": [
+      "Musique : le lecteur YouTube est maintenant la pochette centrale et ne passe plus sous la barre vocale ; les contrôles secondaires sont en haut et le champ d'ajout en bas."
+    ]
+  },
+  {
+    "version": "0.80.0",
+    "date": "2026-10-28",
+    "new": [
+      "Musique : « Écouter ensemble » est maintenant séparé de « Regarder ensemble », avec sa propre vue refaite (pochette, barre de progression glissable, file d'attente que l'on réordonne par glisser-déposer) et une recherche de morceaux.",
+      "Messages : en modifiant un message, vous pouvez retirer, remplacer, ajouter et réordonner les images et fichiers joints."
+    ],
+    "fixes": [
+      "Musique : le son et l'image fonctionnent de nouveau, et le curseur de progression répond.",
+      "Regarder ensemble : la lecture ne se bloque plus, la pause, les déplacements et les retours en arrière restent synchronisés entre tous.",
+      "Salon Vidéos : les cartes de vidéo ne sont plus coupées.",
+      "Brouillons : les images jointes ne sont plus perdues quand vous changez de salon."
+    ]
+  },
+  {
+    "version": "0.78.1",
+    "date": "2026-10-28",
+    "new": [
+      "Musique : vous pouvez écouter ensemble des morceaux, albums et playlists YouTube Music, avec la pochette de l'album, une file d'attente, le mode aléatoire et la répétition. La musique continue quand vous changez de salon.",
+      "Salons : la création d'un salon est plus simple. Une seule fenêtre guidée pour choisir le type (texte, vocal, vidéos), le nom, un salon privé et les réglages avancés, avec un « + » visible à côté de chaque section."
+    ],
+    "fixes": [
+      "Vocal : le partage d'écran ne saccade plus et la connexion ne passe plus en « médiocre » sans raison.",
+      "Vocal : l'icône « micro coupé » disparaît bien quand un participant réactive son micro.",
+      "Liens : les liens YouTube Music affichent de nouveau un aperçu correct au lieu de « Votre navigateur est obsolète »."
+    ]
+  },
+  {
+    "version": "0.76.2",
+    "date": "2026-10-28",
+    "new": [],
+    "fixes": [
+      "Mobile : la navigation fonctionne de nouveau, on peut à nouveau changer de salon ou de serveur depuis le menu."
+    ]
+  },
+  {
+    "version": "0.76.1",
+    "date": "2026-10-28",
+    "new": [],
+    "fixes": [
+      "Messages vocaux : le fichier n'est plus envoyé deux fois quand la transcription et l'envoi partent en même temps, et le bouton « Transcrire » ne reste plus affiché à tort."
+    ]
+  },
+  {
+    "version": "0.76.0",
+    "date": "2026-10-28",
+    "new": [
+      "Caméra : effets d'arrière-plan (flou, fond supprimé, image au choix, dont la vôtre).",
+      "Alpha : votre caméra peut s'incruster dans votre partage d'écran (à activer dans Paramètres › Voix et vidéo).",
+      "Alpha : transcription écrite des messages vocaux.",
+      "Les menus s'affichent au-dessus des fenêtres, et les confirmations ont maintenant leur propre fenêtre aux couleurs d'Estompe."
+    ],
+    "fixes": [
+      "Regarder ensemble : la pause ne relance plus la vidéo toute seule.",
+      "Salon « Vidéos » : les cartes affichent de nouveau le titre et la miniature, et les boutons ne passent plus à la ligne."
+    ]
+  },
+  {
+    "version": "0.73.2",
+    "date": "2026-10-28",
+    "new": [
+      "Salon « Vidéos » : partagez des liens de vidéos (YouTube, Twitch, Vimeo, Dailymotion, fichiers), organisez-les en listes et planifiez des séances « Regarder ensemble » avec rappel.",
+      "Regarder ensemble : fonctionne maintenant avec plus de sources que YouTube.",
+      "Vocal : panneau plus aéré, avec la qualité de connexion dans l'en-tête et le micro et le casque en boutons à flèche."
+    ],
+    "fixes": [
+      "Regarder ensemble : la pause s'applique maintenant à chaque fois, pour tout le monde.",
+      "Vocal : le bouton raccrocher n'est plus coupé et l'indicateur de connexion ne déborde plus du panneau."
+    ]
+  },
+  {
+    "version": "0.72.2",
+    "date": "2026-10-28",
+    "new": [
+      "Regarder ensemble : regardez des vidéos YouTube synchronisées dans un salon vocal.",
+      "Vocal : interface plus simple (raccourcis, choix rapide du micro, barre de contrôle toujours visible, partage d'écran en un seul écran avec préréglages).",
+      "Nouvelle animation de chargement aux couleurs d'Estompe.",
+      "Nouvelle identité visuelle : rail de serveurs adouci, animations plus douces."
+    ],
+    "fixes": [
+      "Notifications : elles s'affichent de nouveau sur iPhone, Mac et Windows (PWA).",
+      "Vocal : espacements de la barre vocale corrigés."
+    ]
+  },
+  {
+    "version": "0.69.3",
+    "date": "2026-10-27",
+    "new": [],
+    "fixes": [
+      "Application Windows : les liens cliquables des messages s'ouvrent de nouveau dans votre navigateur."
+    ]
+  },
+  {
+    "version": "0.69.2",
+    "date": "2026-10-27",
+    "new": [
+      "Mises à jour : une mise à jour importante peut désormais être exigée ; Estompe vous prévient et vous propose de recharger ou d'installer la nouvelle version.",
+      "Messages : les vidéos jointes ont un lecteur complet (lecture, position, volume, plein écran) et les MP4 envoyés depuis la zone de saisie s'affichent comme les replays."
+    ],
+    "fixes": [
+      "Messages : une vidéo jointe ne s'affiche plus noire, à 0:00.",
+      "Vocal : avec la réduction de bruit activée, votre micro n'est plus entendu que dans l'oreille gauche."
+    ]
+  },
+  {
+    "version": "0.68.1",
+    "date": "2026-10-27",
+    "new": [
+      "Recherche : recherche globale de messages (Ctrl+K) dans tous vos salons et messages privés, avec filtres (auteur, salon, date, pièce jointe…).",
+      "Navigation : nouvelle barre verticale à gauche pour les serveurs, Cairn, Bobyn et l'administration ; les serveurs se réordonnent par glisser-déposer.",
+      "Vocal : testez votre micro avant de rejoindre (écoute en direct et enregistrement de 10 secondes).",
+      "Bobyn : bibliothèque des replays dans Estompe (parcourir, lire, découper, recadrer, exporter).",
+      "Bobyn : envoyez un replay dans un salon ou un message privé.",
+      "Bobyn : marqueurs pendant l'enregistrement, pistes audio séparées (jeu, micro, vocal) et nombreuses améliorations de la bibliothèque.",
+      "Jeu : les messages privés et mentions s'affichent par-dessus le jeu, avec réponse rapide au clavier."
+    ],
+    "fixes": [
+      "Bobyn : le son des replays n'est plus sourd, « dans un bocal »."
+    ]
+  },
+  {
+    "version": "0.59.5",
+    "date": "2026-10-27",
+    "new": [],
+    "fixes": [
+      "Android : toucher un salon ne vous renvoie plus vers une page d'erreur.",
+      "Sécurité : mise à jour de composants du serveur."
+    ]
+  },
+  {
+    "version": "0.59.3",
+    "date": "2026-10-27",
+    "new": [],
+    "fixes": [
+      "Android : les liens dans les messages sont de nouveau cliquables.",
+      "Android : toucher une notification ouvre maintenant le bon salon."
+    ]
+  },
+  {
+    "version": "0.59.0",
+    "date": "2026-10-27",
+    "new": [
+      "Profil : nouvelle carte de profil avec bannière, statut sur l'avatar, badges, rôles modifiables et actions de modération dans un menu.",
+      "Réglages du serveur et panneau utilisateur refondus.",
+      "Application PC : une seule fenêtre d'Estompe à la fois ; relancer l'app ramène la fenêtre existante au premier plan.",
+      "Sécurité : stockage plein sans suppression de fichiers, quota par utilisateur et limite d'envoi de fichiers."
+    ],
+    "fixes": [
+      "Le salon « musique » est désactivé pour le moment.",
+      "Barres de défilement plus fines, dans le style d'Estompe.",
+      "Paramètres du serveur : l'onglet Rôles défile correctement.",
+      "Vocal : déplacer un membre d'un salon à l'autre ne le déconnecte plus."
+    ]
+  },
+  {
+    "version": "0.58.0",
+    "date": "2026-10-26",
+    "new": [
+      "Serveurs : rôles avec permissions (couleur, icône, hiérarchie), exceptions par salon, mentions @everyone et @rôle, journal d'administration.",
+      "Modération : expulser, bannir (définitif ou temporaire), exclure temporairement, avertir, changer le pseudo d'un membre, déplacer ou déconnecter du vocal, supprimer des messages en masse, mode lent et verrouillage de salon, invitations limitées, transfert de propriété.",
+      "Salon « musique » : le bot Estompe joue YouTube / YouTube Music dans un salon, avec une file d'attente partagée.",
+      "Messages vocaux : enregistre et envoie un message vocal dans les chats, avec lecteur dans le fil.",
+      "Vocal : rendre muet un participant pour toi (clic droit), et pour les administrateurs couper son micro ou son son.",
+      "Signalement de bugs : bouton « Signaler un bug » avec captures et informations techniques (Ctrl+Alt+B sur PC).",
+      "Android : la notification d'une conversation disparaît une fois la conversation lue, même sur un autre appareil."
+    ],
+    "fixes": [
+      "Messages : la sélection du texte à la souris fonctionne de nouveau.",
+      "Android : la vraie icône d'Estompe s'affiche dans la barre de notification.",
+      "Notifications : un clic ouvre la conversation directement sur le message.",
+      "Overlay vocal : les photos de profil des participants s'affichent.",
+      "Reconnexion beaucoup plus rapide après une coupure réseau ou une veille."
+    ]
+  },
+  {
+    "version": "0.51.0",
+    "date": "2026-10-26",
+    "new": [
+      "Android : les notifications fonctionnent avec Android Auto et proposent « Répondre » et « Marquer comme lu » sans ouvrir l'app. Nouveau mode conduite : lecture à voix haute des messages privés et mentions, réponse dictée puis envoyée.",
+      "Cairn : le panneau tickets et documentation a un nouveau design, dans le style d'Estompe."
+    ],
+    "fixes": [
+      "Messages : tu peux de nouveau sélectionner et copier le texte d'un message (menu du message : « Copier la sélection », « Sélectionner le texte »).",
+      "Messages : la barre d'actions au survol ne cache plus le texte du message.",
+      "Notifications : la PWA mobile entièrement fermée reçoit maintenant les notifications."
+    ]
+  },
+  {
+    "version": "0.49.1",
+    "date": "2026-10-25",
+    "new": [
+      "Cairn : tu peux maintenant consulter et gérer les tickets et la documentation sans quitter Estompe (recherche, création, commentaires, pages). Réservé aux personnes autorisées."
+    ],
+    "fixes": [
+      "Liste des membres : la mise en page ne casse plus quand une activité (jeu en cours) est affichée.",
+      "Overlay vocal : les photos de profil des participants s'affichent.",
+      "App Windows (Bobyn) : correction d'un problème qui pouvait rendre les replays muets."
+    ]
+  },
+  {
+    "version": "0.48.1",
+    "date": "2026-10-25",
+    "new": [
+      "App Windows : ton jeu en cours s'affiche dans la liste des membres et sur ton profil. Estompe reconnaît les jeux installés (Steam, Epic, GOG) et une liste de jeux courants. Tu peux le désactiver dans les Paramètres."
+    ],
+    "fixes": [
+      "Vocal : ta voix n'est plus entendue que dans l'oreille gauche des autres participants."
+    ]
+  },
+  {
+    "version": "0.47.1",
+    "date": "2026-10-25",
+    "new": [],
+    "fixes": [
+      "Vocal : si ton micro ne peut pas s'ouvrir (refusé, absent ou non supporté), tu restes dans le salon en écoute seule avec un message qui explique pourquoi, au lieu d'être déconnecté et reconnecté en boucle."
+    ]
+  },
+  {
+    "version": "0.47.0",
+    "date": "2026-10-25",
+    "new": [
+      "App Windows (Bobyn) : une petite pastille s'affiche sur ton jeu pour indiquer si l'enregistrement est actif, en pause ou en erreur, et confirme quand un replay est sauvegardé. Tu peux la déplacer dans un coin ou la masquer dans l'onglet Bobyn."
+    ],
+    "fixes": [
+      "App Windows (Bobyn) : l'enregistrement pèse moins sur les performances du jeu (FPS plus stables)."
+    ]
+  },
+  {
+    "version": "0.46.2",
+    "date": "2026-10-25",
+    "new": [
+      "Partage d'écran : les streams des autres sont maintenant regardés par défaut. Tu peux toujours cliquer sur « Arrêter de regarder », ou changer ce réglage dans Paramètres › Voix et vidéo."
+    ],
+    "fixes": [
+      "Partage d'écran : tu n'entends plus le son de ton propre partage.",
+      "App Windows (Bobyn) : les replays contiennent maintenant le son du jeu ou du système et ton micro.",
+      "App Windows (Bobyn) : les replays enregistrés ne saccadent plus."
+    ]
+  },
+  {
+    "version": "0.45.2",
+    "date": "2026-10-23",
+    "new": [],
+    "fixes": [
+      "Partage d'écran : les autres participants revoient de nouveau le partage, avec le bouton « Regarder », et peuvent l'arrêter puis le reprendre.",
+      "Connexion : l'écran de reconnexion n'apparaît plus à tort quand la session est valide. Si ta session est vraiment perdue, tu quittes le vocal au lieu d'y rester sans le savoir."
+    ]
+  },
+  {
+    "version": "0.45.0",
+    "date": "2026-10-23",
+    "new": [
+      "Smileys : tape :joy: (ou un autre code) pour insérer un smiley, avec des suggestions pendant la saisie. Le sélecteur est refait : recherche, catégories, récents et ouverture près du bouton.",
+      "Badges : ils s'affichent maintenant en petites icônes à côté du pseudo et dans le profil, avec le nom et la description au survol.",
+      "Administration : la page des badges est refaite (modification, icône image, attribution à plusieurs personnes à la fois).",
+      "App Windows : Bobyn, le replay instantané, arrive en version alpha, avec des raccourcis que tu règles en appuyant simplement sur les touches."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "0.40.1",
+    "date": "2026-10-23",
+    "new": [
+      "Sondages refaits : une carte claire avec barres de progression, votes en direct, temps restant et choix gagnant mis en avant. Ils sont publiés par le bot Estompe, et la personne qui lance le sondage, le propriétaire du serveur ou un admin peut le clore ou le supprimer.",
+      "Badges : des badges (Fondateur, Bêta-testeur, Contributeur…) peuvent être attribués aux personnes et s'affichent dans leur profil.",
+      "Un espace d'administration « Estompe » est réservé aux admins : utilisateurs, serveurs, badges, messages du bot, statistiques et journaux.",
+      "Tu peux choisir une icône pour ton serveur dans ses paramètres : elle apparaît dans la liste des serveurs et son en-tête.",
+      "Vocal : un partage d'écran s'affiche en tuile avec un bouton « Regarder ». Tu ne reçois l'image et le son que si tu choisis de le regarder, ou tu peux tout regarder automatiquement dans Paramètres › Voix et vidéo."
+    ],
+    "fixes": [
+      "Le badge « BOT » est maintenant à droite du pseudo, avec un meilleur design."
+    ]
+  },
+  {
+    "version": "0.35.0",
+    "date": "2026-10-23",
+    "new": [
+      "Le bot Estompe porte maintenant un badge « BOT » à côté de son nom : dans les messages, la liste des messages privés, son profil et la liste des membres."
+    ],
+    "fixes": [
+      "Application Android : le téléchargement renvoyait un fichier « Estompe.apk.html » au lieu de l'application. Tu reçois maintenant bien le fichier Estompe.apk à installer."
+    ]
+  },
+  {
+    "version": "0.34.4",
+    "date": "2026-10-22",
+    "new": [
+      "Paramètres › Notifications : un seul interrupteur « Notifications » remplace « bureau » et « push ». Il active les notifications sur ton appareil, application ouverte ou fermée quand c'est possible, et indique clairement quand l'application fermée n'est pas disponible."
+    ],
+    "fixes": [
+      "Application Android : correction d'un plantage au lancement."
+    ]
+  },
+  {
+    "version": "0.34.2",
+    "date": "2026-10-22",
+    "new": [],
+    "fixes": [
+      "Application Android : correction d'un problème de fabrication qui empêchait de publier la version 0.34.1."
+    ]
+  },
+  {
+    "version": "0.34.1",
+    "date": "2026-10-22",
+    "new": [
+      "Notifications refondues : réglages identiques sur tous vos appareils (niveau par serveur ou salon, types, aperçu masquable, son, ne pas déranger) dans Paramètres › Notifications.",
+      "Notifications sur navigateur, application installée (PWA), Android et Windows, avec les boutons « Répondre » et « Marquer comme lu ».",
+      "Les pastilles de messages non lus et de mentions se mettent à jour en direct sur tous vos appareils, et le badge de l'icône de l'application aussi.",
+      "Profil : cliquez sur un membre pour voir sa photo, son statut, son rôle et son temps passé en vocal.",
+      "Partage d'écran Alpha (PC) : le son peut être partagé avec l'écran ou la fenêtre."
+    ],
+    "fixes": [
+      "Partage d'écran Alpha (PC) : le curseur de la souris apparaît désormais dans le partage.",
+      "Partage d'écran Alpha (PC) : un second compte au même pseudo rejoint correctement le salon et n'apparaît plus comme une personne en plus."
+    ]
+  },
+  {
+    "version": "0.25.1",
+    "date": "2026-10-22",
+    "new": [
+      "Mode debug : un interrupteur dans Paramètres › Débogage enregistre un journal détaillé (vocal, partage d'écran, réseau…), consultable, copiable et exportable, pour aider à comprendre un problème."
+    ],
+    "fixes": [
+      "Partage d'écran Alpha (PC) : le message « indisponible dans cette version » explique maintenant pourquoi."
+    ]
+  },
+  {
+    "version": "0.24.0",
+    "date": "2026-10-21",
+    "new": [
+      "Clic droit personnalisé sur les messages, les salons, les messages privés et les membres.",
+      "Barre latérale : photo de profil propre à chaque serveur et temps passé en vocal.",
+      "Partage Alpha (PC) : si le partage ne se lance pas, l'erreur s'affiche au lieu de fermer la fenêtre."
+    ],
+    "fixes": [
+      "Suppression d'un message sur téléphone : confirmation dans une fenêtre dédiée.",
+      "Sélecteur de partage Alpha : plus de problème de défilement ni de texte coupé.",
+      "Overlay (Windows) : les jeux en plein écran sont mieux reconnus."
+    ]
+  },
+  {
+    "version": "0.22.0",
+    "date": "2026-10-21",
+    "new": [
+      "Accusés de lecture : une petite photo de profil sous le dernier message vu par chaque personne.",
+      "Overlay des voix (PC) : affiché seulement sur les jeux, au centre gauche par défaut, avec le choix de l'emplacement dans les Paramètres.",
+      "Paramètres : fenêtre plus large, notes de version envoyées en message privé, rangée de serveurs défilante."
+    ],
+    "fixes": [
+      "Paramètres : fenêtre de taille fixe, sans débordement ni défilement horizontal.",
+      "Réactions : la bulle « qui a réagi » n'est plus coupée au bord de l'écran.",
+      "Notifications : la permission est demandée au premier clic ou à la première touche."
+    ]
+  },
+  {
+    "version": "0.19.1",
+    "date": "2026-10-21",
+    "new": [
+      "Tableau de bord d'administration en lecture seule (appareils connectés, salons vocaux actifs, serveurs, configuration), réservé à la permission estompe:admin."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "0.17.0",
+    "date": "2026-10-21",
+    "new": [
+      "Une fenêtre « Quoi de neuf » s'ouvre après chaque mise à jour ; l'historique reste dans Paramètres > Application."
+    ],
+    "fixes": []
+  },
+  {
+    "version": "0.16.4",
+    "date": "2026-10-21",
+    "new": [
+      "Les notifications sont activées par défaut.",
+      "Sondages, aperçu des vidéos YouTube, qui a réagi à un message, suppression immédiate des messages.",
+      "Vocal : voir qui regarde un stream, raccourci global pour parler dans l'app Windows, overlay des participants.",
+      "App Android avec mises à jour automatiques et notifications."
+    ],
+    "fixes": [
+      "L'icône caméra disparaît quand la caméra est coupée.",
+      "Plusieurs correctifs d'affichage sur mobile."
+    ]
+  }
+]

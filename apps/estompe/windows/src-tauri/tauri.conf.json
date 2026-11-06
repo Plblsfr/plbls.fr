@@ -1,0 +1,71 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Estompe",
+  "version": "0.83.0",
+  "identifier": "fr.plbls.estompe",
+  "build": {
+    "beforeBuildCommand": {
+      "script": "node ../windows/scripts/fetch-ffmpeg.mjs && npm run build -- --mode windows",
+      "cwd": "../../frontend"
+    },
+    "beforeDevCommand": {
+      "script": "npm run dev -- --mode windows",
+      "cwd": "../../frontend"
+    },
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Estompe",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 420,
+        "minHeight": 560,
+        "useHttpsScheme": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      },
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://player.twitch.tv https://player.vimeo.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost https://*.plbls.fr https://*.giphy.com https://img.youtube.com; font-src 'self'; media-src 'self' blob: asset: http://asset.localhost https://chat.plbls.fr https:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost https: https://chat.plbls.fr wss://chat.plbls.fr https://security.plbls.fr https://voice.plbls.fr wss://voice.plbls.fr; object-src 'none'; base-uri 'none'; frame-src https://www.youtube-nocookie.com https://player.twitch.tv https://clips.twitch.tv https://player.vimeo.com https://www.dailymotion.com"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "French"
+        ]
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNGMDc2NjUyMDVGREJGNDIKUldSQ3YvMEZVbVlIUHdCN2xHVkkzUW1wRThGNktzSnBiRSt0SUFzTGNnMVpERXRhWVpHdGVJcFEK",
+      "endpoints": [
+        "https://estompe.plbls.fr/updates/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

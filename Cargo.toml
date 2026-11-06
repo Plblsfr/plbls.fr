@@ -1,0 +1,83 @@
+[workspace]
+resolver = "3"
+members = [
+  "apps/security",
+  "apps/permission/backend",
+  "apps/estompe/backend/estompe-api",
+  "apps/estompe/backend/core",
+  "apps/estompe/backend/block",
+  "apps/estompe/backend/blocks/*",
+]
+exclude = ["apps/estompe/crates", "apps/estompe/windows", "apps/estompe/android"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.99"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["ws", "multipart"] }
+base64 = "0.23"
+chrono = { version = "0.4", features = ["serde"] }
+config = { version = "0.15", default-features = false, features = ["toml"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+hmac = "0.13"
+html5gum = { version = "0.9", default-features = false }
+http-body-util = "0.1"
+include_dir = "0.7"
+jsonschema = { version = "0.60", default-features = false }
+jsonwebtoken = "11"
+percent-encoding = "2"
+quick-xml = "0.42"
+rand = "0.10"
+redis = { version = "1.8", features = ["tokio-comp", "connection-manager"] }
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case", "unicode-gencat", "perf"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots"] }
+ring = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_norway = "0.9"
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "json", "tls-rustls-ring-webpki"] }
+subtle = "2"
+tempfile = "3"
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net", "time", "sync", "fs", "io-util"] }
+tokio-tungstenite = "0.30"
+tokio-util = { version = "0.7", features = ["io"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-properties = { version = "0.1", default-features = false, features = ["general-category"] }
+url = "2"
+utoipa = { version = "6", features = ["yaml", "uuid"] }
+utoipa-axum = "0.3"
+uuid = { version = "1", features = ["serde", "v4"] }
+estompe-core = { path = "apps/estompe/backend/core" }
+estompe-block = { path = "apps/estompe/backend/block" }
+estompe-block-gifs = { path = "apps/estompe/backend/blocks/gifs" }
+estompe-block-films = { path = "apps/estompe/backend/blocks/films" }
+estompe-block-musique = { path = "apps/estompe/backend/blocks/musique" }
+estompe-block-vocal = { path = "apps/estompe/backend/blocks/vocal" }
+estompe-block-regarder-ensemble = { path = "apps/estompe/backend/blocks/regarder-ensemble" }
+estompe-block-draw2gether = { path = "apps/estompe/backend/blocks/draw2gether" }
+estompe-block-transcription = { path = "apps/estompe/backend/blocks/transcription" }
+estompe-block-videos = { path = "apps/estompe/backend/blocks/videos" }
+estompe-block-apercu-liens = { path = "apps/estompe/backend/blocks/apercu-liens" }
+estompe-block-notifications = { path = "apps/estompe/backend/blocks/notifications" }
+estompe-block-emojis = { path = "apps/estompe/backend/blocks/emojis" }
+estompe-block-avatars = { path = "apps/estompe/backend/blocks/avatars" }
+estompe-block-badges = { path = "apps/estompe/backend/blocks/badges" }
+estompe-block-signalements = { path = "apps/estompe/backend/blocks/signalements" }
+estompe-block-cairn = { path = "apps/estompe/backend/blocks/cairn" }
+estompe-block-activite-statut = { path = "apps/estompe/backend/blocks/activite-statut" }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.dev]
+debug = "line-tables-only"

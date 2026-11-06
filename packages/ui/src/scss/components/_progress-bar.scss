@@ -1,0 +1,33 @@
+// <div class="plbls-progress">
+//   <div class="plbls-progress__entete"><span>Envoi</span><span>40%</span></div>
+//   <div class="plbls-progress__piste" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100">
+//     <div class="plbls-progress__remplissage" style="width: 40%"></div>
+//   </div>
+// </div>
+
+.plbls-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &__entete {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--gris);
+  }
+
+  &__piste {
+    height: 8px;
+    background: var(--creme-creux);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  &__remplissage {
+    height: 100%;
+    background: var(--rose-fonce);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+  }
+}

@@ -1,0 +1,27 @@
+meta {
+  name: GET /auth/register
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{gw}}/auth/register?redirect={{front}}/page
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+}
+
+tests {
+  test("303 vers la page d'inscription Keycloak", function () {
+    expect(res.status).to.equal(303);
+    expect(res.headers["location"]).to.contain("/protocol/openid-connect/registrations");
+    expect(res.headers["location"]).to.contain("code_challenge_method=S256");
+  });
+  test("cookie anti login-CSRF posé", function () {
+    const sc = [].concat(res.headers["set-cookie"] || []);
+    expect(sc.some((c) => c.startsWith("plbls_sid_login="))).to.equal(true);
+  });
+}

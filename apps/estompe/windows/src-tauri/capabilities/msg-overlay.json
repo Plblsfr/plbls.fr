@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "msg-overlay",
+  "description": "Overlay des messages privés et mentions : reçoit les notifications de la fenêtre principale et lui renvoie la réponse saisie.",
+  "windows": [
+    "msg-overlay"
+  ],
+  "permissions": [
+    "core:event:default"
+  ],
+  "platforms": [
+    "windows",
+    "linux",
+    "macOS"
+  ]
+}

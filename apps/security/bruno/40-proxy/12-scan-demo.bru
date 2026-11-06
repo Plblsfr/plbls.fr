@@ -1,0 +1,24 @@
+meta {
+  name: /api/scan avec rôle client plbls-mobile:scanner : 200
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{gw}}/api/scan/x
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{tokDemo}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("200", function () { expect(res.status).to.equal(200); });
+}

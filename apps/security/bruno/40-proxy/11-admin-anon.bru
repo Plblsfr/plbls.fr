@@ -1,0 +1,20 @@
+meta {
+  name: /api/admin sans authentification : 401
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{gw}}/api/admin/x
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401", function () { expect(res.status).to.equal(401); });
+}

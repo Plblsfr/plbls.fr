@@ -1,0 +1,29 @@
+name: ui-ci
+on:
+  push:
+    branches: [main]
+    tags: ["ui-v*"]
+    paths: ["package.json", "package-lock.json", ".nvmrc", "packages/ui/**", ".github/workflows/ui-ci.yml", ".github/workflows/_image.yml"]
+  pull_request:
+    paths: ["package.json", "package-lock.json", ".nvmrc", "packages/ui/**", ".github/workflows/ui-ci.yml", ".github/workflows/_image.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ui-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  image:
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: ui
+      name: plbls-ui
+      context: .
+      dockerfile: packages/ui/Dockerfile
+      dir: packages/ui
+      test_target: 'build'
+    secrets: inherit

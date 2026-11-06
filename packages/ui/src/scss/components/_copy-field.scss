@@ -1,0 +1,64 @@
+// Balise : <plbls-copy-field label="Lien" value="https://…"></plbls-copy-field>
+// Balisage rendu (utilisable seul, sans JS, mais sans la copie) :
+//
+// <div class="plbls-copy-field">
+//   <span class="plbls-copy-field__label">Lien</span>
+//   <div class="plbls-copy-field__ligne">
+//     <input class="plbls-copy-field__valeur" readonly value="…">
+//     <button class="plbls-copy-field__copier" type="button">Copier</button>
+//   </div>
+//   <span class="plbls-sr-only" aria-live="polite"></span>
+// </div>
+
+.plbls-copy-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &__label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--gris);
+  }
+
+  &__ligne {
+    display: flex;
+    border-radius: var(--rayon-pilule);
+    box-shadow: var(--ombre-1);
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  &__valeur {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 11px 6px 11px 18px;
+    font-size: 13px;
+    font-family: var(--font-texte);
+    color: var(--noir);
+
+    &:focus-visible {
+      outline: none;
+    }
+  }
+
+  &__copier {
+    border: none;
+    background: var(--noir);
+    color: var(--creme);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0 20px;
+    margin: 4px;
+    border-radius: var(--rayon-pilule);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--duree) ease;
+
+    &:hover {
+      background: var(--rose-texte);
+    }
+  }
+}

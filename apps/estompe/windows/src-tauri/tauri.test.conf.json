@@ -1,0 +1,24 @@
+{
+  "productName": "Estompe Test",
+  "identifier": "fr.plbls.estompe.test",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Estompe Test",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 420,
+        "minHeight": 560,
+        "useHttpsScheme": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": null
+  }
+}

@@ -1,0 +1,110 @@
+// =============================================================================
+// Design tokens — DA « surligneur », v2
+// Blanc cassé, noir, rose pastel en aplat. Le rose ne sert jamais de décor :
+// il surligne, il souligne, il marque l'état actif. La v2 adoucit la forme
+// (coins ronds, ombres en couches, pilules) sans toucher à la palette.
+// =============================================================================
+
+:root {
+  // --- Couleurs ---------------------------------------------------------------
+  --creme: #faf6f3;
+  --creme-creux: #f0eae6;
+  --noir: #101010;
+
+  // 5,35:1 sur --creme
+  --gris: #6b6560;
+
+  --rose: #f4c7d5;
+  // Aplats et bordures uniquement — 3,6:1 sur --creme, sous le seuil AA.
+  --rose-fonce: #c8607f;
+  // Même famille, 5,98:1 sur --creme — dès qu'il y a du texte.
+  --rose-texte: #a83355;
+
+  --trait: #dfd8d3;
+
+  // Fond des surfaces « posées » (panneaux, champs, alertes d'erreur).
+  --surface: #fff;
+  // Couleur des ombres (triplet RVB).
+  --ombre: 16 16 16;
+  // Élévations en couches : une ombre serrée pour l'ancrage, une large pour l'air.
+  --ombre-1: 0 0 0 1px rgb(var(--ombre) / 6%), 0 1px 2px rgb(var(--ombre) / 5%), 0 4px 12px rgb(var(--ombre) / 4%);
+  --ombre-2: 0 0 0 1px rgb(var(--ombre) / 6%), 0 2px 4px rgb(var(--ombre) / 5%), 0 12px 28px rgb(var(--ombre) / 10%);
+  --ombre-3: 0 0 0 1px rgb(var(--ombre) / 6%), 0 8px 16px rgb(var(--ombre) / 8%), 0 32px 64px rgb(var(--ombre) / 16%);
+
+  // --- Typographie ------------------------------------------------------------
+  --font-titre: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-texte: 'Instrument Sans', system-ui, sans-serif;
+
+  // --- Rythme -----------------------------------------------------------------
+  --marge: clamp(20px, 5vw, 72px);
+
+  // Échelle de rayons : plus l'objet est grand, plus le coin est rond.
+  --rayon-s: 8px; // éléments denses : items de menu, étiquettes
+  --rayon: 12px; // champs, boutons carrés, tuiles
+  --rayon-l: 20px; // cartes, panneaux, alertes
+  --rayon-xl: 28px; // modale, grandes surfaces
+  --rayon-pilule: 999px; // boutons, chips, badges, onglets
+
+  // Échelle d'espacement pour les mises en page (les composants du kit posent
+  // leurs propres valeurs, ces tokens servent aux gabarits de pages).
+  --espace-1: 4px;
+  --espace-2: 8px;
+  --espace-3: 12px;
+  --espace-4: 16px;
+  --espace-6: 24px;
+  --espace-8: 32px;
+  --espace-12: 48px;
+  --espace-16: 64px;
+
+  // --- Interaction ------------------------------------------------------------
+  --duree: 0.18s;
+  // Ressort léger : l'objet dépasse à peine sa cible, puis se pose.
+  --ressort: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --focus: 2px solid var(--noir);
+  // Halo rose autour d'un champ actif.
+  --halo: 0 0 0 4px color-mix(in srgb, var(--rose-fonce) 28%, transparent);
+
+  color-scheme: light;
+}
+
+// -----------------------------------------------------------------------------
+// Thème sombre — mêmes noms de jetons, valeurs inversées : --creme devient le
+// fond, --noir devient l'encre. Le rose « surligneur » devient un aplat prune
+// sous l'encre claire. Contrastes mesurés sur --creme (fond sombre).
+// -----------------------------------------------------------------------------
+@mixin theme-sombre {
+  --creme: #121212;
+  --creme-creux: #1e1e1e;
+  --noir: #ededed;
+
+  // 9,4:1 sur --creme, 5,8:1 sur --rose
+  --gris: #b8b8b8;
+
+  --rose: #5b2a3c;
+  // Aplats et bordures — 6,6:1 sur --creme.
+  --rose-fonce: #e07a9a;
+  // Texte rose — 9,8:1 sur --creme, 6,0:1 sur --rose.
+  --rose-texte: #f2a6bd;
+
+  --trait: #333333;
+  --surface: #1c1c1c;
+  --ombre: 0 0 0;
+  // En sombre le contour clair remplace l'ombre, qui ne se voit plus.
+  --ombre-1: 0 0 0 1px rgb(255 255 255 / 7%), 0 4px 12px rgb(0 0 0 / 30%);
+  --ombre-2: 0 0 0 1px rgb(255 255 255 / 9%), 0 12px 28px rgb(0 0 0 / 45%);
+  --ombre-3: 0 0 0 1px rgb(255 255 255 / 10%), 0 32px 64px rgb(0 0 0 / 60%);
+
+  color-scheme: dark;
+}
+
+// Activé par <html data-theme="dark">.
+:root[data-theme='dark'] {
+  @include theme-sombre;
+}
+
+// Optionnel : <html data-theme="auto"> suit le réglage du système.
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'] {
+    @include theme-sombre;
+  }
+}

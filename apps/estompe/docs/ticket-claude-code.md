@@ -1,0 +1,36 @@
+# Traiter un ticket avec Claude Code
+
+Un ticket Cairn (`EST-<n>`) se traite en cinq commandes, dans l'ordre. Chacune écrit un fichier dans `.ai/EST-<n>/` (local, jamais commité) que la suivante lit.
+Règles complètes : `AGENTS.md`. Les skills sont dans `agents/skills/`.
+
+## Avant de commencer
+- `gh pr list` répond dans le dépôt (sinon `gh` n'est pas connecté : `gh auth login`).
+- Les serveurs MCP Cairn sont connectés dans Claude Code.
+- Pour les tests Rust : `TEST_DATABASE_URL` pointe vers un PostgreSQL de test.
+
+## Les étapes
+
+| # | Commande | Ce que tu fais | Résultat |
+|---|---|---|---|
+| 1 | `/estompe-grill-me EST-<n>` | Réponds aux questions jusqu'à ce qu'il n'y ait plus d'ambiguïté, puis valide le brief | `brief.md` avec critères `C1`, `C2`…, ticket « en cours » |
+| 2 | `/estompe-plan EST-<n>` | Valide ou corrige le plan | `plan.md` : branche, étapes, tests |
+| 3 | `/estompe-implement EST-<n>` | Rien, sauf si on te demande un appareil réel pour un critère | worktree, code, tests, `scripts/check.sh` vert, `verify.md` |
+| 4 | `/estompe-code-review EST-<n>` | Lis le verdict | revue 1 dans `plan.md` |
+| 5 | `/estompe-mr EST-<n>` | Rien | changelog, push, PR GitHub, commentaire Cairn, worktree supprimé |
+
+Si la revue 1 demande des corrections : `/estompe-implement EST-<n>` puis `/estompe-code-review EST-<n>` (revue 2, corrections seules), puis `/estompe-mr`.
+**Il n'y a jamais plus de deux revues** : les remarques mineures vont dans la PR, un nouveau défaut hors diff devient un ticket.
+
+## Après la PR
+1. Relire la PR dans GitHub, puis la fusionner en « merge » classique (jamais squash ni rebase : le nom de la branche pilote la version).
+2. Si la PR demande des changements : `/estompe-implement EST-<n>` recrée le worktree depuis la branche.
+3. Le ticket reste « en cours » jusqu'à `/estompe-release`, qui le passe « fini » si tous ses critères sont vérifiés.
+
+## Petits changements sans ticket
+Une demande rapide suit quand même la règle n°1 : branche et worktree depuis `origin/main`, commit `type(portée): résumé`, PR à ta demande explicite. Pas de `.ai/`.
+
+## Bon à savoir
+- Désigne toujours le ticket par `EST-<n>` : Cairn refuse le numéro seul.
+- `scripts/check.sh` est la seule liste de contrôles ; ne la recopie pas.
+- Un critère qui dépend d'un appareil réel reste « non vérifié » tant que tu n'as pas confirmé.
+- Un skill se corrige dans `agents/skills/<nom>/SKILL.md`, avec `AGENTS.md` dans la même PR.

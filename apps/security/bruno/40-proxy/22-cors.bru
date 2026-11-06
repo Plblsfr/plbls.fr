@@ -1,0 +1,28 @@
+meta {
+  name: CORS : Origin autorisé reflété avec credentials
+  type: http
+  seq: 22
+}
+
+options {
+  url: {{gw}}/api/private/x
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: http://localhost:3000
+  Access-Control-Request-Method: POST
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("préflight accepté", function () {
+    expect(res.headers["access-control-allow-origin"]).to.equal("http://localhost:3000");
+    expect(res.headers["access-control-allow-credentials"]).to.equal("true");
+  });
+}

@@ -1,0 +1,20 @@
+meta {
+  name: GET /auth/login redirect externe -> remplacé
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{gw}}/auth/login?redirect=https://evil.example/
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("303 vers Keycloak", function () { expect(res.status).to.equal(303); });
+}

@@ -1,0 +1,39 @@
+#![allow(clippy::result_large_err)]
+
+pub mod administration;
+pub mod api;
+pub mod audit;
+pub mod blob;
+pub mod config;
+pub mod db;
+pub mod emoji;
+pub mod etat_lecture;
+pub mod fichiers;
+pub mod gestion_roles;
+pub mod http;
+pub mod hub;
+pub mod identity;
+pub mod journal;
+pub mod mentions;
+pub mod messages;
+pub mod metrics;
+pub mod middleware;
+pub mod moderation;
+pub mod mp4;
+pub mod notes_version;
+pub mod openapi;
+pub mod permission;
+pub mod ratelimit;
+pub mod recherche;
+pub mod roles;
+pub mod salons;
+pub mod servers;
+pub mod sniff;
+pub mod sondages;
+pub mod state;
+pub mod updates;
+pub mod users;
+pub mod ws;
+
+#[cfg(feature = "testutil")]
+pub mod testutil;

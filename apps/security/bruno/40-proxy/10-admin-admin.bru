@@ -1,0 +1,24 @@
+meta {
+  name: /api/admin avec admin : 200
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{gw}}/api/admin/x
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{tokAdmin}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("200", function () { expect(res.status).to.equal(200); expect(res.body).to.contain("X-User-Roles"); });
+}

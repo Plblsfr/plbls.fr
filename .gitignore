@@ -1,0 +1,21 @@
+# Dépendances et builds
+node_modules/
+target/
+dist/
+build/
+.gradle/
+.svelte-kit/
+
+# Secrets et environnement local (les *.env.example restent versionnés)
+.env
+.env.local
+*.local
+
+# Logs, éditeurs, OS
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+
+# Fichiers de travail des agents
+.ai/

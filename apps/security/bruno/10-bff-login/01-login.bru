@@ -1,0 +1,56 @@
+meta {
+  name: GET /auth/login
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{gw}}/auth/login?redirect={{redirectParam}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+  if (!bru.getVar("redirectParam")) bru.setVar("redirectParam", bru.getEnvVar("front") + "/page?x=1");
+}
+
+script:post-response {
+  const loc = res.headers["location"] || "";
+  bru.setVar("kcAuthUrl", loc);
+  const sc = res.headers["set-cookie"] || [];
+  const list = Array.isArray(sc) ? sc : [sc];
+  const lc = list.find((c) => c.startsWith("plbls_sid_login="));
+  bru.setVar("loginSetCookie", lc || "");
+  bru.setVar("loginCookie", lc ? lc.split(";")[0] : "");
+}
+
+tests {
+  test("303 vers la page de login Keycloak", function () {
+    expect(res.status).to.equal(303);
+    expect(bru.getVar("kcAuthUrl")).to.contain("/realms/plbls/protocol/openid-connect/auth?");
+  });
+  test("cookie de login lié au navigateur (anti login-CSRF)", function () {
+    const c = bru.getVar("loginSetCookie");
+    expect(c).to.match(/^plbls_sid_login=[A-Za-z0-9_-]{43};/);
+    expect(c).to.contain("HttpOnly");
+    expect(c).to.contain("SameSite=Lax");
+    expect(c).to.contain("Path=/auth");
+    expect(c).to.not.contain("Domain=");
+  });
+  test("PKCE S256, nonce, state, scope openid", function () {
+  function param(url, k) {
+    const m = url.match(new RegExp("[?&]" + k + "=([^&#]*)"));
+    return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : null;
+  }
+    const u = { searchParams: { get: (k) => param(bru.getVar("kcAuthUrl"), k) } };
+    expect(u.searchParams.get("client_id")).to.equal("plbls-gateway");
+    expect(u.searchParams.get("response_type")).to.equal("code");
+    expect(u.searchParams.get("code_challenge_method")).to.equal("S256");
+    expect(u.searchParams.get("code_challenge")).to.have.length.above(40);
+    expect(u.searchParams.get("state")).to.have.length.above(30);
+    expect(u.searchParams.get("nonce")).to.have.length.above(30);
+    expect(u.searchParams.get("scope")).to.equal("openid");
+    expect(u.searchParams.get("redirect_uri")).to.equal(bru.getEnvVar("gw") + "/auth/callback");
+  });
+}

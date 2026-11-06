@@ -1,0 +1,24 @@
+meta {
+  name: GET /auth/me cookie inconnu
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{gw}}/auth/me
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid=inconnu
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401", function () { expect(res.status).to.equal(401); });
+}

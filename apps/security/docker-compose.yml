@@ -1,0 +1,21 @@
+# Production : gateway (image publiée par la CI) + Redis. Keycloak et les micro-services sont ailleurs.
+# Les routes sont dans config/routes.toml, embarqué dans l'image par la CI (modèle : config/routes.example.toml).
+services:
+  auth-gateway:
+    image: ghcr.io/plblsfr/security:${GATEWAY_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      GATEWAY_CONFIG: /app/config/routes
+      GATEWAY__REDIS__URL: redis://redis:6379
+    ports:
+      - "127.0.0.1:8080:8080"   # derrière le reverse proxy TLS de security.plbls.fr
+    depends_on: [redis]
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+volumes:
+  redis-data:

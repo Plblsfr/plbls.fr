@@ -1,0 +1,107 @@
+name: estompe-backend-rs
+
+on:
+  pull_request:
+    paths: ["apps/estompe/backend/**", "!apps/estompe/backend/**.md", "apps/estompe/deploy/.env.example", "apps/estompe/docs/openapi.yaml", "apps/estompe/scripts/paquets-cargo.sh", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml", ".dockerignore", ".github/workflows/estompe-backend-rs.yml", ".github/workflows/_rust-lint.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-rs-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    working-directory: apps/estompe
+
+jobs:
+  lint:
+    uses: ./.github/workflows/_rust-lint.yml
+    with:
+      name: estompe
+      packages: --workspace
+
+  architecture:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - name: Le cœur ne dépend d'aucun bloc
+        run: "! cargo tree -p estompe-core -e normal --prefix none --locked | grep '^estompe-block-'"
+
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        # le job tourne sur le runner (pas dans un conteneur) : le service n'est joignable que par le port publié
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - id: cargo
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: backend-test-v3-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: backend-test-v3-
+      - run: cargo test --locked $(apps/estompe/scripts/paquets-cargo.sh)
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/estompe/backend/Dockerfile
+          push: false
+          load: true
+          tags: estompe-api:pr-${{ github.run_id }}
+          cache-from: type=registry,ref=ghcr.io/plblsfr/estompe:buildcache
+      - name: L'image démarre et répond sur /readyz
+        run: |
+          docker run -d --name estompe-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres postgres:17-alpine
+          timeout 60 sh -c 'until docker exec estompe-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
+          docker run -d --name estompe-pr-api-${{ github.run_id }} --network container:estompe-pr-pg-${{ github.run_id }} --env-file deploy/.env.example \
+            -e DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' estompe-api:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until docker run --rm --network container:estompe-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
+            || { docker logs estompe-pr-api-${{ github.run_id }}; exit 1; }
+      - if: always()
+        run: docker rm -f estompe-pr-api-${{ github.run_id }} estompe-pr-pg-${{ github.run_id }}

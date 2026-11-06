@@ -1,0 +1,59 @@
+// Balise : <plbls-dropzone accept="image/*" multiple></plbls-dropzone>
+//
+// <label class="plbls-dropzone [is-over]">
+//   <input type="file" class="plbls-dropzone__entree">
+//   <span class="plbls-dropzone__icone">↑</span>
+//   <span class="plbls-dropzone__texte">…</span>
+// </label>
+
+.plbls-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: clamp(36px, 6vw, 56px) 20px;
+  border: 1.5px dashed var(--trait);
+  border-radius: var(--rayon-xl);
+  cursor: pointer;
+  text-align: center;
+  position: relative;
+  transition:
+    border-color var(--duree) ease,
+    background var(--duree) ease;
+
+  &:hover,
+  &.is-over {
+    border-color: var(--rose-fonce);
+    background: var(--rose);
+  }
+
+  // masqué mais focusable : l'anneau de focus remonte sur la zone entière
+  &__entree {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  &:has(&__entree:focus-visible) {
+    outline: var(--focus);
+    outline-offset: 2px;
+  }
+
+  &__icone {
+    font-size: 20px;
+    color: var(--rose-texte);
+  }
+
+  &__texte {
+    font-size: 14px;
+    color: var(--gris);
+  }
+
+  &:hover &__texte,
+  &.is-over &__texte {
+    color: var(--noir);
+  }
+}

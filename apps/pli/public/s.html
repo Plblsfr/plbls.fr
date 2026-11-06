@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f4c7d5">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/vendor/plbls-ui/plbls-ui.min.css">
+  <link rel="stylesheet" href="/pli.css">
+  <script type="module" src="/theme.js"></script>
+  <title>Pli — un message vous attend</title>
+  <script type="module" src="/read.js"></script>
+</head>
+<body>
+  <header class="plbls-navbar">
+    <a class="plbls-navbar__marque pli-marque" href="/" aria-label="pli, accueil"><picture><source srcset="/logo/pli-logo-sombre.svg" media="(prefers-color-scheme: dark)"><img src="/logo/pli-logo-clair.svg" alt="pli" height="34"></picture></a>
+  </header>
+  <main class="pli pli--lecture">
+    <section id="ready" class="plbls-panel pli-bloc" hidden>
+      <h1>Un message sous <span class="plbls-highlight">pli</span></h1>
+      <p>Il est chiffré : seul ce lien peut l'ouvrir. <strong>Il ne peut être lu qu'une seule fois</strong> ; dès l'ouverture, il est effacé du serveur.</p>
+      <p id="meta" class="pli-aide"></p>
+      <button class="plbls-button plbls-button--plein" id="open">Ouvrir le message</button>
+    </section>
+
+    <section id="shown" class="plbls-panel pli-bloc" hidden>
+      <h1>Message déchiffré</h1>
+      <div class="plbls-alert plbls-alert--info" role="status"><div class="plbls-alert__corps">Il est maintenant effacé du serveur. Copiez-le ou enregistrez-le : ce lien ne fonctionnera plus.</div></div>
+      <pre id="text" class="pli-texte" hidden></pre>
+      <div id="file" class="plbls-file-row" hidden>
+        <span class="plbls-file-row__icone" aria-hidden="true">📄</span>
+        <div class="plbls-file-row__details"><span class="plbls-file-row__nom" id="file-name"></span><span class="plbls-file-row__taille" id="file-size"></span></div>
+      </div>
+      <div class="pli-actions">
+        <button class="plbls-button" id="copy" type="button" hidden>Copier le texte</button>
+        <a class="plbls-button" id="download" href="#" hidden>Enregistrer le fichier</a>
+      </div>
+    </section>
+
+    <section id="gone" class="plbls-empty-state" hidden>
+      <h1 id="gone-title">Ce message n'existe plus</h1>
+      <p id="gone-text">Il a déjà été lu, il a expiré, ou le lien est incorrect.</p>
+    </section>
+  </main>
+  <footer class="pli-pied">Chiffrement AES-256-GCM dans le navigateur · lecture unique · <a href="/">Créer un partage</a></footer>
+</body>
+</html>

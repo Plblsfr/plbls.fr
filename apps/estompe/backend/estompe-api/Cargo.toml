@@ -1,0 +1,44 @@
+[package]
+name = "estompe-api"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde_json.workspace = true
+estompe-core.workspace = true
+estompe-block.workspace = true
+estompe-block-gifs.workspace = true
+estompe-block-films.workspace = true
+estompe-block-musique.workspace = true
+estompe-block-vocal.workspace = true
+estompe-block-regarder-ensemble.workspace = true
+estompe-block-draw2gether.workspace = true
+estompe-block-transcription.workspace = true
+estompe-block-videos.workspace = true
+estompe-block-apercu-liens.workspace = true
+estompe-block-notifications.workspace = true
+estompe-block-emojis.workspace = true
+estompe-block-avatars.workspace = true
+estompe-block-badges.workspace = true
+estompe-block-signalements.workspace = true
+estompe-block-cairn.workspace = true
+estompe-block-activite-statut.workspace = true
+
+[dev-dependencies]
+estompe-core = { workspace = true, features = ["testutil"] }
+tower.workspace = true
+jsonschema.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true

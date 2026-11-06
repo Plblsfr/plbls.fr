@@ -1,0 +1,57 @@
+// Balise : <plbls-dropdown-menu><button slot="trigger">…</button><button role="menuitem" data-action="x">…</button></plbls-dropdown-menu>
+//
+// <div class="plbls-dropdown">
+//   <button class="plbls-dropdown__declencheur" aria-haspopup="menu" aria-expanded="false">…</button>
+//   <div class="plbls-dropdown__menu" role="menu">
+//     <button class="plbls-dropdown__item [plbls-dropdown__item--danger]" role="menuitem">…</button>
+//   </div>
+// </div>
+
+.plbls-dropdown {
+  position: relative;
+  display: inline-block;
+
+  &__declencheur {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  &__menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 180px;
+    background: var(--surface);
+    border-radius: var(--rayon-l);
+    box-shadow: var(--ombre-2);
+    padding: 6px;
+    z-index: 50;
+    animation: plbls-pose 0.2s var(--ressort);
+    transform-origin: top right;
+  }
+
+  &__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    font-family: var(--font-texte);
+    font-size: 14px;
+    color: var(--noir);
+    padding: 9px 12px;
+    border-radius: var(--rayon-s);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--rose);
+    }
+
+    &--danger {
+      color: var(--rose-texte);
+    }
+  }
+}

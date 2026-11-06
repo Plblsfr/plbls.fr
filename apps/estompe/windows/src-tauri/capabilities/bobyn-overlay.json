@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "bobyn-overlay",
+  "description": "Pastille Bobyn sur le jeu : reçoit seulement l'état envoyé par la fenêtre principale.",
+  "windows": [
+    "bobyn-overlay"
+  ],
+  "permissions": [
+    "core:event:default"
+  ],
+  "platforms": [
+    "windows",
+    "linux",
+    "macOS"
+  ]
+}

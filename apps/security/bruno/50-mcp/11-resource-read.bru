@@ -1,0 +1,30 @@
+meta {
+  name: MCP resources/read
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{gw}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{mcpToken}}
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+}
+
+body:json {
+  {"jsonrpc":"2.0","id":7,"method":"resources/read","params":{"uri":"plbls://docs/security"}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("contenu", function () { expect(res.body.result.contents[0].text).to.contain("CSRF"); });
+}

@@ -1,0 +1,88 @@
+// Balise : <plbls-modal title="…">…</plbls-modal>  (attribut `open`)
+//
+// <div class="plbls-modal__fond">
+//   <div class="plbls-modal" role="dialog" aria-modal="true" aria-labelledby="t">
+//     <div class="plbls-modal__entete"><h3 id="t">Titre</h3><button class="plbls-modal__fermer" aria-label="Fermer">✕</button></div>
+//     <div class="plbls-modal__corps">…</div>
+//   </div>
+// </div>
+
+.plbls-modal__fond[hidden] {
+  display: none;
+}
+
+.plbls-modal__fond {
+  position: fixed;
+  inset: 0;
+  background: rgb(var(--ombre) / 38%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: plbls-fondu 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.plbls-modal {
+  width: 100%;
+  max-width: 440px;
+  background: var(--surface);
+  border-radius: var(--rayon-xl);
+  box-shadow: var(--ombre-3);
+  animation: plbls-pose 0.32s var(--ressort);
+
+  &__entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 24px 4px;
+
+    > h3 {
+      font-size: 20px;
+      font-weight: 600;
+    }
+  }
+
+  &__fermer {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    background: var(--creme-creux);
+    border: none;
+    border-radius: 50%;
+    font-size: 13px;
+    color: var(--gris);
+    cursor: pointer;
+    transition: background var(--duree) ease;
+
+    &:hover {
+      color: var(--noir);
+      background: var(--rose);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--noir);
+      outline-offset: 2px;
+    }
+  }
+
+  &__corps {
+    padding: 12px 24px 24px;
+  }
+}
+
+@keyframes plbls-fondu {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes plbls-pose {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+}

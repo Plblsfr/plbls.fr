@@ -1,0 +1,20 @@
+meta {
+  name: GET /auth/callback error=access_denied
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{gw}}/auth/callback?error=access_denied
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("400", function () { expect(res.status).to.equal(400); });
+}

@@ -1,0 +1,26 @@
+meta {
+  name: GET /mcp : 405
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{gw}}/mcp
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{mcpToken}}
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("405", function () { expect(res.status).to.equal(405); });
+}

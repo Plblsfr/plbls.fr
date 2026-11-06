@@ -1,0 +1,56 @@
+[package]
+name = "estompe"
+version = "0.83.0"
+description = "Estompe — messagerie écrite et vocale"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "estompe_lib"
+crate-type = ["rlib"] # pas de cdylib : inutile hors mobile, et le linker mingw dépasse 65 535 exports
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-notification = "2"
+estompe-core = { path = "../../crates/core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Replay instantané (onglet Bobyn, alpha) : le moteur ne compile ses parties Windows que sous Windows
+bobyn = { path = "bobyn/crates/app" }
+# Mises à jour automatiques : le plugin n'est activé que si `plugins.updater` figure dans la configuration (voir ../README.md)
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-single-instance = "2" # une seule instance par utilisateur (EST-113)
+
+# Capture d'écran et de fenêtres (sélecteur de partage, façon Discord) : le webview ne sait pas désigner une source précise
+[target.'cfg(windows)'.dependencies]
+xcap = { version = "0.9", default-features = false, features = ["image", "wgc"] } # wgc : Windows Graphics Capture, pour les fenêtres accélérées par le GPU (navigateurs, jeux)
+tauri-winrt-notification = "0.8" # toasts avec boutons (déjà tiré par tauri-plugin-notification)
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+# Partage d'écran natif (EST-18) : capture en Rust puis publication WebRTC sans repasser par le webview (SDK LiveKit).
+# Derrière une feature : libwebrtc est précompilé et ne vise que la cible MSVC.
+# Son du partage natif (EST-52) : capture WASAPI « process loopback » (le son d'une fenêtre, ou celui du système sans Estompe).
+wasapi = { version = "0.24", optional = true }
+livekit = { version = "0.9", optional = true, default-features = false, features = ["native", "rustls-tls-webpki-roots"] }
+
+[features]
+livekit-native = ["dep:livekit", "dep:wasapi"]
+
+# Binaire léger : cible de moins de 20 Mo
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Builds de main en CI : mêmes optimisations de taille, sans LTO ni unité unique (compilation bien plus rapide).
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16

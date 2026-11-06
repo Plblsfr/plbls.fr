@@ -1,0 +1,49 @@
+/* Seulement la mise en page propre à l'application ; tout composant visuel vient de plbls-ui. */
+.app-main { max-width: 1120px; margin: 0 auto; padding: var(--espace-8) var(--marge) var(--espace-16); }
+.app-cols { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: var(--espace-6); align-items: start; }
+@media (max-width: 800px) { .app-cols { grid-template-columns: minmax(0, 1fr); } }
+.app-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--espace-6); }
+.app-stack .plbls-input, .app-stack .plbls-select { min-width: 0; }
+.app-list { display: flex; flex-wrap: wrap; gap: var(--espace-2); margin: 0 0 var(--espace-4); padding: 0; list-style: none; }
+.app-form { display: flex; flex-wrap: wrap; gap: var(--espace-3); align-items: flex-end; margin-top: var(--espace-4); }
+.app-form .plbls-field { flex: 1 1 160px; }
+.app-scroll { overflow-x: auto; position: relative; } /* position : borne les .plbls-sr-only (absolus) du tableau */
+.app-actions { display: flex; gap: var(--espace-2); justify-content: flex-end; margin-top: var(--espace-4); }
+.app-matrix td:not(:first-child), .app-matrix th:not(:first-child) { text-align: center; }
+.app-matrix .plbls-checkbox { justify-content: center; }
+.app-sub { color: var(--gris); font-size: 13px; }
+.app-mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; word-break: break-all; }
+.app-gate { text-align: center; margin-top: 18vh; }
+.app-inline { display: flex; align-items: center; gap: var(--espace-2); flex-wrap: wrap; }
+
+/* Refonte v2 : sidebar + contenu, maître-détail, onglets, fiche de rôle. */
+.app-shell { display: flex; align-items: flex-start; }
+.app-shell > .plbls-sidebar { flex: none; }
+.app-shell > .app-main { flex: 1; min-width: 0; margin: 0; max-width: 1120px; padding: var(--espace-8) var(--marge) var(--espace-16); }
+@media (max-width: 780px) { .app-shell { flex-direction: column; align-items: stretch; } .app-shell > .plbls-sidebar { padding: var(--espace-3) var(--marge) 0; } }
+.app-rows { display: grid; gap: var(--espace-1); margin: 0 0 var(--espace-4); }
+.app-row { display: grid; gap: 2px; text-align: left; width: 100%; padding: 10px 14px; border: 0; border-radius: var(--rayon); background: none; color: var(--noir); cursor: pointer; min-height: 44px; }
+.app-row:hover { background: var(--creme-creux); }
+.app-row[aria-current="true"] { background: var(--rose); }
+.app-row:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.app-row[aria-current="true"] .app-sub { color: var(--noir); } /* --gris sur --rose : 3,8:1 en clair, sous les 4,5:1 */
+.app-row b { font-weight: 500; }
+.app-head { display: flex; justify-content: space-between; align-items: center; gap: var(--espace-4); flex-wrap: wrap; margin-bottom: var(--espace-6); }
+.app-head h2 { font-size: clamp(22px, 3vw, 30px); }
+.app-tabs-wrap { margin-bottom: var(--espace-6); }
+.app-checks { display: grid; margin: var(--espace-3) 0 0; padding: 0; list-style: none; border-radius: var(--rayon); background: var(--creme); }
+.app-checks li { padding: 12px 16px; min-height: 52px; border-bottom: 1px solid var(--trait); }
+.app-checks .plbls-checkbox { display: flex; align-items: flex-start; }
+.app-checks li:last-child { border-bottom: 0; }
+.app-savebar { position: sticky; bottom: var(--espace-4); display: flex; justify-content: space-between; align-items: center; gap: var(--espace-3); flex-wrap: wrap; padding: var(--espace-3) var(--espace-4); border-radius: var(--rayon-l); background: var(--surface); box-shadow: var(--ombre-2); }
+@media (prefers-reduced-transparency: no-preference) { .app-savebar { backdrop-filter: blur(12px); } }
+.app-new > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 500; border-radius: var(--rayon); padding: 0 14px; }
+.app-new > summary:hover { background: var(--creme-creux); }
+.app-new > summary:focus-visible { outline: var(--focus); outline-offset: 2px; }
+.app-new[open] > summary { margin-bottom: var(--espace-3); }
+@media (max-width: 780px) { .plbls-button--compact { min-height: 44px; } } /* cible tactile : 24 px de haut sinon, sous le minimum de 28 */
+.app-new > summary::before { content: "+"; width: 20px; color: var(--gris); }
+.app-new[open] > summary::before { content: "−"; }
+.app-savebar > .app-sub:empty { display: none; }
+.app-savebar .app-inline { margin-left: auto; }
+@media (max-width: 780px) { .app-savebar { padding: var(--espace-2) var(--espace-3); } .app-savebar .app-inline { flex-wrap: nowrap; } .app-savebar .plbls-button { padding-inline: 16px; } }

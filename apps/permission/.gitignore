@@ -1,0 +1,7 @@
+target/
+node_modules/
+dist/
+.env
+__pycache__/
+e2e/node_modules/
+e2e/package-lock.json

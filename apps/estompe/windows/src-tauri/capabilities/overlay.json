@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay",
+  "description": "Fenêtre d'overlay des participants du salon vocal : reçoit seulement l'état envoyé par la fenêtre principale.",
+  "windows": [
+    "overlay"
+  ],
+  "permissions": [
+    "core:event:default"
+  ],
+  "platforms": [
+    "windows",
+    "linux",
+    "macOS"
+  ]
+}

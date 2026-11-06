@@ -1,0 +1,24 @@
+meta {
+  name: GET /auth/session
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{gw}}/auth/session
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid={{sid}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("204", function () { expect(res.status).to.equal(204); });
+}

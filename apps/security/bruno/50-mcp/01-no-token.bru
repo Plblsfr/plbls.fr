@@ -1,0 +1,28 @@
+meta {
+  name: POST /mcp sans token : 401
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{gw}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"jsonrpc":"2.0","id":1,"method":"ping"}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401 + WWW-Authenticate", function () { expect(res.status).to.equal(401); expect(res.headers["www-authenticate"]).to.equal("Bearer"); });
+}

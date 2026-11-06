@@ -1,0 +1,20 @@
+meta {
+  name: upstream injoignable : 502
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{gw}}/api/down/x
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("502", function () { expect(res.status).to.equal(502); });
+}

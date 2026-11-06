@@ -1,0 +1,68 @@
+# Une PR par projet et par écosystème (Dependabot ne mélange pas npm, cargo et docker dans une même PR).
+# Les groupes incluent aussi les montées majeures : à relire avant de fusionner.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+    ignore:
+      # le tag de dtolnay/rust-toolchain est la version de Rust (épinglée à la main), pas celle de l'action : Dependabot proposerait un tag inexistant
+      - dependency-name: dtolnay/rust-toolchain
+
+  # --- npm : workspace racine (un seul package-lock.json pour estompe, permission, pli et packages/ui), donc une seule PR ---
+  # estompe et permission (Svelte 5) : svelte-check n'accepte TypeScript 7 qu'avec TypeScript 6 en parallèle et --tsgo (expérimental) : on reste en 6
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      npm: { patterns: ["*"] }
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+
+  # permission/e2e : hors workspace (Playwright lancé dans son image Docker)
+  - package-ecosystem: npm
+    directories: [/apps/permission/e2e]
+    schedule: { interval: weekly }
+    groups:
+      permission-e2e: { patterns: ["*"] }
+
+  # --- cargo ---
+  # workspace racine (security, permission, estompe-api) : un seul Cargo.lock, donc un seul groupe
+  - package-ecosystem: cargo
+    directories: [/]
+    schedule: { interval: weekly }
+    groups:
+      rust: { patterns: ["*"] }
+
+  # apps Tauri d'Estompe : hors du workspace racine, chacune son Cargo.lock
+  - package-ecosystem: cargo
+    directories: [/apps/estompe/crates/core, /apps/estompe/windows/src-tauri, /apps/estompe/android/src-tauri]
+    schedule: { interval: weekly }
+    groups:
+      estompe-tauri: { patterns: ["*"] }
+
+  # --- images Docker : une PR pour tous les Dockerfile, une pour tous les compose ---
+  - package-ecosystem: docker
+    directories: [/apps/pli, /apps/security, /apps/permission, /apps/estompe/backend, /apps/estompe/web, /apps/estompe/deploy/ci, /packages/ui]
+    schedule: { interval: weekly }
+    groups:
+      dockerfiles: { patterns: ["*"] }
+    ignore:
+      # versions impaires sans support à long terme ; une nouvelle LTS se monte à la main partout (.nvmrc, engines, images : scripts/check-node.mjs)
+      - dependency-name: node
+        versions: ["25.x", "27.x", "29.x"]
+      # la version de Rust des images suit rust-toolchain.toml (épinglée à la main, vérifiée par _rust-lint.yml)
+      - dependency-name: rust
+
+  - package-ecosystem: docker-compose
+    directories: [/apps/estompe/deploy]
+    schedule: { interval: weekly }
+    groups:
+      compose: { patterns: ["*"] }
+    ignore:
+      # PostgreSQL : une montée majeure exige une migration des données (pg_upgrade), pas un changement de tag
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]

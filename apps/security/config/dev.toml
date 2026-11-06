@@ -1,0 +1,59 @@
+# Développement local : GATEWAY_CONFIG=config/dev.toml (voir deploy/dev.env)
+[server]
+bind = "127.0.0.1:8080"
+public_url = "http://localhost:8080"
+default_redirect = "http://localhost:3000/"
+extra_origins = ["http://localhost:3000"]
+ws_max_lifetime_secs = 4
+
+[redis]
+url = "redis://127.0.0.1:6379"
+
+[session]
+cookie_name = "plbls_sid"
+cookie_domain = ""
+cookie_secure = false
+
+[[routes]]
+prefix = "/api/whoami"
+upstream = "http://127.0.0.1:8081"
+strip_prefix = true
+public = true
+
+[[routes]]
+prefix = "/api/private"
+upstream = "http://127.0.0.1:8081"
+strip_prefix = true
+
+[[routes]]
+prefix = "/api/admin"
+upstream = "http://127.0.0.1:8081"
+strip_prefix = true
+roles = ["admin"]
+
+# transmet aussi l'access token en Authorization
+[[routes]]
+prefix = "/api/fwd"
+upstream = "http://127.0.0.1:8081"
+strip_prefix = true
+forward_token = true
+
+# le préfixe est conservé côté upstream
+[[routes]]
+prefix = "/api/raw"
+upstream = "http://127.0.0.1:8081"
+public = true
+
+# rôle client (resource_access) : client:role
+[[routes]]
+prefix = "/api/scan"
+upstream = "http://127.0.0.1:8081"
+strip_prefix = true
+roles = ["plbls-mobile:scanner"]
+
+# upstream injoignable -> 502
+[[routes]]
+prefix = "/api/down"
+upstream = "http://127.0.0.1:9"
+strip_prefix = true
+public = true

@@ -1,0 +1,25 @@
+meta {
+  name: GET /auth/me (Bearer invalide + cookie valide : le Bearer prime)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{gw}}/auth/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer pas.un.jwt
+  Cookie: plbls_sid={{sid}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401", function () { expect(res.status).to.equal(401); });
+}

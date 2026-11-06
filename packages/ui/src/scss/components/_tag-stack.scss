@@ -1,0 +1,19 @@
+// <ul class="plbls-tag-stack"><li>Angular</li><li>Java</li></ul>
+
+.plbls-tag-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--noir);
+    background: var(--creme-creux);
+    padding: 5px 12px;
+    border-radius: var(--rayon-pilule);
+  }
+}

@@ -1,0 +1,25 @@
+meta {
+  name: CORS : Origin étranger refusé
+  type: http
+  seq: 23
+}
+
+options {
+  url: {{gw}}/api/private/x
+  body: none
+  auth: none
+}
+
+headers {
+  Origin: https://evil.example
+  Access-Control-Request-Method: POST
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("pas d'allow-origin", function () { expect(res.headers["access-control-allow-origin"]).to.equal(undefined); });
+}

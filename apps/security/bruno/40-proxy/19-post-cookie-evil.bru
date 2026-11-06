@@ -1,0 +1,25 @@
+meta {
+  name: POST par cookie, Origin étranger : 403
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{gw}}/api/private/x
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid={{sid}}
+  Origin: https://evil.example
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("403", function () { expect(res.status).to.equal(403); });
+}

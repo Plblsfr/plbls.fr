@@ -1,0 +1,17 @@
+[package]
+name = "bobyn"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bobyn-buffer = { path = "../buffer" }
+bobyn-mux = { path = "../mux" }
+
+[target.'cfg(windows)'.dependencies]
+bobyn-capture = { path = "../capture" }
+bobyn-encode = { path = "../encode" }
+bobyn-audio = { path = "../audio" }
+windows = { workspace = true }

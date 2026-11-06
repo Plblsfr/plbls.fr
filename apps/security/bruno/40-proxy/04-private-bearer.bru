@@ -1,0 +1,25 @@
+meta {
+  name: /api/private avec Bearer
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{gw}}/api/private/x
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{tokDemo}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("200, client mobile", function () { expect(res.status).to.equal(200); expect(res.body).to.contain("X-Client-Id: plbls-mobile"); });
+  test("pas d'Authorization vers l'upstream", function () { expect(res.body.toLowerCase()).to.not.contain("authorization:"); });
+}

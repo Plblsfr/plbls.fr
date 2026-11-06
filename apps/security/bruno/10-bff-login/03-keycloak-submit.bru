@@ -1,0 +1,41 @@
+meta {
+  name: Keycloak - envoi des identifiants
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{kcActionUrl}}
+  body: formUrlEncoded
+  auth: none
+}
+
+headers {
+  Cookie: {{kcCookie}}
+}
+
+body:form-urlencoded {
+  username: {{loginUser}}
+  password: {{loginPassword}}
+  credentialId: 
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+  if (!bru.getVar("loginUser")) { bru.setVar("loginUser", "demo"); bru.setVar("loginPassword", "demo"); }
+}
+
+script:post-response {
+  bru.setVar("callbackUrl", res.headers["location"] || "");
+}
+
+tests {
+  test("Keycloak redirige vers le callback du gateway", function () {
+    expect(res.status).to.equal(302);
+    const param = (url, k) => { const m = url.match(new RegExp("[?&]" + k + "=([^&#]*)")); return m ? decodeURIComponent(m[1]) : null; };
+    const cb = bru.getVar("callbackUrl");
+    expect(cb.split("?")[0]).to.equal(bru.getEnvVar("gw") + "/auth/callback");
+    expect(param(cb, "code")).to.be.a("string");
+    expect(param(cb, "state")).to.equal(param(bru.getVar("kcAuthUrl"), "state"));
+  });
+}

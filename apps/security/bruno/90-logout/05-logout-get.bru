@@ -1,0 +1,19 @@
+meta {
+  name: GET /auth/logout refusé (pas de déconnexion par simple lien)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{gw}}/auth/logout
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+}
+
+tests {
+  test("405", function () { expect(res.status).to.equal(405); });
+}

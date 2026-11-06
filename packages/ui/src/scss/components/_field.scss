@@ -1,0 +1,122 @@
+// Champs de formulaire : input, textarea, select.
+//
+// <div class="plbls-field">
+//   <label class="plbls-field__label" for="mail">Adresse e-mail</label>
+//   <input class="plbls-input" id="mail" type="email" aria-describedby="mail-aide">
+//   <span class="plbls-field__aide" id="mail-aide">…</span>
+// </div>
+//
+// Erreur : `.plbls-input--error` (ou --error sur textarea/select) + un
+// `<span class="plbls-field__message" role="alert">`.
+// Label masqué : `.plbls-field__label--masque`.
+
+.plbls-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+
+  &--large {
+    max-width: none;
+  }
+
+  &__label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gris);
+
+    &--masque {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+
+  &__message {
+    font-size: 12px;
+    color: var(--rose-texte);
+  }
+
+  &__aide {
+    font-size: 12px;
+    color: var(--gris);
+  }
+}
+
+.plbls-input,
+.plbls-textarea {
+  font-family: var(--font-texte);
+  font-size: 15px;
+  padding: 11px 16px;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid transparent;
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre-1);
+  color: var(--noir);
+  transition:
+    border-color var(--duree) ease,
+    box-shadow var(--duree) ease;
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--noir);
+    box-shadow: var(--halo);
+  }
+
+  &--error,
+  &[aria-invalid='true'] {
+    border-color: var(--rose-fonce);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.plbls-textarea {
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.plbls-select {
+  font-family: var(--font-texte);
+  font-size: 14px;
+  padding: 9px 36px 9px 16px;
+  min-height: 40px;
+  // flèche en dégradés : suit --noir, donc les deux thèmes
+  background:
+    linear-gradient(45deg, transparent 50%, var(--noir) 50%) calc(100% - 20px) 50% / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--noir) 50%, transparent 50%) calc(100% - 15px) 50% / 5px 5px no-repeat,
+    var(--surface);
+  border: 1px solid transparent;
+  border-radius: var(--rayon-pilule);
+  box-shadow: var(--ombre-1);
+  color: var(--noir);
+  appearance: none;
+  cursor: pointer;
+  transition: border-color var(--duree) ease;
+
+  &:hover:not(:disabled) {
+    border-color: var(--noir);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--noir);
+    box-shadow: var(--halo);
+  }
+
+  &--error {
+    border-color: var(--rose-fonce);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

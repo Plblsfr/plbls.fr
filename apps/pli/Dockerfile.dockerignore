@@ -1,0 +1,12 @@
+*
+!package.json
+!package-lock.json
+!packages/ui/package.json
+!apps/estompe/frontend/package.json
+!apps/permission/frontend/package.json
+!apps/pli/package.json
+!apps/pli/server
+!apps/pli/public
+**/node_modules
+**/.env
+apps/pli/public/*.test.js

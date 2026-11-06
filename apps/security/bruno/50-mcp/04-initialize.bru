@@ -1,0 +1,35 @@
+meta {
+  name: MCP initialize
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{gw}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{mcpToken}}
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+}
+
+body:json {
+  {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"bruno","version":"1"}}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("handshake", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body.result.protocolVersion).to.equal("2025-06-18");
+    expect(res.body.result.serverInfo.name).to.equal("auth-gateway");
+    expect(res.body.result.instructions).to.contain("get_doc");
+  });
+}

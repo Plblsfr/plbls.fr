@@ -1,0 +1,20 @@
+meta {
+  name: GET /auth/session sans cookie
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{gw}}/auth/session
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401", function () { expect(res.status).to.equal(401); });
+}

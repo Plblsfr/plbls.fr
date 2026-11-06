@@ -1,0 +1,20 @@
+meta {
+  name: /api/private sans authentification
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{gw}}/api/private/x
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401", function () { expect(res.status).to.equal(401); });
+}

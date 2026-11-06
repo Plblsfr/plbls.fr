@@ -1,0 +1,48 @@
+// Contrôle segmenté. Balise : <plbls-tabs active="a"><button role="tab" data-id="a">…</button>…</plbls-tabs>
+//
+// <div class="plbls-tabs" role="tablist">
+//   <button class="plbls-tabs__onglet is-active" role="tab" aria-selected="true">Profil</button>
+// </div>
+
+.plbls-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--creme-creux);
+  border-radius: var(--rayon-pilule);
+
+  &__onglet {
+    font-family: var(--font-texte);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--gris);
+    background: none;
+    border: none;
+    border-radius: var(--rayon-pilule);
+    padding: 8px 18px;
+    cursor: pointer;
+    transition:
+      background var(--duree) ease,
+      color var(--duree) ease,
+      box-shadow var(--duree) ease;
+
+    &:hover {
+      color: var(--noir);
+    }
+
+    &.is-active,
+    &[aria-selected='true'] {
+      color: var(--noir);
+      background: var(--surface);
+      box-shadow: var(--ombre-1);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--noir);
+      outline-offset: 1px;
+    }
+  }
+}

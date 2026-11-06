@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <filter id="ombre" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <mask id="trou">
+      <rect width="128" height="128" fill="#fff"/>
+      <circle cx="64" cy="79" r="7" fill="#000"/>
+      <rect x="61" y="82" width="6" height="12" rx="3" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#121212" filter="url(#ombre)"/>
+  <rect x="14" y="70" width="100" height="26" rx="13" fill="#e07a9a" transform="rotate(-6 64 64)"/>
+  <path d="M46 62V50a18 18 0 0 1 36 0V62" fill="none" stroke="#ededed" stroke-width="10" stroke-linecap="round"/>
+  <rect x="36" y="58" width="56" height="48" rx="14" fill="#ededed" mask="url(#trou)"/>
+</svg>

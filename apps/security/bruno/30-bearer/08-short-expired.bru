@@ -1,0 +1,24 @@
+meta {
+  name: GET /auth/me (plbls-short, token expiré)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{gw}}/auth/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{tokShort}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+  await new Promise((r) => setTimeout(r, 7000));
+}
+
+tests {
+  test("401 après expiration", function () { expect(res.status).to.equal(401); });
+}

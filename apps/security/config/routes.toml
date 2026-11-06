@@ -1,0 +1,11 @@
+# Routes de production : une entrée [[routes]] par micro-service, ajoutée au fil de leur extraction du monolithe.
+# Embarqué dans l'image (COPY config) : une modification demande un commit, la CI, puis un redéploiement. Modèle : routes.example.toml.
+# Aucune route pour l'instant : seuls /auth/*, /healthz, /readyz et /mcp sont actifs.
+
+# permission.plbls.fr : API du service de permissions (utilisateurs via cookie de session).
+# Permission doit partager GATEWAY__IDENTITY__SECRET (PERMISSION__IDENTITY__SECRET) et être joignable sur le réseau Docker.
+[[routes]]
+prefix = "/api/permission"
+upstream = "http://permission:8080"
+strip_prefix = true
+roles = ["permission-admin"]

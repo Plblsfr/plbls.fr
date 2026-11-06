@@ -1,0 +1,35 @@
+// Balise : <plbls-otp-input length="6"></plbls-otp-input>
+//
+// <div class="plbls-otp [plbls-otp--error]"><input class="plbls-otp__case" maxlength="1" inputmode="numeric">…</div>
+
+.plbls-otp {
+  display: flex;
+  gap: 8px;
+
+  &__case {
+    width: 48px;
+    height: 56px;
+    text-align: center;
+    font-family: var(--font-titre);
+    font-size: 22px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    border-radius: var(--rayon);
+    background: var(--surface);
+    box-shadow: var(--ombre-1);
+    color: var(--noir);
+    transition:
+      border-color var(--duree) ease,
+      box-shadow var(--duree) ease;
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--noir);
+      box-shadow: var(--halo);
+    }
+  }
+
+  &--error &__case {
+    border-color: var(--rose-fonce);
+  }
+}

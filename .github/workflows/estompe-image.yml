@@ -1,0 +1,67 @@
+name: estompe-image
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/estompe/backend/**", "!apps/estompe/backend/**.md", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".dockerignore"]
+    tags: ["estompe-api-v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/plblsfr/estompe
+
+permissions:
+  contents: write
+  packages: write
+
+defaults:
+  run:
+    working-directory: apps/estompe
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=edge,branch=main
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/estompe-api-v') }}
+            type=sha,prefix=sha-
+            type=match,pattern=estompe-api-v(.*),group=1
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/estompe/backend/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+  release:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/estompe-api-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME" >/dev/null

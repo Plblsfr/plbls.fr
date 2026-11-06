@@ -1,0 +1,8 @@
+# La base Postgres existe déjà : renseigner DATABASE_URL et PERMISSION_* dans .env.
+services:
+  pli:
+    image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"   # derrière le reverse proxy TLS de pli.plbls.fr

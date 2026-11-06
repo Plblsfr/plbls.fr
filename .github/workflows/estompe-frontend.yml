@@ -1,0 +1,86 @@
+name: estompe-frontend
+
+on:
+  pull_request:
+    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/estompe/frontend/**", "apps/estompe/windows/**", "apps/estompe/android/**", "apps/estompe/crates/**", "apps/estompe/web/**", ".github/workflows/estompe-frontend.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_INCREMENTAL: 0
+
+defaults:
+  run:
+    working-directory: apps/estompe
+
+jobs:
+  front:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/estompe/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        working-directory: .
+      - name: Audit des dépendances
+        working-directory: .
+        run: npm audit --omit=dev --audit-level=high --workspace apps/estompe/frontend
+      - name: Types
+        run: npm run check
+      - name: Tests unitaires
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - id: cargo
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/windows/src-tauri/target
+            apps/estompe/windows/src-tauri/bobyn/target
+            apps/estompe/android/src-tauri/target
+          key: rust-test-${{ hashFiles('apps/estompe/windows/src-tauri/Cargo.lock', 'apps/estompe/windows/src-tauri/bobyn/Cargo.lock', 'apps/estompe/android/src-tauri/Cargo.lock') }}
+          restore-keys: rust-test-
+      - name: Tests de l'app Windows
+        working-directory: apps/estompe/windows/src-tauri
+        run: cargo test --lib
+      - name: Tests du crate commun
+        working-directory: apps/estompe/crates/core
+        run: cargo test
+      - name: Compilation de l'app Android (hors Android)
+        working-directory: apps/estompe/android/src-tauri
+        run: mkdir -p ../../frontend/dist && cargo check
+      - name: Tests de Bobyn
+        working-directory: apps/estompe/windows/src-tauri/bobyn
+        run: cargo test
+      - name: ffmpeg épinglé téléchargeable et vérifié
+        run: TAURI_ENV_PLATFORM=windows node windows/scripts/fetch-ffmpeg.mjs && test -s windows/src-tauri/binaries/ffmpeg.exe
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/windows/src-tauri/target
+            apps/estompe/windows/src-tauri/bobyn/target
+            apps/estompe/android/src-tauri/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}

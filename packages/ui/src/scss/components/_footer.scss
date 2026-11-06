@@ -1,0 +1,46 @@
+// <footer class="plbls-footer">
+//   <p>plbls © 2026 <span class="plbls-footer__version">v0.2.0</span></p>
+//   <nav class="plbls-footer__liens" aria-label="Informations légales"><a href="/mentions">Mentions légales</a></nav>
+// </footer>
+
+.plbls-footer {
+  padding: clamp(58px, 9vw, 110px) var(--marge) var(--marge);
+  margin-top: clamp(56px, 8vw, 96px);
+  box-shadow: 0 -1px 0 rgb(var(--ombre) / 7%);
+
+  > p {
+    font-size: 12px;
+    color: var(--gris);
+    margin: 0;
+    letter-spacing: 0.04em;
+  }
+
+  // Un point la sépare de la signature ; la couleur reste celle du pied de
+  // page, parce qu'un numéro de version sert à être lu et recopié.
+  &__version {
+    margin-left: var(--espace-3);
+
+    &::before {
+      content: '·';
+      margin-right: var(--espace-3);
+      color: var(--trait);
+    }
+  }
+
+  &__liens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--espace-2) var(--espace-4);
+    margin-top: var(--espace-3);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+
+    a {
+      color: var(--gris);
+
+      &:hover {
+        color: var(--noir);
+      }
+    }
+  }
+}

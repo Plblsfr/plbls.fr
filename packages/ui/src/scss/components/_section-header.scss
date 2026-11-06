@@ -1,0 +1,16 @@
+// <header class="plbls-section-header"><h2>Titre</h2><p class="plbls-section-header__intro">…</p></header>
+
+.plbls-section-header {
+  padding: clamp(58px, 8vw, 104px) 0 30px;
+
+  > h2 {
+    font-weight: 700;
+    font-size: clamp(20px, 2.4vw, 28px);
+  }
+
+  &__intro {
+    margin: 10px 0 0;
+    max-width: 56ch;
+    color: var(--gris);
+  }
+}

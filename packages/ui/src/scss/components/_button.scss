@@ -1,0 +1,128 @@
+// <button class="plbls-button plbls-button--contour">
+// Variantes : --plein (défaut) · --contour · --discret · --lien
+// Modificateurs : --block (pleine largeur) · --compact · --danger · is-busy (chargement)
+
+.plbls-button {
+  font-family: var(--font-texte);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
+  padding: 11px 22px;
+  min-height: 42px;
+  border-radius: var(--rayon-pilule);
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: var(--noir);
+  color: var(--creme);
+  transition:
+    background var(--duree) ease,
+    color var(--duree) ease,
+    border-color var(--duree) ease,
+    box-shadow var(--duree) ease,
+    transform 0.12s ease;
+
+  // un appui se sent : le bouton s'enfonce un peu
+  &:active:not(:disabled, [aria-disabled='true']) {
+    transform: scale(0.97);
+  }
+
+  &:disabled,
+  &[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--noir);
+    outline-offset: 2px;
+  }
+
+  // plein — creme sur --rose-fonce ne donnait que 3.6:1, d'où --rose-texte
+  &:hover:not(:disabled, [aria-disabled='true']) {
+    background: var(--rose-texte);
+  }
+
+  &--contour {
+    background: var(--surface);
+    color: var(--noir);
+    border-color: transparent;
+    box-shadow: var(--ombre-1);
+
+    &:hover:not(:disabled, [aria-disabled='true']) {
+      background: var(--rose);
+      color: var(--noir);
+    }
+  }
+
+  &--discret {
+    background: transparent;
+    color: var(--gris);
+    padding-left: 14px;
+    padding-right: 14px;
+
+    &:hover:not(:disabled, [aria-disabled='true']) {
+      background: var(--creme-creux);
+      color: var(--noir);
+    }
+  }
+
+  // dans le fil du texte, sans gabarit de bouton
+  &--lien {
+    padding: 0;
+    min-height: 0;
+    background: none;
+    border-radius: 2px;
+    font: inherit;
+    color: var(--gris);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+
+    &:hover:not(:disabled, [aria-disabled='true']) {
+      background: none;
+      color: var(--noir);
+    }
+  }
+
+  &--block {
+    display: block;
+    width: 100%;
+  }
+
+  // gestes secondaires d'une ligne de liste
+  &--compact:not(.plbls-button--lien) {
+    padding: 6px 14px;
+    min-height: 32px;
+    font-size: 13px;
+  }
+
+  // le texte seul change, jamais l'aplat
+  &--danger:not(.plbls-button--plein) {
+    color: var(--rose-texte);
+  }
+
+  // pendant une requête : le trait rose balaie le bouton
+  &.is-busy {
+    position: relative;
+    overflow: hidden;
+
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 3px;
+      width: 40%;
+      background: var(--rose);
+      animation: plbls-balaye 0.9s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes plbls-balaye {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}

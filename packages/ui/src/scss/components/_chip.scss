@@ -1,0 +1,39 @@
+// <button class="plbls-chip is-active" type="button" aria-pressed="true">Photos</button>
+// État actif = l'aplat rose (classe `is-active`, ou aria-pressed/aria-checked="true").
+
+.plbls-chip {
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid transparent;
+  box-shadow: var(--ombre-1);
+  border-radius: var(--rayon-pilule);
+  color: var(--noir);
+  font-family: var(--font-texte);
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background var(--duree) ease,
+    border-color var(--duree) ease;
+
+  &:hover:not(:disabled, .is-active, [aria-pressed='true'], [aria-checked='true']) {
+    background: var(--creme-creux);
+    box-shadow: none;
+  }
+
+  &.is-active,
+  &[aria-pressed='true'],
+  &[aria-checked='true'] {
+    background: var(--rose);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: var(--focus);
+    outline-offset: 2px;
+  }
+}

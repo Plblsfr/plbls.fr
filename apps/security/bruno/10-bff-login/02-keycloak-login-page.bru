@@ -1,0 +1,32 @@
+meta {
+  name: Keycloak - page de login
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{kcAuthUrl}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+}
+
+script:post-response {
+  const body = typeof res.body === "string" ? res.body : "";
+  const m = body.match(/action="([^"]+)"/);
+  bru.setVar("kcActionUrl", m ? m[1].replace(/&amp;/g, "&") : "");
+  const sc = res.headers["set-cookie"] || [];
+  const list = Array.isArray(sc) ? sc : [sc];
+  bru.setVar("kcCookie", list.map((c) => c.split(";")[0]).join("; "));
+}
+
+tests {
+  test("formulaire de login présent", function () {
+    expect(res.status).to.equal(200);
+    expect(bru.getVar("kcActionUrl")).to.contain("login-actions/authenticate");
+    expect(bru.getVar("kcCookie")).to.contain("AUTH_SESSION_ID");
+  });
+}

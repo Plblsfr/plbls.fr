@@ -1,0 +1,46 @@
+meta {
+  name: GET /auth/callback
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{callbackUrl}}
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: {{loginCookie}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+}
+
+script:post-response {
+  const sc = res.headers["set-cookie"] || [];
+  const list = Array.isArray(sc) ? sc : [sc];
+  const sid = list.find((c) => c.startsWith("plbls_sid=") && !c.startsWith("plbls_sid_login="));
+  bru.setVar("sidSetCookie", sid || "");
+  bru.setVar("sid", sid ? sid.split(";")[0].split("=")[1] : "");
+}
+
+tests {
+  test("303 vers l'URL d'origine", function () {
+    expect(res.status).to.equal(303);
+    expect(res.headers["location"]).to.equal(bru.getVar("redirectParam"));
+  });
+  test("cookie de login effacé", function () {
+    const sc = res.headers["set-cookie"] || [];
+    expect([].concat(sc).join(" ")).to.match(/plbls_sid_login=;.*Max-Age=0/);
+  });
+  test("cookie de session opaque HttpOnly SameSite=Lax", function () {
+    const c = bru.getVar("sidSetCookie");
+    expect(c).to.match(/^plbls_sid=[A-Za-z0-9_-]{43};/);
+    expect(c).to.contain("HttpOnly");
+    expect(c).to.contain("SameSite=Lax");
+    expect(c).to.contain("Path=/");
+    expect(c).to.match(/Max-Age=\d+/);
+  });
+}

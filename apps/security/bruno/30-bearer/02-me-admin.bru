@@ -1,0 +1,24 @@
+meta {
+  name: GET /auth/me (Bearer admin)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{gw}}/auth/me
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{tokAdmin}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("rôle admin", function () { expect(res.status).to.equal(200); expect(res.body.roles).to.include("admin"); });
+}

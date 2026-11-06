@@ -1,0 +1,30 @@
+meta {
+  name: MCP tools/list
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{gw}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{mcpToken}}
+  Content-Type: application/json
+  Accept: application/json, text/event-stream
+}
+
+body:json {
+  {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("3 outils", function () { expect(res.body.result.tools.map((t) => t.name)).to.have.members(["list_docs", "get_doc", "list_routes"]); });
+}

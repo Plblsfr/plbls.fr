@@ -1,0 +1,20 @@
+// <section class="plbls-hero"><h1 class="plbls-hero__titre">…</h1><p class="plbls-hero__sous">…</p></section>
+
+.plbls-hero {
+  padding: clamp(64px, 12vw, 150px) 0 clamp(44px, 7vw, 84px);
+
+  &__titre {
+    font-weight: 600;
+    font-size: clamp(38px, 7.4vw, 86px);
+    line-height: 1.04;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+    max-width: 16ch;
+  }
+
+  &__sous {
+    margin-top: clamp(24px, 4vw, 40px);
+    max-width: 44ch;
+    color: var(--gris);
+  }
+}

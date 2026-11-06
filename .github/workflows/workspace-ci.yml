@@ -1,0 +1,36 @@
+name: workspace-ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: workspace-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Une seule version de Node
+        run: node scripts/check-node.mjs
+      - name: Copies de @plbls/ui à jour
+        run: npm run ui:check
+      - name: Tests des scripts communs
+        run: node --test "scripts/*.test.mjs"
+      - run: npm run lint
+      - name: packages/ui (estompe, permission et pli ont leur propre workflow)
+        run: |
+          for script in check test build; do
+            npm run "$script" --workspace packages/ui
+          done

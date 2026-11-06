@@ -1,0 +1,25 @@
+meta {
+  name: POST /auth/logout Origin étranger : 403
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{gw}}/auth/logout
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid={{sid}}
+  Origin: https://evil.example
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("403", function () { expect(res.status).to.equal(403); });
+}

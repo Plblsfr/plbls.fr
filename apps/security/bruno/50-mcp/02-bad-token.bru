@@ -1,0 +1,29 @@
+meta {
+  name: POST /mcp mauvais token : 401
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{gw}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer nope
+  Content-Type: application/json
+}
+
+body:json {
+  {"jsonrpc":"2.0","id":1,"method":"ping"}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("401", function () { expect(res.status).to.equal(401); });
+}

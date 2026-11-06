@@ -1,0 +1,24 @@
+meta {
+  name: GET /auth/session (Bearer)
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{gw}}/auth/session
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{tokDemo}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("204", function () { expect(res.status).to.equal(204); });
+}

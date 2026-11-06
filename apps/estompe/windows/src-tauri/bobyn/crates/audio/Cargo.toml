@@ -1,0 +1,10 @@
+[package]
+name = "bobyn-audio"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+windows-core = "0.61"
+bobyn-buffer = { path = "../buffer" }

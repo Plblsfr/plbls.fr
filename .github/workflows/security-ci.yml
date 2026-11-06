@@ -1,0 +1,36 @@
+name: security-ci
+on:
+  push:
+    branches: [main]
+    tags: ["security-v*"]
+    paths: ["apps/security/**", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml", ".dockerignore", ".github/workflows/security-ci.yml", ".github/workflows/_image.yml", ".github/workflows/_rust-lint.yml"]
+  pull_request:
+    paths: ["apps/security/**", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml", ".dockerignore", ".github/workflows/security-ci.yml", ".github/workflows/_image.yml", ".github/workflows/_rust-lint.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  lint:
+    uses: ./.github/workflows/_rust-lint.yml
+    with:
+      name: security
+      packages: -p auth-gateway
+
+  image:
+    needs: lint
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: security
+      name: security
+      context: .
+      dockerfile: apps/security/Dockerfile
+      dir: apps/security
+      test_target: 'test'
+    secrets: inherit

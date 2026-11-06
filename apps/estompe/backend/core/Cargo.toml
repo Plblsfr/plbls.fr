@@ -1,0 +1,43 @@
+[package]
+name = "estompe-core"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+testutil = ["dep:testcontainers", "dep:testcontainers-modules", "dep:jsonschema"]
+
+[dependencies]
+axum.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+include_dir.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+percent-encoding.workspace = true
+regex.workspace = true
+unicode-properties.workspace = true
+rand.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+http-body-util.workspace = true
+tokio-util.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+jsonschema = { workspace = true, optional = true }
+testcontainers = { workspace = true, optional = true }
+testcontainers-modules = { workspace = true, optional = true }
+
+[dev-dependencies]
+estompe-core = { path = ".", features = ["testutil"] }
+tower.workspace = true
+tokio-tungstenite.workspace = true
+tempfile.workspace = true

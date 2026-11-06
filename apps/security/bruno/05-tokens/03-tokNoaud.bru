@@ -1,0 +1,31 @@
+meta {
+  name: token tokNoaud (plbls-noaud/demo)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{kc}}/realms/plbls/protocol/openid-connect/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: plbls-noaud
+  username: demo
+  password: demo
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+script:post-response {
+  bru.setVar("tokNoaud", res.body.access_token || "");
+}
+
+tests {
+  test("token obtenu", function () { expect(res.status).to.equal(200); });
+}

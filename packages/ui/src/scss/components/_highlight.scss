@@ -1,0 +1,25 @@
+// <span class="plbls-highlight">bricole</span>
+//
+// Le trait rose est peint en fond plutôt qu'en pseudo-élément : un
+// inline-block crée une occasion de retour à la ligne juste après le mot
+// surligné, ce qui détachait la ponctuation suivante. En fond, l'élément
+// reste un inline ordinaire — et le surlignage suit même un mot coupé en
+// deux lignes. Au chargement, le trait se pose de gauche à droite, une fois.
+
+.plbls-highlight {
+  padding: 0 0.14em;
+  border-radius: 0.12em;
+  background-image: linear-gradient(var(--rose), var(--rose));
+  background-repeat: no-repeat;
+  background-size: 100% 0.5em;
+  background-position: 0 calc(100% - 0.04em);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  animation: plbls-surligne 0.7s 0.15s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+}
+
+@keyframes plbls-surligne {
+  from {
+    background-size: 0 0.5em;
+  }
+}

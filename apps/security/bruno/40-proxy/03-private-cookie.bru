@@ -1,0 +1,36 @@
+meta {
+  name: /api/private avec cookie : identité injectée
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{gw}}/api/private/hello?a=1
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid={{sid}}
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("200 et préfixe retiré", function () {
+    expect(res.status).to.equal(200);
+    expect(res.body).to.contain("GET /hello?a=1 HTTP/1.1");
+  });
+  test("en-têtes d'identité signés", function () {
+    for (const h of ["X-User-Id", "X-User-Name: demo", "X-User-Email: demo@plbls.fr", "X-User-Roles", "X-Client-Id: plbls-gateway", "X-Identity-Ts", "X-Identity-Sig", "X-Request-Id"])
+      expect(res.body).to.contain(h);
+  });
+  test("cookie et Authorization non transmis", function () {
+    expect(res.body).to.not.contain("plbls_sid");
+    expect(res.body.toLowerCase()).to.not.contain("authorization:");
+  });
+  test("X-Request-Id en réponse", function () { expect(res.headers["x-request-id"]).to.be.a("string"); });
+}

@@ -1,0 +1,21 @@
+/* Mise en page propre à pli ; les composants viennent de plbls-ui. */
+[hidden] { display: none !important; }
+.pli { max-width: 720px; margin: 0 auto; padding: var(--espace-6) var(--marge) var(--espace-16); }
+.pli .plbls-hero { padding: var(--espace-8) 0 var(--espace-6); }
+.pli-marque { display: inline-flex; align-items: center; }
+.pli-marque img { display: block; height: 34px; width: auto; }
+.pli-bloc { display: grid; gap: var(--espace-4); margin-bottom: var(--espace-6); padding: var(--espace-6); }
+.pli-bloc h1, .pli-bloc h2 { margin: 0; }
+.pli-bloc p { margin: 0; }
+.pli-aide { color: var(--gris); font-size: 14px; }
+.pli-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--espace-3); }
+.pli .plbls-textarea { width: 100%; resize: vertical; min-height: 140px; font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 14px; }
+.pli .plbls-select { width: 100%; max-width: 280px; }
+.pli-texte { margin: 0; padding: var(--espace-4); max-height: 55vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 14px/1.6 ui-monospace, 'SFMono-Regular', Menlo, monospace; background: var(--creme-creux); border-radius: var(--rayon); }
+.pli-liste { margin-top: var(--espace-8); }
+.pli-liste .plbls-section-header { padding: 0 0 var(--espace-3); }
+.pli-scroll { overflow-x: auto; }
+.pli-pied { text-align: center; padding: var(--espace-6) var(--marge) var(--espace-8); color: var(--gris); font-size: 13px; }
+.pli-pied a { color: inherit; }
+#msg:not(:empty) { margin-bottom: var(--espace-4); }
+@media (max-width: 480px) { .pli-bloc { padding: var(--espace-4); } .pli .plbls-button { min-height: 44px; } }

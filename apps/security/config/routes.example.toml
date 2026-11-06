@@ -1,0 +1,10 @@
+# Copier en config/routes.toml
+[[routes]]
+prefix = "/api/chat"
+upstream = "http://chat-service:8080"
+strip_prefix = true
+roles = ["user"]
+
+# Origines d'extension navigateur autorisées (CORS + CSRF) :
+# [server]
+# extra_origins = ["chrome-extension://<id>", "https://<id>.chromiumapp.org"]

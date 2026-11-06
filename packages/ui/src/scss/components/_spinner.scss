@@ -1,0 +1,23 @@
+// <span class="plbls-spinner" role="status" aria-label="Chargement"></span>
+// Tailles : (défaut = md) · --sm
+
+.plbls-spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--trait);
+  border-top-color: var(--rose-fonce);
+  border-radius: 50%;
+  animation: plbls-tourne 0.7s linear infinite;
+
+  &--sm {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@keyframes plbls-tourne {
+  to {
+    transform: rotate(360deg);
+  }
+}

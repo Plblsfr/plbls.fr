@@ -1,0 +1,53 @@
+{
+  "name": "@plbls/ui",
+  "version": "2.0.1",
+  "description": "Design system « surligneur » de plbls.fr — jetons CSS, feuille de styles et web components. Aucun framework.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^26"
+  },
+  "sideEffects": [
+    "./src/js/index.js",
+    "./dist/plbls-ui.js",
+    "./dist/plbls-ui.esm.js",
+    "*.css"
+  ],
+  "main": "./dist/plbls-ui.esm.js",
+  "module": "./dist/plbls-ui.esm.js",
+  "types": "./dist/plbls-ui.esm.d.ts",
+  "style": "./dist/plbls-ui.css",
+  "exports": {
+    ".": {
+      "types": "./dist/plbls-ui.esm.d.ts",
+      "default": "./dist/plbls-ui.esm.js"
+    },
+    "./css": "./dist/plbls-ui.css",
+    "./css/min": "./dist/plbls-ui.min.css",
+    "./tokens.css": "./dist/tokens.css",
+    "./tokens.min.css": "./dist/tokens.min.css",
+    "./iife": "./dist/plbls-ui.js",
+    "./scss": "./src/scss/plbls-ui.scss",
+    "./scss/tokens": "./src/scss/tokens-only.scss",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "DESIGN_SYSTEM.md"
+  ],
+  "scripts": {
+    "lint": "echo \"lint : aucun linter configuré pour l’instant\"",
+    "check": "echo \"check : pas de types à vérifier (JavaScript, types écrits dans src/js/index.d.ts)\"",
+    "test": "node --test",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "serve": "node scripts/serve.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "sass": "^1.107.1"
+  }
+}

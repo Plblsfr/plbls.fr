@@ -1,0 +1,222 @@
+name: estompe-livraison-app
+
+on:
+  push:
+    tags: ["estompe-app-v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: livraison-app-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/plblsfr/estompe-web
+
+permissions:
+  contents: write
+  packages: write
+
+defaults:
+  run:
+    working-directory: apps/estompe
+
+jobs:
+  front:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/estompe/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        working-directory: .
+      - run: npm run check
+      - run: npm test
+
+  windows:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/plblsfr/estompe-ci:4
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - id: installer
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            apps/estompe/web/dist-updates
+            apps/estompe/frontend/dist
+          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('apps/estompe/backend/core/updates.json', 'apps/estompe/frontend/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'apps/estompe/frontend/public/**', 'apps/estompe/frontend/index.html', 'package-lock.json', 'apps/estompe/frontend/vite.config.ts', 'apps/estompe/frontend/scripts/**') }}
+      - id: cargo-cache
+        if: steps.installer.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            /opt/cargo/registry
+            /opt/cargo/git
+            apps/estompe/windows/src-tauri/target
+          key: tauri-win-${{ vars.NATIVE_ALPHA == '1' && 'alpha' || 'std' }}-${{ hashFiles('apps/estompe/windows/src-tauri/Cargo.lock') }}
+          restore-keys: tauri-win-${{ vars.NATIVE_ALPHA == '1' && 'alpha' || 'std' }}-
+      - name: Installeur Windows signé
+        if: steps.installer.outputs.cache-hit != 'true'
+        working-directory: apps/estompe/windows
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          NATIVE_ALPHA: ${{ vars.NATIVE_ALPHA }}
+        run: |
+          npm ci --prefix ../../..
+          if [ "$GITHUB_REF_TYPE" = tag ]; then export PROFILE=release; else export PROFILE=ci; fi
+          scripts/release-windows.sh "Version $(printf %.7s "$GITHUB_SHA")"
+      - if: steps.installer.outputs.cache-hit != 'true' && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            /opt/cargo/registry
+            /opt/cargo/git
+            apps/estompe/windows/src-tauri/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+      - if: steps.installer.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            apps/estompe/web/dist-updates
+            apps/estompe/frontend/dist
+          key: ${{ steps.installer.outputs.cache-primary-key }}
+      - name: Front web (le build Windows, neuf ou restauré du cache, a écrasé frontend/dist)
+        run: npm ci --prefix ../.. && npm --prefix frontend run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: front
+          path: |
+            apps/estompe/web/dist-updates
+            apps/estompe/frontend/dist
+
+  android:
+    if: vars.ANDROID_APK == '1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: ""
+      - id: android-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            apps/estompe/android/src-tauri/target
+          key: android-${{ hashFiles('apps/estompe/android/src-tauri/Cargo.lock', 'apps/estompe/android/src-tauri/gen/android/**/*.gradle*', 'apps/estompe/android/src-tauri/gen/android/gradle/**') }}
+          restore-keys: android-
+      - name: SDK et NDK
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;26.3.11579264" && echo "NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: APK signé
+        working-directory: apps/estompe/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          npm ci --prefix ../../..
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/estompe.jks"
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 -d > src-tauri/gen/android/app/google-services.json 2>/dev/null
+          [ -s src-tauri/gen/android/app/google-services.json ] && grep -q project_info src-tauri/gen/android/app/google-services.json || rm -f src-tauri/gen/android/app/google-services.json
+          ANDROID_KEYSTORE="$RUNNER_TEMP/estompe.jks" scripts/release-android.sh
+      - if: steps.android-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            apps/estompe/android/src-tauri/target
+          key: ${{ steps.android-cache.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: |
+            apps/estompe/web/dist-updates/Estompe.apk
+            apps/estompe/web/dist-updates/android.json
+
+  image:
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/estompe-app-v') && needs.front.result == 'success' && needs.windows.result == 'success' && needs.android.result != 'failure' }}
+    needs: [front, windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: front
+          path: apps/estompe
+      - uses: actions/download-artifact@v8
+        if: needs.android.result == 'success'
+        with:
+          name: apk
+          path: apps/estompe/web/dist-updates
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/estompe-app-v') }}
+            type=sha,prefix=sha-
+            type=match,pattern=estompe-app-v(.*),group=1
+      - uses: docker/build-push-action@v7
+        with:
+          context: apps/estompe
+          file: apps/estompe/web/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+      - name: APK téléchargeable dans l'image publiée
+        if: needs.android.result == 'success'
+        run: |
+          docker run -d --name front-check -e API_URL=https://example.test ${{ env.IMAGE }}:latest
+          sleep 3
+          android/scripts/check-apk.sh front-check
+          docker rm -f front-check
+
+
+  release:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/estompe-app-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME" >/dev/null

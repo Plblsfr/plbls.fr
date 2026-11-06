@@ -1,0 +1,3 @@
+# Apps Tauri : hors du workspace Cargo racine, sur la stable installée par leur CI (cibles Windows et Android).
+[toolchain]
+channel = "stable"

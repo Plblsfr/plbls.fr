@@ -1,0 +1,19 @@
+# Production : CDN seul (image publiée par la CI). Dokploy ne clone pas le dépôt : coller ce fichier tel quel
+# (Compose) ou créer une application Docker avec la même image, un volume sur /srv et le domaine cdn.plbls.fr (port 80).
+name: cdn
+services:
+  cdn:
+    image: ghcr.io/plblsfr/plbls-ui:${CDN_TAG:-latest}
+    restart: unless-stopped
+    volumes:
+      # Garde les versions déjà publiées d'un déploiement à l'autre.
+      - cdn-data:/srv
+    expose: ["80"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  cdn-data:

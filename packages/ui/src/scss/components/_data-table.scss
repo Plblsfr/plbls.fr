@@ -1,0 +1,78 @@
+// Balise : <plbls-data-table> (propriétés JS `columns` et `rows`)
+//
+// <table class="plbls-table">
+//   <thead><tr><th scope="col">Nom</th></tr></thead>
+//   <tbody><tr><td>…</td></tr></tbody>
+// </table>
+// En-tête triable : `<button class="plbls-table__tri">Nom <span class="plbls-table__fleche">↑</span></button>`
+// Lignes cliquables : ajouter `.plbls-table--cliquable` à la table.
+
+.plbls-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--trait);
+    color: var(--gris);
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+
+  tbody td {
+    padding: 13px 14px;
+    color: var(--noir);
+    border-bottom: 1px solid var(--trait);
+    transition: background var(--duree) ease;
+
+    &:first-child {
+      border-radius: var(--rayon) 0 0 var(--rayon);
+    }
+
+    &:last-child {
+      border-radius: 0 var(--rayon) var(--rayon) 0;
+    }
+  }
+
+  tbody tr:last-child td {
+    border-bottom-color: transparent;
+  }
+
+  &--cliquable tbody tr {
+    cursor: pointer;
+
+    &:hover td {
+      background: var(--rose);
+      border-bottom-color: transparent;
+    }
+  }
+
+  &__tri {
+    background: none;
+    border: none;
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__fleche {
+    color: var(--rose-texte);
+  }
+
+  &__legende {
+    text-align: left;
+    padding: 0 14px 8px;
+    font-size: 12px;
+    color: var(--gris);
+  }
+}

@@ -1,0 +1,43 @@
+# Joint dist/ (archives + fichiers seuls) à la release GitHub de chaque tag `ui-v*`.
+# Publier : mettre à jour la version (package.json, CHANGELOG.md), puis  git tag ui-v0.3.0 && git push origin ui-v0.3.0
+name: ui-release
+on:
+  push:
+    tags: ["ui-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Le tag doit correspondre à package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          [ "ui-v${version}" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version ${version}" >&2; exit 1; }
+      - run: npm ci
+        working-directory: .
+      - run: npm run build
+      - name: Pièces jointes
+        run: |
+          mkdir -p release
+          name="plbls-ui-${GITHUB_REF_NAME#ui-}"
+          tar -czf "release/${name}.tgz" --transform "s,^dist,${name}," dist
+          (cd dist && zip -qr "../release/${name}.zip" .)
+          cp dist/* release/
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # la release elle-même est créée par _image.yml (ui-ci) ; on la crée ici si elle n'existe pas encore, puis on y joint dist
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME" >/dev/null
+          gh release upload "$GITHUB_REF_NAME" release/* --clobber

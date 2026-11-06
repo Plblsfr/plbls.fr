@@ -1,0 +1,1 @@
+ALTER TABLE files ADD COLUMN position integer NOT NULL DEFAULT 0;

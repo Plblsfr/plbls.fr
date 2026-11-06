@@ -1,0 +1,49 @@
+# Nettoyage hebdomadaire de ghcr.io/plblsfr/* : on garde par image
+#   - les versions taguées latest / edge / buildcache,
+#   - les 3 dernières versions numérotées (X.Y.Z),
+# et on supprime le reste (anciens :sha de main, vieilles versions).
+# Les versions sans tag ne sont pas touchées : ce sont parfois des enfants (attestations) d'une image conservée.
+# Secret PACKAGES_PAT : PAT *classic* avec read:packages + delete:packages (GITHUB_TOKEN ne gère pas les packages d'un compte personnel).
+name: packages-cleanup
+on:
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Lister sans supprimer"
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.PACKAGES_PAT }}
+      KEEP: 3
+      # shortcut: liste fixe d'images, à compléter à chaque nouveau composant
+      PACKAGES: pli security permission plbls-ui keycloak estompe estompe-web estompe-ci
+      DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - run: |
+          for p in $PACKAGES; do
+            echo "== $p"
+            if ! out="$(gh api --paginate "/user/packages/container/$p/versions?per_page=100" 2>&1)"; then
+              case "$out" in *"Not Found"*) echo "absent, ignoré"; continue;; esac
+              echo "$out" >&2; exit 1   # échec d'auth ou autre : on ne veut pas un faux succès
+            fi
+            versions="$(echo "$out" | jq -s 'add // []')"
+            echo "$versions" | jq -r --argjson keep "$KEEP" '
+              sort_by(.created_at) | reverse
+              | map({id, created_at, tags: .metadata.container.tags})
+              | map(select(.tags|length>0)) as $t
+              | ([$t[] | select(any(.tags[]; test("^[0-9]+\\.[0-9]+")))] | .[:$keep] | map(.id)) as $releases
+              | $t[] | select((.id as $i | $releases | index($i) | not) and (any(.tags[]; . == "latest" or . == "edge" or . == "buildcache") | not))
+              | "\(.id) \(.tags|join(","))"' |
+            while read -r id tags; do
+              if [ "$DRY" = true ]; then echo "[dry-run] supprimerait $p#$id ($tags)"
+              else echo "supprime $p#$id ($tags)"; gh api -X DELETE "/user/packages/container/$p/versions/$id"; fi
+            done
+          done

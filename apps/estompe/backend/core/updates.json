@@ -1,0 +1,10 @@
+{
+  "mandatory": false,
+  "minVersion": "",
+  "message": "",
+  "platforms": {
+    "web": {},
+    "android": {},
+    "windows": {}
+  }
+}

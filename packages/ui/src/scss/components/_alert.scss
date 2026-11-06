@@ -1,0 +1,46 @@
+// <div class="plbls-alert plbls-alert--succes" role="status">
+//   <p class="plbls-alert__titre">…</p><div class="plbls-alert__corps">…</div>
+// </div>
+// Tons : (défaut = info) · --succes · --erreur  (role="alert" pour l'erreur)
+
+.plbls-alert {
+  padding: 16px 20px;
+  border-radius: var(--rayon-l);
+  font-size: 14px;
+  // info — neutre, dans le creux du fond
+  background: var(--creme-creux);
+
+  &__titre {
+    margin: 0 0 2px;
+    font-weight: 600;
+  }
+
+  &__corps {
+    color: var(--gris);
+  }
+
+  // succès — l'aplat rose, le geste signature de la DA
+  &--succes {
+    background: var(--rose);
+
+    .plbls-alert__corps {
+      color: var(--noir);
+    }
+  }
+
+  // erreur — surface claire cerclée de rose ; le titre porte le rose texte
+  &--erreur {
+    background: var(--surface);
+    box-shadow:
+      inset 0 0 0 1.5px var(--rose-fonce),
+      var(--ombre-1);
+
+    .plbls-alert__titre {
+      color: var(--rose-texte);
+    }
+
+    .plbls-alert__corps {
+      color: var(--noir);
+    }
+  }
+}

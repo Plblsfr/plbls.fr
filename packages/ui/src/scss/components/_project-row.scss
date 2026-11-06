@@ -1,0 +1,95 @@
+// <a class="plbls-project-row" href="…">
+//   <div class="plbls-project-row__entete"><span class="plbls-project-row__nom">…</span><span class="plbls-badge">…</span></div>
+//   <p class="plbls-project-row__description">…</p>
+//   <div class="plbls-project-row__stack">Angular <span class="plbls-project-row__sep">—</span> Java</div>
+//   <span class="plbls-project-row__statut">en cours</span>
+// </a>
+
+.plbls-project-row {
+  display: block;
+  position: relative;
+  text-decoration: none;
+  color: inherit;
+  padding: clamp(20px, 2.6vw, 28px) clamp(16px, 2.4vw, 28px);
+  margin: 0 clamp(-16px, -2.4vw, -28px);
+  border-radius: var(--rayon-l);
+  transition:
+    background var(--duree) ease,
+    transform 0.28s var(--ressort);
+
+  // le filet sépare les lignes sans toucher aux coins arrondis du survol
+  & + &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: clamp(16px, 2.4vw, 28px);
+    right: clamp(16px, 2.4vw, 28px);
+    height: 1px;
+    background: var(--trait);
+  }
+
+  &:hover,
+  &:focus-visible {
+    background: var(--rose);
+  }
+
+  &:hover::before,
+  &:focus-visible::before,
+  &:hover + &::before,
+  &:focus-visible + &::before {
+    opacity: 0;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--noir);
+    outline-offset: -2px;
+  }
+
+  &__entete {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  &__nom {
+    font-family: var(--font-titre);
+    font-weight: 500;
+    font-size: clamp(22px, 3vw, 34px);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+
+  &__description {
+    margin: 8px 0 0;
+    color: var(--gris);
+    max-width: 56ch;
+  }
+
+  &:hover &__description,
+  &:focus-visible &__description {
+    color: var(--noir);
+  }
+
+  &__stack {
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--gris);
+    letter-spacing: 0.02em;
+  }
+
+  &__sep {
+    margin: 0 2px;
+  }
+
+  &__statut {
+    display: inline-block;
+    margin-top: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--rose-texte);
+  }
+}

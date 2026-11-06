@@ -1,0 +1,29 @@
+[package]
+name = "estompe-block-transcription"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+estompe-core.workspace = true
+estompe-block.workspace = true
+estompe-block-vocal.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+
+[dev-dependencies]
+estompe-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+tower.workspace = true

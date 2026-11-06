@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>plbls-ui — design system</title>
+    <script>
+      // Applique le thème mémorisé avant le premier rendu (évite un flash).
+      try { var t = localStorage.getItem('plbls-theme'); if (t === 'dark' || t === 'auto' || t === 'light') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../dist/plbls-ui.css" />
+    <script type="module" src="../dist/plbls-ui.esm.js"></script>
+    <style>
+      .doc { max-width: 960px; margin: 0 auto; padding: 0 var(--marge) 40px; }
+      .doc section { padding: 8px 0 28px; border-top: 1px solid var(--trait); }
+      .doc h3.t { font-size: 14px; margin: 24px 0 12px; font-family: var(--font-texte); letter-spacing: 0; color: var(--gris); text-transform: uppercase; font-weight: 500; }
+      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+      .col { display: flex; flex-direction: column; gap: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+      .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+      .sw { border: 1px solid var(--trait); border-radius: var(--rayon); font-size: 12px; }
+      .sw i { display: block; height: 48px; }
+      .sw span { display: block; padding: 6px 8px; }
+      .theme-picker { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gris); }
+      code { font-size: 12.5px; background: var(--creme-creux); padding: 2px 7px; border-radius: var(--rayon-s); }
+      .sw { overflow: hidden; border: 0; box-shadow: var(--ombre-1); background: var(--surface); }
+      .forme { display: grid; place-items: center; height: 88px; background: var(--surface); font-size: 12px; color: var(--gris); }
+    </style>
+  </head>
+  <body>
+    <header class="plbls-navbar">
+      <a class="plbls-navbar__marque" href="#">plbls-ui</a>
+      <nav class="plbls-navbar__liens" aria-label="Navigation principale">
+        <a class="plbls-navbar__lien is-active" href="#fondations" aria-current="page">Fondations</a>
+        <a class="plbls-navbar__lien" href="#actions">Actions</a>
+        <a class="plbls-navbar__lien" href="#formulaires">Formulaires</a>
+        <a class="plbls-navbar__lien" href="#retours">Retours</a>
+        <a class="plbls-navbar__lien" href="#navigation">Navigation</a>
+        <a class="plbls-navbar__lien" href="#donnees">Données</a>
+      </nav>
+      <label class="theme-picker">
+        <span class="theme-picker__label">Thème</span>
+        <select class="plbls-select" id="theme-select" aria-label="Thème de la vitrine">
+          <option value="light">Clair</option>
+          <option value="dark">Sombre</option>
+          <option value="auto">Système</option>
+        </select>
+      </label>
+    </header>
+
+    <main class="doc">
+      <section class="plbls-hero">
+        <h1 class="plbls-hero__titre">Tout ce que je <span class="plbls-highlight">bricole</span>, sans framework.</h1>
+        <p class="plbls-hero__sous">Feuille CSS, jetons en variables et web components. Un <code>&lt;link&gt;</code> et un <code>&lt;script type="module"&gt;</code> suffisent.</p>
+      </section>
+
+      <section id="fondations">
+        <header class="plbls-section-header"><h2>Fondations</h2><p class="plbls-section-header__intro">Jetons posés sur <code>:root</code> : à réutiliser dans vos propres CSS.</p></header>
+        <div class="swatches">
+          <div class="sw"><i style="background: var(--creme)"></i><span>--creme</span></div>
+          <div class="sw"><i style="background: var(--creme-creux)"></i><span>--creme-creux</span></div>
+          <div class="sw"><i style="background: var(--noir)"></i><span>--noir</span></div>
+          <div class="sw"><i style="background: var(--gris)"></i><span>--gris</span></div>
+          <div class="sw"><i style="background: var(--rose)"></i><span>--rose</span></div>
+          <div class="sw"><i style="background: var(--rose-fonce)"></i><span>--rose-fonce</span></div>
+          <div class="sw"><i style="background: var(--rose-texte)"></i><span>--rose-texte</span></div>
+          <div class="sw"><i style="background: var(--trait)"></i><span>--trait</span></div>
+          <div class="sw"><i style="background: var(--surface)"></i><span>--surface</span></div>
+        </div>
+        <h3 class="t">Rayons</h3>
+        <div class="grid">
+          <div class="forme" style="border-radius: var(--rayon-s); box-shadow: var(--ombre-1)">--rayon-s · 8</div>
+          <div class="forme" style="border-radius: var(--rayon); box-shadow: var(--ombre-1)">--rayon · 12</div>
+          <div class="forme" style="border-radius: var(--rayon-l); box-shadow: var(--ombre-1)">--rayon-l · 20</div>
+          <div class="forme" style="border-radius: var(--rayon-xl); box-shadow: var(--ombre-1)">--rayon-xl · 28</div>
+        </div>
+        <h3 class="t">Élévations</h3>
+        <div class="grid">
+          <div class="forme" style="border-radius: var(--rayon-l); box-shadow: var(--ombre-1)">--ombre-1 · posé</div>
+          <div class="forme" style="border-radius: var(--rayon-l); box-shadow: var(--ombre-2)">--ombre-2 · menu</div>
+          <div class="forme" style="border-radius: var(--rayon-l); box-shadow: var(--ombre-3)">--ombre-3 · modale</div>
+        </div>
+        <h3 class="t">Tooltip</h3>
+        <button class="plbls-button plbls-button--contour" data-plbls-tooltip="Infobulle au survol et au focus">Survole-moi</button>
+      </section>
+
+      <section id="actions">
+        <header class="plbls-section-header"><h2>Actions</h2></header>
+        <h3 class="t">Boutons</h3>
+        <div class="row">
+          <button class="plbls-button">Plein</button>
+          <button class="plbls-button plbls-button--contour">Contour</button>
+          <button class="plbls-button plbls-button--discret">Discret</button>
+          <button class="plbls-button plbls-button--lien">Lien</button>
+          <button class="plbls-button plbls-button--contour plbls-button--compact">Compact</button>
+          <button class="plbls-button plbls-button--discret plbls-button--danger">Danger</button>
+          <button class="plbls-button is-busy" aria-busy="true" disabled>Chargement</button>
+          <button class="plbls-button" disabled>Désactivé</button>
+        </div>
+        <h3 class="t">Puces</h3>
+        <div class="row" id="chips">
+          <button class="plbls-chip is-active" type="button" aria-pressed="true">Photos</button>
+          <button class="plbls-chip" type="button" aria-pressed="false">Cartes</button>
+          <button class="plbls-chip" type="button" aria-pressed="false">Notes</button>
+        </div>
+        <h3 class="t">Menu déroulant</h3>
+        <plbls-dropdown-menu id="menu">
+          <button slot="trigger" class="plbls-button plbls-button--contour plbls-button--compact">Actions ▾</button>
+          <button data-action="rename">Renommer</button>
+          <button data-action="share">Partager</button>
+          <button data-action="delete" data-danger>Supprimer</button>
+        </plbls-dropdown-menu>
+        <h3 class="t">Modale</h3>
+        <button class="plbls-button" id="open-modal">Ouvrir la modale</button>
+        <plbls-modal id="modal" title="Supprimer le projet ?">
+          <p>Cette action est définitive.</p>
+          <div class="row" style="margin-top: 16px">
+            <button class="plbls-button plbls-button--contour" id="cancel">Annuler</button>
+            <button class="plbls-button" id="confirm">Supprimer</button>
+          </div>
+        </plbls-modal>
+      </section>
+
+      <section id="formulaires">
+        <header class="plbls-section-header"><h2>Formulaires</h2></header>
+        <div class="grid">
+          <div class="plbls-field">
+            <label class="plbls-field__label" for="mail">Adresse e-mail</label>
+            <input class="plbls-input" id="mail" type="email" placeholder="toi@exemple.fr" aria-describedby="mail-aide" />
+            <span class="plbls-field__aide" id="mail-aide">On ne t'écrira pas.</span>
+          </div>
+          <div class="plbls-field">
+            <label class="plbls-field__label" for="pwd">Mot de passe</label>
+            <input class="plbls-input plbls-input--error" id="pwd" type="password" aria-invalid="true" aria-describedby="pwd-msg" />
+            <span class="plbls-field__message" id="pwd-msg" role="alert">Trop court.</span>
+            <plbls-password-strength for="pwd"></plbls-password-strength>
+          </div>
+          <div class="plbls-field">
+            <label class="plbls-field__label" for="note">Note</label>
+            <textarea class="plbls-textarea" id="note" rows="3"></textarea>
+          </div>
+          <div class="plbls-field">
+            <label class="plbls-field__label" for="tri">Tri</label>
+            <select class="plbls-select" id="tri"><option>Récent</option><option>Nom</option></select>
+          </div>
+        </div>
+        <h3 class="t">Case, interrupteur</h3>
+        <div class="row">
+          <label class="plbls-checkbox"><input class="plbls-checkbox__input" type="checkbox" checked /><span class="plbls-checkbox__case" aria-hidden="true"></span><span class="plbls-checkbox__texte">J'accepte</span></label>
+          <label class="plbls-toggle"><input class="plbls-toggle__input" type="checkbox" role="switch" checked /><span class="plbls-toggle__piste" aria-hidden="true"></span><span class="plbls-toggle__texte">Notifications</span></label>
+        </div>
+        <h3 class="t">Code à usage unique</h3>
+        <plbls-otp-input id="otp" length="6"></plbls-otp-input>
+        <p id="otp-out" class="plbls-field__aide" style="margin-top: 8px"></p>
+        <h3 class="t">Copie</h3>
+        <plbls-copy-field label="Lien de partage" value="https://plbls.fr/s/abc123"></plbls-copy-field>
+        <h3 class="t">Dépôt de fichiers</h3>
+        <plbls-dropzone multiple></plbls-dropzone>
+        <div class="col" style="margin-top: 12px">
+          <div class="plbls-file-row">
+            <span class="plbls-file-row__icone" aria-hidden="true">📄</span>
+            <div class="plbls-file-row__details"><span class="plbls-file-row__nom">rapport-annuel.pdf</span><span class="plbls-file-row__taille">1,2 Mo</span></div>
+            <button class="plbls-file-row__supprimer" type="button" aria-label="Supprimer">✕</button>
+          </div>
+          <div class="plbls-progress">
+            <div class="plbls-progress__entete"><span>Envoi</span><span>40%</span></div>
+            <div class="plbls-progress__piste" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100"><div class="plbls-progress__remplissage" style="width: 40%"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="retours">
+        <header class="plbls-section-header"><h2>Retours</h2></header>
+        <div class="col">
+          <div class="plbls-alert" role="status"><p class="plbls-alert__titre">Info</p><div class="plbls-alert__corps">Un message neutre.</div></div>
+          <div class="plbls-alert plbls-alert--succes" role="status"><p class="plbls-alert__titre">Enregistré</p><div class="plbls-alert__corps">Tout s'est bien passé.</div></div>
+          <div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__titre">Erreur</p><div class="plbls-alert__corps">Quelque chose a échoué.</div></div>
+        </div>
+        <h3 class="t">Statuts, badges, spinner, avatars</h3>
+        <div class="row">
+          <span class="plbls-status">neutre</span><span class="plbls-status plbls-status--accent">accent</span><span class="plbls-status plbls-status--positif">positif</span><span class="plbls-status plbls-status--negatif">négatif</span>
+          <span class="plbls-badge">pour moi</span><span class="plbls-badge plbls-badge--ami">pour un ami</span><span class="plbls-badge plbls-badge--famille">pour la famille</span>
+          <span class="plbls-spinner" role="status" aria-label="Chargement"></span><span class="plbls-spinner plbls-spinner--sm" role="status" aria-label="Chargement"></span>
+          <span class="plbls-avatar plbls-avatar--sm" role="img" aria-label="Ada Lovelace">AL</span><span class="plbls-avatar" role="img" aria-label="Alan Turing">AT</span><span class="plbls-avatar plbls-avatar--lg" role="img" aria-label="Grace Hopper">GH</span>
+        </div>
+        <h3 class="t">Toasts</h3>
+        <div class="row">
+          <button class="plbls-button plbls-button--contour" id="t-info">Info</button>
+          <button class="plbls-button plbls-button--contour" id="t-ok">Succès</button>
+          <button class="plbls-button plbls-button--contour" id="t-err">Erreur</button>
+        </div>
+        <h3 class="t">État vide</h3>
+        <div class="plbls-empty-state"><h3>Rien ici</h3><p>Ajoute ton premier projet pour qu'il apparaisse dans cette liste.</p></div>
+      </section>
+
+      <section id="navigation">
+        <header class="plbls-section-header"><h2>Navigation</h2></header>
+        <plbls-tabs>
+          <div class="plbls-tabs" role="tablist">
+            <button class="plbls-tabs__onglet is-active" role="tab" id="t-a" aria-controls="p-a" aria-selected="true">Profil</button>
+            <button class="plbls-tabs__onglet" role="tab" id="t-b" aria-controls="p-b" aria-selected="false">Sécurité</button>
+          </div>
+        </plbls-tabs>
+        <div id="p-a" role="tabpanel" aria-labelledby="t-a" style="padding: 16px 0">Panneau profil</div>
+        <div id="p-b" role="tabpanel" aria-labelledby="t-b" style="padding: 16px 0" hidden>Panneau sécurité</div>
+        <h3 class="t">Pagination</h3>
+        <plbls-pagination page="2" total="9"></plbls-pagination>
+        <h3 class="t">Barre latérale</h3>
+        <div class="plbls-sidebar" style="border: 1px solid var(--trait); height: 360px; overflow: hidden">
+          <button class="plbls-sidebar__bascule" type="button" aria-expanded="false">Menu</button>
+          <aside class="plbls-sidebar__colonne" style="height: 360px">
+            <a class="plbls-sidebar__marque" href="#">plbls</a>
+            <nav class="plbls-sidebar__liens" aria-label="Navigation par destinataire">
+              <a class="plbls-sidebar__lien is-active" href="#"><span>Pour moi</span><span class="plbls-sidebar__compte">3</span></a>
+              <a class="plbls-sidebar__lien" href="#"><span>Pour les amis</span><span class="plbls-sidebar__compte">5</span></a>
+              <a class="plbls-sidebar__lien" href="#"><span>Famille</span><span class="plbls-sidebar__compte">2</span></a>
+            </nav>
+          </aside>
+        </div>
+      </section>
+
+      <section id="donnees">
+        <header class="plbls-section-header"><h2>Données</h2></header>
+        <div class="grid">
+          <div class="plbls-stat-tile"><span class="plbls-stat-tile__valeur">1 284</span><span class="plbls-stat-tile__label">visites ce mois</span></div>
+          <a class="plbls-card" href="#"><span class="plbls-badge plbls-badge--ami">pour un ami</span><h3 class="plbls-card__nom">Radar</h3><p class="plbls-card__description">Veille et alertes.</p><ul class="plbls-tag-stack"><li>Java</li><li>Postgres</li></ul></a>
+        </div>
+        <h3 class="t">Ligne de projet</h3>
+        <div>
+          <a class="plbls-project-row" href="#">
+            <div class="plbls-project-row__entete"><span class="plbls-project-row__nom">Sentier</span><span class="plbls-badge">pour moi</span></div>
+            <p class="plbls-project-row__description">Carnet de randonnées avec traces GPX.</p>
+            <div class="plbls-project-row__stack">Angular <span class="plbls-project-row__sep">—</span> Java</div>
+            <span class="plbls-project-row__statut">en cours</span>
+          </a>
+        </div>
+        <h3 class="t">Panneau &amp; tableau</h3>
+        <section class="plbls-panel">
+          <h2 class="plbls-panel__titre">Utilisateurs</h2>
+          <plbls-data-table id="table" caption="Cliquer un en-tête pour trier"></plbls-data-table>
+        </section>
+      </section>
+    </main>
+
+    <footer class="plbls-footer">
+      <p>plbls © 2026 <span class="plbls-footer__version">v1.0.0</span></p>
+      <nav class="plbls-footer__liens" aria-label="Informations légales"><a href="#">Mentions légales</a><a href="#">Confidentialité</a></nav>
+    </footer>
+
+    <script type="module">
+      import { toast, getTheme, setTheme } from '../dist/plbls-ui.esm.js';
+      const $ = (s) => document.querySelector(s);
+      const themeSelect = $('#theme-select');
+      themeSelect.value = getTheme();
+      themeSelect.addEventListener('change', () => setTheme(themeSelect.value));
+      const modal = $('#modal');
+      $('#open-modal').addEventListener('click', () => (modal.open = true));
+      $('#cancel').addEventListener('click', () => (modal.open = false));
+      $('#confirm').addEventListener('click', () => { modal.open = false; toast.success('Projet supprimé'); });
+      $('#t-info').addEventListener('click', () => toast.info('Information'));
+      $('#t-ok').addEventListener('click', () => toast.success('Enregistré'));
+      $('#t-err').addEventListener('click', () => toast.error('Échec de l\'envoi'));
+      $('#menu').addEventListener('plbls-action', (e) => toast.info(`Action : ${e.detail}`));
+      $('#otp').addEventListener('plbls-complete', (e) => ($('#otp-out').textContent = `Code saisi : ${e.detail}`));
+      $('#chips').addEventListener('click', (e) => {
+        const chip = e.target.closest('.plbls-chip');
+        if (!chip) return;
+        const on = chip.getAttribute('aria-pressed') !== 'true';
+        chip.setAttribute('aria-pressed', String(on));
+        chip.classList.toggle('is-active', on);
+      });
+      const table = $('#table');
+      table.columns = [{ key: 'nom', label: 'Nom', sortable: true }, { key: 'role', label: 'Rôle', sortable: true }, { key: 'age', label: 'Âge', sortable: true }];
+      table.rows = [{ nom: 'Élodie', role: 'admin', age: 34 }, { nom: 'Ada', role: 'membre', age: 36 }, { nom: 'Zoé', role: 'membre', age: 9 }];
+    </script>
+  </body>
+</html>

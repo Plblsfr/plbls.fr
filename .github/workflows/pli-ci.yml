@@ -1,0 +1,51 @@
+name: pli-ci
+on:
+  push:
+    branches: [main]
+    tags: ["pli-v*"]
+    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml"]
+  pull_request:
+    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml"]
+
+concurrency:
+  group: pli-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pli
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: pli_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pli" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test --workspace apps/pli
+        env:
+          TEST_DATABASE_URL: postgres://pli:test@localhost:5432/pli_test
+
+  image:
+    needs: test
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: pli
+      name: pli
+      context: .
+      dockerfile: apps/pli/Dockerfile
+      dir: apps/pli
+    secrets: inherit

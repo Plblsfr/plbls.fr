@@ -1,0 +1,30 @@
+meta {
+  name: POST /auth/logout
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{gw}}/auth/logout?redirect=http://localhost:3000/bye
+  body: none
+  auth: none
+}
+
+headers {
+  Cookie: plbls_sid={{sid}}
+  Origin: http://localhost:3000
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("303 vers la déconnexion Keycloak", function () {
+    expect(res.status).to.equal(303);
+    expect(res.headers["location"]).to.contain("/protocol/openid-connect/logout");
+    expect(res.headers["location"]).to.contain("id_token_hint=");
+  });
+  test("cookie effacé", function () { expect(String(res.headers["set-cookie"])).to.match(/plbls_sid=;?.*Max-Age=0/); });
+}

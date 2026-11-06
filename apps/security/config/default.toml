@@ -1,0 +1,35 @@
+[server]
+bind = "0.0.0.0:8080"
+public_url = "https://security.plbls.fr"
+default_redirect = "https://plbls.fr/"
+allowed_origin_suffix = "plbls.fr"
+# Extensions : "chrome-extension://<id>", "https://<id>.chromiumapp.org"
+extra_origins = []
+
+[redis]
+url = "redis://redis:6379"
+
+[oidc]
+# issuer : GATEWAY__OIDC__ISSUER (.env)
+client_id = "plbls-gateway"
+# client_secret : GATEWAY__OIDC__CLIENT_SECRET
+audience = "plbls-api"
+
+[session]
+cookie_name = "__Secure-plbls_sid"
+cookie_domain = ".plbls.fr"
+cookie_secure = true
+
+[rate_limit]
+# Requêtes par minute et par IP sur /auth/login, /auth/register et /auth/callback (0 = désactivé)
+auth_per_minute = 30
+
+# secret HMAC des en-têtes d'identité : GATEWAY__IDENTITY__SECRET
+
+# Exemple de route :
+# [[routes]]
+# prefix = "/api/chat"
+# upstream = "http://chat-service:8080"
+# strip_prefix = true
+# public = false
+# roles = ["user"]

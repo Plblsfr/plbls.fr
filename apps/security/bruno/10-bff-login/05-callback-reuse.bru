@@ -1,0 +1,20 @@
+meta {
+  name: GET /auth/callback rejoué : state consommé
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{callbackUrl}}
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  req.setMaxRedirects(0);
+
+}
+
+tests {
+  test("400", function () { expect(res.status).to.equal(400); });
+}

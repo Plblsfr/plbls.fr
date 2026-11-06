@@ -1,0 +1,74 @@
+// Barre horizontale
+//
+// <header class="plbls-navbar">
+//   <a class="plbls-navbar__marque" href="/">plbls</a>
+//   <nav class="plbls-navbar__liens" aria-label="Navigation principale">
+//     <a class="plbls-navbar__lien is-active" href="/" aria-current="page">Accueil</a>
+//   </nav>
+// </header>
+
+.plbls-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px var(--marge);
+  // couche flottante : seule à porter du flou, jamais le contenu
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--creme) 82%, transparent);
+  backdrop-filter: saturate(1.6) blur(18px);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px);
+  box-shadow: 0 1px 0 rgb(var(--ombre) / 7%);
+
+  @media (prefers-reduced-transparency: reduce) {
+    background: var(--creme);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  &__marque {
+    font-family: var(--font-titre);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.03em;
+    text-decoration: none;
+    color: var(--noir);
+  }
+
+  &__liens {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  &__lien {
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    color: var(--gris);
+    padding: 7px 14px;
+    border-radius: var(--rayon-pilule);
+    transition:
+      background var(--duree) ease,
+      color var(--duree) ease;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--noir);
+      background: var(--creme-creux);
+    }
+
+    // l'onglet actif est surligné, comme un mot du titre
+    &.is-active {
+      color: var(--noir);
+      background: var(--rose);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--noir);
+      outline-offset: 2px;
+    }
+  }
+}

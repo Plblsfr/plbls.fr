@@ -1,0 +1,24 @@
+// <div class="plbls-empty-state"><h3>Titre</h3><p>Description</p>…</div>
+
+.plbls-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: clamp(50px, 8vw, 90px) 20px;
+  border: 1.5px dashed var(--trait);
+  border-radius: var(--rayon-xl);
+
+  > h3 {
+    font-weight: 500;
+    font-size: 18px;
+  }
+
+  > p {
+    margin: 0;
+    color: var(--gris);
+    font-size: 14px;
+    max-width: 40ch;
+  }
+}
