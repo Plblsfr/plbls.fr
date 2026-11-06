@@ -74,6 +74,10 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 
 Un tag ne déclenche que son composant. Lancé à la main sur `main`, tout est republié (images `:edge`, version, caches).
 
+Connexion à ghcr.io (publication des images, image de job `estompe-ci`) : secret `GHCR_TOKEN` (PAT classique du propriétaire des paquets,
+portée `write:packages`) s'il existe, sinon `GITHUB_TOKEN`. Le `GITHUB_TOKEN` n'écrit que dans les paquets dont l'accès Actions inclut `plbls.fr`
+en écriture : les paquets créés par les anciens dépôts le refusent (`denied: permission_denied: read_package`).
+
 ## Caches
 
 - Une PR ne lit que les caches de sa branche et de `main` : les caches partagés sont donc écrits sur `main` par `livraison.yml`, et seulement
