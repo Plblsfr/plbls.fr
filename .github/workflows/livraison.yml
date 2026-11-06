@@ -1,0 +1,299 @@
+# Livraison : après une fusion dans main, publie seulement ce que la fusion a changé (images :edge, PR de version d'Estompe,
+# image de job d'Estompe, caches partagés) sans rejouer les tests de la PR ; sur un tag <composant>-vX.Y.Z, publie ce composant.
+# Les apps natives d'Estompe (Windows, Android, image web) partent du tag estompe-app-v* : estompe-livraison-app.yml.
+name: livraison
+on:
+  push:
+    branches: [main]
+    tags: ["pli-v*", "permission-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: livraison-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_TERM_COLOR: always
+  ESTOMPE_IMAGE: ghcr.io/plblsfr/estompe
+
+jobs:
+  changements:
+    uses: ./.github/workflows/_changements.yml
+
+  image-pli:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_pli == 'true') || startsWith(github.ref, 'refs/tags/pli-v')
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: pli
+      name: pli
+      context: .
+      dockerfile: apps/pli/Dockerfile
+      dir: apps/pli
+    secrets: inherit
+
+  image-permission:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_permission == 'true') || startsWith(github.ref, 'refs/tags/permission-v')
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: permission
+      name: permission
+      context: .
+      dockerfile: apps/permission/Dockerfile
+      dir: apps/permission
+    secrets: inherit
+
+  image-security:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_security == 'true') || startsWith(github.ref, 'refs/tags/security-v')
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: security
+      name: security
+      context: .
+      dockerfile: apps/security/Dockerfile
+      dir: apps/security
+    secrets: inherit
+
+  image-ui:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_ui == 'true') || startsWith(github.ref, 'refs/tags/ui-v')
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: ui
+      name: plbls-ui
+      context: .
+      dockerfile: packages/ui/Dockerfile
+      dir: packages/ui
+    secrets: inherit
+
+  # Joint dist/ (archives + fichiers seuls) à la release GitHub du tag `ui-v*`.
+  # Publier : mettre à jour la version (package.json, CHANGELOG.md), puis  git tag ui-v0.3.0 && git push origin ui-v0.3.0
+  ui-dist:
+    if: startsWith(github.ref, 'refs/tags/ui-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: packages/ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Le tag doit correspondre à package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          [ "ui-v${version}" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version ${version}" >&2; exit 1; }
+      - run: npm ci
+        working-directory: .
+      - run: npm run build
+      - name: Pièces jointes
+        run: |
+          mkdir -p release
+          name="plbls-ui-${GITHUB_REF_NAME#ui-}"
+          tar -czf "release/${name}.tgz" --transform "s,^dist,${name}," dist
+          (cd dist && zip -qr "../release/${name}.zip" .)
+          cp dist/* release/
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # la release est aussi créée par _image.yml (image-ui) : la première des deux la crée, puis on y joint dist
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME" >/dev/null
+          gh release upload "$GITHUB_REF_NAME" release/* --clobber
+
+  estompe-api-image:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.estompe_api == 'true') || startsWith(github.ref, 'refs/tags/estompe-api-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.ESTOMPE_IMAGE }}
+          tags: |
+            type=edge,branch=main
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/estompe-api-v') }}
+            type=sha,prefix=sha-
+            type=match,pattern=estompe-api-v(.*),group=1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/estompe/backend/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.ESTOMPE_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.ESTOMPE_IMAGE }}:buildcache,mode=max
+
+  estompe-api-release:
+    needs: estompe-api-image
+    if: startsWith(github.ref, 'refs/tags/estompe-api-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME" >/dev/null
+
+  # .version d'Estompe : calculé d'après le nom de la branche fusionnée (message du commit de fusion) et les dossiers modifiés,
+  # poussé sur ci/version-<sha> avec une PR « chore(version) » (main est protégée).
+  estompe-version:
+    needs: changements
+    if: github.ref == 'refs/heads/main' && needs.changements.outputs.estompe_version == 'true' && !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: estompe-version
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: apps/estompe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          # PAT (contents + pull-requests) : avec GITHUB_TOKEN, la PR ouverte ne déclencherait aucune CI
+          token: ${{ secrets.CI_PAT }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: node frontend/scripts/bump-version.mjs
+      - env:
+          GH_TOKEN: ${{ secrets.CI_PAT }}
+        run: |
+          git diff --quiet .version && exit 0
+          b="ci/version-$(git rev-parse --short HEAD)"
+          git ls-remote --exit-code --heads origin "$b" >/dev/null && { echo "la branche $b existe déjà : PR de version déjà ouverte"; exit 0; }
+          git config user.name "estompe-ci" && git config user.email "ci@plbls.fr"
+          git switch -c "$b"
+          git commit -m "chore(version): mise à jour de .version" .version
+          git push origin "$b"
+          title="chore(version): $(node -p 'Object.entries(JSON.parse(require("fs").readFileSync(".version","utf8"))).map(([k,x])=>k+" "+x).join(", ")')"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" --jq .html_url \
+            -f base=main -f head="$b" -f title="$title" \
+            -f body="Versions calculées par livraison.yml (job estompe-version) après la fusion du dernier commit de main. La fusion de cette PR ne change aucune version (seul .version est modifié)."
+      - run: |
+          f=backend/core/src/notes_version/changelog.json
+          v=$(node -p 'JSON.parse(require("fs").readFileSync(".version", "utf8")).api')
+          grep -q "\"version\": \"$v\"" "$f" || echo "::warning::pas d'entrée $v dans $f"
+
+  # Image de job des builds natifs d'Estompe : incrémenter :4 ici, dans deploy/ci/Dockerfile et dans estompe-livraison-app.yml
+  estompe-ci-image:
+    needs: changements
+    if: github.ref == 'refs/heads/main' && needs.changements.outputs.estompe_ci_image == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/estompe/deploy/ci
+          push: true
+          provenance: false
+          tags: |
+            ghcr.io/plblsfr/estompe-ci:latest
+            ghcr.io/plblsfr/estompe-ci:4
+          cache-from: type=registry,ref=ghcr.io/plblsfr/estompe-ci:buildcache
+          cache-to: type=registry,ref=ghcr.io/plblsfr/estompe-ci:buildcache,mode=max
+
+  # Caches partagés : une PR ne lit que les caches de sa branche et de main. Ils sont écrits ici, sur main, quand leur clé
+  # (Cargo.lock + rust-toolchain.toml, package-lock.json) n'existe pas encore ; sinon le job s'arrête après la recherche.
+  cache-rust:
+    needs: changements
+    if: github.ref == 'refs/heads/main' && needs.changements.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cache: [rust-lint-v2, rust-test-v1]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: existe
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.cache }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          lookup-only: true
+      - if: steps.existe.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.cache }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ matrix.cache }}-
+      - if: steps.existe.outputs.cache-hit != 'true'
+        env:
+          CACHE: ${{ matrix.cache }}
+        run: |
+          rustup toolchain install
+          case "$CACHE" in
+            rust-lint-*) cargo clippy --workspace --all-targets --locked -- -D warnings ;;
+            rust-test-*) cargo test --locked --no-run $(apps/estompe/scripts/paquets-cargo.sh) && cargo test --locked --no-run -p pli ;;
+          esac
+      - if: steps.existe.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.cache }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+  cache-npm:
+    needs: changements
+    if: github.ref == 'refs/heads/main' && needs.changements.outputs.npm_lock == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci

@@ -55,7 +55,7 @@ Règles du cycle :
 ## Nom de la branche = numéro de version
 
 Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android`), stockée dans `.version` et mise à jour
-par la CI à la fusion (`frontend/scripts/bump-version.mjs`, workflow `version.yml`) :
+par la CI à la fusion (`frontend/scripts/bump-version.mjs`, job `estompe-version` de `livraison.yml`) :
 
 | Branche | Effet à la fusion dans `main` |
 |---|---|
@@ -147,11 +147,11 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - `.version` : version de chaque élément (api, web, windows, android).
 - `docs/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
 - `deploy/` : stack Dokploy. Toute nouvelle variable d'environnement va dans `deploy/.env.example` et `deploy/docker-compose.yml`.
-- `.github/workflows/estompe-*.yml` (déclencheurs actuels et à réactiver : `docs/ci.md`) : `backend-rs.yml` (API Rust : fmt, clippy, cargo-deny, tests avec PostgreSQL,
-  build et démarrage de l'image), `frontend.yml` (front : audit, types, tests,
-  build ; tests Rust des apps), `changelog.yml` (PR : entrée `changelog.d/` exigée), `version.yml` (fusion dans `main` : calcul de `.version`),
-  `ci-image.yml` (image de job de `deploy/ci/`), `image.yml` (tag `api-v*` : image Rust de l'API), `livraison-app.yml` (tag `app-v*` : web, installeur Windows, APK).
-  Une fusion dans `main` ne construit aucune livraison : seuls les tags livrent.
+- CI (détail : `docs/ci.md`) : en PR, `ci.yml` à la racine lance `rust-lint` et `rust-test` (API Rust : fmt, clippy, cargo-deny, tests avec PostgreSQL),
+  `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`
+  (entrée `changelog.d/` exigée), chacun seulement si la PR touche ses chemins. Après fusion, `livraison.yml` calcule `.version` (`estompe-version`),
+  publie l'image `:edge` de l'API si `backend/` a changé et l'image de job de `deploy/ci/` ; tag `estompe-api-v*` : image versionnée de l'API.
+  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK.
 
 ## Conventions
 

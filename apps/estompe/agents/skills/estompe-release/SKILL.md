@@ -21,7 +21,7 @@ Référence : `AGENTS.md` (branches, version, GitHub) et `docs/release.md` (rele
 
 ## 1 bis. La chaîne de livraison fonctionnera-t-elle ?
 Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte une version et un cycle complet de PR. Avant de préparer la release, vérifier la chaîne, pas seulement les tests :
-- Lister ce qui a changé depuis le dernier tag de chaque élément livré dans `.github/workflows/estompe-*.yml`, `web/`, `windows/scripts/`, `android/scripts/`, `deploy/` et les Dockerfile : `git diff --stat <dernier-tag>..HEAD -- <chemins>`. Relire chaque changement et suivre le chemin complet : ce que `estompe-livraison-app.yml` ou `estompe-image.yml` produit, ce que le Dockerfile copie, ce qui est servi.
+- Lister ce qui a changé depuis le dernier tag de chaque élément livré dans `.github/workflows/{livraison,estompe-livraison-app,_image}.yml`, `web/`, `windows/scripts/`, `android/scripts/`, `deploy/` et les Dockerfile : `git diff --stat <dernier-tag>..HEAD -- <chemins>`. Relire chaque changement et suivre le chemin complet : ce que `estompe-livraison-app.yml` ou le job `estompe-api-image` de `livraison.yml` produit, ce que le Dockerfile copie, ce qui est servi.
 - Les caches (`actions/cache`) : une clé qui ne dépend pas du fichier modifié restaure l'ancien résultat et saute les étapes conditionnées par `cache-hit`. Vérifier que chaque correctif de la chaîne s'exécute aussi sur cache hit.
 - Reproduire en local ce qui peut l'être (`npm --prefix frontend run build`, commandes de garde des Dockerfile sur le résultat) et vérifier le contenu livré, pas seulement le code (ex. le bundle web ne contient pas `__TAURI_INTERNALS__`).
 - Quand le workflow de livraison ou un Dockerfile a changé depuis le dernier tag, vérifier les exécutions déjà faites (`gh run list --repo Plblsfr/plbls.fr --workflow <fichier>` ; sinon demander à l'utilisateur de lire le dernier run) ou lancer le workflow à la main sur `main` (`workflow_dispatch` : les jobs de build tournent, l'image ne part que sur un tag).
@@ -74,7 +74,7 @@ Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte u
 - `git switch main && git pull`. Vérifier que HEAD est le commit de fusion de la release.
 - Vérifier que les versions de `.version` sur HEAD sont celles écrites dans `changelog.json` et `CHANGELOG.md`. Sinon, s'arrêter et le dire.
 - Demander avec AskUserQuestion ce qu'il faut livrer : **API** (`estompe-api-vX.Y.Z`), **applications** (`estompe-app-vX.Y.Z`) ou **les deux** (même commit). Ne proposer que ce dont la version a augmenté depuis le dernier tag correspondant (`git tag -l 'estompe-api-v*'`, `git tag -l 'estompe-app-v*'`).
-- Pour chaque tag : vérifier qu'il n'existe pas, `git tag -a <tag> -m "<tag>"`, puis `git push origin <tag>` (ce tag seul, jamais `--tags`). `estompe-api-v*` déclenche `estompe-image.yml` (image Rust de l'API), `estompe-app-v*` déclenche `estompe-livraison-app.yml` (images web, installeur, APK).
+- Pour chaque tag : vérifier qu'il n'existe pas, `git tag -a <tag> -m "<tag>"`, puis `git push origin <tag>` (ce tag seul, jamais `--tags`). `estompe-api-v*` déclenche `livraison.yml` (job `estompe-api-image` : image Rust de l'API), `estompe-app-v*` déclenche `estompe-livraison-app.yml` (images web, installeur, APK).
 - `gh release create <tag> --repo Plblsfr/plbls.fr --verify-tag --title "<tag>" --notes "<Nouveautés / Corrections>"` pour chaque tag (`--notes`, pas `--body`).
 
 ## 8. Issues et nettoyage

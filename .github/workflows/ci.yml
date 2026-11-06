@@ -1,0 +1,342 @@
+# CI de toute PR : un seul workflow, des jobs lancés selon ce que la PR touche (_changements.yml), puis le job final « ci »,
+# seul contrôle obligatoire du ruleset avec « conventions » (pr-conventions.yml). Rien n'est rejoué sur main : livraison.yml publie.
+name: ci
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_TERM_COLOR: always
+  CARGO_DENY_VERSION: 0.20.2
+  RUFF_VERSION: 0.16.9
+
+jobs:
+  changements:
+    uses: ./.github/workflows/_changements.yml
+
+  changelog:
+    needs: changements
+    # Dependabot ne rédige pas d'entrée de changelog : la montée de version est tracée par sa PR
+    if: needs.changements.outputs.estompe == 'true' && !startsWith(github.head_ref, 'dependabot/')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/estompe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Entrée de changelog d'Estompe
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          case "$HEAD_REF" in ci/*|docs/*|release/*) echo "Branche $HEAD_REF : entrée non exigée"; exit 0;; esac
+          git diff --quiet "origin/$BASE_REF...HEAD" -- . && { echo "Aucun changement dans apps/estompe : entrée non exigée"; exit 0; }
+          git diff --relative --name-only --diff-filter=A "origin/$BASE_REF...HEAD" -- 'changelog.d/*.md' | grep -v '^changelog.d/README.md$' | grep . \
+            || { echo "::error::la PR doit ajouter un fichier changelog.d/<sujet>.md (voir changelog.d/README.md)"; exit 1; }
+
+  front:
+    needs: changements
+    if: needs.changements.outputs.front == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Une seule version de Node, copies de @plbls/ui à jour, tests des scripts communs, liens Markdown internes
+        run: |
+          node scripts/check-node.mjs
+          npm run ui:check
+          node --test "scripts/*.test.mjs"
+          node scripts/check-links.mjs
+      - name: just, shellcheck et ruff
+        if: needs.changements.outputs.lint == 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends just shellcheck
+          pipx install "ruff==${RUFF_VERSION}"
+      - name: Lint (Biome, shellcheck, ruff)
+        if: needs.changements.outputs.lint == 'true'
+        run: just lint
+      - name: Audit des dépendances d'Estompe
+        if: contains(needs.changements.outputs.espaces, 'apps/estompe/frontend')
+        run: npm audit --omit=dev --audit-level=high --workspace apps/estompe/frontend
+      - name: Types, tests et build des projets touchés
+        if: needs.changements.outputs.espaces != ''
+        env:
+          ESPACES: ${{ needs.changements.outputs.espaces }}
+        run: |
+          for espace in $ESPACES; do
+            for script in check test build; do
+              echo "::group::$espace : npm run $script"
+              npm run "$script" --workspace "$espace"
+              echo "::endgroup::"
+            done
+          done
+
+  rust-lint:
+    needs: changements
+    if: needs.changements.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain de rust-toolchain.toml
+        run: rustup toolchain install && cargo --version
+      - name: Les Dockerfiles suivent rust-toolchain.toml
+        run: |
+          channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+          ko=0
+          for f in $(git ls-files "*Dockerfile"); do
+            for tag in $(sed -n 's/^FROM rust:\([^ ]*\).*/\1/p' "$f"); do
+              case "$tag" in "$channel"|"$channel"-*) ;; *) echo "$f : rust:$tag, attendu $channel (rust-toolchain.toml)" >&2; ko=1;; esac
+            done
+          done
+          exit $ko
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-lint-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: rust-lint-v2-
+      - id: deny
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-${{ env.CARGO_DENY_VERSION }}
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Le cœur d'Estompe ne dépend d'aucun bloc
+        run: "! cargo tree -p estompe-core -e normal --prefix none --locked | grep '^estompe-block-'"
+      - if: steps.deny.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --locked --version ${{ env.CARGO_DENY_VERSION }}
+      - run: cargo deny check
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+      - if: steps.deny.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: ${{ steps.deny.outputs.cache-primary-key }}
+
+  rust-test:
+    needs: changements
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.pli_server == 'true'
+    runs-on: ubuntu-latest
+    # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+      postgres16:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-test-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: rust-test-v1-
+      - name: Tests de l'API Estompe (PostgreSQL 17)
+        if: needs.changements.outputs.estompe_api == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: cargo test --locked $(apps/estompe/scripts/paquets-cargo.sh)
+      - name: Tests du serveur pli (PostgreSQL 16)
+        if: needs.changements.outputs.pli_server == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5433/postgres
+        run: cargo test --locked -p pli
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+  estompe-tauri:
+    needs: changements
+    if: needs.changements.outputs.estompe_tauri == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/estompe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/windows/src-tauri/target
+            apps/estompe/windows/src-tauri/bobyn/target
+            apps/estompe/android/src-tauri/target
+          key: tauri-test-v1-${{ hashFiles('apps/estompe/windows/src-tauri/Cargo.lock', 'apps/estompe/windows/src-tauri/bobyn/Cargo.lock', 'apps/estompe/android/src-tauri/Cargo.lock') }}
+          restore-keys: tauri-test-v1-
+      - name: Tests de l'app Windows
+        working-directory: apps/estompe/windows/src-tauri
+        run: cargo test --lib
+      - name: Tests du crate commun
+        working-directory: apps/estompe/crates/core
+        run: cargo test
+      - name: Compilation de l'app Android (hors Android)
+        working-directory: apps/estompe/android/src-tauri
+        run: mkdir -p ../../frontend/dist && cargo check
+      - name: Tests de Bobyn
+        working-directory: apps/estompe/windows/src-tauri/bobyn
+        run: cargo test
+      - name: ffmpeg épinglé téléchargeable et vérifié
+        run: TAURI_ENV_PLATFORM=windows node windows/scripts/fetch-ffmpeg.mjs && test -s windows/src-tauri/binaries/ffmpeg.exe
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/windows/src-tauri/target
+            apps/estompe/windows/src-tauri/bobyn/target
+            apps/estompe/android/src-tauri/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+  estompe-api-image:
+    needs: changements
+    if: needs.changements.outputs.estompe_api == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/estompe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/estompe/backend/Dockerfile
+          push: false
+          load: true
+          tags: estompe-api:pr-${{ github.run_id }}
+          cache-from: type=registry,ref=ghcr.io/plblsfr/estompe:buildcache
+      - name: L'image démarre et répond sur /readyz
+        run: |
+          docker run -d --name estompe-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres postgres:17-alpine
+          timeout 60 sh -c 'until docker exec estompe-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
+          docker run -d --name estompe-pr-api-${{ github.run_id }} --network container:estompe-pr-pg-${{ github.run_id }} --env-file deploy/.env.example \
+            -e DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' estompe-api:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until docker run --rm --network container:estompe-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
+            || { docker logs estompe-pr-api-${{ github.run_id }}; exit 1; }
+      - if: always()
+        run: docker rm -f estompe-pr-api-${{ github.run_id }} estompe-pr-pg-${{ github.run_id }}
+
+  image-pli:
+    needs: changements
+    if: needs.changements.outputs.image_pli == 'true'
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: pli
+      name: pli
+      context: .
+      dockerfile: apps/pli/Dockerfile
+      dir: apps/pli
+
+  image-permission:
+    needs: changements
+    if: needs.changements.outputs.image_permission == 'true'
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: permission
+      name: permission
+      context: .
+      dockerfile: apps/permission/Dockerfile
+      dir: apps/permission
+      test_target: test
+
+  image-security:
+    needs: changements
+    if: needs.changements.outputs.image_security == 'true'
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: security
+      name: security
+      context: .
+      dockerfile: apps/security/Dockerfile
+      dir: apps/security
+      test_target: test
+
+  image-ui:
+    needs: changements
+    if: needs.changements.outputs.image_ui == 'true'
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: ui
+      name: plbls-ui
+      context: .
+      dockerfile: packages/ui/Dockerfile
+      dir: packages/ui
+      test_target: build
+
+  ci:
+    if: always()
+    needs: [changements, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-security, image-ui]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aucun job en échec ni annulé
+        env:
+          RESULTATS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTATS"
+          if echo "$RESULTATS" | grep -qE '"(failure|cancelled)"'; then exit 1; fi
+
+  # Transition : contrôles exigés par l'ancien ruleset, tous calqués sur « ci ».
+  # À supprimer une fois `scripts/configurer-github.sh` relancé (ruleset réduit à « ci » et « conventions »).
+  anciens-controles:
+    name: ${{ matrix.controle }}
+    if: always()
+    needs: ci
+    strategy:
+      matrix:
+        controle: [npm, estompe-backend-rs, estompe-frontend, pli-ci, permission-ci, security-ci, ui-ci]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTAT: ${{ needs.ci.result }}
+        run: '[ "$RESULTAT" = success ]'

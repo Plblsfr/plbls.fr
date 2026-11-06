@@ -54,7 +54,7 @@ updates:
       # versions impaires sans support à long terme ; une nouvelle LTS se monte à la main partout (.nvmrc, engines, images : scripts/check-node.mjs)
       - dependency-name: node
         versions: ["25.x", "27.x", "29.x"]
-      # la version de Rust des images suit rust-toolchain.toml (épinglée à la main, vérifiée par _rust-lint.yml)
+      # la version de Rust des images suit rust-toolchain.toml (épinglée à la main, vérifiée par le job rust-lint de ci.yml)
       - dependency-name: rust
 
   - package-ecosystem: docker-compose

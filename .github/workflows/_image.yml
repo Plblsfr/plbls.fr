@@ -1,6 +1,6 @@
-# Cycle commun à pli, security, permission, ui :
-#   PR            tests / build à blanc
-#   push main     image :edge + :<sha>
+# Cycle commun à pli, security, permission, ui (appelé par ci.yml en PR, par livraison.yml sur main et sur tag) :
+#   PR            étape de test du Dockerfile, puis build à blanc
+#   push main     image :edge + :<sha> (sans rejouer l'étape de test, déjà passée dans la PR)
 #   tag <composant>-vX.Y.Z   image :X.Y.Z + :latest + :<sha>, puis release GitHub
 name: _image
 on:
@@ -40,7 +40,7 @@ jobs:
             echo "version=$version" >> "$GITHUB_OUTPUT"
           fi
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - if: inputs.test_target != ''
+      - if: inputs.test_target != '' && github.event_name == 'pull_request'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.context }}
@@ -100,5 +100,5 @@ jobs:
             notes=(--notes-file notes.md)
           fi
           case "${{ needs.build.outputs.version }}" in *-*) pre=--prerelease;; *) pre=;; esac
-          # idempotent : ui-release peut avoir déjà créé la release
+          # idempotent : ui-dist (livraison.yml) peut avoir déjà créé la release
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" "${notes[@]}" $pre || gh release view "$GITHUB_REF_NAME" >/dev/null

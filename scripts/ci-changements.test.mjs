@@ -30,12 +30,12 @@ async function depot(t, modifies) {
   return dir;
 }
 
-async function lancer(dir, evenement, chemins) {
+async function lancer(dir, evenement, chemins, ref = 'refs/pull/1/merge') {
   const sortie = join(dir, '.sortie');
   await writeFile(sortie, '');
   execFileSync('bash', [script, ...chemins], {
     cwd: dir,
-    env: { ...process.env, GITHUB_EVENT_NAME: evenement, GITHUB_OUTPUT: sortie },
+    env: { ...process.env, GITHUB_EVENT_NAME: evenement, GITHUB_REF: ref, GITHUB_OUTPUT: sortie },
     stdio: ['ignore', 'ignore', 'inherit'],
   });
   return (await readFile(sortie, 'utf8')).trim();
@@ -63,8 +63,20 @@ test('un fichier racine nommé exactement est suivi', async (t) => {
   assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=true');
 });
 
-test('hors pull_request, tout est lancé', async (t) => {
+test('un push sur une branche compare le commit de fusion à son premier parent', async (t) => {
   const dir = await depot(t, ['apps/pli/index.js']);
-  assert.equal(await lancer(dir, 'push', backend), 'modifie=true');
-  assert.equal(await lancer(dir, 'workflow_dispatch', backend), 'modifie=true');
+  assert.equal(await lancer(dir, 'push', backend, 'refs/heads/main'), 'modifie=false');
+  assert.equal(await lancer(dir, 'push', ['apps/pli/**'], 'refs/heads/main'), 'modifie=true');
+});
+
+test('un tag ou un lancement manuel lance tout', async (t) => {
+  const dir = await depot(t, ['apps/pli/index.js']);
+  assert.equal(await lancer(dir, 'push', backend, 'refs/tags/pli-v1.0.0'), 'modifie=true');
+  assert.equal(await lancer(dir, 'workflow_dispatch', backend, 'refs/heads/main'), 'modifie=true');
+});
+
+test('--nom choisit la clé de sortie', async (t) => {
+  const dir = await depot(t, ['apps/pli/index.js']);
+  assert.equal(await lancer(dir, 'pull_request', ['--nom', 'pli', 'apps/pli/**']), 'pli=true');
+  assert.equal(await lancer(dir, 'workflow_dispatch', ['--nom', 'rust', 'Cargo.toml'], 'refs/heads/main'), 'rust=true');
 });

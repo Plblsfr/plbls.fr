@@ -31,7 +31,7 @@ docker compose pull && docker compose up -d
 
 Les routes des micro-services sont dans `config/routes.toml` (modèle : `config/routes.example.toml`), embarqué dans l'image : modifier une route = commit, CI, redéploiement.
 
-L'image est construite par la CI (`.github/workflows/security-ci.yml`) : `edge` à chaque push sur `main`, puis `X.Y.Z`, `latest` et le SHA du commit sur un tag `security-vX.Y.Z` (la version du tag doit égaler celle de `Cargo.toml`). Pour figer une version : `GATEWAY_TAG=X.Y.Z docker compose up -d`. Aucun secret à ajouter : la CI utilise `GITHUB_TOKEN` (secret optionnel `DOKPLOY_WEBHOOK_URL`).
+L'image est testée en PR (`.github/workflows/ci.yml`) et publiée par `.github/workflows/livraison.yml` : `edge` à chaque push sur `main`, puis `X.Y.Z`, `latest` et le SHA du commit sur un tag `security-vX.Y.Z` (la version du tag doit égaler celle de `Cargo.toml`). Pour figer une version : `GATEWAY_TAG=X.Y.Z docker compose up -d`. Aucun secret à ajouter : la CI utilise `GITHUB_TOKEN` (secret optionnel `DOKPLOY_WEBHOOK_URL`).
 
 Le conteneur écoute sur `127.0.0.1:8080` : le TLS est terminé par le reverse proxy de `security.plbls.fr`, qui doit ajouter l'IP cliente en dernière entrée de `X-Forwarded-For` (le gateway limite `/auth/login|register|callback` par IP, `rate_limit.auth_per_minute`) et limiter aussi le débit de Keycloak (`auth.plbls.fr`).
 
