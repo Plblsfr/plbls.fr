@@ -887,7 +887,7 @@ impl<T: TransparentPtrType> PtrSlice<T> {
     /// If there are fewer than `len` items then this has no effect.
     #[inline]
     pub fn truncate(&mut self, len: usize) {
-        if self.len <= len {
+        if self.len <= len || self.capacity == 0 {
             return;
         }
 

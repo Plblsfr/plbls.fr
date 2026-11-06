@@ -459,12 +459,14 @@ unsafe fn init_value(value: *mut gobject_ffi::GValue) {
 
 #[inline]
 unsafe fn copy_into_value(dest: *mut gobject_ffi::GValue, src: *const gobject_ffi::GValue) {
+    assert!(!dest.is_null() && !src.is_null());
     gobject_ffi::g_value_init(dest, (*src).g_type);
     gobject_ffi::g_value_copy(src, dest);
 }
 
 #[inline]
 unsafe fn clear_value(value: *mut gobject_ffi::GValue) {
+    assert!(!value.is_null());
     // Before GLib 2.48, unsetting a zeroed GValue would give critical warnings
     // https://bugzilla.gnome.org/show_bug.cgi?id=755766
     if (*value).g_type != gobject_ffi::G_TYPE_INVALID {
