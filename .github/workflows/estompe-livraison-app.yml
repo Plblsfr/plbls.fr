@@ -13,8 +13,7 @@ env:
   IMAGE: ghcr.io/plblsfr/estompe-web
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 defaults:
   run:
@@ -27,8 +26,8 @@ jobs:
       run:
         working-directory: apps/estompe/frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -39,17 +38,21 @@ jobs:
 
   windows:
     runs-on: ubuntu-latest
+    environment: livraison
+    permissions:
+      contents: read
+      packages: read
     container:
       image: ghcr.io/plblsfr/estompe-ci:4
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
       - id: installer
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             apps/estompe/web/dist-updates
@@ -57,7 +60,7 @@ jobs:
           key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('apps/estompe/backend/core/updates.json', 'apps/estompe/frontend/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'apps/estompe/frontend/public/**', 'apps/estompe/frontend/index.html', 'package-lock.json', 'apps/estompe/frontend/vite.config.ts', 'apps/estompe/frontend/scripts/**') }}
       - id: cargo-cache
         if: steps.installer.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /opt/cargo/registry
@@ -76,7 +79,7 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then export PROFILE=release; else export PROFILE=ci; fi
           scripts/release-windows.sh "Version $(printf %.7s "$GITHUB_SHA")"
       - if: steps.installer.outputs.cache-hit != 'true' && steps.cargo-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /opt/cargo/registry
@@ -84,7 +87,7 @@ jobs:
             apps/estompe/windows/src-tauri/target
           key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
       - if: steps.installer.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             apps/estompe/web/dist-updates
@@ -92,7 +95,7 @@ jobs:
           key: ${{ steps.installer.outputs.cache-primary-key }}
       - name: Front web (le build Windows, neuf ou restauré du cache, a écrasé frontend/dist)
         run: npm ci --prefix ../.. && npm --prefix frontend run build
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: front
           path: |
@@ -102,22 +105,23 @@ jobs:
   android:
     if: vars.ANDROID_APK == '1'
     runs-on: ubuntu-latest
+    environment: livraison
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: ""
       - id: android-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -129,7 +133,7 @@ jobs:
           restore-keys: android-
       - name: SDK et NDK
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;26.3.11579264" && echo "NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: aarch64-linux-android
       - name: APK signé
@@ -143,7 +147,7 @@ jobs:
           [ -s src-tauri/gen/android/app/google-services.json ] && grep -q project_info src-tauri/gen/android/app/google-services.json || rm -f src-tauri/gen/android/app/google-services.json
           ANDROID_KEYSTORE="$RUNNER_TEMP/estompe.jks" scripts/release-android.sh
       - if: steps.android-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -152,7 +156,7 @@ jobs:
             ~/.gradle/wrapper
             apps/estompe/android/src-tauri/target
           key: ${{ steps.android-cache.outputs.cache-primary-key }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apk
           path: |
@@ -163,25 +167,28 @@ jobs:
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/estompe-app-v') && needs.front.result == 'success' && needs.windows.result == 'success' && needs.android.result != 'failure' }}
     needs: [front, windows, android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: front
           path: apps/estompe
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.android.result == 'success'
         with:
           name: apk
           path: apps/estompe/web/dist-updates
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.IMAGE }}
           tags: |
@@ -189,7 +196,7 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/estompe-app-v') }}
             type=sha,prefix=sha-
             type=match,pattern=estompe-app-v(.*),group=1
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: apps/estompe
           file: apps/estompe/web/Dockerfile
@@ -212,6 +219,8 @@ jobs:
     needs: image
     if: startsWith(github.ref, 'refs/tags/estompe-app-v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: .
