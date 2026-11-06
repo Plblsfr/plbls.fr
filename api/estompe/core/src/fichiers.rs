@@ -2058,15 +2058,21 @@ mod tests {
         }
     }
 
+    fn cle_aleatoire() -> [u8; 32] {
+        use std::hash::BuildHasher;
+        let graine = std::collections::hash_map::RandomState::new();
+        std::array::from_fn(|i| graine.hash_one(i) as u8)
+    }
+
     #[test]
     fn liens_et_identifiants() {
-        let cle = [7u8; 32];
+        let cle = cle_aleatoire();
         let id = "123e4567-e89b-12d3-a456-426614174000";
         let jeton = signer(&cle, id, 2000);
         assert!(lien_valide(&cle, id, &jeton, 1999));
         assert!(!lien_valide(&cle, id, &jeton, 2000));
         assert!(!lien_valide(&cle, "autre", &jeton, 1999));
-        assert!(!lien_valide(&[8u8; 32], id, &jeton, 1999));
+        assert!(!lien_valide(&cle_aleatoire(), id, &jeton, 1999));
         for mauvais in ["", "x", "2000.", "+2000.ab", "-1.ab", &format!("{jeton}0")] {
             assert!(!lien_valide(&cle, id, mauvais, 1999), "{mauvais}");
         }

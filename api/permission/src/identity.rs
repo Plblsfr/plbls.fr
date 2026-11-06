@@ -39,18 +39,35 @@ pub fn verify(
 mod tests {
     use super::*;
 
+    fn cle_aleatoire() -> String {
+        use std::hash::BuildHasher;
+        std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string()
+    }
+
     #[test]
     fn roundtrip_tamper_stale() {
-        let sig = sign("s3cret", "u1", "user", "c", 1000);
-        assert!(verify("s3cret", "u1", "user", "c", 1000, &sig, 1030));
-        assert!(!verify("s3cret", "u1", "admin", "c", 1000, &sig, 1030));
-        assert!(!verify("autre", "u1", "user", "c", 1000, &sig, 1030));
-        assert!(!verify("s3cret", "u1", "user", "c", 1000, &sig, 1061));
+        let secret = cle_aleatoire();
+        let sig = sign(&secret, "u1", "user", "c", 1000);
+        assert!(verify(&secret, "u1", "user", "c", 1000, &sig, 1030));
+        assert!(!verify(&secret, "u1", "admin", "c", 1000, &sig, 1030));
+        assert!(!verify(
+            &cle_aleatoire(),
+            "u1",
+            "user",
+            "c",
+            1000,
+            &sig,
+            1030
+        ));
+        assert!(!verify(&secret, "u1", "user", "c", 1000, &sig, 1061));
     }
 
     #[test]
     fn empty_secret_never_valid() {
-        let sig = sign("", "u1", "user", "c", 1000);
-        assert!(!verify("", "u1", "user", "c", 1000, &sig, 1000));
+        let vide = String::new();
+        let sig = sign(&vide, "u1", "user", "c", 1000);
+        assert!(!verify(&vide, "u1", "user", "c", 1000, &sig, 1000));
     }
 }

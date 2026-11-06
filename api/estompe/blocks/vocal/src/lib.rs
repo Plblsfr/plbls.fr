@@ -1740,7 +1740,10 @@ mod tests {
             StatusCode::UNAUTHORIZED
         );
         assert_eq!(e.webhook("", &arrive).await, StatusCode::UNAUTHORIZED);
-        let expire = signer("secret", &json!({ "exp": 1, "sha256": "x" }));
+        let expire = signer(
+            &e.state.config().livekit.secret,
+            &json!({ "exp": 1, "sha256": "x" }),
+        );
         assert_eq!(e.webhook(&expire, &arrive).await, StatusCode::UNAUTHORIZED);
         assert!(types(&mut rx).is_empty());
 

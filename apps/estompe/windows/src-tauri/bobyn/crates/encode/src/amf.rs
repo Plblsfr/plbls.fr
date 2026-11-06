@@ -73,7 +73,13 @@ fn wide(s: &str) -> Vec<u16> {
 
 /// Récupère la fonction du slot `index` de la vtable de `obj`.
 unsafe fn slot<F: Copy>(obj: Obj, index: usize) -> F {
+    if obj.is_null() {
+        panic!("AMF : objet nul");
+    }
     let vtbl = *(obj as *const *const usize);
+    if vtbl.is_null() {
+        panic!("AMF : vtable nulle");
+    }
     std::mem::transmute_copy(&*vtbl.add(index))
 }
 

@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use axum::{
-    Extension,
     body::Body,
     extract::{Query, State},
     http::{HeaderValue, StatusCode, header},
@@ -243,9 +242,34 @@ pub fn routes(reglages: Arc<Reglages>) -> OpenApiRouter<AppState> {
         "/gifs/import",
     );
     let r = OpenApiRouter::new()
-        .route("/gifs/search", get(rechercher))
-        .route("/gifs/trending", get(tendances))
-        .route("/gifs/import", post(importer));
+        .route("/gifs/search", {
+            let reglages = reglages.clone();
+            get(
+                move |state: State<AppState>,
+                      user: ActiveUser,
+                      params: Query<Vec<(String, String)>>| {
+                    rechercher(state, reglages, user, params)
+                },
+            )
+        })
+        .route("/gifs/trending", {
+            let reglages = reglages.clone();
+            get(
+                move |state: State<AppState>,
+                      user: ActiveUser,
+                      params: Query<Vec<(String, String)>>| {
+                    tendances(state, reglages, user, params)
+                },
+            )
+        })
+        .route(
+            "/gifs/import",
+            post(
+                move |state: State<AppState>, user: ActiveUser, corps: Body| {
+                    importer(state, reglages, user, corps)
+                },
+            ),
+        );
     let r = openapi::documenter(
         r,
         "/gifs/search",
@@ -258,7 +282,7 @@ pub fn routes(reglages: Arc<Reglages>) -> OpenApiRouter<AppState> {
         HttpMethod::Get,
         recherche("GIF du moment (Giphy)"),
     );
-    openapi::documenter(r, "/gifs/import", HttpMethod::Post, import).layer(Extension(reglages))
+    openapi::documenter(r, "/gifs/import", HttpMethod::Post, import)
 }
 
 pub fn mount(router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
@@ -275,7 +299,7 @@ fn indisponible() -> Response {
 
 async fn rechercher(
     State(state): State<AppState>,
-    Extension(reglages): Extension<Arc<Reglages>>,
+    reglages: Arc<Reglages>,
     ActiveUser(user): ActiveUser,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
@@ -284,7 +308,7 @@ async fn rechercher(
 
 async fn tendances(
     State(state): State<AppState>,
-    Extension(reglages): Extension<Arc<Reglages>>,
+    reglages: Arc<Reglages>,
     ActiveUser(user): ActiveUser,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
@@ -370,7 +394,7 @@ async fn lister(
 
 async fn importer(
     State(state): State<AppState>,
-    Extension(reglages): Extension<Arc<Reglages>>,
+    reglages: Arc<Reglages>,
     ActiveUser(user): ActiveUser,
     corps: Body,
 ) -> Response {

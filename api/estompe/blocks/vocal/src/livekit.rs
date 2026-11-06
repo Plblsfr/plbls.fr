@@ -409,6 +409,16 @@ fn constant_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::LazyLock;
+
+    static SECRET: LazyLock<String> = LazyLock::new(cle_aleatoire);
+
+    fn cle_aleatoire() -> String {
+        use std::hash::BuildHasher;
+        std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string()
+    }
 
     #[test]
     fn webhook_decode_comme_le_go() {
@@ -416,7 +426,7 @@ mod tests {
             url: "wss://lk".into(),
             api_url: "http://127.0.0.1:1".into(),
             key: "k".into(),
-            secret: "s".into(),
+            secret: SECRET.clone(),
             max_screen_fps: 0,
             max_screen_height: 0,
             allow_video: false,
@@ -438,7 +448,7 @@ mod tests {
             url: "wss://lk".into(),
             api_url: "http://127.0.0.1:1".into(),
             key: "k".into(),
-            secret: "s".into(),
+            secret: SECRET.clone(),
             max_screen_fps: 0,
             max_screen_height: 0,
             allow_video: video,
@@ -471,8 +481,8 @@ mod tests {
         assert_eq!(c["video"]["canPublishSources"], json!(["microphone"]));
         assert_eq!(c["video"]["canSubscribe"], true);
         assert_eq!(c["video"]["canPublishData"], false);
-        assert!(verifier("s", &j, maintenant()).is_ok());
-        assert!(verifier("autre", &j, maintenant()).is_err());
+        assert!(verifier(&SECRET, &j, maintenant()).is_ok());
+        assert!(verifier(&cle_aleatoire(), &j, maintenant()).is_err());
     }
 
     #[test]
@@ -515,18 +525,18 @@ mod tests {
 
     #[test]
     fn verification_refuse_les_jetons_invalides() {
-        let valide = signer("s", &json!({ "exp": 100 }));
-        assert!(verifier("s", &valide, 100).is_ok());
-        assert_eq!(verifier("s", &valide, 101), Err("jeton expiré"));
-        assert_eq!(verifier("s", "a.b", 0), Err("jeton mal formé"));
-        assert_eq!(verifier("s", "a.b.c", 0), Err("signature invalide"));
+        let valide = signer(&SECRET, &json!({ "exp": 100 }));
+        assert!(verifier(&SECRET, &valide, 100).is_ok());
+        assert_eq!(verifier(&SECRET, &valide, 101), Err("jeton expiré"));
+        assert_eq!(verifier(&SECRET, "a.b", 0), Err("jeton mal formé"));
+        assert_eq!(verifier(&SECRET, "a.b.c", 0), Err("signature invalide"));
         assert_eq!(
-            verifier("s", &signer("s", &json!({})), 0),
+            verifier(&SECRET, &signer(&SECRET, &json!({})), 0),
             Err("jeton sans expiration")
         );
         let mut altere = valide.clone();
         altere.push('x');
-        assert!(verifier("s", &altere, 0).is_err());
+        assert!(verifier(&SECRET, &altere, 0).is_err());
     }
 
     #[test]

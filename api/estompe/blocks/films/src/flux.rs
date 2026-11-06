@@ -287,8 +287,16 @@ pub fn reecrire_playlist(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::LazyLock;
 
-    const SECRET: &str = "secret-de-test-assez-long-pour-hmac";
+    fn cle_aleatoire() -> String {
+        use std::hash::BuildHasher;
+        std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string()
+    }
+
+    static SECRET: LazyLock<String> = LazyLock::new(cle_aleatoire);
     const UNIX: u64 = 1_000_000;
     const LARGES: Limites = Limites {
         flux: 100,
@@ -309,7 +317,7 @@ mod tests {
 
     fn ouvrir(f: &Flux, t: Instant) -> (String, String) {
         let (id, signe, _) = f
-            .ouvrir(demande("alice", Mode::Direct), LARGES, SECRET, t, UNIX)
+            .ouvrir(demande("alice", Mode::Direct), LARGES, &SECRET, t, UNIX)
             .unwrap();
         (id, signe)
     }
@@ -318,7 +326,7 @@ mod tests {
     fn jeton_valide() {
         let (f, t) = (Flux::default(), Instant::now());
         let (id, signe) = ouvrir(&f, t);
-        let a = f.valider(&signe, SECRET, t, UNIX).unwrap();
+        let a = f.valider(&signe, &SECRET, t, UNIX).unwrap();
         assert_eq!(a.flux, id);
         assert_eq!(a.ouverture.utilisateur, "alice");
     }
@@ -337,25 +345,25 @@ mod tests {
             "n.importe.quoi".to_string(),
             String::new(),
         ] {
-            assert!(f.valider(&faux, SECRET, t, UNIX).is_none(), "{faux}");
+            assert!(f.valider(&faux, &SECRET, t, UNIX).is_none(), "{faux}");
         }
-        assert!(f.valider(&signe, "autre-secret", t, UNIX).is_none());
-        assert!(f.valider(&signe, SECRET, t, UNIX).is_some());
+        assert!(f.valider(&signe, &cle_aleatoire(), t, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t, UNIX).is_some());
     }
 
     #[test]
     fn jeton_d_un_autre_utilisateur_refuse() {
         let (f, t) = (Flux::default(), Instant::now());
         let (id, _) = ouvrir(&f, t);
-        let forge = jeton(SECRET, "mallory", &id, UNIX + 10);
-        assert!(f.valider(&forge, SECRET, t, UNIX).is_none());
+        let forge = jeton(&SECRET, "mallory", &id, UNIX + 10);
+        assert!(f.valider(&forge, &SECRET, t, UNIX).is_none());
     }
 
     #[test]
     fn expire_par_inactivite() {
         let (f, t) = (Flux::default(), Instant::now());
         let (_, signe) = ouvrir(&f, t);
-        assert!(f.valider(&signe, SECRET, t + INACTIVITE, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t + INACTIVITE, UNIX).is_none());
     }
 
     #[test]
@@ -363,9 +371,9 @@ mod tests {
         let (f, t) = (Flux::default(), Instant::now());
         let (_, signe) = ouvrir(&f, t);
         let presque = INACTIVITE - Duration::from_secs(1);
-        assert!(f.valider(&signe, SECRET, t + presque, UNIX).is_some());
-        assert!(f.valider(&signe, SECRET, t + presque * 2, UNIX).is_some());
-        assert!(f.valider(&signe, SECRET, t + presque * 4, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t + presque, UNIX).is_some());
+        assert!(f.valider(&signe, &SECRET, t + presque * 2, UNIX).is_some());
+        assert!(f.valider(&signe, &SECRET, t + presque * 4, UNIX).is_none());
     }
 
     #[test]
@@ -375,13 +383,13 @@ mod tests {
         let mut courant = t;
         while courant.duration_since(t) + INACTIVITE < PLAFOND {
             courant += INACTIVITE - Duration::from_secs(1);
-            assert!(f.valider(&signe, SECRET, courant, UNIX).is_some());
+            assert!(f.valider(&signe, &SECRET, courant, UNIX).is_some());
         }
-        assert!(f.valider(&signe, SECRET, t + PLAFOND, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t + PLAFOND, UNIX).is_none());
         let (f, t) = (Flux::default(), Instant::now());
         let (_, signe) = ouvrir(&f, t);
         assert!(
-            f.valider(&signe, SECRET, t, UNIX + PLAFOND.as_secs())
+            f.valider(&signe, &SECRET, t, UNIX + PLAFOND.as_secs())
                 .is_none()
         );
     }
@@ -393,12 +401,12 @@ mod tests {
         let (id, signe) = ouvrir(&f, t);
         let lecture = f.lecture(&id);
         assert!(
-            f.valider(&signe, SECRET, t + INACTIVITE * 3, UNIX)
+            f.valider(&signe, &SECRET, t + INACTIVITE * 3, UNIX)
                 .is_some()
         );
         drop(lecture);
         assert!(
-            f.valider(&signe, SECRET, Instant::now() + INACTIVITE, UNIX)
+            f.valider(&signe, &SECRET, Instant::now() + INACTIVITE, UNIX)
                 .is_none()
         );
     }
@@ -408,9 +416,9 @@ mod tests {
         let (f, t) = (Flux::default(), Instant::now());
         let (id, signe) = ouvrir(&f, t);
         assert_eq!(f.fermer(&id, "bob"), None);
-        assert!(f.valider(&signe, SECRET, t, UNIX).is_some());
+        assert!(f.valider(&signe, &SECRET, t, UNIX).is_some());
         assert_eq!(f.fermer(&id, "alice"), Some(Mode::Direct));
-        assert!(f.valider(&signe, SECRET, t, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t, UNIX).is_none());
         assert_eq!(f.fermer(&id, "alice"), None);
     }
 
@@ -424,7 +432,7 @@ mod tests {
         let ouvre = |qui: &str, jf: &str, t| {
             let mut o = demande(qui, Mode::Direct);
             o.jellyfin_id = jf.into();
-            f.ouvrir(o, lim, SECRET, t, UNIX)
+            f.ouvrir(o, lim, &SECRET, t, UNIX)
         };
         let (premier, _, _) = ouvre("alice", "a", t).unwrap();
         ouvre("alice", "b", t).unwrap();
@@ -443,12 +451,12 @@ mod tests {
             flux: 1,
             transcodages: 1,
         };
-        let ouvre = |qui: &str, mode| f.ouvrir(demande(qui, mode), lim, SECRET, t, UNIX);
+        let ouvre = |qui: &str, mode| f.ouvrir(demande(qui, mode), lim, &SECRET, t, UNIX);
         let (ancien, signe, remplaces) = ouvre("alice", Mode::Hls).unwrap();
         assert!(remplaces.is_empty());
         let (nouveau, _, remplaces) = ouvre("alice", Mode::Hls).unwrap();
         assert_eq!(remplaces, vec![ancien.clone()]);
-        assert!(f.valider(&signe, SECRET, t, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t, UNIX).is_none());
         assert_eq!(f.fermer(&ancien, "alice"), None);
         assert_eq!(ouvre("bob", Mode::Hls).unwrap_err(), Refus::ServeurCharge);
         assert_eq!(f.fermer(&nouveau, "alice"), Some(Mode::Hls));
@@ -462,7 +470,7 @@ mod tests {
             flux: 100,
             transcodages: 2,
         };
-        let ouvre = |qui: &str, mode| f.ouvrir(demande(qui, mode), lim, SECRET, t, UNIX);
+        let ouvre = |qui: &str, mode| f.ouvrir(demande(qui, mode), lim, &SECRET, t, UNIX);
         ouvre("alice", Mode::Hls).unwrap();
         ouvre("bob", Mode::Hls).unwrap();
         assert_eq!(

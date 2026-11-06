@@ -26,8 +26,12 @@ export function erreursBranche(branche) {
 }
 
 export function erreursDescription(description) {
-  const texte = (description ?? '').replace(/<!--[\s\S]*?-->/g, '').trim();
-  return texte ? [] : ['la PR n’a pas de description : contenu, vérifications faites et ce qui n’a pas été vérifié'];
+  let texte = description ?? '';
+  for (let avant = ''; avant !== texte; ) {
+    avant = texte;
+    texte = texte.replace(/<!--[\s\S]*?-->/g, '');
+  }
+  return texte.trim() ? [] : ['la PR n’a pas de description : contenu, vérifications faites et ce qui n’a pas été vérifié'];
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

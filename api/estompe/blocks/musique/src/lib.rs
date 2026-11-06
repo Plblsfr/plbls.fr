@@ -10,7 +10,6 @@ use std::{
 };
 
 use axum::{
-    Extension,
     extract::{Path, Query, State},
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
@@ -26,7 +25,7 @@ use serde_json::{Value, json};
 use utoipa::openapi::HttpMethod;
 use utoipa_axum::router::OpenApiRouter;
 
-pub use analyse::{Lien, analyser_url, analyser_youtube_music, est_id_video};
+pub use analyse::{Lien, analyser_url, analyser_youtube_music, est_id_video, id_video_canonique};
 use cache::Cache;
 pub use youtube::Liste;
 use youtube::sans_topic;
@@ -308,9 +307,30 @@ fn param<'a>(params: &'a [(String, String)], nom: &str) -> &'a str {
 
 pub fn routes(musique: Arc<Musique>) -> OpenApiRouter<AppState> {
     let routeur = OpenApiRouter::new()
-        .route("/music/search", get(rechercher))
-        .route("/music/resolve", get(resoudre))
-        .route("/music/cover/{id}", get(pochette));
+        .route("/music/search", {
+            let musique = musique.clone();
+            get(
+                move |state: State<AppState>,
+                      user: ActiveUser,
+                      params: Query<Vec<(String, String)>>| {
+                    rechercher(state, musique, user, params)
+                },
+            )
+        })
+        .route("/music/resolve", {
+            let musique = musique.clone();
+            get(
+                move |state: State<AppState>,
+                      user: ActiveUser,
+                      params: Query<Vec<(String, String)>>| {
+                    resoudre(state, musique, user, params)
+                },
+            )
+        })
+        .route(
+            "/music/cover/{id}",
+            get(move |id: Path<String>| pochette(musique, id)),
+        );
     let routeur = openapi::documenter(
         routeur,
         "/music/search",
@@ -360,7 +380,6 @@ pub fn routes(musique: Arc<Musique>) -> OpenApiRouter<AppState> {
             "/music/cover/{id}",
         ),
     )
-    .layer(Extension(musique))
 }
 
 pub fn mount(router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
@@ -369,7 +388,7 @@ pub fn mount(router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
 
 async fn resoudre(
     State(state): State<AppState>,
-    Extension(musique): Extension<Arc<Musique>>,
+    musique: Arc<Musique>,
     ActiveUser(user): ActiveUser,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
@@ -391,7 +410,7 @@ async fn resoudre(
 
 async fn rechercher(
     State(state): State<AppState>,
-    Extension(musique): Extension<Arc<Musique>>,
+    musique: Arc<Musique>,
     ActiveUser(user): ActiveUser,
     Query(params): Query<Vec<(String, String)>>,
 ) -> Response {
@@ -431,10 +450,10 @@ async fn rechercher(
     write_json(StatusCode::OK, &Value::Array(pistes))
 }
 
-async fn pochette(Extension(musique): Extension<Arc<Musique>>, Path(id): Path<String>) -> Response {
-    if !est_id_video(&id) {
+async fn pochette(musique: Arc<Musique>, Path(id): Path<String>) -> Response {
+    let Some(id) = id_video_canonique(&id) else {
         return introuvable();
-    }
+    };
     musique.pochette(&id).await
 }
 
