@@ -19,7 +19,7 @@ Rôle : orchestrer les relecteurs et consolider. Aucune correction. **Au plus de
 - Compter les sections « Revue » de `plan.md` :
   - **0 → revue 1** : diff complet `<base>...HEAD` ;
   - **1 → revue 2** : diff des seules corrections, `<sha de la revue 1>..HEAD` ;
-  - **2 → refuser** : dire que le plafond est atteint et renvoyer vers `/estompe-mr`.
+  - **2 → refuser** : dire que le plafond est atteint et renvoyer vers `/estompe-pr`.
 
 ## 2. Relecteurs
 Un seul message, outil Agent (`general-purpose`), lecture seule (`git -C <worktree> diff|log|show|grep`, lecture de fichiers). Ils reçoivent des chemins et des consignes, pas l'avis de la session. Référence : `<worktree>/AGENTS.md`.
@@ -54,14 +54,14 @@ Ajouter à la fin de `.ai/<CLÉ>/plan.md`, sans toucher au reste :
 ### Corrections à faire
 - [ ] R<N>.1 [bloquant|important] <fichier:ligne> — <correction attendue>
 ### Verdict
-à corriger | prêt pour la MR
+à corriger | prêt pour la PR
 ```
 
-- Verdict « prêt pour la MR » s'il ne reste aucun bloquant ni important. Les mineurs ne sont jamais des corrections.
+- Verdict « prêt pour la PR » s'il ne reste aucun bloquant ni important. Les mineurs ne sont jamais des corrections.
 - Revue 2 avec un bloquant encore ouvert : verdict « à corriger » ; l'utilisateur décide (corriger à la main, ou accepter et ouvrir un ticket).
 
 ## 5. Sortie
-Remarques par gravité, verdict. « À corriger » après la revue 1 : `/estompe-implement <CLÉ>` puis `/estompe-code-review <CLÉ>` (revue 2). « Prêt » : `/estompe-mr <CLÉ>`.
+Remarques par gravité, verdict. « À corriger » après la revue 1 : `/estompe-implement <CLÉ>` puis `/estompe-code-review <CLÉ>` (revue 2). « Prêt » : `/estompe-pr <CLÉ>`.
 
 ## Règles
 - Ne jamais modifier le code, commiter ni pousser. Ne jamais effacer une revue précédente.

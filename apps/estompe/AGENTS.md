@@ -37,16 +37,16 @@ Guide pas à pas : `docs/ticket-claude-code.md`. Les skills sont versionnés dan
 | `/estompe-plan EST-<n>` | `.ai/EST-<n>/plan.md` | branche, étapes, tests, couverture de chaque critère |
 | `/estompe-implement EST-<n>` | worktree, commits locaux, `.ai/EST-<n>/verify.md` | suit le plan (ou les corrections), lance `scripts/check.sh`, prouve chaque critère |
 | `/estompe-code-review EST-<n>` | section « Revue N » de `plan.md` | revue 1 : trois relecteurs filtrés ; revue 2 : corrections seules ; rapport seul |
-| `/estompe-mr EST-<n>` | `changelog.d/<slug-court>.md`, push, PR | commentaire Cairn, puis suppression du worktree |
+| `/estompe-pr EST-<n>` | `changelog.d/<slug-court>.md`, push, PR | commentaire Cairn, puis suppression du worktree |
 | `/estompe-release` | release, tags, release GitHub | tickets livrés passés « fini » si tous leurs critères sont vérifiés |
 
 Règles du cycle :
 - Un ticket se désigne toujours par sa clé complète `EST-<n>` : Cairn refuse le numéro seul, et `#<n>` renvoie vers une issue GitHub.
 - Les critères de vérification du brief sont numérotés `C1`, `C2`… et suivis jusqu'à la release.
-- Boucle courte : `implement` → `code-review` (revue 1) → si besoin `implement` (corrections) → `code-review` (revue 2, corrections seules) → `mr`.
+- Boucle courte : `implement` → `code-review` (revue 1) → si besoin `implement` (corrections) → `code-review` (revue 2, corrections seules) → `pr`.
   **Deux revues au plus** : seuls les bloquants et importants prouvés bloquent ; les mineurs vont dans la PR, tout nouveau défaut hors diff devient un ticket.
-  `/estompe-mr` relance `scripts/check.sh` lui-même et accepte une revue antérieure si les commits suivants ne sont que ses corrections.
-- Après la création de la PR, `/estompe-mr` supprime le worktree (`git worktree remove`) ; la branche reste. Pour corriger la PR, `/estompe-implement` le recrée depuis la branche.
+  `/estompe-pr` relance `scripts/check.sh` lui-même et accepte une revue antérieure si les commits suivants ne sont que ses corrections.
+- Après la création de la PR, `/estompe-pr` supprime le worktree (`git worktree remove`) ; la branche reste. Pour corriger la PR, `/estompe-implement` le recrée depuis la branche.
 - Un ticket reste « en cours » jusqu'à la release. Il ne passe « fini » que si tous ses critères sont vérifiés ; sinon il reste « en cours »
   avec la liste de ce qui reste à vérifier. Un critère qui dépend d'un appareil réel reste « non vérifié » tant que la personne qui l'a n'a pas confirmé.
 - Un bug se reproduit (test qui échoue) avant d'être corrigé. Sans reproduction possible, le dire sans affirmer de cause.
@@ -89,7 +89,7 @@ Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push ori
 - Le transport git (`fetch`, `pull`, `push`, tags) passe par `git` avec l'authentification de `gh`. Ne jamais forcer un push.
 - PR : `gh pr create --base main --head <branche> --title "<titre>" --body "<corps>"`.
   Corps : contenu, critères et vérifications, et ce qui n'a pas été vérifié.
-- Pousser et ouvrir une PR seulement via `/estompe-mr` ou `/estompe-release`, ou sur demande explicite de l'utilisateur.
+- Pousser et ouvrir une PR seulement via `/estompe-pr` ou `/estompe-release`, ou sur demande explicite de l'utilisateur.
 - Messages de commit :
   - travail sur un ticket : `[EST-<n>] <titre du ticket>`, puis `[EST-<n>] Corrections de revue`, `[EST-<n>] Changelog` ;
   - release : `chore(release): api-vA.B.C app-vX.Y.Z` ;

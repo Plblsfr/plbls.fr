@@ -17,7 +17,7 @@ Référence : `AGENTS.md` (branches, version, GitHub) et `docs/release.md` (rele
 - Dans le dépôt principal : `git fetch origin`, `git switch main`, `git pull`. L'arbre doit être propre (hors `.claude/`, `.ai/` et `.worktree/`), sinon s'arrêter et le dire.
 - `gh` connecté : `gh pr list --repo Plblsfr/plbls.fr`. Sinon, s'arrêter et le dire.
 - Pour chaque élément livrable, lister les commits depuis son dernier tag : `git log --first-parent --format='%h %s' $(git describe --tags --abbrev=0 --match 'estompe-api-v*')..HEAD`, idem avec `'estompe-app-v*'`. Si aucun, s'arrêter : rien à publier.
-- Lire les fichiers de `changelog.d/` (hors `README.md`) et en extraire les clés `EST-*`. Pour chacune, `get_ticket` et lire le dernier commentaire de `/estompe-mr` : lister les critères encore « non vérifié ». Les présenter à l'utilisateur avant de continuer.
+- Lire les fichiers de `changelog.d/` (hors `README.md`) et en extraire les clés `EST-*`. Pour chacune, `get_ticket` et lire le dernier commentaire de `/estompe-pr` : lister les critères encore « non vérifié ». Les présenter à l'utilisateur avant de continuer.
 
 ## 1 bis. La chaîne de livraison fonctionnera-t-elle ?
 Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte une version et un cycle complet de PR. Avant de préparer la release, vérifier la chaîne, pas seulement les tests :

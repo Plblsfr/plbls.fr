@@ -1,6 +1,6 @@
 ---
-name: estompe-mr
-description: Finalise un ticket CairnEstompe relu - changelog technique, push, pull request GitHub, commentaire dans Cairn, puis suppression du worktree. À utiliser avec /estompe-mr EST-xxx.
+name: estompe-pr
+description: Finalise un ticket CairnEstompe relu - changelog technique, push, pull request GitHub, commentaire dans Cairn, puis suppression du worktree. À utiliser avec /estompe-pr EST-xxx.
 argument-hint: EST-<numéro>
 disable-model-invocation: true
 allowed-tools: Bash(git *), Bash(gh *), Bash(*/scripts/check.sh*), Read, Write, Edit, Glob, Grep, mcp__EstompeCairnMcp__get_ticket, mcp__claude_ai_EstompeCairnMcp__get_ticket, mcp__EstompeCairnMcp__add_comment, mcp__claude_ai_EstompeCairnMcp__add_comment
@@ -19,7 +19,7 @@ allowed-tools: Bash(git *), Bash(gh *), Bash(*/scripts/check.sh*), Read, Write, 
 - Arbre du worktree propre.
 - `verify.md` existe et ne contient aucun critère « non vérifié » sans raison notée.
 - `<worktree>/scripts/check.sh` passe sur le `HEAD` actuel (c'est lui, pas le commit de `verify.md`, qui fait foi).
-- `plan.md` contient au moins une revue, la dernière a le verdict « prêt pour la MR », et les commits depuis son sha ne sont que les corrections qu'elle demandait (`git log <sha>..HEAD`). Sinon, renvoyer vers `/estompe-code-review <CLÉ>`.
+- `plan.md` contient au moins une revue, la dernière a le verdict « prêt pour la PR », et les commits depuis son sha ne sont que les corrections qu'elle demandait (`git log <sha>..HEAD`). Sinon, renvoyer vers `/estompe-code-review <CLÉ>`.
 - `git fetch origin` : si `origin/main` a avancé, demander avec AskUserQuestion s'il faut rebaser (puis relancer `check.sh`) ou ouvrir la PR telle quelle.
 
 ## 2. Changelog technique

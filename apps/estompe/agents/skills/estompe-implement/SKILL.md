@@ -53,12 +53,12 @@ Commit : <sha, rempli après le commit>
 - Ne jamais marquer « vérifié » sans preuve. Mode corrections : ne ré-examiner que les critères touchés par le diff des corrections.
 
 ## 6. Commit
-- Pas de `changelog.d/` : rôle de `/estompe-mr`.
+- Pas de `changelog.d/` : rôle de `/estompe-pr`.
 - `git -C <worktree> add` des fichiers modifiés, commit `[<CLÉ>] <titre du ticket>` (première passe) ou `[<CLÉ>] Corrections de revue`, + ligne Co-Authored-By. Aucun push. Ne jamais commiter si `check.sh` échoue.
 - Reporter le sha dans `verify.md`.
 
 ## 7. Sortie
-Résumer : worktree, branche, étapes ou corrections faites, résultat de `check.sh`, critères non vérifiés. Prochaine étape : `/estompe-code-review <CLÉ>` (première passe) ; après une revue 2, `/estompe-mr <CLÉ>`.
+Résumer : worktree, branche, étapes ou corrections faites, résultat de `check.sh`, critères non vérifiés. Prochaine étape : `/estompe-code-review <CLÉ>` (première passe) ; après une revue 2, `/estompe-pr <CLÉ>`.
 
 ## Règles
 - Ne jamais commiter sur `main` ni pousser.
