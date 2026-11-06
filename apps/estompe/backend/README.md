@@ -1,6 +1,6 @@
 # Estompe — backend Rust
 
-API d'Estompe en Rust (elle remplace l'ancien backend Go, retiré). Décisions de la migration : `../docs/migration-rust.md`.
+API d'Estompe en Rust (elle a remplacé l'ancien backend Go, retiré).
 
 ## Stack
 

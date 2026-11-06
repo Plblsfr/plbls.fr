@@ -59,9 +59,9 @@ const DOCS: [(&str, &str, &str); 9] = [
         include_str!("../../docs/stack.md"),
     ),
     (
-        "migration",
-        "Migration, prochaines étapes, décisions",
-        include_str!("../../docs/migration.md"),
+        "decisions",
+        "Décisions d'architecture et d'hébergement",
+        include_str!("../../docs/decisions.md"),
     ),
 ];
 

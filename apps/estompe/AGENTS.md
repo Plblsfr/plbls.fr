@@ -130,7 +130,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 
 ## Architecture
 
-- `backend/` (Rust, décisions dans `docs/migration-rust.md`) : workspace Cargo avec `estompe-api` (binaire), `core`, `block` et
+- `backend/` (Rust) : workspace Cargo avec `estompe-api` (binaire), `core`, `block` et
   `blocks/<nom>` (un crate par bloc, mêmes noms que les blocs frontend). `core` ne dépend d'aucun bloc ; un bloc dépend de `core`, de `block`
   et d'un autre bloc seulement s'il le déclare dans `Needs` ; `estompe-api` assemble tout ; aucune dépendance circulaire.
 - **Blocs** : un cœur et des fonctionnalités optionnelles. Backend Rust : un crate `backend/blocks/<nom>` par bloc, déclaré dans `block_list()`
