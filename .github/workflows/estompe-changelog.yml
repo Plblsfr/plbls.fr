@@ -3,7 +3,6 @@ name: estompe-changelog
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths: ["apps/estompe/**"]
   workflow_dispatch:
 
 permissions:
@@ -23,7 +22,7 @@ jobs:
     if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'dependabot/')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Entrée de changelog
@@ -32,5 +31,6 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           case "$HEAD_REF" in ci/*|docs/*|release/*) echo "Branche $HEAD_REF : entrée non exigée"; exit 0;; esac
+          git diff --quiet "origin/$BASE_REF...HEAD" -- . && { echo "Aucun changement dans apps/estompe : entrée non exigée"; exit 0; }
           git diff --relative --name-only --diff-filter=A "origin/$BASE_REF...HEAD" -- 'changelog.d/*.md' | grep -v '^changelog.d/README.md$' | grep . \
             || { echo "::error::la PR doit ajouter un fichier changelog.d/<sujet>.md (voir changelog.d/README.md)"; exit 1; }

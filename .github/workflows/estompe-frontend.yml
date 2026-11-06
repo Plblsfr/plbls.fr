@@ -2,7 +2,6 @@ name: estompe-frontend
 
 on:
   pull_request:
-    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/estompe/frontend/**", "apps/estompe/windows/**", "apps/estompe/android/**", "apps/estompe/crates/**", "apps/estompe/web/**", ".github/workflows/estompe-frontend.yml"]
   workflow_dispatch:
 
 permissions:
@@ -20,14 +19,30 @@ defaults:
     working-directory: apps/estompe
 
 jobs:
+  changements:
+    runs-on: ubuntu-latest
+    outputs:
+      modifie: ${{ steps.c.outputs.modifie }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - id: c
+        working-directory: .
+        run: >-
+          scripts/ci-changements.sh package.json package-lock.json .nvmrc 'apps/estompe/frontend/**' 'apps/estompe/windows/**' 'apps/estompe/android/**'
+          'apps/estompe/crates/**' 'apps/estompe/web/**' .github/workflows/estompe-frontend.yml scripts/ci-changements.sh
+
   front:
+    needs: changements
+    if: needs.changements.outputs.modifie == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/estompe/frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -44,13 +59,15 @@ jobs:
         run: npm run build
 
   rust:
+    needs: changements
+    if: needs.changements.outputs.modifie == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - id: cargo
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -75,7 +92,7 @@ jobs:
       - name: ffmpeg épinglé téléchargeable et vérifié
         run: TAURI_ENV_PLATFORM=windows node windows/scripts/fetch-ffmpeg.mjs && test -s windows/src-tauri/binaries/ffmpeg.exe
       - if: steps.cargo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -84,3 +101,12 @@ jobs:
             apps/estompe/windows/src-tauri/bobyn/target
             apps/estompe/android/src-tauri/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+  ok:
+    name: estompe-frontend
+    if: always()
+    needs: [changements, front, rust]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
