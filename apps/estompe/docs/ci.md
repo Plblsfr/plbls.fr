@@ -1,6 +1,6 @@
 # CI / CD (GitHub Actions)
 
-État actuel : les PR lancent `estompe-backend-rs`, `estompe-frontend` et `estompe-changelog` (filtrés par dossier, un push annule le run précédent) ; la fusion dans `main` lance `estompe-version` et `estompe-ci-image`.
+État actuel : chaque PR lance `estompe-backend-rs`, `estompe-frontend` et `estompe-changelog` (les jobs ne tournent que si la PR touche leurs dossiers, un push annule le run précédent) ; la fusion dans `main` lance `estompe-version` et `estompe-ci-image`.
 Les livraisons (`estompe-image.yml`, `estompe-livraison-app.yml`) ne partent que sur leur tag. Tout reste lançable à la main (`workflow_dispatch`).
 Runners GitHub (`ubuntu-latest`) ; une PR d'API crée 3 jobs (`lint`, `test`, `image`) ; l'image y est construite sans être publiée.
 
@@ -11,19 +11,20 @@ annule le run précédent (`cancel-in-progress` ne vaut `true` que pour `pull_re
 
 | Workflow | Quand | Bloc `on:` |
 |---|---|---|
-| `estompe-backend-rs.yml` | PR touchant l'API Rust ou ce qu'elle lit | `pull_request: { paths: ["apps/estompe/backend/**", "!apps/estompe/backend/**.md", "apps/estompe/deploy/.env.example", "apps/estompe/docs/openapi.yaml", ".github/workflows/estompe-backend-rs.yml"] }` |
-| `estompe-frontend.yml` | PR touchant le front, les apps ou le code Tauri commun | `pull_request: { paths: ["apps/estompe/frontend/**", "apps/estompe/windows/**", "apps/estompe/android/**", "apps/estompe/crates/**", "apps/estompe/web/**", ".github/workflows/estompe-frontend.yml"] }` |
-| `estompe-changelog.yml` | PR touchant `apps/estompe/` (le job ne tourne qu'en `pull_request`) | `pull_request: { types: [opened, synchronize, reopened], paths: ["apps/estompe/**"] }` |
+| `estompe-backend-rs.yml` | toute PR ; jobs lancés si elle touche l'API Rust ou ce qu'elle lit | `pull_request:` ; chemins passés à `scripts/ci-changements.sh` dans le job `changements` |
+| `estompe-frontend.yml` | toute PR ; jobs lancés si elle touche le front, les apps ou le code Tauri commun | `pull_request:` ; chemins passés à `scripts/ci-changements.sh` dans le job `changements` |
+| `estompe-changelog.yml` | toute PR ; entrée exigée si elle touche `apps/estompe/` | `pull_request: { types: [opened, synchronize, reopened] }` |
 | `estompe-version.yml` | fusion dans `main` | `push: { branches: [main], paths: ["apps/estompe/**", "!apps/estompe/docs/**", "!apps/estompe/**.md", "!.github/**"] }` (le job exige `refs/heads/main` et ignore `[skip ci]`) |
 | `estompe-ci-image.yml` | `deploy/ci/` change (image de job) | `push: { branches: [main], paths: ["apps/estompe/deploy/ci/**", ".github/workflows/estompe-ci-image.yml"] }` ; incrémenter `:4` dans ce fichier, `deploy/ci/Dockerfile` et `estompe-livraison-app.yml` |
 | `estompe-image.yml`, `estompe-livraison-app.yml` | tags `estompe-api-v*` / `estompe-app-v*` | déjà actifs, rien à réactiver |
 
-Équivalents de `paths` : filtrent les PR par dossier (backend/, frontend/, windows/, android/, crates/, deploy/, docs/). Une PR de docs seule ne lance donc ni
-build ni tests ; seul `changelog` tourne sur toutes les PR.
+Les workflows de PR n'ont plus de filtre `paths` : un workflow non déclenché laisserait un contrôle obligatoire « en attente » pour toujours.
+Le premier job, `changements`, appelle `scripts/ci-changements.sh` avec les chemins suivis (préfixe `!` pour exclure, syntaxe glob de git :
+`**/*.md` et non `**.md`) ; les autres jobs ne tournent que si la PR touche l'un d'eux. Hors `pull_request`, tout est lancé.
+Le dernier job porte le nom du workflow (`estompe-backend-rs`, `estompe-frontend`) : il est toujours créé et échoue si un job a échoué ou a été annulé.
 
-Branche protégée : rendre obligatoires les contrôles `estompe-backend-rs / lint`, `estompe-backend-rs / test`, `estompe-frontend / front`, `estompe-frontend / rust` et
-`estompe-changelog / changelog`. Un job dont le filtre `paths` n'est pas satisfait ne se crée pas : si GitHub le laisse « en attente » dans la protection, retirer
-le filtre `paths` de ce workflow plutôt que de rendre le contrôle obligatoire.
+Branche protégée (ruleset `main`, posé par `scripts/configurer-github.sh`) : contrôles obligatoires `npm`, `changelog`, `conventions`, `estompe-backend-rs`,
+`estompe-frontend`, `pli-ci`, `permission-ci`, `security-ci` et `ui-ci`. Un nouveau workflow de PR suit le même modèle et ajoute son contrôle à ce script.
 
 ## Ce que fait chaque workflow
 
@@ -35,7 +36,7 @@ le filtre `paths` de ce workflow plutôt que de rendre le contrôle obligatoire.
 - `estompe-version.yml` : calcule `.version` (nom de branche lu dans le message du commit de fusion, voir `AGENTS.md`) puis le pousse sur la branche `ci/version-<sha>` et ouvre une PR « chore(version) » (`main` est protégée : pas de push direct). Il faut fusionner cette PR avant de poser un tag `estompe-api-v*` / `estompe-app-v*`. Secret `CI_PAT` pouvant pousser une branche et créer une PR.
   `backend/` fait monter `api`. Relancé à la main sur `main`, il ne fait rien de plus qu'une fois : si la branche existe déjà ou si `.version` ne change pas, il sort sans rien faire.
 - `estompe-image.yml` : seule publication de l'image de l'API ; tag `estompe-api-vX.Y.Z` → image `ghcr.io/plblsfr/estompe` (`latest`, `X.Y.Z`, `sha-…`) construite depuis `backend/` (Rust), cache d'image `:buildcache` dans le registre.
-- `estompe-livraison-app.yml` : tag `estompe-app-vX.Y.Z` → `front` (garde), installeur Windows signé (image de job `ghcr.io/plblsfr/estompe-ci`), APK (variable `ANDROID_APK=1`), puis image `ghcr.io/plblsfr/estompe-web`.
+- `estompe-livraison-app.yml` : tag `estompe-app-vX.Y.Z` → `front` (garde), installeur Windows signé (image de job `ghcr.io/plblsfr/estompe-ci`), APK (variable `ANDROID_APK=1`), puis image `ghcr.io/plblsfr/estompe-web`. Les jobs `windows` et `android` tournent dans l'environnement `livraison`, qui porte les clés de signature.
 - `estompe-ci-image.yml` : publie l'image de job.
 
 ## Caches
