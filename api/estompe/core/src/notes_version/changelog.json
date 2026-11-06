@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.85.2",
+    "date": "2026-11-06",
+    "new": [
+      "Salons Cinéma : un salon vocal où l'hôte lance un film ou une série, avec la lecture, la pause et la position synchronisées pour tout le monde."
+    ],
+    "fixes": [
+      "Films : les films qui doivent être convertis s'affichent de nouveau en bonne qualité.",
+      "Films : le volume et la coupure du son fonctionnent de nouveau dans le lecteur.",
+      "Windows : l'icône Films apparaît sans avoir à redémarrer l'application.",
+      "Android : la connexion n'est plus perdue si l'application se recharge pendant la saisie de vos identifiants."
+    ]
+  },
+  {
     "version": "0.85.0",
     "date": "2026-11-05",
     "new": [
