@@ -21,11 +21,11 @@ puis dans les skills concernés, dans la même PR.
 | Dossier | Contenu |
 |---|---|
 | `.worktree/<slug-court>/` | un worktree par branche de travail |
-| `.ai/EST-<n>/` | fichiers de travail d'un ticket : `brief.md`, `plan.md` (revues comprises), `verify.md` |
+| `.ai/GH-<n>/` | fichiers de travail d'un ticket (issue GitHub `#<n>`) : `brief.md`, `plan.md` (revues comprises), `verify.md` |
 
 - Les deux sont à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`), jamais dans un worktree.
 - Ils sont exclus par `.git/info/exclude` (lignes `.ai/` et `.worktree/`), pas par `.gitignore`.
-- `.ai/` n'est pas partagé : ce qui doit être connu de tous (décisions, critères, lien de la PR) va aussi en commentaire du ticket Cairn.
+- `.ai/` n'est pas partagé : ce qui doit être connu de tous (décisions, critères, lien de la PR) va aussi en commentaire de l'issue GitHub.
 
 ## Skills et cycle d'un ticket
 
@@ -33,22 +33,22 @@ Guide pas à pas : `docs/ticket-claude-code.md`. Les skills sont versionnés dan
 
 | Skill | Produit | Effet |
 |---|---|---|
-| `/estompe-grill-me EST-<n>` | `.ai/EST-<n>/brief.md` | questions jusqu'à lever toute ambiguïté ; ticket « en cours » |
-| `/estompe-plan EST-<n>` | `.ai/EST-<n>/plan.md` | branche, étapes, tests, couverture de chaque critère |
-| `/estompe-implement EST-<n>` | worktree, commits locaux, `.ai/EST-<n>/verify.md` | suit le plan (ou les corrections), lance `scripts/check.sh`, prouve chaque critère |
-| `/estompe-code-review EST-<n>` | section « Revue N » de `plan.md` | revue 1 : trois relecteurs filtrés ; revue 2 : corrections seules ; rapport seul |
-| `/estompe-mr EST-<n>` | `changelog.d/<slug-court>.md`, push, PR | commentaire Cairn, puis suppression du worktree |
-| `/estompe-release` | release, tags, release GitHub | tickets livrés passés « fini » si tous leurs critères sont vérifiés |
+| `/estompe-grill-me <n>` | `.ai/GH-<n>/brief.md` | questions jusqu'à lever toute ambiguïté ; issue assignée (« en cours ») |
+| `/estompe-plan <n>` | `.ai/GH-<n>/plan.md` | branche, étapes, tests, couverture de chaque critère |
+| `/estompe-implement <n>` | worktree, commits locaux, `.ai/GH-<n>/verify.md` | suit le plan (ou les corrections), lance `scripts/check.sh`, prouve chaque critère |
+| `/estompe-code-review <n>` | section « Revue N » de `plan.md` | revue 1 : trois relecteurs filtrés ; revue 2 : corrections seules ; rapport seul |
+| `/estompe-mr <n>` | `changelog.d/<slug-court>.md`, push, PR (`Closes #<n>`) | commentaire sur l'issue, puis suppression du worktree |
+| `/estompe-release` | release, tags, release GitHub | issues livrées commentées ; rouvertes s'il reste un critère non vérifié |
 
 Règles du cycle :
-- Un ticket se désigne toujours par sa clé complète `EST-<n>` : Cairn refuse le numéro seul, et `#<n>` renvoie vers une issue GitHub.
+- Un ticket est une issue GitHub de `Plblsfr/plbls.fr`, désignée par `#<n>` ; on la lit avec `gh issue view <n> --repo Plblsfr/plbls.fr --comments` et on la commente avec `gh issue comment`.
 - Les critères de vérification du brief sont numérotés `C1`, `C2`… et suivis jusqu'à la release.
 - Boucle courte : `implement` → `code-review` (revue 1) → si besoin `implement` (corrections) → `code-review` (revue 2, corrections seules) → `mr`.
-  **Deux revues au plus** : seuls les bloquants et importants prouvés bloquent ; les mineurs vont dans la PR, tout nouveau défaut hors diff devient un ticket.
+  **Deux revues au plus** : seuls les bloquants et importants prouvés bloquent ; les mineurs vont dans la PR, tout nouveau défaut hors diff devient une issue.
   `/estompe-mr` relance `scripts/check.sh` lui-même et accepte une revue antérieure si les commits suivants ne sont que ses corrections.
 - Après la création de la PR, `/estompe-mr` supprime le worktree (`git worktree remove`) ; la branche reste. Pour corriger la PR, `/estompe-implement` le recrée depuis la branche.
-- Un ticket reste « en cours » jusqu'à la release. Il ne passe « fini » que si tous ses critères sont vérifiés ; sinon il reste « en cours »
-  avec la liste de ce qui reste à vérifier. Un critère qui dépend d'un appareil réel reste « non vérifié » tant que la personne qui l'a n'a pas confirmé.
+- L'issue se ferme à la fusion de sa PR (`Closes #<n>`). À la release, `/estompe-release` la commente avec le tag ; s'il reste un critère
+  non vérifié, il la rouvre avec la liste de ce qui reste à vérifier. Un critère qui dépend d'un appareil réel reste « non vérifié » tant que la personne qui l'a n'a pas confirmé.
 - Un bug se reproduit (test qui échoue) avant d'être corrigé. Sans reproduction possible, le dire sans affirmer de cause.
 - Rester agnostique du système : aucune hypothèse sur un OS ou un appareil particulier.
 
@@ -83,7 +83,7 @@ Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push ori
 ## Git et GitHub
 
 - Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe vit dans `apps/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`.
-- **Seul `gh` parle à GitHub** (PR, tickets de dépôt, releases…). Interdits : `curl`/`wget` vers `api.github.com`, appel à l'API à la main,
+- **Seul `gh` parle à GitHub** (PR, issues, releases…), ou à défaut les outils MCP GitHub de la session pour lire et commenter une issue (`issue_read`, `add_issue_comment`). Interdits : `curl`/`wget` vers `api.github.com`, appel à l'API à la main,
   bibliothèque HTTP. Les règles `deny` de `.claude/settings.json` le font respecter.
 - `gh` doit être connecté : `gh auth status` doit répondre. Sinon, s'arrêter et le dire à l'utilisateur.
 - Le transport git (`fetch`, `pull`, `push`, tags) passe par `git` avec l'authentification de `gh`. Ne jamais forcer un push.
@@ -91,9 +91,9 @@ Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push ori
   Corps : contenu, critères et vérifications, et ce qui n'a pas été vérifié.
 - Pousser et ouvrir une PR seulement via `/estompe-mr` ou `/estompe-release`, ou sur demande explicite de l'utilisateur.
 - Messages de commit :
-  - travail sur un ticket : `[EST-<n>] <titre du ticket>`, puis `[EST-<n>] Corrections de revue`, `[EST-<n>] Changelog` ;
+  - toujours `type(portée): résumé` (`feat`, `fix`, `chore`, `ci`, `docs`), avec le ticket ou sans ; sur un ticket : puis `type(portée): corrections de revue`, `type(portée): changelog` ;
   - release : `chore(release): api-vA.B.C app-vX.Y.Z` ;
-  - hors ticket : `type(portée): résumé` (`feat`, `fix`, `chore`, `ci`, `docs`).
+  - la PR d'un ticket se termine par `Closes #<n>`.
 
 ## Vérifier avant de livrer
 
@@ -117,7 +117,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   Toute base créée à côté de `testutil::postgres()` (modèle, copies) doit être rattachée par `BasePostgres::supprimer_aussi`, sinon elle reste sur le serveur.
 - Front : `npm --prefix frontend run …` s'exécute dans `frontend/` et lit sa config ; `npx --prefix frontend …` lancé depuis la racine ne la lit pas.
 - Dans un nouveau worktree, installer d'abord les dépendances front : `npm --prefix ../.. ci` (workspace npm à la racine du dépôt, un seul `package-lock.json`, Node du `.nvmrc` racine).
-- Chaque PR ajoute un fichier `changelog.d/<slug-court>.md` (voir `changelog.d/README.md`) qui cite `EST-<n>`, sauf branches `ci/`, `docs/`,
+- Chaque PR ajoute un fichier `changelog.d/<slug-court>.md` (voir `changelog.d/README.md`) qui cite l'issue `(#<n>)`, sauf branches `ci/`, `docs/`,
   `release/` : la CI échoue sinon. Elle lance les tests de tout (backend, front, Rust).
 - Dire clairement ce qui n'a **pas** été vérifié (rendu visuel, build Tauri/Windows, vrai partage d'écran…) dans la réponse et dans la PR.
 
