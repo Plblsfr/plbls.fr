@@ -14,7 +14,7 @@ on:
       test_target: { type: string, default: '' }    # étape Dockerfile construite comme test ; vide = pas de test
     secrets:
       DOKPLOY_WEBHOOK_URL: { required: false }
-      GHCR_TOKEN: { required: false }
+      PACKAGES_PAT: { required: false }
 
 jobs:
   build:
@@ -62,7 +62,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PACKAGES_PAT || secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.context }}
