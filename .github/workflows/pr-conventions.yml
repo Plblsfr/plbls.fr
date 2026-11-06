@@ -1,0 +1,24 @@
+name: pr-conventions
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: pr-conventions-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+      - name: Nom de la branche et description
+        env:
+          BRANCHE: ${{ github.head_ref }}
+          DESCRIPTION: ${{ github.event.pull_request.body }}
+        run: node scripts/ci-conventions-pr.mjs

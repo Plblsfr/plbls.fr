@@ -1,0 +1,70 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const script = join(dirname(fileURLToPath(import.meta.url)), 'ci-changements.sh');
+
+async function depot(t, modifies) {
+  const dir = await mkdtemp(join(tmpdir(), 'plbls-changements-'));
+  t.after(() => rm(dir, { recursive: true }));
+  const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.email', 'test@plbls.fr');
+  git('config', 'user.name', 'test');
+  await writeFile(join(dir, 'base.txt'), 'base\n');
+  git('add', '.');
+  git('commit', '-qm', 'base');
+  git('switch', '-qc', 'branche');
+  for (const fichier of modifies) {
+    await mkdir(join(dir, dirname(fichier)), { recursive: true });
+    await writeFile(join(dir, fichier), 'modifié\n');
+  }
+  git('add', '.');
+  git('commit', '-qm', 'branche');
+  git('switch', '-q', 'main');
+  git('merge', '-q', '--no-ff', '-m', 'fusion', 'branche');
+  return dir;
+}
+
+async function lancer(dir, evenement, chemins) {
+  const sortie = join(dir, '.sortie');
+  await writeFile(sortie, '');
+  execFileSync('bash', [script, ...chemins], {
+    cwd: dir,
+    env: { ...process.env, GITHUB_EVENT_NAME: evenement, GITHUB_OUTPUT: sortie },
+    stdio: ['ignore', 'ignore', 'inherit'],
+  });
+  return (await readFile(sortie, 'utf8')).trim();
+}
+
+const backend = ['apps/estompe/backend/**', '!apps/estompe/backend/**/*.md', 'Cargo.toml'];
+
+test('un fichier du dossier suivi déclenche les jobs', async (t) => {
+  const dir = await depot(t, ['apps/estompe/backend/core/src/lib.rs']);
+  assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=true');
+});
+
+test('un fichier exclu ne déclenche rien, à la racine du dossier comme plus bas', async (t) => {
+  const dir = await depot(t, ['apps/estompe/backend/README.md', 'apps/estompe/backend/core/NOTES.md']);
+  assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=false');
+});
+
+test('un fichier hors des chemins ne déclenche rien', async (t) => {
+  const dir = await depot(t, ['apps/pli/index.js', 'apps/estompe/Cargo.toml']);
+  assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=false');
+});
+
+test('un fichier racine nommé exactement est suivi', async (t) => {
+  const dir = await depot(t, ['Cargo.toml']);
+  assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=true');
+});
+
+test('hors pull_request, tout est lancé', async (t) => {
+  const dir = await depot(t, ['apps/pli/index.js']);
+  assert.equal(await lancer(dir, 'push', backend), 'modifie=true');
+  assert.equal(await lancer(dir, 'workflow_dispatch', backend), 'modifie=true');
+});
