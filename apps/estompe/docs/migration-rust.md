@@ -7,7 +7,7 @@ Ticket : EST-196. Réécriture du backend Go (~22 000 lignes, 175 routes, 37 mig
 - Version de Rust : dernière stable au moment d'EST-197, épinglée dans `rust-toolchain.toml`. La liste exacte des crates et leurs versions sont choisies dans EST-197.
 
 ## 2. Structure du workspace
-- Workspace Cargo : crates `core`, `block`, `estompe-api` (binaire), et un crate par bloc `blocks/<nom>` (gifs, musique, vocal, regarder-ensemble, transcription, videos, apercu-liens, notifications, emojis, avatars, badges, signalements, cairn, activite-statut).
+- Workspace Cargo : crates `core`, `block`, `estompe-api` (binaire), et un crate par bloc `blocks/<nom>` (gifs, musique, vocal, regarder-ensemble, transcription, videos, apercu-liens, notifications, emojis, avatars, badges, signalements, activite-statut).
 - Règles de dépendance :
   - `core` ne dépend d'aucun bloc ;
   - un bloc dépend de `core` et de `block`, et d'un autre bloc seulement s'il le déclare dans `Needs` (comme `internal/block/block.go`) ;
@@ -79,9 +79,7 @@ EST-197 socle → 198 config/blocs → 199 PostgreSQL → 200 identité → 201 
 
 EST-205 (interface « vocal ») doit précéder EST-213 (bloc vocal qui l'implémente) : dépendance **EST-205 → EST-213** à ajouter. Pas de cycle : EST-213 dépend de 202 et 204, EST-205 de 204.
 
-## Changements à reporter dans les tickets Cairn
-
-À appliquer dans Cairn (lire la `version` de chaque ticket avant `update_ticket`).
+## Changements décidés par ticket
 
 ### EST-197
 - Le Go est déplacé dans `backend-go/` (git mv, `image.yml`, `version.yml`, `changelog.yml`, `AGENTS.md`, READMEs, Dockerfile, commandes de vérification) ; le Rust est posé dans `backend/`.

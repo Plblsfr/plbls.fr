@@ -20,7 +20,7 @@ export function erreursBranche(branche) {
     ];
   }
   if (/(?:^|[/-])est-?\d+(?:-|$)/.test(branche)) {
-    return [`branche « ${branche} » : pas de numéro de ticket dans le nom (la clé EST-<n> va dans le titre et les commits)`];
+    return [`branche « ${branche} » : pas de numéro de ticket dans le nom (le numéro d’issue va dans la PR : Closes #<n>)`];
   }
   return [];
 }

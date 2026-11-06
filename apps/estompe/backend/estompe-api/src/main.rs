@@ -76,11 +76,6 @@ fn block_list() -> Vec<Block<AppState>> {
             mount: estompe_block_signalements::mount,
         },
         Block {
-            name: "cairn",
-            needs: &[],
-            mount: estompe_block_cairn::mount,
-        },
-        Block {
             name: "activite-statut",
             needs: &[],
             mount: estompe_block_activite_statut::mount,
@@ -401,7 +396,6 @@ mod tests {
                 "avatars",
                 "badges",
                 "signalements",
-                "cairn",
                 "activite-statut",
                 "films"
             ]

@@ -59,7 +59,6 @@ webhook:
         GATEWAY_URL: 'http://127.0.0.1:19000',
         ALLOWED_ORIGINS: E2E.app,
         PERMISSION_URL: 'http://127.0.0.1:19000',
-        CAIRN_URL: 'http://127.0.0.1:19000/cairn', // le vrai Cairn répondrait 401 au cookie factice et déconnecterait l'app
         PERMISSION_TOKEN: 'jeton-de-test',
         DATA_DIR: join(tmp, 'data'),
         LIVEKIT_URL: 'ws://127.0.0.1:7880',

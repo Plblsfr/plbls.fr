@@ -141,7 +141,6 @@ struct Inner {
     identity: Resolver,
     permission: Client,
     admin_permission: Client,
-    cairn_permission: Client,
     movies_permission: Client,
     blocs_actifs: Vec<String>,
     metrics: Metrics,
@@ -203,7 +202,6 @@ impl AppState {
             identity: Resolver::with_now(&config.gateway_url, now.clone()),
             permission: client(&config.permission_name),
             admin_permission: client("estompe:admin"),
-            cairn_permission: client("estompe:cairn.admin"),
             movies_permission: client("estompe:movies"),
             pool: OnceLock::new(),
             blocs_actifs,
@@ -241,10 +239,6 @@ impl AppState {
 
     pub fn admin_permission(&self) -> &Client {
         &self.0.admin_permission
-    }
-
-    pub fn cairn_permission(&self) -> &Client {
-        &self.0.cairn_permission
     }
 
     pub fn movies_permission(&self) -> &Client {

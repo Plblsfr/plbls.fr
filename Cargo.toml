@@ -74,7 +74,6 @@ estompe-block-emojis = { path = "apps/estompe/backend/blocks/emojis" }
 estompe-block-avatars = { path = "apps/estompe/backend/blocks/avatars" }
 estompe-block-badges = { path = "apps/estompe/backend/blocks/badges" }
 estompe-block-signalements = { path = "apps/estompe/backend/blocks/signalements" }
-estompe-block-cairn = { path = "apps/estompe/backend/blocks/cairn" }
 estompe-block-activite-statut = { path = "apps/estompe/backend/blocks/activite-statut" }
 
 [workspace.lints.clippy]

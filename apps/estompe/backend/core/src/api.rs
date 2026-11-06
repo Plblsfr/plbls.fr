@@ -209,7 +209,6 @@ struct MeReponse {
     admin: bool,
     activated: bool,
     suspended: Option<bool>,
-    cairn: Option<bool>,
     movies: Option<bool>,
     max_video_size: Option<u64>,
     #[schema(inline, value_type = Option<String>)]
@@ -260,12 +259,6 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
         Err(_) => internal(),
         Ok(Some(u)) => {
             let config = state.config();
-            let cairn = !config.cairn_url.is_empty()
-                && state
-                    .cairn_permission()
-                    .allowed(&idn.sub)
-                    .await
-                    .unwrap_or(false);
             let movies = config.jellyfin_actif()
                 && state
                     .movies_permission()
@@ -287,7 +280,6 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
                     "id": u.id,
                     "pseudo": u.pseudo,
                     "sub": idn.sub,
-                    "cairn": cairn,
                     "movies": movies,
                     "max_video_size": config.max_video_bytes,
                     "transcription": transcription,
@@ -410,7 +402,6 @@ mod tests {
         let ok = match perm {
             "estompe:access" => sub != "sub-nope",
             "estompe:admin" => sub == "sub-admin",
-            "estompe:cairn.admin" => sub == "sub-admin" || sub == "sub-cairn",
             "estompe:movies" => sub == "sub-cinema",
             _ => false,
         };
@@ -584,7 +575,7 @@ mod tests {
 
     #[tokio::test]
     async fn me_selon_l_etat_du_compte() {
-        let Some(e) = env(&[("CAIRN_URL", "")], true).await else {
+        let Some(e) = env(&[], true).await else {
             return;
         };
         let (s, v) = json_de(&e.app, "GET", "/me", "alice", None).await;
@@ -614,7 +605,24 @@ mod tests {
         assert_eq!(v["suspended"], false);
         assert_eq!(v["pseudo"], "Alice_1");
         assert_eq!(v["sub"], "sub-alice");
-        assert_eq!(v["cairn"], false);
+        let mut cles: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        cles.sort_unstable();
+        assert_eq!(
+            cles,
+            [
+                "activated",
+                "admin",
+                "allowed",
+                "blocks",
+                "id",
+                "max_video_size",
+                "movies",
+                "pseudo",
+                "sub",
+                "suspended",
+                "transcription"
+            ]
+        );
         assert_eq!(v["max_video_size"], 100 << 20);
         assert_eq!(v["transcription"], "");
         assert_eq!(v["blocks"], json!(["gifs", "vocal"]));
@@ -657,24 +665,6 @@ mod tests {
         activer(&sans.app, "cinema", "cinema").await;
         let (_, v) = json_de(&sans.app, "GET", "/me", "cinema", None).await;
         assert_eq!(v["movies"], false, "sans Jellyfin configuré");
-    }
-
-    #[tokio::test]
-    async fn me_cairn() {
-        let Some(e) = env(&[("CAIRN_URL", "http://cairn.test/api/")], true).await else {
-            return;
-        };
-        for nom in ["cairn", "alice"] {
-            activer(&e.app, nom, nom).await;
-        }
-        let (_, v) = json_de(&e.app, "GET", "/me", "cairn", None).await;
-        assert_eq!(v["cairn"], true);
-        let (_, v) = json_de(&e.app, "GET", "/me", "alice", None).await;
-        assert_eq!(v["cairn"], false);
-        let sans = env(&[("CAIRN_URL", "/")], true).await.unwrap();
-        activer(&sans.app, "cairn", "cairn").await;
-        let (_, v) = json_de(&sans.app, "GET", "/me", "cairn", None).await;
-        assert_eq!(v["cairn"], false);
     }
 
     #[tokio::test]
