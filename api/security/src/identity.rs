@@ -54,11 +54,19 @@ pub fn verify(
 mod tests {
     use super::*;
 
+    fn cle_aleatoire() -> String {
+        use std::hash::BuildHasher;
+        std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string()
+    }
+
     #[test]
     fn sign_verify_roundtrip() {
-        let sig = sign("s3cret", "u1", "user,chat:admin", "plbls-mobile", 1000);
+        let secret = cle_aleatoire();
+        let sig = sign(&secret, "u1", "user,chat:admin", "plbls-mobile", 1000);
         assert!(verify(
-            "s3cret",
+            &secret,
             "u1",
             "user,chat:admin",
             "plbls-mobile",
@@ -70,9 +78,18 @@ mod tests {
 
     #[test]
     fn rejects_tampering_and_stale() {
-        let sig = sign("s3cret", "u1", "user", "c", 1000);
-        assert!(!verify("s3cret", "u1", "admin", "c", 1000, &sig, 1000));
-        assert!(!verify("autre", "u1", "user", "c", 1000, &sig, 1000));
-        assert!(!verify("s3cret", "u1", "user", "c", 1000, &sig, 1061));
+        let secret = cle_aleatoire();
+        let sig = sign(&secret, "u1", "user", "c", 1000);
+        assert!(!verify(&secret, "u1", "admin", "c", 1000, &sig, 1000));
+        assert!(!verify(
+            &cle_aleatoire(),
+            "u1",
+            "user",
+            "c",
+            1000,
+            &sig,
+            1000
+        ));
+        assert!(!verify(&secret, "u1", "user", "c", 1000, &sig, 1061));
     }
 }

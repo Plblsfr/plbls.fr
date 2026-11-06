@@ -419,7 +419,7 @@ mod tests {
         .await;
         assert_eq!(non_lus_de(&c, "bob").await["counts"][&c.salon], 1);
 
-        let (s, secret) = c
+        let (s, prive) = c
             .api(
                 "alice",
                 "POST",
@@ -427,19 +427,19 @@ mod tests {
                 json!({ "name": "secret", "kind": "text" }),
             )
             .await;
-        assert_eq!(s, 201, "{secret}");
-        let secret = secret["id"].as_str().unwrap().to_string();
+        assert_eq!(s, 201, "{prive}");
+        let prive = prive["id"].as_str().unwrap().to_string();
         let (s, _) = c
             .api(
                 "alice",
                 "POST",
-                &format!("/channels/{secret}/messages"),
+                &format!("/channels/{prive}/messages"),
                 json!({ "content": "confidentiel" }),
             )
             .await;
         assert_eq!(s, 201);
         let v = non_lus_de(&c, "bob").await;
-        assert_eq!(v["counts"][&secret], 1);
+        assert_eq!(v["counts"][&prive], 1);
         assert_eq!(v["channels"].as_array().unwrap().len(), 2);
 
         let defaut: String = sqlx::query_scalar(
@@ -453,7 +453,7 @@ mod tests {
             .api(
                 "alice",
                 "PUT",
-                &format!("/servers/{}/channels/{secret}/overrides/{defaut}", c.sid),
+                &format!("/servers/{}/channels/{prive}/overrides/{defaut}", c.sid),
                 json!({ "deny": ["view_channel"] }),
             )
             .await;
@@ -462,10 +462,7 @@ mod tests {
             non_lus_de(&c, "bob").await,
             json!({ "channels": [c.salon], "dms": [], "counts": { c.salon.clone(): 1 } })
         );
-        assert_eq!(
-            non_lus_de(&c, "alice").await["counts"][&secret],
-            Value::Null
-        );
+        assert_eq!(non_lus_de(&c, "alice").await["counts"][&prive], Value::Null);
         let v = non_lus_de(&c, "alice").await;
         assert_eq!(v, vide());
     }

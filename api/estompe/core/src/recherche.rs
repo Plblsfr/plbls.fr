@@ -886,7 +886,7 @@ mod tests {
     #[tokio::test]
     async fn recherche_suit_les_droits() {
         let Some(c) = cadre().await else { return };
-        let (s, secret) = c
+        let (s, prive) = c
             .api(
                 "alice",
                 "POST",
@@ -894,13 +894,13 @@ mod tests {
                 json!({ "name": "secret", "kind": "text" }),
             )
             .await;
-        assert_eq!(s, 201, "{secret}");
-        let secret = secret["id"].as_str().unwrap().to_string();
+        assert_eq!(s, 201, "{prive}");
+        let prive = prive["id"].as_str().unwrap().to_string();
         let (s, m) = c
             .api(
                 "alice",
                 "POST",
-                &format!("/channels/{secret}/messages"),
+                &format!("/channels/{prive}/messages"),
                 json!({ "content": "plan confidentiel" }),
             )
             .await;
@@ -942,7 +942,7 @@ mod tests {
             .api(
                 "alice",
                 "PUT",
-                &format!("/servers/{}/channels/{secret}/overrides/{defaut}", c.sid),
+                &format!("/servers/{}/channels/{prive}/overrides/{defaut}", c.sid),
                 json!({ "deny": ["view_channel"] }),
             )
             .await;
@@ -952,7 +952,7 @@ mod tests {
                 .await
                 .is_empty()
         );
-        let cible = format!("&channel_id={secret}");
+        let cible = format!("&channel_id={prive}");
         assert!(
             ids(&c, "bob", "/search", "confidentiel", &cible)
                 .await
@@ -966,7 +966,7 @@ mod tests {
             .api(
                 "bob",
                 "GET",
-                &chemin(&format!("/channels/{secret}/search"), "confidentiel", ""),
+                &chemin(&format!("/channels/{prive}/search"), "confidentiel", ""),
                 Value::Null,
             )
             .await;

@@ -28,7 +28,7 @@ test('un numéro de ticket dans le nom est refusé', () => {
 });
 
 test('une description vide, absente ou faite seulement de commentaires est refusée', () => {
-  for (const d of [undefined, null, '', '   \n ', '<!-- à remplir -->\n']) {
+  for (const d of [undefined, null, '', '   \n ', '<!-- à remplir -->\n', '<!-<!-- imbriqué -->- à remplir -->']) {
     assert.equal(erreursDescription(d).length, 1, String(d));
   }
   assert.deepEqual(erreursDescription('## Contenu\nAjoute le contrôle.'), []);
