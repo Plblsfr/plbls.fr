@@ -3,6 +3,7 @@
 !package-lock.json
 !tsconfig.base.json
 !packages/ui/package.json
+!packages/deepmerge
 !web/estompe/package.json
 !web/permission/package.json
 !web/pli/package.json

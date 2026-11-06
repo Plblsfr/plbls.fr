@@ -4,6 +4,7 @@ FROM node:26-slim AS front
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/ui/package.json packages/ui/
+COPY packages/deepmerge packages/deepmerge/
 COPY web/estompe/package.json web/estompe/
 COPY web/permission/package.json web/permission/
 COPY web/pli/package.json web/pli/

@@ -1,0 +1,18 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.2",
+  "private": true,
+  "description": "Copie de deepmerge 4.3.1 (MIT) corrigée contre la pollution du prototype (GHSA-gcqx-w48m-w2h4), version 4.3.2 propre à plbls.fr ; espace npm qui remplace deepmerge du registre.",
+  "license": "MIT",
+  "engines": {
+    "node": "^26"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "lint": "biome ci .",
+    "check": "node --check index.js",
+    "test": "node --test",
+    "build": "echo \"build : rien à construire (index.js est utilisé tel quel)\""
+  }
+}
