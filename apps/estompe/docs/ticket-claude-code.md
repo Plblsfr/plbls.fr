@@ -15,9 +15,9 @@ Règles complètes : `AGENTS.md`. Les skills sont dans `agents/skills/`.
 | 2 | `/estompe-plan <n>` | Valide ou corrige le plan | `plan.md` : branche, étapes, tests |
 | 3 | `/estompe-implement <n>` | Rien, sauf si on te demande un appareil réel pour un critère | worktree, code, tests, `scripts/check.sh` vert, `verify.md` |
 | 4 | `/estompe-code-review <n>` | Lis le verdict | revue 1 dans `plan.md` |
-| 5 | `/estompe-mr <n>` | Rien | changelog, push, PR GitHub (`Closes #<n>`), commentaire sur l'issue, worktree supprimé |
+| 5 | `/estompe-pr <n>` | Rien | changelog, push, PR GitHub (`Closes #<n>`), commentaire sur l'issue, worktree supprimé |
 
-Si la revue 1 demande des corrections : `/estompe-implement <n>` puis `/estompe-code-review <n>` (revue 2, corrections seules), puis `/estompe-mr`.
+Si la revue 1 demande des corrections : `/estompe-implement <n>` puis `/estompe-code-review <n>` (revue 2, corrections seules), puis `/estompe-pr`.
 **Il n'y a jamais plus de deux revues** : les remarques mineures vont dans la PR, un nouveau défaut hors diff devient une issue.
 
 ## Après la PR

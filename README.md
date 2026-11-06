@@ -41,6 +41,10 @@ modifier la description relance le contrôle.
 
 Ni historique linéaire (incompatible avec le merge classique) ni commits signés obligatoires (le commit de `estompe-version` n'est pas signé).
 
-Un workflow de PR n'a pas de filtre `paths` (un contrôle obligatoire jamais créé bloquerait la PR) : son premier job `changements` appelle
-`scripts/ci-changements.sh` avec les chemins suivis, et son dernier job, nommé comme le workflow, résume les autres. Un nouveau workflow
-suit ce modèle et ajoute son contrôle à `scripts/configurer-github.sh`.
+Un workflow de PR n'a pas de filtre `paths` (un contrôle obligatoire jamais créé bloquerait la PR) : modèle à suivre dans [`AGENTS.md`](AGENTS.md), section CI.
+
+## Outillage
+
+Le [`justfile`](justfile) est le seul point d'entrée (`just` liste les recettes) : `just lint` (Biome, shellcheck, ruff, liens Markdown internes),
+`just check`, `just test`, et les recettes de dev de chaque projet (`just security-dev up`, `just permission-dev-run`…).
+Les consignes pour les agents et les contributeurs sont dans [`AGENTS.md`](AGENTS.md) ; un projet peut le compléter par son propre `AGENTS.md`.

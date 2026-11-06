@@ -1,5 +1,5 @@
 # Commandes communes du monorepo. `just` seul liste les recettes.
-# Chaque projet garde ses propres outils (Makefile, npm, cargo) : ces recettes ne font que les appeler.
+# Seul point d'entrée de l'outillage : les recettes appellent npm, cargo, docker et les scripts des projets.
 # npm : workspace à la racine (package.json, package-lock.json, .nvmrc) ; chaque projet a les scripts lint, check, test et build.
 default:
     @just --list
@@ -8,8 +8,8 @@ default:
 install:
     npm ci
 
-# Lint de tout le code non Rust : Biome (JS, TS, CSS, JSON), shellcheck (scripts shell), ruff (Python)
-lint: lint-js lint-shell lint-python
+# Lint de tout le code non Rust : Biome (JS, TS, CSS, JSON), shellcheck (scripts shell), ruff (Python), liens Markdown internes
+lint: lint-js lint-shell lint-python lint-links
 
 lint-js:
     npm run lint
@@ -19,6 +19,9 @@ lint-shell:
 
 lint-python:
     ruff check .
+
+lint-links:
+    node scripts/check-links.mjs
 
 # Types et cohérence : svelte-check (estompe, permission), tsc (pli, packages/ui), version de Node, copies de @plbls/ui
 check:
@@ -41,10 +44,10 @@ test-js:
     npm test
 
 test-security:
-    make -C apps/security test
+    cargo test --locked -p auth-gateway
 
 test-permission:
-    make -C apps/permission test
+    cargo test --locked -p permission
 
 test-ui:
     npm ci && npm test --workspace packages/ui
@@ -64,3 +67,56 @@ test-estompe-api:
 # Reconstruit packages/ui/dist (non versionné)
 build-ui:
     npm ci && npm run build --workspace packages/ui
+
+# security : dépendances de dev en Docker (Redis, Keycloak, Mailpit, écho), gateway en local.
+# Actions : up, start (build puis lance le gateway), stop, down, reset (supprime les volumes), logs, status
+security-dev action:
+    apps/security/scripts/dev.sh {{action}}
+
+# Suites de bout en bout de security : demandent `just security-dev up` puis `just security-dev start`
+security-bruno:
+    apps/security/scripts/bruno.sh
+
+security-ws:
+    python3 apps/security/scripts/ws_test.py
+
+security-refresh:
+    python3 apps/security/scripts/refresh_test.py
+
+security-regressions:
+    python3 apps/security/scripts/security_test.py
+
+# Chaque route du code est couverte par la suite Bruno
+security-coverage:
+    python3 apps/security/scripts/check_coverage.py
+
+security-test-all: test-security security-coverage (security-dev "up") (security-dev "start") security-bruno security-ws security-refresh security-regressions
+
+# permission : Postgres de dev en Docker (éphémère), backend sur 127.0.0.1:8090
+permission-dev-up:
+    docker compose -f apps/permission/deploy/docker-compose.dev.yml up -d --wait
+
+permission-dev-down:
+    docker compose -f apps/permission/deploy/docker-compose.dev.yml down
+
+permission-dev-run:
+    cd apps/permission/backend && set -a && . ../deploy/dev.env && set +a && cargo run
+
+# Données de départ (applications chat et radar) puis test de bout en bout de l'API : demandent permission-dev-up et permission-dev-run
+permission-seed:
+    cd apps/permission && set -a && . deploy/dev.env && set +a && python3 scripts/seed.py
+
+permission-smoke:
+    cd apps/permission && set -a && . deploy/dev.env && set +a && python3 scripts/smoke.py
+
+# e2e avec le vrai auth-gateway et Keycloak de apps/security (Docker)
+e2e-permission-gateway:
+    E2E_GATEWAY=1 npm run e2e --workspace apps/permission/frontend
+
+# Vite sur :3000 (proxy signé vers le backend :8090)
+permission-front-dev:
+    npm run dev --workspace apps/permission/frontend -- --host 127.0.0.1
+
+# Image Docker complète (tests, front, backend), construite depuis la racine
+permission-image:
+    docker build -f apps/permission/Dockerfile -t permission:local .

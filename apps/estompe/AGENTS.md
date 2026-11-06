@@ -37,7 +37,7 @@ Guide pas à pas : `docs/ticket-claude-code.md`. Les skills sont versionnés dan
 | `/estompe-plan <n>` | `.ai/GH-<n>/plan.md` | branche, étapes, tests, couverture de chaque critère |
 | `/estompe-implement <n>` | worktree, commits locaux, `.ai/GH-<n>/verify.md` | suit le plan (ou les corrections), lance `scripts/check.sh`, prouve chaque critère |
 | `/estompe-code-review <n>` | section « Revue N » de `plan.md` | revue 1 : trois relecteurs filtrés ; revue 2 : corrections seules ; rapport seul |
-| `/estompe-mr <n>` | `changelog.d/<slug-court>.md`, push, PR (`Closes #<n>`) | commentaire sur l'issue, puis suppression du worktree |
+| `/estompe-pr <n>` | `changelog.d/<slug-court>.md`, push, PR (`Closes #<n>`) | commentaire sur l'issue, puis suppression du worktree |
 | `/estompe-release` | release, tags, release GitHub | issues livrées commentées ; rouvertes s'il reste un critère non vérifié |
 
 Règles du cycle :
@@ -45,8 +45,8 @@ Règles du cycle :
 - Les critères de vérification du brief sont numérotés `C1`, `C2`… et suivis jusqu'à la release.
 - Boucle courte : `implement` → `code-review` (revue 1) → si besoin `implement` (corrections) → `code-review` (revue 2, corrections seules) → `mr`.
   **Deux revues au plus** : seuls les bloquants et importants prouvés bloquent ; les mineurs vont dans la PR, tout nouveau défaut hors diff devient une issue.
-  `/estompe-mr` relance `scripts/check.sh` lui-même et accepte une revue antérieure si les commits suivants ne sont que ses corrections.
-- Après la création de la PR, `/estompe-mr` supprime le worktree (`git worktree remove`) ; la branche reste. Pour corriger la PR, `/estompe-implement` le recrée depuis la branche.
+  `/estompe-pr` relance `scripts/check.sh` lui-même et accepte une revue antérieure si les commits suivants ne sont que ses corrections.
+- Après la création de la PR, `/estompe-pr` supprime le worktree (`git worktree remove`) ; la branche reste. Pour corriger la PR, `/estompe-implement` le recrée depuis la branche.
 - L'issue se ferme à la fusion de sa PR (`Closes #<n>`). À la release, `/estompe-release` la commente avec le tag ; s'il reste un critère
   non vérifié, il la rouvre avec la liste de ce qui reste à vérifier. Un critère qui dépend d'un appareil réel reste « non vérifié » tant que la personne qui l'a n'a pas confirmé.
 - Un bug se reproduit (test qui échoue) avant d'être corrigé. Sans reproduction possible, le dire sans affirmer de cause.
@@ -89,7 +89,7 @@ Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push ori
 - Le transport git (`fetch`, `pull`, `push`, tags) passe par `git` avec l'authentification de `gh`. Ne jamais forcer un push.
 - PR : `gh pr create --base main --head <branche> --title "<titre>" --body "<corps>"`.
   Corps : contenu, critères et vérifications, et ce qui n'a pas été vérifié.
-- Pousser et ouvrir une PR seulement via `/estompe-mr` ou `/estompe-release`, ou sur demande explicite de l'utilisateur.
+- Pousser et ouvrir une PR seulement via `/estompe-pr` ou `/estompe-release`, ou sur demande explicite de l'utilisateur.
 - Messages de commit :
   - toujours `type(portée): résumé` (`feat`, `fix`, `chore`, `ci`, `docs`), avec le ticket ou sans ; sur un ticket : puis `type(portée): corrections de revue`, `type(portée): changelog` ;
   - release : `chore(release): api-vA.B.C app-vX.Y.Z` ;
@@ -130,7 +130,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 
 ## Architecture
 
-- `backend/` (Rust, décisions dans `docs/migration-rust.md`) : workspace Cargo avec `estompe-api` (binaire), `core`, `block` et
+- `backend/` (Rust) : workspace Cargo avec `estompe-api` (binaire), `core`, `block` et
   `blocks/<nom>` (un crate par bloc, mêmes noms que les blocs frontend). `core` ne dépend d'aucun bloc ; un bloc dépend de `core`, de `block`
   et d'un autre bloc seulement s'il le déclare dans `Needs` ; `estompe-api` assemble tout ; aucune dépendance circulaire.
 - **Blocs** : un cœur et des fonctionnalités optionnelles. Backend Rust : un crate `backend/blocks/<nom>` par bloc, déclaré dans `block_list()`

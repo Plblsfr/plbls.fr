@@ -1,5 +1,5 @@
 # Dépendances de dev : Redis, Keycloak (realm importé), Mailpit (SMTP :1025, boîte web :8025) et un service d'écho (en-têtes + WebSocket /echo).
-# Le gateway tourne en local : `make dev-up dev-run` (voir le Makefile)
+# Le gateway tourne en local : `just security-dev up` puis `just security-dev start` (voir le justfile racine)
 services:
   redis:
     image: redis:7-alpine

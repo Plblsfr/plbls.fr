@@ -13,8 +13,8 @@ Domaine du gateway : **security.plbls.fr**. Hébergement : **Docker Compose**.
 | [endpoints.md](endpoints.md) | Endpoints du service |
 | [security.md](security.md) | Cookie, CSRF, CORS, JWT, refresh, logout |
 | [stack.md](stack.md) | Stack technique et découpage des modules |
-| [migration.md](migration.md) | Migration, prochaines étapes, décisions et questions ouvertes |
+| [decisions.md](decisions.md) | Décisions d'architecture et d'hébergement |
 
 Source : document d'architecture « auth-gateway plbls.fr — Architecture » (2026-10-12).
 
-Lancer et déployer : voir le [README du dépôt](../README.md).
+Lancer et déployer : voir le [README du service](../README.md).

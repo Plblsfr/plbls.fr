@@ -11,8 +11,5 @@ indent_size = 2
 [*.{rs,py}]
 indent_size = 4
 
-[{Makefile,*.mk}]
-indent_style = tab
-
 [*.md]
 trim_trailing_whitespace = false
