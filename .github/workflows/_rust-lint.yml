@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Toolchain de rust-toolchain.toml
         run: rustup toolchain install && cargo --version
       - name: Les Dockerfiles suivent rust-toolchain.toml
@@ -31,7 +31,7 @@ jobs:
           done
           exit $ko
       - id: cargo
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -40,7 +40,7 @@ jobs:
           key: rust-lint-v1-${{ inputs.name }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: rust-lint-v1-${{ inputs.name }}-
       - id: deny
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/cargo-deny
           key: cargo-deny-${{ env.CARGO_DENY_VERSION }}
@@ -50,7 +50,7 @@ jobs:
         run: cargo install cargo-deny --locked --version ${{ env.CARGO_DENY_VERSION }}
       - run: cargo deny check
       - if: steps.cargo.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -58,7 +58,7 @@ jobs:
             target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
       - if: steps.deny.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/cargo-deny
           key: ${{ steps.deny.outputs.cache-primary-key }}
