@@ -20,3 +20,21 @@ npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui da
 Les copies de `@plbls/ui` (`*/vendor/plbls-ui/`) sont générées par `scripts/sync-ui.mjs` : ne pas les modifier à la main,
 le workflow `workspace-ci` échoue si l'une d'elles diffère de `packages/ui`. Les images de pli, permission et du CDN se construisent
 depuis la racine du dépôt (`docker build -f apps/pli/Dockerfile .`).
+
+## Dépôt GitHub
+
+Les réglages du dépôt public se posent avec `scripts/configurer-github.sh` (`gh` connecté avec un compte admin du dépôt), relançable sans effet de bord :
+
+- fusion en merge classique seulement, avec le message par défaut (`Merge pull request #N from <compte>/<branche>`, lu par le calcul de version d'Estompe) ;
+- ruleset `main` : PR obligatoire, ni suppression ni force-push, contrôles requis `npm`, `changelog`, `estompe-backend-rs`, `estompe-frontend`,
+  `pli-ci`, `permission-ci`, `security-ci`, `ui-ci`, branche à jour avant fusion ;
+- ruleset `tags de livraison` (`*-v*`) : création, déplacement et suppression réservés aux admins, releases immuables ;
+- Actions : `GITHUB_TOKEN` en lecture par défaut, approbation des workflows de tout contributeur externe, actions épinglées par SHA ;
+- environnement `livraison` (branche `main` et tags `*-v*`) pour les secrets de signature et le webhook Dokploy ;
+- signalement privé des failles, alertes Dependabot, secret scanning avec push protection, CodeQL.
+
+Ni historique linéaire (incompatible avec le merge classique) ni commits signés obligatoires (le commit de `estompe-version` n'est pas signé).
+
+Un workflow de PR n'a pas de filtre `paths` (un contrôle obligatoire jamais créé bloquerait la PR) : son premier job `changements` appelle
+`scripts/ci-changements.sh` avec les chemins suivis, et son dernier job, nommé comme le workflow, résume les autres. Un nouveau workflow
+suit ce modèle et ajoute son contrôle à `scripts/configurer-github.sh`.
