@@ -2,6 +2,7 @@
 !package.json
 !package-lock.json
 !packages/ui/package.json
+!packages/deepmerge/package.json
 !web/estompe/package.json
 !web/permission/package.json
 !web/pli/package.json

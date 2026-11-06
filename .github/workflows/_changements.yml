@@ -56,7 +56,7 @@ jobs:
             image=(.github/workflows/_image.yml)
           fi
           cargo=(Cargo.toml Cargo.lock rust-toolchain.toml deny.toml)
-          npm=(package.json package-lock.json .nvmrc)
+          npm=(package.json package-lock.json .nvmrc 'packages/deepmerge/**')
           estompe=('api/estompe/**' 'web/estompe/**' 'apps/estompe/**' 'docs/estompe/**' 'deploy/estompe/**' 'scripts/estompe/**' \
             .version CHANGELOG.md 'changelog.d/**' 'agents/**')
           c() { local nom="$1"; shift; scripts/ci-changements.sh --nom "$nom" "$@" "${ci[@]}"; }
@@ -94,6 +94,7 @@ jobs:
           espaces=()
           e() { if [ "$NPM" = true ] || [ "$1" = true ]; then espaces+=("$2"); fi; }
           e "$UI" packages/ui
+          e false packages/deepmerge
           e "$ESTOMPE" web/estompe
           e "$PERMISSION" web/permission
           e "$PLI" web/pli
