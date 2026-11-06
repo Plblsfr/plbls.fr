@@ -37,8 +37,8 @@ jobs:
       component: pli
       name: pli
       context: .
-      dockerfile: apps/pli/Dockerfile
-      dir: apps/pli
+      dockerfile: api/pli/Dockerfile
+      dir: api/pli
     secrets: inherit
 
   image-permission:
@@ -52,8 +52,8 @@ jobs:
       component: permission
       name: permission
       context: .
-      dockerfile: apps/permission/Dockerfile
-      dir: apps/permission
+      dockerfile: api/permission/Dockerfile
+      dir: api/permission
     secrets: inherit
 
   image-security:
@@ -67,8 +67,8 @@ jobs:
       component: security
       name: security
       context: .
-      dockerfile: apps/security/Dockerfile
-      dir: apps/security
+      dockerfile: api/security/Dockerfile
+      dir: api/security
     secrets: inherit
 
   image-ui:
@@ -151,7 +151,7 @@ jobs:
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: apps/estompe/backend/Dockerfile
+          file: api/estompe/Dockerfile
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
@@ -180,9 +180,6 @@ jobs:
     concurrency:
       group: estompe-version
       cancel-in-progress: false
-    defaults:
-      run:
-        working-directory: apps/estompe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -192,7 +189,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: node frontend/scripts/bump-version.mjs
+      - run: node scripts/estompe/bump-version.mjs
       - env:
           GH_TOKEN: ${{ secrets.CI_PAT }}
         run: |
@@ -208,11 +205,11 @@ jobs:
             -f base=main -f head="$b" -f title="$title" \
             -f body="Versions calculées par livraison.yml (job estompe-version) après la fusion du dernier commit de main. La fusion de cette PR ne change aucune version (seul .version est modifié)."
       - run: |
-          f=backend/core/src/notes_version/changelog.json
+          f=api/estompe/core/src/notes_version/changelog.json
           v=$(node -p 'JSON.parse(require("fs").readFileSync(".version", "utf8")).api')
           grep -q "\"version\": \"$v\"" "$f" || echo "::warning::pas d'entrée $v dans $f"
 
-  # Image de job des builds natifs d'Estompe : incrémenter :4 ici, dans deploy/ci/Dockerfile et dans estompe-livraison-app.yml
+  # Image de job des builds natifs d'Estompe : incrémenter :4 ici, dans deploy/estompe/ci/Dockerfile et dans estompe-livraison-app.yml
   estompe-ci-image:
     needs: changements
     if: github.ref == 'refs/heads/main' && needs.changements.outputs.estompe_ci_image == 'true'
@@ -230,7 +227,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/estompe/deploy/ci
+          context: deploy/estompe/ci
           push: true
           provenance: false
           tags: |
@@ -275,7 +272,7 @@ jobs:
           rustup toolchain install
           case "$CACHE" in
             rust-lint-*) cargo clippy --workspace --all-targets --locked -- -D warnings ;;
-            rust-test-*) cargo test --locked --no-run $(apps/estompe/scripts/paquets-cargo.sh) && cargo test --locked --no-run -p pli ;;
+            rust-test-*) cargo test --locked --no-run $(scripts/estompe/paquets-cargo.sh) && cargo test --locked --no-run -p pli ;;
           esac
       - if: steps.existe.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

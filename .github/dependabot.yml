@@ -22,13 +22,6 @@ updates:
       - dependency-name: typescript
         update-types: ["version-update:semver-major"]
 
-  # permission/e2e : hors workspace (Playwright lancé dans son image Docker)
-  - package-ecosystem: npm
-    directories: [/apps/permission/e2e]
-    schedule: { interval: weekly }
-    groups:
-      permission-e2e: { patterns: ["*"] }
-
   # --- cargo ---
   # workspace racine (security, permission, pli, estompe-api) : un seul Cargo.lock, donc un seul groupe
   - package-ecosystem: cargo
@@ -46,7 +39,7 @@ updates:
 
   # --- images Docker : une PR pour tous les Dockerfile, une pour tous les compose ---
   - package-ecosystem: docker
-    directories: [/apps/pli, /apps/security, /apps/permission, /apps/estompe/backend, /apps/estompe/web, /apps/estompe/deploy/ci, /packages/ui]
+    directories: [/api/pli, /api/security, /api/permission, /api/estompe, /web/estompe/plateforme, /deploy/estompe/ci, /packages/ui]
     schedule: { interval: weekly }
     groups:
       dockerfiles: { patterns: ["*"] }
@@ -58,7 +51,7 @@ updates:
       - dependency-name: rust
 
   - package-ecosystem: docker-compose
-    directories: [/apps/estompe/deploy]
+    directories: [/deploy/estompe]
     schedule: { interval: weekly }
     groups:
       compose: { patterns: ["*"] }

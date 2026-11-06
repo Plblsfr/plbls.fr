@@ -1,11 +1,24 @@
 # plbls.fr
-Monorepo : `apps/` (produits), `packages/` (bibliothèques partagées), `.github/workflows/` (CI).
+Monorepo :
+
+| Dossier | Contenu |
+|---|---|
+| `api/` | API et services Rust (workspace Cargo racine) : `security` (auth-gateway), `permission`, `pli`, `estompe` |
+| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (et sa plateforme web, image nginx), `permission`, `pli` |
+| `apps/` | applications natives : `estompe/windows`, `estompe/android` (Tauri) et leur code commun `estompe/crates` |
+| `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
+| `deploy/` | déploiement et dev local, un dossier par projet : compose, `.env.example`, `dev.env`, realm Keycloak de dev |
+| `scripts/` | outillage commun à la racine, scripts d'un projet dans `scripts/<projet>/` |
+| `packages/` | bibliothèques partagées (`ui`) |
+
+Les fichiers transverses d'Estompe sont à la racine : `.version`, `CHANGELOG.md`, `changelog.d/`, `agents/skills/` (lus via `.claude/skills`).
+La CI est dans `.github/workflows/`.
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans un dépôt privé.
 Plan de regroupement des fronts en une seule application : [docs/front-unique.md](docs/front-unique.md).
 
 ## npm
 
-Un seul workspace npm à la racine (`packages/ui`, `apps/estompe/frontend`, `apps/permission/frontend`, `apps/pli`), un seul `package-lock.json`
+Un seul workspace npm à la racine (`packages/ui`, `web/estompe`, `web/permission`, `web/pli`), un seul `package-lock.json`
 et une seule version de Node, celle de `.nvmrc` (reprise par les `engines`, la CI et les images Docker ; `node scripts/check-node.mjs` le vérifie).
 
 ```sh
@@ -20,7 +33,7 @@ npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui da
 
 Les copies de `@plbls/ui` (`*/vendor/plbls-ui/`) sont générées par `scripts/sync-ui.mjs` : ne pas les modifier à la main,
 le job `front` du workflow `ci` échoue si l'une d'elles diffère de `packages/ui`. Les images de pli, permission et du CDN se construisent
-depuis la racine du dépôt (`docker build -f apps/pli/Dockerfile .`).
+depuis la racine du dépôt (`docker build -f api/pli/Dockerfile .`).
 
 ## Dépôt GitHub
 
@@ -44,7 +57,7 @@ Toute PR lance un seul workflow, `ci.yml`, sans filtre `paths` (un contrôle obl
 (`_changements.yml`, qui appelle `scripts/ci-changements.sh` par groupe de chemins) dit ce que la PR touche, les jobs ne tournent que pour
 ce qui est touché, et le job final `ci` résume les autres. Après la fusion, `livraison.yml` publie seulement ce qui a changé, sans rejouer les
 tests. Un nouveau projet ajoute son groupe de chemins à `_changements.yml` et son job à `ci.yml` (dans les `needs` de `ci`) : le ruleset ne change pas.
-Détail : [`apps/estompe/docs/ci.md`](apps/estompe/docs/ci.md).
+Détail : [`docs/estompe/ci.md`](docs/estompe/ci.md).
 
 ## Outillage
 

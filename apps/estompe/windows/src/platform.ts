@@ -1,6 +1,6 @@
 /** App Windows (Tauri) : connexion par serveur loopback, toasts, mise à jour par le plugin updater, partage natif, overlays et Bobyn. */
-import type { Platform } from '../../frontend/src/lib/platform'
-import { prefs } from '../../frontend/src/lib/prefs.svelte'
+import type { Platform } from '../../../../web/estompe/src/lib/platform'
+import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 import { debugStore, invoke } from '../../crates/core/ts/tauri'
 import { auth } from './auth'
 import BobynNav from './BobynNav.svelte'

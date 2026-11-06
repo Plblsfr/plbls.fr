@@ -6,14 +6,14 @@
   "build": {
     "beforeBuildCommand": {
       "script": "npm run build -- --mode android",
-      "cwd": "../../frontend"
+      "cwd": "../../../../web/estompe"
     },
     "beforeDevCommand": {
       "script": "npm run dev -- --mode android",
-      "cwd": "../../frontend"
+      "cwd": "../../../../web/estompe"
     },
     "devUrl": "http://localhost:5173",
-    "frontendDist": "../../frontend/dist"
+    "frontendDist": "../../../../web/estompe/dist"
   },
   "app": {
     "windows": [

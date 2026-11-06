@@ -7,9 +7,9 @@
   },
   "workspaces": [
     "packages/ui",
-    "apps/estompe/frontend",
-    "apps/permission/frontend",
-    "apps/pli"
+    "web/estompe",
+    "web/permission",
+    "web/pli"
   ],
   "scripts": {
     "lint": "biome ci .",

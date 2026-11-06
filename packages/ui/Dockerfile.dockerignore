@@ -2,9 +2,9 @@
 !package.json
 !package-lock.json
 !packages/ui/package.json
-!apps/estompe/frontend/package.json
-!apps/permission/frontend/package.json
-!apps/pli/package.json
+!web/estompe/package.json
+!web/permission/package.json
+!web/pli/package.json
 !packages/ui/scripts
 !packages/ui/src
 !packages/ui/docker

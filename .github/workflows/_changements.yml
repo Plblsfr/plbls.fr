@@ -57,27 +57,29 @@ jobs:
           fi
           cargo=(Cargo.toml Cargo.lock rust-toolchain.toml deny.toml)
           npm=(package.json package-lock.json .nvmrc)
+          estompe=('api/estompe/**' 'web/estompe/**' 'apps/estompe/**' 'docs/estompe/**' 'deploy/estompe/**' 'scripts/estompe/**' \
+            .version CHANGELOG.md 'changelog.d/**' 'agents/**')
           c() { local nom="$1"; shift; scripts/ci-changements.sh --nom "$nom" "$@" "${ci[@]}"; }
 
-          c rust "${cargo[@]}" '**/Dockerfile' 'apps/security/**' 'apps/permission/backend/**' 'apps/pli/server/**' 'apps/estompe/backend/**' '!**/*.md'
-          c estompe 'apps/estompe/**'
-          c estompe_api 'apps/estompe/backend/**' '!**/*.md' apps/estompe/deploy/.env.example apps/estompe/docs/openapi.yaml \
-            apps/estompe/scripts/paquets-cargo.sh "${cargo[@]}" .dockerignore
-          c estompe_tauri 'apps/estompe/windows/**' 'apps/estompe/android/**' 'apps/estompe/crates/**' '!**/*.md'
-          c estompe_version 'apps/estompe/**' '!apps/estompe/docs/**' '!**/*.md'
-          c estompe_ci_image 'apps/estompe/deploy/ci/**'
-          c pli_server 'apps/pli/server/**' '!**/*.md' "${cargo[@]}"
+          c rust "${cargo[@]}" '**/Dockerfile' 'api/**' '!**/*.md'
+          c estompe "${estompe[@]}"
+          c estompe_api 'api/estompe/**' '!**/*.md' deploy/estompe/.env.example docs/estompe/openapi.yaml \
+            scripts/estompe/paquets-cargo.sh "${cargo[@]}" .dockerignore
+          c estompe_tauri 'apps/estompe/**' '!**/*.md'
+          c estompe_version 'api/estompe/**' 'web/estompe/**' 'apps/estompe/**' '!**/*.md'
+          c estompe_ci_image 'deploy/estompe/ci/**'
+          c pli_server 'api/pli/**' '!**/*.md' "${cargo[@]}"
           c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' '**/*.md' \
             .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
-          c npm "${npm[@]}" 'scripts/**' biome.json tsconfig.base.json
+          c npm "${npm[@]}" 'scripts/*' biome.json tsconfig.base.json
           c npm_lock package-lock.json .nvmrc
           c front_ui 'packages/ui/**' '!**/*.md'
-          c front_estompe 'apps/estompe/frontend/**' '!**/*.md'
-          c front_permission 'apps/permission/frontend/**' '!**/*.md'
-          c front_pli 'apps/pli/**' '!apps/pli/server/**' '!**/*.md'
-          c image_pli "${npm[@]}" "${cargo[@]}" 'apps/pli/**' '!**/*.md' "${image[@]}"
-          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'apps/permission/**' '!**/*.md' "${image[@]}"
-          c image_security "${cargo[@]}" .dockerignore 'apps/security/**' '!**/*.md' "${image[@]}"
+          c front_estompe 'web/estompe/**' 'apps/estompe/*/src/**' 'apps/estompe/crates/core/ts/**' 'scripts/estompe/*.mjs' '!**/*.md'
+          c front_permission 'web/permission/**' '!**/*.md'
+          c front_pli 'web/pli/**' '!**/*.md'
+          c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'web/pli/**' '!**/*.md' "${image[@]}"
+          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'web/permission/**' '!**/*.md' "${image[@]}"
+          c image_security "${cargo[@]}" .dockerignore 'api/security/**' '!**/*.md' "${image[@]}"
           c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
       - id: e
         name: Projets npm à vérifier (job front)
@@ -92,9 +94,9 @@ jobs:
           espaces=()
           e() { if [ "$NPM" = true ] || [ "$1" = true ]; then espaces+=("$2"); fi; }
           e "$UI" packages/ui
-          e "$ESTOMPE" apps/estompe/frontend
-          e "$PERMISSION" apps/permission/frontend
-          e "$PLI" apps/pli
+          e "$ESTOMPE" web/estompe
+          e "$PERMISSION" web/permission
+          e "$PLI" web/pli
           front=false
           if [ "${#espaces[@]}" -gt 0 ] || [ "$LINT" = true ]; then front=true; fi
           echo "front=$front espaces=${espaces[*]}"

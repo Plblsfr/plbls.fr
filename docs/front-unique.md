@@ -7,10 +7,10 @@ le travail en tickets. La refonte de la CI/CD qui en découle est suivie dans #1
 
 | Projet | Front | Servi par | Accès à l'API | Session et CSRF |
 |---|---|---|---|---|
-| permission | `apps/permission/frontend` : Svelte 5 + Vite, routage par hash, ~800 lignes | le backend Rust (`ServeDir` sur `static_dir`, étape `front` du Dockerfile) | `https://security.plbls.fr/api/permission` (en dur dans `src/api.ts`), CORS avec `credentials: include` | cookie du gateway, contrôle `Origin` du gateway |
-| pli | `apps/pli/public` : JS sans build (`app.js`, `read.js`, `crypto.js`, `s.html`) | le serveur Rust `pli` (fonction `statique`, `/s/<id>` → `s.html`), CSP stricte en dur (`app.rs`, `CSP`) | même origine (`/api/*` sur `pli.plbls.fr`) | cookie `.plbls.fr` lu par pli et relayé à `GET /auth/me` ; `same_origin` exige `Origin` = `Host` |
-| estompe | `apps/estompe/frontend` : Svelte 5 + Vite, cœur + blocs, routage par hash, ~21 000 lignes, PWA (`vite-plugin-pwa`) | image nginx `estompe-web` (`apps/estompe/web`), qui génère `config.js` et la CSP au démarrage (`40-estompe-config.sh`) et sert aussi `/updates/` (installeur Windows, APK, `latest.json`, `web.json`) | `API_URL` (sous-domaine propre), WebSocket, LiveKit | cookie `.plbls.fr` relayé par l'API à `/auth/me`, `ALLOWED_ORIGINS` (CORS + CSRF) |
-| estompe natif | Tauri Windows et Android (`apps/estompe/{windows,android,crates}`) | `frontendDist: ../../frontend/dist`, build `--mode windows|android` qui remplace l'alias `@platform` | URLs lues au build (`VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`) | Bearer (PKCE loopback), pas de cookie |
+| permission | `web/permission` : Svelte 5 + Vite, routage par hash, ~800 lignes | le backend Rust (`ServeDir` sur `static_dir`, étape `front` du Dockerfile) | `https://security.plbls.fr/api/permission` (en dur dans `src/api.ts`), CORS avec `credentials: include` | cookie du gateway, contrôle `Origin` du gateway |
+| pli | `web/pli/public` : JS sans build (`app.js`, `read.js`, `crypto.js`, `s.html`) | le serveur Rust `pli` (fonction `statique`, `/s/<id>` → `s.html`), CSP stricte en dur (`app.rs`, `CSP`) | même origine (`/api/*` sur `pli.plbls.fr`) | cookie `.plbls.fr` lu par pli et relayé à `GET /auth/me` ; `same_origin` exige `Origin` = `Host` |
+| estompe | `web/estompe` : Svelte 5 + Vite, cœur + blocs, routage par hash, ~21 000 lignes, PWA (`vite-plugin-pwa`) | image nginx `estompe-web` (`web/estompe/plateforme`), qui génère `config.js` et la CSP au démarrage (`40-estompe-config.sh`) et sert aussi `/updates/` (installeur Windows, APK, `latest.json`, `web.json`) | `API_URL` (sous-domaine propre), WebSocket, LiveKit | cookie `.plbls.fr` relayé par l'API à `/auth/me`, `ALLOWED_ORIGINS` (CORS + CSRF) |
+| estompe natif | Tauri Windows et Android (`apps/estompe/{windows,android,crates}`) | `frontendDist: ../../../../web/estompe/dist`, build `--mode windows|android` qui remplace l'alias `@platform` | URLs lues au build (`VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`) | Bearer (PKCE loopback), pas de cookie |
 | security | aucun front ; quelques assets (logos, favicons) servis par `routes/assets.rs`, référencés par aucun projet du dépôt | — | — | cookie `__Secure-plbls_sid`, `Domain=.plbls.fr`, `HttpOnly`, `Secure`, `SameSite=Lax` ; `Origin` exigé pour les méthodes non sûres ; origines autorisées = `allowed_origin_suffix` (tout `*.plbls.fr` en https) |
 
 `packages/ui` est copié dans `*/vendor/plbls-ui` par `scripts/sync-ui.mjs` (et vérifié par `npm run ui:check`). Les polices viennent
@@ -21,7 +21,7 @@ Constat utile : le cookie est **déjà** posé sur le domaine parent, et estompe
 
 ## 2. Décisions déjà prises (reprises de l'issue)
 
-- **Structure** : `apps/web` (front unique) et `services/{security,permission,estompe,pli}` (API séparées). `packages/ui` devient
+- **Structure** : `web/plbls` (front unique) et `api/{security,permission,estompe,pli}` (API séparées, déjà en place). `packages/ui` devient
   une dépendance npm du workspace : fin du vendoring et de `scripts/sync-ui.mjs`.
 - **Routage** : un domaine, plusieurs sous-domaines servis par le même front ; le module affiché dépend du sous-domaine.
 - **Sous-domaines configurables** : domaine et sous-domaines en variables d'environnement, jamais en dur. Les mêmes variables
@@ -32,38 +32,43 @@ Constat utile : le cookie est **déjà** posé sur le domaine parent, et estompe
 
 ## 3. Structure cible
 
+La structure du dépôt suit déjà le découpage par rôle : `api/<projet>` (API Rust), `web/<projet>` (fronts), `apps/` (apps natives),
+`docs/<projet>`, `deploy/<projet>`, `scripts/<projet>`, `packages/`. Le front unique s'y ajoute sous `web/plbls`, à côté des anciens
+fronts, qui disparaissent après la bascule de chaque module (T14) :
+
 ```
-apps/
-  web/                         front unique (Svelte 5 + Vite), image ghcr.io/plblsfr/web
+web/
+  plbls/                       front unique (Svelte 5 + Vite), image ghcr.io/plblsfr/web
     index.html                 une seule page, charge /config.js puis src/main.ts
     src/
       main.ts                  lit la config, choisit le module d'après l'hôte, l'importe à la demande
       socle/                   commun à tous les modules (voir 4.3)
       modules/
-        permission/            ex apps/permission/frontend/src
-        pli/                   ex apps/pli/public, réécrit en Svelte
-        estompe/               ex apps/estompe/frontend/src (cœur, blocs, vues)
-          plateformes/web/     ex apps/estompe/web/src
+        permission/            ex web/permission/src
+        pli/                   ex web/pli/public, réécrit en Svelte
+        estompe/               ex web/estompe/src (cœur, blocs, vues)
+          plateformes/web/     ex web/estompe/plateforme/src
       natif.ts                 point d'entrée des apps Tauri : socle + module estompe, sans choix par l'hôte
     public/<module>/           logos, favicons, manifeste propres à chaque module
-    deploy/
-      Dockerfile               nginx, contexte = racine du dépôt
+    Dockerfile                 nginx, contexte = racine du dépôt
+    docker/
       generer-config.sh        unique générateur de config.js et des blocs server nginx (image et e2e)
       csp/<module>.conf        CSP de chaque module, avec des marqueurs remplacés au démarrage
     e2e/                       Playwright, un fichier par module + socle
-  estompe-natif/               ex apps/estompe/{windows,android,crates} (Tauri, hors workspace Cargo comme aujourd'hui)
-services/
-  security/                    ex apps/security
-  permission/                  ex apps/permission (backend, docs, scripts ; plus de front)
-  pli/                         ex apps/pli/server (plus de public/)
-  estompe/                     ex apps/estompe (backend, docs, deploy, agents, changelog.d, .version)
+apps/
+  estompe/                     windows, android, crates (Tauri, hors workspace Cargo comme aujourd'hui)
+api/
+  security/  permission/       inchangés ; permission ne sert plus de front
+  pli/                         ne sert plus web/pli/public
+  estompe/
+deploy/plbls/                  compose et variables PLBLS_* du service web
 packages/
-  ui/                          inchangé, consommé par "@plbls/ui": "*" dans apps/web/package.json
+  ui/                          inchangé, consommé par "@plbls/ui": "*" dans web/plbls/package.json
   domaines/                    crate Rust plbls-domaines + cas de test partagés avec le socle TS (voir 4.1)
 ```
 
-Les docs, skills, `changelog.d` et `.version` d'Estompe vont avec son API dans `services/estompe`, sauf le README du front qui
-devient `apps/web/src/modules/estompe/README.md`. `apps/estompe-natif` garde son propre `Cargo.lock` et la toolchain stable.
+Les docs, skills, `changelog.d` et `.version` d'Estompe restent où ils sont (`docs/estompe`, racine du dépôt) ; le README du front
+devient `web/plbls/src/modules/estompe/README.md`. `apps/estompe` garde son propre `Cargo.lock` et la toolchain stable.
 
 ## 4. Questions tranchées
 
@@ -71,7 +76,7 @@ devient `apps/web/src/modules/estompe/README.md`. `apps/estompe-natif` garde son
 
 **Décision** : un jeu de variables `PLBLS_*`, identique pour tous les conteneurs (un seul fichier d'environnement partagé dans
 Dokploy). Chaque service en dérive ce dont il a besoin avec la même règle, écrite une fois en Rust (`packages/domaines`, crate
-`plbls-domaines`, utilisée par security, estompe et pli) et une fois en TypeScript (`apps/web/src/socle/domaines.ts`), vérifiées
+`plbls-domaines`, utilisée par security, estompe et pli) et une fois en TypeScript (`web/plbls/src/socle/domaines.ts`), vérifiées
 par les mêmes cas de test (`packages/domaines/cas.json`).
 
 | Variable | Format | Défaut | Exemple prod | Rôle |
@@ -129,7 +134,7 @@ pour de vrai. `config.js` est produit par le même `generer-config.sh` que l'ima
   la première navigation depuis un lien externe (mail, messagerie). `Lax` reste nécessaire au retour de Keycloak.
 - `HttpOnly` : aucun JavaScript, d'aucun sous-domaine, ne lit le cookie. Le front sait s'il est connecté par `GET <gateway>/auth/me`.
 - Cookie de login (`<nom>_login`, anti login-CSRF) : inchangé, propre à l'hôte du gateway, `Path=/auth`.
-- Dev (`PLBLS_HTTPS=0`) : `cookie_secure=false` et nom sans préfixe `__Secure-` (déjà le cas avec `deploy/dev.env`).
+- Dev (`PLBLS_HTTPS=0`) : `cookie_secure=false` et nom sans préfixe `__Secure-` (déjà le cas avec `deploy/security/dev.env`).
 
 **CSRF entre sous-domaines** : `SameSite` ne protège pas d'un sous-domaine compromis ou tiers, puisqu'il est du même site. La
 protection repose donc sur l'en-tête `Origin`, comparé à la **liste fermée** des origines de confiance (4.1) :
@@ -208,15 +213,15 @@ l'image de tous les modules et lieraient sa livraison à celle des apps natives.
 
 ### 4.5 Versionnement et livraison
 
-- **Front** : un seul tag `web-vX.Y.Z`, version dans `apps/web/package.json`, image `web` publiée par `_image.yml` (`edge` sur
-  `main`, `X.Y.Z` + `latest` sur tag). Un module n'a pas de version propre : le CHANGELOG de `apps/web` regroupe les modules.
+- **Front** : un seul tag `web-vX.Y.Z`, version dans `web/plbls/package.json`, image `web` publiée par `_image.yml` (`edge` sur
+  `main`, `X.Y.Z` + `latest` sur tag). Un module n'a pas de version propre : le CHANGELOG de `web/plbls` regroupe les modules.
 - **API** : tags inchangés (`security`, `permission`, `pli`, `estompe-api`) ; les images `permission` et `pli` ne contiennent
   plus de front.
 - **estompe-app** : gardé pour les **seules** apps natives (installeur Windows, APK, image `estompe-updates`). L'image `estompe-web`
   n'est plus publiée après la bascule d'estompe ; `.version` d'Estompe perd la clé `web`, et `bump-version.mjs` compte
-  `apps/web/src/socle/**`, `apps/web/src/modules/estompe/**` et `apps/web/src/natif.ts` pour `windows` et `android`.
+  `web/plbls/src/socle/**`, `web/plbls/src/modules/estompe/**` et `web/plbls/src/natif.ts` pour `windows` et `android`.
 - **ui** : `ui-vX.Y.Z` reste, pour l'image CDN et la release GitHub (consommateurs externes au dépôt, thème Keycloak de
-  `plbls.fr-infra`). `apps/web` consomme toujours le code de `packages/ui` du même commit (dépendance de workspace) : pas de
+  `plbls.fr-infra`). `web/plbls` consomme toujours le code de `packages/ui` du même commit (dépendance de workspace) : pas de
   montée de version à faire dans le front. `ui:sync`, `ui:check` et `scripts/sync-ui.mjs` disparaissent.
 - La liste des tags de `AGENTS.md` gagne `web`.
 
@@ -230,8 +235,8 @@ PWA, des apps natives et des utilisateurs quotidiens.
 service `web` au lieu de l'ancien conteneur). Les anciens fronts restent dans le dépôt et dans leurs images jusqu'au ticket de
 nettoyage qui suit la bascule de chaque module : le retour arrière consiste à remettre l'ancienne route. Le service `web` répond dès
 le premier module ; les modules pas encore basculés n'ont simplement pas de route vers lui. Les services ne perdent leur service
-statique qu'après validation de la bascule. Le déplacement vers `services/*` se fait en dernier, dans une PR de déplacements purs
-(`git mv`, chemins mis à jour) : les PR ouvertes en parallèle ne subissent ainsi qu'un seul conflit de chemins, à un moment choisi.
+statique qu'après validation de la bascule. Les API sont déjà dans `api/*` (T15, fait avant le reste du plan) : aucun autre déplacement
+de dossier n'est prévu, le front unique s'ajoute dans `web/plbls` sans toucher aux anciens fronts avant leur nettoyage (T14).
 
 **Impact sur `plbls.fr-infra`** :
 
@@ -245,18 +250,18 @@ statique qu'après validation de la bascule. Le déplacement vers `services/*` s
 
 ### 4.7 Apps natives Estompe (Tauri Windows et Android)
 
-**Décision** : les inclure. Elles construisent le module estompe depuis `apps/web`, via `src/natif.ts` ; il n'y a pas de front
+**Décision** : les inclure. Elles construisent le module estompe depuis `web/plbls`, via `src/natif.ts` ; il n'y a pas de front
 Estompe séparé.
 
 - Le front d'estompe est déjà conçu pour cela : le code par plateforme passe par l'alias `@platform` choisi par le mode Vite. Garder
   un front séparé obligerait à dupliquer 21 000 lignes, ou à faire d'estompe une bibliothèque consommée par deux fronts : plus de
   travail que d'ajouter un point d'entrée.
-- `apps/web` : `vite build --mode windows|android` prend `natif.ts` comme entrée (socle + module estompe importé statiquement, sans
+- `web/plbls` : `vite build --mode windows|android` prend `natif.ts` comme entrée (socle + module estompe importé statiquement, sans
   choix par l'hôte) et sort dans `dist-windows`/`dist-android`. Les autres modules ne sont pas atteignables depuis cette entrée et
-  ne sont pas dans le paquet. Les plateformes `windows` et `android` (TS) restent avec le code Tauri dans `apps/estompe-natif`.
+  ne sont pas dans le paquet. Les plateformes `windows` et `android` (TS) restent avec le code Tauri dans `apps/estompe`.
 - Configuration native lue au build (`VITE_*`) : seule exception à la lecture à l'exécution, car une app installée n'a pas de serveur
   pour lui servir `config.js`. Les valeurs sont dérivées des mêmes `PLBLS_*` par `vite.config.ts`.
-- `tauri.conf.json` : `frontendDist: ../../web/dist-<plateforme>`, `beforeBuildCommand` qui appelle le build de `apps/web`.
+- `tauri.conf.json` : `frontendDist: ../../web/dist-<plateforme>`, `beforeBuildCommand` qui appelle le build de `web/plbls`.
 - Coût accepté : un changement du socle ou du module estompe fait monter la version des apps natives (4.5) ; un changement d'un
   autre module ne la touche pas.
 
@@ -286,9 +291,9 @@ Conséquence assumée : une image `web` compromise compromet pli comme les autre
 À créer dans GitHub une fois le plan validé. Chacun est une PR indépendante, sauf dépendance indiquée.
 
 **T1. `chore(ui): consommer @plbls/ui en dépendance du workspace dans estompe et permission`**
-- C1 : `apps/estompe/frontend` et `apps/permission/frontend` importent `@plbls/ui` (JS et CSS) ; leurs `src/vendor/plbls-ui` sont supprimés.
+- C1 : `web/estompe` et `web/permission` importent `@plbls/ui` (JS et CSS) ; leurs `src/vendor/plbls-ui` sont supprimés.
 - C2 : `npm ci && npm run build` à la racine construit `packages/ui` avant les fronts ; `npm run dev` d'un front marche sur un dépôt neuf.
-- C3 : `scripts/sync-ui.mjs` ne copie plus que vers `apps/pli/public` ; `just lint`, `just check`, `just test` passent.
+- C3 : `scripts/sync-ui.mjs` ne copie plus que vers `web/pli/public` ; `just lint`, `just check`, `just test` passent.
 
 **T2. `feat(domaines): crate plbls-domaines et variables PLBLS_*`**
 - C1 : crate `packages/domaines` membre du workspace, dérivation des hôtes et origines (4.1), validation des formats.
@@ -299,14 +304,14 @@ Conséquence assumée : une image `web` compromise compromet pli comme les autre
 - C1 : `allowed_origin_suffix` remplacé par la liste fermée ; un sous-domaine hors liste reçoit 403 sur un `POST` par cookie et pas d'`Access-Control-Allow-Origin`.
 - C2 : `Domain`, `public_url`, `default_redirect` dérivés de `PLBLS_*` ; une variable `GATEWAY__…` explicite garde la priorité.
 - C3 : tests de `origin.rs` et `auth.rs` mis à jour (hors liste refusé, apex accepté, `extra_origins` accepté) ; tests e2e Python de security passent.
-- C4 : `docs/security.md` et `docs/keycloak.md` décrivent la liste fermée et les post-logout explicites.
+- C4 : `docs/security/security.md` et `docs/security/keycloak.md` décrivent la liste fermée et les post-logout explicites.
 
 **T4. `feat(estompe): origines de l'API dérivées de PLBLS_*`** et **`feat(pli): URL du gateway dérivée de PLBLS_*`** (dépendent de T2, deux PR)
 - C1 : `ALLOWED_ORIGINS`/`CAIRN_ORIGIN` (estompe) et `GATEWAY_URL` (pli) dérivés, avec priorité à la variable explicite.
 - C2 : tests existants verts ; un test par service prouve la dérivation.
 
-**T5. `feat(web): socle apps/web et image web`** (dépend de T2 pour les cas de test)
-- C1 : `apps/web` dans le workspace npm, `lint`, `check`, `test`, `build` ; `@plbls/ui` en dépendance ; polices auto-hébergées.
+**T5. `feat(web): socle web/plbls et image web`** (dépend de T2 pour les cas de test)
+- C1 : `web/plbls` dans le workspace npm, `lint`, `check`, `test`, `build` ; `@plbls/ui` en dépendance ; polices auto-hébergées.
 - C2 : `generer-config.sh` produit `config.js` et les blocs nginx ; refuse une valeur hors format (test shell ou vitest qui l'appelle).
 - C3 : choix du module par l'hôte, `PLBLS_MODULE_PAR_DEFAUT`, page « module inconnu » ; tests unitaires de `domaines.ts` sur `cas.json`.
 - C4 : test du manifeste Vite : aucun module n'importe un autre module.
@@ -315,7 +320,7 @@ Conséquence assumée : une image `web` compromise compromet pli comme les autre
 - C7 : tag `web-vX.Y.Z` publie l'image (`_image.yml`) ; `AGENTS.md` liste le tag `web`.
 
 **T6. `feat(web): module permission`** (dépend de T1, T5)
-- C1 : `apps/web/src/modules/permission` reprend toutes les pages ; l'URL de l'API vient du socle (plus de `security.plbls.fr` en dur).
+- C1 : `web/plbls/src/modules/permission` reprend toutes les pages ; l'URL de l'API vient du socle (plus de `security.plbls.fr` en dur).
 - C2 : tests vitest et e2e de permission déplacés et verts (y compris le mode « via gateway »).
 - C3 : l'ancien front reste construit et servi par l'image `permission` (pas encore de nettoyage).
 
@@ -334,14 +339,14 @@ Conséquence assumée : une image `web` compromise compromet pli comme les autre
 - C2 : un lien créé avant la bascule s'ouvre après ; dépôt et lecture vérifiés en prod.
 
 **T10. `feat(web): module estompe`** (dépend de T1, T5)
-- C1 : `apps/estompe/frontend/src` et `apps/estompe/web/src` déplacés dans `apps/web/src/modules/estompe`, cœur et blocs inchangés.
+- C1 : `web/estompe/src` et `web/estompe/plateforme/src` déplacés dans `web/plbls/src/modules/estompe`, cœur et blocs inchangés.
 - C2 : `config.ts` d'estompe lit le socle ; PWA enregistrée par le seul module estompe, manifeste par hôte.
 - C3 : tests vitest et e2e `chat.spec.ts` verts ; CSP de l'hôte estompe identique à celle de `40-estompe-config.sh`.
 - C4 : changelog d'Estompe renseigné.
 
-**T11. `feat(estompe): apps natives construites depuis apps/web`** (dépend de T10)
-- C1 : `apps/estompe/{windows,android,crates}` déplacés dans `apps/estompe-natif` ; `natif.ts`, modes `windows` et `android`.
-- C2 : `tauri.conf.json` pointe vers `apps/web/dist-<plateforme>` ; tests de l'app Windows et du crate commun verts ; compilation Android (hors Android) verte.
+**T11. `feat(estompe): apps natives construites depuis web/plbls`** (dépend de T10)
+- C1 : `natif.ts`, modes `windows` et `android` ; `apps/estompe/{windows,android,crates}` construisent depuis `web/plbls`.
+- C2 : `tauri.conf.json` pointe vers `web/plbls/dist-<plateforme>` ; tests de l'app Windows et du crate commun verts ; compilation Android (hors Android) verte.
 - C3 : image `estompe-updates` publiée par `estompe-livraison-app` ; `bump-version.mjs` et `.version` sans clé `web`.
 - C4 (non vérifiable en CI) : installation et mise à jour d'une app Windows et d'un APK depuis une version précédente.
 
@@ -354,20 +359,19 @@ Conséquence assumée : une image `web` compromise compromet pli comme les autre
 - C2 : middleware qui retire `Cookie` sur chaque hôte tiers ; vérifié par une requête de test.
 
 **T14. `chore: retirer les anciens fronts`** (après T7, T9, T12 ; une PR par module si plus simple)
-- C1 : `apps/permission/frontend`, `apps/pli/public`, `apps/estompe/frontend`, `apps/estompe/web` supprimés.
+- C1 : `web/permission`, `web/pli/public`, `web/estompe`, `web/estompe/plateforme` supprimés.
 - C2 : permission sans étape `front` ni `static_dir`, pli sans `statique` ; leurs tests mis à jour.
 - C3 : `scripts/sync-ui.mjs`, son test, `ui:sync`, `ui:check` et les exclusions `vendor/plbls-ui` de `biome.json` supprimés.
 - C4 : anciennes variables (`GATEWAY_URL`, `ALLOWED_ORIGINS`, `API_URL`…) retirées des services et de `plbls.fr-infra`.
 
-**T15. `chore: déplacer les API dans services/`** (en dernier)
-- C1 : `git mv` vers `services/{security,permission,pli,estompe}` sans autre changement de contenu.
-- C2 : `Cargo.toml` (membres), `.dockerignore`, `Dockerfile.dockerignore`, Dockerfiles, workflows, `scripts/ci-changements.sh`, `justfile`, `AGENTS.md` et skills d'Estompe mis à jour.
-- C3 : CI complète verte ; images construites depuis les nouveaux chemins.
+**T15. `chore: structure du dépôt par rôle`** (fait)
+- C1 : `git mv` vers `api/`, `web/`, `apps/`, `docs/<projet>`, `deploy/<projet>`, `scripts/<projet>` (voir `README.md`).
+- C2 : `Cargo.toml` (membres), `.dockerignore`, `Dockerfile.dockerignore`, Dockerfiles, workflows, `justfile`, `AGENTS.md` et skills d'Estompe mis à jour.
 
 ## 6. Lien avec #13 (refonte CI)
 
 #13 peut avancer sans attendre ce plan : son `ci.yml` unique gagne un job `web` à T5 et perd les jobs des anciens fronts à T14.
-Pour ne réécrire les chemins qu'une fois, T15 (déplacements) se fait après #13. Les contrôles obligatoires du ruleset
+T15 (déplacements) a été fait après #13 : les chemins n'ont été réécrits qu'une fois. Les contrôles obligatoires du ruleset
 (`scripts/configurer-github.sh`) suivent : `web` s'ajoute (ou est couvert par le contrôle unique de #13), `ui:check` disparaît.
 
 ## 7. Risques
@@ -381,7 +385,6 @@ Pour ne réécrire les chemins qu'une fois, T15 (déplacements) se fait après #
 | PWA d'estompe : ancien service worker en cache sur `estompe.<domaine>` | ancienne version servie après bascule | même `navigateFallback`, `web.json` produit par l'image, vérification C2 de T12 |
 | Les apps natives montent de version à chaque changement du socle | livraisons natives plus fréquentes | `bump-version.mjs` ne compte que le socle, estompe et `natif.ts` |
 | `*.localhost` mal géré par un navigateur en dev | dev local bloqué | `PLBLS_MODULE_PAR_DEFAUT` sur `localhost` ; e2e sous Chromium avec host-resolver-rules |
-| Déplacements de dossiers pendant le travail d'autres PR | conflits | déplacements en une seule PR, en dernier (T15) |
 | Double travail avec #13 | workflows réécrits deux fois | T15 après #13 ; T5 ajoute un job, pas un workflow |
 | Variables anciennes et nouvelles en même temps | configuration ambiguë | priorité claire à la variable explicite, retrait daté en T14 |
 | Bascule DNS ou route lente à revenir | indisponibilité prolongée | TTL bas avant bascule, retour arrière par route, anciennes images gardées |

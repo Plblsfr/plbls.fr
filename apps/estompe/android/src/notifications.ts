@@ -1,6 +1,6 @@
 /** Android : notifications du système (plugin Tauri) et push FCM (jeton fourni par MainActivity, rangé côté serveur comme un abonnement push). */
-import { api } from '../../frontend/src/lib/api'
-import type { NotificationDriver, PushDriver } from '../../frontend/src/lib/platform'
+import { api } from '../../../../web/estompe/src/lib/api'
+import type { NotificationDriver, PushDriver } from '../../../../web/estompe/src/lib/platform'
 import { nativeBridge } from './bridge'
 
 const FCM_FLAG = 'fcm-enabled'

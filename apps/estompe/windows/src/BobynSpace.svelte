@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Icon from '../../frontend/src/components/Icon.svelte'
+  import Icon from '../../../../web/estompe/src/components/Icon.svelte'
   import Replays from './Replays.svelte'
   import ReplaySends from './ReplaySends.svelte'
   import SettingsBobyn from './SettingsBobyn.svelte'
-  import { hrefs } from '../../frontend/src/lib/route.svelte'
+  import { hrefs } from '../../../../web/estompe/src/lib/route.svelte'
 
   let { section, onmenu }: { section?: string; onmenu: () => void } = $props()
   const TABS = [['replays', 'Replays'], ['settings', 'Réglages']] as const

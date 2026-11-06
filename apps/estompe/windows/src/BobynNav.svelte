@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Icon from '../../frontend/src/components/Icon.svelte'
-  import { hrefs, router } from '../../frontend/src/lib/route.svelte'
+  import Icon from '../../../../web/estompe/src/components/Icon.svelte'
+  import { hrefs, router } from '../../../../web/estompe/src/lib/route.svelte'
 
   const section = $derived(router.current.name === 'space' ? router.current.section : undefined)
 </script>

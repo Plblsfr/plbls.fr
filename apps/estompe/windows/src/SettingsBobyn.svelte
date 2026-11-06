@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { audioConfig, audioRows, bobynApply, bobynHotkey, bobynSave, bobynState, micFromPrefs, type AudioRow, type BobynConfig, type BobynMachine, type BobynStatus } from './bobyn'
-  import { notify } from '../../frontend/src/lib/ui'
+  import { notify } from '../../../../web/estompe/src/lib/ui'
   import { OVERLAY_POS } from './overlay'
-  import { prefs } from '../../frontend/src/lib/prefs.svelte'
+  import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 
   let cfg = $state<BobynConfig>()
   let machine = $state<BobynMachine>()

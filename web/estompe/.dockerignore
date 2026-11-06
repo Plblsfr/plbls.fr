@@ -1,0 +1,4 @@
+*
+!dist
+!plateforme/docker
+!plateforme/dist-updates

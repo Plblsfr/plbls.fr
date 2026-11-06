@@ -1,4 +1,4 @@
-import type { UpdateDriver } from '../../frontend/src/lib/platform'
+import type { UpdateDriver } from '../../../../web/estompe/src/lib/platform'
 import { nativeFetch } from '../../crates/core/ts/tauri'
 import { nativeBridge } from './bridge'
 

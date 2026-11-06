@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { initials } from '../../frontend/src/lib/format'
+  import { initials } from '../../../../web/estompe/src/lib/format'
   import { OVERLAY_AVATAR, type OverlayState } from './overlay'
 
   let ovs = $state<OverlayState>({ size: 'md', items: [] })

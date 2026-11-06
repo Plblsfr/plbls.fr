@@ -1,5 +1,5 @@
 // Bobyn (alpha) : replay instantané des dernières secondes de jeu, app Windows uniquement. Le moteur est en Rust (windows/src-tauri/bobyn).
-import { prefs } from '../../frontend/src/lib/prefs.svelte'
+import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 
 export interface BobynAudio { source: string; gain: number; device?: string | null; ptt?: string | null }
 export interface BobynConfig {

@@ -1,6 +1,6 @@
 /** Windows : toasts natifs (Rust), boutons « Répondre » et « Marquer comme lu », pastille sur l'icône de la barre des tâches. */
-import type { NotificationDriver } from '../../frontend/src/lib/platform'
-import { router } from '../../frontend/src/lib/route.svelte'
+import type { NotificationDriver } from '../../../../web/estompe/src/lib/platform'
+import { router } from '../../../../web/estompe/src/lib/route.svelte'
 import { invoke } from '../../crates/core/ts/tauri'
 
 /** Action choisie sur un toast : « read » marque la conversation lue, sinon ouvre l'endroit de la notification. */

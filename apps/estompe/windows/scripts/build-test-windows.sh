@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compile l'installeur Windows « Estompe Test » (non signé, sans mises à jour), qui s'installe à côté de l'app de production.
-# Usage : windows/scripts/build-test-windows.sh <ticket>   (ex. EST-123)  → windows/dist-test/ puis dossier Téléchargements de Windows (voir docs/app-de-test.md)
+# Usage : apps/estompe/windows/scripts/build-test-windows.sh <ticket>   (ex. EST-123)  → apps/estompe/windows/dist-test/ puis dossier Téléchargements de Windows (voir docs/estompe/app-de-test.md)
 set -euo pipefail
 TICKET="${1:?Usage : $0 <ticket> (ex. EST-123)}"
 cd "$(dirname "$0")/.."
@@ -12,4 +12,4 @@ cp src-tauri/target/"$TARGET"/"${PROFILE:-release}"/bundle/nsis/Estompe\ Test_*_
 # Sous WSL : copie dans les Téléchargements de Windows (DOWNLOADS pour un autre dossier)
 DL="${DOWNLOADS:-/mnt/c/Users/${WINUSER:-$USER}/Downloads}"
 [ -d "$DL" ] && cp dist-test/"Estompe-Test-$TICKET-setup.exe" "$DL/" && echo "Copié dans $DL"
-echo "Prêt : windows/dist-test/Estompe-Test-$TICKET-setup.exe"
+echo "Prêt : apps/estompe/windows/dist-test/Estompe-Test-$TICKET-setup.exe"

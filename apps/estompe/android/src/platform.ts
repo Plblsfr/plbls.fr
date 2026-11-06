@@ -1,5 +1,5 @@
 /** App Android (Tauri mobile) : connexion par schéma d'URL, notifications et push FCM, mise à jour par APK, mode conduite. */
-import type { Platform } from '../../frontend/src/lib/platform'
+import type { Platform } from '../../../../web/estompe/src/lib/platform'
 import { debugStore } from '../../crates/core/ts/tauri'
 import { auth } from './auth'
 import { nativeBridge } from './bridge'

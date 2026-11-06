@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { router } from '../../frontend/src/lib/route.svelte'
+import { router } from '../../../../web/estompe/src/lib/route.svelte'
 import { onToastAction } from './notifications'
 
 describe('onToastAction', () => {

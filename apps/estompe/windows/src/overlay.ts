@@ -1,5 +1,5 @@
 /** Overlay des participants du salon vocal (app Windows) : calculs purs, la fenêtre est gérée par overlay.svelte.ts. */
-import type { MsgOverlayKinds, OverlayCorner, OverlayMode, OverlaySize, OverlayWhen } from '../../frontend/src/lib/prefs.svelte'
+import type { MsgOverlayKinds, OverlayCorner, OverlayMode, OverlaySize, OverlayWhen } from '../../../../web/estompe/src/lib/prefs.svelte'
 export type { MsgOverlayKinds, OverlayCorner, OverlayMode, OverlaySize, OverlayWhen }
 export const OVERLAY_POS: Record<OverlayCorner, string> = { tl: 'Haut gauche', ml: 'Centre gauche', bl: 'Bas gauche', tr: 'Haut droite', mr: 'Centre droit', br: 'Bas droite' }
 

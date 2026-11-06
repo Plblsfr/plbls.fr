@@ -1,7 +1,7 @@
-import type { Platform } from '../../frontend/src/lib/platform'
-import { debug } from '../../frontend/src/lib/debuglog.svelte'
-import { hrefs } from '../../frontend/src/lib/route.svelte'
-import { app } from '../../frontend/src/lib/store.svelte'
+import type { Platform } from '../../../../web/estompe/src/lib/platform'
+import { debug } from '../../../../web/estompe/src/lib/debuglog.svelte'
+import { hrefs } from '../../../../web/estompe/src/lib/route.svelte'
+import { app } from '../../../../web/estompe/src/lib/store.svelte'
 import { nativeBridge } from './bridge'
 
 export type VoiceAction = 'mute' | 'deafen' | 'leave' | 'pause' | 'resume'
@@ -14,7 +14,7 @@ export function callLabel(channelId: string): { title: string; href: string } {
 }
 
 export async function onVoiceAction(action: VoiceAction) {
-  const { voice } = await import('../../frontend/src/blocks/vocal/voice.svelte')
+  const { voice } = await import('../../../../web/estompe/src/blocks/vocal/voice.svelte')
   if (voice.state !== 'connected') return
   if (action === 'mute') await voice.toggleMute()
   else if (action === 'deafen') await voice.toggleDeafen()

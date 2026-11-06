@@ -4,9 +4,9 @@ FROM node:26-alpine AS build
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages/ui/package.json packages/ui/
-COPY apps/estompe/frontend/package.json apps/estompe/frontend/
-COPY apps/permission/frontend/package.json apps/permission/frontend/
-COPY apps/pli/package.json apps/pli/
+COPY web/estompe/package.json web/estompe/
+COPY web/permission/package.json web/permission/
+COPY web/pli/package.json web/pli/
 RUN npm ci --workspace packages/ui
 COPY packages/ui/scripts packages/ui/scripts
 COPY packages/ui/src packages/ui/src

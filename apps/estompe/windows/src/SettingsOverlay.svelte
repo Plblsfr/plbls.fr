@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { prefs } from '../../frontend/src/lib/prefs.svelte'
-  import { notify } from '../../frontend/src/lib/ui'
+  import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
+  import { notify } from '../../../../web/estompe/src/lib/ui'
   import { checkGlobalPtt } from './ptt-global'
   import { overlayAccelerator, OVERLAY_POS } from './overlay'
 

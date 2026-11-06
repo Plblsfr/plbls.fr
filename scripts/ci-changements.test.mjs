@@ -41,20 +41,20 @@ async function lancer(dir, evenement, chemins, ref = 'refs/pull/1/merge') {
   return (await readFile(sortie, 'utf8')).trim();
 }
 
-const backend = ['apps/estompe/backend/**', '!apps/estompe/backend/**/*.md', 'Cargo.toml'];
+const backend = ['api/estompe/**', '!api/estompe/**/*.md', 'Cargo.toml'];
 
 test('un fichier du dossier suivi déclenche les jobs', async (t) => {
-  const dir = await depot(t, ['apps/estompe/backend/core/src/lib.rs']);
+  const dir = await depot(t, ['api/estompe/core/src/lib.rs']);
   assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=true');
 });
 
 test('un fichier exclu ne déclenche rien, à la racine du dossier comme plus bas', async (t) => {
-  const dir = await depot(t, ['apps/estompe/backend/README.md', 'apps/estompe/backend/core/NOTES.md']);
+  const dir = await depot(t, ['api/estompe/README.md', 'api/estompe/core/NOTES.md']);
   assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=false');
 });
 
 test('un fichier hors des chemins ne déclenche rien', async (t) => {
-  const dir = await depot(t, ['apps/pli/index.js', 'apps/estompe/Cargo.toml']);
+  const dir = await depot(t, ['web/pli/public/index.js', 'web/estompe/Cargo.toml']);
   assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=false');
 });
 
@@ -64,19 +64,19 @@ test('un fichier racine nommé exactement est suivi', async (t) => {
 });
 
 test('un push sur une branche compare le commit de fusion à son premier parent', async (t) => {
-  const dir = await depot(t, ['apps/pli/index.js']);
+  const dir = await depot(t, ['web/pli/public/index.js']);
   assert.equal(await lancer(dir, 'push', backend, 'refs/heads/main'), 'modifie=false');
-  assert.equal(await lancer(dir, 'push', ['apps/pli/**'], 'refs/heads/main'), 'modifie=true');
+  assert.equal(await lancer(dir, 'push', ['web/pli/**'], 'refs/heads/main'), 'modifie=true');
 });
 
 test('un tag ou un lancement manuel lance tout', async (t) => {
-  const dir = await depot(t, ['apps/pli/index.js']);
+  const dir = await depot(t, ['web/pli/public/index.js']);
   assert.equal(await lancer(dir, 'push', backend, 'refs/tags/pli-v1.0.0'), 'modifie=true');
   assert.equal(await lancer(dir, 'workflow_dispatch', backend, 'refs/heads/main'), 'modifie=true');
 });
 
 test('--nom choisit la clé de sortie', async (t) => {
-  const dir = await depot(t, ['apps/pli/index.js']);
-  assert.equal(await lancer(dir, 'pull_request', ['--nom', 'pli', 'apps/pli/**']), 'pli=true');
+  const dir = await depot(t, ['web/pli/public/index.js']);
+  assert.equal(await lancer(dir, 'pull_request', ['--nom', 'pli', 'web/pli/**']), 'pli=true');
   assert.equal(await lancer(dir, 'workflow_dispatch', ['--nom', 'rust', 'Cargo.toml'], 'refs/heads/main'), 'rust=true');
 });
