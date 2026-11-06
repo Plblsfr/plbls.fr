@@ -38,6 +38,7 @@ test-ui:
 
 # Ces deux-là demandent un Postgres : TEST_DATABASE_URL=postgres://… just test-pli
 test-pli:
+    cargo test --locked -p pli
     npm ci && npm test --workspace apps/pli
 
 test-estompe-api:
