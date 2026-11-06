@@ -30,7 +30,7 @@ updates:
       permission-e2e: { patterns: ["*"] }
 
   # --- cargo ---
-  # workspace racine (security, permission, estompe-api) : un seul Cargo.lock, donc un seul groupe
+  # workspace racine (security, permission, pli, estompe-api) : un seul Cargo.lock, donc un seul groupe
   - package-ecosystem: cargo
     directories: [/]
     schedule: { interval: weekly }

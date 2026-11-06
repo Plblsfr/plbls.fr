@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     tags: ["pli-v*"]
-    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml"]
+    paths: ["package.json", "package-lock.json", ".nvmrc", "apps/pli/**", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "deny.toml", ".github/workflows/pli-ci.yml", ".github/workflows/_image.yml", ".github/workflows/_rust-lint.yml"]
   pull_request:
 
 concurrency:
@@ -12,6 +12,12 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_TERM_COLOR: always
 
 jobs:
   changements:
@@ -23,7 +29,18 @@ jobs:
         with:
           fetch-depth: 2
       - id: c
-        run: scripts/ci-changements.sh package.json package-lock.json .nvmrc 'apps/pli/**' .github/workflows/pli-ci.yml .github/workflows/_image.yml scripts/ci-changements.sh
+        run: >-
+          scripts/ci-changements.sh package.json package-lock.json .nvmrc 'apps/pli/**'
+          Cargo.toml Cargo.lock rust-toolchain.toml deny.toml
+          .github/workflows/pli-ci.yml .github/workflows/_image.yml .github/workflows/_rust-lint.yml scripts/ci-changements.sh
+
+  lint:
+    needs: changements
+    if: needs.changements.outputs.modifie == 'true'
+    uses: ./.github/workflows/_rust-lint.yml
+    with:
+      name: pli
+      packages: -p pli
 
   test:
     needs: changements
@@ -33,25 +50,42 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: pli
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: pli_test
+          POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U pli" --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: pli-test-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: pli-test-v1-
+      - run: cargo test --locked -p pli
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm test --workspace apps/pli
-        env:
-          TEST_DATABASE_URL: postgres://pli:test@localhost:5432/pli_test
 
   image-pr:
-    needs: test
+    needs: [lint, test]
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/_image.yml
     with: &image
@@ -62,7 +96,7 @@ jobs:
       dir: apps/pli
 
   image:
-    needs: test
+    needs: [lint, test]
     if: github.event_name != 'pull_request'
     permissions:
       contents: write
@@ -74,7 +108,7 @@ jobs:
   ok:
     name: pli-ci
     if: always()
-    needs: [changements, test, image-pr, image]
+    needs: [changements, lint, test, image-pr, image]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')

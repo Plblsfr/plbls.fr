@@ -855,7 +855,7 @@ html[data-theater] .watch-msg { inset: auto 0 150px; }
 .np-vol input { width: 96px; }
 .np-pill { gap: var(--espace-2); height: 60px; padding: 0 8px 0 22px; border-radius: 999px; background: var(--creme-creux); }
 .np-pill .plbls-input { background: none; border: 0; box-shadow: none; }
-.np-slot { flex: none; flex: 1 1 360px; max-width: 480px; aspect-ratio: 16 / 9; min-height: 200px; border-radius: 20px; background: #181818; box-shadow: var(--ombre-2); overflow: hidden; } /* lecteur officiel visible (200 px au moins), c'est la pochette centrale */
+.np-slot { flex: 1 1 360px; max-width: 480px; aspect-ratio: 16 / 9; min-height: 200px; border-radius: 20px; background: #181818; box-shadow: var(--ombre-2); overflow: hidden; } /* lecteur officiel visible (200 px au moins), c'est la pochette centrale */
 .np-people { display: flex; flex-wrap: wrap; gap: var(--espace-2); list-style: none; margin: 0; padding: 0; }
 .np-people li { display: flex; align-items: center; }
 .np-face { position: relative; display: inline-flex; }
@@ -914,7 +914,7 @@ button.mini-time:disabled { cursor: default; }
 .rail-item.unread:not(.active):not(:hover) .rail-pill { transform: scaleX(.4); }
 
 /* Actions d'un message : elles se posent en fondu depuis la marge ; l'état « répondu » reste rose */
-.msg-tools { box-shadow: var(--ombre-1); box-shadow: 0 0 0 1px var(--trait), var(--ombre-1); animation: mv-monte var(--mv-rapide) var(--mv-sortie); }
+.msg-tools { box-shadow: 0 0 0 1px var(--trait), var(--ombre-1); animation: mv-monte var(--mv-rapide) var(--mv-sortie); }
 
 /* Prise de parole : contour rose (remplace le vert vif) */
 .speaking, .ptile.speaking { box-shadow: 0 0 0 3px var(--rose-fonce); }

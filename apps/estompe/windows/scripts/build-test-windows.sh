@@ -8,7 +8,7 @@ export PATH="$PWD/../../../node_modules/.bin:$PATH"
 TARGET=x86_64-pc-windows-gnu
 tauri build --config src-tauri/tauri.test.conf.json --target "$TARGET" --bundles nsis -- --profile "${PROFILE:-release}"
 mkdir -p dist-test && rm -f dist-test/*.exe
-cp src-tauri/target/$TARGET/${PROFILE:-release}/bundle/nsis/Estompe\ Test_*_x64-setup.exe dist-test/"Estompe-Test-$TICKET-setup.exe"
+cp src-tauri/target/"$TARGET"/"${PROFILE:-release}"/bundle/nsis/Estompe\ Test_*_x64-setup.exe dist-test/"Estompe-Test-$TICKET-setup.exe"
 # Sous WSL : copie dans les Téléchargements de Windows (DOWNLOADS pour un autre dossier)
 DL="${DOWNLOADS:-/mnt/c/Users/${WINUSER:-$USER}/Downloads}"
 [ -d "$DL" ] && cp dist-test/"Estompe-Test-$TICKET-setup.exe" "$DL/" && echo "Copié dans $DL"

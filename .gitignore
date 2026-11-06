@@ -5,6 +5,8 @@ dist/
 build/
 .gradle/
 .svelte-kit/
+test-results/
+playwright-report/
 
 # Secrets et environnement local (les *.env.example restent versionnés)
 .env
@@ -19,3 +21,4 @@ Thumbs.db
 
 # Fichiers de travail des agents
 .ai/
+__pycache__/
