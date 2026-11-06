@@ -45,6 +45,7 @@ const IMAGES_MAX: usize = 1200;
 const FENETRE: Duration = Duration::from_secs(60);
 const LARGEURS: [u32; 3] = [240, 480, 1280];
 const PLAYLIST_MAX: usize = 2 << 20;
+const DEBIT_VIDEO_MAX: u32 = 120_000_000;
 const POSITION_MAX: f64 = 24.0 * 3600.0;
 const REPRISE_MAX: i64 = 20;
 const VUS_MAX: i64 = 100;
@@ -1002,6 +1003,7 @@ async fn hls(
             .append_pair("DeviceId", "estompe")
             .append_pair("PlaySessionId", &a.flux)
             .append_pair("VideoCodec", "h264")
+            .append_pair("VideoBitrate", &DEBIT_VIDEO_MAX.to_string())
             .append_pair("AudioCodec", "aac")
             .append_pair("SegmentContainer", "ts")
             .append_pair("TranscodingMaxAudioChannels", "2");
@@ -2235,6 +2237,18 @@ mod tests {
             "{}",
             maitre_vu.query
         );
+        assert!(
+            maitre_vu.query.contains("VideoBitrate=120000000"),
+            "sans plafond de débit, Jellyfin réduit la vidéo à 416 px : {}",
+            maitre_vu.query
+        );
+        for interdit in [
+            "MaxWidth",
+            "MaxHeight",
+            "EnableAdaptiveBitrateStreaming=true",
+        ] {
+            assert!(!maitre_vu.query.contains(interdit), "{}", maitre_vu.query);
+        }
     }
 
     #[tokio::test]
