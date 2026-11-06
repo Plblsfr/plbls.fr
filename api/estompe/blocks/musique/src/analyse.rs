@@ -23,6 +23,20 @@ pub fn est_id_video(s: &str) -> bool {
     s.len() == 11 && s.chars().all(est_caractere_id)
 }
 
+const ALPHABET_ID: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+pub fn id_video_canonique(s: &str) -> Option<String> {
+    if !est_id_video(s) {
+        return None;
+    }
+    s.bytes()
+        .map(|octet| {
+            let rang: usize = ALPHABET_ID.iter().position(|&a| a == octet)?;
+            Some(char::from(ALPHABET_ID[rang]))
+        })
+        .collect()
+}
+
 fn est_id_liste(s: &str) -> bool {
     (12..=64).contains(&s.len()) && s.chars().all(est_caractere_id)
 }
@@ -87,7 +101,7 @@ pub fn analyser_youtube_music(brut: &str) -> Option<Lien> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Lien, analyser_url, analyser_youtube_music, est_id_video};
+    use super::{Lien, analyser_url, analyser_youtube_music, est_id_video, id_video_canonique};
 
     fn piste(s: &str) -> Option<Lien> {
         Some(Lien::Piste(s.into()))
@@ -234,6 +248,18 @@ mod tests {
 
     #[test]
     fn identifiant_de_video() {
+        for id in ["dQw4w9WgXcQ", "a-_Z09abcde"] {
+            assert_eq!(id_video_canonique(id).as_deref(), Some(id));
+        }
+        for id in [
+            "dQw4w9WgXc",
+            "dQw4w9WgXcQa",
+            "dQw4w9WgXc!",
+            "dQw4w9WgXcé",
+            "../../etc/x",
+        ] {
+            assert_eq!(id_video_canonique(id), None, "{id}");
+        }
         assert!(est_id_video("dQw4w9WgXcQ"));
         assert!(est_id_video("a-_Z09abcde"));
         assert!(!est_id_video("dQw4w9WgXc"));
