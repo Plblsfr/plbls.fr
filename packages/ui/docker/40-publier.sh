@@ -22,7 +22,7 @@ case "$version" in
     for alias in latest "$major"; do
       rm -rf "$ui/.$alias.tmp"
       cp -r "$ui/$version" "$ui/.$alias.tmp"
-      rm -rf "$ui/$alias"
+      rm -rf "${ui:?}/$alias"
       mv "$ui/.$alias.tmp" "$ui/$alias"
       echo "publier: /ui/$alias/ -> $version"
     done

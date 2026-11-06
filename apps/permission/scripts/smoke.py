@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Test de bout en bout contre un backend lancé (make dev-up dev-run). Signe les en-têtes comme auth-gateway."""
-import os, sys, time
+import json
+import os
+import sys
+import time
 
-from devlib import BASE, call, sign
+from devlib import BASE, call, req, sign
 
 SVC = os.environ.get("SERVICE_TOKEN", "dev-chat-token")
 RUN = str(int(time.time()))[-6:]  # relançable sans nettoyage
@@ -72,13 +75,8 @@ expect("révocation de permission/admin", call("DELETE", f"/v1/assignments?user_
 expect("bob n'administre plus", call("GET", "/v1/apps", bob)[0], 403)
 
 # MCP
-import json, urllib.error, urllib.request
-
 def mcp(token, msg):
-    req = urllib.request.Request(BASE + "/mcp", method="POST", data=json.dumps(msg).encode(), headers={"Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(req) as r: return r.status
-    except urllib.error.HTTPError as e: return e.code
+    return req(BASE + "/mcp", "POST", {"Authorization": f"Bearer {token}"}, json.dumps(msg).encode())[0]
 expect("MCP sans bon token -> 401", mcp("x", {"id": 1, "method": "ping"}), 401)
 expect("MCP avec token", mcp(os.environ.get("PERMISSION__MCP__TOKEN", "dev-mcp-token"), {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}), 200)
 
