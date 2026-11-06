@@ -21,8 +21,9 @@ Les workflows n'ont pas de filtre `paths` (un contrôle obligatoire jamais cré�
 `scripts/ci-changements.sh --nom <groupe> <chemins>` pour chaque groupe (préfixe `!` pour exclure, syntaxe glob de git : `**/*.md`
 et non `**.md`) et expose une sortie `true`/`false` par groupe. En PR comme sur un push de `main`, il compare le commit de fusion à son
 premier parent ; sur un tag ou un lancement manuel, tout est à `true`. En PR, modifier `ci.yml`, `_changements.yml` ou
-`scripts/ci-changements.sh` met tout à `true` (et `_image.yml`, les groupes d'image). Les fichiers `*.md` ne déclenchent rien,
-sauf le contrôle de changelog d'Estompe : une PR de documentation seule ne lance que `conventions` (et `changelog` si elle touche `apps/estompe/`).
+`scripts/ci-changements.sh` met tout à `true` (et `_image.yml`, les groupes d'image). Les fichiers `*.md` ne déclenchent que
+le groupe `lint` (job `front` sans espace npm : liens Markdown internes et `just lint`) et le contrôle de changelog d'Estompe : une PR de
+documentation seule ne lance que `conventions`, ce `front` léger (et `changelog` si elle touche `apps/estompe/`).
 
 | Groupe | Chemins | Jobs |
 |---|---|---|
@@ -31,7 +32,7 @@ sauf le contrôle de changelog d'Estompe : une PR de documentation seule ne lanc
 | `pli_server` | `apps/pli/server/**`, fichiers Cargo racine | `rust-test` (pli) |
 | `estompe_tauri` | `apps/estompe/{windows,android,crates}/**` | `estompe-tauri` |
 | `estompe` | `apps/estompe/**` | `changelog` |
-| `lint` | JS, TS, Svelte, CSS, JSON, shell, Python, configs des linters, `scripts/**` | `front` (`just lint`) |
+| `lint` | JS, TS, Svelte, CSS, JSON, shell, Python, Markdown, configs des linters, `scripts/**` | `front` (`just lint`, dont les liens Markdown internes) |
 | `npm`, `front_*` | fichiers npm racine, `scripts/**` ; chaque projet npm | `front` : check, test, build des projets touchés (tous si les fichiers npm racine changent) |
 | `image_*` | dossier du projet, fichiers npm et Cargo racine selon l'image | `image-<projet>` (PR : étape de test du Dockerfile et build à blanc ; `main` : `:edge`) |
 | `estompe_version` | `apps/estompe/**` hors `docs/` et `*.md` | `livraison.yml` : `estompe-version` |
@@ -41,7 +42,7 @@ sauf le contrôle de changelog d'Estompe : une PR de documentation seule ne lanc
 
 - `changelog` : exige un nouveau `apps/estompe/changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
-  tests des scripts communs, `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque
+  tests des scripts communs, liens Markdown internes (`scripts/check-links.mjs`), `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque
   espace npm touché (sortie `espaces` de `changements`). Le futur front unique s'y branche en devenant un espace npm de plus (ou le seul).
 - `rust-lint` : une seule fois pour tout le workspace : toolchain de `rust-toolchain.toml`, version de Rust des `FROM rust:` des Dockerfiles,
   `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, règle « le cœur d'Estompe ne dépend d'aucun bloc »,

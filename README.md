@@ -1,6 +1,7 @@
 # plbls.fr
 Monorepo : `apps/` (produits), `packages/` (bibliothèques partagées), `.github/workflows/` (CI).
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans un dépôt privé.
+Plan de regroupement des fronts en une seule application : [docs/front-unique.md](docs/front-unique.md).
 
 ## npm
 
@@ -43,4 +44,10 @@ Toute PR lance un seul workflow, `ci.yml`, sans filtre `paths` (un contrôle obl
 (`_changements.yml`, qui appelle `scripts/ci-changements.sh` par groupe de chemins) dit ce que la PR touche, les jobs ne tournent que pour
 ce qui est touché, et le job final `ci` résume les autres. Après la fusion, `livraison.yml` publie seulement ce qui a changé, sans rejouer les
 tests. Un nouveau projet ajoute son groupe de chemins à `_changements.yml` et son job à `ci.yml` (dans les `needs` de `ci`) : le ruleset ne change pas.
-Détail : `apps/estompe/docs/ci.md`.
+Détail : [`apps/estompe/docs/ci.md`](apps/estompe/docs/ci.md).
+
+## Outillage
+
+Le [`justfile`](justfile) est le seul point d'entrée (`just` liste les recettes) : `just lint` (Biome, shellcheck, ruff, liens Markdown internes),
+`just check`, `just test`, et les recettes de dev de chaque projet (`just security-dev up`, `just permission-dev-run`…).
+Les consignes pour les agents et les contributeurs sont dans [`AGENTS.md`](AGENTS.md) ; un projet peut le compléter par son propre `AGENTS.md`.

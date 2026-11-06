@@ -56,11 +56,12 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Une seule version de Node, copies de @plbls/ui à jour, tests des scripts communs
+      - name: Une seule version de Node, copies de @plbls/ui à jour, tests des scripts communs, liens Markdown internes
         run: |
           node scripts/check-node.mjs
           npm run ui:check
           node --test "scripts/*.test.mjs"
+          node scripts/check-links.mjs
       - name: just, shellcheck et ruff
         if: needs.changements.outputs.lint == 'true'
         run: |

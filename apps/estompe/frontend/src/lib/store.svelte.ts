@@ -48,9 +48,7 @@ export class AppStore {
   pseudo = $state('')
   /** Permission estompe:admin : montre l'onglet Administration (le serveur contrôle l'accès). */
   isAdmin = $state(false)
-  cairn = $state(false) // permission estompe:cairn.admin
   movies = $state(false)
-  meSub = $state('') // identifiant du compte dans le gateway : auteur des tickets et commentaires Cairn
   servers = $state<Server[]>([])
   details = $state<Record<string, ServerDetail>>({})
   dms = $state<DM[]>([])
@@ -114,7 +112,6 @@ export class AppStore {
       }
       this.meId = me.id!
       this.pseudo = me.pseudo!
-      this.meSub = me.sub ?? ''
       this.applyMe(me)
       await this.loadAll()
       const fromNotification = platform.openFromNotification()
@@ -141,7 +138,6 @@ export class AppStore {
     this.maxVideo = me.max_video_size ?? DEFAULT_MAX_VIDEO
     this.transcription = me.transcription ?? ''
     this.blocks = me.blocks
-    this.cairn = me.cairn === true && this.on('cairn')
     this.movies = me.movies === true && this.on('films')
   }
 

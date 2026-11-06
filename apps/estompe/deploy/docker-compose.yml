@@ -51,7 +51,6 @@ services:
       BLOCK_AVATARS: ${BLOCK_AVATARS:-true}
       BLOCK_BADGES: ${BLOCK_BADGES:-true}
       BLOCK_SIGNALEMENTS: ${BLOCK_SIGNALEMENTS:-true}
-      BLOCK_CAIRN: ${BLOCK_CAIRN:-true}
       BLOCK_ACTIVITE_STATUT: ${BLOCK_ACTIVITE_STATUT:-true}
       BLOCK_FILMS: ${BLOCK_FILMS:-false}
       GIPHY_API_KEY: ${GIPHY_API_KEY:-}
@@ -60,8 +59,6 @@ services:
       TRANSCRIBE_MODEL: ${TRANSCRIBE_MODEL:-Systran/faster-whisper-small}
       TRANSCRIBE_LANGUAGE: ${TRANSCRIBE_LANGUAGE:-}
       TRANSCRIBE_ALPHA: ${TRANSCRIBE_ALPHA:-true}
-      CAIRN_URL: ${CAIRN_URL:-https://cairn.plbls.fr/api}
-      CAIRN_ORIGIN: ${CAIRN_ORIGIN:-https://estompe.plbls.fr}
       JELLYFIN_URL: ${JELLYFIN_URL:-}
       JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
       STREAM_SECRET: ${STREAM_SECRET:-}

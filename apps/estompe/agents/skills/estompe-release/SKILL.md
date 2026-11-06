@@ -1,8 +1,8 @@
 ---
 name: estompe-release
-description: Prépare et publie une release d'Estompe (branche release/…, changelogs, PR, puis tags, release GitHub et clôture des tickets livrés dans Cairn). À utiliser avec /estompe-release.
+description: Prépare et publie une release d'Estompe (branche release/…, changelogs, PR, puis tags, release GitHub et suivi des issues livrées). À utiliser avec /estompe-release.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(cargo *), Bash(gh *), Bash(node *), Bash(npx *), Bash(npm *), Bash(test *), Bash(rm -r */.ai/EST-*), Read, Edit, Write, Glob, Grep, mcp__EstompeCairnMcp__get_ticket, mcp__claude_ai_EstompeCairnMcp__get_ticket, mcp__EstompeCairnMcp__update_ticket, mcp__claude_ai_EstompeCairnMcp__update_ticket, mcp__EstompeCairnMcp__add_comment, mcp__claude_ai_EstompeCairnMcp__add_comment
+allowed-tools: Bash(git *), Bash(cargo *), Bash(gh *), Bash(node *), Bash(npx *), Bash(npm *), Bash(test *), Bash(rm -r */.ai/GH-*), Read, Edit, Write, Glob, Grep, mcp__github__issue_read, mcp__github__add_issue_comment
 ---
 
 # Release Estompe
@@ -11,13 +11,13 @@ Référence : `AGENTS.md` (branches, version, GitHub) et `docs/release.md` (rele
 
 ## Conventions
 - Jamais de `cd … &&` : lancer cargo depuis `apps/estompe/` (il trouve le workspace racine), `npm --prefix frontend`, `git -C`.
-- Outils Cairn : `mcp__EstompeCairnMcp__*` ou `mcp__claude_ai_EstompeCairnMcp__*`.
+- Issues : `gh issue view|comment|reopen <n> --repo Plblsfr/plbls.fr` (ou les outils MCP `issue_read` et `add_issue_comment`).
 
 ## 1. Vérifications préalables
 - Dans le dépôt principal : `git fetch origin`, `git switch main`, `git pull`. L'arbre doit être propre (hors `.claude/`, `.ai/` et `.worktree/`), sinon s'arrêter et le dire.
 - `gh` connecté : `gh pr list --repo Plblsfr/plbls.fr`. Sinon, s'arrêter et le dire.
 - Pour chaque élément livrable, lister les commits depuis son dernier tag : `git log --first-parent --format='%h %s' $(git describe --tags --abbrev=0 --match 'estompe-api-v*')..HEAD`, idem avec `'estompe-app-v*'`. Si aucun, s'arrêter : rien à publier.
-- Lire les fichiers de `changelog.d/` (hors `README.md`) et en extraire les clés `EST-*`. Pour chacune, `get_ticket` et lire le dernier commentaire de `/estompe-mr` : lister les critères encore « non vérifié ». Les présenter à l'utilisateur avant de continuer.
+- Lire les fichiers de `changelog.d/` (hors `README.md`) et en extraire les références d'issue `(#<n>)`. Pour chacune, `gh issue view <n> --repo Plblsfr/plbls.fr --comments` et lire le dernier commentaire de `/estompe-pr` : lister les critères encore « non vérifié ». Les présenter à l'utilisateur avant de continuer.
 
 ## 1 bis. La chaîne de livraison fonctionnera-t-elle ?
 Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte une version et un cycle complet de PR. Avant de préparer la release, vérifier la chaîne, pas seulement les tests :
@@ -65,9 +65,9 @@ Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte u
 - Ne pas toucher à `version` dans `tauri.conf.json`.
 
 ## 6. Commit, push, PR
-- Commit : `chore(release): api-vA.B.C app-vX.Y.Z` (+ ligne Co-Authored-By).
+- Commit : `chore(release): api-vA.B.C app-vX.Y.Z`.
 - `git push -u origin release/api-vA.B.C-app-vX.Y.Z` (ne jamais forcer).
-- `gh pr create --repo Plblsfr/plbls.fr --base main --head release/api-vA.B.C-app-vX.Y.Z --title "chore(release): api-vA.B.C app-vX.Y.Z" --body "<corps>"`. Corps : versions et raison du calcul, tickets livrés (`EST-*`) et leurs critères non vérifiés, vérifications faites, ce qui n'a pas été vérifié (build Tauri/Windows, images Docker), forçage éventuel, étapes après fusion.
+- `gh pr create --repo Plblsfr/plbls.fr --base main --head release/api-vA.B.C-app-vX.Y.Z --title "chore(release): api-vA.B.C app-vX.Y.Z" --body "<corps>"`. Corps : versions et raison du calcul, issues livrées (`#<n>`) et leurs critères non vérifiés, vérifications faites, ce qui n'a pas été vérifié (build Tauri/Windows, images Docker), forçage éventuel, étapes après fusion.
 - S'arrêter et demander à l'utilisateur de fusionner en **« merge » classique** (pas de squash ni rebase).
 
 ## 7. Après la fusion (l'utilisateur confirme)
@@ -77,12 +77,12 @@ Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte u
 - Pour chaque tag : vérifier qu'il n'existe pas, `git tag -a <tag> -m "<tag>"`, puis `git push origin <tag>` (ce tag seul, jamais `--tags`). `estompe-api-v*` déclenche `livraison.yml` (job `estompe-api-image` : image Rust de l'API), `estompe-app-v*` déclenche `estompe-livraison-app.yml` (images web, installeur, APK).
 - `gh release create <tag> --repo Plblsfr/plbls.fr --verify-tag --title "<tag>" --notes "<Nouveautés / Corrections>"` pour chaque tag (`--notes`, pas `--body`).
 
-## 8. Cairn et nettoyage
-- Pour chaque ticket livré : `update_ticket` (avec la `version` lue) au statut « fini » **uniquement si tous ses critères sont vérifiés**, et `add_comment` avec le tag et la version. Sinon, statut inchangé et commentaire listant ce qui reste à vérifier.
-- Demander avec AskUserQuestion s'il faut supprimer les worktrees (`git worktree remove .worktree/<slug-court>`), les branches locales et les dossiers `.ai/EST-*` des tickets livrés et « fini ».
+## 8. Issues et nettoyage
+- Pour chaque issue livrée (fermée par `Closes #<n>` à la fusion de sa PR) : `gh issue comment` avec le tag et la version. Si un de ses critères n'est pas vérifié : `gh issue reopen` et commentaire listant ce qui reste à vérifier.
+- Demander avec AskUserQuestion s'il faut supprimer les worktrees (`git worktree remove .worktree/<slug-court>`), les branches locales et les dossiers `.ai/GH-*` des issues livrées et fermées.
 
 ## 9. Sortie
-Résumer : versions, raison du niveau, PR, tag(s) posé(s), lien des releases, tickets passés « fini » et ceux qui restent ouverts. Rappeler de vérifier les workflows dans l'onglet Actions de GitHub.
+Résumer : versions, raison du niveau, PR, tag(s) posé(s), lien des releases, issues fermées et celles rouvertes. Rappeler de vérifier les workflows dans l'onglet Actions de GitHub.
 
 ## Règles
 - Ne jamais publier si les tests échouent.

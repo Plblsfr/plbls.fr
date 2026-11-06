@@ -100,5 +100,5 @@ jobs:
             notes=(--notes-file notes.md)
           fi
           case "${{ needs.build.outputs.version }}" in *-*) pre=--prerelease;; *) pre=;; esac
-          # idempotent : ui-release peut avoir déjà créé la release
+          # idempotent : ui-dist (livraison.yml) peut avoir déjà créé la release
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" "${notes[@]}" $pre || gh release view "$GITHUB_REF_NAME" >/dev/null

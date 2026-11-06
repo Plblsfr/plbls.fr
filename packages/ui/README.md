@@ -147,7 +147,7 @@ ignorer les fichiers récupérés (`public/vendor/plbls-ui/`), puis :
 <script type="module" src="/vendor/plbls-ui/plbls-ui.esm.min.js"></script>
 ```
 
-Le dépôt est privé : passer par `gh release download $V -R Plblsfr/plbls.fr` plutôt que `curl`.
+Avec `gh` : `gh release download $V -R Plblsfr/plbls.fr`.
 
 ## CDN (cdn.plbls.fr)
 

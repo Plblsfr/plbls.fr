@@ -783,7 +783,6 @@ dependencies = [
  "estompe-block-apercu-liens",
  "estompe-block-avatars",
  "estompe-block-badges",
- "estompe-block-cairn",
  "estompe-block-draw2gether",
  "estompe-block-emojis",
  "estompe-block-films",
@@ -882,24 +881,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower",
- "utoipa",
- "utoipa-axum",
-]
-
-[[package]]
-name = "estompe-block-cairn"
-version = "0.0.0"
-dependencies = [
- "axum",
- "estompe-block",
- "estompe-core",
- "futures-util",
- "reqwest",
- "serde_json",
- "sqlx",
- "tokio",
- "tower",
- "tracing",
  "utoipa",
  "utoipa-axum",
 ]

@@ -26,7 +26,6 @@
   import Quality from './Quality.svelte'
   import { ADMIN_SECTIONS, adminSection } from '../lib/admin'
   import { openReport } from '../blocks/signalements/report.svelte'
-  import { cairn } from '../blocks/cairn/cairn.svelte'
   import { platform } from '../lib/platform'
   import { outranks } from '../lib/roles'
   import { api } from '../lib/api'
@@ -34,7 +33,6 @@
   import type { Channel, ChannelKind } from '../lib/types'
   import { channelCreate, openNewChannel } from '../lib/channel-create.svelte'
   import type { MenuItem } from '../lib/ctxmenu.svelte'
-  import CairnNav from '../blocks/cairn/CairnNav.svelte'
   import FilmsNav from '../blocks/films/FilmsNav.svelte'
   import { videos } from '../blocks/videos/videos.svelte'
   import { sessionPhase, when } from '../blocks/videos/videos'
@@ -118,8 +116,6 @@
     </div>
   {:else if route.name === 'films' && app.movies}
     <FilmsNav />
-  {:else if route.name === 'cairn' && cairn.visible}
-    <CairnNav />
   {:else if space?.visible()}
     <space.nav />
   {:else if detail}

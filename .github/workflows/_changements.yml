@@ -67,7 +67,7 @@ jobs:
           c estompe_version 'apps/estompe/**' '!apps/estompe/docs/**' '!**/*.md'
           c estompe_ci_image 'apps/estompe/deploy/ci/**'
           c pli_server 'apps/pli/server/**' '!**/*.md' "${cargo[@]}"
-          c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' \
+          c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' '**/*.md' \
             .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
           c npm "${npm[@]}" 'scripts/**' biome.json tsconfig.base.json
           c npm_lock package-lock.json .nvmrc

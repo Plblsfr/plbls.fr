@@ -15,7 +15,6 @@ export const BLOCKS: BlockDef[] = [
   { name: 'avatars' },
   { name: 'badges' },
   { name: 'signalements' },
-  { name: 'cairn' },
   { name: 'activite-statut' },
   { name: 'films', needs: ['vocal', 'regarder-ensemble'] },
 ]
