@@ -5,15 +5,15 @@
   "identifier": "fr.plbls.estompe",
   "build": {
     "beforeBuildCommand": {
-      "script": "node ../windows/scripts/fetch-ffmpeg.mjs && npm run build -- --mode windows",
-      "cwd": "../../frontend"
+      "script": "node ../../apps/estompe/windows/scripts/fetch-ffmpeg.mjs && npm run build -- --mode windows",
+      "cwd": "../../../../web/estompe"
     },
     "beforeDevCommand": {
       "script": "npm run dev -- --mode windows",
-      "cwd": "../../frontend"
+      "cwd": "../../../../web/estompe"
     },
     "devUrl": "http://localhost:5173",
-    "frontendDist": "../../frontend/dist"
+    "frontendDist": "../../../../web/estompe/dist"
   },
   "app": {
     "windows": [

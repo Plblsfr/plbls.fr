@@ -1,6 +1,8 @@
 # AGENTS.md
 
-Monorepo plbls.fr : `apps/` (produits), `packages/` (libs partagées), `.github/workflows/` (CI).
+Monorepo plbls.fr (détail dans `README.md`) : `api/<projet>` (API Rust), `web/<projet>` (fronts servis dans les navigateurs), `apps/` (apps natives),
+`docs/<projet>`, `deploy/<projet>`, `scripts/<projet>` (outillage commun directement dans `scripts/`), `packages/` (libs partagées), `.github/workflows/` (CI).
+Un fichier va dans le dossier de son rôle, jamais dans celui d'un autre projet : par exemple un compose dans `deploy/<projet>/`, pas à côté du code.
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé `plbls.fr-infra`.
 
 ## Git
@@ -19,17 +21,20 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Contrôles obligatoires du ruleset (`scripts/configurer-github.sh`) : `ci` et `conventions`.
 - Toute PR : branche `<type>/<slug-court>` (`feat`, `fix`, `chore`, `docs`, `ci`) ou `release/…`, et une description ; vérifié par `pr-conventions.yml`.
 - Actions épinglées par SHA complet (`uses: owner/action@<sha> # vX.Y.Z`) ; `permissions: contents: read` en tête, droits d'écriture au seul job qui publie.
-- Détail (déclencheurs, caches, jobs) : `apps/estompe/docs/ci.md`.
+- Détail (déclencheurs, caches, jobs) : `docs/estompe/ci.md`.
 
 ## Rust
-- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `apps/security`, `apps/permission/backend`, `apps/pli/server`, `apps/estompe/backend/*`.
+- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/security`, `api/permission`, `api/pli`, `api/estompe/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
-- Nouveau backend : l'ajouter à `members`, à `.dockerignore` racine (contexte des images Rust) et aux listes `Dockerfile.dockerignore` de pli et permission, et ses chemins aux groupes `rust` et à ses groupes d'image et de tests de `.github/workflows/_changements.yml`.
+- Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/`
+  (y ajouter ses docs embarquées par `include_str!`, comme `docs/security` et `docs/permission`) ; le groupe `rust` de `.github/workflows/_changements.yml`
+  couvre `api/**`, lui ajouter ses groupes d'image et de tests.
 - Exception : les apps Tauri d'Estompe (`apps/estompe/{crates,windows,android}`) restent hors du workspace, avec leur `Cargo.lock` et la toolchain stable.
 - Contrôles : `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`.
 
-Chaque projet peut avoir son propre `AGENTS.md` (par exemple `apps/estompe/AGENTS.md`) : il complète celui-ci pour son dossier.
+Chaque projet peut avoir son propre `AGENTS.md` dans `docs/<projet>/` (par exemple `docs/estompe/AGENTS.md`) : il complète celui-ci pour tous les dossiers du projet.
+Il n'est pas chargé automatiquement : avant de toucher à un dossier d'Estompe (`*/estompe/`, `.version`, `changelog.d/`, `agents/skills/`), lire `docs/estompe/AGENTS.md`.
 
 ## Qualité du code non Rust (lint, types, tests)
 Mêmes commandes en local et en CI (job `front` de `ci.yml`, lint lancé selon les chemins touchés) : `just lint`, `just check`, `just test`. Le `justfile` racine est le seul
@@ -39,7 +44,7 @@ point d'entrée de l'outillage (pas de Makefile par projet) : une commande de de
   des dizaines de milliers de lignes. Pour l'imposer à un dossier, l'activer dans `overrides` de `biome.json`.
 - **JS, TS, CSS, JSON** : Biome (version épinglée dans le `package.json` racine, config `biome.json`), règles recommandées moins celles
   qui contredisent le style du dépôt (`!`, `any`, `!important`…). `npm run lint` à la racine vérifie tout le dépôt. Exclus : copies de
-  `@plbls/ui` (`vendor/plbls-ui`), fichiers générés ou tiers (`src-tauri/gen`, mediapipe) et `apps/pli/server` (remplacé par Rust).
+  `@plbls/ui` (`vendor/plbls-ui`), fichiers générés ou tiers (`src-tauri/gen`, mediapipe).
 - **Svelte** : `svelte-check` (`npm run check` du projet). **Types** : chaque frontal étend `tsconfig.base.json` (strict, ES2022).
 - **Tests unitaires** : vitest dans chaque frontal et dans `packages/ui` (`src/**/*.test.ts` ou à côté du fichier testé) ;
   **e2e** : Playwright dans le projet testé (`<frontal>/e2e/*.spec.ts`, `playwright.config.ts`, `npm run e2e`).

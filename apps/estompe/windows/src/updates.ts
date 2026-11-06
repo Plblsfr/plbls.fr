@@ -1,6 +1,6 @@
 import type { Update } from '@tauri-apps/plugin-updater'
-import type { Remote } from '../../frontend/src/lib/updater.svelte'
-import type { UpdateDriver } from '../../frontend/src/lib/platform'
+import type { Remote } from '../../../../web/estompe/src/lib/updater.svelte'
+import type { UpdateDriver } from '../../../../web/estompe/src/lib/platform'
 
 let pending: Update | null = null
 

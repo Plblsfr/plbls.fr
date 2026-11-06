@@ -1,5 +1,5 @@
 /** Raccourci global du push-to-talk (app Windows) : la touche reste active quand une autre fenêtre a le focus. */
-import type { GlobalPttDriver } from '../../frontend/src/lib/platform'
+import type { GlobalPttDriver } from '../../../../web/estompe/src/lib/platform'
 const failure = (code: string) => `La touche ${code.replace(/^(Key|Digit)/, '')} ne peut pas servir de raccourci global : elle est déjà prise par une autre application, ou non prise en charge. Choisis-en une autre.`
 
 /** Enregistre `code` (KeyboardEvent.code) ; `onChange(true)` à l'appui, `onChange(false)` au relâchement. Renvoie la fonction qui le libère. */

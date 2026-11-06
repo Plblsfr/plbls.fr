@@ -1,11 +1,11 @@
 /** Overlay des messages : fenêtre Tauri transparente qui montre les MP et mentions reçus en jeu, avec réponse rapide au clavier. */
-import { app } from '../../frontend/src/lib/store.svelte'
-import { prefs } from '../../frontend/src/lib/prefs.svelte'
-import { avatars } from '../../frontend/src/blocks/avatars/avatars.svelte'
-import { router } from '../../frontend/src/lib/route.svelte'
+import { app } from '../../../../web/estompe/src/lib/store.svelte'
+import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
+import { avatars } from '../../../../web/estompe/src/blocks/avatars/avatars.svelte'
+import { router } from '../../../../web/estompe/src/lib/route.svelte'
 import { registerGlobalPtt } from './ptt-global'
-import { tapNotifications } from '../../frontend/src/blocks/notifications/notify'
-import { notify } from '../../frontend/src/lib/ui'
+import { tapNotifications } from '../../../../web/estompe/src/blocks/notifications/notify'
+import { notify } from '../../../../web/estompe/src/lib/ui'
 import { dataUrl, overlayUi } from './overlay.svelte'
 import { msgOverlaySize, msgToastView, msgToastWanted, overlayPosition, overlayVisible, pushMsgToast, sendMsgReply, type MsgOverlayState, type MsgToast } from './overlay'
 

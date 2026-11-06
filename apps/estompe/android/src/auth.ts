@@ -1,9 +1,9 @@
 /** Connexion Android : Authorization Code + PKCE dans le navigateur système, redirection par schéma d'URL ; le refresh token vit côté Kotlin. */
-import { setTokenProvider } from '../../frontend/src/lib/api'
-import { config } from '../../frontend/src/lib/config'
+import { setTokenProvider } from '../../../../web/estompe/src/lib/api'
+import { config } from '../../../../web/estompe/src/lib/config'
 import { completeLogin, localSecretStore, TokenManager, type PendingLogin, type SecretStore } from '../../crates/core/ts/desktop-auth'
-import type { AuthDriver } from '../../frontend/src/lib/platform'
-import { notify } from '../../frontend/src/lib/ui'
+import type { AuthDriver } from '../../../../web/estompe/src/lib/platform'
+import { notify } from '../../../../web/estompe/src/lib/ui'
 import { browserLogin, diagnose, nativeFetch } from '../../crates/core/ts/tauri'
 import { nativeBridge } from './bridge'
 

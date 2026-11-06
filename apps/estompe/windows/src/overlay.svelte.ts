@@ -1,10 +1,10 @@
 /** Overlay : fenêtre Tauri transparente, au premier plan, traversée par les clics, qui affiche les participants du salon vocal. */
-import { app } from '../../frontend/src/lib/store.svelte'
-import { voice } from '../../frontend/src/blocks/vocal/voice.svelte'
-import { prefs } from '../../frontend/src/lib/prefs.svelte'
-import { avatars } from '../../frontend/src/blocks/avatars/avatars.svelte'
+import { app } from '../../../../web/estompe/src/lib/store.svelte'
+import { voice } from '../../../../web/estompe/src/blocks/vocal/voice.svelte'
+import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
+import { avatars } from '../../../../web/estompe/src/blocks/avatars/avatars.svelte'
 import { registerGlobalPtt } from './ptt-global'
-import { notify } from '../../frontend/src/lib/ui'
+import { notify } from '../../../../web/estompe/src/lib/ui'
 import { overlayItems, overlayPosition, overlaySize, overlayVisible, type OverlayState } from './overlay'
 
 const LABEL = 'overlay'

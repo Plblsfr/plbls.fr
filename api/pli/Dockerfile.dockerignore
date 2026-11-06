@@ -1,0 +1,13 @@
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!api
+!docs/security
+!docs/permission
+!web/pli/public
+**/target
+**/node_modules
+**/dist
+**/.env
+web/pli/public/*.test.js

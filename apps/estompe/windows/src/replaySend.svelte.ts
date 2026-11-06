@@ -1,8 +1,8 @@
 /** Envoi d'un replay Bobyn dans une conversation (EST-128) : réencodage éventuel, envoi avec reprise automatique, message. Continue en arrière-plan quand on change de page. */
-import { api } from '../../frontend/src/lib/api'
-import { app } from '../../frontend/src/lib/store.svelte'
-import { notify } from '../../frontend/src/lib/ui'
-import { lastViewConv } from '../../frontend/src/lib/lastview'
+import { api } from '../../../../web/estompe/src/lib/api'
+import { app } from '../../../../web/estompe/src/lib/store.svelte'
+import { notify } from '../../../../web/estompe/src/lib/ui'
+import { lastViewConv } from '../../../../web/estompe/src/lib/lastview'
 import { destinations, needsCompression, onExport, replayUrl, replaysCancel, replaysDelete, replaysExport, replaysList, replaysThumb, sendErrorMessage, targetKbps, withRetry, type Destination, type Replay } from './replays'
 
 export interface SendJob {

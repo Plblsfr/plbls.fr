@@ -1,7 +1,7 @@
 <script lang="ts">
-  import UpdaterPanel from '../../frontend/src/components/UpdaterPanel.svelte'
-  import { prefs } from '../../frontend/src/lib/prefs.svelte'
-  import { notify } from '../../frontend/src/lib/ui'
+  import UpdaterPanel from '../../../../web/estompe/src/components/UpdaterPanel.svelte'
+  import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
+  import { notify } from '../../../../web/estompe/src/lib/ui'
   import { setAlpha } from './bobyn'
 
   // 7 clics sur la version : débloque (ou verrouille) les fonctions alpha, sans autre indice dans l'interface

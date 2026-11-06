@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { bobynOverlayState, msgOverlaySize, msgToastView, msgToastWanted, MSG_TOAST_SIZE, overlayAccelerator, overlayItems, overlayPosition, overlayVisible, overlaySize, pushMsgToast, sendMsgReply, type MsgToast, type OverlayItem } from './overlay'
-import { avatars } from '../../frontend/src/blocks/avatars/avatars.svelte'
+import { avatars } from '../../../../web/estompe/src/blocks/avatars/avatars.svelte'
 
-vi.mock('../../frontend/src/lib/api', () => ({
+vi.mock('../../../../web/estompe/src/lib/api', () => ({
   api: {
     avatars: vi.fn(async () => ({ u1: 3 })),
     serverAvatars: vi.fn(),

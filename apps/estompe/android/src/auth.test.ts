@@ -8,11 +8,11 @@ const h = vi.hoisted(() => ({
   fail: vi.fn(),
 }))
 
-vi.mock('../../frontend/src/lib/api', async (orig) => ({
+vi.mock('../../../../web/estompe/src/lib/api', async (orig) => ({
   ...(await orig<object>()),
   setTokenProvider: (p: typeof h.provider) => { h.provider = p },
 }))
-vi.mock('../../frontend/src/lib/ui', async (orig) => {
+vi.mock('../../../../web/estompe/src/lib/ui', async (orig) => {
   const m = await orig<{ notify: object }>()
   return { ...m, notify: { ...m.notify, fail: h.fail } }
 })
@@ -43,7 +43,7 @@ function bridge(pending = '') {
 
 async function freshAuth() {
   vi.resetModules()
-  const { config } = await import('../../frontend/src/lib/config')
+  const { config } = await import('../../../../web/estompe/src/lib/config')
   config.keycloakIssuer = 'https://auth.example/realms/default'
   return (await import('./auth')).auth
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { platform as web } from '../../web/src/platform'
-import { setPlatform } from '../../frontend/src/lib/platform'
-import { parseHash } from '../../frontend/src/lib/route.svelte'
+import { platform as web } from '../../../../web/estompe/plateforme/src/platform'
+import { setPlatform } from '../../../../web/estompe/src/lib/platform'
+import { parseHash } from '../../../../web/estompe/src/lib/route.svelte'
 import { platform } from './platform'
 
 afterEach(() => setPlatform(web))

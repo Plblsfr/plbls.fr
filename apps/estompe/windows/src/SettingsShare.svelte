@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { prefs } from '../../frontend/src/lib/prefs.svelte'
+  import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 </script>
 
 <label class="plbls-toggle">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { audioMix, clampCrop, formatTimecode, frameDuration, parseTimecode, planLabel, resizeCrop, snapToKeyframe, audioTracks, clipAround, compressedSize, cropForRatio, destinations, estimateSize, filterDestinations, formatDuration, formatSize, isTransient, markerCount, markerName, needsCompression, sendErrorMessage, targetKbps, trackVolume, visible, withMarker, withRetry, type Replay } from './replays'
-import { gameOfName } from '../../frontend/src/lib/format'
+import { gameOfName } from '../../../../web/estompe/src/lib/format'
 
 const r = (name: string, game: string, modified: number, duration: number, size: number): Replay => ({ name, game, modified, duration, size, width: 1920, height: 1080, fps: 60, markers: [], tracks: [] })
 const list = [r('Hades_1.mp4', 'Hades', 1, 30, 300e6), r('Celeste_1.mp4', 'Celeste', 3, 60, 100e6), r('Hades_2.mp4', 'Hades', 2, 10, 200e6)]

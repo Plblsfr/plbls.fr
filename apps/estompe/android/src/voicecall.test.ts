@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { app } from '../../frontend/src/lib/store.svelte'
+import { app } from '../../../../web/estompe/src/lib/store.svelte'
 import { callLabel, onVoiceAction, voiceCall } from './voicecall'
-import { voice } from '../../frontend/src/blocks/vocal/voice.svelte'
+import { voice } from '../../../../web/estompe/src/blocks/vocal/voice.svelte'
 
 describe('voiceCall', () => {
   const bridge = { voiceUpdate: vi.fn(), voiceStop: vi.fn() }

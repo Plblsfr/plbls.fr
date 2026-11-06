@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { initials } from '../../frontend/src/lib/format'
+  import { initials } from '../../../../web/estompe/src/lib/format'
   import { MSG_TOAST_SIZE, type MsgOverlayState } from './overlay'
 
   let st = $state<MsgOverlayState>({ toasts: [], replying: false })

@@ -3,7 +3,7 @@ import type { BobynStatus } from './bobyn'
 import { bobynState } from './bobyn'
 import { overlayUi } from './overlay.svelte'
 import { BOBYN_OVERLAY_SIZE, bobynOverlayState, overlayPosition, type BobynOverlayState } from './overlay'
-import { prefs } from '../../frontend/src/lib/prefs.svelte'
+import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 import { offerSend, quickSend } from './replaySend.svelte'
 
 const LABEL = 'bobyn-overlay'

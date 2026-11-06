@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-  "apps/security",
-  "apps/permission/backend",
-  "apps/pli/server",
-  "apps/estompe/backend/estompe-api",
-  "apps/estompe/backend/core",
-  "apps/estompe/backend/block",
-  "apps/estompe/backend/blocks/*",
+  "api/security",
+  "api/permission",
+  "api/pli",
+  "api/estompe/estompe-api",
+  "api/estompe/core",
+  "api/estompe/block",
+  "api/estompe/blocks/*",
 ]
 exclude = ["apps/estompe/crates", "apps/estompe/windows", "apps/estompe/android"]
 
@@ -58,23 +58,23 @@ url = "2"
 utoipa = { version = "6", features = ["yaml", "uuid"] }
 utoipa-axum = "0.3"
 uuid = { version = "1", features = ["serde", "v4"] }
-estompe-core = { path = "apps/estompe/backend/core" }
-estompe-block = { path = "apps/estompe/backend/block" }
-estompe-block-gifs = { path = "apps/estompe/backend/blocks/gifs" }
-estompe-block-films = { path = "apps/estompe/backend/blocks/films" }
-estompe-block-musique = { path = "apps/estompe/backend/blocks/musique" }
-estompe-block-vocal = { path = "apps/estompe/backend/blocks/vocal" }
-estompe-block-regarder-ensemble = { path = "apps/estompe/backend/blocks/regarder-ensemble" }
-estompe-block-draw2gether = { path = "apps/estompe/backend/blocks/draw2gether" }
-estompe-block-transcription = { path = "apps/estompe/backend/blocks/transcription" }
-estompe-block-videos = { path = "apps/estompe/backend/blocks/videos" }
-estompe-block-apercu-liens = { path = "apps/estompe/backend/blocks/apercu-liens" }
-estompe-block-notifications = { path = "apps/estompe/backend/blocks/notifications" }
-estompe-block-emojis = { path = "apps/estompe/backend/blocks/emojis" }
-estompe-block-avatars = { path = "apps/estompe/backend/blocks/avatars" }
-estompe-block-badges = { path = "apps/estompe/backend/blocks/badges" }
-estompe-block-signalements = { path = "apps/estompe/backend/blocks/signalements" }
-estompe-block-activite-statut = { path = "apps/estompe/backend/blocks/activite-statut" }
+estompe-core = { path = "api/estompe/core" }
+estompe-block = { path = "api/estompe/block" }
+estompe-block-gifs = { path = "api/estompe/blocks/gifs" }
+estompe-block-films = { path = "api/estompe/blocks/films" }
+estompe-block-musique = { path = "api/estompe/blocks/musique" }
+estompe-block-vocal = { path = "api/estompe/blocks/vocal" }
+estompe-block-regarder-ensemble = { path = "api/estompe/blocks/regarder-ensemble" }
+estompe-block-draw2gether = { path = "api/estompe/blocks/draw2gether" }
+estompe-block-transcription = { path = "api/estompe/blocks/transcription" }
+estompe-block-videos = { path = "api/estompe/blocks/videos" }
+estompe-block-apercu-liens = { path = "api/estompe/blocks/apercu-liens" }
+estompe-block-notifications = { path = "api/estompe/blocks/notifications" }
+estompe-block-emojis = { path = "api/estompe/blocks/emojis" }
+estompe-block-avatars = { path = "api/estompe/blocks/avatars" }
+estompe-block-badges = { path = "api/estompe/blocks/badges" }
+estompe-block-signalements = { path = "api/estompe/blocks/signalements" }
+estompe-block-activite-statut = { path = "api/estompe/blocks/activite-statut" }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

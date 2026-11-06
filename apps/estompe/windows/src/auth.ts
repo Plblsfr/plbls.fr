@@ -1,8 +1,8 @@
 /** Connexion Windows : Authorization Code + PKCE dans le navigateur système, redirection sur un serveur loopback local (RFC 8252) ; jeton d'accès en mémoire, refresh token dans le coffre de l'OS. */
-import { setTokenProvider } from '../../frontend/src/lib/api'
-import { config } from '../../frontend/src/lib/config'
+import { setTokenProvider } from '../../../../web/estompe/src/lib/api'
+import { config } from '../../../../web/estompe/src/lib/config'
 import { TokenManager } from '../../crates/core/ts/desktop-auth'
-import type { AuthDriver } from '../../frontend/src/lib/platform'
+import type { AuthDriver } from '../../../../web/estompe/src/lib/platform'
 import { browserLogin, diagnose, invoke, nativeFetch } from '../../crates/core/ts/tauri'
 
 const SECRET_KEY = 'refresh-token'

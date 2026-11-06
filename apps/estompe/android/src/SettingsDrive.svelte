@@ -2,8 +2,8 @@
   import { onMount } from 'svelte'
   import { nativeBridge } from './bridge'
   import { parseChoices, parseDrive, type DriveSettings } from './drive'
-  import { debug } from '../../frontend/src/lib/debuglog.svelte'
-  import { notify } from '../../frontend/src/lib/ui'
+  import { debug } from '../../../../web/estompe/src/lib/debuglog.svelte'
+  import { notify } from '../../../../web/estompe/src/lib/ui'
 
   const bridge = nativeBridge()
   let s = $state<DriveSettings>(parseDrive(bridge?.driveSettings() ?? ''))

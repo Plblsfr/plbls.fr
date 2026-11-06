@@ -81,16 +81,16 @@ it('barre d’actions : ancrée au-dessus du message, dessous si pas de place', 
 // Une vidéo jointe se charge depuis l'API : sans elle dans media-src, le lecteur reste noir à 0:00 (miniature <img> visible).
 it('CSP : media-src autorise l’API (web et app Windows)', () => {
   const media = (csp: string) => csp.split(';').map((d: string) => d.trim()).find((d: string) => d.startsWith('media-src'))
-  const tauri = JSON.parse(readFileSync('../windows/src-tauri/tauri.conf.json', 'utf8')).app.security.csp
+  const tauri = JSON.parse(readFileSync('../../apps/estompe/windows/src-tauri/tauri.conf.json', 'utf8')).app.security.csp
   expect(media(tauri)).toContain('https://chat.plbls.fr')
-  expect(media(readFileSync('../web/docker/40-estompe-config.sh', 'utf8').match(/CSP="([^"]*)"/)![1])).toContain('$API_URL')
+  expect(media(readFileSync('plateforme/docker/40-estompe-config.sh', 'utf8').match(/CSP="([^"]*)"/)![1])).toContain('$API_URL')
 })
 
 // « Regarder ensemble » (EST-149) : les lecteurs de Twitch, Vimeo et Dailymotion et les fichiers directs doivent passer la CSP.
 it('CSP : lecteurs Twitch, Vimeo, Dailymotion et fichiers directs autorisés (web et app Windows)', () => {
   const dir = (csp: string, name: string) => csp.split(';').map((d: string) => d.trim()).find((d: string) => d.startsWith(name)) ?? ''
-  const tauri = JSON.parse(readFileSync('../windows/src-tauri/tauri.conf.json', 'utf8')).app.security.csp
-  const web = readFileSync('../web/docker/40-estompe-config.sh', 'utf8').match(/CSP="([^"]*)"/)![1]
+  const tauri = JSON.parse(readFileSync('../../apps/estompe/windows/src-tauri/tauri.conf.json', 'utf8')).app.security.csp
+  const web = readFileSync('plateforme/docker/40-estompe-config.sh', 'utf8').match(/CSP="([^"]*)"/)![1]
   for (const csp of [tauri, web]) {
     expect(dir(csp, 'script-src')).toContain('https://player.twitch.tv')
     expect(dir(csp, 'script-src')).toContain('https://player.vimeo.com')

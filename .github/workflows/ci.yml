@@ -28,9 +28,6 @@ jobs:
     # Dependabot ne rédige pas d'entrée de changelog : la montée de version est tracée par sa PR
     if: needs.changements.outputs.estompe == 'true' && !startsWith(github.head_ref, 'dependabot/')
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/estompe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,8 +38,9 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           case "$HEAD_REF" in ci/*|docs/*|release/*) echo "Branche $HEAD_REF : entrée non exigée"; exit 0;; esac
-          git diff --quiet "origin/$BASE_REF...HEAD" -- . && { echo "Aucun changement dans apps/estompe : entrée non exigée"; exit 0; }
-          git diff --relative --name-only --diff-filter=A "origin/$BASE_REF...HEAD" -- 'changelog.d/*.md' | grep -v '^changelog.d/README.md$' | grep . \
+          git diff --quiet "origin/$BASE_REF...HEAD" -- api/estompe web/estompe apps/estompe docs/estompe deploy/estompe scripts/estompe .version agents \
+            && { echo "Aucun changement dans Estompe : entrée non exigée"; exit 0; }
+          git diff --name-only --diff-filter=A "origin/$BASE_REF...HEAD" -- 'changelog.d/*.md' | grep -v '^changelog.d/README.md$' | grep . \
             || { echo "::error::la PR doit ajouter un fichier changelog.d/<sujet>.md (voir changelog.d/README.md)"; exit 1; }
 
   front:
@@ -72,8 +70,8 @@ jobs:
         if: needs.changements.outputs.lint == 'true'
         run: just lint
       - name: Audit des dépendances d'Estompe
-        if: contains(needs.changements.outputs.espaces, 'apps/estompe/frontend')
-        run: npm audit --omit=dev --audit-level=high --workspace apps/estompe/frontend
+        if: contains(needs.changements.outputs.espaces, 'web/estompe')
+        run: npm audit --omit=dev --audit-level=high --workspace web/estompe
       - name: Types, tests et build des projets touchés
         if: needs.changements.outputs.espaces != ''
         env:
@@ -176,7 +174,7 @@ jobs:
         if: needs.changements.outputs.estompe_api == 'true'
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
-        run: cargo test --locked $(apps/estompe/scripts/paquets-cargo.sh)
+        run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
       - name: Tests du serveur pli (PostgreSQL 16)
         if: needs.changements.outputs.pli_server == 'true'
         env:
@@ -195,9 +193,6 @@ jobs:
     needs: changements
     if: needs.changements.outputs.estompe_tauri == 'true'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/estompe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config
@@ -221,12 +216,12 @@ jobs:
         run: cargo test
       - name: Compilation de l'app Android (hors Android)
         working-directory: apps/estompe/android/src-tauri
-        run: mkdir -p ../../frontend/dist && cargo check
+        run: mkdir -p ../../../../web/estompe/dist && cargo check
       - name: Tests de Bobyn
         working-directory: apps/estompe/windows/src-tauri/bobyn
         run: cargo test
       - name: ffmpeg épinglé téléchargeable et vérifié
-        run: TAURI_ENV_PLATFORM=windows node windows/scripts/fetch-ffmpeg.mjs && test -s windows/src-tauri/binaries/ffmpeg.exe
+        run: TAURI_ENV_PLATFORM=windows node apps/estompe/windows/scripts/fetch-ffmpeg.mjs && test -s apps/estompe/windows/src-tauri/binaries/ffmpeg.exe
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -242,16 +237,13 @@ jobs:
     needs: changements
     if: needs.changements.outputs.estompe_api == 'true'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/estompe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          file: apps/estompe/backend/Dockerfile
+          file: api/estompe/Dockerfile
           push: false
           load: true
           tags: estompe-api:pr-${{ github.run_id }}
@@ -260,7 +252,7 @@ jobs:
         run: |
           docker run -d --name estompe-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres postgres:17-alpine
           timeout 60 sh -c 'until docker exec estompe-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
-          docker run -d --name estompe-pr-api-${{ github.run_id }} --network container:estompe-pr-pg-${{ github.run_id }} --env-file deploy/.env.example \
+          docker run -d --name estompe-pr-api-${{ github.run_id }} --network container:estompe-pr-pg-${{ github.run_id }} --env-file deploy/estompe/.env.example \
             -e DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' estompe-api:pr-${{ github.run_id }}
           timeout 60 sh -c 'until docker run --rm --network container:estompe-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
             || { docker logs estompe-pr-api-${{ github.run_id }}; exit 1; }
@@ -275,8 +267,8 @@ jobs:
       component: pli
       name: pli
       context: .
-      dockerfile: apps/pli/Dockerfile
-      dir: apps/pli
+      dockerfile: api/pli/Dockerfile
+      dir: api/pli
 
   image-permission:
     needs: changements
@@ -286,8 +278,8 @@ jobs:
       component: permission
       name: permission
       context: .
-      dockerfile: apps/permission/Dockerfile
-      dir: apps/permission
+      dockerfile: api/permission/Dockerfile
+      dir: api/permission
       test_target: test
 
   image-security:
@@ -298,8 +290,8 @@ jobs:
       component: security
       name: security
       context: .
-      dockerfile: apps/security/Dockerfile
-      dir: apps/security
+      dockerfile: api/security/Dockerfile
+      dir: api/security
       test_target: test
 
   image-ui:

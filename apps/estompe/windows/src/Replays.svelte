@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { confirmer, saisir } from '../../frontend/src/lib/confirm.svelte'
+  import { confirmer, saisir } from '../../../../web/estompe/src/lib/confirm.svelte'
   import { onMount } from 'svelte'
   import ReplaySend from './ReplaySend.svelte'
   import { sends } from './replaySend.svelte'
   import { audioMix, audioTracks, clampCrop, clipAround, cropForRatio, estimateSize, formatDuration, formatSize, formatTimecode, frameDuration, markerCount, markerName, onExport, parseTimecode, planLabel, replayUrl, replaysCancel, replaysCopy, replaysDelete, replaysEncoders, replaysExport, replaysKeyframes, replaysList, replaysPlan, replaysMarkersSet, replaysRename, replaysReveal, replaysThumb, replaysTracks, resizeCrop, snapToKeyframe, trackVolume, visible, withMarker, type AudioTrack, type Crop, type ExportParams, type ExportPlan, type Library, type Marker, type Quality, type Replay, type Sort } from './replays'
-  import { messageOf, notify } from '../../frontend/src/lib/ui'
+  import { messageOf, notify } from '../../../../web/estompe/src/lib/ui'
 
   const PAGE = 48
   const RATIOS = [['Libre', 0], ['16:9', 16 / 9], ['9:16', 9 / 16], ['1:1', 1]] as const

@@ -1,8 +1,8 @@
 /** Appels aux commandes Rust (crates/core) communs aux apps Windows et Android. */
 import type { InvokeArgs } from '@tauri-apps/api/core'
-import { config } from '../../../frontend/src/lib/config'
+import { config } from '../../../../../web/estompe/src/lib/config'
 import { authUrl, challengeS256, completeLogin, randomString, type PendingLogin, type TokenManager } from './desktop-auth'
-import type { DebugStore } from '../../../frontend/src/lib/platform'
+import type { DebugStore } from '../../../../../web/estompe/src/lib/platform'
 
 export async function invoke<T = void>(cmd: string, args?: InvokeArgs): Promise<T> {
   const { invoke: call } = await import('@tauri-apps/api/core')

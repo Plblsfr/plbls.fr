@@ -15,16 +15,12 @@ env:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: apps/estompe
-
 jobs:
   front:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/estompe/frontend
+        working-directory: web/estompe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -55,9 +51,9 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            apps/estompe/web/dist-updates
-            apps/estompe/frontend/dist
-          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('apps/estompe/backend/core/updates.json', 'apps/estompe/frontend/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'apps/estompe/frontend/public/**', 'apps/estompe/frontend/index.html', 'package-lock.json', 'apps/estompe/frontend/vite.config.ts', 'apps/estompe/frontend/scripts/**') }}
+            web/estompe/plateforme/dist-updates
+            web/estompe/dist
+          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('api/estompe/core/updates.json', 'web/estompe/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'web/estompe/public/**', 'web/estompe/index.html', 'package-lock.json', 'web/estompe/vite.config.ts', 'scripts/estompe/**') }}
       - id: cargo-cache
         if: steps.installer.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -90,17 +86,17 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            apps/estompe/web/dist-updates
-            apps/estompe/frontend/dist
+            web/estompe/plateforme/dist-updates
+            web/estompe/dist
           key: ${{ steps.installer.outputs.cache-primary-key }}
-      - name: Front web (le build Windows, neuf ou restauré du cache, a écrasé frontend/dist)
-        run: npm ci --prefix ../.. && npm --prefix frontend run build
+      - name: Front web (le build Windows, neuf ou restauré du cache, a écrasé web/estompe/dist)
+        run: npm ci && npm --prefix web/estompe run build
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: front
           path: |
-            apps/estompe/web/dist-updates
-            apps/estompe/frontend/dist
+            web/estompe/plateforme/dist-updates
+            web/estompe/dist
 
   android:
     if: vars.ANDROID_APK == '1'
@@ -160,8 +156,8 @@ jobs:
         with:
           name: apk
           path: |
-            apps/estompe/web/dist-updates/Estompe.apk
-            apps/estompe/web/dist-updates/android.json
+            web/estompe/plateforme/dist-updates/Estompe.apk
+            web/estompe/plateforme/dist-updates/android.json
 
   image:
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/estompe-app-v') && needs.front.result == 'success' && needs.windows.result == 'success' && needs.android.result != 'failure' }}
@@ -175,12 +171,12 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: front
-          path: apps/estompe
+          path: web/estompe
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.android.result == 'success'
         with:
           name: apk
-          path: apps/estompe/web/dist-updates
+          path: web/estompe/plateforme/dist-updates
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
@@ -198,8 +194,8 @@ jobs:
             type=match,pattern=estompe-app-v(.*),group=1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/estompe
-          file: apps/estompe/web/Dockerfile
+          context: web/estompe
+          file: web/estompe/plateforme/Dockerfile
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
@@ -211,7 +207,7 @@ jobs:
         run: |
           docker run -d --name front-check -e API_URL=https://example.test ${{ env.IMAGE }}:latest
           sleep 3
-          android/scripts/check-apk.sh front-check
+          apps/estompe/android/scripts/check-apk.sh front-check
           docker rm -f front-check
 
 
@@ -221,9 +217,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    defaults:
-      run:
-        working-directory: .
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}

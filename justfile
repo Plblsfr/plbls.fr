@@ -54,15 +54,15 @@ test-ui:
 
 # e2e Playwright (Docker pour Postgres, ou E2E_DATABASE_URL vers une base vide)
 e2e-permission:
-    npm run e2e --workspace apps/permission/frontend
+    npm run e2e --workspace web/permission
 
 # Ces deux-là demandent un Postgres : TEST_DATABASE_URL=postgres://… just test-pli
 test-pli:
     cargo test --locked -p pli
-    npm ci && npm test --workspace apps/pli
+    npm ci && npm test --workspace web/pli
 
 test-estompe-api:
-    cargo test --locked $(apps/estompe/scripts/paquets-cargo.sh)
+    cargo test --locked $(scripts/estompe/paquets-cargo.sh)
 
 # Reconstruit packages/ui/dist (non versionné)
 build-ui:
@@ -71,52 +71,52 @@ build-ui:
 # security : dépendances de dev en Docker (Redis, Keycloak, Mailpit, écho), gateway en local.
 # Actions : up, start (build puis lance le gateway), stop, down, reset (supprime les volumes), logs, status
 security-dev action:
-    apps/security/scripts/dev.sh {{action}}
+    scripts/security/dev.sh {{action}}
 
 # Suites de bout en bout de security : demandent `just security-dev up` puis `just security-dev start`
 security-bruno:
-    apps/security/scripts/bruno.sh
+    scripts/security/bruno.sh
 
 security-ws:
-    python3 apps/security/scripts/ws_test.py
+    python3 scripts/security/ws_test.py
 
 security-refresh:
-    python3 apps/security/scripts/refresh_test.py
+    python3 scripts/security/refresh_test.py
 
 security-regressions:
-    python3 apps/security/scripts/security_test.py
+    python3 scripts/security/security_test.py
 
 # Chaque route du code est couverte par la suite Bruno
 security-coverage:
-    python3 apps/security/scripts/check_coverage.py
+    python3 scripts/security/check_coverage.py
 
 security-test-all: test-security security-coverage (security-dev "up") (security-dev "start") security-bruno security-ws security-refresh security-regressions
 
 # permission : Postgres de dev en Docker (éphémère), backend sur 127.0.0.1:8090
 permission-dev-up:
-    docker compose -f apps/permission/deploy/docker-compose.dev.yml up -d --wait
+    docker compose -f deploy/permission/docker-compose.dev.yml up -d --wait
 
 permission-dev-down:
-    docker compose -f apps/permission/deploy/docker-compose.dev.yml down
+    docker compose -f deploy/permission/docker-compose.dev.yml down
 
 permission-dev-run:
-    cd apps/permission/backend && set -a && . ../deploy/dev.env && set +a && cargo run
+    cd api/permission && set -a && . ../../deploy/permission/dev.env && set +a && cargo run
 
 # Données de départ (applications chat et radar) puis test de bout en bout de l'API : demandent permission-dev-up et permission-dev-run
 permission-seed:
-    cd apps/permission && set -a && . deploy/dev.env && set +a && python3 scripts/seed.py
+    set -a && . deploy/permission/dev.env && set +a && python3 scripts/permission/seed.py
 
 permission-smoke:
-    cd apps/permission && set -a && . deploy/dev.env && set +a && python3 scripts/smoke.py
+    set -a && . deploy/permission/dev.env && set +a && python3 scripts/permission/smoke.py
 
-# e2e avec le vrai auth-gateway et Keycloak de apps/security (Docker)
+# e2e avec le vrai auth-gateway (api/security) et Keycloak (Docker)
 e2e-permission-gateway:
-    E2E_GATEWAY=1 npm run e2e --workspace apps/permission/frontend
+    E2E_GATEWAY=1 npm run e2e --workspace web/permission
 
 # Vite sur :3000 (proxy signé vers le backend :8090)
 permission-front-dev:
-    npm run dev --workspace apps/permission/frontend -- --host 127.0.0.1
+    npm run dev --workspace web/permission -- --host 127.0.0.1
 
 # Image Docker complète (tests, front, backend), construite depuis la racine
 permission-image:
-    docker build -f apps/permission/Dockerfile -t permission:local .
+    docker build -f api/permission/Dockerfile -t permission:local .

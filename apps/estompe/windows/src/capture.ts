@@ -1,6 +1,6 @@
 // Partage natif ALPHA (Rust, Windows) : liste des écrans et fenêtres avec miniatures, puis capture et publication par Rust.
 // Le webview ne sait pas désigner une source précise (getDisplayMedia affiche son propre sélecteur).
-import type { CaptureDriver } from '../../frontend/src/lib/platform'
+import type { CaptureDriver } from '../../../../web/estompe/src/lib/platform'
 import { invoke } from '../../crates/core/ts/tauri'
 
 /** Partage natif (EST-18) : Rust capture la source et la publie lui-même dans le salon (participant `#screen`), sans repasser par le webview.

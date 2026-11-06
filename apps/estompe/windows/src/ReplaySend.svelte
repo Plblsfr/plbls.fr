@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { app } from '../../frontend/src/lib/store.svelte'
+  import { app } from '../../../../web/estompe/src/lib/store.svelte'
   import { lastDestination, sendDestinations, sends } from './replaySend.svelte'
   import { compressedSize, filterDestinations, formatDuration, formatSize, needsCompression, targetKbps, type Replay } from './replays'
-  import Modal from '../../frontend/src/components/Modal.svelte'
+  import Modal from '../../../../web/estompe/src/components/Modal.svelte'
 
   let { replay, dir, onclose }: { replay: Replay; dir: string; onclose: () => void } = $props()
 

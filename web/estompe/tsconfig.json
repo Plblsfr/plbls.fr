@@ -1,0 +1,15 @@
+{
+  "extends": ["@tsconfig/svelte/tsconfig.json", "../../tsconfig.base.json"],
+  "compilerOptions": {
+    "types": ["svelte", "vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "allowJs": true,
+    "checkJs": false,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@platform": ["./plateforme/src/platform.ts"],
+      "svelte": ["./node_modules/svelte", "../../node_modules/svelte"], "svelte/*": ["./node_modules/svelte/*", "../../node_modules/svelte/*"],
+      "vitest": ["./node_modules/vitest", "../../node_modules/vitest"], "@tauri-apps/*": ["./node_modules/@tauri-apps/*", "../../node_modules/@tauri-apps/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.svelte", "plateforme/src/**/*", "../../apps/estompe/windows/src/**/*", "../../apps/estompe/android/src/**/*", "../../apps/estompe/crates/core/ts/**/*"]
+}

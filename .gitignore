@@ -22,3 +22,6 @@ Thumbs.db
 # Fichiers de travail des agents
 .ai/
 __pycache__/
+
+# Dev local de security (logs, pid du gateway, rapport Bruno)
+.dev/

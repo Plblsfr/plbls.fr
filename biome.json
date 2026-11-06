@@ -17,8 +17,7 @@
       "!**/vendor/plbls-ui",
       "!**/src-tauri/gen",
       "!**/package-lock.json",
-      "!apps/estompe/frontend/public/mediapipe",
-      "!apps/pli/server"
+      "!web/estompe/public/mediapipe"
     ]
   },
   "formatter": {
@@ -83,7 +82,7 @@
     },
     {
       "includes": [
-        "apps/pli/public/crypto.js"
+        "web/pli/public/crypto.js"
       ],
       "linter": {
         "rules": {
