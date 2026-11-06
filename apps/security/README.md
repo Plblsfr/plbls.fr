@@ -5,10 +5,12 @@ Architecture et décisions : [docs/](docs/README.md).
 
 ## Développement
 
+Depuis la racine du dépôt (recettes du `justfile`) :
+
 ```sh
-docker compose -f deploy/docker-compose.dev.yml up -d   # Redis, Keycloak (realm plbls), service d'écho
-set -a; . deploy/dev.env; set +a
-cargo run
+just security-dev up       # Redis, Keycloak (realm plbls), Mailpit, service d'écho (Docker)
+just security-dev start    # build et lance le gateway en arrière-plan (logs : just security-dev logs)
+just security-dev down     # arrête tout (reset supprime aussi les volumes)
 ```
 
 - Keycloak : http://localhost:8180 (admin / admin). Utilisateurs de test : `demo/demo` (rôle `user`), `admin/admin` (`user`, `admin`).
@@ -17,7 +19,7 @@ cargo run
 - Login web : http://localhost:8080/auth/login?redirect=http://localhost:3000/
 - Bearer de test : client `plbls-mobile` (direct access grants activés **en dev uniquement**).
 - Routes de dev : `config/dev.toml` (`/api/whoami` public, `/api/private`, `/api/admin` rôle `admin`) vers un service qui renvoie les en-têtes reçus ; WebSocket sur `/api/whoami/echo`.
-- Tests : `cargo test`. Le crate est membre du workspace Cargo racine du monorepo (`../../Cargo.toml`, un seul `Cargo.lock`, `rust-toolchain.toml` et `deny.toml` communs) ; binaire dans `../../target/`. Image : `docker build -f apps/security/Dockerfile .` depuis la racine du dépôt.
+- Tests : `just test-security` (unitaires), `just security-coverage` (chaque route est couverte par la suite Bruno de `bruno/`), puis, gateway lancé, `just security-bruno`, `security-ws`, `security-refresh`, `security-regressions` ; `just security-test-all` enchaîne tout. Le crate est membre du workspace Cargo racine du monorepo (`../../Cargo.toml`, un seul `Cargo.lock`, `rust-toolchain.toml` et `deny.toml` communs) ; binaire dans `../../target/`. Image : `docker build -f apps/security/Dockerfile .` depuis la racine du dépôt.
 
 ## Production
 

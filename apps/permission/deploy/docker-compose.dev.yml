@@ -1,5 +1,5 @@
 name: permission-dev
-# Dépendances de dev : Postgres. Le backend tourne en local (`make dev-run`), le front avec Vite (`make front-dev`).
+# Dépendances de dev : Postgres. Le backend tourne en local (`just permission-dev-run`), le front avec Vite (`just permission-front-dev`).
 services:
   postgres:
     image: postgres:17-alpine

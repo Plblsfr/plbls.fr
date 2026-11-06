@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test de bout en bout contre un backend lancé (make dev-up dev-run). Signe les en-têtes comme auth-gateway."""
+"""Test de bout en bout contre un backend lancé (just permission-dev-up permission-dev-run). Signe les en-têtes comme auth-gateway."""
 import json
 import os
 import sys

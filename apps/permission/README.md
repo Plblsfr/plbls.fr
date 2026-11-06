@@ -2,7 +2,7 @@
 
 Gestion des **permissions** des comptes plbls.fr (RBAC par application). Les comptes et l'authentification sont dans [security.plbls.fr](../security) (auth-gateway + Keycloak). Rust + Axum + Postgres, frontend Svelte 5.
 
-- `backend/` : API REST (`/v1/...`), spec OpenAPI générée depuis le code (`/openapi.json`), serveur MCP (`/mcp`), sert aussi le front compilé ; membre du workspace Cargo racine (`../../Cargo.toml`), image construite depuis la racine du dépôt (`make image`)
+- `backend/` : API REST (`/v1/...`), spec OpenAPI générée depuis le code (`/openapi.json`), serveur MCP (`/mcp`), sert aussi le front compilé ; membre du workspace Cargo racine (`../../Cargo.toml`), image construite depuis la racine du dépôt (`just permission-image`)
 - `frontend/` : interface d'administration Svelte 5 + plbls-ui (applications, permissions, rôles, attributions, journal)
 - `docs/` : modèle, intégration, architecture (embarquées dans le MCP)
 - `scripts/smoke.py` : test de bout en bout de toute l'API
@@ -11,30 +11,32 @@ Modèle et intégration : [docs/](docs/README.md).
 
 ## Développement
 
+Depuis la racine du dépôt (recettes du `justfile`, après `npm ci`) :
+
 ```sh
-make dev-up      # Postgres de dev (Docker)
-make dev-run     # backend sur 127.0.0.1:8090
-make seed        # données de départ : applications chat et radar (autre terminal)
-make front-dev   # front sur http://127.0.0.1:3000, Vite dans Docker (pas besoin de Node)
-make smoke       # test de bout en bout de l'API
-make e2e         # e2e Playwright du front (frontend/e2e) : démarre Postgres, backend, seed et Vite, puis arrête tout
-make e2e-gateway # idem avec le vrai auth-gateway + Keycloak de ../security (connexion admin et demo)
-make test        # tests unitaires Rust
-npm run check --workspace apps/permission/frontend   # svelte-check (depuis la racine du dépôt, après npm ci)
+just permission-dev-up      # Postgres de dev (Docker)
+just permission-dev-run     # backend sur 127.0.0.1:8090
+just permission-seed        # données de départ : applications chat et radar (autre terminal)
+just permission-front-dev   # front sur http://127.0.0.1:3000 (Vite)
+just permission-smoke       # test de bout en bout de l'API
+just e2e-permission         # e2e Playwright du front (frontend/e2e) : démarre Postgres, backend, seed et Vite, puis arrête tout
+just e2e-permission-gateway # idem avec le vrai auth-gateway + Keycloak de ../security (connexion admin et demo)
+just test-permission        # tests unitaires Rust
+npm run check --workspace apps/permission/frontend   # svelte-check
 npm test --workspace apps/permission/frontend        # tests unitaires du front (vitest + Testing Library)
 ```
 
-Les e2e sont rangés comme ceux d'Estompe : `frontend/e2e/*.spec.ts`, `frontend/playwright.config.ts`, lancés par `npm run e2e --workspace apps/permission/frontend` (`make e2e`). `e2e/global-setup.ts` démarre Postgres (Docker, ou la base de `E2E_DATABASE_URL`, vide, si elle est définie), compile et lance le backend, puis `scripts/seed.py` ; Playwright lance Vite. `E2E_GATEWAY=1` ne joue que `gateway.spec.ts`, avec le gateway et Keycloak de `../security` (Docker). Navigateur : `npx playwright install chromium` la première fois.
+Les e2e sont rangés comme ceux d'Estompe : `frontend/e2e/*.spec.ts`, `frontend/playwright.config.ts`, lancés par `npm run e2e --workspace apps/permission/frontend` (`just e2e-permission`). `e2e/global-setup.ts` démarre Postgres (Docker, ou la base de `E2E_DATABASE_URL`, vide, si elle est définie), compile et lance le backend, puis `scripts/seed.py` ; Playwright lance Vite. `E2E_GATEWAY=1` ne joue que `gateway.spec.ts`, avec le gateway et Keycloak de `../security` (Docker). Navigateur : `npx playwright install chromium` la première fois.
 
 En dev, le proxy de Vite signe lui-même les en-têtes d'identité comme auth-gateway (secret de `deploy/dev.env`) : ni gateway ni Keycloak nécessaires. Utilisateur et rôles modifiables : `DEV_USER_ID`, `DEV_USER_ROLES` (mettre `user` pour voir l'écran « accès réservé »).
 
-**Avec le vrai gateway et Keycloak** : dans `../security.plbls.fr`, `make dev-up dev-start` (le realm de dev contient le rôle `permission-admin`, donné à `admin/admin`, et la route `/api/permission` vers :8090 est dans `config/dev.toml`), puis `DEV_VIA_GATEWAY=1` pour Vite. Connexion sur http://localhost:3000 : `admin/admin` administre, `demo/demo` voit « accès réservé ». `make e2e-gateway` automatise ce parcours.
+**Avec le vrai gateway et Keycloak** : `just security-dev up` puis `just security-dev start` (le realm de dev contient le rôle `permission-admin`, donné à `admin/admin`, et la route `/api/permission` vers :8090 est dans `config/dev.toml`), puis `DEV_VIA_GATEWAY=1` pour Vite. Connexion sur http://localhost:3000 : `admin/admin` administre, `demo/demo` voit « accès réservé ». `just e2e-permission-gateway` automatise ce parcours.
 
 ## Design
 
 L'interface utilise le design system **plbls-ui** (`https://cdn.plbls.fr/ui/2/`) : classes `plbls-*`, jetons, web components (`plbls-modal`, toasts). Règle du kit : une application ne redessine pas ses composants, elle ajoute au kit ce qui manque. `frontend/src/app.css` ne contient que de la mise en page.
 
-Le kit est copié dans `frontend/src/vendor/plbls-ui/` (fichiers commités, générés depuis `packages/ui` par `npm run ui:sync` à la racine du dépôt ; la CI échoue si la copie diverge). Le kit (v2) gère le thème sombre (`prefers-color-scheme`, ou `data-theme` sur `<html>`). Le frontend fait partie du workspace npm de la racine (`npm ci` à la racine) ; l'image se construit depuis la racine du dépôt (`make image`, ou `docker build -f apps/permission/Dockerfile .`).
+Le kit est copié dans `frontend/src/vendor/plbls-ui/` (fichiers commités, générés depuis `packages/ui` par `npm run ui:sync` à la racine du dépôt ; la CI échoue si la copie diverge). Le kit (v2) gère le thème sombre (`prefers-color-scheme`, ou `data-theme` sur `<html>`). Le frontend fait partie du workspace npm de la racine (`npm ci` à la racine) ; l'image se construit depuis la racine du dépôt (`just permission-image`, ou `docker build -f apps/permission/Dockerfile .`).
 
 ## Production (Dokploy)
 
