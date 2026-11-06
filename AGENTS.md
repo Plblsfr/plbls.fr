@@ -10,23 +10,29 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Tags de livraison : `<composant>-vX.Y.Z` (`pli`, `security`, `permission`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
 
 ## CI
-- Workflows de PR sans filtre `paths` : premier job `changements` (`scripts/ci-changements.sh <chemins>`), jobs conditionnés à sa sortie,
-  dernier job nommé comme le workflow (contrôle obligatoire). Un nouveau contrôle s'ajoute au ruleset de `scripts/configurer-github.sh`.
+- Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
+  `scripts/ci-changements.sh`), puis des jobs conditionnés à ces sorties (`front` générique pour les projets npm, `rust-lint` une fois pour tout
+  le workspace, `rust-test`, `estompe-tauri`, images), et le job final `ci`, contrôle obligatoire. Nouveau projet : un groupe de chemins dans
+  `_changements.yml`, un job (ou un espace npm pour `front`) dans `ci.yml`, ajouté aux `needs` de `ci` ; le ruleset ne change pas.
+- Pas de tests sur `main` : `livraison.yml` (push `main`, tags `<composant>-vX.Y.Z`) publie seulement ce que la fusion a changé (images `:edge`,
+  PR de version d'Estompe, caches partagés). Les apps natives d'Estompe (`estompe-livraison-app.yml`) partent de leur tag ou d'un lancement manuel.
+- Contrôles obligatoires du ruleset (`scripts/configurer-github.sh`) : `ci` et `conventions`.
 - Toute PR : branche `<type>/<slug-court>` (`feat`, `fix`, `chore`, `docs`, `ci`) ou `release/…`, et une description ; vérifié par `pr-conventions.yml`.
 - Actions épinglées par SHA complet (`uses: owner/action@<sha> # vX.Y.Z`) ; `permissions: contents: read` en tête, droits d'écriture au seul job qui publie.
+- Détail (déclencheurs, caches, jobs) : `apps/estompe/docs/ci.md`.
 
 ## Rust
 - Workspace Cargo unique à la racine (`Cargo.toml`) : membres `apps/security`, `apps/permission/backend`, `apps/pli/server`, `apps/estompe/backend/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
-- Nouveau backend : l'ajouter à `members`, à `.dockerignore` racine (contexte des images Rust) et aux listes `Dockerfile.dockerignore` de pli et permission, et ses chemins (`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`) aux `paths` de sa CI, qui appelle `_rust-lint.yml`.
+- Nouveau backend : l'ajouter à `members`, à `.dockerignore` racine (contexte des images Rust) et aux listes `Dockerfile.dockerignore` de pli et permission, et ses chemins aux groupes `rust` et à ses groupes d'image et de tests de `.github/workflows/_changements.yml`.
 - Exception : les apps Tauri d'Estompe (`apps/estompe/{crates,windows,android}`) restent hors du workspace, avec leur `Cargo.lock` et la toolchain stable.
 - Contrôles : `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`.
 
 Chaque projet peut avoir son propre `AGENTS.md` (par exemple `apps/estompe/AGENTS.md`) : il complète celui-ci pour son dossier.
 
 ## Qualité du code non Rust (lint, types, tests)
-Mêmes commandes en local et en CI (workflow `lint`, déclenché par chemin) : `just lint`, `just check`, `just test` (voir le `justfile`).
+Mêmes commandes en local et en CI (job `front` de `ci.yml`, lint lancé selon les chemins touchés) : `just lint`, `just check`, `just test` (voir le `justfile`).
 - **Format** : `.editorconfig` à la racine (UTF-8, LF, 2 espaces ; 4 pour Rust et Python ; tabulations pour les Makefile).
   Le formateur de Biome n'est pas imposé : le code existant est mis en forme à la main, en lignes denses, et le formater réécrirait
   des dizaines de milliers de lignes. Pour l'imposer à un dossier, l'activer dans `overrides` de `biome.json`.
@@ -42,4 +48,4 @@ Mêmes commandes en local et en CI (workflow `lint`, déclenché par chemin) : `
 - **Python (décision)** : les scripts Python existants (tests de bout en bout de `security`, `seed.py` et `smoke.py` de `permission`)
   sont gardés : stdlib seulement, aucune dépendance, ils marchent. Le code commun (HTTP sans redirection, appels JSON, vérifications)
   est dans `scripts/python/devcommun.py`, importé par le `devlib.py` de chaque projet. Ils sont vérifiés par `ruff` (config `ruff.toml`,
-  version épinglée dans `.github/workflows/lint.yml`). Un script réécrit passe en `.mjs` ou en test Rust du projet.
+  version épinglée dans `.github/workflows/ci.yml`). Un script réécrit passe en `.mjs` ou en test Rust du projet.

@@ -2,14 +2,23 @@
 set -euo pipefail
 
 sortie="${GITHUB_OUTPUT:-/dev/stdout}"
-
-if [ "${GITHUB_EVENT_NAME:-}" != pull_request ]; then
-  echo "Évènement ${GITHUB_EVENT_NAME:-local} : tout est lancé"
-  echo "modifie=true" >> "$sortie"
-  exit 0
+nom=modifie
+if [ "${1:-}" = --nom ]; then
+  [ $# -ge 2 ] || { echo "usage : $0 [--nom <sortie>] <chemin>..." >&2; exit 2; }
+  nom="$2"
+  shift 2
 fi
 
-[ $# -gt 0 ] || { echo "usage : $0 <chemin>... (préfixe ! pour exclure)" >&2; exit 2; }
+case "${GITHUB_EVENT_NAME:-}:${GITHUB_REF:-}" in
+  pull_request:*|push:refs/heads/*) ;;
+  *)
+    echo "$nom : évènement ${GITHUB_EVENT_NAME:-local} ${GITHUB_REF:-}, tout est lancé"
+    echo "$nom=true" >> "$sortie"
+    exit 0
+    ;;
+esac
+
+[ $# -gt 0 ] || { echo "usage : $0 [--nom <sortie>] <chemin>... (préfixe ! pour exclure)" >&2; exit 2; }
 
 specs=()
 for chemin in "$@"; do
@@ -21,11 +30,11 @@ done
 
 fichiers="$(git diff --name-only HEAD^1 HEAD -- "${specs[@]}")"
 if [ -n "$fichiers" ]; then
-  echo "Fichiers concernés :"
+  echo "$nom : fichiers concernés"
   mapfile -t lignes <<<"$fichiers"
   printf '  %s\n' "${lignes[@]}"
-  echo "modifie=true" >> "$sortie"
+  echo "$nom=true" >> "$sortie"
 else
-  echo "Aucun fichier concerné : jobs ignorés"
-  echo "modifie=false" >> "$sortie"
+  echo "$nom : aucun fichier concerné"
+  echo "$nom=false" >> "$sortie"
 fi

@@ -38,7 +38,7 @@ Le kit est copié dans `frontend/src/vendor/plbls-ui/` (fichiers commités, gén
 
 ## Production (Dokploy)
 
-Le dépôt n'est **jamais cloné** en production : la CI (`.github/workflows/permission-ci.yml`) teste, puis construit l'image `ghcr.io/plblsfr/permission` : `edge` à chaque push sur `main`, `X.Y.Z`, `latest` et le SHA du commit sur un tag `permission-vX.Y.Z`. Dokploy tire cette image ; elle contient le backend, la config par défaut et le front compilé.
+Le dépôt n'est **jamais cloné** en production : la CI teste en PR (`.github/workflows/ci.yml`), puis `.github/workflows/livraison.yml` construit l'image `ghcr.io/plblsfr/permission` : `edge` à chaque push sur `main`, `X.Y.Z`, `latest` et le SHA du commit sur un tag `permission-vX.Y.Z`. Dokploy tire cette image ; elle contient le backend, la config par défaut et le front compilé.
 
 **Réglages du dépôt GitHub** : aucun secret n'est obligatoire (la CI utilise `GITHUB_TOKEN`). Le secret `DOKPLOY_WEBHOOK_URL` est optionnel : URL de déploiement de l'application Dokploy, appelée après la publication d'un tag.
 

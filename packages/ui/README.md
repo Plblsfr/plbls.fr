@@ -104,7 +104,7 @@ Lancer `npm run build` avant `npm run serve` ou d'ouvrir `docs/index.html` en lo
 
 ## Publier une release
 
-Le workflow `.github/workflows/ui-ci.yml` (image) et `.github/workflows/ui-release.yml` (archives)
+Les jobs `image-ui` (image) et `ui-dist` (archives) de `.github/workflows/livraison.yml`
 s'exécutent au push d'un tag `ui-vX.Y.Z` : ils vérifient que le tag égale la version de `package.json`,
 construisent `dist/`, publient l'image `ghcr.io/plblsfr/plbls-ui` (`X.Y.Z` et `latest`) et créent la release GitHub
 (nom = tag, notes = section correspondante du `CHANGELOG.md`).
@@ -124,7 +124,7 @@ et chaque fichier de `dist/` seul (`plbls-ui.css`, `plbls-ui.min.css`,
 Estompe, permission, pli et le thème Keycloak ne téléchargent rien : `npm run ui:sync` (racine du dépôt, script
 `scripts/sync-ui.mjs`) construit ce paquet et copie dans chacun le même dossier `plbls-ui/` (`plbls-ui.esm.min.js`,
 `plbls-ui.esm.min.d.ts`, `plbls-ui.min.css`, `tokens.min.css`, `VERSION`, `README.md`). Les fichiers sont commités
-(hors ligne, CSP sans CDN) ; `npm run ui:check` (workflow `workspace-ci`) échoue si une copie diffère de ce paquet.
+(hors ligne, CSP sans CDN) ; `npm run ui:check` (job `front` du workflow `ci`) échoue si une copie diffère de ce paquet.
 Après un changement ici : `npm run ui:sync` à la racine et commiter les copies avec le changement.
 
 ## Consommer une release dans un projet externe
@@ -167,7 +167,7 @@ Le dépôt publie aussi une image nginx qui sert `dist/` :
 En production, préférer une version exacte ou la majeure (`/ui/2/`) à `latest`. CORS est ouvert (`*`).
 
 **Publier** : changer la version dans `package.json` (et `CHANGELOG.md`), fusionner dans `main`, puis pousser un tag
-`ui-vX.Y.Z`. La CI (`.github/workflows/ui-ci.yml`) construit et publie `ghcr.io/plblsfr/plbls-ui` (`X.Y.Z`, `latest`
+`ui-vX.Y.Z`. La CI (`.github/workflows/livraison.yml`) construit et publie `ghcr.io/plblsfr/plbls-ui` (`X.Y.Z`, `latest`
 et le SHA ; un push sur `main` ne publie que `edge`). Au
 démarrage, l'image copie `dist/` dans le volume `/srv` : une version déjà publiée n'est **jamais écrasée**
 (un avertissement s'affiche dans les logs si son contenu diffère), seuls `latest` et la majeure bougent.

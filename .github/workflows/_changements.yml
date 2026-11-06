@@ -1,0 +1,101 @@
+# Ce qu'un évènement touche, pour ci.yml (PR) et livraison.yml (main) : une sortie booléenne par groupe de chemins.
+# PR et push sur une branche : diff du commit de fusion avec son premier parent ; tag et lancement manuel : tout à true.
+# En PR, modifier la CI elle-même (ci.yml, ce fichier, scripts/ci-changements.sh) relance tout.
+name: _changements
+on:
+  workflow_call:
+    outputs:
+      rust: { value: "${{ jobs.changements.outputs.rust }}" }
+      estompe: { value: "${{ jobs.changements.outputs.estompe }}" }
+      estompe_api: { value: "${{ jobs.changements.outputs.estompe_api }}" }
+      estompe_tauri: { value: "${{ jobs.changements.outputs.estompe_tauri }}" }
+      estompe_version: { value: "${{ jobs.changements.outputs.estompe_version }}" }
+      estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
+      pli_server: { value: "${{ jobs.changements.outputs.pli_server }}" }
+      lint: { value: "${{ jobs.changements.outputs.lint }}" }
+      front: { value: "${{ jobs.changements.outputs.front }}" }
+      espaces: { value: "${{ jobs.changements.outputs.espaces }}" }
+      npm_lock: { value: "${{ jobs.changements.outputs.npm_lock }}" }
+      image_pli: { value: "${{ jobs.changements.outputs.image_pli }}" }
+      image_permission: { value: "${{ jobs.changements.outputs.image_permission }}" }
+      image_security: { value: "${{ jobs.changements.outputs.image_security }}" }
+      image_ui: { value: "${{ jobs.changements.outputs.image_ui }}" }
+
+permissions:
+  contents: read
+
+jobs:
+  changements:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.c.outputs.rust }}
+      estompe: ${{ steps.c.outputs.estompe }}
+      estompe_api: ${{ steps.c.outputs.estompe_api }}
+      estompe_tauri: ${{ steps.c.outputs.estompe_tauri }}
+      estompe_version: ${{ steps.c.outputs.estompe_version }}
+      estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
+      pli_server: ${{ steps.c.outputs.pli_server }}
+      lint: ${{ steps.c.outputs.lint }}
+      front: ${{ steps.e.outputs.front }}
+      espaces: ${{ steps.e.outputs.espaces }}
+      npm_lock: ${{ steps.c.outputs.npm_lock }}
+      image_pli: ${{ steps.c.outputs.image_pli }}
+      image_permission: ${{ steps.c.outputs.image_permission }}
+      image_security: ${{ steps.c.outputs.image_security }}
+      image_ui: ${{ steps.c.outputs.image_ui }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - id: c
+        run: |
+          ci=()
+          image=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            ci=(.github/workflows/ci.yml .github/workflows/_changements.yml scripts/ci-changements.sh)
+            image=(.github/workflows/_image.yml)
+          fi
+          cargo=(Cargo.toml Cargo.lock rust-toolchain.toml deny.toml)
+          npm=(package.json package-lock.json .nvmrc)
+          c() { local nom="$1"; shift; scripts/ci-changements.sh --nom "$nom" "$@" "${ci[@]}"; }
+
+          c rust "${cargo[@]}" '**/Dockerfile' 'apps/security/**' 'apps/permission/backend/**' 'apps/pli/server/**' 'apps/estompe/backend/**' '!**/*.md'
+          c estompe 'apps/estompe/**'
+          c estompe_api 'apps/estompe/backend/**' '!**/*.md' apps/estompe/deploy/.env.example apps/estompe/docs/openapi.yaml \
+            apps/estompe/scripts/paquets-cargo.sh "${cargo[@]}" .dockerignore
+          c estompe_tauri 'apps/estompe/windows/**' 'apps/estompe/android/**' 'apps/estompe/crates/**' '!**/*.md'
+          c estompe_version 'apps/estompe/**' '!apps/estompe/docs/**' '!**/*.md'
+          c estompe_ci_image 'apps/estompe/deploy/ci/**'
+          c pli_server 'apps/pli/server/**' '!**/*.md' "${cargo[@]}"
+          c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' \
+            .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
+          c npm "${npm[@]}" 'scripts/**' biome.json tsconfig.base.json
+          c npm_lock package-lock.json .nvmrc
+          c front_ui 'packages/ui/**' '!**/*.md'
+          c front_estompe 'apps/estompe/frontend/**' '!**/*.md'
+          c front_permission 'apps/permission/frontend/**' '!**/*.md'
+          c front_pli 'apps/pli/**' '!apps/pli/server/**' '!**/*.md'
+          c image_pli "${npm[@]}" "${cargo[@]}" 'apps/pli/**' '!**/*.md' "${image[@]}"
+          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'apps/permission/**' '!**/*.md' "${image[@]}"
+          c image_security "${cargo[@]}" .dockerignore 'apps/security/**' '!**/*.md' "${image[@]}"
+          c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
+      - id: e
+        name: Projets npm à vérifier (job front)
+        env:
+          NPM: ${{ steps.c.outputs.npm }}
+          LINT: ${{ steps.c.outputs.lint }}
+          UI: ${{ steps.c.outputs.front_ui }}
+          ESTOMPE: ${{ steps.c.outputs.front_estompe }}
+          PERMISSION: ${{ steps.c.outputs.front_permission }}
+          PLI: ${{ steps.c.outputs.front_pli }}
+        run: |
+          espaces=()
+          e() { if [ "$NPM" = true ] || [ "$1" = true ]; then espaces+=("$2"); fi; }
+          e "$UI" packages/ui
+          e "$ESTOMPE" apps/estompe/frontend
+          e "$PERMISSION" apps/permission/frontend
+          e "$PLI" apps/pli
+          front=false
+          if [ "${#espaces[@]}" -gt 0 ] || [ "$LINT" = true ]; then front=true; fi
+          echo "front=$front espaces=${espaces[*]}"
+          { echo "front=$front"; echo "espaces=${espaces[*]}"; } >> "$GITHUB_OUTPUT"

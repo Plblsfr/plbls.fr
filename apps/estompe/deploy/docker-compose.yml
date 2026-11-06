@@ -1,5 +1,5 @@
 # Stack pour Dokploy (type « Compose »). Rien n'est lu dans le dépôt : l'API vient de l'image construite par la CI
-# (.github/workflows/estompe-image.yml, image Rust), LiveKit est configuré par variables, et les variables se saisissent dans Dokploy.
+# (job estompe-api-image de .github/workflows/livraison.yml, image Rust), LiveKit est configuré par variables, et les variables se saisissent dans Dokploy.
 #
 # Domaines (onglet Domains de Dokploy) :
 #   - service estompe-web, port 80 : l'application (ex. estompe.plbls.fr) ; c'est l'origine à mettre dans ALLOWED_ORIGINS ;
