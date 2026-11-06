@@ -12,7 +12,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Tags de livraison : `<composant>-vX.Y.Z` (`pli`, `security`, `permission`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
 
 ## CI
-- Un seul workflow de PR, `ci.yml`, sans filtre `paths` (CodeQL à part : `codeql.yml`, configuration avancée, default setup désactivé) : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
+- Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
   `scripts/ci-changements.sh`), puis des jobs conditionnés à ces sorties (`front` générique pour les projets npm, `rust-lint` une fois pour tout
   le workspace, `rust-test`, `estompe-tauri`, images), et le job final `ci`, contrôle obligatoire. Nouveau projet : un groupe de chemins dans
   `_changements.yml`, un job (ou un espace npm pour `front`) dans `ci.yml`, ajouté aux `needs` de `ci` ; le ruleset ne change pas.

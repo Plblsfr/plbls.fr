@@ -9,7 +9,6 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 | `pr-conventions.yml` | toute PR, et à chaque modification de sa description | nom de branche et description (`scripts/ci-conventions-pr.mjs`) |
 | `livraison.yml` | push sur `main`, tags `pli-v*`, `permission-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
 | `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
-| `codeql.yml` | toute PR, push sur `main`, chaque lundi | analyse CodeQL (actions, JS/TS, Python, Rust) en configuration avancée, hors `apps/estompe/vendor` |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
 | `_changements.yml`, `_image.yml` | appelés par les autres | ce qu'un évènement touche ; build, publication et release d'une image |
 

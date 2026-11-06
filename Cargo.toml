@@ -9,7 +9,7 @@ members = [
   "api/estompe/block",
   "api/estompe/blocks/*",
 ]
-exclude = ["apps/estompe/crates", "apps/estompe/windows", "apps/estompe/android", "apps/estompe/vendor"]
+exclude = ["apps/estompe/crates", "apps/estompe/windows", "apps/estompe/android"]
 
 [workspace.package]
 edition = "2024"

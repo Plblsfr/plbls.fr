@@ -53,7 +53,7 @@ jobs:
           path: |
             web/estompe/plateforme/dist-updates
             web/estompe/dist
-          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('api/estompe/core/updates.json', 'web/estompe/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'apps/estompe/vendor/**', 'web/estompe/public/**', 'web/estompe/index.html', 'package-lock.json', 'web/estompe/vite.config.ts', 'scripts/estompe/**') }}
+          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('api/estompe/core/updates.json', 'web/estompe/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'web/estompe/public/**', 'web/estompe/index.html', 'package-lock.json', 'web/estompe/vite.config.ts', 'scripts/estompe/**') }}
       - id: cargo-cache
         if: steps.installer.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
