@@ -69,7 +69,7 @@ par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version
 
 Détails :
 - Éléments concernés = dossiers modifiés par la fusion : `api/estompe/` → api ; `web/estompe/plateforme/` → web ; `apps/estompe/windows/` → windows ;
-  `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android.
+  `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` et `apps/estompe/vendor/` → windows et android.
   Une fusion qui ne touche que `docs/`, `scripts/`, la CI… ne change rien.
 - La CI calcule `.version` et ouvre une PR `ci/version-<sha>` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Fusionner cette PR (« merge »)
   avant de poser un tag de livraison. Ne pas modifier `.version` dans une autre PR, sauf pour une version majeure.
@@ -113,7 +113,9 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 
 - Rust : les crates de `api/estompe` sont membres du workspace Cargo racine du monorepo (`Cargo.toml`, un seul `Cargo.lock`, `deny.toml` et
   lints clippy communs avec `api/security`, `api/permission` et `api/pli`). La toolchain (1.99.0) est épinglée par `rust-toolchain.toml`,
-  lu depuis tout le dépôt sauf `apps/estompe/{windows,android,crates}` (apps Tauri, hors workspace, sur la stable). `scripts/estompe/paquets-cargo.sh` donne les `-p` des crates d'Estompe.
+  lu depuis tout le dépôt sauf `apps/estompe/{windows,android,crates,vendor}` (apps Tauri, hors workspace, sur la stable).
+  `apps/estompe/vendor/glib` : copie de `glib` 0.18.5 corrigée (GHSA-wrw7-89jp-8q8g, `&mut p` dans `VariantStrIter::impl_get`), branchée par le
+  `[patch.crates-io]` des apps windows et android, car Tauri impose encore `gtk` 0.18. À retirer quand Tauri passera à `glib` 0.20 ou plus. `scripts/estompe/paquets-cargo.sh` donne les `-p` des crates d'Estompe.
   `cargo-deny` s'installe avec `cargo install cargo-deny --locked`.
 - Plus de Docker en local. Les tests Rust utilisent le PostgreSQL de `TEST_DATABASE_URL` (compte superutilisateur, une base créée puis
   supprimée par test) : ils valident les migrations et les requêtes. Sans cette variable, ils essaient un conteneur (testcontainers, en CI)

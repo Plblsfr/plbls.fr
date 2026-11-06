@@ -9,7 +9,7 @@ Monorepo :
 | `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
 | `deploy/` | déploiement et dev local, un dossier par projet : compose, `.env.example`, `dev.env`, realm Keycloak de dev |
 | `scripts/` | outillage commun à la racine, scripts d'un projet dans `scripts/<projet>/` |
-| `packages/` | bibliothèques partagées (`ui`) |
+| `packages/` | bibliothèques partagées (`ui`, `deepmerge`) |
 
 Les fichiers transverses d'Estompe sont à la racine : `.version`, `CHANGELOG.md`, `changelog.d/`, `agents/skills/` (lus via `.claude/skills`).
 La CI est dans `.github/workflows/`.
@@ -18,7 +18,7 @@ Plan de regroupement des fronts en une seule application : [docs/front-unique.md
 
 ## npm
 
-Un seul workspace npm à la racine (`packages/ui`, `web/estompe`, `web/permission`, `web/pli`), un seul `package-lock.json`
+Un seul workspace npm à la racine (`packages/ui`, `packages/deepmerge`, `web/estompe`, `web/permission`, `web/pli`), un seul `package-lock.json`
 et une seule version de Node, celle de `.nvmrc` (reprise par les `engines`, la CI et les images Docker ; `node scripts/check-node.mjs` le vérifie).
 
 ```sh
@@ -34,6 +34,10 @@ npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui da
 Les copies de `@plbls/ui` (`*/vendor/plbls-ui/`) sont générées par `scripts/sync-ui.mjs` : ne pas les modifier à la main,
 le job `front` du workflow `ci` échoue si l'une d'elles diffère de `packages/ui`. Les images de pli, permission et du CDN se construisent
 depuis la racine du dépôt (`docker build -f api/pli/Dockerfile .`).
+
+`packages/deepmerge` est une copie de `deepmerge` 4.3.1 corrigée contre la pollution du prototype (GHSA-gcqx-w48m-w2h4, aucune version
+corrigée publiée) : comme elle porte le nom `deepmerge` en version 4.3.2, npm la lie à la place du paquet du registre pour
+`@sveltejs/vite-plugin-svelte` et `@rollup/plugin-node-resolve`. Les Dockerfiles qui font `npm ci` la copient avec les autres espaces.
 
 ## Dépôt GitHub
 

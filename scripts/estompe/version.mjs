@@ -10,6 +10,7 @@ const ELEMENTS = [
   ['web/estompe/plateforme/', ['web']],
   ['web/estompe/', ['web', 'windows', 'android']],
   ['apps/estompe/crates/', ['windows', 'android']],
+  ['apps/estompe/vendor/', ['windows', 'android']],
   ['apps/estompe/windows/', ['windows']],
   ['apps/estompe/android/', ['android']],
 ]
