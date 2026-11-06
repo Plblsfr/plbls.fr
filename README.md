@@ -1,6 +1,7 @@
 # plbls.fr
 Monorepo : `apps/` (produits), `packages/` (bibliothèques partagées), `.github/workflows/` (CI).
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans un dépôt privé.
+Plan de regroupement des fronts en une seule application : [docs/front-unique.md](docs/front-unique.md).
 
 ## npm
 

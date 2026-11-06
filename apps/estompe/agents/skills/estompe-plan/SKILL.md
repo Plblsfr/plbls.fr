@@ -1,9 +1,9 @@
 ---
 name: estompe-plan
-description: Conçoit le plan d'implémentation d'un ticket CairnEstompe à partir de son brief, puis écrit .ai/EST-xxx/plan.md. À utiliser avec /estompe-plan EST-xxx.
-argument-hint: EST-<numéro>
+description: Conçoit le plan d'implémentation d'un ticket Estompe (issue GitHub) à partir de son brief, puis écrit .ai/GH-<n>/plan.md. À utiliser avec /estompe-plan <n>.
+argument-hint: <numéro de l'issue>
 disable-model-invocation: true
-allowed-tools: Bash(git *), Read, Write, Edit, Glob, Grep, mcp__EstompeCairnMcp__get_ticket, mcp__claude_ai_EstompeCairnMcp__get_ticket, mcp__EstompeCairnMcp__get_page, mcp__claude_ai_EstompeCairnMcp__get_page, mcp__EstompeCairnMcp__search, mcp__claude_ai_EstompeCairnMcp__search
+allowed-tools: Bash(git *), Bash(gh issue view *), mcp__github__issue_read, Read, Write, Edit, Glob, Grep
 ---
 
 # Plan du ticket $ARGUMENTS
@@ -11,14 +11,14 @@ allowed-tools: Bash(git *), Read, Write, Edit, Glob, Grep, mcp__EstompeCairnMcp_
 Rôle : décider comment faire, sans écrire de code ni créer de branche.
 
 ## Conventions communes
-- `<CLÉ>` : `$ARGUMENTS` sous la forme `EST-123` (préfixer `EST-` si seul le numéro est donné).
-- Dossier de travail : `.ai/<CLÉ>/` à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`). Jamais commité.
-- Outils Cairn : `mcp__EstompeCairnMcp__*` ou `mcp__claude_ai_EstompeCairnMcp__*`.
+- `<n>` : numéro de l'issue GitHub de `Plblsfr/plbls.fr` donné par `$ARGUMENTS` (`12` ou `#12` : retirer le `#`). Le ticket se désigne par `#<n>`.
+- Dossier de travail : `.ai/GH-<n>/` à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`). Jamais commité.
+- Issue : `gh issue view <n> --repo Plblsfr/plbls.fr --comments` (ou l'outil MCP `issue_read`).
 
 ## 1. Prérequis
-- `.ai/<CLÉ>/brief.md` doit exister. Sinon, s'arrêter et renvoyer vers `/estompe-grill-me <CLÉ>`.
+- `.ai/GH-<n>/brief.md` doit exister. Sinon, s'arrêter et renvoyer vers `/estompe-grill-me <n>`.
 - Si sa section « Points ouverts » n'est pas vide, s'arrêter et lister ces points.
-- Relire le ticket (`get_ticket`) : si sa description a changé depuis le brief, le signaler et demander avec AskUserQuestion s'il faut refaire le brief.
+- Relire l'issue (`gh issue view`) : si sa description a changé depuis le brief, le signaler et demander avec AskUserQuestion s'il faut refaire le brief.
 - Si `plan.md` existe déjà, demander avec AskUserQuestion s'il faut le réviser ou repartir de zéro. Ne jamais effacer une section « Revue » existante.
 
 ## 2. Étude
@@ -27,10 +27,10 @@ Rôle : décider comment faire, sans écrire de code ni créer de branche.
 - Si une décision d'architecture n'est pas couverte par le brief, poser la question avec AskUserQuestion avant d'écrire le plan.
 
 ## 3. plan.md
-Écrire `.ai/<CLÉ>/plan.md` :
+Écrire `.ai/GH-<n>/plan.md` :
 
 ```markdown
-# Plan <CLÉ> — <titre du ticket>
+# Plan #<n> — <titre de l'issue>
 
 ## Branche
 <type>/<slug-court>
@@ -55,7 +55,7 @@ changelog.d/<slug-court>.md : <résumé de l'entrée>
 - Présenter le plan et demander avec AskUserQuestion s'il est validé ou à corriger.
 
 ## 4. Sortie
-Résumer : branche, nombre d'étapes, critères couverts. Prochaine étape : `/estompe-implement <CLÉ>`.
+Résumer : branche, nombre d'étapes, critères couverts. Prochaine étape : `/estompe-implement <n>`.
 
 ## Règles
 - Ne jamais écrire de code ni créer de branche.

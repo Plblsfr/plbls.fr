@@ -1,21 +1,21 @@
 ---
 name: estompe-implement
-description: Implémente un ticket CairnEstompe selon .ai/EST-xxx/plan.md dans un worktree dédié (première passe ou corrections de revue), lance les contrôles, prouve chaque critère dans verify.md, commit local sans push. À utiliser avec /estompe-implement EST-xxx.
-argument-hint: EST-<numéro>
+description: Implémente un ticket Estompe (issue GitHub) selon .ai/GH-<n>/plan.md dans un worktree dédié (première passe ou corrections de revue), lance les contrôles, prouve chaque critère dans verify.md, commit local sans push. À utiliser avec /estompe-implement <n>.
+argument-hint: <numéro de l'issue>
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(scripts/check.sh*), Bash(*/scripts/check.sh*), Bash(cargo *), Bash(test *), Bash(npx *), Bash(npm *), Bash(node *), Bash(mkdir *), Read, Write, Edit, Glob, Grep, mcp__EstompeCairnMcp__get_ticket, mcp__claude_ai_EstompeCairnMcp__get_ticket
+allowed-tools: Bash(git *), Bash(scripts/check.sh*), Bash(*/scripts/check.sh*), Bash(cargo *), Bash(test *), Bash(npx *), Bash(npm *), Bash(node *), Bash(mkdir *), Read, Write, Edit, Glob, Grep, Bash(gh issue view *), mcp__github__issue_read
 ---
 
 # Implémentation du ticket $ARGUMENTS
 
 ## Conventions communes
-- `<CLÉ>` : `$ARGUMENTS` sous la forme `EST-123` (préfixer `EST-` si seul le numéro est donné).
-- Dossier de travail : `.ai/<CLÉ>/` à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`). Jamais commité.
+- `<n>` : numéro de l'issue GitHub de `Plblsfr/plbls.fr` donné par `$ARGUMENTS` (`12` ou `#12` : retirer le `#`). Le ticket se désigne par `#<n>`.
+- Dossier de travail : `.ai/GH-<n>/` à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`). Jamais commité.
 - Worktree : `<racine>/.worktree/<slug-court>`, branche lue dans la section « Branche » de `plan.md`.
 - Jamais de `cd … &&` : `git -C <worktree>`, `npm --prefix <worktree>/frontend`, `<worktree>/scripts/check.sh`.
 
 ## 1. Mode
-- `.ai/<CLÉ>/plan.md` doit exister, sinon renvoyer vers `/estompe-plan <CLÉ>`.
+- `.ai/GH-<n>/plan.md` doit exister, sinon renvoyer vers `/estompe-plan <n>`.
 - **corrections** : la dernière section « Revue » de `plan.md` a des cases `[ ]` dans « Corrections à faire » ;
 - **première passe** : il reste des étapes `[ ]` ;
 - sinon, rien à faire : s'arrêter.
@@ -38,10 +38,10 @@ allowed-tools: Bash(git *), Bash(scripts/check.sh*), Bash(*/scripts/check.sh*), 
 - Lire la sortie : aucun test Rust « ignoré : Docker indisponible ».
 
 ## 5. Critères
-Écrire (ou mettre à jour en mode corrections) `.ai/<CLÉ>/verify.md` :
+Écrire (ou mettre à jour en mode corrections) `.ai/GH-<n>/verify.md` :
 
 ```markdown
-# Vérification <CLÉ>
+# Vérification #<n>
 Commit : <sha, rempli après le commit>
 | Critère | Statut | Preuve ou raison |
 |---|---|---|
@@ -54,11 +54,11 @@ Commit : <sha, rempli après le commit>
 
 ## 6. Commit
 - Pas de `changelog.d/` : rôle de `/estompe-pr`.
-- `git -C <worktree> add` des fichiers modifiés, commit `[<CLÉ>] <titre du ticket>` (première passe) ou `[<CLÉ>] Corrections de revue`, + ligne Co-Authored-By. Aucun push. Ne jamais commiter si `check.sh` échoue.
+- `git -C <worktree> add` des fichiers modifiés, commit `<type>(<portée>): <résumé>` (première passe, type de la branche, voir `AGENTS.md`) ou `<type>(<portée>): corrections de revue`. Aucun push. Ne jamais commiter si `check.sh` échoue.
 - Reporter le sha dans `verify.md`.
 
 ## 7. Sortie
-Résumer : worktree, branche, étapes ou corrections faites, résultat de `check.sh`, critères non vérifiés. Prochaine étape : `/estompe-code-review <CLÉ>` (première passe) ; après une revue 2, `/estompe-pr <CLÉ>`.
+Résumer : worktree, branche, étapes ou corrections faites, résultat de `check.sh`, critères non vérifiés. Prochaine étape : `/estompe-code-review <n>` (première passe) ; après une revue 2, `/estompe-pr <n>`.
 
 ## Règles
 - Ne jamais commiter sur `main` ni pousser.

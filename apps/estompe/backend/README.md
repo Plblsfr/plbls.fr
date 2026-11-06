@@ -15,7 +15,7 @@ licences, sources et avis de sécurité contrôlés par `../../../deny.toml` (ca
 - `core` (`estompe-core`) : cœur. Feature `testutil` : `testutil::postgres()` crée une base par test sur `TEST_DATABASE_URL` (supprimée à la fin, avec les bases rattachées par `BasePostgres::supprimer_aussi`), ou démarre un conteneur (testcontainers) sans cette variable ; sinon `None`.
 - `block` (`estompe-block`) : mécanisme de blocs.
 - `blocks/<nom>` (`estompe-block-<nom>`) : un crate par bloc optionnel, mêmes noms que `../frontend/src/blocks/registry.ts` : gifs, musique, vocal,
-  regarder-ensemble, draw2gether, transcription, videos, apercu-liens, notifications, emojis, avatars, badges, signalements, cairn, activite-statut.
+  regarder-ensemble, draw2gether, transcription, videos, apercu-liens, notifications, emojis, avatars, badges, signalements, activite-statut.
 
 Dépendances : `core` ne dépend d'aucun bloc ; un bloc dépend de `core`, de `block`, et d'un autre bloc seulement s'il le déclare dans `Needs`
 (`regarder-ensemble`, `draw2gether` et `transcription` dépendent de `vocal`) ; `estompe-api` assemble tout ; aucune dépendance circulaire.
@@ -151,7 +151,7 @@ Les cas de succès de chaque route (corps valides, données créées) restent da
 
 | Bloc | Dépend de |
 |---|---|
-| `gifs`, `musique`, `vocal`, `videos`, `apercu-liens`, `notifications`, `emojis`, `avatars`, `badges`, `signalements`, `cairn`, `activite-statut` | aucun |
+| `gifs`, `musique`, `vocal`, `videos`, `apercu-liens`, `notifications`, `emojis`, `avatars`, `badges`, `signalements`, `activite-statut` | aucun |
 | `regarder-ensemble`, `draw2gether`, `transcription` | `vocal` |
 
 La liste de référence est `block_list()` dans `estompe-api/src/main.rs` (le test `les_seize_blocs` la fige).

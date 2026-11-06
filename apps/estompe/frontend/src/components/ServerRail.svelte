@@ -1,6 +1,5 @@
 <script lang="ts">
   import { app } from '../lib/store.svelte'
-  import { cairn } from '../blocks/cairn/cairn.svelte'
   import { platform } from '../lib/platform'
   import { prefs } from '../lib/prefs.svelte'
   import { voice } from '../blocks/vocal/voice.svelte'
@@ -79,11 +78,6 @@
   <hr class="rail-sep" />
   <div class="rail-tools">
     <button class="rail-item" onclick={openSearch} title="Rechercher (Ctrl+K)" aria-label="Recherche globale"><Icon name="search" size={22} /></button>
-    {#if cairn.visible}
-      <a class="rail-item" class:active={route.name === 'cairn'} href={hrefs.cairn()} title="Tickets et documentation (Cairn)" aria-label="Cairn : tickets et documentation" aria-current={route.name === 'cairn' ? 'page' : undefined}>
-        <span class="rail-pill"></span><Icon name="file" size={22} />
-      </a>
-    {/if}
     {#if app.movies}
       <a class="rail-item" class:active={route.name === 'films'} href={hrefs.films()} title="Films et séries" aria-label="Films et séries" aria-current={route.name === 'films' ? 'page' : undefined}>
         <span class="rail-pill"></span><Icon name="clap" size={22} />

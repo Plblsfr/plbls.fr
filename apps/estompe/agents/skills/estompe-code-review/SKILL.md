@@ -1,17 +1,18 @@
 ---
 name: estompe-code-review
-description: Revue d'un ticket CairnEstompe, au plus deux passes - revue 1 par trois relecteurs (qualité, sécurité, conformité) avec filtrage ; revue 2 ciblée sur les corrections. Rapport ajouté à .ai/EST-xxx/plan.md. À utiliser avec /estompe-code-review EST-xxx.
-argument-hint: EST-<numéro>
+description: Revue d'un ticket Estompe (issue GitHub), au plus deux passes - revue 1 par trois relecteurs (qualité, sécurité, conformité) avec filtrage ; revue 2 ciblée sur les corrections. Rapport ajouté à .ai/GH-<n>/plan.md. À utiliser avec /estompe-code-review <n>.
+argument-hint: <numéro de l'issue>
 disable-model-invocation: true
-allowed-tools: Agent, Bash(git *), Read, Edit, Glob, Grep, mcp__EstompeCairnMcp__get_ticket, mcp__claude_ai_EstompeCairnMcp__get_ticket, mcp__EstompeCairnMcp__get_page, mcp__claude_ai_EstompeCairnMcp__get_page
+allowed-tools: Agent, Bash(git *), Bash(gh issue view *), mcp__github__issue_read, Read, Edit, Glob, Grep
 ---
 
 # Revue du ticket $ARGUMENTS
 
-Rôle : orchestrer les relecteurs et consolider. Aucune correction. **Au plus deux revues par ticket** : ce qui est trouvé au-delà devient un ticket, pas un tour de plus.
+Rôle : orchestrer les relecteurs et consolider. Aucune correction. **Au plus deux revues par ticket** : ce qui est trouvé au-delà devient une issue, pas un tour de plus.
 
 ## Conventions communes
-- `<CLÉ>` : `$ARGUMENTS` sous la forme `EST-123`. Dossier `.ai/<CLÉ>/` à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`). Worktree `<racine>/.worktree/<slug-court>` (branche de `plan.md`).
+- `<n>` : numéro de l'issue GitHub de `Plblsfr/plbls.fr` donné par `$ARGUMENTS` (`12` ou `#12` : retirer le `#`). Le ticket se désigne par `#<n>`.
+- Dossier `.ai/GH-<n>/` à la racine du dépôt principal (parent de `git rev-parse --path-format=absolute --git-common-dir`). Worktree `<racine>/.worktree/<slug-court>` (branche de `plan.md`).
 
 ## 1. Prérequis et mode
 - `brief.md`, `plan.md`, `verify.md` et le worktree existent, arbre propre, au moins un commit au-dessus de `origin/main`. `verify.md` absent : s'arrêter, renvoyer vers `/estompe-implement`.
@@ -32,7 +33,7 @@ Consignes communes :
 Revue 1 :
 - **Qualité** : erreurs et cas limites non gérés, duplication d'un helper existant, cohérence avec `AGENTS.md`, tests absents pour une logique non triviale ou placés dans un nouveau fichier alors qu'un existe, commentaires ajoutés (interdits).
 - **Sécurité** : contrôle d'accès côté serveur, validation des entrées, injections et XSS, fuites de secrets ou de données, migrations et anciens clients, dépendances ajoutées, déni de service évident.
-- **Conformité** : lire le ticket (`get_ticket`, pages liées, commentaires), `brief.md`, `plan.md`, `verify.md`. Chaque critère `C*` est-il tenu, le hors périmètre respecté, les étapes réellement faites ? Une preuve de `verify.md` qui ne tient pas est un bloquant.
+- **Conformité** : lire l'issue (`gh issue view <n> --repo Plblsfr/plbls.fr --comments`), `brief.md`, `plan.md`, `verify.md`. Chaque critère `C*` est-il tenu, le hors périmètre respecté, les étapes réellement faites ? Une preuve de `verify.md` qui ne tient pas est un bloquant.
 
 Revue 2 : un seul relecteur, qui ne reçoit que le diff des corrections et la liste des corrections de la revue 1. Il vérifie que chacune est résolue et que les corrections n'ont rien cassé. **Il ne cherche pas de nouveaux défauts** dans le reste du code.
 
@@ -42,7 +43,7 @@ Revue 2 : un seul relecteur, qui ne reçoit que le diff des corrections et la li
 - Le reste (mineurs, « à améliorer ») ne bloque pas et n'est pas à corriger : le lister dans « Non bloquant » pour la PR.
 
 ## 4. Rapport
-Ajouter à la fin de `.ai/<CLÉ>/plan.md`, sans toucher au reste :
+Ajouter à la fin de `.ai/GH-<n>/plan.md`, sans toucher au reste :
 
 ```markdown
 ## Revue N — AAAA-MM-JJ (commit <sha court>)
@@ -58,10 +59,10 @@ Ajouter à la fin de `.ai/<CLÉ>/plan.md`, sans toucher au reste :
 ```
 
 - Verdict « prêt pour la PR » s'il ne reste aucun bloquant ni important. Les mineurs ne sont jamais des corrections.
-- Revue 2 avec un bloquant encore ouvert : verdict « à corriger » ; l'utilisateur décide (corriger à la main, ou accepter et ouvrir un ticket).
+- Revue 2 avec un bloquant encore ouvert : verdict « à corriger » ; l'utilisateur décide (corriger à la main, ou accepter et ouvrir une issue).
 
 ## 5. Sortie
-Remarques par gravité, verdict. « À corriger » après la revue 1 : `/estompe-implement <CLÉ>` puis `/estompe-code-review <CLÉ>` (revue 2). « Prêt » : `/estompe-pr <CLÉ>`.
+Remarques par gravité, verdict. « À corriger » après la revue 1 : `/estompe-implement <n>` puis `/estompe-code-review <n>` (revue 2). « Prêt » : `/estompe-pr <n>`.
 
 ## Règles
 - Ne jamais modifier le code, commiter ni pousser. Ne jamais effacer une revue précédente.
