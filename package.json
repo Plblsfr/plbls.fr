@@ -12,11 +12,14 @@
     "apps/pli"
   ],
   "scripts": {
-    "lint": "npm run lint --workspaces",
+    "lint": "biome ci .",
     "check": "node scripts/check-node.mjs && node scripts/sync-ui.mjs --check && npm run check --workspaces",
     "test": "node --test \"scripts/*.test.mjs\" && npm run test --workspaces",
     "build": "npm run build --workspaces",
     "ui:sync": "node scripts/sync-ui.mjs",
     "ui:check": "node scripts/sync-ui.mjs --check"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.2"
   }
 }

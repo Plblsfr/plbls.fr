@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Régressions de sécurité de l'audit : traversée de chemin, login CSRF, logout par simple lien."""
-import http.client, re, urllib.parse
+import http.client
+import re
+import urllib.parse
 
 from devlib import GW, Checks, login, req
 

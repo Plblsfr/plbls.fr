@@ -17,10 +17,10 @@ test: ## tests unitaires Rust
 	cd backend && cargo test
 smoke: ## test de bout en bout (nécessite dev-up + dev-run)
 	$(ENV) && python3 scripts/smoke.py
-e2e: ## test du front dans Chromium headless (Docker) : démarre et arrête tout lui-même
-	scripts/e2e.sh
-e2e-gateway: ## idem avec le vrai auth-gateway + Keycloak de ../security.plbls.fr (connexion admin et demo)
-	scripts/e2e-gateway.sh
+e2e: ## e2e Playwright du front (frontend/e2e) : démarre et arrête tout lui-même
+	cd frontend && npm run e2e
+e2e-gateway: ## idem avec le vrai auth-gateway + Keycloak de ../security (connexion admin et demo)
+	cd frontend && E2E_GATEWAY=1 npm run e2e
 front-dev: ## Vite sur :3000 dans Docker (pas besoin de Node), proxy signé vers le backend :8090
 	docker run --rm -it --network host -u $$(id -u):$$(id -g) -e HOME=/tmp -e npm_config_cache=/tmp/npm -v $(abspath $(CURDIR)/../..):/repo -w /repo node:26-slim \
 	  sh -c "npm ci --no-audit --no-fund && npm run dev --workspace apps/permission/frontend -- --host 127.0.0.1"

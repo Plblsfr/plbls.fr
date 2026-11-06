@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { codecOfMoov, mp4Codec } from './video'
 
 const box = (type: string, ...parts: Uint8Array[]) => {
-  const body = parts.reduce((a, p) => [...a, ...p], [] as number[])
+  const body = parts.flatMap((p) => [...p])
   const out = new Uint8Array(8 + body.length)
   new DataView(out.buffer).setUint32(0, out.length)
   out.set([...type].map((c) => c.charCodeAt(0)), 4)

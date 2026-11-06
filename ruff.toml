@@ -1,0 +1,12 @@
+target-version = "py311"
+line-length = 160
+
+[lint]
+select = ["E", "F", "W", "I", "EXE"]
+ignore = ["E501", "E701", "E702", "E731"]
+
+[lint.per-file-ignores]
+"**/devlib.py" = ["E402"]
+
+[lint.isort]
+known-first-party = ["devcommun", "devlib"]

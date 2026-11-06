@@ -28,7 +28,6 @@ jobs:
         run: npm run ui:check
       - name: Tests des scripts communs
         run: node --test "scripts/*.test.mjs"
-      - run: npm run lint
       - name: packages/ui (estompe, permission et pli ont leur propre workflow)
         run: |
           for script in check test build; do

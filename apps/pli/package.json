@@ -6,9 +6,13 @@
     "node": "^26"
   },
   "scripts": {
-    "lint": "echo \"lint : aucun linter configuré pour l’instant (serveur Rust : cargo clippy -p pli)\"",
-    "check": "for f in public/*.js; do node --check \"$f\" || exit 1; done",
-    "test": "node --test \"public/*.test.js\"",
+    "lint": "biome ci .",
+    "check": "tsc -p tsconfig.json",
+    "test": "vitest run --dir public",
     "build": "echo \"build : rien à construire (public/ est servi tel quel ; serveur : cargo build -p pli)\""
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
   }
 }

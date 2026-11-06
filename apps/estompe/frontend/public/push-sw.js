@@ -1,6 +1,6 @@
 // Notifications push : importé par le service worker généré (voir vite.config.ts).
 importScripts('/config.js')
-const API = (self.__ESTOMPE__ && self.__ESTOMPE__.apiUrl) || ''
+const API = self.__ESTOMPE__?.apiUrl || ''
 
 self.addEventListener('push', (event) => {
   let d = {}
