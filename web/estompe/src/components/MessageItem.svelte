@@ -185,7 +185,9 @@
 
   // Barre d'actions au-dessus du message ; dessous s'il n'y a pas la place dans le fil (premier message visible).
   let below = $state(false)
+  let actif = $state(false)
   function placeTools(e: MouseEvent) {
+    actif = true
     const el = e.currentTarget as HTMLElement
     below = el.getBoundingClientRect().top - (el.closest('.messages')?.getBoundingClientRect().top ?? 0) < 36
   }
@@ -202,12 +204,12 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<article class="msg" class:cont class:head={!cont} class:first={!cont} class:mine class:system={m.system} class:ment={mentioned} class:v-anim-monte={fresh} class:editing data-id={m.id} tabindex="-1" use:ctx={menu} onmouseenter={placeTools}>
+<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+<article class="msg" class:cont class:head={!cont} class:first={!cont} class:mine class:system={m.system} class:ment={mentioned} class:v-anim-monte={fresh} class:editing data-id={m.id} tabindex="0" use:ctx={menu} onmouseenter={placeTools} onfocusin={() => (actif = true)} onpointerdown={() => (actif = true)}>
   <div class="msg-gutter">
     {#if !cont && !m.system}<button class="profile-link msg-av" onclick={() => openProfile(m.author.id, serverId)} aria-label="Profil de {m.author.pseudo}"><Avatar pseudo={m.author.pseudo} userId={m.author.id} {serverId} /></button>{/if}
     {#if m.pinned_at && (cont || m.system)}<span class="pinned" role="img" aria-label="Message épinglé" title="Message épinglé"><Icon name="epingle" size={13} /></span>{/if}
-    <time class="msg-t" datetime={m.created_at} title={fullDate}>{timeOf(m.created_at)}</time>
+    {#if cont || m.system}<time class="msg-t" datetime={m.created_at} title={fullDate}>{timeOf(m.created_at)}</time>{/if}
   </div>
   <div class="msg-col">
     {#if m.reply_to}
@@ -296,7 +298,7 @@
     {/if}
   </div>
 
-  {#if !editing}
+  {#if !editing && actif}
     <div class="msg-tools" class:below role="toolbar" aria-label="Actions sur le message">
       {#if canReact}
         {#each QUICK_REACTIONS.slice(0, 3) as e}<button class="v-ib sm msg-tool" onclick={() => react(e)} aria-label="Réagir avec {e}" title="Réagir avec {e}">{e}</button>{/each}

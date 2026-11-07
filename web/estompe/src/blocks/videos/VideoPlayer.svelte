@@ -28,7 +28,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="vp" bind:this={box} role="group" aria-label="Lecteur vidéo" tabindex="-1" onkeydown={key}>
+<div class="vp-lecteur" bind:this={box} role="group" aria-label="Lecteur vidéo" tabindex="-1" onkeydown={key}>
   <!-- svelte-ignore a11y_media_has_caption -->
   <video bind:this={video} {src} {poster} {autoplay} preload="metadata" playsinline bind:paused bind:volume bind:muted bind:duration
     ontimeupdate={() => { if (!seeking) time = video.currentTime }} onclick={toggle} {onerror}></video>

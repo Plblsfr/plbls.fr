@@ -111,11 +111,11 @@ html[data-theater] .watch-voice .vctl { gap: 8px; }
 html[data-theater] .watch-voice .vbtn, html[data-theater] .watch-voice .vsplit { background: rgb(255 255 255 / 10%); color: #f1ece6; }
 html[data-theater] .watch-voice .vbtn.off, html[data-theater] .watch-voice .vsplit:has(.off) { background: #f1ece6; color: #0e0c0b; }
 
-.vp { position: relative; display: flex; flex-direction: column; width: 100%; overflow: hidden; border-radius: var(--r-l); background: #0e0c0b; color: #f1ece6; }
-.vp:fullscreen { border-radius: 0; justify-content: center; }
-.vp:focus-visible { outline: none; box-shadow: var(--anneau); }
-.vp video { display: block; width: 100%; max-height: 70vh; background: #0e0c0b; cursor: pointer; }
-.vp:fullscreen video { aspect-ratio: auto; max-height: none; flex: 1; min-height: 0; }
+.vp-lecteur { position: relative; display: flex; flex-direction: column; width: 100%; overflow: hidden; border-radius: var(--r-l); background: #0e0c0b; color: #f1ece6; }
+.vp-lecteur:fullscreen { border-radius: 0; justify-content: center; }
+.vp-lecteur:focus-visible { outline: none; box-shadow: var(--anneau); }
+.vp-lecteur video { display: block; width: 100%; max-height: 70vh; background: #0e0c0b; cursor: pointer; }
+.vp-lecteur:fullscreen video { aspect-ratio: auto; max-height: none; flex: 1; min-height: 0; }
 .vp-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #1b1816; }
 .vp-bar .v-ib { color: #f1ece6; }
 .vp-bar .v-ib:hover:not(:disabled) { background: rgb(255 255 255 / 12%); color: #f1ece6; }
@@ -124,7 +124,7 @@ html[data-theater] .watch-voice .vbtn.off, html[data-theater] .watch-voice .vspl
 .vp-time { flex: none; font-variant-numeric: tabular-nums; }
 .vp-seek { flex: 1; min-width: 40px; accent-color: var(--rose-fonce); }
 .vp-vol { width: 64px; flex: none; accent-color: var(--rose-fonce); }
-.lightbox .vp { width: min(92vw, 1100px); }
+.lightbox .vp-lecteur { width: min(92vw, 1100px); }
 @media (max-width: 480px) { .vp-vol { display: none; } }
 @media (pointer: coarse) { .vp-bar .v-ib { width: 44px; height: 44px; } }
 

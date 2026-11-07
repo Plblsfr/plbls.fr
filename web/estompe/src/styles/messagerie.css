@@ -313,7 +313,7 @@ a.lien-apercu:focus-visible, .lien-apercu a:focus-visible { outline: none; box-s
 .lightbox { position: fixed; inset: 0; z-index: var(--z-menu); display: grid; place-items: center; padding: 64px 16px 16px; background: rgb(14 12 11 / 94%); color: #f1ece6; cursor: zoom-out; animation: v-fondu var(--d) var(--sortie); }
 .lightbox img, .lightbox video { max-width: 92vw; max-height: calc(100dvh - 96px); border-radius: 12px; background: #000; box-shadow: 0 24px 60px rgb(0 0 0 / 50%); cursor: default; }
 .lightbox iframe { width: min(92vw, 160vh); aspect-ratio: 16 / 9; border: 0; border-radius: 12px; background: #000; cursor: default; }
-.lightbox .vp { width: min(92vw, 1100px); }
+.lightbox .vp-lecteur { width: min(92vw, 1100px); }
 .lightbox-bar { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 12px; padding: 14px 18px; cursor: default; }
 .lightbox-icon { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 8px; background: rgb(255 255 255 / 10%); }
 .lightbox-name { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
