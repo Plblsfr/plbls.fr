@@ -17,6 +17,8 @@ export default defineConfig(({ mode }) => ({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: mode === 'windows' || mode === 'android' ? false : 'auto',
+      selfDestroying: mode === 'windows' || mode === 'android',
       manifest: {
         name: 'Estompe',
         short_name: 'Estompe',
