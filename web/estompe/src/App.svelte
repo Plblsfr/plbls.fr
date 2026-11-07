@@ -25,7 +25,7 @@
   $effect(() => {
     const root = document.documentElement
     root.setAttribute('data-theme', prefs.theme)
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--creme').trim())
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(root).getPropertyValue('--papier').trim())
   })
   $effect(() => {
     const n = app.totalMentions

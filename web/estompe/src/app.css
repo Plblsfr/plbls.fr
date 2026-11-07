@@ -1,12 +1,10 @@
 /* Styles propres à l'app ; les composants génériques viennent de @plbls/ui v2 (classes plbls-*, jetons --creme, --rose, --rayon…). */
-:root { --z-contenu: 1; --z-barre: 20; --z-modal: 100; --z-menu: 200; --z-confirmation: 250; --z-infobulle: 300; --z-notification: 400; --z-bloquant: 500;  --font-titre: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', system-ui, sans-serif; --font-texte: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif; --ok: #2f8a4e; --attention: #b7791f; --danger: #c5372f; --calque: color-mix(in srgb, var(--noir) 7%, var(--surface)); }
-:root[data-theme='dark'] { --ok: #4cc27a; --attention: #e0b04a; --danger: #ff7a70; }
-@media (prefers-color-scheme: dark) { :root[data-theme='auto'] { --ok: #4cc27a; --attention: #e0b04a; --danger: #ff7a70; } }
+:root { --z-contenu: 1; --z-barre: 20; --z-modal: 100; --z-menu: 200; --z-confirmation: 250; --z-infobulle: 300; --z-notification: 400; --z-bloquant: 500; }
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
-body { background: var(--creme); color: var(--noir); font-family: var(--font-texte); font-size: 15px; line-height: 1.45; overflow: hidden; }
+body { background: var(--papier); color: var(--encre); font-family: var(--f-texte); font-size: 15px; line-height: 1.45; overflow: hidden; -webkit-font-smoothing: antialiased; }
 button { font: inherit; }
-:focus-visible { outline: var(--focus); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--encre); outline-offset: 2px; }
 * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 *:hover, *:focus-within { scrollbar-color: color-mix(in srgb, var(--gris) 45%, transparent) transparent; }
 @supports not (scrollbar-color: auto) {
@@ -53,11 +51,12 @@ input[type='range'] { accent-color: var(--rose-fonce); }
 .app { display: grid; grid-template-columns: 72px 304px minmax(0, 1fr); height: var(--vvh, 100dvh); }
 @media (pointer: coarse) { input, textarea, select { font-size: 16px !important; } }
 .pip { min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--rose-texte); color: var(--creme); font-size: 11px; display: inline-grid; place-items: center; font-weight: 600; flex: none; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--noir); flex-shrink: 0; }
+.dot { --pr-int: 0 0 #0000; position: relative; width: 9px; height: 9px; border-radius: 50%; background: var(--encre); flex-shrink: 0; box-shadow: var(--pr-int); }
 .dot.online { background: var(--ok); }
-.dot.off { background: transparent; box-shadow: inset 0 0 0 2px var(--gris); } /* anneau vide : se distingue du plein sans la couleur */
-.dot.idle { background: var(--attention); }
+.dot.off { --pr-int: inset 0 0 0 2px var(--gris-2); background: transparent; }
+.dot.idle { --pr-int: inset 0 0 0 1.5px var(--attention); background: conic-gradient(var(--attention) 0 50%, transparent 0); }
 .dot.dnd { background: var(--danger); }
+.dot.dnd::after { content: ''; position: absolute; left: 20%; right: 20%; top: 50%; height: 2px; margin-top: -1px; border-radius: 2px; background: var(--sur-danger); }
 
 .side { background: var(--creme); display: flex; flex-direction: column; min-height: 0; box-shadow: 1px 0 0 var(--trait); }
 .side-head { padding: var(--espace-3) var(--espace-3) var(--espace-3) var(--espace-4); display: flex; align-items: center; gap: var(--espace-2); min-height: 60px; }
@@ -584,10 +583,12 @@ plbls-modal .stack.fill { height: 100%; grid-template-rows: auto minmax(0, 1fr);
 
 /* Avatar avec pastille de statut posée en bas à droite */
 .av-wrap { position: relative; display: inline-flex; flex: none; }
-.av-dot { position: absolute; right: 0; bottom: 0; box-shadow: 0 0 0 2px var(--surface); }
-.av-dot.off { background: var(--surface); box-shadow: 0 0 0 2px var(--surface), inset 0 0 0 2px var(--gris); }
-.av-dot--lg { width: 18px; height: 18px; right: 4px; bottom: 4px; box-shadow: 0 0 0 3px var(--surface); }
-.av-dot--lg.off { box-shadow: 0 0 0 3px var(--surface), inset 0 0 0 3px var(--gris); }
+.av-dot { position: absolute; right: 0; bottom: 0; box-shadow: 0 0 0 2px var(--surface), var(--pr-int); }
+.av-dot.off { background: var(--surface); }
+.av-dot.idle { background: conic-gradient(var(--attention) 0 50%, var(--surface) 0); }
+.av-dot--lg { width: 18px; height: 18px; right: 4px; bottom: 4px; box-shadow: 0 0 0 3px var(--surface), var(--pr-int); }
+.av-dot--lg.off { --pr-int: inset 0 0 0 3px var(--gris-2); }
+.av-dot--lg.idle { --pr-int: inset 0 0 0 2px var(--attention); }
 
 /* Panneau utilisateur (bas de la barre latérale) */
 .me-bar { padding: var(--espace-2); gap: var(--espace-1); }
