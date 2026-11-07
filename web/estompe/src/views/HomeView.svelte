@@ -94,7 +94,6 @@
     return parts.length ? `${parts.join(', ')}. Voici ce qui t'attend.` : 'Rien de neuf pour l\'instant.'
   })
 
-  const rien = $derived(!mentions.length && !nonLus.length && !vocaux.length && !enLigne.length)
 </script>
 
 <header class="main-head">
@@ -202,7 +201,7 @@
       </section>
     {/if}
 
-    {#if app.servers.length > 0 && rien}
+    {#if app.servers.length > 0}
       <div class="v-empty">
         <Icon name="bulle" size={28} />
         <b>Choisis une conversation</b>

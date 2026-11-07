@@ -236,7 +236,7 @@
       <form class="barre" onsubmit={(e) => { e.preventDefault(); void run() }}>
         <span class="barre-icone" aria-hidden="true"><Icon name="cherche" size={20} /></span>
         <!-- svelte-ignore a11y_autofocus -->
-        <input id="search-input" class="champ" type="search" placeholder="Aller à, agir, ou chercher : de:pseudo, dans:#salon, a:image…" bind:value={query} {onkeydown} oninput={() => (active = -1)} maxlength="200" autofocus autocomplete="off" aria-label="Rechercher" aria-controls={sections.length ? 'palette-liste' : undefined} aria-activedescendant={active >= 0 ? `palette-${active}` : undefined} />
+        <input id="search-input" class="champ" type="search" placeholder="Aller à, agir, ou chercher : mots, « expression », -exclu, de:pseudo, dans:#salon, a:image…" bind:value={query} {onkeydown} oninput={() => (active = -1)} maxlength="200" autofocus autocomplete="off" aria-label="Rechercher" aria-controls={sections.length ? 'palette-liste' : undefined} aria-activedescendant={active >= 0 ? `palette-${active}` : undefined} />
         <button class="plbls-button plbls-button--compact" class:is-busy={busy} disabled={!query.trim()}>Chercher</button>
       </form>
       <div class="opts">

@@ -94,7 +94,7 @@
     {:else}
       <div class="plbls-field">
         <label class="plbls-field__label" for="m-reason">Raison{kind === 'warn' ? '' : ' (facultative)'}</label>
-        <textarea id="m-reason" class="plbls-input plbls-textarea" rows="2" bind:value={reason} maxlength="200" required={kind === 'warn'}></textarea>
+        <textarea id="m-reason" class="plbls-input plbls-textarea" rows="2" bind:value={reason} onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }} maxlength="200" required={kind === 'warn'}></textarea>
       </div>
     {/if}
     <div class="mod-f">
