@@ -51,7 +51,7 @@
       </label>
     {/each}
   </div>
-  {#if prefs.cameraFx !== 'none'}<p class="v-note">Traité sur votre appareil, sans envoi d'image à un serveur. Les autres personnes le voient sans rien régler.</p>{/if}
+  {#if prefs.cameraFx !== 'none'}<p class="v-note">Traité sur ton appareil, sans envoi d'image à un serveur. Les autres personnes le voient sans rien régler.</p>{/if}
 </fieldset>
 {#if prefs.cameraFx === 'blur'}
   <div class="plbls-field cfx-range">

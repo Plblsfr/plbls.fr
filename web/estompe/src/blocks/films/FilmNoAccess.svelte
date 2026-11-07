@@ -32,7 +32,7 @@
     <div><div class="v-eyebrow film-noaccess-room">Session en cours dans {roomName}</div><strong>{s?.meta?.title ?? 'Film ou série'}</strong></div>
   </div>
   <div class="film-noaccess-body">
-    <p>{others ? `${others} regardent cette séance.` : 'Une séance est en cours.'} Vous restez en vocal avec eux, mais vous n'avez pas encore accès aux films et séries d'Estompe.</p>
+    <p>{others ? `${others} regardent cette séance.` : 'Une séance est en cours.'} Tu restes en vocal avec eux, mais tu n'as pas encore accès aux films et séries d'Estompe.</p>
     {#if sent}
       <p class="film-noaccess-sent v-alert ok" role="status"><Icon name="ok" size={16} /> Demande envoyée aux administrateurs d'Estompe.</p>
     {:else if app.on('signalements')}

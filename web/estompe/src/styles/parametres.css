@@ -71,10 +71,14 @@ legend.p-sec { margin-bottom: 14px; }
 .p-session { padding-top: 24px; border-top: 1px solid var(--trait); }
 
 .p-choix { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 16px; }
-.p-carte-choix { display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-l); background: var(--surface); box-shadow: inset 0 0 0 1px var(--trait-fort); cursor: pointer; transition: box-shadow var(--d) var(--sortie); }
+.p-carte-choix { position: relative; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-l); background: var(--surface); cursor: pointer; transition: box-shadow var(--d) var(--sortie); }
+.p-carte-choix::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--trait-fort); pointer-events: none; }
 .p-carte-choix.on { box-shadow: 0 0 0 2px var(--papier), 0 0 0 4px var(--encre); }
+.p-carte-choix.on::after { box-shadow: none; }
 .p-carte-choix:has(input:focus-visible) { outline: 2px solid var(--rose-fonce); outline-offset: 5px; }
-.p-choix-pied { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.p-choix-pied { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px; }
+.p-choix-pied .p-grow { flex: 1 1 auto; }
+.p-choix-pied .v-note { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .p-choix-pied input { appearance: none; flex: none; width: 20px; height: 20px; margin: 0; border: 1.5px solid var(--trait-fort); border-radius: 50%; background: var(--surface); cursor: pointer; transition: border-width var(--d) var(--sortie); }
 .p-choix-pied input:checked { border: 6px solid var(--encre); }
 .p-choix-pied input:focus-visible { outline: none; }

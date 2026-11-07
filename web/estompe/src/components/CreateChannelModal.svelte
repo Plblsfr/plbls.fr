@@ -171,10 +171,10 @@
   .cc-card.on .cc-rad { box-shadow: inset 0 0 0 5px var(--encre); background: var(--surface); }
   .cc-name { position: relative; display: flex; align-items: center; color: var(--gris); }
   .cc-name :global(svg) { position: absolute; left: 14px; pointer-events: none; }
-  .cc-name input { padding-left: 38px; }
+  .cc-name input { flex: 1; min-width: 0; padding-left: 38px; }
   .cc-err { display: flex; align-items: center; gap: 6px; min-height: 1.2em; margin: 4px 0 0; color: var(--danger); font-size: 13px; }
   .cc-apercu { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .cc-preview { pointer-events: none; display: inline-flex; height: 30px; background: var(--papier-2); }
+  .cc-preview { pointer-events: none; display: inline-flex; width: min(100%, 260px); height: 30px; background: var(--papier-2); }
   .cc-priv { display: flex; flex-direction: column; gap: 12px; }
   .cc-pick { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0 0 0 54px; border: 0; min-width: 0; }
   .cc-pick legend { padding: 0; margin-bottom: 6px; }

@@ -91,7 +91,7 @@
 
 <div class="roles">
   <div class="role-list">
-    <div class="role-list-h"><span class="v-eyebrow grow">Rôles · {list.length}</span><button class="plbls-button plbls-button--compact" onclick={create}><Icon name="plus" size={16} />Nouveau rôle</button></div>
+    <div class="role-list-h"><span class="v-eyebrow grow">Rôles · {list.length + (everyone ? 1 : 0)}</span><button class="plbls-button plbls-button--compact" onclick={create}><Icon name="plus" size={16} />Nouveau rôle</button></div>
     {#each list as r, i (r.id)}
       <div
         class="role-row"
@@ -174,7 +174,7 @@
         {:else}
           <p class="v-note">Aucune permission ne correspond.</p>
         {/each}
-        <p class="v-note role-info"><Icon name="info" size={14} />Vous ne pouvez accorder ou retirer que des permissions que vous avez vous-même.</p>
+        <p class="v-note role-info"><Icon name="info" size={14} />Tu ne peux accorder ou retirer que des permissions que tu as toi-même.</p>
       </fieldset>
 
       {#if !selected.is_default}
@@ -211,7 +211,7 @@
       {/if}
     </form>
   {:else}
-    <div class="role-edit"><div class="v-empty"><Icon name="couronne" size={28} /><p class="v-note">Choisissez un rôle pour le modifier, ou créez-en un.</p></div></div>
+    <div class="role-edit"><div class="v-empty"><Icon name="couronne" size={28} /><p class="v-note">Choisis un rôle pour le modifier, ou crées-en un.</p></div></div>
   {/if}
 </div>
 

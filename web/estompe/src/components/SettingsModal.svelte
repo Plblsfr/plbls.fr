@@ -299,7 +299,7 @@
             <span class="plbls-toggle__piste"></span>
             <span class="plbls-toggle__texte">Réduire les animations</span>
           </label>
-          <p class="v-note p-aide" id="p-motion-aide">Désactivé : suit le réglage du système.</p>
+          <p class="v-note p-aide" id="p-motion-aide">{prefs.reduceMotion ? 'Activé : animations réduites dans Estompe, quel que soit le réglage du système.' : 'Désactivé : suit le réglage du système.'}</p>
         </div>
 
       {:else if tab === 'voice'}

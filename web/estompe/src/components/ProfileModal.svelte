@@ -171,6 +171,7 @@
   .pc-menu:hover:not(:disabled) { background: var(--papier-2); }
   .pc-head { display: flex; flex-direction: column; gap: 4px; padding: 0 24px; margin-top: -48px; min-width: 0; }
   .pc-head :global(.av-wrap .av), .pc-head > :global(.av) { width: 88px; height: 88px; margin: 0 0 6px; border-radius: 28px; font-size: 30px; box-shadow: 0 0 0 5px var(--surface); }
+  .pc-head > :global(.av-wrap) { align-self: flex-start; }
   .pc-head :global(.av-dot--lg) { right: 2px; bottom: 8px; }
   .pc-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
   .pc-name h2 { font-size: 28px; min-width: 0; max-width: 100%; }

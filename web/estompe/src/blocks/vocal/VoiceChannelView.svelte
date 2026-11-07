@@ -136,13 +136,13 @@
       </ul>
     {/if}
     {#if cinema && !watching}
-      <p class="stage-hint v-note">Aucun film en cours.{#if app.movies} <a href={hrefs.films()}>Choisir un film dans la bibliothèque</a> : il sera lu ici pour tous, piloté par vous.{/if}</p>
+      <p class="stage-hint v-note">Aucun film en cours.{#if app.movies} <a href={hrefs.films()}>Choisir un film dans la bibliothèque</a> : il sera lu ici pour tous, piloté par toi.{/if}</p>
     {/if}
     {#if people.length === 1}<p class="stage-hint v-note">Tu es seul·e ici. Invite quelqu'un : tout le monde apparaîtra sur cette scène.</p>{/if}
     {#if voice.screen}
       <div class="share-banner" role="status">
         <span class="share-banner-ic"><Icon name="ecran" size={16} /></span>
-        <strong>Vous partagez votre écran</strong>
+        <strong>Tu partages ton écran</strong>
         <span class="v-mono share-banner-n">{watchers} spectateur{watchers > 1 ? 's' : ''}</span>
         <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void voice.restartScreen()}>Changer de source</button>
         <button class="plbls-button plbls-button--compact plbls-button--danger" onclick={() => voice.requestScreen()}>Arrêter</button>
@@ -169,7 +169,7 @@
       {:else if app.can(serverId, 'connect', channel.id)}
         <button class="plbls-button v-rose join-go" onclick={() => voice.join(channel.id)}><Icon name={cinema ? 'film' : 'vol'} /> Rejoindre le salon</button>
       {:else}
-        <p class="v-alert att join-deny"><Icon name="cadenas" /> Vous n'avez pas la permission de rejoindre ce salon vocal.</p>
+        <p class="v-alert att join-deny"><Icon name="cadenas" /> Tu n'as pas la permission de rejoindre ce salon vocal.</p>
       {/if}
       <p class="v-note">L'audio passe par le serveur vocal. Le navigateur te demandera l'accès au micro, puis à la caméra ou à l'écran si tu les actives.</p>
     </div>
@@ -182,13 +182,13 @@
       {#if startOpen === 'music'}
         <div class="plbls-field">
           <label class="plbls-field__label" for="vc-lien">Lien de la musique</label>
-          <input id="vc-lien" class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="Lien YouTube Music (morceau, album, playlist)" aria-label="Lien de la musique" />
+          <input id="vc-lien" class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="YouTube Music : morceau, album ou playlist" aria-label="Lien de la musique" />
           <p class="plbls-field__aide">Chaque participant joue la musique avec le lecteur officiel de YouTube ; Estompe ne fait que synchroniser la lecture. Cette session est indépendante de « Regarder ensemble ».</p>
         </div>
       {:else}
         <div class="plbls-field">
           <label class="plbls-field__label" for="vc-lien">Lien de la vidéo</label>
-          <input id="vc-lien" class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="Lien de la vidéo (YouTube, Twitch, Vimeo, Dailymotion, fichier)" aria-label="Lien de la vidéo" />
+          <input id="vc-lien" class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="YouTube, Twitch, Vimeo, Dailymotion ou fichier" aria-label="Lien de la vidéo" />
           <p class="plbls-field__aide">Chaque participant lit la vidéo avec le lecteur de sa source ; Estompe ne fait que synchroniser la lecture. Les directs et clips Twitch se lancent en même temps, sans pause ni déplacement partagés.</p>
         </div>
       {/if}

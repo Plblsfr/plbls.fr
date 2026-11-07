@@ -15,7 +15,7 @@
   <span class="plbls-toggle__texte">Incruster ma caméra dans mon partage d'écran</span>
 </label>
 {#if o.enabled}
-  <p class="v-note">Calculée sur votre appareil avant l'envoi : les spectateurs la voient sans rien régler. Active quand la caméra et le partage (sélecteur du système) sont en cours.</p>
+  <p class="v-note">Calculée sur ton appareil avant l'envoi : les spectateurs la voient sans rien régler. Active quand la caméra et le partage (sélecteur du système) sont en cours.</p>
   {#await import('./CameraOverlayPreview.svelte') then { default: Preview }}<Preview />{/await}
   <div class="plbls-field">
     <span class="plbls-field__label">Position (ou glisser dans l'aperçu)</span>

@@ -21,6 +21,8 @@
 .plbls-button.is-busy::after { background: var(--rose-fonce); }
 
 .plbls-field { gap: 6px; }
+.plbls-modal .plbls-field, .v-card .plbls-field { max-width: none; min-width: 0; }
+.plbls-modal .plbls-field > :is(.plbls-input, .plbls-textarea, .plbls-select) { width: 100%; }
 .plbls-field__label { font-size: 13px; font-weight: 600; color: var(--encre-2); }
 .plbls-field__aide { font-size: 12px; color: var(--gris); }
 .plbls-field__message { font-size: 12px; color: var(--danger); }
@@ -30,6 +32,7 @@
 .plbls-input--error, .plbls-input[aria-invalid='true'], .plbls-textarea--error, .plbls-textarea[aria-invalid='true'] { border-color: var(--danger); }
 .plbls-textarea { line-height: 1.5; }
 .plbls-select { min-height: 42px; padding: 0 36px 0 14px; border: 1px solid var(--trait-fort); border-radius: var(--r); background-color: var(--surface); box-shadow: none; color: var(--encre); font-family: var(--f-texte); font-size: 14px; }
+.plbls-select { background-image: linear-gradient(45deg, transparent calc(50% - 0.8px), var(--encre-2) calc(50% - 0.8px) calc(50% + 0.8px), transparent calc(50% + 0.8px)), linear-gradient(-45deg, transparent calc(50% - 0.8px), var(--encre-2) calc(50% - 0.8px) calc(50% + 0.8px), transparent calc(50% + 0.8px)); background-position: calc(100% - 21px) 50%, calc(100% - 15px) 50%; background-size: 6px 6px; background-repeat: no-repeat; }
 .plbls-select:hover:not(:disabled) { border-color: var(--encre-2); }
 .plbls-select:focus-visible { outline: none; border-color: var(--encre); box-shadow: var(--halo); }
 .plbls-select--error { border-color: var(--danger); }
@@ -146,7 +149,7 @@ button.v-chip:hover:not(.on, [aria-pressed='true']), a.v-chip:hover:not(.on) { b
 
 .v-ib { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: none; padding: 0; border: 0; border-radius: var(--r-s); background: transparent; color: var(--gris); cursor: pointer; transition: background var(--d) var(--sortie), color var(--d) var(--sortie); }
 .v-ib:hover:not(:disabled) { background: var(--papier-2); color: var(--encre); }
-.v-ib:focus-visible { outline: none; box-shadow: var(--anneau); }
+.v-ib:focus-visible { outline: none; box-shadow: var(--anneau-in); }
 .v-ib:disabled { opacity: 0.4; cursor: not-allowed; }
 .v-ib.on, .v-ib[aria-pressed='true'] { background: var(--rose); color: var(--encre); }
 .v-ib.sq { border: 1px solid var(--trait); }
@@ -163,9 +166,11 @@ button.v-chip:hover:not(.on, [aria-pressed='true']), a.v-chip:hover:not(.on) { b
 .v-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: var(--r-p); background: var(--papier-2); }
 .v-seg > * { display: inline-flex; align-items: center; height: 30px; padding: 0 14px; border: 0; border-radius: var(--r-p); background: transparent; color: var(--gris); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .v-seg > .on, .v-seg > [aria-pressed='true'], .v-seg > [aria-checked='true'], .v-seg > [aria-selected='true'] { background: var(--surface); color: var(--encre); box-shadow: var(--o1); }
+.v-seg > :focus-visible { outline: none; box-shadow: var(--anneau-in); }
 .v-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--trait); }
 .v-tabs > * { position: relative; padding: 10px 12px; border: 0; background: transparent; color: var(--gris); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
 .v-tabs > .on, .v-tabs > [aria-selected='true'], .v-tabs > [aria-current='page'] { color: var(--encre); }
+.v-tabs > :focus-visible { outline: none; border-radius: var(--r-s); box-shadow: var(--anneau-in); }
 .v-tabs > .on::after, .v-tabs > [aria-selected='true']::after, .v-tabs > [aria-current='page']::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 3px; border-radius: 3px; background: var(--rose-fonce); }
 
 .v-prog { height: 6px; overflow: hidden; border-radius: var(--r-p); background: var(--papier-3); }

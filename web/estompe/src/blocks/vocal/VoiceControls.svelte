@@ -91,7 +91,7 @@
   <button class="vbtn leave" onclick={() => voice.leave()} aria-label="Quitter le vocal" title="Quitter le vocal"><Icon name="phone-off" size={20} /></button>
 </div>
 
-{#if mutedTalking}<p class="small vwarn" role="status">Votre micro est coupé</p>{/if}
+{#if mutedTalking}<p class="small vwarn" role="status">Ton micro est coupé</p>{/if}
 
 {#if panel && prefs.ptt}
   <p class="small muted vptt">Push-to-talk : maintiens <kbd>{prefs.pttKey.replace(/^Key/, '')}</kbd>{voice.talking ? ' · tu parles' : ''}</p>

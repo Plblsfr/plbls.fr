@@ -330,7 +330,7 @@
     {:else if tab === 'channels' && canChannels}
       <section class="v-card ssp-card">
         <div class="ssp-sec-h"><h2 class="ssp-sec-t grow">Salons</h2><button class="plbls-button plbls-button--compact" onclick={() => { openNewChannel(detail.server.id); onclose() }}><Icon name="plus" size={16} />Créer un salon</button></div>
-        {#each [['text', 'Salons texte'], ['voice', 'Salons vocaux'], ['cinema', 'Salons cinéma'], ['videos', 'Esquisses'], ['music', 'Esquisses']] as [kind, title] (kind)}
+        {#each [['text', 'Salons texte'], ['videos', 'Esquisses'], ['music', 'Esquisses'], ['voice', 'Salons vocaux'], ['cinema', 'Salons cinéma']] as [kind, title] (kind)}
           {@const list = ofKind(kind as ChannelKind)}
           {#if kind === 'text' || kind === 'voice' ? true : kind === 'cinema' ? list.length : kind === 'videos' ? list.length || ofKind('music').length : false}<span class="v-eyebrow ssp-grp">{title}</span>{/if}
           {#each list as c (c.id)}
@@ -406,7 +406,7 @@
         {#each invites as i (i.code)}
           <div class="v-card ssp-invite">
             <div class="ssp-inv-row">
-              <plbls-copy-field class="grow" value={link(i.code)}></plbls-copy-field>
+              <plbls-copy-field class="grow" label="Lien d'invitation" value={link(i.code)}></plbls-copy-field>
               <button class="plbls-button plbls-button--compact plbls-button--discret ssp-dgr" onclick={() => revoke(i.code)}>Révoquer</button>
             </div>
             <span class="v-mono v-mute">Par {i.created_by} · {i.uses ?? 0}{i.max_uses ? ` / ${i.max_uses}` : ''} utilisation(s) · {i.expires_at ? `expire le ${new Date(i.expires_at).toLocaleString('fr-FR')}` : 'sans expiration'}</span>
@@ -425,7 +425,7 @@
           <select class="plbls-select grow" bind:value={transferTo} aria-label="Nouveau propriétaire"><option value="">Choisir un membre…</option>{#each detail.members.filter((m) => m.id !== app.meId) as m (m.id)}<option value={m.id}>{m.pseudo}</option>{/each}</select>
           <button class="plbls-button plbls-button--contour" disabled={!transferTo} onclick={() => (confirmTransfer = true)}>Transférer</button>
         </div>
-        <p class="v-note">Vous deviendrez un membre ordinaire du serveur.</p>
+        <p class="v-note">Tu deviendras un membre ordinaire du serveur.</p>
       </section>
       <section class="ssp-sec ssp-danger">
         <h2 class="ssp-sec-t">Zone dangereuse</h2>
@@ -462,7 +462,7 @@
 
 {#if confirmTransfer}
   <Modal title="Transférer le serveur ?" onclose={() => (confirmTransfer = false)}>
-    <p>« {detail.server.name} » appartiendra à <strong>{detail.members.find((m) => m.id === transferTo)?.pseudo}</strong>. Vous perdrez tous vos droits de créateur et seul le nouveau propriétaire pourra vous les rendre.</p>
+    <p>« {detail.server.name} » appartiendra à <strong>{detail.members.find((m) => m.id === transferTo)?.pseudo}</strong>. Tu perdras tous tes droits de créateur et seul le nouveau propriétaire pourra te les rendre.</p>
     <div class="ssp-modal-f">
       <button class="plbls-button plbls-button--contour" onclick={() => (confirmTransfer = false)}>Annuler</button>
       <button class="plbls-button plbls-button--danger" onclick={transfer}>Transférer définitivement</button>
@@ -474,7 +474,7 @@
   .ssp { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); background: var(--papier); }
   .ssp-nav { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; padding: 0 10px 16px; background: var(--papier-2); box-shadow: inset -1px 0 0 var(--trait); scrollbar-width: thin; }
   .ssp-nav-h { display: flex; align-items: center; gap: 8px; min-height: 60px; padding-top: env(safe-area-inset-top); }
-  .ssp-nav-h b { font-family: var(--f-titre); font-size: 17px; letter-spacing: -0.02em; }
+  .ssp-nav-h b { min-width: 0; overflow: hidden; font-family: var(--f-titre); font-size: 15px; letter-spacing: -0.02em; white-space: nowrap; text-overflow: ellipsis; }
   .ssp-srv { display: flex; align-items: center; gap: 10px; padding: 6px 10px 14px; min-width: 0; }
   .ssp-srv :global(.sv-icon) { width: 36px; height: 36px; border-radius: 11px; font-size: 13px; }
   .ssp-ni-list { display: flex; flex-direction: column; gap: 2px; }
@@ -510,7 +510,7 @@
   .ssp-inv-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
   .ssp-inv-form .plbls-field { flex: 1 1 200px; }
   .ssp-invite { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
-  .ssp-inv-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ssp-inv-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
   .ssp-inv-row > :global(plbls-copy-field) { min-width: min(100%, 240px); }
   .ssp-danger { padding: 20px; border-radius: var(--r-l); box-shadow: inset 0 0 0 1.5px var(--danger); }
   .ssp-danger .ssp-sec-t { color: var(--danger); }

@@ -44,6 +44,7 @@
   let active = $state(-1)
   let sentinel = $state<HTMLElement>()
   let sous = $state<'' | 'create' | 'dm'>('')
+  let largeur = $state(1024)
   let seq = 0
 
   const scopeParams = $derived(
@@ -132,7 +133,7 @@
 
   const correspond = (e: Entree) => fold(e.label).includes(texte) || (!!e.detail && fold(e.detail).includes(texte))
 
-  const aller = $derived(libre && texte && prefixe !== '>' ? destinations.filter(correspond).slice(0, 8) : [])
+  const aller = $derived(libre && prefixe !== '>' && (texte || prefixe) ? destinations.filter(correspond).slice(0, texte ? 8 : 50) : [])
   const faire = $derived(!libre || prefixe === '@' || prefixe === '#' ? [] : texte ? actions.filter(correspond).slice(0, 8) : prefixe === '>' ? actions : !query.trim() ? actions.slice(0, 6) : [])
   const filtres = $derived(hints.map((s): Entree => ({ id: `f:${s.insert}`, groupe: 'filtre', icone: 'filtre', label: s.label, run: () => apply(s) })))
   const entrees = $derived([...filtres, ...aller, ...faire])
@@ -226,6 +227,8 @@
   }
 </script>
 
+<svelte:window bind:innerWidth={largeur} />
+
 {#if sous === 'create'}
   <CreateJoinModal {onclose} />
 {:else if sous === 'dm'}
@@ -236,7 +239,8 @@
       <form class="barre" onsubmit={(e) => { e.preventDefault(); void run() }}>
         <span class="barre-icone" aria-hidden="true"><Icon name="cherche" size={20} /></span>
         <!-- svelte-ignore a11y_autofocus -->
-        <input id="search-input" class="champ" type="search" placeholder="Aller à, agir, ou chercher : mots, « expression », -exclu, de:pseudo, dans:#salon, a:image…" bind:value={query} {onkeydown} oninput={() => (active = -1)} maxlength="200" autofocus autocomplete="off" aria-label="Rechercher" aria-controls={sections.length ? 'palette-liste' : undefined} aria-activedescendant={active >= 0 ? `palette-${active}` : undefined} />
+        <input id="search-input" class="champ" type="search" placeholder={largeur > 700 ? 'Aller à, agir ou chercher : « expression », -exclu, de:pseudo…' : 'Aller à, agir ou chercher…'} bind:value={query} {onkeydown} oninput={() => (active = -1)} maxlength="200" autofocus autocomplete="off" aria-label="Rechercher" aria-controls={sections.length ? 'palette-liste' : undefined} aria-activedescendant={active >= 0 ? `palette-${active}` : undefined} {@attach (n) => { const t = setTimeout(() => n.focus()); return () => clearTimeout(t) }} />
+        {#if query}<button type="button" class="v-ib sm effacer" aria-label="Effacer la saisie" onclick={() => { query = ''; active = -1; document.getElementById('search-input')?.focus() }}><Icon name="x" size={16} /></button>{/if}
         <button class="plbls-button plbls-button--compact" class:is-busy={busy} disabled={!query.trim()}>Chercher</button>
       </form>
       <div class="opts">
@@ -309,16 +313,19 @@
   :global(plbls-modal:has(.palette) .plbls-modal__entete) { padding: 14px 16px 0 20px; align-items: center; }
   :global(plbls-modal:has(.palette) .plbls-modal__entete > h3) { font-size: 15px; color: var(--gris); }
   :global(plbls-modal:has(.palette) .plbls-modal__corps) { padding: 0; }
+  :global(plbls-modal:has(.palette) .plbls-modal) { overflow: hidden; }
   .palette { height: 100%; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
   .barre { display: flex; align-items: center; gap: 10px; padding: 10px 16px 12px; border-bottom: 1px solid var(--trait); }
   .barre-icone { display: inline-flex; color: var(--gris); }
   .champ { flex: 1; min-width: 0; height: 40px; padding: 0 4px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--encre); font: inherit; font-size: 17px; }
-  .champ::placeholder { color: var(--gris-2); }
+  .champ::placeholder { color: var(--gris-2); text-overflow: ellipsis; }
+  .champ::-webkit-search-cancel-button, .champ::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+  .effacer { flex: none; color: var(--gris); }
   .champ:focus-visible { outline: none; box-shadow: var(--halo); }
   .opts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--trait); }
   .opts .v-seg { max-width: 100%; min-width: 0; }
   .opts .v-seg > button { min-width: 0; max-width: 220px; }
-  .opts .v-seg > button:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .opts .v-seg > button:focus-visible { outline: none; box-shadow: var(--anneau-in); }
   .corps { min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 2px; }
   .entree { height: auto; min-height: 36px; padding-block: 6px; }
   .entree-label { min-width: 0; }

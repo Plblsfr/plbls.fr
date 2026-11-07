@@ -76,7 +76,7 @@
       <figcaption class="ptile-meta">
         {#if speaking}{@render wave()}{/if}
         <Icon name={tile.screen ? 'ecran' : 'cam'} size={14} />
-        <span class="truncate">{item.name}{self ? ' (vous)' : ''} · {tile.screen ? 'écran' : 'caméra'}{size ? ` · ${size}` : ''}</span>
+        <span class="truncate">{item.name}{self ? ' (toi)' : ''} · {tile.screen ? 'écran' : 'caméra'}{size ? ` · ${size}` : ''}</span>
         {@render states()}
         <Quality q={voice.quality[item.userId]} />
         <Watchers list={voice.watchers[tile.sid] ?? []} />
@@ -86,7 +86,7 @@
     <div class="ptile-avatar"><Avatar pseudo={item.name} userId={item.userId} {serverId} /></div>
     <div class="ptile-meta">
       {#if speaking}{@render wave()}{/if}
-      <span class="truncate">{item.name}{self ? ' (vous)' : ''}</span>
+      <span class="truncate">{item.name}{self ? ' (toi)' : ''}</span>
       {@render states()}
       <Quality q={voice.quality[item.userId]} />
     </div>

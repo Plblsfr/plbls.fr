@@ -52,6 +52,7 @@
   --d: 160ms; --d-l: 280ms; --sortie: cubic-bezier(0.2, 0, 0, 1); --ressort: cubic-bezier(0.34, 1.4, 0.64, 1);
   --halo: 0 0 0 4px color-mix(in srgb, var(--rose-fonce) 26%, transparent);
   --anneau: 0 0 0 2px var(--papier), 0 0 0 4px var(--encre);
+  --anneau-in: inset 0 0 0 2px var(--encre);
 }
 
 html:root,

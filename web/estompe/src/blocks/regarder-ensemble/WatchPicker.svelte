@@ -47,7 +47,7 @@
           {#if !serverId}<span class="wp-sub truncate">{app.servers.find((x) => x.id === r.sid)?.name}</span>{/if}
           {#if current(r.id)}<span class="wp-sub truncate">Session en cours : {current(r.id)}</span>{/if}
         </span>
-        {#if r.id === connected}<span class="v-tag rose">Vous y êtes</span>{/if}
+        {#if r.id === connected}<span class="v-tag rose">Tu y es</span>{/if}
         {#if here.length}
           <span class="wp-people" title="{here.length} participant{here.length > 1 ? 's' : ''}">
             {#each here.slice(0, 3) as p (p.user_id)}<Avatar pseudo={p.pseudo} userId={p.user_id} serverId={r.sid} size="sm" />{/each}

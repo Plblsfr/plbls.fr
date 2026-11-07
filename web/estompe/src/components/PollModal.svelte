@@ -35,7 +35,7 @@
   <form class="poll-form" onsubmit={(e) => { e.preventDefault(); void submit() }}>
     <div class="plbls-field">
       <label class="plbls-field__label" for="poll-question">Question</label>
-      <input id="poll-question" class="plbls-input" bind:value={question} maxlength="500" placeholder="Votre question" />
+      <input id="poll-question" class="plbls-input" bind:value={question} maxlength="500" placeholder="Ta question" />
     </div>
     <div class="poll-form-choices">
       <span class="v-lbl">Choix</span>

@@ -64,7 +64,7 @@
           <textarea class="plbls-input" rows="3" bind:value={words} onchange={saveWords}></textarea>
         </label>
       {/if}
-      <p class="rules v-note">Règles : pas de lettres, de chiffres ni du mot dans le dessin. Pas d'indices dans le chat. Ne soufflez pas la réponse.</p>
+      <p class="rules v-note">Règles : pas de lettres, de chiffres ni du mot dans le dessin. Pas d'indices dans le chat. Ne souffle pas la réponse.</p>
       {#if isHost}
         <button class="plbls-button v-rose" disabled={!enough} onclick={() => void api.drawStart(channelId).catch(fail)}>Lancer la partie</button>
         {#if !enough}<p class="v-note">Il faut au moins 2 joueurs.</p>{/if}
@@ -76,20 +76,21 @@
 </div>
 
 <style>
-  .lobby { display: flex; flex-direction: column; gap: 16px; padding: 18px; overflow: auto; min-height: 0; }
+  .lobby { display: flex; flex-direction: column; gap: 16px; padding: 18px; overflow: auto; min-height: 0; container-type: inline-size; }
   header { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
   h2 { font-family: var(--f-titre); font-size: 28px; font-weight: 700; letter-spacing: -0.03em; margin: 4px 0 0; }
   h3 { margin: 0 0 4px; }
-  .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
   .card { background: var(--surface); box-shadow: var(--o1); border-radius: var(--r-l); padding: 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
   li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--r-s); font-size: 14px; }
   li:hover { background: var(--papier-2); }
   .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   label { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13.5px; color: var(--encre-2); }
-  label .plbls-select { min-height: 36px; width: auto; }
+  label .plbls-select { flex: 0 1 auto; min-width: 0; max-width: 62%; min-height: 36px; width: auto; text-overflow: ellipsis; }
   label.stack { flex-direction: column; align-items: stretch; }
+  label.stack textarea { width: 100%; min-width: 0; }
   textarea { font-size: 16px; }
   .rules { margin: auto 0 0; }
-  @media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+  @container (max-width: 720px) { .cols { grid-template-columns: minmax(0, 1fr); } }
 </style>

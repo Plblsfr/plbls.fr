@@ -45,5 +45,5 @@
 {:else if canSend}
   <Composer {convKey} placeholder={isDM ? `Écrire à ${title}` : `Écrire dans #${title}`} />
 {:else}
-  <p class="muted small" style="padding: 0.75rem 1rem">Vous n'avez pas la permission d'écrire dans ce salon.</p>
+  <p class="muted small" style="padding: 0.75rem 1rem">Tu n'as pas la permission d'écrire dans ce salon.</p>
 {/if}

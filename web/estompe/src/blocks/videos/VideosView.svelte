@@ -19,7 +19,7 @@
 
   type Tab = 'videos' | 'lists' | 'sessions' | 'chat'
   const isMusic = $derived(channel.kind === 'music')
-  const TABS = $derived<[Tab, string, 'video' | 'headphones' | 'list' | 'calendar' | 'reply'][]>([['videos', isMusic ? 'Morceaux' : 'Vidéos', isMusic ? 'headphones' : 'video'], ['lists', isMusic ? 'Playlists' : 'Listes', 'list'], ['sessions', isMusic ? 'Écoutes' : 'Séances', 'calendar'], ['chat', 'Discussion', 'reply']])
+  const TABS = $derived<[Tab, string, 'video' | 'headphones' | 'list' | 'calendar' | 'bulle'][]>([['videos', isMusic ? 'Morceaux' : 'Vidéos', isMusic ? 'headphones' : 'video'], ['lists', isMusic ? 'Playlists' : 'Listes', 'list'], ['sessions', isMusic ? 'Écoutes' : 'Séances', 'calendar'], ['chat', 'Discussion', 'bulle']])
   let tab = $state<Tab>('videos')
   let layout = $state<'grid' | 'list'>('grid')
   let filter = $state<VideoFilter>({ ...NO_FILTER })
@@ -73,7 +73,7 @@
 
 {#if tab === 'chat'}
   <MessageList convKey={key} />
-  {#if canSend}<Composer convKey={key} placeholder={`Écrire dans #${channel.name}`} />{:else}<p class="v-note vno-send">Vous n'avez pas la permission d'écrire dans ce salon.</p>{/if}
+  {#if canSend}<Composer convKey={key} placeholder={`Écrire dans #${channel.name}`} />{:else}<p class="v-note vno-send">Tu n'as pas la permission d'écrire dans ce salon.</p>{/if}
 {:else}
   <div class="vbody-wrap">
     {#if !board}
@@ -108,7 +108,7 @@
         {#each shown as p (p.message_id)}
           <VideoCard post={p} channelId={channel.id} {serverId} lists={board.lists} compact={layout === 'list'} onwatch={(x) => (picker = { links: [playLink(x)], kind: x.provider === 'ytmusic' ? 'music' : 'watch' })} />
         {:else}
-          <p class="v-empty v-note vempty">{posts.length ? (isMusic ? 'Aucun morceau ne correspond aux filtres.' : 'Aucune vidéo ne correspond aux filtres.') : (isMusic ? 'Aucun morceau pour le moment. Collez un lien YouTube Music ci-dessus pour lancer le salon.' : 'Aucune vidéo pour le moment. Collez un lien ci-dessus pour lancer le salon.')}</p>
+          <p class="v-empty v-note vempty">{posts.length ? (isMusic ? 'Aucun morceau ne correspond aux filtres.' : 'Aucune vidéo ne correspond aux filtres.') : (isMusic ? 'Aucun morceau pour le moment. Colle un lien YouTube Music ci-dessus pour lancer le salon.' : 'Aucune vidéo pour le moment. Colle un lien ci-dessus pour lancer le salon.')}</p>
         {/each}
       </div>
     {:else if tab === 'lists'}

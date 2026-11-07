@@ -64,7 +64,7 @@
   .marge { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--papier-2); box-shadow: inset 1px 0 0 var(--trait); }
   .marge-tete { display: flex; align-items: center; gap: var(--espace-1); min-height: 60px; padding: 0 var(--espace-2) 0 var(--espace-3); box-shadow: 0 1px 0 var(--trait); padding-top: env(safe-area-inset-top); }
   .marge-tete .v-seg > button { flex: 1; justify-content: center; }
-  .marge-tete .v-seg > button:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .marge-tete .v-seg > button:focus-visible { outline: none; box-shadow: var(--anneau-in); }
   .marge-corps { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--espace-2) var(--espace-2) calc(var(--espace-3) + env(safe-area-inset-bottom)); }
   .marge-poignee { position: absolute; padding: 0; border: 0; background: transparent; z-index: 2; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; touch-action: none; }
   .marge-poignee::after { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background var(--d) var(--sortie); }

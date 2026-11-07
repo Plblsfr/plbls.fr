@@ -70,7 +70,7 @@
       notify.ok('Signalement envoyé, merci !')
       onclose()
     } catch (err) {
-      error = `${messageOf(err, 'Envoi impossible.')} Votre texte est conservé : vous pouvez réessayer.`
+      error = `${messageOf(err, 'Envoi impossible.')} Ton texte est conservé : tu peux réessayer.`
     } finally {
       busy = false
     }
@@ -107,7 +107,7 @@
           {#if platform.screenshot && !platform.screenshot.auto}<button type="button" class="plbls-button plbls-button--compact plbls-button--contour rp-add" onclick={capture}><Icon name="ecran" size={16} />Capturer la fenêtre</button>{/if}
           <label class="plbls-button plbls-button--compact plbls-button--discret rp-add"><Icon name="plus" size={16} />Ajouter des images<input type="file" accept="image/*" multiple hidden onchange={(e) => { addFiles([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} /></label>
         </div>
-        <p class="v-note">Vous pouvez aussi glisser-déposer ou coller des images.</p>
+        <p class="v-note">Tu peux aussi glisser-déposer ou coller des images.</p>
       </fieldset>
 
       <details class="rp-det">
