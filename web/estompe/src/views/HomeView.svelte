@@ -204,7 +204,7 @@
     {#if app.servers.length > 0}
       <div class="v-empty">
         <Icon name="bulle" size={28} />
-        <b>Choisis une conversation</b>
+        <h3 class="home-choisis">Choisis une conversation</h3>
         <p class="v-note">Sélectionne un serveur à gauche, ou ouvre un message privé.</p>
       </div>
     {/if}
@@ -212,6 +212,7 @@
 </div>
 
 <style>
+  .home-choisis { margin: 0; font-family: var(--f-texte); font-size: 15px; font-weight: 700; letter-spacing: 0; }
   .palette { gap: 10px; color: var(--gris); }
   .palette .v-kbd { margin-left: 4px; }
   .accueil { flex: 1; min-height: 0; overflow: auto; }
