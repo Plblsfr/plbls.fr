@@ -64,6 +64,7 @@
 .spoiler:focus-visible { outline: none; box-shadow: var(--anneau); }
 .spoiler.revealed { background: var(--papier-2); color: inherit; cursor: auto; user-select: text; -webkit-user-select: text; }
 .edited { color: var(--gris); font-size: 12px; }
+.msg-body > p:has(+ .edited) { display: inline; }
 .cemoji.ready { display: inline-block; width: 1.5em; height: 1.5em; vertical-align: middle; background-size: contain; background-repeat: no-repeat; background-position: center; font-size: 0; color: transparent; }
 
 /* Réponse */

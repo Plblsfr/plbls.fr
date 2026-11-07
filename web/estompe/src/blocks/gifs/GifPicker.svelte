@@ -67,9 +67,9 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div bind:this={box} class="gifp popup" style:transform={shift ? `translateX(${shift}px)` : undefined} role="dialog" aria-label="Choisir un GIF" tabindex="-1" onkeydown={(e) => e.key === 'Escape' && onclose()}>
+<div bind:this={box} class="gifp" style:transform={shift ? `translateX(${shift}px)` : undefined} role="dialog" aria-label="Choisir un GIF" tabindex="-1" onkeydown={(e) => e.key === 'Escape' && onclose()}>
   <div class="gifp-search">
-    <Icon name="search" size={16} />
+    <Icon name="cherche" size={16} />
     <input type="search" placeholder="Rechercher un GIF" bind:this={input} bind:value={q} oninput={onInput} maxlength="100" aria-label="Rechercher un GIF" />
   </div>
   <div class="gifp-ideas" role="group" aria-label="Idées de recherche">

@@ -99,6 +99,7 @@
 .live-dot.wait { background: var(--attention); box-shadow: 0 0 0 3px color-mix(in srgb, var(--attention) 30%, transparent); animation: v-respire 1.2s ease-in-out infinite; }
 .dock .quality { flex: none; }
 .dock .quality i { background: color-mix(in srgb, var(--papier) 22%, transparent); }
+.dock .quality i.on { background: var(--papier); }
 .dock .vctl { gap: 4px; }
 .dock .vsep { display: none; }
 .dock .vbtn { height: 36px; min-width: 32px; max-width: 40px; border-radius: var(--r-s); background: transparent; color: inherit; }

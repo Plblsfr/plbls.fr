@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { app } from '../lib/store.svelte'
   import { notify } from '../lib/ui'
   import { router, hrefs } from '../lib/route.svelte'
@@ -78,6 +79,13 @@
   })
 
   $effect(() => marge.demarrer())
+  let routeVue = router.current
+  $effect(() => {
+    const r = route
+    if (r === routeVue) return
+    routeVue = r
+    untrack(() => { if (modal === 'settings' || modal === 'server') modal = '' })
+  })
   const page = $derived(modal === 'settings' || (modal === 'server' && !!detail))
   const onglet = $derived(ongletEffectif(marge.onglet, !!detail && route.name === 'channel', !!convKey))
   const avecMarge = $derived(marge.visible && !!onglet && !page)
