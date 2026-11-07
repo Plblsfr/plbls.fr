@@ -4,6 +4,15 @@ on:
   push:
     tags: ["estompe-app-v*"]
   workflow_dispatch:
+    inputs:
+      beta:
+        description: "Publier seulement le front en image estompe-web:beta (voir estompe-beta.yml)"
+        type: boolean
+        default: false
+      pr:
+        description: "Avec beta : numéro de la PR (vide : la branche choisie)"
+        type: string
+        required: false
 
 concurrency:
   group: livraison-app-${{ github.ref }}
@@ -16,7 +25,18 @@ permissions:
   contents: read
 
 jobs:
+  beta:
+    if: ${{ inputs.beta }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/estompe-beta.yml
+    with:
+      pr: ${{ inputs.pr }}
+    secrets: inherit
+
   front:
+    if: ${{ !inputs.beta }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -33,6 +53,7 @@ jobs:
       - run: npm test
 
   windows:
+    if: ${{ !inputs.beta }}
     runs-on: ubuntu-latest
     environment: livraison
     permissions:
@@ -99,7 +120,7 @@ jobs:
             web/estompe/dist
 
   android:
-    if: vars.ANDROID_APK == '1'
+    if: ${{ !inputs.beta && vars.ANDROID_APK == '1' }}
     runs-on: ubuntu-latest
     environment: livraison
     steps:

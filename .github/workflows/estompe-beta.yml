@@ -7,6 +7,11 @@ on:
         description: "Numéro de la PR à publier en beta (vide : la branche choisie ci-dessus)"
         type: string
         required: false
+  workflow_call:
+    inputs:
+      pr:
+        type: string
+        required: false
 
 concurrency:
   group: estompe-beta

@@ -8,7 +8,7 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 | `ci.yml` | toute PR (un push annule le run précédent de la PR) | contrôles de ce que la PR touche, puis job final `ci` |
 | `pr-conventions.yml` | toute PR, et à chaque modification de sa description | nom de branche et description (`scripts/ci-conventions-pr.mjs`) |
 | `livraison.yml` | push sur `main`, tags `pli-v*`, `permission-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
-| `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
+| `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel (case `beta` : appelle `estompe-beta.yml`) | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
 | `estompe-beta.yml` | lancement manuel (numéro de PR, ou branche choisie) | check, tests et build du front de la PR, puis image `ghcr.io/plblsfr/estompe-web:beta` (et `beta-pr<n>`, `beta-<sha>`) ; ni `latest`, ni tag, ni release |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
 | `_changements.yml`, `_image.yml` | appelés par les autres | ce qu'un évènement touche ; build, publication et release d'une image |
@@ -101,7 +101,9 @@ npm, une ligne dans la liste `espaces`), et s'il publie une image, un job dans `
 ## Version beta d'une PR (`estompe-beta.yml`)
 
 Pour essayer le front d'une PR branché sur la prod sans l'imposer à tout le monde. Actions → `estompe-beta` → « Run workflow »,
-avec le numéro de la PR (ou vide pour la branche choisie dans le menu). Le workflow lance `check`, les tests et le build du front de la PR,
+avec le numéro de la PR (ou vide pour la branche choisie dans le menu). Même chose depuis `estompe-livraison-app` avec la case `beta` cochée :
+il appelle `estompe-beta.yml` et ne lance rien d'autre (utile tant qu'`estompe-beta.yml` n'est pas sur `main`, GitHub ne proposant le
+lancement manuel que des workflows présents sur la branche par défaut). Le workflow lance `check`, les tests et le build du front de la PR,
 puis publie `ghcr.io/plblsfr/estompe-web:beta` (dernière beta), `beta-pr<n>` et `beta-<sha>`. Il ne touche ni `latest`, ni les tags,
 ni les releases, ni les apps Windows et Android. `packages-cleanup.yml` garde `beta` et supprime les autres tags beta chaque semaine.
 
