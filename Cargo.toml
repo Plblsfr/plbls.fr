@@ -29,7 +29,7 @@ html5gum = { version = "0.9", default-features = false }
 http-body-util = "0.1"
 include_dir = "0.7"
 jsonschema = { version = "0.60", default-features = false }
-jsonwebtoken = "11"
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 percent-encoding = "2"
 quick-xml = "0.42"
 rand = "0.10"
