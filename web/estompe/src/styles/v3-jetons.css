@@ -1,6 +1,7 @@
 :root,
 :root[data-theme='light'] {
   --papier: #f7f3ee; --papier-2: #efe9e3; --papier-3: #e6dfd8; --surface: #fffdfb; --surface-2: #fbf8f5;
+  --dock-fond: #16130f; --dock-texte: #f7f3ee; --dock-trait: transparent;
   --encre: #16130f; --encre-2: #3d3833; --gris: #6a635c; --gris-2: #6f675f; --trait: #e2dad2; --trait-fort: #cfc5bb;
   --rose: #f6c6d6; --rose-doux: #fbe3eb; --rose-fonce: #d0688a; --rose-texte: #a3304f;
   --ok: #276b4a; --ok-fond: #dcefe3; --attention: #855400; --attention-fond: #f8ebcf; --danger: #b4322b; --danger-fond: #f8dcd8; --info: #2f5d8a; --info-fond: #dde8f3;
@@ -15,6 +16,7 @@
 }
 :root[data-theme='dark'] {
   --papier: #131110; --papier-2: #1b1816; --papier-3: #252220; --surface: #1e1b19; --surface-2: #24211e;
+  --dock-fond: #2c2724; --dock-texte: #f1ece6; --dock-trait: rgb(255 255 255 / 9%);
   --encre: #f1ece6; --encre-2: #d5cec6; --gris: #a9a097; --gris-2: #968c83; --trait: #2f2b28; --trait-fort: #433d38;
   --rose: #5e2b40; --rose-doux: #3a2029; --rose-fonce: #e9849f; --rose-texte: #f5aec4;
   --ok: #7fd1a2; --ok-fond: #183126; --attention: #f0bf62; --attention-fond: #33280f; --danger: #f08a80; --danger-fond: #3a1a17; --info: #8fb8e3; --info-fond: #17263a;
@@ -30,6 +32,7 @@
 @media (prefers-color-scheme: dark) {
   :root[data-theme='auto'] {
     --papier: #131110; --papier-2: #1b1816; --papier-3: #252220; --surface: #1e1b19; --surface-2: #24211e;
+    --dock-fond: #2c2724; --dock-texte: #f1ece6; --dock-trait: rgb(255 255 255 / 9%);
     --encre: #f1ece6; --encre-2: #d5cec6; --gris: #a9a097; --gris-2: #968c83; --trait: #2f2b28; --trait-fort: #433d38;
     --rose: #5e2b40; --rose-doux: #3a2029; --rose-fonce: #e9849f; --rose-texte: #f5aec4;
     --ok: #7fd1a2; --ok-fond: #183126; --attention: #f0bf62; --attention-fond: #33280f; --danger: #f08a80; --danger-fond: #3a1a17; --info: #8fb8e3; --info-fond: #17263a;

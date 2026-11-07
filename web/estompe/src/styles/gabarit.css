@@ -84,42 +84,42 @@
 .watchers-list li { min-height: 28px; padding: 0 4px; }
 
 .dock-w { flex: none; display: flex; flex-direction: column; gap: var(--espace-2); padding: var(--espace-2) var(--espace-2) calc(var(--espace-2) + env(safe-area-inset-bottom)); }
-.dock { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: var(--r-l); background: var(--encre); color: var(--papier); animation: mv-monte var(--d-l) var(--sortie); }
-.dock > * + * { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--papier) 14%, transparent); }
+.dock { display: flex; flex-direction: column; gap: 10px; padding: 10px; border-radius: var(--r-l); background: var(--dock-fond); color: var(--dock-texte); box-shadow: inset 0 0 0 1px var(--dock-trait); animation: mv-monte var(--d-l) var(--sortie); }
+.dock > * + * { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--dock-texte) 14%, transparent); }
 .dock .ib { color: inherit; }
-.dock .ib:hover:not(:disabled) { background: color-mix(in srgb, var(--papier) 14%, transparent); color: inherit; }
+.dock .ib:hover:not(:disabled) { background: color-mix(in srgb, var(--dock-texte) 14%, transparent); color: inherit; }
 .dock .ib[aria-pressed='true'], .dock .ib[aria-expanded='true'] { background: var(--rose); color: var(--encre); }
 .dock :focus-visible { outline: 2px solid var(--rose-fonce); outline-offset: 2px; box-shadow: none; }
 .voice-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
 .voice-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .voice-where { display: grid; flex: 1; min-width: 0; line-height: 1.25; color: inherit; text-decoration: none; border-radius: var(--r-xs); }
 .voice-where strong { font-size: 13px; }
-.voice-where span { font-size: 11.5px; color: color-mix(in srgb, var(--papier) 68%, transparent); }
+.voice-where span { font-size: 11.5px; color: color-mix(in srgb, var(--dock-texte) 68%, transparent); }
 .voice-where:hover span { text-decoration: underline; text-decoration-color: var(--rose-fonce); }
 .live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent); }
 .live-dot.wait { background: var(--attention); box-shadow: 0 0 0 3px color-mix(in srgb, var(--attention) 30%, transparent); animation: v-respire 1.2s ease-in-out infinite; }
 .dock .quality { flex: none; }
-.dock .quality i { background: color-mix(in srgb, var(--papier) 22%, transparent); }
-.dock .quality i.on { background: var(--papier); }
+.dock .quality i { background: color-mix(in srgb, var(--dock-texte) 22%, transparent); }
+.dock .quality i.on { background: var(--dock-texte); }
 .dock .vctl { gap: 4px; }
 .dock .vsep { display: none; }
 .dock .vbtn { height: 36px; min-width: 32px; max-width: 40px; border-radius: var(--r-s); background: transparent; color: inherit; }
-.dock .vbtn:hover { background: color-mix(in srgb, var(--papier) 14%, transparent); transform: none; }
+.dock .vbtn:hover { background: color-mix(in srgb, var(--dock-texte) 14%, transparent); transform: none; }
 .dock .vbtn.on { background: var(--rose); color: var(--encre); box-shadow: none; }
 .dock .vbtn.off { background: var(--danger); color: var(--sur-danger); }
-.dock .vsplit { flex: 1.5 1 0; min-width: 50px; max-width: 62px; border-radius: var(--r-s); background: color-mix(in srgb, var(--papier) 8%, transparent); }
-.dock .vsplit:hover { background: color-mix(in srgb, var(--papier) 14%, transparent); }
+.dock .vsplit { flex: 1.5 1 0; min-width: 50px; max-width: 62px; border-radius: var(--r-s); background: color-mix(in srgb, var(--dock-texte) 8%, transparent); }
+.dock .vsplit:hover { background: color-mix(in srgb, var(--dock-texte) 14%, transparent); }
 .dock .vsplit:has(.off) { background: var(--danger); color: var(--sur-danger); }
 .dock .vsplit .vbtn.off { background: transparent; color: inherit; }
 .dock .vcaret, .dock .vsplit:has(.off) .vcaret { width: 18px; color: inherit; border-left-color: color-mix(in srgb, currentColor 20%, transparent); }
-.dock .vcaret:hover { background: color-mix(in srgb, var(--papier) 14%, transparent); }
-.dock .vlevel { height: 3px; background: color-mix(in srgb, var(--papier) 50%, transparent); }
+.dock .vcaret:hover { background: color-mix(in srgb, var(--dock-texte) 14%, transparent); }
+.dock .vlevel { height: 3px; background: color-mix(in srgb, var(--dock-texte) 50%, transparent); }
 .dock .vlevel.over { background: var(--rose-fonce); }
 .dock .vbtn.leave { flex: 0 0 40px; margin-left: auto; background: var(--danger); color: var(--sur-danger); }
 .dock .vbtn.leave:hover { background: var(--danger); filter: brightness(1.08); }
 .dock .vwarn { padding: 4px 8px; border-radius: var(--r-xs); background: var(--danger); color: var(--sur-danger); font-size: 12px; }
-.dock .vptt { color: color-mix(in srgb, var(--papier) 72%, transparent); font-size: 12px; }
-.dock .vptt kbd { background: transparent; color: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--papier) 30%, transparent); }
+.dock .vptt { color: color-mix(in srgb, var(--dock-texte) 72%, transparent); font-size: 12px; }
+.dock .vptt kbd { background: transparent; color: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dock-texte) 30%, transparent); }
 
 .me-bar { display: flex; align-items: center; gap: 4px; padding: 8px; border-radius: var(--r); background: var(--surface); box-shadow: var(--o1); }
 .me-id { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; padding: 2px 8px 2px 2px; border: 0; border-radius: var(--r-s); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }

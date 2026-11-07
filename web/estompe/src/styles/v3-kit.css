@@ -195,10 +195,10 @@ button.v-chip:hover:not(.on, [aria-pressed='true']), a.v-chip:hover:not(.on) { b
 .v-sep { height: 1px; margin: 4px 6px; background: var(--trait); }
 .v-mh { padding: 8px 10px 4px; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris); }
 .v-voile { background: color-mix(in srgb, var(--papier) 55%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-.v-dock { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--r-l); background: var(--encre); color: var(--papier); }
-.v-dock .v-ib { color: var(--papier); }
-.v-dock .v-ib:hover:not(:disabled) { background: color-mix(in srgb, var(--papier) 14%, transparent); color: var(--papier); }
-.v-dock .v-mute { color: color-mix(in srgb, var(--papier) 65%, transparent); }
+.v-dock { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--r-l); background: var(--dock-fond); color: var(--dock-texte); box-shadow: inset 0 0 0 1px var(--dock-trait); }
+.v-dock .v-ib { color: var(--dock-texte); }
+.v-dock .v-ib:hover:not(:disabled) { background: color-mix(in srgb, var(--dock-texte) 14%, transparent); color: var(--dock-texte); }
+.v-dock .v-mute { color: color-mix(in srgb, var(--dock-texte) 65%, transparent); }
 
 .v-av { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border-radius: 12px; background: var(--rose-doux); color: var(--encre); font-family: var(--f-titre); font-size: 14px; font-weight: 700; }
 .v-av > img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
