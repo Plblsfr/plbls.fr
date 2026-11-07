@@ -13,7 +13,7 @@ COPY tsconfig.base.json ./
 COPY web/permission web/permission/
 RUN npm run build --workspace web/permission
 
-FROM rust:1.99.0-slim AS chef
+FROM rust:1.99.0-slim-trixie AS chef
 RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /src
 
@@ -31,7 +31,7 @@ RUN cargo build --release --locked -p permission
 FROM build AS test
 RUN cargo test --release --locked -p permission
 
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app
 COPY --from=build /src/target/release/permission /app/permission
 COPY api/permission/config /app/config

@@ -1,6 +1,6 @@
 # Contexte de build = racine du dépôt (docker build -f api/pli/Dockerfile .), liste dans Dockerfile.dockerignore.
 # Rust : version de ../../rust-toolchain.toml. web/pli/public est servi tel quel, copies de @plbls/ui comprises (vendor/plbls-ui).
-FROM rust:1.99.0-slim AS chef
+FROM rust:1.99.0-slim-trixie AS chef
 RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /src
 
@@ -14,7 +14,7 @@ RUN cargo chef cook --release --locked --recipe-path recipe.json -p pli
 COPY . .
 RUN cargo build --release --locked -p pli
 
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app
 COPY --from=build /src/target/release/pli /app/pli
 COPY web/pli/public /app/public
