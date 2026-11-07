@@ -15,7 +15,6 @@ export const SETTINGS_ICONS: Record<SettingsTab, IconName> = {
   account: 'perso', notifications: 'cloche', voice: 'mic', appearance: 'soleil', app: 'telecharge', debug: 'bug', reports: 'drapeau',
 }
 
-/** Réglages de chaque onglet, pour la recherche dans les paramètres (ceux de toutes les plateformes, sans les réglages propres à une app native). */
 export const SETTINGS_INDEX: Record<SettingsTab, readonly string[]> = {
   account: ['Avatar', 'Photo de profil par serveur', 'Se déconnecter', 'Profil', 'Session'],
   notifications: ['Messages privés et mentions', 'Notification de test', 'Ne pas déranger', 'Types de notifications', 'Messages privés', 'Mentions', 'Messages de salon',
@@ -31,7 +30,6 @@ export const SETTINGS_INDEX: Record<SettingsTab, readonly string[]> = {
 
 const plain = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
 
-/** Onglets qui correspondent à la recherche, avec les réglages trouvés (vide : tous les onglets). */
 export function searchSettings(query: string): { id: SettingsTab; label: string; hits: string[] }[] {
   const q = plain(query)
   return SETTINGS_TABS.flatMap((t) => {

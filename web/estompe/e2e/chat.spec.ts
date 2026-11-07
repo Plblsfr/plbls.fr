@@ -64,7 +64,6 @@ async function activate(page: Page, pseudo: string) {
   await expect(page.getByRole('navigation', { name: 'Navigation principale' })).toBeVisible()
 }
 
-/** Commandes du salon vocal affiché (la barre « Vocal » du panneau latéral a les mêmes boutons). */
 const vc = (p: Page) => p.getByRole('main').getByRole('group', { name: 'Commandes vocales' })
 const composer = (p: Page) => p.getByRole('textbox', { name: /Écrire/ })
 async function say(p: Page, text: string) {
@@ -341,7 +340,6 @@ test('mesure : démarrage et mémoire JS avec une longue conversation', async ()
 test.describe('accessibilité (axe-core)', () => {
   async function audit(page: Page, label: string) {
     const { default: AxeBuilder } = await import('@axe-core/playwright')
-    // attendre la fin des animations d'entrée (fondu des fenêtres) : un élément à moitié opaque fausse le calcul du contraste
     await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => undefined))))
     const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
     const bad = res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
@@ -435,7 +433,6 @@ test.describe('vocal (vrai LiveKit, micro et caméra factices)', () => {
       await p.getByRole('link', { name: /vocal/ }).first().click()
       await expect(vc(p).getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
     }
-    // les streams sont regardés automatiquement par défaut : alice choisit le bouton « Regarder »
     await alice.getByRole('button', { name: 'Paramètres', exact: true }).click()
     await alice.getByRole('dialog').getByRole('button', { name: 'Voix et vidéo' }).click()
     const auto = alice.getByRole('dialog').getByRole('checkbox', { name: /Regarder automatiquement les streams/ })
@@ -470,7 +467,6 @@ test.describe('vocal (vrai LiveKit, micro et caméra factices)', () => {
     await alice.keyboard.press('Escape')
     await join(alice).click()
     await expect(vc(alice).getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
-    // la jauge et le seuil sont dans les paramètres « Voix et vidéo », affichés pendant l'appel
     await alice.getByRole('button', { name: 'Paramètres', exact: true }).click()
     await alice.getByRole('dialog').getByRole('button', { name: 'Voix et vidéo' }).click()
     const settings = alice.getByRole('dialog')

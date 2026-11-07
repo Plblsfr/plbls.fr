@@ -20,7 +20,6 @@ export type SoundChoice = 'off' | 'rise' | 'fall' | 'chime' | 'pop' | 'double' |
 
 interface Stored {
   desktopNotifications: boolean; density: Density; showPreviews: boolean; theme: Theme
-  /** Réduire les animations, quel que soit le réglage du système (sinon : celui du système). */
   reduceMotion: boolean
   /** Transcrire automatiquement mes messages vocaux (EST-158). */
   transcribeAuto: boolean
@@ -93,7 +92,6 @@ function load(): Stored {
   return { ...DEFAULTS }
 }
 
-/** `data-motion="reduit"` sur la racine : coupe les animations (v3-jetons.css). */
 export function applyMotion(reduce: boolean, root = typeof document === 'undefined' ? undefined : document.documentElement) {
   if (!root) return
   if (reduce) root.dataset.motion = 'reduit'

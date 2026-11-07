@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 
 // jsdom ne calcule pas la mise en page : on garde la règle qui évitait la colonne implicite.
 it('barre d’actions tactile : placée dans la dernière colonne explicite (bulle « mine » à 1 colonne)', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/messagerie.css', 'utf8')
   const rule = css.split('\n').find((l: string) => l.includes('@media (hover: none)') && l.includes('focus-within .msg-tools'))
   expect(rule).toContain('grid-column: -2 / -1')
   expect(rule).not.toMatch(/grid-column: 2\b/)
@@ -12,22 +12,22 @@ it('barre d’actions tactile : placée dans la dernière colonne explicite (bul
 
 // Sans overflow-x, `overflow-y: auto` rend la liste défilable à l'horizontale dès qu'un élément déborde (EST-16).
 it('liste des messages : pas de défilement horizontal', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/messagerie.css', 'utf8')
   const rule = css.split('\n').find((l: string) => l.startsWith('.messages {'))
   expect(rule).toContain('overflow-x: hidden')
 })
 
 // Mobile : le champ passe sur sa propre ligne, les boutons dessous (EST-20).
 it('zone de saisie : champ pleine largeur et options dessous sous 900 px', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/messagerie.css', 'utf8')
   const mobile = css.slice(css.indexOf('@media (max-width: 900px)'))
-  expect(mobile).toContain('.composer-box { flex-wrap: wrap; }')
+  expect(mobile).toContain('.composer-in { flex-wrap: wrap; }')
   expect(mobile).toMatch(/\.composer textarea \{ order: -1; flex: 1 0 100%;/)
 })
 
 // Sans colonne explicite, une citation non coupée élargit la colonne et pousse la réponse hors écran (EST-19).
 it('colonne du message : bornée à la largeur, citation limitée à deux lignes', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/messagerie.css', 'utf8')
   const col = css.split('\n').find((l: string) => l.startsWith('.msg-col {'))
   expect(col).toContain('grid-template-columns: minmax(0, 1fr)')
   const ref = css.split('\n').find((l: string) => l.startsWith('.reply-ref .reply-text'))
@@ -42,7 +42,6 @@ it('burger : visible sous 900 px, zone tactile de 44 px', () => {
   expect(css.slice(css.indexOf("@media (pointer: coarse)"))).toContain(".ib { width: 44px; height: 44px; }")
 })
 
-// Paramètres : page de taille fixe, le contenu défile à l'intérieur, jamais en largeur (EST-35).
 it('paramètres : taille fixe, défilement vertical seulement', () => {
   const css = readFileSync('src/styles/parametres.css', 'utf8')
   expect(css).toMatch(/\.p-corps \{[^}]*min-height: 0; overflow-x: hidden; overflow-y: auto;/)
@@ -71,7 +70,7 @@ it('liste des membres : hauteur fixe, pseudo borné, durée sur une ligne', () =
 
 // EST-93 : la barre d'actions déborde au-dessus du message au lieu d'en cacher le texte.
 it('barre d’actions : ancrée au-dessus du message, dessous si pas de place', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/messagerie.css', 'utf8')
   expect(css.split('\n').find((l: string) => l.startsWith('.msg-tools {'))).toContain('bottom: 100%')
   expect(css).toContain('.msg-tools.below { bottom: auto; top: 100%; }')
 })

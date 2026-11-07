@@ -12,7 +12,7 @@
 </span>
 
 <style>
-  .loader { display: inline-flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; animation: loader-in 0s linear 300ms forwards; } /* évite le clignotement des chargements rapides */
+  .loader { display: inline-flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; animation: loader-in 0s linear 300ms forwards; }
   svg { width: 40px; height: 40px; fill: none; stroke-width: 10; stroke-linecap: round; }
   .loader-sm svg { width: 20px; height: 20px; }
   .loader-lg svg { width: 96px; height: 96px; }
