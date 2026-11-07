@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       pr:
-        description: "Numéro de la PR à publier en beta (vide : la branche choisie ci-dessus)"
+        description: "Numéro de la PR, pour le tag beta-pr<n> (lancer le workflow sur la branche de la PR)"
         type: string
         required: false
   workflow_call:
@@ -29,16 +29,18 @@ jobs:
     outputs:
       sha: ${{ steps.source.outputs.sha }}
     steps:
-      - id: ref
+      - name: Branche de la PR, pas main
+        if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+        run: |
+          echo "Lancer ce workflow sur la branche de la PR (menu « Use workflow from »), pas sur main ni sur un tag." >&2
+          exit 1
+      - name: Numéro de PR
         env:
           PR: ${{ inputs.pr }}
         run: |
-          if [ -z "$PR" ]; then echo "ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
-          elif [[ "$PR" =~ ^[0-9]+$ ]]; then echo "ref=refs/pull/$PR/head" >> "$GITHUB_OUTPUT"
-          else echo "Numéro de PR invalide : $PR" >&2; exit 1; fi
+          if [ -n "$PR" ] && ! [[ "$PR" =~ ^[0-9]+$ ]]; then echo "Numéro de PR invalide : $PR" >&2; exit 1; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.ref.outputs.ref }}
           persist-credentials: false
       - id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

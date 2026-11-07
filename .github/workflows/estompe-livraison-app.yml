@@ -10,7 +10,7 @@ on:
         type: boolean
         default: false
       pr:
-        description: "Avec beta : numéro de la PR (vide : la branche choisie)"
+        description: "Avec beta : numéro de la PR, pour le tag beta-pr<n> (lancer sur la branche de la PR)"
         type: string
         required: false
 
