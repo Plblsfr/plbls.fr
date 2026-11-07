@@ -61,9 +61,11 @@ async function activate(page: Page, pseudo: string) {
   await page.goto(E2E.app)
   await page.getByLabel('Pseudo').fill(pseudo)
   await page.getByRole('button', { name: 'Activer mon compte' }).click()
-  await expect(page.getByRole('navigation', { name: 'Serveurs' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' })).toBeVisible()
 }
 
+/** Commandes du salon vocal affiché (la barre « Vocal » du panneau latéral a les mêmes boutons). */
+const vc = (p: Page) => p.getByRole('main').getByRole('group', { name: 'Commandes vocales' })
 const composer = (p: Page) => p.getByRole('textbox', { name: /Écrire/ })
 async function say(p: Page, text: string) {
   await composer(p).fill(text)
@@ -105,7 +107,7 @@ test("l'activation demande un pseudo valide", async () => {
 })
 
 test('créer un serveur, écrire en markdown, modifier et supprimer', async () => {
-  await alice.getByRole('navigation', { name: 'Serveurs' }).getByRole('button', { name: 'Créer ou rejoindre un serveur' }).click()
+  await alice.getByRole('navigation', { name: 'Navigation principale' }).getByRole('button', { name: 'Créer ou rejoindre un serveur' }).click()
   await alice.getByLabel('Créer un serveur').fill('Amis')
   await alice.getByRole('button', { name: 'Créer', exact: true }).click()
   await expect(alice.getByRole('heading', { name: '# général' })).toBeVisible()
@@ -199,6 +201,7 @@ test('les messages, mentions et réactions arrivent en temps réel', async () =>
 test('les messages privés et les fichiers', async () => {
   // Alice écrit à Bob depuis la liste des membres
   await alice.locator('.members .nav-item').filter({ hasText: 'bob' }).click()
+  await alice.getByRole('dialog', { name: 'Profil de bob' }).getByRole('button', { name: 'Envoyer un message' }).click()
   await expect(alice.getByRole('heading', { name: '@ bob' })).toBeVisible()
   await say(alice, 'Un message privé')
 
@@ -212,7 +215,9 @@ test('les messages privés et les fichiers', async () => {
     { name: 'pixel.png', mimeType: 'image/png', buffer: PNG },
     { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('bonjour') },
   ])
-  await expect(alice.locator('.pending .file-chip')).toHaveCount(2)
+  await expect(alice.locator('.pending .thumb')).toHaveCount(1)
+  await expect(alice.locator('.pending .file-chip')).toHaveCount(1)
+  await expect(alice.locator('.pending .thumb-wait')).toHaveCount(0)
   await expect(alice.locator('.pending')).not.toContainText('envoi…')
   await expect(alice.getByRole('button', { name: 'Envoyer' })).toBeEnabled()
   await alice.getByRole('button', { name: 'Envoyer' }).click()
@@ -274,6 +279,8 @@ test('répondre, épingler et rechercher un message', async () => {
   await alice.getByRole('searchbox', { name: 'Rechercher' }).fill('cinéma')
   await alice.getByRole('searchbox', { name: 'Rechercher' }).press('Enter')
   await expect(alice.getByRole('region', { name: 'Résultats' })).toContainText('devant le cinéma')
+  await alice.getByRole('dialog').getByRole('button', { name: 'Fermer' }).click()
+  await expect(alice.getByRole('dialog')).toHaveCount(0)
 })
 
 test("l'indicateur « écrit… » et le brouillon par conversation", async () => {
@@ -334,6 +341,8 @@ test('mesure : démarrage et mémoire JS avec une longue conversation', async ()
 test.describe('accessibilité (axe-core)', () => {
   async function audit(page: Page, label: string) {
     const { default: AxeBuilder } = await import('@axe-core/playwright')
+    // attendre la fin des animations d'entrée (fondu des fenêtres) : un élément à moitié opaque fausse le calcul du contraste
+    await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => undefined))))
     const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
     const bad = res.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
     const report = bad.map((v) => `${v.id} (${v.impact}) : ${v.help}\n   ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join('\n   ')}`).join('\n')
@@ -352,7 +361,7 @@ test.describe('accessibilité (axe-core)', () => {
     await alice.keyboard.press('Escape')
     await alice.getByRole('link', { name: /vocal/ }).first().click()
     // le clic connecte automatiquement : selon l'environnement, on voit la scène connectée ou « Rejoindre le salon » (échec de connexion)
-    const quit = alice.getByRole('button', { name: 'Quitter le vocal' })
+    const quit = vc(alice).getByRole('button', { name: 'Quitter le vocal' })
     await expect(alice.getByRole('button', { name: 'Rejoindre le salon' }).or(quit)).toBeVisible({ timeout: 20_000 })
     await audit(alice, 'salon vocal')
     if (await quit.isVisible()) await quit.click()
@@ -369,15 +378,16 @@ test.describe('vocal (vrai LiveKit, micro et caméra factices)', () => {
       await p.getByRole('link', { name: /vocal/ }).first().click()
     }
     // un clic sur le salon vocal suffit : la connexion est automatique
-    await expect(alice.getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
-    await expect(bob.getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
+    await expect(vc(alice).getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
+    await expect(vc(bob).getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
     await expect(alice.locator('.stage .ptile')).toHaveCount(2, { timeout: 20_000 })
 
     // la qualité de connexion de l'autre apparaît
     await expect(alice.locator('.stage .ptile .quality').first()).toBeVisible({ timeout: 15_000 })
 
     // caméra : bob la publie, alice voit la tuile avec sa résolution
-    await bob.getByRole('button', { name: /Activer la caméra/ }).click()
+    await vc(bob).getByRole('button', { name: /Activer la caméra/ }).click()
+    await bob.getByRole('dialog', { name: 'Activer la caméra' }).getByRole('button', { name: 'Activer la caméra' }).click()
     await expect(bob.locator('.video-tile')).toHaveCount(1, { timeout: 15_000 })
     await expect(alice.locator('.video-tile')).toHaveCount(1, { timeout: 20_000 })
     await expect(alice.locator('.video-tile figcaption')).toContainText(/bob.*caméra/, { timeout: 15_000 })
@@ -393,28 +403,29 @@ test.describe('vocal (vrai LiveKit, micro et caméra factices)', () => {
 
     // sourdine casque : l'autre voit l'indicateur
     const bobTile = alice.locator('.stage .ptile').filter({ hasText: 'bob' })
-    await bob.getByRole('button', { name: 'Sourdine casque' }).click()
+    await vc(bob).getByRole('button', { name: 'Couper le son' }).click()
     await expect(bobTile.getByRole('img', { name: 'Sourdine casque' })).toBeVisible({ timeout: 10_000 })
-    await bob.getByRole('button', { name: 'Réactiver le son' }).click()
+    await vc(bob).getByRole('button', { name: 'Réactiver le son' }).click()
     await expect(bobTile.getByRole('img', { name: 'Sourdine casque' })).toHaveCount(0, { timeout: 10_000 })
 
     // micro coupé : indicateur visible
-    await bob.getByRole('button', { name: /Couper le micro/ }).click()
+    await vc(bob).getByRole('button', { name: /Couper le micro/ }).click()
     await expect(bobTile.getByRole('img', { name: 'Micro coupé' })).toBeVisible({ timeout: 10_000 })
-    await bob.getByRole('button', { name: /Réactiver le micro/ }).click()
+    await vc(bob).getByRole('button', { name: /Réactiver le micro/ }).click()
 
     // le niveau du micro (signal factice) est mesuré : la jauge bouge, le traitement RNNoise tourne
-    await expect.poll(async () => Number(await bob.getByRole('meter').getAttribute('aria-valuenow')), { timeout: 15_000 }).toBeGreaterThan(-80)
+    await bob.getByRole('button', { name: 'Paramètres', exact: true }).click()
+    await bob.getByRole('dialog').getByRole('button', { name: 'Voix et vidéo' }).click()
+    await expect.poll(async () => Number(await bob.getByRole('meter', { name: 'Niveau du micro' }).getAttribute('aria-valuenow')), { timeout: 15_000 }).toBeGreaterThan(-80)
 
     // caméra : changement de qualité à chaud sans erreur
-    await bob.getByRole('button', { name: 'Paramètres', exact: true }).click()
     await bob.getByLabel('Qualité de la caméra').selectOption('360p')
     await bob.keyboard.press('Escape')
     await expect(bob.locator('.video-tile')).toHaveCount(1, { timeout: 15_000 })
     await expect(bob.locator('.plbls-alert--erreur')).toHaveCount(0)
 
-    await bob.getByRole('button', { name: 'Quitter le vocal' }).click()
-    await alice.getByRole('button', { name: 'Quitter le vocal' }).click()
+    await vc(bob).getByRole('button', { name: 'Quitter le vocal' }).click()
+    await vc(alice).getByRole('button', { name: 'Quitter le vocal' }).click()
   })
 
   test('un partage d\'écran est reçu par les autres participants, qui choisissent de le regarder', async () => {
@@ -422,11 +433,18 @@ test.describe('vocal (vrai LiveKit, micro et caméra factices)', () => {
       await p.goto(E2E.app)
       await p.getByRole('link', { name: 'Amis' }).click()
       await p.getByRole('link', { name: /vocal/ }).first().click()
-      await expect(p.getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
+      await expect(vc(p).getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
     }
-    await bob.getByRole('button', { name: "Partager l'écran" }).click()
+    // les streams sont regardés automatiquement par défaut : alice choisit le bouton « Regarder »
+    await alice.getByRole('button', { name: 'Paramètres', exact: true }).click()
+    await alice.getByRole('dialog').getByRole('button', { name: 'Voix et vidéo' }).click()
+    const auto = alice.getByRole('dialog').getByRole('checkbox', { name: /Regarder automatiquement les streams/ })
+    await alice.getByRole('dialog').getByText(/Regarder automatiquement les streams/).click() // la case est recouverte par l'interrupteur dessiné
+    await expect(auto).not.toBeChecked()
+    await alice.keyboard.press('Escape')
+    await vc(bob).getByRole('button', { name: "Partager l'écran" }).click()
     await bob.getByRole('button', { name: 'Partager', exact: true }).click()
-    await expect(bob.getByRole('button', { name: 'Arrêter le partage' })).toBeVisible({ timeout: 15_000 })
+    await expect(vc(bob).getByRole('button', { name: 'Arrêter le partage' })).toBeVisible({ timeout: 15_000 })
     await expect(bob.locator('.video-tile')).toHaveCount(1, { timeout: 15_000 })
 
     // alice voit le stream de bob sans le recevoir, jusqu'à ce qu'elle choisisse de le regarder
@@ -439,24 +457,31 @@ test.describe('vocal (vrai LiveKit, micro et caméra factices)', () => {
     await expect(alice.locator('.video-tile')).toHaveCount(0, { timeout: 10_000 })
     await expect(alice.getByRole('button', { name: 'Regarder', exact: true })).toBeVisible()
 
-    await bob.getByRole('button', { name: 'Arrêter le partage' }).click()
-    await bob.getByRole('button', { name: 'Quitter le vocal' }).click()
-    await alice.getByRole('button', { name: 'Quitter le vocal' }).click()
+    await vc(bob).getByRole('button', { name: 'Arrêter le partage' }).click()
+    await vc(bob).getByRole('button', { name: 'Quitter le vocal' }).click()
+    await vc(alice).getByRole('button', { name: 'Quitter le vocal' }).click()
   })
 
   test('détection de voix : le micro ne s\'ouvre que sous le seuil, le seuil se règle', async () => {
     await alice.getByRole('button', { name: 'Paramètres', exact: true }).click()
+    await alice.getByRole('dialog').getByRole('button', { name: 'Voix et vidéo' }).click()
     await alice.getByLabel('Réduction de bruit').selectOption('standard') // RNNoise traiterait le signal de test comme du bruit
     await alice.getByLabel('Activation du micro').selectOption('vad')
     await alice.keyboard.press('Escape')
     await join(alice).click()
-    await expect(alice.getByText(/Seuil de voix/)).toBeVisible({ timeout: 20_000 })
-    await expect(alice.getByLabel('Seuil de détection de voix')).toBeVisible()
+    await expect(vc(alice).getByRole('button', { name: /Couper le micro/ })).toBeVisible({ timeout: 20_000 })
+    // la jauge et le seuil sont dans les paramètres « Voix et vidéo », affichés pendant l'appel
+    await alice.getByRole('button', { name: 'Paramètres', exact: true }).click()
+    await alice.getByRole('dialog').getByRole('button', { name: 'Voix et vidéo' }).click()
+    const settings = alice.getByRole('dialog')
+    await expect(settings.getByText(/Seuil de voix/)).toBeVisible({ timeout: 20_000 })
+    await expect(settings.getByLabel('Seuil de détection de voix')).toBeVisible()
     // seuil très bas : tout dépasse le seuil, le micro s'ouvre ; seuil très haut : il reste fermé
-    await alice.getByLabel('Seuil de détection de voix').fill('-75')
-    await expect(alice.getByText(/voix détectée/)).toBeVisible({ timeout: 10_000 })
-    await alice.getByLabel('Seuil de détection de voix').fill('-15')
-    await expect(alice.getByText(/silence/)).toBeVisible({ timeout: 10_000 })
-    await alice.getByRole('button', { name: 'Quitter le vocal' }).click()
+    await settings.getByLabel('Seuil de détection de voix').fill('-75')
+    await expect(settings.getByText(/voix détectée/)).toBeVisible({ timeout: 10_000 })
+    await settings.getByLabel('Seuil de détection de voix').fill('-15')
+    await expect(settings.getByText(/silence/)).toBeVisible({ timeout: 10_000 })
+    await alice.keyboard.press('Escape')
+    await vc(alice).getByRole('button', { name: 'Quitter le vocal' }).click()
   })
 })
