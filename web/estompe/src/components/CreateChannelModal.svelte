@@ -190,7 +190,8 @@
   @media (max-width: 720px) {
     .cc-cards { grid-template-columns: minmax(0, 1fr); }
     .cc-pick { padding-left: 0; }
-    :global(plbls-modal:has(.cc) .plbls-modal) { max-width: none; width: 100vw; height: 100dvh; max-height: none; border-radius: 0; }
-    :global(plbls-modal:has(.cc) .plbls-modal__corps) { max-height: none; }
+    :global(plbls-modal:has(.cc) .plbls-modal__fond) { padding: 0; }
+    :global(plbls-modal:has(.cc) .plbls-modal) { display: flex; flex-direction: column; max-width: none; width: 100%; height: 100dvh; max-height: none; border-radius: 0; }
+    :global(plbls-modal:has(.cc) .plbls-modal__corps) { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
   }
 </style>
