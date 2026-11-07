@@ -467,6 +467,27 @@ fn registration_path(auth_path: &str) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn jwt_decode_has_crypto_backend() {
+        use jsonwebtoken::{EncodingKey, Header, encode};
+        use std::hash::BuildHasher;
+        let cle = std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string();
+        let claims = serde_json::json!({ "sub": "u1", "exp": u64::MAX / 2 });
+        let jeton = encode(
+            &Header::new(Algorithm::HS256),
+            &claims,
+            &EncodingKey::from_secret(cle.as_bytes()),
+        )
+        .unwrap();
+        let mut v = Validation::new(Algorithm::HS256);
+        v.validate_aud = false;
+        let lu = decode::<serde_json::Value>(&jeton, &DecodingKey::from_secret(cle.as_bytes()), &v)
+            .unwrap();
+        assert_eq!(lu.claims["sub"], "u1");
+    }
+
     fn oidc(internal: &str) -> Oidc {
         Oidc::new(OidcSettings {
             issuer: "https://auth.plbls.fr/realms/plbls".into(),
