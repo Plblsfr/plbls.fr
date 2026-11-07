@@ -56,9 +56,9 @@
 </Modal>
 
 <style>
-  .rs-list { max-height: 240px; overflow: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--bordure, #8884); border-radius: 8px; padding: 4px; }
+  .rs-list { max-height: 240px; overflow: auto; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--trait); border-radius: var(--r-s); padding: 4px; }
   .rs-group { padding: 6px 6px 2px; }
   .rs-item { text-align: left; border: 0; background: transparent; color: inherit; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
-  .rs-item:hover { background: #8882; }
-  .rs-item.on { background: color-mix(in srgb, var(--accent, #4a8) 30%, transparent); }
+  .rs-item:hover { background: var(--papier-2); }
+  .rs-item.on { background: var(--rose-doux); }
 </style>

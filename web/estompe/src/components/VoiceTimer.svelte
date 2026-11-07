@@ -11,4 +11,8 @@
   })
 </script>
 
-<span class="small muted voice-timer" title="Présence dans le salon">{formatDuration((now - since) / 1000)}</span>
+<span class="voice-timer" title="Présence dans le salon">{formatDuration((now - since) / 1000)}</span>
+
+<style>
+  .voice-timer { flex: none; margin-left: auto; font-family: var(--f-mono); font-size: 11.5px; font-weight: 400; color: var(--encre-2); font-variant-numeric: tabular-nums; }
+</style>

@@ -70,83 +70,127 @@
 </script>
 
 <Modal title="Créer un salon" {onclose}>
-  <form class="stack cc" onsubmit={(e) => { e.preventDefault(); void create() }}>
+  <form class="cc" onsubmit={(e) => { e.preventDefault(); void create() }}>
+    {#if detail}<p class="v-note cc-in">dans {detail.server.name}</p>{/if}
     <div class="cc-cards" role="radiogroup" aria-label="Type de salon">
       {#each KINDS as k (k.kind)}
         <label class="cc-card" class:on={kind === k.kind}>
           <input type="radio" name="cc-kind" value={k.kind} bind:group={kind} onchange={() => (serverError = '')} />
-          <Icon name={k.icon} size={20} />
-          <strong>{k.label}</strong>
-          <span class="small muted">{k.hint}</span>
+          <span class="cc-card-h"><Icon name={k.icon} size={22} /><strong class="grow">{k.label}</strong><span class="cc-rad" aria-hidden="true"></span></span>
+          <span class="v-note">{k.hint}</span>
         </label>
       {/each}
     </div>
 
     <div class="plbls-field">
       <label class="plbls-field__label" for="cc-name">Nom du salon</label>
-      <!-- svelte-ignore a11y_autofocus -->
-      <input id="cc-name" class="plbls-input" bind:value={name} autofocus autocomplete="off" aria-invalid={touched && !!error} aria-describedby="cc-err" oninput={() => { touched = true; serverError = '' }} />
-      <p id="cc-err" class="small cc-err" role="alert">{touched ? error : ''}</p>
-      <div class="nav-item cc-preview" aria-label="Aperçu dans la barre latérale">
-        <Icon name={priv ? 'lock' : icon} size={16} /><span class="truncate">{name.trim() || 'nom-du-salon'}</span>
-      </div>
+      <span class="cc-name">
+        <Icon name={priv ? 'lock' : icon} size={16} />
+        <!-- svelte-ignore a11y_autofocus -->
+        <input id="cc-name" class="plbls-input" bind:value={name} autofocus autocomplete="off" aria-invalid={touched && !!error} aria-describedby="cc-err" oninput={() => { touched = true; serverError = '' }} />
+      </span>
+      <p id="cc-err" class="cc-err" role="alert">{#if touched && error}<Icon name="alerte" size={14} />{error}{/if}</p>
+      <span class="cc-apercu v-note">Aperçu :
+        <span class="nav-item cc-preview" aria-label="Aperçu dans la barre latérale">
+          <Icon name={priv ? 'lock' : icon} size={16} /><span class="truncate">{name.trim() || 'nom-du-salon'}</span>
+        </span>
+      </span>
     </div>
 
-    <label class="plbls-checkbox">
-      <input type="checkbox" class="plbls-checkbox__input" bind:checked={priv} />
-      <span class="plbls-checkbox__case" aria-hidden="true"></span>
-      <span class="plbls-checkbox__texte">Salon privé <span class="muted small">— visible seulement par les rôles et membres choisis</span></span>
-    </label>
-    {#if priv}
-      <fieldset class="cc-pick">
-        <legend class="small muted">Rôles ayant accès</legend>
-        {#each roles as r (r.id)}
-          <label class="plbls-checkbox">
-            <input type="checkbox" class="plbls-checkbox__input" checked={roleIds.includes(r.id)} onchange={() => (roleIds = toggle(roleIds, r.id))} />
-            <span class="plbls-checkbox__case" aria-hidden="true"></span>
-            <span class="plbls-checkbox__texte truncate">{r.name}</span>
-          </label>
-        {:else}<span class="small muted">Aucun rôle sur ce serveur.</span>{/each}
-      </fieldset>
-      <fieldset class="cc-pick">
-        <legend class="small muted">Membres ayant accès (tu y as toujours accès)</legend>
-        {#each members as m (m.id)}
-          <label class="plbls-checkbox">
-            <input type="checkbox" class="plbls-checkbox__input" checked={memberIds.includes(m.id)} onchange={() => (memberIds = toggle(memberIds, m.id))} />
-            <span class="plbls-checkbox__case" aria-hidden="true"></span>
-            <span class="plbls-checkbox__texte truncate">{m.nickname || m.pseudo}</span>
-          </label>
-        {:else}<span class="small muted">Aucun autre membre.</span>{/each}
-      </fieldset>
-    {/if}
+    <div class="cc-priv">
+      <label class="plbls-toggle">
+        <input type="checkbox" class="plbls-toggle__input" bind:checked={priv} />
+        <span class="plbls-toggle__piste"></span>
+        <span class="plbls-toggle__texte"><b>Salon privé</b> <span class="v-note">— visible seulement par les rôles et membres choisis</span></span>
+      </label>
+      {#if priv}
+        <fieldset class="cc-pick">
+          <legend class="v-lbl">Rôles ayant accès</legend>
+          <div class="chips">
+            {#each roles as r (r.id)}
+              <button type="button" class="v-chip" class:line={!roleIds.includes(r.id)} aria-pressed={roleIds.includes(r.id)} onclick={() => (roleIds = toggle(roleIds, r.id))}>{#if roleIds.includes(r.id)}<Icon name="ok" size={14} />{/if}<span class="v-ell">{r.name}</span></button>
+            {:else}<span class="v-note">Aucun rôle sur ce serveur.</span>{/each}
+          </div>
+        </fieldset>
+        <fieldset class="cc-pick">
+          <legend class="v-lbl">Membres ayant accès (tu y as toujours accès)</legend>
+          <div class="chips">
+            {#each members as m (m.id)}
+              <button type="button" class="v-chip" class:line={!memberIds.includes(m.id)} aria-pressed={memberIds.includes(m.id)} onclick={() => (memberIds = toggle(memberIds, m.id))}>{#if memberIds.includes(m.id)}<Icon name="ok" size={14} />{/if}<span class="v-ell">{m.nickname || m.pseudo}</span></button>
+            {:else}<span class="v-note">Aucun autre membre.</span>{/each}
+          </div>
+        </fieldset>
+      {/if}
+    </div>
 
     <details class="cc-adv">
-      <summary>Réglages avancés</summary>
-      <div class="stack">
+      <summary class="v-lbl">Réglages avancés</summary>
+      <div class="cc-adv-b">
         <div class="plbls-field">
           <label class="plbls-field__label" for="cc-topic">Sujet du salon</label>
           <input id="cc-topic" class="plbls-input" bind:value={topic} maxlength={MAX_TOPIC} />
         </div>
         {#if kind === 'text'}
           <div class="plbls-field">
-            <label class="plbls-field__label" for="cc-slow">Mode lent</label>
-            <select id="cc-slow" class="plbls-select" bind:value={slowmode}>{#each SLOW as [label, v]}<option value={v}>{label}</option>{/each}</select>
+            <span class="plbls-field__label" id="cc-slow">Mode lent</span>
+            <div class="chips" role="group" aria-labelledby="cc-slow">
+              {#each SLOW as [label, v] (v)}<button type="button" class="v-chip" aria-pressed={slowmode === v} onclick={() => (slowmode = v)}>{label}</button>{/each}
+            </div>
           </div>
         {:else if isVoiceKind(kind)}
           <div class="plbls-field">
-            <label class="plbls-field__label" for="cc-limit">Limite de participants</label>
-            <select id="cc-limit" class="plbls-select" bind:value={userLimit}>
-              <option value={0}>Aucune (10 au plus)</option>
-              {#each [2, 3, 4, 5, 6, 7, 8, 9] as n}<option value={n}>{n} participants</option>{/each}
-            </select>
+            <span class="plbls-field__label" id="cc-limit">Limite de participants</span>
+            <div class="chips" role="group" aria-labelledby="cc-limit">
+              <button type="button" class="v-chip" aria-pressed={userLimit === 0} onclick={() => (userLimit = 0)}>Aucune (10 au plus)</button>
+              {#each [2, 3, 4, 5, 6, 7, 8, 9] as n (n)}<button type="button" class="v-chip" aria-pressed={userLimit === n} onclick={() => (userLimit = n)}>{n} participants</button>{/each}
+            </div>
           </div>
         {/if}
       </div>
     </details>
 
-    <div class="row cc-actions">
+    <div class="cc-actions">
       <button type="button" class="plbls-button plbls-button--contour" onclick={onclose}>Annuler</button>
       <button class="plbls-button" disabled={!valid || busy}>Créer le salon</button>
     </div>
   </form>
 </Modal>
+
+<style>
+  .cc { display: flex; flex-direction: column; gap: 16px; }
+  .cc-in { margin: -8px 0 0; }
+  .cc-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .cc-card { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: var(--r); background: var(--surface); box-shadow: inset 0 0 0 1px var(--trait-fort); cursor: pointer; transition: background var(--d) var(--sortie), box-shadow var(--d) var(--sortie); }
+  .cc-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .cc-card:hover { background: var(--papier-2); }
+  .cc-card.on { background: var(--rose-doux); box-shadow: inset 0 0 0 2px var(--encre); }
+  .cc-card input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .cc-card:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--encre), var(--anneau); }
+  .cc-card-h { display: flex; align-items: center; gap: 8px; }
+  .cc-rad { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--trait-fort); flex: none; }
+  .cc-card.on .cc-rad { box-shadow: inset 0 0 0 5px var(--encre); background: var(--surface); }
+  .cc-name { position: relative; display: flex; align-items: center; color: var(--gris); }
+  .cc-name :global(svg) { position: absolute; left: 14px; pointer-events: none; }
+  .cc-name input { padding-left: 38px; }
+  .cc-err { display: flex; align-items: center; gap: 6px; min-height: 1.2em; margin: 4px 0 0; color: var(--danger); font-size: 13px; }
+  .cc-apercu { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cc-preview { pointer-events: none; display: inline-flex; height: 30px; background: var(--papier-2); }
+  .cc-priv { display: flex; flex-direction: column; gap: 12px; }
+  .cc-pick { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0 0 0 54px; border: 0; min-width: 0; }
+  .cc-pick legend { padding: 0; margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; max-height: 168px; overflow-y: auto; }
+  .chips .v-chip { max-width: 100%; }
+  .v-chip:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .cc-adv { box-shadow: 0 -1px 0 var(--trait); padding-top: 12px; }
+  .cc-adv > summary { cursor: pointer; }
+  .cc-adv > summary:focus-visible { outline: none; box-shadow: var(--anneau); border-radius: var(--r-xs); }
+  .cc-adv-b { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .cc-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  @media (pointer: coarse) { .v-chip { min-height: 44px; } }
+  @media (max-width: 720px) {
+    .cc-cards { grid-template-columns: minmax(0, 1fr); }
+    .cc-pick { padding-left: 0; }
+    :global(plbls-modal:has(.cc) .plbls-modal) { max-width: none; width: 100vw; height: 100dvh; max-height: none; border-radius: 0; }
+    :global(plbls-modal:has(.cc) .plbls-modal__corps) { max-height: none; }
+  }
+</style>

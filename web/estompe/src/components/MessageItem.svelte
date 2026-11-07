@@ -20,16 +20,18 @@
   import EditAttachments, { type EditItem } from './EditAttachments.svelte'
   import VoiceMessage from './VoiceMessage.svelte'
   import LinkCard from '../blocks/apercu-liens/LinkCard.svelte'
-  import { popupAt } from '../lib/popup'
-  import { ctx, selectionIn, selectAll, type MenuItem } from '../lib/ctxmenu.svelte'
+  import { placePopup, popupAt } from '../lib/popup'
+  import { ctx, menuFrom, selectionIn, selectAll, type MenuItem } from '../lib/ctxmenu.svelte'
 
-  let { message: m, cont, pseudos, convKey, readers = [] }: { message: Message; cont: boolean; pseudos: string[]; convKey: string; readers?: Read[] } = $props()
+  let { message: m, cont, pseudos, convKey, readers = [], fresh = false }: { message: Message; cont: boolean; pseudos: string[]; convKey: string; readers?: Read[]; fresh?: boolean } = $props()
 
   const MAX_READERS = 5
   let seen = $state(false)
   const readTitle = $derived(readers.map((r) => `${r.pseudo} · ${timeOf(r.read_at)}`).join('\n'))
 
   const mine = $derived(m.author.id === app.meId && !m.system)
+  const mentioned = $derived(!mine && !m.system && !!app.meId && m.mentions?.includes(app.meId))
+  const fullDate = $derived(new Date(m.created_at).toLocaleString('fr-FR'))
   const manage = $derived(app.canConv(convKey, 'manage_messages') && !m.system)
   const canPin = $derived(mine || manage)
   const canRemove = $derived(mine || manage)
@@ -78,6 +80,7 @@
   let draft = $state('')
   let confirmDelete = $state(false)
   let picker = $state(false)
+  let pickerFrom: HTMLElement | null = null
 
   let items = $state<EditItem[]>([])
   let attach = $state<EditAttachments>()
@@ -140,6 +143,41 @@
   let who = $state<string | null>(null) // emoji dont on affiche les personnes (appui long ou clic droit)
   const whoReaction = $derived(m.reactions.find((r) => r.emoji === who))
 
+  function togglePicker(e: MouseEvent) {
+    pickerFrom = e.currentTarget as HTMLElement
+    picker = !picker
+  }
+
+  function nearPicker(node: HTMLElement) {
+    const a = (pickerFrom?.isConnected ? pickerFrom : node.parentElement!).getBoundingClientRect()
+    const { left, top } = placePopup(a, node.offsetWidth, node.offsetHeight, window.innerWidth, window.innerHeight)
+    node.style.left = `${left}px`
+    node.style.top = `${top}px`
+    node.querySelector<HTMLElement>('button')?.focus({ preventScroll: true })
+  }
+
+  $effect(() => {
+    if (!picker) return
+    const away = (e: Event) => {
+      const t = e.target as Element
+      if (!t.closest?.('.msg-picker') && !t.closest?.('[data-picker]')) picker = false
+    }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); picker = false; pickerFrom?.focus() } }
+    window.addEventListener('pointerdown', away, true)
+    window.addEventListener('scroll', away, true)
+    window.addEventListener('keydown', key, true)
+    return () => {
+      window.removeEventListener('pointerdown', away, true)
+      window.removeEventListener('scroll', away, true)
+      window.removeEventListener('keydown', key, true)
+    }
+  })
+
+  function moreActions(e: MouseEvent) {
+    const items = menu()
+    if (items.length) menuFrom(e.currentTarget as Element, items)
+  }
+
   async function react(emoji: string) {
     picker = false
     try { await app.toggleReaction(m, emoji) } catch (e) { notify.error(e, 'Réaction impossible') }
@@ -165,82 +203,93 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<article class="msg" class:cont class:first={!cont} class:mine class:system={m.system} data-id={m.id} tabindex="-1" use:ctx={menu} onmouseenter={placeTools}>
-  <div class="avatar-col">{#if !cont && !mine}<button class="profile-link" onclick={() => openProfile(m.author.id, serverId)} aria-label="Profil de {m.author.pseudo}"><Avatar pseudo={m.author.pseudo} userId={m.author.id} {serverId} /></button>{/if}</div>
+<article class="msg" class:cont class:head={!cont} class:first={!cont} class:mine class:system={m.system} class:ment={mentioned} class:v-anim-monte={fresh} class:editing data-id={m.id} tabindex="-1" use:ctx={menu} onmouseenter={placeTools}>
+  <div class="msg-gutter">
+    {#if !cont && !m.system}<button class="profile-link msg-av" onclick={() => openProfile(m.author.id, serverId)} aria-label="Profil de {m.author.pseudo}"><Avatar pseudo={m.author.pseudo} userId={m.author.id} {serverId} /></button>{/if}
+    {#if m.pinned_at && (cont || m.system)}<span class="pinned" role="img" aria-label="Message épinglé" title="Message épinglé"><Icon name="epingle" size={13} /></span>{/if}
+    <time class="msg-t" datetime={m.created_at} title={fullDate}>{timeOf(m.created_at)}</time>
+  </div>
   <div class="msg-col">
     {#if m.reply_to}
       <button class="reply-ref" onclick={() => jumpTo(m.reply_to!.id)} title="Aller au message">
-        <Icon name="reply" size={14} /> <span class="reply-text"><strong>{m.reply_to.author.pseudo}</strong> {m.reply_to.content}</span>
+        <Icon name="repondre" size={14} /><span class="reply-author">{m.reply_to.author.pseudo}</span><span class="reply-text">{m.reply_to.content}</span>
       </button>
     {/if}
-    {#if !cont && !mine}<span class="msg-head"><button class="profile-link msg-author truncate" style:color={authorColor} onclick={() => openProfile(m.author.id, serverId)}>{m.author.pseudo}</button>{#if isBot(m.author.id)}<RoleBadge kind="bot" />{/if}<BadgeInline userId={m.author.id} /></span>{/if}
+    {#if !cont && !m.system}
+      <div class="msg-head">
+        <button class="profile-link msg-author" style:color={authorColor} onclick={() => openProfile(m.author.id, serverId)}>{m.author.pseudo}</button>
+        {#if isBot(m.author.id)}<RoleBadge kind="bot" />{/if}
+        <BadgeInline userId={m.author.id} />
+        {#if m.pinned_at}<span class="pinned" role="img" aria-label="Message épinglé" title="Message épinglé"><Icon name="epingle" size={13} /></span>{/if}
+        <time class="msg-time" datetime={m.created_at} title={fullDate}>{timeOf(m.created_at)}</time>
+      </div>
+    {/if}
 
     {#if editing}
       <div class="edit-box">
         <EditAttachments bind:this={attach} bind:items canAttach={app.canConv(convKey, 'attach_files')} />
         <textarea class="plbls-textarea" rows="2" bind:value={draft} onkeydown={editKey} onpaste={editPaste} maxlength="4000" aria-label="Modifier le message"></textarea>
         {#if proposeDelete}
-          <p class="small">Un message ne peut pas être vide. <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => { editing = false; proposeDelete = false; confirmDelete = true }}>Supprimer le message</button></p>
+          <p class="edit-empty">Un message ne peut pas être vide. <button class="v-btn sm sec" onclick={() => { editing = false; proposeDelete = false; confirmDelete = true }}>Supprimer le message</button></p>
         {/if}
-        <div class="row">
-          {#if app.canConv(convKey, 'attach_files')}<label class="ib" title="Joindre un fichier"><Icon name="clip" size={16} /><span class="plbls-sr-only">Joindre un fichier</span><input type="file" multiple hidden onchange={(e) => { void attach?.add([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} /></label>{/if}
-          <button class="plbls-button plbls-button--compact" disabled={uploading} onclick={saveEdit}>Enregistrer</button>
-          <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (editing = false)}>Annuler</button>
-          <span class="muted small">Entrée pour valider · Échap pour annuler</span>
+        <div class="edit-actions">
+          {#if app.canConv(convKey, 'attach_files')}<label class="v-ib sm" title="Joindre un fichier"><Icon name="trombone" size={16} /><span class="plbls-sr-only">Joindre un fichier</span><input type="file" multiple hidden onchange={(e) => { void attach?.add([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} /></label>{/if}
+          <button class="v-btn sm" disabled={uploading} onclick={saveEdit}>Enregistrer</button>
+          <button class="v-btn sm sec" onclick={() => (editing = false)}>Annuler</button>
+          <span class="edit-hint"><kbd class="v-kbd">Entrée</kbd> pour valider · <kbd class="v-kbd">Échap</kbd> pour annuler</span>
         </div>
       </div>
+    {:else if m.poll}
+      <PollCard message={m} {convKey} {pseudos} />
     {:else}
-      {#if m.poll}
-        <PollCard message={m} {convKey} {pseudos} />
-      {:else}
-      <div class="bubble">
-        {#if m.content}
-          <div class="msg-body" bind:this={body} use:spoilers={html}>
-            {@html html}
-            {#if m.edited_at}<span class="edited" title="Modifié le {new Date(m.edited_at).toLocaleString('fr-FR')}"> (modifié)</span>{/if}
-          </div>
-        {/if}
-        {#if m.attachments.length}
-          <div class="attachments">
-            {#each m.attachments as a (a.id)}{#if a.kind === 'voice'}<VoiceMessage attachment={a} {mine} />{:else}<AttachmentView attachment={a} />{/if}{/each}
-          </div>
-        {/if}
-        {#if link}<LinkCard url={link} />{/if}
-        <div class="bubble-meta">
-          {#if m.pinned_at}<span class="pinned" role="img" aria-label="Message épinglé" title="Message épinglé"><Icon name="pin" size={12} /></span>{/if}
-          <time class="msg-time" datetime={m.created_at}>{timeOf(m.created_at)}</time>
+      {#if m.content}
+        <div class="msg-body" bind:this={body} use:spoilers={html}>
+          {@html html}
+          {#if m.edited_at}<span class="edited" title="Modifié le {new Date(m.edited_at).toLocaleString('fr-FR')}"> (modifié)</span>{/if}
         </div>
-      </div>
       {/if}
+      {#if m.attachments.length}
+        <div class="attachments">
+          {#each m.attachments as a (a.id)}{#if a.kind === 'voice'}<VoiceMessage attachment={a} {mine} />{:else}<AttachmentView attachment={a} />{/if}{/each}
+        </div>
+      {/if}
+      {#if link}<LinkCard url={link} />{/if}
     {/if}
 
-    {#if m.reactions.length}
-      <div class="reactions" style="position: relative">
-        {#each m.reactions as r (r.emoji)}
-          <button class="react" class:me={r.me} onclick={() => react(r.emoji)} oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); who = r.emoji }} title={reactionTitle(r, app.meId)} aria-pressed={r.me} aria-label="{r.emoji} {r.count}">{r.emoji} {r.count}</button>
-        {/each}
-        {#if whoReaction}
-          <div class="popup" use:popupAt>
-            <div class="reaction-tabs">
-              {#each m.reactions as r (r.emoji)}<button class:sel={r.emoji === who} onclick={() => (who = r.emoji)}>{r.emoji} {r.count}</button>{/each}
-            </div>
-            {#each whoReaction.users as u (u.id)}<div class="reaction-who"><Avatar pseudo={u.pseudo} userId={u.id} {serverId} />{u.id === app.meId ? 'Toi' : u.pseudo}</div>{/each}
-            <button onclick={() => (who = null)}>Fermer</button>
+    {#if m.reactions.length || readers.length}
+      <div class="msg-foot">
+        {#if m.reactions.length}
+          <div class="reactions">
+            {#each m.reactions as r (r.emoji)}
+              <button class="react" class:me={r.me} onclick={() => react(r.emoji)} oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); who = r.emoji }} title={reactionTitle(r, app.meId)} aria-pressed={r.me} aria-label="{r.emoji} {r.count}">{r.emoji} {r.count}</button>
+            {/each}
+            {#if canReact}<button class="react-add" data-picker onclick={togglePicker} aria-label="Ajouter une réaction" aria-expanded={picker} title="Ajouter une réaction"><Icon name="sourire" size={15} /></button>{/if}
+            {#if whoReaction}
+              <div class="v-menu msg-pop" use:popupAt>
+                <div class="v-seg msg-pop-tabs">
+                  {#each m.reactions as r (r.emoji)}<button class:on={r.emoji === who} aria-pressed={r.emoji === who} onclick={() => (who = r.emoji)}>{r.emoji} {r.count}</button>{/each}
+                </div>
+                {#each whoReaction.users as u (u.id)}<div class="v-mi msg-pop-who"><Avatar pseudo={u.pseudo} userId={u.id} {serverId} size="sm" />{u.id === app.meId ? 'Toi' : u.pseudo}</div>{/each}
+                <div class="v-sep"></div>
+                <button class="v-mi" onclick={() => (who = null)}>Fermer</button>
+              </div>
+            {/if}
           </div>
         {/if}
-      </div>
-    {/if}
-
-    {#if readers.length}
-      <div class="readers" style="position: relative">
-        <button class="readers-btn" onclick={() => (seen = !seen)} title={readTitle} aria-label="Vu par {readers.map((r) => r.pseudo).join(', ')}" aria-expanded={seen}>
-          {#each readers.slice(0, MAX_READERS) as r (r.user_id)}<Avatar pseudo={r.pseudo} userId={r.user_id} {serverId} />{/each}
-          {#if readers.length > MAX_READERS}<span class="readers-more">+{readers.length - MAX_READERS}</span>{/if}
-        </button>
-        {#if seen}
-          <div class="popup" use:popupAt>
-            {#each readers as r (r.user_id)}<div class="reaction-who"><Avatar pseudo={r.pseudo} userId={r.user_id} {serverId} />{r.pseudo} · {timeOf(r.read_at)}</div>{/each}
-            <button onclick={() => (seen = false)}>Fermer</button>
+        {#if readers.length}
+          <div class="readers">
+            <button class="readers-btn" onclick={() => (seen = !seen)} title={readTitle} aria-label="Vu par {readers.map((r) => r.pseudo).join(', ')}" aria-expanded={seen}>
+              {#each readers.slice(0, MAX_READERS) as r (r.user_id)}<Avatar pseudo={r.pseudo} userId={r.user_id} {serverId} />{/each}
+              {#if readers.length > MAX_READERS}<span class="readers-more">+{readers.length - MAX_READERS}</span>{/if}
+            </button>
+            {#if seen}
+              <div class="v-menu msg-pop" use:popupAt>
+                <div class="v-mh">Vu par</div>
+                {#each readers as r (r.user_id)}<div class="v-mi msg-pop-who"><Avatar pseudo={r.pseudo} userId={r.user_id} {serverId} size="sm" /><span class="grow">{r.pseudo}</span><span class="v-mono v-mute2">{timeOf(r.read_at)}</span></div>{/each}
+                <div class="v-sep"></div>
+                <button class="v-mi" onclick={() => (seen = false)}>Fermer</button>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
@@ -249,27 +298,31 @@
 
   {#if !editing}
     <div class="msg-tools" class:below role="toolbar" aria-label="Actions sur le message">
-      {#if canReact}{#each QUICK_REACTIONS.slice(0, 3) as e}<button class="tool" onclick={() => react(e)} aria-label="Réagir avec {e}">{e}</button>{/each}{/if}
-      <button class="tool" onclick={() => (app.reply = { key: convKey, message: m })} aria-label="Répondre" title="Répondre"><Icon name="reply" size={16} /></button>
-      {#if canPin}<button class="tool" onclick={togglePin} aria-label={m.pinned_at ? 'Désépingler' : 'Épingler'} aria-pressed={!!m.pinned_at} title={m.pinned_at ? 'Désépingler' : 'Épingler'}><Icon name="pin" size={16} /></button>{/if}
-      {#if canReact}<button class="tool" onclick={() => (picker = !picker)} aria-label="Plus de réactions" aria-expanded={picker}><Icon name="plus" size={16} /></button>{/if}
-      {#if mine}<button class="tool" onclick={startEdit} aria-label="Modifier"><Icon name="edit" size={16} /></button>{/if}
-      {#if canRemove}<button class="tool" onclick={() => (confirmDelete = true)} aria-label="Supprimer"><Icon name="trash" size={16} /></button>{/if}
-      {#if picker}
-        <div class="popup" style="right: 0; left: auto; top: 100%; bottom: auto;">
-          <div class="emoji-grid">
-            {#each EMOJIS as e}<button onclick={() => react(e)} aria-label={e}>{e}</button>{/each}
-          </div>
-        </div>
+      {#if canReact}
+        {#each QUICK_REACTIONS.slice(0, 3) as e}<button class="v-ib sm msg-tool" onclick={() => react(e)} aria-label="Réagir avec {e}" title="Réagir avec {e}">{e}</button>{/each}
+        <span class="msg-tools-sep" aria-hidden="true"></span>
       {/if}
+      <button class="v-ib sm msg-tool" onclick={() => (app.reply = { key: convKey, message: m })} aria-label="Répondre" title="Répondre"><Icon name="repondre" size={16} /></button>
+      {#if canPin}<button class="v-ib sm msg-tool" onclick={togglePin} aria-label={m.pinned_at ? 'Désépingler' : 'Épingler'} aria-pressed={!!m.pinned_at} title={m.pinned_at ? 'Désépingler' : 'Épingler'}><Icon name="epingle" size={16} /></button>{/if}
+      {#if canReact}<button class="v-ib sm msg-tool" data-picker onclick={togglePicker} aria-label="Plus de réactions" aria-expanded={picker} title="Plus de réactions"><Icon name="sourire" size={16} /></button>{/if}
+      {#if mine}<button class="v-ib sm msg-tool" onclick={startEdit} aria-label="Modifier" title="Modifier"><Icon name="crayon" size={16} /></button>{/if}
+      {#if canRemove}<button class="v-ib sm msg-tool msg-tool-dgr" onclick={() => (confirmDelete = true)} aria-label="Supprimer" title="Supprimer"><Icon name="corbeille" size={16} /></button>{/if}
+      {#if !m.system}<button class="v-ib sm msg-tool" onclick={moreActions} aria-label="Plus d'actions" aria-haspopup="menu" title="Plus d'actions"><Icon name="plus3" size={16} /></button>{/if}
+    </div>
+  {/if}
+  {#if picker}
+    <div class="v-menu msg-picker" use:nearPicker role="dialog" aria-label="Choisir une réaction">
+      <div class="msg-picker-grid">
+        {#each EMOJIS as e}<button onclick={() => react(e)} aria-label={e}>{e}</button>{/each}
+      </div>
     </div>
   {/if}
 </article>
 
 {#if confirmDelete}
   <Modal title="Supprimer ce message ?" onclose={() => (confirmDelete = false)}>
-    <p>Cette action est définitive.</p>
-    <div style="display: flex; gap: 8px; justify-content: flex-end">
+    <p class="msg-confirm-text">Cette action est définitive.</p>
+    <div class="msg-confirm-actions">
       <button class="plbls-button plbls-button--contour" onclick={() => (confirmDelete = false)}>Annuler</button>
       <button class="plbls-button plbls-button--danger" onclick={remove}>Supprimer</button>
     </div>

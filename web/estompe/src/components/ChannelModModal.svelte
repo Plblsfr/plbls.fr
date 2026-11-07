@@ -1,6 +1,7 @@
 <script lang="ts">
   import { confirmer } from '../lib/confirm.svelte'
   import Modal from './Modal.svelte'
+  import Icon from './Icon.svelte'
   import { api } from '../lib/api'
   import { app } from '../lib/store.svelte'
   import { notify } from '../lib/ui'
@@ -41,25 +42,30 @@
 </script>
 
 <Modal title="Modération · {channel?.name ?? ''}" {onclose}>
-  <div class="stack">
+  <div class="cm">
     {#if canSettings}
-      <form class="stack" onsubmit={(e) => { e.preventDefault(); void save() }}>
-        <div class="plbls-field">
-          <label class="plbls-field__label" for="c-slow">Mode lent</label>
-          <select id="c-slow" class="plbls-select" bind:value={slowmode}>{#each SLOW as [label, v]}<option value={v}>{label}</option>{/each}</select>
-          <p class="muted small">Délai minimum entre deux messages d'un même membre, sauf pour ceux qui peuvent gérer les messages.</p>
+      <form class="cm-sec" onsubmit={(e) => { e.preventDefault(); void save() }}>
+        <div class="cm-row">
+          <label class="v-lbl grow" for="c-slow">Mode lent</label>
+          <select id="c-slow" class="plbls-select cm-sel" bind:value={slowmode} aria-describedby="c-slow-aide">{#each SLOW as [label, v]}<option value={v}>{label}</option>{/each}</select>
         </div>
-        <label class="row"><input type="checkbox" bind:checked={locked} /><span>Verrouiller le salon (lecture seule pour les membres sans « Gérer les messages »)</span></label>
-        <div><button class="plbls-button" disabled={busy}>Enregistrer</button></div>
+        <p id="c-slow-aide" class="v-note">Délai minimum entre deux messages d'un même membre, sauf pour ceux qui peuvent gérer les messages.</p>
+        <label class="plbls-toggle">
+          <input class="plbls-toggle__input" type="checkbox" bind:checked={locked} />
+          <span class="plbls-toggle__piste"></span>
+          <span class="plbls-toggle__texte">Verrouiller le salon (lecture seule pour les membres sans « Gérer les messages »)</span>
+        </label>
+        <div class="cm-f"><button class="plbls-button plbls-button--compact" disabled={busy}>Enregistrer</button></div>
       </form>
     {/if}
+    {#if canSettings && canClean}<hr class="v-hr" />{/if}
     {#if canClean}
-      <form class="stack" onsubmit={(e) => { e.preventDefault(); clean() }}>
-        <strong>Supprimer des messages</strong>
-        <div class="row">
+      <form class="cm-sec" onsubmit={(e) => { e.preventDefault(); clean() }}>
+        <strong class="cm-t">Supprimer des messages</strong>
+        <div class="cm-clean">
           <div class="plbls-field">
             <label class="plbls-field__label" for="c-last">Les N derniers (1 à 100)</label>
-            <input id="c-last" class="plbls-input" type="number" min="1" max="100" bind:value={last} required />
+            <input id="c-last" class="plbls-input v-mono cm-n" type="number" min="1" max="100" bind:value={last} required />
           </div>
           <div class="plbls-field grow">
             <label class="plbls-field__label" for="c-author">Auteur</label>
@@ -69,8 +75,20 @@
             </select>
           </div>
         </div>
-        <div><button class="plbls-button plbls-button--danger" disabled={busy || !(last >= 1 && last <= 100)}>Supprimer</button></div>
+        <div class="cm-f"><button class="plbls-button plbls-button--compact plbls-button--danger" disabled={busy || !(last >= 1 && last <= 100)}><Icon name="corbeille" size={16} />Supprimer</button></div>
       </form>
     {/if}
   </div>
 </Modal>
+
+<style>
+  .cm { display: flex; flex-direction: column; gap: 16px; }
+  .cm-sec { display: flex; flex-direction: column; gap: 12px; }
+  .cm-sec p { margin: 0; }
+  .cm-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cm-sel { width: 160px; }
+  .cm-t { font-family: var(--f-titre); font-size: 16px; }
+  .cm-clean { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .cm-n { width: 110px; }
+  .cm-f { display: flex; justify-content: flex-end; }
+</style>

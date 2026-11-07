@@ -42,12 +42,11 @@ it('burger : visible sous 900 px, zone tactile de 44 px', () => {
   expect(css.slice(css.indexOf("@media (pointer: coarse)"))).toContain(".ib { width: 44px; height: 44px; }")
 })
 
-// Paramètres : fenêtre de taille fixe, le contenu défile à l'intérieur, jamais en largeur (EST-35).
+// Paramètres : page de taille fixe, le contenu défile à l'intérieur, jamais en largeur (EST-35).
 it('paramètres : taille fixe, défilement vertical seulement', () => {
-  const css = readFileSync('src/app.css', 'utf8')
-  expect(css).toMatch(/plbls-modal\[data-wide\] \.plbls-modal__corps \{ height: min\(560px, 76dvh\);[^}]*overflow: hidden;/)
-  expect(css).toMatch(/\.set-page \{[^}]*minmax\(0, 1fr\)[^}]*overflow-x: hidden; overflow-y: auto;/)
-  expect(css).toMatch(/\.set-page \.row \{ flex-wrap: wrap;/)
+  const css = readFileSync('src/styles/parametres.css', 'utf8')
+  expect(css).toMatch(/\.p-corps \{[^}]*min-height: 0; overflow-x: hidden; overflow-y: auto;/)
+  expect(css).toMatch(/\.p-corps \.row \{ flex-wrap: wrap;/)
 })
 
 // Badge BOT : pilule à hauteur fixe à droite du pseudo, qui se tronque sans masquer le badge (EST-74).
@@ -110,7 +109,7 @@ it('tiroir mobile : le voile est sous le tiroir', () => {
 
 // Colonnes explicites : sans minmax(0, 1fr), un titre ou une miniature large élargit la carte et la fait déborder (EST-166).
 it('carte de vidéo : colonnes bornées, miniature 16:9 recadrée sans bandes', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/vocal.css', 'utf8')
   const rule = (sel: string) => css.split('\n').find((l: string) => l.startsWith(sel + ' {')) ?? ''
   expect(rule('.vbody-wrap')).toContain('grid-template-columns: minmax(0, 1fr)')
   expect(rule('.vcard')).toContain('grid-template-columns: minmax(0, 1fr)')

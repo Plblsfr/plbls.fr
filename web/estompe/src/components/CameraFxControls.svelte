@@ -4,6 +4,7 @@
   import { BACKGROUNDS, FX_LABEL, prepareBackground } from '../lib/camerafx'
   import { prefs, type CameraFx } from '../lib/prefs.svelte'
   import { voice } from '../blocks/vocal/voice.svelte'
+  import Icon from './Icon.svelte'
 
   let error = $state('')
   const changed = () => { prefs.save(); void voice.applyFx() }
@@ -39,28 +40,72 @@
   }
 </script>
 
-<div class="plbls-field">
-  <label class="plbls-field__label" for="cfx">Arrière-plan de la caméra</label>
-  <select id="cfx" class="plbls-select" bind:value={prefs.cameraFx} onchange={changed}>
-    {#each Object.keys(FX_LABEL) as f (f)}<option value={f as CameraFx}>{FX_LABEL[f as CameraFx]}</option>{/each}
-  </select>
-  {#if prefs.cameraFx !== 'none'}<p class="small muted">Traité sur votre appareil, sans envoi d'image à un serveur. Les autres personnes le voient sans rien régler.</p>{/if}
-</div>
+<fieldset class="cfx">
+  <legend class="plbls-field__label">Arrière-plan de la caméra</legend>
+  <div class="cfx-tiles">
+    {#each Object.keys(FX_LABEL) as f (f)}
+      <label class="cfx-tile" class:on={prefs.cameraFx === f}>
+        <input type="radio" name="cfx" value={f as CameraFx} bind:group={prefs.cameraFx} onchange={changed} />
+        <span class="cfx-swatch cfx-{f}" aria-hidden="true">{#if f === 'none'}<Icon name="interdit" size={18} />{/if}</span>
+        <span class="cfx-name">{FX_LABEL[f as CameraFx]}</span>
+      </label>
+    {/each}
+  </div>
+  {#if prefs.cameraFx !== 'none'}<p class="v-note">Traité sur votre appareil, sans envoi d'image à un serveur. Les autres personnes le voient sans rien régler.</p>{/if}
+</fieldset>
 {#if prefs.cameraFx === 'blur'}
-  <div class="plbls-field">
-    <label class="plbls-field__label" for="cblur">Intensité du flou : {prefs.cameraBlur}</label>
+  <div class="plbls-field cfx-range">
+    <label class="plbls-field__label" for="cblur"><span>Intensité du flou :</span> <span class="v-mono">{prefs.cameraBlur}</span></label>
     <input id="cblur" type="range" min="2" max="30" step="1" bind:value={prefs.cameraBlur} onchange={changed} />
   </div>
 {/if}
 {#if prefs.cameraFx === 'image'}
-  <div class="plbls-field">
-    <label class="plbls-field__label" for="cbg">Fond</label>
-    <select id="cbg" class="plbls-select" bind:value={prefs.cameraBg} onchange={changed}>
-      {#each BACKGROUNDS as b (b.id)}<option value={b.id}>{b.label}</option>{/each}
-      {#if prefs.customBg}<option value="custom">Mon image</option>{/if}
-    </select>
-    <input type="file" accept="image/png,image/jpeg,image/webp" aria-label="Envoyer une image de fond" onchange={upload} />
-    {#if prefs.customBg}<button class="plbls-button plbls-button--contour" onclick={removeCustom}>Supprimer mon image</button>{/if}
-    {#if error}<p class="small" role="alert">{error}</p>{/if}
-  </div>
+  <fieldset class="cfx">
+    <legend class="plbls-field__label">Fond</legend>
+    <div class="cfx-tiles">
+      {#each BACKGROUNDS as b (b.id)}
+        <label class="cfx-tile" class:on={prefs.cameraBg === b.id}>
+          <input type="radio" name="cbg" value={b.id} bind:group={prefs.cameraBg} onchange={changed} />
+          <span class="cfx-swatch" style="background: linear-gradient(135deg, {b.colors[0]}, {b.colors[1]})" aria-hidden="true"></span>
+          <span class="cfx-name">{b.label}</span>
+        </label>
+      {/each}
+      {#if prefs.customBg}
+        <label class="cfx-tile" class:on={prefs.cameraBg === 'custom'}>
+          <input type="radio" name="cbg" value="custom" bind:group={prefs.cameraBg} onchange={changed} />
+          <span class="cfx-swatch" style="background-image: url({prefs.customBg})" aria-hidden="true"></span>
+          <span class="cfx-name">Mon image</span>
+        </label>
+      {/if}
+    </div>
+    <div class="cfx-up">
+      <label class="plbls-button plbls-button--compact plbls-button--contour cfx-file"><Icon name="image" size={14} /> Envoyer une image<input type="file" accept="image/png,image/jpeg,image/webp" aria-label="Envoyer une image de fond" onchange={upload} /></label>
+      {#if prefs.customBg}<button class="plbls-button plbls-button--compact plbls-button--contour plbls-button--danger" onclick={removeCustom}>Supprimer mon image</button>{/if}
+    </div>
+    {#if error}<p class="v-alert dgr cfx-err" role="alert">{error}</p>{/if}
+  </fieldset>
 {/if}
+
+<style>
+  .cfx { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+  .cfx legend { padding: 0; margin-bottom: 8px; }
+  .cfx-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+  .cfx-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font-size: 12px; }
+  .cfx-tile input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .cfx-swatch { display: grid; place-items: center; width: 100%; height: 48px; border-radius: var(--r-s); background: var(--papier-2); background-size: cover; background-position: center; color: var(--gris); box-shadow: inset 0 0 0 1px var(--trait); transition: box-shadow var(--d) var(--sortie); }
+  .cfx-none { background: repeating-linear-gradient(135deg, var(--papier-2) 0 8px, var(--papier-3) 8px 16px); }
+  .cfx-blur { background: linear-gradient(135deg, var(--papier-3), var(--gris-2)); filter: blur(0.5px); }
+  .cfx-cutout { background: var(--papier-3); }
+  .cfx-image { background: linear-gradient(180deg, var(--rose), var(--av-4)); }
+  .cfx-tile.on .cfx-swatch { box-shadow: 0 0 0 2px var(--encre); }
+  .cfx-tile.on .cfx-name { font-weight: 700; }
+  .cfx-tile:has(input:focus-visible) .cfx-swatch { box-shadow: var(--anneau); }
+  .cfx-name { color: var(--encre); text-align: center; }
+  .cfx-range label { display: flex; justify-content: space-between; }
+  .cfx-range input { width: 100%; accent-color: var(--rose-fonce); }
+  .cfx-up { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cfx-file { position: relative; cursor: pointer; }
+  .cfx-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .cfx-file:has(input:focus-visible) { box-shadow: var(--anneau); }
+  .cfx-err { margin: 0; }
+</style>

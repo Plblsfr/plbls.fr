@@ -579,7 +579,7 @@
   .rp-top { gap: 0.75rem; }
   .rp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .rp-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  .rp-thumb { position: relative; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--surface-2, #0002); cursor: pointer; }
+  .rp-thumb { position: relative; aspect-ratio: 16 / 9; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--surface-2); cursor: pointer; }
   .rp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .rp-badge--marks { right: auto; left: 6px; background: #1d4ed8cc; }
   .rp-badge { position: absolute; right: 6px; bottom: 6px; padding: 1px 6px; border-radius: 4px; background: #000a; color: #fff; font-size: 12px; }
@@ -597,9 +597,9 @@
   .rp-ruler span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
   .rp-ruler span:first-child { transform: none; }
   .rp-bar { position: relative; height: 56px; background: #2a2a30; border-radius: 6px; cursor: pointer; touch-action: none; user-select: none; }
-  .rp-cut { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent, #4a8) 30%, transparent); border-block: 2px solid var(--accent, #4a8); }
+  .rp-cut { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--rose-fonce) 30%, transparent); border-block: 2px solid var(--rose-fonce); }
   .rp-outside { position: absolute; top: 0; bottom: 0; background: #0009; border-radius: 6px; pointer-events: none; }
-  .rp-handle { position: absolute; top: -3px; bottom: -3px; width: 12px; background: var(--accent, #4a8); cursor: ew-resize; }
+  .rp-handle { position: absolute; top: -3px; bottom: -3px; width: 12px; background: var(--rose-fonce); cursor: ew-resize; }
   .rp-handle--start { margin-left: -12px; border-radius: 6px 0 0 6px; }
   .rp-handle--end { border-radius: 0 6px 6px 0; }
   .rp-mark { position: absolute; top: 0; bottom: 0; width: 10px; margin-left: -5px; padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 1; }
@@ -616,7 +616,7 @@
   .rp-time { font-variant-numeric: tabular-nums; margin: 0 0.5rem; }
   .rp-tbtn { min-width: 36px; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: #2a2a30; color: #eee; cursor: pointer; }
   .rp-tbtn:hover { background: #3a3a42; }
-  .rp-tbtn--main { min-width: 48px; background: var(--accent, #4a8); color: #000; }
+  .rp-tbtn--main { min-width: 48px; background: var(--rose-fonce); color: #000; }
   .rp-vol { width: 90px; }
   .rp-tools { display: flex; flex-wrap: wrap; gap: 1rem 2rem; }
   .rp-tool { display: flex; flex-direction: column; gap: 0.35rem; }

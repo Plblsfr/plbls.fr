@@ -12,12 +12,12 @@
 </span>
 
 <style>
-  .loader { display: inline-flex; flex-direction: column; align-items: center; gap: var(--espace-2); opacity: 0; animation: loader-in 0s linear 300ms forwards; } /* évite le clignotement des chargements rapides */
+  .loader { display: inline-flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0; animation: loader-in 0s linear 300ms forwards; } /* évite le clignotement des chargements rapides */
   svg { width: 40px; height: 40px; fill: none; stroke-width: 10; stroke-linecap: round; }
   .loader-sm svg { width: 20px; height: 20px; }
   .loader-lg svg { width: 96px; height: 96px; }
   .w { stroke-dasharray: 1; stroke-dashoffset: 1; animation: loader-wave 1.8s ease-in-out infinite; }
-  .w1 { stroke: var(--noir); }
+  .w1 { stroke: var(--encre); }
   .w2 { stroke: var(--rose-fonce); animation-delay: .15s; }
   .w3 { stroke: var(--rose-fonce); animation-delay: .3s; }
   @keyframes loader-in { to { opacity: 1; } }

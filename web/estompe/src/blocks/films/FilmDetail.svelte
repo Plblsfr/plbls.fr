@@ -47,56 +47,68 @@
   <div class="film-page film-page--flush">
     <div class="film-hero">
       <span class="film-hero-art"><FilmPoster id={item.id} {title} image={item.backdrop} type="fond" width={1280} /></span>
-      <a class="film-back" href={hrefs.films()}><Icon name="chevron" size={14} /> Bibliothèque</a>
-      <h1>{title}</h1>
-    </div>
-    <div class="film-body">
-      {#if item.kind !== 'series'}<span class="film-card-art film-body-poster"><FilmPoster id={item.id} {title} image={item.poster} width={480} /></span>{/if}
-      <div class="film-info">
-        <p class="small muted">{[item.year, item.duration ? shortDuration(item.duration) : '', ...item.genres.slice(0, 3)].filter(Boolean).join(' · ')}</p>
-        {#if play}
-          <div class="film-actions">
-            <a class="plbls-button" href={hrefs.films('watch', play.id)}><Icon name="play" size={18} /> {started ? 'Reprendre' : 'Regarder'} seul{item.kind === 'series' ? ` (${episodeLabel(play)})` : ''}</a>
-            <button class="plbls-button plbls-button--contour" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>
-          </div>
-        {/if}
-        {#if item.kind !== 'series' && item.progress && !item.progress.seen}
-          <div class="film-progress small muted"><span class="film-bar"><span style="width:{percent(item.progress)}"></span></span>{remaining(item.progress)}</div>
-        {/if}
-        {#if item.overview}<p class="film-overview">{item.overview}</p>{/if}
-        {#if item.audio.length || item.subtitles.length}
-          <dl class="film-tracks small">
-            {#if item.audio.length}<dt class="muted">Audio</dt><dd>{item.audio.map(trackName).join(', ')}</dd>{/if}
-            {#if item.subtitles.length}<dt class="muted">Sous-titres</dt><dd>{item.subtitles.map(trackName).join(', ')}</dd>{/if}
-          </dl>
-        {/if}
-        {#if seasons.length}
-          {#if seasons.length > 1}
-            <div class="film-seasons" role="group" aria-label="Saison">
-              {#each seasons as s, i (s.season.id)}<button class="film-season" aria-pressed={i === shown} onclick={() => (shown = i)}>{s.season.title}</button>{/each}
+      <a class="film-back plbls-button plbls-button--compact plbls-button--contour" href={hrefs.films()}><Icon name="gauche" size={14} /> Bibliothèque</a>
+      <div class="film-hero-body">
+        {#if item.kind !== 'series'}<span class="film-card-art film-body-poster"><FilmPoster id={item.id} {title} image={item.poster} width={480} /></span>{/if}
+        <div class="film-info">
+          <p class="v-eyebrow">{[item.kind === 'series' ? 'Série' : '', item.year, item.duration ? shortDuration(item.duration) : '', ...item.genres.slice(0, 3)].filter(Boolean).join(' · ')}</p>
+          <h1>{title}</h1>
+          {#if item.overview}<p class="film-overview">{item.overview}</p>{/if}
+          {#if play}
+            <div class="film-actions">
+              <a class="plbls-button" href={hrefs.films('watch', play.id)}><Icon name="lecture" size={18} /> {started ? 'Reprendre' : 'Regarder'} seul{item.kind === 'series' ? ` (${episodeLabel(play)})` : ''}</a>
+              <button class="plbls-button v-rose" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>
+              {#if item.kind !== 'series' && item.progress && !item.progress.seen}
+                <span class="film-progress"><span class="v-mono v-mute">{remaining(item.progress)}</span><span class="film-bar"><span style="width:{percent(item.progress)}"></span></span></span>
+              {/if}
             </div>
+          {:else if item.kind !== 'series' && item.progress && !item.progress.seen}
+            <span class="film-progress"><span class="v-mono v-mute">{remaining(item.progress)}</span><span class="film-bar"><span style="width:{percent(item.progress)}"></span></span></span>
           {/if}
-          <ol class="film-episodes">
-            {#each episodes as e (e.id)}
-              <li>
-                <a class="film-episode" href={hrefs.films('watch', e.id)}>
-                  <span class="film-episode-n muted">{e.episode ?? ''}</span>
-                  <span class="grow film-episode-body"><strong class="truncate">{e.title}</strong>{#if e.progress}<span class="film-bar"><span style="width:{percent(e.progress)}"></span></span>{/if}</span>
-                  <span class="small muted">{e.progress?.seen ? 'Vu' : e.progress ? remaining(e.progress) : ''}</span>
-                  <span class="small muted">{shortDuration(e.duration)}</span>
-                </a>
-              </li>
-            {/each}
-          </ol>
-        {/if}
+          {#if item.audio.length || item.subtitles.length}
+            <dl class="film-tracks v-note">
+              {#if item.audio.length}<div><dt>Audio</dt><dd>{item.audio.map(trackName).join(' · ')}</dd></div>{/if}
+              {#if item.subtitles.length}<div><dt>Sous-titres</dt><dd>{item.subtitles.map(trackName).join(' · ')}</dd></div>{/if}
+            </dl>
+          {/if}
+        </div>
       </div>
     </div>
+    {#if seasons.length}
+      <section class="film-body">
+        <div class="film-eps-head">
+          <h2 class="v-titre">Épisodes</h2>
+          {#if seasons.length > 1}
+            <div class="v-seg film-seasons" role="group" aria-label="Saison">
+              {#each seasons as s, i (s.season.id)}<button aria-pressed={i === shown} onclick={() => (shown = i)}>{s.season.title}</button>{/each}
+            </div>
+          {/if}
+        </div>
+        <ol class="film-episodes">
+          {#each episodes as e (e.id)}
+            {@const cur = e.id === next?.id && !!e.progress && !e.progress.seen}
+            <li>
+              <a class="film-episode" class:cur href={hrefs.films('watch', e.id)}>
+                <span class="film-episode-n v-mono">{e.episode ?? ''}</span>
+                <span class="film-episode-play" aria-hidden="true"><Icon name="lecture" size={16} /></span>
+                <span class="grow film-episode-body">
+                  <strong class="truncate">{e.title}</strong>
+                  {#if e.progress?.seen}<span class="v-note film-seen"><Icon name="ok" size={14} /> Vu</span>
+                  {:else if e.progress}<span class="v-mono film-left">{remaining(e.progress)}</span><span class="film-bar"><span style="width:{percent(e.progress)}"></span></span>{/if}
+                </span>
+                <span class="v-mono v-mute">{shortDuration(e.duration)}</span>
+              </a>
+            </li>
+          {/each}
+        </ol>
+      </section>
+    {/if}
   </div>
   {#if picker && play}
     <WatchPicker links={[`film:${play.id}`]} kind="cinema" position={resumeAt(play)} onclose={() => (picker = false)} />
   {/if}
 {:else if failed}
-  <div class="film-page"><p class="muted">Ce titre est indisponible.</p><a class="plbls-button plbls-button--contour" href={hrefs.films()}>Retour à la bibliothèque</a></div>
+  <div class="film-page"><div class="film-missing"><Icon name="alerte" /><span class="grow">Ce titre est indisponible.</span><a class="plbls-button plbls-button--compact plbls-button--contour" href={hrefs.films()}>Retour à la bibliothèque</a></div></div>
 {:else}
   <div class="film-page"><Loader /></div>
 {/if}

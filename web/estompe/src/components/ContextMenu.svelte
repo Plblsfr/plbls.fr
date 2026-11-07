@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { ctxmenu, flipY, placeMenu } from '../lib/ctxmenu.svelte'
+  import Icon from './Icon.svelte'
+  import { ctxmenu, flipY, placeMenu, type MenuItem } from '../lib/ctxmenu.svelte'
+
+  const kbdOf = (it: MenuItem) => (it as MenuItem & { kbd?: string }).kbd ?? ''
 
   let el = $state<HTMLElement>()
   let pos = $state({ left: 0, top: 0 })
@@ -42,9 +45,14 @@
 <svelte:window onkeydowncapture={key} onpointerdown={(e) => { if (ctxmenu.at && !el?.contains(e.target as Node)) close() }} onblur={() => close()} onresize={() => close()} onwheel={() => close()} />
 
 {#if ctxmenu.at}
-  <div class="popup ctxmenu" role="menu" bind:this={el} style="left: {pos.left}px; top: {pos.top}px">
+  <div class="v-menu ctxmenu" role="menu" bind:this={el} style="left: {pos.left}px; top: {pos.top}px">
     {#each ctxmenu.at.items as it (it.label)}
-      <button role={it.checked === undefined ? 'menuitem' : 'menuitemradio'} class:danger={it.danger} class:sep={it.sep} aria-checked={it.checked} onclick={() => { close(true); it.run() }}>{#if it.checked}✓ {/if}{it.label}</button>
+      {#if it.sep}<div class="v-sep" role="separator"></div>{/if}
+      <button role={it.checked === undefined ? 'menuitem' : 'menuitemradio'} class="v-mi" class:dgr={it.danger} class:on={it.checked} aria-checked={it.checked} onclick={() => { close(true); it.run() }}>
+        <span class="ctxmenu-label">{it.label}</span>
+        {#if kbdOf(it)}<kbd class="v-kbd">{kbdOf(it)}</kbd>{/if}
+        {#if it.checked}<Icon name="ok" size={15} />{/if}
+      </button>
     {/each}
   </div>
 {/if}

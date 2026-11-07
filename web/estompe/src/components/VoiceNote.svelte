@@ -149,42 +149,60 @@
 
 <svelte:window onpointermove={move} onpointerup={release} onpointercancel={interrupted} />
 
-<div class="composer-box voice-note" class:cancel={gesture === 'cancel'} class:lock={gesture === 'lock'} role="group" aria-label="Message vocal">
+<div class="composer-in voice-note" class:cancel={gesture === 'cancel'} class:lock={gesture === 'lock'} class:review={rec.state === 'review'} role="group" aria-label="Message vocal">
   {#if starting}
-    <span class="muted small grow">Ouverture du micro…</span>
+    <span class="vn-note grow">Ouverture du micro…</span>
   {:else if rec.state === 'recording' && holding}
     <span class="rec"><i></i>{clock(rec.elapsed)}</span>
     <span class="wave grow" aria-hidden="true">{#each bars as v, i (i)}<span style="height: {Math.max(8, v)}%"></span>{/each}</span>
-    <span class="hint small">
+    <span class="hint">
       {gesture === 'cancel' ? 'Relâcher pour annuler' : gesture === 'lock' ? 'Relâcher pour verrouiller' : '← annuler · ↑ verrouiller'}
     </span>
+    <span class="vn-hold" aria-hidden="true"><Icon name="mic" size={22} /></span>
   {:else if rec.state === 'recording'}
-    <button class="ib" onclick={() => discard()} aria-label="Annuler l'enregistrement" title="Annuler"><Icon name="trash" /></button>
+    <button class="v-ib vn-dgr" onclick={() => discard()} aria-label="Annuler l'enregistrement" title="Annuler"><Icon name="corbeille" /></button>
     <span class="rec"><i></i>{clock(rec.elapsed)}</span>
     <span class="wave grow" aria-hidden="true">{#each bars as v, i (i)}<span style="height: {Math.max(8, v)}%"></span>{/each}</span>
-    <button class="ib" onclick={() => finish(false)} aria-label="Mettre en pause et écouter" title="Pause"><Icon name="pause" /></button>
-    <button class="ib solid" onclick={() => finish(true)} aria-label="Envoyer le message vocal" title="Envoyer"><Icon name="up" /></button>
+    <button class="v-ib" onclick={() => finish(false)} aria-label="Mettre en pause et écouter" title="Pause"><Icon name="pause" /></button>
+    <button class="composer-send" onclick={() => finish(true)} aria-label="Envoyer le message vocal" title="Envoyer"><Icon name="envoi" size={18} /></button>
   {:else if rec.state === 'review'}
-    <button class="ib" onclick={() => discard()} aria-label="Supprimer le message vocal" title="Supprimer" disabled={sending}><Icon name="trash" /></button>
-    <audio class="listen" controls src={preview} preload="metadata"></audio>
-    {#if failed}<span class="small" role="alert">Envoi impossible.</span>{/if}
-    {#if !transcriptionOn()}{:else if transcribing}<span class="small muted">Transcription…</span>
-    {:else if known !== null}<textarea class="plbls-input transcript" rows="2" bind:value={text} placeholder="Transcription (vide : aucune)" aria-label="Transcription du message vocal" disabled={sending}></textarea>
-    {:else}<button class="small" onclick={() => transcribe()} disabled={sending}>Transcrire</button>{/if}
-    <button class="ib solid" class:is-busy={sending} onclick={submit} disabled={sending} aria-label={failed ? 'Réessayer' : 'Envoyer le message vocal'} title={failed ? 'Réessayer' : 'Envoyer'}><Icon name="up" /></button>
+    <div class="vn-row">
+      <button class="v-ib vn-dgr" onclick={() => discard()} aria-label="Supprimer le message vocal" title="Supprimer" disabled={sending}><Icon name="corbeille" /></button>
+      <audio class="listen" controls src={preview} preload="metadata"></audio>
+      {#if failed}<span class="vn-err" role="alert">Envoi impossible.</span>{/if}
+      <button class="composer-send" class:is-busy={sending} onclick={submit} disabled={sending} aria-label={failed ? 'Réessayer' : 'Envoyer le message vocal'} title={failed ? 'Réessayer' : 'Envoyer'}><Icon name="envoi" size={18} /></button>
+    </div>
+    {#if !transcriptionOn()}{:else if transcribing}<span class="vn-note"><Icon name="onde" size={14} /> Transcription…</span>
+    {:else if known !== null}
+      <label class="vn-tr">
+        <span class="vn-tr-lbl"><Icon name="onde" size={14} /> Transcription (vide : aucune)</span>
+        <textarea class="plbls-input transcript" rows="2" bind:value={text} placeholder="Transcription (vide : aucune)" aria-label="Transcription du message vocal" disabled={sending}></textarea>
+      </label>
+    {:else}<button class="v-chip line vn-transcribe" onclick={() => transcribe()} disabled={sending}><Icon name="onde" size={14} />Transcrire</button>{/if}
   {/if}
 </div>
 
 <style>
   .voice-note { align-items: center; flex-wrap: wrap; }
-  .voice-note.cancel { box-shadow: inset 0 0 0 1.5px var(--rose); }
-  .voice-note.lock { box-shadow: inset 0 0 0 1.5px var(--noir); }
-  .rec { display: inline-flex; align-items: center; gap: 6px; padding: 0 var(--espace-2); font-variant-numeric: tabular-nums; }
-  .rec i { width: 8px; height: 8px; border-radius: 50%; background: #d64545; animation: pulse 1.2s ease-in-out infinite; }
-  .wave { display: flex; align-items: center; gap: 2px; height: 32px; min-width: 60px; }
-  .wave span { flex: 1; min-height: 3px; border-radius: 2px; background: var(--gris); }
-  .hint { color: var(--gris); white-space: nowrap; }
+  .voice-note.review { flex-direction: column; align-items: stretch; gap: 10px; }
+  .voice-note.cancel { box-shadow: inset 0 0 0 2px var(--danger); border-radius: var(--r-l); }
+  .voice-note.lock { box-shadow: inset 0 0 0 2px var(--encre); border-radius: var(--r-l); }
+  .vn-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .rec { display: inline-flex; align-items: center; gap: 8px; padding: 0 4px; font-family: var(--f-mono); font-size: 13px; font-variant-numeric: tabular-nums; color: var(--encre); }
+  .rec i { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: pulse 1.2s ease-in-out infinite; }
+  .wave { display: flex; align-items: center; gap: 2px; height: 32px; min-width: 60px; color: var(--rose-fonce); }
+  .wave span { flex: 1; max-width: 3px; min-height: 3px; border-radius: 2px; background: currentColor; }
+  .hint { color: var(--gris); font-size: 13px; white-space: nowrap; }
+  .vn-hold { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--rose); color: var(--encre); flex: none; }
+  .vn-note { display: inline-flex; align-items: center; gap: 6px; color: var(--gris); font-size: 13px; }
+  .vn-err { color: var(--danger); font-size: 13px; }
+  .vn-dgr { color: var(--danger); }
   .listen { flex: 1; min-width: 0; height: 36px; }
-  .transcript { flex: 1 1 100%; resize: vertical; }
+  .vn-tr { display: grid; gap: 6px; }
+  .vn-tr-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--gris); }
+  .transcript { resize: vertical; }
+  .vn-transcribe { align-self: flex-start; cursor: pointer; }
   @keyframes pulse { 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .rec i { animation: none; } }
+  :global(:root[data-motion='reduit']) .rec i { animation: none; }
 </style>

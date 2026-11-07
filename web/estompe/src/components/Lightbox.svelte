@@ -21,9 +21,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div class="lightbox" use:portal role="dialog" aria-modal="true" aria-label={name} tabindex="-1" onclick={(e) => e.target === e.currentTarget && onclose()}>
   <div class="lightbox-bar">
-    <span class="truncate">{name}</span>
-    {#if !embed}<a class="ib" href={src} download={name} aria-label="Télécharger" onclick={() => notify.info(`Téléchargement de ${name}…`)}><Icon name="down" size={18} /></a>{/if}
-    <button class="ib" onclick={onclose} aria-label="Fermer"><Icon name="x" size={18} /></button>
+    <span class="lightbox-icon" aria-hidden="true"><Icon name={embed || video ? 'film' : 'image'} size={16} /></span>
+    <span class="lightbox-name">{name}</span>
+    {#if !embed}<a class="lightbox-ib" href={src} download={name} aria-label="Télécharger" title="Télécharger" onclick={() => notify.info(`Téléchargement de ${name}…`)}><Icon name="telecharge" size={18} /></a>{/if}
+    <button class="lightbox-ib" onclick={onclose} aria-label="Fermer" title="Fermer (Échap)"><Icon name="x" size={18} /></button>
   </div>
   {#if embed}
     <iframe {src} title={name} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>

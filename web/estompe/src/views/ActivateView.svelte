@@ -27,17 +27,18 @@
   }
 </script>
 
-<div class="center welcome">
-  <form class="card" onsubmit={submit}>
-    <h1>Bienvenue</h1>
-    <p class="muted">Tu es connecté. Pour activer ton compte Estompe, choisis un pseudo.</p>
+<div class="acces">
+  <form class="acces-carte" onsubmit={submit}>
+    <span class="acces-logo" aria-hidden="true">E</span>
+    <h1><span class="v-surl">Bienvenue</span>.</h1>
+    <p class="acces-texte">Tu es connecté. Pour activer ton compte Estompe, choisis un pseudo.</p>
     {#if error}<div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>{/if}
     <div class="plbls-field">
       <label class="plbls-field__label" for="pseudo">Pseudo</label>
-      <input id="pseudo" class="plbls-input" class:plbls-input--error={field} bind:value={pseudo} minlength="3" maxlength="20" pattern="[A-Za-z0-9_.\-]+" autocomplete="nickname" required />
-      <span class="plbls-field__aide">3 à 20 caractères : lettres, chiffres, _ . -</span>
+      <input id="pseudo" class="plbls-input" class:plbls-input--error={field} bind:value={pseudo} minlength="3" maxlength="20" pattern="[A-Za-z0-9_.\-]+" autocomplete="nickname" aria-describedby="pseudo-aide" aria-invalid={field || undefined} required />
+      <span class="plbls-field__aide" id="pseudo-aide">3 à 20 caractères : lettres, chiffres, _ . -</span>
     </div>
     <button class="plbls-button plbls-button--block" class:is-busy={busy} disabled={busy}>Activer mon compte</button>
-    <button type="button" class="plbls-button plbls-button--lien" onclick={() => logout()}>Se déconnecter</button>
+    <button type="button" class="plbls-button plbls-button--lien acces-second" onclick={() => logout()}>Se déconnecter</button>
   </form>
 </div>

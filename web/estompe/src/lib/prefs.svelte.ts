@@ -20,6 +20,8 @@ export type SoundChoice = 'off' | 'rise' | 'fall' | 'chime' | 'pop' | 'double' |
 
 interface Stored {
   desktopNotifications: boolean; density: Density; showPreviews: boolean; theme: Theme
+  /** Réduire les animations, quel que soit le réglage du système (sinon : celui du système). */
+  reduceMotion: boolean
   /** Transcrire automatiquement mes messages vocaux (EST-158). */
   transcribeAuto: boolean
   micId: string; speakerId: string; cameraId: string; noise: NoiseMode
@@ -68,7 +70,7 @@ interface Stored {
   serverOrder: string[]
 }
 const KEY = 'estompe.prefs'
-const DEFAULTS: Stored = { desktopNotifications: true, density: 'confortable', showPreviews: true, theme: 'auto', transcribeAuto: true,
+const DEFAULTS: Stored = { desktopNotifications: true, density: 'confortable', showPreviews: true, theme: 'auto', reduceMotion: false, transcribeAuto: true,
   micId: '', speakerId: '', cameraId: '', noise: 'strong', micGain: 100, screenAudio: true, ptt: false, pttKey: 'KeyV', voiceSounds: true, screenRes: '1080p', screenFps: 30, screenAuto: true, watchAuto: true, watchAutoSet: false,
   vad: false, vadThreshold: -45, cameraQuality: '720p', videoCodec: 'auto', cameraFx: 'none', cameraBlur: 10, cameraBg: 'aube', customBg: '',
   camOverlay: { enabled: false, x: 1, y: 1, size: 0.22, shape: 'rect', margin: 24, border: false, shadow: true, mirror: false },
@@ -91,12 +93,20 @@ function load(): Stored {
   return { ...DEFAULTS }
 }
 
+/** `data-motion="reduit"` sur la racine : coupe les animations (v3-jetons.css). */
+export function applyMotion(reduce: boolean, root = typeof document === 'undefined' ? undefined : document.documentElement) {
+  if (!root) return
+  if (reduce) root.dataset.motion = 'reduit'
+  else delete root.dataset.motion
+}
+
 class Prefs {
   desktopNotifications = $state(DEFAULTS.desktopNotifications)
   density = $state<Density>(DEFAULTS.density)
   showPreviews = $state(DEFAULTS.showPreviews)
   transcribeAuto = $state(DEFAULTS.transcribeAuto)
   theme = $state<Theme>(DEFAULTS.theme)
+  reduceMotion = $state(DEFAULTS.reduceMotion)
   micId = $state(DEFAULTS.micId)
   speakerId = $state(DEFAULTS.speakerId)
   cameraId = $state(DEFAULTS.cameraId)
@@ -152,10 +162,11 @@ class Prefs {
 
   constructor() {
     Object.assign(this, load())
+    applyMotion(this.reduceMotion)
   }
   save() {
     const s: Stored = {
-      desktopNotifications: this.desktopNotifications, density: this.density, showPreviews: this.showPreviews, theme: this.theme, transcribeAuto: this.transcribeAuto,
+      desktopNotifications: this.desktopNotifications, density: this.density, showPreviews: this.showPreviews, theme: this.theme, reduceMotion: this.reduceMotion, transcribeAuto: this.transcribeAuto,
       micId: this.micId, speakerId: this.speakerId, cameraId: this.cameraId, noise: this.noise, micGain: this.micGain, screenAudio: this.screenAudio,
       ptt: this.ptt, pttKey: this.pttKey, voiceSounds: this.voiceSounds, screenRes: this.screenRes, screenFps: this.screenFps, screenAuto: this.screenAuto, watchAuto: this.watchAuto, watchAutoSet: this.watchAutoSet,
       vad: this.vad, vadThreshold: this.vadThreshold, cameraQuality: this.cameraQuality, videoCodec: this.videoCodec, cameraFx: this.cameraFx, cameraBlur: this.cameraBlur, cameraBg: this.cameraBg, customBg: this.customBg, camOverlay: $state.snapshot(this.camOverlay),
@@ -163,6 +174,7 @@ class Prefs {
       overlayWhen: this.overlayWhen, overlayKey: this.overlayKey, overlayCorner: this.overlayCorner, overlaySize: this.overlaySize, overlayMode: this.overlayMode, msgOverlay: this.msgOverlay, msgHide: this.msgHide, msgSeconds: this.msgSeconds, msgReplyKey: this.msgReplyKey, msgOpenKey: this.msgOpenKey, bobynOverlay: this.bobynOverlay, shareActivity: this.shareActivity, shareListening: this.shareListening, floatingPlayer: this.floatingPlayer, debug: this.debug, alpha: this.alpha, serverOrder: $state.snapshot(this.serverOrder),
     }
     try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* ignoré */ }
+    applyMotion(this.reduceMotion)
   }
 }
 

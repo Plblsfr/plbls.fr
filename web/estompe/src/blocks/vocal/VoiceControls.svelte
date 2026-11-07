@@ -45,8 +45,8 @@
   const showOverlay = !!overlay?.available()
   // Dans le panneau (largeur fixe), le partage puis la caméra passent dans le menu « … » quand la rangée est trop étroite.
   let w = $state(0)
-  const showShare = $derived(!panel || !w || w >= 284)
-  const showCam = $derived(!panel || !w || w >= 244)
+  const showShare = $derived(!panel || !w || w >= 264)
+  const showCam = $derived(!panel || !w || w >= 224)
   const silent = $derived(prefs.vad && !prefs.ptt && !voice.muted && !voice.voiceActive)
 
   function more(e: MouseEvent) {

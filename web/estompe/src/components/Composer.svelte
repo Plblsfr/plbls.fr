@@ -6,7 +6,7 @@
   import { tick, onMount, onDestroy } from 'svelte'
   import { app } from '../lib/store.svelte'
   import { api, ApiError } from '../lib/api'
-    import { formatSize } from '../lib/format'
+  import { formatSize } from '../lib/format'
   import { groupesCites, insertMention, mentionAt, SEUIL_CONFIRMATION, suggest } from '../lib/mention'
   import { confirmer } from '../lib/confirm.svelte'
   import { codeAt, completeCode, emojiByCode, loadEmojiRows, searchEmojis, type EmojiRow } from '../blocks/emojis/emoji'
@@ -52,6 +52,8 @@
   let pollOpen = $state(false)
   let voiceOn = $state(false)
   let voiceHold = $state<{ x: number; y: number } | null>(null)
+  let plus = $state(false)
+  let fileInput = $state<HTMLInputElement>()
 
   const mention = $derived(mentionAt(text, caret))
   const options = $derived(mention ? suggest(mention.query, [...app.pseudosOf(convKey), ...app.groupSuggestionsOf(convKey)], app.pseudo) : [])
@@ -117,6 +119,16 @@
       if (!ok && !warned) { warned = true; notify.info('Fichiers trop lourds : gardés pendant la session, perdus au redémarrage') }
     })
   })
+
+  function pickFiles() {
+    plus = false
+    fileInput?.click()
+  }
+
+  function openPoll() {
+    plus = false
+    pollOpen = true
+  }
 
   function closeGif() {
     gif = false
@@ -258,96 +270,110 @@
   const t = e.target as Element
   if (gif && !t.closest?.('.gif-anchor')) closeGif()
   if (emoji && !t.closest?.('.emoji-anchor')) emoji = false
+  if (plus && !t.closest?.('.plus-anchor')) plus = false
 }} />
 <div
   class="composer"
-  class:dropping={dragging}
+  class:dropping={dragging && canAttach}
   role="group"
   aria-label="Nouveau message"
   ondragover={(e) => { e.preventDefault(); dragging = true }}
-  ondragleave={() => (dragging = false)}
+  ondragleave={(e) => { if (!(e.currentTarget as Element).contains(e.relatedTarget as Node)) dragging = false }}
   {ondrop}
 >
   {#if options.length}
-    <div class="popup" role="listbox" aria-label="Mentionner">
+    <div class="v-menu composer-suggest" role="listbox" aria-label="Mentionner">
+      <div class="v-mh" aria-hidden="true">Mentionner</div>
       {#each options as o, i}
-        <button role="option" aria-selected={i === sel} class:sel={i === sel} onmousedown={(e) => { e.preventDefault(); pick(o) }}>@{o}{#if GROUPES[o]} <span class="muted">{GROUPES[o]}{#if app.groupCountOf(convKey, o) !== null} — {app.groupCountOf(convKey, o)}{o === 'here' ? ' en ligne' : ' personnes'}{/if}</span>{/if}</button>
+        <button class="v-mi" role="option" aria-selected={i === sel} class:on={i === sel} onmousedown={(e) => { e.preventDefault(); pick(o) }}><span class="composer-suggest-main">@{o}</span>{#if GROUPES[o]}<span class="composer-suggest-sub">{GROUPES[o]}{#if app.groupCountOf(convKey, o) !== null} — {app.groupCountOf(convKey, o)}{o === 'here' ? ' en ligne' : ' personnes'}{/if}</span>{/if}</button>
       {/each}
     </div>
   {/if}
   {#if codeOptions.length}
-    <div class="popup" role="listbox" aria-label="Smileys">
+    <div class="v-menu composer-suggest" role="listbox" aria-label="Smileys">
+      <div class="v-mh" aria-hidden="true">Smileys · :{code?.query}</div>
       {#each codeOptions as r, i}
-        <button role="option" aria-selected={i === sel} class:sel={i === sel} onmousedown={(e) => { e.preventDefault(); pickCode(r) }}>{r[0]} <span class="muted">:{r[1]}:</span></button>
+        <button class="v-mi" role="option" aria-selected={i === sel} class:on={i === sel} onmousedown={(e) => { e.preventDefault(); pickCode(r) }}><span class="composer-suggest-emoji">{r[0]}</span><span class="composer-suggest-main">:{r[1]}:</span></button>
       {/each}
     </div>
   {/if}
   {#if pollOpen}<PollModal {convKey} onclose={() => (pollOpen = false)} />{/if}
-    {#if reply}
-    <div class="reply-bar">
-      <Icon name="reply" size={14} /><span class="truncate grow">Réponse à <strong>{reply.author.pseudo}</strong> : {reply.content.slice(0, 80)}</span>
-      <button class="ib sm" onclick={() => (app.reply = null)} aria-label="Annuler la réponse"><Icon name="x" size={14} /></button>
-    </div>
-  {/if}
+  {#if canAttach}<input bind:this={fileInput} type="file" multiple hidden onchange={(e) => { void addFiles([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} />{/if}
 
-  {#if files.length}
-    <div class="pending">
-      {#each files as f (f.key)}
-        {#if f.preview}
-          <span class="thumb" class:failed={f.failed} title="{f.name} · {formatSize(f.size)}">
-            {#if f.video}<video src={f.preview + '#t=0.1'} muted preload="metadata"></video>{:else}<img src={f.preview} alt={f.name} />{/if}
-            {#if f.video}<span class="thumb-badge"><Icon name="film" size={12} /></span>{/if}
-            {#if !f.id && !f.failed}<span class="thumb-wait"><Loader size="sm" label="Envoi de {f.name}" /></span>{:else if f.failed}<span class="thumb-wait small">échec</span>{/if}
-            <button onclick={() => drop(f)} aria-label="Retirer {f.name}"><Icon name="x" size={14} /></button>
-          </span>
-        {:else}
-        <span class="file-chip" class:expired={f.failed}>
-          <Icon name="file" size={16} /> <span class="truncate">{f.name}</span> <span class="muted small">{f.failed ? 'échec' : f.id ? formatSize(f.size) : 'envoi…'}</span>
-          <button onclick={() => drop(f)} aria-label="Retirer {f.name}"><Icon name="x" size={14} /></button>
-        </span>
-        {/if}
-      {/each}
-    </div>
-  {/if}
-
-  {#if voiceOn}
-    <VoiceNote {convKey} hold={voiceHold} replyId={reply?.id} onclose={closeVoice} />
-  {:else}
   <div class="composer-box">
-    {#if canAttach}
-    <label class="ib" title="Joindre un fichier (10 Mo max)">
-      <Icon name="clip" /><span class="plbls-sr-only">Joindre un fichier</span>
-      <input type="file" multiple hidden onchange={(e) => { void addFiles([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} />
-    </label>
+    {#if dragging && canAttach}
+      <div class="composer-drop" aria-hidden="true"><Icon name="envoie" size={22} /><span>Dépose pour joindre · 10 Mo max par fichier</span></div>
     {/if}
-    <textarea
-      bind:this={ta}
-      bind:value={text}
-      rows="1"
-      maxlength="4000"
-      {placeholder}
-      aria-label={placeholder}
-      oninput={() => { sync(); typed(); convert() }}
-      onclick={sync}
-      onkeyup={(e) => { if (!['Enter', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.key)) sync() }}
-      {onkeydown}
-      {onpaste}
-    ></textarea>
-    {#if canPoll}<button class="ib" onclick={() => (pollOpen = true)} aria-label="Sondage" aria-haspopup="dialog" title="Créer un sondage"><Icon name="chart" /></button>{/if}
-    <span class="gif-anchor">
-      {#if app.on('gifs')}<button class="ib txt" onclick={() => { gif ? closeGif() : (gif = true); emoji = false }} aria-label="GIF" aria-expanded={gif}>GIF</button>{/if}
-      {#if gif}<GifPicker onpick={sendGif} onclose={closeGif} />{/if}
-    </span>
-    <span class="emoji-anchor">
-      <button class="ib" onclick={() => { emoji ? closeEmoji() : (emoji = true); gif = false }} aria-label="Emojis" aria-expanded={emoji} aria-haspopup="dialog"><Icon name="smile" /></button>
-      {#if emoji}<EmojiPicker onpick={addEmoji} onclose={closeEmoji} />{/if}
-    </span>
-    {#if text.trim() || files.length}
-      <button class="ib solid" class:is-busy={sending} disabled={!canSend} onclick={send} aria-label="Envoyer" title="Envoyer"><Icon name="up" /></button>
-    {:else if canAttach}
-      <button class="ib" onpointerdown={voicePress} onclick={voiceClick} aria-label="Message vocal" title="Message vocal"><Icon name="mic" /></button>
+    {#if reply}
+      <div class="reply-bar">
+        <Icon name="repondre" size={15} /><span class="reply-bar-text">Réponse à <span class="reply-bar-who">{reply.author.pseudo}</span> : {reply.content.slice(0, 80)}</span>
+        <button class="v-ib sm" onclick={() => (app.reply = null)} aria-label="Annuler la réponse"><Icon name="x" size={15} /></button>
+      </div>
+    {/if}
+
+    {#if files.length}
+      <div class="pending">
+        {#each files as f (f.key)}
+          {#if f.preview}
+            <span class="thumb" class:failed={f.failed} title="{f.name} · {formatSize(f.size)}">
+              {#if f.video}<video src={f.preview + '#t=0.1'} muted preload="metadata"></video>{:else}<img src={f.preview} alt={f.name} />{/if}
+              {#if f.video}<span class="thumb-badge"><Icon name="film" size={12} /></span>{/if}
+              {#if !f.id && !f.failed}<span class="thumb-wait"><Loader size="sm" label="Envoi de {f.name}" /></span>{:else if f.failed}<span class="thumb-wait thumb-failed">échec</span>{/if}
+              <button class="thumb-x" onclick={() => drop(f)} aria-label="Retirer {f.name}"><Icon name="x" size={13} /></button>
+            </span>
+          {:else}
+            <span class="file-chip" class:expired={f.failed}>
+              <Icon name="trombone" size={15} /> <span class="truncate">{f.name}</span> <span class="file-chip-size">{f.failed ? 'échec' : f.id ? formatSize(f.size) : 'envoi…'}</span>
+              <button class="file-chip-x" onclick={() => drop(f)} aria-label="Retirer {f.name}"><Icon name="x" size={13} /></button>
+            </span>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+
+    {#if voiceOn}
+      <VoiceNote {convKey} hold={voiceHold} replyId={reply?.id} onclose={closeVoice} />
+    {:else}
+    <div class="composer-in">
+      {#if canAttach || canPoll}
+        <span class="plus-anchor">
+          <button class="v-ib composer-ib" onclick={() => { plus = !plus; gif = false; emoji = false }} aria-label="Joindre ou créer" aria-haspopup="true" aria-expanded={plus} title="Joindre un fichier ou créer un sondage"><Icon name="plus" /></button>
+          {#if plus}
+            <div class="v-menu composer-plus">
+              {#if canAttach}<button class="v-mi" onclick={pickFiles} title="Joindre un fichier (10 Mo max)"><Icon name="trombone" size={16} />Joindre un fichier<span class="composer-plus-note">10 Mo max</span></button>{/if}
+              {#if canPoll}<button class="v-mi" onclick={openPoll} aria-haspopup="dialog" title="Créer un sondage"><Icon name="sondage" size={16} />Sondage</button>{/if}
+            </div>
+          {/if}
+        </span>
+      {/if}
+      <textarea
+        bind:this={ta}
+        bind:value={text}
+        rows="1"
+        maxlength="4000"
+        {placeholder}
+        aria-label={placeholder}
+        oninput={() => { sync(); typed(); convert() }}
+        onclick={sync}
+        onkeyup={(e) => { if (!['Enter', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.key)) sync() }}
+        {onkeydown}
+        {onpaste}
+      ></textarea>
+      {#if text.length > 3500}<span class="composer-count" class:over={text.length >= 3900}>{text.length} / 4000</span>{/if}
+      <span class="gif-anchor">
+        {#if app.on('gifs')}<button class="v-ib composer-ib" onclick={() => { gif ? closeGif() : (gif = true); emoji = false; plus = false }} aria-label="GIF" aria-expanded={gif} title="GIF"><Icon name="gif" /></button>{/if}
+        {#if gif}<GifPicker onpick={sendGif} onclose={closeGif} />{/if}
+      </span>
+      <span class="emoji-anchor">
+        <button class="v-ib composer-ib" onclick={() => { emoji ? closeEmoji() : (emoji = true); gif = false; plus = false }} aria-label="Emojis" aria-expanded={emoji} aria-haspopup="dialog" title="Emojis"><Icon name="sourire" /></button>
+        {#if emoji}<EmojiPicker onpick={addEmoji} onclose={closeEmoji} />{/if}
+      </span>
+      {#if text.trim() || files.length}
+        <button class="composer-send" class:is-busy={sending} disabled={!canSend} onclick={send} aria-label="Envoyer" title="Envoyer"><Icon name="envoi" size={18} /></button>
+      {:else if canAttach}
+        <button class="composer-send" onpointerdown={voicePress} onclick={voiceClick} aria-label="Message vocal" title="Message vocal"><Icon name="mic" size={18} /></button>
+      {/if}
+    </div>
     {/if}
   </div>
-  {/if}
-  {#if text.length > 3500}<div class="muted small" style="text-align:right">{text.length} / 4000</div>{/if}
 </div>

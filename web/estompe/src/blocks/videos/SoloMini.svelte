@@ -27,21 +27,39 @@
 </script>
 
 {#if t}
-  <div class="solo" role="group" aria-label="Écoute personnelle">
-    <div class="mini row">
-      <img src={coverUrl(t)} alt="" />
-      <span class="grow mini-t"><span class="truncate">{t.title}</span><span class="small muted truncate">{t.artist || 'Écoute personnelle'}</span></span>
-      <button class="ib sm" onclick={() => solo.toggle()} aria-label={solo.playing ? 'Pause' : 'Lecture'}><Icon name={solo.playing ? 'pause' : 'play'} size={14} /></button>
-      <button class="ib sm" onclick={() => solo.next()} aria-label="Suivant" title="Suivant"><Icon name="next" size={14} /></button>
-      <button class="ib sm" onclick={() => solo.stop()} aria-label="Arrêter l'écoute" title="Arrêter"><Icon name="x" size={14} /></button>
+  <div class="lect" role="group" aria-label="Écoute personnelle">
+    <div class="lect-l">
+      {#if coverUrl(t)}<img class="lect-pochette" src={coverUrl(t)} alt="" />{:else}<span class="lect-pochette" aria-hidden="true"><Icon name="casque" size={16} /></span>{/if}
+      <span class="lect-t"><span class="lect-titre">{t.title}</span><span class="lect-sous">{t.artist || 'Écoute personnelle'}{#if solo.upcoming.length} · À suivre : {solo.upcoming.length} titre{solo.upcoming.length > 1 ? 's' : ''}{/if}</span></span>
+      <button class="ib lect-ib" onclick={() => solo.toggle()} aria-label={solo.playing ? 'Pause' : 'Lecture'}><Icon name={solo.playing ? 'pause' : 'play'} size={16} /></button>
+      <button class="ib lect-ib" onclick={() => solo.next()} aria-label="Suivant" title="Suivant"><Icon name="next" size={16} /></button>
+      <button class="ib lect-ib" onclick={() => solo.stop()} aria-label="Arrêter l'écoute" title="Arrêter"><Icon name="x" size={16} /></button>
     </div>
-    {#if solo.blocked}<div class="mini row"><button class="plbls-button plbls-button--compact" onclick={() => { solo.blocked = false; solo.playing = true }}>Activer le son</button></div>{/if}
+    {#if solo.blocked}<button class="v-btn sm rose" onclick={() => { solo.blocked = false; solo.playing = true }}>Activer le son</button>{/if}
     <MiniProgress pos={solo.position} total={solo.duration} onseek={(s) => solo.seek(s)} />
-    <div class="mini row">
-      <button class="ib sm" onclick={() => (volumeOpen = !volumeOpen)} aria-expanded={volumeOpen} aria-label="Volume de l'écoute personnelle" title="Volume"><Icon name="volume" size={14} /></button>
-      {#if volumeOpen}<input class="mini-volume" type="range" min="0" max="100" bind:value={solo.volume} aria-label="Volume de l'écoute personnelle" />{/if}
-      {#if inVoice}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void share()}>Partager dans le vocal</button>{/if}
+    <div class="lect-l">
+      {#if inVoice}<button class="v-btn sm rose grow" onclick={() => void share()}><Icon name="gens" size={15} />Partager dans le vocal</button>{:else}<span class="grow"></span>{/if}
+      {#if volumeOpen}<input class="lect-volume" type="range" min="0" max="100" bind:value={solo.volume} aria-label="Volume de l'écoute personnelle" />{/if}
+      <button class="ib lect-ib" onclick={() => (volumeOpen = !volumeOpen)} aria-expanded={volumeOpen} aria-label="Volume de l'écoute personnelle" title="Volume"><Icon name="volmax" size={16} /></button>
     </div>
-    {#if solo.upcoming.length}<div class="small muted" style="padding: 0 8px 0 28px">À suivre : {solo.upcoming.length} titre{solo.upcoming.length > 1 ? 's' : ''}</div>{/if}
   </div>
 {/if}
+
+<style>
+  .lect { display: grid; gap: 4px; min-width: 0; font-size: 13px; }
+  .lect-l { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .lect-pochette { flex: none; display: grid; place-items: center; width: 36px; height: 36px; margin-right: 4px; border-radius: var(--r-s); object-fit: cover; background: color-mix(in srgb, currentColor 14%, transparent); }
+  .lect-t { display: grid; flex: 1; min-width: 0; line-height: 1.25; }
+  .lect-titre { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lect-sous { font-size: 11.5px; opacity: 0.72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lect-ib { width: 32px; height: 32px; color: inherit; }
+  .lect .v-btn.sm { height: 30px; }
+  .lect-volume { width: 0; flex: 1 1 80px; min-width: 60px; accent-color: var(--rose-fonce); }
+  .lect :global(.mini-progress) { padding: 0; gap: 6px; }
+  .lect :global(.mini-time) { color: inherit; opacity: 0.72; font-family: var(--f-mono); font-size: 10.5px; }
+  .lect :global(.mini-bar::-webkit-slider-runnable-track) { background: linear-gradient(to right, var(--rose-fonce) var(--p), color-mix(in srgb, currentColor 20%, transparent) var(--p)); }
+  .lect :global(.mini-bar::-moz-range-track) { background: linear-gradient(to right, var(--rose-fonce) var(--p), color-mix(in srgb, currentColor 20%, transparent) var(--p)); }
+  .lect :global(.mini-bar::-webkit-slider-thumb) { background: currentColor; }
+  .lect :global(.mini-bar::-moz-range-thumb) { background: currentColor; }
+  @media (pointer: coarse) { .lect-ib { width: 44px; height: 44px; } .lect .v-btn.sm { min-height: 44px; } }
+</style>

@@ -60,32 +60,34 @@
 {#if upcoming.length}
   <div class="vnext" role="status">
     {#each upcoming as s (s.id)}
-      <button class="vnext-item" onclick={() => (tab = 'sessions')}><Icon name="calendar" size={14} /> <strong class="truncate">{s.title}</strong> <span class="small">{s.started_at ? 'en cours' : when(s.starts_at)}</span></button>
+      <button class="v-chip on vnext-item" onclick={() => (tab = 'sessions')}><Icon name="horloge" size={14} /> <strong class="truncate">{s.title}</strong> <span class="v-mono">{s.started_at ? 'en cours' : when(s.starts_at)}</span></button>
     {/each}
   </div>
 {/if}
 
-<div class="vtabs" role="tablist" aria-label="Sections du salon">
+<div class="v-tabs vtabs" role="tablist" aria-label="Sections du salon">
   {#each TABS as [id, text, icon] (id)}
-    <button role="tab" class="vtab" class:active={tab === id} aria-selected={tab === id} onclick={() => (tab = id)}><Icon name={icon} size={16} /> {text}</button>
+    <button role="tab" class="vtab" aria-selected={tab === id} onclick={() => (tab = id)}><Icon name={icon} size={16} /> {text}</button>
   {/each}
 </div>
 
 {#if tab === 'chat'}
   <MessageList convKey={key} />
-  {#if canSend}<Composer convKey={key} placeholder={`Écrire dans #${channel.name}`} />{:else}<p class="muted small" style="padding: 0.75rem 1rem">Vous n'avez pas la permission d'écrire dans ce salon.</p>{/if}
+  {#if canSend}<Composer convKey={key} placeholder={`Écrire dans #${channel.name}`} />{:else}<p class="v-note vno-send">Vous n'avez pas la permission d'écrire dans ce salon.</p>{/if}
 {:else}
   <div class="vbody-wrap">
     {#if !board}
       <Loader />
     {:else if tab === 'videos'}
       {#if canSend}
-        <form class="row vpublish" onsubmit={publish}>
+        <form class="vpublish" onsubmit={publish}>
+          <span class="vpublish-ic" aria-hidden="true"><Icon name="lien" size={16} /></span>
           <input class="plbls-input grow" bind:value={link} placeholder={isMusic ? 'Coller un lien YouTube Music (morceau, album, playlist)' : 'Coller un lien de vidéo (YouTube, Twitch, Vimeo, Dailymotion, fichier…)'} aria-label={isMusic ? 'Lien du morceau à publier' : 'Lien de la vidéo à publier'} maxlength="2000" />
-          <button class="plbls-button plbls-button--compact" disabled={!link.trim() || sending}>Publier</button>
+          <button class="plbls-button" disabled={!link.trim() || sending}>Publier</button>
         </form>
       {/if}
-      <div class="row wrap vfilters">
+      <div class="vfilters">
+        <span class="vfilters-ic" aria-hidden="true"><Icon name="filtre" size={16} /></span>
         {#if isMusic}
           <select class="plbls-select" bind:value={filter.artist} aria-label="Filtrer par artiste"><option value="">Tous les artistes</option>{#each artists as a (a)}<option value={a}>{a}</option>{/each}</select>
           <select class="plbls-select" bind:value={filter.watched} aria-label="Filtrer selon l'écoute"><option value="all">Écoutés ou non</option><option value="unseen">Pas encore écoutés</option><option value="seen">Déjà écoutés (historique)</option></select>
@@ -97,14 +99,16 @@
         {#if board.lists.length}<select class="plbls-select" bind:value={filter.list} aria-label="Filtrer par liste"><option value="">Toutes les listes</option>{#each board.lists as l (l.id)}<option value={l.id}>{l.name}</option>{/each}</select>{/if}
         <select class="plbls-select" bind:value={sort} aria-label="Trier"><option value="recent">Plus récentes</option><option value="reactions">Plus de réactions</option>{#if isMusic}<option value="title">Titre (A→Z)</option>{/if}</select>
         <span class="grow"></span>
-        <button class="ib sm" aria-pressed={layout === 'grid'} onclick={() => (layout = 'grid')} aria-label="Vue en grille" title="Grille"><Icon name="grid" size={16} /></button>
-        <button class="ib sm" aria-pressed={layout === 'list'} onclick={() => (layout = 'list')} aria-label="Vue en liste" title="Liste"><Icon name="list" size={16} /></button>
+        <span class="v-seg vlayout">
+          <button aria-pressed={layout === 'grid'} onclick={() => (layout = 'grid')} aria-label="Vue en grille" title="Grille"><Icon name="grid" size={16} /></button>
+          <button aria-pressed={layout === 'list'} onclick={() => (layout = 'list')} aria-label="Vue en liste" title="Liste"><Icon name="list" size={16} /></button>
+        </span>
       </div>
       <div class="vgrid" class:vlist-layout={layout === 'list'}>
         {#each shown as p (p.message_id)}
           <VideoCard post={p} channelId={channel.id} {serverId} lists={board.lists} compact={layout === 'list'} onwatch={(x) => (picker = { links: [playLink(x)], kind: x.provider === 'ytmusic' ? 'music' : 'watch' })} />
         {:else}
-          <p class="muted">{posts.length ? (isMusic ? 'Aucun morceau ne correspond aux filtres.' : 'Aucune vidéo ne correspond aux filtres.') : (isMusic ? 'Aucun morceau pour le moment. Collez un lien YouTube Music ci-dessus pour lancer le salon.' : 'Aucune vidéo pour le moment. Collez un lien ci-dessus pour lancer le salon.')}</p>
+          <p class="v-empty v-note vempty">{posts.length ? (isMusic ? 'Aucun morceau ne correspond aux filtres.' : 'Aucune vidéo ne correspond aux filtres.') : (isMusic ? 'Aucun morceau pour le moment. Collez un lien YouTube Music ci-dessus pour lancer le salon.' : 'Aucune vidéo pour le moment. Collez un lien ci-dessus pour lancer le salon.')}</p>
         {/each}
       </div>
     {:else if tab === 'lists'}

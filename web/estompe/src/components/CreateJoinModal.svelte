@@ -4,6 +4,8 @@
   import { router, hrefs } from '../lib/route.svelte'
   import { messageOf, notify } from '../lib/ui'
   import Modal from './Modal.svelte'
+  import Icon from './Icon.svelte'
+  import { initials } from '../lib/format'
 
   let { onclose }: { onclose: () => void } = $props()
 
@@ -53,22 +55,46 @@
 </script>
 
 <Modal title="Créer ou rejoindre un serveur" {onclose}>
-  <div class="stack">
+  <div class="cj">
     {#if error}<div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>{/if}
-    <form class="stack" onsubmit={create}>
-      <div class="plbls-field">
-        <label class="plbls-field__label" for="srv-name">Créer un serveur</label>
-        <input id="srv-name" class="plbls-input" bind:value={name} maxlength="50" placeholder="Nom du serveur" required />
-      </div>
-      <button class="plbls-button" disabled={busy || !name.trim()}>Créer</button>
-    </form>
-    <hr style="border: 0; border-top: 1px solid var(--trait); width: 100%;" />
-    <form class="stack" onsubmit={join}>
-      <div class="plbls-field">
-        <label class="plbls-field__label" for="srv-code">Rejoindre avec un lien ou un code</label>
-        <input id="srv-code" class="plbls-input mono" bind:value={invite} placeholder="ABCDE-23456" autocomplete="off" required />
-      </div>
-      <button class="plbls-button plbls-button--contour" disabled={busy || !invite.trim()}>Rejoindre</button>
-    </form>
+    <div class="cj-choix">
+      <form class="cj-bloc" onsubmit={create}>
+        <span class="cj-icone rose" aria-hidden="true"><Icon name="plus" size={22} /></span>
+        <div class="plbls-field">
+          <label class="plbls-field__label cj-titre" for="srv-name">Créer un serveur</label>
+          <input id="srv-name" class="plbls-input" bind:value={name} maxlength="50" placeholder="Nom du serveur" required />
+        </div>
+        {#if name.trim()}
+          <div class="cj-apercu v-note"><span class="cj-pave" aria-hidden="true">{initials(name.trim())}</span>Aperçu dans la barre des serveurs</div>
+        {/if}
+        <button class="plbls-button plbls-button--block" disabled={busy || !name.trim()}>Créer</button>
+      </form>
+      <form class="cj-bloc" onsubmit={join}>
+        <span class="cj-icone" aria-hidden="true"><Icon name="lien" size={22} /></span>
+        <div class="plbls-field">
+          <label class="plbls-field__label cj-titre" for="srv-code">Rejoindre avec un lien ou un code</label>
+          <input id="srv-code" class="plbls-input cj-code" bind:value={invite} placeholder="ABCDE-23456" autocomplete="off" aria-describedby="srv-code-aide" required />
+          <span class="plbls-field__aide" id="srv-code-aide">Colle un lien d'invitation complet, ou juste le code.</span>
+        </div>
+        <button class="plbls-button plbls-button--contour plbls-button--block" disabled={busy || !invite.trim()}>Rejoindre</button>
+      </form>
+    </div>
   </div>
 </Modal>
+
+<style>
+  .cj { display: flex; flex-direction: column; gap: 16px; }
+  .cj .plbls-alert, .cj .plbls-field { margin: 0; }
+  .cj-choix { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; }
+  .cj-bloc { display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: var(--r); background: var(--papier-2); }
+  .cj-bloc > button { margin-top: auto; }
+  .cj-icone { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--av-3); color: var(--av-3-t); }
+  .cj-icone.rose { background: var(--rose); color: var(--encre); }
+  .cj-titre { font-family: var(--f-titre); font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--encre); }
+  .cj-code { font-family: var(--f-mono); letter-spacing: 0.02em; }
+  .cj-apercu { display: flex; align-items: center; gap: 8px; }
+  .cj-pave { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--encre); color: var(--papier); font-family: var(--f-titre); font-size: 11px; font-weight: 700; }
+  @media (pointer: coarse) {
+    .cj-bloc .plbls-button { min-height: 44px; }
+  }
+</style>

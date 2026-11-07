@@ -40,22 +40,22 @@
 
 <aside class="panel-side" aria-label="Messages épinglés">
   <header>
-    <h2 class="grow" style="margin: 0; font-size: 16px;">Messages épinglés</h2>
-    <button class="ib sm" onclick={onclose} aria-label="Fermer"><Icon name="x" size={16} /></button>
+    <h2 class="grow pins-title">Messages épinglés</h2>
+    <button class="v-ib sm" onclick={onclose} aria-label="Fermer"><Icon name="x" size={16} /></button>
   </header>
   <div class="panel-body">
     {#each results as m (m.id)}
-      <div class="result">
-        <div class="small"><strong>{m.author.pseudo}</strong> · <span class="muted">{dayOf(m.created_at)} {timeOf(m.created_at)}</span></div>
+      <article class="pin-card">
+        <div class="pin-meta"><Icon name="epingle" size={13} /><span class="pin-author">{m.author.pseudo}</span><span class="pin-date">{dayOf(m.created_at)} {timeOf(m.created_at)}</span></div>
         <div class="msg-body">{@html renderMarkdown(m.content, pseudos, emojis.names())}</div>
-        {#if m.attachments.length}<div class="muted small row"><Icon name="clip" size={14} /> {m.attachments.length} fichier{m.attachments.length > 1 ? 's' : ''}</div>{/if}
-        <div class="row">
-          <button class="plbls-button plbls-button--lien plbls-button--compact" onclick={() => jump(m.id)}>Voir dans la conversation</button>
-          <button class="plbls-button plbls-button--lien plbls-button--compact" onclick={() => unpin(m.id)}>Désépingler</button>
+        {#if m.attachments.length}<div class="pin-files"><Icon name="trombone" size={14} /> {m.attachments.length} fichier{m.attachments.length > 1 ? 's' : ''}</div>{/if}
+        <div class="pin-actions">
+          <button class="v-btn sm sec" onclick={() => jump(m.id)}>Voir dans la conversation</button>
+          <button class="v-btn sm ghost" onclick={() => unpin(m.id)}>Désépingler</button>
         </div>
-      </div>
+      </article>
     {:else}
-      {#if !busy}<p class="muted">Aucun message épinglé.</p>{/if}
+      {#if !busy}<div class="pins-empty"><Icon name="epingle" size={20} /><p>Aucun message épinglé.</p></div>{/if}
     {/each}
   </div>
 </aside>

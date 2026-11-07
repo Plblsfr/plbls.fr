@@ -18,7 +18,7 @@
   {#each links as l (l.label)}
     <a class="nav-item" class:active={section === l.id} href={hrefs.films(l.id)} aria-current={section === l.id ? 'page' : undefined}>
       <span class="grow truncate">{l.label}</span>
-      {#if l.count}<span class="small muted">{l.count}</span>{/if}
+      {#if l.count}<span class="v-mono v-mute">{l.count}</span>{/if}
     </a>
   {/each}
   <p class="small muted film-hint">Rejoignez un salon cinéma pour lancer une séance à plusieurs.</p>

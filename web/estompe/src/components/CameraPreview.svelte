@@ -42,11 +42,14 @@
 
 <div class="cam-prev">
   <video bind:this={video} autoplay muted playsinline aria-label="Aperçu de la caméra (en miroir)"></video>
-  {#if error}<p class="picker-err small">{error}</p>{/if}
+  <span class="cam-tag" aria-hidden="true">Aperçu en miroir</span>
+  {#if error}<p class="cam-err" role="alert">{error}</p>{/if}
 </div>
 
 <style>
   /* Hauteur réservée par le rembourrage (et non aspect-ratio) : l'aperçu ne recouvre pas les réglages dans la grille des Paramètres. */
-  .cam-prev { position: relative; padding-top: 56.25%; background: #000; border-radius: var(--rayon); overflow: hidden; }
+  .cam-prev { position: relative; padding-top: 56.25%; background: #0e0c0b; border-radius: var(--r-l); overflow: hidden; }
+  .cam-tag { position: absolute; left: 10px; top: 10px; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: var(--r-xs); background: rgb(0 0 0 / 50%); color: #fff; font-size: 11px; font-weight: 600; }
+  .cam-err { position: absolute; left: 10px; right: 10px; bottom: 10px; margin: 0; padding: 8px 12px; border-radius: var(--r-s); background: var(--danger-fond); color: var(--encre); font-size: 13px; }
   video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 </style>

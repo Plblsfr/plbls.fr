@@ -8,10 +8,15 @@
     if (userId) avatars.ensure(userId, serverId || undefined)
   })
   const src = $derived(userId ? avatars.src(userId, serverId || undefined) : '')
+  const teinte = $derived.by(() => {
+    let h = 0
+    for (const c of userId || pseudo) h = (h * 31 + c.charCodeAt(0)) | 0
+    return (Math.abs(h) % 6) + 1
+  })
 </script>
 
 {#snippet face()}
-  <span class="plbls-avatar av {size ? `plbls-avatar--${size}` : ''}" class:speaking aria-hidden="true">
+  <span class="plbls-avatar av av-c{teinte} {size ? `plbls-avatar--${size}` : ''}" class:speaking aria-hidden="true">
     {#if src}<img class="av-img" {src} alt="" />{:else}{initials(pseudo)}{/if}
   </span>
 {/snippet}

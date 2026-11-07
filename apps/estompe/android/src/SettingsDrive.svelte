@@ -50,7 +50,7 @@
 </script>
 
 <h3 class="set-sub">Mode conduite</h3>
-<p class="muted small">
+<p class="v-note">
   Lit à voix haute les messages privés et les mentions, puis te laisse répondre en dictant. La voix et la dictée restent sur le téléphone, sans service Google.
   Raccourci : tuile « Mode conduite » des réglages rapides d'Android.
 </p>
@@ -60,11 +60,11 @@
 <div class="plbls-field">
   <span class="plbls-field__label">Dictée des réponses</span>
   {#if model === 'ready'}
-    <p class="muted small">Modèle français installé.</p>
+    <p class="v-note">Modèle français installé.</p>
   {:else if model === 'busy'}
-    <p class="muted small">Téléchargement du modèle (~40 Mo)…</p>
+    <p class="v-note">Téléchargement du modèle (~40 Mo)…</p>
   {:else}
-    {#if model}<p class="muted small">{model}</p>{/if}
+    {#if model}<p class="v-note">{model}</p>{/if}
     <button class="plbls-button plbls-button--compact" onclick={download}>Télécharger le modèle français (~40 Mo)</button>
   {/if}
 </div>
@@ -75,7 +75,7 @@
     <option value="">Celui du système</option>
     {#each engines as e (e.id)}<option value={e.id}>{e.label}</option>{/each}
   </select>
-  {#if engines.length === 0}<p class="muted small">Aucun moteur détecté : installe-en un (RHVoice, eSpeak…).</p>{/if}
+  {#if engines.length === 0}<p class="v-note">Aucun moteur détecté : installe-en un (RHVoice, eSpeak…).</p>{/if}
 </div>
 
 <div class="plbls-field">

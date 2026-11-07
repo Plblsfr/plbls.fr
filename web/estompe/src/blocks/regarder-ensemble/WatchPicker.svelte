@@ -37,27 +37,40 @@
 </script>
 
 <Modal title={title ?? (kind === 'music' ? 'Écouter ensemble dans…' : kind === 'cinema' ? 'Regarder au cinéma dans…' : 'Regarder ensemble dans…')} {onclose}>
-  <div class="stack">
+  <div class="wp-list">
     {#each rooms as r (r.id)}
       {@const here = people(r.id)}
-      <button class="plbls-button plbls-button--contour wp-room" disabled={busy} onclick={() => void go(r)}>
-        <Icon name={kind === 'cinema' ? 'film' : 'volume'} size={16} />
+      <button class="wp-room" class:here={r.id === connected} disabled={busy} onclick={() => void go(r)}>
+        <Icon name={kind === 'cinema' ? 'film' : 'vol'} size={22} />
         <span class="wp-name">
-          <span>{r.name}</span>
-          {#if !serverId}<span class="small muted">{app.servers.find((x) => x.id === r.sid)?.name}</span>{/if}
-          {#if current(r.id)}<span class="small muted">Session en cours : {current(r.id)}</span>{/if}
+          <strong class="truncate">{r.name}</strong>
+          {#if !serverId}<span class="wp-sub truncate">{app.servers.find((x) => x.id === r.sid)?.name}</span>{/if}
+          {#if current(r.id)}<span class="wp-sub truncate">Session en cours : {current(r.id)}</span>{/if}
         </span>
-        {#if r.id === connected}<span class="small muted">Vous y êtes</span>{/if}
+        {#if r.id === connected}<span class="v-tag rose">Vous y êtes</span>{/if}
         {#if here.length}
           <span class="wp-people" title="{here.length} participant{here.length > 1 ? 's' : ''}">
             {#each here.slice(0, 3) as p (p.user_id)}<Avatar pseudo={p.pseudo} userId={p.user_id} serverId={r.sid} size="sm" />{/each}
-            {#if here.length > 3}<span class="small muted">+{here.length - 3}</span>{/if}
+            {#if here.length > 3}<span class="v-mono v-mute">+{here.length - 3}</span>{/if}
           </span>
         {/if}
       </button>
     {:else}
       {@const room = kind === 'cinema' ? 'salon cinéma' : 'salon vocal'}
-      <p class="muted">{serverId ? `Aucun ${room} disponible sur ce serveur.` : `Aucun ${room} disponible.`}</p>
+      <p class="v-empty v-note">{serverId ? `Aucun ${room} disponible sur ce serveur.` : `Aucun ${room} disponible.`}</p>
     {/each}
   </div>
 </Modal>
+
+<style>
+  .wp-list { display: grid; gap: 6px; }
+  .wp-room { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 12px; border: 0; border-radius: var(--r); background: transparent; color: var(--encre); font: inherit; text-align: left; cursor: pointer; transition: background var(--d) var(--sortie); }
+  .wp-room > :global(.icon) { flex: none; color: var(--gris); }
+  .wp-room:hover:not(:disabled) { background: var(--papier-2); }
+  .wp-room.here { background: var(--rose-doux); }
+  .wp-room:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .wp-room:disabled { opacity: 0.6; cursor: progress; }
+  .wp-name { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .wp-sub { font-size: 12px; color: var(--gris); }
+  .wp-people { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; flex: none; }
+</style>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Loader from './components/Loader.svelte'
+  import Icon from './components/Icon.svelte'
   import { loadDrafts } from './lib/drafts.svelte'
   import { app } from './lib/store.svelte'
   import { prefs } from './lib/prefs.svelte'
@@ -37,7 +38,12 @@
 </script>
 
 {#if app.phase === 'loading'}
-  <div class="center"><Loader size="lg" /></div>
+  <div class="acces">
+    <div class="acces-attente">
+      <span class="acces-logo grand" aria-hidden="true">E</span>
+      <Loader size="lg" text="Ouverture d'Estompe…" />
+    </div>
+  </div>
 {:else if app.phase === 'login'}
   <LoginView />
 {:else if app.phase === 'denied'}
@@ -45,11 +51,12 @@
 {:else if app.phase === 'activate'}
   <ActivateView />
 {:else if app.phase === 'error'}
-  <div class="center welcome">
-    <div class="card">
-      <h1>Oups</h1>
+  <div class="acces">
+    <div class="acces-carte">
+      <span class="acces-pastille dgr" aria-hidden="true"><Icon name="alerte" size={22} /></span>
+      <h1>Oups.</h1>
       <div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{app.error || 'Le serveur est injoignable.'}</p></div>
-      <button class="plbls-button" onclick={() => app.boot()}>Réessayer</button>
+      <button class="plbls-button plbls-button--block" onclick={() => app.boot()}><Icon name="actualise" size={18} />Réessayer</button>
     </div>
   </div>
 {:else}
