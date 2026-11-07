@@ -69,7 +69,7 @@ pub async fn native_fetch(method: String, url: String, headers: Vec<(String, Str
     let u = reqwest::Url::parse(&url).map_err(|e| e.to_string())?;
     check_native(&method, &u, &headers)?;
     let m = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
-    let mut req = reqwest::Client::new().request(m, u);
+    let mut req = client()?.request(m, u);
     for (k, v) in headers {
         req = req.header(k, v);
     }
@@ -79,6 +79,22 @@ pub async fn native_fetch(method: String, url: String, headers: Vec<(String, Str
     let res = req.send().await.map_err(|e| e.to_string())?;
     let status = res.status().as_u16();
     Ok(NativeResponse { status, body: res.text().await.map_err(|e| e.to_string())? })
+}
+
+#[cfg(any(target_os = "android", test))]
+fn embedded_roots_client() -> Result<reqwest::Client, String> {
+    let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().filter_map(|c| reqwest::Certificate::from_der(c).ok());
+    reqwest::Client::builder().tls_certs_only(roots).build().map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "android")]
+fn client() -> Result<reqwest::Client, String> {
+    embedded_roots_client()
+}
+
+#[cfg(not(target_os = "android"))]
+fn client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder().build().map_err(|e| e.to_string())
 }
 
 // Service = identifiant de l'app : le build de test (autre identifiant) a son propre coffre.
@@ -127,6 +143,13 @@ mod tests {
     fn check(method: &str, url: &str, headers: &[(&str, &str)]) -> Result<(), &'static str> {
         let h: Vec<_> = headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
         check_native(method, &reqwest::Url::parse(url).unwrap(), &h)
+    }
+
+    #[test]
+    fn client_racines_embarquees() {
+        assert!(webpki_root_certs::TLS_SERVER_ROOT_CERTS.len() > 100);
+        assert!(webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().all(|c| reqwest::Certificate::from_der(c).is_ok()));
+        assert!(embedded_roots_client().is_ok());
     }
 
     #[test]
