@@ -233,7 +233,7 @@ class MainActivity : TauriActivity() {
 
   private fun keepAuthUrl(intent: Intent?) {
     val data = intent?.data ?: return
-    if (data.scheme == "fr.plbls.estompe") native.authUrl = data.toString()
+    if (data.scheme == "fr.plbls.estompe") native.authUrl = keptAuthUrl(native.authUrl, data.toString())
   }
 
   override fun onResume() {
