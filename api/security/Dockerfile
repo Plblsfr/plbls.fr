@@ -1,5 +1,5 @@
 # Contexte de build = racine du dépôt (workspace Cargo, voir ../../.dockerignore). Rust : version de ../../rust-toolchain.toml.
-FROM rust:1.99.0-slim AS chef
+FROM rust:1.99.0-slim-trixie AS chef
 RUN cargo install cargo-chef --locked --version 0.1.78
 WORKDIR /src
 
@@ -17,7 +17,7 @@ RUN cargo build --release --locked -p auth-gateway
 FROM build AS test
 RUN cargo test --release --locked -p auth-gateway
 
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app
 COPY --from=build /src/target/release/auth-gateway /app/auth-gateway
 COPY api/security/config /app/config
