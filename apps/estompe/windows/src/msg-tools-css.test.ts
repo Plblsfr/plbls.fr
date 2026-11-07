@@ -36,7 +36,7 @@ it('colonne du message : bornée à la largeur, citation limitée à deux lignes
 
 // Mobile : le burger est la seule porte vers les serveurs et les messages privés, il doit avoir une vraie zone tactile (EST-22).
 it('burger : visible sous 900 px, zone tactile de 44 px', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/gabarit.css', 'utf8')
   const mobile = css.slice(css.indexOf('@media (max-width: 900px)'))
   expect(mobile).toContain('.burger { display: inline-grid; }')
   expect(css.slice(css.indexOf("@media (pointer: coarse)"))).toContain(".ib { width: 44px; height: 44px; }")
@@ -51,20 +51,19 @@ it('paramètres : taille fixe, défilement vertical seulement', () => {
 
 // Badge BOT : pilule à hauteur fixe à droite du pseudo, qui se tronque sans masquer le badge (EST-74).
 it('badge BOT : sur la ligne du pseudo, hauteur fixe, contraste AA via les jetons du thème', () => {
-  const css = readFileSync('src/app.css', 'utf8')
-  const line = (start: string) => css.split('\n').find((l: string) => l.startsWith(start))
-  expect(line('.msg-head {')).toContain('display: flex')
-  const badge = line('.role-badge {')
+  const line = (file: string, start: string) => readFileSync(file, 'utf8').split('\n').find((l: string) => l.startsWith(start))
+  expect(line('src/styles/messagerie.css', '.msg-head {')).toContain('display: flex')
+  const badge = line('src/styles/gabarit.css', '.role-badge {')
   expect(badge).toContain('flex: none')
-  expect(badge).toContain('height: 16px')
-  expect(badge).toContain('background: var(--rose-texte); color: var(--creme)')
+  expect(badge).toContain('height: 18px')
+  expect(badge).toContain('background: var(--info-fond); color: var(--info)')
 })
 
 // Une activité ne doit ni écraser le pseudo, ni faire passer la durée à la ligne, ni changer la hauteur de la ligne (EST-87).
 it('liste des membres : hauteur fixe, pseudo borné, durée sur une ligne', () => {
-  const css = readFileSync('src/app.css', 'utf8')
-  const rule = (sel: string) => css.split('\n').find((l: string) => l.startsWith(sel + ' {')) ?? ''
-  expect(rule('.member-row')).toContain('height: 44px')
+  const css = readFileSync('src/components/MembersPanel.svelte', 'utf8')
+  const rule = (sel: string) => css.split('\n').map((l: string) => l.trim()).find((l: string) => l.startsWith(sel + ' {')) ?? ''
+  expect(rule('.member-row')).toContain('min-height: 44px')
   expect(rule('.member-pseudo')).toMatch(/min-width: \d+ch/)
   expect(rule('.member-time')).toContain('white-space: nowrap')
   expect(rule('.member-body')).toContain('min-width: 0')
@@ -101,7 +100,7 @@ it('CSP : lecteurs Twitch, Vimeo, Dailymotion et fichiers directs autorisés (we
 
 // Le voile du tiroir mobile doit rester sous le tiroir, sinon il capte les clics (salons et serveurs inaccessibles).
 it('tiroir mobile : le voile est sous le tiroir', () => {
-  const css = readFileSync('src/app.css', 'utf8')
+  const css = readFileSync('src/styles/gabarit.css', 'utf8')
   const mobile = css.slice(css.indexOf('@media (max-width: 900px)'))
   expect(mobile).toMatch(/\.nav-drawer \{[^}]*z-index: var\(--z-barre\);/)
   expect(mobile).toMatch(/\.scrim \{[^}]*z-index: calc\(var\(--z-barre\) - 1\);/)

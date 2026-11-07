@@ -1,10 +1,8 @@
 .v-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 .app { position: relative; display: grid; grid-template-columns: 68px 272px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: var(--vvh, 100dvh); background: var(--papier); }
-.app > .main { grid-column: 3; grid-row: 1; }
 @media (min-width: 1200px) {
   .app[data-marge='ouverte'] { grid-template-columns: 68px 272px minmax(0, 1fr) var(--marge-l, 320px); }
-  .app[data-marge='ouverte'] > .marge { grid-column: 4; grid-row: 1; }
 }
 
 .ib { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; padding: 0; border: 0; border-radius: var(--r-s); background: transparent; color: var(--gris); cursor: pointer; transition: background var(--d) var(--sortie), color var(--d) var(--sortie); }
@@ -167,7 +165,6 @@ html[data-theater] .marge, html[data-theater] .tabbar, html[data-theater] .marge
 @media (min-width: 900.02px) { .nav-drawer { display: contents; } }
 @media (max-width: 900px) {
   .app { grid-template-columns: minmax(0, 1fr); }
-  .app > .main { grid-column: 1; }
   .nav-drawer { position: fixed; z-index: var(--z-barre); inset: 0 auto 0 0; display: flex; width: min(416px, 94vw); overflow: hidden; padding-top: env(safe-area-inset-top); background: var(--papier); border-radius: 0 var(--r-xl) var(--r-xl) 0; box-shadow: var(--o3); transform: translateX(-100%); transition: transform var(--d-l) var(--sortie); }
   .app[data-nav='open'] .nav-drawer { transform: none; }
   .app[data-nav='open'] .scrim { display: block; position: fixed; z-index: calc(var(--z-barre) - 1); inset: 0; background: rgb(var(--ombre) / 38%); }

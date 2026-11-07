@@ -36,7 +36,7 @@
 .msg.head:not(.system) .msg-t { display: none; }
 .msg:hover .msg-t, .msg:focus-within .msg-t, .msg.system .msg-t { opacity: 1; }
 .msg-gutter .pinned { padding-top: 4px; }
-.msg-col { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.msg-col { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; align-content: start; gap: 2px; min-width: 0; }
 .msg-col > * { max-width: 100%; }
 .msg-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; line-height: 20px; user-select: none; -webkit-user-select: none; }
 .msg-author { max-width: 100%; overflow: hidden; color: var(--encre); font-size: 15px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -67,16 +67,17 @@
 .cemoji.ready { display: inline-block; width: 1.5em; height: 1.5em; vertical-align: middle; background-size: contain; background-repeat: no-repeat; background-position: center; font-size: 0; color: transparent; }
 
 /* Réponse */
-.reply-ref { display: flex; align-items: center; gap: 6px; max-width: 100%; min-height: 24px; margin-bottom: 2px; padding: 0; border: 0; background: transparent; color: var(--gris); font: inherit; font-size: 13px; text-align: left; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.reply-ref { display: flex; align-items: flex-start; gap: 6px; max-width: 100%; min-height: 24px; margin-bottom: 2px; padding: 0; border: 0; background: transparent; color: var(--gris); font: inherit; font-size: 13px; text-align: left; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .reply-ref > .icon { flex: none; }
 .reply-ref .reply-author { flex: none; color: var(--encre); font-weight: 600; }
-.reply-ref .reply-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-ref .reply-text { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .reply-ref:hover .reply-text { color: var(--encre-2); text-decoration: underline; }
 .reply-ref:focus-visible { outline: none; box-shadow: var(--anneau); border-radius: 6px; }
 
 /* Barre d'outils flottante */
-.msg-tools { position: absolute; top: -14px; right: 24px; z-index: 2; display: none; align-items: center; gap: 2px; padding: 3px; border-radius: var(--r-s); background: var(--surface); box-shadow: var(--o2); animation: v-fondu var(--d) var(--sortie); user-select: none; -webkit-user-select: none; }
-.msg-tools.below { top: auto; bottom: -14px; }
+.msg-tools { position: absolute; bottom: 100%; right: 24px; margin-bottom: -8px; z-index: 2; display: none; align-items: center; gap: 2px; padding: 3px; border-radius: var(--r-s); background: var(--surface); box-shadow: var(--o2); animation: v-fondu var(--d) var(--sortie); user-select: none; -webkit-user-select: none; }
+.msg-tools.below { bottom: auto; top: 100%; }
+.msg-tools.below { margin: -8px 0 0; }
 .msg:hover .msg-tools, .msg:focus-within .msg-tools { display: flex; }
 .msg-tool { font-size: 16px; line-height: 1; }
 .msg-tool:hover:not(:disabled) { background: var(--rose-doux); color: var(--encre); }
@@ -389,12 +390,8 @@ a.lien-apercu:focus-visible, .lien-apercu a:focus-visible { outline: none; box-s
   .msg-picker-grid { grid-template-columns: repeat(6, 44px); }
   .msg-picker-grid button { width: 44px; height: 44px; }
 }
-@media (hover: none) {
-  .msg:hover .msg-tools { display: none; }
-  .msg:focus-within .msg-tools { position: static; grid-column: 2 / -1; display: flex; flex-wrap: wrap; justify-self: start; margin-top: 6px; }
-  .msg:hover .msg-t { opacity: 0; }
-  .msg:focus-within .msg-t, .msg.system .msg-t { opacity: 1; }
-}
+@media (hover: none) { .msg:hover .msg-tools { display: none; } .msg:focus-within .msg-tools { display: flex; position: static; grid-column: -2 / -1; flex-wrap: wrap; justify-self: start; margin: 6px 0 0; box-shadow: var(--o1); } }
+@media (hover: none) { .msg:hover .msg-t { opacity: 0; } .msg:focus-within .msg-t, .msg.system .msg-t { opacity: 1; } }
 
 /* Petits écrans */
 @media (max-width: 900px) {

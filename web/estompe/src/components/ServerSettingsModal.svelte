@@ -553,7 +553,8 @@
   @media (max-width: 760px) {
     .ssp { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
     .ssp-nav { overflow: visible; padding: 0 12px 8px; box-shadow: inset 0 -1px 0 var(--trait); }
-    .ssp-srv { display: none; }
+    .ssp-srv { padding: 0 4px 8px; }
+    .ssp-srv :global(.sv-icon) { width: 28px; height: 28px; border-radius: 9px; font-size: 11px; }
     .ssp-ni-list { flex-direction: row; gap: 4px; overflow-x: auto; scrollbar-width: none; }
     .ssp-ni { width: auto; flex: none; }
     .ssp-top { padding: 0 12px 0 16px; min-height: 52px; }
