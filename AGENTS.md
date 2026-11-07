@@ -18,6 +18,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
   `_changements.yml`, un job (ou un espace npm pour `front`) dans `ci.yml`, ajouté aux `needs` de `ci` ; le ruleset ne change pas.
 - Pas de tests sur `main` : `livraison.yml` (push `main`, tags `<composant>-vX.Y.Z`) publie seulement ce que la fusion a changé (images `:edge`,
   PR de version d'Estompe, caches partagés). Les apps natives d'Estompe (`estompe-livraison-app.yml`) partent de leur tag ou d'un lancement manuel.
+  `estompe-beta.yml` (lancement manuel) publie le front d'une PR en image `estompe-web:beta`, sans tag ni release.
 - Contrôles obligatoires du ruleset (`scripts/configurer-github.sh`) : `ci` et `conventions`.
 - Toute PR : branche `<type>/<slug-court>` (`feat`, `fix`, `chore`, `docs`, `ci`) ou `release/…`, et une description ; vérifié par `pr-conventions.yml`.
 - Actions épinglées par SHA complet (`uses: owner/action@<sha> # vX.Y.Z`) ; `permissions: contents: read` en tête, droits d'écriture au seul job qui publie.
