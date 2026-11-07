@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { filmsApi } from '../../lib/api'
+  import { ApiError, filmsApi } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
   import WatchPicker from '../regarder-ensemble/WatchPicker.svelte'
   import FilmPoster from './FilmPoster.svelte'
-  import { episodeLabel, percent, pickEpisode, remaining, resumeAt, shortDuration, trackName, type FilmDetail, type FilmItem } from './films'
+  import { percent, pickEpisode, remaining, resumeAt, shortDuration, trackName, type FilmDetail, type FilmItem } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -20,6 +20,9 @@
   const next = $derived(pickEpisode(seasons.flatMap((s) => s.episodes)))
   const play = $derived(item?.kind === 'series' ? next : item ?? undefined)
   const started = $derived(!!play && resumeAt(play) > 0)
+  const prog = $derived(play?.progress && !play.progress.seen ? play.progress : null)
+  const short = (e: FilmItem) => (e.season != null && e.episode != null ? `S${e.season}E${e.episode}` : '')
+  const facts = $derived(item ? [item.kind === 'series' ? 'Série' : '', item.kind === 'series' && seasons.length ? `${seasons.length} saison${seasons.length > 1 ? 's' : ''}` : '', item.year, item.duration ? shortDuration(item.duration) : '', ...item.genres.slice(0, 3)].filter(Boolean).join(' · ') : '')
 
   $effect(() => {
     const wanted = id
@@ -37,7 +40,7 @@
       seasons = list
       const cur = pickEpisode(list.flatMap((s) => s.episodes))
       shown = Math.max(0, list.findIndex((s) => s.episodes.some((e) => e.id === cur?.id)))
-    })().catch((e) => { if (!gone) { failed = true; notify.error(e, 'Ce titre est indisponible') } })
+    })().catch((e) => { if (!gone) { failed = true; if (!(e instanceof ApiError && e.status === 404)) notify.error(e, 'Ce titre est indisponible') } })
     return () => { gone = true }
   })
 </script>
@@ -49,21 +52,22 @@
       <span class="film-hero-art"><FilmPoster id={item.id} {title} image={item.backdrop} type="fond" width={1280} /></span>
       <a class="film-back plbls-button plbls-button--compact plbls-button--contour" href={hrefs.films()}><Icon name="gauche" size={14} /> Bibliothèque</a>
       <div class="film-hero-body">
-        {#if item.kind !== 'series'}<span class="film-card-art film-body-poster"><FilmPoster id={item.id} {title} image={item.poster} width={480} /></span>{/if}
+        {#if item.kind !== 'series' || item.poster}<span class="film-card-art film-body-poster"><FilmPoster id={item.id} {title} image={item.poster} width={480} /></span>{/if}
         <div class="film-info">
-          <p class="v-eyebrow">{[item.kind === 'series' ? 'Série' : '', item.year, item.duration ? shortDuration(item.duration) : '', ...item.genres.slice(0, 3)].filter(Boolean).join(' · ')}</p>
+          <p class="v-eyebrow">{facts}</p>
           <h1>{title}</h1>
           {#if item.overview}<p class="film-overview">{item.overview}</p>{/if}
           {#if play}
+            {@const verb = `${started ? 'Reprendre' : 'Regarder'} seul`}
             <div class="film-actions">
-              <a class="plbls-button" href={hrefs.films('watch', play.id)}><Icon name="lecture" size={18} /> {started ? 'Reprendre' : 'Regarder'} seul{item.kind === 'series' ? ` (${episodeLabel(play)})` : ''}</a>
+              <a class="plbls-button" href={hrefs.films('watch', play.id)} aria-label={item.kind === 'series' && play.season != null && play.episode != null ? `${verb}, saison ${play.season} épisode ${play.episode}` : undefined}><Icon name="lecture" size={18} /> {verb}{item.kind === 'series' && short(play) ? ` · ${short(play)}` : ''}</a>
               <button class="plbls-button v-rose" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>
-              {#if item.kind !== 'series' && item.progress && !item.progress.seen}
-                <span class="film-progress"><span class="v-mono v-mute">{remaining(item.progress)}</span><span class="film-bar"><span style="width:{percent(item.progress)}"></span></span></span>
+              {#if prog}
+                <span class="film-progress"><span class="v-mono v-mute">{remaining(prog)}</span><span class="film-bar"><span style="width:{percent(prog)}"></span></span></span>
+              {:else if item.progress?.seen}
+                <span class="v-tag ok film-seen"><Icon name="ok" size={14} /> Vu</span>
               {/if}
             </div>
-          {:else if item.kind !== 'series' && item.progress && !item.progress.seen}
-            <span class="film-progress"><span class="v-mono v-mute">{remaining(item.progress)}</span><span class="film-bar"><span style="width:{percent(item.progress)}"></span></span></span>
           {/if}
           {#if item.audio.length || item.subtitles.length}
             <dl class="film-tracks v-note">
@@ -90,11 +94,16 @@
             <li>
               <a class="film-episode" class:cur href={hrefs.films('watch', e.id)}>
                 <span class="film-episode-n v-mono">{e.episode ?? ''}</span>
-                <span class="film-episode-play" aria-hidden="true"><Icon name="lecture" size={16} /></span>
+                {#if e.poster}
+                  <span class="film-episode-art"><FilmPoster id={e.id} title={e.title} image={e.poster} width={240} /><span class="film-episode-play" aria-hidden="true"><Icon name="lecture" size={16} /></span></span>
+                {:else}
+                  <span class="film-episode-play" aria-hidden="true"><Icon name="lecture" size={16} /></span>
+                {/if}
                 <span class="grow film-episode-body">
                   <strong class="truncate">{e.title}</strong>
                   {#if e.progress?.seen}<span class="v-note film-seen"><Icon name="ok" size={14} /> Vu</span>
-                  {:else if e.progress}<span class="v-mono film-left">{remaining(e.progress)}</span><span class="film-bar"><span style="width:{percent(e.progress)}"></span></span>{/if}
+                  {:else if e.progress}<span class="v-mono film-left">{remaining(e.progress)}</span><span class="film-bar"><span style="width:{percent(e.progress)}"></span></span>
+                  {:else}<span class="v-note">Pas encore vu</span>{/if}
                 </span>
                 <span class="v-mono v-mute">{shortDuration(e.duration)}</span>
               </a>

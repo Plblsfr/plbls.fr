@@ -78,6 +78,7 @@
     copie: '<path d="M8 8h12v12H8zM4 16V4h12"/>',
     scene: '<path d="M3 4h18v12H3zM7 20h10M9 8l3 3 3-3"/>',
     volmax: '<path d="M11 5 6 9H3v6h3l5 4V5zM16 9a4 4 0 0 1 0 6"/>',
+    volcoupe: '<path d="M11 5 6 9H3v6h3l5 4V5zM16 9l5 6M21 9l-5 6"/>',
     pip: '<path d="M3 5h18v14H3zM12 12h7v5h-7z"/>',
     filtre: '<path d="M4 5h16l-6 8v6l-4-2v-4z"/>',
     calque: '<path d="M12 3 3 8l9 5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5"/>',

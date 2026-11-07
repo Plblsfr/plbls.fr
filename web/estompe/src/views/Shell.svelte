@@ -84,7 +84,7 @@
     const r = route
     if (r === routeVue) return
     routeVue = r
-    untrack(() => { if (modal === 'settings' || modal === 'server') modal = '' })
+    untrack(() => { nav = false; if (modal === 'settings' || modal === 'server') modal = '' })
   })
   const page = $derived(modal === 'settings' || (modal === 'server' && !!detail))
   const onglet = $derived(ongletEffectif(marge.onglet, !!detail && route.name === 'channel', !!convKey))
@@ -118,6 +118,7 @@
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); openSearch() }
   if (platform.reportShortcut && e.ctrlKey && e.altKey && e.code === 'KeyB') { e.preventDefault(); void openReport() }
   if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === '.') { e.preventDefault(); marge.basculer() }
+  if (e.key === 'Escape' && nav && !e.defaultPrevented) nav = false
 }} />
 <a class="skip-link" href="#main" onclick={(e) => { e.preventDefault(); document.getElementById("main")?.focus() }}>Aller au contenu</a>
 <div class="app" data-nav={nav ? 'open' : 'closed'} data-marge={avecMarge ? 'ouverte' : 'fermee'} data-onglets={onglets ? '' : undefined} style:--marge-l="{marge.largeur}px">

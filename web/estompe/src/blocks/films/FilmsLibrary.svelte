@@ -23,12 +23,14 @@
   let turn = 0
 
   const fromList = $derived(section === 'continue' || section === 'seen')
-  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Déjà vus' } as Record<string, string>)[section ?? ''] ?? 'Ajouts récents')
+  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Déjà vus' } as Record<string, string>)[section ?? ''] ?? 'Accueil')
   const searching = $derived(!!(q.trim() || genre || year))
+  const gridHeading = $derived(searching ? 'Résultats' : section ? '' : 'Ajouts récents')
   const showResume = $derived(!section && !searching && films.resume.length > 0)
   const fail = (e: unknown) => notify.error(e, 'La bibliothèque est indisponible')
   const meta = (i: FilmItem) => i.kind === 'series' ? 'Série' : [i.year, i.duration ? shortDuration(i.duration) : ''].filter(Boolean).join(' · ')
   const target = (i: FilmItem) => hrefs.films('item', i.id)
+  const fromSeries = (i: FilmItem) => i.kind === 'episode' && !!i.series_id
 
   function params(start: number): Record<string, string> {
     const p: Record<string, string> = { start: String(start), limit: String(PAGE), sort }
@@ -63,24 +65,25 @@
 </script>
 
 <div class="film-page">
-  {#if !fromList}
-    <div class="film-filters">
+  <div class="film-filters">
+    <h2 class="v-titre film-filters-title">{heading}</h2>
+    {#if !fromList}
       <span class="film-search"><Icon name="cherche" size={16} /><input class="plbls-input" type="search" aria-label="Rechercher un titre" placeholder="Rechercher un film, une série…" maxlength="100" bind:value={q} /></span>
-      <label class="film-filter">Genre
-        <select class="plbls-select film-select" bind:value={genre}><option value="">Tous</option>{#each genres as g (g)}<option value={g}>{g}</option>{/each}</select>
+      <label class="film-filter"><span class="v-sr">Genre</span>
+        <select class="plbls-select film-select" bind:value={genre}><option value="">Tous les genres</option>{#each genres as g (g)}<option value={g}>{g}</option>{/each}</select>
       </label>
-      <label class="film-filter">Année
-        <select class="plbls-select film-select" bind:value={year}>{#each YEARS as y (y.value)}<option value={y.value}>{y.label}</option>{/each}</select>
+      <label class="film-filter"><span class="v-sr">Année</span>
+        <select class="plbls-select film-select" bind:value={year}>{#each YEARS as y (y.value)}<option value={y.value}>{y.value ? y.label : 'Toutes les années'}</option>{/each}</select>
       </label>
-      <label class="film-filter">Tri
+      <label class="film-filter"><span class="v-sr">Tri</span>
         <select class="plbls-select film-select" bind:value={sort}><option value="recent">Ajout récent</option><option value="title">Titre</option><option value="year">Année</option></select>
       </label>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   {#if showResume}
     <section class="film-section">
-      <h2 class="v-titre">Reprendre</h2>
+      <div class="film-section-head"><h2 class="v-titre">Reprendre</h2><a class="v-note film-all" href={hrefs.films('continue')}>Tout voir</a></div>
       <div class="film-resume">
         {#each films.resume as r (r.id)}
           <a class="film-resume-card" href={hrefs.films('watch', r.id)}>
@@ -94,7 +97,7 @@
   {/if}
 
   <section class="film-section">
-    <h2 class="v-titre">{searching ? 'Résultats' : heading}</h2>
+    {#if gridHeading}<h2 class="v-titre">{gridHeading}</h2>{/if}
     {#if loading && !items.length}
       <Loader />
     {:else if !items.length}
@@ -103,9 +106,13 @@
       <div class="film-grid">
         {#each items as i (i.id)}
           <a class="film-card" href={target(i)}>
-            <span class="film-card-art"><FilmPoster id={i.id} title={i.series_title ?? i.title} image={i.poster} /></span>
+            <span class="film-card-art">
+              <FilmPoster id={fromSeries(i) ? i.series_id! : i.id} title={i.series_title ?? i.title} image={fromSeries(i) || i.poster} />
+              {#if i.progress?.seen}<span class="film-card-vu"><Icon name="ok" size={14} /> Vu</span>{/if}
+            </span>
             <strong class="truncate">{i.series_title ?? i.title}</strong>
             <span class="v-mono v-mute truncate">{episodeLabel(i) || meta(i)}</span>
+            {#if i.progress && !i.progress.seen}<span class="v-mono film-left">{remaining(i.progress)}</span><span class="film-bar"><span style="width:{percent(i.progress)}"></span></span>{/if}
           </a>
         {/each}
       </div>

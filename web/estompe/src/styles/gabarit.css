@@ -187,4 +187,4 @@ html[data-theater] .marge, html[data-theater] .tabbar, html[data-theater] .marge
   .tab:focus-visible { outline: none; }
   .tab:focus-visible .icon { box-shadow: var(--anneau); }
 }
-.film-hint { margin: 0; padding: var(--espace-4) 10px; font-size: 13px; color: var(--gris); }
+.film-hint { margin: 16px 0 0; }

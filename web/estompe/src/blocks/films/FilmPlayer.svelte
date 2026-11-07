@@ -94,7 +94,7 @@
       <button class="film-chip" onclick={() => seek(position + 30)} aria-label="Avancer de 30 secondes">+30 s</button>
       <span class="watch-time v-mono">{clock(drag ?? position)} / {clock(duration)}</span>
       <span class="grow"></span>
-      <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'casqueoff' : 'volmax'} size={20} /></button>
+      <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
       <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" oninput={(e) => { volume = Number(e.currentTarget.value); muted = volume === 0 }} />
       {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}><Icon name="bulle" size={16} /> Audio et sous-titres</button>{/if}
       <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran"><Icon name="agrandir" size={20} /></button>
