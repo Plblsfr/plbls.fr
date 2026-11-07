@@ -33,22 +33,32 @@
 
 <Modal title="Nouveau sondage" {onclose}>
   <form class="poll-form" onsubmit={(e) => { e.preventDefault(); void submit() }}>
-    <input class="plbls-input" bind:value={question} maxlength="500" placeholder="Votre question" aria-label="Question" />
-    {#each options as _, i}
-      <div class="row">
-        <input class="plbls-input grow" bind:value={options[i]} maxlength="100" placeholder="Choix {i + 1}" aria-label="Choix {i + 1}" />
-        {#if options.length > 2}<button type="button" class="ib sm" onclick={() => options.splice(i, 1)} aria-label="Supprimer le choix {i + 1}"><Icon name="x" size={14} /></button>{/if}
-      </div>
-    {/each}
-    {#if options.length < 10}<button type="button" class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => options.push('')}>Ajouter un choix</button>{/if}
-    <label class="row"><input type="checkbox" bind:checked={multiple} /> Autoriser plusieurs réponses</label>
-    <div class="row small poll-durations" role="radiogroup" aria-label="Clôture">
-      {#each DURATIONS as [label, h]}
-        <button type="button" class="plbls-button plbls-button--compact {hours === h ? '' : 'plbls-button--contour'}" role="radio" aria-checked={hours === h} onclick={() => (hours = h)}>{label}</button>
+    <div class="plbls-field">
+      <label class="plbls-field__label" for="poll-question">Question</label>
+      <input id="poll-question" class="plbls-input" bind:value={question} maxlength="500" placeholder="Ta question" />
+    </div>
+    <div class="poll-form-choices">
+      <span class="v-lbl">Choix</span>
+      {#each options as _, i}
+        <div class="poll-form-choice">
+          <span class="poll-form-n" aria-hidden="true">{i + 1}</span>
+          <input class="plbls-input grow" bind:value={options[i]} maxlength="100" placeholder="Choix {i + 1}" aria-label="Choix {i + 1}" />
+          {#if options.length > 2}<button type="button" class="v-ib sm" onclick={() => options.splice(i, 1)} aria-label="Supprimer le choix {i + 1}"><Icon name="x" size={15} /></button>{/if}
+        </div>
       {/each}
+      {#if options.length < 10}<button type="button" class="v-btn sm ghost poll-form-add" onclick={() => options.push('')}><Icon name="plus" size={15} />Ajouter un choix</button>{/if}
+    </div>
+    <label class="poll-form-check"><input type="checkbox" bind:checked={multiple} /> Autoriser plusieurs réponses</label>
+    <div class="poll-form-choices">
+      <span class="v-lbl" id="poll-cloture">Clôture</span>
+      <div class="poll-durations" role="radiogroup" aria-labelledby="poll-cloture">
+        {#each DURATIONS as [label, h]}
+          <button type="button" class="v-chip" class:on={hours === h} class:line={h < 0 && hours !== h} role="radio" aria-checked={hours === h} onclick={() => (hours = h)}>{label}</button>
+        {/each}
+      </div>
     </div>
     {#if hours < 0}<input class="plbls-input" type="datetime-local" bind:value={custom} aria-label="Date de clôture" />{/if}
-    <div style="display: flex; gap: 8px; justify-content: flex-end">
+    <div class="poll-form-actions">
       <button type="button" class="plbls-button plbls-button--contour" onclick={onclose}>Annuler</button>
       <button class="plbls-button" disabled={!ok}>Publier le sondage</button>
     </div>

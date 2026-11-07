@@ -99,24 +99,24 @@
 </script>
 
 {#if a.expired}
-  <span class="file-chip expired" title="Supprimé du serveur pour faire de la place"><Icon name="mic" size={16} /> Message vocal <span class="small">(fichier expiré)</span></span>
+  <span class="v-chip vm-off" title="Supprimé du serveur pour faire de la place"><Icon name="mic" size={15} /> Message vocal <span>(fichier expiré)</span></span>
 {:else if failed}
-  <span class="file-chip expired">
-    <Icon name="mic" size={16} /> Message vocal illisible sur cet appareil
-    <a class="link small" href={src || direct} download={a.name}>Télécharger</a>
+  <span class="v-chip vm-bad">
+    <Icon name="mic" size={15} /> Message vocal illisible sur cet appareil
+    <a class="link" href={src || direct} download={a.name}>Télécharger</a>
   </span>
 {:else}
   <div class="voice-msg" bind:this={root}>
-    <button class="ib" data-voice-play onclick={toggle} aria-label={playing ? 'Mettre en pause' : 'Écouter le message vocal'}>
-      <Icon name={playing ? 'pause' : 'play'} size={18} />
+    <button class="vm-play" data-voice-play onclick={toggle} aria-label={playing ? 'Mettre en pause' : 'Écouter le message vocal'}>
+      <Icon name={playing ? 'pause' : 'lecture'} size={18} />
     </button>
     <button class="wave" onclick={seek} aria-label="Se placer dans le message vocal">
       {#each bars as v, i (i)}<span class:done={i / bars.length < progress} style="height: {Math.max(12, v)}%"></span>{/each}
     </button>
-    <span class="time small muted">{clock(playing || cur ? cur : total)}</span>
-    <button class="speed small" onclick={nextSpeed} aria-label="Vitesse de lecture">{LABELS[speed]}</button>
+    <span class="time">{clock(playing || cur ? cur : total)}</span>
+    <button class="speed" onclick={nextSpeed} aria-label="Vitesse de lecture">{LABELS[speed]}</button>
     {#if !heard}<span class="unheard" title="Non écouté" aria-label="Non écouté"></span>{/if}
-    <a class="ib" href={src || direct} download={a.name} title="Télécharger" aria-label="Télécharger le message vocal"><Icon name="down" size={16} /></a>
+    <a class="v-ib sm" href={src || direct} download={a.name} title="Télécharger" aria-label="Télécharger le message vocal"><Icon name="telecharge" size={16} /></a>
     <audio
       bind:this={audio}
       src={src || undefined}
@@ -132,35 +132,45 @@
     <div class="transcript">
       {#if editing}
         <textarea class="plbls-input" rows="3" bind:value={draft} aria-label="Transcription du message vocal"></textarea>
-        <button class="small" onclick={saveDraft} disabled={busy}>Enregistrer</button>
-        <button class="small" onclick={() => (editing = false)} disabled={busy}>Annuler</button>
+        <span class="tr-actions"><button class="v-btn sm" onclick={saveDraft} disabled={busy}>Enregistrer</button>
+        <button class="v-btn sm sec" onclick={() => (editing = false)} disabled={busy}>Annuler</button></span>
       {:else}
         {#if !hidden}<p class="text" class:clamp={!more}>{a.transcript}</p>{/if}
-        <span class="small muted">
-          {#if a.transcript_auto}Transcription automatique · {/if}
-          {#if !hidden && a.transcript.length > 140}<button class="link small" onclick={() => (more = !more)}>{more ? 'Afficher moins' : 'Afficher plus'}</button> · {/if}
-          <button class="link small" onclick={() => (hidden = !hidden)}>{hidden ? 'Afficher la transcription' : 'Masquer'}</button>
-          {#if mine}· <button class="link small" onclick={() => { draft = a.transcript ?? ''; editing = true }}>Modifier</button>{/if}
+        <span class="tr-meta">
+          <Icon name="onde" size={13} />{#if a.transcript_auto}<span class="tr-auto">Transcription automatique</span> · {/if}
+          {#if !hidden && a.transcript.length > 140}<button class="link" onclick={() => (more = !more)}>{more ? 'Afficher moins' : 'Afficher plus'}</button> · {/if}
+          <button class="link" onclick={() => (hidden = !hidden)}>{hidden ? 'Afficher la transcription' : 'Masquer'}</button>
+          {#if mine}· <button class="link" onclick={() => { draft = a.transcript ?? ''; editing = true }}>Modifier</button>{/if}
         </span>
       {/if}
     </div>
   {:else if busy}
-    <span class="small muted">Transcription en cours…</span>
+    <span class="v-chip vm-state"><Icon name="onde" size={14} />Transcription en cours…</span>
   {:else}
-    <button class="link small" onclick={transcribe}>Transcrire</button>
+    <button class="v-chip line vm-state vm-act" onclick={transcribe}>Transcrire</button>
   {/if}
 {/if}
 
 <style>
-  .voice-msg { display: flex; align-items: center; gap: var(--espace-2); background: var(--surface); border-radius: var(--rayon); padding: 6px 10px; width: min(360px, 100%); }
-  .wave { flex: 1; min-width: 80px; height: 32px; display: flex; align-items: center; gap: 2px; border: 0; padding: 0; background: transparent; cursor: pointer; }
-  .wave span { flex: 1; min-height: 3px; border-radius: 2px; background: var(--trait); }
-  .wave span.done { background: var(--noir); }
-  .time { min-width: 3ch; font-variant-numeric: tabular-nums; }
-  .speed { border: 0; border-radius: var(--rayon); background: transparent; padding: 2px 6px; cursor: pointer; color: var(--gris); }
-  .transcript { width: min(360px, 100%); margin-top: 4px; }
-  .text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .voice-msg { display: flex; align-items: center; gap: 10px; width: min(380px, 100%); padding: 6px 12px 6px 6px; border-radius: var(--r-p); background: var(--surface); box-shadow: var(--o1); }
+  .vm-play { display: grid; place-items: center; width: 36px; height: 36px; flex: none; padding: 0; border: 0; border-radius: 50%; background: var(--encre); color: var(--rose); cursor: pointer; }
+  .vm-play:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .wave { flex: 1; min-width: 80px; height: 32px; display: flex; align-items: center; gap: 2px; border: 0; padding: 0; background: transparent; cursor: pointer; color: var(--gris-2); }
+  .wave span { flex: 1; max-width: 3px; min-height: 3px; border-radius: 2px; background: var(--trait-fort); }
+  .wave span.done { background: var(--encre); }
+  .time { min-width: 3ch; font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; color: var(--encre-2); }
+  .speed { height: 24px; padding: 0 6px; border: 0; border-radius: var(--r-xs); background: var(--papier-2); color: var(--encre-2); font-family: var(--f-mono); font-size: 11px; cursor: pointer; }
+  .speed:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .transcript { display: grid; gap: 6px; width: min(380px, 100%); margin-top: 6px; padding: 10px 12px; border-radius: var(--r); background: var(--papier-2); }
+  .text { margin: 0; font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .text.clamp { display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-  .link { border: 0; background: transparent; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
-  .unheard { width: 8px; height: 8px; border-radius: 50%; background: var(--rose); flex: none; }
+  .tr-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; color: var(--gris); font-size: 12px; }
+  .tr-auto { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .tr-actions { display: flex; gap: 8px; }
+  .link { border: 0; background: transparent; padding: 0; color: var(--encre-2); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+  .unheard { width: 8px; height: 8px; border-radius: 50%; background: var(--rose-fonce); flex: none; }
+  .vm-off { opacity: 0.7; }
+  .vm-bad { background: var(--attention-fond); color: var(--attention); }
+  .vm-state { margin-top: 6px; }
+  .vm-act { cursor: pointer; }
 </style>

@@ -123,6 +123,6 @@
 <canvas bind:this={canvas} width={CANVAS_W} height={CANVAS_H} class:can={canDraw} aria-label="Zone de dessin" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up}></canvas>
 
 <style>
-  canvas { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; background: #ffffff; border-radius: var(--rayon); box-shadow: 0 0 0 1px var(--trait); touch-action: none; }
+  canvas { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; background: #ffffff; border-radius: var(--r-l); box-shadow: inset 0 0 0 1px var(--trait), 0 0 0 1px var(--trait); touch-action: none; }
   canvas.can { cursor: crosshair; }
 </style>

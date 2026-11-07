@@ -106,9 +106,9 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div bind:this={box} class="ep popup" style:transform={shift ? `translateX(${shift}px)` : undefined} role="dialog" aria-label="Choisir un smiley" tabindex="-1" {onkeydown}>
+<div bind:this={box} class="ep" style:transform={shift ? `translateX(${shift}px)` : undefined} role="dialog" aria-label="Choisir un smiley" tabindex="-1" {onkeydown}>
   <div class="gifp-search">
-    <Icon name="search" size={16} />
+    <Icon name="cherche" size={16} />
     <input type="search" placeholder="Rechercher un smiley" bind:this={input} bind:value={q} maxlength="50" aria-label="Rechercher un smiley" />
   </div>
   {#if !term}

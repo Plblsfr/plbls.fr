@@ -51,22 +51,23 @@
 
 <div class="stack vsessions">
   {#if canPlan}
-    <div class="row"><strong class="grow">Séances</strong><button class="plbls-button plbls-button--compact" onclick={() => (open = !open)} aria-expanded={open}>Planifier une séance</button></div>
+    <div class="vsess-head"><h2 class="v-eyebrow">Séances</h2><button class="plbls-button plbls-button--compact" onclick={() => (open = !open)} aria-expanded={open}><Icon name="plus" size={14} /> Planifier une séance</button></div>
     {#if open}
       <form class="stack vform" onsubmit={create}>
-        <input class="plbls-input" bind:value={title} maxlength="60" placeholder="Titre (« Soirée bandes-annonces »)" aria-label="Titre de la séance" />
-        <div class="row wrap">
-          <label class="small stack"><span>Date et heure</span><input class="plbls-input" type="datetime-local" bind:value={at} /></label>
-          <label class="small stack"><span>Salon vocal</span>
+        <strong class="vform-title">Planifier une séance</strong>
+        <label class="plbls-field"><span class="plbls-field__label">Titre</span><input class="plbls-input" bind:value={title} maxlength="60" placeholder="Titre (« Soirée bandes-annonces »)" aria-label="Titre de la séance" /></label>
+        <div class="vform-grid">
+          <label class="plbls-field"><span class="plbls-field__label">Date et heure</span><input class="plbls-input v-mono" type="datetime-local" bind:value={at} /></label>
+          <label class="plbls-field"><span class="plbls-field__label">Salon vocal</span>
             <select class="plbls-select" bind:value={room}>{#each rooms as r (r.id)}<option value={r.id}>{r.name}</option>{/each}</select>
           </label>
-          <label class="small stack"><span>Rappel</span>
+          <label class="plbls-field"><span class="plbls-field__label">Rappel</span>
             <select class="plbls-select" bind:value={remind}>
               <option value={0}>Aucun</option><option value={5}>5 min avant</option><option value={10}>10 min avant</option><option value={15}>15 min avant</option><option value={30}>30 min avant</option><option value={60}>1 h avant</option><option value={1440}>1 jour avant</option>
             </select>
           </label>
         </div>
-        <label class="small stack"><span>File de la séance</span>
+        <label class="plbls-field"><span class="plbls-field__label">File de la séance</span>
           <select class="plbls-select" bind:value={source}>
             <option value="">Choisir des vidéos…</option>
             {#each lists as l (l.id)}<option value={l.id}>Liste « {l.name} » ({l.items.length})</option>{/each}
@@ -76,10 +77,10 @@
           <ul class="vpick">
             {#each posts.filter(playable) as p (p.message_id)}
               <li><label class="row"><input type="checkbox" bind:group={picked} value={p.message_id} /><span class="truncate">{p.title || p.url}</span></label></li>
-            {:else}<li class="muted small">Aucune vidéo lisible dans le salon.</li>{/each}
+            {:else}<li class="v-note">Aucune vidéo lisible dans le salon.</li>{/each}
           </ul>
         {/if}
-        <div class="row"><span class="grow"></span><button class="plbls-button" disabled={!ready}>Planifier</button></div>
+        <div class="vform-actions"><button class="plbls-button" disabled={!ready}>Planifier</button></div>
       </form>
     {/if}
   {/if}
@@ -87,22 +88,23 @@
     {@const live = sessionPhase(s) === 'live'}
     {@const c = countRsvp(s)}
     {@const mine = s.rsvps[app.meId]}
+    {@const d = new Date(s.starts_at)}
     <section class="vsession" class:live>
-      <header class="row">
-        <Icon name="calendar" size={16} />
-        <strong class="grow truncate">{s.title}</strong>
-        <span class="small" class:muted={!live}>{live ? (s.started_at ? 'En cours' : 'À l’heure') : when(s.starts_at)}</span>
+      <header class="vsess-top">
+        <span class="vsess-date" aria-hidden="true"><span class="v-mono">{d.toLocaleString('fr-FR', { month: 'short' }).replace('.', '').toUpperCase()}</span><b>{String(d.getDate()).padStart(2, '0')}</b></span>
+        <span class="vsess-title"><strong class="truncate">{s.title}</strong>
+      <span class="v-note">{new Date(s.starts_at).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {roomName(s.voice_channel_id)} · {s.videos.length} vidéo{s.videos.length > 1 ? 's' : ''}{s.remind_minutes ? ` · rappel ${s.remind_minutes} min avant` : ''}</span></span>
+        <span class="v-tag" class:ok={live} class:att={!live}>{#if live}<span class="vsess-dot" aria-hidden="true"></span>{:else}<Icon name="horloge" size={12} />{/if}{live ? (s.started_at ? 'En cours' : 'À l’heure') : when(s.starts_at)}</span>
+        {#if s.created_by === app.meId || app.can(serverId, 'manage_messages', channelId)}<button class="v-ib sm vdanger" onclick={() => cancel(s)} aria-label="Annuler la séance" title="Annuler la séance"><Icon name="corbeille" size={16} /></button>{/if}
       </header>
-      <div class="small muted">{new Date(s.starts_at).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {roomName(s.voice_channel_id)} · {s.videos.length} vidéo{s.videos.length > 1 ? 's' : ''}{s.remind_minutes ? ` · rappel ${s.remind_minutes} min avant` : ''}</div>
-      <ul class="vq small">{#each s.videos as id (id)}<li class="truncate">{byId.get(id)?.title || byId.get(id)?.url || 'Vidéo supprimée'}</li>{/each}</ul>
-      <div class="row wrap">
-        {#each RSVP as [a, label] (a)}<button class="plbls-button plbls-button--compact" class:plbls-button--contour={mine !== a} aria-pressed={mine === a} onclick={() => answer(s, a)}>{label}{c[a] ? ` (${c[a]})` : ''}</button>{/each}
+      <ul class="vq">{#each s.videos as id (id)}<li class="truncate">{byId.get(id)?.title || byId.get(id)?.url || 'Vidéo supprimée'}</li>{/each}</ul>
+      <div class="vsess-rsvp">
+        {#each RSVP as [a, label] (a)}<button class="v-chip" aria-pressed={mine === a} onclick={() => answer(s, a)}>{#if mine === a}<Icon name="ok" size={14} />{/if}{label}{c[a] ? ` (${c[a]})` : ''}</button>{/each}
         <span class="grow"></span>
-        {#if s.started_at || live}<button class="plbls-button plbls-button--compact" onclick={() => void joinSession(serverId, s.voice_channel_id).catch(fail)}><Icon name="play" size={14} /> Rejoindre</button>{/if}
-        {#if s.created_by === app.meId || app.can(serverId, 'manage_messages', channelId)}<button class="ib sm" onclick={() => cancel(s)} aria-label="Annuler la séance" title="Annuler la séance"><Icon name="trash" size={16} /></button>{/if}
+        {#if s.started_at || live}<button class="plbls-button plbls-button--compact v-rose" onclick={() => void joinSession(serverId, s.voice_channel_id).catch(fail)}><Icon name="lecture" size={14} /> Rejoindre</button>{/if}
       </div>
       {#if Object.keys(s.rsvps).length}
-        <div class="small muted">
+        <div class="v-note">
           {#each [['yes', 'Viennent'], ['maybe', 'Peut-être'], ['no', 'Absents']] as [a, label] (a)}
             {@const names = Object.entries(s.rsvps).filter(([, v]) => v === a).map(([u]) => who(u))}
             {#if names.length}<div>{label} : {names.join(', ')}</div>{/if}
@@ -111,6 +113,6 @@
       {/if}
     </section>
   {:else}
-    <p class="muted">Aucune séance prévue.</p>
+    <p class="v-empty v-note">Aucune séance prévue.</p>
   {/each}
 </div>

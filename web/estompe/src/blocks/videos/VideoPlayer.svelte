@@ -28,17 +28,17 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div class="vp" bind:this={box} role="group" aria-label="Lecteur vidéo" tabindex="-1" onkeydown={key}>
+<div class="vp-lecteur" bind:this={box} role="group" aria-label="Lecteur vidéo" tabindex="-1" onkeydown={key}>
   <!-- svelte-ignore a11y_media_has_caption -->
   <video bind:this={video} {src} {poster} {autoplay} preload="metadata" playsinline bind:paused bind:volume bind:muted bind:duration
     ontimeupdate={() => { if (!seeking) time = video.currentTime }} onclick={toggle} {onerror}></video>
   <div class="vp-bar">
-    <button class="ib" onclick={toggle} aria-label={paused ? 'Lire' : 'Pause'}><Icon name={paused ? 'play' : 'pause'} size={16} /></button>
-    <span class="vp-time small">{formatDuration(time)} / {formatDuration(duration || 0)}</span>
+    <button class="v-ib" onclick={toggle} aria-label={paused ? 'Lire' : 'Pause'}><Icon name={paused ? 'lecture' : 'pause'} size={18} /></button>
+    <span class="vp-time v-mono">{formatDuration(time)} / {formatDuration(duration || 0)}</span>
     <input class="vp-seek" type="range" min="0" max={duration || 0} step="0.1" value={time} aria-label="Position" disabled={!duration}
       oninput={(e) => { seeking = true; time = +e.currentTarget.value }} onchange={() => { video.currentTime = time; seeking = false }} />
-    <button class="ib" class:vp-off={muted || volume === 0} onclick={() => (muted = !muted)} aria-label={muted ? 'Activer le son' : 'Couper le son'}><Icon name="volume" size={16} /></button>
+    <button class="v-ib" class:vp-off={muted || volume === 0} onclick={() => (muted = !muted)} aria-label={muted ? 'Activer le son' : 'Couper le son'}><Icon name={muted || volume === 0 ? 'casqueoff' : 'volmax'} size={18} /></button>
     <input class="vp-vol" type="range" min="0" max="1" step="0.05" bind:value={volume} aria-label="Volume" />
-    <button class="ib" onclick={fullscreen} aria-label="Plein écran"><Icon name="expand" size={16} /></button>
+    <button class="v-ib" onclick={fullscreen} aria-label="Plein écran"><Icon name="agrandir" size={18} /></button>
   </div>
 </div>

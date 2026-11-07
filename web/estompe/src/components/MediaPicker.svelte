@@ -20,7 +20,7 @@
   // Choix effectif : ramené aux plafonds du serveur (affichés grisés dans les listes).
   const eff = $derived(clampScreen(prefs.screenRes, prefs.screenFps, voice.maxScreen))
   const resOk = (r: ScreenRes) => SCREEN_RES[r].height <= voice.maxScreen.height
-  const resNote = (r: ScreenRes) => resOk(r) ? '' : SCREEN_RES[r].height > voice.limits.height ? ' (non proposé par le serveur)' : ' (au-delà de votre écran)'
+  const resNote = (r: ScreenRes) => resOk(r) ? '' : SCREEN_RES[r].height > voice.limits.height ? ' (non proposé par le serveur)' : ' (au-delà de ton écran)'
   const kind = $derived(voice.picker)
   const close = () => voice.closePicker()
   let shot = $state<HTMLVideoElement>() // aperçu de l'écran choisi
@@ -105,7 +105,7 @@
         </div>
         {#if loadError || voice.error}<p class="picker-err-line small" role="alert">{loadError || voice.error}</p>{/if}
         <div class="row picker-actions">
-          <button class="plbls-button plbls-button--contour" onclick={() => void voice.pickScreen('system')} title="Si la liste ne montre pas ce que vous cherchez">Autre méthode</button>
+          <button class="plbls-button plbls-button--contour" onclick={() => void voice.pickScreen('system')} title="Si la liste ne montre pas ce que tu cherches">Autre méthode</button>
           <button class="plbls-button plbls-button--contour" onclick={() => void loadSources()}>Actualiser</button>
           <button class="plbls-button plbls-button--contour" onclick={close}>Annuler</button>
         </div>

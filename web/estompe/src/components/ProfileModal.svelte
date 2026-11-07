@@ -102,54 +102,96 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="pc-back" class:modal onpointerdown={(e) => { if (e.target === e.currentTarget) onclose() }}>
   <div class="pc" bind:this={card} role="dialog" aria-modal="true" aria-label="Profil de {pseudo}" tabindex="-1" onkeydown={key} style={pos ? `left: ${pos.left}px; top: ${pos.top}px` : modal ? '' : 'visibility: hidden'}>
-    <div class="pc-banner" style:background={banner}></div>
-    {#if menu.length}<button class="ib sm pc-menu" bind:this={menuBtn} onclick={() => menuFrom(menuBtn!, menu)} aria-haspopup="menu" aria-label="Plus d'actions" title="Plus d'actions"><Icon name="more" size={16} /></button>{/if}
+    <div class="pc-banner" style:--banniere={banner || undefined}></div>
+    {#if menu.length}<button class="v-ib pc-menu" bind:this={menuBtn} onclick={() => menuFrom(menuBtn!, menu)} aria-haspopup="menu" aria-label="Plus d'actions" title="Plus d'actions"><Icon name="plus3" size={18} /></button>{/if}
     {#if mine}<input bind:this={colorInput} type="color" hidden value={member?.banner_color || '#808080'} onchange={(e) => void setBanner(e.currentTarget.value)} />{/if}
     <div class="pc-head">
       <Avatar {pseudo} {userId} {serverId} size="lg" status={presence} />
-      <span class="pc-name"><strong class="truncate" style:color={nameColor(detail, member)}>{pseudo}</strong>{#if isBot(userId)}<RoleBadge kind="bot" />{/if}{#if badges.length}<BadgeRow {badges} />{/if}</span>
-      <span class="small muted">{STATUS_LABEL[presence]}{#if activity} · 🎮 En jeu sur {activity}{/if}</span>
+      <div class="pc-name">
+        <h2 class="v-titre v-ell" style:color={nameColor(detail, member) || undefined}>{pseudo}</h2>
+        {#if isBot(userId)}<RoleBadge kind="bot" />{/if}
+        {#if badges.length}<BadgeRow {badges} />{/if}
+      </div>
+      {#if member?.nickname}<span class="v-mono v-mute">{member.pseudo} · pseudo d'origine</span>{/if}
+      <span class="v-note pc-statut"><span class="pc-etat" class:v-surl={presence === 'online'}>{STATUS_LABEL[presence]}</span>{#if activity} · En jeu sur {activity}{/if}</span>
+      {#if detail && isTimedOut(member, now)}<span class="v-tag att pc-to"><Icon name="horloge" size={12} />Exclu temporairement jusqu'au {new Date(member!.timeout_until!).toLocaleString('fr-FR')}</span>{/if}
     </div>
     <div class="pc-body">
       {#if detail}
         <div class="pc-sec">
-          <span class="pc-title">Rôles</span>
+          <span class="v-eyebrow">Rôles</span>
           <div class="pc-chips">
-            <span class="plbls-badge">{userId === detail.server.owner_id ? 'Créateur' : 'Membre'}</span>
+            <span class="v-chip pc-chip">{userId === detail.server.owner_id ? 'Créateur' : 'Membre'}</span>
             {#each memberRoles as r (r.id)}
-              <span class="plbls-badge pc-chip"><i style:background={r.color || undefined}></i>{roleLabel(r)}{#if editable && assignable.some((a) => a.id === r.id)}<button onclick={() => setRole(r.id, false)} aria-label="Retirer le rôle {r.name}" title="Retirer"><Icon name="x" size={12} /></button>{/if}</span>
+              <span class="v-chip pc-chip" style:--lisere={r.color || undefined}>{roleLabel(r)}{#if editable && assignable.some((a) => a.id === r.id)}<button class="pc-x" onclick={() => setRole(r.id, false)} aria-label="Retirer le rôle {r.name}" title="Retirer"><Icon name="x" size={12} /></button>{/if}</span>
             {/each}
-            {#if editable && addable.length}<button class="plbls-badge" bind:this={addBtn} onclick={pickRole} aria-haspopup="menu" aria-label="Ajouter un rôle" title="Ajouter un rôle"><Icon name="plus" size={12} /></button>{/if}
+            {#if editable && addable.length}<button class="v-chip line pc-add" bind:this={addBtn} onclick={pickRole} aria-haspopup="menu" aria-label="Ajouter un rôle" title="Ajouter un rôle"><Icon name="plus" size={12} />Ajouter un rôle</button>{/if}
           </div>
         </div>
-        {#if member?.nickname}<div class="pc-line"><span class="muted">Pseudo d'origine</span><span>{member.pseudo}</span></div>{/if}
-        {#if isTimedOut(member, now)}<div><span class="plbls-badge">Exclu temporairement jusqu'au {new Date(member!.timeout_until!).toLocaleString('fr-FR')}</span></div>{/if}
         <div class="pc-sec">
-          <span class="pc-title">Activité vocale</span>
-          <div class="pc-line"><span class="muted">Temps passé en vocal</span><span>{times.total < 60 ? 'Jamais venu en vocal' : formatVoiceTotal(times.total)}</span></div>
-          {#if times.current !== null}<div class="pc-line"><span class="muted">En vocal depuis</span><span>{formatDuration(times.current)}</span></div>{/if}
+          <span class="v-eyebrow">Activité vocale</span>
+          <div class="pc-line"><span>Temps passé en vocal</span><b class="v-mono">{times.total < 60 ? 'Jamais venu en vocal' : formatVoiceTotal(times.total)}</b></div>
+          {#if times.current !== null}<div class="pc-line"><span>En vocal depuis</span><b class="v-mono">{formatDuration(times.current)}</b></div>{/if}
         </div>
         {#if member?.joined_at}
           <div class="pc-sec">
-            <span class="pc-title">Membre depuis</span>
-            <div class="pc-line"><span class="muted truncate">{detail.server.name}</span><span>{date(member.joined_at)}</span></div>
-            {#if member.created_at}<div class="pc-line"><span class="muted">Estompe</span><span>{date(member.created_at)}</span></div>{/if}
+            <span class="v-eyebrow">Membre depuis</span>
+            <div class="pc-line"><span class="v-ell">{detail.server.name}</span><b class="v-mono">{date(member.joined_at)}</b></div>
+            {#if member.created_at}<div class="pc-line"><span>Estompe</span><b class="v-mono">{date(member.created_at)}</b></div>{/if}
           </div>
         {/if}
       {/if}
       {#if history.length}
         <div class="pc-sec">
-          <span class="pc-title">Historique de modération</span>
-          {#each history as e}<p class="small"><span class="muted">{new Date(e.at).toLocaleDateString('fr-FR')}</span> · {HISTORY[e.action] ?? e.action} par {e.actor}{e.reason ? ` : ${e.reason}` : ''}</p>{/each}
+          <span class="v-eyebrow">Historique de modération</span>
+          <div class="v-well pc-hist">
+            {#each history as e}<p class="v-note"><span class="v-mono">{new Date(e.at).toLocaleDateString('fr-FR')}</span> · {HISTORY[e.action] ?? e.action} par {e.actor}{e.reason ? ` : ${e.reason}` : ''}</p>{/each}
+          </div>
         </div>
       {/if}
       <div class="pc-actions">
         {#if mine}
-          <button class="plbls-button plbls-button--compact" onclick={() => { onclose(); openSettings('account') }}>Modifier mon profil</button>
+          <button class="plbls-button plbls-button--contour" onclick={() => { onclose(); openSettings('account') }}><Icon name="crayon" size={16} />Modifier mon profil</button>
         {:else if !isBot(userId)}
-          <button class="plbls-button plbls-button--compact" onclick={message}>Envoyer un message</button>
+          <button class="plbls-button" onclick={message}><Icon name="bulle" size={16} />Envoyer un message</button>
         {/if}
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .pc-back { position: fixed; inset: 0; z-index: calc(var(--z-modal) + 10); }
+  .pc-back.modal { display: grid; place-items: center; padding: 8px; background: color-mix(in srgb, var(--papier) 55%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .pc { position: fixed; z-index: calc(var(--z-modal) + 11); display: flex; flex-direction: column; width: min(380px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow-y: auto; background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--o3); scrollbar-width: thin; outline: none; animation: v-monte var(--d-l) var(--sortie); }
+  .pc:focus-visible { box-shadow: var(--o3), var(--anneau); }
+  .pc-back.modal .pc { position: static; }
+  .pc-banner { flex: none; height: 100px; background: linear-gradient(180deg, var(--banniere, var(--rose)), var(--surface)); }
+  .pc-menu { position: absolute; top: 10px; right: 10px; background: var(--surface); color: var(--encre); box-shadow: var(--o1); }
+  .pc-menu:hover:not(:disabled) { background: var(--papier-2); }
+  .pc-head { display: flex; flex-direction: column; gap: 4px; padding: 0 24px; margin-top: -48px; min-width: 0; }
+  .pc-head :global(.av-wrap .av), .pc-head > :global(.av) { width: 88px; height: 88px; margin: 0 0 6px; border-radius: 28px; font-size: 30px; box-shadow: 0 0 0 5px var(--surface); }
+  .pc-head > :global(.av-wrap) { align-self: flex-start; }
+  .pc-head :global(.av-dot--lg) { right: 2px; bottom: 8px; }
+  .pc-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+  .pc-name h2 { font-size: 28px; min-width: 0; max-width: 100%; }
+  .pc-statut { color: var(--gris); }
+  .pc-etat { color: var(--encre); }
+  .pc-to { align-self: flex-start; height: auto; min-height: 20px; white-space: normal; margin-top: 4px; }
+  .pc-body { display: flex; flex-direction: column; gap: 16px; padding: 16px 24px 24px; }
+  .pc-sec { display: flex; flex-direction: column; gap: 6px; }
+  .pc-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+  .pc-line > span { color: var(--gris); min-width: 0; }
+  .pc-line > b { font-weight: 600; text-align: right; }
+  .pc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pc-chip { box-shadow: inset 3px 0 0 var(--lisere, transparent); max-width: 100%; }
+  .pc-x { display: inline-flex; padding: 2px; margin-right: -4px; border: 0; border-radius: var(--r-p); background: none; color: var(--gris); cursor: pointer; }
+  .pc-x:hover { color: var(--encre); background: var(--papier-3); }
+  .pc-x:focus-visible, .pc-add:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .pc-hist { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
+  .pc-hist p { margin: 0; font-size: 12.5px; }
+  .pc-actions { display: flex; gap: 8px; }
+  .pc-actions .plbls-button { flex: 1; }
+  @media (pointer: coarse) { .pc-x { padding: 8px; margin: -6px -8px -6px 0; } .pc-chip, .pc-add { min-height: 36px; } }
+  @media (max-width: 640px) { .pc-back.modal { place-items: end center; padding: 0; } .pc-back.modal .pc { width: 100%; border-radius: var(--r-xl) var(--r-xl) 0 0; max-height: 92dvh; } }
+</style>

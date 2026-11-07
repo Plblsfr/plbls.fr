@@ -1,0 +1,80 @@
+:root,
+:root[data-theme='light'] {
+  --papier: #f7f3ee; --papier-2: #efe9e3; --papier-3: #e6dfd8; --surface: #fffdfb; --surface-2: #fbf8f5;
+  --dock-fond: #16130f; --dock-texte: #f7f3ee; --dock-trait: transparent;
+  --encre: #16130f; --encre-2: #3d3833; --gris: #6a635c; --gris-2: #6f675f; --trait: #e2dad2; --trait-fort: #cfc5bb;
+  --rose: #f6c6d6; --rose-doux: #fbe3eb; --rose-fonce: #d0688a; --rose-texte: #a3304f;
+  --ok: #276b4a; --ok-fond: #dcefe3; --attention: #855400; --attention-fond: #f8ebcf; --danger: #b4322b; --danger-fond: #f8dcd8; --info: #2f5d8a; --info-fond: #dde8f3;
+  --voix: #d0688a; --role-bleu: #305a8c; --sur-danger: #fff;
+  --ombre: 22 19 15;
+  --o1: 0 0 0 1px rgb(var(--ombre) / 6%), 0 1px 2px rgb(var(--ombre) / 5%);
+  --o2: 0 0 0 1px rgb(var(--ombre) / 7%), 0 6px 18px rgb(var(--ombre) / 9%);
+  --o3: 0 0 0 1px rgb(var(--ombre) / 8%), 0 24px 60px rgb(var(--ombre) / 18%);
+  --av-1: #f6c6d6; --av-2: #cfe3d6; --av-3: #d6dcef; --av-4: #f1dfc0; --av-5: #e3d3ec; --av-6: #d3e7ea;
+  --av-1-t: var(--encre); --av-2-t: var(--encre); --av-3-t: var(--encre); --av-4-t: var(--encre); --av-5-t: var(--encre); --av-6-t: var(--encre);
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  --papier: #131110; --papier-2: #1b1816; --papier-3: #252220; --surface: #1e1b19; --surface-2: #24211e;
+  --dock-fond: #2c2724; --dock-texte: #f1ece6; --dock-trait: rgb(255 255 255 / 9%);
+  --encre: #f1ece6; --encre-2: #d5cec6; --gris: #a9a097; --gris-2: #968c83; --trait: #2f2b28; --trait-fort: #433d38;
+  --rose: #5e2b40; --rose-doux: #3a2029; --rose-fonce: #e9849f; --rose-texte: #f5aec4;
+  --ok: #7fd1a2; --ok-fond: #183126; --attention: #f0bf62; --attention-fond: #33280f; --danger: #f08a80; --danger-fond: #3a1a17; --info: #8fb8e3; --info-fond: #17263a;
+  --voix: #e9849f; --role-bleu: #8fb0dc; --sur-danger: #131110;
+  --ombre: 0 0 0;
+  --o1: 0 0 0 1px rgb(255 255 255 / 6%);
+  --o2: 0 0 0 1px rgb(255 255 255 / 8%), 0 8px 24px rgb(0 0 0 / 40%);
+  --o3: 0 0 0 1px rgb(255 255 255 / 10%), 0 28px 70px rgb(0 0 0 / 60%);
+  --av-1: #5e2b40; --av-2: #20402f; --av-3: #28304d; --av-4: #45351a; --av-5: #3c2a4a; --av-6: #1f3e43;
+  --av-1-t: #f5d8e2; --av-2-t: #cdeedb; --av-3-t: #d9e0f6; --av-4-t: #f5e3c2; --av-5-t: #ead9f3; --av-6-t: #d4eef1;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='auto'] {
+    --papier: #131110; --papier-2: #1b1816; --papier-3: #252220; --surface: #1e1b19; --surface-2: #24211e;
+    --dock-fond: #2c2724; --dock-texte: #f1ece6; --dock-trait: rgb(255 255 255 / 9%);
+    --encre: #f1ece6; --encre-2: #d5cec6; --gris: #a9a097; --gris-2: #968c83; --trait: #2f2b28; --trait-fort: #433d38;
+    --rose: #5e2b40; --rose-doux: #3a2029; --rose-fonce: #e9849f; --rose-texte: #f5aec4;
+    --ok: #7fd1a2; --ok-fond: #183126; --attention: #f0bf62; --attention-fond: #33280f; --danger: #f08a80; --danger-fond: #3a1a17; --info: #8fb8e3; --info-fond: #17263a;
+    --voix: #e9849f; --role-bleu: #8fb0dc; --sur-danger: #131110;
+    --ombre: 0 0 0;
+    --o1: 0 0 0 1px rgb(255 255 255 / 6%);
+    --o2: 0 0 0 1px rgb(255 255 255 / 8%), 0 8px 24px rgb(0 0 0 / 40%);
+    --o3: 0 0 0 1px rgb(255 255 255 / 10%), 0 28px 70px rgb(0 0 0 / 60%);
+    --av-1: #5e2b40; --av-2: #20402f; --av-3: #28304d; --av-4: #45351a; --av-5: #3c2a4a; --av-6: #1f3e43;
+    --av-1-t: #f5d8e2; --av-2-t: #cdeedb; --av-3-t: #d9e0f6; --av-4-t: #f5e3c2; --av-5-t: #ead9f3; --av-6-t: #d4eef1;
+    color-scheme: dark;
+  }
+}
+
+:root {
+  --f-titre: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', system-ui, sans-serif;
+  --f-texte: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif;
+  --f-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  --r-xs: 6px; --r-s: 10px; --r: 14px; --r-l: 20px; --r-xl: 28px; --r-p: 999px;
+  --d: 160ms; --d-l: 280ms; --sortie: cubic-bezier(0.2, 0, 0, 1); --ressort: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --halo: 0 0 0 4px color-mix(in srgb, var(--rose-fonce) 26%, transparent);
+  --anneau: 0 0 0 2px var(--papier), 0 0 0 4px var(--encre);
+  --anneau-in: inset 0 0 0 2px var(--encre);
+}
+
+html:root,
+html:root[data-theme] {
+  --creme: var(--papier); --creme-creux: var(--papier-2); --noir: var(--encre);
+  --ombre-1: var(--o1); --ombre-2: var(--o2); --ombre-3: var(--o3);
+  --font-titre: var(--f-titre); --font-texte: var(--f-texte);
+  --rayon-s: var(--r-s); --rayon-m: var(--r-s); --rayon: var(--r); --rayon-l: var(--r-l); --rayon-xl: var(--r-xl); --rayon-pilule: var(--r-p);
+  --espace-1: 4px; --espace-2: 8px; --espace-3: 12px; --espace-4: 16px; --espace-5: 20px; --espace-6: 24px; --espace-8: 32px; --espace-12: 48px; --espace-16: 64px;
+  --duree: var(--d);
+  --focus: 2px solid var(--encre);
+  --calque: color-mix(in srgb, var(--encre) 7%, var(--surface));
+  --accent: var(--rose-fonce); --border: var(--trait); --bordure: var(--trait); --text-muted: var(--gris); --warning: var(--attention); --bleu: var(--info);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --d: 0.01ms; --d-l: 0.01ms; }
+}
+:root[data-motion='reduit'] { --d: 0.01ms; --d-l: 0.01ms; --mv-rapide: 0.01ms; --mv-normal: 0.01ms; --mv-lent: 0.01ms; }
+:root[data-motion='reduit'] *,
+:root[data-motion='reduit'] *::before,
+:root[data-motion='reduit'] *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }

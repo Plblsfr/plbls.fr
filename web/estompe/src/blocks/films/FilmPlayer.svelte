@@ -60,23 +60,23 @@
 <div class="film-player" bind:this={root}>
   <div class="film-player-top">
     <a class="watch-btn" href={back} aria-label="Fermer le lecteur"><Icon name="x" size={22} /></a>
-    <div class="grow film-player-title"><strong class="truncate">{item ? fullTitle(item) : ''}</strong><span class="small">Regarder seul</span></div>
-    {#if item}<button class="plbls-button film-to-voice" onclick={() => (picker = true)}><Icon name="film" size={18} /> Continuer au cinéma à {clock(position)}</button>{/if}
+    <div class="grow film-player-title"><strong class="truncate">{item ? fullTitle(item) : ''}</strong><span class="film-player-sub">Regarder seul</span></div>
+    {#if item}<button class="plbls-button v-rose film-to-voice" onclick={() => (picker = true)}><Icon name="film" size={18} /> Continuer au cinéma à {clock(position)}</button>{/if}
   </div>
   <div class="film-player-video">
     <div class="watch-video" bind:this={host}></div>
     {#if error}
       <div class="watch-msg plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>
     {:else if !playing && item}
-      <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="play" size={34} /></button>
+      <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
     {/if}
     {#if panel && tracks}
       <section class="film-tracks-panel" aria-label="Pistes">
-        <div class="small">Audio</div>
+        <div class="film-mh">Audio</div>
         {#each tracks.audio as a (a.n)}
           <button class="film-track" aria-pressed={a.n === tracks.audioN} onclick={() => player?.setAudio?.(a.n)}>{trackName(a)}</button>
         {/each}
-        <div class="small">Sous-titres</div>
+        <div class="film-mh">Sous-titres</div>
         <button class="film-track" aria-pressed={tracks.subN === null} onclick={() => { player?.setSubtitle?.(null); tracks = { ...tracks!, subN: null } }}>Aucun</button>
         {#each tracks.subtitles as t (t.n)}
           <button class="film-track" aria-pressed={t.n === tracks.subN} onclick={() => { player?.setSubtitle?.(t.n); tracks = { ...tracks!, subN: t.n } }}>{trackName(t)}</button>
@@ -89,15 +89,15 @@
       oninput={(e) => (drag = Number(e.currentTarget.value))}
       onchange={(e) => { seek(Number(e.currentTarget.value)); drag = null }} />
     <div class="film-player-buttons">
-      <button class="watch-btn" onclick={toggle} aria-label={playing ? 'Pause' : 'Lecture'}><Icon name={playing ? 'pause' : 'play'} size={22} /></button>
+      <button class="watch-btn" onclick={toggle} aria-label={playing ? 'Pause' : 'Lecture'}><Icon name={playing ? 'pause' : 'lecture'} size={22} /></button>
       <button class="film-chip" onclick={() => seek(position - 10)} aria-label="Reculer de 10 secondes">−10 s</button>
       <button class="film-chip" onclick={() => seek(position + 30)} aria-label="Avancer de 30 secondes">+30 s</button>
-      <span class="watch-time">{clock(drag ?? position)} / {clock(duration)}</span>
+      <span class="watch-time v-mono">{clock(drag ?? position)} / {clock(duration)}</span>
       <span class="grow"></span>
-      <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name="volume" size={20} /></button>
+      <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
       <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" oninput={(e) => { volume = Number(e.currentTarget.value); muted = volume === 0 }} />
-      {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}>Audio et sous-titres</button>{/if}
-      <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran"><Icon name="expand" size={20} /></button>
+      {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}><Icon name="bulle" size={16} /> Audio et sous-titres</button>{/if}
+      <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran"><Icon name="agrandir" size={20} /></button>
     </div>
   </div>
 </div>

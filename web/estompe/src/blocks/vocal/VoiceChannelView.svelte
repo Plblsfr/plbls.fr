@@ -95,20 +95,22 @@
   onDestroy(() => document.documentElement.removeAttribute('data-theater'))
 </script>
 
-<header class="main-head">
+<header class="main-head vc-head">
   <button class="ib burger" onclick={onmenu} aria-label="Menu"><Icon name="menu" /></button>
-  <h1 class="grow row"><Icon name={cinema ? 'film' : 'volume'} size={20} /> {channel.name}</h1>
+  <h1 class="grow row"><span class="vc-head-ic"><Icon name={cinema ? 'film' : 'vol'} size={20} /></span> {channel.name}</h1>
   {#if here}
-    <span class="muted small">{people.length} / 10</span>
-    {#if watching && listening}<button class="ib" onclick={() => (pick = view === 'music' ? 'watch' : 'music')} aria-label={view === 'music' ? 'Afficher la vidéo' : 'Afficher la musique'} title={view === 'music' ? 'Afficher la vidéo' : 'Afficher la musique'}><Icon name={view === 'music' ? 'play' : 'volume'} /></button>{/if}
-    {#if cinema}
-      {#if !watching && app.movies}<a class="ib" href={hrefs.films()} aria-label="Choisir un film" title="Choisir un film dans la bibliothèque"><Icon name="play" /></a>{/if}
-    {:else}
-    {#if !watching}<button class="ib" onclick={() => (startOpen = 'watch')} aria-label="Regarder ensemble" title="Regarder ensemble (vidéo)"><Icon name="play" /></button>{/if}
-    {#if app.on('draw2gether') && !playing}<button class="ib" onclick={() => void startGame()} aria-label="Draw2Gether" title="Draw2Gether (dessiner et deviner)"><Icon name="edit" /></button>{/if}
-    {#if !listening}<button class="ib" onclick={() => (startOpen = 'music')} aria-label="Écouter ensemble" title="Écouter ensemble (Music2gether)"><span aria-hidden="true">🎵</span></button>{/if}
-    {/if}
-    <button class="ib" aria-pressed={theater} onclick={() => (theater = !theater)} aria-label="Mode plein cadre" title="Mode plein cadre"><Icon name="film" /></button>
+    <span class="v-mono v-mute vc-count">{people.length} / 10</span>
+    <span class="vc-acts">
+      {#if watching && listening}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (pick = view === 'music' ? 'watch' : 'music')} aria-label={view === 'music' ? 'Afficher la vidéo' : 'Afficher la musique'} title={view === 'music' ? 'Afficher la vidéo' : 'Afficher la musique'}><Icon name={view === 'music' ? 'tele' : 'note'} size={16} /><span class="vc-txt">{view === 'music' ? 'Vidéo' : 'Musique'}</span></button>{/if}
+      {#if cinema}
+        {#if !watching && app.movies}<a class="plbls-button plbls-button--compact plbls-button--contour" href={hrefs.films()} aria-label="Choisir un film" title="Choisir un film dans la bibliothèque"><Icon name="film" size={16} /><span class="vc-txt">Choisir un film</span></a>{/if}
+      {:else}
+        {#if !watching}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (startOpen = 'watch')} aria-label="Regarder ensemble" title="Regarder ensemble (vidéo)"><Icon name="tele" size={16} /><span class="vc-txt">Regarder ensemble</span></button>{/if}
+        {#if !listening}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (startOpen = 'music')} aria-label="Écouter ensemble" title="Écouter ensemble (Music2gether)"><Icon name="note" size={16} /><span class="vc-txt">Écouter ensemble</span></button>{/if}
+        {#if app.on('draw2gether') && !playing}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void startGame()} aria-label="Draw2Gether" title="Draw2Gether (dessiner et deviner)"><Icon name="pinceau" size={16} /><span class="vc-txt">Draw2Gether</span></button>{/if}
+      {/if}
+      <button class="ib" aria-pressed={theater} onclick={() => (theater = !theater)} aria-label="Mode plein cadre" title="Mode plein cadre"><Icon name={theater ? 'reduire' : 'agrandir'} /></button>
+    </span>
   {/if}
 </header>
 
@@ -134,58 +136,89 @@
       </ul>
     {/if}
     {#if cinema && !watching}
-      <p class="stage-hint muted small">Aucun film en cours.{#if app.movies} <a href={hrefs.films()}>Choisir un film dans la bibliothèque</a> : il sera lu ici pour tous, piloté par vous.{/if}</p>
+      <p class="stage-hint v-note">Aucun film en cours.{#if app.movies} <a href={hrefs.films()}>Choisir un film dans la bibliothèque</a> : il sera lu ici pour tous, piloté par toi.{/if}</p>
     {/if}
-    {#if people.length === 1}<p class="stage-hint muted small">Tu es seul·e ici. Invite quelqu'un : tout le monde apparaîtra sur cette scène.</p>{/if}
+    {#if people.length === 1}<p class="stage-hint v-note">Tu es seul·e ici. Invite quelqu'un : tout le monde apparaîtra sur cette scène.</p>{/if}
     {#if voice.screen}
       <div class="share-banner" role="status">
-        <Icon name="monitor" size={16} />
-        <strong>Vous partagez votre écran</strong>
-        <span class="small muted">{watchers} spectateur{watchers > 1 ? 's' : ''}</span>
+        <span class="share-banner-ic"><Icon name="ecran" size={16} /></span>
+        <strong>Tu partages ton écran</strong>
+        <span class="v-mono share-banner-n">{watchers} spectateur{watchers > 1 ? 's' : ''}</span>
         <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void voice.restartScreen()}>Changer de source</button>
-        <button class="plbls-button plbls-button--compact" onclick={() => voice.requestScreen()}>Arrêter</button>
+        <button class="plbls-button plbls-button--compact plbls-button--danger" onclick={() => voice.requestScreen()}>Arrêter</button>
       </div>
     {/if}
     {#if !(theater && watching && view === 'watch' && !playing)}<div class="theater-bar">
       <VoiceControls />
-      {#if theater}<button class="vbtn" onclick={() => (theater = false)} aria-label="Quitter le mode plein cadre" title="Quitter le mode plein cadre (Échap)"><Icon name="minimize" size={20} /></button>{/if}
+      {#if theater}<button class="theater-exit" onclick={() => (theater = false)} aria-label="Quitter le mode plein cadre" title="Quitter le mode plein cadre (Échap)"><Icon name="reduire" size={20} /></button>{/if}
     </div>{/if}
   {:else}
     <div class="stage-join">
-      <h2>{channel.name}</h2>
-      <p class="muted">{people.length ? `${people.length} / 10 participant${people.length > 1 ? 's' : ''}` : 'Personne pour le moment.'}</p>
       {#if people.length}
         <ul class="join-faces" aria-label="Participants">
-          {#each people as p (p.user_id)}<li><button class="profile-link" onclick={() => openProfile(p.user_id, serverId)} title="Profil de {p.pseudo}"><Avatar pseudo={p.pseudo} userId={p.user_id} {serverId} speaking={!!voice.speaking[p.user_id]} /><span class="small">{p.pseudo}</span></button></li>{/each}
+          {#each people as p (p.user_id)}<li><button class="profile-link" onclick={() => openProfile(p.user_id, serverId)} title="Profil de {p.pseudo}"><Avatar pseudo={p.pseudo} userId={p.user_id} {serverId} size="lg" speaking={!!voice.speaking[p.user_id]} /><span class="join-name">{p.pseudo}</span></button></li>{/each}
         </ul>
       {/if}
+      <div class="join-title">
+        <h2>{channel.name}</h2>
+        <p class="v-mute">{people.length ? `${people.length} / 10 participant${people.length > 1 ? 's' : ''}` : 'Personne pour le moment.'}</p>
+      </div>
       {#if voice.error}<div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{voice.error}</p></div>{/if}
       {#if connecting}
         <Loader label="Connexion au vocal" />
       {:else if app.can(serverId, 'connect', channel.id)}
-        <button class="plbls-button" onclick={() => voice.join(channel.id)}>Rejoindre le salon</button>
+        <button class="plbls-button v-rose join-go" onclick={() => voice.join(channel.id)}><Icon name={cinema ? 'film' : 'vol'} /> Rejoindre le salon</button>
       {:else}
-        <p class="muted">Vous n'avez pas la permission de rejoindre ce salon vocal.</p>
+        <p class="v-alert att join-deny"><Icon name="cadenas" /> Tu n'as pas la permission de rejoindre ce salon vocal.</p>
       {/if}
-      <p class="muted small">L'audio passe par le serveur vocal. Le navigateur te demandera l'accès au micro, puis à la caméra ou à l'écran si tu les actives.</p>
+      <p class="v-note">L'audio passe par le serveur vocal. Le navigateur te demandera l'accès au micro, puis à la caméra ou à l'écran si tu les actives.</p>
     </div>
   {/if}
 </div>
 
 {#if startOpen}
   <Modal title={startOpen === 'music' ? 'Écouter ensemble' : 'Regarder ensemble'} onclose={() => (startOpen = null)}>
-    <form class="poll-form" onsubmit={startSession}>
+    <form class="vc-start" onsubmit={startSession}>
       {#if startOpen === 'music'}
-        <input class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="Lien YouTube Music (morceau, album, playlist)" aria-label="Lien de la musique" />
-        <p class="muted small">Chaque participant joue la musique avec le lecteur officiel de YouTube ; Estompe ne fait que synchroniser la lecture. Cette session est indépendante de « Regarder ensemble ».</p>
+        <div class="plbls-field">
+          <label class="plbls-field__label" for="vc-lien">Lien de la musique</label>
+          <input id="vc-lien" class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="YouTube Music : morceau, album ou playlist" aria-label="Lien de la musique" />
+          <p class="plbls-field__aide">Chaque participant joue la musique avec le lecteur officiel de YouTube ; Estompe ne fait que synchroniser la lecture. Cette session est indépendante de « Regarder ensemble ».</p>
+        </div>
       {:else}
-        <input class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="Lien de la vidéo (YouTube, Twitch, Vimeo, Dailymotion, fichier)" aria-label="Lien de la vidéo" />
-        <p class="muted small">Chaque participant lit la vidéo avec le lecteur de sa source ; Estompe ne fait que synchroniser la lecture. Les directs et clips Twitch se lancent en même temps, sans pause ni déplacement partagés.</p>
+        <div class="plbls-field">
+          <label class="plbls-field__label" for="vc-lien">Lien de la vidéo</label>
+          <input id="vc-lien" class="plbls-input" bind:value={startLink} maxlength="2000" placeholder="YouTube, Twitch, Vimeo, Dailymotion ou fichier" aria-label="Lien de la vidéo" />
+          <p class="plbls-field__aide">Chaque participant lit la vidéo avec le lecteur de sa source ; Estompe ne fait que synchroniser la lecture. Les directs et clips Twitch se lancent en même temps, sans pause ni déplacement partagés.</p>
+        </div>
       {/if}
-      <div class="row">
+      <div class="vc-start-actions">
         <button type="button" class="plbls-button plbls-button--contour" onclick={() => (startOpen = null)}>Annuler</button>
-        <button class="plbls-button" disabled={!startLink.trim()}>Lancer</button>
+        <button class="plbls-button v-rose" disabled={!startLink.trim()}>Lancer</button>
       </div>
     </form>
   </Modal>
 {/if}
+
+<style>
+  .vc-head-ic { display: inline-flex; color: var(--gris); }
+  .vc-count { flex: none; }
+  .vc-acts { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+  .vc-acts .plbls-button { white-space: nowrap; text-decoration: none; }
+  @media (max-width: 1100px) { .vc-txt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } .vc-acts .plbls-button { padding-inline: 8px; } }
+  @media (pointer: coarse) { .vc-acts .plbls-button { min-height: 44px; min-width: 44px; } }
+  .stage-join { place-self: center; width: min(520px, 100%); display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center; }
+  .join-title { display: grid; gap: 6px; }
+  .join-title h2 { margin: 0; font-family: var(--f-titre); font-size: clamp(32px, 6vw, 44px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.05; overflow-wrap: anywhere; }
+  .join-title p { margin: 0; }
+  .stage-join .plbls-alert, .join-deny { width: 100%; text-align: left; margin: 0; }
+  .join-deny { align-items: center; }
+  .join-go { min-height: 48px; padding-inline: 24px; font-size: 15px; }
+  .join-faces { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
+  .join-faces li { display: grid; justify-items: center; }
+  .join-faces .profile-link { flex-direction: column; gap: 6px; padding: 4px; border-radius: var(--r); }
+  .join-faces .profile-link:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .join-name { font-size: 13px; color: var(--encre-2); max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vc-start { display: grid; gap: 16px; min-width: min(420px, 80vw); }
+  .vc-start-actions { display: flex; justify-content: flex-end; gap: 8px; }
+</style>
