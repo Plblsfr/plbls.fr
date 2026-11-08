@@ -117,7 +117,7 @@ mod tests {
     use estompe_core::{
         db::migrate_embarquees,
         state::AppState,
-        testutil::{self, Faux, faux},
+        testutil::{self, Faux, faux, faux_permission},
     };
     use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
     use serde_json::{Value, json};
@@ -145,7 +145,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let (pg, url) = testutil::postgres().await?;
         let pool = sqlx::PgPool::connect(&url).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();

@@ -621,9 +621,7 @@ mod tests {
     };
 
     fn droits(r: &Requete) -> (u16, Vec<u8>) {
-        let v: Value = serde_json::from_slice(&r.corps).unwrap_or_default();
-        let ok = v["permission"] != "estompe:admin" || v["user_id"] == "sub-root";
-        (200, json!({ "allowed": ok }).to_string().into_bytes())
+        crate::testutil::reponse_droits(r, |sub, p| p != "estompe:admin" || sub == "sub-root")
     }
 
     fn refus(_: &Requete) -> (u16, Vec<u8>) {

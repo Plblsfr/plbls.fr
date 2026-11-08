@@ -778,7 +778,7 @@ mod tests {
     use estompe_block_regarder_ensemble::Lecteurs;
     use estompe_core::{
         db::migrate_embarquees,
-        testutil::{self, BasePostgres, Faux, faux, faux_avec_entetes},
+        testutil::{self, BasePostgres, Faux, faux, faux_avec_entetes, faux_permission},
     };
     use estompe_core::{
         messages::EvenementMessage,
@@ -852,7 +852,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let images = faux_avec_entetes(|_| {
             (
                 200,

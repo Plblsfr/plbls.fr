@@ -8,7 +8,7 @@ use axum::http::{HeaderMap, HeaderValue, header};
 use reqwest::StatusCode;
 use sha2::{Digest, Sha256};
 
-use crate::http::{champ_texte, lire_corps, premier_objet};
+use crate::http::{champ, champ_texte, lire_corps, premier_objet};
 
 pub const COOKIE_NAME: &str = "__Secure-plbls_sid";
 const CACHE_TTL: Duration = Duration::from_secs(30);
@@ -19,6 +19,7 @@ pub struct Identity {
     pub sub: String,
     pub username: String,
     pub email: String,
+    pub roles: Vec<String>,
     pub via_cookie: bool,
 }
 
@@ -144,6 +145,13 @@ impl Resolver {
             sub: texte("id")?,
             username: texte("name")?,
             email: texte("email")?,
+            roles: match champ(&objet, "roles") {
+                Some(serde_json::Value::Array(r)) => r
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
+                _ => Vec::new(),
+            },
             via_cookie: cred.cookie,
         };
         if id.sub.is_empty() {
@@ -175,7 +183,8 @@ mod tests {
         }
         (
             200,
-            br#"{"id":"u1","name":"alice","email":"a@x.fr"}"#.to_vec(),
+            br#"{"id":"u1","name":"alice","email":"a@x.fr","roles":["user","permission-admin",3]}"#
+                .to_vec(),
         )
     }
 
@@ -210,6 +219,7 @@ mod tests {
                 sub: "u1".into(),
                 username: "alice".into(),
                 email: "a@x.fr".into(),
+                roles: vec!["user".into(), "permission-admin".into()],
                 via_cookie: false
             }
         );

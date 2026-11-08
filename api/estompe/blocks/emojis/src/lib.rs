@@ -401,7 +401,7 @@ mod tests {
         db::migrate_embarquees,
         identity::Cred,
         state::AppState,
-        testutil::{self, BasePostgres, Faux, faux},
+        testutil::{self, BasePostgres, Faux, faux, faux_permission},
     };
     use serde_json::{Value, json};
     use tower::ServiceExt;
@@ -427,7 +427,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let (pg, url) = testutil::postgres().await?;
         let pool = sqlx::PgPool::connect(&url).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();

@@ -670,7 +670,10 @@ async fn fichier_pour(pool: &PgPool, id: &str, user: &str) -> Result<Fichier, Er
 }
 
 pub async fn est_admin(state: &AppState, sub: &str) -> bool {
-    state.admin_permission().allowed(sub).await.unwrap_or(false)
+    state
+        .droit(sub, crate::permission::ADMIN)
+        .await
+        .unwrap_or(false)
 }
 
 async fn acces(state: &AppState, id: &str, parts: &mut Parts) -> Result<Fichier, Response> {
@@ -1073,14 +1076,11 @@ mod tests {
     }
 
     fn permission(r: &testutil::Requete) -> (u16, Vec<u8>) {
-        let corps: Value = serde_json::from_slice(&r.corps).unwrap();
-        let sub = corps["user_id"].as_str().unwrap();
-        let ok = match corps["permission"].as_str().unwrap() {
+        testutil::reponse_droits(r, |sub, p| match p {
             "estompe:access" => true,
             "estompe:admin" => sub == "sub-admin",
             _ => false,
-        };
-        (200, json!({ "allowed": ok }).to_string().into_bytes())
+        })
     }
 
     async fn env(extra: &[(&str, &str)], regler: impl FnOnce(&mut Config)) -> Option<Env> {

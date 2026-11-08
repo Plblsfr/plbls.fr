@@ -83,7 +83,7 @@
     {#each platform.spaces.filter((s) => s.visible()) as s (s.id)}
       <a class="rail-tool" class:active={route.name === 'space' && route.space === s.id} href={hrefs.space(s.id)} title={s.title} aria-label={s.title} aria-current={route.name === 'space' && route.space === s.id ? 'page' : undefined}><Icon name={s.icon} size={22} /></a>
     {/each}
-    {#if app.isAdmin}
+    {#if app.adminSections.length}
       <a class="rail-tool" class:active={route.name === 'admin'} href={hrefs.admin()} title="Administration d'Estompe" aria-label="Administration d'Estompe" aria-current={route.name === 'admin' ? 'page' : undefined}><Icon name="bouclier" size={22} /></a>
     {/if}
   </div>

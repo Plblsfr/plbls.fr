@@ -106,6 +106,7 @@ const send = <T>(m: string, p: string, b?: unknown) => request<T>(m, p, b)
 
 export const api = {
   me: () => get<Me>('/me'),
+  permissions: <T = void>(methode: string, chemin: string, corps?: unknown) => send<T>(methode, `/admin/permissions${chemin}`, corps),
   adminLive: () => get<AdminLive>('/admin/live'),
   adminOverview: () => get<AdminOverview>('/admin/overview'),
   adminBadges: () => get<AdminBadge[]>('/admin/badges'),

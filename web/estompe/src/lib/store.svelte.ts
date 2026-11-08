@@ -15,10 +15,11 @@ import { videos } from '../blocks/videos/videos.svelte'
 import { draw } from '../blocks/draw2gether/draw.svelte'
 import { clockOffset, stale } from '../blocks/regarder-ensemble/watch'
 import { notify } from './ui'
+import { adminSections, rightsOf, type Right } from './admin'
 import { convKeyOf, channelKey, dmKey, defaultNotifySettings } from './types'
 import type { Me, Status, NotifySettings, PermKey, Channel, ConvKey, DM, Mention, Message, NewPoll, Read, Server, ServerDetail, VoiceParticipant, WatchState, WatchView, SessionKind } from './types'
 
-export type Phase = 'loading' | 'login' | 'denied' | 'activate' | 'ready' | 'error'
+export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'error'
 
 export interface Conv {
   messages: Message[]
@@ -46,8 +47,9 @@ export class AppStore {
   blocks = $state<string[] | undefined>(undefined)
   on = (name: string) => blockOn(this.blocks, name)
   pseudo = $state('')
-  /** Permission estompe:admin : montre l'onglet Administration (le serveur contrôle l'accès). */
-  isAdmin = $state(false)
+  rights = $state<Right[]>([])
+  isAdmin = $derived(this.rights.includes('admin'))
+  adminSections = $derived(adminSections(this.rights, (b) => this.on(b)))
   movies = $state(false)
   servers = $state<Server[]>([])
   details = $state<Record<string, ServerDetail>>({})
@@ -102,8 +104,9 @@ export class AppStore {
     this.phase = 'loading'
     try {
       const me = await api.me()
+      this.rights = rightsOf(me)
       if (!me.allowed) {
-        this.phase = 'denied'
+        this.phase = this.adminSections.length ? 'admin' : 'denied'
         return
       }
       if (!me.activated) {
@@ -133,8 +136,8 @@ export class AppStore {
   }
 
   private applyMe(me: Me) {
+    this.rights = rightsOf(me)
     if (!me.allowed || !me.activated) return
-    this.isAdmin = me.admin === true
     this.maxVideo = me.max_video_size ?? DEFAULT_MAX_VIDEO
     this.transcription = me.transcription ?? ''
     this.blocks = me.blocks

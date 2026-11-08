@@ -1096,7 +1096,7 @@ mod tests {
         identity::Cred,
         roles,
         state::AppState,
-        testutil::{self, BasePostgres, Faux, faux},
+        testutil::{self, BasePostgres, Faux, faux, faux_permission},
     };
     use serde_json::{Value, json};
     use std::{
@@ -1239,7 +1239,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let sim: Arc<Mutex<Sim>> = Arc::default();
         let s = sim.clone();
         let livekit = faux(move |r| {

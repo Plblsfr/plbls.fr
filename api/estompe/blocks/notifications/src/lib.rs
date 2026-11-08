@@ -814,7 +814,7 @@ mod tests {
     use estompe_core::{
         db::migrate_embarquees,
         identity::Cred,
-        testutil::{self, BasePostgres, Faux, faux, faux_avec_entetes},
+        testutil::{self, BasePostgres, Faux, faux, faux_avec_entetes, faux_permission},
     };
     use std::sync::Mutex;
     use tower::ServiceExt;
@@ -839,7 +839,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let (pg, url) = testutil::postgres().await?;
         let pool = PgPool::connect(&url).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();

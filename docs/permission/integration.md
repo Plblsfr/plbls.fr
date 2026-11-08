@@ -51,7 +51,15 @@ L'administration est protégée **dans permission** par le rôle Keycloak `permi
 3. `POST /v1/apps/chat/roles` avec la liste des permissions
 4. `POST /v1/assignments` `{"user_id":"<sub>","app":"chat","role":"moderator"}`
 
-(ou tout faire depuis l'interface web).
+(ou tout faire depuis l'interface : Administration › permissions d'Estompe, ou l'ancien front `permission.plbls.fr`).
+
+## Interface d'administration dans Estompe
+
+Le front unique sert l'administration de permission dans Estompe (section « permissions » de l'administration). L'API Estompe relaie
+`/admin/permissions/*` vers `<gateway>/api/permission/v1/*` avec le justificatif de l'appelant : permission reste seul juge (rôle Keycloak
+`permission-admin` ou `permission:admin`). Un compte qui n'a que le rôle Keycloak `permission-admin` se connecte à Estompe et n'y voit que
+cette page, sans compte Estompe à activer (`PERMISSION_ADMIN_ROLE` côté Estompe, même valeur que `server.admin_role`). Ce compte doit
+aussi porter le rôle demandé par la route `/api/permission` du gateway (`user`).
 
 ## MCP (assistants IA)
 

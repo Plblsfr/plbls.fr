@@ -41,10 +41,13 @@ Les tests de base utilisent le PostgreSQL de `TEST_DATABASE_URL`, ou `postgres:1
 ## Identité, permissions et routes du cœur
 
 `identity::Resolver` interroge `GET {GATEWAY_URL}/auth/me` avec le Bearer reçu (prioritaire) ou le cookie `__Secure-plbls_sid` ; cache de 30 s (1000 entrées), 401/403 → invalide, tout autre échec → indisponible.
-`permission::Client` interroge `POST {PERMISSION_URL}/v1/check` avec le Bearer de service ; cache de 30 s ; en cas d'échec, l'accès est refusé (503 `permission_unavailable`).
+`identity::Resolver` lit aussi les rôles Keycloak (`roles` de `/auth/me`).
+`permission::Client` lit en un appel toutes les permissions du compte, `GET {PERMISSION_URL}/v1/users/{sub}/permissions` avec le Bearer de service ; cache de 30 s ; en cas d'échec, l'accès est refusé (503 `permission_unavailable`).
+`AppState::acces` (`PERMISSION_NAME`), `AppState::droit(sub, permission::ADMIN | FILMS)` et `AppState::gere_permissions` (`permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`) en dérivent ; `GET /me` les annonce dans `rights`.
+`relais_permission` relaie `/admin/permissions/*` vers `{GATEWAY_URL}/api/permission/v1/*` avec le justificatif de l'appelant (cookie et `Origin`, ou Bearer) : l'administration de permission se fait depuis l'admin d'Estompe, réservée à `gere_permissions`, sans compte Estompe.
 Les extracteurs `api::Auth` (401 `unauthorized` / 503 `authentication unavailable` en texte brut) et `api::ActiveUser` (compte activé, non suspendu, permission accordée) protègent les routes ;
 `GET /me` et `POST /activate` sont les premières routes du cœur. `http::{write_json, write_err, decode}` produisent les réponses JSON communes.
-Les tests d'API utilisent `testutil::faux` (faux gateway et faux service de permission sur un port éphémère) et PostgreSQL.
+Les tests d'API utilisent `testutil::faux` (faux gateway sur un port éphémère), `testutil::faux_permission` / `reponse_droits` (faux service de permission) et PostgreSQL.
 
 ## Serveurs, salons et invitations
 

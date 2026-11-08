@@ -83,7 +83,7 @@
       for (const s of app.servers) out.push({ id: `s:${s.id}`, groupe: 'aller', icone: 'calque', label: s.name, detail: 'Serveur', run: () => go(hrefs.channel(s.id)) })
       if (app.movies) out.push({ id: 'films', groupe: 'aller', icone: 'film', label: 'Films et séries', run: () => go(hrefs.films()) })
       for (const sp of platform.spaces) if (sp.visible()) out.push({ id: `e:${sp.id}`, groupe: 'aller', icone: sp.icon, label: sp.title, run: () => go(hrefs.space(sp.id)) })
-      if (app.isAdmin) out.push({ id: 'admin', groupe: 'aller', icone: 'bouclier', label: 'Administration', run: () => go(hrefs.admin()) })
+      if (app.adminSections.length) out.push({ id: 'admin', groupe: 'aller', icone: 'bouclier', label: 'Administration', run: () => go(hrefs.admin()) })
     }
     if (prefixe !== '@') {
       for (const s of app.servers) {

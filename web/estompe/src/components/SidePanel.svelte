@@ -39,7 +39,7 @@
   import Avatar from './Avatar.svelte'
   import VoiceControls from '../blocks/vocal/VoiceControls.svelte'
   import Quality from './Quality.svelte'
-  import { ADMIN_SECTIONS, adminSection } from '../lib/admin'
+  import { adminSection } from '../lib/admin'
   import { platform } from '../lib/platform'
   import { outranks } from '../lib/roles'
   import { api } from '../lib/api'
@@ -123,12 +123,13 @@
 {/snippet}
 
 <aside class="side">
-  {#if route.name === 'admin' && app.isAdmin}
+  {#if route.name === 'admin' && app.adminSections.length}
     <div class="side-head"><h2>Estompe</h2></div>
     <div class="side-list">
       <div class="side-title">Administration</div>
-      {#each ADMIN_SECTIONS.filter((s) => s.id !== 'films' || app.on('films')) as s (s.id)}
-        <a class="nav-item" class:active={adminSection(route.section) === s.id} href={hrefs.admin(s.id)} aria-current={adminSection(route.section) === s.id ? 'page' : undefined}>
+      {#each app.adminSections as s (s.id)}
+        {@const actif = adminSection(route.section, app.adminSections) === s.id}
+        <a class="nav-item" class:active={actif} href={hrefs.admin(s.id)} aria-current={actif ? 'page' : undefined}>
           <Icon name={s.icon} size={16} /><span class="truncate">{s.label}</span>
         </a>
       {/each}

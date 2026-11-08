@@ -600,13 +600,8 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|r| {
-            let corps = String::from_utf8_lossy(&r.corps).into_owned();
-            let admin = corps.contains("estompe:admin");
-            let autorise = !admin || corps.contains("sub-root");
-            (200, json!({ "allowed": autorise }).to_string().into_bytes())
-        })
-        .await;
+        let permission =
+            testutil::faux_permission(|sub, p| p != "estompe:admin" || sub == "sub-root").await;
         let (pg, url) = testutil::postgres().await?;
         let pool = sqlx::PgPool::connect(&url).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();

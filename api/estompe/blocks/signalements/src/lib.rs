@@ -587,12 +587,8 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|r| {
-            let v: Value = serde_json::from_slice(&r.corps).unwrap_or_default();
-            let ok = v["permission"] != "estompe:admin" || v["user_id"] == "sub-root";
-            (200, json!({ "allowed": ok }).to_string().into_bytes())
-        })
-        .await;
+        let permission =
+            testutil::faux_permission(|sub, p| p != "estompe:admin" || sub == "sub-root").await;
         let (pg, url) = testutil::postgres().await?;
         let pool = sqlx::PgPool::connect(&url).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();

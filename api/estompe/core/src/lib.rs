@@ -25,6 +25,7 @@ pub mod openapi;
 pub mod permission;
 pub mod ratelimit;
 pub mod recherche;
+pub mod relais_permission;
 pub mod roles;
 pub mod salons;
 pub mod servers;

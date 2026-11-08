@@ -100,7 +100,7 @@
   })
 
   // Espace réservé aux admins : retour à l'accueil sinon (le serveur refuse de toute façon).
-  $effect(() => { if (route.name === 'admin' && !app.isAdmin) router.go('#/') })
+  $effect(() => { if (route.name === 'admin' && !app.adminSections.length) router.go('#/') })
   $effect(() => { if (route.name === 'films' && !app.movies) router.go('#/') })
   const space = $derived(route.name === 'space' ? platform.spaces.find((s) => s.id === route.space) : undefined)
   $effect(() => { if (route.name === 'space' && !space?.visible()) router.go('#/') })
@@ -145,7 +145,7 @@
       <SettingsModal onclose={() => (modal = '')} />
     {:else if modal === 'server' && detail}
       <ServerSettingsModal {detail} onclose={() => (modal = '')} />
-    {:else if route.name === 'admin' && app.isAdmin}
+    {:else if route.name === 'admin' && app.adminSections.length}
       <AdminSpace section={route.section} onmenu={() => (nav = true)} />
     {:else if route.name === 'films' && app.movies}
       <FilmsSpace section={route.section} id={route.id} onmenu={() => (nav = true)} />
