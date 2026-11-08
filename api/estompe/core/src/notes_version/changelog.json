@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.87.3",
+    "date": "2026-11-08",
+    "new": [],
+    "fixes": [
+      "Windows : après une mise à jour, l'application affiche bien la nouvelle version, sans avoir à la désinstaller."
+    ]
+  },
+  {
     "version": "0.87.1",
     "date": "2026-11-08",
     "new": [],
