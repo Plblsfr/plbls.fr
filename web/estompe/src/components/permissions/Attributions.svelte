@@ -74,7 +74,7 @@
               <tr>
                 <td class="v-mono">{a.user_id}</td><td>{a.app}</td><td><span class="v-tag rose">{a.role}</span></td>
                 <td class="v-mono">{a.granted_by}</td><td class="v-note">{new Date(a.created_at).toLocaleString('fr-FR')}</td>
-                <td class="perm-act"><button class="plbls-button plbls-button--lien plbls-button--danger plbls-button--compact" onclick={() => retirer(a)}>Retirer</button></td>
+                <td class="perm-act"><button class="perm-suppr" onclick={() => retirer(a)}>Retirer</button></td>
               </tr>
             {/each}
           </tbody>

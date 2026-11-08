@@ -33,7 +33,7 @@
 </script>
 
 <form class="perm-pile" onsubmit={(e) => { e.preventDefault(); void envoyer() }}>
-  {#if onDelete}<div><button type="button" class="plbls-button plbls-button--lien plbls-button--danger plbls-button--compact" onclick={onDelete}>Supprimer le rôle</button></div>{/if}
+  {#if onDelete}<div><button type="button" class="perm-suppr" onclick={onDelete}>Supprimer le rôle</button></div>{/if}
   <div class="perm-form perm-form--haut">
     <div class="plbls-field">
       <label class="plbls-field__label" for="perm-r-key">Clé</label>

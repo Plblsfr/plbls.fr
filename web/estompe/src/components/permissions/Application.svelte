@@ -29,7 +29,7 @@
   <div class="perm-tete">
     <h2 class="perm-t">{app.name} <span class="v-mono v-mute">{app.key}</span></h2>
     {#if app.key !== RESERVEE}
-      <button class="plbls-button plbls-button--discret plbls-button--danger plbls-button--compact" onclick={onDelete}>Supprimer l'application</button>
+      <button class="v-btn sm sec perm-suppr-btn" onclick={onDelete}>Supprimer l'application</button>
     {/if}
   </div>
   <div class="v-tabs" role="tablist" aria-label="Contenu de l'application" tabindex="-1" onkeydown={clavier}>
@@ -49,7 +49,7 @@
               <tr>
                 <td class="v-mono">{app.key}:{p.key}</td>
                 <td class="v-note">{p.description}</td>
-                <td class="perm-act"><button class="plbls-button plbls-button--lien plbls-button--danger plbls-button--compact" onclick={() => retirer(p.key)}>Supprimer</button></td>
+                <td class="perm-act"><button class="perm-suppr" onclick={() => retirer(p.key)}>Supprimer</button></td>
               </tr>
             {/each}
           </tbody>
