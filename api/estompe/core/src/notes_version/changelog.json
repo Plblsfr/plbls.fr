@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.87.1",
+    "date": "2026-11-08",
+    "new": [],
+    "fixes": [
+      "Le téléchargement de l'application Windows depuis le site et sa mise à jour automatique fonctionnent de nouveau après chaque nouvelle version."
+    ]
+  },
+  {
     "version": "0.87.0",
     "date": "2026-11-08",
     "new": [
