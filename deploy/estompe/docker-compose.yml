@@ -27,6 +27,7 @@ services:
       PERMISSION_URL: ${PERMISSION_URL:-https://permission.plbls.fr}
       PERMISSION_TOKEN: ${PERMISSION_TOKEN:?}
       PERMISSION_NAME: ${PERMISSION_NAME:-estompe:access}
+      PERMISSION_ADMIN_ROLE: ${PERMISSION_ADMIN_ROLE:-permission-admin}
       DATA_DIR: /data
       MAX_STORAGE_GB: ${MAX_STORAGE_GB:-20}
       MAX_USER_STORAGE_MB: ${MAX_USER_STORAGE_MB:-2048}

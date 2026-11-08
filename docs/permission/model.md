@@ -29,6 +29,8 @@ Permission gère son propre accès avec son propre modèle. Est administrateur :
 1. un compte portant le **rôle Keycloak** `permission-admin` (réglable : `server.admin_role`) : le point de départ, et la porte de secours qui ne dépend pas de la base ;
 2. un compte qui a la **permission `permission:admin`**, c'est-à-dire un rôle de l'application réservée `permission`. Le rôle `permission/admin` est créé par la migration ; on l'attribue depuis l'interface comme n'importe quel autre.
 
+L'interface est la section « permissions » de l'administration d'Estompe ([integration.md](integration.md)) : le rôle Keycloak suffit pour s'y connecter et y accéder, sans aucune permission.
+
 L'application `permission` ne peut pas être supprimée. Un token de service n'est jamais administrateur. Un administrateur peut en nommer d'autres : on ne peut pas se verrouiller dehors tant que le rôle Keycloak existe.
 
 ## Recherche de comptes par e-mail

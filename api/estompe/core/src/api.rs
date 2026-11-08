@@ -17,6 +17,7 @@ use crate::{
     identity::{Erreur, Identity, cred_of},
     metrics::{Instantane, Stockage, Totaux},
     openapi::{self, Base},
+    permission,
     state::{AppState, DbIndisponible},
     users::{self, ActivateError, User},
 };
@@ -32,6 +33,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .merge(crate::fichiers::router())
         .merge(crate::servers::router())
         .merge(crate::administration::router())
+        .merge(crate::relais_permission::router())
 }
 
 pub fn routes() -> Router<AppState> {
@@ -97,7 +99,7 @@ impl FromRequestParts<AppState> for ActiveUser {
 }
 
 async fn verifier(state: &AppState, sub: &str) -> Result<(), Response> {
-    match state.permission().allowed(sub).await {
+    match state.acces(sub).await {
         Err(_) => Err(permission_indisponible()),
         Ok(false) => Err(write_err(
             StatusCode::FORBIDDEN,
@@ -207,6 +209,7 @@ async fn metrics(State(state): State<AppState>, headers: HeaderMap) -> Response 
 struct MeReponse {
     allowed: bool,
     admin: bool,
+    rights: Vec<String>,
     activated: bool,
     suspended: Option<bool>,
     movies: Option<bool>,
@@ -234,19 +237,31 @@ enum Transcription {
 #[utoipa::path(get, path = "/me", tag = "compte",
     summary = "État du compte Estompe de l'utilisateur connecté",
     responses(
-        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi", body = MeReponse),
+        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `movies`, `permissions` = administrer permission, `users` = rechercher des comptes)", body = MeReponse),
         (status = 401, description = "Identité absente ou invalide", body = openapi::Error),
         (status = 503, description = "`permission_unavailable` : service de permission injoignable", body = openapi::Error),
     ))]
 async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
-    let Ok(allowed) = state.permission().allowed(&idn.sub).await else {
+    let (Ok(droits), Ok(permissions)) = (
+        state.droits(&idn.sub).await,
+        state.gere_permissions(&idn).await,
+    ) else {
         return permission_indisponible();
     };
-    let admin = state
-        .admin_permission()
-        .allowed(&idn.sub)
-        .await
-        .unwrap_or(false);
+    let config = state.config();
+    let allowed = droits.a(&config.permission_name);
+    let admin = droits.a(permission::ADMIN);
+    let movies = config.jellyfin_actif() && droits.a(permission::FILMS);
+    let rights: Vec<&str> = [
+        ("access", allowed),
+        ("admin", admin),
+        ("movies", movies),
+        ("permissions", permissions),
+        ("users", permissions && droits.a(permission::COMPTES)),
+    ]
+    .into_iter()
+    .filter_map(|(nom, ok)| ok.then_some(nom))
+    .collect();
     let pool = match state.pool() {
         Ok(pool) => pool,
         Err(e) => return e.into_response(),
@@ -254,17 +269,10 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
     match users::user_by_sub(pool, &idn.sub).await {
         Ok(None) => write_json(
             StatusCode::OK,
-            &json!({ "activated": false, "allowed": allowed, "admin": admin }),
+            &json!({ "activated": false, "allowed": allowed, "admin": admin, "rights": rights }),
         ),
         Err(_) => internal(),
         Ok(Some(u)) => {
-            let config = state.config();
-            let movies = config.jellyfin_actif()
-                && state
-                    .movies_permission()
-                    .allowed(&idn.sub)
-                    .await
-                    .unwrap_or(false);
             let transcription = match (config.transcribe_url.is_empty(), config.transcribe_alpha) {
                 (true, _) => "",
                 (false, true) => "alpha",
@@ -276,6 +284,7 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
                     "activated": true,
                     "allowed": allowed,
                     "admin": admin,
+                    "rights": rights,
                     "suspended": u.suspended,
                     "id": u.id,
                     "pseudo": u.pseudo,
@@ -382,30 +391,30 @@ mod tests {
             Some("down") => (502, vec![]),
             Some(nom) if nom != "bad" => (
                 200,
-                json!({ "id": format!("sub-{nom}"), "name": nom })
-                    .to_string()
-                    .into_bytes(),
+                json!({
+                    "id": format!("sub-{nom}"),
+                    "name": nom,
+                    "roles": if nom.ends_with("-kc") { vec!["permission-admin"] } else { vec![] },
+                })
+                .to_string()
+                .into_bytes(),
             ),
             _ => (401, vec![]),
         }
     }
 
     fn permission(r: &testutil::Requete) -> (u16, Vec<u8>) {
-        let corps: Value = serde_json::from_slice(&r.corps).unwrap();
-        let (sub, perm) = (
-            corps["user_id"].as_str().unwrap(),
-            corps["permission"].as_str().unwrap(),
-        );
-        if sub == "sub-boom" {
+        if testutil::sub_permission(r).as_deref() == Some("sub-boom") {
             return (500, vec![]);
         }
-        let ok = match perm {
-            "estompe:access" => sub != "sub-nope",
+        testutil::reponse_droits(r, |sub, perm| match perm {
+            "estompe:access" => !sub.starts_with("sub-nope"),
             "estompe:admin" => sub == "sub-admin",
             "estompe:movies" => sub == "sub-cinema",
+            "permission:admin" => sub == "sub-perm",
+            "permission:users.read" => sub == "sub-perm",
             _ => false,
-        };
-        (200, json!({ "allowed": ok }).to_string().into_bytes())
+        })
     }
 
     async fn env(extra: &[(&str, &str)], avec_base: bool) -> Option<Env> {
@@ -582,10 +591,18 @@ mod tests {
         assert_eq!(s, StatusCode::OK);
         assert_eq!(
             v,
-            json!({ "activated": false, "allowed": true, "admin": false })
+            json!({ "activated": false, "allowed": true, "admin": false, "rights": ["access"] })
         );
         let (s, v) = json_de(&e.app, "GET", "/me", "nope", None).await;
         assert_eq!((s, &v["allowed"]), (StatusCode::OK, &json!(false)));
+        assert_eq!(v["rights"], json!([]));
+        let (_, v) = json_de(&e.app, "GET", "/me", "nope-kc", None).await;
+        assert_eq!(
+            v,
+            json!({ "activated": false, "allowed": false, "admin": false, "rights": ["permissions"] })
+        );
+        let (_, v) = json_de(&e.app, "GET", "/me", "perm", None).await;
+        assert_eq!(v["rights"], json!(["access", "permissions", "users"]));
         let (s, v) = json_de(&e.app, "GET", "/me", "boom", None).await;
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(
@@ -618,6 +635,7 @@ mod tests {
                 "max_video_size",
                 "movies",
                 "pseudo",
+                "rights",
                 "sub",
                 "suspended",
                 "transcription"
@@ -641,6 +659,7 @@ mod tests {
         );
         let (_, v) = json_de(&e.app, "GET", "/me", "admin", None).await;
         assert_eq!(v["admin"], true);
+        assert_eq!(v["rights"], json!(["access", "admin"]));
     }
 
     #[tokio::test]

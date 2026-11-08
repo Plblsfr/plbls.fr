@@ -1389,8 +1389,8 @@ pub(crate) mod tests {
         }
     }
 
-    fn permission(_: &testutil::Requete) -> (u16, Vec<u8>) {
-        (200, json!({ "allowed": true }).to_string().into_bytes())
+    fn permission(r: &testutil::Requete) -> (u16, Vec<u8>) {
+        testutil::reponse_droits(r, |_, _| true)
     }
 
     pub(crate) async fn env() -> Option<Env> {

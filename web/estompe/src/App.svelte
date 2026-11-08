@@ -9,6 +9,7 @@
   import LoginView from './views/LoginView.svelte'
   import ActivateView from './views/ActivateView.svelte'
   import DeniedView from './views/DeniedView.svelte'
+  import AdminView from './views/AdminView.svelte'
   import Shell from './views/Shell.svelte'
   import ForcedUpdate from './components/ForcedUpdate.svelte'
   import MediaPicker from './components/MediaPicker.svelte'
@@ -48,6 +49,8 @@
   <LoginView />
 {:else if app.phase === 'denied'}
   <DeniedView />
+{:else if app.phase === 'admin'}
+  <AdminView />
 {:else if app.phase === 'activate'}
   <ActivateView />
 {:else if app.phase === 'error'}

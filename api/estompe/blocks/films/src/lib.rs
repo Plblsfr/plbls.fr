@@ -128,7 +128,7 @@ async fn autoriser(state: &AppState, sub: &str) -> Result<(), Response> {
     if !state.config().jellyfin_actif() {
         return Err(text_error(StatusCode::NOT_FOUND, "404 page not found"));
     }
-    match state.movies_permission().allowed(sub).await {
+    match state.droit(sub, estompe_core::permission::FILMS).await {
         Ok(true) => Ok(()),
         Ok(false) => Err(write_err(
             StatusCode::FORBIDDEN,
@@ -1693,18 +1693,10 @@ mod tests {
             )
         })
         .await;
-        let p = faux(|r| {
-            let corps: Value = serde_json::from_slice(&r.corps).unwrap();
-            let (sub, perm) = (
-                corps["user_id"].as_str().unwrap(),
-                corps["permission"].as_str().unwrap(),
-            );
-            let ok = match perm {
-                "estompe:movies" => sub != "sub-sans",
-                "estompe:admin" => sub == "sub-admin",
-                _ => true,
-            };
-            (200, json!({ "allowed": ok }).to_string().into_bytes())
+        let p = testutil::faux_permission(|sub, perm| match perm {
+            "estompe:movies" => sub != "sub-sans",
+            "estompe:admin" => sub == "sub-admin",
+            _ => true,
         })
         .await;
         let jellyfin = faux_avec_entetes(jellyfin_faux).await;

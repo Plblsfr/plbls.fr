@@ -152,7 +152,10 @@ async fn spectateurs(state: &AppState, ids: Vec<String>) -> Vec<String> {
         let Some((_, sub)) = lignes.iter().find(|(i, _)| *i == id) else {
             continue;
         };
-        if matches!(state.movies_permission().allowed(sub).await, Ok(true)) {
+        if matches!(
+            state.droit(sub, estompe_core::permission::FILMS).await,
+            Ok(true)
+        ) {
             sortie.push(id);
         }
     }
@@ -1037,7 +1040,7 @@ mod tests {
             AppState, FilmEtSuite, FilmResolu, Films, ParticipantsVocal, RefusFilm, Vocal,
             VocalInjoignable,
         },
-        testutil::{self, BasePostgres, Faux, faux},
+        testutil::{self, BasePostgres, Faux, faux, faux_permission},
     };
     use serde_json::{Value, json};
     use std::{
@@ -1122,7 +1125,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let oembed = faux(|_| {
             (
                 200,

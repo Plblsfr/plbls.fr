@@ -82,6 +82,29 @@ describe('accès aux films', () => {
   })
 })
 
+describe('droits annoncés par /me', () => {
+  const boot = async (me: Record<string, unknown>) => {
+    Object.assign(api, { me: vi.fn(async () => me) })
+    await s.boot().catch(() => {})
+  }
+  it("ouvre l'administration seule à un administrateur des permissions sans accès à Estompe", async () => {
+    await boot({ activated: false, allowed: false, admin: false, rights: ['permissions'] })
+    expect(s.phase).toBe('admin')
+    expect(s.adminSections.map((x) => x.id)).toEqual(['permissions'])
+    expect(s.isAdmin).toBe(false)
+  })
+  it("refuse l'accès sans aucun droit d'administration", async () => {
+    await boot({ activated: false, allowed: false, admin: false, rights: [] })
+    expect(s.phase).toBe('denied')
+  })
+  it('déduit les droits des anciens champs sans `rights`', async () => {
+    await boot({ activated: false, allowed: false, admin: true })
+    expect(s.phase).toBe('admin')
+    expect(s.adminSections.some((x) => x.id === 'permissions')).toBe(false)
+    expect(s.isAdmin).toBe(true)
+  })
+})
+
 describe('loadFrom', () => {
   const page = (ids: string[], has_more: boolean) => ({ messages: ids.map((id) => msg({ id })), has_more })
   it('remplace l\'historique par les messages depuis le message visé jusqu\'au présent, en gardant ceux arrivés entre-temps', async () => {

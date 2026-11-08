@@ -7,13 +7,15 @@
   import ServerIcon from './ServerIcon.svelte'
   import { api, filmsApi } from '../lib/api'
   import { reasonLabel, type FilmReject } from '../blocks/films/films'
-  import { ADMIN_SECTIONS, adminSection } from '../lib/admin'
+  import { adminSection } from '../lib/admin'
+  import { app } from '../lib/store.svelte'
+  import PermissionsAdmin from './permissions/PermissionsAdmin.svelte'
   import { hrefs } from '../lib/route.svelte'
   import type { AdminBadge, AdminError, AdminLive, AdminLogEntry, AdminOverview, AdminStats, AdminUser } from '../lib/types'
 
   let { section, onmenu }: { section?: string; onmenu: () => void } = $props()
-  const current = $derived(adminSection(section))
-  const label = $derived(ADMIN_SECTIONS.find((s) => s.id === current)?.label ?? '')
+  const current = $derived(adminSection(section, app.adminSections))
+  const label = $derived(app.adminSections.find((s) => s.id === current)?.label ?? '')
   const title = $derived(label.charAt(0).toUpperCase() + label.slice(1))
 
   const UPDATES = 'https://estompe.plbls.fr/updates'
@@ -251,6 +253,9 @@
         <pre class="adm-pre">{#each errors as e}<span class="v-mute">{when(e.at)}</span>  <b>{e.status}</b>  {e.method} {e.path}{'\n'}{/each}</pre>
       {:else}<p class="v-note">Aucune</p>{/if}
     </section>
+
+  {:else if current === 'permissions'}
+    <PermissionsAdmin />
   {/if}
 </div>
 

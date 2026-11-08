@@ -20,6 +20,7 @@ pub struct Config {
     pub permission_url: String,
     pub permission_token: String,
     pub permission_name: String,
+    pub permission_admin_role: String,
     pub data_dir: String,
     pub max_storage_bytes: i64,
     pub max_user_storage_bytes: i64,
@@ -109,6 +110,7 @@ impl Config {
             permission_url: env("PERMISSION_URL", "https://permission.plbls.fr"),
             permission_token: get("PERMISSION_TOKEN"),
             permission_name: env("PERMISSION_NAME", "estompe:access"),
+            permission_admin_role: env("PERMISSION_ADMIN_ROLE", "permission-admin"),
             data_dir: env("DATA_DIR", "/data"),
             max_storage_bytes,
             max_user_storage_bytes,
@@ -247,6 +249,7 @@ mod tests {
         assert_eq!(c.permission_url, "https://permission.plbls.fr");
         assert_eq!(c.permission_token, "tok");
         assert_eq!(c.permission_name, "estompe:access");
+        assert_eq!(c.permission_admin_role, "permission-admin");
         assert_eq!(c.data_dir, "/data");
         assert_eq!(c.max_storage_bytes, 20 << 30);
         assert_eq!(c.max_user_storage_bytes, 2048 << 20);

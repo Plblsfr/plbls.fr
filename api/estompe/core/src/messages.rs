@@ -1919,9 +1919,7 @@ pub(crate) mod tests {
     };
 
     fn autorisation(r: &Requete) -> (u16, Vec<u8>) {
-        let corps: Value = serde_json::from_slice(&r.corps).unwrap_or_default();
-        let ok = corps["permission"] != "estompe:admin" || corps["user_id"] == "sub-admin";
-        (200, json!({ "allowed": ok }).to_string().into_bytes())
+        crate::testutil::reponse_droits(r, |sub, p| p != "estompe:admin" || sub == "sub-admin")
     }
 
     pub(crate) struct Cadre {

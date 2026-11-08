@@ -83,6 +83,50 @@ pub async fn faux(reponse: impl Fn(&Requete) -> (u16, Vec<u8>) + Send + Sync + '
     .await
 }
 
+pub const PERMISSIONS_CONNUES: &[&str] = &[
+    "estompe:access",
+    "estompe:admin",
+    "estompe:movies",
+    "permission:admin",
+    "permission:users.read",
+    "app:perm",
+];
+
+pub fn sub_permission(r: &Requete) -> Option<String> {
+    r.chemin
+        .strip_prefix("/v1/users/")
+        .and_then(|c| c.strip_suffix("/permissions"))
+        .map(|s| {
+            percent_encoding::percent_decode_str(s)
+                .decode_utf8_lossy()
+                .into_owned()
+        })
+}
+
+pub fn reponse_droits(r: &Requete, accorde: impl Fn(&str, &str) -> bool) -> (u16, Vec<u8>) {
+    let Some(sub) = sub_permission(r) else {
+        return (404, vec![]);
+    };
+    if !r.entete("authorization").starts_with("Bearer ") {
+        return (401, vec![]);
+    }
+    let permissions: Vec<&str> = PERMISSIONS_CONNUES
+        .iter()
+        .copied()
+        .filter(|p| accorde(&sub, p))
+        .collect();
+    (
+        200,
+        serde_json::json!({ "user_id": sub, "permissions": permissions })
+            .to_string()
+            .into_bytes(),
+    )
+}
+
+pub async fn faux_permission(accorde: impl Fn(&str, &str) -> bool + Send + Sync + 'static) -> Faux {
+    faux(move |r| reponse_droits(r, &accorde)).await
+}
+
 pub type EntetesFaux = Vec<(&'static str, String)>;
 
 pub async fn faux_avec_entetes(

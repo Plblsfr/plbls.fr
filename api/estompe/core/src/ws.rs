@@ -263,7 +263,7 @@ async fn connexion(
                 if sub.is_empty() {
                     continue;
                 }
-                match state.permission().allowed(&sub).await {
+                match state.acces(&sub).await {
                     Err(_) => {
                         let debut = *permission_hs.get_or_insert_with(Instant::now);
                         if debut.elapsed() > durees.perm_grace {
@@ -367,13 +367,11 @@ mod tests {
             let refuses = refuses.clone();
             let hs = permission_hs.clone();
             move |r| {
-                let corps: Value = serde_json::from_slice(&r.corps).unwrap();
-                let sub = corps["user_id"].as_str().unwrap();
                 if hs.load(Ordering::SeqCst) {
                     return (500, vec![]);
                 }
-                let ok = !refuses.lock().unwrap().contains(sub);
-                (200, json!({ "allowed": ok }).to_string().into_bytes())
+                let refuses = refuses.lock().unwrap().clone();
+                testutil::reponse_droits(r, |sub, _| !refuses.contains(sub))
             }
         })
         .await;

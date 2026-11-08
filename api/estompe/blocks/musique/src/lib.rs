@@ -469,7 +469,7 @@ mod tests {
     use estompe_core::{
         db::migrate_embarquees,
         state::AppState,
-        testutil::{self, Faux, faux},
+        testutil::{self, Faux, faux, faux_permission},
     };
     use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
     use serde_json::{Value, json};
@@ -524,7 +524,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux(|_| (200, json!({ "allowed": true }).to_string().into_bytes())).await;
+        let permission = faux_permission(|_, _| true).await;
         let youtube = faux(|r| {
             if parametre(&r.query, "key") != "bonne" {
                 return (403, vec![]);

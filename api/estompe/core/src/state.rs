@@ -18,10 +18,10 @@ use crate::{
     config::Config,
     http::text_error,
     hub::Hub,
-    identity::Resolver,
+    identity::{Identity, Resolver},
     messages::{Conv, EvenementMessage},
     metrics::Metrics,
-    permission::Client,
+    permission::{ADMIN_PERMISSION, Client, Droits, Indisponible},
     ratelimit::Limiteurs,
     updates::{self, Policy},
 };
@@ -140,8 +140,6 @@ struct Inner {
     pool: OnceLock<PgPool>,
     identity: Resolver,
     permission: Client,
-    admin_permission: Client,
-    movies_permission: Client,
     blocs_actifs: Vec<String>,
     metrics: Metrics,
     limiteurs: Limiteurs,
@@ -190,19 +188,13 @@ impl AppState {
         ws: DureesWs,
         now: Horloge,
     ) -> Self {
-        let client = |permission: &str| {
-            Client::with_now(
-                &config.permission_url,
-                &config.permission_token,
-                permission,
-                now.clone(),
-            )
-        };
         AppState(Arc::new(Inner {
             identity: Resolver::with_now(&config.gateway_url, now.clone()),
-            permission: client(&config.permission_name),
-            admin_permission: client("estompe:admin"),
-            movies_permission: client("estompe:movies"),
+            permission: Client::with_now(
+                &config.permission_url,
+                &config.permission_token,
+                now.clone(),
+            ),
             pool: OnceLock::new(),
             blocs_actifs,
             metrics: Metrics::default(),
@@ -233,16 +225,27 @@ impl AppState {
         &self.0.identity
     }
 
-    pub fn permission(&self) -> &Client {
-        &self.0.permission
+    pub async fn droits(&self, sub: &str) -> Result<Droits, Indisponible> {
+        self.0.permission.droits(sub).await
     }
 
-    pub fn admin_permission(&self) -> &Client {
-        &self.0.admin_permission
+    pub async fn droit(&self, sub: &str, nom: &str) -> Result<bool, Indisponible> {
+        Ok(self.droits(sub).await?.a(nom))
     }
 
-    pub fn movies_permission(&self) -> &Client {
-        &self.0.movies_permission
+    pub async fn acces(&self, sub: &str) -> Result<bool, Indisponible> {
+        self.droit(sub, &self.0.config.permission_name).await
+    }
+
+    pub async fn gere_permissions(&self, idn: &Identity) -> Result<bool, Indisponible> {
+        if idn
+            .roles
+            .iter()
+            .any(|r| r == &self.0.config.permission_admin_role)
+        {
+            return Ok(true);
+        }
+        self.droit(&idn.sub, ADMIN_PERMISSION).await
     }
 
     pub fn blocs_actifs(&self) -> &[String] {
