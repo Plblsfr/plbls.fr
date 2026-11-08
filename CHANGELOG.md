@@ -4,6 +4,10 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## applis 0.87.1 - 2026-11-08
+
+- [x] Téléchargement de l'installeur Windows en 404 après une release. Les réponses de `/updates/` (y compris les 404) portent `Cache-Control: no-cache` (`always` dans nginx) : un 404 servi pendant un déploiement n'est plus gardé par Cloudflare ni par le navigateur. Les boutons « Télécharger pour Windows / Android » du site ajoutent la version à l'adresse (`/updates/Estompe-setup.exe?v=<version>`), nouvelle à chaque release. Le workflow `estompe-livraison-app` vérifie, comme pour l'APK, que l'image publiée sert `latest.json`, l'installeur qu'il désigne, sa signature et `Estompe-setup.exe` (`apps/estompe/windows/scripts/check-installer.sh`). Non fait : règle Cloudflare « Bypass cache » sur `/updates/*` (hors dépôt). Non vérifié : le script dans un vrai conteneur de l'image (testé avec la config nginx de l'image sur un nginx local), téléchargement depuis le navigateur après déploiement.
+
 ## api 0.86.0 / applis 0.87.0 - 2026-11-08
 
 - [x] Refonte plbls-ui v3 « Calque ». Nouveaux jetons Papier/Fusain, police mono, icônes au trait de 1,8 ; gabarit en trois calques (rail de pavés, navigation, contenu, marge Membres/Épinglés masquable par Ctrl+.), Dock unique (vocal, musique, écoute perso, mise à jour, ma carte), palette Ctrl K (aller à, actions, recherche de messages), paramètres personnels et du serveur en pages, nouvelle anatomie des messages et du composeur, scène vocale, films, vidéos, Draw2gether, administration et écrans d'accès redessinés ; réglage « Réduire les animations » ; mobile avec tiroir, barre d'onglets et marge en feuille. Le test de bout en bout est remis à jour. Nouveau workflow manuel `estompe-beta` : publie le front d'une PR en image `estompe-web:beta`, sans tag ni release. Non fait : fil de réponses et onglet Détails de la marge, profil dans la marge, aperçu d'invitation avant de rejoindre (pas d'API), raccourcis clavier sur un message. Non vérifié : builds Tauri Windows et Android, appareils réels, lecteurs d'écran.
