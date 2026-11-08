@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { platform } from './platform'
+import { installeur } from './browser'
 
 describe('plateforme web', () => {
   it('se déclare « web » dans un onglet, « pwa » une fois installée', () => {
@@ -13,5 +14,9 @@ describe('plateforme web', () => {
     expect(platform.capture).toBeUndefined()
     expect(platform.spaces).toEqual([])
     expect(platform.updates.installOnBlock).toBe(true)
+  })
+  it("donne une adresse d'installeur propre à chaque version, qu'aucun cache n'a pu garder", () => {
+    expect(installeur('Estompe-setup.exe')).toBe(`/updates/Estompe-setup.exe?v=${__APP_VERSION__}`)
+    expect(installeur('Estompe.apk')).toMatch(/^\/updates\/Estompe\.apk\?v=\d+\.\d+\.\d+$/)
   })
 })
