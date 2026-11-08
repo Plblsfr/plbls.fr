@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.87.0",
+    "date": "2026-11-08",
+    "new": [
+      "Estompe change de look : navigation plus claire, Ctrl K pour aller partout et chercher dans vos messages, paramètres en pages et mode sombre Fusain."
+    ],
+    "fixes": [
+      "Windows et Android : l'application n'affiche plus une ancienne version après une mise à jour.",
+      "Android : la connexion aboutit de nouveau après la saisie de vos identifiants."
+    ]
+  },
+  {
     "version": "0.85.2",
     "date": "2026-11-06",
     "new": [
