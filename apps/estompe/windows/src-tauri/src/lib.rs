@@ -4,6 +4,7 @@ mod replays;
 mod capture;
 mod screen_native;
 mod toast;
+mod webview_data;
 
 pub(crate) use estompe_core::{commands::show_main, debuglog};
 
@@ -12,6 +13,9 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::WindowEvent;
 
 pub fn run() {
+    if let Some(dossier) = webview_data::dossier_donnees() {
+        webview_data::purger_si_nouvelle_version(&dossier, env!("CARGO_PKG_VERSION"));
+    }
     let builder = tauri::Builder::default();
     // Doit être le premier plugin : la seconde instance transmet ses arguments à la première, puis quitte
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
