@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
+  import Avatar from './Avatar.svelte'
   import { api } from '../lib/api'
   import { app } from '../lib/store.svelte'
   import { notify } from '../lib/ui'
@@ -46,34 +47,43 @@
 </script>
 
 <Modal title="{TITLE[kind]} {pseudo}" {onclose}>
-  <form class="stack" onsubmit={(e) => { e.preventDefault(); void submit() }}>
-    {#if kind === 'ban'}
-      <p class="muted small">{pseudo} sera retiré du serveur et ne pourra plus le rejoindre, même avec une invitation, jusqu'à la fin du bannissement.</p>
-    {:else if kind === 'kick'}
-      <p class="muted small">{pseudo} sera retiré du serveur et du vocal ; il pourra revenir avec une nouvelle invitation.</p>
-    {:else if kind === 'timeout'}
-      <p class="muted small">{pseudo} reste membre et peut lire, mais ne peut plus écrire, réagir, parler ni rejoindre un vocal. Il est déconnecté du vocal.</p>
-    {/if}
+  <form class="mod" onsubmit={(e) => { e.preventDefault(); void submit() }}>
+    <div class="mod-who">
+      <Avatar {pseudo} {userId} {serverId} size="sm" />
+      {#if kind === 'ban'}
+        <p class="v-note">{pseudo} sera retiré du serveur et ne pourra plus le rejoindre, même avec une invitation, jusqu'à la fin du bannissement.</p>
+      {:else if kind === 'kick'}
+        <p class="v-note">{pseudo} sera retiré du serveur et du vocal ; il pourra revenir avec une nouvelle invitation.</p>
+      {:else if kind === 'timeout'}
+        <p class="v-note">{pseudo} reste membre et peut lire, mais ne peut plus écrire, réagir, parler ni rejoindre un vocal. Il est déconnecté du vocal.</p>
+      {:else if kind === 'warn'}
+        <p class="v-note">{pseudo} recevra un avertissement avec la raison indiquée.</p>
+      {:else}
+        <p class="v-note">Le pseudo ne change que sur ce serveur.</p>
+      {/if}
+    </div>
     {#if kind === 'ban' || kind === 'timeout'}
       <div class="plbls-field">
-        <label class="plbls-field__label" for="m-dur">Durée</label>
-        <select id="m-dur" class="plbls-select" bind:value={duration}>
-          {#each kind === 'ban' ? BAN_DURATIONS : TIMEOUTS as [label, v]}<option value={v}>{label}</option>{/each}
-        </select>
+        <span class="plbls-field__label" id="m-dur">Durée</span>
+        <div class="chips" role="group" aria-labelledby="m-dur">
+          {#each kind === 'ban' ? BAN_DURATIONS : TIMEOUTS as [label, v] (v)}
+            <button type="button" class="v-chip" class:line={v === -1 && duration !== -1} aria-pressed={duration === v} onclick={() => (duration = v)}>{label}</button>
+          {/each}
+        </div>
       </div>
       {#if duration === -1}
         <div class="plbls-field">
           <label class="plbls-field__label" for="m-hours">Durée personnalisée (heures)</label>
-          <input id="m-hours" class="plbls-input" type="number" min="0.0003" max={kind === 'ban' ? 87600 : 672} step="any" bind:value={customHours} />
+          <input id="m-hours" class="plbls-input v-mono" type="number" min="0.0003" max={kind === 'ban' ? 87600 : 672} step="any" bind:value={customHours} />
         </div>
       {/if}
     {/if}
     {#if kind === 'ban'}
       <div class="plbls-field">
-        <label class="plbls-field__label" for="m-purge">Supprimer ses messages récents</label>
-        <select id="m-purge" class="plbls-select" bind:value={purge}>
-          {#each PURGES as [label, v]}<option value={v}>{label}</option>{/each}
-        </select>
+        <span class="plbls-field__label" id="m-purge">Supprimer ses messages récents</span>
+        <div class="v-seg" role="group" aria-labelledby="m-purge">
+          {#each PURGES as [label, v] (v)}<button type="button" aria-pressed={purge === v} onclick={() => (purge = v)}>{label}</button>{/each}
+        </div>
       </div>
     {/if}
     {#if kind === 'nickname'}
@@ -84,12 +94,26 @@
     {:else}
       <div class="plbls-field">
         <label class="plbls-field__label" for="m-reason">Raison{kind === 'warn' ? '' : ' (facultative)'}</label>
-        <input id="m-reason" class="plbls-input" bind:value={reason} maxlength="200" required={kind === 'warn'} />
+        <textarea id="m-reason" class="plbls-input plbls-textarea" rows="2" bind:value={reason} onkeydown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit() } }} maxlength="200" required={kind === 'warn'}></textarea>
       </div>
     {/if}
-    <div style="display: flex; gap: 8px; justify-content: flex-end">
+    <div class="mod-f">
       <button type="button" class="plbls-button plbls-button--contour" onclick={onclose}>Annuler</button>
-      <button class="plbls-button" class:plbls-button--danger={kind === 'kick' || kind === 'ban'} disabled={busy || !valid}>Confirmer</button>
+      <button class="plbls-button" class:plbls-button--danger={kind === 'kick' || kind === 'ban'} disabled={busy || !valid}>{kind === 'kick' || kind === 'ban' ? `${TITLE[kind]} ${pseudo}` : 'Confirmer'}</button>
     </div>
   </form>
 </Modal>
+
+<style>
+  .mod { display: flex; flex-direction: column; gap: 14px; }
+  .mod-who { display: flex; align-items: flex-start; gap: 12px; }
+  .mod-who p { margin: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .v-chip.line { border-style: dashed; }
+  .v-seg { flex-wrap: wrap; border-radius: var(--r); }
+  .v-chip:focus-visible, .v-seg > button:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .v-seg > button[aria-pressed='false']:hover { color: var(--encre); }
+  textarea { resize: vertical; }
+  .mod-f { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-top: 4px; }
+  @media (pointer: coarse) { .v-chip, .v-seg > button { min-height: 44px; } }
+</style>

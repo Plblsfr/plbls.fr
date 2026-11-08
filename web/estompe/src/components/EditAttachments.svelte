@@ -59,21 +59,26 @@
           <span class="thumb"><AttachmentView attachment={it.att} /></span>
         {:else}
           <span class="file-chip" class:expired={it.failed || it.att?.expired}>
-            <Icon name="file" size={16} /> <span class="truncate">{it.name}</span>
-            <span class="muted small">{it.failed ? 'échec' : it.att ? formatSize(it.att.size) : ''}</span>
+            <Icon name="trombone" size={15} /> <span class="truncate">{it.name}</span>
+            <span class="file-chip-size">{it.failed ? 'échec' : it.att ? formatSize(it.att.size) : ''}</span>
             {#if !it.att && !it.failed}<Loader size="sm" label="Envoi de {it.name}" />{/if}
           </span>
         {/if}
         <button class="edit-att-x" onclick={() => items.splice(i, 1)} aria-label="Retirer {it.name}"><Icon name="x" size={14} /></button>
       </span>
     {/each}
-    {#if !items.length}<span class="muted small">Aucune pièce jointe : glissez ou collez un fichier.</span>{/if}
+    {#if !items.length}<span class="edit-att-empty">Aucune pièce jointe : glissez ou collez un fichier.</span>{/if}
   </div>
 {/if}
 
 <style>
+  .pending { padding: 8px 0 0; }
   .edit-att { position: relative; display: inline-flex; cursor: grab; }
+  .edit-att :global(.thumb) { width: 72px; height: 72px; border-radius: 12px; }
   .edit-att :global(.thumb img) { pointer-events: none; }
-  .edit-att-x { position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgb(0 0 0 / .6); color: #fff; cursor: pointer; z-index: 1; }
-  .over { outline: 2px dashed var(--bleu, currentColor); outline-offset: 2px; }
+  .edit-att-x { position: absolute; top: -8px; right: -8px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: var(--encre); color: var(--papier); cursor: pointer; z-index: 1; }
+  .edit-att-x:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .edit-att-empty { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border: 1.5px dashed var(--trait-fort); border-radius: 12px; color: var(--gris); font-size: 13px; }
+  .over { outline: 2px dashed var(--rose-fonce); outline-offset: 4px; border-radius: 12px; }
+  @media (pointer: coarse) { .edit-att-x { width: 32px; height: 32px; } }
 </style>

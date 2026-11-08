@@ -6,12 +6,14 @@
   import { api } from '../lib/api'
   import { router, hrefs } from '../lib/route.svelte'
   import { notify } from '../lib/ui'
-  import type { AuditEntry, Ban, ChannelKind, ServerDetail, ServerInvite } from '../lib/types'
+  import { isVoiceKind, type AuditEntry, type Ban, type ChannelKind, type ServerDetail, type ServerInvite } from '../lib/types'
   import { emojis } from '../blocks/emojis/emojis.svelte'
   import { ctxmenu, menuFrom, type MenuItem } from '../lib/ctxmenu.svelte'
   import IconCrop from './IconCrop.svelte'
   import ServerIcon from './ServerIcon.svelte'
   import Modal from './Modal.svelte'
+  import Avatar from './Avatar.svelte'
+  import type { IconName } from './Icon.svelte'
   import RolesSettings from './RolesSettings.svelte'
   import ChannelPerms from './ChannelPerms.svelte'
   import { openNewChannel } from '../lib/channel-create.svelte'
@@ -28,7 +30,28 @@
   const canIcon = $derived(canServer || app.isAdmin)
   const canBan = $derived(app.can(sid, 'ban_members'))
   const manager = $derived(canServer || canChannels || canInvites || canRoles || canAudit || canBan || owner)
-  let tab = $state<'overview' | 'emojis' | 'channels' | 'roles' | 'audit' | 'bans'>('overview')
+  type Tab = 'overview' | 'emojis' | 'channels' | 'roles' | 'audit' | 'bans'
+  let tab = $state<Tab>('overview')
+  const sections = $derived(([
+    ['overview', "Vue d'ensemble", 'info', true],
+    ['emojis', 'Emojis', 'sourire', true],
+    ['channels', 'Salons', 'hash', canChannels],
+    ['roles', 'Rôles', 'couronne', canRoles],
+    ['bans', 'Bannis', 'interdit', canBan],
+    ['audit', 'Journal', 'file', canAudit],
+  ] as [Tab, string, IconName, boolean][]).filter((x) => x[3]))
+  const tabLabel = $derived(sections.find((x) => x[0] === tab)?.[1] ?? '')
+  const role = $derived(owner ? 'Tu es propriétaire' : manager ? 'Tu gères ce serveur' : 'Tu es membre')
+  const auditIcon = (a: string): IconName => a === 'member.ban' || a === 'member.kick' ? 'interdit' : a.startsWith('member.timeout') || a === 'member.untimeout' ? 'horloge' : a === 'member.warn' ? 'alerte' : a.startsWith('member') ? 'perso' : a.startsWith('role') ? 'couronne' : a.startsWith('channel') ? 'hash' : a.startsWith('voice') ? 'vol' : a.startsWith('message') ? 'corbeille' : 'reglages'
+  const auditTone = (a: string) => a === 'member.ban' || a === 'member.kick' || a.startsWith('message') ? 'dgr' : a === 'member.timeout' || a === 'member.warn' ? 'att' : ''
+  const short = (d: string) => new Date(d).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  function onkey(e: KeyboardEvent) {
+    if (e.key !== 'Escape' || e.defaultPrevented || cropping || confirmTransfer) return
+    if (document.querySelector('plbls-modal, [role="menu"], [aria-modal="true"]')) return
+    const t = e.target as HTMLElement | null
+    if (t?.closest?.('input:not([readonly]), textarea, select')) return
+    onclose()
+  }
   let bans = $state<Ban[]>([])
   let auditFilter = $state('')
   let inviteUses = $state(0)
@@ -192,106 +215,138 @@
   }
 </script>
 
-<Modal title={manager ? 'Paramètres du serveur' : detail.server.name} wide {onclose}>
-  <div class="stack fill">
-    <div class="ss-tabs" role="tablist" aria-label="Sections">
-      {#each [['overview', "Vue d'ensemble", true], ['emojis', 'Emojis', true], ['channels', 'Salons', canChannels], ['roles', 'Rôles', canRoles], ['bans', 'Bannis', canBan], ['audit', 'Journal', canAudit]] as [id, label, show]}
-        {#if show}<button role="tab" aria-selected={tab === id} class="plbls-button plbls-button--compact" class:plbls-button--contour={tab !== id} onclick={() => (tab = id as typeof tab)}>{label}</button>{/if}
+<svelte:window onkeydowncapture={onkey} />
+
+<div class="ssp" role="region" aria-labelledby="ssp-titre">
+  <nav class="ssp-nav" aria-label="Sections du serveur">
+    <div class="ssp-nav-h">
+      <button class="v-ib" onclick={onclose} aria-label="Retour au serveur" title="Retour au serveur"><Icon name="gauche" /></button>
+      <b class="grow">{manager ? 'Paramètres du serveur' : 'Serveur'}</b>
+    </div>
+    <div class="ssp-srv"><ServerIcon server={detail.server} /><b class="v-ell">{detail.server.name}</b></div>
+    <div class="ssp-ni-list">
+      {#each sections as [id, label, icon] (id)}
+        <button class="ssp-ni" aria-current={tab === id ? 'page' : undefined} onclick={() => (tab = id)}>
+          <Icon name={icon} size={18} /><span class="grow v-ell">{label}</span>
+          {#if id === 'emojis'}<span class="v-mono v-mute">{mine.length}</span>{/if}
+        </button>
       {/each}
     </div>
+  </nav>
+
+  <div class="ssp-main">
+    <header class="ssp-top">
+      <h1 id="ssp-titre" class="v-titre grow">{tabLabel}</h1>
+      <span class="v-note ssp-role">{role}</span>
+      <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={onclose}>Fermer</button>
+    </header>
+
     {#if tab === 'roles' && canRoles}
-      <RolesSettings {detail} />
+      <div class="ssp-roles"><RolesSettings {detail} /></div>
     {:else}
-    <div class="ss-body">
+    <div class="ssp-body">
     {#if tab === 'audit' && canAudit}
-      <section class="stack">
-        <strong>Journal d'administration</strong>
-        <select class="plbls-select" bind:value={auditFilter} aria-label="Filtrer par type d'action">{#each AUDIT_FILTERS as [v, label]}<option value={v}>{label}</option>{/each}</select>
-        {#each audit as e}
-          <p class="small"><span class="muted">{new Date(e.at).toLocaleString('fr-FR')}</span> · <strong>{e.actor}</strong> {AUDIT_LABEL[e.action] ?? e.action}{e.target ? ` « ${e.target} »` : ''}{e.reason ? ` — ${e.reason}` : ''}</p>
-        {:else}
-          <p class="muted small">Aucune action enregistrée.</p>
-        {/each}
+      <section class="v-card ssp-card">
+        <div class="ssp-sec-h">
+          <h2 class="ssp-sec-t grow">Journal d'administration</h2>
+          <select class="plbls-select ssp-filter" bind:value={auditFilter} aria-label="Filtrer par type d'action">{#each AUDIT_FILTERS as [v, label]}<option value={v}>{label}</option>{/each}</select>
+        </div>
+        <ul class="ssp-log">
+          {#each audit as e}
+            <li>
+              <time class="v-mono v-mute" datetime={e.at} title={new Date(e.at).toLocaleString('fr-FR')}>{short(e.at)}</time>
+              <span class="ssp-log-i {auditTone(e.action)}"><Icon name={auditIcon(e.action)} size={16} /></span>
+              <span><b>{e.actor}</b> {AUDIT_LABEL[e.action] ?? e.action}{e.target ? ` « ${e.target} »` : ''}{e.reason ? ` — ${e.reason}` : ''}</span>
+            </li>
+          {:else}
+            <li class="ssp-vide v-note">Aucune action enregistrée.</li>
+          {/each}
+        </ul>
       </section>
     {:else if tab === 'bans' && canBan}
-      <section class="stack">
-        <strong>Membres bannis</strong>
+      <section class="v-card ssp-card">
+        <div class="ssp-sec-h"><h2 class="ssp-sec-t grow">Membres bannis</h2><span class="v-mono v-mute">{bans.length}</span></div>
         {#each bans as b (b.user_id)}
-          <div class="row">
-            <div class="grow stack">
-              <span><strong>{b.pseudo}</strong> <span class="muted small">par {b.by} · {new Date(b.at).toLocaleDateString('fr-FR')} · {b.expires_at ? `jusqu'au ${new Date(b.expires_at).toLocaleString('fr-FR')}` : 'définitif'}</span></span>
-              {#if b.reason}<span class="small muted">{b.reason}</span>{/if}
+          <div class="ssp-srow">
+            <Avatar pseudo={b.pseudo} userId={b.user_id} size="sm" />
+            <div class="grow ssp-col">
+              <b>{b.pseudo}</b>
+              <span class="v-note">par {b.by} · {new Date(b.at).toLocaleDateString('fr-FR')} · {b.expires_at ? `jusqu'au ${new Date(b.expires_at).toLocaleString('fr-FR')}` : 'définitif'}</span>
+              {#if b.reason}<span class="v-note">« {b.reason} »</span>{/if}
             </div>
             <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => unban(b.user_id)}>Lever le ban</button>
           </div>
         {:else}
-          <p class="muted small">Aucun membre banni.</p>
+          <p class="v-note">Aucun membre banni.</p>
         {/each}
       </section>
     {:else if tab === 'emojis'}
-      <section class="stack">
-        <div class="row"><strong class="grow">Emojis du serveur</strong><span class="muted small">{mine.length} / {MAX_EMOJIS} emojis</span></div>
-        <p class="muted small">Utilisables avec <code>:nom:</code> dans les messages. Image PNG, JPEG ou GIF de 256 px et 128 Ko au plus.</p>
+      <section class="v-card ssp-card">
+        <div class="ssp-sec-h"><h2 class="ssp-sec-t grow">Emojis du serveur</h2><span class="v-mono v-mute">{mine.length} / {MAX_EMOJIS} emojis</span></div>
+        <p class="v-note">Utilisables avec <code class="v-mono">:nom:</code> dans les messages. Image PNG, JPEG ou GIF de 256 px et 128 Ko au plus.</p>
         {#if pending}
-          <div class="ss-drop">
-            <img src={pending.url} alt="Aperçu de l'emoji" style="width: 64px; height: 64px; object-fit: contain" />
-            <div class="plbls-field">
+          <div class="v-well ssp-pending">
+            <img src={pending.url} alt="Aperçu de l'emoji" />
+            <div class="plbls-field grow">
               <label class="plbls-field__label" for="e-name">Nom de l'emoji</label>
-              <input id="e-name" class="plbls-input" bind:value={pending.name} maxlength="32" placeholder="mon_emoji" autocomplete="off" />
-              <span class="muted small">2 à 32 caractères : a-z, 0-9 et _</span>
+              <input id="e-name" class="plbls-input v-mono" bind:value={pending.name} maxlength="32" placeholder="mon_emoji" autocomplete="off" />
+              <span class="v-note">2 à 32 caractères : a-z, 0-9 et _</span>
             </div>
-            <div class="row">
+            <div class="ssp-acts">
               <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (pending = null)}>Annuler</button>
               <button class="plbls-button plbls-button--compact" disabled={!/^[a-z0-9_]{2,32}$/.test(pending.name)} onclick={addEmoji}>Ajouter</button>
             </div>
           </div>
         {:else if mine.length < MAX_EMOJIS}
-          <div class="ss-drop" class:over role="group" aria-label="Ajouter un emoji" ondragover={(e) => { e.preventDefault(); over = true }} ondragleave={() => (over = false)} ondrop={(e) => { e.preventDefault(); over = false; void stageEmoji(e.dataTransfer?.files[0]) }}>
-            <span class="small muted">Glisse une image ici</span>
+          <div class="ssp-drop" class:over role="group" aria-label="Ajouter un emoji" ondragover={(e) => { e.preventDefault(); over = true }} ondragleave={() => (over = false)} ondrop={(e) => { e.preventDefault(); over = false; void stageEmoji(e.dataTransfer?.files[0]) }}>
+            <span class="ssp-drop-i"><Icon name="envoie" size={28} /></span>
+            <span class="grow ssp-col"><b>Glisse une image ici</b><span class="v-note">PNG, JPEG ou GIF · 256 px et 128 Ko au plus · utilisables avec :nom:</span></span>
             <label class="plbls-button plbls-button--compact plbls-button--contour">Ajouter un emoji<input type="file" accept="image/png,image/jpeg,image/gif" hidden onchange={pickEmoji} /></label>
           </div>
         {/if}
-        <div class="ss-emojis">
+        <div class="ssp-emojis">
           {#each mine as e (e.id)}
             {@const _ = emojis.ensure(e.id)}
-            <div class="ss-emoji">
+            <div class="ssp-emoji">
               {#if emojis.src(e.id)}<img src={emojis.src(e.id)} alt="" />{/if}
               {#if e.id in emojiRename}
-                <input class="plbls-input" bind:value={emojiRename[e.id]} maxlength="32" aria-label="Nouveau nom de :{e.name}:" onkeydown={(ev) => { if (ev.key === 'Enter') void renameEmoji(e.id); if (ev.key === 'Escape') delete emojiRename[e.id] }} />
+                <input class="plbls-input v-mono" bind:value={emojiRename[e.id]} maxlength="32" aria-label="Nouveau nom de :{e.name}:" onkeydown={(ev) => { if (ev.key === 'Enter') void renameEmoji(e.id); if (ev.key === 'Escape') delete emojiRename[e.id] }} />
               {:else}
-                <code>:{e.name}:</code>
+                <code class="v-mono">:{e.name}:</code>
               {/if}
-              <span class="small muted">{author(e.created_by)}</span>
+              <span class="v-note">{author(e.created_by)}</span>
               {#if canEditEmoji(e)}
                 <span class="acts">
-                  <button class="ib sm" onclick={() => (e.id in emojiRename ? void renameEmoji(e.id) : (emojiRename[e.id] = e.name))} aria-label={e.id in emojiRename ? 'Valider le nom' : `Renommer :${e.name}:`} title={e.id in emojiRename ? 'Valider' : 'Renommer'}><Icon name={e.id in emojiRename ? 'check' : 'edit'} size={14} /></button>
-                  <button class="ib sm" onclick={() => removeEmoji(e.id)} aria-label="Supprimer :{e.name}:" title="Supprimer"><Icon name="trash" size={14} /></button>
+                  <button class="v-ib sm" onclick={() => (e.id in emojiRename ? void renameEmoji(e.id) : (emojiRename[e.id] = e.name))} aria-label={e.id in emojiRename ? 'Valider le nom' : `Renommer :${e.name}:`} title={e.id in emojiRename ? 'Valider' : 'Renommer'}><Icon name={e.id in emojiRename ? 'ok' : 'crayon'} size={14} /></button>
+                  <button class="v-ib sm dgr" onclick={() => removeEmoji(e.id)} aria-label="Supprimer :{e.name}:" title="Supprimer"><Icon name="corbeille" size={14} /></button>
                 </span>
               {/if}
             </div>
           {:else}
-            <p class="muted small" style="grid-column: 1 / -1">Aucun emoji pour l'instant : ajoute le premier !</p>
+            <p class="v-note" style="grid-column: 1 / -1">Aucun emoji pour l'instant : ajoute le premier !</p>
           {/each}
         </div>
       </section>
     {:else if tab === 'channels' && canChannels}
-      <section class="stack">
-        <div class="row"><strong class="grow">Salons</strong><button class="plbls-button plbls-button--compact" onclick={() => { openNewChannel(detail.server.id); onclose() }}>Créer un salon</button></div>
-        {#each [['text', 'Salons texte'], ['voice', 'Salons vocaux'], ['cinema', 'Salons cinéma'], ['videos', 'Esquisses'], ['music', 'Esquisses']] as [kind, title] (kind)}
+      <section class="v-card ssp-card">
+        <div class="ssp-sec-h"><h2 class="ssp-sec-t grow">Salons</h2><button class="plbls-button plbls-button--compact" onclick={() => { openNewChannel(detail.server.id); onclose() }}><Icon name="plus" size={16} />Créer un salon</button></div>
+        {#each [['text', 'Salons texte'], ['videos', 'Esquisses'], ['music', 'Esquisses'], ['voice', 'Salons vocaux'], ['cinema', 'Salons cinéma']] as [kind, title] (kind)}
           {@const list = ofKind(kind as ChannelKind)}
-          {#if kind === 'text' || kind === 'voice' ? true : kind === 'cinema' ? list.length : kind === 'videos' ? list.length || ofKind('music').length : false}<span class="pc-title">{title}</span>{/if}
+          {#if kind === 'text' || kind === 'voice' ? true : kind === 'cinema' ? list.length : kind === 'videos' ? list.length || ofKind('music').length : false}<span class="v-eyebrow ssp-grp">{title}</span>{/if}
           {#each list as c (c.id)}
-            <div class="ss-chan" class:over={overId === c.id && dragId !== c.id} role="listitem" draggable={!(c.id in renaming)} ondragstart={(e) => { dragId = c.id; e.dataTransfer?.setData('text/plain', c.name) }} ondragend={() => { dragId = overId = null }}
+            <div class="ssp-chan" class:over={overId === c.id && dragId !== c.id} class:open={permsFor === c.id} role="listitem" draggable={!(c.id in renaming)} ondragstart={(e) => { dragId = c.id; e.dataTransfer?.setData('text/plain', c.name) }} ondragend={() => { dragId = overId = null }}
               ondragover={(e) => { if (dragId && ofKind(kind as ChannelKind).some((x) => x.id === dragId)) { e.preventDefault(); overId = c.id } }}
               ondrop={(e) => { e.preventDefault(); if (dragId) reorder(kind as ChannelKind, dragId, c.id); dragId = overId = null }}>
               <span class="grip" aria-hidden="true"><Icon name="menu" size={14} /></span>
-              <Icon name={kind === 'voice' ? 'volume' : kind === 'cinema' ? 'film' : kind === 'videos' ? 'video' : kind === 'music' ? 'headphones' : 'hash'} size={16} />
+              <Icon name={kind === 'voice' ? 'vol' : kind === 'cinema' ? 'film' : kind === 'videos' ? 'video' : kind === 'music' ? 'casque' : 'hash'} size={18} />
               {#if c.id in renaming}
                 <input class="plbls-input grow" bind:value={renaming[c.id]} maxlength="30" aria-label="Nouveau nom de {c.name}" onkeydown={(e) => { if (e.key === 'Enter') void renameChannel(c.id); if (e.key === 'Escape') delete renaming[c.id] }} />
                 <button class="plbls-button plbls-button--compact" onclick={() => renameChannel(c.id)}>OK</button>
               {:else}
-                <span class="grow truncate">{c.name}</span>
-                <span class="acts"><button class="ib sm" onclick={(e) => channelMenu(e.currentTarget, c)} aria-haspopup="menu" aria-label="Actions pour {c.name}" title="Actions"><Icon name="more" size={16} /></button></span>
+                <span class="grow v-ell">{c.name}</span>
+                {#if c.locked}<span class="v-tag">verrouillé</span>{/if}
+                {#if isVoiceKind(c.kind) && c.user_limit}<span class="v-mono v-mute">{c.user_limit} max</span>{/if}
+                <span class="acts"><button class="v-ib" class:on={permsFor === c.id} onclick={(e) => channelMenu(e.currentTarget, c)} aria-haspopup="menu" aria-label="Actions pour {c.name}" title="Actions"><Icon name="plus3" size={18} /></button></span>
               {/if}
             </div>
             {#if permsFor === c.id}<ChannelPerms {detail} channelId={c.id} />{/if}
@@ -300,101 +355,215 @@
       </section>
     {:else}
       {#if canServer || canIcon}
-        <section class="stack">
-          <div class="ss-identity">
+        <section class="ssp-sec">
+          <h2 class="ssp-sec-t">Identité</h2>
+          <div class="ssp-identity">
             {#if canIcon}
-              <label class="ss-icon-btn" title="Changer l'icône">
-                {#if iconPreview}<span class="plbls-avatar sv-icon"><img class="av-img" src={iconPreview} alt="Nouvelle icône" /></span>
-                {:else if iconRemoved}<span class="plbls-avatar sv-icon" aria-hidden="true">{detail.server.name.slice(0, 2)}</span>
-                {:else}<ServerIcon server={detail.server} size="lg" />{/if}
-                <span class="hint">Changer l'icône</span>
+              <label class="ssp-icon-btn" title="Changer l'icône">
+                <span class="ssp-icon">
+                  {#if iconPreview}<span class="plbls-avatar sv-icon"><img class="av-img" src={iconPreview} alt="Nouvelle icône" /></span>
+                  {:else if iconRemoved}<span class="plbls-avatar sv-icon" aria-hidden="true">{detail.server.name.slice(0, 2)}</span>
+                  {:else}<ServerIcon server={detail.server} size="lg" />{/if}
+                  <span class="ssp-icon-edit" aria-hidden="true"><Icon name="crayon" size={16} /></span>
+                </span>
+                <span class="v-note">Changer l'icône</span>
                 <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onchange={stageIcon} />
               </label>
             {:else}
-              <ServerIcon server={detail.server} size="lg" />
+              <span class="ssp-icon"><ServerIcon server={detail.server} size="lg" /></span>
             {/if}
-            <div class="plbls-field grow">
-              <label class="plbls-field__label" for="s-name">Nom du serveur</label>
-              <input id="s-name" class="plbls-input" bind:value={name} maxlength="50" required disabled={!canServer} />
+            <div class="grow ssp-col ssp-gap">
+              <div class="plbls-field">
+                <label class="plbls-field__label" for="s-name">Nom du serveur</label>
+                <input id="s-name" class="plbls-input" bind:value={name} maxlength="50" required disabled={!canServer} />
+                {#if canServer}<span class="v-mono v-mute ssp-count">{[...name].length} / 50</span>{/if}
+              </div>
+              <div class="ssp-preview">
+                <span class="v-note">Aperçu dans la liste des serveurs</span>
+                <span class="ssp-rail">
+                  {#if iconPreview}<span class="plbls-avatar sv-icon"><img class="av-img" src={iconPreview} alt="" /></span>{:else if iconRemoved}<span class="plbls-avatar sv-icon" aria-hidden="true">{name.trim().slice(0, 2)}</span>{:else}<ServerIcon server={{ ...detail.server, name }} />{/if}
+                </span>
+                <b class="v-ell">{name.trim() || detail.server.name}</b>
+                <span class="grow"></span>
+                {#if canIcon && (iconPreview || (detail.server.icon_version && !iconRemoved))}
+                  <button class="plbls-button plbls-button--compact plbls-button--discret ssp-dgr" onclick={() => { iconFile = null; iconRemoved = !!detail.server.icon_version }}>Supprimer l'icône</button>
+                {/if}
+              </div>
+              <p class="v-note">L'image est recadrée au carré. Sans icône, les initiales du serveur s'affichent.</p>
             </div>
           </div>
-          {#if canIcon && (iconPreview || (detail.server.icon_version && !iconRemoved))}
-            <button class="plbls-button plbls-button--compact plbls-button--danger plbls-button--contour" style="width: fit-content" onclick={() => { iconFile = null; iconRemoved = !!detail.server.icon_version }}>Supprimer l'icône</button>
-          {/if}
-          <p class="muted small">L'image est recadrée au carré. Sans icône, les initiales du serveur s'affichent.</p>
-          <span class="pc-title">Aperçu dans la liste des serveurs</span>
-          <div class="ss-preview">
-            {#if iconPreview}<span class="plbls-avatar sv-icon"><img class="av-img" src={iconPreview} alt="" /></span>{:else if iconRemoved}<span class="plbls-avatar sv-icon" aria-hidden="true">{name.trim().slice(0, 2)}</span>{:else}<ServerIcon server={{ ...detail.server, name }} />{/if}
-            <strong class="truncate">{name.trim() || detail.server.name}</strong>
-          </div>
         </section>
+        <hr class="v-hr" />
       {/if}
     {#if canInvites}
-      <section class="stack">
-        <strong>Invitations</strong>
-        <div class="row">
-          <select class="plbls-select" bind:value={inviteExpiry} aria-label="Expiration du lien">{#each EXPIRY as [label, v]}<option value={v}>{label}</option>{/each}</select>
-          <select class="plbls-select" bind:value={inviteUses} aria-label="Nombre d'utilisations">{#each USES as [label, v]}<option value={v}>{label}</option>{/each}</select>
-          <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={newInvite}>Créer un lien</button>
+      <section class="ssp-sec">
+        <h2 class="ssp-sec-t">Invitations</h2>
+        <div class="ssp-inv-form">
+          <div class="plbls-field"><label class="plbls-field__label" for="s-exp">Expiration du lien</label><select id="s-exp" class="plbls-select" bind:value={inviteExpiry}>{#each EXPIRY as [label, v]}<option value={v}>{label}</option>{/each}</select></div>
+          <div class="plbls-field"><label class="plbls-field__label" for="s-uses">Nombre d'utilisations</label><select id="s-uses" class="plbls-select" bind:value={inviteUses}>{#each USES as [label, v]}<option value={v}>{label}</option>{/each}</select></div>
+          <button class="plbls-button" onclick={newInvite}>Créer un lien</button>
         </div>
         {#each invites as i (i.code)}
-          <div class="stack">
-            <span class="small muted">Par {i.created_by} · {i.uses ?? 0}{i.max_uses ? ` / ${i.max_uses}` : ''} utilisation(s) · {i.expires_at ? `expire le ${new Date(i.expires_at).toLocaleString('fr-FR')}` : 'sans expiration'}</span>
-          <div class="row">
-            <plbls-copy-field class="grow" value={link(i.code)}></plbls-copy-field>
-            <button class="plbls-button plbls-button--compact plbls-button--danger plbls-button--contour" onclick={() => revoke(i.code)}>Révoquer</button>
-          </div>
+          <div class="v-card ssp-invite">
+            <div class="ssp-inv-row">
+              <plbls-copy-field class="grow" label="Lien d'invitation" value={link(i.code)}></plbls-copy-field>
+              <button class="plbls-button plbls-button--compact plbls-button--discret ssp-dgr" onclick={() => revoke(i.code)}>Révoquer</button>
+            </div>
+            <span class="v-mono v-mute">Par {i.created_by} · {i.uses ?? 0}{i.max_uses ? ` / ${i.max_uses}` : ''} utilisation(s) · {i.expires_at ? `expire le ${new Date(i.expires_at).toLocaleString('fr-FR')}` : 'sans expiration'}</span>
           </div>
         {:else}
-          <p class="muted small">Aucun lien actif.</p>
+          <p class="v-note">Aucun lien actif.</p>
         {/each}
       </section>
+      <hr class="v-hr" />
     {/if}
 
     {#if owner}
-      <section class="stack">
-        <strong>Transférer la propriété</strong>
-        <div class="row">
+      <section class="ssp-sec">
+        <h2 class="ssp-sec-t">Transférer la propriété</h2>
+        <div class="ssp-inv-row">
           <select class="plbls-select grow" bind:value={transferTo} aria-label="Nouveau propriétaire"><option value="">Choisir un membre…</option>{#each detail.members.filter((m) => m.id !== app.meId) as m (m.id)}<option value={m.id}>{m.pseudo}</option>{/each}</select>
-          <button class="plbls-button plbls-button--danger plbls-button--contour" disabled={!transferTo} onclick={() => (confirmTransfer = true)}>Transférer</button>
+          <button class="plbls-button plbls-button--contour" disabled={!transferTo} onclick={() => (confirmTransfer = true)}>Transférer</button>
         </div>
-        <p class="muted small">Vous deviendrez un membre ordinaire du serveur.</p>
+        <p class="v-note">Tu deviendras un membre ordinaire du serveur.</p>
       </section>
-      <section class="stack">
-        <strong>Zone dangereuse</strong>
+      <section class="ssp-sec ssp-danger">
+        <h2 class="ssp-sec-t">Zone dangereuse</h2>
         <div class="plbls-field">
           <label class="plbls-field__label" for="s-del">Saisis « {detail.server.name} » pour confirmer la suppression</label>
-          <input id="s-del" class="plbls-input" bind:value={confirmName} autocomplete="off" />
+          <div class="ssp-inv-row">
+            <input id="s-del" class="plbls-input grow" bind:value={confirmName} autocomplete="off" />
+            <button class="plbls-button plbls-button--danger" disabled={confirmName !== detail.server.name} onclick={destroy}>Supprimer le serveur</button>
+          </div>
         </div>
-        <button class="plbls-button plbls-button--danger plbls-button--contour" disabled={confirmName !== detail.server.name} onclick={destroy}>Supprimer le serveur</button>
       </section>
     {:else}
-      {#if !manager}<p class="muted">Créé par {detail.members.find((m) => m.id === detail.server.owner_id)?.pseudo ?? 'un membre'}. Seuls les rôles autorisés peuvent modifier le serveur.</p>{/if}
-      <button class="plbls-button plbls-button--danger plbls-button--contour" onclick={leave}>Quitter le serveur</button>
+      <section class="ssp-sec">
+        {#if !manager}<p class="v-note">Créé par {detail.members.find((m) => m.id === detail.server.owner_id)?.pseudo ?? 'un membre'}. Seuls les rôles autorisés peuvent modifier le serveur.</p>{/if}
+        <button class="plbls-button plbls-button--danger plbls-button--contour ssp-fit" onclick={leave}><Icon name="sortie" size={16} />Quitter le serveur</button>
+      </section>
     {/if}
-    {/if}
-    {#if dirty}
-      <div class="ss-save" role="status">
-        <span class="small">Modifications non enregistrées</span>
-        <span class="row">
-          <button class="plbls-button plbls-button--compact plbls-button--contour" style="color: var(--creme)" onclick={cancelChanges}>Annuler</button>
-          <button class="plbls-button plbls-button--compact" disabled={!name.trim()} onclick={save}>Enregistrer</button>
-        </span>
-      </div>
     {/if}
     </div>
     {/if}
+
+    {#if dirty && tab !== 'roles'}
+      <div class="v-toast ssp-save" role="status">
+        <span class="ssp-save-i"><Icon name="alerte" size={18} /></span>
+        <span class="grow">Modifications non enregistrées</span>
+        <button class="plbls-button plbls-button--compact plbls-button--discret ssp-save-annuler" onclick={cancelChanges}>Annuler</button>
+        <button class="plbls-button plbls-button--compact v-rose" disabled={!name.trim()} onclick={save}>Enregistrer</button>
+      </div>
+    {/if}
   </div>
-</Modal>
+</div>
 
 {#if cropping}<IconCrop file={cropping} onclose={() => (cropping = null)} onconfirm={(img) => { iconFile = img; iconRemoved = false; cropping = null }} />{/if}
 
 {#if confirmTransfer}
   <Modal title="Transférer le serveur ?" onclose={() => (confirmTransfer = false)}>
-    <p>« {detail.server.name} » appartiendra à <strong>{detail.members.find((m) => m.id === transferTo)?.pseudo}</strong>. Vous perdrez tous vos droits de créateur et seul le nouveau propriétaire pourra vous les rendre.</p>
-    <div style="display: flex; gap: 8px; justify-content: flex-end">
+    <p>« {detail.server.name} » appartiendra à <strong>{detail.members.find((m) => m.id === transferTo)?.pseudo}</strong>. Tu perdras tous tes droits de créateur et seul le nouveau propriétaire pourra te les rendre.</p>
+    <div class="ssp-modal-f">
       <button class="plbls-button plbls-button--contour" onclick={() => (confirmTransfer = false)}>Annuler</button>
       <button class="plbls-button plbls-button--danger" onclick={transfer}>Transférer définitivement</button>
     </div>
   </Modal>
 {/if}
+
+<style>
+  .ssp { flex: 1; min-height: 0; display: grid; grid-template-columns: 240px minmax(0, 1fr); background: var(--papier); }
+  .ssp-nav { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; padding: 0 10px 16px; background: var(--papier-2); box-shadow: inset -1px 0 0 var(--trait); scrollbar-width: thin; }
+  .ssp-nav-h { display: flex; align-items: center; gap: 8px; min-height: 60px; padding-top: env(safe-area-inset-top); }
+  .ssp-nav-h b { min-width: 0; overflow: hidden; font-family: var(--f-titre); font-size: 15px; letter-spacing: -0.02em; white-space: nowrap; text-overflow: ellipsis; }
+  .ssp-srv { display: flex; align-items: center; gap: 10px; padding: 6px 10px 14px; min-width: 0; }
+  .ssp-srv :global(.sv-icon) { width: 36px; height: 36px; border-radius: 11px; font-size: 13px; }
+  .ssp-ni-list { display: flex; flex-direction: column; gap: 2px; }
+  .ssp-ni { display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px; border: 0; border-radius: var(--r-s); background: transparent; color: var(--encre-2); font: inherit; font-size: 14px; text-align: left; cursor: pointer; transition: background var(--d) var(--sortie); }
+  .ssp-ni:hover { background: var(--papier-3); color: var(--encre); }
+  .ssp-ni:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .ssp-ni[aria-current='page'] { background: var(--rose); color: var(--encre); font-weight: 600; }
+  .ssp-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); }
+  .ssp-top { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: env(safe-area-inset-top) 16px 0 32px; box-shadow: 0 1px 0 var(--trait); }
+  .ssp-top h1 { font-size: 22px; }
+  .ssp-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 28px; padding: 28px 40px 110px; max-width: 960px; scrollbar-width: thin; }
+  .ssp-roles { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .ssp-sec { display: flex; flex-direction: column; gap: 14px; }
+  .ssp-sec-t { margin: 0; font-family: var(--f-titre); font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .ssp-sec-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ssp-card { display: flex; flex-direction: column; gap: 10px; }
+  .ssp-col { display: flex; flex-direction: column; min-width: 0; }
+  .ssp-gap { gap: 12px; }
+  .ssp-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ssp-fit { width: fit-content; }
+  .ssp-dgr { color: var(--danger); }
+  .ssp-filter { width: auto; min-width: 200px; }
+  .ssp-identity { display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+  .ssp-icon-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; border-radius: var(--r); }
+  .ssp-icon-btn:focus-within { box-shadow: var(--anneau); }
+  .ssp-icon { position: relative; display: inline-flex; }
+  .ssp-icon :global(.sv-icon) { width: 96px; height: 96px; border-radius: 28px; font-size: 32px; }
+  .ssp-icon-edit { position: absolute; right: -6px; bottom: -6px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--encre); color: var(--papier); box-shadow: 0 0 0 3px var(--surface); }
+  .ssp-count { align-self: flex-end; }
+  .ssp-preview { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .ssp-rail { display: inline-flex; }
+  .ssp-rail :global(.sv-icon) { width: 40px; height: 40px; border-radius: 12px; font-size: 13px; box-shadow: inset 0 -3px 0 var(--rose-fonce); }
+  .ssp-inv-form { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .ssp-inv-form .plbls-field { flex: 1 1 200px; }
+  .ssp-invite { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+  .ssp-inv-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .ssp-inv-row > :global(plbls-copy-field) { min-width: min(100%, 240px); }
+  .ssp-danger { padding: 20px; border-radius: var(--r-l); box-shadow: inset 0 0 0 1.5px var(--danger); }
+  .ssp-danger .ssp-sec-t { color: var(--danger); }
+  .ssp-srow { display: flex; align-items: center; gap: 12px; padding: 10px 0; box-shadow: 0 1px 0 var(--trait); }
+  .ssp-srow:last-child { box-shadow: none; }
+  .ssp-log { list-style: none; margin: 0; padding: 0; }
+  .ssp-log li { display: grid; grid-template-columns: 96px 26px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 0; box-shadow: 0 1px 0 var(--trait); font-size: 14px; overflow-wrap: anywhere; }
+  .ssp-log li:last-child { box-shadow: none; }
+  .ssp-log li.ssp-vide { display: block; }
+  .ssp-log-i { display: inline-flex; color: var(--gris); }
+  .ssp-log-i.dgr { color: var(--danger); }
+  .ssp-log-i.att { color: var(--attention); }
+  .ssp-pending { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .ssp-pending img { width: 48px; height: 48px; object-fit: contain; border-radius: 12px; background: var(--surface); }
+  .ssp-drop { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 20px; border: 1.5px dashed var(--trait-fort); border-radius: var(--r-l); }
+  .ssp-drop.over { border-color: var(--encre); background: var(--rose-doux); }
+  .ssp-drop-i { display: inline-flex; color: var(--rose-texte); }
+  .ssp-emojis { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+  .ssp-emoji { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 10px; border-radius: var(--r); background: var(--papier-2); text-align: center; }
+  .ssp-emoji:focus-within { box-shadow: inset 0 0 0 2px var(--encre); }
+  .ssp-emoji img { width: 36px; height: 36px; object-fit: contain; }
+  .ssp-emoji code, .ssp-emoji .v-note { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .ssp-emoji .acts { position: absolute; top: 2px; right: 2px; display: none; gap: 2px; padding: 2px; border-radius: var(--r-s); background: var(--surface); box-shadow: var(--o1); }
+  .ssp-emoji:hover .acts, .ssp-emoji:focus-within .acts { display: flex; }
+  .v-ib.dgr { color: var(--danger); }
+  .ssp-grp { padding: 12px 10px 4px; }
+  .ssp-chan { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 6px 0 10px; border-radius: var(--r-s); }
+  .ssp-chan:hover { background: var(--papier-2); }
+  .ssp-chan.open { background: var(--rose-doux); }
+  .ssp-chan.over { box-shadow: inset 0 2px 0 var(--encre); }
+  .ssp-chan .acts { display: flex; opacity: 0; }
+  .ssp-chan:hover .acts, .ssp-chan:focus-within .acts, .ssp-chan.open .acts { opacity: 1; }
+  .ssp-chan .grip { display: inline-flex; cursor: grab; color: var(--gris-2); }
+  .ssp-save { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); flex-wrap: wrap; }
+  .ssp-save-i { display: inline-flex; color: var(--rose); }
+  .ssp-save-annuler { color: var(--papier); }
+  .ssp-save-annuler:hover:not(:disabled) { background: color-mix(in srgb, var(--papier) 14%, transparent); color: var(--papier); }
+  .ssp-modal-f { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  @media (hover: none) { .ssp-chan .acts, .ssp-emoji .acts { opacity: 1; display: flex; } }
+  @media (max-width: 760px) {
+    .ssp { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .ssp-nav { overflow: visible; padding: 0 12px 8px; box-shadow: inset 0 -1px 0 var(--trait); }
+    .ssp-srv { padding: 0 4px 8px; }
+    .ssp-srv :global(.sv-icon) { width: 28px; height: 28px; border-radius: 9px; font-size: 11px; }
+    .ssp-ni-list { flex-direction: row; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+    .ssp-ni { width: auto; flex: none; }
+    .ssp-top { padding: 0 12px 0 16px; min-height: 52px; }
+    .ssp-role { display: none; }
+    .ssp-body { padding: 20px 16px 110px; }
+    .ssp-log li { grid-template-columns: 80px 22px minmax(0, 1fr); }
+  }
+  @media (pointer: coarse) {
+    .ssp-ni { height: 44px; }
+    .ssp-chan .v-ib, .ssp-emoji .v-ib { width: 44px; height: 44px; }
+  }
+</style>

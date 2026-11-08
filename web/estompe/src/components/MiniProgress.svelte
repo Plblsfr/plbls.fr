@@ -18,3 +18,21 @@
     onchange={(e) => { onseek(Number(e.currentTarget.value)); drag = null }} />
   <button class="small muted mini-time" disabled={!total} onclick={() => (remaining = !remaining)} aria-label={remaining ? 'Afficher la durée' : 'Afficher le temps restant'}>{end}</button>
 </div>
+
+<style>
+  .mini-progress { gap: 6px; padding: 0 8px 0 28px; }
+  .mini-time { flex: none; min-width: 3.2em; padding: 0; border: 0; background: none; color: inherit; font-family: var(--f-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .mini-time:first-child { text-align: left; }
+  button.mini-time { text-align: right; cursor: pointer; }
+  button.mini-time:disabled { cursor: default; }
+  button.mini-time:focus-visible { outline: none; box-shadow: var(--anneau); border-radius: 4px; }
+  .mini-bar { height: 14px; min-width: 0; background: none; cursor: pointer; appearance: none; -webkit-appearance: none; }
+  .mini-bar:disabled { cursor: default; opacity: 0.6; }
+  .mini-bar:focus-visible { outline: none; box-shadow: var(--anneau); border-radius: 4px; }
+  .mini-bar::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: linear-gradient(to right, var(--rose-fonce) var(--p), color-mix(in srgb, currentColor 20%, transparent) var(--p)); }
+  .mini-bar::-moz-range-track { height: 3px; border-radius: 2px; background: linear-gradient(to right, var(--rose-fonce) var(--p), color-mix(in srgb, currentColor 20%, transparent) var(--p)); }
+  .mini-bar::-webkit-slider-thumb { width: 8px; height: 8px; margin-top: -2.5px; border-radius: 50%; background: currentColor; transition: transform 0.1s; -webkit-appearance: none; }
+  .mini-bar::-moz-range-thumb { width: 8px; height: 8px; border: 0; border-radius: 50%; background: currentColor; transition: transform 0.1s; }
+  .mini-bar:hover::-webkit-slider-thumb, .mini-bar:active::-webkit-slider-thumb { transform: scale(1.6); }
+  .mini-bar:hover::-moz-range-thumb, .mini-bar:active::-moz-range-thumb { transform: scale(1.6); }
+</style>

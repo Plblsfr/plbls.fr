@@ -45,8 +45,8 @@
   const showOverlay = !!overlay?.available()
   // Dans le panneau (largeur fixe), le partage puis la caméra passent dans le menu « … » quand la rangée est trop étroite.
   let w = $state(0)
-  const showShare = $derived(!panel || !w || w >= 284)
-  const showCam = $derived(!panel || !w || w >= 244)
+  const showShare = $derived(!panel || !w || w >= 264)
+  const showCam = $derived(!panel || !w || w >= 224)
   const silent = $derived(prefs.vad && !prefs.ptt && !voice.muted && !voice.voiceActive)
 
   function more(e: MouseEvent) {
@@ -91,7 +91,7 @@
   <button class="vbtn leave" onclick={() => voice.leave()} aria-label="Quitter le vocal" title="Quitter le vocal"><Icon name="phone-off" size={20} /></button>
 </div>
 
-{#if mutedTalking}<p class="small vwarn" role="status">Votre micro est coupé</p>{/if}
+{#if mutedTalking}<p class="small vwarn" role="status">Ton micro est coupé</p>{/if}
 
 {#if panel && prefs.ptt}
   <p class="small muted vptt">Push-to-talk : maintiens <kbd>{prefs.pttKey.replace(/^Key/, '')}</kbd>{voice.talking ? ' · tu parles' : ''}</p>

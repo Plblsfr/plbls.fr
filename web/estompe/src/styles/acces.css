@@ -1,0 +1,21 @@
+.acces { position: relative; min-height: 100%; display: grid; place-items: center; padding: 40px 16px; overflow: auto; background: var(--papier-2); }
+.acces-carte { width: min(400px, 100%); display: flex; flex-direction: column; gap: 16px; padding: 28px; border-radius: var(--r-xl); background: var(--surface); box-shadow: var(--o2); animation: v-monte var(--d-l) var(--sortie); }
+.acces-carte > h1, .acces-carte > h2 { margin: 0; font-family: var(--f-titre); font-size: 28px; font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; }
+.acces-carte > p { margin: 0; }
+.acces-carte .plbls-field { margin: 0; }
+.acces-carte .plbls-alert { margin: 0; }
+.acces-texte { color: var(--encre-2); line-height: 1.5; }
+.acces-logo { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--rose); color: var(--encre); font-family: var(--f-titre); font-size: 24px; font-weight: 800; line-height: 1; }
+.acces-logo.grand { width: 64px; height: 64px; border-radius: 18px; font-size: 34px; }
+.acces-pastille { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; border-radius: 14px; background: var(--papier-2); color: var(--gris); }
+.acces-pastille.att { background: var(--attention-fond); color: var(--attention); }
+.acces-pastille.dgr { background: var(--danger-fond); color: var(--danger); }
+.acces-second { align-self: center; }
+.acces-attente { display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+.acces-attente .loader-text { color: var(--gris); font-size: 13px; }
+@media (prefers-reduced-motion: reduce) {
+  .acces-carte { animation: none; }
+}
+@media (pointer: coarse) {
+  .acces-carte .plbls-button { min-height: 44px; }
+}

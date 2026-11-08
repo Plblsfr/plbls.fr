@@ -69,7 +69,25 @@
         {/if}
       </div>
     {/each}
-    <p class="muted small">Les messages suivent tes réglages de notifications (niveaux, aperçu, ne pas déranger) et le mode de l'overlay ci-dessus. Les raccourcis ne sont actifs que pendant l'affichage d'un message.</p>
+    <p class="v-note">Les messages suivent tes réglages de notifications (niveaux, aperçu, ne pas déranger) et le mode de l'overlay ci-dessus. Les raccourcis ne sont actifs que pendant l'affichage d'un message.</p>
   {/if}
-  <p class="muted small">Le mode « seulement sur les jeux » détecte une application plein écran sans bordure au premier plan ; le plein écran exclusif n'est pas pris en charge. Le raccourci fonctionne aussi en jeu.</p>
+  <p class="v-note">Le mode « seulement sur les jeux » détecte une application plein écran sans bordure au premier plan ; le plein écran exclusif n'est pas pris en charge. Le raccourci fonctionne aussi en jeu.</p>
 {/if}
+
+<style>
+  .ov-screen { position: relative; flex: none; width: 160px; aspect-ratio: 16 / 9; border-radius: var(--r-s); background: var(--papier-2); box-shadow: inset 0 0 0 1px var(--trait-fort); }
+  .ov-pos { position: absolute; width: 28px; height: 18px; padding: 0; border: 0; border-radius: var(--r-xs); background: var(--trait-fort); cursor: pointer; transition: background var(--d) var(--sortie); }
+  .ov-pos:hover { background: var(--gris-2); }
+  .ov-pos.on { background: var(--encre); box-shadow: 0 0 0 2px var(--rose); }
+  .ov-pos:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .ov-tl { top: 6px; left: 6px; }
+  .ov-tr { top: 6px; right: 6px; }
+  .ov-ml { top: 50%; left: 6px; translate: 0 -50%; }
+  .ov-mr { top: 50%; right: 6px; translate: 0 -50%; }
+  .ov-bl { bottom: 6px; left: 6px; }
+  .ov-br { bottom: 6px; right: 6px; }
+  @media (pointer: coarse) {
+    .ov-screen { width: 240px; }
+    .ov-pos { width: 44px; height: 30px; }
+  }
+</style>

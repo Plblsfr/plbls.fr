@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, onDestroy, onMount } from 'svelte'
+  import { tick, onDestroy, onMount, untrack } from 'svelte'
   import { app } from '../lib/store.svelte'
   import { continues, dayKey, dayOf } from '../lib/format'
   import { notify } from '../lib/ui'
@@ -7,6 +7,7 @@
   import { windowOf } from '../lib/virtual'
   import type { Message } from '../lib/types'
   import MessageItem from './MessageItem.svelte'
+  import Icon from './Icon.svelte'
 
   let { convKey }: { convKey: string } = $props()
 
@@ -21,13 +22,17 @@
   // Au-delà de VIRTUAL_FROM lignes, seules celles proches de l'écran sont dans le DOM (mémoire et temps de rendu bornés).
   const VIRTUAL_FROM = 150
   const ESTIMATE = 72
-  type Row = { key: string; day?: string; m?: Message; cont?: boolean }
+  type Row = { key: string; day?: string; nouveau?: boolean; m?: Message; cont?: boolean }
+  let newFrom = $state<string | null>(null)
+  let fresh = $state<string | null>(null)
+  let failed = $state(false)
   const rows = $derived.by<Row[]>(() => {
     const out: Row[] = []
     conv.messages.forEach((m, i) => {
       const prev = conv.messages[i - 1]
       if (!prev || dayKey(prev.created_at) !== dayKey(m.created_at)) out.push({ key: 'day-' + m.id, day: dayOf(m.created_at) })
-      out.push({ key: m.id, m, cont: continues(prev, m) })
+      if (m.id === newFrom) out.push({ key: 'new-' + m.id, nouveau: true })
+      out.push({ key: m.id, m, cont: m.id !== newFrom && continues(prev, m) })
     })
     return out
   })
@@ -73,9 +78,11 @@
 
   async function older() {
     const before = el.scrollHeight
+    failed = false
     try {
       await app.loadOlder(convKey)
     } catch (e) {
+      failed = true
       notify.error(e, "Impossible de charger l'historique")
       return
     }
@@ -92,7 +99,7 @@
     scrollTop = el.scrollTop
     viewport = el.clientHeight
     stick = atBottom()
-    if (el.scrollTop < 160 && conv.hasMore && !conv.loading) void older()
+    if (el.scrollTop < 160 && conv.hasMore && !conv.loading && !failed) void older()
   }
 
   // Images, GIF et aperçus changent de hauteur après le rendu : on reste en bas tant que l'utilisateur n'a pas remonté.
@@ -105,13 +112,23 @@
 
   // Nouveau message ou première page : on suit le bas tant que l'utilisateur n'a pas remonté.
   let seen = 0
+  let lastId: string | undefined
+  let freshTimer: ReturnType<typeof setTimeout> | undefined
   $effect(() => {
     const n = conv.messages.length
-    const last = conv.messages.at(-1)?.id
-    void last
+    const last = conv.messages.at(-1)
+    if (seen > 0 && last && lastId !== undefined && last.id !== lastId) {
+      if (last.author.id === app.meId) newFrom = null
+      else if (!untrack(() => newFrom) && (!stick || !document.hasFocus())) newFrom = last.id
+      fresh = last.id
+      clearTimeout(freshTimer)
+      freshTimer = setTimeout(() => (fresh = null), 600)
+    }
+    lastId = last?.id
     if (stick || seen === 0) tick().then(() => (el.scrollTop = el.scrollHeight))
     seen = n
   })
+  onDestroy(() => clearTimeout(freshTimer))
 
   /** Adresse d'une notification ou d'un résultat de recherche (« …/<message> ») : charge l'historique jusqu'au message, s'y place et le met en évidence. */
   async function goTo(id: string, base: string) {
@@ -142,27 +159,31 @@
   })
 </script>
 
+{#snippet item(r: Row)}
+  {#if r.m}<MessageItem message={r.m} cont={r.cont!} {pseudos} {convKey} readers={readers[r.m.id]} fresh={r.m.id === fresh} />
+  {:else if r.nouveau}<div class="newline" role="separator" aria-label="Nouveaux messages"><span>Nouveaux messages</span></div>
+  {:else}<div class="day" role="separator" aria-label={r.day}><span>{r.day}</span></div>{/if}
+{/snippet}
+
 <div class="messages" bind:this={el} {onscroll} onmousedowncapture={startSelection} role="log" aria-live="polite" aria-label="Messages">
   {#if conv.loading && conv.messages.length === 0}
     <div class="skel-list" role="status" aria-label="Chargement des messages">
-      {#each [60, 85, 40, 70] as w}<div class="skel-msg"><span class="skel-av"></span><span class="skel-line" style:width="{w}%"></span></div>{/each}
+      {#each [60, 85, 40, 70] as w}<div class="skel-msg"><span class="skel-av v-sk"></span><span class="skel-lines"><span class="skel-line v-sk" style:width="{Math.round(w / 3)}%"></span><span class="skel-line v-sk" style:width="{w}%"></span></span></div>{/each}
     </div>
   {:else}
-    {#if conv.hasMore}
-      <div class="day"><button class="plbls-button plbls-button--lien" onclick={older} disabled={conv.loading}>Charger les messages précédents</button></div>
+    {#if failed}
+      <div class="v-alert dgr thread-alert" role="alert"><Icon name="alerte" size={18} /><span class="grow">Impossible de charger l'historique.</span><button class="v-btn sm sec" onclick={older} disabled={conv.loading}>Réessayer</button></div>
+    {:else if conv.hasMore}
+      <div class="thread-more"><button class="v-btn sm ghost" onclick={older} disabled={conv.loading}>Charger les messages précédents</button></div>
     {:else if conv.loaded}
-      <div class="day">Début de la conversation</div>
+      <div class="thread-start"><span class="thread-start-icon" aria-hidden="true"><Icon name="bulle" size={22} /></span><p class="thread-start-title">Début de la conversation</p></div>
     {/if}
     <div bind:this={rowsEl} style:padding-top="{win.top}px" style:padding-bottom="{win.bottom}px">
       {#each shown as r (r.key)}
         {#if virtual}
-          <div data-row={r.key} use:measure>
-            {#if r.m}<MessageItem message={r.m} cont={r.cont!} {pseudos} {convKey} readers={readers[r.m.id]} />{:else}<div class="day">{r.day}</div>{/if}
-          </div>
-        {:else if r.m}
-          <MessageItem message={r.m} cont={r.cont!} {pseudos} {convKey} readers={readers[r.m.id]} />
+          <div data-row={r.key} use:measure>{@render item(r)}</div>
         {:else}
-          <div class="day">{r.day}</div>
+          {@render item(r)}
         {/if}
       {/each}
     </div>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from './Modal.svelte'
+  import Icon from './Icon.svelte'
   import { cropRect, squareAvatar, type Crop } from '../blocks/avatars/avatars.svelte'
   import { notify } from '../lib/ui'
 
@@ -39,13 +40,23 @@
 </script>
 
 <Modal title="Recadrer l'icône" {onclose}>
-  <div class="stack" style="align-items: center">
-    <canvas bind:this={canvas} width={SIDE} height={SIDE} style="border-radius: 50%; touch-action: none; cursor: grab; max-width: 100%" aria-label="Aperçu du recadrage : faire glisser pour déplacer"
+  <div class="ic">
+    <canvas class="ic-c" bind:this={canvas} width={SIDE} height={SIDE} aria-label="Aperçu du recadrage : faire glisser pour déplacer"
       onpointerdown={(e) => { drag = { px: e.clientX, py: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId) }} onpointermove={move} onpointerup={() => (drag = null)}></canvas>
-    <label class="row small">Zoom <input type="range" min="1" max="4" step="0.05" bind:value={crop.zoom} aria-label="Zoom" /></label>
-    <div style="display: flex; gap: 8px">
+    <label class="ic-zoom"><span class="v-mute"><Icon name="cherche" size={16} /></span><span class="v-lbl">Zoom</span><input class="grow" type="range" min="1" max="4" step="0.05" bind:value={crop.zoom} aria-label="Zoom" /><span class="v-mono">{crop.zoom.toLocaleString('fr-FR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}×</span></label>
+    <div class="ic-f">
       <button class="plbls-button plbls-button--contour" onclick={onclose}>Annuler</button>
       <button class="plbls-button" onclick={ok}>Valider</button>
     </div>
   </div>
 </Modal>
+
+<style>
+  .ic { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .ic-c { width: min(240px, 100%); aspect-ratio: 1; border-radius: 50%; touch-action: none; cursor: grab; box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--encre); }
+  .ic-c:active { cursor: grabbing; }
+  .ic-zoom { display: flex; align-items: center; gap: 8px; width: 100%; }
+  .ic-zoom input { accent-color: var(--rose-fonce); min-width: 0; }
+  .ic-zoom :global(svg) { display: block; }
+  .ic-f { display: flex; gap: 8px; justify-content: flex-end; width: 100%; }
+</style>

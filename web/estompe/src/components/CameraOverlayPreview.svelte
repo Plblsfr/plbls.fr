@@ -67,8 +67,10 @@
 
 <canvas bind:this={cv} width="640" height="360" aria-label="Aperçu de l'incrustation : glisser pour déplacer la caméra"
   onpointerdown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); drag(e) }} onpointermove={drag} onpointerup={() => prefs.save()}></canvas>
-{#if error}<p class="small" role="alert">{error}</p>{/if}
+{#if error}<p class="v-alert dgr ov-err" role="alert">{error}</p>{/if}
 
 <style>
-  canvas { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--rayon); background: #000; touch-action: none; cursor: grab; }
+  canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: var(--r-l); background: var(--papier-3); box-shadow: var(--o1); touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  .ov-err { margin: 0; }
 </style>

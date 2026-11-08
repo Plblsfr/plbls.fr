@@ -107,8 +107,8 @@
           <Icon name="repeat" size={20} />{#if s.repeat === 'one'}<span class="np-badge">1</span>{/if}
         </button>
         <button class="ib" disabled={!canDrive || s.queue.length < 2} onclick={() => act('shuffle')} aria-label="Mélanger la file" title="Mélanger la file"><Icon name="shuffle" size={20} /></button>
-        <label class="np-vol row small" title="Volume de la musique (propre à vous)"><Icon name="volume" size={16} />
-          <input type="range" min="0" max="100" value={prefs.musicVolume} oninput={(e) => volume(Number(e.currentTarget.value))} aria-label="Volume de la musique (propre à vous)" />
+        <label class="np-vol row small" title="Volume de la musique (propre à toi)"><Icon name="volume" size={16} />
+          <input type="range" min="0" max="100" value={prefs.musicVolume} oninput={(e) => volume(Number(e.currentTarget.value))} aria-label="Volume de la musique (propre à toi)" />
         </label>
         {#if isHost}
           <label class="small row"><input type="checkbox" checked={s.host_only} onchange={(e) => void api.watchHostOnly(channelId, e.currentTarget.checked, 'music').catch(fail)} /> Seul l'hôte pilote</label>

@@ -16,5 +16,5 @@
 
 <style>
   .badge-inline { flex: none; display: inline-flex; height: 16px; }
-  .badge-more { flex: none; font-size: 10px; font-weight: 600; line-height: 16px; color: var(--gris); }
+  .badge-more { flex: none; font-family: var(--f-mono); font-size: 10px; font-weight: 600; line-height: 16px; color: var(--gris); }
 </style>

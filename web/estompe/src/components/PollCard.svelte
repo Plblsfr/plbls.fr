@@ -35,11 +35,11 @@
 
 <section class="poll-card" class:closed aria-label="Sondage">
   <header class="poll-head">
-    <span class="muted small poll-by"><Icon name="chart" size={14} /> Sondage lancé par <strong>{poll.created_by.pseudo}</strong>{#if isBot(poll.created_by.id)} <RoleBadge kind="bot" />{/if} · <time datetime={m.created_at}>{timeOf(m.created_at)}</time></span>
+    <span class="poll-by"><Icon name="sondage" size={15} /> Sondage lancé par <span class="poll-author">{poll.created_by.pseudo}</span>{#if isBot(poll.created_by.id)} <RoleBadge kind="bot" />{/if} · <time datetime={m.created_at}>{timeOf(m.created_at)}</time>{#if closed} <span class="v-tag">Clos</span>{/if}</span>
     {#if canManage}
       <span class="poll-tools">
-        {#if !closed}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => api.closePoll(m.id).catch((e) => notify.error(e, 'Clôture impossible'))}>Clore</button>{/if}
-        <button class="ib sm" onclick={() => (confirmDelete = true)} aria-label="Supprimer le sondage" title="Supprimer le sondage"><Icon name="trash" size={14} /></button>
+        {#if !closed}<button class="v-btn sm sec" onclick={() => api.closePoll(m.id).catch((e) => notify.error(e, 'Clôture impossible'))}>Clore</button>{/if}
+        <button class="v-ib sm" onclick={() => (confirmDelete = true)} aria-label="Supprimer le sondage" title="Supprimer le sondage"><Icon name="corbeille" size={15} /></button>
       </span>
     {/if}
   </header>
@@ -50,21 +50,21 @@
       <button class="poll-opt" class:me={o.me} class:win={winners.includes(o.id)} aria-pressed={o.me} disabled={closed}
         onclick={() => app.vote(m, o.id).catch((e) => notify.error(e, 'Vote impossible'))}>
         <span class="poll-bar" style="width: {pct}%"></span>
-        <span class="grow">{#if o.me}✓ {/if}{o.label}{#if winners.includes(o.id)} 🏆{/if}</span><span>{pct} % · {o.votes}</span>
+        <span class="poll-label">{#if o.me}<Icon name="ok" size={15} />{/if}{#if winners.includes(o.id)}<Icon name="trophee" size={15} /><span class="plbls-sr-only">Gagnant :</span>{/if}<span class="poll-label-text">{o.label}</span></span><span class="poll-pct">{pct} % · {o.votes}</span>
       </button>
-      {#if voters?.[o.id]}<span class="muted small poll-voters">{voters[o.id].map((v) => v.pseudo).join(', ')}</span>{/if}
+      {#if voters?.[o.id]}<span class="poll-voters">{voters[o.id].map((v) => v.pseudo).join(', ')}</span>{/if}
     {/each}
   </div>
-  <footer class="muted small poll-foot">
-    <span>{total} vote{total > 1 ? 's' : ''} · {poll.multiple ? 'plusieurs réponses possibles' : 'réponse unique'} · {#if !poll.closes_at}sans clôture{:else if closed}<strong>Clos</strong>{:else}reste {remaining(new Date(poll.closes_at).getTime(), now)}{/if}</span>
-    {#if total}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={toggleVoters}>{voters ? 'Masquer' : 'Voir'} les votants</button>{/if}
+  <footer class="poll-foot">
+    <span>{total} vote{total > 1 ? 's' : ''} · {poll.multiple ? 'plusieurs réponses possibles' : 'réponse unique'} · {#if !poll.closes_at}sans clôture{:else if closed}<span class="poll-closed">Clos</span>{:else}reste {remaining(new Date(poll.closes_at).getTime(), now)}{/if}</span>
+    {#if total}<button class="v-btn sm ghost" onclick={toggleVoters}>{voters ? 'Masquer' : 'Voir'} les votants</button>{/if}
   </footer>
 </section>
 
 {#if confirmDelete}
   <Modal title="Supprimer ce sondage ?" onclose={() => (confirmDelete = false)}>
-    <p>Le sondage et ses votes seront supprimés pour tout le monde.</p>
-    <div style="display: flex; gap: 8px; justify-content: flex-end">
+    <p class="msg-confirm-text">Le sondage et ses votes seront supprimés pour tout le monde.</p>
+    <div class="msg-confirm-actions">
       <button class="plbls-button plbls-button--contour" onclick={() => (confirmDelete = false)}>Annuler</button>
       <button class="plbls-button plbls-button--danger" onclick={remove}>Supprimer</button>
     </div>

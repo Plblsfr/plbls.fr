@@ -70,7 +70,7 @@
       notify.ok('Signalement envoyé, merci !')
       onclose()
     } catch (err) {
-      error = `${messageOf(err, 'Envoi impossible.')} Votre texte est conservé : vous pouvez réessayer.`
+      error = `${messageOf(err, 'Envoi impossible.')} Ton texte est conservé : tu peux réessayer.`
     } finally {
       busy = false
     }
@@ -80,58 +80,78 @@
 <svelte:window {onpaste} />
 {#if !hidden}
   <Modal title="Signaler un bug" {onclose}>
-    <form class="stack" onsubmit={submit} ondragover={(e) => e.preventDefault()} {ondrop}>
-      {#if error}<div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>{/if}
+    <form class="rp" onsubmit={submit} ondragover={(e) => e.preventDefault()} {ondrop}>
+      <p class="rp-intro"><span class="rp-ic" aria-hidden="true"><Icon name="bug" size={20} /></span><span class="v-note">Ton brouillon est gardé si tu fermes.</span></p>
+      {#if error}<div class="v-alert dgr" role="alert"><Icon name="alerte" size={18} /><p class="plbls-alert__corps">{error}</p></div>{/if}
       <div class="plbls-field">
         <label class="plbls-field__label" for="rp-title">Titre</label>
         <input id="rp-title" class="plbls-input" bind:value={title} maxlength="120" required />
       </div>
       <div class="plbls-field">
         <label class="plbls-field__label" for="rp-desc">Ce qui s'est passé et ce qui était attendu</label>
-        <textarea id="rp-desc" class="plbls-input" rows="5" bind:value={description} maxlength="4000" required></textarea>
+        <textarea id="rp-desc" class="plbls-input plbls-textarea" rows="5" bind:value={description} maxlength="4000" required></textarea>
       </div>
       <div class="plbls-field">
-        <label class="plbls-field__label" for="rp-cat">Catégorie (facultatif)</label>
-        <select id="rp-cat" class="plbls-select" bind:value={category}>{#each REPORT_CATEGORIES as c (c.id)}<option value={c.id}>{c.label}</option>{/each}</select>
+        <span class="plbls-field__label" id="rp-cat">Catégorie (facultatif)</span>
+        <div class="chips" role="group" aria-labelledby="rp-cat">
+          {#each REPORT_CATEGORIES as c (c.id)}<button type="button" class="v-chip" aria-pressed={category === c.id} onclick={() => (category = c.id)}>{c.label}</button>{/each}
+        </div>
       </div>
 
       <fieldset class="rp-box">
-        <legend>Images ({shots.length}/{MAX_SHOTS})</legend>
+        <legend class="v-lbl">Images · {shots.length}/{MAX_SHOTS}</legend>
         <div class="rp-shots">
           {#each shots as s, i (s.url)}
-            <div class="rp-shot"><img src={s.url} alt={s.name} /><button type="button" class="ib sm" aria-label="Retirer {s.name}" onclick={() => remove(i)}><Icon name="x" size={14} /></button></div>
+            <div class="rp-shot"><img src={s.url} alt={s.name} /><button type="button" class="v-ib sm" aria-label="Retirer {s.name}" onclick={() => remove(i)}><Icon name="x" size={14} /></button></div>
+          {/each}
+          {#if platform.screenshot && !platform.screenshot.auto}<button type="button" class="plbls-button plbls-button--compact plbls-button--contour rp-add" onclick={capture}><Icon name="ecran" size={16} />Capturer la fenêtre</button>{/if}
+          <label class="plbls-button plbls-button--compact plbls-button--discret rp-add"><Icon name="plus" size={16} />Ajouter des images<input type="file" accept="image/*" multiple hidden onchange={(e) => { addFiles([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} /></label>
+        </div>
+        <p class="v-note">Tu peux aussi glisser-déposer ou coller des images.</p>
+      </fieldset>
+
+      <details class="rp-det">
+        <summary class="v-lbl">Informations jointes · {Object.values(included).filter(Boolean).length}</summary>
+        <div class="rp-det-b">
+          {#each Object.entries(tech) as [k, v] (k)}
+            <label class="plbls-checkbox rp-tech"><input class="plbls-checkbox__input" type="checkbox" bind:checked={included[k]} /><span class="plbls-checkbox__case" aria-hidden="true"></span><span class="plbls-checkbox__texte"><strong>{k}</strong> : <span class="v-mono">{v}</span></span></label>
           {/each}
         </div>
-        <div class="row">
-          {#if platform.screenshot && !platform.screenshot.auto}<button type="button" class="plbls-button plbls-button--compact plbls-button--contour" onclick={capture}>Capturer la fenêtre</button>{/if}
-          <label class="plbls-button plbls-button--compact plbls-button--contour">Ajouter des images<input type="file" accept="image/*" multiple hidden onchange={(e) => { addFiles([...(e.currentTarget.files ?? [])]); e.currentTarget.value = '' }} /></label>
-        </div>
-        <p class="muted small">Vous pouvez aussi glisser-déposer ou coller des images.</p>
-      </fieldset>
+      </details>
+      <label class="plbls-checkbox rp-tech">
+        <input class="plbls-checkbox__input" type="checkbox" bind:checked={withLogs} disabled={!debug.enabled || !debug.entries.length} />
+        <span class="plbls-checkbox__case" aria-hidden="true"></span>
+        <span class="plbls-checkbox__texte v-note"><b>Joindre les logs</b> (dernières lignes du mode debug, sans jeton ni contenu de message){#if !debug.enabled} — activez le mode debug dans les paramètres, reproduisez le bug, puis signalez-le.{/if}</span>
+      </label>
 
-      <fieldset class="rp-box">
-        <legend>Informations jointes</legend>
-        {#each Object.entries(tech) as [k, v] (k)}
-          <label class="plbls-checkbox rp-tech"><input class="plbls-checkbox__input" type="checkbox" bind:checked={included[k]} /><span class="plbls-checkbox__case" aria-hidden="true"></span><span class="plbls-checkbox__texte"><strong>{k}</strong> : {v}</span></label>
-        {/each}
-        <label class="plbls-checkbox rp-tech">
-          <input class="plbls-checkbox__input" type="checkbox" bind:checked={withLogs} disabled={!debug.enabled || !debug.entries.length} />
-          <span class="plbls-checkbox__case" aria-hidden="true"></span>
-          <span class="plbls-checkbox__texte"><strong>Joindre les logs</strong> (dernières lignes du mode debug, sans jeton ni contenu de message){#if !debug.enabled} — activez le mode debug dans les paramètres, reproduisez le bug, puis signalez-le.{/if}</span>
-        </label>
-      </fieldset>
-
-      <button class="plbls-button" disabled={busy || !title.trim() || !description.trim()}>{busy ? 'Envoi…' : 'Envoyer'}</button>
+      <div class="rp-f">
+        <button type="button" class="plbls-button plbls-button--contour" onclick={onclose}>Annuler</button>
+        <button class="plbls-button" disabled={busy || !title.trim() || !description.trim()}>{busy ? 'Envoi…' : 'Envoyer'}</button>
+      </div>
     </form>
   </Modal>
 {/if}
 
 <style>
-  .rp-box { border: 1px solid var(--border, currentColor); border-radius: 0.5rem; padding: 0.5rem 0.75rem; min-width: 0 }
-  .rp-tech { display: flex; margin: 0.25rem 0; overflow-wrap: anywhere }
-  .rp-shots { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem }
-  .rp-shot { position: relative }
-  .rp-shot img { height: 5rem; border-radius: 0.375rem; display: block }
-  .rp-shot button { position: absolute; top: 0.125rem; right: 0.125rem }
-  textarea { resize: vertical }
+  .rp { display: flex; flex-direction: column; gap: 14px; }
+  .rp-intro { display: flex; align-items: center; gap: 10px; margin: -6px 0 0; }
+  .rp-ic { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; background: var(--rose); color: var(--encre); flex: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .v-chip:focus-visible { outline: none; box-shadow: var(--anneau); }
+  .rp-box { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+  .rp-box legend { padding: 0; margin-bottom: 8px; }
+  .rp-box p { margin: 0; }
+  .rp-shots { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .rp-shot { position: relative; }
+  .rp-shot img { display: block; height: 54px; border-radius: var(--r-s); box-shadow: var(--o1); }
+  .rp-shot button { position: absolute; top: -8px; right: -8px; background: var(--surface); color: var(--encre); box-shadow: var(--o2); border-radius: 50%; }
+  .rp-add { height: 54px; }
+  .rp-det { border-top: 1px solid var(--trait); padding-top: 10px; }
+  .rp-det > summary { cursor: pointer; }
+  .rp-det > summary:focus-visible { outline: none; box-shadow: var(--anneau); border-radius: var(--r-xs); }
+  .rp-det-b { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .rp-tech { display: flex; overflow-wrap: anywhere; }
+  textarea { resize: vertical; }
+  .rp-f { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+  @media (pointer: coarse) { .v-chip { min-height: 44px; } .rp-shot button { width: 36px; height: 36px; } }
 </style>
