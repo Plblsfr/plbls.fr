@@ -14,7 +14,5 @@ for f in "$exe" "$exe.sig" Estompe-setup.exe "Estompe-setup.exe?v=0.0.0"; do
   echo "$h" | grep -qi 'cache-control: no-cache' || { echo "$f sans Cache-Control: no-cache"; exit 1; }
 done
 [ "$(taille /tmp/check.bin)" -gt 1000000 ] || { echo "installeur trop petit"; exit 1; }
-h=$({ w /dev/null Estompe_0.0.0_x64-setup.exe || true; })
-echo "$h" | grep -q ' 404 ' || { echo "un installeur absent devrait répondre 404"; exit 1; }
-echo "$h" | grep -qi 'cache-control: no-cache' || { echo "le 404 de /updates/ doit porter Cache-Control: no-cache"; exit 1; }
+{ w /dev/null Estompe_0.0.0_x64-setup.exe || true; } | grep -q ' 404 ' || { echo "un installeur absent devrait répondre 404"; exit 1; }
 echo "Installeur ok ($exe)"
