@@ -4,7 +4,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import { api } from '../../lib/api'
   import { app } from '../../lib/store.svelte'
-  import { startWatching } from '../videos/videos.svelte'
+  import { startWatching } from '../videos/seance'
   import { notify } from '../../lib/ui'
   import { voice } from '../vocal/voice.svelte'
   import type { SessionKind } from '../../lib/types'

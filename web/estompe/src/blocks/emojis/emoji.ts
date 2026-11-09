@@ -43,6 +43,9 @@ export function loadEmojiRows(): Promise<EmojiRow[]> {
     const data = m.default as EmojiRow[]
     byCode = new Map(data.flatMap((r) => [r[1], ...r[2]].map((c) => [c, r[0]] as const)).reverse())
     return data
+  }, (e) => {
+    rows = undefined
+    throw e
   })
   return rows
 }

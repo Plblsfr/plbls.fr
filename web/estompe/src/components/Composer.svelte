@@ -3,7 +3,7 @@
   import PollModal from './PollModal.svelte'
   import VoiceNote from './VoiceNote.svelte'
   import Icon from './Icon.svelte'
-  import { tick, onMount, onDestroy } from 'svelte'
+  import { tick, onMount, onDestroy, untrack } from 'svelte'
   import { app } from '../lib/store.svelte'
   import { api, ApiError } from '../lib/api'
   import { formatSize } from '../lib/format'
@@ -61,6 +61,7 @@
   const canAttach = $derived(app.canConv(convKey, 'attach_files'))
   const canPoll = $derived(app.canConv(convKey, 'create_polls'))
   let rows = $state<EmojiRow[]>([])
+  let rowsLoading = $state(false)
   const code = $derived(codeAt(text, caret))
   const codeOptions = $derived(code && rows.length ? searchEmojis(rows, code.query, 8) : [])
   const uploading = $derived(files.some((f) => !f.id && !f.failed))
@@ -71,9 +72,16 @@
   // Un smiley personnalisé du même nom garde la priorité sur le smiley standard.
   const known = (name: string) => (emojis.resolve(name) ? undefined : emojiByCode(name))
 
+  function needRows(): Promise<EmojiRow[]> {
+    rowsLoading = true
+    return loadEmojiRows().then((r) => (rows = r)).finally(() => (rowsLoading = false))
+  }
+  $effect(() => { if (code && !untrack(() => rows.length || rowsLoading)) void needRows().catch(() => {}) })
+
   /** Convertit « :nom: » dès que le second « : » est tapé. */
   function convert() {
     const r = completeCode(ta.value, ta.selectionStart, known)
+    if (!r && !rows.length && completeCode(ta.value, ta.selectionStart, () => ':')) void needRows().then(convert, () => {})
     if (!r) return
     text = r.text
     void tick().then(() => { ta.setSelectionRange(r.caret, r.caret); sync() })
@@ -102,7 +110,6 @@
   }
   onMount(() => {
     resize()
-    void loadEmojiRows().then((r) => { rows = r })
     // Redémarrage : les fichiers du brouillon sont renvoyés (jamais deux fois : la session les garde en mémoire).
     if (files.length) ready = true
     else void restoreFiles(convKey).then((fs) => { if (!files.length && fs.length) void addFiles(fs); ready = true })
@@ -295,6 +302,11 @@
       {#each codeOptions as r, i}
         <button class="v-mi" role="option" aria-selected={i === sel} class:on={i === sel} onmousedown={(e) => { e.preventDefault(); pickCode(r) }}><span class="composer-suggest-emoji">{r[0]}</span><span class="composer-suggest-main">:{r[1]}:</span></button>
       {/each}
+    </div>
+  {:else if code && rowsLoading}
+    <div class="v-menu composer-suggest" role="status">
+      <div class="v-mh">Smileys · :{code.query}</div>
+      <div class="v-mi composer-suggest-attente">Chargement…</div>
     </div>
   {/if}
   {#if pollOpen}<PollModal {convKey} onclose={() => (pollOpen = false)} />{/if}

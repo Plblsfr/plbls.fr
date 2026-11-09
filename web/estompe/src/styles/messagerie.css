@@ -220,6 +220,7 @@ a.lien-apercu:focus-visible, .lien-apercu a:focus-visible { outline: none; box-s
 .composer-suggest-main { font-weight: 600; }
 .composer-suggest-sub { margin-left: auto; color: var(--gris); font-size: 12px; }
 .composer-suggest-emoji { font-size: 18px; }
+.composer-suggest-attente { color: var(--gris); cursor: default; }
 .reply-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0 14px; color: var(--gris); font-size: 13px; }
 .reply-bar-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-bar-who { color: var(--encre); font-weight: 600; }

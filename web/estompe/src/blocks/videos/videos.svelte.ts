@@ -1,5 +1,5 @@
 import { api } from '../../lib/api'
-import type { SessionKind, VideosBoard } from '../../lib/types'
+import type { VideosBoard } from '../../lib/types'
 
 /** Contenu des salons « Vidéos » ouverts (publications, listes, séances), rechargé à chaque évènement `videos.changed`. */
 class Videos {
@@ -34,18 +34,3 @@ class Videos {
   drop(cid: string) { delete this.boards[cid] }
 }
 export const videos = new Videos()
-
-/** « Regarder ensemble » (ou Music2gether, `kind` music) dans un salon vocal : on le rejoint au besoin, puis la première vidéo est lue et les suivantes forment la file. */
-export async function startWatching(serverId: string, voiceChannelId: string, links: string[], kind: SessionKind = 'watch') {
-  const [{ voice }, { hrefs }] = await Promise.all([import('../vocal/voice.svelte'), import('../../lib/route.svelte')])
-  if (voice.channelId !== voiceChannelId || voice.state === 'idle') await voice.join(voiceChannelId)
-  await api.watchStart(voiceChannelId, links[0], links.slice(1, 50), kind)
-  location.hash = hrefs.channel(serverId, voiceChannelId)
-}
-
-/** « Rejoindre » une séance en cours : le salon vocal s'ouvre, la session s'y affiche. */
-export async function joinSession(serverId: string, voiceChannelId: string) {
-  const [{ voice }, { hrefs }] = await Promise.all([import('../vocal/voice.svelte'), import('../../lib/route.svelte')])
-  location.hash = hrefs.channel(serverId, voiceChannelId)
-  if (voice.channelId !== voiceChannelId || voice.state === 'idle') await voice.join(voiceChannelId)
-}

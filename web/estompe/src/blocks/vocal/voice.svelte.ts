@@ -3,6 +3,7 @@ import { applyCameraFx } from '../../lib/camerafx'
 import { prefs, type ScreenRes, type ScreenFps, type CameraQuality } from '../../lib/prefs.svelte'
 import { playTone } from '../notifications/notify'
 import { watchSpeaking } from './speaking'
+import { MicProcessor } from '../../lib/micprocessor'
 import { collectWatchers } from './stage'
 import { gainOf, ownerOf } from '../../lib/volume'
 import { shouldSubscribe } from './stage'
@@ -331,7 +332,6 @@ class VoiceController {
     if (prefs.noise === 'strong' || prefs.micGain !== 100 || prefs.vad) {
       try {
         const { Track } = await import('livekit-client')
-        const { MicProcessor } = await import('../../lib/micprocessor')
         const p = new MicProcessor(prefs.noise === 'strong', prefs.micGain / 100)
         const pub = lp.getTrackPublication(Track.Source.Microphone)
         await pub?.audioTrack?.setProcessor(p)
