@@ -1,4 +1,4 @@
-# La base Postgres existe déjà : renseigner DATABASE_URL et PERMISSION_* dans .env.
+# La base Postgres existe déjà : renseigner DATABASE_URL et AEGIS_URL + AEGIS_TOKEN (aegis) ou PERMISSION_* (ancien service) dans .env.
 services:
   pli:
     image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}

@@ -12,6 +12,7 @@ pub struct Config {
     pub max_bytes: usize,
     pub max_pending: usize,
     pub permission: Option<(String, String)>,
+    pub aegis: Option<(String, String)>,
     pub public_dir: PathBuf,
 }
 
@@ -71,6 +72,7 @@ impl Config {
             max_bytes,
             max_pending,
             permission: env("PERMISSION_URL").zip(env("PERMISSION_SERVICE_TOKEN")),
+            aegis: env("AEGIS_URL").zip(env("AEGIS_TOKEN")),
             public_dir: dossier_public(),
         })
     }

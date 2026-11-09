@@ -238,6 +238,22 @@ async fn relayer(
     if !reste.split('/').skip(1).all(segment_valide) {
         return write_err(StatusCode::BAD_REQUEST, "bad_request", "chemin invalide");
     }
+    let mut url = format!(
+        "{}/api/permission/v1{reste}",
+        state.config().gateway_url.trim_end_matches('/')
+    );
+    if let Some(q) = parts.uri.query() {
+        url.push('?');
+        url.push_str(q);
+    }
+    transmettre(parts, corps, url).await
+}
+
+pub(crate) async fn transmettre(
+    parts: axum::http::request::Parts,
+    corps: axum::body::Body,
+    url: String,
+) -> Response {
     let Some(cred) = cred_of(&parts.headers) else {
         return write_err(StatusCode::UNAUTHORIZED, "unauthorized", "non authentifié");
     };
@@ -248,14 +264,6 @@ async fn relayer(
             "corps trop volumineux",
         );
     };
-    let mut url = format!(
-        "{}/api/permission/v1{reste}",
-        state.config().gateway_url.trim_end_matches('/')
-    );
-    if let Some(q) = parts.uri.query() {
-        url.push('?');
-        url.push_str(q);
-    }
     let mut requete = CLIENT.request(parts.method.clone(), &url);
     requete = if cred.cookie {
         requete.header(header::COOKIE, format!("{COOKIE_NAME}={}", cred.value))

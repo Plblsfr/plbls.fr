@@ -5,7 +5,7 @@ name: livraison
 on:
   push:
     branches: [main]
-    tags: ["pli-v*", "permission-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+    tags: ["pli-v*", "permission-v*", "aegis-v*", "security-v*", "ui-v*", "estompe-api-v*"]
   workflow_dispatch:
 
 permissions:
@@ -54,6 +54,21 @@ jobs:
       context: .
       dockerfile: api/permission/Dockerfile
       dir: api/permission
+    secrets: inherit
+
+  image-aegis:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_aegis == 'true') || startsWith(github.ref, 'refs/tags/aegis-v')
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: aegis
+      name: aegis
+      context: .
+      dockerfile: api/aegis/Dockerfile
+      dir: api/aegis
     secrets: inherit
 
   image-security:

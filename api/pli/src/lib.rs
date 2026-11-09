@@ -30,6 +30,7 @@ pub async fn serve(
     state: AppState,
     arret: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
+    state.demarrer_aegis();
     axum::serve(
         listener,
         router(state).into_make_service_with_connect_info::<SocketAddr>(),

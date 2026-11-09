@@ -3,6 +3,36 @@
 version = 4
 
 [[package]]
+name = "aegis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.23.1",
+ "chrono",
+ "config",
+ "futures-util",
+ "hmac",
+ "http-body-util",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "sqlx",
+ "subtle",
+ "tokio",
+ "tower",
+ "tower-http 0.7.1",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "utoipa",
+ "utoipa-axum",
+ "uuid",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1155,6 +1185,7 @@ name = "estompe-core"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "chrono",
  "estompe-core",
  "futures-util",
  "hmac",
@@ -1163,6 +1194,7 @@ dependencies = [
  "jsonschema",
  "percent-encoding",
  "rand 0.10.3",
+ "redis",
  "regex",
  "reqwest",
  "serde",

@@ -15,10 +15,10 @@ import { videos } from '../blocks/videos/videos.svelte'
 import { draw } from '../blocks/draw2gether/draw.svelte'
 import { clockOffset, stale } from '../blocks/regarder-ensemble/watch'
 import { notify } from './ui'
-import { adminSections, rightsOf, type Right } from './admin'
+import { adminSections, autorise, rightsOf, type Right } from './admin'
 import { convKeyOf, channelKey, dmKey, defaultNotifySettings } from './types'
 import { sonde } from './sonde'
-import type { Me, Status, NotifySettings, PermKey, Channel, ConvKey, DM, Mention, Message, NewPoll, Read, Server, ServerDetail, VoiceParticipant, WatchState, WatchView, SessionKind } from './types'
+import type { Capacites, Me, Status, NotifySettings, PermKey, Channel, ConvKey, DM, Mention, Message, NewPoll, Read, Server, ServerDetail, VoiceParticipant, WatchState, WatchView, SessionKind } from './types'
 
 export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'error'
 
@@ -49,8 +49,10 @@ export class AppStore {
   on = (name: string) => blockOn(this.blocks, name)
   pseudo = $state('')
   rights = $state<Right[]>([])
+  capacites = $state.raw<Capacites | null>(null)
   isAdmin = $derived(this.rights.includes('admin'))
-  adminSections = $derived(adminSections(this.rights, (b) => this.on(b)))
+  adminSections = $derived(adminSections(this.rights, (b) => this.on(b), this.capacites))
+  peut = (nom: string, ressource = '*') => autorise(this.capacites, `estompe:${nom}`, ressource)
   movies = $state(false)
   servers = $state<Server[]>([])
   details = $state<Record<string, ServerDetail>>({})
@@ -106,6 +108,7 @@ export class AppStore {
     try {
       const me = await api.me()
       this.rights = rightsOf(me)
+      this.capacites = me.capabilities ?? null
       if (!me.allowed) {
         this.phase = this.adminSections.length ? 'admin' : 'denied'
         return
@@ -138,6 +141,7 @@ export class AppStore {
 
   private applyMe(me: Me) {
     this.rights = rightsOf(me)
+    this.capacites = me.capabilities ?? null
     if (!me.allowed || !me.activated) return
     this.maxVideo = me.max_video_size ?? DEFAULT_MAX_VIDEO
     this.transcription = me.transcription ?? ''

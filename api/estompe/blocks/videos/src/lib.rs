@@ -178,14 +178,14 @@ fn param<'a>(p: &'a HashMap<String, String>, nom: &str) -> &'a str {
 }
 
 async fn salon(
-    pool: &PgPool,
+    state: &AppState,
     p: &HashMap<String, String>,
     utilisateur: &str,
 ) -> Result<Conv, Response> {
     if !estompe_core::servers::uuid_valide(param(p, "cid")) {
         return Err(estompe_core::servers::non_trouve("salon introuvable"));
     }
-    let conv = conv_de_tout_salon(pool, param(p, "cid"), utilisateur).await?;
+    let conv = conv_de_tout_salon(state, param(p, "cid"), utilisateur).await?;
     if conv.kind != "videos" && conv.kind != "music" {
         return Err(write_err(
             StatusCode::BAD_REQUEST,
@@ -299,7 +299,7 @@ async fn contenu(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let id = salon_id(&conv);
     let (publications, listes, seances) = tokio::try_join!(
         base::publications(pool, id, &u.id),
@@ -319,7 +319,7 @@ async fn miniature(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let mid = param(&p, "mid");
     if !re_numero().is_match(mid) {
         return Err(introuvable());
@@ -349,7 +349,7 @@ async fn vue(
     corps: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let entree = decode(corps).await?;
     let vue = booleen(&entree, "watched").ok_or_else(invalide)?;
     if !conv.peut(roles::ORGANIZE_WATCH) && !conv.peut(roles::MANAGE_MESSAGES) {
@@ -370,7 +370,7 @@ async fn creer_liste(
     corps: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let entree = decode(corps).await?;
     let (nom, collaborative) = nom_liste(&entree)?;
     if !conv.peut(roles::SEND_MESSAGES) {
@@ -408,7 +408,7 @@ async fn modifier_liste(
     corps: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let id = identifiant(&p, "lid")?;
     let entree = decode(corps).await?;
     let (nom, collaborative) = nom_liste(&entree)?;
@@ -435,7 +435,7 @@ async fn supprimer_liste(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let id = identifiant(&p, "lid")?;
     let l = match base::liste(pool, salon_id(&conv), &id).await {
         Ok(l) => l,
@@ -455,7 +455,7 @@ async fn elements_liste(
     corps: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let id = identifiant(&p, "lid")?;
     let entree = decode(corps).await?;
     let ids = liste(&entree, "ids").ok_or_else(invalide)?;
@@ -499,7 +499,7 @@ async fn creer_seance(
     corps: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let entree = decode(corps).await?;
     let titre = champ_texte(&entree, "title").ok_or_else(invalide)?;
     let debut = match champ(&entree, "starts_at") {
@@ -552,7 +552,7 @@ async fn creer_seance(
         return Err(seance_invalide(message_videos));
     }
     let destination = if uuid_valide(&vocal) {
-        conv_de_tout_salon(pool, &vocal, &u.id).await.ok()
+        conv_de_tout_salon(&etat, &vocal, &u.id).await.ok()
     } else {
         None
     };
@@ -593,7 +593,7 @@ async fn annuler_seance(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let id = identifiant(&p, "sid")?;
     let s = match base::seance(pool, salon_id(&conv), &id).await {
         Ok(s) => s,
@@ -613,7 +613,7 @@ async fn repondre(
     corps: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&etat)?;
-    let conv = salon(pool, &p, &u.id).await?;
+    let conv = salon(&etat, &p, &u.id).await?;
     let id = identifiant(&p, "sid")?;
     let entree = decode(corps).await?;
     let reponse = champ_texte(&entree, "answer").ok_or_else(invalide)?;

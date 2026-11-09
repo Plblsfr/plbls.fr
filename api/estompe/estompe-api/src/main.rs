@@ -136,6 +136,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("{}", routes(&Set::all()).1.to_yaml()?);
         return Ok(());
     }
+    if std::env::args().nth(1).as_deref() == Some("--manifeste-aegis") {
+        let blocs = estompe_block::actifs(&block_list(), &Set::all());
+        let url = std::env::var("AEGIS_RESOURCES_URL")
+            .unwrap_or_else(|_| "http://estompe-api:8080".into());
+        println!(
+            "{:#}",
+            estompe_core::catalogue::manifeste(&blocs, url.trim_end_matches('/'))
+        );
+        return Ok(());
+    }
     tracing_subscriber::fmt()
         .event_format(journal_json::FormatJson)
         .with_env_filter(
@@ -167,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if set.has("vocal") {
         estompe_block_vocal::brancher(&state);
     }
+    estompe_core::aegis::demarrer(state.clone());
     if set.has("videos") {
         estompe_block_videos::brancher(&state);
     }
@@ -245,6 +256,29 @@ mod tests {
                     .collect::<Vec<_>>()
             })
             .collect()
+    }
+
+    #[test]
+    fn chaque_permission_du_catalogue_protege_une_route_reelle() {
+        let ops = operations(&spec());
+        for e in estompe_core::catalogue::CATALOGUE
+            .iter()
+            .filter(|e| !e.routes.is_empty())
+        {
+            let couvertes = ops
+                .iter()
+                .filter(|(chemin, methode)| {
+                    let m =
+                        axum::http::Method::from_bytes(methode.to_uppercase().as_bytes()).unwrap();
+                    estompe_core::catalogue::garde(&m, chemin).is_some_and(|x| x.cle == e.cle)
+                })
+                .count();
+            assert!(
+                couvertes > 0,
+                "{} ne protège aucune route documentée",
+                e.cle
+            );
+        }
     }
 
     #[test]

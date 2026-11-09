@@ -15,7 +15,7 @@ use utoipa_axum::router::OpenApiRouter;
 
 use crate::{
     api::ActiveUser,
-    fichiers::est_admin,
+    fichiers::a_droit,
     http::{decode, write_err, write_json},
     messages::{self, Conv},
     moderation::corps_facultatif,
@@ -272,7 +272,7 @@ pub async fn peut_gerer(
     message: i64,
     u: &User,
 ) -> Result<bool, sqlx::Error> {
-    let admin = est_admin(state, &u.sub).await;
+    let admin = a_droit(state, &u.sub, crate::catalogue::ADMIN_SONDAGES).await;
     let ok: Option<bool> = sqlx::query_scalar(
         "SELECT $3 OR p.created_by = $2::uuid FROM polls p WHERE p.message_id = $1",
     )
@@ -376,7 +376,7 @@ async fn voter(
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
     let id = messages::id_message(param(&p.0, "id"))?;
-    let (conv, _) = messages::conv_du_message(pool, id, &u.id).await?;
+    let (conv, _) = messages::conv_du_message(&state, id, &u.id).await?;
     let retrait = methode == axum::http::Method::DELETE;
     let e = if retrait {
         corps_facultatif(body).await?
@@ -425,7 +425,7 @@ async fn votants(
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
     let id = messages::id_message(param(&p.0, "id"))?;
-    messages::conv_du_message(pool, id, &u.id).await?;
+    messages::conv_du_message(&state, id, &u.id).await?;
     let lignes: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT v.option_id::text, u.id::text, u.pseudo FROM poll_votes v JOIN users u ON u.id = v.user_id
          WHERE v.message_id=$1 ORDER BY u.pseudo",
@@ -453,7 +453,7 @@ async fn cloturer(
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
     let id = messages::id_message(param(&p.0, "id"))?;
-    let (conv, _): (Conv, String) = messages::conv_du_message(pool, id, &u.id).await?;
+    let (conv, _): (Conv, String) = messages::conv_du_message(&state, id, &u.id).await?;
     let peut = peut_gerer(&state, pool, id, &u).await.map_err(bd)?;
     if !peut && !conv.peut(crate::roles::MANAGE_MESSAGES) {
         return Ok(write_err(

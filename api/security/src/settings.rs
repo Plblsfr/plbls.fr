@@ -86,6 +86,8 @@ pub struct Internal {
     /// Plafond de `max` sur `/internal/users` (`GATEWAY__INTERNAL__MAX_PAGE_SIZE`).
     #[serde(default = "default_max_page_size")]
     pub max_page_size: u32,
+    #[serde(default)]
+    pub list_all: bool,
 }
 
 impl Default for Internal {
@@ -93,6 +95,7 @@ impl Default for Internal {
         Self {
             token: String::new(),
             max_page_size: default_max_page_size(),
+            list_all: false,
         }
     }
 }

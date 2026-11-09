@@ -157,6 +157,8 @@ pub fn dans_salon(base: Perm, rs: &[Role], ov: &[Override]) -> Perm {
 pub struct Access {
     pub owner: bool,
     pub timed_out: bool,
+    pub sub: String,
+    pub retire: Perm,
     pub roles: Vec<Role>,
     ov: HashMap<String, Vec<Override>>,
     locked: HashSet<String>,
@@ -165,9 +167,9 @@ pub struct Access {
 impl Access {
     pub fn base(&self) -> Perm {
         if self.owner {
-            return ALL;
+            return ALL & !self.retire;
         }
-        let p = base(&self.roles);
+        let p = base(&self.roles) & !self.retire;
         if self.timed_out { p & !TIMED_OUT } else { p }
     }
 
@@ -185,7 +187,7 @@ impl Access {
 
     pub fn channel(&self, channel_id: &str) -> Perm {
         if self.owner {
-            return ALL;
+            return ALL & !self.retire;
         }
         let vide = Vec::new();
         let mut p = dans_salon(
@@ -199,7 +201,7 @@ impl Access {
         if self.locked.contains(channel_id) && !contient(p, MANAGE_MESSAGES) {
             p &= !LOCKED;
         }
-        p
+        p & !self.retire
     }
 }
 
@@ -208,8 +210,8 @@ pub async fn access_for(
     server_id: &str,
     user: &str,
 ) -> Result<Option<Access>, sqlx::Error> {
-    let Some((owner, timed_out)) = sqlx::query_as::<_, (bool, bool)>(
-        "SELECT s.owner_id = m.user_id, COALESCE(m.timeout_until > now(), false) FROM servers s JOIN server_members m ON m.server_id = s.id WHERE s.id=$1::uuid AND m.user_id=$2::uuid",
+    let Some((owner, timed_out, sub)) = sqlx::query_as::<_, (bool, bool, String)>(
+        "SELECT s.owner_id = m.user_id, COALESCE(m.timeout_until > now(), false), u.keycloak_sub FROM servers s JOIN server_members m ON m.server_id = s.id JOIN users u ON u.id = m.user_id WHERE s.id=$1::uuid AND m.user_id=$2::uuid",
     )
     .bind(server_id)
     .bind(user)
@@ -249,6 +251,8 @@ pub async fn access_for(
     Ok(Some(Access {
         owner,
         timed_out,
+        sub,
+        retire: 0,
         roles,
         ov,
         locked,

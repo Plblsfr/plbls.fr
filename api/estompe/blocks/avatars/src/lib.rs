@@ -228,7 +228,7 @@ async fn lister_serveur(
     Path(p): Params,
 ) -> Resultat {
     let pool = pool(&etat)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&etat, &u, param(&p, "id"), 0).await?;
     let lignes = sqlx::query_as(
         "SELECT user_id::text, version FROM server_avatars WHERE server_id=$1::uuid",
     )
@@ -246,7 +246,7 @@ async fn definir_avatar_serveur(
     donnees: Option<(Vec<u8>, &str)>,
 ) -> Resultat {
     let pool = pool(etat)?;
-    let (sv, _) = acces(pool, u, param(p, "id"), 0).await?;
+    let (sv, _) = acces(etat, u, param(p, "id"), 0).await?;
     let version: i64 = match donnees {
         None => {
             sqlx::query("DELETE FROM server_avatars WHERE server_id=$1::uuid AND user_id=$2::uuid")
@@ -305,7 +305,7 @@ async fn voir_avatar_serveur(
     Path(p): Params,
 ) -> Resultat {
     let pool = pool(&etat)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&etat, &u, param(&p, "id"), 0).await?;
     let uid = param(&p, "uid");
     if !uuid_valide(uid) {
         return Ok(introuvable_image());
@@ -326,7 +326,7 @@ async fn gerant_icone(
     u: &estompe_core::users::User,
     p: &HashMap<String, String>,
 ) -> Result<String, Response> {
-    let (sv, acc) = acces(pool(etat)?, u, param(p, "id"), 0).await?;
+    let (sv, acc) = acces(etat, u, param(p, "id"), 0).await?;
     if !acc.can(MANAGE_SERVER) && !est_admin(etat, &u.sub).await {
         return Err(write_err(
             StatusCode::FORBIDDEN,
@@ -392,7 +392,7 @@ async fn voir_icone(
     Path(p): Params,
 ) -> Resultat {
     let pool = pool(&etat)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&etat, &u, param(&p, "id"), 0).await?;
     let ligne = sqlx::query_as(
         "SELECT icon, icon_type FROM servers WHERE id=$1::uuid AND icon IS NOT NULL",
     )

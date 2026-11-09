@@ -212,12 +212,12 @@
           <div class="p-compte-txt">
             <span class="v-note">Connecté en tant que</span>
             <strong class="p-pseudo">{app.pseudo}</strong>
-            <div class="row">
+            {#if app.peut('profile.avatar')}<div class="row">
               <label class="plbls-button plbls-button--compact" class:is-busy={avatarBusy}>
                 <Icon name="envoie" size={16} />Changer l'avatar<input type="file" accept="image/*" hidden onchange={pickAvatar} disabled={avatarBusy} />
               </label>
               <button class="plbls-button plbls-button--compact plbls-button--discret" onclick={removeAvatar} disabled={avatarBusy}>Supprimer</button>
-            </div>
+            </div>{/if}
           </div>
         </section>
         {#if app.servers.length}
@@ -252,7 +252,7 @@
         <SettingsDebug />
 
       {:else if tab === 'reports'}
-        {#if app.on('signalements')}<SettingsReports />{/if}
+        {#if app.on('signalements') && app.peut('reports.create')}<SettingsReports />{/if}
 
       {:else if tab === 'appearance'}
         <fieldset class="p-section">

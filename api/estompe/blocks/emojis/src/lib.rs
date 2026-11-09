@@ -207,7 +207,7 @@ async fn creer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), 0).await?;
     let nom = q.iter().find(|(k, _)| k == "name").map_or("", |(_, v)| v);
     if !nom_valide(nom) {
         return Ok(nom_invalide());
@@ -277,7 +277,7 @@ async fn renommer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), 0).await?;
     let eid = param(&p, "eid");
     if !servers::uuid_valide(eid) {
         return Ok(introuvable());
@@ -320,7 +320,7 @@ async fn supprimer(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), 0).await?;
     let eid = param(&p, "eid");
     if !servers::uuid_valide(eid) {
         return Ok(introuvable());

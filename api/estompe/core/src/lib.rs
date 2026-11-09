@@ -1,14 +1,17 @@
 #![allow(clippy::result_large_err)]
 
 pub mod administration;
+pub mod aegis;
 pub mod api;
 pub mod audit;
 pub mod blob;
+pub mod catalogue;
 pub mod config;
 pub mod db;
 pub mod emoji;
 pub mod etat_lecture;
 pub mod fichiers;
+pub mod garde;
 pub mod gestion_roles;
 pub mod http;
 pub mod hub;
@@ -25,6 +28,7 @@ pub mod openapi;
 pub mod permission;
 pub mod ratelimit;
 pub mod recherche;
+pub mod relais_aegis;
 pub mod relais_permission;
 pub mod roles;
 pub mod salons;

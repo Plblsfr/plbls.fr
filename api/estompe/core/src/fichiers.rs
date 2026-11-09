@@ -670,10 +670,15 @@ async fn fichier_pour(pool: &PgPool, id: &str, user: &str) -> Result<Fichier, Er
 }
 
 pub async fn est_admin(state: &AppState, sub: &str) -> bool {
-    state
-        .droit(sub, crate::permission::ADMIN)
-        .await
-        .unwrap_or(false)
+    state.droits(sub).await.is_ok_and(|d| {
+        crate::catalogue::CATALOGUE
+            .iter()
+            .any(|e| e.admin() && d.a(&e.nom()))
+    })
+}
+
+pub async fn a_droit(state: &AppState, sub: &str, nom: &str) -> bool {
+    state.droit(sub, nom).await.unwrap_or(false)
 }
 
 async fn acces(state: &AppState, id: &str, parts: &mut Parts) -> Result<Fichier, Response> {
@@ -696,7 +701,9 @@ async fn acces(state: &AppState, id: &str, parts: &mut Parts) -> Result<Fichier,
         return Err(non_trouve());
     }
     match fichier_pour(pool, id, &u.id).await {
-        Err(ErreurAcces::NonTrouve) if est_admin(state, &u.sub).await => {
+        Err(ErreurAcces::NonTrouve)
+            if a_droit(state, &u.sub, crate::catalogue::ADMIN_FICHIERS).await =>
+        {
             fichier_signalement(pool, id).await
         }
         r => r,

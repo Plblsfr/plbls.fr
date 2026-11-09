@@ -257,12 +257,15 @@ async fn cible(
 }
 
 async fn membre_vise<'a>(
-    pool: &PgPool,
+    state: &AppState,
     u: &User,
     p: &'a Params,
     besoin: roles::Perm,
 ) -> Result<(Serveur, &'a str), Response> {
-    let (sv, acc) = acces(pool, u, param(&p.0, "id"), besoin).await?;
+    let (sv, acc) = acces(state, u, param(&p.0, "id"), besoin).await?;
+    let pool = state
+        .pool()
+        .map_err(axum::response::IntoResponse::into_response)?;
     let uid = param(&p.0, "uid");
     cible(pool, &sv, &acc, u, uid).await?;
     Ok((sv, uid))
@@ -306,7 +309,7 @@ async fn expulser(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, uid) = membre_vise(pool, &u, &p, roles::KICK_MEMBERS).await?;
+    let (sv, uid) = membre_vise(&state, &u, &p, roles::KICK_MEMBERS).await?;
     let e = corps_facultatif(body).await?;
     let raison = texte(&e, "reason")?;
     if !raison_valide(&raison) {
@@ -383,7 +386,7 @@ async fn bannir(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, uid) = membre_vise(pool, &u, &p, roles::BAN_MEMBERS).await?;
+    let (sv, uid) = membre_vise(&state, &u, &p, roles::BAN_MEMBERS).await?;
     let e = decode(body).await?;
     let raison = texte(&e, "reason")?;
     let duree = nombre(&e, "duration")?;
@@ -419,7 +422,7 @@ async fn lister_bans(
     p: Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p.0, "id"), roles::BAN_MEMBERS).await?;
+    let (sv, _) = acces(&state, &u, param(&p.0, "id"), roles::BAN_MEMBERS).await?;
     let lignes = sqlx::query_as::<_, (String, String, String, String, String, Option<String>)>(sqlx::AssertSqlSafe(format!(
         "SELECT b.user_id::text, u.pseudo, bu.pseudo, b.reason, {}, {} FROM server_bans b
          JOIN users u ON u.id = b.user_id JOIN users bu ON bu.id = b.banned_by
@@ -453,7 +456,7 @@ async fn lever_ban(
     p: Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p.0, "id"), roles::BAN_MEMBERS).await?;
+    let (sv, _) = acces(&state, &u, param(&p.0, "id"), roles::BAN_MEMBERS).await?;
     let uid = param(&p.0, "uid");
     let introuvable = || non_trouve("bannissement introuvable");
     if !uuid_valide(uid) {
@@ -532,7 +535,7 @@ async fn exclure(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, uid) = membre_vise(pool, &u, &p, roles::TIMEOUT_MEMBERS).await?;
+    let (sv, uid) = membre_vise(&state, &u, &p, roles::TIMEOUT_MEMBERS).await?;
     let e = decode(body).await?;
     let raison = texte(&e, "reason")?;
     let duree = nombre(&e, "duration")?;
@@ -556,7 +559,7 @@ async fn lever_exclusion(
     p: Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, uid) = membre_vise(pool, &u, &p, roles::TIMEOUT_MEMBERS).await?;
+    let (sv, uid) = membre_vise(&state, &u, &p, roles::TIMEOUT_MEMBERS).await?;
     fixer_exclusion(&state, pool, &sv, &u, uid, 0, "").await?;
     Ok(sans_contenu())
 }
@@ -568,7 +571,7 @@ async fn avertir(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, uid) = membre_vise(pool, &u, &p, roles::TIMEOUT_MEMBERS).await?;
+    let (sv, uid) = membre_vise(&state, &u, &p, roles::TIMEOUT_MEMBERS).await?;
     let e = decode(body).await?;
     let raison = texte(&e, "reason")?;
     if raison.is_empty() || !raison_valide(&raison) {
@@ -595,7 +598,7 @@ async fn pseudo(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, uid) = membre_vise(pool, &u, &p, roles::MANAGE_NICKNAMES).await?;
+    let (sv, uid) = membre_vise(&state, &u, &p, roles::MANAGE_NICKNAMES).await?;
     let e = decode(body).await?;
     let saisi = texte(&e, "nickname")?;
     let surnom = if saisi.is_empty() {
@@ -653,7 +656,7 @@ async fn historique(
     p: Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p.0, "id"), roles::VIEW_AUDIT_LOG).await?;
+    let (sv, _) = acces(&state, &u, param(&p.0, "id"), roles::VIEW_AUDIT_LOG).await?;
     let uid = param(&p.0, "uid");
     if !uuid_valide(uid) {
         return Ok(non_trouve("membre introuvable"));
@@ -669,7 +672,7 @@ async fn moderer_salon(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p.0, "id"), roles::MANAGE_CHANNELS).await?;
+    let (sv, _) = acces(&state, &u, param(&p.0, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p.0)?;
     let e = decode(body).await?;
     let lent = nombre(&e, "slowmode")?;
@@ -699,8 +702,8 @@ async fn moderer_salon(
     Ok(sans_contenu())
 }
 
-async fn salon_a_moderer(pool: &PgPool, u: &User, cid: &str) -> Result<String, Response> {
-    let conv = messages::conv_du_salon(pool, cid, &u.id).await?;
+async fn salon_a_moderer(state: &AppState, u: &User, cid: &str) -> Result<String, Response> {
+    let conv = messages::conv_du_salon(state, cid, &u.id).await?;
     if !conv.peut(roles::MANAGE_MESSAGES) {
         return Err(write_err(
             StatusCode::FORBIDDEN,
@@ -719,7 +722,7 @@ async fn supprimer_en_masse(
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
     let cid = param(&p.0, "cid");
-    let serveur = salon_a_moderer(pool, &u, cid).await?;
+    let serveur = salon_a_moderer(&state, &u, cid).await?;
     let e = decode(body).await?;
     let ids = liste(&e, "ids").ok_or_else(mauvais)?;
     let derniers = nombre(&e, "last")?;
@@ -792,7 +795,7 @@ async fn transferer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p.0, "id"), 0).await?;
+    let (sv, _) = acces(&state, &u, param(&p.0, "id"), 0).await?;
     if sv.owner_id != u.id {
         return Ok(write_err(
             StatusCode::FORBIDDEN,

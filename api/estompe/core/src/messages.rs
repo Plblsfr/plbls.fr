@@ -264,11 +264,12 @@ fn introuvable() -> Response {
     non_trouve("introuvable")
 }
 
-async fn avec_droits(pool: &PgPool, conv: &mut Conv, user: &str) -> Result<(), Response> {
+async fn avec_droits(state: &AppState, conv: &mut Conv, user: &str) -> Result<(), Response> {
     let (Some(salon), Some(serveur)) = (conv.channel_id.clone(), conv.server_id.clone()) else {
         return Ok(());
     };
-    let acces = roles::access_for(pool, &serveur, user)
+    let acces = state
+        .acces_serveur(&serveur, user)
         .await
         .map_err(bd)?
         .ok_or_else(introuvable)?;
@@ -280,8 +281,8 @@ async fn avec_droits(pool: &PgPool, conv: &mut Conv, user: &str) -> Result<(), R
     }
 }
 
-pub async fn conv_du_salon(pool: &PgPool, cid: &str, user: &str) -> Result<Conv, Response> {
-    let conv = conv_de_tout_salon(pool, cid, user).await?;
+pub async fn conv_du_salon(state: &AppState, cid: &str, user: &str) -> Result<Conv, Response> {
+    let conv = conv_de_tout_salon(state, cid, user).await?;
     if !["text", "videos", "music"].contains(&conv.kind.as_str()) {
         return Err(write_err(
             StatusCode::BAD_REQUEST,
@@ -292,7 +293,10 @@ pub async fn conv_du_salon(pool: &PgPool, cid: &str, user: &str) -> Result<Conv,
     Ok(conv)
 }
 
-pub async fn conv_de_tout_salon(pool: &PgPool, cid: &str, user: &str) -> Result<Conv, Response> {
+pub async fn conv_de_tout_salon(state: &AppState, cid: &str, user: &str) -> Result<Conv, Response> {
+    let pool = state
+        .pool()
+        .map_err(axum::response::IntoResponse::into_response)?;
     if !uuid_valide(cid) {
         return Err(introuvable());
     }
@@ -315,7 +319,7 @@ pub async fn conv_de_tout_salon(pool: &PgPool, cid: &str, user: &str) -> Result<
         user_limit,
         perms: 0,
     };
-    avec_droits(pool, &mut conv, user).await?;
+    avec_droits(state, &mut conv, user).await?;
     Ok(conv)
 }
 
@@ -348,10 +352,13 @@ pub fn id_message(texte: &str) -> Result<i64, Response> {
 }
 
 pub async fn conv_du_message(
-    pool: &PgPool,
+    state: &AppState,
     id: i64,
     user: &str,
 ) -> Result<(Conv, String), Response> {
+    let pool = state
+        .pool()
+        .map_err(axum::response::IntoResponse::into_response)?;
     let (salon, serveur, dm, kind, slowmode, auteur) = sqlx::query_as::<
         _,
         (Option<String>, Option<String>, Option<String>, String, i32, String),
@@ -378,7 +385,7 @@ pub async fn conv_du_message(
         user_limit: 0,
         perms: 0,
     };
-    avec_droits(pool, &mut conv, user).await?;
+    avec_droits(state, &mut conv, user).await?;
     Ok((conv, auteur))
 }
 
@@ -699,7 +706,7 @@ async fn lister_salon(
     p: Params,
     RawQuery(requete): RawQuery,
 ) -> Result<Response, Response> {
-    let conv = conv_du_salon(pool(&state)?, param(&p.0, "cid"), &u.id).await?;
+    let conv = conv_du_salon(&state, param(&p.0, "cid"), &u.id).await?;
     lister(&state, &u, conv, requete).await
 }
 
@@ -1323,7 +1330,7 @@ async fn envoyer_salon(
     p: Params,
     body: Body,
 ) -> Result<Response, Response> {
-    let conv = conv_du_salon(pool(&state)?, param(&p.0, "cid"), &u.id).await?;
+    let conv = conv_du_salon(&state, param(&p.0, "cid"), &u.id).await?;
     envoyer(&state, &u, conv, body).await
 }
 
@@ -1356,7 +1363,7 @@ async fn modifier(
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
     let id = id_message(param(&p.0, "id"))?;
-    let (conv, auteur) = conv_du_message(pool, id, &u.id).await?;
+    let (conv, auteur) = conv_du_message(&state, id, &u.id).await?;
     if auteur != u.id {
         return Ok(write_err(
             StatusCode::FORBIDDEN,
@@ -1510,7 +1517,7 @@ async fn supprimer(
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
     let id = id_message(param(&p.0, "id"))?;
-    let (conv, auteur) = conv_du_message(pool, id, &u.id).await?;
+    let (conv, auteur) = conv_du_message(&state, id, &u.id).await?;
     if auteur != u.id
         && !conv.peut(roles::MANAGE_MESSAGES)
         && !sondages::peut_gerer(&state, pool, id, &u)
@@ -1615,7 +1622,7 @@ async fn reaction(state: AppState, u: User, p: Params, ajout: bool) -> Result<Re
         ));
     }
     let id = id_message(param(&p.0, "id"))?;
-    let (conv, _) = conv_du_message(pool, id, &u.id).await?;
+    let (conv, _) = conv_du_message(&state, id, &u.id).await?;
     if ajout && !conv.peut(roles::ADD_REACTIONS) {
         return Ok(write_err(
             StatusCode::FORBIDDEN,
@@ -1772,7 +1779,7 @@ async fn changer_epingle(
 ) -> Result<Response, Response> {
     let pool = pool(state)?;
     let id = id_message(param(&p.0, "id"))?;
-    let (conv, auteur) = conv_du_message(pool, id, &u.id).await?;
+    let (conv, auteur) = conv_du_message(state, id, &u.id).await?;
     if auteur != u.id && !conv.peut(roles::MANAGE_MESSAGES) {
         return Ok(write_err(
             StatusCode::FORBIDDEN,
@@ -1834,7 +1841,7 @@ async fn epingles_salon(
     ActiveUser(u): ActiveUser,
     p: Params,
 ) -> Result<Response, Response> {
-    let conv = conv_du_salon(pool(&state)?, param(&p.0, "cid"), &u.id).await?;
+    let conv = conv_du_salon(&state, param(&p.0, "cid"), &u.id).await?;
     lister_epingles(&state, &u, conv).await
 }
 
@@ -1886,7 +1893,7 @@ async fn saisie_salon(
     ActiveUser(u): ActiveUser,
     p: Params,
 ) -> Result<Response, Response> {
-    let conv = conv_du_salon(pool(&state)?, param(&p.0, "cid"), &u.id).await?;
+    let conv = conv_du_salon(&state, param(&p.0, "cid"), &u.id).await?;
     saisie(&state, &u, conv).await
 }
 
@@ -2399,7 +2406,7 @@ pub(crate) mod tests {
             .connect_with((*grand.connect_options()).clone())
             .await
             .unwrap();
-        let conv = conv_du_salon(grand, &c.salon, &c.bob).await.unwrap();
+        let conv = conv_du_salon(&c.e.state, &c.salon, &c.bob).await.unwrap();
         let (_, cibles) = creer(
             &petit,
             c.e.state.hub(),

@@ -213,7 +213,7 @@ fn vue(texte: &str, auto: bool) -> Response {
 
 async fn diffuser(state: &AppState, pool: &PgPool, message: Option<i64>, user: &str) {
     let Some(id) = message else { return };
-    let Ok((conv, _)) = conv_du_message(pool, id, user).await else {
+    let Ok((conv, _)) = conv_du_message(state, id, user).await else {
         return;
     };
     if let Ok(m) = message_complet(pool, id, user).await {

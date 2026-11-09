@@ -536,7 +536,7 @@ async fn recherche_salon(
     p: Params,
     RawQuery(requete): RawQuery,
 ) -> Result<Response, Response> {
-    let conv: Conv = conv_du_salon(pool(&state)?, param(&p.0, "cid"), &u.id).await?;
+    let conv: Conv = conv_du_salon(&state, param(&p.0, "cid"), &u.id).await?;
     let portee = Portee {
         channel_id: conv.channel_id.unwrap_or_default(),
         ..Portee::default()

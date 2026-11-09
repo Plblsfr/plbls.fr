@@ -296,7 +296,7 @@ async fn creer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
     let mut entree = EntreeRole::lire(&decode(body).await?)?;
     if !entree.valide() {
         return Ok(role_invalide());
@@ -357,7 +357,7 @@ async fn modifier(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
     let mut ligne = role_pour(pool, &sv.id, param(&p, "rid")).await?;
     let mut entree = EntreeRole::lire(&decode(body).await?)?;
     if ligne.is_default {
@@ -417,7 +417,7 @@ async fn supprimer(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
     let ligne = role_pour(pool, &sv.id, param(&p, "rid")).await?;
     if ligne.is_default {
         return Ok(write_err(
@@ -465,7 +465,7 @@ async fn ordonner(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
     let ids = liste(&decode(body).await?, "ids").ok_or_else(mauvais)?;
     let actuels = sqlx::query_as::<_, (String, i32, bool)>(
         "SELECT id::text, position, is_default FROM roles WHERE server_id=$1::uuid ORDER BY position DESC",
@@ -545,7 +545,7 @@ async fn role_membre(
     on: bool,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_ROLES).await?;
     let ligne = role_pour(pool, &sv.id, param(&p, "rid")).await?;
     if ligne.is_default {
         return Ok(write_err(
@@ -558,7 +558,7 @@ async fn role_membre(
     if !uuid_valide(uid) {
         return Ok(non_trouve("membre introuvable"));
     }
-    let Some(cible) = roles::access_for(pool, &sv.id, uid).await.map_err(bd)? else {
+    let Some(cible) = state.acces_serveur(&sv.id, uid).await.map_err(bd)? else {
         return Ok(erreur(Echec::NonTrouve));
     };
     let proprietaire_lui_meme = uid == u.id && acc.owner;
@@ -619,7 +619,7 @@ async fn lister_surcharges(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
     let l = sqlx::query_as::<_, (String, i64, i64)>(
         "SELECT o.role_id::text, o.allow, o.deny FROM channel_overrides o JOIN channels c ON c.id = o.channel_id
@@ -649,7 +649,7 @@ async fn definir_surcharge(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
     let rid = param(&p, "rid");
     if !uuid_valide(rid) {
@@ -747,7 +747,7 @@ async fn journal(
     RawQuery(requete): RawQuery,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::VIEW_AUDIT_LOG).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::VIEW_AUDIT_LOG).await?;
     let requete = requete.unwrap_or_default();
     let filtre = Filtre {
         acteur: premier_parametre(&requete, "actor"),

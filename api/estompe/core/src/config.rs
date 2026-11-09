@@ -11,6 +11,22 @@ pub struct Livekit {
     pub allow_video: bool,
 }
 
+#[derive(Clone, PartialEq, Eq, Default)]
+pub struct Aegis {
+    pub url: String,
+    pub token: String,
+    pub redis_url: String,
+    pub redis_prefix: String,
+    pub admin_role: String,
+    pub resources_url: String,
+}
+
+impl Aegis {
+    pub fn actif(&self) -> bool {
+        !self.url.is_empty()
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Config {
     pub listen_addr: String,
@@ -21,6 +37,7 @@ pub struct Config {
     pub permission_token: String,
     pub permission_name: String,
     pub permission_admin_role: String,
+    pub aegis: Aegis,
     pub data_dir: String,
     pub max_storage_bytes: i64,
     pub max_user_storage_bytes: i64,
@@ -111,6 +128,16 @@ impl Config {
             permission_token: get("PERMISSION_TOKEN"),
             permission_name: env("PERMISSION_NAME", "estompe:access"),
             permission_admin_role: env("PERMISSION_ADMIN_ROLE", "permission-admin"),
+            aegis: Aegis {
+                url: get("AEGIS_URL").trim_end_matches('/').to_string(),
+                token: get("AEGIS_TOKEN"),
+                redis_url: get("AEGIS_REDIS_URL"),
+                redis_prefix: env("AEGIS_REDIS_PREFIX", "aegis"),
+                admin_role: env("AEGIS_ADMIN_ROLE", "aegis-admin"),
+                resources_url: env("AEGIS_RESOURCES_URL", "http://estompe-api:8080")
+                    .trim_end_matches('/')
+                    .to_string(),
+            },
             data_dir: env("DATA_DIR", "/data"),
             max_storage_bytes,
             max_user_storage_bytes,
@@ -142,9 +169,14 @@ impl Config {
                 allow_video: get("LIVEKIT_ALLOW_VIDEO") == "true",
             },
         };
+        let jeton = if c.aegis.actif() {
+            ("AEGIS_TOKEN", &c.aegis.token)
+        } else {
+            ("PERMISSION_TOKEN", &c.permission_token)
+        };
         for (nom, valeur) in [
             ("DATABASE_URL", &c.database_url),
-            ("PERMISSION_TOKEN", &c.permission_token),
+            jeton,
             ("LIVEKIT_URL", &c.livekit.url),
             ("LIVEKIT_API_KEY", &c.livekit.key),
             ("LIVEKIT_API_SECRET", &c.livekit.secret),
@@ -421,5 +453,32 @@ mod tests {
             erreur(charge_sans(&["DATABASE_URL"], &[("DATABASE_URL", "")])),
             "variable manquante : DATABASE_URL"
         );
+    }
+
+    #[test]
+    fn mode_aegis() {
+        let c = charge(&[]).unwrap();
+        assert!(!c.aegis.actif());
+        assert_eq!(c.aegis.admin_role, "aegis-admin");
+        assert_eq!(c.aegis.redis_prefix, "aegis");
+        assert_eq!(
+            erreur(charge_sans(
+                &["PERMISSION_TOKEN"],
+                &[("AEGIS_URL", "http://aegis:8080/")]
+            )),
+            "variable manquante : AEGIS_TOKEN"
+        );
+        let c = charge_sans(
+            &["PERMISSION_TOKEN"],
+            &[
+                ("AEGIS_URL", "http://aegis:8080/"),
+                ("AEGIS_TOKEN", "t"),
+                ("AEGIS_RESOURCES_URL", "http://api:8080/"),
+            ],
+        )
+        .unwrap();
+        assert!(c.aegis.actif());
+        assert_eq!(c.aegis.url, "http://aegis:8080");
+        assert_eq!(c.aegis.resources_url, "http://api:8080");
     }
 }

@@ -164,3 +164,47 @@ async fn permission_autorise_refuse_cache_erreur_vaut_refus() {
         "{raison}"
     );
 }
+
+#[tokio::test]
+async fn controle_et_manifeste_via_aegis() {
+    let http = client_http();
+    let a = faux(|r| match r.chemin.as_str() {
+        "/v1/check" => {
+            let c: Value = serde_json::from_slice(&r.corps).unwrap();
+            (200, vec![], corps(json!({ "allowed": c["sub"] == "u1" })))
+        }
+        _ => (200, vec![], corps(json!({ "changed": true }))),
+    })
+    .await;
+    let check = PermissionChecker::aegis(http.clone(), &a.url, "jeton-pli", "pli:deposit");
+    assert_eq!(check.source(), "aegis");
+    assert!(check.check(&json!("u1"), 0).await.allowed);
+    assert!(!check.check(&json!("u2"), 0).await.allowed);
+    check.envoyer_manifeste().await.unwrap();
+    let vu = a.requetes();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&vu[0].corps).unwrap(),
+        json!({ "sub": "u1", "permission": "pli:deposit" })
+    );
+    let m = vu.iter().find(|r| r.chemin == "/v1/manifest").unwrap();
+    assert_eq!(
+        (m.methode.as_str(), m.entete("authorization").as_str()),
+        ("PUT", "Bearer jeton-pli")
+    );
+    let m: Value = serde_json::from_slice(&m.corps).unwrap();
+    assert_eq!(
+        (m["app"].as_str(), m["permissions"][0]["key"].as_str()),
+        (Some("pli"), Some("deposit"))
+    );
+
+    let refuse = faux(|_| (401, vec![], vec![])).await;
+    let raison = PermissionChecker::aegis(http, &refuse.url, "t", "pli:deposit")
+        .check(&json!("u1"), 0)
+        .await
+        .reason
+        .unwrap();
+    assert!(
+        raison.contains("aegis") && raison.contains("AEGIS_TOKEN"),
+        "{raison}"
+    );
+}

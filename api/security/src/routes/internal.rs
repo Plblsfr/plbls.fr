@@ -22,14 +22,15 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Deserialize)]
 struct Params {
-    /// Début d'e-mail, non vide (pas d'export de tous les comptes).
+    /// Début d'e-mail. Vide : tous les comptes, seulement si `GATEWAY__INTERNAL__LIST_ALL=true` (synchronisation d'aegis).
+    #[serde(default)]
     email: String,
     #[serde(default)]
     first: u32,
     max: Option<u32>,
 }
 
-/// `GET /internal/users?email=jean&first=0&max=20` → `{users: [{id, email}], first, max, next}`.
+/// `GET /internal/users?email=jean&first=0&max=20` → `{users: [{id, email, name}], first, max, next}`.
 /// `next` = valeur de `first` de la page suivante, `null` en dernière page. Une page peut contenir moins de
 /// `max` comptes (ceux dont seul le nom correspond sont écartés) : on s'arrête quand `next` est `null`.
 async fn users(
@@ -49,7 +50,7 @@ async fn users(
             .into_response();
     }
     let prefix = p.email.trim().to_lowercase();
-    if prefix.is_empty() {
+    if prefix.is_empty() && !state.settings.internal.list_all {
         return (StatusCode::BAD_REQUEST, "email requis").into_response();
     }
     let max = p
@@ -66,9 +67,12 @@ async fn users(
     let next = (found.len() as u32 == max).then(|| p.first + max);
     let users: Vec<_> = found
         .into_iter()
-        .filter_map(|u| Some((u.id, u.email?)))
-        .filter(|(_, email)| email.to_lowercase().starts_with(&prefix))
-        .map(|(id, email)| json!({"id": id, "email": email}))
+        .filter_map(|u| {
+            let nom = u.nom();
+            Some((u.id, u.email?, nom))
+        })
+        .filter(|(_, email, _)| email.to_lowercase().starts_with(&prefix))
+        .map(|(id, email, nom)| json!({"id": id, "email": email, "name": nom}))
         .collect();
     (
         [(header::CACHE_CONTROL, "no-store")],
