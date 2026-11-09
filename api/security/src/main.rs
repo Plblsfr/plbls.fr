@@ -78,7 +78,6 @@ async fn main() -> anyhow::Result<()> {
         .merge(routes::health::router())
         .merge(routes::assets::router())
         .merge(routes::web::router())
-        .merge(routes::mcp::router())
         .merge(routes::internal::router())
         .merge(routes::proxy::router())
         .layer(middleware::from_fn_with_state(

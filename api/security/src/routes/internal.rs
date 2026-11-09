@@ -10,14 +10,24 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use subtle::ConstantTimeEq;
 
-use super::mcp::bearer_matches;
 use crate::AppState;
 
 const DEFAULT_MAX: u32 = 20;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/internal/users", get(users))
+}
+
+/// Compare le Bearer reçu au token statique, à temps constant.
+fn bearer_matches(headers: &HeaderMap, token: &[u8]) -> bool {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split_once(' '))
+        .filter(|(s, _)| s.eq_ignore_ascii_case("bearer"))
+        .is_some_and(|(_, t)| bool::from(t.trim().as_bytes().ct_eq(token)))
 }
 
 #[derive(Deserialize)]

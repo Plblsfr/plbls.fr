@@ -15,7 +15,6 @@ services:
       AEGIS__GATEWAY__URL: ${AEGIS__GATEWAY__URL:-}
       AEGIS__GATEWAY__INTERNAL_TOKEN: ${AEGIS__GATEWAY__INTERNAL_TOKEN:-}
       AEGIS__RESSOURCES__ALLOWED_HOSTS: ${AEGIS__RESSOURCES__ALLOWED_HOSTS:-estompe-api}
-      AEGIS__MCP__TOKEN: ${AEGIS__MCP__TOKEN:-}
       RUST_LOG: ${RUST_LOG:-info}
     depends_on: [aegis-redis]
     expose: ["8080"]

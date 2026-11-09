@@ -7,7 +7,6 @@ admin_role = "permission-admin"
 
 # database.url : PERMISSION__DATABASE__URL (.env)
 # identity.secret : PERMISSION__IDENTITY__SECRET (le même que GATEWAY__IDENTITY__SECRET)
-# mcp.token : PERMISSION__MCP__TOKEN (vide = MCP désactivé)
 # services.tokens : PERMISSION__SERVICES__TOKENS, "nom:token,nom2:token2" (micro-services autorisés à interroger
 #                   les permissions de n'importe quel compte)
 # gateway.url / gateway.internal_token : PERMISSION__GATEWAY__URL (ex. http://gateway:8080) et PERMISSION__GATEWAY__INTERNAL_TOKEN
