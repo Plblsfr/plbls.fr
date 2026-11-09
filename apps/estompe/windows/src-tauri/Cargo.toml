@@ -25,13 +25,15 @@ bobyn = { path = "bobyn/crates/app" }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-single-instance = "2" # une seule instance par utilisateur (EST-113)
+slint = { version = "=1.18.1", optional = true, default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts"] }
+base64 = { version = "0.22", optional = true }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 # Capture d'écran et de fenêtres (sélecteur de partage, façon Discord) : le webview ne sait pas désigner une source précise
 [target.'cfg(windows)'.dependencies]
 xcap = { version = "0.9", default-features = false, features = ["image", "wgc"] } # wgc : Windows Graphics Capture, pour les fenêtres accélérées par le GPU (navigateurs, jeux)
 tauri-winrt-notification = "0.8" # toasts avec boutons (déjà tiré par tauri-plugin-notification)
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
 webview2-com = "0.39"
 windows-core = "0.62"
 # Partage d'écran natif (EST-18) : capture en Rust puis publication WebRTC sans repasser par le webview (SDK LiveKit).
@@ -42,6 +44,7 @@ livekit = { version = "0.9", optional = true, default-features = false, features
 
 [features]
 livekit-native = ["dep:livekit", "dep:wasapi"]
+overlay-natif = ["dep:slint", "dep:base64", "image/png", "image/webp", "image/gif"]
 
 # Binaire léger : cible de moins de 20 Mo
 [profile.release]

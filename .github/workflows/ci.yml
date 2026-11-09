@@ -211,6 +211,9 @@ jobs:
       - name: Tests de l'app Windows
         working-directory: apps/estompe/windows/src-tauri
         run: cargo test --lib
+      - name: Tests de l'overlay natif (feature overlay-natif)
+        working-directory: apps/estompe/windows/src-tauri
+        run: cargo test --lib --features overlay-natif overlay_natif
       - name: Tests du crate commun
         working-directory: apps/estompe/crates/core
         run: cargo test

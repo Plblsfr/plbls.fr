@@ -1,6 +1,7 @@
 mod bobyn;
 mod foreground;
 mod mesures;
+mod overlay_natif;
 mod replays;
 mod capture;
 mod screen_native;
@@ -96,6 +97,7 @@ pub fn run() {
             foreground::foreground_info, capture::capture_sources, capture::capture_thumb, capture::capture_self,
             toast::toast_show, screen_native::screen_native_start, screen_native::screen_native_stop,
             mesures::mesures_demarrer, mesures::mesures_arreter, mesures::mesures_systeme, webview2_options::webview2_options_get, webview2_options::webview2_options_set,
+            overlay_natif::overlay_natif_disponible, overlay_natif::overlay_natif_afficher, overlay_natif::overlay_natif_fermer,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear]);
     // La fenêtre se masque au lieu de se fermer (bureau uniquement : sur mobile, c'est le système qui gère l'app).
         let builder = builder.on_window_event(|w, e| match e {

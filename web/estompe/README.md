@@ -127,6 +127,11 @@ L'interrupteur « Options d'économie de mémoire de WebView2 » (Paramètres �
 les désactiver au prochain démarrage et comparer les mesures. Une variable `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` déjà définie est laissée telle quelle.
 Les options actives figurent dans le journal de debug et dans l'export de mesures.
 
+### Overlay natif (expérimental)
+
+Feature cargo `overlay-natif`, désactivée par défaut : overlay des participants du vocal rendu par Slint, avec son moteur logiciel, dans une fenêtre Win32 transparente,
+sans webview. Fonctionnement, rendu comparé et mesures restantes : [docs/estompe/overlay-natif.md](../../docs/estompe/overlay-natif.md).
+
 ## Applications Android et iOS (hors stores)
 
 Même code Tauri 2 que l'app Windows, projet Android commité dans `apps/estompe/android/src-tauri/gen/android` (capacités mobiles : `apps/estompe/android/src-tauri/capabilities/mobile.json`). Connexion en PKCE dans le navigateur système ; redirection `fr.plbls.estompe:/callback` (schéma privé, RFC 8252) au lieu du serveur loopback, que le système suspend avec l'app. **Le client Keycloak `plbls-android` (public, PKCE) doit accepter l'URI de redirection `fr.plbls.estompe:/callback`.** La connexion en cours (state, verifier PKCE) est gardée dans le stockage de l'app pendant 10 minutes : si Android recharge la page ou relance l'app pendant que l'utilisateur est dans le navigateur, la page suivante échange le code reçu au lieu de le perdre ; une redirection reçue hors connexion est ignorée, et un échec de l'échange s'affiche sans renvoyer vers Keycloak. Mise à jour intégrée : l'app lit `/updates/android.json` (version et SHA-256 publiés par `release-android.sh`), télécharge l'APK, vérifie sa somme (le natif refuse un APK dont la somme diffère) et ouvre l'installeur Android (permission « installer des applications inconnues » demandée au premier essai) ; la première installation reste manuelle. Le refresh token n'est pas conservé (pas de coffre natif branché) : reconnexion à chaque lancement.
