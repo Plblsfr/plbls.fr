@@ -128,7 +128,7 @@ async fn autoriser(state: &AppState, sub: &str) -> Result<(), Response> {
     if !state.config().jellyfin_actif() {
         return Err(text_error(StatusCode::NOT_FOUND, "404 page not found"));
     }
-    match state.droit(sub, estompe_core::permission::FILMS).await {
+    match state.droit(sub, estompe_core::catalogue::FILMS).await {
         Ok(true) => Ok(()),
         Ok(false) => Err(write_err(
             StatusCode::FORBIDDEN,

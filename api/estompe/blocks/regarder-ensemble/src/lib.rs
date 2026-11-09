@@ -153,7 +153,7 @@ async fn spectateurs(state: &AppState, ids: Vec<String>) -> Vec<String> {
             continue;
         };
         if matches!(
-            state.droit(sub, estompe_core::permission::FILMS).await,
+            state.droit(sub, estompe_core::catalogue::FILMS).await,
             Ok(true)
         ) {
             sortie.push(id);
@@ -236,7 +236,8 @@ async fn salon_vocal(
     .await
     .map_err(bd)?
     .ok_or_else(|| introuvable("introuvable"))?;
-    let acces = roles::access_for(pool, &serveur, &user.id)
+    let acces = state
+        .acces_serveur(&serveur, &user.id)
         .await
         .map_err(bd)?
         .ok_or_else(|| introuvable("introuvable"))?;
@@ -490,7 +491,7 @@ async fn serveur(
     if !uuid_valide(&id) {
         return introuvable("serveur introuvable");
     }
-    let acces = match roles::access_for(pool, &id, &user.id).await {
+    let acces = match state.acces_serveur(&id, &user.id).await {
         Ok(Some(a)) => a,
         Ok(None) => return introuvable("serveur introuvable"),
         Err(e) => return bd(e),

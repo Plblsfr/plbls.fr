@@ -162,7 +162,8 @@ async fn salon_vocal(state: &AppState, cid: &str, user: &User) -> Result<Salon, 
     .await
     .map_err(bd)?
     .ok_or_else(|| introuvable("introuvable"))?;
-    let acces = roles::access_for(pool, &serveur, &user.id)
+    let acces = state
+        .acces_serveur(&serveur, &user.id)
         .await
         .map_err(bd)?
         .ok_or_else(|| introuvable("introuvable"))?;

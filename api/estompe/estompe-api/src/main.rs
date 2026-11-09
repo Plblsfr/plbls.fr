@@ -136,6 +136,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("{}", routes(&Set::all()).1.to_yaml()?);
         return Ok(());
     }
+    if std::env::args().nth(1).as_deref() == Some("--manifeste-aegis") {
+        let blocs = estompe_block::actifs(&block_list(), &Set::all());
+        let url = std::env::var("AEGIS_RESOURCES_URL")
+            .unwrap_or_else(|_| "http://estompe-api:8080".into());
+        println!(
+            "{:#}",
+            estompe_core::catalogue::manifeste(&blocs, url.trim_end_matches('/'))
+        );
+        return Ok(());
+    }
     tracing_subscriber::fmt()
         .event_format(journal_json::FormatJson)
         .with_env_filter(
@@ -167,6 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if set.has("vocal") {
         estompe_block_vocal::brancher(&state);
     }
+    estompe_core::aegis::demarrer(state.clone());
     if set.has("videos") {
         estompe_block_videos::brancher(&state);
     }
@@ -245,6 +256,51 @@ mod tests {
                     .collect::<Vec<_>>()
             })
             .collect()
+    }
+
+    #[test]
+    fn chaque_route_releve_d_une_permission_ou_d_une_exception() {
+        use estompe_core::catalogue::{CATALOGUE, HORS_PERMISSION, classer, motif_couvre};
+        let ops: Vec<(axum::http::Method, String)> = operations(&spec())
+            .into_iter()
+            .map(|(chemin, m)| {
+                (
+                    axum::http::Method::from_bytes(m.to_uppercase().as_bytes()).unwrap(),
+                    chemin,
+                )
+            })
+            .collect();
+        let mut erreurs = Vec::new();
+        for (m, chemin) in &ops {
+            let c = classer(m, chemin);
+            match (c.permissions.len(), c.exceptions.len()) {
+                (1, 0) | (0, 1) => {}
+                (0, 0) => erreurs.push(format!(
+                    "{m} {chemin} : aucune permission ; l'ajouter aux routes d'une entrée de CATALOGUE ou, avec un motif, à HORS_PERMISSION"
+                )),
+                _ => erreurs.push(format!("{m} {chemin} : ambigu, couvert par {:?} et {:?}", c.permissions, c.exceptions)),
+            }
+        }
+        let couvre = |motif: &'static str| ops.iter().any(|(m, c)| motif_couvre(motif, m, c));
+        for e in CATALOGUE {
+            for r in e.routes.iter().filter(|r| !couvre(r)) {
+                erreurs.push(format!(
+                    "{} : le motif « {r} » ne correspond à aucune route",
+                    e.cle
+                ));
+            }
+        }
+        for (r, _) in HORS_PERMISSION.iter().filter(|(r, _)| !couvre(r)) {
+            erreurs.push(format!(
+                "HORS_PERMISSION : « {r} » ne correspond à aucune route"
+            ));
+        }
+        assert!(
+            erreurs.is_empty(),
+            "{} écart(s) :\n{}",
+            erreurs.len(),
+            erreurs.join("\n")
+        );
     }
 
     #[test]

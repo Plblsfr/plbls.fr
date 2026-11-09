@@ -132,6 +132,7 @@ pub struct Decision {
 
 pub struct PermissionChecker {
     http: reqwest::Client,
+    aegis: bool,
     url: String,
     token: String,
     permission: String,
@@ -143,11 +144,55 @@ impl PermissionChecker {
     pub fn new(http: reqwest::Client, url: &str, token: &str, permission: &str) -> Self {
         Self {
             http,
+            aegis: false,
             url: sans_slash_final(url).to_string(),
             token: token.to_string(),
             permission: permission.to_string(),
             ttl_ms: 30_000,
             cache: Mutex::default(),
+        }
+    }
+
+    pub fn aegis(http: reqwest::Client, url: &str, token: &str, permission: &str) -> Self {
+        Self {
+            aegis: true,
+            ..Self::new(http, url, token, permission)
+        }
+    }
+
+    pub fn source(&self) -> &'static str {
+        if self.aegis { "aegis" } else { "permission" }
+    }
+
+    pub async fn envoyer_manifeste(&self) -> Result<(), String> {
+        let cle = self
+            .permission
+            .strip_prefix("pli:")
+            .ok_or_else(|| format!("{} n'appartient pas à pli", self.permission))?;
+        let manifeste = json!({
+            "app": "pli",
+            "name": "pli",
+            "description": "Dépôt de fichiers chiffrés",
+            "permissions": [{
+                "key": cle,
+                "category": "Dépôts",
+                "label": "Déposer des fichiers",
+                "description": "Déposer des fichiers chiffrés à partager par lien",
+                "open_default": false,
+            }],
+        });
+        let res = self
+            .http
+            .put(format!("{}/v1/manifest", self.url))
+            .bearer_auth(&self.token)
+            .json(&manifeste)
+            .send()
+            .await
+            .map_err(|e| format!("aegis injoignable ({})", cause(&e)))?;
+        if res.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("aegis a répondu HTTP {}", res.status().as_u16()))
         }
     }
 
@@ -165,13 +210,19 @@ impl PermissionChecker {
             allowed: false,
             reason: Some(reason),
         };
+        let source = self.source();
         let injoignable =
-            |e: &reqwest::Error| refus(format!("permission injoignable depuis pli ({})", cause(e)));
+            |e: &reqwest::Error| refus(format!("{source} injoignable depuis pli ({})", cause(e)));
+        let corps = if self.aegis {
+            json!({ "sub": user_id, "permission": self.permission })
+        } else {
+            json!({ "user_id": user_id, "permission": self.permission })
+        };
         let res = match self
             .http
             .post(format!("{}/v1/check", self.url))
             .bearer_auth(&self.token)
-            .json(&json!({ "user_id": user_id, "permission": self.permission }))
+            .json(&corps)
             .send()
             .await
         {
@@ -180,12 +231,14 @@ impl PermissionChecker {
         };
         let statut = res.status().as_u16();
         if !res.status().is_success() {
-            let indice = if statut == 401 {
-                " (token de service refusé : vérifier PERMISSION_SERVICE_TOKEN et PERMISSION__SERVICES__TOKENS)"
-            } else {
-                ""
+            let indice = match (statut, self.aegis) {
+                (401, false) => {
+                    " (token de service refusé : vérifier PERMISSION_SERVICE_TOKEN et PERMISSION__SERVICES__TOKENS)"
+                }
+                (401, true) => " (jeton refusé : vérifier AEGIS_TOKEN et AEGIS__SERVICES__TOKENS)",
+                _ => "",
             };
-            return refus(format!("permission a répondu HTTP {statut}{indice}"));
+            return refus(format!("{source} a répondu HTTP {statut}{indice}"));
         }
         let corps: Value = match res.json().await {
             Ok(v) => v,

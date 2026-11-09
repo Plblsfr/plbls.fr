@@ -121,7 +121,8 @@ struct Salon {
     perms: Perm,
 }
 
-async fn salon_vocal(pool: &PgPool, cid: &str, user: &str) -> Result<Salon, Response> {
+async fn salon_vocal(state: &AppState, cid: &str, user: &str) -> Result<Salon, Response> {
+    let pool = state.pool().map_err(IntoResponse::into_response)?;
     if !uuid_valide(cid) {
         return Err(introuvable());
     }
@@ -135,7 +136,8 @@ async fn salon_vocal(pool: &PgPool, cid: &str, user: &str) -> Result<Salon, Resp
     .await
     .map_err(bd)?
     .ok_or_else(introuvable)?;
-    let acces = roles::access_for(pool, &serveur, user)
+    let acces = state
+        .acces_serveur(&serveur, user)
         .await
         .map_err(bd)?
         .ok_or_else(introuvable)?;
@@ -159,11 +161,12 @@ async fn salon_vocal(pool: &PgPool, cid: &str, user: &str) -> Result<Salon, Resp
 }
 
 async fn serveur_acces(
-    pool: &PgPool,
+    state: &AppState,
     id: &str,
     user: &str,
     besoin: Perm,
 ) -> Result<(String, Access), Response> {
+    let pool = state.pool().map_err(IntoResponse::into_response)?;
     if !uuid_valide(id) {
         return Err(serveur_introuvable());
     }
@@ -177,7 +180,8 @@ async fn serveur_acces(
     .await
     .map_err(bd)?
     .ok_or_else(serveur_introuvable)?;
-    let acces = roles::access_for(pool, id, user)
+    let acces = state
+        .acces_serveur(id, user)
         .await
         .map_err(bd)?
         .ok_or_else(internal)?;
@@ -332,7 +336,7 @@ async fn jeton(
     Query(q): Query<HashMap<String, String>>,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let salon = salon_vocal(pool, param(&p, "cid"), &u.id).await?;
+    let salon = salon_vocal(&state, param(&p, "cid"), &u.id).await?;
     if !roles::contient(salon.perms, roles::CONNECT) {
         return Ok(write_err(
             StatusCode::FORBIDDEN,
@@ -394,7 +398,7 @@ async fn presents(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (_, acces) = serveur_acces(pool, param(&p, "id"), &u.id, 0).await?;
+    let (_, acces) = serveur_acces(&state, param(&p, "id"), &u.id, 0).await?;
     let lk = Lk::new(&state.config().livekit);
     let mut sortie: Vec<(String, Vec<Participant>)> = Vec::new();
     for cid in salons_vocaux(pool, param(&p, "id")).await.map_err(bd)? {
@@ -433,8 +437,8 @@ async fn moderer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let salon = salon_vocal(pool, param(&p, "cid"), &u.id).await?;
-    let (proprietaire, acces) = serveur_acces(pool, &salon.serveur, &u.id, 0).await?;
+    let salon = salon_vocal(&state, param(&p, "cid"), &u.id).await?;
+    let (proprietaire, acces) = serveur_acces(&state, &salon.serveur, &u.id, 0).await?;
     let cible = param(&p, "uid");
     if !uuid_valide(cible) || cible == u.id || cible == proprietaire {
         return Ok(write_err(
@@ -453,7 +457,8 @@ async fn moderer(
             "JSON invalide",
         ));
     };
-    let Some(acces_cible) = roles::access_for(pool, &salon.serveur, cible)
+    let Some(acces_cible) = state
+        .acces_serveur(&salon.serveur, cible)
         .await
         .map_err(bd)?
     else {
@@ -512,7 +517,7 @@ async fn journal(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    serveur_acces(pool, param(&p, "id"), &u.id, roles::VIEW_AUDIT_LOG).await?;
+    serveur_acces(&state, param(&p, "id"), &u.id, roles::VIEW_AUDIT_LOG).await?;
     let lignes = sqlx::query_as::<_, (String, String, String, String, bool, bool)>(sqlx::AssertSqlSafe(format!(
         "SELECT to_char(at AT TIME ZONE 'UTC', '{HORODATAGE}'), channel_id::text, actor::text, target::text, mic_off, sound_off
          FROM voice_mod_log WHERE server_id=$1::uuid ORDER BY id DESC LIMIT 100"
@@ -539,7 +544,7 @@ async fn statistiques(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    serveur_acces(pool, param(&p, "id"), &u.id, 0).await?;
+    serveur_acces(&state, param(&p, "id"), &u.id, 0).await?;
     let lignes = sqlx::query_as::<_, (String, i64)>(
         "SELECT user_id::text, SUM(secs)::bigint FROM (
             SELECT user_id, seconds AS secs FROM voice_stats WHERE server_id=$1::uuid
@@ -687,13 +692,13 @@ struct Cible {
 
 async fn cible_presente(
     state: &AppState,
-    pool: &PgPool,
+    _pool: &PgPool,
     user: &str,
     p: &HashMap<String, String>,
     besoin: Perm,
 ) -> Result<Cible, Response> {
-    let salon = salon_vocal(pool, param(p, "cid"), user).await?;
-    let (proprietaire, acces) = serveur_acces(pool, &salon.serveur, user, 0).await?;
+    let salon = salon_vocal(state, param(p, "cid"), user).await?;
+    let (proprietaire, acces) = serveur_acces(state, &salon.serveur, user, 0).await?;
     if !acces.can(besoin) {
         return Err(interdit());
     }
@@ -708,7 +713,8 @@ async fn cible_presente(
             "ce membre ne peut pas être visé",
         ));
     }
-    let acces_cible = roles::access_for(pool, &salon.serveur, uid)
+    let acces_cible = state
+        .acces_serveur(&salon.serveur, uid)
         .await
         .map_err(bd)?
         .ok_or_else(membre_introuvable)?;
@@ -886,7 +892,7 @@ async fn synchroniser(state: &AppState, serveur: &str, user: &str) {
             if !user.is_empty() && q.user_id != user {
                 continue;
             }
-            let Ok(Some(acces)) = roles::access_for(pool, serveur, &q.user_id).await else {
+            let Ok(Some(acces)) = state.acces_serveur(serveur, &q.user_id).await else {
                 continue;
             };
             let perms = acces.channel(&cid);

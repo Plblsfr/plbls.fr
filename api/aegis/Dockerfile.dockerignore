@@ -1,0 +1,12 @@
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!api
+!docs/security
+!docs/permission
+!docs/aegis
+**/target
+**/node_modules
+**/dist
+**/.env

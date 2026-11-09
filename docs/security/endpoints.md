@@ -13,7 +13,7 @@ Neuf endpoints propres au service, plus le proxy `/api/*` défini par la config.
 | GET | `/healthz` | — | Liveness |
 | GET | `/readyz` | — | Readiness : Redis joignable |
 | POST | `/mcp` | Bearer statique (`GATEWAY__MCP__TOKEN`) | Serveur MCP : docs et routes configurées pour les assistants. `404` si le token est vide |
-| GET | `/internal/users?email=&first=&max=` | Bearer statique (`GATEWAY__INTERNAL__TOKEN`) | Interne : comptes dont l'e-mail commence par `email` (insensible à la casse), paginé (`max` 20 par défaut, plafonné par `GATEWAY__INTERNAL__MAX_PAGE_SIZE`, 100 par défaut). Réponse `{users:[{id,email}], first, max, next}` ; `next` = `first` de la page suivante, `null` si dernière. `404` si le token est vide |
+| GET | `/internal/users?email=&first=&max=` | Bearer statique (`GATEWAY__INTERNAL__TOKEN`) | Interne : comptes dont l'e-mail commence par `email` (insensible à la casse ; vide = tous les comptes, seulement avec `GATEWAY__INTERNAL__LIST_ALL=true`), paginé (`max` 20 par défaut, plafonné par `GATEWAY__INTERNAL__MAX_PAGE_SIZE`, 100 par défaut). Réponse `{users:[{id,email,name}], first, max, next}` ; `next` = `first` de la page suivante, `null` si dernière. `404` si le token est vide |
 | * | `/api/{prefix}/...` | Selon la route | Proxy vers le micro-service avec en-têtes d'identité |
 
 ## Réponse de `GET /auth/me`

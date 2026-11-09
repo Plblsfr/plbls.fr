@@ -140,7 +140,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.pli_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -158,6 +158,11 @@ jobs:
         ports: ["5433:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+      redis:
+        image: redis:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install
@@ -171,7 +176,7 @@ jobs:
           key: rust-test-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: rust-test-v1-
       - name: Tests de l'API Estompe (PostgreSQL 17)
-        if: needs.changements.outputs.estompe_api == 'true'
+        if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true'
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
@@ -180,6 +185,12 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5433/postgres
         run: cargo test --locked -p pli
+      - name: Tests d'aegis (PostgreSQL 17, Redis)
+        if: needs.changements.outputs.aegis_server == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          TEST_REDIS_URL: redis://localhost:6379
+        run: cargo test --locked -p aegis
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -285,6 +296,18 @@ jobs:
       dir: api/permission
       test_target: test
 
+  image-aegis:
+    needs: changements
+    if: needs.changements.outputs.image_aegis == 'true'
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: aegis
+      name: aegis
+      context: .
+      dockerfile: api/aegis/Dockerfile
+      dir: api/aegis
+      test_target: test
+
   image-security:
     needs: changements
     if: needs.changements.outputs.image_security == 'true'
@@ -311,7 +334,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-security, image-ui]
+    needs: [changements, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

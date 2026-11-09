@@ -331,6 +331,7 @@ pub async fn redirection_chemin(req: Request, next: Next) -> Response {
 
 pub fn envelopper(routes: Router<AppState>, state: AppState) -> Router {
     let interieur = routes
+        .layer(from_fn_with_state(state.clone(), crate::garde::garde))
         .layer(map_response(normaliser_404_405))
         .layer(axum::middleware::from_fn(redirection_chemin))
         .layer(from_fn_with_state(state.clone(), version_minimale))

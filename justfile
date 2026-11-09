@@ -38,7 +38,7 @@ ui-check:
     npm run ui:check
 
 # Tests qui ne demandent pas de base de données : vitest de tous les frontaux et de packages/ui, Rust de security et permission
-test: test-js test-security test-permission
+test: test-js test-security test-permission test-aegis
 
 test-js:
     npm test
@@ -48,6 +48,10 @@ test-security:
 
 test-permission:
     cargo test --locked -p permission
+
+# aegis : tests unitaires ; les tests d'intégration demandent TEST_DATABASE_URL (et TEST_REDIS_URL pour le cache)
+test-aegis:
+    cargo test --locked -p aegis
 
 test-ui:
     npm ci && npm test --workspace packages/ui
@@ -91,6 +95,19 @@ security-coverage:
     python3 scripts/security/check_coverage.py
 
 security-test-all: test-security security-coverage (security-dev "up") (security-dev "start") security-bruno security-ws security-refresh security-regressions
+
+# aegis : Postgres et Redis de dev en Docker (éphémères), backend sur 127.0.0.1:8091
+aegis-dev-up:
+    docker compose -f deploy/aegis/docker-compose.dev.yml up -d --wait
+
+aegis-dev-down:
+    docker compose -f deploy/aegis/docker-compose.dev.yml down
+
+aegis-dev-run:
+    cd api/aegis && set -a && . ../../deploy/aegis/dev.env && set +a && cargo run
+
+aegis-image:
+    docker build -f api/aegis/Dockerfile -t aegis:local .
 
 # permission : Postgres de dev en Docker (éphémère), backend sur 127.0.0.1:8090
 permission-dev-up:

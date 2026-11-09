@@ -150,6 +150,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   (`isDesktop`, agent) : il appelle `platform` ; un comportement propre à une plateforme s'ajoute dans son dossier (voir `web/estompe/README.md`).
 - `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
+- Permissions : toute nouvelle route est rattachée à une permission de `api/estompe/core/src/catalogue.rs` (ou, avec un motif, à `HORS_PERMISSION`), et tout nouveau droit de serveur est plafonné par une permission ; les tests `estompe-api` et `estompe-core` l'imposent. Après un changement du catalogue : `AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour` régénère `docs/aegis/fonctionnalites.md`.
 - `deploy/estompe/` : stack Dokploy. Toute nouvelle variable d'environnement va dans `deploy/estompe/.env.example` et `deploy/estompe/docker-compose.yml`.
 - CI (détail : `docs/estompe/ci.md`) : en PR, `ci.yml` à la racine lance `rust-lint` et `rust-test` (API Rust : fmt, clippy, cargo-deny, tests avec PostgreSQL),
   `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`

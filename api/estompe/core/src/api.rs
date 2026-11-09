@@ -12,7 +12,7 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 use crate::{
-    db,
+    catalogue, db,
     http::{champ_texte, decode, internal, text_error, write_err, write_json},
     identity::{Erreur, Identity, cred_of},
     metrics::{Instantane, Stockage, Totaux},
@@ -34,6 +34,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .merge(crate::servers::router())
         .merge(crate::administration::router())
         .merge(crate::relais_permission::router())
+        .merge(crate::relais_aegis::router())
+        .merge(crate::aegis::router())
 }
 
 pub fn routes() -> Router<AppState> {
@@ -134,7 +136,7 @@ async fn readyz(State(state): State<AppState>) -> Response {
     }
 }
 
-fn jetons_egaux(a: &str, b: &str) -> bool {
+pub(crate) fn jetons_egaux(a: &str, b: &str) -> bool {
     let (a, b) = (Sha256::digest(a), Sha256::digest(b));
     a.iter().zip(b.iter()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
 }
@@ -243,21 +245,29 @@ enum Transcription {
     ))]
 async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
     let (Ok(droits), Ok(permissions)) = (
-        state.droits(&idn.sub).await,
+        state.droits_de(&idn).await,
         state.gere_permissions(&idn).await,
     ) else {
         return permission_indisponible();
     };
     let config = state.config();
-    let allowed = droits.a(&config.permission_name);
-    let admin = droits.a(permission::ADMIN);
-    let movies = config.jellyfin_actif() && droits.a(permission::FILMS);
+    let aegis = state.permissions().aegis_actif();
+    let allowed = droits.a(catalogue::ACCES);
+    let admin = catalogue::CATALOGUE
+        .iter()
+        .any(|e| e.admin() && droits.a(&e.nom()));
+    let movies = config.jellyfin_actif() && droits.a(catalogue::FILMS);
+    let capacites = droits.json("estompe:");
     let rights: Vec<&str> = [
         ("access", allowed),
         ("admin", admin),
         ("movies", movies),
-        ("permissions", permissions),
-        ("users", permissions && droits.a(permission::COMPTES)),
+        ("permissions", permissions && !aegis),
+        ("acces", permissions && aegis),
+        (
+            "users",
+            permissions && (aegis || droits.a(permission::COMPTES)),
+        ),
     ]
     .into_iter()
     .filter_map(|(nom, ok)| ok.then_some(nom))
@@ -269,7 +279,7 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
     match users::user_by_sub(pool, &idn.sub).await {
         Ok(None) => write_json(
             StatusCode::OK,
-            &json!({ "activated": false, "allowed": allowed, "admin": admin, "rights": rights }),
+            &json!({ "activated": false, "allowed": allowed, "admin": admin, "rights": rights, "capabilities": capacites }),
         ),
         Err(_) => internal(),
         Ok(Some(u)) => {
@@ -285,6 +295,7 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
                     "allowed": allowed,
                     "admin": admin,
                     "rights": rights,
+                    "capabilities": capacites,
                     "suspended": u.suspended,
                     "id": u.id,
                     "pseudo": u.pseudo,
@@ -587,8 +598,15 @@ mod tests {
         let Some(e) = env(&[], true).await else {
             return;
         };
-        let (s, v) = json_de(&e.app, "GET", "/me", "alice", None).await;
+        let (s, mut v) = json_de(&e.app, "GET", "/me", "alice", None).await;
         assert_eq!(s, StatusCode::OK);
+        let capacites = v.as_object_mut().unwrap().remove("capabilities").unwrap();
+        assert_eq!(
+            capacites["estompe:access"],
+            json!({"allow": ["*"], "deny": []})
+        );
+        assert!(capacites.get("estompe:admin.users").is_none());
+        assert!(capacites.get("permission:admin").is_none());
         assert_eq!(
             v,
             json!({ "activated": false, "allowed": true, "admin": false, "rights": ["access"] })
@@ -596,7 +614,8 @@ mod tests {
         let (s, v) = json_de(&e.app, "GET", "/me", "nope", None).await;
         assert_eq!((s, &v["allowed"]), (StatusCode::OK, &json!(false)));
         assert_eq!(v["rights"], json!([]));
-        let (_, v) = json_de(&e.app, "GET", "/me", "nope-kc", None).await;
+        let (_, mut v) = json_de(&e.app, "GET", "/me", "nope-kc", None).await;
+        v.as_object_mut().unwrap().remove("capabilities");
         assert_eq!(
             v,
             json!({ "activated": false, "allowed": false, "admin": false, "rights": ["permissions"] })
@@ -631,6 +650,7 @@ mod tests {
                 "admin",
                 "allowed",
                 "blocks",
+                "capabilities",
                 "id",
                 "max_video_size",
                 "movies",

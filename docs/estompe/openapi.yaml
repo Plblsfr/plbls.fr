@@ -59,10 +59,11 @@ paths:
                 type: object
                 properties:
                   allowed: {type: boolean}
-                  admin: {type: boolean, description: "permission `estompe:admin` (tableau de bord d'administration)"}
-                  rights: {type: array, items: {type: string, enum: [access, admin, movies, permissions, users]}, description: "droits du compte, lus en un appel à permission : `access` (`PERMISSION_NAME`), `admin` (`estompe:admin`), `movies` (`estompe:movies` et Jellyfin configuré), `permissions` (`permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`), `users` (`permission:users.read` en plus de `permissions`). Présent même sans compte activé"}
+                  admin: {type: boolean, description: "au moins une permission `estompe:admin.*` (tableau de bord d'administration)"}
+                  rights: {type: array, items: {type: string, enum: [access, admin, movies, permissions, acces, users]}, description: "droits du compte : `access` (`estompe:access`), `admin` (une permission `estompe:admin.*`), `movies` (`estompe:films.use` et Jellyfin configuré), `acces` (administration des accès d'aegis : `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, avec `AEGIS_URL`), `permissions` (ancien service permission, sans `AEGIS_URL`), `users` (recherche de comptes). Présent même sans compte activé"}
+                  capabilities: {type: object, additionalProperties: {type: object, properties: {allow: {type: array, items: {type: string}}, deny: {type: array, items: {type: string}}}}, description: "permissions `estompe:*` accordées : ressources autorisées (`*` = tous les serveurs) et refusées. Confort d'affichage ; le contrôle se fait côté API"}
                   activated: {type: boolean}
-                  movies: {type: boolean, description: "permission `estompe:movies` et Jellyfin configuré : accès à l'onglet Films et séries"}
+                  movies: {type: boolean, description: "permission `estompe:films.use` et Jellyfin configuré : accès à l'onglet Films et séries"}
                   max_video_size: {type: integer, description: "taille maximale d'une vidéo en octets (`MAX_VIDEO_SIZE_MB`, 100 Mo par défaut)"}
                   transcription: {type: string, enum: ["", alpha, "on"], description: "transcription des messages vocaux : désactivée (`TRANSCRIBE_URL` vide), `alpha` (`TRANSCRIBE_ALPHA`, défaut : réservée aux fonctions alpha débloquées côté client) ou `on` pour tous"}
                   blocks: {type: array, items: {type: string}, description: "blocs actifs du backend (variables `BLOCK_<NOM>=false` pour en désactiver) : un bloc absent n'a pas ses routes"}
@@ -801,6 +802,274 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {description: forbidden}
         "503": {description: permission_unavailable}
+  /admin/acces/catalog:
+    get:
+      tags: [administration]
+      summary: "Catalogue : applications, types de ressource et permissions déclarés. Relayé vers `/v1/admin/catalog` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/resources/{app}/{type}:
+    get:
+      tags: [administration]
+      summary: "Instances d'un type de ressource (serveurs…). Relayé vers `/v1/admin/resources/{app}/{type}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/permissions/{name}/holders:
+    get:
+      tags: [administration]
+      summary: "Rôles, groupes et comptes qui mentionnent une permission. Relayé vers `/v1/admin/permissions/{name}/holders` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/permissions/purge-obsolete:
+    post:
+      tags: [administration]
+      summary: "Supprimer les permissions obsolètes. Relayé vers `/v1/admin/permissions/purge-obsolete` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/accounts:
+    get:
+      tags: [administration]
+      summary: "Annuaire des comptes (recherche par e-mail, nom ou sub). Relayé vers `/v1/admin/accounts` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/accounts/{sub}:
+    get:
+      tags: [administration]
+      summary: "Fiche d'un compte : rôles, groupes, règles directes. Relayé vers `/v1/admin/accounts/{sub}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/accounts/{sub}/effective:
+    get:
+      tags: [administration]
+      summary: "Droits effectifs expliqués d'un compte. Relayé vers `/v1/admin/accounts/{sub}/effective` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/accounts/{sub}/copy:
+    post:
+      tags: [administration]
+      summary: "Copier les droits d'un autre compte. Relayé vers `/v1/admin/accounts/{sub}/copy` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/accounts/{sub}/grants:
+    delete:
+      tags: [administration]
+      summary: "Retirer tous les droits d'un compte. Relayé vers `/v1/admin/accounts/{sub}/grants` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/simulate:
+    post:
+      tags: [administration]
+      summary: "Simuler une décision (compte, permission, ressource). Relayé vers `/v1/admin/simulate` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/roles:
+    get:
+      tags: [administration]
+      summary: "Rôles. Relayé vers `/v1/admin/roles` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    post:
+      tags: [administration]
+      summary: "Rôles. Relayé vers `/v1/admin/roles` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/roles/{id}:
+    get:
+      tags: [administration]
+      summary: "Un rôle et ses règles. Relayé vers `/v1/admin/roles/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    put:
+      tags: [administration]
+      summary: "Un rôle et ses règles. Relayé vers `/v1/admin/roles/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    delete:
+      tags: [administration]
+      summary: "Un rôle et ses règles. Relayé vers `/v1/admin/roles/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/groups:
+    get:
+      tags: [administration]
+      summary: "Groupes de comptes. Relayé vers `/v1/admin/groups` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    post:
+      tags: [administration]
+      summary: "Groupes de comptes. Relayé vers `/v1/admin/groups` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/groups/{id}:
+    get:
+      tags: [administration]
+      summary: "Un groupe. Relayé vers `/v1/admin/groups/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    put:
+      tags: [administration]
+      summary: "Un groupe. Relayé vers `/v1/admin/groups/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    delete:
+      tags: [administration]
+      summary: "Un groupe. Relayé vers `/v1/admin/groups/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/groups/{id}/members/{sub}:
+    put:
+      tags: [administration]
+      summary: "Membre d'un groupe. Relayé vers `/v1/admin/groups/{id}/members/{sub}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    delete:
+      tags: [administration]
+      summary: "Membre d'un groupe. Relayé vers `/v1/admin/groups/{id}/members/{sub}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/bindings:
+    get:
+      tags: [administration]
+      summary: "Liaisons rôle → compte ou groupe. Relayé vers `/v1/admin/bindings` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    post:
+      tags: [administration]
+      summary: "Liaisons rôle → compte ou groupe. Relayé vers `/v1/admin/bindings` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/bindings/{id}:
+    delete:
+      tags: [administration]
+      summary: "Retirer une liaison. Relayé vers `/v1/admin/bindings/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/rules:
+    get:
+      tags: [administration]
+      summary: "Règles directes (accorder ou refuser). Relayé vers `/v1/admin/rules` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    post:
+      tags: [administration]
+      summary: "Règles directes (accorder ou refuser). Relayé vers `/v1/admin/rules` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/rules/{id}:
+    put:
+      tags: [administration]
+      summary: "Une règle directe. Relayé vers `/v1/admin/rules/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+    delete:
+      tags: [administration]
+      summary: "Une règle directe. Relayé vers `/v1/admin/rules/{id}` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /admin/acces/audit:
+    get:
+      tags: [administration]
+      summary: "Journal des modifications. Relayé vers `/v1/admin/audit` d'aegis (via `/api/aegis` du gateway) avec le justificatif de l'appelant ; permission `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, sans compte Estompe"
+      responses:
+        "200": {description: "réponse d'aegis"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {description: forbidden}
+        "503": {description: permission_unavailable}
+  /internal/aegis/resources/{type}:
+    get:
+      tags: [interne]
+      summary: "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN`, réseau interne ; 404 sans aegis"
+      responses:
+        "200": {description: ok}
+        "401": {description: unauthorized}
+        "404": {description: not_found}
   /admin/overview:
     get:
       tags: [administration]

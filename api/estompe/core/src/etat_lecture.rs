@@ -172,7 +172,7 @@ async fn conversation(
     if dm {
         conv_du_dm(pool, param(&p.0, "id"), user).await
     } else {
-        conv_du_salon(pool, param(&p.0, "cid"), user).await
+        conv_du_salon(state, param(&p.0, "cid"), user).await
     }
 }
 

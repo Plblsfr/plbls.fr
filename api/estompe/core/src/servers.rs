@@ -413,7 +413,7 @@ pub(crate) async fn serveur_pour(
 }
 
 pub async fn acces(
-    pool: &PgPool,
+    state: &AppState,
     u: &User,
     id: &str,
     besoin: Perm,
@@ -421,11 +421,13 @@ pub async fn acces(
     if !uuid_valide(id) {
         return Err(non_trouve("serveur introuvable"));
     }
+    let pool = state.pool().map_err(IntoResponse::into_response)?;
     let sv = serveur_pour(pool, id, &u.id)
         .await
         .map_err(bd)?
         .ok_or_else(|| non_trouve("serveur introuvable"))?;
-    let acc = roles::access_for(pool, &sv.id, &u.id)
+    let acc = state
+        .acces_serveur(&sv.id, &u.id)
         .await
         .map_err(bd)?
         .ok_or_else(internal)?;
@@ -612,7 +614,7 @@ async fn voir(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), 0).await?;
     let (salons, membres, roles_liste, roles_membres) = tokio::try_join!(
         salons(pool, &sv.id),
         membres(pool, &sv.id),
@@ -666,7 +668,7 @@ async fn renommer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::MANAGE_SERVER).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_SERVER).await?;
     let entree = decode(body).await?;
     let brut = champ_texte(&entree, "name").ok_or_else(mauvais)?;
     let Some(nom) = nom_propre(&brut, 50) else {
@@ -699,7 +701,7 @@ async fn supprimer(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), 0).await?;
     if sv.owner_id != u.id {
         return Ok(write_err(
             StatusCode::FORBIDDEN,
@@ -723,7 +725,7 @@ async fn quitter(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), 0).await?;
     if sv.owner_id == u.id {
         return Ok(write_err(
             StatusCode::CONFLICT,
@@ -763,7 +765,7 @@ async fn creer_salon(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, acc) = acces(pool, &u, param(&p, "id"), 0).await?;
+    let (sv, acc) = acces(&state, &u, param(&p, "id"), 0).await?;
     let e = decode(body).await?;
     let nom_brut = champ_texte(&e, "name").ok_or_else(mauvais)?;
     let kind = champ_texte(&e, "kind").ok_or_else(mauvais)?;
@@ -1009,7 +1011,7 @@ async fn renommer_salon(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
     let entree = decode(body).await?;
     let brut = champ_texte(&entree, "name").ok_or_else(mauvais)?;
@@ -1051,7 +1053,7 @@ async fn ordonner(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let e = decode(body).await?;
     let kind = champ_texte(&e, "kind").ok_or_else(mauvais)?;
     let ids_nul = matches!(champ(&e, "ids"), None | Some(Value::Null));
@@ -1124,7 +1126,7 @@ async fn supprimer_salon(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
     let r = sqlx::query("DELETE FROM channels WHERE id=$2::uuid AND server_id=$1::uuid")
         .bind(&sv.id)
@@ -1152,7 +1154,7 @@ async fn lister_invitations(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::CREATE_INVITES).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::CREATE_INVITES).await?;
     let l: Vec<Value> = sqlx::query_as::<_, (String, String, String, i32, Option<i32>, Option<String>)>(
         sqlx::AssertSqlSafe(format!(
             "SELECT i.code, i.created_at::text, u.pseudo, i.uses, i.max_uses, {} FROM server_invites i JOIN users u ON u.id = i.created_by
@@ -1198,7 +1200,7 @@ async fn creer_invitation(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::CREATE_INVITES).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::CREATE_INVITES).await?;
     let octets = to_bytes(body, CORPS_MAX).await.map_err(|_| mauvais())?;
     let e = if octets.is_empty() {
         Map::new()
@@ -1242,7 +1244,7 @@ async fn revoquer(
     Path(p): Params,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
-    let (sv, _) = acces(pool, &u, param(&p, "id"), roles::CREATE_INVITES).await?;
+    let (sv, _) = acces(&state, &u, param(&p, "id"), roles::CREATE_INVITES).await?;
     let r = sqlx::query(
         "UPDATE server_invites SET revoked_at=now() WHERE server_id=$1::uuid AND code=$2 AND revoked_at IS NULL",
     )

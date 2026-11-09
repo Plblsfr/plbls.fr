@@ -373,7 +373,7 @@
       ></textarea>
       {#if text.length > 3500}<span class="composer-count" class:over={text.length >= 3900}>{text.length} / 4000</span>{/if}
       <span class="gif-anchor">
-        {#if app.on('gifs')}<button class="v-ib composer-ib" onclick={() => { gif ? closeGif() : (gif = true); emoji = false; plus = false }} aria-label="GIF" aria-expanded={gif} title="GIF"><Icon name="gif" /></button>{/if}
+        {#if app.on('gifs') && app.peut('gifs.use')}<button class="v-ib composer-ib" onclick={() => { gif ? closeGif() : (gif = true); emoji = false; plus = false }} aria-label="GIF" aria-expanded={gif} title="GIF"><Icon name="gif" /></button>{/if}
         {#if gif}<GifPicker onpick={sendGif} onclose={closeGif} />{/if}
       </span>
       <span class="emoji-anchor">

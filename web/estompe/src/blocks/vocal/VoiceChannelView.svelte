@@ -107,7 +107,7 @@
       {:else}
         {#if !watching}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (startOpen = 'watch')} aria-label="Regarder ensemble" title="Regarder ensemble (vidéo)"><Icon name="tele" size={16} /><span class="vc-txt">Regarder ensemble</span></button>{/if}
         {#if !listening}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (startOpen = 'music')} aria-label="Écouter ensemble" title="Écouter ensemble (Music2gether)"><Icon name="note" size={16} /><span class="vc-txt">Écouter ensemble</span></button>{/if}
-        {#if app.on('draw2gether') && !playing}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void startGame()} aria-label="Draw2Gether" title="Draw2Gether (dessiner et deviner)"><Icon name="pinceau" size={16} /><span class="vc-txt">Draw2Gether</span></button>{/if}
+        {#if app.on('draw2gether') && app.peut('draw2gether.use') && !playing}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void startGame()} aria-label="Draw2Gether" title="Draw2Gether (dessiner et deviner)"><Icon name="pinceau" size={16} /><span class="vc-txt">Draw2Gether</span></button>{/if}
       {/if}
       <button class="ib" aria-pressed={theater} onclick={() => (theater = !theater)} aria-label="Mode plein cadre" title="Mode plein cadre"><Icon name={theater ? 'reduire' : 'agrandir'} /></button>
     </span>

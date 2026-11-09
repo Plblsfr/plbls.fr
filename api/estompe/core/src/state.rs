@@ -15,14 +15,16 @@ use axum::{
 use sqlx::PgPool;
 
 use crate::{
+    catalogue,
     config::Config,
     http::text_error,
     hub::Hub,
     identity::{Identity, Resolver},
     messages::{Conv, EvenementMessage},
     metrics::Metrics,
-    permission::{ADMIN_PERMISSION, Client, Droits, Indisponible},
+    permission::{ADMIN_PERMISSION, Client, Droits, Indisponible, Profil},
     ratelimit::Limiteurs,
+    roles::{self, Access, Perm},
     updates::{self, Policy},
 };
 
@@ -190,11 +192,16 @@ impl AppState {
     ) -> Self {
         AppState(Arc::new(Inner {
             identity: Resolver::with_now(&config.gateway_url, now.clone()),
-            permission: Client::with_now(
-                &config.permission_url,
-                &config.permission_token,
-                now.clone(),
-            ),
+            permission: if config.aegis.actif() {
+                Client::aegis(&config.aegis.url, &config.aegis.token, now.clone())
+            } else {
+                Client::permission(
+                    &config.permission_url,
+                    &config.permission_token,
+                    &config.permission_name,
+                    now.clone(),
+                )
+            },
             pool: OnceLock::new(),
             blocs_actifs,
             metrics: Metrics::default(),
@@ -225,8 +232,25 @@ impl AppState {
         &self.0.identity
     }
 
+    pub fn permissions(&self) -> &Client {
+        &self.0.permission
+    }
+
     pub async fn droits(&self, sub: &str) -> Result<Droits, Indisponible> {
         self.0.permission.droits(sub).await
+    }
+
+    pub async fn droits_de(&self, idn: &Identity) -> Result<Droits, Indisponible> {
+        self.0
+            .permission
+            .droits_de(
+                &idn.sub,
+                Some(Profil {
+                    email: &idn.email,
+                    nom: &idn.username,
+                }),
+            )
+            .await
     }
 
     pub async fn droit(&self, sub: &str, nom: &str) -> Result<bool, Indisponible> {
@@ -234,18 +258,50 @@ impl AppState {
     }
 
     pub async fn acces(&self, sub: &str) -> Result<bool, Indisponible> {
-        self.droit(sub, &self.0.config.permission_name).await
+        self.droit(sub, catalogue::ACCES).await
+    }
+
+    pub fn role_admin_permissions(&self) -> &str {
+        if self.0.permission.aegis_actif() {
+            &self.0.config.aegis.admin_role
+        } else {
+            &self.0.config.permission_admin_role
+        }
     }
 
     pub async fn gere_permissions(&self, idn: &Identity) -> Result<bool, Indisponible> {
-        if idn
-            .roles
-            .iter()
-            .any(|r| r == &self.0.config.permission_admin_role)
-        {
+        if idn.roles.iter().any(|r| r == self.role_admin_permissions()) {
             return Ok(true);
         }
-        self.droit(&idn.sub, ADMIN_PERMISSION).await
+        let nom = if self.0.permission.aegis_actif() {
+            catalogue::ADMIN_AEGIS
+        } else {
+            ADMIN_PERMISSION
+        };
+        Ok(self.droits_de(idn).await?.a(nom))
+    }
+
+    pub async fn acces_serveur(
+        &self,
+        server_id: &str,
+        user_id: &str,
+    ) -> Result<Option<Access>, sqlx::Error> {
+        let pool = self.pool().map_err(|_| sqlx::Error::PoolClosed)?;
+        let Some(mut a) = roles::access_for(pool, server_id, user_id).await? else {
+            return Ok(None);
+        };
+        a.retire = self.plafond(&a.sub, server_id).await;
+        Ok(Some(a))
+    }
+
+    pub async fn plafond(&self, sub: &str, server_id: &str) -> Perm {
+        let droits = self.droits(sub).await;
+        catalogue::plafonnees()
+            .filter(|e| match &droits {
+                Ok(d) => !d.a_sur(&e.nom(), server_id),
+                Err(_) => true,
+            })
+            .fold(0, |p, e| p | e.plafond)
     }
 
     pub fn blocs_actifs(&self) -> &[String] {

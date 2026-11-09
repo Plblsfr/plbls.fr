@@ -58,7 +58,7 @@
   <div class="cj">
     {#if error}<div class="plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>{/if}
     <div class="cj-choix">
-      <form class="cj-bloc" onsubmit={create}>
+      {#if app.peut('servers.create')}<form class="cj-bloc" onsubmit={create}>
         <span class="cj-icone rose" aria-hidden="true"><Icon name="plus" size={22} /></span>
         <div class="plbls-field">
           <label class="plbls-field__label cj-titre" for="srv-name">Créer un serveur</label>
@@ -68,8 +68,8 @@
           <div class="cj-apercu v-note"><span class="cj-pave" aria-hidden="true">{initials(name.trim())}</span>Aperçu dans la barre des serveurs</div>
         {/if}
         <button class="plbls-button plbls-button--block" disabled={busy || !name.trim()}>Créer</button>
-      </form>
-      <form class="cj-bloc" onsubmit={join}>
+      </form>{/if}
+      {#if app.peut('servers.join')}<form class="cj-bloc" onsubmit={join}>
         <span class="cj-icone" aria-hidden="true"><Icon name="lien" size={22} /></span>
         <div class="plbls-field">
           <label class="plbls-field__label cj-titre" for="srv-code">Rejoindre avec un lien ou un code</label>
@@ -77,7 +77,7 @@
           <span class="plbls-field__aide" id="srv-code-aide">Colle un lien d'invitation complet, ou juste le code.</span>
         </div>
         <button class="plbls-button plbls-button--contour plbls-button--block" disabled={busy || !invite.trim()}>Rejoindre</button>
-      </form>
+      </form>{/if}
     </div>
   </div>
 </Modal>

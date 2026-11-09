@@ -44,6 +44,23 @@ pub struct TokenResponse {
 pub struct KcUser {
     pub id: String,
     pub email: Option<String>,
+    #[serde(default, rename = "firstName")]
+    pub first_name: Option<String>,
+    #[serde(default, rename = "lastName")]
+    pub last_name: Option<String>,
+}
+
+impl KcUser {
+    pub fn nom(&self) -> Option<String> {
+        let nom = [self.first_name.as_deref(), self.last_name.as_deref()]
+            .into_iter()
+            .flatten()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        (!nom.is_empty()).then_some(nom)
+    }
 }
 
 #[derive(Debug, Deserialize)]
