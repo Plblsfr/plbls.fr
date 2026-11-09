@@ -5,7 +5,7 @@
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import { countRsvp, localInput, playable, sessionPhase, when } from './videos'
-  import { joinSession } from './videos.svelte'
+  import { joinSession } from './seance'
   import type { Rsvp, VideoList, VideoPost, WatchSession } from '../../lib/types'
 
   let { channelId, serverId, sessions, posts, lists, planList = '', onplanned }: {

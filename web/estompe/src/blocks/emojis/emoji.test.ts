@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { EMOJI_GROUPS, codeAt, completeCode, emojiByCode, loadEmojiRows, loadRecents, pushRecent, reactionTitle, searchEmojis, type EmojiRow } from './emoji'
 
 let data: EmojiRow[]
@@ -67,5 +67,26 @@ describe('reactionTitle', () => {
     expect(reactionTitle({ emoji: '😂', users: [u('bob')] }, 'me')).toBe('bob a réagi avec 😂')
     expect(reactionTitle({ emoji: '😂', users: [u('bob'), u('me')] }, 'me')).toBe('bob et Toi ont réagi avec 😂')
     expect(reactionTitle({ emoji: '👍', users: [u('a'), u('b'), u('c'), u('d'), u('e')] }, 'me')).toBe('a, b, c et 2 autres ont réagi avec 👍')
+  })
+})
+
+describe('chargement à la demande', () => {
+  it('réessaie au prochain besoin après un échec, sans garder la promesse rejetée', async () => {
+    vi.resetModules()
+    let essais = 0
+    vi.doMock('./emoji-data.json', () => {
+      essais++
+      if (essais === 1) throw new Error('hors ligne')
+      return { default: [['😂', 'joy', ['lol'], [], 'visage qui pleure de rire', 0]] }
+    })
+    const m = await import('./emoji')
+    await expect(m.loadEmojiRows()).rejects.toThrow()
+    expect(m.emojiByCode('joy')).toBeUndefined()
+    const rows = await m.loadEmojiRows()
+    expect(rows).toHaveLength(1)
+    expect(m.emojiByCode('lol')).toBe('😂')
+    expect(essais).toBe(2)
+    vi.doUnmock('./emoji-data.json')
+    vi.resetModules()
   })
 })
