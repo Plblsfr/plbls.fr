@@ -3,8 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use aegis::{
     AppState, MIGRATIONS, identity,
     settings::{
-        Annuaire, Cache, Database, Gateway, Identity, Mcp, Redis, Ressources, Server, Services,
-        Settings,
+        Annuaire, Cache, Database, Gateway, Identity, Redis, Ressources, Server, Services, Settings,
     },
 };
 use axum::{
@@ -100,7 +99,6 @@ async fn banc() -> Option<Banc> {
             prefix: base.clone(),
         },
         cache: Cache::default(),
-        mcp: Mcp::default(),
         services: Services {
             tokens: "estompe:jeton-estompe,pli:jeton-pli".into(),
         },

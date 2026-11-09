@@ -60,11 +60,3 @@ Le front unique sert l'administration de permission dans Estompe (section « per
 `permission-admin` ou `permission:admin`). Un compte qui n'a que le rôle Keycloak `permission-admin` se connecte à Estompe et n'y voit que
 cette page, sans compte Estompe à activer (`PERMISSION_ADMIN_ROLE` côté Estompe, même valeur que `server.admin_role`). Ce compte doit
 aussi porter le rôle demandé par la route `/api/permission` du gateway (`user`).
-
-## MCP (assistants IA)
-
-`POST /mcp` avec `Authorization: Bearer <PERMISSION__MCP__TOKEN>` (désactivé si vide). Outils : `list_docs`, `get_doc`, `get_openapi`, `list_operations`.
-
-```sh
-claude mcp add --transport http permission https://permission.plbls.fr/mcp --header "Authorization: Bearer <token>"
-```

@@ -47,7 +47,6 @@ impl AppState {
     pub fn routeur(&self) -> axum::Router {
         let (api, _) = routes::api().split_for_parts();
         api.merge(routes::openapi::router())
-            .merge(routes::mcp::router())
             .layer(tower_http::trace::TraceLayer::new_for_http())
             .with_state(self.clone())
     }

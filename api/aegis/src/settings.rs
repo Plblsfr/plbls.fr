@@ -10,8 +10,6 @@ pub struct Settings {
     #[serde(default)]
     pub cache: Cache,
     #[serde(default)]
-    pub mcp: Mcp,
-    #[serde(default)]
     pub services: Services,
     #[serde(default)]
     pub gateway: Gateway,
@@ -61,12 +59,6 @@ impl Default for Cache {
 
 fn ttl_defaut() -> u64 {
     600
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Mcp {
-    #[serde(default)]
-    pub token: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

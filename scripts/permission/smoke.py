@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Test de bout en bout contre un backend lancé (just permission-dev-up permission-dev-run). Signe les en-têtes comme auth-gateway."""
-import json
 import os
 import sys
 import time
 
-from devlib import BASE, call, req, sign
+from devlib import call, sign
 
 SVC = os.environ.get("SERVICE_TOKEN", "dev-chat-token")
 RUN = str(int(time.time()))[-6:]  # relançable sans nettoyage
@@ -73,12 +72,6 @@ expect("le service reste non admin même avec ce nom", call("GET", "/v1/apps", s
 expect("l'application réservée ne se supprime pas", call("DELETE", "/v1/apps/permission", admin)[0], 400)
 expect("révocation de permission/admin", call("DELETE", f"/v1/assignments?user_id=bob{RUN}&app=permission&role=admin", admin)[0], 204)
 expect("bob n'administre plus", call("GET", "/v1/apps", bob)[0], 403)
-
-# MCP
-def mcp(token, msg):
-    return req(BASE + "/mcp", "POST", {"Authorization": f"Bearer {token}"}, json.dumps(msg).encode())[0]
-expect("MCP sans bon token -> 401", mcp("x", {"id": 1, "method": "ping"}), 401)
-expect("MCP avec token", mcp(os.environ.get("PERMISSION__MCP__TOKEN", "dev-mcp-token"), {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}), 200)
 
 print("\n" + ("TOUT EST OK" if not fails else f"{fails} ÉCHEC(S)"))
 sys.exit(1 if fails else 0)

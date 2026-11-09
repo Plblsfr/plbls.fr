@@ -28,8 +28,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/estompe/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
-- Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/`
-  (y ajouter ses docs embarquées par `include_str!`, comme `docs/security` et `docs/permission`) ; le groupe `rust` de `.github/workflows/_changements.yml`
+- Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`
   couvre `api/**`, lui ajouter ses groupes d'image et de tests.
 - Exception : les apps Tauri d'Estompe (`apps/estompe/{crates,windows,android}`) restent hors du workspace, avec leur `Cargo.lock` et la toolchain stable.
 - Contrôles : `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`.

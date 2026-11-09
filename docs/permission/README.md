@@ -10,4 +10,4 @@ Remplacé par [aegis](../aegis/README.md) : ce service reste en place jusqu'à l
 | [integration.md](integration.md) | Brancher un micro-service ou un frontend, exemples |
 | [architecture.md](architecture.md) | Stack, authentification, sécurité, décisions |
 
-Spec OpenAPI : `GET /openapi.json` (ou outil MCP `get_openapi`).
+Spec OpenAPI : `GET /openapi.json`.

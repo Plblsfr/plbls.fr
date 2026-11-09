@@ -2,9 +2,9 @@
 
 Gestion des **permissions** des comptes plbls.fr (RBAC par application). Les comptes et l'authentification sont dans [security.plbls.fr](../security/README.md) (auth-gateway + Keycloak). Rust + Axum + Postgres, frontend Svelte 5.
 
-- `api/permission/` (ce dossier) : API REST (`/v1/...`), spec OpenAPI générée depuis le code (`/openapi.json`), serveur MCP (`/mcp`), sert aussi le front compilé ; membre du workspace Cargo racine (`../../Cargo.toml`), image construite depuis la racine du dépôt (`just permission-image`)
+- `api/permission/` (ce dossier) : API REST (`/v1/...`), spec OpenAPI générée depuis le code (`/openapi.json`), sert aussi le front compilé ; membre du workspace Cargo racine (`../../Cargo.toml`), image construite depuis la racine du dépôt (`just permission-image`)
 - `web/permission/` : interface d'administration Svelte 5 + plbls-ui (applications, permissions, rôles, attributions, journal)
-- `docs/permission/` : modèle, intégration, architecture (embarquées dans le MCP)
+- `docs/permission/` : modèle, intégration, architecture
 - `deploy/permission/` : compose de production et de dev, `.env.example`, `dev.env`
 - `scripts/permission/smoke.py` : test de bout en bout de toute l'API
 
@@ -58,12 +58,10 @@ Le propriétaire de la base est nécessaire : les migrations créent leurs table
 
 - `PERMISSION__DATABASE__URL` = `postgres://permission:<mot-de-passe>@<hôte-postgres>:5432/permission` (`?sslmode=require` si l'instance l'impose)
 - `PERMISSION__IDENTITY__SECRET` (le même que `GATEWAY__IDENTITY__SECRET`)
-- `PERMISSION__SERVICES__TOKENS` et `PERMISSION__MCP__TOKEN` (optionnels)
+- `PERMISSION__SERVICES__TOKENS` (optionnel)
 
 Les migrations s'appliquent au démarrage. Avant le premier usage : rôle Keycloak `permission-admin`, route `/api/permission` dans le gateway ([docs/permission/integration.md](../../docs/permission/integration.md)), domaine `permission.plbls.fr`.
 
 ## Configuration
 
 `api/permission/config/default.toml`, puis variables `PERMISSION__SECTION__CLE`. Secrets uniquement dans l'environnement.
-
-Serveur MCP : `claude mcp add --transport http permission https://permission.plbls.fr/mcp --header "Authorization: Bearer <token>"`.

@@ -41,8 +41,6 @@ Le conteneur écoute sur `127.0.0.1:8080` : le TLS est terminé par le reverse p
 
 `config/default.toml`, puis le fichier `GATEWAY_CONFIG`, puis les variables `GATEWAY__SECTION__CLE` (ex. `GATEWAY__OIDC__ISSUER`). Les secrets ne sont que dans l'environnement.
 
-Serveur MCP (documentation pour les assistants) : `POST https://security.plbls.fr/mcp` avec `Authorization: Bearer <GATEWAY__MCP__TOKEN>`. Désactivé si le token est vide. Exemple : `claude mcp add --transport http auth-gateway https://security.plbls.fr/mcp --header "Authorization: Bearer <token>"`.
-
 ## Contrat avec les micro-services
 
 Voir [docs/security/gateway.md](../../docs/security/gateway.md). Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `src/identity.rs` (`verify`) est la référence pour vérifier `X-Identity-Sig`.

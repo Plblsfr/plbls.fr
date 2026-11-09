@@ -6,8 +6,6 @@ pub struct Settings {
     pub database: Database,
     pub identity: Identity,
     #[serde(default)]
-    pub mcp: Mcp,
-    #[serde(default)]
     pub services: Services,
     #[serde(default)]
     pub gateway: Gateway,
@@ -41,13 +39,6 @@ pub struct Database {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Identity {
     pub secret: String,
-}
-
-/// Serveur MCP : désactivé (404) tant que `token` est vide.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Mcp {
-    #[serde(default)]
-    pub token: String,
 }
 
 /// Micro-services autorisés à interroger les permissions de n'importe quel compte.

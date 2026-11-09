@@ -134,6 +134,19 @@ describe('moteur de synchronisation', () => {
     vi.useRealTimers()
   })
 
+  it('signale une vidéo qui ne se charge pas, et plus dès que le lecteur répond', () => {
+    const t = setup()
+    t.push({ rev: 2, video: 'w' })
+    expect(t.e.phase).toBe('loading')
+    vi.advanceTimersByTime(14000)
+    expect(t.e.slow).toBe(false)
+    vi.advanceTimersByTime(2000)
+    expect(t.e.slow).toBe(true)
+    t.e.observe('playing')
+    expect(t.e.slow).toBe(false)
+    vi.useRealTimers()
+  })
+
   it('l\'état reçu est appliqué au lecteur sans jamais produire de commande', () => {
     const t = setup()
     t.push({ rev: 2, playing: false, pos: 42, act: 'pause' })

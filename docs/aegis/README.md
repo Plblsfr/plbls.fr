@@ -12,7 +12,7 @@ applications déclarent leurs permissions, un administrateur règle les droits d
 | [interface.md](interface.md) | Écrans d'administration dans Estompe |
 
 Code : `api/aegis` (Rust, Axum, sqlx, Redis). Déploiement : `deploy/aegis`. Tag de livraison : `aegis-vX.Y.Z`.
-Spec OpenAPI générée depuis le code : `GET /openapi.json`. MCP (assistants) : `POST /mcp` avec `AEGIS__MCP__TOKEN`.
+Spec OpenAPI générée depuis le code : `GET /openapi.json`.
 
 ## En dev
 
