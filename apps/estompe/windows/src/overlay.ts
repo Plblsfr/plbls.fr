@@ -42,6 +42,10 @@ export function overlayPosition(corner: OverlayCorner, mon: { x: number; y: numb
   return { x: corner.endsWith('l') ? left : right, y: corner.startsWith('t') ? top : corner.startsWith('m') ? middle : bottom }
 }
 
+export function overlayPlacement(pos: { x: number; y: number }, win: { w: number; h: number }, sf: number) {
+  return { x: Math.round(pos.x * sf), y: Math.round(pos.y * sf), largeur: Math.round(win.w * sf), hauteur: Math.round(win.h * sf), echelle: sf }
+}
+
 export const BOBYN_OVERLAY_SIZE = { w: 300, h: 30 }
 
 export interface BobynOverlayState { dot: 'rec' | 'pause' | 'error' | 'saved' | 'marker'; text: string }

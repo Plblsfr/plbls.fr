@@ -3,6 +3,10 @@
   import { notify } from '../../../../web/estompe/src/lib/ui'
   import { checkGlobalPtt } from './ptt-global'
   import { overlayAccelerator, OVERLAY_POS } from './overlay'
+  import { invoke } from '../../crates/core/ts/tauri'
+
+  let natifDisponible = $state(false)
+  invoke<boolean>('overlay_natif_disponible').then((v) => (natifDisponible = v)).catch(() => {})
 
   let capturingOverlay = $state<'overlayKey' | 'msgReplyKey' | 'msgOpenKey' | null>(null)
   async function captureOverlayKey(e: KeyboardEvent) {
@@ -37,6 +41,13 @@
       <option value="all">Tous les participants</option><option value="speaking">Seulement ceux qui parlent</option>
     </select>
   </div>
+  {#if natifDisponible}
+    <label class="plbls-toggle">
+      <input class="plbls-toggle__input" type="checkbox" bind:checked={prefs.overlayNatif} onchange={() => prefs.save()} />
+      <span class="plbls-toggle__piste"></span>
+      <span class="plbls-toggle__texte">Overlay natif, sans webview (expérimental)</span>
+    </label>
+  {/if}
   <div class="row">
     <span class="small">Masquer / afficher : <kbd>{prefs.overlayKey.replace(/Key/g, '')}</kbd></span>
     {#if capturingOverlay === 'overlayKey'}

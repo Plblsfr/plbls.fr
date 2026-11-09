@@ -5,7 +5,7 @@ import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 import { avatars } from '../../../../web/estompe/src/blocks/avatars/avatars.svelte'
 import { registerGlobalPtt } from './ptt-global'
 import { notify } from '../../../../web/estompe/src/lib/ui'
-import { overlayItems, overlayPosition, overlaySize, overlayVisible, type OverlayState } from './overlay'
+import { overlayItems, overlayPlacement, overlayPosition, overlaySize, overlayVisible, type OverlayState } from './overlay'
 
 const LABEL = 'overlay'
 const POLL_MS = 2000
@@ -55,14 +55,43 @@ function snapshot(): OverlayState | null {
 let queue: Promise<void> = Promise.resolve()
 let last: OverlayState | null = null
 
+let natifDisponible: boolean | null = null
+let natifAffiche = false
+
+async function natif(): Promise<boolean> {
+  if (!prefs.overlayNatif) return false
+  if (natifDisponible === null) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    natifDisponible = await invoke<boolean>('overlay_natif_disponible').catch(() => false)
+  }
+  return natifDisponible
+}
+
+async function fermerNatif() {
+  if (!natifAffiche) return
+  natifAffiche = false
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('overlay_natif_fermer')
+}
+
 async function apply(s: OverlayState | null) {
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
   let w = await WebviewWindow.getByLabel(LABEL)
-  if (!s) { await w?.destroy(); return } // destroy : le « close » de la fenêtre principale est détourné en masquage
+  const enNatif = !!s && await natif()
+  if (!s || enNatif) await w?.destroy()
+  if (!enNatif) await fermerNatif()
+  if (!s) return
   const { currentMonitor, LogicalPosition, LogicalSize } = await import('@tauri-apps/api/window')
   const size = overlaySize(s.size, s.items.length)
   const mon = await foregroundMonitor() ?? await currentMonitor()
   const pos = mon ? overlayPosition(prefs.overlayCorner, { x: mon.position.x, y: mon.position.y, w: mon.size.width, h: mon.size.height, sf: mon.scaleFactor }, size) : { x: 16, y: 16 }
+  if (enNatif) {
+    const items = await Promise.all(s.items.map(async (i) => ({ ...i, avatar: await dataUrl(i.avatar) })))
+    const { invoke } = await import('@tauri-apps/api/core')
+    await invoke('overlay_natif_afficher', { etat: { size: s.size, items }, placement: overlayPlacement(pos, size, mon?.scaleFactor ?? 1) })
+    natifAffiche = true
+    return
+  }
   if (!w) {
     w = new WebviewWindow(LABEL, {
       url: 'index.html#overlay', x: pos.x, y: pos.y, width: size.w, height: size.h,
@@ -84,6 +113,7 @@ export function startOverlay() {
   $effect.root(() => {
     $effect(() => {
       const s = snapshot()
+      void prefs.overlayNatif
       last = s
       queue = queue.then(() => apply(s)).catch((e) => console.warn('overlay', e))
     })

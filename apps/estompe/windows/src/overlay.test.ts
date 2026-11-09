@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bobynOverlayState, msgOverlaySize, msgToastView, msgToastWanted, MSG_TOAST_SIZE, overlayAccelerator, overlayItems, overlayPosition, overlayVisible, overlaySize, pushMsgToast, sendMsgReply, type MsgToast, type OverlayItem } from './overlay'
+import { bobynOverlayState, msgOverlaySize, msgToastView, msgToastWanted, MSG_TOAST_SIZE, overlayAccelerator, overlayItems, overlayPlacement, overlayPosition, overlayVisible, overlaySize, pushMsgToast, sendMsgReply, type MsgToast, type OverlayItem } from './overlay'
 import { avatars } from '../../../../web/estompe/src/blocks/avatars/avatars.svelte'
 
 vi.mock('../../../../web/estompe/src/lib/api', () => ({
@@ -25,6 +25,11 @@ describe('overlay', () => {
     const br = overlayPosition('br', mon, win)
     expect(br.x).toBe(960 + 1920 - win.w - 16)
     expect(br.y).toBe(1080 - win.h - 16)
+  })
+  it('donne à l’overlay natif sa place et sa taille en pixels physiques', () => {
+    const mon = { x: 1920, y: 0, w: 3840, h: 2160, sf: 1.25 }
+    const win = overlaySize('md', 2)
+    expect(overlayPlacement(overlayPosition('tl', mon, win), win, 1.25)).toEqual({ x: 1940, y: 20, largeur: 325, hauteur: 120, echelle: 1.25 })
   })
   it('centre la fenêtre verticalement au milieu de l\'écran', () => {
     const mon = { x: 0, y: 0, w: 1920, h: 1080, sf: 1 }
