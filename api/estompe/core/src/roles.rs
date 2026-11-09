@@ -80,6 +80,10 @@ const KEYS: [(&str, Perm); 25] = [
     ("organize_watch", ORGANIZE_WATCH),
 ];
 
+pub fn toutes() -> &'static [(&'static str, Perm)] {
+    &KEYS
+}
+
 pub fn cles(p: Perm) -> Vec<&'static str> {
     KEYS.iter()
         .filter(|(_, q)| p & q == *q)

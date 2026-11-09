@@ -62,6 +62,12 @@ impl Droits {
         self.a_sur(nom, JOKER)
     }
 
+    pub fn quelque_part(&self, nom: &str) -> bool {
+        self.0
+            .get(nom)
+            .is_some_and(|a| !a.deny.contains(JOKER) && !a.allow.is_empty())
+    }
+
     pub fn a_sur(&self, nom: &str, ressource: &str) -> bool {
         self.0.get(nom).is_some_and(|a| a.autorise(ressource))
     }

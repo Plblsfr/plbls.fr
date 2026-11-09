@@ -31,6 +31,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 | `rust` | `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, tout `Dockerfile`, `api/**` (membres du workspace) | `rust-lint` |
 | `estompe_api` | `api/estompe/**`, `deploy/estompe/.env.example`, `docs/estompe/openapi.yaml`, `scripts/estompe/paquets-cargo.sh`, fichiers Cargo racine, `.dockerignore` | `rust-test` (Estompe), `estompe-api-image` ; sur `main` : image `:edge` de l'API |
 | `pli_server` | `api/pli/**`, fichiers Cargo racine | `rust-test` (pli) |
+| `catalogue_permissions` | `api/estompe/core/src/catalogue.rs`, `docs/aegis/fonctionnalites.md` (générée, vérifiée par un test) | `rust-test` (Estompe) |
 | `aegis_server` | `api/aegis/**`, `docs/aegis/**` (embarquées par le MCP), fichiers Cargo racine | `rust-test` (aegis, avec PostgreSQL et Redis) |
 | `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates`) | `estompe-tauri` |
 | `estompe` | `{api,web,apps,docs,deploy,scripts}/estompe/**`, `.version`, `CHANGELOG.md`, `changelog.d/**`, `agents/**` | `changelog` |

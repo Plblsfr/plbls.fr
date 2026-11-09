@@ -259,26 +259,48 @@ mod tests {
     }
 
     #[test]
-    fn chaque_permission_du_catalogue_protege_une_route_reelle() {
-        let ops = operations(&spec());
-        for e in estompe_core::catalogue::CATALOGUE
-            .iter()
-            .filter(|e| !e.routes.is_empty())
-        {
-            let couvertes = ops
-                .iter()
-                .filter(|(chemin, methode)| {
-                    let m =
-                        axum::http::Method::from_bytes(methode.to_uppercase().as_bytes()).unwrap();
-                    estompe_core::catalogue::garde(&m, chemin).is_some_and(|x| x.cle == e.cle)
-                })
-                .count();
-            assert!(
-                couvertes > 0,
-                "{} ne protège aucune route documentée",
-                e.cle
-            );
+    fn chaque_route_releve_d_une_permission_ou_d_une_exception() {
+        use estompe_core::catalogue::{CATALOGUE, HORS_PERMISSION, classer, motif_couvre};
+        let ops: Vec<(axum::http::Method, String)> = operations(&spec())
+            .into_iter()
+            .map(|(chemin, m)| {
+                (
+                    axum::http::Method::from_bytes(m.to_uppercase().as_bytes()).unwrap(),
+                    chemin,
+                )
+            })
+            .collect();
+        let mut erreurs = Vec::new();
+        for (m, chemin) in &ops {
+            let c = classer(m, chemin);
+            match (c.permissions.len(), c.exceptions.len()) {
+                (1, 0) | (0, 1) => {}
+                (0, 0) => erreurs.push(format!(
+                    "{m} {chemin} : aucune permission ; l'ajouter aux routes d'une entrée de CATALOGUE ou, avec un motif, à HORS_PERMISSION"
+                )),
+                _ => erreurs.push(format!("{m} {chemin} : ambigu, couvert par {:?} et {:?}", c.permissions, c.exceptions)),
+            }
         }
+        let couvre = |motif: &'static str| ops.iter().any(|(m, c)| motif_couvre(motif, m, c));
+        for e in CATALOGUE {
+            for r in e.routes.iter().filter(|r| !couvre(r)) {
+                erreurs.push(format!(
+                    "{} : le motif « {r} » ne correspond à aucune route",
+                    e.cle
+                ));
+            }
+        }
+        for (r, _) in HORS_PERMISSION.iter().filter(|(r, _)| !couvre(r)) {
+            erreurs.push(format!(
+                "HORS_PERMISSION : « {r} » ne correspond à aucune route"
+            ));
+        }
+        assert!(
+            erreurs.is_empty(),
+            "{} écart(s) :\n{}",
+            erreurs.len(),
+            erreurs.join("\n")
+        );
     }
 
     #[test]

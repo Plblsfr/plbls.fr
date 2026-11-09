@@ -25,7 +25,15 @@ pub async fn garde(State(state): State<AppState>, req: Request, next: Next) -> R
             "permission_unavailable",
             "service de permission injoignable",
         ),
-        Ok(d) if d.a(&entree.nom()) => next.run(Request::from_parts(parts, corps)).await,
+        Ok(d)
+            if if entree.serveur {
+                d.quelque_part(&entree.nom())
+            } else {
+                d.a(&entree.nom())
+            } =>
+        {
+            next.run(Request::from_parts(parts, corps)).await
+        }
         Ok(_) => write_err(
             StatusCode::FORBIDDEN,
             "forbidden",

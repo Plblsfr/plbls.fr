@@ -8,6 +8,7 @@ on:
       rust: { value: "${{ jobs.changements.outputs.rust }}" }
       estompe: { value: "${{ jobs.changements.outputs.estompe }}" }
       estompe_api: { value: "${{ jobs.changements.outputs.estompe_api }}" }
+      catalogue_permissions: { value: "${{ jobs.changements.outputs.catalogue_permissions }}" }
       estompe_tauri: { value: "${{ jobs.changements.outputs.estompe_tauri }}" }
       estompe_version: { value: "${{ jobs.changements.outputs.estompe_version }}" }
       estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
@@ -33,6 +34,7 @@ jobs:
       rust: ${{ steps.c.outputs.rust }}
       estompe: ${{ steps.c.outputs.estompe }}
       estompe_api: ${{ steps.c.outputs.estompe_api }}
+      catalogue_permissions: ${{ steps.c.outputs.catalogue_permissions }}
       estompe_tauri: ${{ steps.c.outputs.estompe_tauri }}
       estompe_version: ${{ steps.c.outputs.estompe_version }}
       estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
@@ -69,6 +71,7 @@ jobs:
           c estompe "${estompe[@]}"
           c estompe_api 'api/estompe/**' '!**/*.md' deploy/estompe/.env.example docs/estompe/openapi.yaml \
             scripts/estompe/paquets-cargo.sh "${cargo[@]}" .dockerignore
+          c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
           c estompe_tauri 'apps/estompe/**' '!**/*.md'
           c estompe_version 'api/estompe/**' 'web/estompe/**' 'apps/estompe/**' '!**/*.md'
           c estompe_ci_image 'deploy/estompe/ci/**'
@@ -79,7 +82,7 @@ jobs:
           c npm "${npm[@]}" 'scripts/*' biome.json tsconfig.base.json
           c npm_lock package-lock.json .nvmrc
           c front_ui 'packages/ui/**' '!**/*.md'
-          c front_estompe 'web/estompe/**' 'apps/estompe/*/src/**' 'apps/estompe/crates/core/ts/**' 'scripts/estompe/*.mjs' '!**/*.md'
+          c front_estompe 'web/estompe/**' 'apps/estompe/*/src/**' 'apps/estompe/crates/core/ts/**' 'scripts/estompe/*.mjs' api/estompe/core/src/catalogue.rs '!**/*.md'
           c front_permission 'web/permission/**' '!**/*.md'
           c front_pli 'web/pli/**' '!**/*.md'
           c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'web/pli/**' '!**/*.md' "${image[@]}"
