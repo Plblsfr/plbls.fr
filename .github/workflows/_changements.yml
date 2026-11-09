@@ -10,7 +10,6 @@ on:
       estompe_api: { value: "${{ jobs.changements.outputs.estompe_api }}" }
       catalogue_permissions: { value: "${{ jobs.changements.outputs.catalogue_permissions }}" }
       estompe_tauri: { value: "${{ jobs.changements.outputs.estompe_tauri }}" }
-      estompe_version: { value: "${{ jobs.changements.outputs.estompe_version }}" }
       estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
       pli_server: { value: "${{ jobs.changements.outputs.pli_server }}" }
       aegis_server: { value: "${{ jobs.changements.outputs.aegis_server }}" }
@@ -36,7 +35,6 @@ jobs:
       estompe_api: ${{ steps.c.outputs.estompe_api }}
       catalogue_permissions: ${{ steps.c.outputs.catalogue_permissions }}
       estompe_tauri: ${{ steps.c.outputs.estompe_tauri }}
-      estompe_version: ${{ steps.c.outputs.estompe_version }}
       estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
       pli_server: ${{ steps.c.outputs.pli_server }}
       aegis_server: ${{ steps.c.outputs.aegis_server }}
@@ -73,7 +71,6 @@ jobs:
             scripts/estompe/paquets-cargo.sh "${cargo[@]}" .dockerignore
           c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
           c estompe_tauri 'apps/estompe/**' '!**/*.md'
-          c estompe_version 'api/estompe/**' 'web/estompe/**' 'apps/estompe/**' '!**/*.md'
           c estompe_ci_image 'deploy/estompe/ci/**'
           c pli_server 'api/pli/**' '!**/*.md' "${cargo[@]}"
           c aegis_server 'api/aegis/**' 'docs/aegis/**' "${cargo[@]}"
