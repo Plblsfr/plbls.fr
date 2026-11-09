@@ -73,6 +73,7 @@
           <label class="plbls-checkbox watch-host"><input class="plbls-checkbox__input" type="checkbox" checked={s.host_only} onchange={(e) => void api.watchHostOnly(channelId, e.currentTarget.checked, kind).catch(fail)} /><span class="plbls-checkbox__case"></span><span class="plbls-checkbox__texte">Seul l'hôte pilote</span></label>
         {:else if s.host_only}<span class="v-tag"><Icon name="cadenas" size={12} /> Seul l'hôte pilote</span>{/if}
         {#if canDrive && queued}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={stop}><Icon name="suivant" size={14} /> {s.provider === 'film' ? 'Épisode suivant' : 'Suivante'}</button>{/if}
+        {#if player}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => player?.reload()} title="Recharger la vidéo chez moi seulement">Recharger</button>{/if}
         {#if canDrive}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void api.watchStop(channelId, kind).catch(fail)}>Arrêter</button>{/if}
       </div>
       <div class="watch-player" class:idle onpointermove={wake} onpointerdown={wake} onfocusin={wake} role="presentation">
@@ -87,7 +88,13 @@
         {#if player?.error}
           <div class="watch-msg plbls-alert plbls-alert--erreur" role="alert">
             <p class="plbls-alert__corps">{player.error}</p>
+            <button class="plbls-button plbls-button--compact" onclick={() => player?.reload()}>Recharger</button>
             {#if queued || canDrive}<button class="plbls-button plbls-button--compact" onclick={stop}>Passer à la suivante</button>{/if}
+          </div>
+        {:else if player?.slow}
+          <div class="watch-msg plbls-alert" role="alert">
+            <p class="plbls-alert__corps">La vidéo ne se charge pas.</p>
+            <button class="plbls-button plbls-button--compact" onclick={() => player?.reload()}><Icon name="lecture" size={16} /> Recharger</button>
           </div>
         {:else if player?.blocked}
           <button class="watch-msg plbls-button v-rose" onclick={() => player?.resume()}><Icon name="lecture" size={18} /> Lancer la lecture</button>
