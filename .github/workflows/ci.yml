@@ -21,7 +21,24 @@ env:
 
 jobs:
   changements:
+    if: github.head_ref != 'ci/version'
     uses: ./.github/workflows/_changements.yml
+
+  # PR de version (ci/version, ouverte par livraison.yml) : seul .version change, aucun autre job ne tourne.
+  version-seule:
+    if: github.head_ref == 'ci/version'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Seul .version change, au format attendu
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          autres="$(git diff --name-only "origin/$BASE_REF...HEAD" | grep -vx '.version' || true)"
+          [ -z "$autres" ] || { echo "::error::la PR de version ne doit modifier que .version, pas : $autres"; exit 1; }
+          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).sort().join(); if (k !== "android,api,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
 
   changelog:
     needs: changements
@@ -334,7 +351,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

@@ -71,8 +71,10 @@ Détails :
 - Éléments concernés = dossiers modifiés par la fusion : `api/estompe/` → api ; `web/estompe/plateforme/` → web ; `apps/estompe/windows/` → windows ;
   `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android.
   Une fusion qui ne touche que `docs/`, `scripts/`, la CI… ne change rien.
-- La CI calcule `.version` et ouvre une PR `ci/version-<sha>` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Fusionner cette PR (« merge »)
-  avant de poser un tag de livraison. Ne pas modifier `.version` dans une autre PR, sauf pour une version majeure.
+- À chaque fusion, la CI recalcule `.version` (toutes les fusions depuis la dernière modification de `.version` sur `main`) et met à jour une PR
+  unique `ci/version` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Cette PR ne modifie que `.version` : dans `ci.yml`, seul le job
+  `version-seule` tourne et vérifie qu'aucun autre fichier ne change. Fusionner cette PR (« merge ») avant de poser un tag de livraison.
+  Ne pas modifier `.version` dans une autre PR, sauf pour une version majeure (les fusions pas encore comptées repartent alors de cette valeur).
   Au build, `bump-version.mjs --apply` recopie les versions de `windows` et `android` dans `tauri.conf.json`, `Cargo.toml` et `Cargo.lock`
   (l'espace de travail seulement) ; l'app ne propose la mise à jour que si la version publiée a augmenté.
 - Le nom de la branche est lu dans le message du commit de fusion de GitHub (« … from feat/x into main »). **Fusionner en
