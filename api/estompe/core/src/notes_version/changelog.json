@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.89.2",
+    "date": "2026-11-09",
+    "new": [
+      "Windows : l'application consomme moins de mémoire.",
+      "Estompe démarre plus vite : les emojis ne se chargent qu'au moment où vous en avez besoin."
+    ],
+    "fixes": [
+      "Salon cinéma : un bouton « Recharger » relance un film resté sur un écran noir, à la position de la séance."
+    ]
+  },
+  {
     "version": "0.87.3",
     "date": "2026-11-08",
     "new": [],
