@@ -2,6 +2,7 @@
 //  - les éléments concernés sont ceux dont un dossier a changé dans la fusion (ELEMENTS) ;
 //  - fusion d'une branche feat/… = minor +1 (patch remis à 0), tout autre = patch +1, sauf release/… (notes de version) qui ne change rien.
 // Le nom de la branche est lu dans le sujet du commit de fusion de GitHub (« Merge pull request #1 from <compte>/feat/x »).
+// Les fusions en attente (depuis le dernier commit de main qui a modifié .version) sont recalculées ensemble à chaque fusion.
 // Pour une version majeure (ou pour repartir d'un autre numéro), il suffit de modifier la valeur dans .version à la main.
 
 /** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/ dans les apps natives. */
@@ -33,4 +34,9 @@ export function nextVersions(versions, subject, files) {
   const next = { ...versions }
   for (const e of concerned(files)) next[e] = bump(versions[e], subject)
   return next
+}
+
+/** @param {Record<string, string>} versions contenu de .version sur main @param {{ subject: string, files: string[] }[]} fusions de la plus ancienne à la plus récente */
+export function pendingVersions(versions, fusions) {
+  return fusions.reduce((v, { subject, files }) => nextVersions(v, subject, files), versions)
 }

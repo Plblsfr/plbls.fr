@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 // @ts-expect-error pas de @types/node dans le projet : le test tourne sous Node via vitest
 import { readFileSync } from 'node:fs'
-import { bump, concerned, nextVersions } from '../../../../scripts/estompe/version.mjs'
+import { bump, concerned, nextVersions, pendingVersions } from '../../../../scripts/estompe/version.mjs'
 
 const merge = (b: string) => `Merge pull request #1 from Plblsfr/${b}`
 
@@ -32,6 +32,13 @@ describe('version', () => {
     expect(nextVersions(v, merge('feat/a'), ['api/estompe/core/src/x.rs'])).toEqual({ ...v, api: '0.2.0' })
     expect(nextVersions(v, merge('fix/a'), ['web/estompe/src/a.ts'])).toEqual({ ...v, web: '0.2.1', windows: '0.3.1', android: '0.4.1' })
     expect(nextVersions(v, merge('fix/a'), ['docs/estompe/a.md'])).toEqual(v)
+  })
+  it('les fusions en attente se cumulent dans l\'ordre', () => {
+    const v = { api: '0.1.0', web: '0.2.0', windows: '0.3.0', android: '0.4.0' }
+    const api = ['api/estompe/core/src/x.rs']
+    expect(pendingVersions(v, [{ subject: merge('feat/a'), files: api }, { subject: merge('feat/b'), files: api }, { subject: merge('fix/c'), files: api }])).toEqual({ ...v, api: '0.3.1' })
+    expect(pendingVersions(v, [{ subject: merge('fix/a'), files: api }, { subject: merge('ci/version'), files: ['.version'] }, { subject: merge('feat/b'), files: ['web/estompe/src/a.ts'] }])).toEqual({ api: '0.1.1', web: '0.3.0', windows: '0.4.0', android: '0.5.0' })
+    expect(pendingVersions(v, [])).toEqual(v)
   })
 })
 

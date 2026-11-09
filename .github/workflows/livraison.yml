@@ -186,11 +186,10 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || gh release view "$GITHUB_REF_NAME" >/dev/null
 
-  # .version d'Estompe : calculé d'après le nom de la branche fusionnée (message du commit de fusion) et les dossiers modifiés,
-  # poussé sur ci/version-<sha> avec une PR « chore(version) » (main est protégée).
+  # .version d'Estompe : recalculé à chaque fusion d'après toutes les fusions pas encore comptées (nom de la branche lu dans le message du
+  # commit de fusion, dossiers modifiés), poussé sur la branche unique ci/version avec une seule PR « chore(version) » (main est protégée).
   estompe-version:
-    needs: changements
-    if: github.ref == 'refs/heads/main' && needs.changements.outputs.estompe_version == 'true' && !contains(github.event.head_commit.message, '[skip ci]')
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip ci]')
     runs-on: ubuntu-latest
     concurrency:
       group: estompe-version
@@ -198,7 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           # PAT (contents + pull-requests) : avec GITHUB_TOKEN, la PR ouverte ne déclencherait aucune CI
           token: ${{ secrets.CI_PAT }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -208,17 +207,26 @@ jobs:
       - env:
           GH_TOKEN: ${{ secrets.CI_PAT }}
         run: |
-          git diff --quiet .version && exit 0
-          b="ci/version-$(git rev-parse --short HEAD)"
-          git ls-remote --exit-code --heads origin "$b" >/dev/null && { echo "la branche $b existe déjà : PR de version déjà ouverte"; exit 0; }
-          git config user.name "estompe-ci" && git config user.email "ci@plbls.fr"
-          git switch -c "$b"
-          git commit -m "chore(version): mise à jour de .version" .version
-          git push origin "$b"
+          b=ci/version
+          sha="$(git rev-parse HEAD)"
+          git diff --quiet .version && { echo "aucune version à monter depuis la dernière PR de version"; exit 0; }
           title="chore(version): $(node -p 'Object.entries(JSON.parse(require("fs").readFileSync(".version","utf8"))).map(([k,x])=>k+" "+x).join(", ")')"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" --jq .html_url \
-            -f base=main -f head="$b" -f title="$title" \
-            -f body="Versions calculées par livraison.yml (job estompe-version) après la fusion du dernier commit de main. La fusion de cette PR ne change aucune version (seul .version est modifié)."
+          git config user.name "estompe-ci" && git config user.email "ci@plbls.fr"
+          if git ls-remote --exit-code --heads origin "$b" >/dev/null && git fetch origin "+refs/heads/$b:refs/remotes/origin/$b" && ! git merge-base --is-ancestor "origin/$b" "$sha"; then
+            git show "origin/$b:.version" | cmp -s - .version && { echo "$b est déjà à jour"; exit 0; }
+            cp .version "$RUNNER_TEMP/version" && git checkout -- .version
+            git switch -c "$b" "origin/$b"
+            git merge --no-ff --no-commit "$sha" || true
+            cp "$RUNNER_TEMP/version" .version
+          else
+            git switch -c "$b"
+          fi
+          git add .version
+          git commit -m "$title"
+          git push origin "$b"
+          body="Versions calculées par livraison.yml (job estompe-version) d'après toutes les fusions dans main depuis la dernière PR de version, jusqu'à $sha. Chaque nouvelle fusion met à jour cette PR au lieu d'en ouvrir une autre. La fusion de cette PR ne change aucune version (seul .version est modifié)."
+          pr="$(gh pr list --head "$b" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ]; then gh pr edit "$pr" --title "$title" --body "$body"; else gh pr create --base main --head "$b" --title "$title" --body "$body"; fi
       - run: |
           f=api/estompe/core/src/notes_version/changelog.json
           v=$(node -p 'JSON.parse(require("fs").readFileSync(".version", "utf8")).api')

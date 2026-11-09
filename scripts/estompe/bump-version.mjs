@@ -1,10 +1,11 @@
-// Sans argument (CI, à chaque fusion dans main) : met à jour .version d'après le dernier commit (nom de la branche, dossiers modifiés) et l'affiche.
+// Sans argument (CI, à chaque fusion dans main) : met à jour .version d'après les fusions de main pas encore comptées (nom de la branche, dossiers modifiés) et l'affiche.
+// Fusions pas encore comptées : celles qui suivent, sur la première lignée de main, le dernier commit qui a modifié .version (fusion de la PR de version ou modification à la main).
 // Avec --apply (build des apps) : écrit les versions de .version dans les tauri.conf.json, Cargo.toml et Cargo.lock de apps/estompe/{windows,android}.
 // Les chemins sont relatifs à la racine du dépôt.
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { nextVersions } from './version.mjs'
+import { pendingVersions } from './version.mjs'
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 process.chdir(fileURLToPath(new URL('../..', import.meta.url)))
@@ -22,9 +23,12 @@ if (process.argv.includes('--apply')) {
     console.log(`${app} ${v}`)
   }
 } else {
-  // Un commit de fusion a deux parents : on compare au premier (main avant la fusion) ; un commit simple, à son parent.
-  const files = git('diff', '--name-only', 'HEAD^1', 'HEAD').split('\n').filter(Boolean)
-  const next = nextVersions(versions, git('log', '-1', '--format=%s'), files)
+  const depuis = git('log', '-1', '--first-parent', '--format=%H', 'HEAD', '--', '.version') || 'HEAD^1'
+  const commits = git('rev-list', '--first-parent', '--reverse', `${depuis}..HEAD`).split('\n').filter(Boolean)
+  const next = pendingVersions(versions, commits.map((c) => ({
+    subject: git('log', '-1', '--format=%s', c),
+    files: git('diff', '--name-only', `${c}^1`, c).split('\n').filter(Boolean),
+  })))
   writeFileSync('.version', JSON.stringify(next, null, 2) + '\n')
   console.log(JSON.stringify(next))
 }
