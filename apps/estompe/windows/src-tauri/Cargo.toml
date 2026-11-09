@@ -30,8 +30,10 @@ tauri-plugin-single-instance = "2" # une seule instance par utilisateur (EST-113
 [target.'cfg(windows)'.dependencies]
 xcap = { version = "0.9", default-features = false, features = ["image", "wgc"] } # wgc : Windows Graphics Capture, pour les fenêtres accélérées par le GPU (navigateurs, jeux)
 tauri-winrt-notification = "0.8" # toasts avec boutons (déjà tiré par tauri-plugin-notification)
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+webview2-com = "0.39"
+windows-core = "0.62"
 # Partage d'écran natif (EST-18) : capture en Rust puis publication WebRTC sans repasser par le webview (SDK LiveKit).
 # Derrière une feature : libwebrtc est précompilé et ne vise que la cible MSVC.
 # Son du partage natif (EST-52) : capture WASAPI « process loopback » (le son d'une fenêtre, ou celui du système sans Estompe).
