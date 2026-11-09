@@ -49,7 +49,6 @@ Authorization: Bearer <jeton>
 | `AEGIS__ANNUAIRE__SYNC_MINUTES` | Période de synchronisation Keycloak (15 ; 0 = désactivée) |
 | `AEGIS__RESSOURCES__ALLOWED_HOSTS` | Hôtes autorisés pour les `list_url` (vide = tous) |
 | `AEGIS__CACHE__TTL_SECS` | Durée maximale d'un droit en cache (600) |
-| `AEGIS__MCP__TOKEN` | MCP (vide = désactivé) |
 
 Passerelle : route `/api/aegis` vers `http://aegis:8080` (`api/security/config/routes.toml`).
 

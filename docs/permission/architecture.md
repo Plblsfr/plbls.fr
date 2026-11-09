@@ -6,7 +6,6 @@ navigateur ──► permission.plbls.fr (SPA, fichiers statiques servis par le 
      └─ cookie de session ─► security.plbls.fr/api/permission/* ─► permission (Axum) ─► Postgres
                                   (auth-gateway : authentifie, signe l'identité)  ▲
 micro-services ───── réseau Docker, Bearer de service ou identité transmise ──────┘
-assistants IA ────── POST /mcp (Bearer) : docs + OpenAPI
 ```
 
 ## Stack

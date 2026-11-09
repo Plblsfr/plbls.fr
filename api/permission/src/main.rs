@@ -51,9 +51,7 @@ async fn main() -> anyhow::Result<()> {
             .timeout(std::time::Duration::from_secs(10))
             .build()?,
     };
-    let mut app = api_router
-        .merge(routes::openapi::router())
-        .merge(routes::mcp::router());
+    let mut app = api_router.merge(routes::openapi::router());
 
     // SPA : fichiers statiques, repli sur index.html pour le routage côté client.
     let dir = &settings.server.static_dir;

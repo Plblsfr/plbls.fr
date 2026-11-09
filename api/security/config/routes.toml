@@ -1,6 +1,6 @@
 # Routes de production : une entrée [[routes]] par micro-service, ajoutée au fil de leur extraction du monolithe.
 # Embarqué dans l'image (COPY config) : une modification demande un commit, la CI, puis un redéploiement. Modèle : routes.example.toml.
-# Aucune route pour l'instant : seuls /auth/*, /healthz, /readyz et /mcp sont actifs.
+# Aucune route pour l'instant : seuls /auth/*, /healthz et /readyz sont actifs.
 
 # aegis : permissions des comptes (administration depuis Estompe, droits du connecté). L'administration est jugée par aegis
 # (rôle Keycloak aegis-admin ou permission aegis:admin). aegis partage GATEWAY__IDENTITY__SECRET (AEGIS__IDENTITY__SECRET).

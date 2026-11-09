@@ -8,8 +8,6 @@ pub struct Settings {
     pub session: Session,
     pub identity: Identity,
     #[serde(default)]
-    pub mcp: Mcp,
-    #[serde(default)]
     pub internal: Internal,
     #[serde(default)]
     pub rate_limit: RateLimit,
@@ -69,13 +67,6 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Identity {
     pub secret: String,
-}
-
-/// Serveur MCP de documentation : désactivé (404) tant que `token` est vide.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Mcp {
-    #[serde(default)]
-    pub token: String,
 }
 
 /// Routes `/internal/*` (réseau interne uniquement) : désactivées (404) tant que `token` est vide.
