@@ -5,6 +5,7 @@ mod replays;
 mod capture;
 mod screen_native;
 mod toast;
+mod webview2_options;
 mod webview_data;
 
 pub(crate) use estompe_core::{commands::show_main, debuglog};
@@ -12,11 +13,26 @@ pub(crate) use estompe_core::{commands::show_main, debuglog};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::WindowEvent;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static MEMOIRE_BASSE: AtomicBool = AtomicBool::new(false);
+
+fn memoire_basse(w: &tauri::Window, bas: bool) {
+    use tauri::Manager as _;
+    if w.label() != "main" || MEMOIRE_BASSE.swap(bas, Ordering::AcqRel) == bas {
+        return;
+    }
+    if let Some(f) = w.app_handle().get_webview_window("main") {
+        webview2_options::niveau_memoire(&f, bas);
+    }
+}
 
 pub fn run() {
-    if let Some(dossier) = webview_data::dossier_donnees() {
-        webview_data::purger_si_nouvelle_version(&dossier, env!("CARGO_PKG_VERSION"));
+    let dossier = webview_data::dossier_donnees();
+    if let Some(dossier) = &dossier {
+        webview_data::purger_si_nouvelle_version(dossier, env!("CARGO_PKG_VERSION"));
     }
+    webview2_options::appliquer(dossier.as_deref());
     let builder = tauri::Builder::default();
     // Doit être le premier plugin : la seconde instance transmet ses arguments à la première, puis quitte
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -42,6 +58,8 @@ pub fn run() {
                 if let Ok(dir) = app.path().app_log_dir() {
                     debuglog::init(dir);
                 }
+                let options = std::env::var(webview2_options::VARIABLE).unwrap_or_else(|_| "défaut de Tauri".into());
+                debuglog::log("info", "webview2", &format!("options : {options}"));
             }
             // Les mises à jour ne sont actives que si la configuration de build contient `plugins.updater` (clé publique et adresse).
             // Raccourci global du push-to-talk : enregistré par le front uniquement en salon vocal et fenêtre hors focus.
@@ -77,14 +95,18 @@ pub fn run() {
             replays::replays_copy, replays::replays_export, replays::replays_cancel, replays::replays_plan, replays::replays_keyframes, replays::replays_encoders, replays::video_to_h264, estompe_core::commands::oauth_start, estompe_core::commands::oauth_wait, estompe_core::commands::native_fetch, estompe_core::commands::secret_set, estompe_core::commands::secret_get, estompe_core::commands::secret_delete,
             foreground::foreground_info, capture::capture_sources, capture::capture_thumb, capture::capture_self,
             toast::toast_show, screen_native::screen_native_start, screen_native::screen_native_stop,
-            mesures::mesures_demarrer, mesures::mesures_arreter, mesures::mesures_systeme,
+            mesures::mesures_demarrer, mesures::mesures_arreter, mesures::mesures_systeme, webview2_options::webview2_options_get, webview2_options::webview2_options_set,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear]);
     // La fenêtre se masque au lieu de se fermer (bureau uniquement : sur mobile, c'est le système qui gère l'app).
-        let builder = builder.on_window_event(|w, e| {
-        if let WindowEvent::CloseRequested { api, .. } = e {
+        let builder = builder.on_window_event(|w, e| match e {
+        WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             let _ = w.hide();
+            memoire_basse(w, true);
         }
+        WindowEvent::Resized(_) => memoire_basse(w, w.is_minimized().unwrap_or(false)),
+        WindowEvent::Focused(true) => memoire_basse(w, false),
+        _ => {}
     });
     builder
         .run(tauri::generate_context!())

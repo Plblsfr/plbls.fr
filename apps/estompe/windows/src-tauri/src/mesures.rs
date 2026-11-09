@@ -123,10 +123,9 @@ pub fn role_rendu<'a>(sources: impl IntoIterator<Item = &'a str>) -> &'static st
 }
 
 pub fn options_webview2(config: Option<&str>, env: Option<&str>) -> Vec<String> {
-    config
+    env.or(config)
         .unwrap_or(OPTIONS_TAURI)
         .split_whitespace()
-        .chain(env.unwrap_or_default().split_whitespace())
         .map(str::to_owned)
         .collect()
 }
@@ -139,7 +138,7 @@ fn options_actives(app: &AppHandle) -> Vec<String> {
         .iter()
         .find(|w| w.label == "main")
         .and_then(|w| w.additional_browser_args.clone());
-    let env = std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").ok();
+    let env = std::env::var(crate::webview2_options::VARIABLE).ok();
     options_webview2(config.as_deref(), env.as_deref())
 }
 
@@ -586,12 +585,13 @@ mod tests {
     }
 
     #[test]
-    fn options_par_defaut_de_tauri_et_variable_d_environnement() {
+    fn options_par_defaut_de_tauri_et_variable_d_environnement_prioritaire() {
         assert_eq!(options_webview2(None, None), vec![OPTIONS_TAURI.to_owned()]);
         assert_eq!(
-            options_webview2(Some("--a  --b=1"), Some("--c")),
-            vec!["--a".to_owned(), "--b=1".to_owned(), "--c".to_owned()]
+            options_webview2(Some("--a  --b=1"), None),
+            vec!["--a".to_owned(), "--b=1".to_owned()]
         );
+        assert_eq!(options_webview2(Some("--a"), Some("--c  --d")), vec!["--c".to_owned(), "--d".to_owned()]);
     }
 
     #[test]

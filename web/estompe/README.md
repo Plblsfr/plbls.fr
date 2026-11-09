@@ -111,6 +111,22 @@ Comparer plusieurs exports (médiane des sessions de chaque version et jeu d'opt
 node apps/estompe/windows/scripts/synthese-mesures.mjs mesures/ --sortie synthese.md
 ```
 
+### Options de WebView2 (mémoire)
+
+Au démarrage, avant toute webview, `apps/estompe/windows/src-tauri/src/webview2_options.rs` passe à WebView2, par la variable
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` (même environnement pour la fenêtre principale et les overlays, sinon WebView2 refuse de les créer) :
+`--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,SpareRendererForSitePerProcess,BackForwardCache` (les trois premières sont celles de Tauri par défaut,
+réunies en une seule liste car seule la dernière `--disable-features` compte), `--renderer-process-limit=1`, `--disable-site-isolation-trials` et `--js-flags=--optimize-for-size`.
+Options de l'étude écartées :
+- `CalculateNativeWinOcclusion` : sous Windows, c'est elle qui arrête le rendu d'une fenêtre recouverte, par un jeu par exemple ;
+- `--disable-extensions` : sans effet, les extensions de WebView2 sont désactivées par défaut ;
+- `--disable-component-update` : aucun gain mémoire attendu, et elle peut bloquer la mise à jour de composants du runtime.
+
+Fenêtre principale réduite ou masquée : niveau de mémoire cible bas (`ICoreWebView2_19::MemoryUsageTargetLevel`), rétabli quand elle reprend le focus.
+L'interrupteur « Options d'économie de mémoire de WebView2 » (Paramètres › Débogage) écrit `options-webview2` dans `%LOCALAPPDATA%\fr.plbls.estompe` pour
+les désactiver au prochain démarrage et comparer les mesures. Une variable `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` déjà définie est laissée telle quelle.
+Les options actives figurent dans le journal de debug et dans l'export de mesures.
+
 ## Applications Android et iOS (hors stores)
 
 Même code Tauri 2 que l'app Windows, projet Android commité dans `apps/estompe/android/src-tauri/gen/android` (capacités mobiles : `apps/estompe/android/src-tauri/capabilities/mobile.json`). Connexion en PKCE dans le navigateur système ; redirection `fr.plbls.estompe:/callback` (schéma privé, RFC 8252) au lieu du serveur loopback, que le système suspend avec l'app. **Le client Keycloak `plbls-android` (public, PKCE) doit accepter l'URI de redirection `fr.plbls.estompe:/callback`.** La connexion en cours (state, verifier PKCE) est gardée dans le stockage de l'app pendant 10 minutes : si Android recharge la page ou relance l'app pendant que l'utilisateur est dans le navigateur, la page suivante échange le code reçu au lieu de le perdre ; une redirection reçue hors connexion est ignorée, et un échec de l'échange s'affiche sans renvoyer vers Keycloak. Mise à jour intégrée : l'app lit `/updates/android.json` (version et SHA-256 publiés par `release-android.sh`), télécharge l'APK, vérifie sa somme (le natif refuse un APK dont la somme diffère) et ouvre l'installeur Android (permission « installer des applications inconnues » demandée au premier essai) ; la première installation reste manuelle. Le refresh token n'est pas conservé (pas de coffre natif branché) : reconnexion à chaque lancement.
