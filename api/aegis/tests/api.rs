@@ -16,7 +16,15 @@ use serde_json::{Value, json};
 use sqlx::Connection;
 use tower::ServiceExt;
 
-const SECRET: &str = "secret-de-test";
+fn secret() -> &'static str {
+    static SECRET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SECRET.get_or_init(|| {
+        use std::hash::BuildHasher;
+        std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string()
+    })
+}
 
 struct Banc {
     app: axum::Router,
@@ -85,7 +93,7 @@ async fn banc() -> Option<Banc> {
         },
         database: Database { url },
         identity: Identity {
-            secret: SECRET.into(),
+            secret: secret().into(),
         },
         redis: Redis {
             url: std::env::var("TEST_REDIS_URL").unwrap_or_default(),
@@ -139,7 +147,7 @@ impl Banc {
                     .header("x-identity-ts", ts.to_string())
                     .header(
                         "x-identity-sig",
-                        identity::sign(SECRET, sub, roles, "estompe", ts),
+                        identity::sign(secret(), sub, roles, "estompe", ts),
                     );
             }
         }

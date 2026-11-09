@@ -35,15 +35,35 @@ pub fn verify(
 mod tests {
     use super::*;
 
+    fn cle_aleatoire() -> String {
+        use std::hash::BuildHasher;
+        std::collections::hash_map::RandomState::new()
+            .hash_one(std::process::id())
+            .to_string()
+    }
+
     #[test]
     fn signature_valide_alteree_perimee() {
-        let secret = "s3cret-de-test";
-        let sig = sign(secret, "u1", "user", "c", 1000);
-        assert!(verify(secret, "u1", "user", "c", 1000, &sig, 1030));
-        assert!(!verify(secret, "u1", "admin", "c", 1000, &sig, 1030));
-        assert!(!verify("autre", "u1", "user", "c", 1000, &sig, 1030));
-        assert!(!verify(secret, "u1", "user", "c", 1000, &sig, 1061));
-        let vide = sign("", "u1", "user", "c", 1000);
-        assert!(!verify("", "u1", "user", "c", 1000, &vide, 1000));
+        let secret = cle_aleatoire();
+        let sig = sign(&secret, "u1", "user", "c", 1000);
+        assert!(verify(&secret, "u1", "user", "c", 1000, &sig, 1030));
+        assert!(!verify(&secret, "u1", "admin", "c", 1000, &sig, 1030));
+        assert!(!verify(
+            &cle_aleatoire(),
+            "u1",
+            "user",
+            "c",
+            1000,
+            &sig,
+            1030
+        ));
+        assert!(!verify(&secret, "u1", "user", "c", 1000, &sig, 1061));
+    }
+
+    #[test]
+    fn secret_vide_jamais_valide() {
+        let vide = String::new();
+        let sig = sign(&vide, "u1", "user", "c", 1000);
+        assert!(!verify(&vide, "u1", "user", "c", 1000, &sig, 1000));
     }
 }
