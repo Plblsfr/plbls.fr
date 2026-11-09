@@ -1,5 +1,6 @@
 mod bobyn;
 mod foreground;
+mod mesures;
 mod replays;
 mod capture;
 mod screen_native;
@@ -34,6 +35,7 @@ pub fn run() {
         .manage(screen_native::ScreenNative::default())
         .manage(bobyn::Bobyn::default())
         .manage(replays::Replays::default())
+        .manage(mesures::Mesures::default())
         .setup(|#[allow(unused_variables)] app| {
             {
                 use tauri::Manager as _;
@@ -75,6 +77,7 @@ pub fn run() {
             replays::replays_copy, replays::replays_export, replays::replays_cancel, replays::replays_plan, replays::replays_keyframes, replays::replays_encoders, replays::video_to_h264, estompe_core::commands::oauth_start, estompe_core::commands::oauth_wait, estompe_core::commands::native_fetch, estompe_core::commands::secret_set, estompe_core::commands::secret_get, estompe_core::commands::secret_delete,
             foreground::foreground_info, capture::capture_sources, capture::capture_thumb, capture::capture_self,
             toast::toast_show, screen_native::screen_native_start, screen_native::screen_native_stop,
+            mesures::mesures_demarrer, mesures::mesures_arreter, mesures::mesures_systeme,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear]);
     // La fenêtre se masque au lieu de se fermer (bureau uniquement : sur mobile, c'est le système qui gère l'app).
         let builder = builder.on_window_event(|w, e| {

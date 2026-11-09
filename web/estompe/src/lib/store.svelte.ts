@@ -17,6 +17,7 @@ import { clockOffset, stale } from '../blocks/regarder-ensemble/watch'
 import { notify } from './ui'
 import { adminSections, rightsOf, type Right } from './admin'
 import { convKeyOf, channelKey, dmKey, defaultNotifySettings } from './types'
+import { sonde } from './sonde'
 import type { Me, Status, NotifySettings, PermKey, Channel, ConvKey, DM, Mention, Message, NewPoll, Read, Server, ServerDetail, VoiceParticipant, WatchState, WatchView, SessionKind } from './types'
 
 export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'error'
@@ -301,6 +302,7 @@ export class AppStore {
         else { delete this.online[d.user_id]; delete this.activities[d.user_id] }
         break
       case 'message.created':
+        sonde.reception()
         this.onMessageCreated(d as Message)
         if (d.channel_id && d.reply_to) videos.changed(d.channel_id) // le nombre de réponses d'une carte
         break

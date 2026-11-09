@@ -15,6 +15,7 @@ import { notifications } from './notifications'
 import Overlay from './Overlay.svelte'
 import { overlayUi, startOverlay, toggleOverlay } from './overlay.svelte'
 import { globalPtt } from './ptt-global'
+import SettingsMesures from './SettingsMesures.svelte'
 import SettingsOverlay from './SettingsOverlay.svelte'
 import SettingsShare from './SettingsShare.svelte'
 import UpdateSettings from './UpdateSettings.svelte'
@@ -30,7 +31,7 @@ export const platform: Platform = {
   debugStore,
   screenshot: { auto: true, capture: captureSelf },
   spaces: [{ id: 'bobyn', title: 'Bobyn : replays et réglages', icon: 'film', visible: bobynVisible, nav: BobynNav, page: BobynSpace }],
-  slots: { settingsUpdate: UpdateSettings, settingsPtt: SettingsOverlay, settingsShare: SettingsShare },
+  slots: { settingsUpdate: UpdateSettings, settingsPtt: SettingsOverlay, settingsShare: SettingsShare, settingsDebug: SettingsMesures },
   start() {
     startOverlay() // overlay des participants du salon vocal
     startMsgOverlay() // messages privés et mentions sur le jeu

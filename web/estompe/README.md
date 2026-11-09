@@ -92,6 +92,25 @@ Replay instantané intégré à l'app Windows : le moteur Rust (capture WGC, enc
 7 clics sur « Version installée » (Paramètres > Application) le débloquent, 7 autres le verrouillent et arrêtent le service. Les réglages sont dans
 `bobyn.json` (dossier de configuration de l'app) ; le service ne démarre que si « Activer Bobyn » est coché.
 
+### Mesures de performance
+
+Paramètres › Débogage, mode debug activé : « Démarrer une session », puis les scénarios guidés (repos 5 min, gros salon, défilement automatique
+10 s, flux de messages, partie de jeu avec overlays, fenêtre réduite), « Arrêter la session » et « Exporter les mesures » (un JSON et un CSV des échantillons).
+
+- Rust (`apps/estompe/windows/src-tauri/src/mesures.rs`) relève chaque seconde la mémoire privée, le working set, son pic et le temps CPU du processus
+  hôte et de **tous** les processus WebView2 (liste fournie par `ICoreWebView2Environment13::GetProcessExtendedInfos`, rafraîchie toutes les 5 s).
+  Un processus de rendu est attribué à la fenêtre principale ou à un overlay d'après l'adresse de ses cadres (`#overlay`, `#msg-overlay`, `#bobyn-overlay`).
+- Le front (`web/estompe/src/lib/sonde.ts`) mesure les intervalles entre images (seulement pendant les scénarios qui en ont besoin), la latence
+  réception WebSocket → affichage, la latence de saisie et le démarrage (lancement du processus → première conversation affichée).
+- Hors session, rien ne tourne : pas de fil d'échantillonnage, pas d'écouteur, pas de boucle d'images.
+- L'export ne contient ni contenu de message ni identifiant ; rien n'est envoyé automatiquement.
+
+Comparer plusieurs exports (médiane des sessions de chaque version et jeu d'options WebView2, scénario par scénario) :
+
+```sh
+node apps/estompe/windows/scripts/synthese-mesures.mjs mesures/ --sortie synthese.md
+```
+
 ## Applications Android et iOS (hors stores)
 
 Même code Tauri 2 que l'app Windows, projet Android commité dans `apps/estompe/android/src-tauri/gen/android` (capacités mobiles : `apps/estompe/android/src-tauri/capabilities/mobile.json`). Connexion en PKCE dans le navigateur système ; redirection `fr.plbls.estompe:/callback` (schéma privé, RFC 8252) au lieu du serveur loopback, que le système suspend avec l'app. **Le client Keycloak `plbls-android` (public, PKCE) doit accepter l'URI de redirection `fr.plbls.estompe:/callback`.** La connexion en cours (state, verifier PKCE) est gardée dans le stockage de l'app pendant 10 minutes : si Android recharge la page ou relance l'app pendant que l'utilisateur est dans le navigateur, la page suivante échange le code reçu au lieu de le perdre ; une redirection reçue hors connexion est ignorée, et un échec de l'échange s'affiche sans renvoyer vers Keycloak. Mise à jour intégrée : l'app lit `/updates/android.json` (version et SHA-256 publiés par `release-android.sh`), télécharge l'APK, vérifie sa somme (le natif refuse un APK dont la somme diffère) et ouvre l'installeur Android (permission « installer des applications inconnues » demandée au premier essai) ; la première installation reste manuelle. Le refresh token n'est pas conservé (pas de coffre natif branché) : reconnexion à chaque lancement.

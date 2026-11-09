@@ -5,6 +5,7 @@
   import { notify } from '../lib/ui'
   import { parseHash, router } from '../lib/route.svelte'
   import { windowOf } from '../lib/virtual'
+  import { sonde } from '../lib/sonde'
   import type { Message } from '../lib/types'
   import MessageItem from './MessageItem.svelte'
   import Icon from './Icon.svelte'
@@ -126,6 +127,7 @@
     }
     lastId = last?.id
     if (stick || seen === 0) tick().then(() => (el.scrollTop = el.scrollHeight))
+    if (n > 0) sonde.conversationAffichee()
     seen = n
   })
   onDestroy(() => clearTimeout(freshTimer))
