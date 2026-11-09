@@ -20,6 +20,7 @@ export class WatchPlayer {
   blocked = $state(false)
   /** Coupe-circuit déclenché : la synchronisation reprend seule après quelques secondes. */
   suspended = $state(false)
+  slow = $state(false)
   position = $state(0)
   duration = $state(0)
   tracks = $state<FilmTracks | null>(null)
@@ -30,6 +31,7 @@ export class WatchPlayer {
   private slot: HTMLElement | null = null
   private timer: ReturnType<typeof setInterval> | undefined
   private gone = false
+  private gen = 0
 
   constructor(private el: HTMLElement, private cid: string, private kind: SessionKind = 'watch') {}
 
@@ -43,7 +45,9 @@ export class WatchPlayer {
 
   /** Crée le lecteur de la source (le précédent est retiré : une file peut mêler plusieurs sources). */
   private async use(prov: string) {
+    const gen = ++this.gen
     this.prov = prov
+    this.slow = false
     this.tracks = null
     this.engine?.destroy()
     this.engine = null
@@ -62,7 +66,7 @@ export class WatchPlayer {
         onState: (st) => { debug.log('info', this.tag, `lecteur : ${st}`); this.engine?.observe(st) },
         onError: (m) => { this.error = m; debug.log('error', this.tag, `erreur du lecteur : ${m}`); if (!this.skipUnplayable()) void api.watchReady(this.cid, false, this.kind).catch(() => {}) },
       })
-      if (this.gone || this.prov !== prov) { a.destroy(); return }
+      if (this.gone || gen !== this.gen) { a.destroy(); return }
       if (a.sync === 'full') this.slot.appendChild(document.createElement('div')).style.cssText = 'position:absolute;inset:0' // les clics dans la vidéo ne commandent rien : tout passe par les contrôles d'Estompe
       this.p = a
       if (this.kind === 'music') a.setVolume?.(prefs.musicVolume)
@@ -76,6 +80,7 @@ export class WatchPlayer {
       })
       this.apply()
     } catch (e) {
+      if (gen !== this.gen) return
       this.error = e instanceof Error ? e.message : 'Lecteur indisponible'
     }
   }
@@ -103,6 +108,7 @@ export class WatchPlayer {
     if (!e) return
     this.suspended = e.suspended
     this.blocked = e.stalled
+    this.slow = e.slow
     this.position = e.position
   }
 
@@ -134,6 +140,16 @@ export class WatchPlayer {
     debug.log('info', this.tag, `morceau non lisible ${s.video} : ${this.error}`)
     setTimeout(() => void api.watchAction(this.cid, 'ended', { rev: s.rev }, this.kind).catch(() => {}), 1000) // une file de morceaux illisibles ne doit pas saturer la limite de débit
     return true
+  }
+
+  reload() {
+    if (this.gone) return
+    debug.log('info', this.tag, 'lecteur rechargé')
+    this.error = ''
+    this.blocked = false
+    this.prov = ''
+    this.video = ''
+    this.apply()
   }
 
   /** Rend la main au lecteur après un blocage de lecture automatique. */

@@ -20,6 +20,7 @@ const PENDING_MS = 3000 // une commande sans réponse du serveur est abandonnée
 const BREAKER_N = 20 // évènements du serveur par seconde au-delà desquels la session est suspendue
 const BREAKER_PAUSE_MS = 5000
 const SEEK_TOLERANCE = 0.5
+const LOAD_MS = 15000
 
 /**
  * Machine à états de la synchronisation d'un lecteur. Le serveur fait foi : l'état reçu est appliqué au lecteur sans jamais produire de commande ;
@@ -41,6 +42,7 @@ export class SyncEngine {
   private pauseTimer: ReturnType<typeof setTimeout> | undefined
   private stamps: number[] = []
   private waitingSince = 0
+  private loadingSince = 0
   private key = ''
   private sentReady: boolean | null = null
 
@@ -78,6 +80,8 @@ export class SyncEngine {
 
   get suspended() { return this.phase === 'error' }
 
+  get slow() { return this.phase === 'loading' && this.loadingSince > 0 && Date.now() - this.loadingSince > LOAD_MS }
+
   private trip() {
     this.io.log('coupe-circuit : trop d’évènements, session suspendue')
     this.phase = 'error'
@@ -99,6 +103,7 @@ export class SyncEngine {
       this.stalled = false
       this.waitingSince = 0
       this.phase = 'loading'
+      this.loadingSince = Date.now()
       clearTimeout(this.nudgeTimer)
       this.p.load(s.video, s.playing ? this.expected() : s.pos, s.playing)
       return
