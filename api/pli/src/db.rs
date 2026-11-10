@@ -37,24 +37,42 @@ pub async fn migrate(db: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
     MIGRATIONS.run(db).await
 }
 
+pub async fn count_pending(db: &PgPool, owner: &str) -> sqlx::Result<i64> {
+    sqlx::query_scalar("SELECT count(*) FROM shares WHERE owner=$1 AND expires_at > now()")
+        .bind(owner)
+        .fetch_one(db)
+        .await
+}
+
 pub async fn insert_share(
     db: &PgPool,
     id: &str,
     owner: &str,
     data: &[u8],
     ttl_seconds: u32,
-) -> sqlx::Result<DateTime<Utc>> {
-    sqlx::query_scalar(
+    max_pending: usize,
+) -> sqlx::Result<Option<DateTime<Utc>>> {
+    let mut tx = db.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?;
+    let expires_at = sqlx::query_scalar(
         "INSERT INTO shares (id, owner, data, size, expires_at)
-         VALUES ($1, $2, $3, $4, now() + make_interval(secs => $5)) RETURNING expires_at",
+         SELECT $1, $2, $3, $4, now() + make_interval(secs => $5)
+         WHERE (SELECT count(*) FROM shares WHERE owner=$2 AND expires_at > now()) < $6
+         RETURNING expires_at",
     )
     .bind(id)
     .bind(owner)
     .bind(data)
     .bind(i32::try_from(data.len()).unwrap_or(i32::MAX))
     .bind(f64::from(ttl_seconds))
-    .fetch_one(db)
-    .await
+    .bind(i64::try_from(max_pending).unwrap_or(i64::MAX))
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(expires_at)
 }
 
 pub async fn share_meta(db: &PgPool, id: &str) -> sqlx::Result<Option<Meta>> {
@@ -75,7 +93,7 @@ pub async fn consume_share(db: &PgPool, id: &str) -> sqlx::Result<Option<Vec<u8>
 
 pub async fn list_shares(db: &PgPool, owner: &str) -> sqlx::Result<Vec<Partage>> {
     let lignes: Vec<(String, i32, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT id, size, created_at, expires_at FROM shares WHERE owner=$1 AND expires_at > now() ORDER BY created_at DESC LIMIT 200",
+        "SELECT id, size, created_at, expires_at FROM shares WHERE owner=$1 AND expires_at > now() ORDER BY created_at DESC",
     )
     .bind(owner)
     .fetch_all(db)

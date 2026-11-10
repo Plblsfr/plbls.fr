@@ -409,6 +409,7 @@ async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
         medias.join("series").display()
     ))
     .unwrap();
+    cfg.medias = medias.to_path_buf();
     cfg.dossier_transcodage = transcodage.path().join("t");
     cfg.jeton_service = "jeton-service-estompe".into();
     cfg.jeton_webhook = "jeton-webhook".into();
@@ -1884,18 +1885,27 @@ async fn webhook_declenche_la_synchronisation() {
             .statut,
         StatusCode::UNAUTHORIZED
     );
-    assert_eq!(
-        appel(
-            &e,
-            None,
-            "POST",
-            "/webhooks/radarr?token=jeton-webhook",
-            None
-        )
-        .await
-        .statut,
-        StatusCode::NO_CONTENT
+    use base64::Engine;
+    let basic = format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode("radarr:jeton-webhook")
     );
+    for (chemin, entetes) in [
+        ("/webhooks/radarr?token=jeton-webhook", vec![]),
+        ("/webhooks/sonarr", vec![("authorization", basic.as_str())]),
+        (
+            "/webhooks/radarr",
+            vec![("authorization", "Bearer jeton-webhook")],
+        ),
+    ] {
+        assert_eq!(
+            appel_avec(&e, None, "POST", chemin, None, &entetes)
+                .await
+                .statut,
+            StatusCode::NO_CONTENT,
+            "{chemin}"
+        );
+    }
     let limite = Instant::now() + Duration::from_secs(30);
     loop {
         if get(&e, "alice", "/library").await.json()["total"] == 2 {

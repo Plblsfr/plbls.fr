@@ -1,4 +1,7 @@
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Component, Path, PathBuf},
+    time::Duration,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Arr {
@@ -60,6 +63,7 @@ pub struct Config {
     pub tmdb_images: String,
     pub langue: String,
     pub chemins: Vec<Correspondance>,
+    pub medias: PathBuf,
     pub periode_synchro: Duration,
     pub ffmpeg: String,
     pub ffprobe: String,
@@ -118,8 +122,22 @@ pub fn correspondances(texte: &str) -> Result<Vec<Correspondance>, String> {
         .collect()
 }
 
-pub fn chemin_local(chemins: &[Correspondance], distant: &str) -> String {
-    chemins
+fn sous_medias(chemin: &Path, medias: &Path) -> bool {
+    let racine = std::fs::canonicalize(medias).unwrap_or_else(|_| medias.to_path_buf());
+    match std::fs::canonicalize(chemin) {
+        Ok(reel) => reel.starts_with(&racine),
+        Err(_) => {
+            chemin.is_absolute()
+                && !chemin
+                    .components()
+                    .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+                && (chemin.starts_with(medias) || chemin.starts_with(&racine))
+        }
+    }
+}
+
+pub fn chemin_local(chemins: &[Correspondance], medias: &Path, distant: &str) -> Option<String> {
+    let local = chemins
         .iter()
         .filter(|c| {
             distant == c.distant
@@ -129,7 +147,8 @@ pub fn chemin_local(chemins: &[Correspondance], distant: &str) -> String {
         })
         .max_by_key(|c| c.distant.len())
         .map(|c| format!("{}{}", c.local, &distant[c.distant.len()..]))
-        .unwrap_or_else(|| distant.to_string())
+        .unwrap_or_else(|| distant.to_string());
+    sous_medias(Path::new(&local), medias).then_some(local)
 }
 
 impl Config {
@@ -215,6 +234,7 @@ impl Config {
             ),
             langue: env("ENTRACTE_LANGUE").unwrap_or_else(|| "fr-FR".into()),
             chemins: correspondances(&env("ENTRACTE_CHEMINS").unwrap_or_default())?,
+            medias: PathBuf::from(env("ENTRACTE_MEDIAS").unwrap_or_else(|| "/srv/medias".into())),
             periode_synchro: Duration::from_secs(minutes * 60),
             ffmpeg: env("ENTRACTE_FFMPEG").unwrap_or_else(|| "ffmpeg".into()),
             ffprobe: env("ENTRACTE_FFPROBE").unwrap_or_else(|| "ffprobe".into()),
@@ -292,6 +312,7 @@ mod tests {
                 "ENTRACTE_CHEMINS",
                 "/movies=/medias/films, /tv=/medias/series",
             ),
+            ("ENTRACTE_MEDIAS", "/medias"),
         ])
         .unwrap();
         assert_eq!(c.gateway_url, "https://g");
@@ -301,12 +322,46 @@ mod tests {
         assert_eq!((r.url.as_str(), r.profil), ("http://radarr:7878", Some(4)));
         assert!(c.sonarr.is_none());
         assert_eq!(c.mode_materiel, ModeMateriel::Vaapi);
+        assert_eq!(c.medias, Path::new("/medias"));
         assert_eq!(
-            chemin_local(&c.chemins, "/movies/A (2020)/a.mkv"),
-            "/medias/films/A (2020)/a.mkv"
+            chemin_local(&c.chemins, &c.medias, "/movies/A (2020)/a.mkv").as_deref(),
+            Some("/medias/films/A (2020)/a.mkv")
         );
-        assert_eq!(chemin_local(&c.chemins, "/moviesX/a.mkv"), "/moviesX/a.mkv");
-        assert_eq!(chemin_local(&c.chemins, "/autre/a.mkv"), "/autre/a.mkv");
+        assert_eq!(chemin_local(&c.chemins, &c.medias, "/moviesX/a.mkv"), None);
+        assert_eq!(chemin_local(&c.chemins, &c.medias, "/autre/a.mkv"), None);
+        assert_eq!(
+            chemin_local(&c.chemins, &c.medias, "/medias/series/b.mkv").as_deref(),
+            Some("/medias/series/b.mkv")
+        );
+        assert_eq!(
+            chemin_local(&c.chemins, &c.medias, "/movies/../../etc/passwd"),
+            None
+        );
+    }
+
+    #[test]
+    fn chemin_hors_des_medias_refuse_meme_par_lien() {
+        let racine = std::env::temp_dir().join(format!("entracte-medias-{}", std::process::id()));
+        let (medias, dehors) = (racine.join("medias"), racine.join("dehors"));
+        let _ = std::fs::remove_dir_all(&racine);
+        std::fs::create_dir_all(&medias).unwrap();
+        std::fs::create_dir_all(&dehors).unwrap();
+        std::fs::write(medias.join("a.mkv"), b"").unwrap();
+        std::fs::write(dehors.join("b.mkv"), b"").unwrap();
+        std::os::unix::fs::symlink(&dehors, medias.join("lien")).unwrap();
+        let chemins = correspondances(&format!("/movies={}", medias.display())).unwrap();
+        let local = |d: &str| chemin_local(&chemins, &medias, d);
+        assert_eq!(
+            local("/movies/a.mkv"),
+            Some(format!("{}/a.mkv", medias.display()))
+        );
+        assert_eq!(local("/movies/lien/b.mkv"), None);
+        assert_eq!(local(&format!("{}/b.mkv", dehors.display())), None);
+        assert_eq!(
+            local("/movies/absent.mkv"),
+            Some(format!("{}/absent.mkv", medias.display()))
+        );
+        std::fs::remove_dir_all(&racine).unwrap();
     }
 
     #[test]

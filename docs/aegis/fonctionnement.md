@@ -59,7 +59,7 @@ auteur `manifeste:<app>`) ; ensuite le manifeste ne touche plus aux règles.
 
 `accounts` (sub, e-mail, nom, dernière activité, présence dans Keycloak) est alimenté par :
 
-1. les applications, qui transmettent l'e-mail et le nom de l'identité du connecté avec `POST /v1/effective` (au plus une écriture par compte et par heure) ;
+1. la dernière activité : chaque `POST /v1/effective` d'une application (au plus une écriture par compte et par heure ; l'e-mail et le nom éventuellement transmis sont ignorés, un jeton de service ne peut pas réécrire le profil d'un compte) et chaque appel d'administration, qui enregistre aussi l'e-mail et le nom des en-têtes signés par la passerelle ;
 2. la synchronisation Keycloak toutes les `annuaire.sync_minutes` (15) par `GET /internal/users` de la passerelle (liste complète,
    `GATEWAY__INTERNAL__LIST_ALL=true` côté security) ; un compte absent devient « supprimé de Keycloak » ;
 3. la recherche de l'administration, qui interroge Keycloak en direct quand l'annuaire ne trouve rien.

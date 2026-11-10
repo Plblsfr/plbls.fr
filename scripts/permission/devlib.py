@@ -17,7 +17,7 @@ SECRET = os.environ.get("PERMISSION__IDENTITY__SECRET", "dev-identity-secret")
 
 def sign(uid, roles):
     ts = int(time.time())
-    mac = hmac.new(SECRET.encode(), f"{uid}\n{roles}\nplbls-gateway\n{ts}".encode(), hashlib.sha256).digest()
+    mac = hmac.new(SECRET.encode(), f"{uid}\n{roles}\nplbls-gateway\n{ts}\n\n".encode(), hashlib.sha256).digest()
     return {"X-User-Id": uid, "X-User-Roles": roles, "X-Client-Id": "plbls-gateway", "X-Identity-Ts": str(ts),
             "X-Identity-Sig": base64.urlsafe_b64encode(mac).rstrip(b"=").decode()}
 
