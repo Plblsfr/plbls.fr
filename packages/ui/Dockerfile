@@ -14,11 +14,13 @@ COPY packages/ui/src packages/ui/src
 WORKDIR /repo/packages/ui
 RUN npm run build && node -p "require('./package.json').version" > VERSION
 
-FROM nginx:1.31-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
+USER root
 COPY packages/ui/docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY packages/ui/docker/40-publier.sh /docker-entrypoint.d/40-publier.sh
-RUN chmod +x /docker-entrypoint.d/40-publier.sh
+COPY --chmod=755 packages/ui/docker/40-publier.sh /docker-entrypoint.d/40-publier.sh
+RUN mkdir -p /srv && chown 101:0 /srv
 # Contenu de cette image ; le script le copie dans /srv (volume) sans toucher aux versions déjà publiées.
 COPY --from=build /repo/packages/ui/dist /opt/cdn/dist
 COPY --from=build /repo/packages/ui/VERSION /opt/cdn/VERSION
-EXPOSE 80
+USER 101
+EXPOSE 8080

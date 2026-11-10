@@ -118,7 +118,7 @@ puis publie `ghcr.io/plblsfr/estompe-web:beta` (dernière beta), `beta-pr<n>` et
 ni les releases, ni les apps Windows et Android. `packages-cleanup.yml` garde `beta` et supprime les autres tags beta chaque semaine.
 
 Côté infra (Dokploy) : un service à côté de `estompe-web`, avec l'image `ghcr.io/plblsfr/estompe-web:beta` et les mêmes variables
-(`API_URL`, `GATEWAY_URL`, `VOICE_URL`), sur un sous-domaine de `plbls.fr` (le cookie de session est posé sur `.plbls.fr`), par
+(`API_URL`, `GATEWAY_URL`, `VOICE_URL`), port 8080, sur un sous-domaine de `plbls.fr` (le cookie de session est posé sur `.plbls.fr`), par
 exemple `beta.estompe.plbls.fr`. Ajouter cette origine à `ALLOWED_ORIGINS` de l'API, et à la liste des adresses de retour du gateway
 si elle est restreinte. Redémarrer le service après chaque publication pour qu'il prenne la nouvelle image. La beta travaille sur les
 données de prod : seul le front change, l'API reste celle de la prod, donc une PR qui modifie l'API ne se teste pas ainsi.

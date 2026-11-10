@@ -24,7 +24,7 @@ jobs:
       GH_TOKEN: ${{ secrets.PACKAGES_PAT }}
       KEEP: 3
       # shortcut: liste fixe d'images, à compléter à chaque nouveau composant
-      PACKAGES: pli security permission aegis plbls-ui keycloak estompe estompe-web estompe-ci
+      PACKAGES: pli security permission aegis entracte plbls-ui keycloak estompe estompe-web estompe-ci
       DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
     steps:
       - run: |
