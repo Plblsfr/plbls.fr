@@ -3,6 +3,7 @@ import { defineConfig } from '@playwright/test'
 // Test de bout en bout : voir e2e/global-setup.ts (Docker et Go requis).
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: 'entracte.spec.ts',
   globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   workers: 1,

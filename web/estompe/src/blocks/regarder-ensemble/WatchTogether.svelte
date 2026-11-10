@@ -9,7 +9,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { trackName } from '../films/films'
+  import { QUALITY_LABEL, trackName, type Quality } from '../films/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 
@@ -122,6 +122,11 @@
                 <select class="watch-rate" value={tracks.subN ?? -1} onchange={(e) => { const n = Number(e.currentTarget.value); player?.setSubtitle(n < 0 ? null : n) }} aria-label="Sous-titres">
                   <option value={-1}>Sans sous-titres</option>
                   {#each tracks.subtitles as t (t.n)}<option value={t.n}>{trackName(t)}</option>{/each}
+                </select>
+              {/if}
+              {#if tracks.qualities && tracks.qualities.length > 1}
+                <select class="watch-rate" value={tracks.quality} onchange={(e) => player?.setQuality(e.currentTarget.value as Quality)} aria-label="Qualité">
+                  {#each tracks.qualities as q (q)}<option value={q}>{QUALITY_LABEL[q]}</option>{/each}
                 </select>
               {/if}
             {/if}

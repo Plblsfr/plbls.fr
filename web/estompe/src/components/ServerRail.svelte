@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { entracteOn } from '../lib/api'
   import { app } from '../lib/store.svelte'
   import { platform } from '../lib/platform'
   import { prefs } from '../lib/prefs.svelte'
@@ -78,7 +79,7 @@
   <div class="rail-tools">
     <button class="rail-tool" onclick={openSearch} title="Rechercher (Ctrl+K)" aria-label="Recherche globale"><Icon name="cherche" size={22} /></button>
     {#if app.movies}
-      <a class="rail-tool" class:active={route.name === 'films'} href={hrefs.films()} title="Films et séries" aria-label="Films et séries" aria-current={route.name === 'films' ? 'page' : undefined}><Icon name="film" size={22} /></a>
+      <a class="rail-tool" class:active={route.name === 'films'} href={hrefs.films()} title={entracteOn() ? 'Entracte · films et séries' : 'Films et séries'} aria-label={entracteOn() ? 'Entracte, films et séries' : 'Films et séries'} aria-current={route.name === 'films' ? 'page' : undefined}><Icon name="film" size={22} /></a>
     {/if}
     {#each platform.spaces.filter((s) => s.visible()) as s (s.id)}
       <a class="rail-tool" class:active={route.name === 'space' && route.space === s.id} href={hrefs.space(s.id)} title={s.title} aria-label={s.title} aria-current={route.name === 'space' && route.space === s.id ? 'page' : undefined}><Icon name={s.icon} size={22} /></a>

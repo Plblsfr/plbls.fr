@@ -89,6 +89,11 @@ jobs:
       - name: Audit des dépendances d'Estompe
         if: contains(needs.changements.outputs.espaces, 'web/estompe')
         run: npm audit --omit=dev --audit-level=high --workspace web/estompe
+      - name: Sections de l'app selon les permissions (e2e Playwright, API d'Estompe et d'Entracte simulées)
+        if: contains(needs.changements.outputs.espaces, 'web/estompe')
+        run: |
+          npm exec --workspace web/estompe -- playwright install --with-deps chromium
+          npm run e2e:entracte --workspace web/estompe
       - name: Types, tests et build des projets touchés
         if: needs.changements.outputs.espaces != ''
         env:
@@ -157,7 +162,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.entracte_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -208,6 +213,14 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_REDIS_URL: redis://localhost:6379
         run: cargo test --locked -p aegis
+      - name: ffmpeg pour les tests d'Entracte
+        if: needs.changements.outputs.entracte_server == 'true'
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg
+      - name: Tests d'Entracte (PostgreSQL 17, ffmpeg)
+        if: needs.changements.outputs.entracte_server == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: cargo test --locked -p entracte
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -290,6 +303,36 @@ jobs:
       - if: always()
         run: docker rm -f estompe-pr-api-${{ github.run_id }} estompe-pr-pg-${{ github.run_id }}
 
+  entracte-image:
+    needs: changements
+    if: needs.changements.outputs.image_entracte == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: api/entracte/Dockerfile
+          push: false
+          load: true
+          tags: entracte:pr-${{ github.run_id }}
+          cache-from: type=gha,scope=entracte
+      - name: L'image démarre, applique ses migrations, répond sur /readyz et trouve ffmpeg
+        run: |
+          docker run -d --name entracte-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres postgres:17-alpine
+          timeout 60 sh -c 'until docker exec entracte-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
+          docker run -d --name entracte-pr-api-${{ github.run_id }} --network container:entracte-pr-pg-${{ github.run_id }} --env-file deploy/entracte/.env.example \
+            -e ENTRACTE_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' -e ENTRACTE_STREAM_SECRET= \
+            -e ENTRACTE_TRANSCODE_MODE=vaapi entracte:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until docker run --rm --network container:entracte-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
+            || { docker logs entracte-pr-api-${{ github.run_id }}; exit 1; }
+          docker exec entracte-pr-api-${{ github.run_id }} ffprobe -version > /dev/null
+          timeout 60 sh -c 'until docker logs entracte-pr-api-${{ github.run_id }} 2>&1 | grep -q "repli sur le CPU"; do sleep 1; done' \
+            || { docker logs entracte-pr-api-${{ github.run_id }}; exit 1; }
+      - if: always()
+        run: docker rm -f entracte-pr-api-${{ github.run_id }} entracte-pr-pg-${{ github.run_id }}
+
   image-pli:
     needs: changements
     if: needs.changements.outputs.image_pli == 'true'
@@ -351,7 +394,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, image-pli, image-permission, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

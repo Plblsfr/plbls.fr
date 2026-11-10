@@ -5,7 +5,7 @@ name: livraison
 on:
   push:
     branches: [main]
-    tags: ["pli-v*", "permission-v*", "aegis-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+    tags: ["pli-v*", "permission-v*", "aegis-v*", "entracte-v*", "security-v*", "ui-v*", "estompe-api-v*"]
   workflow_dispatch:
 
 permissions:
@@ -69,6 +69,21 @@ jobs:
       context: .
       dockerfile: api/aegis/Dockerfile
       dir: api/aegis
+    secrets: inherit
+
+  image-entracte:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_entracte == 'true') || startsWith(github.ref, 'refs/tags/entracte-v')
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: entracte
+      name: entracte
+      context: .
+      dockerfile: api/entracte/Dockerfile
+      dir: api/entracte
     secrets: inherit
 
   image-security:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clock, directOk, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, clock, directOk, needsReopen, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -78,5 +78,33 @@ describe('lecture directe', () => {
     expect(directOk(() => 'probably')).toBe(true)
     expect(directOk(() => 'maybe')).toBe(true)
     expect(directOk(() => '')).toBe(false)
+  })
+})
+
+describe('Entracte : formats, qualité et position', () => {
+  it('annonce ce que le lecteur sait lire', () => {
+    const ok = new Set(['video/mp4', 'video/webm', 'video/mp4; codecs="avc1.42E01E"', 'video/webm; codecs="vp9"', 'audio/mp4; codecs="mp4a.40.2"', 'audio/webm; codecs="opus"'])
+    expect(support((m) => (ok.has(m) ? 'probably' : ''))).toEqual({ containers: ['mp4', 'webm'], video: ['h264', 'vp9'], audio: ['aac', 'opus'] })
+    expect(support(() => '')).toEqual({ containers: [], video: [], audio: [] })
+  })
+  it('palier mémorisé par appareil, repli sur Originale', () => {
+    const m = new Map<string, string>()
+    const store = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) }
+    expect(savedQuality(store)).toBe('original')
+    saveQuality(store, '720p')
+    expect(savedQuality(store)).toBe('720p')
+    expect(savedQuality(store, ['original', '480p'])).toBe('original')
+    m.set('entracte.qualite', '4k')
+    expect(savedQuality(store)).toBe('original')
+    expect(savedQuality(null)).toBe('original')
+    const casse = { getItem: () => { throw new Error('bloqué') }, setItem: () => { throw new Error('bloqué') } }
+    expect(savedQuality(casse)).toBe('original')
+    expect(() => saveQuality(casse, '480p')).not.toThrow()
+  })
+  it('position réelle d’un flux HLS qui commence plus loin', () => {
+    expect(absolute(10, 600)).toBe(610)
+    expect(needsReopen(550, 600, 120)).toBe(true)
+    expect(needsReopen(650, 600, 120)).toBe(false)
+    expect(needsReopen(900, 600, 120)).toBe(true)
   })
 })

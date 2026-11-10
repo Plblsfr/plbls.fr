@@ -74,6 +74,12 @@ En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:acces
 `AEGIS_URL` et `AEGIS_TOKEN` (prioritaires sur `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`) : pli envoie son manifeste
 (`pli:deposit`, fermée par défaut) et vérifie le dépôt par `POST /v1/check`.
 
+## Entracte
+
+`AEGIS_URL` et `ENTRACTE_AEGIS_TOKEN` (jeton `entracte:<jeton>` de `AEGIS__SERVICES__TOKENS`) : Entracte envoie son manifeste
+(`entracte:access`, `entracte:request`, `entracte:admin`, fermées par défaut) et lit les droits par `POST /v1/effective` (cache borné par
+`valid_until`, 30 s au plus). Sans aegis, toutes ses permissions sont refusées. Voir [docs/entracte](../entracte/README.md).
+
 ## Bascule depuis permission
 
 1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe et de pli.

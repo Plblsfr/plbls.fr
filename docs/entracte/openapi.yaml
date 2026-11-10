@@ -1,0 +1,356 @@
+openapi: 3.1.0
+info:
+  title: Entracte
+  version: 0.1.0
+  description: |
+    Films et séries hors d'Estompe : catalogue lu dans Radarr et Sonarr, métadonnées TMDB, lecture directe ou HLS (ffmpeg),
+    progression, historique, demandes de titres et notifications push. Identifiants publics propres à Entracte : aucune
+    réponse ne contient de chemin de fichier, d'identifiant Radarr/Sonarr ni d'URL TMDB.
+
+    Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
+    vérifié par `GET /auth/me` du gateway. Droits : permissions aegis `entracte:access`, `entracte:request`, `entracte:admin`,
+    fermées par défaut. Requêtes modifiantes avec cookie : `Origin` dans `ENTRACTE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
+    Erreurs : `{"error": "<code>", "message": "…"}`.
+servers:
+  - url: https://entracte-api.plbls.fr
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Secure-plbls_sid
+    bearer:
+      type: http
+      scheme: bearer
+    service:
+      type: http
+      scheme: bearer
+      description: "jeton `ENTRACTE_SERVICE_TOKEN` partagé avec Estompe"
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    jeton:
+      name: jeton
+      in: path
+      required: true
+      description: "jeton de flux signé renvoyé par `POST /titles/{id}/playback`"
+      schema: { type: string }
+  responses:
+    "401":
+      description: "`unauthorized` : connexion requise"
+    "403":
+      description: "`forbidden` : permission manquante (le message la nomme)"
+    "404":
+      description: "`not_found`"
+    stream401:
+      description: "`stream_expired` : jeton expiré, falsifié ou inconnu"
+security:
+  - session: []
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: "Santé du processus"
+      security: []
+      responses:
+        "200": { description: "`{status, version}`" }
+  /readyz:
+    get:
+      summary: "Base joignable"
+      security: []
+      responses:
+        "200": { description: "`{status: ready}`" }
+        "503": { description: "`not_ready`" }
+  /me:
+    get:
+      summary: "Identité et permissions de la personne (aucune permission Entracte exigée)"
+      responses:
+        "200": { description: "`{sub, name, email, permissions: {access, request, admin}, push: {web, fcm}}`" }
+        "401": { $ref: "#/components/responses/401" }
+  /library:
+    get:
+      summary: "Bibliothèque (titres présents)"
+      description: "`entracte:access`. Paramètres : `kind=movie|series`, `genre`, `year=YYYY|YYYY-YYYY`, `q`, `sort=recent|title|year`, `start`, `limit` (≤ 100)."
+      responses:
+        "200": { description: "`{items: [Titre], total}`" }
+        "400": { description: "paramètre invalide" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /genres:
+    get:
+      summary: "Genres des titres présents"
+      responses:
+        "200": { description: "`{genres: [string]}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /titles/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: "Fiche d'un film, d'une série ou d'un épisode"
+      description: "Titre, plus pour un fichier présent : `audio`, `subtitles` (`[{n, label, language}]`) et `qualities` (`original`, `1080p`, `720p`, `480p` sous la résolution de la source)."
+      responses:
+        "200": { description: Titre }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { $ref: "#/components/responses/404" }
+  /titles/{id}/seasons:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: "Saisons d'une série"
+      responses:
+        "200": { description: "`{items: [{number, title, episode_count, available_count, available, poster}]}`" }
+        "404": { $ref: "#/components/responses/404" }
+  /titles/{id}/seasons/{n}/episodes:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: n, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: "Épisodes connus d'une saison (présents ou absents)"
+      responses:
+        "200": { description: "`{items: [Titre]}`" }
+  /titles/{id}/seasons/{n}/image:
+    parameters:
+      - { $ref: "#/components/parameters/id" }
+      - { name: n, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: "Affiche d'une saison (repli sur celle de la série), servie depuis le cache d'Entracte"
+      responses:
+        "200": { description: image }
+        "404": { $ref: "#/components/responses/404" }
+        "502": { description: "`tmdb_unavailable`" }
+  /titles/{id}/image:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: "Affiche (`type=poster`) ou image de fond (`type=backdrop`), `w=342|500|1280`"
+      description: "Image mise en cache par Entracte, jamais d'URL tierce donnée au client. Reste servie après la suppression du fichier."
+      responses:
+        "200": { description: image }
+        "400": { description: paramètre invalide }
+        "404": { $ref: "#/components/responses/404" }
+        "502": { description: "`tmdb_unavailable` (image jamais mise en cache)" }
+  /titles/{id}/progress:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    put:
+      summary: "Enregistrer sa position"
+      description: "`{position, duration}` en secondes. Au-delà de 90 % de la durée, le titre est marqué vu (date mise à jour s'il l'était)."
+      responses:
+        "204": { description: ok }
+        "400": { description: position ou durée hors bornes }
+        "404": { $ref: "#/components/responses/404" }
+  /titles/{id}/playback:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: "Ouvrir un flux de lecture"
+      description: |
+        Corps : `{quality: original|1080p|720p|480p, audio: n, start: secondes, support: {containers, video, audio}}`.
+        Lecture directe si le fichier est lisible tel quel par le client (qualité originale, conteneur et codecs annoncés,
+        première piste audio), sinon HLS transcodé par ffmpeg (un transcodage par spectateur ; rouvrir le même titre remplace
+        l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, url}]}`.
+        En HLS, la position réelle vaut `offset` + le temps du lecteur.
+      responses:
+        "200": { description: flux ouvert }
+        "400": { description: piste, qualité ou position invalide }
+        "404": { $ref: "#/components/responses/404" }
+        "429": { description: "`too_many_streams`" }
+        "502": { description: "`transcode_failed`" }
+        "503": { description: "`serveur_charge` : limite de transcodages ou dossier temporaire plein" }
+  /continue:
+    get:
+      summary: "Reprendre (titres commencés, épisode suivant d'une série en cours)"
+      responses:
+        "200": { description: "`{items: [Titre]}`" }
+  /history:
+    get:
+      summary: "Historique des titres vus, du plus récent au plus ancien (`start`, `limit`)"
+      description: "Une entrée par titre, liée au titre et non au fichier ; un titre dont le fichier a disparu y reste avec `available=false`."
+      responses:
+        "200": { description: "`{items: [Titre], total}`" }
+  /streams/{id}:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    delete:
+      summary: "Fermer son flux (arrête le transcodage et supprime ses fichiers)"
+      responses:
+        "204": { description: ok }
+        "404": { $ref: "#/components/responses/404" }
+  /stream/{jeton}/direct:
+    parameters: [{ $ref: "#/components/parameters/jeton" }]
+    get:
+      summary: "Lecture directe, requêtes `Range` acceptées"
+      security: []
+      responses:
+        "200": { description: fichier }
+        "206": { description: plage }
+        "401": { $ref: "#/components/responses/stream401" }
+        "403": { description: flux d'une autre personne, ou accès retiré }
+        "416": { description: plage invalide }
+  /stream/{jeton}/hls.m3u8:
+    parameters: [{ $ref: "#/components/parameters/jeton" }]
+    get:
+      summary: "Playlist HLS (attend le premier segment)"
+      security: []
+      responses:
+        "200": { description: playlist }
+        "401": { $ref: "#/components/responses/stream401" }
+        "502": { description: "`transcode_failed` ou `transcode_timeout`" }
+  /stream/{jeton}/sub/{n}:
+    parameters:
+      - { $ref: "#/components/parameters/jeton" }
+      - { name: n, in: path, required: true, schema: { type: integer } }
+    get:
+      summary: "Sous-titres texte (intégrés ou à côté du fichier) convertis en WebVTT nettoyé"
+      security: []
+      responses:
+        "200": { description: WebVTT }
+        "401": { $ref: "#/components/responses/stream401" }
+        "404": { $ref: "#/components/responses/404" }
+  /stream/{jeton}/{segment}:
+    parameters:
+      - { $ref: "#/components/parameters/jeton" }
+      - { name: segment, in: path, required: true, schema: { type: string, pattern: "^seg[0-9]{5}\\.ts$" } }
+    get:
+      summary: "Segment HLS"
+      security: []
+      responses:
+        "200": { description: MPEG-TS }
+        "401": { $ref: "#/components/responses/stream401" }
+        "404": { $ref: "#/components/responses/404" }
+  /search:
+    get:
+      summary: "Recherche unique (`q`) dans la bibliothèque et dans TMDB"
+      description: "Chaque résultat : Titre ou `{id: null, kind, title, year, overview}`, plus `present`, `tmdb_id`, `poster_url` (servie par Entracte), `requestable` et `request` (demande en cours ou dernière demande). `tmdb_error` signale TMDB injoignable."
+      responses:
+        "200": { description: "`{items, tmdb_error}`" }
+        "400": { description: recherche vide ou trop longue }
+  /search/series/{tmdb_id}:
+    parameters: [{ name: tmdb_id, in: path, required: true, schema: { type: integer } }]
+    get:
+      summary: "Saisons d'une série selon TMDB, avec leur présence et l'état des demandes"
+      responses:
+        "200": { description: "`{tmdb_id, title, year, poster_url, seasons: [{number, title, episode_count, available_count, complete, request_state}]}`" }
+        "404": { $ref: "#/components/responses/404" }
+        "502": { description: "`tmdb_unavailable`" }
+  /images/tmdb/{nom}:
+    parameters: [{ name: nom, in: path, required: true, schema: { type: string } }]
+    get:
+      summary: "Affiche d'un résultat de recherche absent du serveur, servie et mise en cache par Entracte"
+      responses:
+        "200": { description: image }
+        "404": { $ref: "#/components/responses/404" }
+  /requests:
+    post:
+      summary: "Demander un titre (`entracte:request`)"
+      description: "`{kind: movie|series, tmdb_id, seasons?: [n]}` ; sans `seasons`, la série entière. Une demande identique en cours n'est pas dupliquée : la personne y est rattachée (`joined_existing`)."
+      responses:
+        "201": { description: demande créée }
+        "200": { description: rattachée à une demande existante }
+        "400": { description: corps invalide ou saison inconnue }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`already_available`" }
+        "502": { description: "`tmdb_unavailable`" }
+  /requests/mine:
+    get:
+      summary: "Mes demandes et leur état (`en_attente`, `acceptee`, `refusee` avec `reason`, `disponible` avec `title_id`)"
+      responses:
+        "200": { description: "`{items: [Demande]}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/requests:
+    get:
+      summary: "Toutes les demandes (`entracte:admin`), filtres `state`, `requester`, `since`"
+      description: "Chaque demande porte aussi `sent`, `send_error` et `requesters`."
+      responses:
+        "200": { description: "`{items: [Demande]}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/requests/{id}/accept:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: "Accepter (ou renvoyer une demande acceptée dont l'envoi a échoué) ; envoie le titre à Radarr ou Sonarr"
+      responses:
+        "200": { description: Demande (`send_error` si l'envoi a échoué) }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`invalid_state`" }
+  /admin/requests/{id}/refuse:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: "Refuser, `{reason}` obligatoire ; prévient les demandeurs"
+      responses:
+        "200": { description: Demande }
+        "400": { description: motif manquant }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`invalid_state`" }
+  /admin/rejected:
+    get:
+      summary: "Fichiers écartés par le filtre (nom et raison, jamais le chemin)"
+      responses:
+        "200": { description: "`{items: [{name, reason, seen_at}]}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/status:
+    get:
+      summary: "État des synchronisations (Radarr, Sonarr, TMDB), du transcodage matériel et de la configuration"
+      responses:
+        "200": { description: "`{sync: [{source, succeeded_at, attempted_at, error}], transcoding: {requested, active, message, running}, configured}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/sync:
+    post:
+      summary: "Lancer une synchronisation du catalogue"
+      responses:
+        "202": { description: lancée }
+        "403": { $ref: "#/components/responses/403" }
+  /push/key:
+    get:
+      summary: "Clé publique VAPID"
+      responses:
+        "200": { description: "`{key}`" }
+        "501": { description: "`no_push`" }
+  /push/subscription:
+    put:
+      summary: "Abonner ce navigateur (`{endpoint, keys: {p256dh, auth}}`)"
+      responses:
+        "204": { description: ok }
+        "400": { description: abonnement invalide }
+        "501": { description: "`no_push`" }
+    delete:
+      summary: "Désabonner ce navigateur (`{endpoint}`)"
+      responses:
+        "204": { description: ok }
+  /push/fcm:
+    put:
+      summary: "Abonner un appareil Android (`{token, previous?}`)"
+      responses:
+        "204": { description: ok }
+        "501": { description: "`no_push`" }
+    delete:
+      summary: "Désabonner un appareil Android (`{token}`)"
+      responses:
+        "204": { description: ok }
+  /notifications:
+    get:
+      summary: "Notifications de la personne après `after` (app Windows, qui les affiche elle-même)"
+      responses:
+        "200": { description: "`{items: [{id, kind, request_id, title, body, created_at}], last_id}`" }
+  /webhooks/radarr:
+    post:
+      summary: "Webhook Radarr (`?token=ENTRACTE_WEBHOOK_TOKEN`), lance une synchronisation"
+      security: []
+      responses:
+        "204": { description: ok }
+        "401": { description: jeton invalide }
+        "404": { description: webhooks non configurés }
+  /webhooks/sonarr:
+    post:
+      summary: "Webhook Sonarr (`?token=ENTRACTE_WEBHOOK_TOKEN`), lance une synchronisation"
+      security: []
+      responses:
+        "204": { description: ok }
+        "401": { description: jeton invalide }
+        "404": { description: webhooks non configurés }
+  /internal/titles/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get:
+      summary: "Titre jouable pour le salon cinéma d'Estompe (`?sub=`), de serveur à serveur"
+      security: [{ service: [] }]
+      responses:
+        "200": { description: "`{id, title, duration, allowed, next: [{id, title, duration}]}`" }
+        "401": { description: jeton de service invalide }
+        "404": { description: titre inconnu, absent ou sans fichier ; route coupée sans `ENTRACTE_SERVICE_TOKEN` }
+        "503": { description: "`aegis_unavailable`" }
