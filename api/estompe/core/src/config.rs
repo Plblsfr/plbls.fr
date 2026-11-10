@@ -56,6 +56,8 @@ pub struct Config {
     pub jellyfin_url: String,
     pub jellyfin_api_key: String,
     pub stream_secret: String,
+    pub entracte_url: String,
+    pub entracte_token: String,
     pub films_max_flux: i64,
     pub films_max_transcodages: i64,
     pub films_cache_secondes: i64,
@@ -156,6 +158,10 @@ impl Config {
             jellyfin_url: get("JELLYFIN_URL").trim_end_matches('/').to_string(),
             jellyfin_api_key: get("JELLYFIN_API_KEY"),
             stream_secret: get("STREAM_SECRET"),
+            entracte_url: get("ESTOMPE_ENTRACTE_URL")
+                .trim_end_matches('/')
+                .to_string(),
+            entracte_token: get("ESTOMPE_ENTRACTE_TOKEN"),
             films_max_flux,
             films_max_transcodages,
             films_cache_secondes,
@@ -191,6 +197,10 @@ impl Config {
             ));
         }
         Ok(c)
+    }
+
+    pub fn entracte_actif(&self) -> bool {
+        !self.entracte_url.is_empty() && !self.entracte_token.is_empty()
     }
 
     pub fn jellyfin_actif(&self) -> bool {

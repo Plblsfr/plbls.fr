@@ -13,6 +13,7 @@ on:
       estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
       pli_server: { value: "${{ jobs.changements.outputs.pli_server }}" }
       aegis_server: { value: "${{ jobs.changements.outputs.aegis_server }}" }
+      entracte_server: { value: "${{ jobs.changements.outputs.entracte_server }}" }
       lint: { value: "${{ jobs.changements.outputs.lint }}" }
       front: { value: "${{ jobs.changements.outputs.front }}" }
       espaces: { value: "${{ jobs.changements.outputs.espaces }}" }
@@ -20,6 +21,7 @@ on:
       image_pli: { value: "${{ jobs.changements.outputs.image_pli }}" }
       image_permission: { value: "${{ jobs.changements.outputs.image_permission }}" }
       image_aegis: { value: "${{ jobs.changements.outputs.image_aegis }}" }
+      image_entracte: { value: "${{ jobs.changements.outputs.image_entracte }}" }
       image_security: { value: "${{ jobs.changements.outputs.image_security }}" }
       image_ui: { value: "${{ jobs.changements.outputs.image_ui }}" }
 
@@ -38,6 +40,7 @@ jobs:
       estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
       pli_server: ${{ steps.c.outputs.pli_server }}
       aegis_server: ${{ steps.c.outputs.aegis_server }}
+      entracte_server: ${{ steps.c.outputs.entracte_server }}
       lint: ${{ steps.c.outputs.lint }}
       front: ${{ steps.e.outputs.front }}
       espaces: ${{ steps.e.outputs.espaces }}
@@ -45,6 +48,7 @@ jobs:
       image_pli: ${{ steps.c.outputs.image_pli }}
       image_permission: ${{ steps.c.outputs.image_permission }}
       image_aegis: ${{ steps.c.outputs.image_aegis }}
+      image_entracte: ${{ steps.c.outputs.image_entracte }}
       image_security: ${{ steps.c.outputs.image_security }}
       image_ui: ${{ steps.c.outputs.image_ui }}
     steps:
@@ -74,6 +78,7 @@ jobs:
           c estompe_ci_image 'deploy/estompe/ci/**'
           c pli_server 'api/pli/**' '!**/*.md' "${cargo[@]}"
           c aegis_server 'api/aegis/**' "${cargo[@]}"
+          c entracte_server 'api/entracte/**' '!**/*.md' docs/entracte/openapi.yaml "${cargo[@]}"
           c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' '**/*.md' \
             .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
           c npm "${npm[@]}" 'scripts/*' biome.json tsconfig.base.json
@@ -86,6 +91,7 @@ jobs:
           c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'web/permission/**' '!**/*.md' "${image[@]}"
           c image_security "${cargo[@]}" .dockerignore 'api/security/**' '!**/*.md' "${image[@]}"
           c image_aegis "${cargo[@]}" 'api/aegis/**' "${image[@]}"
+          c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' '!**/*.md' deploy/entracte/.env.example
           c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
       - id: e
         name: Projets npm à vérifier (job front)

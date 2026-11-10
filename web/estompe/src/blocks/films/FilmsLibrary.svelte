@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { filmsApi } from '../../lib/api'
+  import { entracteOn, filmsApi } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
@@ -23,7 +23,7 @@
   let turn = 0
 
   const fromList = $derived(section === 'continue' || section === 'seen')
-  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Déjà vus' } as Record<string, string>)[section ?? ''] ?? 'Accueil')
+  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: entracteOn() ? 'Historique' : 'Déjà vus' } as Record<string, string>)[section ?? ''] ?? 'Accueil')
   const searching = $derived(!!(q.trim() || genre || year))
   const gridHeading = $derived(searching ? 'Résultats' : section ? '' : 'Ajouts récents')
   const showResume = $derived(!section && !searching && films.resume.length > 0)
@@ -108,10 +108,12 @@
           <a class="film-card" href={target(i)}>
             <span class="film-card-art">
               <FilmPoster id={fromSeries(i) ? i.series_id! : i.id} title={i.series_title ?? i.title} image={fromSeries(i) || i.poster} />
-              {#if i.progress?.seen}<span class="film-card-vu"><Icon name="ok" size={14} /> Vu</span>{/if}
+              {#if i.available === false}<span class="film-card-vu film-card-absent">Indisponible</span>
+              {:else if i.progress?.seen}<span class="film-card-vu"><Icon name="ok" size={14} /> Vu</span>{/if}
             </span>
             <strong class="truncate">{i.series_title ?? i.title}</strong>
             <span class="v-mono v-mute truncate">{episodeLabel(i) || meta(i)}</span>
+            {#if section === 'seen' && i.seen_at}<span class="v-note truncate">vu le {new Date(i.seen_at).toLocaleDateString('fr-FR')}</span>{/if}
             {#if i.progress && !i.progress.seen}<span class="v-mono film-left">{remaining(i.progress)}</span><span class="film-bar"><span style="width:{percent(i.progress)}"></span></span>{/if}
           </a>
         {/each}
@@ -122,3 +124,7 @@
     {/if}
   </section>
 </div>
+
+<style>
+  .film-card-absent { background: var(--papier); color: var(--encre-douce, inherit); }
+</style>

@@ -14,6 +14,7 @@ npm run check        # svelte-check (TypeScript 6 : svelte-check n'est pas encor
 npm test             # tests unitaires (vitest) : markdown/XSS, API, WebSocket, store, jetons PKCE…
 npm run build
 npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et Rust requis)
+npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway (`e2e/fake-gateway.mjs`) et deux
@@ -29,9 +30,15 @@ système de Chromium doivent être présentes).
 - Un nouveau comportement propre à une plateforme : ajouter une capacité optionnelle à `Platform` (absente = rien à faire), l'implémenter dans le dossier concerné, jamais un `if` dans `src/`. Les tests de `plateforme/`, `apps/estompe/windows/`, `apps/estompe/android/` et `apps/estompe/crates/core/ts/` tournent avec ceux du frontend (`npm test`).
 - `src/blocks/<nom>` : un dossier par bloc optionnel (composants, état, tests), avec les noms et dépendances des blocs du backend (`registry.ts`). Le serveur annonce les blocs actifs dans `blocks` de `GET /me` ; `app.on('<nom>')` masque l'interface d'un bloc désactivé ou dont une dépendance l'est. Un nouveau bloc : l'ajouter à `BLOCKS` (le test échoue pour un dossier non déclaré).
 - `src/components`, `src/views` : interface du cœur.
+- `src/sections/entracte` : section Entracte (films et séries, API à part, [`docs/entracte`](../../docs/entracte/README.md)). L'app est
+  celle de plbls.fr : la messagerie d'Estompe et Entracte en sont deux sections, chacune affichée selon les permissions. Au démarrage,
+  `GET /me` d'Estompe et `GET /me` d'Entracte disent ce que la personne a : Entracte seul ouvre la phase `entracte` (écran
+  `EntracteShell`, ni WebSocket ni route de la messagerie), les deux affichent Entracte à la place de l'onglet films. Avec `entracteUrl`
+  configurée (`ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps), `filmsApi` lit l'API d'Entracte : les composants de
+  `src/blocks/films` (bibliothèque, fiche, lecteur) servent pendant la bascule, puis rejoindront la section au retrait du bloc films.
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
-  (et `KEYCLOAK_ISSUER` pour l'app Windows) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
+  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
 
 ## Tests de bout en bout
 
@@ -39,6 +46,10 @@ système de Chromium doivent être présentes).
 Le micro et la caméra sont factices (injectés dans la page). Si Chromium ne démarre pas faute de bibliothèques système, lancer un
 navigateur dans Docker : `docker run --network host -v ~/.cache/ms-playwright:/ms -e PLAYWRIGHT_BROWSERS_PATH=/ms mcr.microsoft.com/playwright:v1.50.0-noble sh -c "cd /tmp && npm i playwright-core@<version> && npx playwright-core run-server --port 3111 --host 127.0.0.1"`
 puis `PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3111/ npm run e2e`.
+
+`npm run e2e:entracte` (`playwright.entracte.config.ts`, `e2e/entracte.spec.ts`) construit le front avec des API fictives et les simule
+dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les deux). `CHROMIUM_PATH` désigne un Chromium déjà installé
+si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
 
 ## Application Windows
 

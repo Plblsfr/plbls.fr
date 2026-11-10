@@ -11,7 +11,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - **Ne jamais ajouter de ligne `Co-Authored-By: Claude …` dans les messages de commit.**
 - Ne pas ajouter non plus de mention « Generated with Claude Code » dans les commits.
 - Ne jamais forcer un push ; ne pas pousser directement sur `main`, passer par une PR.
-- Tags de livraison : `<composant>-vX.Y.Z` (`pli`, `security`, `permission`, `aegis`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
+- Tags de livraison : `<composant>-vX.Y.Z` (`pli`, `security`, `permission`, `aegis`, `entracte`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
 
 ## CI
 - Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
@@ -27,7 +27,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Détail (déclencheurs, caches, jobs) : `docs/estompe/ci.md`.
 
 ## Rust
-- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/estompe/*`.
+- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/entracte`, `api/estompe/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
 - Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`

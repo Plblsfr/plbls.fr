@@ -184,6 +184,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if set.has("films") {
         estompe_block_films::brancher(&state);
     }
+    if set.has("regarder-ensemble") {
+        estompe_block_regarder_ensemble::brancher(&state);
+    }
     let ouverture = {
         let state = state.clone();
         async move {
@@ -582,23 +585,46 @@ mod tests {
 
     #[tokio::test]
     async fn regarder_ensemble_desactive_retire_ses_routes() {
-        let appel = |set: Set| async move {
+        let appel = |set: Set, chemin: &'static str| async move {
             app(AppState::new(testutil::config(), vec![]), &set)
-                .oneshot(
-                    Request::get("/servers/00000000-0000-0000-0000-000000000000/watch")
-                        .body(Body::empty())
-                        .unwrap(),
-                )
+                .oneshot(Request::get(chemin).body(Body::empty()).unwrap())
                 .await
                 .unwrap()
                 .status()
         };
-        let sans = select(&block_list(), |k| {
-            (k == "BLOCK_REGARDER_ENSEMBLE" || k == "BLOCK_FILMS").then(|| "false".to_string())
-        })
-        .unwrap();
-        assert_eq!(appel(sans).await, StatusCode::NOT_FOUND);
-        assert_eq!(appel(Set::all()).await, StatusCode::UNAUTHORIZED);
+        let sans = || {
+            select(&block_list(), |k| {
+                (k == "BLOCK_REGARDER_ENSEMBLE" || k == "BLOCK_FILMS").then(|| "false".to_string())
+            })
+            .unwrap()
+        };
+        let sans_films = || {
+            select(&block_list(), |k| {
+                (k == "BLOCK_FILMS").then(|| "false".to_string())
+            })
+            .unwrap()
+        };
+        for chemin in [
+            "/servers/00000000-0000-0000-0000-000000000000/watch",
+            "/servers/00000000-0000-0000-0000-000000000000/cinema",
+            "/voice/00000000-0000-0000-0000-000000000000/cinema",
+        ] {
+            assert_eq!(
+                appel(sans(), chemin).await,
+                StatusCode::NOT_FOUND,
+                "{chemin}"
+            );
+            assert_eq!(
+                appel(sans_films(), chemin).await,
+                StatusCode::UNAUTHORIZED,
+                "{chemin}"
+            );
+            assert_eq!(
+                appel(Set::all(), chemin).await,
+                StatusCode::UNAUTHORIZED,
+                "{chemin}"
+            );
+        }
     }
 
     #[test]
@@ -711,13 +737,7 @@ mod tests {
             })
             .unwrap()
         };
-        for chemin in [
-            "/films/library",
-            "/films/continue",
-            "/admin/films/rejets",
-            "/voice/00000000-0000-0000-0000-000000000000/cinema",
-            "/servers/00000000-0000-0000-0000-000000000000/cinema",
-        ] {
+        for chemin in ["/films/library", "/films/continue", "/admin/films/rejets"] {
             assert_eq!(
                 appeler(sans(), chemin).await,
                 StatusCode::NOT_FOUND,

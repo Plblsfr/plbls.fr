@@ -98,7 +98,7 @@ pub static CATALOGUE: &[Entree] = &[
             "GET /statuses", "GET /users/{id}/badges", "GET /badges/{id}/icon", "GET /reports", "GET /push/key",
             "DELETE /push/subscription", "DELETE /push/fcm", "DELETE /push/desktop", "GET /servers/{id}/voice",
             "GET /servers/{id}/voice/stats", "GET /servers/{id}/music", "GET /servers/{id}/watch", "GET /voice/{cid}/music",
-            "GET /voice/{cid}/watch", "GET /voice/{cid}/draw", "GET /channels/{cid}/videos",
+            "GET /voice/{cid}/watch", "GET /servers/{id}/cinema", "GET /voice/{cid}/cinema", "GET /voice/{cid}/draw", "GET /channels/{cid}/videos",
             "GET /channels/{cid}/videos/posts/{mid}/thumb", "GET /ws", "POST /ws-ticket",
         ]),
     e("servers.create", "Serveurs", "Créer un serveur", "Créer de nouveaux serveurs").routes(&["POST /servers"]),
@@ -205,10 +205,13 @@ pub static CATALOGUE: &[Entree] = &[
     e("music.use", "Vocal", "Musique", "Chercher de la musique et piloter la musique d'un salon vocal")
         .bloc("musique")
         .routes(&["GET /music/search", "GET /music/resolve", "GET /music/cover/{id}", "PUT /voice/{cid}/music/**", "POST /voice/{cid}/music/**", "DELETE /voice/{cid}/music/**"]),
-    e("watch.organize", "Vocal", "Regarder ensemble", "Lancer et piloter « Regarder ensemble » (plafond de « Organiser des séances »)")
+    e("watch.organize", "Vocal", "Regarder ensemble", "Lancer et piloter « Regarder ensemble » et les séances du salon cinéma, dont le titre est vérifié par Entracte ou la bibliothèque films (plafond de « Organiser des séances »)")
         .serveur()
         .bloc("regarder-ensemble")
-        .routes(&["PUT /voice/{cid}/watch/**", "POST /voice/{cid}/watch/**", "DELETE /voice/{cid}/watch/**"])
+        .routes(&[
+            "PUT /voice/{cid}/watch/**", "POST /voice/{cid}/watch/**", "DELETE /voice/{cid}/watch/**",
+            "PUT /voice/{cid}/cinema/**", "POST /voice/{cid}/cinema/**", "DELETE /voice/{cid}/cinema/**",
+        ])
         .plafond(roles::ORGANIZE_WATCH),
     e("draw2gether.use", "Vocal", "Draw2Gether", "Jouer à Draw2Gether dans un salon vocal")
         .bloc("draw2gether")
@@ -216,10 +219,10 @@ pub static CATALOGUE: &[Entree] = &[
     e("transcription.use", "Vocal", "Transcription", "Transcrire les messages vocaux et corriger une transcription")
         .bloc("transcription")
         .routes(&["POST /files/{id}/transcript", "PUT /files/{id}/transcript"]),
-    e("films.use", "Médias", "Films et séries", "Bibliothèque Jellyfin et séances de cinéma")
+    e("films.use", "Médias", "Films et séries", "Bibliothèque Jellyfin, et titres du salon cinéma tant qu'Entracte n'est pas branché")
         .ferme()
         .bloc("films")
-        .routes(&["* /films/**", "* /voice/{cid}/cinema/**", "GET /servers/{id}/cinema"]),
+        .routes(&["* /films/**"]),
     e("videos.use", "Médias", "Salons Vidéos", "Créer des listes, planifier des séances, marquer vu et répondre dans les salons « Vidéos »")
         .bloc("videos")
         .routes(&["POST /channels/{cid}/videos/**", "PUT /channels/{cid}/videos/**", "DELETE /channels/{cid}/videos/**"]),

@@ -60,13 +60,17 @@ test-ui:
 e2e-permission:
     npm run e2e --workspace web/permission
 
-# Ces deux-là demandent un Postgres : TEST_DATABASE_URL=postgres://… just test-pli
+# Ceux-là demandent un Postgres : TEST_DATABASE_URL=postgres://… just test-pli
 test-pli:
     cargo test --locked -p pli
     npm ci && npm test --workspace web/pli
 
 test-estompe-api:
     cargo test --locked $(scripts/estompe/paquets-cargo.sh)
+
+# Demande aussi ffmpeg et ffprobe dans le PATH
+test-entracte:
+    cargo test --locked -p entracte
 
 # Reconstruit packages/ui/dist (non versionné)
 build-ui:
@@ -110,6 +114,13 @@ aegis-dev-run:
 
 aegis-image:
     docker build -f api/aegis/Dockerfile -t aegis:local .
+
+# Entracte : backend sur 127.0.0.1:8092, demande dev-up, le gateway et aegis (AEGIS_URL=http://127.0.0.1:8091), ffmpeg
+entracte-dev-run:
+    set -a && . deploy/dev.env && set +a && AEGIS_URL="${AEGIS_URL:-http://127.0.0.1:8091}" cargo run -p entracte
+
+entracte-image:
+    docker build -f api/entracte/Dockerfile -t entracte:local .
 
 # permission : backend sur 127.0.0.1:8090, demande dev-up (Postgres)
 permission-dev-run:

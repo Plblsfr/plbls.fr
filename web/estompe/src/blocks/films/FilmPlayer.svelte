@@ -2,11 +2,12 @@
   import { onMount } from 'svelte'
   import { filmsApi } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
+  import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../regarder-ensemble/providers'
-  import { clock, fullTitle, resumeAt, trackName, type FilmDetail, type FilmTracks } from './films'
+  import { clock, fullTitle, QUALITY_LABEL, resumeAt, trackName, type FilmDetail, type FilmTracks } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -61,7 +62,7 @@
   <div class="film-player-top">
     <a class="watch-btn" href={back} aria-label="Fermer le lecteur"><Icon name="x" size={22} /></a>
     <div class="grow film-player-title"><strong class="truncate">{item ? fullTitle(item) : ''}</strong><span class="film-player-sub">Regarder seul</span></div>
-    {#if item}<button class="plbls-button v-rose film-to-voice" onclick={() => (picker = true)}><Icon name="film" size={18} /> Continuer au cinéma à {clock(position)}</button>{/if}
+    {#if item && app.phase === 'ready' && app.cinemaOn}<button class="plbls-button v-rose film-to-voice" onclick={() => (picker = true)}><Icon name="film" size={18} /> Continuer au cinéma à {clock(position)}</button>{/if}
   </div>
   <div class="film-player-video">
     <div class="watch-video" bind:this={host}></div>
@@ -81,6 +82,12 @@
         {#each tracks.subtitles as t (t.n)}
           <button class="film-track" aria-pressed={t.n === tracks.subN} onclick={() => { player?.setSubtitle?.(t.n); tracks = { ...tracks!, subN: t.n } }}>{trackName(t)}</button>
         {/each}
+        {#if tracks.qualities && tracks.qualities.length > 1}
+          <div class="film-mh">Qualité</div>
+          {#each tracks.qualities as q (q)}
+            <button class="film-track" aria-pressed={q === tracks.quality} onclick={() => player?.setQuality?.(q)}>{QUALITY_LABEL[q]}</button>
+          {/each}
+        {/if}
       </section>
     {/if}
   </div>
@@ -96,7 +103,7 @@
       <span class="grow"></span>
       <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
       <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" oninput={(e) => { volume = Number(e.currentTarget.value); muted = volume === 0 }} />
-      {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}><Icon name="bulle" size={16} /> Audio et sous-titres</button>{/if}
+      {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}><Icon name="bulle" size={16} /> {tracks.qualities && tracks.qualities.length > 1 ? 'Audio, sous-titres, qualité' : 'Audio et sous-titres'}</button>{/if}
       <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran"><Icon name="agrandir" size={20} /></button>
     </div>
   </div>

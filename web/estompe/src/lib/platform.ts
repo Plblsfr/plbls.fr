@@ -42,6 +42,8 @@ export interface PushDriver {
   refresh(): Promise<void>
   /** Le serveur peut répondre 501 (push absent) : le tester à l'ouverture des réglages. */
   probeServer: boolean
+  /** Jeton de l'appareil (FCM sur Android), réutilisé par Entracte pour ses propres notifications. */
+  token?(): Promise<string>
 }
 
 export interface NotificationDriver {

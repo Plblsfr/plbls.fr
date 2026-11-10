@@ -30,6 +30,11 @@ const ALPHABET_CODE: &[u8] = b"ABCDEFGHJKMNPQRSTVWXYZ23456789";
 const TYPES: [&str; 5] = ["text", "voice", "videos", "music", "cinema"];
 pub const TYPES_VOCAUX: [&str; 2] = ["voice", "cinema"];
 
+pub fn cinema_disponible(state: &AppState) -> bool {
+    let actif = |nom: &str| state.blocs_actifs().iter().any(|b| b == nom);
+    actif("films") || (actif("regarder-ensemble") && state.config().entracte_actif())
+}
+
 pub fn est_vocal(kind: &str) -> bool {
     TYPES_VOCAUX.contains(&kind)
 }
@@ -786,10 +791,10 @@ async fn creer_salon(
     if nom.is_none() || !TYPES.contains(&kind.as_str()) {
         return Ok(salon_invalide());
     }
-    if kind == "cinema" && !state.blocs_actifs().iter().any(|b| b == "films") {
+    if kind == "cinema" && !cinema_disponible(&state) {
         return invalide(
             "invalid_channel",
-            "salon cinéma : la bibliothèque de films n'est pas activée sur ce serveur",
+            "salon cinéma : ni Entracte ni la bibliothèque de films ne sont branchés sur ce serveur",
         );
     }
     if sujet.chars().count() > 200 {
@@ -1895,6 +1900,32 @@ pub(crate) mod tests {
             (s, v["error"].as_str()),
             (StatusCode::CONFLICT, Some("too_many_channels"))
         );
+    }
+
+    #[test]
+    fn cinema_avec_entracte_ou_les_films() {
+        use crate::testutil::{config, config_avec};
+        let blocs = |b: &[&str]| b.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let entracte = || {
+            config_avec(&[
+                ("ESTOMPE_ENTRACTE_URL", "http://entracte:8080/"),
+                ("ESTOMPE_ENTRACTE_TOKEN", "t"),
+            ])
+        };
+        assert!(!cinema_disponible(&AppState::new(
+            config(),
+            blocs(&["regarder-ensemble"])
+        )));
+        assert!(cinema_disponible(&AppState::new(
+            config(),
+            blocs(&["films"])
+        )));
+        assert!(cinema_disponible(&AppState::new(
+            entracte(),
+            blocs(&["regarder-ensemble"])
+        )));
+        assert!(!cinema_disponible(&AppState::new(entracte(), blocs(&[]))));
+        assert_eq!(entracte().entracte_url, "http://entracte:8080");
     }
 
     #[tokio::test]

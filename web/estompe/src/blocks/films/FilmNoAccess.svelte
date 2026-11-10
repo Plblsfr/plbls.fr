@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api } from '../../lib/api'
+  import { api, entracteOn } from '../../lib/api'
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import { tint } from './films'
@@ -19,7 +19,7 @@
     try {
       await api.sendReport({
         title: 'Accès aux films et séries demandé',
-        description: `${app.pseudo} demande la permission estompe:movies pour rejoindre une séance dans le salon cinéma « ${roomName} ».`,
+        description: `${app.pseudo} demande la permission ${entracteOn() ? 'entracte:access' : 'estompe:films.use'} pour rejoindre une séance dans le salon cinéma « ${roomName} ».`,
         category: 'autre', platform: '', tech: {}, logs: '', file_ids: [],
       })
       sent = true
@@ -33,7 +33,7 @@
     <div><div class="v-eyebrow film-noaccess-room">Session en cours dans {roomName}</div><strong>{s?.meta?.title ?? 'Film ou série'}</strong></div>
   </div>
   <div class="film-noaccess-body">
-    <p>{watching}, mais tu n'as pas encore accès aux films et séries d'Estompe.</p>
+    <p>{watching}, mais tu n'as pas encore accès aux films et séries {entracteOn() ? 'd’Entracte' : 'd’Estompe'}.</p>
     {#if sent}
       <p class="film-noaccess-sent v-alert ok" role="status"><Icon name="ok" size={16} /> Demande envoyée aux administrateurs d'Estompe.</p>
     {:else if app.on('signalements')}

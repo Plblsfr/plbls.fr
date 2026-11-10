@@ -57,3 +57,5 @@ configs:
       CREATE DATABASE permission OWNER permission;
       CREATE ROLE aegis LOGIN PASSWORD 'aegis';
       CREATE DATABASE aegis OWNER aegis;
+      CREATE ROLE entracte LOGIN PASSWORD 'entracte';
+      CREATE DATABASE entracte OWNER entracte;

@@ -1,11 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const unauthorized = vi.hoisted(() => ({ fn: null as null | (() => void) }))
+const ApiErrorMock = vi.hoisted(() => class extends Error { status = 0 })
+const entracteMock = vi.hoisted(() => ({ on: false, me: null as null | { sub: string; name: string; email: string; permissions: { access: boolean; request: boolean; admin: boolean }; push: { web: boolean; fcm: boolean } } }))
 vi.mock('./api', () => ({
   api: { videos: vi.fn(async () => ({ posts: [], lists: [], sessions: [] })), channelMessages: vi.fn(), deleteMessage: vi.fn(async () => {}), readNotifications: vi.fn(async () => {}), markRead: vi.fn(async () => {}), notifySettings: vi.fn(async () => ({ levels: {}, types: { dm: true, mention: true, channel: true, voice: true }, preview: true, sound: true })), setNotifySettings: vi.fn(async () => {}), reads: vi.fn(async () => []), unread: vi.fn(async () => ({ channels: [], dms: [] })), avatars: vi.fn(async () => ({})), statuses: vi.fn(async () => ({})), notifications: vi.fn(async () => []), dms: vi.fn(async () => []), servers: vi.fn(async () => []), server: vi.fn(async () => ({ server: { id: 's1', name: 'Amis', owner_id: 'me', icon_version: 0 }, channels: [{ id: 'c1', name: 'général', kind: 'text', position: 1, permissions: ['view_channel'] }], members: [], roles: [], permissions: ['view_channel'] })) },
-  ApiError: class extends Error {},
+  ApiError: ApiErrorMock,
   API_URL: '',
   setUnauthorizedHandler: (h: () => void) => { unauthorized.fn = h },
+  entracteOn: () => entracteMock.on,
+  entracteApi: { me: vi.fn(async () => { if (!entracteMock.me) throw new Error('sans session'); return entracteMock.me }), fcmSubscribe: vi.fn(async () => {}), pushSubscribe: vi.fn(async () => {}), notifications: vi.fn(async () => ({ items: [], last_id: 0 })) },
 }))
 vi.mock('./realtime', () => ({ Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
@@ -102,6 +106,51 @@ describe('droits annoncés par /me', () => {
     expect(s.phase).toBe('admin')
     expect(s.adminSections.some((x) => x.id === 'permissions')).toBe(false)
     expect(s.isAdmin).toBe(true)
+  })
+})
+
+describe('sections selon les permissions (Entracte)', () => {
+  const droits = (access: boolean, request = false, admin = false) => ({ sub: 'kc-me', name: 'moi', email: '', permissions: { access, request, admin }, push: { web: false, fcm: false } })
+  const boot = async (me: Record<string, unknown> | 'refus', entracte: ReturnType<typeof droits> | null) => {
+    entracteMock.on = true
+    entracteMock.me = entracte
+    Object.assign(api, { me: vi.fn(async () => { if (me === 'refus') throw Object.assign(new (vi.mocked(ApiErrorMock))(), { status: 401 }); return me }) })
+    vi.mocked(api.servers).mockClear()
+    history.replaceState(null, '', '#/')
+    await s.boot().catch(() => {})
+  }
+  afterEach(() => { entracteMock.on = false; entracteMock.me = null })
+
+  it('Entracte seul : section Entracte, sans messagerie ni appel à ses routes', async () => {
+    await boot({ activated: false, allowed: false, admin: false, rights: [] }, droits(true))
+    expect(s.phase).toBe('entracte')
+    expect(s.movies).toBe(true)
+    expect(api.servers).not.toHaveBeenCalled()
+    expect(location.hash).toBe('#/films')
+  })
+  it('Estompe seul : messagerie, aucune entrée Entracte', async () => {
+    await boot({ activated: true, allowed: true, id: 'me', pseudo: 'moi', blocks: ['films', 'vocal', 'regarder-ensemble'], movies: true }, droits(false))
+    expect(s.phase).toBe('ready')
+    expect(s.movies).toBe(false)
+  })
+  it('Estompe et Entracte : messagerie, la section Entracte remplace l’onglet films', async () => {
+    await boot({ activated: true, allowed: true, id: 'me', pseudo: 'moi', blocks: [], movies: false, cinema: true }, droits(true, true))
+    expect(s.phase).toBe('ready')
+    expect(s.movies).toBe(true)
+    expect(s.cinemaOn).toBe(true)
+    expect(s.entracteMe?.permissions.request).toBe(true)
+  })
+  it('aucune des deux : page « aucun accès »', async () => {
+    await boot({ activated: false, allowed: false, admin: false, rights: [] }, droits(false))
+    expect(s.phase).toBe('denied')
+    await boot({ activated: false, allowed: false, admin: false, rights: [] }, null)
+    expect(s.phase).toBe('denied')
+  })
+  it('Entracte joignable quand Estompe refuse la session : section Entracte ; sinon connexion', async () => {
+    await boot('refus', droits(true))
+    expect(s.phase).toBe('entracte')
+    await boot('refus', null)
+    expect(s.phase).toBe('login')
   })
 })
 

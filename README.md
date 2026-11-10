@@ -3,8 +3,8 @@ Monorepo :
 
 | Dossier | Contenu |
 |---|---|
-| `api/` | API et services Rust (workspace Cargo racine) : `security` (auth-gateway), `aegis` (permissions), `permission` (remplacé par aegis, retiré après la bascule), `pli`, `estompe` |
-| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (et sa plateforme web, image nginx), `permission`, `pli` |
+| `api/` | API et services Rust (workspace Cargo racine) : `security` (auth-gateway), `aegis` (permissions), `permission` (remplacé par aegis, retiré après la bascule), `pli`, `entracte` (films et séries, [`docs/entracte`](docs/entracte/README.md)), `estompe` |
+| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (l'app : messagerie et section Entracte ; sa plateforme web, image nginx), `permission`, `pli` |
 | `apps/` | applications natives : `estompe/windows`, `estompe/android` (Tauri) et leur code commun `estompe/crates` |
 | `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
 | `deploy/` | déploiement et dev local ([`deploy/README.md`](deploy/README.md)) : un compose de dev et un de production pour tout le dépôt, `dev.env`, un `.env.example` par projet, realm Keycloak de dev |

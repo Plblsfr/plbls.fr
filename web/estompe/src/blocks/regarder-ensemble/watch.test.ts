@@ -12,7 +12,7 @@ import type { WatchState } from '../../lib/types'
 vi.mock('../../vendor/plbls-ui/plbls-ui.esm.min.js', () => ({ toast: { show: vi.fn(), clear: vi.fn() } }))
 vi.mock('../../lib/api', async (original) => ({
   ...(await original<typeof import('../../lib/api')>()),
-  filmsApi: { playback: vi.fn(), close: vi.fn(async () => {}), progress: vi.fn(async () => {}) },
+  filmsApi: { playback: vi.fn(), close: vi.fn(async () => {}), progress: vi.fn(async () => {}), base: '' },
 }))
 
 const at = '2026-10-28T10:00:00.000Z'
@@ -353,7 +353,7 @@ describe('lecteur de film', () => {
     const a = await providers.film(el, h)
     a.load('e1', 0, true)
     await settled()
-    expect(filmsApi.playback).toHaveBeenCalledWith('e1', { direct: true, audio: 0 })
+    expect(filmsApi.playback).toHaveBeenCalledWith('e1', expect.objectContaining({ direct: true, audio: 0 }))
     await vi.waitFor(() => expect(h.onTracks).toHaveBeenCalled())
     expect(el.querySelector('video')?.src).toContain('/films/stream/t/direct')
     expect(el.querySelector('video')?.crossOrigin).toBe('anonymous')
@@ -369,7 +369,7 @@ describe('lecteur de film', () => {
     await vi.waitFor(() => expect(HTMLMediaElement.prototype.load).toHaveBeenCalled())
     a.setAudio?.(1)
     await opened(2)
-    expect(filmsApi.playback).toHaveBeenLastCalledWith('e1', { direct: true, audio: 1 })
+    expect(filmsApi.playback).toHaveBeenLastCalledWith('e1', expect.objectContaining({ direct: true, audio: 1 }))
     expect(filmsApi.close).toHaveBeenCalledWith('f1')
     a.destroy()
   })
@@ -384,11 +384,46 @@ describe('lecteur de film', () => {
     const video = el.querySelector('video')!
     video.dispatchEvent(new Event('error'))
     await opened(2)
-    expect(filmsApi.playback).toHaveBeenLastCalledWith('e1', { direct: false, audio: 0 })
+    expect(filmsApi.playback).toHaveBeenLastCalledWith('e1', expect.objectContaining({ direct: false, audio: 0 }))
     expect(h.onError).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(2))
     video.dispatchEvent(new Event('error'))
     expect(h.onError).toHaveBeenCalledTimes(1)
+    a.destroy()
+  })
+
+  it('Entracte : changer de palier rouvre le flux à la même position, palier mémorisé sur l’appareil', async () => {
+    localStorage.removeItem('entracte.qualite')
+    vi.mocked(filmsApi.playback).mockResolvedValue({ ...stream, mode: 'hls', url: '/stream/t/hls.m3u8', offset: 0, quality: 'original', qualities: ['original', '720p'] } as FilmPlayback)
+    const h = handlers()
+    const el = document.createElement('div')
+    const a = await providers.film(el, h)
+    a.load('e1', 0, true)
+    await settled()
+    expect(filmsApi.playback).toHaveBeenCalledWith('e1', expect.objectContaining({ quality: 'original', start: 0 }))
+    await vi.waitFor(() => expect(h.onTracks).toHaveBeenCalledWith(expect.objectContaining({ qualities: ['original', '720p'], quality: 'original' })))
+    const video = el.querySelector('video')!
+    Object.defineProperty(video, 'currentTime', { value: 42, writable: true })
+    a.setQuality?.('720p')
+    await opened(2)
+    expect(filmsApi.playback).toHaveBeenLastCalledWith('e1', expect.objectContaining({ quality: '720p', start: 42 }))
+    expect(localStorage.getItem('entracte.qualite')).toBe('720p')
+    a.destroy()
+  })
+
+  it('Entracte : un flux HLS qui commence à la reprise donne la position réelle, et un saut hors du flux le rouvre', async () => {
+    vi.mocked(filmsApi.playback).mockResolvedValue({ ...stream, mode: 'hls', url: '/stream/t/hls.m3u8', offset: 600 } as FilmPlayback)
+    const el = document.createElement('div')
+    const a = await providers.film(el, handlers())
+    a.load('e1', 600, true)
+    await settled()
+    await vi.waitFor(() => expect(HTMLMediaElement.prototype.load).toHaveBeenCalled())
+    const video = el.querySelector('video')!
+    Object.defineProperty(video, 'currentTime', { value: 10, writable: true })
+    expect(a.time()).toBe(610)
+    a.seek(100)
+    await opened(2)
+    expect(filmsApi.playback).toHaveBeenLastCalledWith('e1', expect.objectContaining({ start: 100 }))
     a.destroy()
   })
 
@@ -418,7 +453,7 @@ describe('lecteur de film', () => {
     const a = await providers.film(document.createElement('div'), handlers())
     a.load('e1', 0, true)
     await settled()
-    expect(filmsApi.playback).toHaveBeenCalledWith('e1', { direct: false, audio: 0 })
+    expect(filmsApi.playback).toHaveBeenCalledWith('e1', expect.objectContaining({ direct: false, audio: 0 }))
     a.destroy()
   })
 })

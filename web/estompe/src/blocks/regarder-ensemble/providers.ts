@@ -1,5 +1,5 @@
-import { API_URL, filmsApi, ApiError } from '../../lib/api'
-import { directOk, saveDue, type FilmPlayback, type FilmTracks } from '../films/films'
+import { entracteOn, filmsApi, ApiError } from '../../lib/api'
+import { absolute, directOk, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../films/films'
 import { playerError } from './watch'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,6 +28,8 @@ export interface Adapter {
   setVolume?(v: number): void
   setAudio?(n: number): void
   setSubtitle?(n: number | null): void
+  /** Palier de qualité (Entracte) : rouvre le flux à la même position. */
+  setQuality?(q: Quality): void
   load(ref: string, start: number, play: boolean): void
   play(): void
   pause(): void
@@ -165,17 +167,21 @@ const film: Factory = async (el, h) => {
   let ref = ''
   let audio = 0
   let sub: number | null = null
+  let quality: Quality = 'original'
   let stream: FilmPlayback | null = null
+  let offset = 0
   let forceHls = false
   let retried = false
   let gone = false
   let opening = 0
   let savedAt = 0
   let position = 0
+  const store = () => { try { return localStorage } catch { return null } }
 
   const close = () => { if (stream) void filmsApi.close(stream.stream_id).catch(() => {}); stream = null }
+  const total = () => stream?.duration || (Number.isFinite(video.duration) ? video.duration + offset : 0)
   const save = () => {
-    const duration = stream?.duration || video.duration
+    const duration = total()
     if (!ref || position <= 0 || !Number.isFinite(duration) || duration <= 0) return
     savedAt = Date.now()
     void filmsApi.progress(ref, position, duration).catch(() => {})
@@ -184,21 +190,32 @@ const film: Factory = async (el, h) => {
   const open = async (start: number, play: boolean) => {
     const turn = ++opening
     close()
+    const ask = (q: Quality) => filmsApi.playback(ref, {
+      direct: !forceHls && (entracteOn() || directOk((t) => video.canPlayType(t))),
+      audio, quality: q, start, support: support((t) => video.canPlayType(t)),
+    })
     try {
-      const p = await filmsApi.playback(ref, { direct: !forceHls && directOk((t) => video.canPlayType(t)), audio })
+      let p: FilmPlayback
+      try { p = await ask(quality) } catch (e) {
+        if (!(e instanceof ApiError && e.status === 400 && quality !== 'original')) throw e
+        quality = 'original'
+        p = await ask(quality)
+      }
       if (gone || turn !== opening) { void filmsApi.close(p.stream_id).catch(() => {}); return }
       stream = p
+      offset = p.offset ?? 0
+      position = start
       video.querySelectorAll('track').forEach((t) => t.remove())
       for (const s of p.subtitles) {
         const t = video.appendChild(document.createElement('track'))
         t.kind = 'subtitles'
         t.label = s.label ?? s.language ?? `Piste ${s.n + 1}`
         if (s.language) t.srclang = s.language
-        t.src = API_URL + s.url
+        t.src = filmsApi.base + s.url
       }
       showSubtitle()
-      h.onTracks?.({ audio: p.audio, subtitles: p.subtitles, audioN: audio, subN: sub })
-      adapter.load(API_URL + p.url, start, play)
+      h.onTracks?.({ audio: p.audio, subtitles: p.subtitles, audioN: audio, subN: sub, qualities: p.qualities, quality: p.quality ?? quality })
+      adapter.load(filmsApi.base + p.url, Math.max(0, start - offset), play)
     } catch (e) {
       if (!gone) h.onError(e instanceof ApiError ? e.message : 'La lecture n’a pas pu démarrer.')
     }
@@ -215,25 +232,36 @@ const film: Factory = async (el, h) => {
     },
   }, true)
   video.addEventListener('timeupdate', () => {
-    if (video.currentTime > 0) position = video.currentTime
+    if (video.currentTime > 0) position = absolute(video.currentTime, offset)
     if (stream && saveDue(savedAt, Date.now())) save()
   })
   video.addEventListener('pause', () => { if (stream && !video.seeking) save() })
   const leave = () => { if (stream) filmsApi.closeOnExit(stream.stream_id) }
   window.addEventListener('pagehide', leave)
+  const now = () => absolute(video.currentTime, offset)
   return {
     ...adapter,
+    time: now,
+    duration: total,
+    seek: (s) => {
+      const ready = Number.isFinite(video.duration) ? video.duration : 0
+      if (stream?.mode === 'hls' && stream.offset !== undefined && needsReopen(s, offset, ready)) { position = s; void open(s, !video.paused); return }
+      adapter.seek(Math.max(0, s - offset))
+    },
     load: (r, start, play) => {
       save()
       ref = r
       position = start
       audio = 0
+      offset = 0
+      quality = savedQuality(store())
       forceHls = false
       retried = false
       void open(start, play)
     },
-    setAudio: (n) => { audio = n; void open(video.currentTime, !video.paused) },
+    setAudio: (n) => { audio = n; void open(now(), !video.paused) },
     setSubtitle: (n) => { sub = n; showSubtitle() },
+    setQuality: (q) => { quality = q; saveQuality(store(), q); void open(now(), !video.paused) },
     destroy: () => { gone = true; window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },
   }
 }
