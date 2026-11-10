@@ -33,7 +33,17 @@ export default defineConfig(({ mode }) => ({
           { src: 'icon-maskable.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
         ],
       },
-      workbox: { importScripts: ['push-sw.js'], globPatterns: ['**/*.{js,css,html,svg,woff2}'], navigateFallback: '/index.html', navigateFallbackDenylist: [/^\/api\//, /^\/updates\//] },
+      workbox: {
+        importScripts: ['push-sw.js'],
+        globPatterns: ['**/*.{js,css,svg,woff2}'],
+        globIgnores: ['config.js'],
+        navigateFallback: null,
+        runtimeCaching: [{
+          urlPattern: ({ request, url }) => url.pathname === '/config.js' || (request.mode === 'navigate' && !/^\/(api|updates)\//.test(url.pathname)),
+          handler: 'NetworkFirst',
+          options: { cacheName: 'estompe-pages', networkTimeoutSeconds: 5 },
+        }],
+      },
     }),
   ],
   define: { __APP_VERSION__: JSON.stringify(appVersion) },

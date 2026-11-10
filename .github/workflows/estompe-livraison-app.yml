@@ -77,7 +77,7 @@ jobs:
           path: |
             web/estompe/plateforme/dist-updates
             web/estompe/dist
-          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('api/estompe/core/updates.json', 'web/estompe/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'web/estompe/public/**', 'web/estompe/index.html', 'package-lock.json', 'web/estompe/vite.config.ts', 'scripts/estompe/**') }}
+          key: installeur-${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'ci' }}-${{ vars.NATIVE_ALPHA }}-${{ hashFiles('.version', 'api/estompe/core/updates.json', 'web/estompe/src/**', 'apps/estompe/windows/**', 'apps/estompe/crates/**', 'web/estompe/public/**', 'web/estompe/index.html', 'package-lock.json', 'web/estompe/vite.config.ts', 'scripts/estompe/**') }}
       - id: cargo-cache
         if: steps.installer.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -113,8 +113,8 @@ jobs:
             web/estompe/plateforme/dist-updates
             web/estompe/dist
           key: ${{ steps.installer.outputs.cache-primary-key }}
-      - name: Front web (le build Windows, neuf ou restauré du cache, a écrasé web/estompe/dist)
-        run: npm ci && npm --prefix web/estompe run build
+      - name: Front web (le build Windows, neuf ou restauré du cache, a écrasé web/estompe/dist ; version de .version, même si l'installeur vient du cache)
+        run: npm ci && node scripts/estompe/bump-version.mjs --apply && npm --prefix web/estompe run build
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: front
