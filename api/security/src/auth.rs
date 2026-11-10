@@ -4,7 +4,7 @@ use axum::http::{HeaderMap, Method, header};
 
 use crate::AppState;
 use crate::identity::Identity;
-use crate::oidc::Rejected;
+use crate::oidc::{Indisponible, Rejected};
 use crate::origin::origin_allowed;
 use crate::session::{self, Session};
 
@@ -47,6 +47,10 @@ fn bearer(headers: &HeaderMap) -> Option<&str> {
 pub async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<Authn, AuthError> {
     if let Some(token) = bearer(headers) {
         let claims = state.oidc.verify_access_token(token).await.map_err(|e| {
+            if e.is::<Indisponible>() {
+                tracing::warn!("bearer non vérifiable: {e}");
+                return AuthError::Unavailable;
+            }
             tracing::debug!("bearer refusé: {e}");
             AuthError::Unauthenticated
         })?;
@@ -130,7 +134,11 @@ async fn refresh(state: &AppState, sid: &str, old: &Session) -> Result<Session, 
         .await
         .map_err(|e| {
             tracing::warn!("access token rafraîchi invalide: {e}");
-            AuthError::Unauthenticated
+            if e.is::<Indisponible>() {
+                AuthError::Unavailable
+            } else {
+                AuthError::Unauthenticated
+            }
         })?;
     let session = Session {
         identity: claims.identity(),
