@@ -739,3 +739,30 @@ async fn cache_redis_et_invalidation() {
         "cache invalidé"
     );
 }
+
+#[tokio::test]
+async fn calcul_concurrent_d_une_invalidation_non_servi() {
+    let Some(b) = banc().await else { return };
+    if std::env::var("TEST_REDIS_URL").is_err() {
+        eprintln!("ignoré : TEST_REDIS_URL absent");
+        return;
+    }
+    let cache = &b.state.cache;
+    let avant = cache.version("yan").await.unwrap();
+    let perime = aegis::moteur::Effectifs::calculer(
+        "yan",
+        avant.generation,
+        &[],
+        chrono::Utc::now(),
+        cache.ttl(),
+    );
+    cache.invalider_compte("yan").await;
+    cache.ecrire(avant, &perime).await;
+    let apres = cache.version("yan").await.unwrap();
+    assert_ne!(apres, avant);
+    assert_eq!(
+        cache.lire(apres, "yan").await,
+        None,
+        "résultat calculé avant l'invalidation"
+    );
+}
