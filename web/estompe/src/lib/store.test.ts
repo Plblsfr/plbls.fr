@@ -14,6 +14,7 @@ vi.mock('./api', () => ({
 vi.mock('./realtime', () => ({ Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
 import { AppStore } from './store.svelte'
+import type { RealtimeEvent } from './realtime'
 import { platform as web } from '@platform'
 import { setPlatform } from './platform'
 import { api } from './api'
@@ -40,7 +41,7 @@ beforeEach(() => {
   s.details = { s1: { server: s.servers[0], channels: [{ id: 'c1', name: 'général', kind: 'text', position: 1 }], members: [{ id: 'me', pseudo: 'moi', online: true }, { id: 'bob', pseudo: 'bob', online: false }] } }
   s.convs = { 'c:c1': { messages: [], hasMore: false, loading: false, loaded: true } }
 })
-const ev = (type: string, data: unknown) => s.handleEvent({ type, data })
+const ev = (type: string, data: unknown) => s.handleEvent({ type, data } as RealtimeEvent)
 
 describe('accès aux films', () => {
   const avec = async (on: boolean, access: boolean) => {
@@ -644,6 +645,16 @@ describe('rôles et permissions', () => {
     expect(s.groupSuggestionsOf('c:c1')).toEqual([])
     s.details.s1.channels[0].permissions = ['mention_everyone']
     expect(s.groupSuggestionsOf('c:c1')).toEqual(['everyone', 'here', 'Modérateur'])
+  })
+  it('retire un salon devenu invisible au rechargement du serveur', async () => {
+    s.details.s1.channels.push({ id: 'c2', name: 'secret', kind: 'text', position: 2 })
+    s.convs['c:c2'] = { messages: [], hasMore: false, loading: false, loaded: true }
+    s.unread['c:c2'] = 3
+    ev('roles.updated', { server_id: 's1' })
+    await vi.waitFor(() => expect(s.details.s1.channels.map((c) => c.id)).toEqual(['c1']))
+    expect(s.convs['c:c2']).toBeUndefined()
+    expect(s.unread['c:c2']).toBeUndefined()
+    expect(s.convs['c:c1']).toBeDefined()
   })
   it('recharge le serveur quand ses rôles changent, sans reconnexion', async () => {
     ev('roles.updated', { server_id: 's1' })

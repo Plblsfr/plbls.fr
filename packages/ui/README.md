@@ -177,8 +177,8 @@ Une pré-version (`2.1.0-beta.1`) ne touche pas aux alias.
 
 **Côté Dokploy** : service `cdn` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml), image
 `ghcr.io/plblsfr/plbls-ui` (tag `CDN_TAG`), **volume sur `/srv`** (sans lui, les anciennes versions disparaissent à chaque
-déploiement), domaine `cdn.plbls.fr` vers le port `80`, sonde `GET /health`. Test local, depuis la racine du dépôt : `docker build -f packages/ui/Dockerfile -t plbls-ui:local .`
-puis `docker run --rm -p 8080:80 plbls-ui:local`.
+déploiement), domaine `cdn.plbls.fr` vers le port `8080`, sonde `GET /health`. Test local, depuis la racine du dépôt : `docker build -f packages/ui/Dockerfile -t plbls-ui:local .`
+puis `docker run --rm -p 8080:8080 plbls-ui:local`.
 
 Le CDN pourra accueillir d'autres ressources sous d'autres préfixes (`/fonts/`, `/img/`…) en posant des
 fichiers dans le volume.

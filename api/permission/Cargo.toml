@@ -9,22 +9,22 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+commun.workspace = true
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
-tower-http = { workspace = true, features = ["trace", "fs"] }
+tower-http = { workspace = true, features = ["trace", "fs", "set-header"] }
 sqlx = { workspace = true, features = ["uuid", "chrono", "migrate", "macros"] }
 uuid.workspace = true
 chrono.workspace = true
 config.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
-hmac.workspace = true
-base64.workspace = true
-subtle.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
 utoipa = { workspace = true, features = ["chrono", "axum_extras"] }
 utoipa-axum.workspace = true
 reqwest = { workspace = true, features = ["json"] }
+
+[dev-dependencies]
+tower.workspace = true

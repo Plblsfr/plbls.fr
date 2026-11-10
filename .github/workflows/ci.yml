@@ -32,6 +32,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Seul .version change, au format attendu
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -49,6 +50,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Entrée de changelog d'Estompe
         env:
           HEAD_REF: ${{ github.head_ref }}
@@ -66,6 +68,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -113,6 +117,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Toolchain de rust-toolchain.toml
         run: rustup toolchain install && cargo --version
       - name: Les Dockerfiles suivent rust-toolchain.toml
@@ -162,7 +168,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -187,6 +193,8 @@ jobs:
           --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
       - id: cargo
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -202,6 +210,9 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
+      - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP)
+        if: needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+        run: cargo test --locked -p commun
       - name: Tests du serveur pli (PostgreSQL 16)
         if: needs.changements.outputs.pli_server == 'true'
         env:
@@ -213,6 +224,11 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_REDIS_URL: redis://localhost:6379
         run: cargo test --locked -p aegis
+      - name: Tests de security (Redis, faux Keycloak)
+        if: needs.changements.outputs.security_server == 'true'
+        env:
+          TEST_REDIS_URL: redis://localhost:6379
+        run: cargo test --locked -p auth-gateway
       - name: ffmpeg pour les tests d'Entracte
         if: needs.changements.outputs.entracte_server == 'true'
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg
@@ -236,6 +252,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - id: cargo
@@ -283,6 +301,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -309,6 +329,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -336,6 +358,8 @@ jobs:
   image-pli:
     needs: changements
     if: needs.changements.outputs.image_pli == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/_image.yml
     with:
       component: pli
@@ -347,6 +371,8 @@ jobs:
   image-permission:
     needs: changements
     if: needs.changements.outputs.image_permission == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/_image.yml
     with:
       component: permission
@@ -359,6 +385,8 @@ jobs:
   image-aegis:
     needs: changements
     if: needs.changements.outputs.image_aegis == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/_image.yml
     with:
       component: aegis
@@ -371,6 +399,8 @@ jobs:
   image-security:
     needs: changements
     if: needs.changements.outputs.image_security == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/_image.yml
     with:
       component: security
@@ -383,6 +413,8 @@ jobs:
   image-ui:
     needs: changements
     if: needs.changements.outputs.image_ui == 'true'
+    permissions:
+      contents: write
     uses: ./.github/workflows/_image.yml
     with:
       component: ui

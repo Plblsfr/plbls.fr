@@ -92,6 +92,7 @@ paths:
     get:
       tags: [messages]
       summary: Mentions non lues (200 max, récentes d'abord)
+      description: Seules les mentions des salons que l'utilisateur voit encore (membre du serveur, permission `view_channel`) sont renvoyées ; elles sont supprimées quand il quitte le serveur, en est expulsé ou banni.
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Mention"}}}}}
         "403": {$ref: "#/components/responses/NotActivated"}
@@ -256,12 +257,12 @@ paths:
         "204": {description: "ok — au moins un envoi accepté par le service de push"}
         "404": {description: no_subscription}
         "501": {description: no_push}
-        "502": {description: "push_failed — message = réponse du service de push"}
+        "502": {description: "push_failed — message = hôte et statut HTTP du service de push (jamais le corps de sa réponse)"}
   /push/subscription:
     put:
       tags: [comptes]
       summary: Enregistrer l'abonnement push de ce navigateur (PushSubscription.toJSON())
-      description: "Une notification est envoyée aux destinataires hors ligne (aucun WebSocket ouvert) pour une mention ou un message privé."
+      description: "Une notification est envoyée aux destinataires hors ligne (aucun WebSocket ouvert) pour une mention ou un message privé. Seuls les services push connus sont acceptés (`fcm.googleapis.com`, `updates.push.services.mozilla.com`, `*.notify.windows.com`, `web.push.apple.com`, en https sans port ni IP littérale). Au plus 10 abonnements (Web Push, FCM, PC) par compte : au-delà, le plus ancien est remplacé."
       requestBody:
         required: true
         content:
@@ -270,7 +271,7 @@ paths:
               type: object
               required: [endpoint, keys]
               properties:
-                endpoint: {type: string, description: URL https}
+                endpoint: {type: string, description: "URL https d'un service push connu"}
                 keys: {type: object, properties: {p256dh: {type: string}, auth: {type: string}}}
       responses:
         "204": {description: ok}
@@ -1206,6 +1207,7 @@ paths:
       responses:
         "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Server"}}}}
         "400": {description: invalid_name}
+        "429": {description: "`rate_limited` : 10 créations par heure (en-tête Retry-After)"}
   /servers/{id}:
     parameters: [{$ref: "#/components/parameters/ServerId"}]
     get:
@@ -1401,7 +1403,7 @@ paths:
     parameters: [{$ref: "#/components/parameters/ServerId"}, {$ref: "#/components/parameters/ChannelId"}, {name: rid, in: path, required: true, schema: {type: string, format: uuid}}]
     put:
       tags: [serveurs]
-      summary: Autoriser ou refuser des permissions à un rôle sur ce salon ; deux listes vides = hériter (permission `manage_channels`, et on n'y met que des permissions qu'on a)
+      summary: Autoriser ou refuser des permissions à un rôle sur ce salon ; deux listes vides = hériter (permission `manage_channels`, rôle visé sous son rôle le plus haut sauf « @tout le monde », et on n'y met que des permissions qu'on a)
       requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {allow: {$ref: "#/components/schemas/Permissions"}, deny: {$ref: "#/components/schemas/Permissions"}}}}}}
       responses:
         "204": {description: ok}
@@ -1717,6 +1719,7 @@ paths:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/DM"}}}}
         "400": {description: self_dm}
         "404": {description: user_not_found}
+        "429": {description: "`rate_limited` : 10 par minute (en-tête Retry-After)"}
   /dms/{id}/messages:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     get:
@@ -1776,11 +1779,11 @@ paths:
     put:
       tags: [messages]
       summary: Ajouter sa réaction (idempotent)
-      responses: {"204": {description: ok}, "400": {description: invalid_emoji}, "409": {description: "too_many_reactions : 20 emojis différents par message"}, "404": {$ref: "#/components/responses/NotFound"}}
+      responses: {"204": {description: ok}, "400": {description: invalid_emoji}, "409": {description: "too_many_reactions : 20 emojis différents par message"}, "404": {$ref: "#/components/responses/NotFound"}, "429": {description: "`rate_limited` : 30 ajouts ou retraits par 10 s (en-tête Retry-After)"}}
     delete:
       tags: [messages]
       summary: Retirer sa réaction
-      responses: {"204": {description: ok}, "404": {$ref: "#/components/responses/NotFound"}}
+      responses: {"204": {description: ok}, "404": {$ref: "#/components/responses/NotFound"}, "429": {description: "`rate_limited` : 30 ajouts ou retraits par 10 s (en-tête Retry-After)"}}
 
   /files:
     post:
@@ -1821,7 +1824,9 @@ paths:
       summary: Télécharger un fichier (participants de la conversation, ou expéditeur tant qu'il n'est pas joint)
       description: |
         Les requêtes partielles (`Range`, réponse 206) sont prises en charge : une vidéo se lit sans être téléchargée en entier.
+        Une plage vide (`bytes=-0`) ou toute plage sur un fichier vide répond 416 (`Content-Range: bytes */<taille>`).
         `?t=<jeton>` (jeton de `POST /files/{id}/link`) remplace l'identité : pour `<video>` et `<img>` des applications, qui n'envoient pas l'en-tête Bearer (403 `invalid_link` si le jeton est expiré ou altéré).
+        Le jeton porte le compte qui l'a demandé : ses droits sont revérifiés à chaque requête (404 s'il ne voit plus le fichier, par exemple après avoir quitté le serveur).
         `?download=1` force le téléchargement (`Content-Disposition: attachment`).
       parameters: [{name: t, in: query, schema: {type: string}}, {name: download, in: query, schema: {type: string, enum: ["1"]}}]
       responses:
@@ -1888,7 +1893,7 @@ paths:
   /voice/{cid}/token:
     parameters:
       - {$ref: "#/components/parameters/ChannelId"}
-      - {name: screen, in: query, required: false, schema: {type: string, enum: ["1"]}, description: "`1` : jeton du second participant `<userId>#screen`, qui publie le partage d'écran natif de l'app Windows (EST-18). Ne réserve pas de place et ne renvoie que `url`, `token` et `room`."}
+      - {name: screen, in: query, required: false, schema: {type: string, enum: ["1"]}, description: "`1` : jeton du second participant `<userId>#screen`, qui publie le partage d'écran natif de l'app Windows (EST-18). Exige `share_screen` et que l'utilisateur soit déjà dans la salle (sinon `409 voice_not_joined`) ; ne réserve pas de place et ne renvoie que `url`, `token` et `room`. Le jeton ne publie que `screen_share` et `screen_share_audio` (selon la modération et les droits), sans abonnement (`canSubscribe: false`) ni métadonnées (`canUpdateOwnMetadata: false`)."}
     post:
       tags: [vocal]
       summary: Jeton pour rejoindre un salon vocal avec le client LiveKit
@@ -1906,7 +1911,7 @@ paths:
                   room: {type: string}
                   max_participants: {type: integer, example: 10}
         "400": {description: not_voice_channel}
-        "409": {description: "voice_full : limite du salon atteinte (10 participants au plus)"}
+        "409": {description: "voice_full : limite du salon atteinte (10 participants au plus) ; voice_not_joined (`screen=1`) : l'utilisateur n'est pas dans la salle"}
         "502": {description: voice_unavailable}
   /servers/{id}/watch:
     parameters: [{$ref: "#/components/parameters/ServerId"}]
@@ -2296,6 +2301,7 @@ paths:
       summary: Ticket à usage unique (30 s) pour ouvrir le WebSocket
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: object, properties: {ticket: {type: string}}}}}}
+        "429": {description: "`rate_limited` : 20 tickets par minute (en-tête Retry-After)"}
   /ws:
     get:
       tags: [temps réel]

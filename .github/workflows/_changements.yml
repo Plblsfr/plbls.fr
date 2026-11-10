@@ -13,6 +13,7 @@ on:
       estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
       pli_server: { value: "${{ jobs.changements.outputs.pli_server }}" }
       aegis_server: { value: "${{ jobs.changements.outputs.aegis_server }}" }
+      security_server: { value: "${{ jobs.changements.outputs.security_server }}" }
       entracte_server: { value: "${{ jobs.changements.outputs.entracte_server }}" }
       lint: { value: "${{ jobs.changements.outputs.lint }}" }
       front: { value: "${{ jobs.changements.outputs.front }}" }
@@ -40,6 +41,7 @@ jobs:
       estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
       pli_server: ${{ steps.c.outputs.pli_server }}
       aegis_server: ${{ steps.c.outputs.aegis_server }}
+      security_server: ${{ steps.c.outputs.security_server }}
       entracte_server: ${{ steps.c.outputs.entracte_server }}
       lint: ${{ steps.c.outputs.lint }}
       front: ${{ steps.e.outputs.front }}
@@ -55,6 +57,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
+          persist-credentials: false
       - id: c
         run: |
           ci=()
@@ -76,9 +79,10 @@ jobs:
           c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
           c estompe_tauri 'apps/estompe/**' '!**/*.md'
           c estompe_ci_image 'deploy/estompe/ci/**'
-          c pli_server 'api/pli/**' '!**/*.md' "${cargo[@]}"
-          c aegis_server 'api/aegis/**' "${cargo[@]}"
-          c entracte_server 'api/entracte/**' '!**/*.md' docs/entracte/openapi.yaml "${cargo[@]}"
+          c pli_server 'api/pli/**' 'api/commun/**' '!**/*.md' "${cargo[@]}"
+          c aegis_server 'api/aegis/**' 'api/commun/**' "${cargo[@]}"
+          c security_server 'api/security/**' 'api/commun/**' '!**/*.md' "${cargo[@]}"
+          c entracte_server 'api/entracte/**' 'api/commun/**' '!**/*.md' docs/entracte/openapi.yaml "${cargo[@]}"
           c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' '**/*.md' \
             .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
           c npm "${npm[@]}" 'scripts/*' biome.json tsconfig.base.json
@@ -87,11 +91,11 @@ jobs:
           c front_estompe 'web/estompe/**' 'apps/estompe/*/src/**' 'apps/estompe/crates/core/ts/**' 'scripts/estompe/*.mjs' api/estompe/core/src/catalogue.rs '!**/*.md'
           c front_permission 'web/permission/**' '!**/*.md'
           c front_pli 'web/pli/**' '!**/*.md'
-          c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'web/pli/**' '!**/*.md' "${image[@]}"
-          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'web/permission/**' '!**/*.md' "${image[@]}"
-          c image_security "${cargo[@]}" .dockerignore 'api/security/**' '!**/*.md' "${image[@]}"
-          c image_aegis "${cargo[@]}" 'api/aegis/**' "${image[@]}"
-          c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' '!**/*.md' deploy/entracte/.env.example
+          c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'api/commun/**' 'web/pli/**' '!**/*.md' "${image[@]}"
+          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'api/commun/**' 'web/permission/**' '!**/*.md' "${image[@]}"
+          c image_security "${cargo[@]}" .dockerignore 'api/security/**' 'api/commun/**' '!**/*.md' "${image[@]}"
+          c image_aegis "${cargo[@]}" 'api/aegis/**' 'api/commun/**' "${image[@]}"
+          c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' 'api/commun/**' '!**/*.md' deploy/entracte/.env.example
           c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
       - id: e
         name: Projets npm à vérifier (job front)

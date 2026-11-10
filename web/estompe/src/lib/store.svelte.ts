@@ -295,8 +295,8 @@ export class AppStore {
   }
 
   handleEvent(ev: RealtimeEvent) {
-    const d = ev.data
-    switch (ev.type) {
+    const { type, data: d } = ev
+    switch (type) {
       case 'presence.snapshot':
         this.online = Object.fromEntries((d.online as string[]).map((id) => [id, true]))
         this.activities = d.activities ?? {}
@@ -308,11 +308,11 @@ export class AppStore {
         avatars.updateServer(d.server_id as string, d.user_id as string, d.version as number)
         break
       case 'typing':
-        this.onTyping(d.channel_id ? channelKey(d.channel_id) : dmKey(d.dm_id), d.user_id, d.pseudo)
+        this.onTyping(convKeyOf(d), d.user_id, d.pseudo)
         break
       case 'read.updated':
       {
-        const key = d.channel_id ? channelKey(d.channel_id) : dmKey(d.dm_id)
+        const key = convKeyOf(d)
         ;(this.reads[key] ??= {})[d.user_id] = d
         if (d.user_id === this.meId) this.clearLocalUnread(key)
         break
@@ -347,7 +347,7 @@ export class AppStore {
         this.onMessageUpdated(d as Message)
         break
       case 'message.deleted':
-        this.removeMessage(d.channel_id ? channelKey(d.channel_id) : dmKey(d.dm_id), d.id)
+        this.removeMessage(convKeyOf(d), d.id)
         if (d.channel_id) videos.changed(d.channel_id)
         break
       case 'reaction.updated':
@@ -393,13 +393,7 @@ export class AppStore {
       case 'channel.deleted': {
         const det = this.details[d.server_id]
         if (det) det.channels = det.channels.filter((c) => c.id !== d.id)
-        delete this.convs[channelKey(d.id)]
-        delete this.voice[d.id]
-        delete this.watch[d.id]
-        delete this.music[d.id]
-        delete this.cinema[d.id]
-        draw.drop(d.id)
-        videos.drop(d.id)
+        this.dropChannel(d.id)
         break
       }
       case 'server.updated': {
@@ -512,6 +506,8 @@ export class AppStore {
     try {
       const det = await api.server(id)
       if (!this.details[id]) return
+      const gardes = new Set(det.channels.map((c) => c.id))
+      for (const c of this.details[id].channels) if (!gardes.has(c.id)) this.dropChannel(c.id)
       this.details[id] = det
       const s = this.servers.find((s) => s.id === id)
       if (s) s.owner_id = det.server.owner_id
@@ -521,6 +517,17 @@ export class AppStore {
     } catch { /* rechargé au prochain évènement */ }
   }
   private timeoutTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
+  private dropChannel(id: string) {
+    delete this.convs[channelKey(id)]
+    delete this.unread[channelKey(id)]
+    delete this.voice[id]
+    delete this.watch[id]
+    delete this.music[id]
+    delete this.cinema[id]
+    draw.drop(id)
+    videos.drop(id)
+  }
 
   async refreshServers() {
     this.servers = await api.servers()

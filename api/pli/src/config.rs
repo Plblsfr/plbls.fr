@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use commun::config::nettoie;
+
 pub const TTLS: [u32; 4] = [3600, 86400, 604800, 2592000];
 
 #[derive(Clone, Debug)]
@@ -14,16 +16,6 @@ pub struct Config {
     pub permission: Option<(String, String)>,
     pub aegis: Option<(String, String)>,
     pub public_dir: PathBuf,
-}
-
-pub fn nettoie(valeur: &str) -> String {
-    let v = valeur.trim();
-    for q in ['"', '\''] {
-        if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
-            return v[1..v.len() - 1].to_string();
-        }
-    }
-    v.to_string()
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: &str) -> Result<T, String> {

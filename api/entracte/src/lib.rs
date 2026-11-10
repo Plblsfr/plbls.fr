@@ -14,6 +14,7 @@ pub mod garde;
 pub mod http;
 pub mod identite;
 pub mod images;
+pub mod import_estompe;
 pub mod interne;
 pub mod lecture;
 pub mod materiel;

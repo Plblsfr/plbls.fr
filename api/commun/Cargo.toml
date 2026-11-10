@@ -1,0 +1,21 @@
+[package]
+name = "commun"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+subtle.workspace = true
+percent-encoding.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

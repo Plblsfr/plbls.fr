@@ -45,18 +45,24 @@ async function headers(json: boolean): Promise<Record<string, string>> {
   return h
 }
 
-async function requestAt<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
+const DELAI = 30_000
+const DELAI_ENVOI = 300_000
+
+async function call(base: string, method: string, path: string, body?: unknown): Promise<Response> {
+  const brut = body instanceof Blob
   const attempt = async () => {
-    const init: RequestInit = {
-      method,
-      credentials: 'include',
-      headers: await headers(body !== undefined && !(body instanceof FormData)),
-    }
-    if (body instanceof FormData) init.body = body
+    const h = await headers(body !== undefined && !brut && !(body instanceof FormData))
+    const init: RequestInit = { method, credentials: 'include', headers: h, signal: AbortSignal.timeout(brut || body instanceof FormData ? DELAI_ENVOI : DELAI) }
+    if (brut) { h['Content-Type'] = body.type; init.body = body }
+    else if (body instanceof FormData) init.body = body
     else if (body !== undefined) init.body = JSON.stringify(body)
-    return fetch(base + path, init)
+    return fetch(base + path, init).catch((e) => {
+      debug.log('error', 'réseau', `${method} ${path.split('?')[0]} ✗ ${e}`)
+      if (e instanceof DOMException && e.name === 'TimeoutError') throw new ApiError(0, 'timeout', 'Le serveur ne répond pas.')
+      throw e
+    })
   }
-  let res = await attempt().catch((e) => { debug.log('error', 'réseau', `${method} ${path.split('?')[0]} ✗ ${e}`); throw e })
+  let res = await attempt()
   // Un 401 isolé peut venir d'un jeton expiré en route ou d'un cookie renouvelé : on réessaie une fois avant de conclure.
   if (res.status === 401) res = await attempt()
   // 429 sur une lecture : une seule relance, après le délai du serveur (jamais pour une action de la personne, qui l'indique et la laisse réessayer)
@@ -78,6 +84,11 @@ async function requestAt<T>(base: string, method: string, path: string, body?: u
     if (res.status === 426 && base === API_URL) onUpgradeRequired?.(msg)
     throw new ApiError(res.status, code, msg)
   }
+  return res
+}
+
+async function requestAt<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
+  const res = await call(base, method, path, body)
   if (res.status === 204) return undefined as T
   const ct = res.headers.get('Content-Type') ?? ''
   return (ct.includes('json') ? res.json() : undefined) as Promise<T>
@@ -86,20 +97,12 @@ async function requestAt<T>(base: string, method: string, path: string, body?: u
 const request = <T>(method: string, path: string, body?: unknown) => requestAt<T>(API_URL, method, path, body)
 
 /** Envoie une image en corps brut (PUT), avec son type. */
-async function putImage(path: string, img: Blob) {
-  const res = await fetch(API_URL + path, { method: 'PUT', credentials: 'include', headers: { ...(await headers(false)), 'Content-Type': img.type }, body: img })
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, e.error ?? 'http_' + res.status, e.message ?? res.statusText)
-  }
-}
+const putImage = (path: string, img: Blob) => requestAt<void>(API_URL, 'PUT', path, img)
 
+/** Télécharge une image avec l'authentification. */
+const blobAt = async (base: string, path: string) => (await call(base, 'GET', path)).blob()
 /** Télécharge une image avec l'authentification et la rend en URL locale. */
-async function imageAt(base: string, path: string) {
-  const res = await fetch(base + path, { credentials: 'include', headers: await headers(false) })
-  if (!res.ok) throw new ApiError(res.status, 'http_' + res.status, res.statusText)
-  return URL.createObjectURL(await res.blob())
-}
+const imageAt = async (base: string, path: string) => URL.createObjectURL(await blobAt(base, path))
 const imageUrl = (path: string) => imageAt(API_URL, path)
 
 const enc = encodeURIComponent
@@ -230,20 +233,10 @@ export const api = {
   pin: (id: string) => send<void>('PUT', `/messages/${id}/pin`),
   unpin: (id: string) => send<void>('DELETE', `/messages/${id}/pin`),
   emojis: () => get<CustomEmoji[]>('/emojis'),
-  createEmoji: async (serverId: string, name: string, img: Blob) => {
-    const res = await fetch(`${API_URL}/servers/${serverId}/emojis?name=${enc(name)}`, { method: 'POST', credentials: 'include', headers: { ...(await headers(false)), 'Content-Type': img.type }, body: img })
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, e.error ?? 'http_' + res.status, e.message ?? res.statusText)
-    }
-  },
+  createEmoji: (serverId: string, name: string, img: Blob) => send<void>('POST', `/servers/${serverId}/emojis?name=${enc(name)}`, img),
   renameEmoji: (serverId: string, id: string, name: string) => send<void>('PATCH', `/servers/${serverId}/emojis/${id}`, { name }),
   deleteEmoji: (serverId: string, id: string) => send<void>('DELETE', `/servers/${serverId}/emojis/${id}`),
-  emojiBlobUrl: async (id: string) => {
-    const res = await fetch(`${API_URL}/emojis/${id}/image`, { credentials: 'include', headers: await headers(false) })
-    if (!res.ok) throw new ApiError(res.status, 'http_' + res.status, res.statusText)
-    return URL.createObjectURL(await res.blob())
-  },
+  emojiBlobUrl: (id: string) => imageUrl(`/emojis/${id}/image`),
   gifSearch: (q: string, offset = 0) => get<GifResult[]>(q ? `/gifs/search?q=${enc(q)}&offset=${offset}` : `/gifs/trending?offset=${offset}`),
   gifImport: (url: string) => post<Attachment>('/gifs/import', { url }),
   editMessage: (id: string, content: string, fileIds?: string[]) => send<Message>('PATCH', `/messages/${id}`, { content, file_ids: fileIds }),
@@ -322,35 +315,13 @@ export const api = {
   setNotifySettings: (s: NotifySettings) => send<void>('PUT', '/me/notify-settings', s),
   avatars: () => get<Record<string, number>>('/avatars'),
   deleteAvatar: () => send<void>('DELETE', '/me/avatar'),
-  setAvatar: async (img: Blob) => {
-    const res = await fetch(`${API_URL}/me/avatar`, { method: 'PUT', credentials: 'include', headers: { ...(await headers(false)), 'Content-Type': img.type }, body: img })
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, e.error ?? 'http_' + res.status, e.message ?? res.statusText)
-    }
-  },
-  cameraBackground: async () => {
-    const res = await fetch(`${API_URL}/me/camera-background`, { credentials: 'include', headers: await headers(false) })
-    if (!res.ok) throw new ApiError(res.status, 'http_' + res.status, res.statusText)
-    return res.blob()
-  },
+  setAvatar: (img: Blob) => putImage('/me/avatar', img),
+  cameraBackground: () => blobAt(API_URL, '/me/camera-background'),
   deleteCameraBackground: () => send<void>('DELETE', '/me/camera-background'),
-  setCameraBackground: async (img: Blob) => {
-    const res = await fetch(`${API_URL}/me/camera-background`, { method: 'PUT', credentials: 'include', headers: { ...(await headers(false)), 'Content-Type': img.type }, body: img })
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, e.error ?? 'http_' + res.status, e.message ?? res.statusText)
-    }
-  },
+  setCameraBackground: (img: Blob) => putImage('/me/camera-background', img),
   serverAvatars: (sid: string) => get<Record<string, number>>(`/servers/${sid}/avatars`),
   deleteServerAvatar: (sid: string) => send<void>('DELETE', `/servers/${sid}/me/avatar`),
-  setServerAvatar: async (sid: string, img: Blob) => {
-    const res = await fetch(`${API_URL}/servers/${sid}/me/avatar`, { method: 'PUT', credentials: 'include', headers: { ...(await headers(false)), 'Content-Type': img.type }, body: img })
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}))
-      throw new ApiError(res.status, e.error ?? 'http_' + res.status, e.message ?? res.statusText)
-    }
-  },
+  setServerAvatar: (sid: string, img: Blob) => putImage(`/servers/${sid}/me/avatar`, img),
   deleteServerIcon: (sid: string) => send<void>('DELETE', `/servers/${sid}/icon`),
   setServerIcon: (sid: string, img: Blob) => putImage(`/servers/${sid}/icon`, img),
   serverIconBlobUrl: (sid: string) => imageUrl(`/servers/${sid}/icon`),
@@ -360,11 +331,7 @@ export const api = {
   badgeIconBlobUrl: (id: string) => imageUrl(`/badges/${id}/icon`),
   grantBadges: (id: string, pseudos: string[]) => post<{ granted: number; missing: string[] }>(`/admin/badges/${id}/users`, { pseudos }),
   voiceStats: (sid: string) => get<Record<string, number>>(`/servers/${sid}/voice/stats`),
-  avatarBlob: async (userId: string, serverId = '') => {
-    const res = await fetch(`${API_URL}${serverId ? `/servers/${serverId}` : ''}/users/${userId}/avatar`, { credentials: 'include', headers: await headers(false) })
-    if (!res.ok) throw new ApiError(res.status, 'http_' + res.status, res.statusText)
-    return res.blob()
-  },
+  avatarBlob: (userId: string, serverId = '') => blobAt(API_URL, `${serverId ? `/servers/${serverId}` : ''}/users/${userId}/avatar`),
   pushKey: () => get<{ public_key: string }>('/push/key'),
   pushTest: () => send<void>('POST', '/push/test'),
   pushSubscribe: (sub: PushSubscriptionJSON) => send<void>('PUT', '/push/subscription', sub),

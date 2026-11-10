@@ -1,6 +1,5 @@
 mod auth;
 mod error;
-mod identity;
 mod routes;
 mod settings;
 
@@ -47,9 +46,7 @@ async fn main() -> anyhow::Result<()> {
         settings: settings.clone(),
         db,
         spec: api_doc.to_pretty_json()?.into(),
-        http: reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?,
+        http: commun::http::client(std::time::Duration::from_secs(10)),
     };
     let mut app = api_router.merge(routes::openapi::router());
 
@@ -60,7 +57,9 @@ async fn main() -> anyhow::Result<()> {
             ServeDir::new(dir).fallback(ServeFile::new(Path::new(dir).join("index.html"))),
         );
     }
-    let app = app.layer(TraceLayer::new_for_http()).with_state(state);
+    let app = routes::avec_securite(app)
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&settings.server.bind).await?;
     tracing::info!("permission à l'écoute sur {}", settings.server.bind);

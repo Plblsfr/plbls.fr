@@ -51,6 +51,7 @@ class Updater {
   /** Version dont l'utilisateur a repoussé la proposition (« Plus tard »). */
   dismissed = $state('')
   private timer: ReturnType<typeof setInterval> | undefined
+  private started = false
 
   get forced() { return this.available?.force === true || this.refused !== null }
 
@@ -108,6 +109,8 @@ class Updater {
 
   /** À appeler une fois au démarrage : déclare version et plateforme à l'API, vérifie après un court délai, au retour au premier plan, puis toutes les 30 minutes. */
   start() {
+    if (this.started) return
+    this.started = true
     setClientPlatform(platform.id())
     setUpgradeHandler((m) => this.require(m))
     void platform.updates.version?.().then((v) => (this.version = v)).catch(() => {})

@@ -202,6 +202,7 @@ impl Client {
             source,
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(5))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("client HTTP"),
             now,

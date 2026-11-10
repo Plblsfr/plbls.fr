@@ -126,19 +126,7 @@ impl Aegis {
     }
 
     pub async fn envoyer_manifeste(&self) -> Result<(), String> {
-        let r = self
-            .http
-            .put(format!("{}/v1/manifest", self.url))
-            .bearer_auth(&self.jeton)
-            .json(&manifeste())
-            .send()
-            .await
-            .map_err(|e| format!("aegis injoignable ({e})"))?;
-        if r.status().is_success() {
-            Ok(())
-        } else {
-            Err(format!("aegis a répondu HTTP {}", r.status().as_u16()))
-        }
+        commun::aegis::envoyer_manifeste(&self.http, &self.url, &self.jeton, &manifeste()).await
     }
 
     pub async fn droits(&self, id: &Identite) -> Result<Droits, Injoignable> {

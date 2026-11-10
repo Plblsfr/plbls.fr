@@ -4,7 +4,7 @@ Monorepo plbls.fr (détail dans `README.md`) : `api/<projet>` (API Rust), `web/<
 `docs/<projet>`, `deploy/<projet>`, `scripts/<projet>` (outillage commun directement dans `scripts/`), `packages/` (libs partagées), `.github/workflows/` (CI).
 Un fichier va dans le dossier de son rôle, jamais dans celui d'un autre projet : par exemple un `.env.example` dans `deploy/<projet>/`, pas à côté du code.
 Déploiement : deux compose pour tout le dépôt, `deploy/docker-compose.dev.yml` (dépendances de dev, variables dans `deploy/dev.env`) et
-`deploy/docker-compose.yml` (production, une seule stack Dokploy sans section `environment` : tous les services chargent le `.env` que Dokploy écrit depuis son onglet Environment, secrets résolus depuis Vault ; un nom de variable n'appartient qu'à un projet, sauf les communes de `deploy/.env.example`) ; voir `deploy/README.md`.
+`deploy/docker-compose.yml` (production, une seule stack Dokploy : les backends Rust chargent le `.env` que Dokploy écrit depuis son onglet Environment, secrets résolus depuis Vault, les autres services ne reçoivent que leurs variables par `environment:` interpolé `${VAR}`, jamais de valeur écrite dans le compose ; un nom de variable n'appartient qu'à un projet, sauf les communes de `deploy/.env.example`) ; voir `deploy/README.md`.
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé `plbls.fr-infra`.
 
 ## Git
@@ -23,11 +23,11 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
   `estompe-beta.yml` (lancement manuel) publie le front d'une PR en image `estompe-web:beta`, sans tag ni release.
 - Contrôles obligatoires du ruleset (`scripts/configurer-github.sh`) : `ci` et `conventions`.
 - Toute PR : branche `<type>/<slug-court>` (`feat`, `fix`, `chore`, `docs`, `ci`) ou `release/…`, et une description ; vérifié par `pr-conventions.yml`.
-- Actions épinglées par SHA complet (`uses: owner/action@<sha> # vX.Y.Z`) ; `permissions: contents: read` en tête, droits d'écriture au seul job qui publie.
+- Actions épinglées par SHA complet (`uses: owner/action@<sha> # vX.Y.Z` ; `# stable` pour `dtolnay/rust-toolchain`, qui ne publie pas de tag `vX.Y.Z` : une branche par toolchain) ; `permissions: contents: read` en tête, droits d'écriture au seul job qui publie.
 - Détail (déclencheurs, caches, jobs) : `docs/estompe/ci.md`.
 
 ## Rust
-- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/entracte`, `api/estompe/*`.
+- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/commun` (code partagé : en-têtes d'identité signés, jetons de service, client HTTP sans redirection, manifeste aegis, échappement `LIKE`), `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/entracte`, `api/estompe/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
 - Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`

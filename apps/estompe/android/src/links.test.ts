@@ -34,6 +34,6 @@ describe('linkAction', () => {
     expect(linkAction(`${location.origin}/#/s/1/c/2`)).toEqual({ hash: '#/s/1/c/2' })
   })
   it('refuse les schémas dangereux', () => {
-    for (const h of ['javascript:alert(1)', 'intent://x#Intent;end', 'file:///etc/passwd', 'nimporte quoi']) expect(linkAction(h)).toBeNull()
+    for (const h of ['http://example.org/', 'javascript:alert(1)', 'intent://x#Intent;end', 'file:///etc/passwd', 'nimporte quoi']) expect(linkAction(h)).toBeNull()
   })
 })

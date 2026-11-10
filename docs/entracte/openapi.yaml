@@ -305,6 +305,7 @@ paths:
   /push/subscription:
     put:
       summary: "Abonner ce navigateur (`{endpoint, keys: {p256dh, auth}}`)"
+      description: "`endpoint` : URL https d'un service push connu (`fcm.googleapis.com`, `updates.push.services.mozilla.com`, `*.notify.windows.com`, `web.push.apple.com`), sans port ni IP littérale. Au plus 10 abonnements (navigateurs et Android) par personne : au-delà, le plus ancien est remplacé."
       responses:
         "204": { description: ok }
         "400": { description: abonnement invalide }
@@ -330,7 +331,7 @@ paths:
         "200": { description: "`{items: [{id, kind, request_id, title, body, created_at}], last_id}`" }
   /webhooks/radarr:
     post:
-      summary: "Webhook Radarr (`?token=ENTRACTE_WEBHOOK_TOKEN`), lance une synchronisation"
+      summary: "Webhook Radarr, lance une synchronisation. Jeton `ENTRACTE_WEBHOOK_TOKEN` en mot de passe Basic, en Bearer ou en `?token=`"
       security: []
       responses:
         "204": { description: ok }
@@ -338,7 +339,7 @@ paths:
         "404": { description: webhooks non configurés }
   /webhooks/sonarr:
     post:
-      summary: "Webhook Sonarr (`?token=ENTRACTE_WEBHOOK_TOKEN`), lance une synchronisation"
+      summary: "Webhook Sonarr, lance une synchronisation. Jeton `ENTRACTE_WEBHOOK_TOKEN` en mot de passe Basic, en Bearer ou en `?token=`"
       security: []
       responses:
         "204": { description: ok }

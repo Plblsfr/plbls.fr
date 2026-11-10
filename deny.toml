@@ -15,7 +15,9 @@ allow = ["MIT", "MIT-0", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-
 private = { ignore = true }
 
 [bans]
-multiple-versions = "allow"
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

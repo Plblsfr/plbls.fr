@@ -59,7 +59,7 @@ auteur `manifeste:<app>`) ; ensuite le manifeste ne touche plus aux règles.
 
 `accounts` (sub, e-mail, nom, dernière activité, présence dans Keycloak) est alimenté par :
 
-1. les applications, qui transmettent l'e-mail et le nom de l'identité du connecté avec `POST /v1/effective` (au plus une écriture par compte et par heure) ;
+1. la dernière activité : chaque `POST /v1/effective` d'une application (au plus une écriture par compte et par heure ; l'e-mail et le nom éventuellement transmis sont ignorés, un jeton de service ne peut pas réécrire le profil d'un compte) et chaque appel d'administration, qui enregistre aussi l'e-mail et le nom des en-têtes signés par la passerelle ;
 2. la synchronisation Keycloak toutes les `annuaire.sync_minutes` (15) par `GET /internal/users` de la passerelle (liste complète,
    `GATEWAY__INTERNAL__LIST_ALL=true` côté security) ; un compte absent devient « supprimé de Keycloak » ;
 3. la recherche de l'administration, qui interroge Keycloak en direct quand l'annuaire ne trouve rien.
@@ -70,13 +70,16 @@ L'API d'administration rend les comptes avec leur e-mail partout (journal compri
 
 ```
 administration ─► aegis ─► PostgreSQL (vérité)
-                    ├─► Redis <prefix>:eff:<génération>:<sub>   droits calculés, TTL = min(10 min, valid_until)
-                    │         <prefix>:generation
+                    ├─► Redis <prefix>:eff:<génération>:<version>:<sub>   droits calculés, TTL = min(10 min, valid_until)
+                    │         <prefix>:generation, <prefix>:ver:<sub>
                     └─► Redis pub/sub <prefix>:invalidation ─► Estompe, pli
 ```
 
-- Lecture : Redis, sinon calcul SQL (une requête) puis écriture. Redis absent ou en panne : calcul direct, sans erreur.
-- Changement qui touche un compte (règle ou liaison directe, appartenance) : clé supprimée, message `{"type":"compte","sub":"…"}`.
+- Lecture : génération et version du compte lues ensemble, puis Redis, sinon calcul SQL (une requête) puis écriture sous la
+  version lue avant le calcul. Redis absent ou en panne : calcul direct, sans erreur ; les échecs de lecture de version,
+  d'invalidation et de publication sont journalisés.
+- Changement qui touche un compte (règle ou liaison directe, appartenance) : version du compte incrémentée, message `{"type":"compte","sub":"…"}`.
+  Un calcul commencé avant le changement écrit sous l'ancienne version, que plus aucune lecture ne consulte.
 - Changement large (rôle, groupe, « Tout le monde », manifeste) : génération incrémentée, message `{"type":"tout","generation":n}`.
 - Expirations : une tâche par minute journalise `expire` et publie l'invalidation ; `valid_until` garantit déjà qu'aucun cache ne sert un droit expiré.
 - Applications : cache mémoire par compte (30 s, borné par `valid_until`), vidé à réception d'un message ; abonnement perdu :

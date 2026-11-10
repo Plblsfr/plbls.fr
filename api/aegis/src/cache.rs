@@ -5,6 +5,12 @@ use crate::moteur::Effectifs;
 
 pub const PREFIXE: &str = "aegis";
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Version {
+    pub generation: i64,
+    pub compte: i64,
+}
+
 #[derive(Clone)]
 pub struct Cache {
     redis: Option<ConnectionManager>,
@@ -42,8 +48,12 @@ impl Cache {
         }
     }
 
-    fn cle(&self, generation: i64, sub: &str) -> String {
-        format!("{}:eff:{generation}:{sub}", self.prefixe)
+    fn cle(&self, v: Version, sub: &str) -> String {
+        format!("{}:eff:{}:{}:{sub}", self.prefixe, v.generation, v.compte)
+    }
+
+    fn version_cle(&self, sub: &str) -> String {
+        format!("{}:ver:{sub}", self.prefixe)
     }
 
     fn generation_cle(&self) -> String {
@@ -72,36 +82,50 @@ impl Cache {
         )
     }
 
-    pub async fn generation(&self) -> i64 {
-        let Some(mut c) = self.redis.clone() else {
-            return 0;
-        };
-        c.get::<_, Option<i64>>(self.generation_cle())
+    pub async fn version(&self, sub: &str) -> Option<Version> {
+        let mut c = self.redis.clone()?;
+        match redis::cmd("MGET")
+            .arg(self.generation_cle())
+            .arg(self.version_cle(sub))
+            .query_async::<(Option<i64>, Option<i64>)>(&mut c)
             .await
-            .ok()
-            .flatten()
-            .unwrap_or(0)
+        {
+            Ok((g, v)) => Some(Version {
+                generation: g.unwrap_or(0),
+                compte: v.unwrap_or(0),
+            }),
+            Err(e) => {
+                tracing::warn!("lecture de la génération du cache, cache ignoré : {e}");
+                None
+            }
+        }
     }
 
-    pub async fn lire(&self, generation: i64, sub: &str) -> Option<Effectifs> {
+    pub async fn lire(&self, v: Version, sub: &str) -> Option<Effectifs> {
         let mut c = self.redis.clone()?;
-        let brut: Option<String> = c.get(self.cle(generation, sub)).await.ok()?;
+        let brut: Option<String> = c.get(self.cle(v, sub)).await.ok()?;
         let e: Effectifs = serde_json::from_str(&brut?).ok()?;
         (e.valid_until > chrono::Utc::now()).then_some(e)
     }
 
-    pub async fn ecrire(&self, e: &Effectifs) {
+    pub async fn ecrire(&self, v: Version, e: &Effectifs) {
         let Some(mut c) = self.redis.clone() else {
             return;
         };
         let reste = (e.valid_until - chrono::Utc::now()).num_seconds();
         let ttl = reste.clamp(1, self.ttl as i64) as u64;
         if let Ok(brut) = serde_json::to_string(e) {
-            let r: redis::RedisResult<()> =
-                c.set_ex(self.cle(e.generation, &e.sub), brut, ttl).await;
+            let r: redis::RedisResult<()> = c.set_ex(self.cle(v, &e.sub), brut, ttl).await;
             if let Err(err) = r {
                 tracing::warn!("écriture du cache : {err}");
             }
+        }
+    }
+
+    async fn publier(&self, c: &mut ConnectionManager, message: serde_json::Value) {
+        let r: redis::RedisResult<()> = c.publish(self.canal(), message.to_string()).await;
+        if let Err(e) = r {
+            tracing::warn!("publication de l'invalidation {message} : {e}");
         }
     }
 
@@ -109,19 +133,25 @@ impl Cache {
         let Some(mut c) = self.redis.clone() else {
             return;
         };
-        let generation = self.generation().await;
-        let _: redis::RedisResult<()> = c.del(self.cle(generation, sub)).await;
-        let message = json!({"type": "compte", "sub": sub}).to_string();
-        let _: redis::RedisResult<()> = c.publish(self.canal(), message).await;
+        let r: redis::RedisResult<i64> = c.incr(self.version_cle(sub), 1).await;
+        if let Err(e) = r {
+            tracing::warn!("invalidation du cache du compte {sub} : {e}");
+        }
+        self.publier(&mut c, json!({"type": "compte", "sub": sub}))
+            .await;
     }
 
     pub async fn invalider_tout(&self) {
         let Some(mut c) = self.redis.clone() else {
             return;
         };
-        let generation: i64 = c.incr(self.generation_cle(), 1).await.unwrap_or(0);
-        let message = json!({"type": "tout", "generation": generation}).to_string();
-        let _: redis::RedisResult<()> = c.publish(self.canal(), message).await;
+        match c.incr::<_, _, i64>(self.generation_cle(), 1).await {
+            Ok(generation) => {
+                self.publier(&mut c, json!({"type": "tout", "generation": generation}))
+                    .await
+            }
+            Err(e) => tracing::warn!("invalidation de tout le cache : {e}"),
+        }
     }
 }
 

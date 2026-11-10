@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use aegis::{
-    AppState, MIGRATIONS, identity,
+    AppState, MIGRATIONS,
     settings::{
         Annuaire, Cache, Database, Gateway, Identity, Redis, Ressources, Server, Services, Settings,
     },
@@ -10,6 +10,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use commun::identite as identity;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use sqlx::Connection;
@@ -66,6 +67,10 @@ fn url_de_base(url: &str, nom: &str) -> String {
 static COMPTEUR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 async fn banc() -> Option<Banc> {
+    banc_avec("").await
+}
+
+async fn banc_avec(hotes: &str) -> Option<Banc> {
     let Ok(admin) = std::env::var("TEST_DATABASE_URL") else {
         eprintln!("ignoré : TEST_DATABASE_URL absent");
         return None;
@@ -104,7 +109,9 @@ async fn banc() -> Option<Banc> {
         },
         gateway: Gateway::default(),
         annuaire: Annuaire::default(),
-        ressources: Ressources::default(),
+        ressources: Ressources {
+            allowed_hosts: hotes.into(),
+        },
     };
     let state = AppState::new(settings, db).await.expect("état");
     state.cache.invalider_tout().await;
@@ -145,7 +152,17 @@ impl Banc {
                     .header("x-identity-ts", ts.to_string())
                     .header(
                         "x-identity-sig",
-                        identity::sign(secret(), sub, roles, "estompe", ts),
+                        identity::sign(
+                            secret(),
+                            &identity::Champs {
+                                id: sub,
+                                roles,
+                                client: "estompe",
+                                ts,
+                                name: "",
+                                email,
+                            },
+                        ),
                     );
             }
         }
@@ -540,7 +557,25 @@ async fn fiche_compte_explication_simulation_copie() {
             Some(json!({"sub": "erin", "email": "erin@plbls.fr", "display_name": "Erin"})),
         )
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let mut page = Value::Null;
+    for _ in 0..100 {
+        page = b.admin("GET", "/v1/admin/accounts?q=erin", None).await;
+        if page["accounts"][0]["last_seen_at"].is_string() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(page["accounts"][0]["sub"], "erin");
+    assert!(
+        page["accounts"][0]["email"].is_null(),
+        "e-mail d'un service ignoré : {page}"
+    );
+    sqlx::query(
+        "UPDATE accounts SET email = 'erin@plbls.fr', display_name = 'Erin' WHERE sub = 'erin'",
+    )
+    .execute(&b.state.db)
+    .await
+    .unwrap();
     let page = b.admin("GET", "/v1/admin/accounts?q=ERIN@", None).await;
     assert_eq!(page["accounts"][0]["sub"], "erin");
     assert_eq!(page["accounts"][0]["email"], "erin@plbls.fr");
@@ -737,5 +772,230 @@ async fn cache_redis_et_invalidation() {
     assert!(
         !b.autorise("yan", "estompe:gifs.use", None).await,
         "cache invalidé"
+    );
+}
+
+async fn amont() -> String {
+    use axum::routing::get;
+    let gros = || {
+        let morceau = bytes_morceau();
+        Body::from_stream(futures_util::stream::iter(
+            (0..64).map(move |_| Ok::<_, std::io::Error>(morceau.clone())),
+        ))
+    };
+    let app = axum::Router::new()
+        .route(
+            "/petite",
+            get(|| async { axum::Json(json!([{"id": "1", "name": "Salon"}])) }),
+        )
+        .route("/grosse", get(move || async move { gros() }))
+        .route(
+            "/erreur",
+            get(|| async { (StatusCode::IM_A_TEAPOT, "trace interne secrète") }),
+        );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let adresse = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    format!("http://{adresse}")
+}
+
+fn bytes_morceau() -> axum::body::Bytes {
+    axum::body::Bytes::from(vec![b' '; 32 * 1024])
+}
+
+fn manifeste_avec_listes(base: &str) -> Value {
+    let mut m = manifeste_estompe();
+    let types = m["resource_types"].as_array_mut().unwrap();
+    for k in ["petite", "grosse", "erreur"] {
+        types.push(json!({"key": k, "name": k, "list_url": format!("{base}/{k}")}));
+    }
+    m
+}
+
+#[tokio::test]
+async fn list_url_refusee_sans_hotes_autorises() {
+    let Some(b) = banc().await else { return };
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-estompe"),
+            "PUT",
+            "/v1/manifest",
+            Some(manifeste_avec_listes("http://127.0.0.1:9")),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+}
+
+#[tokio::test]
+async fn liste_de_ressources_bornee() {
+    let Some(b) = banc_avec("127.0.0.1").await else {
+        return;
+    };
+    let base = amont().await;
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-estompe"),
+            "PUT",
+            "/v1/manifest",
+            Some(json!({"app": "estompe", "name": "Estompe", "permissions": [],
+                "resource_types": [{"key": "server", "name": "Serveur", "list_url": "http://169.254.169.254/meta"}]})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "hôte hors liste : {v}");
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-estompe"),
+            "PUT",
+            "/v1/manifest",
+            Some(manifeste_avec_listes(&base)),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let liste = async |k: &str| {
+        b.appel(
+            Qui::User("root", "user,aegis-admin", "root@plbls.fr"),
+            "GET",
+            &format!("/v1/admin/resources/estompe/{k}"),
+            None,
+        )
+        .await
+    };
+    let (s, v) = liste("petite").await;
+    assert_eq!(
+        (s, v),
+        (StatusCode::OK, json!([{"id": "1", "name": "Salon"}]))
+    );
+    let (s, v) = liste("grosse").await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("trop grosse"), "{v}");
+    let (s, v) = liste("erreur").await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    let message = v["error"].as_str().unwrap();
+    assert!(
+        !message.contains("418") && !message.contains("secrète"),
+        "{v}"
+    );
+}
+
+#[tokio::test]
+async fn effectifs_limites_a_l_application_du_jeton() {
+    let Some(b) = banc().await else { return };
+    b.manifeste().await;
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-pli"),
+            "PUT",
+            "/v1/manifest",
+            Some(json!({"app": "pli", "name": "pli", "permissions": [{"key": "deposit", "label": "Déposer"}]})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    for p in ["estompe:gifs.use", "pli:deposit", "aegis:admin"] {
+        b.admin(
+            "POST",
+            "/v1/admin/rules",
+            Some(json!({"subject_kind": "account", "subject_id": "zoe", "permission": p, "effect": "allow"})),
+        )
+        .await;
+    }
+    let banc = &b;
+    let lire = |jeton: &'static str, corps: Value| async move {
+        banc.appel(Qui::Service(jeton), "POST", "/v1/effective", Some(corps))
+            .await
+    };
+    let (s, v) = lire("jeton-pli", json!({"sub": "zoe"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let mut cles: Vec<&str> = v["permissions"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    cles.sort();
+    assert_eq!(cles, ["aegis:admin", "pli:deposit"]);
+    let (s, _) = lire("jeton-pli", json!({"sub": "zoe", "app": "estompe"})).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, v) = lire("jeton-estompe", json!({"sub": "zoe", "app": "estompe"})).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(v["permissions"].get("estompe:gifs.use").is_some());
+    assert!(v["permissions"].get("pli:deposit").is_none());
+}
+
+#[tokio::test]
+async fn identite_signee_nom_et_email_encodes() {
+    let Some(b) = banc().await else { return };
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let (nom, email) = ("J%C3%A9r%C3%B4me", "j%C3%A9r%C3%B4me@plbls.fr");
+    let requete = |email_envoye: &str| {
+        Request::builder()
+            .uri("/v1/admin/roles")
+            .header("x-user-id", "jerome")
+            .header("x-user-roles", "aegis-admin")
+            .header("x-user-name", nom)
+            .header("x-user-email", email_envoye)
+            .header("x-client-id", "plbls-gateway")
+            .header("x-identity-ts", ts.to_string())
+            .header(
+                "x-identity-sig",
+                identity::sign(
+                    secret(),
+                    &identity::Champs {
+                        id: "jerome",
+                        roles: "aegis-admin",
+                        client: "plbls-gateway",
+                        ts,
+                        name: nom,
+                        email,
+                    },
+                ),
+            )
+            .body(Body::empty())
+            .unwrap()
+    };
+    let r = b
+        .app
+        .clone()
+        .oneshot(requete("root@plbls.fr"))
+        .await
+        .unwrap();
+    assert_eq!(
+        r.status(),
+        StatusCode::UNAUTHORIZED,
+        "e-mail hors signature"
+    );
+    let r = b.app.clone().oneshot(requete(email)).await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let page = b.admin("GET", "/v1/admin/accounts?q=jerome", None).await;
+    assert_eq!(page["accounts"][0]["email"], "jérôme@plbls.fr");
+    assert_eq!(page["accounts"][0]["display_name"], "Jérôme");
+}
+
+#[tokio::test]
+async fn calcul_concurrent_d_une_invalidation_non_servi() {
+    let Some(b) = banc().await else { return };
+    if std::env::var("TEST_REDIS_URL").is_err() {
+        eprintln!("ignoré : TEST_REDIS_URL absent");
+        return;
+    }
+    let cache = &b.state.cache;
+    let avant = cache.version("yan").await.unwrap();
+    let perime = aegis::moteur::Effectifs::calculer(
+        "yan",
+        avant.generation,
+        &[],
+        chrono::Utc::now(),
+        cache.ttl(),
+    );
+    cache.invalider_compte("yan").await;
+    cache.ecrire(avant, &perime).await;
+    let apres = cache.version("yan").await.unwrap();
+    assert_ne!(apres, avant);
+    assert_eq!(
+        cache.lire(apres, "yan").await,
+        None,
+        "résultat calculé avant l'invalidation"
     );
 }

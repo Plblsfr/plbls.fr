@@ -2,7 +2,7 @@
 # Vérifie qu'un conteneur de l'image web sert latest.json, l'installeur qu'il désigne et l'installeur à adresse stable : check-installer.sh <conteneur> ; échoue sinon.
 set -euo pipefail
 c=${1:?conteneur}
-w() { docker exec "$c" wget -S -O "$1" "http://127.0.0.1/updates/$2" 2>&1 || true; }
+w() { docker exec "$c" wget -S -O "$1" "http://127.0.0.1:8080/updates/$2" 2>&1 || true; }
 taille() { docker exec "$c" stat -c %s "$1"; }
 echec() {
   echo "$1"

@@ -43,6 +43,8 @@ jobs:
         working-directory: web/estompe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -68,6 +70,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false
       - id: installer
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -127,6 +130,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -157,10 +161,12 @@ jobs:
         working-directory: apps/estompe/android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
           npm ci --prefix ../../..
-          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$RUNNER_TEMP/estompe.jks"
-          echo "${{ secrets.GOOGLE_SERVICES_JSON_B64 }}" | base64 -d > src-tauri/gen/android/app/google-services.json 2>/dev/null
+          printf '%s' "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/estompe.jks"
+          printf '%s' "$GOOGLE_SERVICES_JSON_B64" | base64 -d > src-tauri/gen/android/app/google-services.json 2>/dev/null
           [ -s src-tauri/gen/android/app/google-services.json ] && grep -q project_info src-tauri/gen/android/app/google-services.json || rm -f src-tauri/gen/android/app/google-services.json
           ANDROID_KEYSTORE="$RUNNER_TEMP/estompe.jks" scripts/release-android.sh
       - if: steps.android-cache.outputs.cache-hit != 'true'
@@ -184,11 +190,14 @@ jobs:
     if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/estompe-app-v') && needs.front.result == 'success' && needs.windows.result == 'success' && needs.android.result != 'failure' }}
     needs: [front, windows, android]
     runs-on: ubuntu-latest
+    environment: packages
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: front
