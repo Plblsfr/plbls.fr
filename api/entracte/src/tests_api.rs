@@ -1718,15 +1718,22 @@ async fn recherche_demandes_administration_et_notifications() {
             .iter()
             .any(|r| r.chemin == "/bob" || r.chemin == "/carole")
     );
-    let restants: Vec<String> =
-        sqlx::query_scalar("SELECT endpoint FROM abonnements_push ORDER BY endpoint")
-            .fetch_all(e.state.pool())
-            .await
-            .unwrap();
-    assert!(
-        !restants.iter().any(|x| x.ends_with("/mort")),
-        "abonnement refusé retiré : {restants:?}"
-    );
+    let limite = Instant::now() + Duration::from_secs(20);
+    let restants = loop {
+        let restants: Vec<String> =
+            sqlx::query_scalar("SELECT endpoint FROM abonnements_push ORDER BY endpoint")
+                .fetch_all(e.state.pool())
+                .await
+                .unwrap();
+        if !restants.iter().any(|x| x.ends_with("/mort")) {
+            break restants;
+        }
+        assert!(
+            Instant::now() < limite,
+            "abonnement refusé retiré : {restants:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
     assert_eq!(restants.len(), 3);
     let notifs = get(&e, "alice", "/notifications").await.json();
     assert_eq!(notifs["items"][0]["kind"], "refusee");

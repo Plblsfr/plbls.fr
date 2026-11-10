@@ -1,0 +1,1 @@
+- [x] Test des demandes d'Entracte stabilisé (#111). Depuis l'envoi des notifications push en tâche de fond, le test attendait seulement le push de refus avant de vérifier le retrait de l'abonnement refusé (410) : il attend maintenant ce retrait. Aucun changement de comportement. Non vérifié : rien d'autre que la suite de tests d'Entracte.
