@@ -11,7 +11,7 @@ workspace = true
 [dependencies]
 axum.workspace = true
 tokio = { workspace = true, features = ["full"] }
-tower-http = { workspace = true, features = ["trace", "fs"] }
+tower-http = { workspace = true, features = ["trace", "fs", "set-header"] }
 sqlx = { workspace = true, features = ["uuid", "chrono", "migrate", "macros"] }
 uuid.workspace = true
 chrono.workspace = true
@@ -28,3 +28,6 @@ anyhow.workspace = true
 utoipa = { workspace = true, features = ["chrono", "axum_extras"] }
 utoipa-axum.workspace = true
 reqwest = { workspace = true, features = ["json"] }
+
+[dev-dependencies]
+tower.workspace = true
