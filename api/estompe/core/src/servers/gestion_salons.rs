@@ -283,10 +283,11 @@ pub(super) async fn renommer_salon(
         Err(e) => Err(bd(e)),
         Ok(r) if r.rows_affected() == 0 => Ok(non_trouve("salon introuvable")),
         Ok(_) => {
-            evenement_serveur(
+            evenement_salon(
                 &state,
                 pool,
                 &sv.id,
+                &cid,
                 "channel.updated",
                 &json!({ "server_id": sv.id, "id": cid, "name": nom }),
             )
@@ -378,6 +379,9 @@ pub(super) async fn supprimer_salon(
     let pool = pool(&state)?;
     let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
+    let to = roles::voyeurs_du_salon(pool, &sv.id, &cid)
+        .await
+        .map_err(bd)?;
     let r = sqlx::query("DELETE FROM channels WHERE id=$2::uuid AND server_id=$1::uuid")
         .bind(&sv.id)
         .bind(&cid)
@@ -387,13 +391,11 @@ pub(super) async fn supprimer_salon(
     if r.rows_affected() == 0 {
         return Ok(non_trouve("salon introuvable"));
     }
-    evenement_serveur(
+    diffuser(
         &state,
-        pool,
-        &sv.id,
+        &to,
         "channel.deleted",
         &json!({ "server_id": sv.id, "id": cid }),
-    )
-    .await;
+    );
     Ok(sans_contenu())
 }

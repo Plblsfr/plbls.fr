@@ -30,6 +30,12 @@ fn bearer_matches(headers: &HeaderMap, token: &[u8]) -> bool {
         .is_some_and(|(_, t)| bool::from(t.trim().as_bytes().ct_eq(token)))
 }
 
+fn page_suivante(trouves: usize, first: u32, max: u32) -> Option<u32> {
+    (trouves == max as usize)
+        .then(|| first.checked_add(max))
+        .flatten()
+}
+
 #[derive(Deserialize)]
 struct Params {
     /// Début d'e-mail. Vide : tous les comptes, seulement si `GATEWAY__INTERNAL__LIST_ALL=true` (synchronisation d'aegis).
@@ -74,7 +80,7 @@ async fn users(
             return StatusCode::BAD_GATEWAY.into_response();
         }
     };
-    let next = (found.len() as u32 == max).then(|| p.first + max);
+    let next = page_suivante(found.len(), p.first, max);
     let users: Vec<_> = found
         .into_iter()
         .filter_map(|u| {
@@ -89,4 +95,16 @@ async fn users(
         Json(json!({"users": users, "first": p.first, "max": max, "next": next})),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn next_page_without_overflow() {
+        assert_eq!(page_suivante(20, 0, 20), Some(20));
+        assert_eq!(page_suivante(19, 0, 20), None);
+        assert_eq!(page_suivante(20, u32::MAX - 10, 20), None);
+    }
 }

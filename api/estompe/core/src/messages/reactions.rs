@@ -23,6 +23,13 @@ pub(super) async fn reaction(
     ajout: bool,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
+    if !state
+        .limiteurs()
+        .reactions
+        .allow(&u.id, REACTIONS_PAR_FENETRE, FENETRE_REACTIONS)
+    {
+        return Ok(trop_de_requetes(FENETRE_REACTIONS.as_secs()));
+    }
     let emoji = param(&p.0, "emoji");
     if !emoji::valide(emoji) {
         return Ok(write_err(

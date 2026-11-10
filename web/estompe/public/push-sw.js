@@ -24,9 +24,14 @@ const call = (path, body) => fetch(API + path, {
 /** « c:<id> » → salon, « d:<id> » → conversation privée. */
 const convPath = (conv) => (conv.startsWith('c:') ? '/channels/' : '/dms/') + conv.slice(2)
 
+const local = (u) => {
+  try { return new URL(u, self.location.origin).origin === self.location.origin ? u : '/' } catch { return '/' }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const { url = '/', conv, msg } = event.notification.data || {}
+  const { conv, msg } = event.notification.data || {}
+  const url = local(event.notification.data?.url || '/')
   const reply = (event.reply || '').trim()
   if (conv && event.action === 'read') return event.waitUntil(call(convPath(conv) + '/read').catch(() => {}))
   // Réponse saisie dans la notification (navigateurs qui la proposent) ; sinon le clic ouvre la conversation.

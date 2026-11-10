@@ -52,6 +52,10 @@ pub const SYSTEME: &str = "00000000-0000-0000-0000-000000000001";
 const LONGUEUR_MAX: usize = 4000;
 const PIECES_JOINTES_MAX: usize = 10;
 const REACTIONS_MAX: i64 = 20;
+pub(crate) const REACTIONS_PAR_FENETRE: usize = 30;
+const FENETRE_REACTIONS: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const DMS_PAR_FENETRE: usize = 10;
+const FENETRE_DMS: std::time::Duration = std::time::Duration::from_secs(60);
 const ENVOIS: usize = 20;
 const FENETRE_ENVOI: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -150,7 +154,12 @@ const DOC: &[Doc] = &[
         HttpMethod::Post,
         "/dms",
         "Ouvrir (ou retrouver) la conversation privée avec un utilisateur",
-        &[("200", "ok"), ("400", "self_dm"), ("404", "user_not_found")],
+        &[
+            ("200", "ok"),
+            ("400", "self_dm"),
+            ("404", "user_not_found"),
+            ("429", "`rate_limited` : 10 / min"),
+        ],
     ),
     (
         HttpMethod::Get,
@@ -205,6 +214,7 @@ const DOC: &[Doc] = &[
                 "409",
                 "too_many_reactions : 20 emojis différents par message",
             ),
+            ("429", "`rate_limited` : 30 / 10 s"),
         ],
     ),
     (
@@ -215,6 +225,7 @@ const DOC: &[Doc] = &[
             ("204", "ok"),
             ("400", "invalid_emoji"),
             ("404", "Introuvable, ou non visible par l'utilisateur"),
+            ("429", "`rate_limited` : 30 / 10 s"),
         ],
     ),
     (

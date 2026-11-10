@@ -66,16 +66,27 @@ api -X PUT "repos/$depot/actions/permissions/selected-actions" --silent --input 
 }
 EOF
 
-etape "Environnement livraison : main et tags *-v* seulement"
-api -X PUT "repos/$depot/environments/livraison" --silent --input - <<'EOF'
+environnement_main() {
+  local nom="$1" existantes politique
+  etape "Environnement $nom : main et tags *-v* seulement"
+  api -X PUT "repos/$depot/environments/$nom" --silent --input - <<'EOF'
 { "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
 EOF
-existantes="$(api "repos/$depot/environments/livraison/deployment-branch-policies" --jq '.branch_policies[] | "\(.type):\(.name)"')"
-for politique in branch:main tag:'*-v*'; do
-  grep -qxF "$politique" <<<"$existantes" && continue
-  api -X POST "repos/$depot/environments/livraison/deployment-branch-policies" --silent \
-    -f type="${politique%%:*}" -f name="${politique#*:}"
-done
+  existantes="$(api "repos/$depot/environments/$nom/deployment-branch-policies" --jq '.branch_policies[] | "\(.type):\(.name)"')"
+  for politique in branch:main tag:'*-v*'; do
+    grep -qxF "$politique" <<<"$existantes" && continue
+    api -X POST "repos/$depot/environments/$nom/deployment-branch-policies" --silent \
+      -f type="${politique%%:*}" -f name="${politique#*:}"
+  done
+}
+environnement_main livraison
+environnement_main packages
+
+etape "Environnement beta : toute branche, chaque lancement approuvé par le propriétaire du dépôt"
+proprietaire="$(api "users/${depot%%/*}" --jq .id)"
+api -X PUT "repos/$depot/environments/beta" --silent --input - <<EOF
+{ "deployment_branch_policy": null, "prevent_self_review": false, "reviewers": [{ "type": "User", "id": $proprietaire }] }
+EOF
 
 ruleset() {
   local nom="$1" id
@@ -138,5 +149,7 @@ ruleset "tags de livraison" <<'EOF'
 }
 EOF
 
-etape "Fait. Reste à la main (Settings > Environments > livraison) : y déplacer les secrets de livraison"
-echo "TAURI_SIGNING_PRIVATE_KEY ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD GOOGLE_SERVICES_JSON_B64 DOKPLOY_WEBHOOK_URL"
+etape "Fait. Reste à la main (Settings > Environments, voir docs/estompe/ci.md) : y mettre les secrets, puis supprimer ceux du dépôt"
+echo "livraison : TAURI_SIGNING_PRIVATE_KEY ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD GOOGLE_SERVICES_JSON_B64 DOKPLOY_WEBHOOK_URL PACKAGES_PAT (read:packages)"
+echo "packages : PACKAGES_PAT (write:packages, delete:packages)"
+echo "beta : PACKAGES_PAT (write:packages seul, jeton distinct)"

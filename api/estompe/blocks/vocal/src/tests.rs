@@ -344,15 +344,42 @@ async fn jeton_de_salon() {
     );
     assert_eq!(c["video"]["canPublishSources"].as_array().unwrap().len(), 4);
 
-    let (s, v) = e
-        .appel("bob", "POST", &format!("{chemin}?screen=1"), "")
-        .await;
-    assert_eq!(s, StatusCode::OK);
+    let ecran = format!("{chemin}?screen=1");
+    let (s, v) = e.appel("bob", "POST", &ecran, "").await;
     assert_eq!(
-        charge(v["token"].as_str().unwrap())["sub"],
-        format!("{}#screen", e.id("bob"))
+        (s, v["error"].as_str()),
+        (StatusCode::CONFLICT, Some("voice_not_joined"))
     );
+    e.present(
+        &e.vocal,
+        &format!("{}#screen", e.id("bob")),
+        "bob",
+        json!([]),
+    );
+    assert_eq!(
+        e.appel("bob", "POST", &ecran, "").await.0,
+        StatusCode::CONFLICT
+    );
+    e.present(&e.vocal2, &e.id("bob"), "bob", json!([]));
+    assert_eq!(
+        e.appel("bob", "POST", &ecran, "").await.0,
+        StatusCode::CONFLICT
+    );
+    e.sim.lock().unwrap().presents.clear();
+    e.present(&e.vocal, &e.id("bob"), "bob", json!([]));
+    let (s, v) = e.appel("bob", "POST", &ecran, "").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let c = charge(v["token"].as_str().unwrap());
+    assert_eq!(c["sub"], format!("{}#screen", e.id("bob")));
+    assert_eq!(c["video"]["room"], format!("channel:{}", e.vocal));
+    assert_eq!(
+        c["video"]["canPublishSources"],
+        json!(["screen_share", "screen_share_audio"])
+    );
+    assert_eq!(c["video"]["canSubscribe"], false);
+    assert_eq!(c["video"]["canUpdateOwnMetadata"], false);
     assert!(v.get("max_participants").is_none());
+    e.sim.lock().unwrap().presents.clear();
 
     for (nom, chemin, attendu) in [
         ("bob", format!("/voice/{}/token", e.texte), 400),
@@ -380,6 +407,12 @@ async fn jeton_de_salon() {
         v["message"],
         "salon vocal complet (10 participants maximum)"
     );
+    let (s, v) = e.appel("carol", "POST", &ecran, "").await;
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (StatusCode::CONFLICT, Some("voice_not_joined"))
+    );
+    assert_eq!(e.appel("bob", "POST", &ecran, "").await.0, StatusCode::OK);
 
     e.sim.lock().unwrap().panne = true;
     let (s, v) = e.appel("bob", "POST", &chemin, "").await;
@@ -405,6 +438,40 @@ async fn jeton_selon_les_droits_et_la_moderation() {
         c["video"]["canPublishSources"],
         json!(["camera", "screen_share", "screen_share_audio"])
     );
+    e.present(&e.vocal, &e.id("bob"), "bob", json!([]));
+    let (s, v) = e
+        .appel("bob", "POST", &format!("{chemin}?screen=1"), "")
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let c = charge(v["token"].as_str().unwrap());
+    assert_eq!(
+        (
+            &c["video"]["canSubscribe"],
+            &c["video"]["canUpdateOwnMetadata"]
+        ),
+        (&json!(false), &json!(false))
+    );
+    assert_eq!(
+        c["video"]["canPublishSources"],
+        json!(["screen_share", "screen_share_audio"])
+    );
+
+    e.sql(
+        "UPDATE roles SET permissions=$1::bigint WHERE is_default",
+        &[&(roles::VIEW_CHANNEL | roles::CONNECT | roles::SHARE_SCREEN).to_string()],
+    )
+    .await;
+    e.present(&e.vocal, &e.id("carol"), "carol", json!([]));
+    let (s, v) = e
+        .appel("carol", "POST", &format!("{chemin}?screen=1"), "")
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let c = charge(v["token"].as_str().unwrap());
+    assert_eq!(
+        c["video"]["canPublishSources"],
+        json!(["screen_share", "screen_share_audio"])
+    );
+    assert_eq!(c["video"]["canSubscribe"], false);
 
     e.sql(
         "UPDATE roles SET permissions=$1::bigint WHERE is_default",

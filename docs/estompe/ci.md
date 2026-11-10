@@ -85,9 +85,30 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 
 Un tag ne déclenche que son composant. Lancé à la main sur `main`, tout est republié (images `:edge`, version, caches).
 
-Connexion à ghcr.io (publication des images, image de job `estompe-ci`) : secret `PACKAGES_PAT` (PAT classique du propriétaire des paquets,
-portées `write:packages` et `delete:packages`, partagé avec `packages-cleanup.yml`) s'il existe, sinon `GITHUB_TOKEN`. Le `GITHUB_TOKEN` n'écrit que dans les paquets dont l'accès Actions inclut `plbls.fr`
-en écriture : les paquets créés par les anciens dépôts le refusent (`denied: permission_denied: read_package`).
+## Droits et environnements
+
+- Chaque workflow a `permissions: contents: read` en tête ; un job ne reçoit d'écriture que s'il publie. Dans `_image.yml` : `build`
+  `contents: read`, `deploiement` aucun droit, `release` `contents: write`. Un workflow appelé ne peut que réduire les droits de
+  l'appelant : les jobs `image-*` de `livraison.yml` et de `ci.yml` lui accordent donc `contents: write` (plafond de `release`, qui ne
+  tourne que sur un tag ; sur une PR, `build` reste en lecture).
+- `actions/checkout` avec `persist-credentials: false` partout, sauf `estompe-version`, qui pousse `ci/version` avec `CI_PAT`.
+- Les valeurs venues d'entrées, de sorties ou de secrets passent par `env:` et sont lues `"$VAR"` dans les scripts, jamais interpolées
+  `${{ … }}` dans un `run:`.
+- Connexion à ghcr.io : secret `PACKAGES_PAT`, jamais au niveau du dépôt (un `workflow_dispatch` lancé depuis n'importe quelle
+  branche y aurait accès), mais dans un environnement :
+
+| Environnement | Branches | Jobs | `PACKAGES_PAT` |
+|---|---|---|---|
+| `packages` | `main`, tags `*-v*` | `build` de `_image.yml` hors PR, `estompe-api-image` et `estompe-ci-image` de `livraison.yml`, `image` d'`estompe-livraison-app.yml`, `packages-cleanup.yml` | `write:packages` et `delete:packages` |
+| `beta` | toutes, chaque lancement approuvé par le propriétaire | `image` d'`estompe-beta.yml` | jeton distinct, `write:packages` seulement |
+| `livraison` | `main`, tags `*-v*` | `windows` d'`estompe-livraison-app.yml` (image de job `estompe-ci`), `deploiement` de `_image.yml`, `android` | `read:packages` (avec les secrets de signature et `DOKPLOY_WEBHOOK_URL`) |
+
+`scripts/configurer-github.sh` crée les trois environnements et leurs règles de branche (et le relecteur de `beta`). Reste à la main
+(Settings › Environments) : y créer les secrets `PACKAGES_PAT`, puis supprimer le secret `PACKAGES_PAT` du dépôt (Settings › Secrets and
+variables › Actions). Jetons : un jeton fine-grained limité aux paquets utiles quand GitHub le permet pour ghcr.io, sinon un PAT classique
+du propriétaire des paquets, un par environnement avec les seules portées du tableau. Sans `PACKAGES_PAT`, `build` de `_image.yml` ne
+peut pas publier ; les autres jobs se rabattent sur `GITHUB_TOKEN`, qui n'écrit que dans les paquets dont l'accès Actions inclut
+`plbls.fr` en écriture : les paquets créés par les anciens dépôts le refusent (`denied: permission_denied: read_package`).
 
 ## Caches
 
@@ -112,6 +133,7 @@ npm, une ligne dans la liste `espaces`), et s'il publie une image, un job dans `
 
 Pour essayer le front d'une PR branché sur la prod sans l'imposer à tout le monde. Actions → `estompe-beta` → « Run workflow »
 sur la branche de la PR (menu « Use workflow from » ; le workflow refuse `main` et les tags), avec le numéro de la PR pour nommer le tag `beta-pr<n>`.
+La publication (job `image`, environnement `beta`) attend l'approbation du propriétaire du dépôt : elle exécute le build du code de la PR avec `PACKAGES_PAT`.
 Le workflow ne récupère jamais le code d'une autre référence que celle où il tourne : le code de la PR ne s'exécute pas avec les droits de `main`. Même chose depuis `estompe-livraison-app` avec la case `beta` cochée :
 il appelle `estompe-beta.yml` et ne lance rien d'autre (utile tant qu'`estompe-beta.yml` n'est pas sur `main`, GitHub ne proposant le
 lancement manuel que des workflows présents sur la branche par défaut). Le workflow lance `check`, les tests et le build du front de la PR,
@@ -119,7 +141,7 @@ puis publie `ghcr.io/plblsfr/estompe-web:beta` (dernière beta), `beta-pr<n>` et
 ni les releases, ni les apps Windows et Android. `packages-cleanup.yml` garde `beta` et supprime les autres tags beta chaque semaine.
 
 Côté infra (Dokploy) : un service à côté de `estompe-web`, avec l'image `ghcr.io/plblsfr/estompe-web:beta` et les mêmes variables
-(`API_URL`, `GATEWAY_URL`, `VOICE_URL`), sur un sous-domaine de `plbls.fr` (le cookie de session est posé sur `.plbls.fr`), par
+(`API_URL`, `GATEWAY_URL`, `VOICE_URL`), port 8080, sur un sous-domaine de `plbls.fr` (le cookie de session est posé sur `.plbls.fr`), par
 exemple `beta.estompe.plbls.fr`. Ajouter cette origine à `ALLOWED_ORIGINS` de l'API, et à la liste des adresses de retour du gateway
 si elle est restreinte. Redémarrer le service après chaque publication pour qu'il prenne la nouvelle image. La beta travaille sur les
 données de prod : seul le front change, l'API reste celle de la prod, donc une PR qui modifie l'API ne se teste pas ainsi.

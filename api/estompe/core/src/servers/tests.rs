@@ -166,6 +166,106 @@ fn codes_et_horodatages() {
 }
 
 #[tokio::test]
+async fn evenements_d_un_salon_prive_reserves_a_ceux_qui_le_voient() {
+    use crate::messages::tests::{cadre, recus};
+    let Some(c) = cadre().await else { return };
+    let base = format!("/servers/{}/channels", c.sid);
+    let (s, v) = c
+        .api(
+            "alice",
+            "POST",
+            &base,
+            json!({ "name": "cache", "kind": "text", "private": true }),
+        )
+        .await;
+    assert_eq!(s, 201, "{v}");
+    let cache = v["id"].as_str().unwrap().to_string();
+    let (mut a, mut b) = (c.ecouter(&c.alice), c.ecouter(&c.bob));
+    let types = |l: Vec<(String, Value)>| l.into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+    let chemin = format!("{base}/{cache}");
+    assert_eq!(
+        c.api("alice", "PATCH", &chemin, json!({ "name": "renomme" }))
+            .await
+            .0,
+        204
+    );
+    assert_eq!(types(recus(&mut a)), ["channel.updated"]);
+    assert!(recus(&mut b).is_empty());
+    let public = format!("{base}/{}", c.salon);
+    assert_eq!(
+        c.api("alice", "PATCH", &public, json!({ "name": "accueil" }))
+            .await
+            .0,
+        204
+    );
+    assert_eq!(types(recus(&mut a)), ["channel.updated"]);
+    assert_eq!(types(recus(&mut b)), ["channel.updated"]);
+    assert_eq!(c.api("alice", "DELETE", &chemin, Value::Null).await.0, 204);
+    assert_eq!(types(recus(&mut a)), ["channel.deleted"]);
+    assert!(recus(&mut b).is_empty());
+    assert_eq!(c.api("alice", "DELETE", &public, Value::Null).await.0, 204);
+    assert_eq!(types(recus(&mut a)), ["channel.deleted"]);
+    assert_eq!(types(recus(&mut b)), ["channel.deleted"]);
+}
+
+#[tokio::test]
+async fn creations_de_serveurs_limitees_par_compte() {
+    let Some(e) = env().await else { return };
+    membre(&e, "alice").await;
+    membre(&e, "bob").await;
+    for i in 0..CREATIONS_PAR_FENETRE {
+        serveur(&e, &format!("s{i}"), "alice").await;
+    }
+    let corps = json!({ "name": "de trop" }).to_string();
+    let (s, v) = appel(&e, "alice", "POST", "/servers", Some(&corps)).await;
+    assert_eq!(
+        (s, v["error"].as_str()),
+        (StatusCode::TOO_MANY_REQUESTS, Some("rate_limited"))
+    );
+    serveur(&e, "autre", "bob").await;
+}
+
+#[tokio::test]
+async fn adhesion_concurrente_sans_erreur() {
+    let Some(e) = env().await else { return };
+    membre(&e, "alice").await;
+    let bob = membre(&e, "bob").await;
+    let sid = serveur(&e, "Amis", "alice").await;
+    let code = invitation_de(&e, "alice", &sid, "").await;
+    let pool = e.state.pool().ok().unwrap().clone();
+    let mut autre = pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid)")
+        .bind(&sid)
+        .bind(&bob)
+        .execute(&mut *autre)
+        .await
+        .unwrap();
+    let (p, b, c) = (pool.clone(), bob.clone(), code.clone());
+    let tache = tokio::spawn(async move { rejoindre_base(&p, &b, &c).await });
+    loop {
+        let bloque: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'INSERT INTO server_members%')",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        if bloque {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    autre.commit().await.unwrap();
+    let (sv, nouveau) = tache.await.unwrap().map_err(|_| "échec").unwrap();
+    assert_eq!((sv.id.as_str(), nouveau), (sid.as_str(), false));
+    let utilisations: i32 = sqlx::query_scalar("SELECT uses FROM server_invites WHERE code=$1")
+        .bind(&code)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(utilisations, 0);
+}
+
+#[tokio::test]
 async fn serveur_defaut_et_non_membre() {
     let Some(e) = env().await else { return };
     let (s, v) = appel(&e, "alice", "GET", "/servers", None).await;
@@ -483,11 +583,10 @@ async fn salons_validation_ordre_et_limite() {
         (s, v["error"].as_str()),
         (StatusCode::BAD_REQUEST, Some("invalid_order"))
     );
-    let (s, v) = appel(&e, "alice", "PATCH", &ordre, Some(r#"{"name":"x"}"#)).await;
-    assert_eq!(
-        (s, v["error"].as_str()),
-        (StatusCode::NOT_FOUND, Some("not_found"))
-    );
+    for methode in ["PATCH", "DELETE"] {
+        let (s, _) = appel(&e, "alice", methode, &ordre, Some(r#"{"name":"x"}"#)).await;
+        assert_eq!(s, StatusCode::METHOD_NOT_ALLOWED, "{methode}");
+    }
 
     let un = format!("{base}/{premier}");
     let (s, _) = appel(&e, "alice", "PATCH", &un, Some(r#"{"name":"renomme"}"#)).await;

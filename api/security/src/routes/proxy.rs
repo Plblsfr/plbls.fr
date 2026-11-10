@@ -88,34 +88,69 @@ fn upstream_url(route: &Route, path: &str, query: Option<&str>) -> String {
     url
 }
 
+fn propre(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
+}
+
 fn hv(s: &str) -> HeaderValue {
     // les valeurs viennent de claims signés ; on neutralise tout caractère de contrôle
-    let clean: String = s
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
-    HeaderValue::from_str(&clean).unwrap_or_else(|_| HeaderValue::from_static(""))
+    HeaderValue::from_str(&propre(s)).unwrap_or_else(|_| HeaderValue::from_static(""))
 }
 
 fn inject(h: &mut HeaderMap, secret: &str, id: &Identity, request_id: &str) {
     let ts = session::now();
-    let roles = id.roles.join(",");
+    let (uid, roles, client) = (
+        propre(&id.id),
+        propre(&id.roles.join(",")),
+        propre(&id.client),
+    );
+    let (name, email) = (identity::encoder(&id.name), identity::encoder(&id.email));
+    let sig = identity::sign(
+        secret,
+        &identity::Champs {
+            id: &uid,
+            roles: &roles,
+            client: &client,
+            ts,
+            name: &name,
+            email: &email,
+        },
+    );
     let pairs = [
-        ("x-user-id", hv(&id.id)),
-        ("x-user-name", hv(&id.name)),
-        ("x-user-email", hv(&id.email)),
+        ("x-user-id", hv(&uid)),
+        ("x-user-name", hv(&name)),
+        ("x-user-email", hv(&email)),
         ("x-user-roles", hv(&roles)),
-        ("x-client-id", hv(&id.client)),
+        ("x-client-id", hv(&client)),
         ("x-identity-ts", hv(&ts.to_string())),
-        (
-            "x-identity-sig",
-            hv(&identity::sign(secret, &id.id, &roles, &id.client, ts)),
-        ),
+        ("x-identity-sig", hv(&sig)),
     ];
     for (k, v) in pairs {
         h.insert(HeaderName::from_static(k), v);
     }
     h.insert(HeaderName::from_static("x-request-id"), hv(request_id));
+}
+
+fn identite_route(r: Result<Authn, AuthError>, public: bool) -> Result<Option<Authn>, StatusCode> {
+    match r {
+        Ok(a) => Ok(Some(a)),
+        Err(_) if public => Ok(None),
+        Err(AuthError::Unavailable) => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Err(AuthError::Unauthenticated) => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+fn entetes_reponse(amont: &HeaderMap, request_id: &str) -> HeaderMap {
+    let mut out = HeaderMap::new();
+    for (k, v) in amont {
+        if !HOP_BY_HOP.contains(&k.as_str()) && k.as_str() != "x-request-id" {
+            out.append(k.clone(), v.clone());
+        }
+    }
+    out.insert(HeaderName::from_static("x-request-id"), hv(request_id));
+    out
 }
 
 fn is_websocket(headers: &HeaderMap) -> bool {
@@ -137,11 +172,12 @@ async fn proxy(State(state): State<AppState>, req: Request) -> Response {
     let request_id = session::random_token(12);
 
     // authentification
-    let authn: Option<Authn> = match auth::authenticate(&state, req.headers()).await {
-        Ok(a) => Some(a),
-        Err(AuthError::Unavailable) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
-        Err(AuthError::Unauthenticated) if route.public => None,
-        Err(AuthError::Unauthenticated) => return StatusCode::UNAUTHORIZED.into_response(),
+    let authn = match identite_route(
+        auth::authenticate(&state, req.headers()).await,
+        route.public,
+    ) {
+        Ok(a) => a,
+        Err(statut) => return statut.into_response(),
     };
     if let Some(a) = &authn
         && !auth::csrf_ok(&state, req.headers(), req.method(), a.sid.is_some())
@@ -203,15 +239,14 @@ async fn proxy(State(state): State<AppState>, req: Request) -> Response {
         }
     };
 
-    let mut resp = Response::builder().status(upstream.status());
-    for (k, v) in upstream.headers() {
-        if !HOP_BY_HOP.contains(&k.as_str()) {
-            resp = resp.header(k, v);
-        }
-    }
-    resp = resp.header("x-request-id", request_id);
-    resp.body(Body::from_stream(upstream.bytes_stream()))
-        .unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
+    let (statut, entetes) = (
+        upstream.status(),
+        entetes_reponse(upstream.headers(), &request_id),
+    );
+    let mut resp = Response::new(Body::from_stream(upstream.bytes_stream()));
+    *resp.status_mut() = statut;
+    *resp.headers_mut() = entetes;
+    resp
 }
 
 async fn proxy_ws(
@@ -393,5 +428,86 @@ mod tests {
             upstream_url(&route("/api/chat", false), "/api/chat/rooms", None),
             "http://svc:8080/api/chat/rooms"
         );
+    }
+
+    fn authn() -> Authn {
+        Authn {
+            identity: Identity {
+                id: "u1".into(),
+                name: "Jérôme".into(),
+                email: "zoé@plbls.fr".into(),
+                roles: vec!["user".into(), "chat:admin".into()],
+                client: "plbls-gateway".into(),
+            },
+            access_token: "t".into(),
+            sid: None,
+        }
+    }
+
+    #[test]
+    fn public_route_falls_back_to_anonymous() {
+        assert!(identite_route(Ok(authn()), false).unwrap().is_some());
+        for e in [AuthError::Unavailable, AuthError::Unauthenticated] {
+            assert!(identite_route(Err(e), true).unwrap().is_none());
+        }
+        assert_eq!(
+            identite_route(Err(AuthError::Unavailable), false).err(),
+            Some(StatusCode::SERVICE_UNAVAILABLE)
+        );
+        assert_eq!(
+            identite_route(Err(AuthError::Unauthenticated), false).err(),
+            Some(StatusCode::UNAUTHORIZED)
+        );
+    }
+
+    #[test]
+    fn single_request_id_in_response() {
+        let mut amont = HeaderMap::new();
+        amont.insert("x-request-id", HeaderValue::from_static("amont"));
+        amont.insert("connection", HeaderValue::from_static("close"));
+        amont.insert("content-type", HeaderValue::from_static("text/plain"));
+        let h = entetes_reponse(&amont, "passerelle");
+        let ids: Vec<_> = h.get_all("x-request-id").iter().collect();
+        assert_eq!(ids, vec![HeaderValue::from_static("passerelle")]);
+        assert!(h.get("connection").is_none());
+        assert_eq!(h["content-type"], "text/plain");
+    }
+
+    #[test]
+    fn injects_encoded_and_signed_name_and_email() {
+        let mut h = HeaderMap::new();
+        inject(&mut h, "secret", &authn().identity, "rid");
+        let v = |k: &str| h[k].to_str().unwrap().to_string();
+        assert_eq!(v("x-user-name"), "J%C3%A9r%C3%B4me");
+        assert_eq!(v("x-user-email"), "zo%C3%A9@plbls.fr");
+        let (id, roles, client, name, email) = (
+            v("x-user-id"),
+            v("x-user-roles"),
+            v("x-client-id"),
+            v("x-user-name"),
+            v("x-user-email"),
+        );
+        let ts: u64 = v("x-identity-ts").parse().unwrap();
+        let mut champs = identity::Champs {
+            id: &id,
+            roles: &roles,
+            client: &client,
+            ts,
+            name: &name,
+            email: &email,
+        };
+        assert!(identity::verify(
+            "secret",
+            &champs,
+            &v("x-identity-sig"),
+            ts
+        ));
+        champs.email = "root@plbls.fr";
+        assert!(!identity::verify(
+            "secret",
+            &champs,
+            &v("x-identity-sig"),
+            ts
+        ));
     }
 }

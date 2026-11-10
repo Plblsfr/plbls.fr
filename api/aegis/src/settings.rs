@@ -113,7 +113,7 @@ impl Ressources {
             .map(str::trim)
             .filter(|h| !h.is_empty())
             .collect();
-        hotes.is_empty() || u.host_str().is_some_and(|h| hotes.contains(&h))
+        u.host_str().is_some_and(|h| hotes.contains(&h))
     }
 }
 
@@ -166,13 +166,15 @@ mod tests {
 
     #[test]
     fn hotes_des_ressources() {
-        let libre = Ressources::default();
-        assert!(libre.hote_autorise("http://estompe-api:8080/x"));
-        assert!(!libre.hote_autorise("file:///etc/passwd"));
+        let vide = Ressources::default();
+        assert!(!vide.hote_autorise("http://estompe-api:8080/x"));
+        assert!(!vide.hote_autorise("file:///etc/passwd"));
         let r = Ressources {
             allowed_hosts: "estompe-api, pli".into(),
         };
         assert!(r.hote_autorise("http://estompe-api:8080/x"));
         assert!(!r.hote_autorise("http://ailleurs/x"));
+        assert!(!r.hote_autorise("file://estompe-api/etc/passwd"));
+        assert!(!r.hote_autorise("http://estompe-api.ailleurs/x"));
     }
 }

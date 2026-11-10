@@ -780,6 +780,36 @@ async fn reactions() {
 }
 
 #[tokio::test]
+async fn debit_des_reactions_et_des_conversations_privees() {
+    let Some(c) = cadre().await else { return };
+    let m = c.poster("alice", "débit").await;
+    let chemin = format!(
+        "/messages/{}/reactions/%F0%9F%91%8D",
+        m["id"].as_str().unwrap()
+    );
+    for i in 0..REACTIONS_PAR_FENETRE {
+        let methode = if i % 2 == 0 { "PUT" } else { "DELETE" };
+        assert_eq!(
+            c.api("bob", methode, &chemin, Value::Null).await.0,
+            204,
+            "{i}"
+        );
+    }
+    let (s, v) = c.api("bob", "DELETE", &chemin, Value::Null).await;
+    assert_eq!((s, v["error"].as_str()), (429, Some("rate_limited")));
+    assert_eq!(c.api("alice", "PUT", &chemin, Value::Null).await.0, 204);
+
+    for _ in 0..DMS_PAR_FENETRE {
+        c.ouvrir_dm("alice", "bob").await;
+    }
+    let (s, v) = c
+        .api("alice", "POST", "/dms", json!({ "pseudo": "bob" }))
+        .await;
+    assert_eq!((s, v["error"].as_str()), (429, Some("rate_limited")));
+    c.ouvrir_dm("bob", "alice").await;
+}
+
+#[tokio::test]
 async fn plafond_de_reactions() {
     let Some(c) = cadre().await else { return };
     let m = c.poster("alice", "plafond").await;

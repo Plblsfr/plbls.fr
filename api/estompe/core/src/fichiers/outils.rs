@@ -10,16 +10,16 @@ pub(super) fn maintenant() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-pub fn signer(cle: &[u8; 32], id: &str, exp: u64) -> String {
+pub fn signer(cle: &[u8; 32], id: &str, user: &str, exp: u64) -> String {
     let mut m = Hmac::<Sha256>::new_from_slice(cle).expect("clé HMAC");
-    m.update(format!("{id}.{exp}").as_bytes());
+    m.update(format!("{id}.{user}.{exp}").as_bytes());
     let hex: String = m
         .finalize()
         .into_bytes()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    format!("{exp}.{hex}")
+    format!("{exp}.{user}.{hex}")
 }
 
 pub(super) fn egaux(a: &str, b: &str) -> bool {
@@ -27,14 +27,14 @@ pub(super) fn egaux(a: &str, b: &str) -> bool {
     a.iter().zip(b.iter()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-pub fn lien_valide(cle: &[u8; 32], id: &str, jeton: &str, maintenant: u64) -> bool {
-    let Some((exp, _)) = jeton.split_once('.') else {
-        return false;
+pub fn lien_valide(cle: &[u8; 32], id: &str, jeton: &str, maintenant: u64) -> Option<String> {
+    let mut parts = jeton.splitn(3, '.');
+    let (Some(exp), Some(user), Some(_)) = (parts.next(), parts.next(), parts.next()) else {
+        return None;
     };
-    let Ok(exp) = exp.parse::<u64>() else {
-        return false;
-    };
-    maintenant < exp && egaux(jeton, &signer(cle, id, exp))
+    let exp = exp.parse::<u64>().ok()?;
+    (maintenant < exp && uuid_valide(user) && egaux(jeton, &signer(cle, id, user, exp)))
+        .then(|| user.to_string())
 }
 
 pub fn nom_propre(s: &str) -> String {

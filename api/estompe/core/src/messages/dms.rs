@@ -32,6 +32,13 @@ pub(super) async fn ouvrir_dm(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
+    if !state
+        .limiteurs()
+        .dms
+        .allow(&u.id, DMS_PAR_FENETRE, FENETRE_DMS)
+    {
+        return Ok(trop_de_requetes(FENETRE_DMS.as_secs()));
+    }
     let e = decode(body).await?;
     let pseudo = texte_strict(&e, "pseudo").ok_or_else(mauvais)?;
     let autre = sqlx::query_as::<_, (String, String)>(

@@ -46,7 +46,7 @@ pub fn param<'a>(p: &'a HashMap<String, String>, nom: &str) -> &'a str {
 }
 
 pub(crate) fn id_salon(p: &HashMap<String, String>) -> Result<String, Response> {
-    let cid = p.get("cid").map_or("order", String::as_str);
+    let cid = param(p, "cid");
     if uuid_valide(cid) {
         Ok(cid.to_string())
     } else {
@@ -59,6 +59,28 @@ pub async fn membres_ids(pool: &PgPool, server_id: &str) -> Result<Vec<String>, 
         .bind(server_id)
         .fetch_all(pool)
         .await
+}
+
+pub(crate) async fn retirer_membre<'c>(
+    conn: impl sqlx::Acquire<'c, Database = sqlx::Postgres>,
+    server_id: &str,
+    user_id: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = conn.begin().await?;
+    sqlx::query(
+        "DELETE FROM message_mentions mm USING messages m, channels c
+         WHERE mm.message_id = m.id AND m.channel_id = c.id AND c.server_id=$1::uuid AND mm.user_id=$2::uuid",
+    )
+    .bind(server_id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
+        .bind(server_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
 }
 
 pub(super) fn diffuser(state: &AppState, to: &[String], typ: &str, data: &Value) {

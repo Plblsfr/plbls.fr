@@ -5,6 +5,22 @@ use commun::http::cause;
 use serde_json::{Value, json};
 
 const DELAI: Duration = Duration::from_secs(5);
+const CACHE_MAX: usize = 10_000;
+
+fn memoriser(
+    cache: &mut HashMap<String, (bool, u64)>,
+    cle: String,
+    valeur: (bool, u64),
+    maintenant: u64,
+) {
+    if cache.len() >= CACHE_MAX {
+        cache.retain(|_, (_, jusqua)| *jusqua > maintenant);
+        if cache.len() >= CACHE_MAX {
+            cache.clear();
+        }
+    }
+    cache.insert(cle, valeur);
+}
 
 pub fn client_http() -> reqwest::Client {
     commun::http::client(DELAI)
@@ -223,13 +239,37 @@ impl PermissionChecker {
             Err(e) => return injoignable(&e),
         };
         let allowed = corps["allowed"] == Value::Bool(true);
-        self.cache
-            .lock()
-            .unwrap()
-            .insert(cle, (allowed, maintenant + self.ttl_ms));
+        memoriser(
+            &mut self.cache.lock().unwrap(),
+            cle,
+            (allowed, maintenant + self.ttl_ms),
+            maintenant,
+        );
         Decision {
             allowed,
             reason: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_purge_des_entrees_expirees() {
+        let mut cache = HashMap::new();
+        for i in 0..CACHE_MAX {
+            cache.insert(format!("vieux{i}"), (true, 10));
+        }
+        cache.insert("frais".into(), (true, 1000));
+        memoriser(&mut cache, "nouveau".into(), (false, 1000), 100);
+        assert_eq!(cache.len(), 2);
+        assert!(cache.contains_key("frais") && cache.contains_key("nouveau"));
+        for i in 0..CACHE_MAX {
+            cache.insert(format!("actif{i}"), (true, 1000));
+        }
+        memoriser(&mut cache, "dernier".into(), (true, 1000), 100);
+        assert_eq!(cache.len(), 1);
     }
 }

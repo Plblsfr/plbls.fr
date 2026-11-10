@@ -40,7 +40,7 @@ impl Modify for Securite {
         let mut cle = ApiKey::Header(ApiKeyValue::new("X-Identity-Sig"));
         if let ApiKey::Header(v) = &mut cle {
             v.description = Some(
-                "Avec X-User-Id, X-User-Roles, X-Client-Id, X-Identity-Ts (et X-User-Email) : injectés par la passerelle".into(),
+                "Avec X-User-Id, X-User-Roles, X-Client-Id, X-Identity-Ts, X-User-Name et X-User-Email (percent-encoding UTF-8) : injectés par la passerelle".into(),
             );
         }
         c.add_security_scheme("gatewayIdentity", SecurityScheme::ApiKey(cle));

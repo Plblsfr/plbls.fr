@@ -9,7 +9,7 @@ describe("api", () => {
     vi.stubGlobal("fetch", fetch);
     await expect(api("POST", "/v1/apps", { key: "chat" })).resolves.toEqual({ ok: 1 });
     expect(fetch).toHaveBeenCalledWith("/api/permission/v1/apps", {
-      method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: '{"key":"chat"}',
+      method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: '{"key":"chat"}', signal: expect.any(AbortSignal),
     });
   });
 
@@ -17,7 +17,12 @@ describe("api", () => {
     const fetch = vi.fn(async () => new Response("[]", { status: 200 }));
     vi.stubGlobal("fetch", fetch);
     await api("GET", "/v1/apps");
-    expect(fetch).toHaveBeenCalledWith("/api/permission/v1/apps", { method: "GET", credentials: "include", headers: {}, body: undefined });
+    expect(fetch).toHaveBeenCalledWith("/api/permission/v1/apps", { method: "GET", credentials: "include", headers: {}, body: undefined, signal: expect.any(AbortSignal) });
+  });
+
+  it("délai dépassé : erreur explicite au lieu d'un chargement sans fin", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new DOMException("délai", "TimeoutError"); }));
+    await expect(api("GET", "/v1/apps")).rejects.toMatchObject({ status: 0, message: "Le gateway ne répond pas (délai dépassé)" });
   });
 
   it("204 : renvoie undefined", async () => {

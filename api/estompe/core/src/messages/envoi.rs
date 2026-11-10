@@ -123,6 +123,17 @@ pub(super) async fn convertir_emojis(pool: &PgPool, user: &str, contenu: &str) -
     emoji::convertir(contenu, &smileys_perso(pool, user).await)
 }
 
+pub(crate) fn trop_de_requetes(secondes: u64) -> Response {
+    avec_reessai(
+        write_err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "trop de requêtes, patientez avant de réessayer",
+        ),
+        secondes,
+    )
+}
+
 pub(crate) fn avec_reessai(mut r: Response, secondes: u64) -> Response {
     if let Ok(v) = HeaderValue::from_str(&secondes.to_string()) {
         r.headers_mut().insert(header::RETRY_AFTER, v);

@@ -22,7 +22,13 @@ export function authUrl(o: { issuer: string; clientId: string; redirectUri: stri
 
 export interface PendingLogin { state: string; verifier: string; redirectUri: string }
 
-export async function completeLogin(manager: TokenManager, query: string, pending: PendingLogin): Promise<void> {
+export interface Tokens {
+  loginWithCode(code: string, verifier: string, redirectUri: string): Promise<void>
+  getAccessToken(): Promise<string | null>
+  logout(): Promise<void>
+}
+
+export async function completeLogin(manager: Tokens, query: string, pending: PendingLogin): Promise<void> {
   const q = new URLSearchParams(query)
   if (q.get('state') !== pending.state) throw new Error('Réponse de connexion inattendue (state)')
   const code = q.get('code')
@@ -53,7 +59,7 @@ const LEEWAY_MS = 30_000
  * Détient le jeton d'accès en mémoire (jamais écrit sur disque) et le renouvelle avec le refresh token, qui tourne
  * à chaque usage (« Revoke Refresh Token » activé côté Keycloak) : le nouveau remplace l'ancien dans le coffre.
  */
-export class TokenManager {
+export class TokenManager implements Tokens {
   private access: string | null = null
   private expiresAt = 0
   private inflight: Promise<string | null> | null = null

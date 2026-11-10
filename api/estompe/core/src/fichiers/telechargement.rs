@@ -36,6 +36,10 @@ pub fn analyser_plage(entete: &str, taille: u64) -> Plage {
             if n < 0 {
                 return Plage::Invalide;
             }
+            if n == 0 || taille == 0 {
+                hors = true;
+                continue;
+            }
             let n = (n as u64).min(taille);
             plages.push((taille - n, n));
         } else {
@@ -258,6 +262,6 @@ pub(super) async fn lien(
     if let Err(e) = fichier_pour(pool, &id, &u.id).await {
         return e.into_response();
     }
-    let jeton = signer(state.cle_liens(), &id, maintenant() + DUREE_LIEN);
+    let jeton = signer(state.cle_liens(), &id, &u.id, maintenant() + DUREE_LIEN);
     write_json(StatusCode::OK, &Value::from_iter([("token", jeton)]))
 }

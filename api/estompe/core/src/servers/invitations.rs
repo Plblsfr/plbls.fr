@@ -204,11 +204,17 @@ pub(super) async fn rejoindre_base(
         .bind(user)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid)")
-        .bind(&sv.id)
-        .bind(user)
-        .execute(&mut *tx)
-        .await?;
+    let ajoute = sqlx::query(
+        "INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING",
+    )
+    .bind(&sv.id)
+    .bind(user)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if ajoute == 0 {
+        return Ok((sv, false));
+    }
     tx.commit().await?;
     Ok((sv, true))
 }

@@ -36,6 +36,8 @@ use serveurs::*;
 pub const MAX_SALONS: i64 = 50;
 pub const MAX_ROLES: usize = 50;
 pub const MAX_PARTICIPANTS_VOCAL: i64 = 10;
+pub(crate) const CREATIONS_PAR_FENETRE: usize = 10;
+const FENETRE_CREATIONS: std::time::Duration = std::time::Duration::from_secs(3600);
 
 const ALPHABET_CODE: &[u8] = b"ABCDEFGHJKMNPQRSTVWXYZ23456789";
 const TYPES: [&str; 5] = ["text", "voice", "videos", "music", "cinema"];
@@ -56,10 +58,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .route("/servers/{id}", get(voir).patch(renommer).delete(supprimer))
         .route("/servers/{id}/leave", post(quitter))
         .route("/servers/{id}/channels", post(creer_salon))
-        .route(
-            "/servers/{id}/channels/order",
-            put(ordonner).patch(renommer_salon).delete(supprimer_salon),
-        )
+        .route("/servers/{id}/channels/order", put(ordonner))
         .route(
             "/servers/{id}/channels/{cid}",
             patch(renommer_salon).delete(supprimer_salon),
@@ -96,7 +95,11 @@ const DOC: &[Doc] = &[
         HttpMethod::Post,
         "/servers",
         "Créer un serveur (avec un salon texte « général » et un salon vocal « vocal »)",
-        &[("201", "Créé"), ("400", "Requête invalide")],
+        &[
+            ("201", "Créé"),
+            ("400", "Requête invalide"),
+            ("429", "`rate_limited` : 10 / h"),
+        ],
     ),
     (
         HttpMethod::Get,

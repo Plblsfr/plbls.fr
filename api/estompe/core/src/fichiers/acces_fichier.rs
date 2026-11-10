@@ -20,16 +20,6 @@ pub(super) fn lire_fichier(l: &sqlx::postgres::PgRow) -> Fichier {
 
 pub(super) const COLONNES: &str = "id::text, name, mime, key, purged_at IS NOT NULL";
 
-pub(super) async fn fichier_par_id(pool: &PgPool, id: &str) -> Result<Fichier, ErreurAcces> {
-    let l = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "SELECT {COLONNES} FROM files WHERE id=$1::uuid"
-    )))
-    .bind(id)
-    .fetch_one(pool)
-    .await?;
-    Ok(lire_fichier(&l))
-}
-
 pub(super) async fn fichier_signalement(pool: &PgPool, id: &str) -> Result<Fichier, ErreurAcces> {
     let l = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES} FROM files WHERE id=$1::uuid AND report_id IS NOT NULL"
@@ -83,14 +73,17 @@ pub(super) async fn acces(
     let pool = state.pool().map_err(IntoResponse::into_response)?;
     let jeton = parametre(parts.uri.query(), "t");
     if !jeton.is_empty() {
-        if !uuid_valide(id) || !lien_valide(state.cle_liens(), id, &jeton, maintenant()) {
+        let user = uuid_valide(id)
+            .then(|| lien_valide(state.cle_liens(), id, &jeton, maintenant()))
+            .flatten();
+        let Some(user) = user else {
             return Err(write_err(
                 StatusCode::FORBIDDEN,
                 "invalid_link",
                 "lien expiré ou invalide",
             ));
-        }
-        return fichier_par_id(pool, id)
+        };
+        return fichier_pour(pool, id, &user)
             .await
             .map_err(IntoResponse::into_response);
     }

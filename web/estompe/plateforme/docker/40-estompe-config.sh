@@ -28,7 +28,7 @@ cat > /usr/share/nginx/html/config.js <<JS
 globalThis.__ESTOMPE__ = { apiUrl: "$API_URL", gatewayUrl: "$GATEWAY_URL", keycloakIssuer: "$KEYCLOAK_ISSUER", entracteUrl: "$ENTRACTE_PUBLIC_URL" }
 JS
 
-CSP="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://player.twitch.tv https://player.vimeo.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: $API_URL $ENTRACTE_PUBLIC_URL https://*.giphy.com https://img.youtube.com; font-src 'self'; media-src 'self' blob: $API_URL $ENTRACTE_PUBLIC_URL https:; connect-src 'self' https: $API_URL $API_WS $VOICE_URL $VOICE_HTTP $ENTRACTE_PUBLIC_URL; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com https://player.twitch.tv https://clips.twitch.tv https://player.vimeo.com https://www.dailymotion.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self' $GATEWAY_URL"
+CSP="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: $API_URL $ENTRACTE_PUBLIC_URL https://*.giphy.com https://img.youtube.com; font-src 'self'; media-src 'self' blob: $API_URL $ENTRACTE_PUBLIC_URL; connect-src 'self' $API_URL $API_WS $VOICE_URL $VOICE_HTTP $ENTRACTE_PUBLIC_URL $GATEWAY_URL; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com https://player.twitch.tv https://clips.twitch.tv https://player.vimeo.com https://www.dailymotion.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self' $GATEWAY_URL"
 
 cat > /etc/nginx/estompe-headers.inc <<HDR
 add_header Content-Security-Policy "$CSP" always;

@@ -24,11 +24,28 @@ pub(super) async fn jeton(
                 "vous ne pouvez pas partager votre écran dans ce salon",
             ));
         }
+        match lk.participants(&salon.id).await {
+            Ok(ps) if ps.iter().any(|p| p.user_id == u.id) => {}
+            Ok(_) => {
+                return Ok(write_err(
+                    StatusCode::CONFLICT,
+                    "voice_not_joined",
+                    "rejoignez d'abord le salon vocal pour partager votre écran",
+                ));
+            }
+            Err(_) => return Ok(injoignable()),
+        }
+        let modere = mods(pool, std::slice::from_ref(&salon.id))
+            .await
+            .map_err(bd)?
+            .get(&(salon.id.clone(), u.id.clone()))
+            .copied()
+            .unwrap_or_default();
         return Ok(write_json(
             StatusCode::OK,
             &json!({
                 "url": lk.url_publique(),
-                "token": lk.jeton(&salon.id, &format!("{}#screen", u.id), &u.pseudo, Mod::default()),
+                "token": lk.jeton_ecran(&salon.id, &u.id, &u.pseudo, mod_de(modere.0, modere.1, salon.perms)),
                 "room": salle(&salon.id),
             }),
         ));

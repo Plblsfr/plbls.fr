@@ -10,6 +10,7 @@ use crate::{
     identite::{Identite, Resolveur},
     materiel::Materiel,
     push::Push,
+    sous_titres::{self, Extractions},
     transcodage::Transcodeur,
 };
 
@@ -25,6 +26,7 @@ pub struct Inner {
     synchro: MutexAsync<()>,
     relance: std::sync::atomic::AtomicBool,
     push: Push,
+    extractions: Extractions,
 }
 
 #[derive(Clone)]
@@ -55,6 +57,10 @@ impl AppState {
             synchro: MutexAsync::new(()),
             relance: std::sync::atomic::AtomicBool::new(false),
             push,
+            extractions: Extractions::nouveau(
+                sous_titres::EXTRACTIONS_MAX,
+                sous_titres::DUREE_ECHEC,
+            ),
         }))
     }
 
@@ -108,6 +114,10 @@ impl AppState {
 
     pub fn push(&self) -> &Push {
         &self.0.push
+    }
+
+    pub fn extractions(&self) -> &Extractions {
+        &self.0.extractions
     }
 
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {

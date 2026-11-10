@@ -33,6 +33,8 @@ const TROP_GRAND: u16 = 1009;
 const POLITIQUE: u16 = 1008;
 const SESSION_EXPIREE: u16 = 4401;
 const ACCES_RETIRE: u16 = 4403;
+const TICKETS_PAR_FENETRE: usize = 20;
+const FENETRE_TICKETS: Duration = Duration::from_secs(60);
 
 pub fn router() -> OpenApiRouter<AppState> {
     OpenApiRouter::new()
@@ -48,7 +50,10 @@ struct TicketReponse {
 
 #[utoipa::path(post, path = "/ws-ticket", tag = "temps réel",
     summary = "Ticket à usage unique (30 s) pour ouvrir le WebSocket",
-    responses((status = 200, description = "ok", body = TicketReponse)))]
+    responses(
+        (status = 200, description = "ok", body = TicketReponse),
+        (status = 429, description = "`rate_limited` : 20 / min", body = crate::openapi::Error),
+    ))]
 async fn ws_ticket(
     State(state): State<AppState>,
     ActiveUser(user): ActiveUser,
@@ -57,6 +62,13 @@ async fn ws_ticket(
     let Some(cred) = cred_of(&headers) else {
         return text_error(StatusCode::UNAUTHORIZED, "unauthorized");
     };
+    if !state
+        .limiteurs()
+        .ws_ticket
+        .allow(&user.id, TICKETS_PAR_FENETRE, FENETRE_TICKETS)
+    {
+        return crate::messages::trop_de_requetes(FENETRE_TICKETS.as_secs());
+    }
     let ticket = state.hub().issue_ticket(&user.id, cred);
     write_json(StatusCode::OK, &json!({ "ticket": ticket }))
 }
@@ -314,6 +326,30 @@ mod tests {
     };
 
     const ORIGINE: &str = "https://app.test";
+
+    #[tokio::test]
+    async fn tickets_limites_par_compte() {
+        use crate::servers::tests::{appel, env, membre};
+        use axum::http::StatusCode;
+        let Some(e) = env().await else { return };
+        membre(&e, "alice").await;
+        membre(&e, "bob").await;
+        for _ in 0..super::TICKETS_PAR_FENETRE {
+            assert_eq!(
+                appel(&e, "alice", "POST", "/ws-ticket", None).await.0,
+                StatusCode::OK
+            );
+        }
+        let (s, v) = appel(&e, "alice", "POST", "/ws-ticket", None).await;
+        assert_eq!(
+            (s, v["error"].as_str()),
+            (StatusCode::TOO_MANY_REQUESTS, Some("rate_limited"))
+        );
+        assert_eq!(
+            appel(&e, "bob", "POST", "/ws-ticket", None).await.0,
+            StatusCode::OK
+        );
+    }
     const DELAI: Duration = Duration::from_secs(5);
 
     type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;

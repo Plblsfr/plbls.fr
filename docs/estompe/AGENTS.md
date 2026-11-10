@@ -153,7 +153,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
 - Permissions : toute nouvelle route est rattachée à une permission de `api/estompe/core/src/catalogue.rs` (ou, avec un motif, à `HORS_PERMISSION`), et tout nouveau droit de serveur est plafonné par une permission ; les tests `estompe-api` et `estompe-core` l'imposent. Après un changement du catalogue : `AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour` régénère `docs/aegis/fonctionnalites.md`.
-- Déploiement : services `estompe-*` et `livekit` de `deploy/docker-compose.yml`, sans section `environment` (voir `deploy/README.md`). Toute nouvelle variable d'environnement va dans `deploy/estompe/.env.example` (un secret : sa valeur dans `secret/estompe` de Vault et une référence `${{vault.plbls.estompe:CLE}}` dans l'exemple), jamais dans le compose ; aucun nom déjà utilisé par un autre projet de la stack.
+- Déploiement : services `estompe-*` et `livekit` de `deploy/docker-compose.yml` (voir `deploy/README.md`) : `estompe-api` charge tout le `.env`, `estompe-web`, `estompe-postgres`, `estompe-backup` et `livekit` ne reçoivent que les variables de leur section `environment` (interpolées `${VAR}`). Toute nouvelle variable d'environnement va dans `deploy/estompe/.env.example` (un secret : sa valeur dans `secret/estompe` de Vault et une référence `${{vault.plbls.estompe:CLE}}` dans l'exemple), jamais en valeur dans le compose ; une variable lue par un de ces quatre services s'ajoute aussi à sa section `environment` ; aucun nom déjà utilisé par un autre projet de la stack.
 - CI (détail : `docs/estompe/ci.md`) : en PR, `ci.yml` à la racine lance `rust-lint` et `rust-test` (API Rust : fmt, clippy, cargo-deny, tests avec PostgreSQL),
   `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`
   (entrée `changelog.d/` exigée), chacun seulement si la PR touche ses chemins. Après fusion, `livraison.yml` calcule `.version` (`estompe-version`),
@@ -181,6 +181,9 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Champs tactiles** : iOS zoome sur un champ sous 16 px et ne dézoome pas ; la règle `@media (pointer: coarse)` d’`app.css` les force à 16 px, ne jamais poser `maximum-scale` ni `user-scalable`.
 - **Lecteur YouTube** : toujours l'iframe officielle avec `referrerpolicy="strict-origin-when-cross-origin"` (sans `Referer`, YouTube
   répond par l'erreur 153). L'origine de la webview Tauri est `https://tauri.localhost` : tester la lecture dans l'app, pas seulement dans un navigateur.
+- **Lecteurs tiers (YouTube, Vimeo, Twitch, Dailymotion)** : une iframe pilotée par `postMessage` (`providers.ts`), jamais le script du fournisseur dans la page ;
+  `script-src` reste `'self'` (web et Tauri). Un message n'est lu que s'il vient de l'origine du lecteur et de la fenêtre de son iframe. Twitch n'a pas de protocole
+  `postMessage` documenté : rediffusions, directs et clips ne synchronisent que le lancement (`sync: 'start'`).
 - **Lecture automatique** : le navigateur ou la webview peut la refuser (`onAutoplayBlocked`) ; prévoir le bouton « Activer le son », ne jamais supposer que `play()` aboutit.
 - **Empilement** : un menu ouvert dans un modal doit s'afficher au-dessus de lui sans être coupé par un `overflow` masqué ; réutiliser
   `ContextMenu` / `Modal` plutôt qu'un menu local, et ne pas régler un souci d'empilement par un `z-index` arbitraire.

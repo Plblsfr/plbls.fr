@@ -6,6 +6,13 @@ pub(super) async fn creer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
+    if !state
+        .limiteurs()
+        .serveurs
+        .allow(&u.id, CREATIONS_PAR_FENETRE, FENETRE_CREATIONS)
+    {
+        return Ok(crate::messages::trop_de_requetes(60));
+    }
     let entree = decode(body).await?;
     let brut = champ_texte(&entree, "name").ok_or_else(mauvais)?;
     let Some(nom) = nom_propre(&brut, 50) else {
@@ -252,12 +259,7 @@ pub(super) async fn quitter(
             "le créateur ne peut pas quitter son serveur, il peut le supprimer",
         ));
     }
-    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
-        .bind(&sv.id)
-        .bind(&u.id)
-        .execute(pool)
-        .await
-        .map_err(bd)?;
+    retirer_membre(pool, &sv.id, &u.id).await.map_err(bd)?;
     let mut to = membres_ids(pool, &sv.id).await.unwrap_or_default();
     to.push(u.id.clone());
     diffuser(

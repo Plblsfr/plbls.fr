@@ -343,8 +343,8 @@ async fn liens_signes() {
     let Some(e) = env(&[], |_| {}).await else {
         return;
     };
-    e.user("alice").await;
-    e.user("bob").await;
+    let alice = e.user("alice").await;
+    let bob = e.user("bob").await;
     let id = e.envoi_ok("alice", "photo.png", PNG).await;
     let lien = format!("/files/{id}/link");
     let (s, _, _) = e.requete("POST", &lien, Some("bob"), &[], vec![]).await;
@@ -378,10 +378,32 @@ async fn liens_signes() {
             "invalid_link"
         );
     }
-    let perime = signer(e.state.cle_liens(), &id, maintenant() - 1);
+    let perime = signer(e.state.cle_liens(), &id, &alice, maintenant() - 1);
     assert_eq!(
         e.lire(None, &format!("/files/{id}?t={perime}")).await.0,
         StatusCode::FORBIDDEN
+    );
+
+    let (serveur, salon) = e.serveur(&alice, &[&bob]).await;
+    e.joindre(&salon, &alice, &id).await;
+    let (s, _, c) = e.requete("POST", &lien, Some("bob"), &[], vec![]).await;
+    assert_eq!(s, StatusCode::OK);
+    let de_bob = serde_json::from_slice::<Value>(&c).unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let chemin = format!("/files/{id}?t={de_bob}");
+    assert_eq!(e.lire(None, &chemin).await.0, StatusCode::OK);
+    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
+        .bind(&serveur)
+        .bind(&bob)
+        .execute(e.pool())
+        .await
+        .unwrap();
+    assert_eq!(e.lire(None, &chemin).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(
+        e.lire(None, &format!("/files/{id}?t={jeton}")).await.0,
+        StatusCode::OK
     );
 }
 
@@ -429,6 +451,9 @@ async fn lecture_par_plages() {
     assert_eq!(s, StatusCode::RANGE_NOT_SATISFIABLE);
     assert_eq!(h[header::CONTENT_RANGE], "bytes */10");
     assert!(h.get(header::ACCEPT_RANGES).is_none() && h.get(header::CACHE_CONTROL).is_none());
+    let (s, h, _) = avec("bytes=-0").await;
+    assert_eq!(s, StatusCode::RANGE_NOT_SATISFIABLE);
+    assert_eq!(h[header::CONTENT_RANGE], "bytes */10");
     let (s, h, c) = avec("octets=1-2").await;
     assert_eq!(
         (s, texte(&c).as_str()),
@@ -992,6 +1017,8 @@ fn plages_comme_le_go() {
         ("bytes=0-99", "0+10"),
         ("bytes=-4", "6+4"),
         ("bytes=-99", "0+10"),
+        ("bytes=-0", "hors"),
+        ("bytes=-0,2-3", "2+2"),
         ("bytes= 2 - 3 ", "2+2"),
         ("bytes=10-", "hors"),
         ("bytes=10-12", "hors"),
@@ -1008,6 +1035,12 @@ fn plages_comme_le_go() {
     ] {
         assert_eq!(lire(entete), attendu, "{entete:?}");
     }
+    for entete in ["bytes=0-", "bytes=-1", "bytes=-0", "bytes=0-0"] {
+        assert!(
+            matches!(analyser_plage(entete, 0), NonSatisfaisante),
+            "{entete:?}"
+        );
+    }
 }
 
 fn cle_aleatoire() -> [u8; 32] {
@@ -1020,13 +1053,25 @@ fn cle_aleatoire() -> [u8; 32] {
 fn liens_et_identifiants() {
     let cle = cle_aleatoire();
     let id = "123e4567-e89b-12d3-a456-426614174000";
-    let jeton = signer(&cle, id, 2000);
-    assert!(lien_valide(&cle, id, &jeton, 1999));
-    assert!(!lien_valide(&cle, id, &jeton, 2000));
-    assert!(!lien_valide(&cle, "autre", &jeton, 1999));
-    assert!(!lien_valide(&cle_aleatoire(), id, &jeton, 1999));
-    for mauvais in ["", "x", "2000.", "+2000.ab", "-1.ab", &format!("{jeton}0")] {
-        assert!(!lien_valide(&cle, id, mauvais, 1999), "{mauvais}");
+    let user = "00000000-0000-0000-0000-0000000000aa";
+    let jeton = signer(&cle, id, user, 2000);
+    assert_eq!(lien_valide(&cle, id, &jeton, 1999).as_deref(), Some(user));
+    assert_eq!(lien_valide(&cle, id, &jeton, 2000), None);
+    assert_eq!(lien_valide(&cle, "autre", &jeton, 1999), None);
+    assert_eq!(lien_valide(&cle_aleatoire(), id, &jeton, 1999), None);
+    let autre = jeton.replace(user, "00000000-0000-0000-0000-0000000000bb");
+    let ancien = format!("2000.{}", jeton.rsplit('.').next().unwrap());
+    for mauvais in [
+        "",
+        "x",
+        "2000.",
+        "+2000.ab",
+        "-1.ab",
+        &format!("{jeton}0"),
+        &autre,
+        &ancien,
+    ] {
+        assert_eq!(lien_valide(&cle, id, mauvais, 1999), None, "{mauvais}");
     }
     assert!(uuid_valide(id) && uuid_valide(&id.to_uppercase()));
     for mauvais in [

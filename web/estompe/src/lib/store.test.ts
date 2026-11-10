@@ -670,6 +670,16 @@ describe('rôles et permissions', () => {
     s.details.s1.channels[0].permissions = ['mention_everyone']
     expect(s.groupSuggestionsOf('c:c1')).toEqual(['everyone', 'here', 'Modérateur'])
   })
+  it('retire un salon devenu invisible au rechargement du serveur', async () => {
+    s.details.s1.channels.push({ id: 'c2', name: 'secret', kind: 'text', position: 2 })
+    s.convs['c:c2'] = { messages: [], hasMore: false, loading: false, loaded: true }
+    s.unread['c:c2'] = 3
+    ev('roles.updated', { server_id: 's1' })
+    await vi.waitFor(() => expect(s.details.s1.channels.map((c) => c.id)).toEqual(['c1']))
+    expect(s.convs['c:c2']).toBeUndefined()
+    expect(s.unread['c:c2']).toBeUndefined()
+    expect(s.convs['c:c1']).toBeDefined()
+  })
   it('recharge le serveur quand ses rôles changent, sans reconnexion', async () => {
     ev('roles.updated', { server_id: 's1' })
     await vi.waitFor(() => expect(s.details.s1.permissions).toEqual(['view_channel']))

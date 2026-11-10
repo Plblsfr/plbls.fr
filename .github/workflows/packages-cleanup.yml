@@ -3,7 +3,7 @@
 #   - les 3 dernières versions numérotées (X.Y.Z),
 # et on supprime le reste (anciens :sha de main, vieilles versions).
 # Les versions sans tag ne sont pas touchées : ce sont parfois des enfants (attestations) d'une image conservée.
-# Secret PACKAGES_PAT : PAT *classic* avec write:packages (inclut read) + delete:packages, aussi utilisé pour publier les images (GITHUB_TOKEN ne gère pas les packages d'un compte personnel).
+# Secret PACKAGES_PAT de l'environnement packages (main seulement, voir docs/estompe/ci.md) : write:packages + delete:packages, aussi utilisé pour publier les images (GITHUB_TOKEN ne gère pas les packages d'un compte personnel).
 name: packages-cleanup
 on:
   schedule:
@@ -20,11 +20,12 @@ permissions: {}
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    environment: packages
     env:
       GH_TOKEN: ${{ secrets.PACKAGES_PAT }}
       KEEP: 3
       # shortcut: liste fixe d'images, à compléter à chaque nouveau composant
-      PACKAGES: pli security permission aegis plbls-ui keycloak estompe estompe-web estompe-ci
+      PACKAGES: pli security permission aegis entracte plbls-ui keycloak estompe estompe-web estompe-ci
       DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
     steps:
       - run: |

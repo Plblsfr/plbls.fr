@@ -132,7 +132,7 @@ async fn depot_401_sans_session_403_sans_permission_refus_autre_origine() {
     assert_eq!(r.status(), 401);
     let corps: Value = r.json().await.unwrap();
     assert_eq!(corps["error"], "non authentifié");
-    assert!(corps["reason"].as_str().unwrap().contains("cookie"));
+    assert_eq!(corps, json!({ "error": "non authentifié" }));
     assert_eq!(
         s.post("/api/shares?ttl=3600", blob(40), Some("bob"))
             .await
@@ -332,6 +332,51 @@ async fn identifiants_invalides_liste_revocation_quota() {
 }
 
 #[tokio::test]
+async fn quota_tenu_sous_depots_simultanes_et_au_dela_de_200() {
+    let Some(s) = demarre_avec(&[("MAX_PENDING_PER_USER", "250")]).await else {
+        return;
+    };
+    sqlx::query(
+        "INSERT INTO shares (id, owner, data, size, expires_at)
+         SELECT 'x' || g, 'alice', '\\x01'::bytea, 1, now() + interval '1 hour' FROM generate_series(1, 247) g",
+    )
+    .execute(&s.pool)
+    .await
+    .unwrap();
+    let s = std::sync::Arc::new(s);
+    let mut taches = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let s = s.clone();
+        taches.spawn(async move {
+            s.post("/api/shares?ttl=3600", blob(40), Some("alice"))
+                .await
+                .status()
+        });
+    }
+    let mut statuts = Vec::new();
+    while let Some(r) = taches.join_next().await {
+        statuts.push(r.unwrap());
+    }
+    assert_eq!(
+        statuts
+            .iter()
+            .filter(|c| **c == StatusCode::CREATED)
+            .count(),
+        3,
+        "{statuts:?}"
+    );
+    assert_eq!(
+        statuts
+            .iter()
+            .filter(|c| **c == StatusCode::TOO_MANY_REQUESTS)
+            .count(),
+        5
+    );
+    assert_eq!(db::count_pending(&s.pool, "alice").await.unwrap(), 250);
+    assert_eq!(db::list_shares(&s.pool, "alice").await.unwrap().len(), 250);
+}
+
+#[tokio::test]
 async fn entetes_de_securite_statiques_et_pas_de_cache_sur_api() {
     let Some(s) = demarre().await else { return };
     let r = s.get("/").await;
@@ -447,12 +492,28 @@ async fn limite_de_debit_sur_la_lecture_publique() {
 #[tokio::test]
 async fn purge_des_partages_expires() {
     let Some(s) = demarre().await else { return };
-    db::insert_share(&s.pool, "AAAAAAAAAAAAAAAAAAAAAA", "alice", &blob(40), 3600)
-        .await
-        .unwrap();
-    db::insert_share(&s.pool, "BBBBBBBBBBBBBBBBBBBBBB", "alice", &blob(40), 3600)
-        .await
-        .unwrap();
+    db::insert_share(
+        &s.pool,
+        "AAAAAAAAAAAAAAAAAAAAAA",
+        "alice",
+        &blob(40),
+        3600,
+        50,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    db::insert_share(
+        &s.pool,
+        "BBBBBBBBBBBBBBBBBBBBBB",
+        "alice",
+        &blob(40),
+        3600,
+        50,
+    )
+    .await
+    .unwrap()
+    .unwrap();
     sqlx::query("UPDATE shares SET expires_at = now() - interval '1 second' WHERE id = 'BBBBBBBBBBBBBBBBBBBBBB'")
         .execute(&s.pool)
         .await

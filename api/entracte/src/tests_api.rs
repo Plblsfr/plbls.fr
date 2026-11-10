@@ -409,6 +409,7 @@ async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
         medias.join("series").display()
     ))
     .unwrap();
+    cfg.medias = medias.to_path_buf();
     cfg.dossier_transcodage = transcodage.path().join("t");
     cfg.jeton_service = "jeton-service-estompe".into();
     cfg.jeton_webhook = "jeton-webhook".into();
@@ -1165,6 +1166,36 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
 }
 
 #[tokio::test]
+async fn plafond_disque_depasse_pendant_le_transcodage() {
+    let Some(e) = env_avec(|c| c.transcodage_max_octets = 1).await else {
+        return;
+    };
+    synchro(&e).await;
+    let a = id_de(&e, "Film A").await;
+    let r = ouvrir(&e, "alice", &a, json!({"quality": "480p"})).await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let h = r.json();
+    let flux = h["stream_id"].as_str().unwrap().to_string();
+    let dossier = e.state.config().dossier_transcodage.join(&flux);
+    attendre(
+        || dossier.join("seg00000.ts").exists(),
+        "premier segment écrit",
+    )
+    .await;
+    assert!(e.state.transcodeur().taille().await > 1);
+    crate::lecture::menage(&e.state).await;
+    assert_eq!(e.state.transcodeur().nombre(), 0);
+    assert!(!e.state.flux().existe(&flux));
+    assert!(!dossier.exists());
+    assert_eq!(
+        appel(&e, None, "GET", h["url"].as_str().unwrap(), None)
+            .await
+            .statut,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
 async fn materiel_inutilisable_lecture_sur_le_cpu() {
     let Some(e) = env_avec(|c| {
         c.mode_materiel = ModeMateriel::Vaapi;
@@ -1884,18 +1915,27 @@ async fn webhook_declenche_la_synchronisation() {
             .statut,
         StatusCode::UNAUTHORIZED
     );
-    assert_eq!(
-        appel(
-            &e,
-            None,
-            "POST",
-            "/webhooks/radarr?token=jeton-webhook",
-            None
-        )
-        .await
-        .statut,
-        StatusCode::NO_CONTENT
+    use base64::Engine;
+    let basic = format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode("radarr:jeton-webhook")
     );
+    for (chemin, entetes) in [
+        ("/webhooks/radarr?token=jeton-webhook", vec![]),
+        ("/webhooks/sonarr", vec![("authorization", basic.as_str())]),
+        (
+            "/webhooks/radarr",
+            vec![("authorization", "Bearer jeton-webhook")],
+        ),
+    ] {
+        assert_eq!(
+            appel_avec(&e, None, "POST", chemin, None, &entetes)
+                .await
+                .statut,
+            StatusCode::NO_CONTENT,
+            "{chemin}"
+        );
+    }
     let limite = Instant::now() + Duration::from_secs(30);
     loop {
         if get(&e, "alice", "/library").await.json()["total"] == 2 {
