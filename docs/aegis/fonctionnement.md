@@ -70,13 +70,16 @@ L'API d'administration rend les comptes avec leur e-mail partout (journal compri
 
 ```
 administration ─► aegis ─► PostgreSQL (vérité)
-                    ├─► Redis <prefix>:eff:<génération>:<sub>   droits calculés, TTL = min(10 min, valid_until)
-                    │         <prefix>:generation
+                    ├─► Redis <prefix>:eff:<génération>:<version>:<sub>   droits calculés, TTL = min(10 min, valid_until)
+                    │         <prefix>:generation, <prefix>:ver:<sub>
                     └─► Redis pub/sub <prefix>:invalidation ─► Estompe, pli
 ```
 
-- Lecture : Redis, sinon calcul SQL (une requête) puis écriture. Redis absent ou en panne : calcul direct, sans erreur.
-- Changement qui touche un compte (règle ou liaison directe, appartenance) : clé supprimée, message `{"type":"compte","sub":"…"}`.
+- Lecture : génération et version du compte lues ensemble, puis Redis, sinon calcul SQL (une requête) puis écriture sous la
+  version lue avant le calcul. Redis absent ou en panne : calcul direct, sans erreur ; les échecs de lecture de version,
+  d'invalidation et de publication sont journalisés.
+- Changement qui touche un compte (règle ou liaison directe, appartenance) : version du compte incrémentée, message `{"type":"compte","sub":"…"}`.
+  Un calcul commencé avant le changement écrit sous l'ancienne version, que plus aucune lecture ne consulte.
 - Changement large (rôle, groupe, « Tout le monde », manifeste) : génération incrémentée, message `{"type":"tout","generation":n}`.
 - Expirations : une tâche par minute journalise `expire` et publie l'invalidation ; `valid_until` garantit déjà qu'aucun cache ne sert un droit expiré.
 - Applications : cache mémoire par compte (30 s, borné par `valid_until`), vidé à réception d'un message ; abonnement perdu :

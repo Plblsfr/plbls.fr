@@ -652,8 +652,9 @@ async fn definir_surcharge(
     let (sv, acc) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
     let rid = param(&p, "rid");
-    if !uuid_valide(rid) {
-        return Ok(non_trouve("rôle introuvable"));
+    let ligne = role_pour(pool, &sv.id, rid).await?;
+    if !ligne.is_default && !roles::can_manage_role(acc.top(), ligne.position) {
+        return Ok(role_au_dessus());
     }
     let e = decode(body).await?;
     let allow = permissions(&e, "allow")?;
@@ -1480,6 +1481,75 @@ mod tests {
         assert_eq!(v[0]["action"], "channel.override");
         assert_eq!(v[0]["target"], "secret");
         assert_eq!(v.as_array().unwrap().len(), 3);
+
+        let gerant = rejoint(&e, "gerant", &sid).await;
+        let haut = nouveau_role(
+            &e,
+            "alice",
+            &sid,
+            "Admin",
+            &["manage_server", "manage_roles", "manage_channels"],
+        )
+        .await;
+        let gestion = nouveau_role(
+            &e,
+            "alice",
+            &sid,
+            "Gestion",
+            &["manage_channels", "view_channel", "send_messages"],
+        )
+        .await;
+        let bas = nouveau_role(&e, "alice", &sid, "Bas", &["send_messages"]).await;
+        assert_eq!(
+            code(
+                &e,
+                "alice",
+                "PUT",
+                &format!("{base}/members/{gerant}/roles/{gestion}"),
+                ""
+            )
+            .await
+            .0,
+            204
+        );
+        let refus = r#"{"deny":["view_channel","send_messages"]}"#;
+        for r in [&haut, &gestion, &role] {
+            assert_eq!(
+                code(&e, "gerant", "PUT", &format!("{chemin}/{r}"), refus).await,
+                (403, "forbidden".into()),
+                "{r}"
+            );
+            assert_eq!(
+                code(&e, "gerant", "PUT", &format!("{chemin}/{r}"), "{}")
+                    .await
+                    .0,
+                403
+            );
+        }
+        for r in [&bas, &tous] {
+            assert_eq!(
+                code(&e, "gerant", "PUT", &format!("{chemin}/{r}"), refus)
+                    .await
+                    .0,
+                204,
+                "{r}"
+            );
+        }
+        assert_eq!(
+            code(&e, "alice", "PUT", &format!("{chemin}/{haut}"), refus)
+                .await
+                .0,
+            204
+        );
+        let (_, l) = appel(&e, "alice", "GET", &chemin, None).await;
+        let ids: Vec<&str> = l
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|o| o["role_id"].as_str())
+            .collect();
+        assert!(!ids.contains(&gestion.as_str()));
+        assert!(ids.contains(&bas.as_str()) && ids.contains(&haut.as_str()));
     }
 
     #[tokio::test]

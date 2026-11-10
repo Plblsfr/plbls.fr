@@ -2,7 +2,7 @@
 import type { Platform } from '../../../../web/estompe/src/lib/platform'
 import { debugStore } from '../../crates/core/ts/tauri'
 import { auth } from './auth'
-import { nativeBridge } from './bridge'
+import { nativeBridge, nativeSession } from './bridge'
 import { openFromNotification, setupLinks } from './links'
 import { notifications } from './notifications'
 import SettingsDrive from './SettingsDrive.svelte'
@@ -22,7 +22,7 @@ export const platform: Platform = {
   screenshot: {
     auto: true,
     async capture() {
-      const b64 = nativeBridge()?.screenshot()
+      const b64 = (await nativeSession()?.({ op: 'screenshot' }))?.image
       return b64 ? new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/jpeg' }) : null
     },
   },

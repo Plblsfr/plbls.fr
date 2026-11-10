@@ -26,7 +26,7 @@ use crate::{
     garde::Personne,
     http::{self, bd, erreur, introuvable, invalide, objet, ok},
     identite::{Identite, justificatif},
-    sous_titres,
+    sous_titres::{self, Echec},
     transcodage::{self, Etat, PLAYLIST, Parametres},
 };
 
@@ -608,25 +608,48 @@ pub async fn sous_titre(
         None => {
             let (chemin, analyse) = fichier(&state, fichier_id).await?;
             let piste = analyse.sous_titres.get(n).ok_or_else(introuvable)?;
-            let brut = match &piste.externe {
-                Some(e) => extraire_vtt(&state.config().ffmpeg, CheminFs::new(e), None).await,
-                None => {
-                    extraire_vtt(&state.config().ffmpeg, CheminFs::new(&chemin), piste.index).await
-                }
-            }
-            .map_err(|e| {
-                tracing::warn!("sous-titres : {e}");
-                http::indisponible("subtitles_failed", "sous-titres illisibles")
-            })?;
-            let propre = sous_titres::nettoyer(&brut);
-            sqlx::query("INSERT INTO sous_titres (fichier_id, piste, vtt) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
-                .bind(fichier_id)
-                .bind(&cle)
-                .bind(&propre)
-                .execute(state.pool())
+            let (source, index) = match &piste.externe {
+                Some(e) => (PathBuf::from(e), None),
+                None => (PathBuf::from(chemin), piste.index),
+            };
+            let (etat, piste_cle) = (&state, cle.clone());
+            state
+                .extractions()
+                .obtenir(fichier_id, &piste_cle, || async move {
+                    let requete = "SELECT vtt FROM sous_titres WHERE fichier_id = $1 AND piste = $2";
+                    let deja: Option<String> = sqlx::query_scalar(requete)
+                        .bind(fichier_id)
+                        .bind(&cle)
+                        .fetch_optional(etat.pool())
+                        .await
+                        .map_err(|e| Echec::Base(e.to_string()))?;
+                    if let Some(v) = deja {
+                        return Ok(v);
+                    }
+                    let brut = extraire_vtt(&etat.config().ffmpeg, &source, index)
+                        .await
+                        .map_err(Echec::Extraction)?;
+                    let propre = sous_titres::nettoyer(&brut);
+                    sqlx::query("INSERT INTO sous_titres (fichier_id, piste, vtt) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+                        .bind(fichier_id)
+                        .bind(&cle)
+                        .bind(&propre)
+                        .execute(etat.pool())
+                        .await
+                        .map_err(|e| Echec::Base(e.to_string()))?;
+                    Ok(propre)
+                })
                 .await
-                .map_err(bd)?;
-            propre
+                .map_err(|e| match e {
+                    Echec::Extraction(e) => {
+                        tracing::warn!("sous-titres : {e}");
+                        http::indisponible("subtitles_failed", "sous-titres illisibles")
+                    }
+                    Echec::Base(e) => {
+                        tracing::warn!("base : {e}");
+                        http::interne()
+                    }
+                })?
         }
     };
     let mut r = Response::new(Body::from(vtt));
@@ -646,6 +669,13 @@ pub async fn menage(state: &AppState) {
         if !state.flux().existe(&id) {
             state.transcodeur().arreter(&id).await;
         }
+    }
+    let max = state.config().transcodage_max_octets;
+    for id in state.transcodeur().plafonner(max).await {
+        tracing::warn!(
+            "flux {id} arrêté : dossier de transcodage au-delà de ENTRACTE_TRANSCODE_MAX_GO"
+        );
+        state.flux().retirer(&id);
     }
 }
 

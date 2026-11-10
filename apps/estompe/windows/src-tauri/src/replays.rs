@@ -98,23 +98,31 @@ fn log(m: &str) {
 
 fn save_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("bobyn.json");
-    Ok(Config::load(&path).0.save_dir())
+    let cfg = Config::load(&path).0;
+    cfg.check_dir()?;
+    Ok(cfg.save_dir())
 }
 
-fn ffmpeg(app: &AppHandle) -> PathBuf {
-    let exe = app.path().resource_dir().map(|d| d.join("ffmpeg.exe")).unwrap_or_default();
-    if exe.exists() { exe } else { PathBuf::from("ffmpeg") }
+/// Le ffmpeg livré avec l'app, jamais un autre trouvé dans le `PATH`.
+fn embedded_ffmpeg(resources: Option<PathBuf>) -> Result<PathBuf, String> {
+    resources.map(|d| d.join("ffmpeg.exe")).filter(|exe| exe.is_file()).ok_or_else(|| "ffmpeg embarqué introuvable : réinstaller Estompe".to_string())
 }
 
-fn command(app: &AppHandle) -> Command {
-    let mut c = Command::new(ffmpeg(app));
+fn command(app: &AppHandle) -> Result<Command, String> {
+    let mut c = Command::new(embedded_ffmpeg(app.path().resource_dir().ok())?);
     c.args(["-hide_banner", "-nostdin"]);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000 | 0x0000_4000); // sans console, priorité inférieure à la normale
     }
-    c
+    Ok(c)
+}
+
+/// Préfixe des fichiers temporaires d'une conversion, propre à chaque appel.
+fn temp_tag() -> String {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!("estompe-h264-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
 /// Un nom de fichier du dossier de sauvegarde, jamais un chemin.
@@ -195,7 +203,7 @@ fn probe(app: &AppHandle, path: &Path, size: u64, modified: u64) -> Meta {
     if let Some(m) = meta_cache().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return m;
     }
-    let out = command(app).arg("-i").arg(path).output().map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default();
+    let out = command(app).ok().and_then(|mut c| c.arg("-i").arg(path).output().ok()).map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default();
     let m = parse_info(&out);
     if let Ok(mut c) = meta_cache().lock() {
         c.insert(key, m.clone());
@@ -254,7 +262,7 @@ pub async fn replays_thumb(app: AppHandle, name: String) -> Result<String, Strin
         tauri::async_runtime::spawn_blocking(move || {
             // 1 s : le tout début est souvent noir ; une vidéo plus courte retombe sur la première image.
             for ss in ["1", "0"] {
-                let ok = command(&app).args(["-v", "error", "-ss", ss, "-i"]).arg(&src).args(["-frames:v", "1", "-vf", "scale=320:-2", "-y"]).arg(&out).status().map(|s| s.success()).unwrap_or(false);
+                let ok = command(&app)?.args(["-v", "error", "-ss", ss, "-i"]).arg(&src).args(["-frames:v", "1", "-vf", "scale=320:-2", "-y"]).arg(&out).status().map(|s| s.success()).unwrap_or(false);
                 if ok && out.exists() {
                     return Ok(());
                 }
@@ -282,7 +290,7 @@ pub async fn replays_tracks(app: AppHandle, name: String) -> Result<Vec<String>,
         let count = probe(&app, &src, md.len(), stamp).tracks.len();
         let files: Vec<PathBuf> = (0..count).map(|i| dir.join(format!("{safe}-{}-{stamp}-p{i}.m4a", md.len()))).collect();
         if files.iter().any(|f| !f.exists()) {
-            let mut c = command(&app);
+            let mut c = command(&app)?;
             c.args(["-v", "error", "-i"]).arg(&src).arg("-vn");
             for (i, f) in files.iter().enumerate() {
                 c.args(["-map".to_string(), format!("0:a:{i}"), "-c".into(), "copy".into(), "-y".into()]).arg(f);
@@ -373,7 +381,7 @@ pub fn replays_copy(app: AppHandle, name: String) -> Result<(), String> {
 fn encoders(app: &AppHandle) -> &'static Vec<&'static str> {
     static E: OnceLock<Vec<&'static str>> = OnceLock::new();
     E.get_or_init(|| {
-        let out = command(app).arg("-encoders").output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+        let out = command(app).ok().and_then(|mut c| c.arg("-encoders").output().ok()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
         ["h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"].into_iter().filter(|e| out.contains(e)).collect()
     })
 }
@@ -405,7 +413,7 @@ pub fn pick_encoders(available: &[&'static str], wanted: Option<&str>) -> Result
 
 /// Images clés de la vidéo (instants), pour l'aimantation de la découpe et le choix de la copie.
 fn keyframes_of(app: &AppHandle, src: &Path) -> Vec<f64> {
-    let o = command(app).args(["-skip_frame", "nokey", "-i"]).arg(src).args(["-an", "-vf", "showinfo", "-f", "null", "-"]).output();
+    let o = command(app).ok().and_then(|mut c| c.args(["-skip_frame", "nokey", "-i"]).arg(src).args(["-an", "-vf", "showinfo", "-f", "null", "-"]).output().ok());
     parse_keyframes(&o.map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default())
 }
 
@@ -530,6 +538,7 @@ pub async fn replays_export(app: AppHandle, state: State<'_, Replays>, params: E
     if !(params.start >= 0.0 && params.end > params.start) {
         return Err("plage de découpe invalide".into());
     }
+    command(&app)?;
     let id = {
         let mut n = state.next.lock().map_err(|e| e.to_string())?;
         *n += 1;
@@ -584,10 +593,10 @@ pub async fn replays_export(app: AppHandle, state: State<'_, Replays>, params: E
         let mut last_err = String::new();
         for enc in candidates {
             let args = export_args(&src, &part, &params, copy, enc, height, kbps, meta, &tracks);
-            let mut child = match command(&a).args(&args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+            let mut child = match command(&a).and_then(|mut c| c.args(&args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())) {
                 Ok(c) => c,
                 Err(e) => {
-                    last_err = e.to_string();
+                    last_err = e;
                     continue;
                 }
             };
@@ -670,24 +679,25 @@ pub async fn video_to_h264(app: AppHandle, request: tauri::ipc::Request<'_>) -> 
     let tauri::ipc::InvokeBody::Raw(data) = request.body() else { return Err("octets attendus".into()) };
     let data = data.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        command(&app)?;
         let candidates = encoders(&app);
         if candidates.is_empty() {
             return Err("aucun encodeur matériel H.264 disponible".to_string());
         }
-        let tag = format!("estompe-h264-{}", std::process::id());
+        let tag = temp_tag();
         let (src, out) = (std::env::temp_dir().join(format!("{tag}.in")), std::env::temp_dir().join(format!("{tag}.mp4")));
         std::fs::write(&src, &data).map_err(|e| e.to_string())?;
         let kbps = convert_kbps(data.len() as u64, probe(&app, &src, data.len() as u64, 0).duration);
         let mut last = String::new();
         let mut done = false;
         for enc in candidates {
-            match command(&app).args(convert_args(&src, &out, enc, kbps)).output() {
+            match command(&app).and_then(|mut c| c.args(convert_args(&src, &out, enc, kbps)).output().map_err(|e| e.to_string())) {
                 Ok(o) if o.status.success() => {
                     done = true;
                     break;
                 }
                 Ok(o) => last = String::from_utf8_lossy(&o.stderr).lines().last().unwrap_or("échec de ffmpeg").to_string(),
-                Err(e) => last = e.to_string(),
+                Err(e) => last = e,
             }
         }
         let bytes = if done { std::fs::read(&out).map_err(|e| e.to_string()) } else { Err(last) };
@@ -705,6 +715,24 @@ mod tests {
 
     fn params(start: f64, crop: bool, quality: &str) -> ExportParams {
         ExportParams { name: "a.mp4".into(), start, end: start + 10.0, crop: crop.then_some(Crop { x: 11, y: 5, w: 641, h: 361 }), quality: quality.into(), target_kbps: None, audio: None, encoder: None }
+    }
+
+    #[test]
+    fn ffmpeg_embarque_seulement() {
+        let dir = std::env::temp_dir().join(format!("{}-ressources", temp_tag()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(embedded_ffmpeg(Some(dir.clone())).unwrap_err().contains("ffmpeg embarqué introuvable"));
+        assert!(embedded_ffmpeg(None).is_err());
+        std::fs::write(dir.join("ffmpeg.exe"), b"").unwrap();
+        assert_eq!(embedded_ffmpeg(Some(dir.clone())), Ok(dir.join("ffmpeg.exe")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fichiers_temporaires_distincts() {
+        let (a, b) = (temp_tag(), temp_tag());
+        assert_ne!(a, b);
+        assert!(a.starts_with(&format!("estompe-h264-{}-", std::process::id())));
     }
 
     #[test]

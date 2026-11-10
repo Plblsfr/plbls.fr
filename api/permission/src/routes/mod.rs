@@ -4,6 +4,11 @@ pub mod health;
 pub mod openapi;
 pub mod users;
 
+use axum::{
+    Router,
+    http::{HeaderName, HeaderValue},
+};
+use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::{
     Modify, OpenApi,
     openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme},
@@ -63,6 +68,25 @@ pub fn api() -> OpenApiRouter<AppState> {
         .merge(users::router())
 }
 
+pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self' https://security.plbls.fr; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+const SECURITE: [(&str, &str); 4] = [
+    ("content-security-policy", CSP),
+    ("referrer-policy", "no-referrer"),
+    ("x-content-type-options", "nosniff"),
+    ("x-frame-options", "DENY"),
+];
+
+pub fn avec_securite<S: Clone + Send + Sync + 'static>(mut app: Router<S>) -> Router<S> {
+    for (nom, valeur) in SECURITE {
+        app = app.layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static(nom),
+            HeaderValue::from_static(valeur),
+        ));
+    }
+    app
+}
+
 #[cfg(test)]
 pub fn spec_json() -> String {
     api()
@@ -74,7 +98,39 @@ pub fn spec_json() -> String {
 
 #[cfg(test)]
 mod tests {
+    use axum::{body::Body, http::Request};
     use serde_json::Value;
+    use tower::ServiceExt;
+    use tower_http::services::{ServeDir, ServeFile};
+
+    #[tokio::test]
+    async fn spa_and_api_carry_security_headers() {
+        let dir = std::env::temp_dir().join(format!("permission-spa-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), "<!doctype html>").unwrap();
+        let app = super::avec_securite(
+            axum::Router::new()
+                .route("/health", axum::routing::get(|| async { "ok" }))
+                .fallback_service(
+                    ServeDir::new(&dir).fallback(ServeFile::new(dir.join("index.html"))),
+                ),
+        );
+        for chemin in ["/", "/index.html", "/apps/route-du-client", "/health"] {
+            let rep = app
+                .clone()
+                .oneshot(Request::get(chemin).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert!(rep.status().is_success(), "{chemin} : {}", rep.status());
+            let h = rep.headers();
+            assert_eq!(h["content-security-policy"], super::CSP, "{chemin}");
+            assert!(super::CSP.contains("frame-ancestors 'none'"));
+            assert_eq!(h["x-frame-options"], "DENY", "{chemin}");
+            assert_eq!(h["x-content-type-options"], "nosniff", "{chemin}");
+            assert_eq!(h["referrer-policy"], "no-referrer", "{chemin}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn spec_covers_every_route() {

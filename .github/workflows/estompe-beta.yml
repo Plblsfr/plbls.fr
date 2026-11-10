@@ -61,6 +61,7 @@ jobs:
   image:
     needs: front
     runs-on: ubuntu-latest
+    environment: beta
     permissions:
       contents: read
       packages: write

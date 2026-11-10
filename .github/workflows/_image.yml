@@ -16,22 +16,32 @@ on:
       DOKPLOY_WEBHOOK_URL: { required: false }
       PACKAGES_PAT: { required: false }
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name != 'pull_request' && 'packages' || '' }}
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - id: v
+        env:
+          COMPONENT: ${{ inputs.component }}
+          DIR: ${{ inputs.dir || inputs.context }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
-            version="${GITHUB_REF_NAME#${{ inputs.component }}-v}"
-            [ "$version" != "$GITHUB_REF_NAME" ] || { echo "tag ${GITHUB_REF_NAME} hors convention ${{ inputs.component }}-vX.Y.Z" >&2; exit 1; }
+            version="${GITHUB_REF_NAME#"$COMPONENT"-v}"
+            [ "$version" != "$GITHUB_REF_NAME" ] || { echo "tag ${GITHUB_REF_NAME} hors convention $COMPONENT-vX.Y.Z" >&2; exit 1; }
             git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "le tag doit pointer un commit de main" >&2; exit 1; }
-            cd "${{ inputs.dir || inputs.context }}"
+            cd "$DIR"
             if [ -f package.json ] && declared="$(node -p "require('./package.json').version || ''")" && [ -n "$declared" ] && [ "$declared" != "$version" ]; then
               echo "package.json ($declared) != tag ($version)" >&2; exit 1
             fi
@@ -62,7 +72,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.PACKAGES_PAT || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PACKAGES_PAT }}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ inputs.context }}
@@ -79,6 +89,7 @@ jobs:
     if: needs.build.outputs.version != ''
     runs-on: ubuntu-latest
     environment: livraison
+    permissions: {}
     steps:
       - env:
           URL: ${{ secrets.DOKPLOY_WEBHOOK_URL }}
@@ -88,18 +99,24 @@ jobs:
     needs: build
     if: needs.build.outputs.version != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Release GitHub
         env:
           GH_TOKEN: ${{ github.token }}
+          DIR: ${{ inputs.dir || inputs.context }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          cl="${{ inputs.dir || inputs.context }}/CHANGELOG.md"
+          cl="$DIR/CHANGELOG.md"
           notes=(--generate-notes)
-          if [ -f "$cl" ] && awk -v v="${{ needs.build.outputs.version }}" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## /{f=0} f' "$cl" | grep -q .; then
-            awk -v v="${{ needs.build.outputs.version }}" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## /{f=0} f' "$cl" > notes.md
+          if [ -f "$cl" ] && awk -v v="$VERSION" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## /{f=0} f' "$cl" | grep -q .; then
+            awk -v v="$VERSION" '$0 ~ "^## \\[?"v"\\]?" {f=1; next} /^## /{f=0} f' "$cl" > notes.md
             notes=(--notes-file notes.md)
           fi
-          case "${{ needs.build.outputs.version }}" in *-*) pre=--prerelease;; *) pre=;; esac
+          case "$VERSION" in *-*) pre=--prerelease;; *) pre=;; esac
           # idempotent : ui-dist (livraison.yml) peut avoir déjà créé la release
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" "${notes[@]}" $pre || gh release view "$GITHUB_REF_NAME" >/dev/null

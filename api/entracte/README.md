@@ -15,6 +15,7 @@ routes dans [`openapi.yaml`](../../docs/entracte/openapi.yaml).
 | `demandes.rs` | recherche, demandes, administration, envoi à Radarr/Sonarr |
 | `push/` | Web Push (VAPID), FCM, notifications |
 | `interne.rs` | santé, `GET /me`, titre pour le salon cinéma d'Estompe |
+| `import_estompe.rs` | sous-commande `importer-estompe` : historique du bloc films d'Estompe ([procédure](../../docs/entracte/import-estompe.md)) |
 
 ## Lancer
 
