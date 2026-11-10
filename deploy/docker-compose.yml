@@ -45,6 +45,16 @@ services:
     expose: ["8080"]
     networks: [default, postgres-net]
 
+  entracte-api:
+    image: ghcr.io/plblsfr/entracte:${ENTRACTE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${ENTRACTE_MEDIAS:-/srv/medias}:${ENTRACTE_MEDIAS:-/srv/medias}:ro
+      - entracte-transcodage:/tmp/entracte
+    expose: ["8080"]
+    networks: [default, postgres-net, jellyfin]
+
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
     restart: unless-stopped
@@ -158,3 +168,4 @@ volumes:
   estompe-backups:
   transcribe-models:
   cdn-data:
+  entracte-transcodage:
