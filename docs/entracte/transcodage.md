@@ -16,6 +16,8 @@ transcodage arrêté. En HLS, la position réelle vaut `offset` (renvoyé par l'
 
 Sous-titres texte (SRT, WebVTT, ASS, SSA), intégrés au fichier ou à côté (`Film.fr.srt`), convertis en WebVTT par ffmpeg puis nettoyés
 (balises, scripts et liens retirés), mis en cache en base. Les sous-titres image (PGS, VobSub) ne sont pas proposés.
+Une piste n'est extraite qu'une fois à la fois : les requêtes simultanées sur la même piste attendent le même ffmpeg, deux extractions
+au plus tournent en même temps sur le serveur, et un échec est renvoyé tel quel pendant 60 s sans relancer ffmpeg.
 
 ## Flux signés et limites
 
