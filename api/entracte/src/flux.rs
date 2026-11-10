@@ -233,7 +233,14 @@ impl Drop for Lecture {
 mod tests {
     use super::*;
 
-    const SECRET: &str = "secret-de-test-secret-de-test-secret";
+    use std::sync::LazyLock;
+
+    fn cle_aleatoire() -> String {
+        let octets: [u8; 32] = rand::rng().random();
+        octets.iter().map(|o| format!("{o:02x}")).collect()
+    }
+
+    static SECRET: LazyLock<String> = LazyLock::new(cle_aleatoire);
     const UNIX: u64 = 1_000_000;
     const INACTIVITE: Duration = Duration::from_secs(60);
     const LARGES: Limites = Limites {
@@ -253,7 +260,7 @@ mod tests {
 
     fn ouvrir(f: &Flux, t: Instant) -> (String, String) {
         let (id, signe, _) = f
-            .ouvrir(demande("alice", Mode::Direct, 1), LARGES, SECRET, t, UNIX)
+            .ouvrir(demande("alice", Mode::Direct, 1), LARGES, &SECRET, t, UNIX)
             .unwrap();
         (id, signe)
     }
@@ -262,7 +269,7 @@ mod tests {
     fn jeton_valide_et_alteres() {
         let (f, t) = (Flux::default(), Instant::now());
         let (id, signe) = ouvrir(&f, t);
-        assert_eq!(f.valider(&signe, SECRET, t, UNIX).unwrap().flux, id);
+        assert_eq!(f.valider(&signe, &SECRET, t, UNIX).unwrap().flux, id);
         let (debut, code) = signe.rsplit_once('.').unwrap();
         let autre = if code.starts_with('A') { "B" } else { "A" };
         for faux in [
@@ -271,18 +278,15 @@ mod tests {
             format!("{signe}.x"),
             String::new(),
         ] {
-            assert!(f.valider(&faux, SECRET, t, UNIX).is_none(), "{faux}");
+            assert!(f.valider(&faux, &SECRET, t, UNIX).is_none(), "{faux}");
         }
+        assert!(f.valider(&signe, &cle_aleatoire(), t, UNIX).is_none());
         assert!(
-            f.valider(&signe, "autre-secret-autre-secret-autre-secret", t, UNIX)
+            f.valider(&jeton(&SECRET, "mallory", &id, UNIX + 10), &SECRET, t, UNIX)
                 .is_none()
         );
         assert!(
-            f.valider(&jeton(SECRET, "mallory", &id, UNIX + 10), SECRET, t, UNIX)
-                .is_none()
-        );
-        assert!(
-            f.valider(&signe, SECRET, t, UNIX + PLAFOND.as_secs())
+            f.valider(&signe, &SECRET, t, UNIX + PLAFOND.as_secs())
                 .is_none()
         );
     }
@@ -292,12 +296,12 @@ mod tests {
         let f = Arc::new(Flux::default());
         let t = Instant::now();
         let (id, signe) = ouvrir(&f, t);
-        assert!(f.valider(&signe, SECRET, t + INACTIVITE, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t + INACTIVITE, UNIX).is_none());
         let (id2, signe2) = ouvrir(&f, t);
         assert_ne!(id, id2);
         let lecture = f.lecture(&id2);
         assert!(
-            f.valider(&signe2, SECRET, t + INACTIVITE * 3, UNIX)
+            f.valider(&signe2, &SECRET, t + INACTIVITE * 3, UNIX)
                 .is_some()
         );
         drop(lecture);
@@ -310,7 +314,7 @@ mod tests {
         let (id, signe) = ouvrir(&f, t);
         assert_eq!(f.fermer(&id, "bob"), None);
         assert_eq!(f.fermer(&id, "alice"), Some(Mode::Direct));
-        assert!(f.valider(&signe, SECRET, t, UNIX).is_none());
+        assert!(f.valider(&signe, &SECRET, t, UNIX).is_none());
     }
 
     #[test]
@@ -322,7 +326,7 @@ mod tests {
             inactivite: INACTIVITE,
         };
         let ouvre =
-            |qui: &str, mode, titre| f.ouvrir(demande(qui, mode, titre), lim, SECRET, t, UNIX);
+            |qui: &str, mode, titre| f.ouvrir(demande(qui, mode, titre), lim, &SECRET, t, UNIX);
         let (premier, _, _) = ouvre("alice", Mode::Hls, 1).unwrap();
         ouvre("alice", Mode::Direct, 2).unwrap();
         assert_eq!(

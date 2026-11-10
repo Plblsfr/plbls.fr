@@ -240,11 +240,8 @@ impl Config {
     }
 
     pub fn pour_tests(database_url: &str) -> Self {
-        let mut c =
-            Self::from_env(|k| (k == "ENTRACTE_DATABASE_URL").then(|| database_url.to_string()))
-                .expect("configuration de test");
-        c.secret_flux = "secret-de-test-secret-de-test-secret".into();
-        c
+        Self::from_env(|k| (k == "ENTRACTE_DATABASE_URL").then(|| database_url.to_string()))
+            .expect("configuration de test")
     }
 }
 
