@@ -185,4 +185,179 @@ mod tests {
         );
         assert_eq!(bearer(&h), Some("tok"));
     }
+
+    use crate::testutil::{AUDIENCE, etat, session_de_test};
+
+    fn entetes(origin: Option<&str>, upgrade: bool) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if let Some(o) = origin {
+            h.insert(header::ORIGIN, HeaderValue::from_str(o).unwrap());
+        }
+        if upgrade {
+            h.insert(header::UPGRADE, HeaderValue::from_static("websocket"));
+        }
+        h
+    }
+
+    #[tokio::test]
+    async fn csrf_origine_exigee_par_cookie_hors_methode_sure() {
+        let Some((state, _kc)) = etat().await else {
+            return;
+        };
+        let ok = |o: Option<&str>, up: bool, m: Method, cookie: bool| {
+            csrf_ok(&state, &entetes(o, up), &m, cookie)
+        };
+        assert!(ok(None, false, Method::GET, true));
+        assert!(ok(None, false, Method::HEAD, true));
+        assert!(ok(None, false, Method::POST, false));
+        assert!(!ok(None, false, Method::POST, true));
+        assert!(!ok(
+            Some("https://evil.example"),
+            false,
+            Method::DELETE,
+            true
+        ));
+        assert!(!ok(Some("http://app.plbls.fr"), false, Method::POST, true));
+        assert!(ok(Some("https://app.plbls.fr"), false, Method::POST, true));
+        assert!(
+            !ok(None, true, Method::GET, true),
+            "upgrade WebSocket par cookie"
+        );
+        assert!(ok(Some("https://plbls.fr"), true, Method::GET, true));
+    }
+
+    async fn avec_session(state: &AppState, access_exp: u64) -> String {
+        let sid = session::random_token(32);
+        state
+            .store
+            .put_session(&sid, &session_de_test(access_exp), 60)
+            .await
+            .unwrap();
+        sid
+    }
+
+    #[tokio::test]
+    async fn session_fraiche_sans_refresh() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let sid = avec_session(&state, session::now() + 300).await;
+        let s = load_fresh_session(&state, &sid).await.unwrap();
+        assert_eq!(s.access_token, "ancien");
+        assert!(kc.demandes().is_empty());
+        assert_eq!(
+            load_fresh_session(&state, "inconnue").await.unwrap_err(),
+            AuthError::Unauthenticated
+        );
+    }
+
+    #[tokio::test]
+    async fn session_expiree_rafraichie_et_enregistree() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let sid = avec_session(&state, session::now()).await;
+        let nouveau = kc.signer(AUDIENCE, None, session::now() + 300);
+        kc.repondre(
+            200,
+            serde_json::json!({ "access_token": nouveau, "refresh_token": "r2", "expires_in": 300 }),
+        );
+        let s = load_fresh_session(&state, &sid).await.unwrap();
+        assert_eq!(s.access_token, nouveau);
+        assert_eq!(
+            s.id_token.as_deref(),
+            Some("id1"),
+            "id_token absent : l'ancien est gardé"
+        );
+        let d = kc.demandes();
+        assert_eq!(d.len(), 1);
+        assert_eq!(
+            (d[0]["grant_type"].as_str(), d[0]["refresh_token"].as_str()),
+            ("refresh_token", "r1")
+        );
+        let lu = state.store.get_session(&sid).await.unwrap().unwrap();
+        assert_eq!(
+            (lu.access_token.as_str(), lu.refresh_token.as_str()),
+            (nouveau.as_str(), "r2")
+        );
+        assert!(
+            state.store.try_lock(&sid).await.unwrap(),
+            "verrou rendu après le refresh"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_refuse_supprime_la_session_panne_la_garde() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let sid = avec_session(&state, session::now()).await;
+        kc.repondre(503, serde_json::json!({}));
+        assert_eq!(
+            load_fresh_session(&state, &sid).await.unwrap_err(),
+            AuthError::Unavailable
+        );
+        assert!(state.store.get_session(&sid).await.unwrap().is_some());
+        kc.repondre(400, serde_json::json!({ "error": "invalid_grant" }));
+        assert_eq!(
+            load_fresh_session(&state, &sid).await.unwrap_err(),
+            AuthError::Unauthenticated
+        );
+        assert!(state.store.get_session(&sid).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn verrou_tenu_on_attend_le_resultat_sans_refresh() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let sid = avec_session(&state, session::now()).await;
+        assert!(state.store.try_lock(&sid).await.unwrap());
+        let (parti, depart) = tokio::sync::oneshot::channel();
+        let attente = tokio::spawn({
+            let (state, sid) = (state.clone(), sid.clone());
+            async move {
+                let _ = parti.send(());
+                load_fresh_session(&state, &sid).await
+            }
+        });
+        depart.await.unwrap();
+        let mut frais = session_de_test(session::now() + 300);
+        frais.access_token = "par-un-autre".into();
+        state
+            .store
+            .update_session(&sid, &frais, None)
+            .await
+            .unwrap();
+        state.store.unlock(&sid).await;
+        assert_eq!(attente.await.unwrap().unwrap().access_token, "par-un-autre");
+        assert!(kc.demandes().is_empty());
+    }
+
+    #[tokio::test]
+    async fn refresh_unique_pour_des_appels_simultanes() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let sid = avec_session(&state, session::now()).await;
+        let nouveau = kc.signer(AUDIENCE, None, session::now() + 300);
+        kc.repondre(
+            200,
+            serde_json::json!({ "access_token": nouveau, "expires_in": 300 }),
+        );
+        let porte = kc.fermer_porte();
+        let lancer = || {
+            let (state, sid) = (state.clone(), sid.clone());
+            tokio::spawn(async move { load_fresh_session(&state, &sid).await })
+        };
+        let premier = lancer();
+        while kc.demandes().is_empty() {
+            tokio::task::yield_now().await;
+        }
+        let second = lancer();
+        porte.add_permits(10);
+        assert_eq!(premier.await.unwrap().unwrap().access_token, nouveau);
+        assert_eq!(second.await.unwrap().unwrap().access_token, nouveau);
+        assert_eq!(kc.demandes().len(), 1);
+    }
 }

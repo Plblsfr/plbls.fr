@@ -169,11 +169,13 @@ name = "auth-gateway"
 version = "0.1.3"
 dependencies = [
  "anyhow",
+ "aws-lc-rs",
  "axum",
  "base64 0.23.1",
  "commun",
  "config",
  "futures-util",
+ "http-body-util",
  "jsonwebtoken",
  "rand 0.10.3",
  "redis",
@@ -184,6 +186,7 @@ dependencies = [
  "subtle",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "tower",
  "tower-http 0.7.1",
  "tracing",
  "tracing-subscriber",

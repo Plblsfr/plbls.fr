@@ -340,3 +340,192 @@ async fn session_status(State(state): State<AppState>, headers: HeaderMap) -> Re
         Err(e) => auth_error(e),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+
+    use crate::session;
+    use crate::testutil::{COOKIE, appeler, etat, session_de_test};
+
+    fn get(uri: &str, cookie: Option<&str>) -> Request<Body> {
+        let mut r = Request::get(uri);
+        if let Some(c) = cookie {
+            r = r.header("cookie", c);
+        }
+        r.body(Body::empty()).unwrap()
+    }
+
+    async fn demarrer_login(state: &crate::AppState) -> (String, String, String) {
+        let r = appeler(
+            state,
+            get("/auth/login?redirect=https://app.plbls.fr/x", None),
+        )
+        .await;
+        assert_eq!(r.statut, StatusCode::SEE_OTHER);
+        let lieu = url::Url::parse(&r.entete("location")).unwrap();
+        let q: std::collections::HashMap<_, _> = lieu.query_pairs().into_owned().collect();
+        let cookie = r
+            .cookies()
+            .into_iter()
+            .find(|c| c.starts_with(&format!("{COOKIE}_login=")))
+            .unwrap();
+        assert!(
+            cookie.contains("Path=/auth") && cookie.contains("HttpOnly"),
+            "{cookie}"
+        );
+        assert!(
+            cookie.starts_with(&format!("{COOKIE}_login={};", q["state"])),
+            "{cookie}"
+        );
+        (
+            q["state"].clone(),
+            q["nonce"].clone(),
+            q["code_challenge"].clone(),
+        )
+    }
+
+    #[tokio::test]
+    async fn callback_lie_au_navigateur_et_state_a_usage_unique() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let (s, nonce, defi) = demarrer_login(&state).await;
+        kc.repondre(200, kc.jetons(&nonce, "r1"));
+        let uri = format!("/auth/callback?code=c1&state={s}");
+
+        let sans = appeler(&state, get(&uri, None)).await;
+        assert_eq!(sans.statut, StatusCode::BAD_REQUEST);
+        assert_eq!(sans.corps, "login non démarré dans ce navigateur");
+        assert!(
+            sans.cookies()
+                .iter()
+                .any(|c| c.starts_with(&format!("{COOKIE}_login=;")) && c.contains("Max-Age=0"))
+        );
+        let autre = appeler(&state, get(&uri, Some(&format!("{COOKIE}_login=autre")))).await;
+        assert_eq!(autre.statut, StatusCode::BAD_REQUEST);
+        assert!(
+            kc.demandes().is_empty(),
+            "aucun échange de code sans le cookie"
+        );
+
+        let cookie = format!("{COOKIE}_login={s}");
+        let ok = appeler(&state, get(&uri, Some(&cookie))).await;
+        assert_eq!(ok.statut, StatusCode::SEE_OTHER, "{}", ok.corps);
+        assert_eq!(ok.entete("location"), "https://app.plbls.fr/x");
+        let sid = ok
+            .cookies()
+            .into_iter()
+            .find_map(|c| {
+                c.strip_prefix(&format!("{COOKIE}="))
+                    .map(|v| v.split(';').next().unwrap().to_string())
+            })
+            .unwrap();
+        let sess = state.store.get_session(&sid).await.unwrap().unwrap();
+        assert_eq!(
+            (sess.identity.id.as_str(), sess.refresh_token.as_str()),
+            ("u1", "r1")
+        );
+        let echanges = kc.demandes();
+        assert_eq!(echanges.len(), 1);
+        assert_eq!(echanges[0]["grant_type"], "authorization_code");
+        assert_eq!(echanges[0]["code"], "c1");
+        assert_eq!(session::pkce_challenge(&echanges[0]["code_verifier"]), defi);
+
+        let rejoue = appeler(&state, get(&uri, Some(&cookie))).await;
+        assert_eq!(rejoue.statut, StatusCode::BAD_REQUEST);
+        assert_eq!(rejoue.corps, "login expiré ou déjà utilisé");
+        assert_eq!(kc.demandes().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn callback_refuse_un_nonce_different() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let (s, _, _) = demarrer_login(&state).await;
+        kc.repondre(200, kc.jetons("autre-nonce", "r1"));
+        let r = appeler(
+            &state,
+            get(
+                &format!("/auth/callback?code=c1&state={s}"),
+                Some(&format!("{COOKIE}_login={s}")),
+            ),
+        )
+        .await;
+        assert_eq!(r.statut, StatusCode::UNAUTHORIZED);
+        assert_eq!(r.corps, "ID token invalide");
+        assert!(
+            !r.cookies()
+                .iter()
+                .any(|c| c.starts_with(&format!("{COOKIE}=")))
+        );
+    }
+
+    #[tokio::test]
+    async fn logout_exige_le_cookie_et_une_origine_autorisee() {
+        let Some((state, kc)) = etat().await else {
+            return;
+        };
+        let sid = session::random_token(32);
+        state
+            .store
+            .put_session(&sid, &session_de_test(session::now() + 300), 60)
+            .await
+            .unwrap();
+        let post = |cookie: Option<String>, origin: Option<&str>| {
+            let mut r = Request::post("/auth/logout?redirect=https://app.plbls.fr/bye");
+            if let Some(c) = cookie {
+                r = r.header("cookie", c);
+            }
+            if let Some(o) = origin {
+                r = r.header("origin", o);
+            }
+            r.body(Body::empty()).unwrap()
+        };
+        let cookie = format!("{COOKIE}={sid}");
+
+        assert_eq!(
+            appeler(&state, post(None, Some("https://app.plbls.fr")))
+                .await
+                .statut,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            appeler(&state, post(Some(cookie.clone()), None))
+                .await
+                .statut,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            appeler(
+                &state,
+                post(Some(cookie.clone()), Some("https://evil.example"))
+            )
+            .await
+            .statut,
+            StatusCode::FORBIDDEN
+        );
+        assert!(state.store.get_session(&sid).await.unwrap().is_some());
+        assert_eq!(kc.revocations(), 0);
+
+        let r = appeler(&state, post(Some(cookie), Some("https://app.plbls.fr"))).await;
+        assert_eq!(r.statut, StatusCode::SEE_OTHER);
+        let lieu = url::Url::parse(&r.entete("location")).unwrap();
+        assert_eq!(
+            lieu.as_str().split('?').next().unwrap(),
+            format!("{}/logout", kc.issuer())
+        );
+        let q: std::collections::HashMap<_, _> = lieu.query_pairs().into_owned().collect();
+        assert_eq!(q["id_token_hint"], "id1");
+        assert_eq!(q["post_logout_redirect_uri"], "https://app.plbls.fr/bye");
+        assert!(
+            r.cookies()
+                .iter()
+                .any(|c| c.starts_with(&format!("{COOKIE}=;")) && c.contains("Max-Age=0"))
+        );
+        assert!(state.store.get_session(&sid).await.unwrap().is_none());
+        assert_eq!(kc.revocations(), 1);
+    }
+}

@@ -33,6 +33,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 | `pli_server` | `api/pli/**`, `api/commun/**`, fichiers Cargo racine | `rust-test` (pli, commun) |
 | `catalogue_permissions` | `api/estompe/core/src/catalogue.rs`, `docs/aegis/fonctionnalites.md` (générée, vérifiée par un test) | `rust-test` (Estompe) |
 | `aegis_server` | `api/aegis/**`, `api/commun/**`, fichiers Cargo racine | `rust-test` (aegis, avec PostgreSQL et Redis ; commun) |
+| `security_server` | `api/security/**`, `api/commun/**`, fichiers Cargo racine | `rust-test` (security avec Redis et un faux Keycloak ; commun) |
 | `entracte_server` | `api/entracte/**`, `api/commun/**`, `docs/entracte/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Entracte, avec PostgreSQL et ffmpeg ; commun) |
 | `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates`) | `estompe-tauri` |
 | `estompe` | `{api,web,apps,docs,deploy,scripts}/estompe/**`, `.version`, `CHANGELOG.md`, `changelog.d/**`, `agents/**` | `changelog` |

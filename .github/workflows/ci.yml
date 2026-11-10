@@ -162,7 +162,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -203,7 +203,7 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
       - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP)
-        if: needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+        if: needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true'
         run: cargo test --locked -p commun
       - name: Tests du serveur pli (PostgreSQL 16)
         if: needs.changements.outputs.pli_server == 'true'
@@ -216,6 +216,11 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
           TEST_REDIS_URL: redis://localhost:6379
         run: cargo test --locked -p aegis
+      - name: Tests de security (Redis, faux Keycloak)
+        if: needs.changements.outputs.security_server == 'true'
+        env:
+          TEST_REDIS_URL: redis://localhost:6379
+        run: cargo test --locked -p auth-gateway
       - name: ffmpeg pour les tests d'Entracte
         if: needs.changements.outputs.entracte_server == 'true'
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg
