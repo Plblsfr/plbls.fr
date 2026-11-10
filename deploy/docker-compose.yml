@@ -1,6 +1,7 @@
-# Production de tous les services, une seule stack Dokploy (type Compose). Aucune section environment : Dokploy écrit l'onglet
-# Environment dans .env à côté de ce fichier, en résolvant au déploiement les références Vault (vault.plbls.<projet>:<CLE>),
-# et chaque service le charge en entier (env_file). Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
+# Production de tous les services, une seule stack Dokploy (type Compose). Dokploy écrit l'onglet Environment dans .env à côté
+# de ce fichier, en résolvant au déploiement les références Vault (vault.plbls.<projet>:<CLE>). Les backends Rust le chargent en entier
+# (env_file) ; les autres services ne reçoivent que leurs variables, interpolées dans environment ou command.
+# Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
 name: plbls
 services:
   auth-gateway:
@@ -9,13 +10,14 @@ services:
     env_file: .env
     depends_on: [security-redis]
     expose: ["8080"]
-    networks: [default, dokploy-network]
+    networks: [default, dokploy-network, security-redis]
 
   security-redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${SECURITY_REDIS_PASSWORD:?SECURITY_REDIS_PASSWORD est obligatoire}"]
     volumes: [security-redis-data:/data]
+    networks: [security-redis]
 
   permission:
     image: ghcr.io/plblsfr/permission:${PERMISSION_TAG:-latest}
@@ -30,13 +32,14 @@ services:
     env_file: .env
     depends_on: [aegis-redis]
     expose: ["8080"]
-    networks: [default, postgres-net]
+    networks: [default, postgres-net, aegis-redis]
 
   aegis-redis:
     image: redis:8-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${AEGIS_REDIS_PASSWORD:?AEGIS_REDIS_PASSWORD est obligatoire}"]
     expose: ["6379"]
+    networks: [aegis-redis]
 
   pli:
     image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
@@ -58,7 +61,12 @@ services:
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
     restart: unless-stopped
-    env_file: .env
+    environment:
+      API_URL: ${API_URL:?API_URL est obligatoire}
+      GATEWAY_URL: ${GATEWAY_URL:-}
+      VOICE_URL: ${VOICE_URL:-}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
+      ENTRACTE_PUBLIC_URL: ${ENTRACTE_PUBLIC_URL:-}
     expose: ["80"]
 
   estompe-api:
@@ -68,7 +76,7 @@ services:
     volumes: [estompe-data:/data]
     depends_on: [estompe-postgres, livekit]
     expose: ["8080"]
-    networks: [default, jellyfin]
+    networks: [default, jellyfin, aegis-redis]
 
   transcribe:
     image: ghcr.io/speaches-ai/speaches:latest-cpu
@@ -79,13 +87,23 @@ services:
   estompe-postgres:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
-    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est obligatoire}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est obligatoire}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
     volumes: [estompe-pgdata:/var/lib/postgresql/data]
 
   estompe-backup:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
-    env_file: .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est obligatoire}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est obligatoire}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
+      BACKUP_HOUR: ${BACKUP_HOUR:-03}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      BACKUP_FILES: ${BACKUP_FILES:-false}
+      BACKUP_NOW: ${BACKUP_NOW:-true}
     volumes: [estompe-backups:/backups, estompe-data:/data:ro]
     depends_on: [estompe-postgres]
     command:
@@ -112,7 +130,8 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
     restart: unless-stopped
-    env_file: .env
+    environment:
+      LIVEKIT_KEYS: ${LIVEKIT_KEYS:?LIVEKIT_KEYS est obligatoire}
     command: ["--config", "/etc/livekit.yaml"]
     configs:
       - source: livekit
@@ -159,7 +178,11 @@ networks:
     external: true
   jellyfin:
     external: true
-    name: ${JELLYFIN_NETWORK:-dokploy-network}
+    name: ${JELLYFIN_NETWORK:?JELLYFIN_NETWORK est obligatoire (réseau de la stack média, jamais dokploy-network)}
+  security-redis:
+    internal: true
+  aegis-redis:
+    internal: true
 
 volumes:
   security-redis-data:
