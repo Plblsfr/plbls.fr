@@ -18,7 +18,7 @@ use estompe_core::{
     messages::{Conv, EvenementMessage, SYSTEME},
     openapi,
     roles::{self, Access, Perm},
-    servers,
+    servers::{self, pool, uuid_valide},
     state::{AppState, ParticipantsVocal, Vocal, VocalInjoignable},
 };
 use livekit::{Erreur, Lk, Mod, Participant, capacite, salle, salon_de};
@@ -33,25 +33,9 @@ const HORODATAGE: &str = "YYYY-MM-DD\"T\"HH24:MI:SS.US";
 
 type Params = Path<HashMap<String, String>>;
 
-fn uuid_valide(s: &str) -> bool {
-    s.len() == 36
-        && s.bytes().enumerate().all(|(i, b)| match i {
-            8 | 13 | 18 | 23 => b == b'-',
-            _ => b.is_ascii_hexdigit(),
-        })
-}
-
 fn bd(e: sqlx::Error) -> Response {
     tracing::warn!("base : {e}");
     internal()
-}
-
-fn pool(state: &AppState) -> Result<&PgPool, Response> {
-    state.pool().map_err(IntoResponse::into_response)
-}
-
-fn introuvable() -> Response {
-    write_err(StatusCode::NOT_FOUND, "not_found", "introuvable")
 }
 
 fn serveur_introuvable() -> Response {
@@ -122,29 +106,13 @@ struct Salon {
 }
 
 async fn salon_vocal(state: &AppState, cid: &str, user: &str) -> Result<Salon, Response> {
-    let pool = state.pool().map_err(IntoResponse::into_response)?;
-    if !uuid_valide(cid) {
-        return Err(introuvable());
-    }
-    let (serveur, kind, limite) = sqlx::query_as::<_, (String, String, i32)>(
-        "SELECT c.server_id::text, c.kind, c.user_limit FROM channels c
-         JOIN server_members m ON m.server_id = c.server_id WHERE c.id=$1::uuid AND m.user_id=$2::uuid",
-    )
-    .bind(cid)
-    .bind(user)
-    .fetch_optional(pool)
-    .await
-    .map_err(bd)?
-    .ok_or_else(introuvable)?;
-    let acces = state
-        .acces_serveur(&serveur, user)
-        .await
-        .map_err(bd)?
-        .ok_or_else(introuvable)?;
-    let perms = acces.channel(cid);
-    if !roles::contient(perms, roles::VIEW_CHANNEL) {
-        return Err(introuvable());
-    }
+    let servers::SalonVisible {
+        id,
+        serveur,
+        kind,
+        limite,
+        perms,
+    } = servers::salon_visible(state, cid, user).await?;
     if !servers::est_vocal(&kind) {
         return Err(write_err(
             StatusCode::BAD_REQUEST,
@@ -153,7 +121,7 @@ async fn salon_vocal(state: &AppState, cid: &str, user: &str) -> Result<Salon, R
         ));
     }
     Ok(Salon {
-        id: cid.to_string(),
+        id,
         serveur,
         limite,
         perms,

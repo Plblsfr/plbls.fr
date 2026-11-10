@@ -13,10 +13,11 @@ use axum::{
 use estompe_core::{
     api::ActiveUser,
     blob::{Disque, nouvelle_cle},
-    fichiers::{TAILLE_VOCAL_MAX, est_uuid},
+    fichiers::TAILLE_VOCAL_MAX,
     http::{champ_texte, decode, internal, write_err, write_json},
     messages::{conv_du_message, message_complet, publier},
     openapi, salons,
+    servers::uuid_valide,
     state::AppState,
 };
 use reqwest::Client;
@@ -236,7 +237,7 @@ async fn transcrire_fichier(
             "la transcription n'est pas activée sur ce serveur",
         );
     }
-    if !est_uuid(&id) {
+    if !uuid_valide(&id) {
         return non_trouve();
     }
     let Ok(pool) = state.pool() else {
@@ -353,7 +354,7 @@ async fn corriger_fichier(
         return write_err(StatusCode::BAD_REQUEST, "bad_request", "JSON invalide");
     };
     let texte = texte.trim();
-    if texte.chars().count() > TRANSCRIPTION_MAX || !est_uuid(&id) {
+    if texte.chars().count() > TRANSCRIPTION_MAX || !uuid_valide(&id) {
         return write_err(
             StatusCode::BAD_REQUEST,
             "invalid_transcript",

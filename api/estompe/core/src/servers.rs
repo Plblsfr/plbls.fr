@@ -268,6 +268,51 @@ pub fn uuid_valide(s: &str) -> bool {
         })
 }
 
+pub struct SalonVisible {
+    pub id: String,
+    pub serveur: String,
+    pub kind: String,
+    pub limite: i32,
+    pub perms: Perm,
+}
+
+pub async fn salon_visible(
+    state: &AppState,
+    cid: &str,
+    user: &str,
+) -> Result<SalonVisible, Response> {
+    if !uuid_valide(cid) {
+        return Err(non_trouve("introuvable"));
+    }
+    let pool = pool(state)?;
+    let (serveur, kind, limite) = sqlx::query_as::<_, (String, String, i32)>(
+        "SELECT c.server_id::text, c.kind, c.user_limit FROM channels c
+         JOIN server_members m ON m.server_id = c.server_id WHERE c.id=$1::uuid AND m.user_id=$2::uuid",
+    )
+    .bind(cid)
+    .bind(user)
+    .fetch_optional(pool)
+    .await
+    .map_err(bd)?
+    .ok_or_else(|| non_trouve("introuvable"))?;
+    let perms = state
+        .acces_serveur(&serveur, user)
+        .await
+        .map_err(bd)?
+        .ok_or_else(|| non_trouve("introuvable"))?
+        .channel(cid);
+    if !roles::contient(perms, roles::VIEW_CHANNEL) {
+        return Err(non_trouve("introuvable"));
+    }
+    Ok(SalonVisible {
+        id: cid.to_string(),
+        serveur,
+        kind,
+        limite,
+        perms,
+    })
+}
+
 pub fn nom_propre(s: &str, max: usize) -> Option<String> {
     let s = s.trim();
     let n = s.chars().count();

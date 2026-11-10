@@ -26,7 +26,9 @@ use crate::{
     config::Config,
     db,
     http::{internal, write_err, write_json},
-    mp4, salons, sniff,
+    mp4, salons,
+    servers::uuid_valide,
+    sniff,
     state::AppState,
     users::User,
 };
@@ -111,14 +113,6 @@ impl IntoResponse for ErreurAcces {
 
 fn non_trouve() -> Response {
     write_err(StatusCode::NOT_FOUND, "not_found", "introuvable")
-}
-
-pub fn est_uuid(s: &str) -> bool {
-    s.len() == 36
-        && s.bytes().enumerate().all(|(i, b)| match i {
-            8 | 13 | 18 | 23 => b == b'-',
-            _ => b.is_ascii_hexdigit(),
-        })
 }
 
 fn maintenant() -> u64 {
@@ -685,7 +679,7 @@ async fn acces(state: &AppState, id: &str, parts: &mut Parts) -> Result<Fichier,
     let pool = state.pool().map_err(IntoResponse::into_response)?;
     let jeton = parametre(parts.uri.query(), "t");
     if !jeton.is_empty() {
-        if !est_uuid(id) || !lien_valide(state.cle_liens(), id, &jeton, maintenant()) {
+        if !uuid_valide(id) || !lien_valide(state.cle_liens(), id, &jeton, maintenant()) {
             return Err(write_err(
                 StatusCode::FORBIDDEN,
                 "invalid_link",
@@ -697,7 +691,7 @@ async fn acces(state: &AppState, id: &str, parts: &mut Parts) -> Result<Fichier,
             .map_err(IntoResponse::into_response);
     }
     let ActiveUser(u) = ActiveUser::from_request_parts(parts, state).await?;
-    if !est_uuid(id) {
+    if !uuid_valide(id) {
         return Err(non_trouve());
     }
     match fichier_pour(pool, id, &u.id).await {
@@ -979,7 +973,7 @@ async fn lien(State(state): State<AppState>, Path(id): Path<String>, req: Reques
         Ok(a) => a,
         Err(r) => return r,
     };
-    if !est_uuid(&id) {
+    if !uuid_valide(&id) {
         return non_trouve();
     }
     let pool = match state.pool() {
@@ -2083,7 +2077,7 @@ mod tests {
         for mauvais in ["", "x", "2000.", "+2000.ab", "-1.ab", &format!("{jeton}0")] {
             assert!(!lien_valide(&cle, id, mauvais, 1999), "{mauvais}");
         }
-        assert!(est_uuid(id) && est_uuid(&id.to_uppercase()));
+        assert!(uuid_valide(id) && uuid_valide(&id.to_uppercase()));
         for mauvais in [
             "",
             "pas-un-uuid",
@@ -2091,7 +2085,7 @@ mod tests {
             &format!("{id}0"),
             &id.replace('-', "_"),
         ] {
-            assert!(!est_uuid(mauvais), "{mauvais}");
+            assert!(!uuid_valide(mauvais), "{mauvais}");
         }
         assert_eq!(parametre(Some("a=1&t=x%2By+z&t=2"), "t"), "x+y z");
         assert_eq!(parametre(Some("download=1"), "t"), "");
