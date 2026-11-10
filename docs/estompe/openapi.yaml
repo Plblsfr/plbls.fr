@@ -1890,7 +1890,7 @@ paths:
   /voice/{cid}/token:
     parameters:
       - {$ref: "#/components/parameters/ChannelId"}
-      - {name: screen, in: query, required: false, schema: {type: string, enum: ["1"]}, description: "`1` : jeton du second participant `<userId>#screen`, qui publie le partage d'écran natif de l'app Windows (EST-18). Ne réserve pas de place et ne renvoie que `url`, `token` et `room`."}
+      - {name: screen, in: query, required: false, schema: {type: string, enum: ["1"]}, description: "`1` : jeton du second participant `<userId>#screen`, qui publie le partage d'écran natif de l'app Windows (EST-18). Exige `share_screen` et que l'utilisateur soit déjà dans la salle (sinon `409 voice_not_joined`) ; ne réserve pas de place et ne renvoie que `url`, `token` et `room`. Le jeton ne publie que `screen_share` et `screen_share_audio` (selon la modération et les droits), sans abonnement (`canSubscribe: false`) ni métadonnées (`canUpdateOwnMetadata: false`)."}
     post:
       tags: [vocal]
       summary: Jeton pour rejoindre un salon vocal avec le client LiveKit
@@ -1908,7 +1908,7 @@ paths:
                   room: {type: string}
                   max_participants: {type: integer, example: 10}
         "400": {description: not_voice_channel}
-        "409": {description: "voice_full : limite du salon atteinte (10 participants au plus)"}
+        "409": {description: "voice_full : limite du salon atteinte (10 participants au plus) ; voice_not_joined (`screen=1`) : l'utilisateur n'est pas dans la salle"}
         "502": {description: voice_unavailable}
   /servers/{id}/watch:
     parameters: [{$ref: "#/components/parameters/ServerId"}]

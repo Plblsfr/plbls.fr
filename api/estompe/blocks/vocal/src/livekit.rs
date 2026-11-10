@@ -216,8 +216,26 @@ impl Lk {
     }
 
     pub fn jeton(&self, salon: &str, identite: &str, pseudo: &str, m: Mod) -> String {
-        let now = maintenant();
+        self.signer_jeton(salon, identite, pseudo, self.permissions(m, false))
+    }
+
+    pub fn jeton_ecran(&self, salon: &str, user: &str, pseudo: &str, m: Mod) -> String {
         let mut video = self.permissions(m, false);
+        let sources: Vec<Value> = video["canPublishSources"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|s| s.as_str().is_some_and(|s| s.starts_with("screen_share")))
+            .cloned()
+            .collect();
+        video["canPublishSources"] = json!(sources);
+        video["canSubscribe"] = json!(false);
+        video["canUpdateOwnMetadata"] = json!(false);
+        self.signer_jeton(salon, &format!("{user}#screen"), pseudo, video)
+    }
+
+    fn signer_jeton(&self, salon: &str, identite: &str, pseudo: &str, mut video: Value) -> String {
+        let now = maintenant();
         video["room"] = json!(salle(salon));
         video["roomJoin"] = json!(true);
         signer(
@@ -483,6 +501,45 @@ mod tests {
         assert_eq!(c["video"]["canPublishData"], false);
         assert!(verifier(&SECRET, &j, maintenant()).is_ok());
         assert!(verifier(&cle_aleatoire(), &j, maintenant()).is_err());
+    }
+
+    #[test]
+    fn jeton_ecran_limite_au_partage() {
+        let c = charge(&lk(true).jeton_ecran("c1", "u1", "alice", Mod::default()));
+        assert_eq!(c["sub"], "u1#screen");
+        assert_eq!(c["video"]["room"], "channel:c1");
+        assert_eq!(
+            c["video"]["canPublishSources"],
+            json!(["screen_share", "screen_share_audio"])
+        );
+        assert_eq!(
+            (
+                &c["video"]["canSubscribe"],
+                &c["video"]["canUpdateOwnMetadata"],
+                &c["video"]["canPublishData"]
+            ),
+            (&json!(false), &json!(false), &json!(false))
+        );
+        let tout = Mod {
+            mic_off: true,
+            sound_off: true,
+            no_speak: true,
+            no_video: true,
+            no_screen: false,
+        };
+        let c = charge(&lk(true).jeton_ecran("c1", "u1", "alice", tout));
+        assert_eq!(
+            c["video"]["canPublishSources"],
+            json!(["screen_share", "screen_share_audio"])
+        );
+        let m = Mod {
+            no_screen: true,
+            ..Default::default()
+        };
+        let c = charge(&lk(true).jeton_ecran("c1", "u1", "alice", m));
+        assert_eq!(c["video"]["canPublishSources"], json!([]));
+        let c = charge(&lk(false).jeton_ecran("c1", "u1", "alice", Mod::default()));
+        assert_eq!(c["video"]["canPublishSources"], json!([]));
     }
 
     #[test]
