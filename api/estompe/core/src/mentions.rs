@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use axum::{
     body::Body,
     extract::State,
@@ -13,6 +15,7 @@ use crate::{
     api::ActiveUser,
     http::{decode, write_err, write_json},
     openapi,
+    recherche::salons_visibles,
     servers::{bd, horodatage, mauvais, pool, rfc3339, sans_contenu},
     state::AppState,
 };
@@ -80,8 +83,18 @@ async fn lister(
     .fetch_all(pool)
     .await
     .map_err(bd)?;
+    let visibles: HashSet<String> = if lignes.iter().any(|l| l.1.is_some()) {
+        salons_visibles(pool, &u.id, "")
+            .await
+            .map_err(bd)?
+            .into_iter()
+            .collect()
+    } else {
+        HashSet::new()
+    };
     let sortie: Vec<Value> = lignes
         .into_iter()
+        .filter(|l| l.1.as_ref().is_none_or(|s| visibles.contains(s)))
         .map(
             |(id, salon, serveur, dm, auteur, pseudo, contenu, date, groupe)| {
                 let mut m = Map::new();
@@ -156,6 +169,122 @@ mod tests {
 
     use super::*;
     use crate::messages::tests::cadre;
+
+    #[tokio::test]
+    async fn notifications_filtrees_et_purgees_au_depart() {
+        let Some(c) = cadre().await else { return };
+        let notifs = |qui: &'static str| {
+            let c = &c;
+            async move {
+                c.api(qui, "GET", "/notifications", Value::Null)
+                    .await
+                    .1
+                    .as_array()
+                    .unwrap()
+                    .len()
+            }
+        };
+        let en_base = || async {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT count(*) FROM message_mentions WHERE user_id=$1::uuid",
+            )
+            .bind(&c.bob)
+            .fetch_one(c.pool())
+            .await
+            .unwrap()
+        };
+        c.poster("alice", "@bob salon").await;
+        let dm = c.ouvrir_dm("alice", "bob").await;
+        let (s, _) = c
+            .api(
+                "alice",
+                "POST",
+                &format!("/dms/{dm}/messages"),
+                json!({ "content": "@bob privé" }),
+            )
+            .await;
+        assert_eq!(s, 201);
+        assert_eq!(notifs("bob").await, 2);
+
+        let defaut: String = sqlx::query_scalar(
+            "SELECT id::text FROM roles WHERE server_id=$1::uuid AND is_default",
+        )
+        .bind(&c.sid)
+        .fetch_one(c.pool())
+        .await
+        .unwrap();
+        let surcharge = format!("/servers/{}/channels/{}/overrides/{defaut}", c.sid, c.salon);
+        assert_eq!(
+            c.api(
+                "alice",
+                "PUT",
+                &surcharge,
+                json!({ "deny": ["view_channel"] })
+            )
+            .await
+            .0,
+            204
+        );
+        let (_, l) = c.api("bob", "GET", "/notifications", Value::Null).await;
+        assert_eq!(l.as_array().unwrap().len(), 1);
+        assert_eq!(l[0]["dm_id"], dm);
+        assert_eq!(
+            c.api("alice", "PUT", &surcharge, json!({ "deny": [] }))
+                .await
+                .0,
+            204
+        );
+        assert_eq!(notifs("bob").await, 2);
+
+        let sid = c.sid.clone();
+        let rejoindre = || async {
+            let (_, v) = c
+                .api(
+                    "alice",
+                    "POST",
+                    &format!("/servers/{sid}/invites"),
+                    json!({}),
+                )
+                .await;
+            let code = v["code"].as_str().unwrap().to_string();
+            assert_eq!(
+                c.api(
+                    "bob",
+                    "POST",
+                    &format!("/server-invites/{code}/join"),
+                    Value::Null
+                )
+                .await
+                .0,
+                200
+            );
+            c.poster("alice", "@bob encore").await;
+        };
+        assert_eq!(
+            c.api("bob", "POST", &format!("/servers/{sid}/leave"), Value::Null)
+                .await
+                .0,
+            204
+        );
+        assert_eq!((en_base().await, notifs("bob").await), (1, 1));
+        rejoindre().await;
+        assert_eq!(en_base().await, 2);
+        let kick = format!("/servers/{sid}/members/{}/kick", c.bob);
+        assert_eq!(c.api("alice", "POST", &kick, json!({})).await.0, 204);
+        assert_eq!(en_base().await, 1);
+        rejoindre().await;
+        let ban = format!("/servers/{sid}/members/{}/ban", c.bob);
+        let (s, v) = c
+            .api(
+                "alice",
+                "POST",
+                &ban,
+                json!({ "reason": "", "duration": 0, "delete_messages": 0 }),
+            )
+            .await;
+        assert_eq!(s, 204, "{v}");
+        assert_eq!(en_base().await, 1);
+    }
 
     #[tokio::test]
     async fn notifications_internes() {

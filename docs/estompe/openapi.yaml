@@ -94,6 +94,7 @@ paths:
     get:
       tags: [messages]
       summary: Mentions non lues (200 max, récentes d'abord)
+      description: Seules les mentions des salons que l'utilisateur voit encore (membre du serveur, permission `view_channel`) sont renvoyées ; elles sont supprimées quand il quitte le serveur, en est expulsé ou banni.
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Mention"}}}}}
         "403": {$ref: "#/components/responses/NotActivated"}
@@ -1208,6 +1209,7 @@ paths:
       responses:
         "201": {description: Créé, content: {application/json: {schema: {$ref: "#/components/schemas/Server"}}}}
         "400": {description: invalid_name}
+        "429": {description: "`rate_limited` : 10 créations par heure (en-tête Retry-After)"}
   /servers/{id}:
     parameters: [{$ref: "#/components/parameters/ServerId"}]
     get:
@@ -1719,6 +1721,7 @@ paths:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/DM"}}}}
         "400": {description: self_dm}
         "404": {description: user_not_found}
+        "429": {description: "`rate_limited` : 10 par minute (en-tête Retry-After)"}
   /dms/{id}/messages:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     get:
@@ -1778,11 +1781,11 @@ paths:
     put:
       tags: [messages]
       summary: Ajouter sa réaction (idempotent)
-      responses: {"204": {description: ok}, "400": {description: invalid_emoji}, "409": {description: "too_many_reactions : 20 emojis différents par message"}, "404": {$ref: "#/components/responses/NotFound"}}
+      responses: {"204": {description: ok}, "400": {description: invalid_emoji}, "409": {description: "too_many_reactions : 20 emojis différents par message"}, "404": {$ref: "#/components/responses/NotFound"}, "429": {description: "`rate_limited` : 30 ajouts ou retraits par 10 s (en-tête Retry-After)"}}
     delete:
       tags: [messages]
       summary: Retirer sa réaction
-      responses: {"204": {description: ok}, "404": {$ref: "#/components/responses/NotFound"}}
+      responses: {"204": {description: ok}, "404": {$ref: "#/components/responses/NotFound"}, "429": {description: "`rate_limited` : 30 ajouts ou retraits par 10 s (en-tête Retry-After)"}}
 
   /files:
     post:
@@ -1823,7 +1826,9 @@ paths:
       summary: Télécharger un fichier (participants de la conversation, ou expéditeur tant qu'il n'est pas joint)
       description: |
         Les requêtes partielles (`Range`, réponse 206) sont prises en charge : une vidéo se lit sans être téléchargée en entier.
+        Une plage vide (`bytes=-0`) ou toute plage sur un fichier vide répond 416 (`Content-Range: bytes */<taille>`).
         `?t=<jeton>` (jeton de `POST /files/{id}/link`) remplace l'identité : pour `<video>` et `<img>` des applications, qui n'envoient pas l'en-tête Bearer (403 `invalid_link` si le jeton est expiré ou altéré).
+        Le jeton porte le compte qui l'a demandé : ses droits sont revérifiés à chaque requête (404 s'il ne voit plus le fichier, par exemple après avoir quitté le serveur).
         `?download=1` force le téléchargement (`Content-Disposition: attachment`).
       parameters: [{name: t, in: query, schema: {type: string}}, {name: download, in: query, schema: {type: string, enum: ["1"]}}]
       responses:
@@ -2298,6 +2303,7 @@ paths:
       summary: Ticket à usage unique (30 s) pour ouvrir le WebSocket
       responses:
         "200": {description: ok, content: {application/json: {schema: {type: object, properties: {ticket: {type: string}}}}}}
+        "429": {description: "`rate_limited` : 20 tickets par minute (en-tête Retry-After)"}
   /ws:
     get:
       tags: [temps réel]
