@@ -67,7 +67,11 @@ fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la se
 
 Refus et disponibilité d'une demande : notification à chaque appareil abonné de chaque demandeur, et à personne d'autre.
 Abonnements propres à Entracte (`/push/subscription`, `/push/fcm`) : une personne sans accès à Estompe est prévenue. Un abonnement refusé
-par le service push (404, 410) est retiré. Les clés VAPID et le compte Firebase sont ceux d'Estompe, sous les noms d'Entracte
+par le service push (404, 410) est retiré. Seuls les services push connus sont acceptés (`fcm.googleapis.com`, `updates.push.services.mozilla.com`,
+`*.notify.windows.com`, `web.push.apple.com`, en https sans port ni IP littérale) ; un abonnement enregistré hors de cette liste est retiré au
+premier envoi sans être contacté. Au plus 10 abonnements par personne : le onzième remplace le plus ancien (réabonner un appareil le
+rajeunit), pour qu'un changement d'appareil ne soit jamais refusé. Les envois partent en tâche de fond, 8 à la fois au plus : refuser une
+demande ou la synchronisation du catalogue n'attendent pas les services push, dont le corps des réponses n'est jamais journalisé. Les clés VAPID et le compte Firebase sont ceux d'Estompe, sous les noms d'Entracte
 (`ENTRACTE_VAPID_*`, `ENTRACTE_FCM_SERVICE_ACCOUNT`) : un navigateur n'a qu'un abonnement push par application, que l'app enregistre
 auprès des deux API, et l'app Android réutilise son jeton FCM. L'app Windows n'a pas de push : elle lit `GET /notifications` et affiche
 elle-même les nouvelles.

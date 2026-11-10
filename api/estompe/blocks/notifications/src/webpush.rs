@@ -18,6 +18,33 @@ use serde_json::json;
 const TAILLE_ENREGISTREMENT: usize = 4096;
 const TTL: &str = "3600";
 const SUJET_PAR_DEFAUT: &str = "admin@plbls.fr";
+const HOTES_PUSH: [&str; 3] = [
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "web.push.apple.com",
+];
+const SUFFIXE_WINDOWS: &str = ".notify.windows.com";
+
+pub fn endpoint_autorise(endpoint: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(endpoint) else {
+        return false;
+    };
+    let Some(hote) = url.host_str() else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && !hote.starts_with('[')
+        && hote.parse::<std::net::IpAddr>().is_err()
+        && (HOTES_PUSH.contains(&hote)
+            || (hote.len() > SUFFIXE_WINDOWS.len() && hote.ends_with(SUFFIXE_WINDOWS)))
+}
+
+pub fn endpoint_accepte(endpoint: &str) -> bool {
+    endpoint_autorise(endpoint) || (cfg!(test) && endpoint.starts_with("http://127.0.0.1:"))
+}
 
 pub fn client() -> &'static Client {
     static CLIENT: OnceLock<Client> = OnceLock::new();
@@ -186,6 +213,9 @@ pub async fn envoyer(
     abonnement: &Abonnement<'_>,
     charge: &[u8],
 ) -> Result<bool, String> {
+    if !endpoint_accepte(abonnement.endpoint) {
+        return Ok(true);
+    }
     let p256dh = base64_souple(abonnement.p256dh)?;
     let auth = base64_souple(abonnement.auth)?;
     let corps = chiffrer(charge, &p256dh, &auth)?;
@@ -205,19 +235,7 @@ pub async fn envoyer(
         return Ok(true);
     }
     if statut.as_u16() >= 300 {
-        let hote = reponse.url().host_str().unwrap_or_default().to_string();
-        let mut reponse = reponse;
-        let mut corps = Vec::new();
-        while corps.len() < 512 {
-            match reponse.chunk().await {
-                Ok(Some(morceau)) => corps.extend_from_slice(&morceau),
-                _ => break,
-            }
-        }
-        tracing::warn!(
-            "service push {hote} : {statut} : {}",
-            String::from_utf8_lossy(&corps[..corps.len().min(512)]).trim()
-        );
+        let hote = reponse.url().host_str().unwrap_or_default();
         return Err(format!("service push {hote} : {statut}"));
     }
     Ok(false)
@@ -380,6 +398,57 @@ mod tests {
         statut.store(403, std::sync::atomic::Ordering::SeqCst);
         let e = envoyer(&vapid, &abonnement, b"x").await.unwrap_err();
         assert!(e.contains("403"), "{e}");
+    }
+
+    #[test]
+    fn seuls_les_services_push_connus_sont_acceptes() {
+        for bon in [
+            "https://fcm.googleapis.com/fcm/send/abc",
+            "https://updates.push.services.mozilla.com/wpush/v2/abc",
+            "https://web.push.apple.com/QAbc",
+            "https://wns2-par02p.notify.windows.com/w/?token=abc",
+            "https://FCM.googleapis.com/fcm/send/abc",
+            "https://fcm.googleapis.com:443/fcm/send/abc",
+        ] {
+            assert!(endpoint_autorise(bon), "{bon}");
+        }
+        for mauvais in [
+            "http://fcm.googleapis.com/fcm/send/abc",
+            "https://fcm.googleapis.com:8443/fcm/send/abc",
+            "https://user:mdp@fcm.googleapis.com/fcm/send/abc",
+            "https://fcm.googleapis.com.evil.example/x",
+            "https://evilfcm.googleapis.com/x",
+            "https://notify.windows.com/x",
+            "https://x.notify.windows.com.evil.example/x",
+            "https://fcm.googleapis.com./x",
+            "https://push.example/1",
+            "https://169.254.169.254/latest/meta-data",
+            "https://10.0.0.1/x",
+            "https://2130706433/x",
+            "https://0x7f.1/x",
+            "https://[::1]/x",
+            "https://[::ffff:127.0.0.1]/x",
+            "https://localhost/x",
+            "http://127.0.0.1:8080/x",
+            "fcm.googleapis.com/x",
+            "",
+        ] {
+            assert!(!endpoint_autorise(mauvais), "{mauvais}");
+        }
+    }
+
+    #[tokio::test]
+    async fn endpoint_refuse_non_contacte() {
+        let (privee, publique) = cles_vapid();
+        let (_, p256dh) = recepteur();
+        let vapid = Vapid::nouveau(&publique, &privee, "").unwrap();
+        let abonnement = Abonnement {
+            endpoint: "https://169.254.169.254/latest",
+            p256dh: &URL_SAFE_NO_PAD.encode(&p256dh),
+            auth: &URL_SAFE_NO_PAD.encode([1u8; 16]),
+            urgent: false,
+        };
+        assert_eq!(envoyer(&vapid, &abonnement, b"x").await, Ok(true));
     }
 
     #[test]

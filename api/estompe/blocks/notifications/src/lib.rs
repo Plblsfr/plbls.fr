@@ -22,7 +22,7 @@ use estompe_core::{
 use fcm::Fcm;
 use serde_json::{Map, Value, json};
 use sqlx::PgPool;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 use utoipa::openapi::HttpMethod;
 use utoipa_axum::router::OpenApiRouter;
 use webpush::{Abonnement, Vapid};
@@ -32,6 +32,8 @@ const PREFIXE_PC: &str = "desktop:";
 const NIVEAUX_MAX: usize = 1000;
 const FILE_MAX: usize = 256;
 const DELAI_TRAITEMENT: Duration = Duration::from_secs(30);
+pub const ABONNEMENTS_MAX: i64 = 10;
+pub const ENVOIS_SIMULTANES: usize = 8;
 
 pub type Futur<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -107,18 +109,27 @@ pub async fn enregistrer(
         Some(("desktop", _)) => "desktop",
         _ => "web",
     };
+    let mut tx = pool.begin().await?;
     sqlx::query(
         "INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, kind) VALUES ($1,$2::uuid,$3,$4,$5)
-         ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, kind=EXCLUDED.kind",
+         ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth, kind=EXCLUDED.kind, created_at=now()",
     )
     .bind(endpoint)
     .bind(user)
     .bind(p256dh)
     .bind(auth)
     .bind(genre)
-    .execute(pool)
-    .await
-    .map(|_| ())
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM push_subscriptions WHERE endpoint IN (
+           SELECT endpoint FROM push_subscriptions WHERE user_id=$1::uuid ORDER BY created_at DESC, endpoint DESC OFFSET $2)",
+    )
+    .bind(user)
+    .bind(ABONNEMENTS_MAX)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await
 }
 
 pub async fn supprimer(pool: &PgPool, user: &str, endpoint: &str) -> Result<(), sqlx::Error> {
@@ -201,6 +212,7 @@ pub struct Service {
     etat: AppState,
     envoyeurs: HashMap<&'static str, Arc<dyn Envoyeur>>,
     file: mpsc::Sender<Evenement>,
+    envois: Arc<Semaphore>,
 }
 
 impl Service {
@@ -279,19 +291,42 @@ impl Service {
                 return;
             }
         };
-        for a in &appareils {
-            let Some(envoyeur) = self.envoyeurs.get(a.kind.as_str()) else {
-                continue;
-            };
-            match envoyeur.envoyer(a, n).await {
-                Ok(true) => {
-                    let _ = retirer_expire(pool, &a.endpoint).await;
-                    tracing::info!("notify : appareil {} retiré ({})", a.kind, n.tag);
-                }
-                Err(err) => tracing::warn!("notify : échec {} pour {user} : {err}", a.kind),
-                Ok(false) => tracing::info!("notify : envoyé {} à {user} ({})", a.kind, n.tag),
+        let n = Arc::new(n.clone());
+        for a in appareils {
+            if let Some(envoyeur) = self.envoyeurs.get(a.kind.as_str()) {
+                self.expedier(pool, user, envoyeur, a, n.clone());
             }
         }
+    }
+
+    fn expedier(
+        &self,
+        pool: &PgPool,
+        user: &str,
+        envoyeur: &Arc<dyn Envoyeur>,
+        a: Appareil,
+        n: Arc<Notification>,
+    ) {
+        let (pool, user, envoyeur, envois) = (
+            pool.clone(),
+            user.to_string(),
+            envoyeur.clone(),
+            self.envois.clone(),
+        );
+        tokio::spawn(async move {
+            let Ok(_jeton) = envois.acquire_owned().await else {
+                return;
+            };
+            match tokio::time::timeout(DELAI_TRAITEMENT, envoyeur.envoyer(&a, &n)).await {
+                Ok(Ok(true)) => {
+                    let _ = retirer_expire(&pool, &a.endpoint).await;
+                    tracing::info!("notify : appareil {} retiré ({})", a.kind, n.tag);
+                }
+                Ok(Ok(false)) => tracing::info!("notify : envoyé {} à {user} ({})", a.kind, n.tag),
+                Ok(Err(err)) => tracing::warn!("notify : échec {} pour {user} : {err}", a.kind),
+                Err(_) => tracing::warn!("notify : délai dépassé {} pour {user}", a.kind),
+            }
+        });
     }
 
     async fn marquer_lu(&self, user: &str, conv: &str, dernier: &str) {
@@ -308,20 +343,14 @@ impl Service {
                 return;
             }
         };
-        let n = Notification {
+        let n = Arc::new(Notification {
             tag: format!("read-{conv}"),
             conv: conv.to_string(),
             read: dernier.to_string(),
             ..Default::default()
-        };
-        for a in appareils.iter().filter(|a| a.kind == "fcm") {
-            match envoyeur.envoyer(a, &n).await {
-                Ok(true) => {
-                    let _ = retirer_expire(pool, &a.endpoint).await;
-                }
-                Err(err) => tracing::warn!("notify : échec lecture fcm pour {user} : {err}"),
-                Ok(false) => {}
-            }
+        });
+        for a in appareils.into_iter().filter(|a| a.kind == "fcm") {
+            self.expedier(pool, user, envoyeur, a, n.clone());
         }
     }
 }
@@ -367,6 +396,7 @@ pub fn installer_avec(
         etat: etat.clone(),
         envoyeurs,
         file,
+        envois: Arc::new(Semaphore::new(ENVOIS_SIMULTANES)),
     });
     let tache = service.clone();
     tokio::spawn(async move {
@@ -570,8 +600,7 @@ async fn abonner(
     else {
         return json_invalide();
     };
-    let https = reqwest::Url::parse(&endpoint).is_ok_and(|u| u.scheme() == "https");
-    if !https
+    if !webpush::endpoint_accepte(&endpoint)
         || endpoint.len() > 2048
         || p256dh.is_empty()
         || auth.is_empty()
@@ -918,6 +947,7 @@ mod tests {
     struct FauxEnvoyeur {
         recus: Mutex<Vec<(String, Notification)>>,
         expire: Mutex<bool>,
+        bloquer: Mutex<Option<Arc<Semaphore>>>,
     }
 
     impl FauxEnvoyeur {
@@ -937,7 +967,13 @@ mod tests {
                 .unwrap()
                 .push((appareil.endpoint.clone(), n.clone()));
             let expire = *self.expire.lock().unwrap();
-            Box::pin(async move { Ok(expire) })
+            let bloquer = self.bloquer.lock().unwrap().clone();
+            Box::pin(async move {
+                if let Some(b) = bloquer {
+                    b.acquire().await.unwrap().forget();
+                }
+                Ok(expire)
+            })
         }
     }
 
@@ -1056,8 +1092,14 @@ mod tests {
         let put = |corps: &'static str| appel(&e.app, "bob", "PUT", "/push/subscription", corps);
         for corps in [
             r#"{"endpoint":"http://x/insecure","keys":{"p256dh":"a","auth":"b"}}"#,
-            r#"{"endpoint":"https://push.example/1","keys":{"p256dh":"","auth":"b"}}"#,
-            r#"{"endpoint":"https://push.example/1"}"#,
+            r#"{"endpoint":"https://push.example/1","keys":{"p256dh":"a","auth":"b"}}"#,
+            r#"{"endpoint":"https://169.254.169.254/latest","keys":{"p256dh":"a","auth":"b"}}"#,
+            r#"{"endpoint":"https://10.0.0.5/x","keys":{"p256dh":"a","auth":"b"}}"#,
+            r#"{"endpoint":"https://[::1]/x","keys":{"p256dh":"a","auth":"b"}}"#,
+            r#"{"endpoint":"https://estompe-api:8080/x","keys":{"p256dh":"a","auth":"b"}}"#,
+            r#"{"endpoint":"https://fcm.googleapis.com.evil.example/x","keys":{"p256dh":"a","auth":"b"}}"#,
+            r#"{"endpoint":"https://fcm.googleapis.com/fcm/send/1","keys":{"p256dh":"","auth":"b"}}"#,
+            r#"{"endpoint":"https://fcm.googleapis.com/fcm/send/1"}"#,
         ] {
             let (s, v) = put(corps).await;
             assert_eq!(
@@ -1067,7 +1109,7 @@ mod tests {
             );
         }
         assert_eq!(
-            put(r#"{"endpoint":"https://push.example/1","keys":{"p256dh":"a","auth":"b"}}"#)
+            put(r#"{"endpoint":"https://fcm.googleapis.com/fcm/send/1","keys":{"p256dh":"a","auth":"b"}}"#)
                 .await
                 .0,
             StatusCode::NO_CONTENT
@@ -1081,7 +1123,7 @@ mod tests {
                 "alice",
                 "PUT",
                 "/push/subscription",
-                r#"{"endpoint":"https://push.example/1","keys":{"p256dh":"c","auth":"d"}}"#
+                r#"{"endpoint":"https://fcm.googleapis.com/fcm/send/1","keys":{"p256dh":"c","auth":"d"}}"#
             )
             .await
             .0,
@@ -1141,7 +1183,7 @@ mod tests {
                 "alice",
                 "DELETE",
                 "/push/subscription",
-                r#"{"endpoint":"https://push.example/1"}"#
+                r#"{"endpoint":"https://fcm.googleapis.com/fcm/send/1"}"#
             )
             .await
             .0,
@@ -1383,5 +1425,77 @@ mod tests {
         assert_eq!(charge["conv"], "c:abc");
         assert_eq!(charge["read"], "42");
         assert_eq!(charge["tag"], "read-c:abc");
+    }
+
+    #[tokio::test]
+    async fn plafond_remplace_le_plus_ancien_abonnement() {
+        let Some(e) = env(&[]).await else { return };
+        let (bob, alice) = (e.ids["bob"].clone(), e.ids["alice"].clone());
+        let ep = |i: i64| format!("fcm:{i:02}");
+        enregistrer(&e.pool, &alice, "fcm:alice", "", "")
+            .await
+            .unwrap();
+        for i in 0..=ABONNEMENTS_MAX {
+            enregistrer(&e.pool, &bob, &ep(i), "", "").await.unwrap();
+        }
+        let pool = &e.pool;
+        let liste = |u: String| async move {
+            appareils(pool, &u)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|a| a.endpoint)
+                .collect::<Vec<_>>()
+        };
+        let restants = liste(bob.clone()).await;
+        assert_eq!(restants.len() as i64, ABONNEMENTS_MAX);
+        assert!(!restants.contains(&ep(0)), "{restants:?}");
+        enregistrer(&e.pool, &bob, &ep(1), "", "").await.unwrap();
+        enregistrer(&e.pool, &bob, &ep(20), "", "").await.unwrap();
+        let restants = liste(bob.clone()).await;
+        assert_eq!(restants.len() as i64, ABONNEMENTS_MAX);
+        assert!(restants.contains(&ep(1)) && restants.contains(&ep(20)));
+        assert!(!restants.contains(&ep(2)), "{restants:?}");
+        assert_eq!(liste(alice).await, ["fcm:alice"]);
+    }
+
+    #[tokio::test]
+    async fn envois_en_tache_de_fond_et_bornes() {
+        let Some(e) = env(&[]).await else { return };
+        let (bob, alice) = (e.ids["bob"].clone(), e.ids["alice"].clone());
+        let dm = creer_mp(&e).await;
+        let verrou = Arc::new(Semaphore::new(0));
+        let faux_fcm = Arc::new(FauxEnvoyeur::default());
+        *faux_fcm.bloquer.lock().unwrap() = Some(verrou.clone());
+        let mut envoyeurs: HashMap<&'static str, Arc<dyn Envoyeur>> = HashMap::new();
+        envoyeurs.insert("fcm", Arc::new(faux_fcm.clone()));
+        installer_avec(&e.etat, envoyeurs);
+        for i in 0..ABONNEMENTS_MAX {
+            enregistrer(&e.pool, &bob, &format!("fcm:{i}"), "", "")
+                .await
+                .unwrap();
+        }
+        e.etat.notifier(&evenement_mp(&dm, "1", "bloqué")).await;
+        attendre(|| async { faux_fcm.nombre() >= ENVOIS_SIMULTANES }).await;
+        assert_eq!(faux_fcm.nombre(), ENVOIS_SIMULTANES);
+
+        let (_conn, mut recu, _) = e.etat.hub().register(
+            &alice,
+            Cred {
+                value: "x".into(),
+                cookie: false,
+            },
+        );
+        e.etat.notifier(&evenement_mp(&dm, "2", "en direct")).await;
+        let direct = tokio::time::timeout(Duration::from_secs(5), recu.recv())
+            .await
+            .expect("file de notifications bloquée par les envois")
+            .unwrap();
+        let direct: Value = serde_json::from_str(&direct).unwrap();
+        assert_eq!(direct["data"]["tag"], "msg-2");
+
+        verrou.add_permits(1);
+        attendre(|| async { faux_fcm.nombre() > ENVOIS_SIMULTANES }).await;
+        assert_eq!(faux_fcm.nombre(), ENVOIS_SIMULTANES + 1);
     }
 }
