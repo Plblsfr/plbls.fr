@@ -445,7 +445,7 @@ mod tests {
             return;
         };
         let (s, _, _) = demarrer_login(&state).await;
-        kc.repondre(200, kc.jetons("autre-nonce", "r1"));
+        kc.repondre(200, kc.jetons(&session::random_token(16), "r1"));
         let r = appeler(
             &state,
             get(
