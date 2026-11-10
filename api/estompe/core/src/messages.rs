@@ -35,6 +35,10 @@ pub const SYSTEME: &str = "00000000-0000-0000-0000-000000000001";
 const LONGUEUR_MAX: usize = 4000;
 const PIECES_JOINTES_MAX: usize = 10;
 const REACTIONS_MAX: i64 = 20;
+pub(crate) const REACTIONS_PAR_FENETRE: usize = 30;
+const FENETRE_REACTIONS: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const DMS_PAR_FENETRE: usize = 10;
+const FENETRE_DMS: std::time::Duration = std::time::Duration::from_secs(60);
 const ENVOIS: usize = 20;
 const FENETRE_ENVOI: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -133,7 +137,12 @@ const DOC: &[Doc] = &[
         HttpMethod::Post,
         "/dms",
         "Ouvrir (ou retrouver) la conversation privée avec un utilisateur",
-        &[("200", "ok"), ("400", "self_dm"), ("404", "user_not_found")],
+        &[
+            ("200", "ok"),
+            ("400", "self_dm"),
+            ("404", "user_not_found"),
+            ("429", "`rate_limited` : 10 / min"),
+        ],
     ),
     (
         HttpMethod::Get,
@@ -188,6 +197,7 @@ const DOC: &[Doc] = &[
                 "409",
                 "too_many_reactions : 20 emojis différents par message",
             ),
+            ("429", "`rate_limited` : 30 / 10 s"),
         ],
     ),
     (
@@ -198,6 +208,7 @@ const DOC: &[Doc] = &[
             ("204", "ok"),
             ("400", "invalid_emoji"),
             ("404", "Introuvable, ou non visible par l'utilisateur"),
+            ("429", "`rate_limited` : 30 / 10 s"),
         ],
     ),
     (
@@ -1044,6 +1055,17 @@ async fn convertir_emojis(pool: &PgPool, user: &str, contenu: &str) -> String {
     emoji::convertir(contenu, &smileys_perso(pool, user).await)
 }
 
+pub(crate) fn trop_de_requetes(secondes: u64) -> Response {
+    avec_reessai(
+        write_err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "trop de requêtes, patientez avant de réessayer",
+        ),
+        secondes,
+    )
+}
+
 pub(crate) fn avec_reessai(mut r: Response, secondes: u64) -> Response {
     if let Ok(v) = HeaderValue::from_str(&secondes.to_string()) {
         r.headers_mut().insert(header::RETRY_AFTER, v);
@@ -1613,6 +1635,13 @@ async fn retirer_reaction(
 
 async fn reaction(state: AppState, u: User, p: Params, ajout: bool) -> Result<Response, Response> {
     let pool = pool(&state)?;
+    if !state
+        .limiteurs()
+        .reactions
+        .allow(&u.id, REACTIONS_PAR_FENETRE, FENETRE_REACTIONS)
+    {
+        return Ok(trop_de_requetes(FENETRE_REACTIONS.as_secs()));
+    }
     let emoji = param(&p.0, "emoji");
     if !emoji::valide(emoji) {
         return Ok(write_err(
@@ -1728,6 +1757,13 @@ async fn ouvrir_dm(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
+    if !state
+        .limiteurs()
+        .dms
+        .allow(&u.id, DMS_PAR_FENETRE, FENETRE_DMS)
+    {
+        return Ok(trop_de_requetes(FENETRE_DMS.as_secs()));
+    }
     let e = decode(body).await?;
     let pseudo = texte_strict(&e, "pseudo").ok_or_else(mauvais)?;
     let autre = sqlx::query_as::<_, (String, String)>(
@@ -2697,6 +2733,36 @@ pub(crate) mod tests {
             .await;
         assert_eq!((s, v["error"].as_str()), (403, Some("forbidden")));
         assert_eq!(c.api("bob", "DELETE", &chemin, Value::Null).await.0, 204);
+    }
+
+    #[tokio::test]
+    async fn debit_des_reactions_et_des_conversations_privees() {
+        let Some(c) = cadre().await else { return };
+        let m = c.poster("alice", "débit").await;
+        let chemin = format!(
+            "/messages/{}/reactions/%F0%9F%91%8D",
+            m["id"].as_str().unwrap()
+        );
+        for i in 0..REACTIONS_PAR_FENETRE {
+            let methode = if i % 2 == 0 { "PUT" } else { "DELETE" };
+            assert_eq!(
+                c.api("bob", methode, &chemin, Value::Null).await.0,
+                204,
+                "{i}"
+            );
+        }
+        let (s, v) = c.api("bob", "DELETE", &chemin, Value::Null).await;
+        assert_eq!((s, v["error"].as_str()), (429, Some("rate_limited")));
+        assert_eq!(c.api("alice", "PUT", &chemin, Value::Null).await.0, 204);
+
+        for _ in 0..DMS_PAR_FENETRE {
+            c.ouvrir_dm("alice", "bob").await;
+        }
+        let (s, v) = c
+            .api("alice", "POST", "/dms", json!({ "pseudo": "bob" }))
+            .await;
+        assert_eq!((s, v["error"].as_str()), (429, Some("rate_limited")));
+        c.ouvrir_dm("bob", "alice").await;
     }
 
     #[tokio::test]

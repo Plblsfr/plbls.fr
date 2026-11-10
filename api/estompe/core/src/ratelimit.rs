@@ -52,6 +52,10 @@ pub struct Limiteurs {
     pub signalement: RateLimiter,
     pub regarder_ensemble: RateLimiter,
     pub films: RateLimiter,
+    pub ws_ticket: RateLimiter,
+    pub serveurs: RateLimiter,
+    pub dms: RateLimiter,
+    pub reactions: RateLimiter,
 }
 
 #[cfg(test)]
@@ -119,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn huit_limiteurs_distincts() {
+    fn limiteurs_distincts() {
         let l = Limiteurs::default();
         let tous = [
             &l.apercu,
@@ -130,6 +134,11 @@ mod tests {
             &l.transcription,
             &l.signalement,
             &l.regarder_ensemble,
+            &l.films,
+            &l.ws_ticket,
+            &l.serveurs,
+            &l.dms,
+            &l.reactions,
         ];
         assert!(tous[0].allow("a", 1, F));
         assert!(!tous[0].allow("a", 1, F));

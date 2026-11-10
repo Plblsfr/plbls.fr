@@ -10,6 +10,7 @@ On regarde à plusieurs dans le salon cinéma d'Estompe, qui lit les titres d'En
 | [`api/entracte`](../../api/entracte/README.md) | API Rust (axum, sqlx), membre du workspace Cargo |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
 | [`transcodage.md`](transcodage.md) | lecture directe, HLS, paliers, accélération matérielle |
+| [`import-estompe.md`](import-estompe.md) | import des progressions et « déjà vus » du bloc films d'Estompe (`entracte importer-estompe`) |
 | [`deploy/entracte/.env.example`](../../deploy/entracte/.env.example) | variables, service `entracte-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 | `web/estompe/src/sections/entracte/` | section Entracte de l'app (web, PWA, Windows, Android) |
 
@@ -67,7 +68,11 @@ fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la se
 
 Refus et disponibilité d'une demande : notification à chaque appareil abonné de chaque demandeur, et à personne d'autre.
 Abonnements propres à Entracte (`/push/subscription`, `/push/fcm`) : une personne sans accès à Estompe est prévenue. Un abonnement refusé
-par le service push (404, 410) est retiré. Les clés VAPID et le compte Firebase sont ceux d'Estompe, sous les noms d'Entracte
+par le service push (404, 410) est retiré. Seuls les services push connus sont acceptés (`fcm.googleapis.com`, `updates.push.services.mozilla.com`,
+`*.notify.windows.com`, `web.push.apple.com`, en https sans port ni IP littérale) ; un abonnement enregistré hors de cette liste est retiré au
+premier envoi sans être contacté. Au plus 10 abonnements par personne : le onzième remplace le plus ancien (réabonner un appareil le
+rajeunit), pour qu'un changement d'appareil ne soit jamais refusé. Les envois partent en tâche de fond, 8 à la fois au plus : refuser une
+demande ou la synchronisation du catalogue n'attendent pas les services push, dont le corps des réponses n'est jamais journalisé. Les clés VAPID et le compte Firebase sont ceux d'Estompe, sous les noms d'Entracte
 (`ENTRACTE_VAPID_*`, `ENTRACTE_FCM_SERVICE_ACCOUNT`) : un navigateur n'a qu'un abonnement push par application, que l'app enregistre
 auprès des deux API, et l'app Android réutilise son jeton FCM. L'app Windows n'a pas de push : elle lit `GET /notifications` et affiche
 elle-même les nouvelles.
@@ -82,7 +87,7 @@ sous-titres à lui) ; seule la position est synchronisée, et sa progression est
 ## Bascule depuis le bloc films d'Estompe
 
 1. Entracte déployé à côté (base, sous-domaine, route du reverse proxy, secrets dans Vault, permissions accordées à l'administrateur seul).
-2. Import de l'historique depuis Estompe (issue dédiée), avant d'éteindre Jellyfin.
+2. Import de l'historique depuis Estompe, avant d'éteindre Jellyfin : `entracte importer-estompe` ([procédure](import-estompe.md)).
 3. L'app et le salon cinéma passent sur Entracte (`ENTRACTE_PUBLIC_URL` du front, `ESTOMPE_ENTRACTE_*` de l'API), avec mise à jour forcée.
 4. Retrait du bloc `films` d'Estompe et arrêt de Jellyfin (issue dédiée).
 

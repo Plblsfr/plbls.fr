@@ -1,7 +1,7 @@
 pub mod fcm;
 pub mod webpush;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     body::Body,
@@ -12,6 +12,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use sqlx::Row;
+use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 use crate::{
@@ -22,10 +23,13 @@ use crate::{
 };
 
 const PREFIXE_FCM: &str = "fcm:";
+pub const ABONNEMENTS_MAX: i64 = 10;
+pub const ENVOIS_SIMULTANES: usize = 8;
 
 pub struct Push {
     web: Option<webpush::Vapid>,
     fcm: Option<fcm::Fcm>,
+    envois: Arc<Semaphore>,
 }
 
 impl Push {
@@ -40,6 +44,7 @@ impl Push {
         Self {
             web: webpush::Vapid::nouveau(&cfg.vapid_publique, &cfg.vapid_privee, &cfg.vapid_sujet),
             fcm,
+            envois: Arc::new(Semaphore::new(ENVOIS_SIMULTANES)),
         }
     }
 
@@ -88,19 +93,30 @@ async fn enregistrer(
     auth: &str,
     genre: &str,
 ) -> Result<(), Response> {
+    let mut tx = state.pool().begin().await.map_err(bd)?;
     sqlx::query(
         "INSERT INTO abonnements_push (endpoint, sub, p256dh, auth, genre) VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (endpoint) DO UPDATE SET sub = EXCLUDED.sub, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, genre = EXCLUDED.genre",
+         ON CONFLICT (endpoint) DO UPDATE SET sub = EXCLUDED.sub, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
+           genre = EXCLUDED.genre, cree_le = now()",
     )
     .bind(endpoint)
     .bind(sub)
     .bind(p256dh)
     .bind(auth)
     .bind(genre)
-    .execute(state.pool())
+    .execute(&mut *tx)
     .await
-    .map(|_| ())
-    .map_err(bd)
+    .map_err(bd)?;
+    sqlx::query(
+        "DELETE FROM abonnements_push WHERE endpoint IN (
+           SELECT endpoint FROM abonnements_push WHERE sub = $1 ORDER BY cree_le DESC, endpoint DESC OFFSET $2)",
+    )
+    .bind(sub)
+    .bind(ABONNEMENTS_MAX)
+    .execute(&mut *tx)
+    .await
+    .map_err(bd)?;
+    tx.commit().await.map_err(bd)
 }
 
 async fn supprimer(state: &AppState, sub: &str, endpoint: &str) -> Result<(), Response> {
@@ -114,9 +130,7 @@ async fn supprimer(state: &AppState, sub: &str, endpoint: &str) -> Result<(), Re
 }
 
 fn endpoint_valide(e: &str) -> bool {
-    let schema_ok = |s: &str| s == "https" || (cfg!(test) && s == "http");
-    e.len() <= 1000
-        && url::Url::parse(e).is_ok_and(|u| schema_ok(u.scheme()) && u.host_str().is_some())
+    e.len() <= 1000 && webpush::endpoint_accepte(e)
 }
 
 pub async fn abonner(
@@ -255,7 +269,7 @@ pub async fn prevenir(state: &AppState, demande: Uuid, genre: &str, titre: &str,
             }
         };
     let message = charge(demande, genre, titre, corps);
-    let octets = serde_json::to_vec(&message).unwrap_or_default();
+    let octets: Arc<[u8]> = serde_json::to_vec(&message).unwrap_or_default().into();
     for sub in subs {
         let r = sqlx::query("INSERT INTO notifications (sub, genre, demande_id, titre, corps) VALUES ($1, $2, $3, $4, $5)")
             .bind(&sub)
@@ -268,54 +282,232 @@ pub async fn prevenir(state: &AppState, demande: Uuid, genre: &str, titre: &str,
         if let Err(e) = r {
             tracing::warn!("notification : {e}");
         }
-        let appareils = sqlx::query(
+        let appareils = sqlx::query_as::<_, (String, String, String, String)>(
             "SELECT endpoint, p256dh, auth, genre FROM abonnements_push WHERE sub = $1",
         )
         .bind(&sub)
         .fetch_all(state.pool())
         .await
         .unwrap_or_default();
-        for a in appareils {
-            let endpoint: String = a.get(0);
-            let genre_appareil: String = a.get(3);
-            let resultat = match (
-                genre_appareil.as_str(),
-                &state.push().web,
-                &state.push().fcm,
-            ) {
-                ("web", Some(v), _) => {
-                    let p256dh: String = a.get(1);
-                    let auth: String = a.get(2);
-                    let cible = webpush::Abonnement {
-                        endpoint: &endpoint,
-                        p256dh: &p256dh,
-                        auth: &auth,
-                        urgent: false,
-                    };
-                    webpush::envoyer(v, &cible, &octets).await
-                }
-                ("fcm", _, Some(f)) => {
-                    f.envoyer(
-                        endpoint.strip_prefix(PREFIXE_FCM).unwrap_or(&endpoint),
-                        &octets,
-                    )
-                    .await
-                }
-                _ => continue,
-            };
-            match resultat {
-                Ok(true) => {
-                    tracing::info!(
-                        "abonnement {genre_appareil} refusé par le service push : retiré"
-                    );
-                    let _ = sqlx::query("DELETE FROM abonnements_push WHERE endpoint = $1")
-                        .bind(&endpoint)
-                        .execute(state.pool())
-                        .await;
-                }
-                Ok(false) => {}
-                Err(e) => tracing::warn!("push {genre_appareil} : {e}"),
+        for appareil in appareils {
+            expedier(state.clone(), appareil, octets.clone());
+        }
+    }
+}
+
+fn expedier(state: AppState, appareil: (String, String, String, String), octets: Arc<[u8]>) {
+    let envois = state.push().envois.clone();
+    tokio::spawn(async move {
+        let Ok(_jeton) = envois.acquire_owned().await else {
+            return;
+        };
+        let (endpoint, p256dh, auth, genre) = appareil;
+        let resultat = match (genre.as_str(), &state.push().web, &state.push().fcm) {
+            ("web", Some(v), _) => {
+                let cible = webpush::Abonnement {
+                    endpoint: &endpoint,
+                    p256dh: &p256dh,
+                    auth: &auth,
+                    urgent: false,
+                };
+                webpush::envoyer(v, &cible, &octets).await
+            }
+            ("fcm", _, Some(f)) => {
+                f.envoyer(
+                    endpoint.strip_prefix(PREFIXE_FCM).unwrap_or(&endpoint),
+                    &octets,
+                )
+                .await
+            }
+            _ => return,
+        };
+        match resultat {
+            Ok(true) => {
+                tracing::info!("abonnement {genre} refusé : retiré");
+                let _ = sqlx::query("DELETE FROM abonnements_push WHERE endpoint = $1")
+                    .bind(&endpoint)
+                    .execute(state.pool())
+                    .await;
+            }
+            Ok(false) => {}
+            Err(e) => tracing::warn!("push {genre} : {e}"),
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testutil::postgres;
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use ring::{
+        agreement,
+        rand::SystemRandom,
+        signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair},
+    };
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::{Duration, Instant},
+    };
+    use tokio::net::TcpListener;
+
+    async fn etat() -> Option<(crate::testutil::BasePostgres, AppState)> {
+        let (base, url) = postgres().await?;
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
+        let paire =
+            EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng)
+                .unwrap();
+        let fin = pkcs8.as_ref().len() - 65 - 5;
+        let mut cfg = Config::pour_tests(&url);
+        cfg.vapid_privee = URL_SAFE_NO_PAD.encode(&pkcs8.as_ref()[fin - 32..fin]);
+        cfg.vapid_publique = URL_SAFE_NO_PAD.encode(paire.public_key().as_ref());
+        let pool = sqlx::PgPool::connect(&url).await.unwrap();
+        crate::MIGRATIONS.run(&pool).await.unwrap();
+        Some((base, AppState::new(cfg, pool)))
+    }
+
+    async fn endpoints(state: &AppState, sub: &str) -> Vec<String> {
+        sqlx::query_scalar("SELECT endpoint FROM abonnements_push WHERE sub = $1 ORDER BY endpoint")
+            .bind(sub)
+            .fetch_all(state.pool())
+            .await
+            .unwrap()
+    }
+
+    async fn attendre(mut condition: impl FnMut() -> bool, quoi: &str) {
+        let limite = Instant::now() + Duration::from_secs(20);
+        while !condition() {
+            assert!(Instant::now() < limite, "délai dépassé : {quoi}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    #[test]
+    fn endpoint_hors_services_push_refuse() {
+        assert!(endpoint_valide("https://fcm.googleapis.com/fcm/send/a"));
+        assert!(endpoint_valide(
+            "https://db5p.notify.windows.com/w/?token=a"
+        ));
+        for e in [
+            "https://entracte:8080/admin",
+            "https://169.254.169.254/latest",
+            "https://10.0.0.2/x",
+            "https://[fd00::1]/x",
+            "http://fcm.googleapis.com/x",
+            "ftp://x",
+        ] {
+            assert!(!endpoint_valide(e), "{e}");
+        }
+        assert!(!endpoint_valide(&format!(
+            "https://fcm.googleapis.com/{}",
+            "a".repeat(1000)
+        )));
+    }
+
+    #[tokio::test]
+    async fn plafond_remplace_le_plus_ancien_abonnement() {
+        let Some((_base, state)) = etat().await else {
+            return;
+        };
+        let ep = |i: i64| format!("https://fcm.googleapis.com/fcm/send/{i:02}");
+        enregistrer(
+            &state,
+            "bob",
+            "https://web.push.apple.com/b",
+            "p",
+            "a",
+            "web",
+        )
+        .await
+        .unwrap();
+        for i in 0..=ABONNEMENTS_MAX {
+            enregistrer(&state, "alice", &ep(i), "p", "a", "web")
+                .await
+                .unwrap();
+        }
+        let restants = endpoints(&state, "alice").await;
+        assert_eq!(restants.len() as i64, ABONNEMENTS_MAX);
+        assert!(!restants.contains(&ep(0)), "{restants:?}");
+        enregistrer(&state, "alice", &ep(1), "p", "a", "web")
+            .await
+            .unwrap();
+        enregistrer(&state, "alice", &ep(20), "p", "a", "web")
+            .await
+            .unwrap();
+        let restants = endpoints(&state, "alice").await;
+        assert_eq!(restants.len() as i64, ABONNEMENTS_MAX);
+        assert!(restants.contains(&ep(1)) && restants.contains(&ep(20)));
+        assert!(!restants.contains(&ep(2)), "{restants:?}");
+        assert_eq!(endpoints(&state, "bob").await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn prevenir_rend_la_main_avant_les_envois_bornes() {
+        let Some((_base, state)) = etat().await else {
+            return;
+        };
+        let ecoute = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adresse = ecoute.local_addr().unwrap();
+        let ouvertes = Arc::new(AtomicUsize::new(0));
+        let compte = ouvertes.clone();
+        let _serveur = tokio::spawn(async move {
+            let mut gardees = Vec::new();
+            while let Ok((flux, _)) = ecoute.accept().await {
+                compte.fetch_add(1, Ordering::SeqCst);
+                gardees.push(flux);
+            }
+        });
+        let rng = SystemRandom::new();
+        let recepteur =
+            agreement::EphemeralPrivateKey::generate(&agreement::ECDH_P256, &rng).unwrap();
+        let p256dh = URL_SAFE_NO_PAD.encode(recepteur.compute_public_key().unwrap().as_ref());
+        let auth = URL_SAFE_NO_PAD.encode([5u8; 16]);
+        let demande: Uuid = sqlx::query_scalar(
+            "INSERT INTO demandes (genre, tmdb_id, titre) VALUES ('film', 1, 'Film') RETURNING id",
+        )
+        .fetch_one(state.pool())
+        .await
+        .unwrap();
+        for sub in ["alice", "bob"] {
+            sqlx::query("INSERT INTO demandeurs (demande_id, sub) VALUES ($1, $2)")
+                .bind(demande)
+                .bind(sub)
+                .execute(state.pool())
+                .await
+                .unwrap();
+            for i in 0..ABONNEMENTS_MAX {
+                enregistrer(
+                    &state,
+                    sub,
+                    &format!("http://{adresse}/{sub}/{i}"),
+                    &p256dh,
+                    &auth,
+                    "web",
+                )
+                .await
+                .unwrap();
             }
         }
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            prevenir(&state, demande, "refusee", "Demande refusée", "motif"),
+        )
+        .await
+        .expect("prevenir attend les services push");
+        let notifications: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM notifications WHERE demande_id = $1")
+                .bind(demande)
+                .fetch_one(state.pool())
+                .await
+                .unwrap();
+        assert_eq!(notifications, 2);
+        attendre(
+            || ouvertes.load(Ordering::SeqCst) >= ENVOIS_SIMULTANES,
+            "envois lancés",
+        )
+        .await;
+        assert_eq!(state.push().envois.available_permits(), 0);
+        assert_eq!(ouvertes.load(Ordering::SeqCst), ENVOIS_SIMULTANES);
     }
 }

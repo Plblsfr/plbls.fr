@@ -31,6 +31,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.firebase.messaging.FirebaseMessaging
@@ -48,15 +50,15 @@ import kotlin.concurrent.thread
 /**
  * Pont vers le front (window.EstompeNative) :
  * - fcmToken() : jeton FCM, vide si Firebase n'est pas configuré (google-services.json absent) ;
- * - getRefreshToken() / saveRefreshToken(t) / clearRefreshToken() : refresh token Keycloak, gardé ici pour que les actions des notifications puissent l'utiliser app fermée ; configure(issuer, apiUrl) les renseigne ;
  * - cancelConv(conv) : retire la notification de la conversation lue sur ce téléphone ;
  * - takeOpenUrl() : adresse (« /#/dm/… ») de la notification qui a lancé l'app (lue une seule fois), vide sinon ;
  * - takeAuthUrl() : redirection OAuth « fr.plbls.estompe:/callback?… » reçue du navigateur (lue une seule fois), vide sinon ;
  * - bgAudioUpdate(json) / bgAudioStop() : service de lecture 2Gether en arrière-plan (PlaybackService, option cachée) ; la page est appelée en retour par window.__estompeBg(toggle|next) ;
  * - voiceUpdate(titre, lien, micro coupé, son coupé) / voiceStop() : service du vocal en cours (VoiceService), page appelée en retour par window.__estompeVoice ;
- * - screenshot() : capture de la fenêtre en JPEG base64 (signalement de bug), vide en cas d'échec ;
  * - pipState(json) : état du lecteur 2Gether ({active, square, playing}) pour l'image dans l'image ; le natif répond par window.estompePip(évènement) : toggle, next, close, enter, leave, unavailable ;
  * - installApk(url, sha256) puis installState() : télécharge la mise à jour, vérifie sa somme SHA-256 (ignorée si vide) et ouvre l'installeur Android (« busy » en cours, « done » une fois lancé, sinon le message d'erreur) ; installProgress() : avancement du téléchargement de 0 à 1 (0 si la taille est inconnue).
+ * Canal window.EstompeSession (addWebMessageListener, origine https://tauri.localhost et cadre principal seulement, jamais les iframes) :
+ * messages JSON { id, op } avec op login, renew, logout, adopt ou screenshot, réponse { id, status, … } ; le refresh token n'en sort jamais.
  */
 class EstompeNative(private val activity: MainActivity) {
   @Volatile var token = ""
@@ -66,10 +68,6 @@ class EstompeNative(private val activity: MainActivity) {
   @Volatile var openUrl = ""
   private val session by lazy { Session(activity) }
   @JavascriptInterface fun fcmToken(): String = token
-  @JavascriptInterface fun getRefreshToken(): String = session.refreshToken.orEmpty()
-  @JavascriptInterface fun saveRefreshToken(t: String) { session.refreshToken = t }
-  @JavascriptInterface fun clearRefreshToken() { session.refreshToken = null }
-  @JavascriptInterface fun configure(issuer: String, apiUrl: String) = session.configure(issuer, apiUrl)
   @JavascriptInterface fun takeOpenUrl(): String = openUrl.also { openUrl = "" }
   @JavascriptInterface fun takeAuthUrl(): String = authUrl.also { authUrl = "" }
   /** Conversation « c:<id> » ou « d:<id> » ouverte dans l'app : retire sa notification. */
@@ -78,7 +76,24 @@ class EstompeNative(private val activity: MainActivity) {
   @JavascriptInterface fun installState(): String = install
   @JavascriptInterface fun installProgress(): Float = progress
 
-  @JavascriptInterface fun screenshot(): String {
+  fun sessionMessage(json: String): String {
+    val m = try { JSONObject(json) } catch (e: JSONException) { return JSONObject().put("status", 400).toString() }
+    val r = try {
+      when (m.optString("op")) {
+        "login" -> session.connecter(m.getString("code"), m.getString("verifier"), m.getString("redirectUri"))
+        "renew" -> session.renouveler()
+        "logout" -> { session.deconnecter(); JSONObject().put("status", 200) }
+        "adopt" -> { session.adopter(m.getString("refresh")); JSONObject().put("status", 200) }
+        "screenshot" -> JSONObject().put("status", 200).put("image", screenshot())
+        else -> JSONObject().put("status", 400).put("error", "opération inconnue")
+      }
+    } catch (e: JSONException) {
+      JSONObject().put("status", 400).put("error", "requête invalide")
+    }
+    return r.put("id", m.optInt("id")).toString()
+  }
+
+  private fun screenshot(): String {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return ""
     val view = activity.window.decorView
     val bmp = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
@@ -267,6 +282,12 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
     webView.addJavascriptInterface(native, "EstompeNative")
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+      WebViewCompat.addWebMessageListener(webView, "EstompeSession", setOf(ORIGINE)) { view, message, _, isMainFrame, reply ->
+        val data = message.data
+        if (isMainFrame && data != null) thread { val r = native.sessionMessage(data); view.post { reply.postMessage(r) } }
+      }
+    }
   }
 
   private fun pip(evt: String) = webView?.evaluateJavascript("window.estompePip?.(${JSONObject.quote(evt)})", null)
@@ -323,6 +344,7 @@ class MainActivity : TauriActivity() {
   }
 
   companion object {
+    private const val ORIGINE = "https://tauri.localhost"
     private const val PIP_PREFIX = "fr.plbls.estompe.PIP_"
     private val PIP_EVENTS = listOf("toggle", "next", "close")
   }

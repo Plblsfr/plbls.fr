@@ -16,6 +16,8 @@ transcodage arrêté. En HLS, la position réelle vaut `offset` (renvoyé par l'
 
 Sous-titres texte (SRT, WebVTT, ASS, SSA), intégrés au fichier ou à côté (`Film.fr.srt`), convertis en WebVTT par ffmpeg puis nettoyés
 (balises, scripts et liens retirés), mis en cache en base. Les sous-titres image (PGS, VobSub) ne sont pas proposés.
+Une piste n'est extraite qu'une fois à la fois : les requêtes simultanées sur la même piste attendent le même ffmpeg, deux extractions
+au plus tournent en même temps sur le serveur, et un échec est renvoyé tel quel pendant 60 s sans relancer ffmpeg.
 
 ## Flux signés et limites
 
@@ -24,6 +26,8 @@ droits ; une requête qui porte la session d'une autre personne est refusée. Au
 
 - `ENTRACTE_MAX_FLUX` lectures par personne, `ENTRACTE_MAX_TRANSCODAGES` transcodages au total, dossier temporaire limité à
   `ENTRACTE_TRANSCODE_MAX_GO` : au-delà, `503 serveur_charge`. Fermer un flux (`DELETE /streams/{id}`) libère sa place.
+- La taille du dossier temporaire est revérifiée toutes les 10 s : tant qu'elle dépasse `ENTRACTE_TRANSCODE_MAX_GO`, le transcodage
+  démarré le plus tôt est arrêté, ses fichiers supprimés et son flux fermé (le lecteur reçoit `401` et doit rouvrir une lecture).
 - Un flux sans requête depuis `ENTRACTE_INACTIVITE_SECONDES` (300) est fermé : ffmpeg est arrêté et ses fichiers supprimés.
   Le dossier temporaire est vidé au démarrage.
 
