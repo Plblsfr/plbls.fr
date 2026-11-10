@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.90.9",
+    "date": "2026-11-10",
+    "new": [
+      "Salon cinéma : les films proposés viennent désormais d'Entracte."
+    ],
+    "fixes": [
+      "Windows : la connexion est plus fiable.",
+      "Sécurité renforcée : les lecteurs vidéo intégrés (YouTube, Twitch, Vimeo) sont isolés de l'application et la session Android est mieux protégée.",
+      "Rôles : les réglages d'un salon ne permettent plus de passer outre la hiérarchie des rôles."
+    ]
+  },
+  {
     "version": "0.89.2",
     "date": "2026-11-09",
     "new": [
