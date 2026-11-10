@@ -30,10 +30,13 @@ la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt 
 
 ## Catalogue
 
-- Synchronisation périodique (`ENTRACTE_SYNC_MINUTES`, 15 par défaut), par les webhooks Radarr/Sonarr (`POST /webhooks/radarr?token=…`,
+- Synchronisation périodique (`ENTRACTE_SYNC_MINUTES`, 15 par défaut), par les webhooks Radarr/Sonarr (`POST /webhooks/radarr`, jeton `ENTRACTE_WEBHOOK_TOKEN` en mot de passe
+  du Basic auth (champs Username/Password du webhook, nom libre), en `Authorization: Bearer` ou, à éviter car journalisé, en `?token=…` ;
   type « Webhook », évènements import, renommage et suppression) et par le bouton d'administration. Une seule à la fois ; une demande reçue pendant une synchronisation en relance une à la fin.
 - Seuls les fichiers connus de Radarr (films) et Sonarr (épisodes) entrent dans le catalogue ; un fichier présent sur le disque mais inconnu
   de Radarr/Sonarr est ignoré (ceux que Jellyfin connaissait seul sortent du catalogue). Une série sans identifiant TMDB dans Sonarr est ignorée.
+  Le chemin d'un fichier (traduit par `ENTRACTE_CHEMINS`) doit rester sous `ENTRACTE_MEDIAS` une fois les liens symboliques résolus,
+  sinon il est ignoré et compté comme inaccessible.
 - Chaque fichier passe le filtre (extensions autorisées, double extension, conteneur incohérent, absence de flux vidéo, nom suspect) puis
   ffprobe ; un fichier refusé va dans « fichiers écartés » avec sa raison (nom seul, jamais le chemin).
 - Métadonnées et affiches TMDB gardées en base : un titre dont le fichier disparaît passe « absent » sans perdre son titre, son affiche ni
@@ -101,7 +104,7 @@ Retour arrière possible jusqu'à l'étape 4 : vider `ENTRACTE_PUBLIC_URL` et `E
 - Vault, `secret/entracte` : `ENTRACTE_DATABASE_URL`, `ENTRACTE_AEGIS_TOKEN`, `ENTRACTE_STREAM_SECRET`, `ENTRACTE_SERVICE_TOKEN`,
   `ENTRACTE_RADARR_API_KEY`, `ENTRACTE_SONARR_API_KEY`, `ENTRACTE_TMDB_API_KEY`.
 - aegis : `entracte:<jeton>` dans `AEGIS__SERVICES__TOKENS`, puis les permissions aux comptes.
-- Radarr et Sonarr : webhook vers `https://entracte-api.plbls.fr/webhooks/radarr?token=…` (facultatif).
+- Radarr et Sonarr : webhook vers `https://entracte-api.plbls.fr/webhooks/radarr` (ou `/webhooks/sonarr`), jeton en mot de passe (facultatif).
 - Front : `ENTRACTE_PUBLIC_URL` (web, image `estompe-web`) et `VITE_ENTRACTE_URL` au build des apps natives.
 
 ## Version

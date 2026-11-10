@@ -30,6 +30,7 @@ utoipa-axum.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 redis.workspace = true
 url.workspace = true
+percent-encoding.workspace = true
 
 [dev-dependencies]
 tower.workspace = true

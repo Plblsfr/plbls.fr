@@ -87,7 +87,7 @@ async fn load_fresh_session(state: &AppState, sid: &str) -> Result<Session, Auth
         if fresh(&session) {
             return Ok(session);
         }
-        if store
+        if let Some(jeton) = store
             .try_lock(sid)
             .await
             .map_err(|_| AuthError::Unavailable)?
@@ -100,7 +100,7 @@ async fn load_fresh_session(state: &AppState, sid: &str) -> Result<Session, Auth
                 Ok(None) => Err(AuthError::Unauthenticated),
                 Err(_) => Err(AuthError::Unavailable),
             };
-            store.unlock(sid).await;
+            store.unlock(sid, &jeton).await;
             return result;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;

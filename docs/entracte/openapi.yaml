@@ -331,7 +331,7 @@ paths:
         "200": { description: "`{items: [{id, kind, request_id, title, body, created_at}], last_id}`" }
   /webhooks/radarr:
     post:
-      summary: "Webhook Radarr (`?token=ENTRACTE_WEBHOOK_TOKEN`), lance une synchronisation"
+      summary: "Webhook Radarr, lance une synchronisation. Jeton `ENTRACTE_WEBHOOK_TOKEN` en mot de passe Basic, en Bearer ou en `?token=`"
       security: []
       responses:
         "204": { description: ok }
@@ -339,7 +339,7 @@ paths:
         "404": { description: webhooks non configurés }
   /webhooks/sonarr:
     post:
-      summary: "Webhook Sonarr (`?token=ENTRACTE_WEBHOOK_TOKEN`), lance une synchronisation"
+      summary: "Webhook Sonarr, lance une synchronisation. Jeton `ENTRACTE_WEBHOOK_TOKEN` en mot de passe Basic, en Bearer ou en `?token=`"
       security: []
       responses:
         "204": { description: ok }

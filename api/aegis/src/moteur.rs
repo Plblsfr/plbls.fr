@@ -174,6 +174,12 @@ impl Effectifs {
         }
         self
     }
+
+    pub fn garder_apps(mut self, apps: &[&str]) -> Self {
+        self.permissions
+            .retain(|k, _| k.split_once(':').is_some_and(|(a, _)| apps.contains(&a)));
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -372,6 +378,21 @@ mod tests {
         ]);
         let e = calc(&r).filtrer(Some("pli"));
         assert_eq!(e.permissions.keys().collect::<Vec<_>>(), ["pli:deposit"]);
+    }
+
+    #[test]
+    fn garde_les_applications_demandees() {
+        let r = appliquer_portee(vec![
+            brute("estompe:a", "*", Effet::Allow, Source::Compte),
+            brute("pli:deposit", "*", Effet::Allow, Source::Compte),
+            brute("aegis:admin", "*", Effet::Allow, Source::Compte),
+            brute("plix:a", "*", Effet::Allow, Source::Compte),
+        ]);
+        let e = calc(&r).garder_apps(&["pli", "aegis"]);
+        assert_eq!(
+            e.permissions.keys().collect::<Vec<_>>(),
+            ["aegis:admin", "pli:deposit"]
+        );
     }
 
     #[test]

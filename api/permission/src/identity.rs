@@ -5,34 +5,34 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
-fn mac(secret: &str, id: &str, roles: &str, client: &str, ts: u64) -> Hmac<Sha256> {
-    let mut m = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("clé HMAC");
-    m.update(format!("{id}\n{roles}\n{client}\n{ts}").as_bytes());
-    m
+pub struct Champs<'a> {
+    pub id: &'a str,
+    pub roles: &'a str,
+    pub client: &'a str,
+    pub ts: u64,
+    pub name: &'a str,
+    pub email: &'a str,
 }
 
-/// HMAC-SHA256 (base64url) de `id\nroles\nclient\nts`.
-pub fn sign(secret: &str, id: &str, roles: &str, client: &str, ts: u64) -> String {
-    URL_SAFE_NO_PAD.encode(mac(secret, id, roles, client, ts).finalize().into_bytes())
+/// HMAC-SHA256 (base64url) de `id\nroles\nclient\nts\nname\nemail` (`name` et `email` tels que reçus, encodés).
+pub fn sign(secret: &str, c: &Champs) -> String {
+    let mut m = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("clé HMAC");
+    m.update(
+        format!(
+            "{}\n{}\n{}\n{}\n{}\n{}",
+            c.id, c.roles, c.client, c.ts, c.name, c.email
+        )
+        .as_bytes(),
+    );
+    URL_SAFE_NO_PAD.encode(m.finalize().into_bytes())
 }
 
 /// Signature valide et `ts` de moins de 60 s.
-pub fn verify(
-    secret: &str,
-    id: &str,
-    roles: &str,
-    client: &str,
-    ts: u64,
-    sig: &str,
-    now: u64,
-) -> bool {
-    if secret.is_empty() || now.abs_diff(ts) > 60 {
+pub fn verify(secret: &str, c: &Champs, sig: &str, now: u64) -> bool {
+    if secret.is_empty() || now.abs_diff(c.ts) > 60 {
         return false;
     }
-    sign(secret, id, roles, client, ts)
-        .as_bytes()
-        .ct_eq(sig.as_bytes())
-        .into()
+    sign(secret, c).as_bytes().ct_eq(sig.as_bytes()).into()
 }
 
 #[cfg(test)]
@@ -46,28 +46,49 @@ mod tests {
             .to_string()
     }
 
+    fn champs<'a>(roles: &'a str, name: &'a str, email: &'a str) -> Champs<'a> {
+        Champs {
+            id: "u1",
+            roles,
+            client: "c",
+            ts: 1000,
+            name,
+            email,
+        }
+    }
+
     #[test]
     fn roundtrip_tamper_stale() {
         let secret = cle_aleatoire();
-        let sig = sign(&secret, "u1", "user", "c", 1000);
-        assert!(verify(&secret, "u1", "user", "c", 1000, &sig, 1030));
-        assert!(!verify(&secret, "u1", "admin", "c", 1000, &sig, 1030));
+        let c = champs("user", "demo", "demo@plbls.fr");
+        let sig = sign(&secret, &c);
+        assert!(verify(&secret, &c, &sig, 1030));
         assert!(!verify(
-            &cle_aleatoire(),
-            "u1",
-            "user",
-            "c",
-            1000,
+            &secret,
+            &champs("admin", "demo", "demo@plbls.fr"),
             &sig,
             1030
         ));
-        assert!(!verify(&secret, "u1", "user", "c", 1000, &sig, 1061));
+        assert!(!verify(
+            &secret,
+            &champs("user", "root", "demo@plbls.fr"),
+            &sig,
+            1030
+        ));
+        assert!(!verify(
+            &secret,
+            &champs("user", "demo", "root@plbls.fr"),
+            &sig,
+            1030
+        ));
+        assert!(!verify(&cle_aleatoire(), &c, &sig, 1030));
+        assert!(!verify(&secret, &c, &sig, 1061));
     }
 
     #[test]
     fn empty_secret_never_valid() {
-        let vide = String::new();
-        let sig = sign(&vide, "u1", "user", "c", 1000);
-        assert!(!verify(&vide, "u1", "user", "c", 1000, &sig, 1000));
+        let c = champs("user", "", "");
+        let sig = sign("", &c);
+        assert!(!verify("", &c, &sig, 1000));
     }
 }

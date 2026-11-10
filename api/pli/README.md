@@ -19,7 +19,7 @@ Choix qui en découlent :
 - Une fois la requête de lecture traitée, le message est perdu même si le déchiffrement échoue (clé tronquée, réseau coupé en route). La page vérifie la clé *avant* de consommer et le dit clairement après.
 - L'adresse est retirée de la barre d'adresse (`history.replaceState`) après lecture.
 - Les partages non lus expirent (1 h, 1 j, 7 j ou 30 j au choix, purge toutes les minutes). L'expéditeur voit ses partages en attente (taille, dates : jamais le contenu ni le lien) et peut les **révoquer**.
-- Lecture publique : limitation à 60 requêtes/minute/IP (en mémoire, derrière le proxy via `X-Forwarded-For`), identifiants de 128 bits.
+- Lecture publique : limitation à 60 requêtes/minute/IP (en mémoire, derrière le proxy via `X-Forwarded-For`), identifiants de 128 bits. L'IP est la dernière entrée de `X-Forwarded-For` : fiable seulement derrière un unique reverse proxy de confiance qui l'ajoute (plusieurs proxys en chaîne : tous les clients partagent la même IP ; sans proxy : le client choisit la sienne).
 - CSP stricte (`script-src 'self'`, `frame-ancestors 'none'`), `Referrer-Policy: no-referrer`.
 
 **Limites assumées** : quelqu'un qui a le lien a tout (comme pour tout lien secret : l'envoyer par un canal de confiance). Un serveur compromis pourrait servir un JavaScript piégé : le chiffrement protège contre la lecture de la base, des sauvegardes et des journaux, pas contre une page malveillante. Pas de mot de passe supplémentaire (peut s'ajouter plus tard : dériver la clé avec PBKDF2).
@@ -32,11 +32,11 @@ Choix qui en découlent :
 
 Serveur en **Rust** (axum, tokio, sqlx, serde, tracing), membre du workspace Cargo racine comme les autres backends : code dans ce dossier (`api/pli`), crate `pli`. Front sans build ([`web/pli/public`](../../web/pli/public)), servi par le serveur. Schéma Postgres appliqué au démarrage par les migrations sqlx de [`migrations/`](migrations), idempotentes (`IF NOT EXISTS`) : une base créée par l'ancien serveur Node est reprise telle quelle. Le chiffré est stocké en `BYTEA` (25 Mo max par défaut, `MAX_BYTES`).
 
-Variables d'environnement : `PLI_DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`, ou `AEGIS_URL` et `PLI_AEGIS_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50), `RUST_LOG` (`info`).
+Variables d'environnement : `PLI_DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`, ou `AEGIS_URL` et `PLI_AEGIS_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50, compté dans l'`INSERT` même, sous un verrou par compte : des dépôts simultanés ne le dépassent pas), `RUST_LOG` (`info`).
 
 ## Connexion et permissions
 
-Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de security.plbls.fr (`Domain=.plbls.fr`) arrive aussi sur `pli.plbls.fr` ; le serveur le transmet à `GET /auth/me`, puis demande à permission si le compte a `pli:deposit` (token de service en lecture seule, cache 30 s, **refus en cas d'erreur**). Les requêtes qui modifient doivent porter un `Origin` égal à l'hôte de pli (anti-CSRF).
+Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de security.plbls.fr (`Domain=.plbls.fr`) arrive aussi sur `pli.plbls.fr` ; le serveur le transmet à `GET /auth/me`, puis demande à permission si le compte a `pli:deposit` (token de service en lecture seule, cache 30 s purgé des entrées expirées, **refus en cas d'erreur**). Les 401 et 403 ne rendent que `error` (et `user_id` pour le 403) ; la cause détaillée (gateway ou aegis injoignable, jeton refusé) ne va que dans les journaux. Les requêtes qui modifient doivent porter un `Origin` égal à l'hôte de pli (anti-CSRF).
 
 **À configurer une fois :**
 

@@ -3,7 +3,7 @@
 ## Brancher une application
 
 1. **Jeton** : déclarer l'application côté aegis, `AEGIS__SERVICES__TOKENS=estompe:<jeton>,pli:<jeton>` (un jeton par application,
-   comparé en temps constant, révocable séparément). Le jeton ne lit que les droits et ne déclare que son application.
+   comparé en temps constant, révocable séparément). Le jeton ne lit que les droits de son application (plus `aegis:admin`) et ne déclare que son application.
 2. **Manifeste** au démarrage puis toutes les 10 minutes :
 
 ```http
@@ -22,9 +22,12 @@ Authorization: Bearer <jeton d'estompe>
 POST /v1/effective
 Authorization: Bearer <jeton>
 
-{"sub": "<sub Keycloak>", "email": "alice@plbls.fr", "display_name": "Alice"}
+{"sub": "<sub Keycloak>", "app": "estompe"}
 → {"sub": "…", "generation": 3, "valid_until": "…", "permissions": {"estompe:gifs.use": {"allow": ["*"], "deny": []}}}
 ```
+
+   Seules les permissions de l'application du jeton et celles d'aegis (`aegis:admin`) sont rendues ; `app` (facultatif) restreint à
+   l'une des deux, une autre application répond 403. L'e-mail et le nom de l'annuaire viennent de la synchronisation Keycloak.
 
    Contrôle ponctuel : `POST /v1/check {"sub", "permission", "resource"?}` → `{"allowed": bool}`. Pour l'utilisateur connecté
    via la passerelle : `GET /v1/me/effective?app=estompe`. Erreur réseau : **refuser**.

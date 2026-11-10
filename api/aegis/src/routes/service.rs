@@ -277,14 +277,24 @@ async fn manifeste(
 pub struct DemandeEffectifs {
     pub sub: String,
     pub app: Option<String>,
-    pub email: Option<String>,
-    pub display_name: Option<String>,
+}
+
+const APP_AEGIS: &str = "aegis";
+
+fn apps_lisibles<'a>(service: &'a str, app: Option<&'a str>) -> Result<Vec<&'a str>, ApiError> {
+    match app {
+        None => Ok(vec![service, APP_AEGIS]),
+        Some(a) if a == service || a == APP_AEGIS => Ok(vec![a]),
+        Some(_) => Err(ApiError::Forbidden),
+    }
 }
 
 #[utoipa::path(post, path = "/v1/effective", tag = "service", request_body = DemandeEffectifs,
     summary = "Droits effectifs d'un compte",
     description = "Forme calculée : pour chaque permission accordée, les ressources autorisées (`*` = toutes) et refusées. \
-Le refus l'emporte. `valid_until` borne la durée de mise en cache. `email` et `display_name` alimentent l'annuaire.",
+Le refus l'emporte. `valid_until` borne la durée de mise en cache. Seules les permissions de l'application du jeton et celles \
+d'aegis (`aegis:admin`) sont rendues ; `app` restreint à l'une des deux, toute autre valeur est refusée (403). \
+L'appel note la dernière activité du compte ; l'e-mail et le nom de l'annuaire ne viennent que de la synchronisation Keycloak.",
     security(("serviceToken" = [])),
     responses((status = 200, body = Effectifs), (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 async fn effectifs(
@@ -292,21 +302,19 @@ async fn effectifs(
     caller: Caller,
     Json(d): Json<DemandeEffectifs>,
 ) -> ApiResult<Json<Effectifs>> {
-    caller.service()?;
+    let service = caller.service()?;
     if d.sub.trim().is_empty() {
         return Err(ApiError::BadRequest("sub vide".into()));
     }
-    if d.email.is_some() || d.display_name.is_some() {
-        let db = state.db.clone();
-        let (sub, email, nom) = (d.sub.clone(), d.email.clone(), d.display_name.clone());
-        tokio::spawn(async move {
-            if let Err(e) = annuaire::vu(&db, &sub, email.as_deref(), nom.as_deref()).await {
-                tracing::warn!("annuaire : {e}");
-            }
-        });
-    }
+    let apps = apps_lisibles(service, d.app.as_deref())?;
+    let (db, sub) = (state.db.clone(), d.sub.clone());
+    tokio::spawn(async move {
+        if let Err(e) = annuaire::vu(&db, &sub, None, None).await {
+            tracing::warn!("annuaire : {e}");
+        }
+    });
     let e = stockage::effectifs(&state, &d.sub).await?;
-    Ok(Json(e.filtrer(d.app.as_deref())))
+    Ok(Json(e.garder_apps(&apps)))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -398,6 +406,20 @@ mod tests {
             valider(&m(), &Ressources::default()).is_ok(),
             "sans list_url"
         );
+    }
+
+    #[test]
+    fn un_service_ne_lit_que_ses_droits_et_ceux_d_aegis() {
+        assert_eq!(
+            apps_lisibles("estompe", None).unwrap(),
+            ["estompe", "aegis"]
+        );
+        assert_eq!(apps_lisibles("pli", Some("pli")).unwrap(), ["pli"]);
+        assert_eq!(apps_lisibles("pli", Some("aegis")).unwrap(), ["aegis"]);
+        assert!(matches!(
+            apps_lisibles("pli", Some("estompe")),
+            Err(ApiError::Forbidden)
+        ));
     }
 
     #[test]

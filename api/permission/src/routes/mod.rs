@@ -44,7 +44,7 @@ impl Modify for Security {
         let c = openapi.components.get_or_insert_with(Default::default);
         let mut key = ApiKey::Header(ApiKeyValue::new("X-Identity-Sig"));
         if let ApiKey::Header(v) = &mut key {
-            v.description = Some("Avec X-User-Id, X-User-Roles, X-Client-Id, X-Identity-Ts : injectés par auth-gateway".into());
+            v.description = Some("Avec X-User-Id, X-User-Roles, X-Client-Id, X-Identity-Ts, X-User-Name et X-User-Email : injectés par auth-gateway".into());
         }
         c.add_security_scheme("gatewayIdentity", SecurityScheme::ApiKey(key));
         c.add_security_scheme(

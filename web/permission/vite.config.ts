@@ -26,7 +26,7 @@ export default defineConfig({
           !viaGateway &&
           proxy.on("proxyReq", (req: any) => {
             const ts = Math.floor(Date.now() / 1000);
-            const sig = createHmac("sha256", secret).update(`${userId}\n${roles}\n${client}\n${ts}`).digest("base64url");
+            const sig = createHmac("sha256", secret).update(`${userId}\n${roles}\n${client}\n${ts}\n\n`).digest("base64url");
             for (const [k, v] of Object.entries({
               "X-User-Id": userId, "X-User-Roles": roles, "X-Client-Id": client, "X-Identity-Ts": String(ts), "X-Identity-Sig": sig,
             })) req.setHeader(k, v);

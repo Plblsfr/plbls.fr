@@ -151,7 +151,17 @@ impl Banc {
                     .header("x-identity-ts", ts.to_string())
                     .header(
                         "x-identity-sig",
-                        identity::sign(secret(), sub, roles, "estompe", ts),
+                        identity::sign(
+                            secret(),
+                            &identity::Champs {
+                                id: sub,
+                                roles,
+                                client: "estompe",
+                                ts,
+                                name: "",
+                                email,
+                            },
+                        ),
                     );
             }
         }
@@ -546,7 +556,25 @@ async fn fiche_compte_explication_simulation_copie() {
             Some(json!({"sub": "erin", "email": "erin@plbls.fr", "display_name": "Erin"})),
         )
         .await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let mut page = Value::Null;
+    for _ in 0..100 {
+        page = b.admin("GET", "/v1/admin/accounts?q=erin", None).await;
+        if page["accounts"][0]["last_seen_at"].is_string() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(page["accounts"][0]["sub"], "erin");
+    assert!(
+        page["accounts"][0]["email"].is_null(),
+        "e-mail d'un service ignoré : {page}"
+    );
+    sqlx::query(
+        "UPDATE accounts SET email = 'erin@plbls.fr', display_name = 'Erin' WHERE sub = 'erin'",
+    )
+    .execute(&b.state.db)
+    .await
+    .unwrap();
     let page = b.admin("GET", "/v1/admin/accounts?q=ERIN@", None).await;
     assert_eq!(page["accounts"][0]["sub"], "erin");
     assert_eq!(page["accounts"][0]["email"], "erin@plbls.fr");
@@ -846,6 +874,102 @@ async fn liste_de_ressources_bornee() {
         !message.contains("418") && !message.contains("secrète"),
         "{v}"
     );
+}
+
+#[tokio::test]
+async fn effectifs_limites_a_l_application_du_jeton() {
+    let Some(b) = banc().await else { return };
+    b.manifeste().await;
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-pli"),
+            "PUT",
+            "/v1/manifest",
+            Some(json!({"app": "pli", "name": "pli", "permissions": [{"key": "deposit", "label": "Déposer"}]})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    for p in ["estompe:gifs.use", "pli:deposit", "aegis:admin"] {
+        b.admin(
+            "POST",
+            "/v1/admin/rules",
+            Some(json!({"subject_kind": "account", "subject_id": "zoe", "permission": p, "effect": "allow"})),
+        )
+        .await;
+    }
+    let banc = &b;
+    let lire = |jeton: &'static str, corps: Value| async move {
+        banc.appel(Qui::Service(jeton), "POST", "/v1/effective", Some(corps))
+            .await
+    };
+    let (s, v) = lire("jeton-pli", json!({"sub": "zoe"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let mut cles: Vec<&str> = v["permissions"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    cles.sort();
+    assert_eq!(cles, ["aegis:admin", "pli:deposit"]);
+    let (s, _) = lire("jeton-pli", json!({"sub": "zoe", "app": "estompe"})).await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+    let (s, v) = lire("jeton-estompe", json!({"sub": "zoe", "app": "estompe"})).await;
+    assert_eq!(s, StatusCode::OK);
+    assert!(v["permissions"].get("estompe:gifs.use").is_some());
+    assert!(v["permissions"].get("pli:deposit").is_none());
+}
+
+#[tokio::test]
+async fn identite_signee_nom_et_email_encodes() {
+    let Some(b) = banc().await else { return };
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let (nom, email) = ("J%C3%A9r%C3%B4me", "j%C3%A9r%C3%B4me@plbls.fr");
+    let requete = |email_envoye: &str| {
+        Request::builder()
+            .uri("/v1/admin/roles")
+            .header("x-user-id", "jerome")
+            .header("x-user-roles", "aegis-admin")
+            .header("x-user-name", nom)
+            .header("x-user-email", email_envoye)
+            .header("x-client-id", "plbls-gateway")
+            .header("x-identity-ts", ts.to_string())
+            .header(
+                "x-identity-sig",
+                identity::sign(
+                    secret(),
+                    &identity::Champs {
+                        id: "jerome",
+                        roles: "aegis-admin",
+                        client: "plbls-gateway",
+                        ts,
+                        name: nom,
+                        email,
+                    },
+                ),
+            )
+            .body(Body::empty())
+            .unwrap()
+    };
+    let r = b
+        .app
+        .clone()
+        .oneshot(requete("root@plbls.fr"))
+        .await
+        .unwrap();
+    assert_eq!(
+        r.status(),
+        StatusCode::UNAUTHORIZED,
+        "e-mail hors signature"
+    );
+    let r = b.app.clone().oneshot(requete(email)).await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let page = b.admin("GET", "/v1/admin/accounts?q=jerome", None).await;
+    assert_eq!(page["accounts"][0]["email"], "jérôme@plbls.fr");
+    assert_eq!(page["accounts"][0]["display_name"], "Jérôme");
 }
 
 #[tokio::test]
