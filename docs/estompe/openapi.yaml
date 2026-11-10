@@ -1403,7 +1403,7 @@ paths:
     parameters: [{$ref: "#/components/parameters/ServerId"}, {$ref: "#/components/parameters/ChannelId"}, {name: rid, in: path, required: true, schema: {type: string, format: uuid}}]
     put:
       tags: [serveurs]
-      summary: Autoriser ou refuser des permissions à un rôle sur ce salon ; deux listes vides = hériter (permission `manage_channels`, et on n'y met que des permissions qu'on a)
+      summary: Autoriser ou refuser des permissions à un rôle sur ce salon ; deux listes vides = hériter (permission `manage_channels`, rôle visé sous son rôle le plus haut sauf « @tout le monde », et on n'y met que des permissions qu'on a)
       requestBody: {required: true, content: {application/json: {schema: {type: object, properties: {allow: {$ref: "#/components/schemas/Permissions"}, deny: {$ref: "#/components/schemas/Permissions"}}}}}}
       responses:
         "204": {description: ok}
