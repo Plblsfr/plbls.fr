@@ -18,7 +18,8 @@ use crate::{
     garde::Personne,
     http::{self, bd, erreur, horodatage, introuvable, invalide, objet, ok},
     images,
-    tmdb::{Fiche, Tmdb, chemin_image_valide},
+    tmdb::{Fiche, Tmdb, chemin_image_valide, correspond},
+    tvmaze,
 };
 
 const COLONNES_DEMANDE: &str =
@@ -143,7 +144,11 @@ pub async fn rechercher(
     let mut erreur_tmdb = None;
     let resultats = if tmdb.configure() {
         match tmdb.rechercher(texte).await {
-            Ok(r) => r,
+            Ok(r) if correspond(texte, &r) => r,
+            Ok(r) => {
+                let suggestions = tvmaze::suggestions(state.config(), state.http(), texte).await;
+                tmdb.corriger(texte, r, &suggestions).await
+            }
             Err(e) => {
                 erreur_tmdb = Some(e.to_string());
                 Vec::new()

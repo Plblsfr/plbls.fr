@@ -41,6 +41,8 @@ pub struct Resultat {
     pub annee: Option<i32>,
     pub resume: Option<String>,
     pub affiche: Option<String>,
+    pub titre_original: Option<String>,
+    pub popularite: f64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -88,6 +90,77 @@ pub fn chemin_image_valide(chemin: &str) -> bool {
 
 fn image(v: &Value, cle: &str) -> Option<String> {
     texte(v, cle).filter(|c| chemin_image_valide(c))
+}
+
+fn resultats(v: &Value) -> Vec<Resultat> {
+    v["results"]
+        .as_array()
+        .map(|r| {
+            r.iter()
+                .filter_map(|x| {
+                    let (genre, titre, original, date) = match x["media_type"].as_str()? {
+                        "movie" => ("film", "title", "original_title", "release_date"),
+                        "tv" => ("serie", "name", "original_name", "first_air_date"),
+                        _ => return None,
+                    };
+                    Some(Resultat {
+                        genre,
+                        tmdb_id: x["id"].as_i64()?,
+                        titre: texte(x, titre)?,
+                        annee: annee(x[date].as_str()),
+                        resume: texte(x, "overview"),
+                        affiche: image(x, "poster_path"),
+                        titre_original: texte(x, original),
+                        popularite: x["popularity"].as_f64().unwrap_or(0.0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn normaliser(texte: &str) -> String {
+    let mut sortie = String::new();
+    for c in texte.chars().flat_map(char::to_lowercase) {
+        let c = match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => 'a',
+            'ç' => 'c',
+            'è' | 'é' | 'ê' | 'ë' => 'e',
+            'ì' | 'í' | 'î' | 'ï' => 'i',
+            'ñ' => 'n',
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' => 'u',
+            'ý' | 'ÿ' => 'y',
+            c if c.is_alphanumeric() => c,
+            _ => ' ',
+        };
+        if c != ' ' || !sortie.ends_with(' ') {
+            sortie.push(c);
+        }
+    }
+    sortie.trim().to_string()
+}
+
+fn pertinent(q: &str, r: &Resultat) -> bool {
+    let q = normaliser(q);
+    !q.is_empty()
+        && [Some(r.titre.as_str()), r.titre_original.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|t| format!(" {} ", normaliser(t)).contains(&format!(" {q} ")))
+}
+
+pub fn correspond(q: &str, resultats: &[Resultat]) -> bool {
+    resultats.iter().any(|r| pertinent(q, r))
+}
+
+pub fn classer(q: &str, mut resultats: Vec<Resultat>) -> Vec<Resultat> {
+    resultats.sort_by(|a, b| {
+        pertinent(q, b)
+            .cmp(&pertinent(q, a))
+            .then(b.popularite.total_cmp(&a.popularite))
+    });
+    resultats
 }
 
 impl<'a> Tmdb<'a> {
@@ -213,28 +286,30 @@ impl<'a> Tmdb<'a> {
         let v = self
             .lire("/search/multi", &[("query", q), ("include_adult", "false")])
             .await?;
-        Ok(v["results"]
-            .as_array()
-            .map(|r| {
-                r.iter()
-                    .filter_map(|x| {
-                        let (genre, titre, date) = match x["media_type"].as_str()? {
-                            "movie" => ("film", "title", "release_date"),
-                            "tv" => ("serie", "name", "first_air_date"),
-                            _ => return None,
-                        };
-                        Some(Resultat {
-                            genre,
-                            tmdb_id: x["id"].as_i64()?,
-                            titre: texte(x, titre)?,
-                            annee: annee(x[date].as_str()),
-                            resume: texte(x, "overview"),
-                            affiche: image(x, "poster_path"),
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default())
+        Ok(classer(q, resultats(&v)))
+    }
+
+    pub async fn corriger(
+        &self,
+        q: &str,
+        mut tous: Vec<Resultat>,
+        suggestions: &[String],
+    ) -> Vec<Resultat> {
+        let mut corriges = Vec::new();
+        for s in suggestions
+            .iter()
+            .filter(|s| normaliser(s) != normaliser(q))
+            .take(2)
+        {
+            match self.rechercher(s).await {
+                Ok(r) => corriges.extend(r.into_iter().filter(|x| pertinent(s, x))),
+                Err(e) => tracing::warn!("recherche corrigée : {e}"),
+            }
+        }
+        corriges.append(&mut tous);
+        let mut vus = std::collections::BTreeSet::new();
+        corriges.retain(|r| vus.insert((r.genre, r.tmdb_id)));
+        corriges
     }
 
     pub async fn image(&self, chemin: &str, largeur: u32) -> Result<(String, Vec<u8>), Erreur> {
@@ -308,6 +383,53 @@ mod tests {
         assert_eq!(s.saisons.len(), 2);
         assert_eq!(s.saisons[1].episodes, 8);
         assert_eq!(s.tvdb_id, Some(42));
+    }
+
+    fn res(titre: &str, original: Option<&str>, popularite: f64) -> Resultat {
+        Resultat {
+            genre: "serie",
+            tmdb_id: 0,
+            titre: titre.into(),
+            annee: None,
+            resume: None,
+            affiche: None,
+            titre_original: original.map(String::from),
+            popularite,
+        }
+    }
+
+    #[test]
+    fn normalisation() {
+        assert_eq!(normaliser("  L'Été  à   Paris! "), "l ete a paris");
+        assert_eq!(normaliser("Marvel's Daredevil"), "marvel s daredevil");
+    }
+
+    #[test]
+    fn titres_pertinents_et_populaires_en_tete() {
+        let r = classer(
+            "punisher",
+            vec![
+                res("Kidou Senshi", Some("Punisher Gundam"), 3.0),
+                res("Punishers", None, 50.0),
+                res("Marvel's The Punisher", None, 80.0),
+                res("Punisher", Some("パニッシャー"), 1.5),
+                res("The Punisher", None, 40.0),
+            ],
+        );
+        let titres: Vec<&str> = r.iter().map(|x| x.titre.as_str()).collect();
+        assert_eq!(
+            titres,
+            [
+                "Marvel's The Punisher",
+                "The Punisher",
+                "Kidou Senshi",
+                "Punisher",
+                "Punishers"
+            ]
+        );
+        assert!(correspond("Punisher", &r));
+        assert!(!correspond("dardevil", &[res("Dark Devil", None, 9.0)]));
+        assert!(!correspond(" ", &r));
     }
 
     #[test]

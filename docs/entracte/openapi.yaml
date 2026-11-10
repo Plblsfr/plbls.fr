@@ -218,7 +218,7 @@ paths:
   /search:
     get:
       summary: "Recherche unique (`q`) dans la bibliothèque et dans TMDB"
-      description: "Chaque résultat : Titre ou `{id: null, kind, title, year, overview}`, plus `present`, `tmdb_id`, `poster_url` (servie par Entracte), `requestable` et `request` (demande en cours ou dernière demande). `tmdb_error` signale TMDB injoignable."
+      description: "Chaque résultat : Titre ou `{id: null, kind, title, year, overview}`, plus `present`, `tmdb_id`, `poster_url` (servie par Entracte), `requestable` et `request` (demande en cours ou dernière demande). Résultats TMDB pertinents puis populaires en tête ; sans titre correspondant, requête corrigée par la recherche floue de TVmaze. `tmdb_error` signale TMDB injoignable."
       responses:
         "200": { description: "`{items, tmdb_error}`" }
         "400": { description: recherche vide ou trop longue }
