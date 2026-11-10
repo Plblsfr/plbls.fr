@@ -100,7 +100,7 @@ mod tests {
             testutil::config_avec(&[
                 ("GATEWAY_URL", g.url.as_str()),
                 ("AEGIS_URL", a.url.as_str()),
-                ("AEGIS_TOKEN", "jeton"),
+                ("AEGIS_TOKEN_ESTOMPE", "jeton"),
             ]),
             vec!["gifs".into()],
         );
@@ -167,7 +167,7 @@ mod tests {
             testutil::config_avec(&[
                 ("GATEWAY_URL", g.url.as_str()),
                 ("AEGIS_URL", url.as_str()),
-                ("AEGIS_TOKEN", "x"),
+                ("AEGIS_TOKEN_ESTOMPE", "x"),
             ]),
             vec![],
         );

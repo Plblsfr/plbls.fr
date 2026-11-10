@@ -21,8 +21,9 @@ async fn main() -> anyhow::Result<()> {
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
+    let env = commun::env::Env::charger();
     if std::env::args().nth(1).as_deref() == Some(entracte::import_estompe::COMMANDE) {
-        match entracte::import_estompe::lancer(|k| std::env::var(k).ok()).await {
+        match entracte::import_estompe::lancer(|k| env.get(k)).await {
             Ok(rapport) => {
                 print!("{rapport}");
                 return Ok(());
@@ -33,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
-    let cfg = match entracte::Config::from_env(|k| std::env::var(k).ok()) {
+    let cfg = match entracte::Config::from_env(|k| env.get(k)) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{e}");

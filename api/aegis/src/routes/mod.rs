@@ -49,7 +49,7 @@ impl Modify for Securite {
             SecurityScheme::Http(
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
-                    .description(Some("Jeton d'une application (AEGIS__SERVICES__TOKENS), lié à une seule application"))
+                    .description(Some("Jeton d'une application (AEGIS_TOKEN_<APPLICATION>), lié à une seule application"))
                     .build(),
             ),
         );

@@ -13,7 +13,7 @@ function devEnv(): Record<string, string> {
   }
   env.PERMISSION__SERVER__BIND = `127.0.0.1:${port}`;
   env.BASE = `http://127.0.0.1:${port}`;
-  if (process.env.E2E_DATABASE_URL) env.PERMISSION__DATABASE__URL = process.env.E2E_DATABASE_URL;
+  if (process.env.E2E_DATABASE_URL) env.DATABASE_URL = process.env.E2E_DATABASE_URL;
   return env;
 }
 

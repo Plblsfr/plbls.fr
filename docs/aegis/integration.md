@@ -2,8 +2,9 @@
 
 ## Brancher une application
 
-1. **Jeton** : déclarer l'application côté aegis, `AEGIS__SERVICES__TOKENS=estompe:<jeton>,pli:<jeton>` (un jeton par application,
-   comparé en temps constant, révocable séparément). Le jeton ne lit que les droits de son application (plus `aegis:admin`) et ne déclare que son application.
+1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`),
+   déclarée dans le `.env.example` de l'application et lue aussi par aegis, qui en tire le nom de l'application (suffixe en minuscules,
+   `_` devenant `-`) ; un jeton par application, comparé en temps constant, révocable séparément. Le jeton ne lit que les droits de son application (plus `aegis:admin`) et ne déclare que son application.
 2. **Manifeste** au démarrage puis toutes les 10 minutes :
 
 ```http
@@ -32,7 +33,7 @@ Authorization: Bearer <jeton>
    Contrôle ponctuel : `POST /v1/check {"sub", "permission", "resource"?}` → `{"allowed": bool}`. Pour l'utilisateur connecté
    via la passerelle : `GET /v1/me/effective?app=estompe`. Erreur réseau : **refuser**.
 
-4. **Invalidation** : s'abonner à `<prefix>:invalidation` sur le Redis d'aegis (`aegis` par défaut) et vider son cache à chaque
+4. **Invalidation** : s'abonner à `<prefix>:invalidation` sur le Redis partagé (`<prefix>` = `AEGIS_REDIS_PREFIX`, `aegis` par défaut) et vider son cache à chaque
    message (`compte` : ce `sub` ; `tout` : tout le cache). Un utilisateur Redis en lecture seule de ce canal suffit :
    `ACL SETUSER estompe on >… resetchannels &aegis:invalidation -@all +subscribe +ping`.
 
@@ -45,12 +46,12 @@ Authorization: Bearer <jeton>
 
 | Variable | Rôle |
 | --- | --- |
-| `AEGIS__DATABASE__URL` | PostgreSQL (migrations au démarrage) |
-| `AEGIS__IDENTITY__SECRET` | Secret HMAC partagé avec la passerelle (`GATEWAY__IDENTITY__SECRET`) ; vide = refus de démarrer |
-| `AEGIS__REDIS__URL`, `AEGIS__REDIS__PREFIX` | Cache et pub/sub (vide = sans cache ni invalidation, les applications retombent sur leur TTL) |
-| `AEGIS__SERVICES__TOKENS` | `app:jeton,app2:jeton2` |
-| `AEGIS__SERVER__ADMIN_ROLE` | Rôle Keycloak super-admin (défaut `aegis-admin`) |
-| `AEGIS__GATEWAY__URL`, `AEGIS__GATEWAY__INTERNAL_TOKEN` | Annuaire : `/internal/users` de la passerelle (avec `GATEWAY__INTERNAL__LIST_ALL=true`) |
+| `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD` | Communes : serveur PostgreSQL, aegis rejoint la base `aegis` (migrations au démarrage) |
+| `GATEWAY_IDENTITE_SECRET` | Commune : secret HMAC partagé avec la passerelle ; vide = refus de démarrer |
+| `REDIS_URL`, `REDIS_PASSWORD`, `AEGIS_REDIS_PREFIX` | Communes : cache et pub/sub sur le Redis partagé (`REDIS_URL` vide = sans cache ni invalidation, les applications retombent sur leur TTL) |
+| `AEGIS_TOKEN_<APPLICATION>` | Jeton de chaque application cliente (ci-dessus) |
+| `AEGIS_ADMIN_ROLE` | Commune : rôle Keycloak super-admin (défaut `aegis-admin`) |
+| `GATEWAY_INTERNE_URL`, `GATEWAY_INTERNE_TOKEN` | Communes : annuaire : `/internal/users` de la passerelle (avec `GATEWAY__INTERNAL__LIST_ALL=true`) |
 | `AEGIS__ANNUAIRE__SYNC_MINUTES` | Période de synchronisation Keycloak (15 ; 0 = désactivée) |
 | `AEGIS__RESSOURCES__ALLOWED_HOSTS` | Hôtes autorisés pour les `list_url`, séparés par des virgules (vide = aucun : tout manifeste avec un `list_url` est refusé) |
 | `AEGIS__CACHE__TTL_SECS` | Durée maximale d'un droit en cache (600) |
@@ -61,10 +62,10 @@ Passerelle : route `/api/aegis` vers `http://aegis:8080` (`api/security/config/r
 
 | Variable | Rôle |
 | --- | --- |
-| `AEGIS_URL` | URL interne d'aegis. Vide : Estompe reste sur l'ancien service permission (`PERMISSION_*`) |
-| `AEGIS_TOKEN` | Jeton d'Estompe (`estompe:<jeton>` dans `AEGIS__SERVICES__TOKENS`) ; vérifie aussi les appels d'aegis vers `/internal/aegis/resources/*` |
-| `AEGIS_REDIS_URL`, `AEGIS_REDIS_PREFIX` | Abonnement aux invalidations |
-| `AEGIS_ADMIN_ROLE` | Rôle Keycloak qui ouvre Administration › accès sans compte Estompe (défaut `aegis-admin`) |
+| `AEGIS_URL` | URL interne d'aegis. Vide : Estompe reste sur le service permission (`PERMISSION_*`) |
+| `AEGIS_TOKEN_ESTOMPE` | Jeton d'Estompe (application `estompe` chez aegis) ; vérifie aussi les appels d'aegis vers `/internal/aegis/resources/*` |
+| `REDIS_URL`, `REDIS_PASSWORD`, `AEGIS_REDIS_PREFIX` | Communes : abonnement aux invalidations |
+| `AEGIS_ADMIN_ROLE` | Commune : rôle Keycloak qui ouvre Administration › accès sans compte Estompe (défaut `aegis-admin`) |
 | `AEGIS_RESOURCES_URL` | URL par laquelle aegis joint Estompe (défaut `http://estompe-api:8080`) |
 
 Estompe envoie son manifeste (permissions des blocs actifs), applique la garde du catalogue sur ses routes, plafonne les rôles
@@ -75,12 +76,12 @@ En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:acces
 
 ## pli
 
-`AEGIS_URL` et `AEGIS_TOKEN` (prioritaires sur `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`) : pli envoie son manifeste
+`AEGIS_URL` et `AEGIS_TOKEN_PLI` (prioritaires sur `PERMISSION_URL` et `PERMISSION_TOKEN_PLI`) : pli envoie son manifeste
 (`pli:deposit`, fermée par défaut) et vérifie le dépôt par `POST /v1/check`.
 
 ## Entracte
 
-`AEGIS_URL` et `ENTRACTE_AEGIS_TOKEN` (jeton `entracte:<jeton>` de `AEGIS__SERVICES__TOKENS`) : Entracte envoie son manifeste
+`AEGIS_URL` et `AEGIS_TOKEN_ENTRACTE` (application `entracte` chez aegis) : Entracte envoie son manifeste
 (`entracte:access`, `entracte:request`, `entracte:admin`, fermées par défaut) et lit les droits par `POST /v1/effective` (cache borné par
 `valid_until`, 30 s au plus). Sans aegis, toutes ses permissions sont refusées. Voir [docs/entracte](../entracte/README.md).
 
@@ -88,7 +89,7 @@ En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:acces
 
 1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe et de pli.
 2. Donner le rôle Keycloak `aegis-admin` (et `user`) aux administrateurs.
-3. Renseigner `AEGIS_URL`, `AEGIS_TOKEN` et `AEGIS_REDIS_URL` d'abord sur une instance de test d'Estompe pour recevoir le manifeste,
+3. Renseigner `AEGIS_URL` et `AEGIS_TOKEN_ESTOMPE` d'abord sur une instance de test d'Estompe pour recevoir le manifeste,
    puis configurer dans Administration › accès : un rôle `Membre` avec `estompe:access` (ou l'ajouter à « Tout le monde »),
    `entracte:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs, `pli:deposit` aux déposants.
 4. Basculer Estompe et pli en production en renseignant leurs variables `AEGIS_*` ; revenir en arrière = les vider.

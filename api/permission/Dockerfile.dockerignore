@@ -10,6 +10,7 @@
 !Cargo.toml
 !Cargo.lock
 !rust-toolchain.toml
+!plbls.env
 !api
 !web/permission
 **/node_modules

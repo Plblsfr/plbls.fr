@@ -5,7 +5,7 @@ Gestion des **permissions** des comptes plbls.fr (RBAC par application). Les com
 - `api/permission/` (ce dossier) : API REST (`/v1/...`), spec OpenAPI générée depuis le code (`/openapi.json`), sert aussi le front compilé ; membre du workspace Cargo racine (`../../Cargo.toml`), image construite depuis la racine du dépôt (`just permission-image`)
 - `web/permission/` : interface d'administration Svelte 5 + plbls-ui (applications, permissions, rôles, attributions, journal)
 - `docs/permission/` : modèle, intégration, architecture
-- `deploy/permission/.env.example` : variables de production ; compose et dev : [`deploy/`](../../deploy/README.md)
+- variables de production : [`plbls.env`](../../plbls.env) et les communes de `deploy/.env.example` (permission n'a aucun secret propre) ; compose et dev : [`deploy/`](../../deploy/README.md)
 - `scripts/permission/smoke.py` : test de bout en bout de toute l'API
 
 Modèle et intégration : [docs/permission/](../../docs/permission/README.md).
@@ -45,23 +45,22 @@ Le dépôt n'est **jamais cloné** en production : la CI teste en PR (`.github/w
 
 **Réglages du dépôt GitHub** : aucun secret n'est obligatoire (la CI utilise `GITHUB_TOKEN`). Le secret `DOKPLOY_WEBHOOK_URL` est optionnel : URL de déploiement de l'application Dokploy, appelée après la publication d'un tag.
 
-**Base de données** : une instance Postgres existante (13 ou plus). Créer l'utilisateur et la base, en superuser :
+**Base de données** : base `permission` du PostgreSQL partagé (`postgres-main`), appartenant à l'utilisateur commun `DATABASE_USER`. La créer une fois, en superuser :
 
 ```sql
-CREATE ROLE permission LOGIN PASSWORD '<mot-de-passe aléatoire, sans @ : / ? # %>';
-CREATE DATABASE permission OWNER permission;
+CREATE DATABASE permission OWNER plbls;
 ```
 
 Le propriétaire de la base est nécessaire : les migrations créent leurs tables dans `public` au démarrage (PostgreSQL 15+ ne l'autorise qu'au propriétaire). Aucune extension requise.
 
-**Côté Dokploy** : service `permission` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) (voir [`deploy/README.md`](../../deploy/README.md)), image `ghcr.io/plblsfr/permission` (tag `PERMISSION_TAG`), port `8080`, sonde `GET /health`. Variables (`deploy/permission/.env.example`, secrets dans `secret/permission` de Vault) :
+**Côté Dokploy** : service `permission` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) (voir [`deploy/README.md`](../../deploy/README.md)), image `ghcr.io/plblsfr/permission` (tag `PERMISSION_TAG`), port `8080`, sonde `GET /health`. Variables (communes dans `plbls.env` et `deploy/.env.example`, secrets dans `secret/commun` de Vault ; voir [`deploy/README.md`](../../deploy/README.md)) :
 
-- `PERMISSION__DATABASE__URL` = `postgres://permission:<mot-de-passe>@<hôte-postgres>:5432/permission` (`?sslmode=require` si l'instance l'impose)
-- `PERMISSION__IDENTITY__SECRET` (le même que `GATEWAY__IDENTITY__SECRET`)
-- `PERMISSION__SERVICES__TOKENS` (optionnel)
+- `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD` (communs : serveur sans base, `?sslmode=require` si l'instance l'impose ; permission rejoint la base `permission`)
+- `GATEWAY_IDENTITE_SECRET`, `GATEWAY_INTERNE_URL`, `GATEWAY_INTERNE_TOKEN` (communs avec le gateway et aegis), `PERMISSION_ADMIN_ROLE` (`plbls.env`)
+- `PERMISSION_TOKEN_<SERVICE>` (optionnel) : un jeton par service client, déclaré dans le `.env.example` du client (`PERMISSION_TOKEN_ESTOMPE`, `PERMISSION_TOKEN_PLI`) ; le nom du service est le suffixe en minuscules, `_` devenant `-`
 
 Les migrations s'appliquent au démarrage. Avant le premier usage : rôle Keycloak `permission-admin`, route `/api/permission` dans le gateway ([docs/permission/integration.md](../../docs/permission/integration.md)), domaine `permission.plbls.fr`.
 
 ## Configuration
 
-`api/permission/config/default.toml`, puis variables `PERMISSION__SECTION__CLE`. Secrets uniquement dans l'environnement.
+`api/permission/config/default.toml`, puis variables `PERMISSION__SECTION__CLE`, puis les variables communes ci-dessus. Secrets uniquement dans l'environnement.

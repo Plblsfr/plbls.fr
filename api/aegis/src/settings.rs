@@ -1,3 +1,4 @@
+use commun::env::Env;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -139,9 +140,32 @@ impl Services {
 
 impl Settings {
     pub fn load() -> anyhow::Result<Self> {
+        Self::depuis(&Env::charger())
+    }
+
+    pub fn depuis(env: &Env) -> anyhow::Result<Self> {
+        let get = |k: &str| env.get(k);
+        let present = |k: &str| env.get(k).filter(|v| !v.is_empty());
+        let redis = commun::env::url_redis(get).map_err(anyhow::Error::msg)?;
+        let jetons = env.jetons("AEGIS_TOKEN_");
         let cfg = config::Config::builder()
             .add_source(config::File::with_name("config/default"))
-            .add_source(config::Environment::with_prefix("AEGIS").separator("__"))
+            .add_source(
+                config::Environment::with_prefix("AEGIS")
+                    .separator("__")
+                    .source(Some(env.vars().clone())),
+            )
+            .set_override(
+                "database.url",
+                commun::env::url_base(get, "aegis").map_err(anyhow::Error::msg)?,
+            )?
+            .set_override_option("identity.secret", present("GATEWAY_IDENTITE_SECRET"))?
+            .set_override_option("redis.url", Some(redis).filter(|v| !v.is_empty()))?
+            .set_override_option("redis.prefix", present("AEGIS_REDIS_PREFIX"))?
+            .set_override_option("gateway.url", present("GATEWAY_INTERNE_URL"))?
+            .set_override_option("gateway.internal_token", present("GATEWAY_INTERNE_TOKEN"))?
+            .set_override_option("server.admin_role", present("AEGIS_ADMIN_ROLE"))?
+            .set_override_option("services.tokens", Some(jetons).filter(|v| !v.is_empty()))?
             .build()?;
         Ok(cfg.try_deserialize()?)
     }
@@ -176,5 +200,34 @@ mod tests {
         assert!(!r.hote_autorise("http://ailleurs/x"));
         assert!(!r.hote_autorise("file://estompe-api/etc/passwd"));
         assert!(!r.hote_autorise("http://estompe-api.ailleurs/x"));
+    }
+
+    #[test]
+    fn variables_communes() {
+        let s = Settings::depuis(&Env::depuis([
+            ("DATABASE_URL", "postgres://postgres-main:5432"),
+            ("DATABASE_USER", "plbls"),
+            ("DATABASE_PASSWORD", "mdp"),
+            ("REDIS_URL", "redis://redis:6379"),
+            ("REDIS_PASSWORD", "r"),
+            ("GATEWAY_IDENTITE_SECRET", "id"),
+            ("GATEWAY_INTERNE_URL", "http://auth-gateway:8080"),
+            ("GATEWAY_INTERNE_TOKEN", "int"),
+            ("AEGIS_TOKEN_ESTOMPE", "a"),
+            ("AEGIS_TOKEN_PLI", "b"),
+            ("AEGIS__RESSOURCES__ALLOWED_HOSTS", "estompe-api"),
+        ]))
+        .unwrap();
+        assert_eq!(
+            s.database.url,
+            "postgres://plbls:mdp@postgres-main:5432/aegis"
+        );
+        assert_eq!(s.redis.url, "redis://:r@redis:6379");
+        assert_eq!(s.identity.secret, "id");
+        assert_eq!(s.gateway.url, "http://auth-gateway:8080");
+        assert_eq!(s.gateway.internal_token, "int");
+        assert_eq!(s.services.tokens, "estompe:a,pli:b");
+        assert_eq!(s.ressources.allowed_hosts, "estompe-api");
+        assert_eq!(s.server.admin_role, "aegis-admin");
     }
 }

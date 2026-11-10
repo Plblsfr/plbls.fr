@@ -1,5 +1,5 @@
 //! Routes internes (jamais exposées par le reverse proxy public), protégées par un token statique
-//! (`GATEWAY__INTERNAL__TOKEN`, 404 si vide) pour les micro-services du réseau Docker.
+//! (`GATEWAY_INTERNE_TOKEN`, 404 si vide) pour les micro-services du réseau Docker.
 
 use axum::{
     Json, Router,

@@ -12,7 +12,7 @@ Neuf endpoints propres au service, plus le proxy `/api/*` défini par la config.
 | GET | `/auth/session` | Cookie ou Bearer | `204` si connecté, `401` sinon (sondage léger pour les fronts) |
 | GET | `/healthz` | — | Liveness |
 | GET | `/readyz` | — | Readiness : Redis joignable |
-| GET | `/internal/users?email=&first=&max=` | Bearer statique (`GATEWAY__INTERNAL__TOKEN`) | Interne : comptes dont l'e-mail commence par `email` (insensible à la casse ; vide = tous les comptes, seulement avec `GATEWAY__INTERNAL__LIST_ALL=true`), paginé (`max` 20 par défaut, plafonné par `GATEWAY__INTERNAL__MAX_PAGE_SIZE`, 100 par défaut). Réponse `{users:[{id,email,name}], first, max, next}` ; `next` = `first` de la page suivante, `null` si dernière. `404` si le token est vide |
+| GET | `/internal/users?email=&first=&max=` | Bearer statique (`GATEWAY_INTERNE_TOKEN`) | Interne : comptes dont l'e-mail commence par `email` (insensible à la casse ; vide = tous les comptes, seulement avec `GATEWAY__INTERNAL__LIST_ALL=true`), paginé (`max` 20 par défaut, plafonné par `GATEWAY__INTERNAL__MAX_PAGE_SIZE`, 100 par défaut). Réponse `{users:[{id,email,name}], first, max, next}` ; `next` = `first` de la page suivante, `null` si dernière. `404` si le token est vide |
 | * | `/api/{prefix}/...` | Selon la route | Proxy vers le micro-service avec en-têtes d'identité |
 
 ## Réponse de `GET /auth/me`

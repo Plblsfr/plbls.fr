@@ -160,7 +160,7 @@ async fn permission_autorise_refuse_cache_erreur_vaut_refus() {
         .await;
     let raison = r.reason.unwrap();
     assert!(
-        raison.contains("401") && raison.contains("PERMISSION_SERVICE_TOKEN"),
+        raison.contains("401") && raison.contains("PERMISSION_TOKEN_PLI"),
         "{raison}"
     );
 }
@@ -204,7 +204,7 @@ async fn controle_et_manifeste_via_aegis() {
         .reason
         .unwrap();
     assert!(
-        raison.contains("aegis") && raison.contains("PLI_AEGIS_TOKEN"),
+        raison.contains("aegis") && raison.contains("AEGIS_TOKEN_PLI"),
         "{raison}"
     );
 }

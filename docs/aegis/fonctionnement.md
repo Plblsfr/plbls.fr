@@ -33,7 +33,7 @@ sinon → REFUS
 - Une permission sans type de ressource ne se règle que partout. Une permission typée vérifiée sans ressource ne regarde que `*`.
 - Une **liaison avec portée** (`scope_type` = `app:type`, `scope_id`) ne garde, parmi les règles du rôle, que celles dont la
   permission a ce type, restreintes à cette ressource ; les autres règles du rôle sont ignorées pour cette liaison.
-- Le **super-admin** a le rôle Keycloak `server.admin_role` (défaut `aegis-admin`) ou la permission `aegis:admin`. Le rôle
+- Le **super-admin** a le rôle Keycloak `server.admin_role` (`AEGIS_ADMIN_ROLE`, défaut `aegis-admin`) ou la permission `aegis:admin`. Le rôle
   Keycloak est la porte de secours : on ne peut pas se verrouiller dehors. Un jeton de service n'est jamais administrateur.
 
 Forme calculée renvoyée aux applications (`POST /v1/effective`) et mise en cache :

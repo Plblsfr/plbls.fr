@@ -371,8 +371,9 @@ pub async fn lancer(brut: impl Fn(&str) -> Option<String>) -> Result<Rapport, St
             .filter(|v| !v.is_empty())
             .ok_or_else(|| format!("{k} manquant"))
     };
-    let entracte_url = env("ENTRACTE_DATABASE_URL")?;
-    let estompe_url = env("ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL")?;
+    let entracte_url = commun::env::url_base(&brut, "entracte")?;
+    let estompe_url = env("ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL")
+        .or_else(|_| commun::env::url_base(&brut, "estompe"))?;
     let source = Jellyfin {
         url: env("ENTRACTE_IMPORT_JELLYFIN_URL")?
             .trim_end_matches('/')
@@ -764,9 +765,11 @@ mod tests {
 
     #[tokio::test]
     async fn variables_manquantes() {
-        let erreur = lancer(|k| (k == "ENTRACTE_DATABASE_URL").then(|| "postgres://x/e".into()))
+        let erreur = lancer(|_| None).await.unwrap_err();
+        assert!(erreur.contains("DATABASE_URL"));
+        let erreur = lancer(|k| (k == "DATABASE_URL").then(|| "postgres://x".into()))
             .await
             .unwrap_err();
-        assert_eq!(erreur, "ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL manquant");
+        assert_eq!(erreur, "ENTRACTE_IMPORT_JELLYFIN_URL manquant");
     }
 }

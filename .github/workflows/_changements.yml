@@ -75,7 +75,7 @@ jobs:
           c rust "${cargo[@]}" '**/Dockerfile' 'api/**' '!**/*.md'
           c estompe "${estompe[@]}"
           c estompe_api 'api/estompe/**' '!**/*.md' deploy/estompe/.env.example docs/estompe/openapi.yaml \
-            scripts/estompe/paquets-cargo.sh "${cargo[@]}" .dockerignore
+            scripts/estompe/paquets-cargo.sh "${cargo[@]}" .dockerignore plbls.env
           c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
           c estompe_tauri 'apps/estompe/**' '!**/*.md'
           c estompe_ci_image 'deploy/estompe/ci/**'
@@ -91,11 +91,11 @@ jobs:
           c front_estompe 'web/estompe/**' 'apps/estompe/*/src/**' 'apps/estompe/crates/core/ts/**' 'scripts/estompe/*.mjs' api/estompe/core/src/catalogue.rs '!**/*.md'
           c front_permission 'web/permission/**' '!**/*.md'
           c front_pli 'web/pli/**' '!**/*.md'
-          c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'api/commun/**' 'web/pli/**' '!**/*.md' "${image[@]}"
-          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'api/commun/**' 'web/permission/**' '!**/*.md' "${image[@]}"
-          c image_security "${cargo[@]}" .dockerignore 'api/security/**' 'api/commun/**' '!**/*.md' "${image[@]}"
-          c image_aegis "${cargo[@]}" 'api/aegis/**' 'api/commun/**' "${image[@]}"
-          c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' 'api/commun/**' '!**/*.md' deploy/entracte/.env.example
+          c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'api/commun/**' 'web/pli/**' '!**/*.md' "${image[@]}" plbls.env
+          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'api/commun/**' 'web/permission/**' '!**/*.md' "${image[@]}" plbls.env
+          c image_security "${cargo[@]}" .dockerignore 'api/security/**' 'api/commun/**' '!**/*.md' "${image[@]}" plbls.env
+          c image_aegis "${cargo[@]}" 'api/aegis/**' 'api/commun/**' "${image[@]}" plbls.env
+          c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' 'api/commun/**' '!**/*.md' deploy/entracte/.env.example plbls.env
           c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
       - id: e
         name: Projets npm à vérifier (job front)

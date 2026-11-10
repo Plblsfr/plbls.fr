@@ -62,7 +62,7 @@ paths:
                   rights: {type: array, items: {type: string, enum: [access, admin, permissions, acces, users]}, description: "droits du compte : `access` (`estompe:access`), `admin` (une permission `estompe:admin.*`), `acces` (administration des accès d'aegis : `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, avec `AEGIS_URL`), `permissions` (ancien service permission, sans `AEGIS_URL`), `users` (recherche de comptes). Présent même sans compte activé"}
                   capabilities: {type: object, additionalProperties: {type: object, properties: {allow: {type: array, items: {type: string}}, deny: {type: array, items: {type: string}}}}, description: "permissions `estompe:*` accordées : ressources autorisées (`*` = tous les serveurs) et refusées. Confort d'affichage ; le contrôle se fait côté API"}
                   activated: {type: boolean}
-                  cinema: {type: boolean, description: "salon cinéma disponible : bloc `regarder-ensemble` actif et Entracte branché (`ESTOMPE_ENTRACTE_URL`, `ESTOMPE_ENTRACTE_TOKEN`)"}
+                  cinema: {type: boolean, description: "salon cinéma disponible : bloc `regarder-ensemble` actif et Entracte branché (`ENTRACTE_INTERNE_URL`, `ENTRACTE_SERVICE_TOKEN`)"}
                   max_video_size: {type: integer, description: "taille maximale d'une vidéo en octets (`MAX_VIDEO_SIZE_MB`, 100 Mo par défaut)"}
                   transcription: {type: string, enum: ["", alpha, "on"], description: "transcription des messages vocaux : désactivée (`TRANSCRIBE_URL` vide), `alpha` (`TRANSCRIBE_ALPHA`, défaut : réservée aux fonctions alpha débloquées côté client) ou `on` pour tous"}
                   blocks: {type: array, items: {type: string}, description: "blocs actifs du backend (variables `BLOCK_<NOM>=false` pour en désactiver) : un bloc absent n'a pas ses routes"}
@@ -1065,7 +1065,7 @@ paths:
   /internal/aegis/resources/{type}:
     get:
       tags: [interne]
-      summary: "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN`, réseau interne ; 404 sans aegis"
+      summary: "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN_ESTOMPE`, réseau interne ; 404 sans aegis"
       responses:
         "200": {description: ok}
         "401": {description: unauthorized}

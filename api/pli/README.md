@@ -32,7 +32,7 @@ Choix qui en découlent :
 
 Serveur en **Rust** (axum, tokio, sqlx, serde, tracing), membre du workspace Cargo racine comme les autres backends : code dans ce dossier (`api/pli`), crate `pli`. Front sans build ([`web/pli/public`](../../web/pli/public)), servi par le serveur. Schéma Postgres appliqué au démarrage par les migrations sqlx de [`migrations/`](migrations), idempotentes (`IF NOT EXISTS`) : une base créée par l'ancien serveur Node est reprise telle quelle. Le chiffré est stocké en `BYTEA` (25 Mo max par défaut, `MAX_BYTES`).
 
-Variables d'environnement : `PLI_DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`, ou `AEGIS_URL` et `PLI_AEGIS_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50, compté dans l'`INSERT` même, sous un verrou par compte : des dépôts simultanés ne le dépassent pas), `RUST_LOG` (`info`).
+Variables d'environnement : `DATABASE_URL` (obligatoire), `DATABASE_USER` et `DATABASE_PASSWORD` (communs : pli rejoint la base `pli` du serveur), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNE_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_TOKEN_PLI`, ou `AEGIS_URL` et `AEGIS_TOKEN_PLI` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50, compté dans l'`INSERT` même, sous un verrou par compte : des dépôts simultanés ne le dépassent pas), `RUST_LOG` (`info`).
 
 ## Connexion et permissions
 
@@ -40,8 +40,8 @@ Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de s
 
 **À configurer une fois :**
 
-- *permission.plbls.fr* : ajouter `pli:<token>` à `PERMISSION__SERVICES__TOKENS` (le même token dans `PERMISSION_SERVICE_TOKEN`, sans guillemets), puis : application `pli` (`POST /v1/apps {"key":"pli","name":"Pli"}`), permission `deposit` (`POST /v1/apps/pli/permissions`), rôle `depositor` contenant cette permission, et attribution aux comptes autorisés.
-- *Base* (administrateur Postgres) : `CREATE USER pli WITH PASSWORD '…'; CREATE DATABASE pli OWNER pli;`
+- *permission.plbls.fr* : mettre le jeton dans `PERMISSION_TOKEN_PLI` (`secret/pli` de Vault, sans guillemets ; permission le lit comme service `pli`), puis : application `pli` (`POST /v1/apps {"key":"pli","name":"Pli"}`), permission `deposit` (`POST /v1/apps/pli/permissions`), rôle `depositor` contenant cette permission, et attribution aux comptes autorisés.
+- *Base* (administrateur Postgres de `postgres-main`) : `CREATE DATABASE pli OWNER plbls;` (propriétaire : l'utilisateur commun `DATABASE_USER`)
 - *Reverse proxy* de `pli.plbls.fr` : transmettre `Host` (ou `X-Forwarded-Host`), le cookie et `X-Forwarded-For`. Prévoir une limite de corps au moins égale à `MAX_BYTES`.
 - *Dépôt GitHub* : rien à configurer, la CI publie `ghcr.io/plblsfr/pli` avec `GITHUB_TOKEN` (`edge` sur `main`, `X.Y.Z` et `latest` sur un tag `pli-vX.Y.Z`).
 

@@ -1,7 +1,7 @@
-# Production de tous les services, une seule stack Dokploy (type Compose). Dokploy écrit l'onglet Environment dans .env à côté
-# de ce fichier, en résolvant au déploiement les références Vault (vault.plbls.<projet>:<CLE>). Les backends Rust le chargent en entier
-# (env_file) ; les autres services ne reçoivent que leurs variables, interpolées dans environment ou command.
-# Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
+# Production de tous les services, une seule stack Dokploy (type Compose). Valeurs non secrètes : plbls.env (racine du dépôt), copié
+# dans chaque image au build. Secrets : onglet Environment, que Dokploy écrit dans .env à côté de ce fichier en résolvant les références
+# Vault (vault.plbls.<secret>:<CLE>) ; les backends Rust le chargent en entier (env_file), les autres services ne reçoivent que leurs
+# variables, interpolées dans environment ou command. Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
 name: plbls
 
 x-durci: &durci
@@ -19,17 +19,18 @@ services:
     <<: [*durci, *lecture-seule]
     env_file: .env
     depends_on:
-      security-redis: { condition: service_healthy }
+      redis: { condition: service_healthy }
     expose: ["8080"]
-    networks: [default, dokploy-network, security-redis]
+    networks: [default, dokploy-network, redis]
 
-  security-redis:
-    image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
+  redis:
+    image: redis:8-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${SECURITY_REDIS_PASSWORD:?SECURITY_REDIS_PASSWORD est obligatoire}"]
-    volumes: [security-redis-data:/data]
-    networks: [security-redis]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD est obligatoire}"]
+    volumes: [redis-data:/data]
+    expose: ["6379"]
+    networks: [redis]
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -Eq 'PONG|NOAUTH'"]
       interval: 10s
@@ -50,22 +51,9 @@ services:
     <<: [*durci, *lecture-seule]
     env_file: .env
     depends_on:
-      aegis-redis: { condition: service_healthy }
+      redis: { condition: service_healthy }
     expose: ["8080"]
-    networks: [default, postgres-net, aegis-redis]
-
-  aegis-redis:
-    image: redis:8-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80
-    restart: unless-stopped
-    security_opt: [no-new-privileges:true]
-    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${AEGIS_REDIS_PASSWORD:?AEGIS_REDIS_PASSWORD est obligatoire}"]
-    expose: ["6379"]
-    networks: [aegis-redis]
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep -Eq 'PONG|NOAUTH'"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+    networks: [default, postgres-net, redis]
 
   pli:
     image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
@@ -91,7 +79,7 @@ services:
     restart: unless-stopped
     <<: *durci
     environment:
-      API_URL: ${API_URL:?API_URL est obligatoire}
+      API_URL: ${API_URL:-}
       GATEWAY_URL: ${GATEWAY_URL:-}
       VOICE_URL: ${VOICE_URL:-}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
@@ -110,10 +98,10 @@ services:
     env_file: .env
     volumes: [estompe-data:/data]
     depends_on:
-      estompe-postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
       livekit: { condition: service_started }
     expose: ["8080"]
-    networks: [default, aegis-redis]
+    networks: [default, postgres-net, redis]
 
   transcribe:
     image: ghcr.io/speaches-ai/speaches:0.8.3-cpu@sha256:21e3df06d842fb7802ab470dd77c25f0e8c0d22950e8d8c6ae886e851af53ef8
@@ -122,63 +110,12 @@ services:
     volumes: [transcribe-models:/home/ubuntu/.cache/huggingface/hub]
     expose: ["8000"]
 
-  estompe-postgres:
-    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
-    restart: unless-stopped
-    security_opt: [no-new-privileges:true]
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est obligatoire}
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est obligatoire}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
-    volumes: [estompe-pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  estompe-backup:
-    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
-    restart: unless-stopped
-    security_opt: [no-new-privileges:true]
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est obligatoire}
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est obligatoire}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
-      BACKUP_HOUR: ${BACKUP_HOUR:-03}
-      BACKUP_KEEP: ${BACKUP_KEEP:-14}
-      BACKUP_FILES: ${BACKUP_FILES:-false}
-      BACKUP_NOW: ${BACKUP_NOW:-true}
-    volumes: [estompe-backups:/backups, estompe-data:/data:ro]
-    depends_on:
-      estompe-postgres: { condition: service_healthy }
-    command:
-      - sh
-      - -c
-      - |
-        set -u
-        export PGHOST=estompe-postgres PGUSER="$${POSTGRES_USER}" PGDATABASE="$${POSTGRES_DB}" PGPASSWORD="$${POSTGRES_PASSWORD}"
-        garder=$${BACKUP_KEEP:-14}
-        run() {
-          f=/backups/db-$$(date +%F-%H%M).sql.gz
-          if pg_dump --no-owner | gzip > $$f.tmp && [ -s $$f.tmp ]; then mv $$f.tmp $$f; echo "sauvegarde $$f ($$(du -h $$f | cut -f1))"; else rm -f $$f.tmp; echo "ÉCHEC de la sauvegarde" >&2; fi
-          if [ "$${BACKUP_FILES:-false}" = true ]; then tar czf /backups/files-$$(date +%F).tar.gz -C /data . && echo "fichiers sauvegardés"; fi
-          ls -1t /backups/db-*.sql.gz 2>/dev/null | tail -n +$$((garder + 1)) | xargs -r rm -f
-          ls -1t /backups/files-*.tar.gz 2>/dev/null | tail -n +$$((garder + 1)) | xargs -r rm -f
-        }
-        [ "$${BACKUP_NOW:-true}" = true ] && run
-        while true; do
-          now=$$(date +%s); next=$$(date -d "$$(date +%F) $${BACKUP_HOUR:-03}:00" +%s 2>/dev/null || echo $$((now + 86400)))
-          [ $$next -le $$now ] && next=$$((next + 86400))
-          sleep $$((next - now)); run
-        done
-
   livekit:
     image: livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
     restart: unless-stopped
     <<: *durci
     environment:
-      LIVEKIT_KEYS: ${LIVEKIT_KEYS:?LIVEKIT_KEYS est obligatoire}
+      LIVEKIT_KEYS: "estompe: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET est obligatoire}"
     command: ["--config", "/etc/livekit.yaml"]
     configs:
       - source: livekit
@@ -227,16 +164,12 @@ networks:
   medias:
     external: true
     name: ${MEDIAS_NETWORK:?MEDIAS_NETWORK est obligatoire (réseau de la stack média, jamais dokploy-network)}
-  security-redis:
-    internal: true
-  aegis-redis:
+  redis:
     internal: true
 
 volumes:
-  security-redis-data:
-  estompe-pgdata:
+  redis-data:
   estompe-data:
-  estompe-backups:
   transcribe-models:
   cdn-data:
   entracte-transcodage:

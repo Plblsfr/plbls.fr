@@ -22,6 +22,7 @@ RUN apt-get update \
   && useradd --system --uid 65532 --no-create-home entracte \
   && mkdir -p /tmp/entracte && chown entracte /tmp/entracte
 COPY --from=build /src/target/release/entracte /app/entracte
+COPY plbls.env /etc/plbls.env
 USER 65532
 ENV ENTRACTE_TRANSCODE_DIR=/tmp/entracte
 EXPOSE 8080

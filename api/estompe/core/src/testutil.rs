@@ -23,7 +23,7 @@ pub fn config_avec(extra: &[(&str, &str)]) -> Config {
         }
         match k {
             "DATABASE_URL" => Some("postgres://factice"),
-            "PERMISSION_TOKEN" => Some("jeton"),
+            "PERMISSION_TOKEN_ESTOMPE" => Some("jeton"),
             "LIVEKIT_URL" => Some("wss://livekit.test"),
             "LIVEKIT_API_KEY" => Some("cle"),
             "LIVEKIT_API_SECRET" => Some("secret"),

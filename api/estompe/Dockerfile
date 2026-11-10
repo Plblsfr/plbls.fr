@@ -17,6 +17,7 @@ RUN mkdir /data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /estompe-api /estompe-api
+COPY plbls.env /etc/plbls.env
 COPY --from=build --chown=65532:65532 /data /data
 ENV DATA_DIR=/data
 VOLUME /data

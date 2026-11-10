@@ -2,6 +2,7 @@
 !Cargo.toml
 !Cargo.lock
 !rust-toolchain.toml
+!plbls.env
 !api
 **/target
 **/node_modules
