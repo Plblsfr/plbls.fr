@@ -7,7 +7,7 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 |---|---|---|
 | `ci.yml` | toute PR (un push annule le run précédent de la PR) | contrôles de ce que la PR touche, puis job final `ci` |
 | `pr-conventions.yml` | toute PR, et à chaque modification de sa description | nom de branche et description (`scripts/ci-conventions-pr.mjs`) |
-| `livraison.yml` | push sur `main`, tags `pli-v*`, `permission-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
+| `livraison.yml` | push sur `main`, tags `pli-v*`, `permission-v*`, `aegis-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
 | `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel (case `beta` : appelle `estompe-beta.yml`) | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
 | `estompe-beta.yml` | lancement manuel sur la branche d'une PR | check, tests et build du front de la PR, puis image `ghcr.io/plblsfr/estompe-web:beta` (et `beta-pr<n>`, `beta-<sha>`) ; ni `latest`, ni tag, ni release |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
