@@ -3,13 +3,25 @@ export interface FilmItem {
   id: string; kind: 'movie' | 'series' | 'season' | 'episode' | 'other'; title: string; year: number | null; overview: string | null
   duration: number; genres: string[]; season: number | null; episode: number | null; series_id: string | null; series_title: string | null
   poster: boolean; backdrop: boolean; progress: FilmProgress | null
+  /** Entracte : fichier présent sur le serveur (un titre vu dont le fichier a disparu reste dans l'historique). */
+  available?: boolean
+  /** Entracte : date du dernier visionnage complet. */
+  seen_at?: string | null
 }
 export interface FilmTrack { n: number; label: string | null; language: string | null }
-export interface FilmDetail extends FilmItem { audio: FilmTrack[]; subtitles: FilmTrack[] }
+export interface FilmDetail extends FilmItem { audio: FilmTrack[]; subtitles: FilmTrack[]; qualities?: Quality[] }
+export type Quality = 'original' | '1080p' | '720p' | '480p'
+/** Formats que le client sait lire tels quels, annoncés à Entracte (lecture directe ou HLS). */
+export interface Support { containers: string[]; video: string[]; audio: string[] }
+export interface PlaybackRequest { direct: boolean; audio: number; quality?: Quality; start?: number; support?: Support }
 export interface FilmPlayback {
   stream_id: string; mode: 'direct' | 'hls'; url: string; duration: number; audio: FilmTrack[]; subtitles: (FilmTrack & { url: string })[]
+  /** Entracte : en HLS, le flux commence à `offset` secondes du titre. */
+  offset?: number
+  quality?: Quality
+  qualities?: Quality[]
 }
-export interface FilmTracks { audio: FilmTrack[]; subtitles: FilmTrack[]; audioN: number; subN: number | null }
+export interface FilmTracks { audio: FilmTrack[]; subtitles: FilmTrack[]; audioN: number; subN: number | null; qualities?: Quality[]; quality?: Quality }
 export interface FilmReject { name: string; reason: string; seen_at: string }
 
 export const SAVE_EVERY_MS = 15_000
@@ -20,6 +32,53 @@ export function saveDue(savedAt: number, now: number): boolean {
 
 export function directOk(canPlay: (mime: string) => string): boolean {
   return canPlay('video/mp4; codecs="avc1.42E01E, mp4a.40.2"') !== ''
+}
+
+const PROBES: { kind: keyof Support; name: string; mime: string }[] = [
+  { kind: 'containers', name: 'mp4', mime: 'video/mp4' },
+  { kind: 'containers', name: 'webm', mime: 'video/webm' },
+  { kind: 'containers', name: 'mkv', mime: 'video/x-matroska' },
+  { kind: 'video', name: 'h264', mime: 'video/mp4; codecs="avc1.42E01E"' },
+  { kind: 'video', name: 'hevc', mime: 'video/mp4; codecs="hvc1.1.6.L93.B0"' },
+  { kind: 'video', name: 'vp9', mime: 'video/webm; codecs="vp9"' },
+  { kind: 'video', name: 'av1', mime: 'video/mp4; codecs="av01.0.05M.08"' },
+  { kind: 'audio', name: 'aac', mime: 'audio/mp4; codecs="mp4a.40.2"' },
+  { kind: 'audio', name: 'mp3', mime: 'audio/mpeg' },
+  { kind: 'audio', name: 'opus', mime: 'audio/webm; codecs="opus"' },
+  { kind: 'audio', name: 'flac', mime: 'audio/flac' },
+  { kind: 'audio', name: 'ac3', mime: 'audio/mp4; codecs="ac-3"' },
+  { kind: 'audio', name: 'eac3', mime: 'audio/mp4; codecs="ec-3"' },
+]
+
+/** Ce que le lecteur sait lire tel quel (canPlayType), pour qu'Entracte choisisse entre lecture directe et HLS. */
+export function support(canPlay: (mime: string) => string): Support {
+  const s: Support = { containers: [], video: [], audio: [] }
+  for (const p of PROBES) if (canPlay(p.mime) !== '') s[p.kind].push(p.name)
+  return s
+}
+
+export const QUALITY_LABEL: Record<Quality, string> = { original: 'Originale', '1080p': '1080p', '720p': '720p', '480p': '480p' }
+const QUALITY_KEY = 'entracte.qualite'
+
+/** Palier choisi sur cet appareil, repris à la lecture suivante (repli sur « Originale » s'il n'est pas proposé). */
+export function savedQuality(store: Pick<Storage, 'getItem'> | null, offered?: Quality[]): Quality {
+  let q: string | null = null
+  try { q = store?.getItem(QUALITY_KEY) ?? null } catch { /* stockage indisponible */ }
+  const ok = (x: string | null): x is Quality => x === 'original' || x === '1080p' || x === '720p' || x === '480p'
+  if (!ok(q)) return 'original'
+  return !offered || offered.includes(q) ? q : 'original'
+}
+
+export function saveQuality(store: Pick<Storage, 'setItem'> | null, q: Quality) {
+  try { store?.setItem(QUALITY_KEY, q) } catch { /* stockage indisponible */ }
+}
+
+/** Position dans le titre d'après le temps du lecteur (un flux HLS d'Entracte commence à `offset`). */
+export const absolute = (t: number, offset: number) => t + offset
+
+/** Faut-il rouvrir le flux pour atteindre `target` ? (HLS : avant le début du flux ou au-delà de ce qui est transcodé) */
+export function needsReopen(target: number, offset: number, ready: number): boolean {
+  return target < offset - 0.5 || target > offset + ready + 5
 }
 
 export function clock(sec: number): string {

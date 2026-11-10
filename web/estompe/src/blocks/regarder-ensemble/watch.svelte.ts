@@ -7,7 +7,7 @@ import { providers, type Adapter } from './providers'
 import { playerError } from './watch'
 import { SyncEngine, type Cmd } from './watchsync'
 import type { SessionKind } from '../../lib/types'
-import type { FilmTracks } from '../films/films'
+import type { FilmTracks, Quality } from '../films/films'
 
 // Chaque client lit la vidéo lui-même avec le lecteur de sa source (lib/providers.ts) : le serveur ne synchronise que l'état.
 // Ce fichier branche le moteur (lib/watchsync.ts) sur le lecteur, l'état du serveur et l'API.
@@ -131,6 +131,8 @@ export class WatchPlayer {
 
   setAudio(n: number) { this.p?.setAudio?.(n) }
   setSubtitle(n: number | null) { this.p?.setSubtitle?.(n); if (this.tracks) this.tracks = { ...this.tracks, subN: n } }
+  /** Palier propre à ce participant (Entracte) : seule la position de la séance est partagée. */
+  setQuality(q: Quality) { this.p?.setQuality?.(q) }
 
   /** Un morceau de Music2gether que le lecteur refuse (intégration désactivée, région, âge) est passé : le premier client à le signaler avance la file. */
   private skipUnplayable(): boolean {

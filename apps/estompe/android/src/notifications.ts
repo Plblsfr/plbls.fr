@@ -45,6 +45,7 @@ const push: PushDriver = {
     const token = await fcmToken()
     if (token) await api.fcmSubscribe(token).catch(() => {})
   },
+  token: fcmToken,
 }
 
 export const notifications: NotificationDriver = {

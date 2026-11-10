@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_GATEWAY_URL?: string
   /** Émetteur Keycloak pour la connexion de l'app Windows. */
   readonly VITE_KEYCLOAK_ISSUER?: string
+  /** URL de l'API d'Entracte (ex. https://entracte-api.plbls.fr) ; vide = bloc films d'Estompe. */
+  readonly VITE_ENTRACTE_URL?: string
 }
 
 declare module 'virtual:pwa-register' {

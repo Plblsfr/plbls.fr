@@ -1,4 +1,6 @@
-import { api, ApiError, API_URL, setUnauthorizedHandler } from './api'
+import { api, ApiError, API_URL, entracteApi, entracteOn, setUnauthorizedHandler } from './api'
+import type { EntracteMe } from '../sections/entracte/entracte'
+import { entracte } from '../sections/entracte/entracte.svelte'
 import { Realtime, wsUrl, type RealtimeEvent } from './realtime'
 import { platform } from './platform'
 import { prefs } from './prefs.svelte'
@@ -8,7 +10,7 @@ import { showNotification } from '../blocks/notifications/notify'
 import { setupNotifications } from '../blocks/notifications/push'
 import { lastViewHref } from './lastview'
 import { DEFAULT_MAX_VIDEO } from './files'
-import { parseHash, router } from './route.svelte'
+import { hrefs, parseHash, router } from './route.svelte'
 import { voice } from '../blocks/vocal/voice.svelte'
 import { blockOn } from '../blocks/registry'
 import { videos } from '../blocks/videos/videos.svelte'
@@ -20,7 +22,8 @@ import { convKeyOf, channelKey, dmKey, defaultNotifySettings } from './types'
 import { sonde } from './sonde'
 import type { Capacites, Me, Status, NotifySettings, PermKey, Channel, ConvKey, DM, Mention, Message, NewPoll, Read, Server, ServerDetail, VoiceParticipant, WatchState, WatchView, SessionKind } from './types'
 
-export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'error'
+/** `entracte` : la personne n'a qu'Entracte (sans messagerie) ; ni WebSocket ni appel aux routes de la messagerie. */
+export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'entracte' | 'error'
 
 export interface Conv {
   messages: Message[]
@@ -54,6 +57,10 @@ export class AppStore {
   adminSections = $derived(adminSections(this.rights, (b) => this.on(b), this.capacites))
   peut = (nom: string, ressource = '*') => autorise(this.capacites, `estompe:${nom}`, ressource)
   movies = $state(false)
+  /** Salon cinéma disponible (bloc films, ou Entracte branché côté API) ; annoncé par `GET /me`. */
+  cinemaOn = $state(false)
+  /** Identité et permissions annoncées par Entracte (`null` : Entracte absent, injoignable ou sans session). */
+  entracteMe = $state.raw<EntracteMe | null>(null)
   servers = $state<Server[]>([])
   details = $state<Record<string, ServerDetail>>({})
   dms = $state<DM[]>([])
@@ -95,7 +102,7 @@ export class AppStore {
 
   constructor() {
     setUnauthorizedHandler(() => {
-      if (this.phase === 'ready' || this.phase === 'activate') this.sessionLost()
+      if (this.phase === 'ready' || this.phase === 'activate' || this.phase === 'entracte') this.sessionLost()
       this.stopRealtime()
     })
     if (typeof window !== 'undefined') window.addEventListener('focus', () => this.current && this.markRead(this.current))
@@ -103,16 +110,39 @@ export class AppStore {
 
   // --- démarrage ---
 
+  /** Entracte connaît la personne et lui ouvre sa section ? (sans Entracte configuré : non) */
+  private async loadEntracte(): Promise<boolean> {
+    if (!entracteOn()) { this.entracteMe = null; return false }
+    try { this.entracteMe = await entracteApi.me() } catch { this.entracteMe = null }
+    return !!this.entracteMe?.permissions.access
+  }
+
+  /** Section Entracte seule : pas de messagerie, pas de WebSocket ; l'app s'ouvre sur Entracte. */
+  private openEntracteOnly() {
+    this.movies = true
+    this.stopRealtime()
+    if (!location.hash.startsWith('#/films')) { history.replaceState(null, '', hrefs.films()); router.current = parseHash(hrefs.films()) }
+    this.phase = 'entracte'
+    void entracte.start()
+  }
+
   async boot() {
     this.phase = 'loading'
+    const avecEntracte = this.loadEntracte()
     try {
-      const me = await api.me()
+      let me: Me
+      try { me = await api.me() } catch (e) {
+        if (await avecEntracte) { this.openEntracteOnly(); return }
+        throw e
+      }
       this.rights = rightsOf(me)
       this.capacites = me.capabilities ?? null
       if (!me.allowed) {
+        if (await avecEntracte) { this.openEntracteOnly(); return }
         this.phase = this.adminSections.length ? 'admin' : 'denied'
         return
       }
+      await avecEntracte
       if (!me.activated) {
         this.phase = 'activate'
         return
@@ -130,6 +160,7 @@ export class AppStore {
       this.startRealtime()
       void platform.notifications.push?.refresh() // abonnement push à jour (jeton FCM, Web Push)
       void setupNotifications()
+      if (this.entracteMe?.permissions.access) void entracte.start()
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) this.phase = 'login'
       else {
@@ -146,7 +177,8 @@ export class AppStore {
     this.maxVideo = me.max_video_size ?? DEFAULT_MAX_VIDEO
     this.transcription = me.transcription ?? ''
     this.blocks = me.blocks
-    this.movies = me.movies === true && this.on('films')
+    this.movies = entracteOn() ? !!this.entracteMe?.permissions.access : me.movies === true && this.on('films')
+    this.cinemaOn = me.cinema ?? this.on('films')
   }
 
   async activate(pseudo: string) {
@@ -191,7 +223,7 @@ export class AppStore {
       const v = await api.serverVoice(serverId)
       for (const [cid, ps] of Object.entries(v)) this.voice[cid] = ps
     } catch { /* vocal indisponible : la liste reste vide */ }
-    const kinds: SessionKind[] = this.on('films') ? ['watch', 'music', 'cinema'] : ['watch', 'music']
+    const kinds: SessionKind[] = this.cinemaOn ? ['watch', 'music', 'cinema'] : ['watch', 'music']
     await Promise.all(kinds.map(async (kind) => {
       try {
         const w = await api.serverWatch(serverId, kind)
@@ -242,6 +274,7 @@ export class AppStore {
   /** Session perdue pour de bon : écran de connexion, et on quitte le vocal (sa connexion LiveKit survivrait au jeton). */
   private sessionLost() {
     this.phase = 'login'
+    entracte.stop()
     void voice.leave()
   }
 

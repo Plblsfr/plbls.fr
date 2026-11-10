@@ -89,6 +89,11 @@ jobs:
       - name: Audit des dépendances d'Estompe
         if: contains(needs.changements.outputs.espaces, 'web/estompe')
         run: npm audit --omit=dev --audit-level=high --workspace web/estompe
+      - name: Sections de l'app selon les permissions (e2e Playwright, API d'Estompe et d'Entracte simulées)
+        if: contains(needs.changements.outputs.espaces, 'web/estompe')
+        run: |
+          npx --workspace web/estompe playwright install --with-deps chromium
+          npm run e2e:entracte --workspace web/estompe
       - name: Types, tests et build des projets touchés
         if: needs.changements.outputs.espaces != ''
         env:

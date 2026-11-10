@@ -83,10 +83,10 @@ sous-titres à lui) ; seule la position est synchronisée, et sa progression est
 
 1. Entracte déployé à côté (base, sous-domaine, route du reverse proxy, secrets dans Vault, permissions accordées à l'administrateur seul).
 2. Import de l'historique depuis Estompe (issue dédiée), avant d'éteindre Jellyfin.
-3. L'app et le salon cinéma passent sur Entracte (`ENTRACTE_URL` du front, `ESTOMPE_ENTRACTE_*` de l'API), avec mise à jour forcée.
+3. L'app et le salon cinéma passent sur Entracte (`ENTRACTE_PUBLIC_URL` du front, `ESTOMPE_ENTRACTE_*` de l'API), avec mise à jour forcée.
 4. Retrait du bloc `films` d'Estompe et arrêt de Jellyfin (issue dédiée).
 
-Retour arrière possible jusqu'à l'étape 4 : vider `ENTRACTE_URL` et `ESTOMPE_ENTRACTE_URL` rend l'onglet films et le salon cinéma au bloc films.
+Retour arrière possible jusqu'à l'étape 4 : vider `ENTRACTE_PUBLIC_URL` et `ESTOMPE_ENTRACTE_URL` rend l'onglet films et le salon cinéma au bloc films.
 
 ## Actions manuelles
 
@@ -97,7 +97,7 @@ Retour arrière possible jusqu'à l'étape 4 : vider `ENTRACTE_URL` et `ESTOMPE_
   `ENTRACTE_RADARR_API_KEY`, `ENTRACTE_SONARR_API_KEY`, `ENTRACTE_TMDB_API_KEY`.
 - aegis : `entracte:<jeton>` dans `AEGIS__SERVICES__TOKENS`, puis les permissions aux comptes.
 - Radarr et Sonarr : webhook vers `https://entracte-api.plbls.fr/webhooks/radarr?token=…` (facultatif).
-- Front : `ENTRACTE_URL` (web, image `estompe-web`) et `VITE_ENTRACTE_URL` au build des apps natives.
+- Front : `ENTRACTE_PUBLIC_URL` (web, image `estompe-web`) et `VITE_ENTRACTE_URL` au build des apps natives.
 
 ## Version
 

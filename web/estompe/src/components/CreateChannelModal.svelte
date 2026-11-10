@@ -18,10 +18,10 @@
     { kind: 'cinema', label: 'Cinéma', hint: 'Regarder un film ou une série de la bibliothèque ensemble, en vocal', icon: 'film' },
   ]
   // Le salon cinéma n'existe que si la bibliothèque de films est activée sur l'instance.
-  const KINDS = $derived(ALL_KINDS.filter((k) => k.kind !== 'cinema' || app.on('films')))
+  const KINDS = $derived(ALL_KINDS.filter((k) => k.kind !== 'cinema' || app.cinemaOn))
   const detail = $derived(app.details[serverId])
   // svelte-ignore state_referenced_locally
-  let kind = $state<ChannelKind>(initial === 'cinema' && !app.on('films') ? 'voice' : initial)
+  let kind = $state<ChannelKind>(initial === 'cinema' && !app.cinemaOn ? 'voice' : initial)
   let name = $state('')
   let touched = $state(false)
   let priv = $state(false)

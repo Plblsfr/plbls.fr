@@ -236,7 +236,7 @@ pub fn charge(demande: Uuid, genre: &str, titre: &str, corps: &str) -> Value {
         "title": titre,
         "body": corps,
         "tag": format!("entracte-{demande}"),
-        "url": "/#/entracte/requests",
+        "url": "/#/films/requests",
         "kind": format!("entracte.{genre}"),
     })
 }

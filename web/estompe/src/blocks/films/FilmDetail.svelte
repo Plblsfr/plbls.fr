@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ApiError, filmsApi } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
+  import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
@@ -18,7 +19,8 @@
 
   const episodes = $derived(seasons[shown]?.episodes ?? [])
   const next = $derived(pickEpisode(seasons.flatMap((s) => s.episodes)))
-  const play = $derived(item?.kind === 'series' ? next : item ?? undefined)
+  const play = $derived(item?.kind === 'series' ? next : item && item.available !== false ? item : undefined)
+  const cinema = $derived(app.phase === 'ready' && app.cinemaOn)
   const started = $derived(!!play && resumeAt(play) > 0)
   const prog = $derived(play?.progress && !play.progress.seen ? play.progress : null)
   const short = (e: FilmItem) => (e.season != null && e.episode != null ? `S${e.season}E${e.episode}` : '')
@@ -61,7 +63,7 @@
             {@const verb = `${started ? 'Reprendre' : 'Regarder'} seul`}
             <div class="film-actions">
               <a class="plbls-button" href={hrefs.films('watch', play.id)} aria-label={item.kind === 'series' && play.season != null && play.episode != null ? `${verb}, saison ${play.season} épisode ${play.episode}` : undefined}><Icon name="lecture" size={18} /> {verb}{item.kind === 'series' && short(play) ? ` · ${short(play)}` : ''}</a>
-              <button class="plbls-button v-rose" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>
+              {#if cinema}<button class="plbls-button v-rose" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>{/if}
               {#if prog}
                 <span class="film-progress"><span class="v-mono v-mute">{remaining(prog)}</span><span class="film-bar"><span style="width:{percent(prog)}"></span></span></span>
               {:else if item.progress?.seen}
@@ -69,10 +71,13 @@
               {/if}
             </div>
           {/if}
-          {#if item.audio.length || item.subtitles.length}
+          {#if item.available === false && item.kind !== 'series'}
+            <p class="v-note film-absent"><span class="v-tag">Indisponible</span> Le fichier de ce titre n’est plus sur le serveur.{#if item.progress?.seen} Il reste dans ton historique.{/if}</p>
+          {/if}
+          {#if item.audio?.length || item.subtitles?.length}
             <dl class="film-tracks v-note">
-              {#if item.audio.length}<div><dt>Audio</dt><dd>{item.audio.map(trackName).join(' · ')}</dd></div>{/if}
-              {#if item.subtitles.length}<div><dt>Sous-titres</dt><dd>{item.subtitles.map(trackName).join(' · ')}</dd></div>{/if}
+              {#if item.audio?.length}<div><dt>Audio</dt><dd>{item.audio.map(trackName).join(' · ')}</dd></div>{/if}
+              {#if item.subtitles?.length}<div><dt>Sous-titres</dt><dd>{item.subtitles.map(trackName).join(' · ')}</dd></div>{/if}
             </dl>
           {/if}
         </div>
@@ -92,7 +97,7 @@
           {#each episodes as e (e.id)}
             {@const cur = e.id === next?.id && !!e.progress && !e.progress.seen}
             <li>
-              <a class="film-episode" class:cur href={hrefs.films('watch', e.id)}>
+              <a class="film-episode" class:cur class:off={e.available === false} href={e.available === false ? undefined : hrefs.films('watch', e.id)} aria-disabled={e.available === false || undefined}>
                 <span class="film-episode-n v-mono">{e.episode ?? ''}</span>
                 {#if e.poster}
                   <span class="film-episode-art"><FilmPoster id={e.id} title={e.title} image={e.poster} width={240} /><span class="film-episode-play" aria-hidden="true"><Icon name="lecture" size={16} /></span></span>
@@ -101,7 +106,8 @@
                 {/if}
                 <span class="grow film-episode-body">
                   <strong class="truncate">{e.title}</strong>
-                  {#if e.progress?.seen}<span class="v-note film-seen"><Icon name="ok" size={14} /> Vu</span>
+                  {#if e.available === false}<span class="v-note">Indisponible</span>
+                  {:else if e.progress?.seen}<span class="v-note film-seen"><Icon name="ok" size={14} /> Vu</span>
                   {:else if e.progress}<span class="v-mono film-left">{remaining(e.progress)}</span><span class="film-bar"><span style="width:{percent(e.progress)}"></span></span>
                   {:else}<span class="v-note">Pas encore vu</span>{/if}
                 </span>
@@ -121,3 +127,8 @@
 {:else}
   <div class="film-page"><Loader /></div>
 {/if}
+
+<style>
+  .film-episode.off { opacity: 0.55; cursor: default; }
+  .film-absent { display: flex; align-items: center; gap: var(--espace-2); }
+</style>
