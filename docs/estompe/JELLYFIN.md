@@ -55,7 +55,7 @@ Chaque spectateur en HLS occupe un transcodage. Au-delà de la limite, l'API ré
 | `JELLYFIN_API_KEY` | la clé de l'étape 3 |
 | `STREAM_SECRET` | `openssl rand -hex 32` |
 
-Dans `deploy/estompe/.env.example` (secret Vault `plbls/estompe`), sauf `JELLYFIN_NETWORK=estompe-jellyfin`, dans le `.env` du compose (`deploy/.env.example`).
+Dans `deploy/estompe/.env.example` (secrets dans `secret/estompe` de Vault), sauf `JELLYFIN_NETWORK=estompe-jellyfin`, dans le `.env` du compose (`deploy/.env.example`).
 `FILMS_MAX_FLUX` (2 par utilisateur), `FILMS_MAX_TRANSCODAGES` (2 au total) et `FILMS_CACHE_SECONDES` (60) sont facultatives.
 
 ## 7. Permission

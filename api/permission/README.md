@@ -54,7 +54,7 @@ CREATE DATABASE permission OWNER permission;
 
 Le propriétaire de la base est nécessaire : les migrations créent leurs tables dans `public` au démarrage (PostgreSQL 15+ ne l'autorise qu'au propriétaire). Aucune extension requise.
 
-**Côté Dokploy** : service `permission` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) (voir [`deploy/README.md`](../../deploy/README.md)), image `ghcr.io/plblsfr/permission` (tag `PERMISSION_TAG`), port `8080`, sonde `GET /health`. Variables (`deploy/permission/.env.example`, secret Vault `plbls/permission`) :
+**Côté Dokploy** : service `permission` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) (voir [`deploy/README.md`](../../deploy/README.md)), image `ghcr.io/plblsfr/permission` (tag `PERMISSION_TAG`), port `8080`, sonde `GET /health`. Variables (`deploy/permission/.env.example`, secrets dans `secret/permission` de Vault) :
 
 - `PERMISSION__DATABASE__URL` = `postgres://permission:<mot-de-passe>@<hôte-postgres>:5432/permission` (`?sslmode=require` si l'instance l'impose)
 - `PERMISSION__IDENTITY__SECRET` (le même que `GATEWAY__IDENTITY__SECRET`)

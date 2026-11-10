@@ -23,7 +23,7 @@ just security-dev down     # arrête tout (reset supprime aussi les volumes)
 
 ## Production
 
-Service `auth-gateway` (et `security-redis`) de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) ; variables dans `deploy/security/.env.example` (secret Vault `plbls/security`, voir [`deploy/README.md`](../../deploy/README.md)).
+Service `auth-gateway` (et `security-redis`) de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) ; variables dans `deploy/security/.env.example` (secrets dans `secret/security` de Vault, voir [`deploy/README.md`](../../deploy/README.md)).
 
 Les routes des micro-services sont dans `config/routes.toml` (modèle : `config/routes.example.toml`), embarqué dans l'image : modifier une route = commit, CI, redéploiement.
 

@@ -4,7 +4,7 @@ Monorepo plbls.fr (détail dans `README.md`) : `api/<projet>` (API Rust), `web/<
 `docs/<projet>`, `deploy/<projet>`, `scripts/<projet>` (outillage commun directement dans `scripts/`), `packages/` (libs partagées), `.github/workflows/` (CI).
 Un fichier va dans le dossier de son rôle, jamais dans celui d'un autre projet : par exemple un `.env.example` dans `deploy/<projet>/`, pas à côté du code.
 Déploiement : deux compose pour tout le dépôt, `deploy/docker-compose.dev.yml` (dépendances de dev, variables dans `deploy/dev.env`) et
-`deploy/docker-compose.yml` (production, sans section `environment` : chaque service lit le `.env` de son projet, rendu depuis Vault) ; voir `deploy/README.md`.
+`deploy/docker-compose.yml` (production, une seule stack Dokploy sans section `environment` : tous les services chargent le `.env` que Dokploy écrit depuis son onglet Environment, secrets résolus depuis Vault ; un nom de variable n'appartient qu'à un projet, sauf les communes de `deploy/.env.example`) ; voir `deploy/README.md`.
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé `plbls.fr-infra`.
 
 ## Git

@@ -7,8 +7,8 @@ Deux compose pour tout le monorepo, et un `.env.example` par projet.
 | [`docker-compose.dev.yml`](docker-compose.dev.yml) | dépendances de dev de tous les projets, éphémères |
 | [`dev.env`](dev.env) | variables des backends en dev (valeurs factices) |
 | [`docker-compose.yml`](docker-compose.yml) | production de tous les services, sans section `environment` |
-| [`.env.example`](.env.example) | variables du compose de production lui-même (tags d'images, dossier des `.env`, réseau Jellyfin) |
-| `<projet>/.env.example` | variables d'un projet en production : [`security`](security/.env.example), [`permission`](permission/.env.example), [`aegis`](aegis/.env.example), [`pli`](pli/.env.example), [`estompe`](estompe/.env.example) |
+| [`.env.example`](.env.example) | début de l'onglet Environment de Dokploy : tags d'images, réseau Jellyfin, variables communes |
+| `<projet>/.env.example` | suite de l'onglet, variables d'un projet (secrets en références Vault) : [`security`](security/.env.example), [`permission`](permission/.env.example), [`aegis`](aegis/.env.example), [`pli`](pli/.env.example), [`estompe`](estompe/.env.example) |
 
 Keycloak, le PostgreSQL partagé, la stack média et Vault sont dans le dépôt privé `plbls.fr-infra`.
 
@@ -31,20 +31,33 @@ Une seule stack Dokploy (type Compose) avec [`docker-compose.yml`](docker-compos
 Les services se joignent par leur nom sur le réseau de la stack ; `permission`, `aegis` et `pli` rejoignent aussi `postgres-net`
 (PostgreSQL partagé, `postgres-main`), `auth-gateway` le réseau de Dokploy (Keycloak).
 
-Aucune variable n'est écrite dans le compose : chaque service lit `${PLBLS_ENV_DIR}/<projet>/.env` (`env_file`), le même fichier pour
-tous les services d'un projet. Ces fichiers sont rendus par l'agent Vault de `plbls.fr-infra` (`infra/vault`) depuis les secrets
-`secret/plbls/<projet>`, dont les clés sont celles de `<projet>/.env.example`. Sans Vault, les écrire à la main depuis les exemples.
+Aucune variable n'est écrite dans le compose. L'onglet Environment de la stack contient [`.env.example`](.env.example) puis le
+`.env.example` de chaque projet, mis bout à bout. Dokploy l'écrit dans `.env` à côté du compose à chaque déploiement, et tous les
+services le chargent en entier (`env_file: .env`) : chaque conteneur voit donc toutes les variables de la stack.
+
+- **Secrets** : les exemples ne contiennent que des références `${{vault.plbls.<projet>:<CLE>}}`. Dokploy les résout au déploiement
+  dans Vault (`plbls.fr-infra`, `infra/vault`) : fournisseur nommé `plbls` dans Settings › Secrets, moteur KV v2 `secret`, un secret
+  `secret/<projet>` par projet. Un secret repris par plusieurs projets n'est stocké qu'une fois (`GATEWAY__IDENTITY__SECRET` et
+  `GATEWAY__INTERNAL__TOKEN` dans `secret/security`, référencés par permission et aegis). Une référence vers un champ absent fait
+  échouer le déploiement : un secret facultatif inutilisé reste vide dans l'onglet.
+- **Changer un secret** : le modifier dans Vault puis redéployer la stack ; les conteneurs ne relisent pas leur environnement.
+- **Noms** : une variable appartient à un seul projet (d'où `PLI_DATABASE_URL` et `PLI_AEGIS_TOKEN`), sauf les variables communes
+  de [`.env.example`](.env.example) (`RUST_LOG`, `GATEWAY_URL`, `PERMISSION_URL`, `AEGIS_URL`), de même sens partout.
+- **Valeurs** : pas de `$` dans un secret (Compose l'interpréterait dans `.env`) ; `openssl rand -hex 32` convient.
 
 Domaines Dokploy : `auth-gateway` 8080 (security.plbls.fr), `permission` 8080, `aegis` 8080, `pli` 8080, `estompe-web` 80,
 `estompe-api` 8080, `livekit` 7880, `cdn` 80. Ports ouverts sur l'hôte : 7881/tcp et 50000-50100/udp (WebRTC de LiveKit).
 
 ### Ajouter une variable
 
-La lire dans le code, l'ajouter à `<projet>/.env.example` avec sa valeur par défaut, puis au secret Vault du projet. Le compose ne change pas.
+La lire dans le code sous un nom qu'aucun autre projet n'utilise, l'ajouter à `<projet>/.env.example` (valeur par défaut, ou référence Vault
+pour un secret, dont la valeur va dans `secret/<projet>`), puis à l'onglet Environment de la stack. Le compose ne change pas.
 
 ### Reprendre les anciennes stacks
 
-Les volumes prennent le nom de la stack (`plbls_estompe-pgdata`, `plbls_estompe-data`, `plbls_estompe-backups`,
-`plbls_security-redis-data`, `plbls_cdn-data`, `plbls_transcribe-models`) : avant d'arrêter les anciennes stacks, copier leurs volumes
-dans les nouveaux, par exemple `docker run --rm -v <ancien>:/de -v plbls_estompe-pgdata:/vers alpine cp -a /de/. /vers/`.
-`pli` et `auth-gateway` ne publient plus `127.0.0.1:8080` : les servir par un domaine Dokploy.
+Les volumes prennent le nom du projet Compose (`name: plbls`, ou le nom d'application que Dokploy passe à `docker compose -p`) :
+`<projet>_estompe-pgdata`, `_estompe-data`, `_estompe-backups`, `_security-redis-data`, `_cdn-data`, `_transcribe-models`.
+Avant d'arrêter les anciennes stacks, copier leurs volumes dans les nouveaux (`docker volume ls` pour les noms), par exemple
+`docker run --rm -v <ancien>:/de -v <nouveau>:/vers alpine cp -a /de/. /vers/`.
+`pli` et `auth-gateway` ne publient plus `127.0.0.1:8080` : les servir par un domaine Dokploy. Variables de pli renommées :
+`DATABASE_URL` devient `PLI_DATABASE_URL`, `AEGIS_TOKEN` devient `PLI_AEGIS_TOKEN`.

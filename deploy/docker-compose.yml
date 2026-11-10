@@ -1,12 +1,12 @@
-# Production de tous les services (images publiées par la CI). Aucune section environment : chaque service lit le fichier
-# ${PLBLS_ENV_DIR}/<projet>/.env, rendu depuis Vault (plbls.fr-infra, infra/vault) et décrit par deploy/<projet>/.env.example.
-# Variables du compose lui-même (tags d'images, dossier des .env) : deploy/.env.example. Détail : deploy/README.md.
+# Production de tous les services, une seule stack Dokploy (type Compose). Aucune section environment : Dokploy écrit l'onglet
+# Environment dans .env à côté de ce fichier, en résolvant au déploiement les références Vault (vault.plbls.<projet>:<CLE>),
+# et chaque service le charge en entier (env_file). Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
 name: plbls
 services:
   auth-gateway:
     image: ghcr.io/plblsfr/security:${GATEWAY_TAG:-latest}
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/security/.env
+    env_file: .env
     depends_on: [security-redis]
     expose: ["8080"]
     networks: [default, dokploy-network]
@@ -20,14 +20,14 @@ services:
   permission:
     image: ghcr.io/plblsfr/permission:${PERMISSION_TAG:-latest}
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/permission/.env
+    env_file: .env
     expose: ["8080"]
     networks: [default, postgres-net]
 
   aegis:
     image: ghcr.io/plblsfr/aegis:${AEGIS_TAG:-latest}
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/aegis/.env
+    env_file: .env
     depends_on: [aegis-redis]
     expose: ["8080"]
     networks: [default, postgres-net]
@@ -41,20 +41,20 @@ services:
   pli:
     image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/pli/.env
+    env_file: .env
     expose: ["8080"]
     networks: [default, postgres-net]
 
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/estompe/.env
+    env_file: .env
     expose: ["80"]
 
   estompe-api:
     image: ghcr.io/plblsfr/estompe:${ESTOMPE_TAG:-latest}
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/estompe/.env
+    env_file: .env
     volumes: [estompe-data:/data]
     depends_on: [estompe-postgres, livekit]
     expose: ["8080"]
@@ -69,13 +69,13 @@ services:
   estompe-postgres:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/estompe/.env
+    env_file: .env
     volumes: [estompe-pgdata:/var/lib/postgresql/data]
 
   estompe-backup:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/estompe/.env
+    env_file: .env
     volumes: [estompe-backups:/backups, estompe-data:/data:ro]
     depends_on: [estompe-postgres]
     command:
@@ -102,7 +102,7 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
     restart: unless-stopped
-    env_file: ${PLBLS_ENV_DIR:-/opt/plbls/env}/estompe/.env
+    env_file: .env
     command: ["--config", "/etc/livekit.yaml"]
     configs:
       - source: livekit

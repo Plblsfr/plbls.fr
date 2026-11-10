@@ -23,7 +23,7 @@ Sans cela, un fichier perdu apparaît comme « expiré » dans son message (le m
    ```
 
 4. Si les fichiers sont aussi sauvegardés :
-   `docker compose run --rm -v plbls_estompe-data:/data estompe-backup sh -c 'tar xzf /backups/files-AAAA-MM-JJ.tar.gz -C /data'`
+   `docker compose run --rm -v <projet>_estompe-data:/data estompe-backup sh -c 'tar xzf /backups/files-AAAA-MM-JJ.tar.gz -C /data'`
 5. Relancer l'API : `docker compose start estompe-api`. Les migrations manquantes s'appliquent au démarrage.
 
 ## Vérifier une sauvegarde

@@ -204,7 +204,7 @@ async fn controle_et_manifeste_via_aegis() {
         .reason
         .unwrap();
     assert!(
-        raison.contains("aegis") && raison.contains("AEGIS_TOKEN"),
+        raison.contains("aegis") && raison.contains("PLI_AEGIS_TOKEN"),
         "{raison}"
     );
 }

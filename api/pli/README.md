@@ -32,7 +32,7 @@ Choix qui en découlent :
 
 Serveur en **Rust** (axum, tokio, sqlx, serde, tracing), membre du workspace Cargo racine comme les autres backends : code dans ce dossier (`api/pli`), crate `pli`. Front sans build ([`web/pli/public`](../../web/pli/public)), servi par le serveur. Schéma Postgres appliqué au démarrage par les migrations sqlx de [`migrations/`](migrations), idempotentes (`IF NOT EXISTS`) : une base créée par l'ancien serveur Node est reprise telle quelle. Le chiffré est stocké en `BYTEA` (25 Mo max par défaut, `MAX_BYTES`).
 
-Variables d'environnement : `DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50), `RUST_LOG` (`info`).
+Variables d'environnement : `PLI_DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`, ou `AEGIS_URL` et `PLI_AEGIS_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50), `RUST_LOG` (`info`).
 
 ## Connexion et permissions
 
@@ -47,7 +47,7 @@ Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de s
 
 ## Lancer
 
-En production : service `pli` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml), variables dans [`deploy/pli/.env.example`](../../deploy/pli/.env.example) (secret Vault `plbls/pli`, voir [`deploy/README.md`](../../deploy/README.md)).
+En production : service `pli` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml), variables dans [`deploy/pli/.env.example`](../../deploy/pli/.env.example) (secrets dans `secret/pli` de Vault, voir [`deploy/README.md`](../../deploy/README.md)).
 
 En local, depuis la racine du dépôt : `cargo run -p pli` avec ces variables exportées. L'image se construit depuis la racine : `docker build -f api/pli/Dockerfile .` (fichiers envoyés : [`Dockerfile.dockerignore`](Dockerfile.dockerignore), workspace Cargo et `web/pli/public/`).
 
