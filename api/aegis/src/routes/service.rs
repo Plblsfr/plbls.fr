@@ -18,6 +18,7 @@ use crate::{
     error::{ApiError, ApiResult, ErrorBody},
     journal,
     moteur::Effectifs,
+    settings::Ressources,
     stockage,
 };
 
@@ -82,7 +83,7 @@ fn cle_valide(k: &str, max: usize, points: bool) -> bool {
         })
 }
 
-fn valider(m: &Manifeste) -> Result<(), ApiError> {
+fn valider(m: &Manifeste, ressources: &Ressources) -> Result<(), ApiError> {
     if !cle_valide(&m.app, 40, false) {
         return Err(ApiError::BadRequest("clé d'application invalide".into()));
     }
@@ -94,6 +95,12 @@ fn valider(m: &Manifeste) -> Result<(), ApiError> {
         if !cle_valide(&t.key, 40, true) || t.name.trim().is_empty() {
             return Err(ApiError::BadRequest(format!(
                 "type de ressource invalide : {}",
+                t.key
+            )));
+        }
+        if !t.list_url.is_empty() && !ressources.hote_autorise(&t.list_url) {
+            return Err(ApiError::BadRequest(format!(
+                "list_url du type {} refusée : hôte absent de AEGIS__RESSOURCES__ALLOWED_HOSTS",
                 t.key
             )));
         }
@@ -127,7 +134,8 @@ fn valider(m: &Manifeste) -> Result<(), ApiError> {
     summary = "Déclare les permissions de l'application du jeton",
     description = "Appelé par chaque application à son démarrage puis régulièrement. Idempotent : un manifeste inchangé n'écrit rien. \
 Une permission absente devient obsolète (ses règles sont gardées mais ignorées). À la première apparition d'une permission \
-`open_default`, une règle `allow *` est ajoutée au rôle « Tout le monde ».",
+`open_default`, une règle `allow *` est ajoutée au rôle « Tout le monde ». Un `list_url` dont l'hôte n'est pas dans \
+`AEGIS__RESSOURCES__ALLOWED_HOSTS` (vide = aucun) est refusé.",
     security(("serviceToken" = [])),
     responses((status = 200, body = ResultatManifeste), (status = 400, body = ErrorBody), (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 async fn manifeste(
@@ -139,7 +147,7 @@ async fn manifeste(
     if service != m.app || m.app == "aegis" {
         return Err(ApiError::Forbidden);
     }
-    valider(&m)?;
+    valider(&m, &state.settings.ressources)?;
     let canon = serde_json::to_vec(&m).map_err(|e| ApiError::Internal(e.to_string()))?;
     let sha: String = Sha256::digest(&canon)
         .iter()
@@ -366,20 +374,46 @@ mod tests {
         .unwrap()
     }
 
+    fn hotes() -> Ressources {
+        Ressources {
+            allowed_hosts: "estompe-api".into(),
+        }
+    }
+
+    #[test]
+    fn list_url_limitee_aux_hotes_autorises() {
+        let mut x = m();
+        x.resource_types[0].list_url =
+            "http://estompe-api:8080/internal/aegis/resources/server".into();
+        assert!(valider(&x, &hotes()).is_ok());
+        assert!(
+            valider(&x, &Ressources::default()).is_err(),
+            "liste vide : refus"
+        );
+        x.resource_types[0].list_url = "http://169.254.169.254/latest/meta-data".into();
+        assert!(valider(&x, &hotes()).is_err());
+        x.resource_types[0].list_url = "file:///etc/passwd".into();
+        assert!(valider(&x, &hotes()).is_err());
+        assert!(
+            valider(&m(), &Ressources::default()).is_ok(),
+            "sans list_url"
+        );
+    }
+
     #[test]
     fn validation_du_manifeste() {
-        assert!(valider(&m()).is_ok());
+        assert!(valider(&m(), &hotes()).is_ok());
         let mut x = m();
         x.permissions[1].resource_type = Some("inconnu".into());
-        assert!(valider(&x).is_err());
+        assert!(valider(&x, &hotes()).is_err());
         let mut x = m();
         x.permissions.push(x.permissions[0].clone());
-        assert!(valider(&x).is_err());
+        assert!(valider(&x, &hotes()).is_err());
         let mut x = m();
         x.app = "Estompe".into();
-        assert!(valider(&x).is_err());
+        assert!(valider(&x, &hotes()).is_err());
         let mut x = m();
         x.permissions[0].key = "a b".into();
-        assert!(valider(&x).is_err());
+        assert!(valider(&x, &hotes()).is_err());
     }
 }

@@ -66,6 +66,10 @@ fn url_de_base(url: &str, nom: &str) -> String {
 static COMPTEUR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 async fn banc() -> Option<Banc> {
+    banc_avec("").await
+}
+
+async fn banc_avec(hotes: &str) -> Option<Banc> {
     let Ok(admin) = std::env::var("TEST_DATABASE_URL") else {
         eprintln!("ignoré : TEST_DATABASE_URL absent");
         return None;
@@ -104,7 +108,9 @@ async fn banc() -> Option<Banc> {
         },
         gateway: Gateway::default(),
         annuaire: Annuaire::default(),
-        ressources: Ressources::default(),
+        ressources: Ressources {
+            allowed_hosts: hotes.into(),
+        },
     };
     let state = AppState::new(settings, db).await.expect("état");
     state.cache.invalider_tout().await;
@@ -737,5 +743,107 @@ async fn cache_redis_et_invalidation() {
     assert!(
         !b.autorise("yan", "estompe:gifs.use", None).await,
         "cache invalidé"
+    );
+}
+
+async fn amont() -> String {
+    use axum::routing::get;
+    let gros = || {
+        let morceau = bytes_morceau();
+        Body::from_stream(futures_util::stream::iter(
+            (0..64).map(move |_| Ok::<_, std::io::Error>(morceau.clone())),
+        ))
+    };
+    let app = axum::Router::new()
+        .route(
+            "/petite",
+            get(|| async { axum::Json(json!([{"id": "1", "name": "Salon"}])) }),
+        )
+        .route("/grosse", get(move || async move { gros() }))
+        .route(
+            "/erreur",
+            get(|| async { (StatusCode::IM_A_TEAPOT, "trace interne secrète") }),
+        );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let adresse = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    format!("http://{adresse}")
+}
+
+fn bytes_morceau() -> axum::body::Bytes {
+    axum::body::Bytes::from(vec![b' '; 32 * 1024])
+}
+
+fn manifeste_avec_listes(base: &str) -> Value {
+    let mut m = manifeste_estompe();
+    let types = m["resource_types"].as_array_mut().unwrap();
+    for k in ["petite", "grosse", "erreur"] {
+        types.push(json!({"key": k, "name": k, "list_url": format!("{base}/{k}")}));
+    }
+    m
+}
+
+#[tokio::test]
+async fn list_url_refusee_sans_hotes_autorises() {
+    let Some(b) = banc().await else { return };
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-estompe"),
+            "PUT",
+            "/v1/manifest",
+            Some(manifeste_avec_listes("http://127.0.0.1:9")),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+}
+
+#[tokio::test]
+async fn liste_de_ressources_bornee() {
+    let Some(b) = banc_avec("127.0.0.1").await else {
+        return;
+    };
+    let base = amont().await;
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-estompe"),
+            "PUT",
+            "/v1/manifest",
+            Some(json!({"app": "estompe", "name": "Estompe", "permissions": [],
+                "resource_types": [{"key": "server", "name": "Serveur", "list_url": "http://169.254.169.254/meta"}]})),
+        )
+        .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "hôte hors liste : {v}");
+    let (s, v) = b
+        .appel(
+            Qui::Service("jeton-estompe"),
+            "PUT",
+            "/v1/manifest",
+            Some(manifeste_avec_listes(&base)),
+        )
+        .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let liste = async |k: &str| {
+        b.appel(
+            Qui::User("root", "user,aegis-admin", "root@plbls.fr"),
+            "GET",
+            &format!("/v1/admin/resources/estompe/{k}"),
+            None,
+        )
+        .await
+    };
+    let (s, v) = liste("petite").await;
+    assert_eq!(
+        (s, v),
+        (StatusCode::OK, json!([{"id": "1", "name": "Salon"}]))
+    );
+    let (s, v) = liste("grosse").await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("trop grosse"), "{v}");
+    let (s, v) = liste("erreur").await;
+    assert_eq!(s, StatusCode::BAD_GATEWAY, "{v}");
+    let message = v["error"].as_str().unwrap();
+    assert!(
+        !message.contains("418") && !message.contains("secrète"),
+        "{v}"
     );
 }
