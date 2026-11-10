@@ -7,7 +7,7 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 |---|---|---|
 | `ci.yml` | toute PR (un push annule le run précédent de la PR) | contrôles de ce que la PR touche, puis job final `ci` |
 | `pr-conventions.yml` | toute PR, et à chaque modification de sa description | nom de branche et description (`scripts/ci-conventions-pr.mjs`) |
-| `livraison.yml` | push sur `main`, tags `pli-v*`, `permission-v*`, `aegis-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
+| `livraison.yml` | push sur `main`, tags `pli-v*`, `permission-v*`, `aegis-v*`, `entracte-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
 | `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel (case `beta` : appelle `estompe-beta.yml`) | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
 | `estompe-beta.yml` | lancement manuel sur la branche d'une PR | check, tests et build du front de la PR, puis image `ghcr.io/plblsfr/estompe-web:beta` (et `beta-pr<n>`, `beta-<sha>`) ; ni `latest`, ni tag, ni release |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
@@ -33,6 +33,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 | `pli_server` | `api/pli/**`, fichiers Cargo racine | `rust-test` (pli) |
 | `catalogue_permissions` | `api/estompe/core/src/catalogue.rs`, `docs/aegis/fonctionnalites.md` (générée, vérifiée par un test) | `rust-test` (Estompe) |
 | `aegis_server` | `api/aegis/**`, fichiers Cargo racine | `rust-test` (aegis, avec PostgreSQL et Redis) |
+| `entracte_server` | `api/entracte/**`, `docs/entracte/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Entracte, avec PostgreSQL et ffmpeg) |
 | `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates`) | `estompe-tauri` |
 | `estompe` | `{api,web,apps,docs,deploy,scripts}/estompe/**`, `.version`, `CHANGELOG.md`, `changelog.d/**`, `agents/**` | `changelog` |
 | `lint` | JS, TS, Svelte, CSS, JSON, shell, Python, Markdown, configs des linters, `scripts/**` | `front` (`just lint`, dont les liens Markdown internes) |
@@ -47,15 +48,19 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 - `changelog` : exige un nouveau `changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
   tests des scripts communs, liens Markdown internes (`scripts/check-links.mjs`), `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque
-  espace npm touché (sortie `espaces` de `changements`). Le futur front unique s'y branche en devenant un espace npm de plus (ou le seul).
+  espace npm touché (sortie `espaces` de `changements`), et pour Estompe l'e2e des sections selon les permissions (`npm run e2e:entracte`,
+  API simulées, Chromium installé par Playwright). Le futur front unique s'y branche en devenant un espace npm de plus (ou le seul).
 - `rust-lint` : une seule fois pour tout le workspace : toolchain de `rust-toolchain.toml`, version de Rust des `FROM rust:` des Dockerfiles,
   `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, règle « le cœur d'Estompe ne dépend d'aucun bloc »,
   `cargo deny check`.
-- `rust-test` : tests des crates d'Estompe (PostgreSQL 17, port 5432) et du serveur pli (PostgreSQL 16, port 5433), chacun selon son groupe.
+- `rust-test` : tests des crates d'Estompe (PostgreSQL 17, port 5432), du serveur pli (PostgreSQL 16, port 5433), d'aegis et d'Entracte
+  (PostgreSQL 17, ffmpeg installé par apt), chacun selon son groupe.
   Les services tournent à côté du runner : joignables par `localhost` et leur port publié. Une base par test sur un seul serveur.
 - `estompe-tauri` : tests des apps Tauri (GTK/WebKit), `cargo check` de l'app Android, Bobyn, ffmpeg épinglé.
 - `estompe-api-image` : construit l'image de l'API sans la publier (cache `:buildcache` du registre en lecture), la démarre à côté d'un
   PostgreSQL et attend `GET /readyz` (60 s au plus). Conteneurs et tag portent l'identifiant du run.
+- `entracte-image` : construit l'image d'Entracte sans la publier (cache GitHub Actions), la démarre avec `deploy/entracte/.env.example`
+  à côté d'un PostgreSQL, attend `GET /readyz`, vérifie ffprobe et le repli sur le CPU d'un mode matériel sans périphérique.
 - `image-pli`, `image-permission`, `image-security`, `image-ui` : `_image.yml` sans publication (étape `test` du Dockerfile de security
   et permission, `build` de ui).
 - `ci` : toujours créé ; échoue si un job a échoué ou a été annulé (un job ignoré compte comme réussi).
