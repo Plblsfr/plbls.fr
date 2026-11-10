@@ -98,15 +98,18 @@ fn client() -> Result<reqwest::Client, String> {
 }
 
 // Service = identifiant de l'app : le build de test (autre identifiant) a son propre coffre.
+#[cfg(not(target_os = "android"))]
 fn entry(app: &tauri::AppHandle, key: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(&app.config().identifier, key).map_err(|e| e.to_string())
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn secret_set(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
     entry(&app, &key)?.set_password(&value).map_err(|e| e.to_string())
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn secret_get(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
     match entry(&app, &key)?.get_password() {
@@ -116,6 +119,7 @@ pub fn secret_get(app: tauri::AppHandle, key: String) -> Result<Option<String>, 
     }
 }
 
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub fn secret_delete(app: tauri::AppHandle, key: String) -> Result<(), String> {
     match entry(&app, &key)?.delete_credential() {
