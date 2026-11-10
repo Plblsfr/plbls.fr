@@ -1,6 +1,12 @@
+<script lang="ts" module>
+  import { Lru } from '../../lib/lru'
+  import type { LinkPreview } from '../../lib/types'
+
+  const cache = new Lru<string, Promise<LinkPreview | null>>(200)
+</script>
+
 <script lang="ts">
   import { api } from '../../lib/api'
-  import type { LinkPreview } from '../../lib/types'
   import Icon from '../../components/Icon.svelte'
   import Lightbox from '../../components/Lightbox.svelte'
   import { youtubeVideo } from '../regarder-ensemble/youtube'
@@ -14,12 +20,8 @@
   let big = $state(false)
   const embedUrl = $derived(yt && `https://www.youtube-nocookie.com/embed/${yt.id}?autoplay=1&start=${yt.start}`)
 
-  // Un aperçu ne se demande qu'une fois par lien et par session (le serveur met aussi en cache).
-  const cache = ((globalThis as any).__previewCache ??= new Map<string, Promise<LinkPreview | null>>()) as Map<string, Promise<LinkPreview | null>>
-  const preview = $derived.by(() => {
-    if (!cache.has(url)) cache.set(url, api.linkPreview(url).catch(() => null))
-    return cache.get(url)!
-  })
+  // Un aperçu ne se demande qu'une fois par lien parmi les 200 derniers affichés (le serveur met aussi en cache).
+  const preview = $derived(cache.getOrSet(url, () => api.linkPreview(url).catch(() => null)))
 </script>
 
 {#if yt}
