@@ -24,6 +24,8 @@ droits ; une requête qui porte la session d'une autre personne est refusée. Au
 
 - `ENTRACTE_MAX_FLUX` lectures par personne, `ENTRACTE_MAX_TRANSCODAGES` transcodages au total, dossier temporaire limité à
   `ENTRACTE_TRANSCODE_MAX_GO` : au-delà, `503 serveur_charge`. Fermer un flux (`DELETE /streams/{id}`) libère sa place.
+- La taille du dossier temporaire est revérifiée toutes les 10 s : tant qu'elle dépasse `ENTRACTE_TRANSCODE_MAX_GO`, le transcodage
+  démarré le plus tôt est arrêté, ses fichiers supprimés et son flux fermé (le lecteur reçoit `401` et doit rouvrir une lecture).
 - Un flux sans requête depuis `ENTRACTE_INACTIVITE_SECONDES` (300) est fermé : ffmpeg est arrêté et ses fichiers supprimés.
   Le dossier temporaire est vidé au démarrage.
 

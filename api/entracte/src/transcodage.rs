@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use crate::config::ModeMateriel;
@@ -187,11 +190,13 @@ struct Actif {
     processus: tokio::process::Child,
     dossier: PathBuf,
     parametres: Parametres,
+    rang: u64,
 }
 
 pub struct Transcodeur {
     racine: PathBuf,
     actifs: Mutex<HashMap<String, Actif>>,
+    rangs: AtomicU64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -207,6 +212,7 @@ impl Transcodeur {
         Self {
             racine,
             actifs: Mutex::default(),
+            rangs: AtomicU64::new(0),
         }
     }
 
@@ -242,6 +248,7 @@ impl Transcodeur {
                 processus,
                 dossier: dossier.clone(),
                 parametres: p.clone(),
+                rang: self.rangs.fetch_add(1, Ordering::SeqCst),
             },
         );
         Ok(dossier)
@@ -313,6 +320,23 @@ impl Transcodeur {
             }
         }
         total
+    }
+
+    pub async fn plafonner(&self, max: u64) -> Vec<String> {
+        let mut arretes = Vec::new();
+        while self.taille().await > max {
+            let plus_ancien = self
+                .actifs
+                .lock()
+                .unwrap()
+                .iter()
+                .min_by_key(|(_, a)| a.rang)
+                .map(|(id, _)| id.clone());
+            let Some(id) = plus_ancien else { break };
+            self.arreter(&id).await;
+            arretes.push(id);
+        }
+        arretes
     }
 }
 
@@ -409,6 +433,29 @@ mod tests {
             !l.contains("hwaccel") && !l.contains("-ss") && !l.contains("-c:a"),
             "{l}"
         );
+    }
+
+    #[tokio::test]
+    async fn plafond_depasse_en_cours_arrete_le_plus_ancien() {
+        let racine = tempfile::tempdir().unwrap();
+        let t = Transcodeur::nouveau(racine.path().to_path_buf());
+        t.preparer().await;
+        let p = params(ModeMateriel::Cpu, None);
+        let a = t.demarrer("false", "a", &p).await.unwrap();
+        let b = t.demarrer("false", "b", &p).await.unwrap();
+        std::fs::write(a.join("seg00000.ts"), [0u8; 600]).unwrap();
+        assert!(t.plafonner(1000).await.is_empty());
+        assert_eq!(t.nombre(), 2);
+        std::fs::write(b.join("seg00000.ts"), [0u8; 600]).unwrap();
+        assert_eq!(t.plafonner(1000).await, vec!["a".to_string()]);
+        assert_eq!(t.identifiants(), vec!["b".to_string()]);
+        assert!(!a.exists() && b.exists());
+        assert_eq!(t.taille().await, 600);
+        let a = t.demarrer("false", "a", &p).await.unwrap();
+        std::fs::write(a.join("seg00000.ts"), [0u8; 600]).unwrap();
+        assert_eq!(t.plafonner(1000).await, vec!["b".to_string()]);
+        assert_eq!(t.plafonner(0).await, vec!["a".to_string()]);
+        assert_eq!(t.nombre(), 0);
     }
 
     #[test]
