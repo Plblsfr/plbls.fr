@@ -196,6 +196,10 @@ impl Flux {
         m.remove(flux).map(|s| s.ouverture.mode)
     }
 
+    pub fn retirer(&self, flux: &str) -> Option<Mode> {
+        self.verrou().remove(flux).map(|s| s.ouverture.mode)
+    }
+
     pub fn existe(&self, flux: &str) -> bool {
         self.verrou().contains_key(flux)
     }

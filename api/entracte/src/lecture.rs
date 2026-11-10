@@ -670,6 +670,13 @@ pub async fn menage(state: &AppState) {
             state.transcodeur().arreter(&id).await;
         }
     }
+    let max = state.config().transcodage_max_octets;
+    for id in state.transcodeur().plafonner(max).await {
+        tracing::warn!(
+            "flux {id} arrêté : dossier de transcodage au-delà de ENTRACTE_TRANSCODE_MAX_GO"
+        );
+        state.flux().retirer(&id);
+    }
 }
 
 #[cfg(test)]
