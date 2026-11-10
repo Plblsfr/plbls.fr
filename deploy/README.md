@@ -59,7 +59,7 @@ Variables communes, de même nom et de même sens partout :
 |---|---|---|
 | `DATABASE_URL`, `DATABASE_USER` / `DATABASE_PASSWORD` | `plbls.env` / Vault `secret/commun` | permission, aegis, pli, entracte, estompe : chacun ajoute sa base (son nom) au serveur `DATABASE_URL` |
 | `REDIS_URL` / `REDIS_PASSWORD` | `plbls.env` / Vault `secret/commun` | `redis` (mot de passe), auth-gateway, aegis, estompe (URL avec le mot de passe) |
-| `GATEWAY_URL`, `GATEWAY_INTERNE_URL` | `plbls.env` | gateway public (navigateurs) ; le même par le réseau Docker pour permission, aegis, pli, entracte |
+| `GATEWAY_URL`, `GATEWAY_INTERNE_URL` | `plbls.env` | gateway public (navigateurs) ; le même par le réseau Docker pour permission, aegis, pli, entracte, estompe (aucun appel entre services ne sort du VPS) |
 | `GATEWAY_IDENTITE_SECRET`, `GATEWAY_INTERNE_TOKEN` | Vault `secret/commun` | en-têtes d'identité signés (gateway, permission, aegis) ; Bearer des routes `/internal/*` du gateway (gateway, permission, aegis) |
 | `PERMISSION_URL`, `AEGIS_URL`, `PERMISSION_ADMIN_ROLE`, `AEGIS_ADMIN_ROLE`, `AEGIS_REDIS_PREFIX` | `plbls.env` | services de droits et leurs clients |
 | `PERMISSION_TOKEN_<SERVICE>`, `AEGIS_TOKEN_<APPLICATION>` | Vault `secret/<client>` | le client (son jeton) et permission ou aegis, qui accepte chaque variable du préfixe comme service `<nom>` en minuscules |

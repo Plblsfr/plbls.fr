@@ -112,7 +112,10 @@ impl Config {
         let c = Config {
             listen_addr: env("LISTEN_ADDR", ":8080"),
             database_url,
-            gateway_url: env("GATEWAY_URL", "https://security.plbls.fr"),
+            gateway_url: match get("GATEWAY_INTERNE_URL") {
+                interne if interne.is_empty() => env("GATEWAY_URL", "https://security.plbls.fr"),
+                interne => interne,
+            },
             allowed_origins: get("ALLOWED_ORIGINS")
                 .split(',')
                 .map(str::trim)
@@ -263,6 +266,16 @@ mod tests {
             (0, 0)
         );
         assert!(!c.livekit.allow_video);
+    }
+
+    #[test]
+    fn gateway_joint_par_le_reseau_interne() {
+        let c = charge(&[
+            ("GATEWAY_URL", "https://public"),
+            ("GATEWAY_INTERNE_URL", "http://auth-gateway:8080"),
+        ])
+        .unwrap();
+        assert_eq!(c.gateway_url, "http://auth-gateway:8080");
     }
 
     #[test]
