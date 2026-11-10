@@ -28,9 +28,14 @@ pub fn embarquees() -> Vec<Migration> {
 }
 
 pub async fn migrate(pool: &PgPool, migrations: &[Migration]) -> Result<(), Erreur> {
-    sqlx::query("CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY)")
-        .execute(pool)
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(7001)")
+        .execute(&mut *tx)
         .await?;
+    sqlx::query("CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY)")
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     let mut tries: Vec<&Migration> = migrations.iter().collect();
     tries.sort_by(|a, b| a.nom.cmp(&b.nom));
     for m in tries {
