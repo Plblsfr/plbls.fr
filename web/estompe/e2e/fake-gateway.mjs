@@ -1,18 +1,32 @@
 // Faux auth-gateway pour les tests : GET /auth/me répond avec l'identité contenue dans le cookie ou le Bearer
-// (la valeur sert d'id et de nom), et faux permission.plbls.fr : POST /v1/check autorise tout le monde sauf « mallory ».
-// Jamais utilisé hors tests.
+// (la valeur sert d'id et de nom), et faux aegis : POST /v1/effective accorde toutes les permissions du catalogue
+// à tout le monde sauf « mallory », PUT /v1/manifest accepte le manifeste. Jamais utilisé hors tests.
+import { readFileSync } from 'node:fs'
 import http from 'node:http'
+import { join } from 'node:path'
 
 const port = Number(process.env.PORT ?? 19000)
+const catalogue = readFileSync(join(import.meta.dirname, '../../../api/estompe/core/src/catalogue.rs'), 'utf8')
+const toutes = Object.fromEntries(
+  [...catalogue.matchAll(/^\s*e\(\s*"([a-z0-9._-]+)"/gm)].map((m) => [`estompe:${m[1]}`, { allow: ['*'], deny: [] }]),
+)
 http
   .createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/v1/check') {
+    if (req.method === 'POST' && req.url === '/v1/effective') {
       let body = ''
       req.on('data', (c) => (body += c))
       req.on('end', () => {
-        const { user_id } = JSON.parse(body)
+        const { sub } = JSON.parse(body)
         res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ allowed: user_id !== 'kc-mallory' }))
+        res.end(JSON.stringify({ sub, permissions: sub === 'kc-mallory' ? {} : toutes }))
+      })
+      return
+    }
+    if (req.method === 'PUT' && req.url === '/v1/manifest') {
+      req.resume()
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ changed: false }))
       })
       return
     }

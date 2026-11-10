@@ -402,7 +402,7 @@ mod tests {
         db::migrate_embarquees,
         identity::Cred,
         state::AppState,
-        testutil::{self, BasePostgres, Faux, faux, faux_permission},
+        testutil::{self, BasePostgres, Faux, faux, faux_aegis},
     };
     use serde_json::{Value, json};
     use std::sync::Arc;
@@ -429,7 +429,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux_permission(|_, _| true).await;
+        let permission = faux_aegis(|_, _| true).await;
         let (pg, base) = testutil::postgres().await?;
         let pool = sqlx::PgPool::connect(&base).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();
@@ -450,7 +450,7 @@ mod tests {
         let data = dossier.path().join("data");
         let mut reglages = vec![
             ("GATEWAY_URL", gateway.url.as_str()),
-            ("PERMISSION_URL", permission.url.as_str()),
+            ("AEGIS_URL", permission.url.as_str()),
             ("DATA_DIR", data.to_str().unwrap()),
             ("TRANSCRIBE_URL", url),
             ("TRANSCRIBE_MODEL", "modele"),

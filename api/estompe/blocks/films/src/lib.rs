@@ -1206,7 +1206,10 @@ type Doc = (
 );
 
 const AUTH: (&str, &str) = ("401", "Identité absente ou invalide");
-const DROITS: (&str, &str) = ("403", "`forbidden` : permission `estompe:movies` requise");
+const DROITS: (&str, &str) = (
+    "403",
+    "`forbidden` : permission `estompe:films.use` requise",
+);
 
 const DOCS: [Doc; 16] = [
     (
@@ -1693,9 +1696,9 @@ mod tests {
             )
         })
         .await;
-        let p = testutil::faux_permission(|sub, perm| match perm {
-            "estompe:movies" => sub != "sub-sans",
-            "estompe:admin" => sub == "sub-admin",
+        let p = testutil::faux_aegis(|sub, perm| match perm {
+            estompe_core::catalogue::FILMS => sub != "sub-sans",
+            p if p.starts_with("estompe:admin.") => sub == "sub-admin",
             _ => true,
         })
         .await;
@@ -1703,7 +1706,7 @@ mod tests {
         let mut config = extra.to_vec();
         config.extend([
             ("GATEWAY_URL", g.url.as_str()),
-            ("PERMISSION_URL", p.url.as_str()),
+            ("AEGIS_URL", p.url.as_str()),
             ("JELLYFIN_URL", jellyfin.url.as_str()),
             ("JELLYFIN_API_KEY", CLE),
             ("STREAM_SECRET", SECRET),

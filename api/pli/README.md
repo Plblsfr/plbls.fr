@@ -2,7 +2,7 @@
 
 Partage chiffré de bout en bout, **à lecture unique**. On dépose un texte ou un fichier, on obtient un lien ; la première personne qui l'ouvre lit le contenu, et il est effacé. Interface en [`@plbls/ui`](../../packages/ui) v2 (design « surligneur », thème clair/sombre automatique). Le logo est dans [`web/pli/public/logo/`](../../web/pli/public/logo) (envelope sur pavé rose, mot « pli » vectorisé, versions claire et sombre).
 
-- **Dépôt** : réservé aux comptes connectés via **security.plbls.fr** *et* autorisés par **permission.plbls.fr** (`pli:deposit`).
+- **Dépôt** : réservé aux comptes connectés via **security.plbls.fr** *et* autorisés par **aegis** (permission `pli:deposit`).
 - **Lecture** : ouverte à tout le monde, sans compte.
 
 ## Comment ça protège le contenu
@@ -32,15 +32,15 @@ Choix qui en découlent :
 
 Serveur en **Rust** (axum, tokio, sqlx, serde, tracing), membre du workspace Cargo racine comme les autres backends : code dans ce dossier (`api/pli`), crate `pli`. Front sans build ([`web/pli/public`](../../web/pli/public)), servi par le serveur. Schéma Postgres appliqué au démarrage par les migrations sqlx de [`migrations/`](migrations), idempotentes (`IF NOT EXISTS`) : une base créée par l'ancien serveur Node est reprise telle quelle. Le chiffré est stocké en `BYTEA` (25 Mo max par défaut, `MAX_BYTES`).
 
-Variables d'environnement : `PLI_DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `PERMISSION_URL` et `PERMISSION_SERVICE_TOKEN`, ou `AEGIS_URL` et `PLI_AEGIS_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50), `RUST_LOG` (`info`).
+Variables d'environnement : `PLI_DATABASE_URL` (obligatoire), `PORT` (8080), `GATEWAY_URL` (`https://security.plbls.fr`), `GATEWAY_INTERNAL_URL` (= `GATEWAY_URL`), `AEGIS_URL` et `PLI_AEGIS_TOKEN` (sans eux, le dépôt répond 503), `DEPOSIT_PERMISSION` (`pli:deposit`), `MAX_BYTES`, `MAX_PENDING_PER_USER` (50), `RUST_LOG` (`info`).
 
 ## Connexion et permissions
 
-Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de security.plbls.fr (`Domain=.plbls.fr`) arrive aussi sur `pli.plbls.fr` ; le serveur le transmet à `GET /auth/me`, puis demande à permission si le compte a `pli:deposit` (token de service en lecture seule, cache 30 s, **refus en cas d'erreur**). Les requêtes qui modifient doivent porter un `Origin` égal à l'hôte de pli (anti-CSRF).
+Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de security.plbls.fr (`Domain=.plbls.fr`) arrive aussi sur `pli.plbls.fr` ; le serveur le transmet à `GET /auth/me`, puis demande à aegis si le compte a `pli:deposit` (`POST {AEGIS_URL}/v1/check` avec le jeton `PLI_AEGIS_TOKEN`, cache 30 s, **refus en cas d'erreur**). Toutes les 10 minutes, pli envoie son manifeste à aegis (`PUT /v1/manifest`, application `pli`, permission `deposit` fermée par défaut). Les requêtes qui modifient doivent porter un `Origin` égal à l'hôte de pli (anti-CSRF).
 
 **À configurer une fois :**
 
-- *permission.plbls.fr* : ajouter `pli:<token>` à `PERMISSION__SERVICES__TOKENS` (le même token dans `PERMISSION_SERVICE_TOKEN`, sans guillemets), puis : application `pli` (`POST /v1/apps {"key":"pli","name":"Pli"}`), permission `deposit` (`POST /v1/apps/pli/permissions`), rôle `depositor` contenant cette permission, et attribution aux comptes autorisés.
+- *aegis* : ajouter `pli:<jeton>` à `AEGIS__SERVICES__TOKENS` (le même jeton dans `PLI_AEGIS_TOKEN`, sans guillemets), puis accorder `pli:deposit` aux comptes autorisés (rôle, groupe ou règle directe, depuis Administration › accès d'Estompe ou l'administration d'aegis) ; la permission apparaît après le premier manifeste.
 - *Base* (administrateur Postgres) : `CREATE USER pli WITH PASSWORD '…'; CREATE DATABASE pli OWNER pli;`
 - *Reverse proxy* de `pli.plbls.fr` : transmettre `Host` (ou `X-Forwarded-Host`), le cookie et `X-Forwarded-For`. Prévoir une limite de corps au moins égale à `MAX_BYTES`.
 - *Dépôt GitHub* : rien à configurer, la CI publie `ghcr.io/plblsfr/pli` avec `GITHUB_TOKEN` (`edge` sur `main`, `X.Y.Z` et `latest` sur un tag `pli-vX.Y.Z`).

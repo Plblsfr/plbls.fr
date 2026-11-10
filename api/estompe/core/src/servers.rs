@@ -1414,7 +1414,7 @@ pub(crate) mod tests {
         let state = AppState::new(
             testutil::config_avec(&[
                 ("GATEWAY_URL", g.url.as_str()),
-                ("PERMISSION_URL", p.url.as_str()),
+                ("AEGIS_URL", p.url.as_str()),
             ]),
             blocs,
         );

@@ -31,10 +31,10 @@ export interface ReportInput { title: string; description: string; category: str
 export interface AdminError { at: string; method: string; path: string; status: number }
 export interface Capacite { allow: string[]; deny: string[] }
 export type Capacites = Record<string, Capacite>
-export interface Me { activated: boolean; allowed: boolean; admin?: boolean; rights?: ('access' | 'admin' | 'movies' | 'permissions' | 'acces' | 'users')[]; capabilities?: Capacites; id?: string; pseudo?: string; sub?: string; movies?: boolean; max_video_size?: number; transcription?: '' | 'alpha' | 'on'; blocks?: string[] }
+export interface Me { activated: boolean; allowed: boolean; admin?: boolean; rights?: ('access' | 'admin' | 'movies' | 'acces' | 'users')[]; capabilities?: Capacites; id?: string; pseudo?: string; sub?: string; movies?: boolean; max_video_size?: number; transcription?: '' | 'alpha' | 'on'; blocks?: string[] }
 /** `icon_version` : 0 sans icône ; change à chaque modification. */
 export interface Server { id: string; name: string; owner_id: string; icon_version: number }
-/** Clés de permission, dans l'ordre de l'API (voir docs/openapi.yaml, schéma Permissions). */
+/** Clés de permission, dans l'ordre de l'API (voir api/estompe/openapi.yaml, schéma Permissions). */
 export type PermKey =
   | 'manage_server' | 'manage_roles' | 'manage_channels' | 'create_invites' | 'view_audit_log'
   | 'kick_members' | 'ban_members' | 'manage_nicknames'

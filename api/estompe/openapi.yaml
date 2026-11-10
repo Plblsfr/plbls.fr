@@ -3,17 +3,17 @@ info:
   title: Estompe API
   version: 0.1.0
   description: |
-    API du service de chat Estompe (v0). Voir aussi `docs/realtime.md` pour les évènements WebSocket.
+    API du service de chat Estompe (v0). Voir aussi `api/estompe/realtime.md` pour les évènements WebSocket.
 
     **Authentification utilisateur** : identité Keycloak via auth-gateway. Le client envoie soit le cookie de
     session `__Secure-plbls_sid` (web, PWA), soit `Authorization: Bearer <access_token>` (Windows). Le service
     interroge `GET /auth/me` du gateway. Les requêtes modifiantes portant un cookie doivent avoir un `Origin`
     autorisé (sinon 403 `bad_origin`).
 
-    **Permission** : l'accès à Estompe est accordé dans permission.plbls.fr (permission `estompe:access` par défaut,
-    `PERMISSION_NAME`). Le service lit toutes les permissions du compte en un appel, `GET /v1/users/{sub}/permissions`,
-    avec un Bearer de service (cache 30 s). Sans la permission,
-    `/activate` et toutes les routes du chat répondent 403 `forbidden` (503 `permission_unavailable` si permission est injoignable).
+    **Permission** : l'accès à Estompe est accordé dans aegis (permission `estompe:access`). Le service lit toutes les
+    permissions du compte en un appel, `POST /v1/effective` d'aegis, avec le Bearer de service `AEGIS_TOKEN` (cache 30 s au plus,
+    borné par `valid_until`). Sans la permission,
+    `/activate` et toutes les routes du chat répondent 403 `forbidden` (503 `permission_unavailable` si aegis est injoignable).
 
     **Compte activé** : toutes les routes, sauf `/me`, `/activate` et `/ws`, répondent 403 `not_activated`
     tant que l'utilisateur n'a pas choisi son pseudo (`POST /activate`).
@@ -60,7 +60,7 @@ paths:
                 properties:
                   allowed: {type: boolean}
                   admin: {type: boolean, description: "au moins une permission `estompe:admin.*` (tableau de bord d'administration)"}
-                  rights: {type: array, items: {type: string, enum: [access, admin, movies, permissions, acces, users]}, description: "droits du compte : `access` (`estompe:access`), `admin` (une permission `estompe:admin.*`), `movies` (`estompe:films.use` et Jellyfin configuré), `acces` (administration des accès d'aegis : `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, avec `AEGIS_URL`), `permissions` (ancien service permission, sans `AEGIS_URL`), `users` (recherche de comptes). Présent même sans compte activé"}
+                  rights: {type: array, items: {type: string, enum: [access, admin, movies, acces, users]}, description: "droits du compte : `access` (`estompe:access`), `admin` (une permission `estompe:admin.*`), `movies` (`estompe:films.use` et Jellyfin configuré), `acces` (administration des accès d'aegis : `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`), `users` (recherche de comptes, mêmes conditions que `acces`). Présent même sans compte activé"}
                   capabilities: {type: object, additionalProperties: {type: object, properties: {allow: {type: array, items: {type: string}}, deny: {type: array, items: {type: string}}}}, description: "permissions `estompe:*` accordées : ressources autorisées (`*` = tous les serveurs) et refusées. Confort d'affichage ; le contrôle se fait côté API"}
                   activated: {type: boolean}
                   movies: {type: boolean, description: "permission `estompe:films.use` et Jellyfin configuré : accès à l'onglet Films et séries"}
@@ -647,161 +647,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {description: forbidden}
         "404": {description: "pseudo inconnu"}
-  /admin/permissions/apps:
-    get:
-      tags: [administration]
-      summary: "Applications de permission. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    post:
-      tags: [administration]
-      summary: "Créer une application. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/apps/{app}:
-    put:
-      tags: [administration]
-      summary: "Modifier une application. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    delete:
-      tags: [administration]
-      summary: "Supprimer une application. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/apps/{app}/permissions:
-    get:
-      tags: [administration]
-      summary: "Permissions d'une application. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    post:
-      tags: [administration]
-      summary: "Déclarer une permission. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/apps/{app}/permissions/{key}:
-    delete:
-      tags: [administration]
-      summary: "Supprimer une permission. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/apps/{app}/roles:
-    get:
-      tags: [administration]
-      summary: "Rôles d'une application. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    post:
-      tags: [administration]
-      summary: "Créer un rôle. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/apps/{app}/roles/{role}:
-    put:
-      tags: [administration]
-      summary: "Modifier un rôle. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    delete:
-      tags: [administration]
-      summary: "Supprimer un rôle. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/assignments:
-    get:
-      tags: [administration]
-      summary: "Attributions (`user_id` pour filtrer). Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    post:
-      tags: [administration]
-      summary: "Attribuer un rôle. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      requestBody:
-        required: true
-        content: {application/json: {schema: {type: object}}}
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-    delete:
-      tags: [administration]
-      summary: "Retirer un rôle (`user_id`, `app`, `role`). Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/audit:
-    get:
-      tags: [administration]
-      summary: "Journal des modifications de permission (`limit`). Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
-  /admin/permissions/users:
-    get:
-      tags: [administration]
-      summary: "Recherche de comptes par début d'e-mail (`email`, `first`), permission `permission:users.read`. Relayé vers `/api/permission/v1` du gateway avec le justificatif de l'appelant ; permission `permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`, sans compte Estompe"
-      responses:
-        "200": {description: "réponse de permission"}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: forbidden}
-        "503": {description: permission_unavailable}
   /admin/acces/catalog:
     get:
       tags: [administration]
@@ -1065,7 +910,7 @@ paths:
   /internal/aegis/resources/{type}:
     get:
       tags: [interne]
-      summary: "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN`, réseau interne ; 404 sans aegis"
+      summary: "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN`, réseau interne"
       responses:
         "200": {description: ok}
         "401": {description: unauthorized}
@@ -2300,7 +2145,7 @@ paths:
   /ws:
     get:
       tags: [temps réel]
-      summary: WebSocket d'évènements (voir docs/realtime.md)
+      summary: WebSocket d'évènements (voir api/estompe/realtime.md)
       security: []
       parameters: [{name: ticket, in: query, required: true, schema: {type: string}}]
       responses: {"101": {description: Switching Protocols}, "401": {description: bad_ticket}}

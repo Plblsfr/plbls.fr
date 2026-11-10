@@ -17,7 +17,6 @@ use crate::{
     identity::{Erreur, Identity, cred_of},
     metrics::{Instantane, Stockage, Totaux},
     openapi::{self, Base},
-    permission,
     state::{AppState, DbIndisponible},
     users::{self, ActivateError, User},
 };
@@ -33,7 +32,6 @@ pub fn router() -> OpenApiRouter<AppState> {
         .merge(crate::fichiers::router())
         .merge(crate::servers::router())
         .merge(crate::administration::router())
-        .merge(crate::relais_permission::router())
         .merge(crate::relais_aegis::router())
         .merge(crate::aegis::router())
 }
@@ -239,7 +237,7 @@ enum Transcription {
 #[utoipa::path(get, path = "/me", tag = "compte",
     summary = "État du compte Estompe de l'utilisateur connecté",
     responses(
-        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `movies`, `permissions` = administrer permission, `users` = rechercher des comptes)", body = MeReponse),
+        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `movies`, `acces` = administrer les accès dans aegis, `users` = rechercher des comptes)", body = MeReponse),
         (status = 401, description = "Identité absente ou invalide", body = openapi::Error),
         (status = 503, description = "`permission_unavailable` : service de permission injoignable", body = openapi::Error),
     ))]
@@ -251,7 +249,6 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
         return permission_indisponible();
     };
     let config = state.config();
-    let aegis = state.permissions().aegis_actif();
     let allowed = droits.a(catalogue::ACCES);
     let admin = catalogue::CATALOGUE
         .iter()
@@ -262,12 +259,8 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
         ("access", allowed),
         ("admin", admin),
         ("movies", movies),
-        ("permissions", permissions && !aegis),
-        ("acces", permissions && aegis),
-        (
-            "users",
-            permissions && (aegis || droits.a(permission::COMPTES)),
-        ),
+        ("acces", permissions),
+        ("users", permissions),
     ]
     .into_iter()
     .filter_map(|(nom, ok)| ok.then_some(nom))
@@ -393,7 +386,7 @@ mod tests {
         app: Router,
         state: AppState,
         _gateway: Option<Faux>,
-        _permission: Faux,
+        _aegis: Faux,
         _pg: Option<BasePostgres>,
     }
 
@@ -405,7 +398,7 @@ mod tests {
                 json!({
                     "id": format!("sub-{nom}"),
                     "name": nom,
-                    "roles": if nom.ends_with("-kc") { vec!["permission-admin"] } else { vec![] },
+                    "roles": if nom.ends_with("-kc") { vec!["aegis-admin"] } else { vec![] },
                 })
                 .to_string()
                 .into_bytes(),
@@ -414,26 +407,25 @@ mod tests {
         }
     }
 
-    fn permission(r: &testutil::Requete) -> (u16, Vec<u8>) {
-        if testutil::sub_permission(r).as_deref() == Some("sub-boom") {
+    fn aegis(r: &testutil::Requete) -> (u16, Vec<u8>) {
+        if testutil::sub_aegis(r).as_deref() == Some("sub-boom") {
             return (500, vec![]);
         }
         testutil::reponse_droits(r, |sub, perm| match perm {
-            "estompe:access" => !sub.starts_with("sub-nope"),
-            "estompe:admin" => sub == "sub-admin",
-            "estompe:movies" => sub == "sub-cinema",
-            "permission:admin" => sub == "sub-perm",
-            "permission:users.read" => sub == "sub-perm",
+            crate::catalogue::ACCES => !sub.starts_with("sub-nope"),
+            crate::catalogue::FILMS => sub == "sub-cinema",
+            crate::catalogue::ADMIN_AEGIS => sub == "sub-perm",
+            p if p.starts_with("estompe:admin.") => sub == "sub-admin",
             _ => false,
         })
     }
 
     async fn env(extra: &[(&str, &str)], avec_base: bool) -> Option<Env> {
         let g = faux(gateway).await;
-        let p = faux(permission).await;
+        let p = faux(aegis).await;
         let mut vars = vec![
             ("GATEWAY_URL", g.url.as_str()),
-            ("PERMISSION_URL", p.url.as_str()),
+            ("AEGIS_URL", p.url.as_str()),
         ];
         vars.extend_from_slice(extra);
         let state = AppState::new(
@@ -459,7 +451,7 @@ mod tests {
             app,
             state,
             _gateway: Some(g),
-            _permission: p,
+            _aegis: p,
             _pg: pg,
         })
     }
@@ -606,7 +598,7 @@ mod tests {
             json!({"allow": ["*"], "deny": []})
         );
         assert!(capacites.get("estompe:admin.users").is_none());
-        assert!(capacites.get("permission:admin").is_none());
+        assert!(capacites.get("aegis:admin").is_none());
         assert_eq!(
             v,
             json!({ "activated": false, "allowed": true, "admin": false, "rights": ["access"] })
@@ -618,10 +610,10 @@ mod tests {
         v.as_object_mut().unwrap().remove("capabilities");
         assert_eq!(
             v,
-            json!({ "activated": false, "allowed": false, "admin": false, "rights": ["permissions"] })
+            json!({ "activated": false, "allowed": false, "admin": false, "rights": ["acces", "users"] })
         );
         let (_, v) = json_de(&e.app, "GET", "/me", "perm", None).await;
-        assert_eq!(v["rights"], json!(["access", "permissions", "users"]));
+        assert_eq!(v["rights"], json!(["access", "acces", "users"]));
         let (s, v) = json_de(&e.app, "GET", "/me", "boom", None).await;
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(

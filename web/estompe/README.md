@@ -78,10 +78,10 @@ L'app vérifie les mises à jour 15 s après le démarrage puis toutes les 6 h, 
 sans assistant). La clé publique et l'adresse (`https://estompe.plbls.fr/updates/latest.json`) sont dans `tauri.conf.json` ; la clé
 privée est dans `~/.tauri/estompe.key` (hors dépôt, **à sauvegarder** : perdue, plus aucune installation ne peut être mise à jour).
 
-Publier une version : fusionner dans `main`, puis lancer à la main le workflow `estompe-livraison-app` sur `main` (onglet Actions de GitHub, « Run workflow ») ou pousser un tag `estompe-app-vX.Y.Z` (l'API a le sien, `estompe-api-vX.Y.Z` : voir `docs/estompe/AGENTS.md`) ; la fusion seule ne construit plus rien. La CI
+Publier une version : fusionner dans `main`, puis lancer à la main le workflow `estompe-livraison-app` sur `main` (onglet Actions de GitHub, « Run workflow ») ou pousser un tag `estompe-app-vX.Y.Z` (l'API a le sien, `estompe-api-vX.Y.Z` : voir `AGENTS.md` à la racine, section « Estompe ») ; la fusion seule ne construit plus rien. La CI
 (`.github/workflows/estompe-livraison-app.yml`) exécute `apps/estompe/windows/scripts/release-windows.sh`, embarque l'installeur signé et `latest.json` dans l'image
 `estompe-web` (servis sur `/updates/`) : le déploiement de l'image suffit. Secret du dépôt requis : `TAURI_SIGNING_PRIVATE_KEY`
-(contenu de `~/.tauri/estompe.key`). Les apps ne se mettent à jour que si `version` a augmenté : la CI incrémente `.version` (racine) à chaque fusion dans `main` (`scripts/estompe/bump-version.mjs`) d'après le préfixe de la branche (`feat/…` : minor +1, le reste : patch +1, `release/…` : sans effet) et les dossiers modifiés, et au build `bump-version.mjs --apply` recopie `windows` et `android` dans `tauri.conf.json`, `Cargo.toml` et `Cargo.lock`. Voir `docs/estompe/AGENTS.md`. Pour une version majeure, modifier `.version` à la main. L'utilisateur voit un bouton « Mettre à jour » (barre latérale et Paramètres) ; il n'est forcé que si `api/estompe/core/updates.json` le demande au moment de la release (voir « Mises à jour forcées »).
+(contenu de `~/.tauri/estompe.key`). Les apps ne se mettent à jour que si `version` a augmenté : la CI incrémente `.version` (racine) à chaque fusion dans `main` (`scripts/estompe/bump-version.mjs`) d'après le préfixe de la branche (`feat/…` : minor +1, le reste : patch +1, `release/…` : sans effet) et les dossiers modifiés, et au build `bump-version.mjs --apply` recopie `windows` et `android` dans `tauri.conf.json`, `Cargo.toml` et `Cargo.lock`. Voir `AGENTS.md` à la racine, section « Estompe ». Pour une version majeure, modifier `.version` à la main. L'utilisateur voit un bouton « Mettre à jour » (barre latérale et Paramètres) ; il n'est forcé que si `api/estompe/core/updates.json` le demande au moment de la release (voir « Mises à jour forcées »).
 
 L'app n'installe que des paquets signés par la clé correspondant à la clé publique du build.
 
@@ -130,7 +130,7 @@ Les options actives figurent dans le journal de debug et dans l'export de mesure
 ### Overlay natif (expérimental)
 
 Feature cargo `overlay-natif`, désactivée par défaut : overlay des participants du vocal rendu par Slint, avec son moteur logiciel, dans une fenêtre Win32 transparente,
-sans webview. Fonctionnement, rendu comparé et mesures restantes : [docs/estompe/overlay-natif.md](../../docs/estompe/overlay-natif.md).
+sans webview.
 
 ## Applications Android et iOS (hors stores)
 

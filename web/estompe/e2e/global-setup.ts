@@ -21,7 +21,7 @@ async function waitFor(url: string, ms = 60_000) {
   throw new Error(`${url} ne répond pas`)
 }
 
-/** Démarre PostgreSQL (Docker), le faux gateway (et faux permission), le vrai backend et le build du front. */
+/** Démarre PostgreSQL (Docker), le faux gateway (et faux aegis), le vrai backend et le build du front. */
 export default async function setup() {
   tmp = mkdtempSync(join(tmpdir(), 'estompe-e2e-'))
   execFileSync('cargo', ['build', '-p', 'estompe-api'], { cwd: root, stdio: 'inherit' })
@@ -58,8 +58,8 @@ webhook:
         DATABASE_URL: 'postgres://postgres:p@127.0.0.1:55432/estompe?sslmode=disable',
         GATEWAY_URL: 'http://127.0.0.1:19000',
         ALLOWED_ORIGINS: E2E.app,
-        PERMISSION_URL: 'http://127.0.0.1:19000',
-        PERMISSION_TOKEN: 'jeton-de-test',
+        AEGIS_URL: 'http://127.0.0.1:19000',
+        AEGIS_TOKEN: 'jeton-de-test',
         DATA_DIR: join(tmp, 'data'),
         LIVEKIT_URL: 'ws://127.0.0.1:7880',
         LIVEKIT_API_URL: 'http://127.0.0.1:7880',

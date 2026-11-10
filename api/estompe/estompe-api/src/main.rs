@@ -323,11 +323,8 @@ mod tests {
     #[test]
     fn openapi_compatible_avec_le_contrat_go() {
         let go: serde_json::Value = serde_norway::from_str(
-            &std::fs::read_to_string(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../../../docs/estompe/openapi.yaml"
-            ))
-            .unwrap(),
+            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../openapi.yaml"))
+                .unwrap(),
         )
         .unwrap();
         let rust = spec();

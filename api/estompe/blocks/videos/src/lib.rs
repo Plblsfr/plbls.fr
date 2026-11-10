@@ -778,7 +778,7 @@ mod tests {
     use estompe_block_regarder_ensemble::Lecteurs;
     use estompe_core::{
         db::migrate_embarquees,
-        testutil::{self, BasePostgres, Faux, faux, faux_avec_entetes, faux_permission},
+        testutil::{self, BasePostgres, Faux, faux, faux_aegis, faux_avec_entetes},
     };
     use estompe_core::{
         messages::EvenementMessage,
@@ -852,7 +852,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux_permission(|_, _| true).await;
+        let permission = faux_aegis(|_, _| true).await;
         let images = faux_avec_entetes(|_| {
             (
                 200,
@@ -896,7 +896,7 @@ mod tests {
         let state = AppState::new(
             testutil::config_avec(&[
                 ("GATEWAY_URL", gateway.url.as_str()),
-                ("PERMISSION_URL", permission.url.as_str()),
+                ("AEGIS_URL", permission.url.as_str()),
             ]),
             vec![],
         );

@@ -79,7 +79,7 @@ async function start() {
       $('login').hidden = false;
       $('login-link').href = `${cfg.gatewayUrl}/auth/login?redirect=${encodeURIComponent(location.href)}`;
     } else msg(e.status === 403
-      ? `Accès réservé : il faut la permission ${cfg.permission} (permission.plbls.fr). Compte connecté : ${e.userId}${e.reason ? ' — ' + e.reason : ''}`
+      ? `Accès réservé : il faut la permission ${cfg.permission} (aegis). Compte connecté : ${e.userId}${e.reason ? ' — ' + e.reason : ''}`
       : e.message, true);
     return;
   }

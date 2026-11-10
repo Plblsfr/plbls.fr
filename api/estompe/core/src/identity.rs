@@ -183,7 +183,7 @@ mod tests {
         }
         (
             200,
-            br#"{"id":"u1","name":"alice","email":"a@x.fr","roles":["user","permission-admin",3]}"#
+            br#"{"id":"u1","name":"alice","email":"a@x.fr","roles":["user","aegis-admin",3]}"#
                 .to_vec(),
         )
     }
@@ -219,7 +219,7 @@ mod tests {
                 sub: "u1".into(),
                 username: "alice".into(),
                 email: "a@x.fr".into(),
-                roles: vec!["user".into(), "permission-admin".into()],
+                roles: vec!["user".into(), "aegis-admin".into()],
                 via_cookie: false
             }
         );

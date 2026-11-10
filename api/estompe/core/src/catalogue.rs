@@ -303,10 +303,6 @@ pub static HORS_PERMISSION: &[(&str, &str)] = &[
         "* /admin/acces/**",
         "administration des accès : jugée par aegis (aegis:admin ou rôle Keycloak)",
     ),
-    (
-        "* /admin/permissions/**",
-        "ancien service permission : jugé par permission, retiré après la bascule",
-    ),
 ];
 
 pub static BITS_HORS_PLAFOND: &[(Perm, &str)] = &[(
@@ -344,10 +340,6 @@ pub fn manifeste(blocs: &[String], ressources_url: &str) -> Value {
             "open_default": e.ouvert,
         })).collect::<Vec<_>>(),
     })
-}
-
-pub fn ouvertes() -> impl Iterator<Item = &'static Entree> {
-    CATALOGUE.iter().filter(|e| e.ouvert)
 }
 
 pub fn plafonnees() -> impl Iterator<Item = &'static Entree> {
@@ -529,10 +521,7 @@ mod tests {
 
     #[test]
     fn documentation_a_jour() {
-        let chemin = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../../docs/aegis/fonctionnalites.md"
-        );
+        let chemin = concat!(env!("CARGO_MANIFEST_DIR"), "/../fonctionnalites.md");
         let attendu = documentation();
         if std::env::var("AEGIS_DOC").is_ok() {
             std::fs::write(chemin, &attendu).unwrap();
@@ -540,7 +529,7 @@ mod tests {
         let actuel = std::fs::read_to_string(chemin).unwrap_or_default();
         assert!(
             actuel == attendu,
-            "docs/aegis/fonctionnalites.md ne correspond plus au catalogue : AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour"
+            "api/estompe/fonctionnalites.md ne correspond plus au catalogue : AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour"
         );
     }
 

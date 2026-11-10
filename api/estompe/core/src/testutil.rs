@@ -23,7 +23,8 @@ pub fn config_avec(extra: &[(&str, &str)]) -> Config {
         }
         match k {
             "DATABASE_URL" => Some("postgres://factice"),
-            "PERMISSION_TOKEN" => Some("jeton"),
+            "AEGIS_URL" => Some("http://aegis.test"),
+            "AEGIS_TOKEN" => Some("jeton"),
             "LIVEKIT_URL" => Some("wss://livekit.test"),
             "LIVEKIT_API_KEY" => Some("cle"),
             "LIVEKIT_API_SECRET" => Some("secret"),
@@ -83,47 +84,44 @@ pub async fn faux(reponse: impl Fn(&Requete) -> (u16, Vec<u8>) + Send + Sync + '
     .await
 }
 
-pub const PERMISSIONS_CONNUES: &[&str] = &[
-    "estompe:access",
-    "estompe:admin",
-    "estompe:movies",
-    "permission:admin",
-    "permission:users.read",
-    "app:perm",
-];
+pub fn noms_connus() -> Vec<String> {
+    crate::catalogue::CATALOGUE
+        .iter()
+        .map(|e| e.nom())
+        .chain([crate::catalogue::ADMIN_AEGIS.to_string()])
+        .collect()
+}
 
-pub fn sub_permission(r: &Requete) -> Option<String> {
-    r.chemin
-        .strip_prefix("/v1/users/")
-        .and_then(|c| c.strip_suffix("/permissions"))
-        .map(|s| {
-            percent_encoding::percent_decode_str(s)
-                .decode_utf8_lossy()
-                .into_owned()
-        })
+pub fn sub_aegis(r: &Requete) -> Option<String> {
+    if r.methode != "POST" || r.chemin != "/v1/effective" {
+        return None;
+    }
+    serde_json::from_slice::<serde_json::Value>(&r.corps).ok()?["sub"]
+        .as_str()
+        .map(String::from)
 }
 
 pub fn reponse_droits(r: &Requete, accorde: impl Fn(&str, &str) -> bool) -> (u16, Vec<u8>) {
-    let Some(sub) = sub_permission(r) else {
+    let Some(sub) = sub_aegis(r) else {
         return (404, vec![]);
     };
     if !r.entete("authorization").starts_with("Bearer ") {
         return (401, vec![]);
     }
-    let permissions: Vec<&str> = PERMISSIONS_CONNUES
-        .iter()
-        .copied()
-        .filter(|p| accorde(&sub, p))
+    let permissions: serde_json::Map<String, serde_json::Value> = noms_connus()
+        .into_iter()
+        .filter(|n| accorde(&sub, n))
+        .map(|n| (n, serde_json::json!({"allow": ["*"], "deny": []})))
         .collect();
     (
         200,
-        serde_json::json!({ "user_id": sub, "permissions": permissions })
+        serde_json::json!({ "sub": sub, "permissions": permissions })
             .to_string()
             .into_bytes(),
     )
 }
 
-pub async fn faux_permission(accorde: impl Fn(&str, &str) -> bool + Send + Sync + 'static) -> Faux {
+pub async fn faux_aegis(accorde: impl Fn(&str, &str) -> bool + Send + Sync + 'static) -> Faux {
     faux(move |r| reponse_droits(r, &accorde)).await
 }
 

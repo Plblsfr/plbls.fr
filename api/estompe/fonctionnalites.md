@@ -122,7 +122,6 @@ Une permission dont le bloc est désactivé n'est pas déclarée.
 | `POST /voice/webhook` | webhook LiveKit signé, sans compte |
 | `GET /internal/aegis/resources/{type}` | route interne appelée par aegis avec son jeton |
 | `* /admin/acces/**` | administration des accès : jugée par aegis (aegis:admin ou rôle Keycloak) |
-| `* /admin/permissions/**` | ancien service permission : jugé par permission, retiré après la bascule |
 
 ## Droits de serveur non plafonnés
 

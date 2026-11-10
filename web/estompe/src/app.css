@@ -233,7 +233,7 @@ select option:checked { background: var(--rose); color: var(--noir); }
 .np .down { display: inline-flex; transform: rotate(90deg); }
 @media (max-width: 520px) { .np-slot { width: 100%; } .np-side-cover { display: none; } .np-queue { max-height: none; } }
 
-/* Direction artistique « estompe » (docs/direction-artistique.md) : jetons de mouvement et surcharges au-dessus de plbls-ui. */
+/* Direction artistique « estompe » : jetons de mouvement et surcharges au-dessus de plbls-ui. */
 :root { --mv-rapide: 120ms; --mv-normal: 200ms; --mv-lent: 320ms; --mv-sortie: cubic-bezier(0.2, 0, 0, 1); --mv-entree: cubic-bezier(0.4, 0, 1, 1); }
 @keyframes mv-fondu { from { opacity: 0; } }
 @keyframes mv-monte { from { opacity: 0; transform: translateY(6px); } }

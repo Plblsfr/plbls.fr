@@ -11,7 +11,6 @@ pub struct Config {
     pub deposit_permission: String,
     pub max_bytes: usize,
     pub max_pending: usize,
-    pub permission: Option<(String, String)>,
     pub aegis: Option<(String, String)>,
     pub public_dir: PathBuf,
 }
@@ -71,7 +70,6 @@ impl Config {
             deposit_permission: env("DEPOSIT_PERMISSION").unwrap_or_else(|| "pli:deposit".into()),
             max_bytes,
             max_pending,
-            permission: env("PERMISSION_URL").zip(env("PERMISSION_SERVICE_TOKEN")),
             aegis: env("AEGIS_URL").zip(env("PLI_AEGIS_TOKEN")),
             public_dir: dossier_public(),
         })
@@ -101,20 +99,20 @@ mod tests {
         assert_eq!(c.deposit_permission, "pli:deposit");
         assert_eq!(c.max_bytes, 25 * 1024 * 1024);
         assert_eq!(c.max_pending, 50);
-        assert!(c.permission.is_none());
+        assert!(c.aegis.is_none());
         let c = charge(&[
             ("PLI_DATABASE_URL", "postgres://x/pli"),
             ("PORT", "9000"),
             ("GATEWAY_URL", " \"https://g\" "),
-            ("PERMISSION_URL", "'http://p'"),
-            ("PERMISSION_SERVICE_TOKEN", "\"tok\""),
+            ("AEGIS_URL", "'http://a'"),
+            ("PLI_AEGIS_TOKEN", "\"tok\""),
             ("MAX_BYTES", "1000"),
         ])
         .unwrap();
         assert_eq!(c.port, 9000);
         assert_eq!(c.gateway_url, "https://g");
         assert_eq!(c.gateway_internal_url, "https://g");
-        assert_eq!(c.permission, Some(("http://p".into(), "tok".into())));
+        assert_eq!(c.aegis, Some(("http://a".into(), "tok".into())));
         assert_eq!(c.max_bytes, 1000);
         assert!(c.public_dir.join("index.html").is_file());
     }

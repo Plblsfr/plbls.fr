@@ -1926,7 +1926,9 @@ pub(crate) mod tests {
     };
 
     fn autorisation(r: &Requete) -> (u16, Vec<u8>) {
-        crate::testutil::reponse_droits(r, |sub, p| p != "estompe:admin" || sub == "sub-admin")
+        crate::testutil::reponse_droits(r, |sub, p| {
+            !p.starts_with("estompe:admin.") || sub == "sub-admin"
+        })
     }
 
     pub(crate) struct Cadre {

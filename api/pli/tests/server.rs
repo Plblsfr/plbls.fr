@@ -24,7 +24,13 @@ fn blob(n: usize) -> Vec<u8> {
 
 async fn faux_gateway() -> Faux {
     faux(|r| {
-        let json_rep = |v: Value| (200, vec![("content-type", "application/json".to_string())], serde_json::to_vec(&v).unwrap());
+        let json_rep = |v: Value| {
+            (
+                200,
+                vec![("content-type", "application/json".to_string())],
+                serde_json::to_vec(&v).unwrap(),
+            )
+        };
         match r.chemin.as_str() {
             "/auth/me" => {
                 let cookie = r.entete("cookie");
@@ -36,7 +42,9 @@ async fn faux_gateway() -> Faux {
             "/v1/check" => {
                 assert_eq!(r.entete("authorization"), "Bearer tok");
                 let d: Value = serde_json::from_slice(&r.corps).unwrap();
-                json_rep(json!({ "allowed": d["user_id"] == "alice" && d["permission"] == "pli:deposit" }))
+                json_rep(
+                    json!({ "allowed": d["sub"] == "alice" && d["permission"] == "pli:deposit" }),
+                )
             }
             _ => (404, vec![], b"{}".to_vec()),
         }
@@ -50,8 +58,8 @@ async fn demarre_avec(extra: &[(&str, &str)]) -> Option<Serveur> {
     let mut env: Vec<(String, String)> = vec![
         ("PLI_DATABASE_URL".into(), url.clone()),
         ("GATEWAY_INTERNAL_URL".into(), gw.url.clone()),
-        ("PERMISSION_URL".into(), gw.url.clone()),
-        ("PERMISSION_SERVICE_TOKEN".into(), "tok".into()),
+        ("AEGIS_URL".into(), gw.url.clone()),
+        ("PLI_AEGIS_TOKEN".into(), "tok".into()),
         ("MAX_BYTES".into(), "1000".into()),
         ("MAX_PENDING_PER_USER".into(), "3".into()),
     ];
@@ -184,7 +192,7 @@ async fn depot_401_sans_session_403_sans_permission_refus_autre_origine() {
 
 #[tokio::test]
 async fn depot_non_configure_503() {
-    let Some(s) = demarre_avec(&[("PERMISSION_URL", "")]).await else {
+    let Some(s) = demarre_avec(&[("AEGIS_URL", "")]).await else {
         return;
     };
     let r = s

@@ -132,7 +132,6 @@ pub struct Decision {
 
 pub struct PermissionChecker {
     http: reqwest::Client,
-    aegis: bool,
     url: String,
     token: String,
     permission: String,
@@ -144,24 +143,12 @@ impl PermissionChecker {
     pub fn new(http: reqwest::Client, url: &str, token: &str, permission: &str) -> Self {
         Self {
             http,
-            aegis: false,
             url: sans_slash_final(url).to_string(),
             token: token.to_string(),
             permission: permission.to_string(),
             ttl_ms: 30_000,
             cache: Mutex::default(),
         }
-    }
-
-    pub fn aegis(http: reqwest::Client, url: &str, token: &str, permission: &str) -> Self {
-        Self {
-            aegis: true,
-            ..Self::new(http, url, token, permission)
-        }
-    }
-
-    pub fn source(&self) -> &'static str {
-        if self.aegis { "aegis" } else { "permission" }
     }
 
     pub async fn envoyer_manifeste(&self) -> Result<(), String> {
@@ -210,14 +197,9 @@ impl PermissionChecker {
             allowed: false,
             reason: Some(reason),
         };
-        let source = self.source();
         let injoignable =
-            |e: &reqwest::Error| refus(format!("{source} injoignable depuis pli ({})", cause(e)));
-        let corps = if self.aegis {
-            json!({ "sub": user_id, "permission": self.permission })
-        } else {
-            json!({ "user_id": user_id, "permission": self.permission })
-        };
+            |e: &reqwest::Error| refus(format!("aegis injoignable depuis pli ({})", cause(e)));
+        let corps = json!({ "sub": user_id, "permission": self.permission });
         let res = match self
             .http
             .post(format!("{}/v1/check", self.url))
@@ -231,16 +213,12 @@ impl PermissionChecker {
         };
         let statut = res.status().as_u16();
         if !res.status().is_success() {
-            let indice = match (statut, self.aegis) {
-                (401, false) => {
-                    " (token de service refusé : vérifier PERMISSION_SERVICE_TOKEN et PERMISSION__SERVICES__TOKENS)"
-                }
-                (401, true) => {
-                    " (jeton refusé : vérifier PLI_AEGIS_TOKEN et AEGIS__SERVICES__TOKENS)"
-                }
-                _ => "",
+            let indice = if statut == 401 {
+                " (jeton refusé : vérifier PLI_AEGIS_TOKEN et AEGIS__SERVICES__TOKENS)"
+            } else {
+                ""
             };
-            return refus(format!("{source} a répondu HTTP {statut}{indice}"));
+            return refus(format!("aegis a répondu HTTP {statut}{indice}"));
         }
         let corps: Value = match res.json().await {
             Ok(v) => v,

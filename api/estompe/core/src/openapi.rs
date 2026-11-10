@@ -15,7 +15,7 @@ use utoipa_axum::router::OpenApiRouter;
     info(
         title = "Estompe API",
         version = "0.1.0",
-        description = "API du service de chat Estompe. Voir `docs/realtime.md` pour les évènements WebSocket.\n\nErreurs : `{\"error\": \"<code>\", \"message\": \"<texte>\"}`."
+        description = "API du service de chat Estompe. Voir `api/estompe/realtime.md` pour les évènements WebSocket.\n\nErreurs : `{\"error\": \"<code>\", \"message\": \"<texte>\"}`."
     ),
     servers((url = "https://chat.plbls.fr")),
     security(("bearer" = []), ("session" = [])),

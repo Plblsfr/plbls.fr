@@ -1102,7 +1102,7 @@ mod tests {
         identity::Cred,
         roles,
         state::AppState,
-        testutil::{self, BasePostgres, Faux, faux, faux_permission},
+        testutil::{self, BasePostgres, Faux, faux, faux_aegis},
     };
     use serde_json::{Value, json};
     use std::{
@@ -1245,7 +1245,7 @@ mod tests {
             )
         })
         .await;
-        let permission = faux_permission(|_, _| true).await;
+        let permission = faux_aegis(|_, _| true).await;
         let sim: Arc<Mutex<Sim>> = Arc::default();
         let s = sim.clone();
         let livekit = faux(move |r| {
@@ -1354,7 +1354,7 @@ mod tests {
         let state = AppState::new(
             testutil::config_avec(&[
                 ("GATEWAY_URL", gateway.url.as_str()),
-                ("PERMISSION_URL", permission.url.as_str()),
+                ("AEGIS_URL", permission.url.as_str()),
                 ("LIVEKIT_API_URL", livekit.url.as_str()),
                 ("LIVEKIT_ALLOW_VIDEO", "true"),
                 ("VOICE_MAX_SCREEN_FPS", "30"),

@@ -109,7 +109,7 @@ fn clip(s: &str, n: usize) -> &str {
 }
 
 #[utoipa::path(get, path = "/ws", tag = "temps réel", security(),
-    summary = "WebSocket d'évènements (voir docs/realtime.md)",
+    summary = "WebSocket d'évènements (voir api/estompe/realtime.md)",
     params(("ticket" = String, Query, description = "Ticket obtenu par POST /ws-ticket")),
     responses(
         (status = 101, description = "Switching Protocols"),
@@ -328,7 +328,7 @@ mod tests {
         permission_hs: Arc<AtomicBool>,
         serveur: JoinHandle<()>,
         _gateway: Faux,
-        permission: Faux,
+        aegis: Faux,
         _pg: BasePostgres,
     }
 
@@ -363,7 +363,7 @@ mod tests {
             }
         })
         .await;
-        let permission = faux({
+        let aegis = faux({
             let refuses = refuses.clone();
             let hs = permission_hs.clone();
             move |r| {
@@ -378,7 +378,7 @@ mod tests {
         let (pg, url) = testutil::postgres().await?;
         let config = testutil::config_avec(&[
             ("GATEWAY_URL", gateway.url.as_str()),
-            ("PERMISSION_URL", permission.url.as_str()),
+            ("AEGIS_URL", aegis.url.as_str()),
             ("ALLOWED_ORIGINS", ORIGINE),
         ]);
         let debut = Instant::now();
@@ -407,7 +407,7 @@ mod tests {
             permission_hs,
             serveur,
             _gateway: gateway,
-            permission,
+            aegis,
             _pg: pg,
         })
     }
@@ -883,8 +883,8 @@ mod tests {
         let mut w = e.connect_ready("alice").await;
         e.permission_hs.store(true, Ordering::SeqCst);
         e.avancer(Duration::from_secs(31));
-        let avant = e.permission.appels();
-        jusqua(|| e.permission.appels() >= avant + 2).await;
+        let avant = e.aegis.appels();
+        jusqua(|| e.aegis.appels() >= avant + 2).await;
         assert!(e.state.hub().online(&a));
         e.permission_hs.store(false, Ordering::SeqCst);
         w.send(Message::Text(r#"{"type":"ping"}"#.into()))

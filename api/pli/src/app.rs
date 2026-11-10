@@ -49,21 +49,9 @@ pub struct AppState(Arc<Inner>);
 impl AppState {
     pub fn new(cfg: Config, db: PgPool) -> Self {
         let http = client_http();
-        let permission = match (&cfg.aegis, &cfg.permission) {
-            (Some((url, token)), _) => Some(PermissionChecker::aegis(
-                http.clone(),
-                url,
-                token,
-                &cfg.deposit_permission,
-            )),
-            (None, Some((url, token))) => Some(PermissionChecker::new(
-                http.clone(),
-                url,
-                token,
-                &cfg.deposit_permission,
-            )),
-            (None, None) => None,
-        };
+        let permission = cfg.aegis.as_ref().map(|(url, token)| {
+            PermissionChecker::new(http.clone(), url, token, &cfg.deposit_permission)
+        });
         Self(Arc::new(Inner {
             cfg,
             db,
@@ -76,8 +64,7 @@ impl AppState {
 
     pub fn demarrer_aegis(&self) {
         let etat = self.clone();
-        let Some(p) = &self.0.permission else { return };
-        if p.source() != "aegis" {
+        if self.0.permission.is_none() {
             return;
         }
         tokio::spawn(async move {
@@ -193,7 +180,7 @@ async fn auth_depot(
     let Some(permission) = &s.permission else {
         return Err(Box::new(json_rep(
             503,
-            &json!({ "error": "dépôt non configuré (AEGIS_URL et PLI_AEGIS_TOKEN, ou PERMISSION_URL et PERMISSION_SERVICE_TOKEN)" }),
+            &json!({ "error": "dépôt non configuré (AEGIS_URL et PLI_AEGIS_TOKEN)" }),
         )));
     };
     let user = match fetch_identity(
