@@ -19,7 +19,7 @@ just security-dev down     # arrête tout (reset supprime aussi les volumes)
 - Login web : http://localhost:8080/auth/login?redirect=http://localhost:3000/
 - Bearer de test : client `plbls-mobile` (direct access grants activés **en dev uniquement**).
 - Routes de dev : `config/dev.toml` (`/api/whoami` public, `/api/private`, `/api/admin` rôle `admin`) vers un service qui renvoie les en-têtes reçus ; WebSocket sur `/api/whoami/echo`.
-- Tests : `just test-security` (unitaires), `just security-coverage` (chaque route est couverte par la suite Bruno de `api/security/bruno/`), puis, gateway lancé, `just security-bruno`, `security-ws`, `security-refresh`, `security-regressions` ; `just security-test-all` enchaîne tout. Le crate est membre du workspace Cargo racine du monorepo (`../../Cargo.toml`, un seul `Cargo.lock`, `rust-toolchain.toml` et `deny.toml` communs) ; binaire dans `../../target/`. Image : `docker build -f api/security/Dockerfile .` depuis la racine du dépôt.
+- Tests : `just test-security` (unitaires ; avec `TEST_REDIS_URL`, aussi le callback OIDC, le logout, le CSRF et le refresh de session contre un faux Keycloak, sinon ignorés), `just security-coverage` (chaque route est couverte par la suite Bruno de `api/security/bruno/`), puis, gateway lancé, `just security-bruno`, `security-ws`, `security-refresh`, `security-regressions` ; `just security-test-all` enchaîne tout. Le crate est membre du workspace Cargo racine du monorepo (`../../Cargo.toml`, un seul `Cargo.lock`, `rust-toolchain.toml` et `deny.toml` communs) ; binaire dans `../../target/`. Image : `docker build -f api/security/Dockerfile .` depuis la racine du dépôt.
 
 ## Production
 
@@ -37,4 +37,4 @@ Le conteneur écoute sur le port `8080` (domaine Dokploy `security.plbls.fr`) : 
 
 ## Contrat avec les micro-services
 
-Voir [docs/security/gateway.md](../../docs/security/gateway.md). Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `src/identity.rs` (`verify`) est la référence pour vérifier `X-Identity-Sig`.
+Voir [docs/security/gateway.md](../../docs/security/gateway.md). Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `api/commun/src/identite.rs` (`sign` et `verify`, partagés avec aegis et permission) est la référence pour vérifier `X-Identity-Sig`.

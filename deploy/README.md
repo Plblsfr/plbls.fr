@@ -54,8 +54,17 @@ les `POSTGRES_*`, `estompe-backup` les `POSTGRES_*` et `BACKUP_*`, `livekit` `LI
   de [`.env.example`](.env.example) (`RUST_LOG`, `GATEWAY_URL`, `PERMISSION_URL`, `AEGIS_URL`), de même sens partout.
 - **Valeurs** : pas de `$` dans un secret (Compose l'interpréterait dans `.env`) ; `openssl rand -hex 32` convient.
 
-Domaines Dokploy : `auth-gateway` 8080 (security.plbls.fr), `permission` 8080, `aegis` 8080, `pli` 8080, `entracte-api` 8080, `estompe-web` 80,
-`estompe-api` 8080, `livekit` 7880, `cdn` 80. Ports ouverts sur l'hôte : 7881/tcp et 50000-50100/udp (WebRTC de LiveKit).
+Domaines Dokploy : `auth-gateway` 8080 (security.plbls.fr), `permission` 8080, `aegis` 8080, `pli` 8080, `entracte-api` 8080, `estompe-web` 8080,
+`estompe-api` 8080, `livekit` 7880, `cdn` 8080. Ports ouverts sur l'hôte : 7881/tcp et 50000-50100/udp (WebRTC de LiveKit).
+
+Durcissement : images tierces épinglées par `tag@sha256` (Dependabot met les digests à jour). `estompe-web` et `cdn` sont construits
+sur `nginxinc/nginx-unprivileged` (utilisateur 101, port 8080) ; le volume `cdn-data` doit appartenir à cet utilisateur
+(`docker run --rm -v <projet>_cdn-data:/srv alpine chown -R 101:0 /srv`, une fois, pour un volume écrit par l'ancienne image).
+Postgres et les Redis ont un healthcheck, et leurs clients attendent `service_healthy`. Tous les services ont
+`no-new-privileges`. `cap_drop: [ALL]` sur ceux qui tournent sans root ou n'ont besoin d'aucune capacité (backends, nginx, LiveKit) ;
+pas sur Postgres, les Redis (leur entrypoint change de propriétaire puis d'utilisateur), la sauvegarde et `transcribe`.
+`read_only` avec un `tmpfs` sur `/tmp` pour les backends distroless (`auth-gateway`, `permission`, `aegis`, `pli`, `estompe-api`) ;
+pas pour ce qui écrit ailleurs au démarrage (nginx, `entracte-api` et ffmpeg, Postgres, Redis, LiveKit, `transcribe`).
 
 ### Ajouter une variable
 

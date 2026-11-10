@@ -14,6 +14,7 @@ vi.mock('./api', () => ({
 vi.mock('./realtime', () => ({ Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
 import { AppStore } from './store.svelte'
+import type { RealtimeEvent } from './realtime'
 import { platform as web } from '@platform'
 import { setPlatform } from './platform'
 import { api } from './api'
@@ -40,7 +41,7 @@ beforeEach(() => {
   s.details = { s1: { server: s.servers[0], channels: [{ id: 'c1', name: 'général', kind: 'text', position: 1 }], members: [{ id: 'me', pseudo: 'moi', online: true }, { id: 'bob', pseudo: 'bob', online: false }] } }
   s.convs = { 'c:c1': { messages: [], hasMore: false, loading: false, loaded: true } }
 })
-const ev = (type: string, data: unknown) => s.handleEvent({ type, data })
+const ev = (type: string, data: unknown) => s.handleEvent({ type, data } as RealtimeEvent)
 
 describe('accès aux films', () => {
   const avec = async (movies: boolean, blocks: string[]) => {

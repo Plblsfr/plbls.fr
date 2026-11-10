@@ -181,6 +181,9 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Champs tactiles** : iOS zoome sur un champ sous 16 px et ne dézoome pas ; la règle `@media (pointer: coarse)` d’`app.css` les force à 16 px, ne jamais poser `maximum-scale` ni `user-scalable`.
 - **Lecteur YouTube** : toujours l'iframe officielle avec `referrerpolicy="strict-origin-when-cross-origin"` (sans `Referer`, YouTube
   répond par l'erreur 153). L'origine de la webview Tauri est `https://tauri.localhost` : tester la lecture dans l'app, pas seulement dans un navigateur.
+- **Lecteurs tiers (YouTube, Vimeo, Twitch, Dailymotion)** : une iframe pilotée par `postMessage` (`providers.ts`), jamais le script du fournisseur dans la page ;
+  `script-src` reste `'self'` (web et Tauri). Un message n'est lu que s'il vient de l'origine du lecteur et de la fenêtre de son iframe. Twitch n'a pas de protocole
+  `postMessage` documenté : rediffusions, directs et clips ne synchronisent que le lancement (`sync: 'start'`).
 - **Lecture automatique** : le navigateur ou la webview peut la refuser (`onAutoplayBlocked`) ; prévoir le bouton « Activer le son », ne jamais supposer que `play()` aboutit.
 - **Empilement** : un menu ouvert dans un modal doit s'afficher au-dessus de lui sans être coupé par un `overflow` masqué ; réutiliser
   `ContextMenu` / `Modal` plutôt qu'un menu local, et ne pas régler un souci d'empilement par un `z-index` arbitraire.

@@ -2,7 +2,7 @@ import { entracteOn, filmsApi, ApiError } from '../../lib/api'
 import { absolute, directOk, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../films/films'
 import { playerError } from './watch'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type Hls from 'hls.js'
 
 /** État d'un lecteur, commun à toutes les sources. */
 export type PState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued'
@@ -48,64 +48,100 @@ export const PROVIDER_LABEL: Record<string, string> = {
   youtube: 'YouTube', ytmusic: 'YouTube Music', twitch_vod: 'Twitch', twitch_clip: 'Twitch (clip)', twitch_live: 'Twitch (direct)', vimeo: 'Vimeo', dailymotion: 'Dailymotion', file: 'Fichier', page: 'Fichier', simple: 'Lien', film: 'Films et séries',
 }
 
-const scripts = new Map<string, Promise<void>>()
-/** Charge un script de lecteur officiel une seule fois ; `ready` dit s'il a défini son objet global. */
-function loadScript(src: string, ready: () => unknown, name: string): Promise<void> {
-  if (ready()) return Promise.resolve()
-  let p = scripts.get(src)
-  if (!p) {
-    p = new Promise<void>((resolve, reject) => {
-      const s = document.createElement('script')
-      s.src = src
-      s.onload = () => (ready() ? resolve() : reject(new Error(`le lecteur ${name} n'a pas pu être initialisé`)))
-      s.onerror = () => { scripts.delete(src); reject(new Error(`le lecteur ${name} n'a pas pu être chargé`)) }
-      document.head.appendChild(s)
-    })
-    scripts.set(src, p)
-  }
-  return p
+/** Message reçu d'un lecteur intégré : objet, ou JSON en texte ; autre chose : null. */
+function parseMessage(data: unknown): Record<string, unknown> | null {
+  let d = data
+  if (typeof d === 'string') { try { d = JSON.parse(d) } catch { return null } }
+  return objet(d)
+}
+const objet = (x: unknown): Record<string, unknown> | null => x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : null
+const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
+
+/** iframe d'un lecteur : ses messages ne sont acceptés que de son origine et de sa fenêtre. */
+function playerFrame(el: HTMLElement, origin: string, onMessage: (data: unknown) => void) {
+  const f = document.createElement('iframe')
+  f.allowFullscreen = true
+  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen'
+  f.referrerPolicy = 'strict-origin-when-cross-origin'
+  f.style.cssText = 'width:100%;height:100%;border:0'
+  el.appendChild(f)
+  const listener = (e: MessageEvent) => { if (e.origin === origin && e.source === f.contentWindow) onMessage(e.data) }
+  addEventListener('message', listener)
+  return { f, post: (m: unknown) => f.contentWindow?.postMessage(JSON.stringify(m), origin), remove: () => { removeEventListener('message', listener); f.remove() } }
 }
 
-// --- YouTube : lecteur officiel (IFrame API) ---
+// --- YouTube : lecteur intégré piloté par postMessage (protocole de l'IFrame API, sans son script) ---
 
-let ytReady: Promise<any> | null = null
-function loadYouTube(): Promise<any> {
-  const w = window as any
-  if (w.YT?.Player) return Promise.resolve(w.YT)
-  ytReady ??= new Promise((resolve, reject) => {
-    const prev = w.onYouTubeIframeAPIReady
-    w.onYouTubeIframeAPIReady = () => { prev?.(); resolve(w.YT) }
-    const s = document.createElement('script')
-    s.src = 'https://www.youtube.com/iframe_api'
-    s.onerror = () => { ytReady = null; reject(new Error("le lecteur YouTube n'a pas pu être chargé")) }
-    document.head.appendChild(s)
-  })
-  return ytReady
-}
+const YT_ORIGIN = 'https://www.youtube-nocookie.com'
 const YT_STATE: Record<number, PState> = { [-1]: 'unstarted', 0: 'ended', 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'cued' }
 
+export interface YouTubeInfo { ready?: true; state?: PState; time?: number; duration?: number; rate?: number; error?: number; blocked?: true }
+
+/** Évènement du lecteur YouTube (`onReady`, `onStateChange`, `infoDelivery`…) ramené à ce qu'Estompe en lit. */
+export function readYouTube(data: unknown): YouTubeInfo | null {
+  const m = parseMessage(data)
+  if (!m) return null
+  switch (m.event) {
+    case 'onReady': return { ready: true }
+    case 'onStateChange': return num(m.info) ? { state: YT_STATE[m.info] ?? 'unstarted' } : null
+    case 'onError': return { error: num(m.info) ? m.info : 0 }
+    case 'onAutoplayBlocked': return { blocked: true }
+    case 'onPlaybackRateChange': return num(m.info) ? { rate: m.info } : null
+    case 'initialDelivery': case 'infoDelivery': {
+      const i = objet(m.info)
+      if (!i) return null
+      const r: YouTubeInfo = {}
+      if (num(i.currentTime)) r.time = i.currentTime
+      if (num(i.duration)) r.duration = i.duration
+      if (num(i.playbackRate)) r.rate = i.playbackRate
+      if (num(i.playerState)) r.state = YT_STATE[i.playerState] ?? 'unstarted'
+      return r
+    }
+  }
+  return null
+}
+
 const youtube: Factory = async (el, h) => {
-  const YT = await loadYouTube()
-  const p: any = await new Promise((resolve) => {
-    const pl = new YT.Player(el, {
-      width: '100%', height: '100%',
-      playerVars: { playsinline: 1, rel: 0, enablejsapi: 1, controls: 0, disablekb: 1, fs: 0, origin: location.origin },
-      host: 'https://www.youtube-nocookie.com',
-      events: {
-        onReady: () => resolve(pl),
-        onStateChange: (e: { data: number }) => h.onState(YT_STATE[e.data] ?? 'unstarted'),
-        onError: (e: { data: number }) => h.onError(playerError(e.data)),
-        onAutoplayBlocked: () => h.onBlocked?.(),
-      },
-    })
+  const widget = Math.floor(Math.random() * 1e9)
+  let st: PState = 'unstarted'
+  let t = 0
+  let d = 0
+  let r = 1
+  let ready = false
+  let waiting: { func: string; args: unknown[] }[] = []
+  const set = (s: PState) => { if (s !== st) { st = s; h.onState(s) } }
+  const frame = playerFrame(el, YT_ORIGIN, (data) => {
+    const i = readYouTube(data)
+    if (!i) return
+    if (i.ready && !ready) { ready = true; clearInterval(hello); for (const c of waiting) send(c.func, c.args); waiting = [] }
+    if (i.time !== undefined) t = i.time
+    if (i.duration !== undefined) d = i.duration
+    if (i.rate !== undefined) r = i.rate
+    if (i.state) set(i.state)
+    if (i.error !== undefined) h.onError(playerError(i.error))
+    if (i.blocked) h.onBlocked?.()
   })
+  const post = (m: Record<string, unknown>) => frame.post({ ...m, id: widget, channel: 'widget' })
+  const listen = () => post({ event: 'listening' })
+  let hello: ReturnType<typeof setInterval> | undefined
+  frame.f.addEventListener('load', () => { if (!ready) { listen(); clearInterval(hello); hello = setInterval(listen, 250) } })
+  const send = (func: string, args: unknown[] = []) => post({ event: 'command', func, args })
+  const call = (func: string, args: unknown[] = []) => (ready ? send(func, args) : waiting.push({ func, args }))
   return {
     sync: 'full', canRate: true,
-    load: (ref, start, play) => (play ? p.loadVideoById({ videoId: ref, startSeconds: start }) : p.cueVideoById({ videoId: ref, startSeconds: start })),
-    play: () => p.playVideo(), pause: () => p.pauseVideo(), seek: (s) => p.seekTo(s, true),
-    time: () => p.getCurrentTime(), duration: () => p.getDuration() || 0, rate: () => p.getPlaybackRate(), setRate: (r) => p.setPlaybackRate(r), setVolume: (v) => p.setVolume(v),
-    state: () => YT_STATE[p.getPlayerState()] ?? 'unstarted',
-    destroy: () => { try { p.destroy() } catch { /* lecteur déjà retiré */ } },
+    load: (ref, start, play) => {
+      t = start
+      if (!frame.f.src) {
+        const q = new URLSearchParams({ enablejsapi: '1', origin: location.origin, widgetid: String(widget), playsinline: '1', rel: '0', controls: '0', disablekb: '1', fs: '0', start: String(Math.floor(start)), autoplay: play ? '1' : '0' })
+        frame.f.src = `${YT_ORIGIN}/embed/${encodeURIComponent(ref)}?${q}`
+        return
+      }
+      call(play ? 'loadVideoById' : 'cueVideoById', [{ videoId: ref, startSeconds: start }])
+    },
+    play: () => call('playVideo'), pause: () => call('pauseVideo'), seek: (s) => { t = s; call('seekTo', [s, true]) },
+    time: () => t, duration: () => d, rate: () => r, setRate: (x) => call('setPlaybackRate', [x]), setVolume: (v) => call('setVolume', [v]),
+    state: () => st,
+    destroy: () => { clearInterval(hello); frame.remove() },
   }
 }
 
@@ -119,7 +155,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
   if (crossOrigin) v.crossOrigin = 'anonymous'
   v.style.cssText = 'width:100%;height:100%;background:#000'
   el.appendChild(v)
-  let hls: any = null
+  let hls: Hls | null = null
   let buffering = false
   const state = (): PState => {
     if (v.ended) return 'ended'
@@ -140,11 +176,12 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
       if (isHls(ref) && !v.canPlayType('application/vnd.apple.mpegurl')) {
         void import('hls.js').then(({ default: Hls }) => {
           if (!Hls.isSupported()) return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
-          hls = new Hls({ enableWorker: false }) // pas de worker : la CSP n'autorise pas blob: pour les workers
-          hls.on(Hls.Events.ERROR, (_: unknown, d: { fatal?: boolean }) => { if (d.fatal) h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).') })
-          hls.on(Hls.Events.MANIFEST_PARSED, go)
-          hls.loadSource(ref)
-          hls.attachMedia(v)
+          const l = new Hls({ enableWorker: false }) // pas de worker : la CSP n'autorise pas blob: pour les workers
+          hls = l
+          l.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).') })
+          l.on(Hls.Events.MANIFEST_PARSED, go)
+          l.loadSource(ref)
+          l.attachMedia(v)
         }).catch(() => h.onError("Le lecteur HLS n'a pas pu être chargé."))
         return
       }
@@ -266,93 +303,112 @@ const film: Factory = async (el, h) => {
   }
 }
 
-// --- Twitch : rediffusions (API du lecteur), directs et clips (lecture simultanée seulement) ---
+// --- Twitch : iframe du lecteur, sans script ni postMessage documenté : seul le lancement est synchronisé ---
 
 const twitchTime = (s: number) => `${Math.floor(s / 3600)}h${Math.floor(s / 60) % 60}m${Math.floor(s % 60)}s`
 /** Twitch exige le domaine de la page dans `parent` (dans l'app PC et Android : celui du webview, à vérifier). */
 const parent = () => location.hostname || 'localhost'
 
-function twitch(kind: 'vod' | 'live'): Factory {
+/** Adresse de l'iframe : rediffusion (`video`, au temps voulu), direct (`channel`) ou clip. */
+export function twitchSrc(kind: 'vod' | 'live' | 'clip', ref: string, start: number, play: boolean, host = parent()): string {
+  const common = `parent=${encodeURIComponent(host)}&autoplay=${play}`
+  if (kind === 'clip') return `https://clips.twitch.tv/embed?clip=${encodeURIComponent(ref)}&${common}`
+  if (kind === 'live') return `https://player.twitch.tv/?channel=${encodeURIComponent(ref)}&${common}`
+  return `https://player.twitch.tv/?video=v${encodeURIComponent(ref)}&time=${twitchTime(start)}&${common}`
+}
+
+function twitch(kind: 'vod' | 'live' | 'clip'): Factory {
   return async (el, h) => {
-    await loadScript('https://player.twitch.tv/js/embed/v1.js', () => (window as any).Twitch?.Player, 'Twitch')
-    const T = (window as any).Twitch.Player
-    let p: any = null
+    const f = document.createElement('iframe')
+    f.allowFullscreen = true
+    f.allow = 'autoplay; fullscreen'
+    f.style.cssText = 'width:100%;height:100%;border:0'
+    el.appendChild(f)
     let st: PState = 'unstarted'
-    const set = (s: PState) => { st = s; h.onState(s) }
+    let playing = true
+    f.addEventListener('load', () => { st = playing ? 'playing' : 'cued'; h.onState(st) })
     return {
-      sync: kind === 'vod' ? 'full' : 'start', canRate: false,
-      load: (ref, start, play) => {
-        const video = kind === 'vod' ? `v${ref}` : ''
-        if (!p) {
-          p = new T(el, { width: '100%', height: '100%', parent: [parent()], autoplay: play, ...(kind === 'vod' ? { video, time: twitchTime(start) } : { channel: ref }) })
-          p.addEventListener(T.READY, () => set('cued'))
-          p.addEventListener(T.PLAYING, () => set('playing'))
-          p.addEventListener(T.PAUSE, () => set('paused'))
-          p.addEventListener(T.ENDED, () => set('ended'))
-          p.addEventListener(T.OFFLINE, () => h.onError("Ce direct n'est pas en ligne."))
-          return
-        }
-        if (kind === 'vod') p.setVideo(video, start)
-        else p.setChannel(ref)
-        if (play) p.play()
-      },
-      play: () => p?.play(), pause: () => p?.pause(), seek: (s) => p?.seek(s),
-      time: () => (p ? p.getCurrentTime() : 0), duration: () => (kind === 'vod' && p ? p.getDuration() || 0 : 0), rate: () => 1, setRate: () => {},
+      sync: 'start', canRate: false,
+      load: (ref, start, play) => { st = 'unstarted'; playing = play; f.src = twitchSrc(kind, ref, start, play) },
+      play() {}, pause() {}, seek() {}, time: () => 0, rate: () => 1, setRate() {},
       state: () => st,
-      destroy: () => { try { p?.destroy?.() } catch { /* retiré */ } el.replaceChildren() },
+      destroy: () => f.remove(),
     }
   }
 }
 
-const twitchClip: Factory = async (el, h) => {
-  const f = document.createElement('iframe')
-  f.allowFullscreen = true
-  f.allow = 'autoplay; fullscreen'
-  f.style.cssText = 'width:100%;height:100%;border:0'
-  el.appendChild(f)
-  let st: PState = 'unstarted'
-  f.addEventListener('load', () => { st = 'playing'; h.onState(st) })
-  return {
-    sync: 'start', canRate: false,
-    load: (ref) => { st = 'unstarted'; f.src = `https://clips.twitch.tv/embed?clip=${encodeURIComponent(ref)}&parent=${encodeURIComponent(parent())}&autoplay=true` },
-    play() {}, pause() {}, seek() {}, time: () => 0, rate: () => 1, setRate() {},
-    state: () => st,
-    destroy: () => f.remove(),
+// --- Vimeo : lecteur intégré piloté par postMessage (protocole de player.js, sans son script) ---
+
+const VIMEO_ORIGIN = 'https://player.vimeo.com'
+const VIMEO_EVENTS = ['play', 'playing', 'pause', 'ended', 'timeupdate', 'bufferstart', 'bufferend', 'seeked', 'error']
+
+export interface VimeoInfo { event: string; time?: number; duration?: number; method?: string }
+
+/** Évènement du lecteur Vimeo (`ready`, `timeupdate`, `play`…) ; une réponse à une méthode (`getDuration`) est rendue comme `method`. */
+export function readVimeo(data: unknown): VimeoInfo | null {
+  const m = parseMessage(data)
+  if (!m) return null
+  if (typeof m.event === 'string') {
+    const i: VimeoInfo = { event: m.event }
+    const x = objet(m.data)
+    if (x) {
+      if (num(x.seconds)) i.time = x.seconds
+      if (num(x.duration)) i.duration = x.duration
+      if (typeof x.method === 'string') i.method = x.method
+    }
+    return i
   }
+  if (typeof m.method === 'string') return num(m.value) && m.method === 'getDuration' ? { event: 'duration', duration: m.value } : null
+  return null
 }
 
-// --- Vimeo : lecteur officiel (player.js) ---
-
 const vimeo: Factory = async (el, h) => {
-  await loadScript('https://player.vimeo.com/api/player.js', () => (window as any).Vimeo?.Player, 'Vimeo')
-  const V = (window as any).Vimeo.Player
-  let p: any = null
   let st: PState = 'unstarted'
   let t = 0
   let d = 0
+  let start = 0
+  let autoplay = false
   const set = (s: PState) => { st = s; h.onState(s) }
-  const poll = setInterval(() => { if (p) { void p.getCurrentTime().then((x: number) => (t = x)).catch(() => {}); void p.getDuration().then((x: number) => (d = x)).catch(() => {}) } }, 250)
+  const frame = playerFrame(el, VIMEO_ORIGIN, (data) => {
+    const i = readVimeo(data)
+    if (!i) return
+    if (i.time !== undefined) t = i.time
+    if (i.duration !== undefined) d = i.duration
+    switch (i.event) {
+      case 'ready':
+        for (const e of VIMEO_EVENTS) send('addEventListener', e)
+        send('getDuration')
+        if (start > 0) send('setCurrentTime', start)
+        set('cued')
+        if (autoplay) send('play')
+        break
+      case 'play': set('buffering'); break
+      case 'playing': set('playing'); break
+      case 'pause': set('paused'); break
+      case 'bufferstart': set('buffering'); break
+      case 'bufferend': case 'seeked': set(st === 'buffering' ? 'playing' : st); break
+      case 'ended': set('ended'); break
+      case 'error':
+        if (i.method === 'play') set('paused')
+        else if (!i.method) h.onError("Vimeo refuse la lecture de cette vidéo ici (privée ou intégration désactivée).")
+        break
+    }
+  })
+  const send = (method: string, value?: unknown) => frame.post(value === undefined ? { method } : { method, value })
+  frame.f.addEventListener('load', () => send('ping'))
   return {
     sync: 'full', canRate: false,
-    load: (ref, start, play) => {
-      if (!p) {
-        p = new V(el, { id: Number(ref), autoplay: false, playsinline: true, width: el.clientWidth || 640 })
-        p.on('loaded', () => { if (start > 0) void p.setCurrentTime(start); set('cued'); if (play) void p.play().catch(() => set('paused')) })
-        p.on('play', () => set('buffering'))
-        p.on('playing', () => set('playing'))
-        p.on('pause', () => set('paused'))
-        p.on('bufferstart', () => set('buffering'))
-        p.on('bufferend', () => set(st === 'buffering' ? 'playing' : st))
-        p.on('ended', () => set('ended'))
-        p.on('error', () => h.onError("Vimeo refuse la lecture de cette vidéo ici (privée ou intégration désactivée)."))
-        return
-      }
-      void p.loadVideo(Number(ref)).then(() => { if (start > 0) void p.setCurrentTime(start); if (play) void p.play().catch(() => set('paused')) }).catch(() => h.onError('Vidéo Vimeo introuvable ou privée.'))
+    load: (ref, s, play) => {
+      st = 'unstarted'
+      t = start = s
+      d = 0
+      autoplay = play
+      frame.f.src = `${VIMEO_ORIGIN}/video/${encodeURIComponent(ref)}?api=1&autoplay=0&playsinline=1&dnt=1`
     },
-    play: () => void p?.play().catch(() => {}), pause: () => void p?.pause(), seek: (s) => { t = s; void p?.setCurrentTime(s) },
-    time: () => t, duration: () => d, rate: () => 1, setRate() {},
+    play: () => send('play'), pause: () => send('pause'), seek: (s) => { t = s; send('setCurrentTime', s) },
+    time: () => t, duration: () => d, rate: () => 1, setRate() {}, setVolume: (v) => send('setVolume', v / 100),
     state: () => st,
-    destroy: () => { clearInterval(poll); try { void p?.destroy() } catch { /* retiré */ } },
+    destroy: () => frame.remove(),
   }
 }
 
@@ -404,5 +460,5 @@ const dailymotion: Factory = async (el, h) => {
 }
 
 export const providers: Record<string, Factory> = {
-  youtube, file, film, page: file, vimeo, dailymotion, twitch_vod: twitch('vod'), twitch_live: twitch('live'), twitch_clip: twitchClip,
+  youtube, file, film, page: file, vimeo, dailymotion, twitch_vod: twitch('vod'), twitch_live: twitch('live'), twitch_clip: twitch('clip'),
 }

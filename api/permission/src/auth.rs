@@ -6,8 +6,9 @@ use axum::{
     extract::FromRequestParts,
     http::{HeaderMap, header, request::Parts},
 };
+use commun::identite as identity;
 
-use crate::{AppState, error::ApiError, identity};
+use crate::{AppState, error::ApiError};
 
 #[derive(Debug, Clone)]
 pub enum Caller {
@@ -48,15 +49,15 @@ impl FromRequestParts<AppState> for Caller {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        if !identity::verify(
-            &state.settings.identity.secret,
+        let champs = identity::Champs {
             id,
             roles,
             client,
             ts,
-            sig,
-            now,
-        ) {
+            name: header_str(h, "x-user-name").unwrap_or_default(),
+            email: header_str(h, "x-user-email").unwrap_or_default(),
+        };
+        if !identity::verify(&state.settings.identity.secret, &champs, sig, now) {
             return Err(ApiError::Unauthorized);
         }
         Ok(Caller::User {

@@ -208,7 +208,7 @@ async fn auth_depot(
             tracing::warn!("dépôt 401 : {reason}");
             return Err(Box::new(json_rep(
                 401,
-                &json!({ "error": "non authentifié", "reason": reason }),
+                &json!({ "error": "non authentifié" }),
             )));
         }
     };
@@ -229,12 +229,10 @@ async fn auth_depot(
                 .clone()
                 .unwrap_or_else(|| format!("pas de permission {perm}"))
         );
-        let mut corps = json!({ "error": format!("permission {perm} requise") });
-        if let Some(r) = decision.reason {
-            corps["reason"] = Value::String(r);
-        }
-        corps["user_id"] = user["id"].clone();
-        return Err(Box::new(json_rep(403, &corps)));
+        return Err(Box::new(json_rep(
+            403,
+            &json!({ "error": format!("permission {perm} requise"), "user_id": user["id"] }),
+        )));
     }
     Ok(user)
 }
@@ -324,12 +322,15 @@ async fn api(state: &AppState, req: Request, chemin: &str) -> Result<Response, E
         let Some(ttl) = duree(parametre(&parts.uri, "ttl")) else {
             return Ok(json_rep(400, &json!({ "error": "durée invalide" })));
         };
-        if db::list_shares(&s.db, &owner).await?.len() >= s.cfg.max_pending {
-            let max = s.cfg.max_pending;
-            return Ok(json_rep(
+        let max = s.cfg.max_pending;
+        let quota_atteint = || {
+            json_rep(
                 429,
                 &json!({ "error": format!("{max} partages en attente au maximum : supprimez-en") }),
-            ));
+            )
+        };
+        if usize::try_from(db::count_pending(&s.db, &owner).await?).unwrap_or(usize::MAX) >= max {
+            return Ok(quota_atteint());
         }
         let data = corps(body, entetes, s.cfg.max_bytes).await?;
         if data.len() < 30 || data[0] != 1 {
@@ -341,7 +342,9 @@ async fn api(state: &AppState, req: Request, chemin: &str) -> Result<Response, E
         let mut octets = [0u8; 16];
         rand::rng().fill_bytes(&mut octets);
         let id = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(octets);
-        let expires_at = db::insert_share(&s.db, &id, &owner, &data, ttl).await?;
+        let Some(expires_at) = db::insert_share(&s.db, &id, &owner, &data, ttl, max).await? else {
+            return Ok(quota_atteint());
+        };
         return Ok(json_rep(
             201,
             &db::Depot {

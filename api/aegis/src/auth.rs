@@ -4,8 +4,9 @@ use axum::{
     extract::FromRequestParts,
     http::{HeaderMap, header, request::Parts},
 };
+use commun::identite as identity;
 
-use crate::{AppState, error::ApiError, identity, stockage};
+use crate::{AppState, error::ApiError, stockage};
 
 pub const PERMISSION_ADMIN: &str = "aegis:admin";
 
@@ -47,6 +48,8 @@ impl FromRequestParts<AppState> for Caller {
         let sub = entete(h, "x-user-id").ok_or(ApiError::Unauthorized)?;
         let roles = entete(h, "x-user-roles").unwrap_or_default();
         let client = entete(h, "x-client-id").unwrap_or_default();
+        let name = entete(h, "x-user-name").unwrap_or_default();
+        let email = entete(h, "x-user-email").unwrap_or_default();
         let ts = entete(h, "x-identity-ts")
             .and_then(|v| v.parse().ok())
             .ok_or(ApiError::Unauthorized)?;
@@ -54,17 +57,18 @@ impl FromRequestParts<AppState> for Caller {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        if !identity::verify(
-            &state.settings.identity.secret,
-            sub,
+        let champs = identity::Champs {
+            id: sub,
             roles,
             client,
             ts,
-            sig,
-            now,
-        ) {
+            name,
+            email,
+        };
+        if !identity::verify(&state.settings.identity.secret, &champs, sig, now) {
             return Err(ApiError::Unauthorized);
         }
+        let texte = |v: &str| Some(identity::decoder(v)).filter(|s| !s.is_empty());
         Ok(Caller::User {
             sub: sub.to_string(),
             roles: roles
@@ -72,8 +76,8 @@ impl FromRequestParts<AppState> for Caller {
                 .filter(|r| !r.is_empty())
                 .map(str::to_string)
                 .collect(),
-            email: entete(h, "x-user-email").map(str::to_string),
-            name: entete(h, "x-user-name").map(str::to_string),
+            email: texte(email),
+            name: texte(name),
         })
     }
 }

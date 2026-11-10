@@ -62,13 +62,13 @@ pub fn run() {
                 let options = std::env::var(webview2_options::VARIABLE).unwrap_or_else(|_| "défaut de Tauri".into());
                 debuglog::log("info", "webview2", &format!("options : {options}"));
             }
-            // Les mises à jour ne sont actives que si la configuration de build contient `plugins.updater` (clé publique et adresse).
             // Raccourci global du push-to-talk : enregistré par le front uniquement en salon vocal et fenêtre hors focus.
-                        app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
-                        if app.config().plugins.0.contains_key("updater") {
+            app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+            // Les mises à jour ne sont actives que si la configuration de build contient `plugins.updater` (clé publique et adresse).
+            if app.config().plugins.0.contains_key("updater") {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             }
-                        {
+            {
                 // Icône dans la zone de notification : la fenêtre se masque au lieu de se fermer (vocal et notifications restent
                 // actifs) et WebView2 cesse de dessiner tant qu'elle est cachée, donc aucun coût dans un jeu.
                 let ouvrir = MenuItem::with_id(app, "ouvrir", "Ouvrir Estompe", true, None::<&str>)?;
@@ -100,7 +100,7 @@ pub fn run() {
             overlay_natif::overlay_natif_disponible, overlay_natif::overlay_natif_afficher, overlay_natif::overlay_natif_fermer,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear]);
     // La fenêtre se masque au lieu de se fermer (bureau uniquement : sur mobile, c'est le système qui gère l'app).
-        let builder = builder.on_window_event(|w, e| match e {
+    let builder = builder.on_window_event(|w, e| match e {
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             let _ = w.hide();

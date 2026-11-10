@@ -1,6 +1,5 @@
 mod auth;
 mod error;
-mod identity;
 mod routes;
 mod settings;
 
@@ -47,9 +46,7 @@ async fn main() -> anyhow::Result<()> {
         settings: settings.clone(),
         db,
         spec: api_doc.to_pretty_json()?.into(),
-        http: reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()?,
+        http: commun::http::client(std::time::Duration::from_secs(10)),
     };
     let mut app = api_router.merge(routes::openapi::router());
 

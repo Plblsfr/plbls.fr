@@ -117,13 +117,7 @@ pub async fn rechercher(
     if texte.is_empty() || texte.chars().count() > 100 {
         return Err(invalide("recherche vide ou trop longue"));
     }
-    let motif = format!(
-        "%{}%",
-        texte
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    );
+    let motif = commun::sql::contient(texte);
     let locaux = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES}, t.tmdb_id {} WHERE t.genre <> 'episode' AND t.present AND (t.titre ILIKE $2 OR t.titre_original ILIKE $2)
          ORDER BY lower(t.titre) LIMIT 20",

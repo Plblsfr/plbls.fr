@@ -113,7 +113,7 @@ impl Ressources {
             .map(str::trim)
             .filter(|h| !h.is_empty())
             .collect();
-        hotes.is_empty() || u.host_str().is_some_and(|h| hotes.contains(&h))
+        u.host_str().is_some_and(|h| hotes.contains(&h))
     }
 }
 
@@ -125,13 +125,7 @@ pub struct Services {
 
 impl Services {
     pub fn trouver(&self, donne: &str) -> Option<&str> {
-        use subtle::ConstantTimeEq;
-        self.tokens
-            .split(',')
-            .filter_map(|e| e.trim().split_once(':'))
-            .filter(|(_, t)| !t.is_empty())
-            .find(|(_, t)| bool::from(t.as_bytes().ct_eq(donne.as_bytes())))
-            .map(|(n, _)| n)
+        commun::services::trouver(&self.tokens, donne)
     }
 
     pub fn jeton(&self, app: &str) -> Option<&str> {
@@ -172,13 +166,15 @@ mod tests {
 
     #[test]
     fn hotes_des_ressources() {
-        let libre = Ressources::default();
-        assert!(libre.hote_autorise("http://estompe-api:8080/x"));
-        assert!(!libre.hote_autorise("file:///etc/passwd"));
+        let vide = Ressources::default();
+        assert!(!vide.hote_autorise("http://estompe-api:8080/x"));
+        assert!(!vide.hote_autorise("file:///etc/passwd"));
         let r = Ressources {
             allowed_hosts: "estompe-api, pli".into(),
         };
         assert!(r.hote_autorise("http://estompe-api:8080/x"));
         assert!(!r.hote_autorise("http://ailleurs/x"));
+        assert!(!r.hote_autorise("file://estompe-api/etc/passwd"));
+        assert!(!r.hote_autorise("http://estompe-api.ailleurs/x"));
     }
 }

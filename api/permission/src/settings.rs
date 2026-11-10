@@ -52,13 +52,7 @@ pub struct Services {
 impl Services {
     /// Nom du service dont le token est `given`.
     pub fn find(&self, given: &str) -> Option<&str> {
-        use subtle::ConstantTimeEq;
-        self.tokens
-            .split(',')
-            .filter_map(|e| e.trim().split_once(':'))
-            .filter(|(_, t)| !t.is_empty())
-            .find(|(_, t)| bool::from(t.as_bytes().ct_eq(given.as_bytes())))
-            .map(|(n, _)| n)
+        commun::services::trouver(&self.tokens, given)
     }
 }
 

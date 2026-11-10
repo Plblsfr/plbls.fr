@@ -12,10 +12,9 @@ use sqlx::{
 };
 use uuid::Uuid;
 
-use crate::{
-    config::nettoie,
-    progression::{DUREE_MAX, SEUIL_VU},
-};
+use commun::config::nettoie;
+
+use crate::progression::{DUREE_MAX, SEUIL_VU};
 
 pub const COMMANDE: &str = "importer-estompe";
 const LOT: usize = 100;

@@ -136,30 +136,95 @@ impl Store {
     /// Compteur à fenêtre fixe : vrai tant que `key` a fait au plus `max` appels dans les `window` dernières secondes.
     pub async fn hit(&self, key: &str, max: u64, window: u64) -> redis::RedisResult<bool> {
         let mut c = self.redis.clone();
-        let key = format!("rl:{key}");
-        let n: u64 = c.incr(&key, 1).await?;
-        if n == 1 {
-            let _: () = c.expire(&key, window as i64).await?;
-        }
+        let n: u64 = redis::Script::new(COMPTER)
+            .key(format!("rl:{key}"))
+            .arg(window)
+            .invoke_async(&mut c)
+            .await?;
         Ok(n <= max)
     }
 
-    /// Verrou de refresh par session (`SET NX EX 15`).
-    pub async fn try_lock(&self, sid: &str) -> redis::RedisResult<bool> {
+    /// Verrou de refresh par session (`SET NX EX 15`), avec une valeur propre au détenteur.
+    pub async fn try_lock(&self, sid: &str) -> redis::RedisResult<Option<String>> {
         let mut c = self.redis.clone();
+        let jeton = random_token(16);
         let r: Option<String> = redis::cmd("SET")
             .arg(format!("lock:{}", session_key(sid)))
-            .arg(1)
+            .arg(&jeton)
             .arg("NX")
             .arg("EX")
             .arg(LOCK_TTL)
             .query_async(&mut c)
             .await?;
-        Ok(r.is_some())
+        Ok(r.map(|_| jeton))
     }
 
-    pub async fn unlock(&self, sid: &str) {
+    pub async fn unlock(&self, sid: &str, jeton: &str) {
         let mut c = self.redis.clone();
-        let _: redis::RedisResult<()> = c.del(format!("lock:{}", session_key(sid))).await;
+        let _: redis::RedisResult<i64> = redis::Script::new(LIBERER)
+            .key(format!("lock:{}", session_key(sid)))
+            .arg(jeton)
+            .invoke_async(&mut c)
+            .await;
+    }
+}
+
+const COMPTER: &str = "local n = redis.call('INCR', KEYS[1])
+if n == 1 or redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return n";
+
+const LIBERER: &str =
+    "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
+return 0";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn store() -> Option<Store> {
+        let Ok(url) = std::env::var("TEST_REDIS_URL") else {
+            eprintln!("ignoré : TEST_REDIS_URL absent");
+            return None;
+        };
+        let client = redis::Client::open(url).expect("URL Redis");
+        Some(Store::new(
+            redis::aio::ConnectionManager::new(client)
+                .await
+                .expect("connexion Redis"),
+        ))
+    }
+
+    #[tokio::test]
+    async fn lock_released_only_by_its_holder() {
+        let Some(s) = store().await else { return };
+        let sid = random_token(16);
+        let mien = s.try_lock(&sid).await.unwrap().expect("verrou pris");
+        assert!(s.try_lock(&sid).await.unwrap().is_none());
+        s.unlock(&sid, "autre").await;
+        assert!(s.try_lock(&sid).await.unwrap().is_none());
+        s.unlock(&sid, &mien).await;
+        let suivant = s.try_lock(&sid).await.unwrap().expect("verrou libéré");
+        assert_ne!(suivant, mien);
+        s.unlock(&sid, &suivant).await;
+    }
+
+    #[tokio::test]
+    async fn rate_counter_always_expires() {
+        let Some(s) = store().await else { return };
+        let key = format!("test:{}", random_token(8));
+        let mut c = s.redis.clone();
+        let _: () = c.set(format!("rl:{key}"), 5).await.unwrap();
+        assert!(!s.hit(&key, 5, 30).await.unwrap());
+        let ttl: i64 = c.ttl(format!("rl:{key}")).await.unwrap();
+        assert!((1..=30).contains(&ttl), "{ttl}");
+        let autre = format!("test:{}", random_token(8));
+        assert!(s.hit(&autre, 1, 30).await.unwrap());
+        assert!(!s.hit(&autre, 1, 30).await.unwrap());
+        let ttl: i64 = c.ttl(format!("rl:{autre}")).await.unwrap();
+        assert!((1..=30).contains(&ttl), "{ttl}");
+        let _: () = c
+            .del(&[format!("rl:{key}"), format!("rl:{autre}")])
+            .await
+            .unwrap();
     }
 }

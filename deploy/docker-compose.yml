@@ -3,25 +3,43 @@
 # (env_file) ; les autres services ne reçoivent que leurs variables, interpolées dans environment ou command.
 # Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
 name: plbls
+
+x-durci: &durci
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+x-lecture-seule: &lecture-seule
+  read_only: true
+  tmpfs: [/tmp]
+
 services:
   auth-gateway:
     image: ghcr.io/plblsfr/security:${GATEWAY_TAG:-latest}
     restart: unless-stopped
+    <<: [*durci, *lecture-seule]
     env_file: .env
-    depends_on: [security-redis]
+    depends_on:
+      security-redis: { condition: service_healthy }
     expose: ["8080"]
     networks: [default, dokploy-network, security-redis]
 
   security-redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
     restart: unless-stopped
+    security_opt: [no-new-privileges:true]
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${SECURITY_REDIS_PASSWORD:?SECURITY_REDIS_PASSWORD est obligatoire}"]
     volumes: [security-redis-data:/data]
     networks: [security-redis]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -Eq 'PONG|NOAUTH'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   permission:
     image: ghcr.io/plblsfr/permission:${PERMISSION_TAG:-latest}
     restart: unless-stopped
+    <<: [*durci, *lecture-seule]
     env_file: .env
     expose: ["8080"]
     networks: [default, postgres-net]
@@ -29,21 +47,30 @@ services:
   aegis:
     image: ghcr.io/plblsfr/aegis:${AEGIS_TAG:-latest}
     restart: unless-stopped
+    <<: [*durci, *lecture-seule]
     env_file: .env
-    depends_on: [aegis-redis]
+    depends_on:
+      aegis-redis: { condition: service_healthy }
     expose: ["8080"]
     networks: [default, postgres-net, aegis-redis]
 
   aegis-redis:
-    image: redis:8-alpine
+    image: redis:8-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80
     restart: unless-stopped
+    security_opt: [no-new-privileges:true]
     command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${AEGIS_REDIS_PASSWORD:?AEGIS_REDIS_PASSWORD est obligatoire}"]
     expose: ["6379"]
     networks: [aegis-redis]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -Eq 'PONG|NOAUTH'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   pli:
     image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
     restart: unless-stopped
+    <<: [*durci, *lecture-seule]
     env_file: .env
     expose: ["8080"]
     networks: [default, postgres-net]
@@ -51,6 +78,7 @@ services:
   entracte-api:
     image: ghcr.io/plblsfr/entracte:${ENTRACTE_TAG:-latest}
     restart: unless-stopped
+    <<: *durci
     env_file: .env
     volumes:
       - ${ENTRACTE_MEDIAS:-/srv/medias}:${ENTRACTE_MEDIAS:-/srv/medias}:ro
@@ -61,41 +89,58 @@ services:
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
     restart: unless-stopped
+    <<: *durci
     environment:
       API_URL: ${API_URL:?API_URL est obligatoire}
       GATEWAY_URL: ${GATEWAY_URL:-}
       VOICE_URL: ${VOICE_URL:-}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
       ENTRACTE_PUBLIC_URL: ${ENTRACTE_PUBLIC_URL:-}
-    expose: ["80"]
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   estompe-api:
     image: ghcr.io/plblsfr/estompe:${ESTOMPE_TAG:-latest}
     restart: unless-stopped
+    <<: [*durci, *lecture-seule]
     env_file: .env
     volumes: [estompe-data:/data]
-    depends_on: [estompe-postgres, livekit]
+    depends_on:
+      estompe-postgres: { condition: service_healthy }
+      livekit: { condition: service_started }
     expose: ["8080"]
     networks: [default, jellyfin, aegis-redis]
 
   transcribe:
-    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    image: ghcr.io/speaches-ai/speaches:0.8.3-cpu@sha256:21e3df06d842fb7802ab470dd77c25f0e8c0d22950e8d8c6ae886e851af53ef8
     restart: unless-stopped
+    security_opt: [no-new-privileges:true]
     volumes: [transcribe-models:/home/ubuntu/.cache/huggingface/hub]
     expose: ["8000"]
 
   estompe-postgres:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
+    security_opt: [no-new-privileges:true]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est obligatoire}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est obligatoire}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
     volumes: [estompe-pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   estompe-backup:
     image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
     restart: unless-stopped
+    security_opt: [no-new-privileges:true]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB est obligatoire}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER est obligatoire}
@@ -105,7 +150,8 @@ services:
       BACKUP_FILES: ${BACKUP_FILES:-false}
       BACKUP_NOW: ${BACKUP_NOW:-true}
     volumes: [estompe-backups:/backups, estompe-data:/data:ro]
-    depends_on: [estompe-postgres]
+    depends_on:
+      estompe-postgres: { condition: service_healthy }
     command:
       - sh
       - -c
@@ -130,6 +176,7 @@ services:
   livekit:
     image: livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
     restart: unless-stopped
+    <<: *durci
     environment:
       LIVEKIT_KEYS: ${LIVEKIT_KEYS:?LIVEKIT_KEYS est obligatoire}
     command: ["--config", "/etc/livekit.yaml"]
@@ -144,10 +191,11 @@ services:
   cdn:
     image: ghcr.io/plblsfr/plbls-ui:${CDN_TAG:-latest}
     restart: unless-stopped
+    <<: *durci
     volumes: [cdn-data:/srv]
-    expose: ["80"]
+    expose: ["8080"]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 30s
       timeout: 3s
       retries: 3

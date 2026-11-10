@@ -5,6 +5,8 @@ mod origin;
 mod routes;
 mod session;
 mod settings;
+#[cfg(test)]
+mod testutil;
 
 use std::sync::Arc;
 

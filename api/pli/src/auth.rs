@@ -1,15 +1,29 @@
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 
 use axum::http::HeaderMap;
+use commun::http::cause;
 use serde_json::{Value, json};
 
 const DELAI: Duration = Duration::from_secs(5);
+const CACHE_MAX: usize = 10_000;
+
+fn memoriser(
+    cache: &mut HashMap<String, (bool, u64)>,
+    cle: String,
+    valeur: (bool, u64),
+    maintenant: u64,
+) {
+    if cache.len() >= CACHE_MAX {
+        cache.retain(|_, (_, jusqua)| *jusqua > maintenant);
+        if cache.len() >= CACHE_MAX {
+            cache.clear();
+        }
+    }
+    cache.insert(cle, valeur);
+}
 
 pub fn client_http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(DELAI)
-        .build()
-        .expect("client HTTP")
+    commun::http::client(DELAI)
 }
 
 pub fn vrai(v: &Value) -> bool {
@@ -41,16 +55,6 @@ fn compacte(texte: &str) -> String {
         }
     }
     sortie.chars().take(100).collect()
-}
-
-fn cause(e: &reqwest::Error) -> String {
-    let mut source: Option<&dyn std::error::Error> = Some(e);
-    let mut dernier = e.to_string();
-    while let Some(s) = source {
-        dernier = s.to_string();
-        source = s.source();
-    }
-    dernier
 }
 
 pub async fn fetch_identity(
@@ -181,19 +185,7 @@ impl PermissionChecker {
                 "open_default": false,
             }],
         });
-        let res = self
-            .http
-            .put(format!("{}/v1/manifest", self.url))
-            .bearer_auth(&self.token)
-            .json(&manifeste)
-            .send()
-            .await
-            .map_err(|e| format!("aegis injoignable ({})", cause(&e)))?;
-        if res.status().is_success() {
-            Ok(())
-        } else {
-            Err(format!("aegis a répondu HTTP {}", res.status().as_u16()))
-        }
+        commun::aegis::envoyer_manifeste(&self.http, &self.url, &self.token, &manifeste).await
     }
 
     pub async fn check(&self, user_id: &Value, maintenant: u64) -> Decision {
@@ -247,13 +239,37 @@ impl PermissionChecker {
             Err(e) => return injoignable(&e),
         };
         let allowed = corps["allowed"] == Value::Bool(true);
-        self.cache
-            .lock()
-            .unwrap()
-            .insert(cle, (allowed, maintenant + self.ttl_ms));
+        memoriser(
+            &mut self.cache.lock().unwrap(),
+            cle,
+            (allowed, maintenant + self.ttl_ms),
+            maintenant,
+        );
         Decision {
             allowed,
             reason: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_purge_des_entrees_expirees() {
+        let mut cache = HashMap::new();
+        for i in 0..CACHE_MAX {
+            cache.insert(format!("vieux{i}"), (true, 10));
+        }
+        cache.insert("frais".into(), (true, 1000));
+        memoriser(&mut cache, "nouveau".into(), (false, 1000), 100);
+        assert_eq!(cache.len(), 2);
+        assert!(cache.contains_key("frais") && cache.contains_key("nouveau"));
+        for i in 0..CACHE_MAX {
+            cache.insert(format!("actif{i}"), (true, 1000));
+        }
+        memoriser(&mut cache, "dernier".into(), (true, 1000), 100);
+        assert_eq!(cache.len(), 1);
     }
 }

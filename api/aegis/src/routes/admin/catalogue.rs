@@ -156,27 +156,61 @@ async fn ressources(
     if let Some(ids) = f.ids.as_deref().filter(|i| !i.is_empty()) {
         req = req.query(&[("ids", ids)]);
     }
-    let res = req
-        .send()
-        .await
-        .map_err(|e| ApiError::Upstream(format!("{app} injoignable : {e}")))?;
+    let res = req.send().await.map_err(|e| {
+        tracing::warn!("liste de ressources {app}/{type_} : {e}");
+        ApiError::Upstream(format!("{app} injoignable"))
+    })?;
     if !res.status().is_success() {
-        return Err(ApiError::Upstream(format!(
-            "{app} a répondu {}",
+        tracing::warn!(
+            "liste de ressources {app}/{type_} : réponse {}",
             res.status()
-        )));
+        );
+        return Err(ApiError::Upstream(format!("{app} a répondu une erreur")));
     }
-    let octets = res
-        .bytes()
-        .await
-        .map_err(|e| ApiError::Upstream(e.to_string()))?;
-    if octets.len() > 1 << 20 {
-        return Err(ApiError::Upstream("réponse trop grosse".into()));
-    }
-    let mut liste: Vec<Ressource> = serde_json::from_slice(&octets)
-        .map_err(|e| ApiError::Upstream(format!("réponse illisible : {e}")))?;
+    let octets = lire_borne(res, LIMITE_LISTE).await.map_err(|e| {
+        tracing::warn!("liste de ressources {app}/{type_} : {e}");
+        ApiError::Upstream(match e {
+            Lecture::TropGrosse => format!("réponse de {app} trop grosse"),
+            Lecture::Interrompue(_) => format!("réponse de {app} interrompue"),
+        })
+    })?;
+    let mut liste: Vec<Ressource> = serde_json::from_slice(&octets).map_err(|e| {
+        tracing::warn!("liste de ressources {app}/{type_} illisible : {e}");
+        ApiError::Upstream(format!("réponse de {app} illisible"))
+    })?;
     liste.truncate(200);
     Ok(Json(liste))
+}
+
+const LIMITE_LISTE: usize = 1 << 20;
+
+#[derive(Debug)]
+enum Lecture {
+    TropGrosse,
+    Interrompue(reqwest::Error),
+}
+
+impl std::fmt::Display for Lecture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Lecture::TropGrosse => write!(f, "réponse de plus de {LIMITE_LISTE} octets"),
+            Lecture::Interrompue(e) => write!(f, "réponse interrompue : {e}"),
+        }
+    }
+}
+
+async fn lire_borne(mut res: reqwest::Response, limite: usize) -> Result<Vec<u8>, Lecture> {
+    if res.content_length().is_some_and(|n| n > limite as u64) {
+        return Err(Lecture::TropGrosse);
+    }
+    let mut octets = Vec::new();
+    while let Some(morceau) = res.chunk().await.map_err(Lecture::Interrompue)? {
+        if octets.len() + morceau.len() > limite {
+            return Err(Lecture::TropGrosse);
+        }
+        octets.extend_from_slice(&morceau);
+    }
+    Ok(octets)
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
