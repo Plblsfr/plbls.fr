@@ -37,7 +37,9 @@ Authorization: Bearer <jeton>
    `ACL SETUSER estompe on >… resetchannels &aegis:invalidation -@all +subscribe +ping`.
 
 5. **Ressources** (si un type est déclaré) : `GET <list_url>?q=<texte>&ids=<id,…>` appelé par aegis avec le jeton de
-   l'application, réponse `[{"id", "name"}]` (50 au plus). Les hôtes appelables sont limités par `AEGIS__RESSOURCES__ALLOWED_HOSTS`.
+   l'application, réponse `[{"id", "name"}]` (50 au plus). Les hôtes appelables sont limités par `AEGIS__RESSOURCES__ALLOWED_HOSTS` :
+   un manifeste dont un `list_url` vise un autre hôte (ou n'est pas en `http`/`https`) est refusé en 400. Réponse lue en flux, 1 Mio au plus ; l'administration ne reçoit qu'un message
+   générique en cas d'échec (`estompe injoignable`, `… a répondu une erreur`), le détail est dans les logs d'aegis.
 
 ## Configuration d'aegis
 
@@ -50,7 +52,7 @@ Authorization: Bearer <jeton>
 | `AEGIS__SERVER__ADMIN_ROLE` | Rôle Keycloak super-admin (défaut `aegis-admin`) |
 | `AEGIS__GATEWAY__URL`, `AEGIS__GATEWAY__INTERNAL_TOKEN` | Annuaire : `/internal/users` de la passerelle (avec `GATEWAY__INTERNAL__LIST_ALL=true`) |
 | `AEGIS__ANNUAIRE__SYNC_MINUTES` | Période de synchronisation Keycloak (15 ; 0 = désactivée) |
-| `AEGIS__RESSOURCES__ALLOWED_HOSTS` | Hôtes autorisés pour les `list_url` (vide = tous) |
+| `AEGIS__RESSOURCES__ALLOWED_HOSTS` | Hôtes autorisés pour les `list_url`, séparés par des virgules (vide = aucun : tout manifeste avec un `list_url` est refusé) |
 | `AEGIS__CACHE__TTL_SECS` | Durée maximale d'un droit en cache (600) |
 
 Passerelle : route `/api/aegis` vers `http://aegis:8080` (`api/security/config/routes.toml`).
