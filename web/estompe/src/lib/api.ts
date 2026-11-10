@@ -1,7 +1,7 @@
 import { config } from './config'
 import { debug } from './debuglog.svelte'
 import type { DrawOp, DrawView } from '../blocks/draw2gether/draw'
-import type { FilmDetail, FilmItem, FilmPlayback, FilmReject, PlaybackRequest } from '../blocks/films/films'
+import type { FilmDetail, FilmItem, FilmPlayback, FilmReject, PlaybackRequest } from '../sections/entracte/films'
 import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, RequestKind, RequestableSeries, SearchResult } from '../sections/entracte/entracte'
 import type {
   AdminLive, AdminOverview, AdminBadge, Badge, BadgeInput, AdminUser, AdminStats, AdminLogEntry, AdminError,
@@ -349,25 +349,6 @@ export const api = {
 
 }
 
-
-const estompeFilms = {
-  library: (f: Record<string, string>) => get<{ items: FilmItem[]; total: number }>(`/films/library?${new URLSearchParams(f)}`),
-  genres: () => get<{ genres: string[] }>('/films/genres'),
-  resume: () => get<{ items: FilmItem[] }>('/films/continue'),
-  seen: () => get<{ items: FilmItem[] }>('/films/seen'),
-  item: (id: string) => get<FilmDetail>(`/films/items/${id}`),
-  seasons: (id: string) => get<{ items: FilmItem[] }>(`/films/series/${id}/seasons`),
-  episodes: (id: string) => get<{ items: FilmItem[] }>(`/films/seasons/${id}/episodes`),
-  image: (id: string, type: 'poster' | 'fond', w: number) => imageUrl(`/films/items/${id}/image?type=${type}&w=${w}`),
-  progress: (id: string, position: number, duration: number) => send<void>('PUT', `/films/items/${id}/progress`, { position, duration }),
-  playback: (id: string, b: PlaybackRequest) => post<FilmPlayback>(`/films/items/${id}/playback`, { direct: b.direct, audio: b.audio }),
-  close: (stream: string) => send<void>('DELETE', `/films/streams/${stream}`),
-  closeOnExit: (stream: string) => { void fetch(`${API_URL}/films/streams/${stream}`, { method: 'DELETE', credentials: 'include', keepalive: true }).catch(() => {}) },
-  rejects: () => get<{ items: FilmReject[] }>('/admin/films/rejets'),
-  /** Base des URL de flux renvoyées par `playback`. */
-  base: API_URL,
-}
-
 const eget = <T>(p: string) => requestAt<T>(ENTRACTE_URL, 'GET', p)
 const esend = <T>(m: string, p: string, b?: unknown) => requestAt<T>(ENTRACTE_URL, m, p, b)
 /** Saison d'une série d'Entracte vue comme un élément de la bibliothèque : `<id de la série>~<numéro>`. */
@@ -380,14 +361,14 @@ const liste = async (p: Promise<{ items: FilmItem[]; total?: number }>) => {
   return { ...r, items: r.items.map(normalise), total: r.total ?? r.items.length }
 }
 
-/** Même interface que l'onglet films d'Estompe, servie par l'API d'Entracte. */
-const entracteFilms: typeof estompeFilms = {
-  library: (f) => liste(eget(`/library?${new URLSearchParams(f)}`)),
-  genres: () => eget('/genres'),
+/** Bibliothèque de l'onglet films et du salon cinéma, servie par l'API d'Entracte. */
+export const filmsApi = {
+  library: (f: Record<string, string>) => liste(eget(`/library?${new URLSearchParams(f)}`)),
+  genres: () => eget<{ genres: string[] }>('/genres'),
   resume: () => liste(eget('/continue')),
   seen: () => liste(eget('/history?limit=100')),
-  item: async (id) => normalise(await eget<FilmDetail>(`/titles/${enc(id)}`)) as FilmDetail,
-  seasons: async (id) => {
+  item: async (id: string) => normalise(await eget<FilmDetail>(`/titles/${enc(id)}`)) as FilmDetail,
+  seasons: async (id: string) => {
     const r = await eget<{ items: SaisonEntracte[] }>(`/titles/${enc(id)}/seasons`)
     return {
       items: r.items.map((s) => ({
@@ -396,27 +377,25 @@ const entracteFilms: typeof estompeFilms = {
       })),
     }
   },
-  episodes: (sid) => {
+  episodes: (sid: string) => {
     const [id, n] = sid.split(SEP)
     return liste(eget(`/titles/${enc(id)}/seasons/${enc(n ?? '')}/episodes`))
   },
-  image: (id, type, w) => {
+  image: (id: string, type: 'poster' | 'fond', w: number) => {
     const [titre, saison] = id.split(SEP)
     if (saison !== undefined) return imageAt(ENTRACTE_URL, `/titles/${enc(titre)}/seasons/${enc(saison)}/image`)
     return imageAt(ENTRACTE_URL, `/titles/${enc(id)}/image?type=${type === 'fond' ? 'backdrop' : 'poster'}&w=${width(w)}`)
   },
-  progress: (id, position, duration) => esend<void>('PUT', `/titles/${enc(id)}/progress`, { position, duration }),
-  playback: (id, b) => esend<FilmPlayback>('POST', `/titles/${enc(id)}/playback`, {
+  progress: (id: string, position: number, duration: number) => esend<void>('PUT', `/titles/${enc(id)}/progress`, { position, duration }),
+  playback: (id: string, b: PlaybackRequest) => esend<FilmPlayback>('POST', `/titles/${enc(id)}/playback`, {
     audio: b.audio, quality: b.quality ?? 'original', start: b.start ?? 0, support: b.direct && b.support ? b.support : { containers: [], video: [], audio: [] },
   }),
-  close: (stream) => esend<void>('DELETE', `/streams/${enc(stream)}`),
-  closeOnExit: (stream) => { void fetch(`${ENTRACTE_URL}/streams/${enc(stream)}`, { method: 'DELETE', credentials: 'include', keepalive: true }).catch(() => {}) },
-  rejects: () => eget('/admin/rejected'),
+  close: (stream: string) => esend<void>('DELETE', `/streams/${enc(stream)}`),
+  closeOnExit: (stream: string) => { void fetch(`${ENTRACTE_URL}/streams/${enc(stream)}`, { method: 'DELETE', credentials: 'include', keepalive: true }).catch(() => {}) },
+  rejects: () => eget<{ items: FilmReject[] }>('/admin/rejected'),
   base: ENTRACTE_URL,
 }
 
-/** Source de l'onglet films : Entracte dès que son URL est configurée, sinon le bloc films d'Estompe. */
-export const filmsApi = ENTRACTE_URL ? entracteFilms : estompeFilms
 export const entracteOn = () => !!ENTRACTE_URL
 
 export const entracteApi = {

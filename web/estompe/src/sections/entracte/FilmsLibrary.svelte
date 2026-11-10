@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { entracteOn, filmsApi } from '../../lib/api'
+  import { filmsApi } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
@@ -23,7 +23,7 @@
   let turn = 0
 
   const fromList = $derived(section === 'continue' || section === 'seen')
-  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: entracteOn() ? 'Historique' : 'Déjà vus' } as Record<string, string>)[section ?? ''] ?? 'Accueil')
+  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Historique' } as Record<string, string>)[section ?? ''] ?? 'Accueil')
   const searching = $derived(!!(q.trim() || genre || year))
   const gridHeading = $derived(searching ? 'Résultats' : section ? '' : 'Ajouts récents')
   const showResume = $derived(!section && !searching && films.resume.length > 0)

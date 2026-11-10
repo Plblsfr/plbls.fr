@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
-  import FilmPoster from '../../blocks/films/FilmPoster.svelte'
+  import FilmPoster from './FilmPoster.svelte'
   import EntractePoster from './EntractePoster.svelte'
   import RequestModal from './RequestModal.svelte'
   import { entracteApi } from '../../lib/api'

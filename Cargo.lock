@@ -905,7 +905,6 @@ dependencies = [
  "estompe-block-badges",
  "estompe-block-draw2gether",
  "estompe-block-emojis",
- "estompe-block-films",
  "estompe-block-gifs",
  "estompe-block-musique",
  "estompe-block-notifications",
@@ -1035,31 +1034,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower",
- "utoipa",
- "utoipa-axum",
-]
-
-[[package]]
-name = "estompe-block-films"
-version = "0.0.0"
-dependencies = [
- "axum",
- "base64 0.23.1",
- "estompe-block",
- "estompe-block-regarder-ensemble",
- "estompe-core",
- "futures-util",
- "hmac",
- "rand 0.10.3",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "sqlx",
- "tokio",
- "tower",
- "tracing",
  "utoipa",
  "utoipa-axum",
 ]

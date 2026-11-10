@@ -41,22 +41,22 @@ pub(crate) async fn env() -> Option<Env> {
 pub(crate) async fn env_avec(
     autorisation: impl Fn(&testutil::Requete) -> (u16, Vec<u8>) + Send + Sync + 'static,
 ) -> Option<Env> {
-    env_avec_blocs(autorisation, vec![]).await
+    env_avec_blocs(autorisation, vec![], &[]).await
 }
 
 pub(crate) async fn env_avec_blocs(
     autorisation: impl Fn(&testutil::Requete) -> (u16, Vec<u8>) + Send + Sync + 'static,
     blocs: Vec<String>,
+    extra: &[(&str, &str)],
 ) -> Option<Env> {
     let g = faux(gateway).await;
     let p = faux(autorisation).await;
-    let state = AppState::new(
-        testutil::config_avec(&[
-            ("GATEWAY_URL", g.url.as_str()),
-            ("PERMISSION_URL", p.url.as_str()),
-        ]),
-        blocs,
-    );
+    let mut variables = vec![
+        ("GATEWAY_URL", g.url.as_str()),
+        ("PERMISSION_URL", p.url.as_str()),
+    ];
+    variables.extend_from_slice(extra);
+    let state = AppState::new(testutil::config_avec(&variables), blocs);
     let (pg, url) = testutil::postgres().await?;
     let pool = sqlx::PgPool::connect(&url).await.unwrap();
     crate::db::migrate_embarquees(&pool).await.unwrap();
@@ -636,7 +636,7 @@ async fn salons_validation_ordre_et_limite() {
 }
 
 #[test]
-fn cinema_avec_entracte_ou_les_films() {
+fn cinema_avec_entracte_seulement() {
     use crate::testutil::{config, config_avec};
     let blocs = |b: &[&str]| b.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     let entracte = || {
@@ -649,7 +649,7 @@ fn cinema_avec_entracte_ou_les_films() {
         config(),
         blocs(&["regarder-ensemble"])
     )));
-    assert!(cinema_disponible(&AppState::new(
+    assert!(!cinema_disponible(&AppState::new(
         config(),
         blocs(&["films"])
     )));
@@ -662,7 +662,7 @@ fn cinema_avec_entracte_ou_les_films() {
 }
 
 #[tokio::test]
-async fn salon_cinema_seulement_avec_la_bibliotheque_de_films() {
+async fn salon_cinema_seulement_avec_entracte() {
     let corps = r#"{"name":"ciné","kind":"cinema","user_limit":6}"#;
     let Some(sans) = env().await else { return };
     membre(&sans, "alice").await;
@@ -680,7 +680,16 @@ async fn salon_cinema_seulement_avec_la_bibliotheque_de_films() {
         (StatusCode::BAD_REQUEST, Some("invalid_channel"))
     );
 
-    let Some(e) = env_avec_blocs(permission, vec!["films".into()]).await else {
+    let Some(e) = env_avec_blocs(
+        permission,
+        vec!["regarder-ensemble".into()],
+        &[
+            ("ESTOMPE_ENTRACTE_URL", "http://entracte:8080"),
+            ("ESTOMPE_ENTRACTE_TOKEN", "t"),
+        ],
+    )
+    .await
+    else {
         return;
     };
     membre(&e, "alice").await;

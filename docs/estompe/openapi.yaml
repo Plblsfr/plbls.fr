@@ -39,7 +39,6 @@ tags:
   - name: vocal
   - name: vidéos
   - name: temps réel
-  - name: films
 paths:
   /healthz:
     get: {summary: Liveness, security: [], responses: {"200": {description: ok}}}
@@ -60,11 +59,10 @@ paths:
                 properties:
                   allowed: {type: boolean}
                   admin: {type: boolean, description: "au moins une permission `estompe:admin.*` (tableau de bord d'administration)"}
-                  rights: {type: array, items: {type: string, enum: [access, admin, movies, permissions, acces, users]}, description: "droits du compte : `access` (`estompe:access`), `admin` (une permission `estompe:admin.*`), `movies` (`estompe:films.use` et Jellyfin configuré), `acces` (administration des accès d'aegis : `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, avec `AEGIS_URL`), `permissions` (ancien service permission, sans `AEGIS_URL`), `users` (recherche de comptes). Présent même sans compte activé"}
+                  rights: {type: array, items: {type: string, enum: [access, admin, permissions, acces, users]}, description: "droits du compte : `access` (`estompe:access`), `admin` (une permission `estompe:admin.*`), `acces` (administration des accès d'aegis : `aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`, avec `AEGIS_URL`), `permissions` (ancien service permission, sans `AEGIS_URL`), `users` (recherche de comptes). Présent même sans compte activé"}
                   capabilities: {type: object, additionalProperties: {type: object, properties: {allow: {type: array, items: {type: string}}, deny: {type: array, items: {type: string}}}}, description: "permissions `estompe:*` accordées : ressources autorisées (`*` = tous les serveurs) et refusées. Confort d'affichage ; le contrôle se fait côté API"}
                   activated: {type: boolean}
-                  movies: {type: boolean, description: "permission `estompe:films.use` et Jellyfin configuré : accès à l'onglet Films et séries"}
-                  cinema: {type: boolean, description: "salon cinéma disponible : bloc `films` actif, ou bloc `regarder-ensemble` actif et Entracte branché (`ESTOMPE_ENTRACTE_URL`, `ESTOMPE_ENTRACTE_TOKEN`)"}
+                  cinema: {type: boolean, description: "salon cinéma disponible : bloc `regarder-ensemble` actif et Entracte branché (`ESTOMPE_ENTRACTE_URL`, `ESTOMPE_ENTRACTE_TOKEN`)"}
                   max_video_size: {type: integer, description: "taille maximale d'une vidéo en octets (`MAX_VIDEO_SIZE_MB`, 100 Mo par défaut)"}
                   transcription: {type: string, enum: ["", alpha, "on"], description: "transcription des messages vocaux : désactivée (`TRANSCRIBE_URL` vide), `alpha` (`TRANSCRIBE_ALPHA`, défaut : réservée aux fonctions alpha débloquées côté client) ou `on` pour tous"}
                   blocks: {type: array, items: {type: string}, description: "blocs actifs du backend (variables `BLOCK_<NOM>=false` pour en désactiver) : un bloc absent n'a pas ses routes"}
@@ -1267,7 +1265,7 @@ paths:
     post:
       tags: [serveurs]
       summary: Créer un salon (permission `manage_channels` ; 50 max par serveur)
-      description: "`cinema` : salon vocal dédié aux films et séries (session `/voice/{cid}/cinema`), accepté seulement si le bloc `films` est actif, ou le bloc `regarder-ensemble` avec Entracte branché (sinon 400 `invalid_channel`)."
+      description: "`cinema` : salon vocal dédié aux films et séries (session `/voice/{cid}/cinema`), accepté seulement si le bloc `regarder-ensemble` est actif et Entracte branché (sinon 400 `invalid_channel`)."
       requestBody:
         required: true
         content:
@@ -2147,7 +2145,7 @@ paths:
     put:
       tags: [vocal]
       summary: Lancer un film ou une série (l'auteur devient l'hôte et pilote seul)
-      description: "Corps `{video, queue?}` : `video` vaut `film:<id>` (identifiant public d'un titre d'Entracte si `ESTOMPE_ENTRACTE_URL` est renseignée, sinon du bloc `films`) ; tout autre lien : 400 `invalid_video`. Entracte vérifie de serveur à serveur que le titre existe et que l'hôte a `entracte:access` (sans Entracte : permission `estompe:films.use`) ; titre inconnu : 400. Exige `estompe:watch.organize` et d'être présent dans le salon cinéma (vocal LiveKit). Pour un épisode sans `queue`, les épisodes suivants sont placés dans la file. `host_only` vaut toujours `true` : seul l'hôte (celui qui a lancé le titre ; au départ de l'hôte, un spectateur qui a l'accès aux films) pilote lecture, pause et position, synchronisées pour tous. 30 actions par 10 s et par personne. Évènement `cinema.state`."
+      description: "Corps `{video, queue?}` : `video` vaut `film:<id>` (identifiant public d'un titre d'Entracte) ; tout autre lien : 400 `invalid_video`. Entracte vérifie de serveur à serveur que le titre existe et que l'hôte a `entracte:access` ; titre inconnu : 400. Exige `estompe:watch.organize` et d'être présent dans le salon cinéma (vocal LiveKit). Pour un épisode sans `queue`, les épisodes suivants sont placés dans la file. `host_only` vaut toujours `true` : seul l'hôte (celui qui a lancé le titre ; au départ de l'hôte, le premier spectateur à qui Entracte ouvre le titre ; aucun : la séance s'arrête) pilote lecture, pause et position, synchronisées pour tous. 30 actions par 10 s et par personne. Évènement `cinema.state`."
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}, queue: {type: array, maxItems: 50, items: {type: string}}}}}}}
       responses: {"204": {description: ok}, "400": {description: "invalid_video ou not_cinema_channel"}, "403": {description: "`not_in_voice` ou hôte seul"}, "429": {description: rate_limited}}
     delete:
@@ -2312,192 +2310,6 @@ paths:
       parameters: [{name: ticket, in: query, required: true, schema: {type: string}}]
       responses: {"101": {description: Switching Protocols}, "401": {description: bad_ticket}}
 
-
-  /films/library:
-    get:
-      tags: [films]
-      summary: "Bibliothèque : recherche (`q`), filtres (`kind=movie|series`, `genre`, `year=2024` ou `year=2010-2019`), tri (`sort=recent|title|year`), pagination (`start`, `limit`). Réponse `{items, total}`"
-      responses:
-        "200": {description: ok}
-        "400": {description: paramètre invalide}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/genres:
-    get:
-      tags: [films]
-      summary: "Genres proposés par la bibliothèque : `{genres}`"
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/continue:
-    get:
-      tags: [films]
-      summary: "Lectures commencées et non vues, les plus récentes d'abord : `{items}`"
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/seen:
-    get:
-      tags: [films]
-      summary: "Titres déjà vus, les plus récents d'abord : `{items}`"
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/items/{id}:
-    get:
-      tags: [films]
-      summary: "Fiche d'un film, d'une série ou d'un épisode, avec `audio` et `subtitles` ; identifiants publics Estompe, jamais d'identifiant ni de chemin Jellyfin"
-      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/series/{id}/seasons:
-    get:
-      tags: [films]
-      summary: "Saisons d'une série : `{items}`"
-      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/seasons/{id}/episodes:
-    get:
-      tags: [films]
-      summary: "Épisodes d'une saison : `{items}`"
-      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/items/{id}/image:
-    get:
-      tags: [films]
-      summary: "Affiche ou image de fond relayée (`type=poster|fond`, `w=240|480|1280`)"
-      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
-      responses:
-        "200": {description: image}
-        "400": {description: paramètre invalide}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-        "429": {description: rate_limited}
-        "502": {description: jellyfin_unavailable}
-  /films/items/{id}/progress:
-    put:
-      tags: [films]
-      summary: "Enregistre sa position : `{position, duration}` en secondes ; « vu » à 90 %"
-      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
-      responses:
-        "204": {description: ok}
-        "400": {description: position ou durée invalide}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-  /films/items/{id}/playback:
-    post:
-      tags: [films]
-      summary: "Ouvre un flux signé : corps `{direct, audio}` (lecture directe seulement si le client et le serveur sont d'accord). Réponse `{stream_id, mode, url, duration, audio, subtitles}`"
-      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
-      responses:
-        "200": {description: ok}
-        "400": {description: piste audio invalide}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-        "429": {description: "`too_many_streams`"}
-        "502": {description: jellyfin_unavailable}
-        "503": {description: "`serveur_charge`"}
-  /films/streams/{flux}:
-    delete:
-      tags: [films]
-      summary: "Ferme son flux de lecture"
-      parameters: [{name: flux, in: path, required: true, schema: {type: string}}]
-      responses:
-        "204": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : permission `estompe:movies` requise"}
-        "404": {description: not_found}
-  /films/stream/{jeton}/direct:
-    get:
-      tags: [films]
-      summary: "Lecture directe (Range accepté, jamais de `Content-Disposition`). Le jeton signé suffit ; il expire après 5 minutes d'inactivité et 12 heures au plus"
-      security: []
-      parameters: [{name: jeton, in: path, required: true, schema: {type: string}}]
-      responses:
-        "200": {description: flux}
-        "206": {description: plage}
-        "401": {description: "`stream_expired`"}
-        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
-        "502": {description: jellyfin_unavailable}
-  /films/stream/{jeton}/hls.m3u8:
-    get:
-      tags: [films]
-      summary: "Playlist HLS réécrite : aucun identifiant ni chemin Jellyfin"
-      security: []
-      parameters: [{name: jeton, in: path, required: true, schema: {type: string}}]
-      responses:
-        "200": {description: playlist}
-        "401": {description: "`stream_expired`"}
-        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
-        "502": {description: jellyfin_unavailable}
-  /films/stream/{jeton}/u/{n}:
-    get:
-      tags: [films]
-      summary: "Playlist ou segment HLS du flux"
-      security: []
-      parameters:
-        - {name: jeton, in: path, required: true, schema: {type: string}}
-        - {name: "n", in: path, required: true, schema: {type: integer}}
-      responses:
-        "200": {description: flux}
-        "206": {description: plage}
-        "401": {description: "`stream_expired`"}
-        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
-        "404": {description: not_found}
-        "502": {description: jellyfin_unavailable}
-  /films/stream/{jeton}/sub/{n}:
-    get:
-      tags: [films]
-      summary: "Sous-titres en WebVTT nettoyé"
-      security: []
-      parameters:
-        - {name: jeton, in: path, required: true, schema: {type: string}}
-        - {name: "n", in: path, required: true, schema: {type: integer}}
-      responses:
-        "200": {description: WebVTT}
-        "401": {description: "`stream_expired`"}
-        "403": {description: "`forbidden` : permission retirée ou flux d'un autre utilisateur"}
-        "404": {description: not_found}
-        "502": {description: jellyfin_unavailable}
-  /admin/films/rejets:
-    get:
-      tags: [administration]
-      summary: "Fichiers écartés (500 au plus) : `{items: [{name, reason, seen_at}]}`"
-      responses:
-        "200": {description: ok}
-        "401": {$ref: "#/components/responses/Unauthorized"}
-        "403": {description: "`forbidden` : réservé aux administrateurs"}
 components:
   securitySchemes:
     bearer: {type: http, scheme: bearer, description: Access token Keycloak (client plbls-desktop)}

@@ -9,7 +9,6 @@ pub const APP: &str = "estompe";
 pub const SERVEUR: &str = "server";
 
 pub const ACCES: &str = "estompe:access";
-pub const FILMS: &str = "estompe:films.use";
 pub const ADMIN_FICHIERS: &str = "estompe:admin.files";
 pub const ADMIN_SONDAGES: &str = "estompe:admin.polls";
 pub const ADMIN_AEGIS: &str = "aegis:admin";
@@ -205,7 +204,7 @@ pub static CATALOGUE: &[Entree] = &[
     e("music.use", "Vocal", "Musique", "Chercher de la musique et piloter la musique d'un salon vocal")
         .bloc("musique")
         .routes(&["GET /music/search", "GET /music/resolve", "GET /music/cover/{id}", "PUT /voice/{cid}/music/**", "POST /voice/{cid}/music/**", "DELETE /voice/{cid}/music/**"]),
-    e("watch.organize", "Vocal", "Regarder ensemble", "Lancer et piloter « Regarder ensemble » et les séances du salon cinéma, dont le titre est vérifié par Entracte ou la bibliothèque films (plafond de « Organiser des séances »)")
+    e("watch.organize", "Vocal", "Regarder ensemble", "Lancer et piloter « Regarder ensemble » et les séances du salon cinéma, dont le titre est vérifié par Entracte (plafond de « Organiser des séances »)")
         .serveur()
         .bloc("regarder-ensemble")
         .routes(&[
@@ -219,10 +218,6 @@ pub static CATALOGUE: &[Entree] = &[
     e("transcription.use", "Vocal", "Transcription", "Transcrire les messages vocaux et corriger une transcription")
         .bloc("transcription")
         .routes(&["POST /files/{id}/transcript", "PUT /files/{id}/transcript"]),
-    e("films.use", "Médias", "Films et séries", "Bibliothèque Jellyfin, et titres du salon cinéma tant qu'Entracte n'est pas branché")
-        .ferme()
-        .bloc("films")
-        .routes(&["* /films/**"]),
     e("videos.use", "Médias", "Salons Vidéos", "Créer des listes, planifier des séances, marquer vu et répondre dans les salons « Vidéos »")
         .bloc("videos")
         .routes(&["POST /channels/{cid}/videos/**", "PUT /channels/{cid}/videos/**", "DELETE /channels/{cid}/videos/**"]),
@@ -266,10 +261,6 @@ pub static CATALOGUE: &[Entree] = &[
         .ferme()
         .bloc("signalements")
         .routes(&["* /admin/reports/**"]),
-    e("admin.films", "Administration", "Fichiers écartés", "Fichiers de films écartés par l'import")
-        .ferme()
-        .bloc("films")
-        .routes(&["GET /admin/films/rejets"]),
     e("admin.files", "Administration", "Fichiers signalés", "Lire les fichiers joints aux signalements").ferme(),
     e("admin.polls", "Administration", "Sondages", "Clore n'importe quel sondage").ferme(),
 ];
@@ -631,14 +622,6 @@ mod tests {
         assert_eq!(
             garde(&Method::GET, "/gifs/search").map(|e| e.cle),
             Some("gifs.use")
-        );
-        assert_eq!(
-            garde(&Method::GET, "/films/library").map(|e| e.cle),
-            Some("films.use")
-        );
-        assert_eq!(
-            garde(&Method::GET, "/films/stream/{jeton}/u/{n}").map(|e| e.cle),
-            Some("films.use")
         );
         assert_eq!(
             garde(&Method::PUT, "/voice/{cid}/music").map(|e| e.cle),

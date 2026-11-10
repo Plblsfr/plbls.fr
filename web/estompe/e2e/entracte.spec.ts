@@ -22,7 +22,7 @@ async function simuler(page: Page, p: Profil) {
     switch (url.pathname) {
       case '/me':
         return json(route, p.estompe
-          ? { activated: true, allowed: true, admin: false, rights: ['access'], id: 'me', pseudo: 'moi', sub: 'kc-moi', movies: false, cinema: p.entracte, blocks: ['vocal', 'regarder-ensemble'] }
+          ? { activated: true, allowed: true, admin: false, rights: ['access'], id: 'me', pseudo: 'moi', sub: 'kc-moi', cinema: p.entracte, blocks: ['vocal', 'regarder-ensemble'] }
           : { activated: false, allowed: false, admin: false, rights: [] })
       case '/unread': return json(route, { channels: [], dms: [], counts: {} })
       case '/me/notify-settings': return json(route, { levels: {}, types: { dm: true, mention: true, channel: true, voice: true }, preview: true, sound: true })

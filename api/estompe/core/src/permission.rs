@@ -19,7 +19,6 @@ const JOKER: &str = "*";
 pub const ADMIN_PERMISSION: &str = "permission:admin";
 pub const COMPTES: &str = "permission:users.read";
 const ANCIEN_ADMIN: &str = "estompe:admin";
-const ANCIEN_FILMS: &str = "estompe:movies";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Indisponible;
@@ -95,9 +94,6 @@ impl Droits {
         let a = |n: &str| noms.iter().any(|x| x == n);
         if a(acces) {
             m.insert(catalogue::ACCES.into(), Acces::joker());
-        }
-        if a(ANCIEN_FILMS) {
-            m.insert(catalogue::FILMS.into(), Acces::joker());
         }
         if a(ANCIEN_ADMIN) {
             for e in catalogue::CATALOGUE.iter().filter(|e| e.admin()) {
@@ -381,7 +377,7 @@ mod tests {
         let t2 = t.clone();
         let c = Client::with_now(&f.url, "jeton", Arc::new(move || *t2.lock().unwrap()));
         let d = c.droits("alice").await.unwrap();
-        assert!(d.a("estompe:access") && d.a(catalogue::FILMS) && !d.a("estompe:admin.view"));
+        assert!(d.a("estompe:access") && !d.a("estompe:admin.view"));
         assert!(
             d.a("estompe:gifs.use"),
             "ouverte par défaut en mode permission"

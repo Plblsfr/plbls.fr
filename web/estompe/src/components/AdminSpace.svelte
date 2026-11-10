@@ -5,8 +5,7 @@
   import AdminReports from '../blocks/signalements/AdminReports.svelte'
   import Icon from './Icon.svelte'
   import ServerIcon from './ServerIcon.svelte'
-  import { api, filmsApi } from '../lib/api'
-  import { reasonLabel, type FilmReject } from '../blocks/films/films'
+  import { api } from '../lib/api'
   import { adminSection } from '../lib/admin'
   import { app } from '../lib/store.svelte'
   import PermissionsAdmin from './permissions/PermissionsAdmin.svelte'
@@ -32,7 +31,6 @@
   let installers = $state({ windows: '…', android: '…' })
   let log = $state<AdminLogEntry[]>([])
   let errors = $state<AdminError[]>([])
-  let rejects = $state<FilmReject[]>([])
 
   const fail = (e: unknown) => (error = String((e as Error).message ?? e))
   const load = (f: () => Promise<unknown>) => f().then(() => (error = '')).catch(fail)
@@ -68,7 +66,6 @@
     else if (current === 'badges') void load(loadBadges)
     else if (current === 'bot') void load(loadBot)
     else if (current === 'logs') void load(loadLog)
-    else if (current === 'films') void load(() => filmsApi.rejects().then((r) => (rejects = r.items)))
     else if (current === 'stats') {
       void load(async () => { stats = await api.adminStats(); await loadServers() })
       void version('latest.json').then((v) => (installers.windows = v))
@@ -139,22 +136,6 @@
 
   {:else if current === 'badges'}
     <BadgeAdmin {badges} reload={loadBadges} {fail} />
-
-  {:else if current === 'films'}
-    <section class="v-card adm-card">
-      <h2 class="adm-t">Fichiers écartés</h2>
-      <p class="v-note">Ces fichiers restent invisibles et illisibles dans Estompe. Une ligne par fichier et par raison.</p>
-      <div class="adm-scroll">
-        <table class="adm-tb">
-          <thead><tr><th scope="col">Nom</th><th scope="col">Raison</th><th scope="col">Dernière détection</th></tr></thead>
-          <tbody>
-            {#each rejects as r (r.name + r.reason)}
-              <tr><td class="v-mono adm-nom">{r.name}</td><td class="v-note">{reasonLabel(r.reason)}</td><td class="v-mono v-mute">{when(r.seen_at)}</td></tr>
-            {:else}<tr><td colspan="3" class="v-note">Aucun fichier écarté</td></tr>{/each}
-          </tbody>
-        </table>
-      </div>
-    </section>
 
   {:else if current === 'reports'}
     <AdminReports {fail} />
@@ -284,7 +265,6 @@
   .adm-act { text-align: right; white-space: nowrap; }
   .adm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .adm-dgr { color: var(--danger); }
-  .adm-nom { overflow-wrap: anywhere; }
   .adm-srv { display: inline-flex; align-items: center; gap: 8px; }
   .adm-srv :global(.sv-icon) { width: 28px; height: 28px; border-radius: 9px; font-size: 10px; }
   .adm-form { display: flex; flex-direction: column; gap: 12px; }

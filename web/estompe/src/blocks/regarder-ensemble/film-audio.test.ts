@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { API_URL, filmsApi } from '../../lib/api'
-import type { FilmPlayback } from '../films/films'
+import type { FilmPlayback } from '../../sections/entracte/films'
 import { providers } from './providers'
 
 const flux = (n: number): FilmPlayback => ({ stream_id: `s${n}`, mode: 'direct', url: `/films/stream/j${n}/direct`, duration: 3000, audio: [], subtitles: [] })

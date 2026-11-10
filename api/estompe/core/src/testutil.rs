@@ -86,7 +86,6 @@ pub async fn faux(reponse: impl Fn(&Requete) -> (u16, Vec<u8>) + Send + Sync + '
 pub const PERMISSIONS_CONNUES: &[&str] = &[
     "estompe:access",
     "estompe:admin",
-    "estompe:movies",
     "permission:admin",
     "permission:users.read",
     "app:perm",

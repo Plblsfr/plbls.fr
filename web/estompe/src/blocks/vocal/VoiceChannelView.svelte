@@ -9,7 +9,7 @@
   import { openProfile } from '../../lib/profile.svelte'
   import Icon from '../../components/Icon.svelte'
   import WatchTogether from '../regarder-ensemble/WatchTogether.svelte'
-  import FilmNoAccess from '../films/FilmNoAccess.svelte'
+  import FilmNoAccess from '../../sections/entracte/FilmNoAccess.svelte'
   import Draw2Gether from '../draw2gether/Draw2Gether.svelte'
   import { draw } from '../draw2gether/draw.svelte'
   import NowPlaying from '../../components/NowPlaying.svelte'

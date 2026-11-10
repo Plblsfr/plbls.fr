@@ -39,7 +39,7 @@ pub(super) async fn creer_salon(
     if kind == "cinema" && !cinema_disponible(&state) {
         return invalide(
             "invalid_channel",
-            "salon cinéma : ni Entracte ni la bibliothèque de films ne sont branchés sur ce serveur",
+            "salon cinéma : Entracte n'est pas branché sur ce serveur",
         );
     }
     if sujet.chars().count() > 200 {

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import FilmsNav from '../../blocks/films/FilmsNav.svelte'
-  import FilmsSpace from '../../blocks/films/FilmsSpace.svelte'
+  import FilmsNav from './FilmsNav.svelte'
+  import FilmsSpace from './FilmsSpace.svelte'
   import Icon from '../../components/Icon.svelte'
   import { router, hrefs } from '../../lib/route.svelte'
   import { logout } from '../../lib/auth'
