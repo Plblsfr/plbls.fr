@@ -216,7 +216,13 @@ impl Synchro<'_> {
     }
 
     async fn fichier(&mut self, titre: Uuid, f: &FichierArr) -> Result<bool, sqlx::Error> {
-        let local = chemin_local(&self.state.config().chemins, &f.chemin);
+        let config = self.state.config();
+        let Some(local) = chemin_local(&config.chemins, &config.medias, &f.chemin) else {
+            tracing::warn!("fichier hors de ENTRACTE_MEDIAS ignoré : {}", f.chemin);
+            self.lus += 1;
+            self.inaccessibles += 1;
+            return Ok(false);
+        };
         let nom = filtre::nom_de_fichier(&local).to_string();
         let pool = self.state.pool().clone();
         let ecarter = |raison: &'static str| {

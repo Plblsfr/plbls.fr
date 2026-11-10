@@ -8,6 +8,7 @@ function load() {
   const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
   const self = {
     __ESTOMPE__: { apiUrl: 'https://api.test' },
+    location: { origin: 'https://estompe.test' },
     addEventListener: (t: string, h: (e: unknown) => void) => { handlers[t] = h },
     clients: { matchAll: () => Promise.resolve([]), openWindow: vi.fn(() => Promise.resolve()) },
     registration: { showNotification: (...a: unknown[]) => { shown.push(a); return Promise.resolve() } },
@@ -55,5 +56,18 @@ describe('service worker push', () => {
     await run(handlers.notificationclick, { action: 'reply', notification: n })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(self.clients.openWindow).toHaveBeenCalledWith('/#/s/1/3')
+  })
+
+  it('n’ouvre que des adresses de l’application', async () => {
+    const { handlers, self } = load()
+    const w = { navigate: vi.fn(() => Promise.resolve(null)), focus: vi.fn() }
+    const clic = (url: string) => run(handlers.notificationclick, { notification: { close() {}, data: { url } } })
+    for (const url of ['https://ailleurs.test/piege', '//ailleurs.test/x', 'javascript:alert(1)']) await clic(url)
+    await clic('https://estompe.test/#/s/1/2')
+    expect(self.clients.openWindow.mock.calls).toEqual([['/'], ['/'], ['/'], ['https://estompe.test/#/s/1/2']])
+    self.clients.matchAll = () => Promise.resolve([w] as never[])
+    await clic('https://ailleurs.test/piege')
+    await clic('/#/s/1/3')
+    expect(w.navigate.mock.calls).toEqual([['/'], ['/#/s/1/3']])
   })
 })

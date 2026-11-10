@@ -6,7 +6,7 @@ Deux compose pour tout le monorepo, et un `.env.example` par projet.
 |---|---|
 | [`docker-compose.dev.yml`](docker-compose.dev.yml) | dépendances de dev de tous les projets, éphémères |
 | [`dev.env`](dev.env) | variables des backends en dev (valeurs factices) |
-| [`docker-compose.yml`](docker-compose.yml) | production de tous les services, sans section `environment` |
+| [`docker-compose.yml`](docker-compose.yml) | production de tous les services, valeurs lues dans le `.env` de Dokploy |
 | [`.env.example`](.env.example) | début de l'onglet Environment de Dokploy : tags d'images, réseau Jellyfin, variables communes |
 | `<projet>/.env.example` | suite de l'onglet, variables d'un projet (secrets en références Vault) : [`security`](security/.env.example), [`permission`](permission/.env.example), [`aegis`](aegis/.env.example), [`pli`](pli/.env.example), [`estompe`](estompe/.env.example), [`entracte`](entracte/.env.example) |
 
@@ -30,12 +30,19 @@ Une seule stack Dokploy (type Compose) avec [`docker-compose.yml`](docker-compos
 `aegis` et `aegis-redis`, `pli`, `entracte-api`, `estompe-web`, `estompe-api`, `estompe-postgres`, `estompe-backup`, `transcribe`, `livekit`, `cdn`.
 Les services se joignent par leur nom sur le réseau de la stack ; `permission`, `aegis`, `pli` et `entracte-api` rejoignent aussi `postgres-net`
 (PostgreSQL partagé, `postgres-main`), `auth-gateway` le réseau de Dokploy (Keycloak), `estompe-api` et `entracte-api` celui de la
-stack média (`JELLYFIN_NETWORK` : Jellyfin, Radarr, Sonarr). `entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses
+stack média (`JELLYFIN_NETWORK` : Jellyfin, Radarr, Sonarr ; obligatoire, le déploiement échoue sans lui plutôt que de joindre
+`dokploy-network`). Chaque Redis est seul sur son réseau `internal: true` et exige un mot de passe (`requirepass`) : `security-redis`
+n'est joint que par `auth-gateway` (`SECURITY_REDIS_PASSWORD`), `aegis-redis` par `aegis` et `estompe-api` (`AEGIS_REDIS_PASSWORD`) ;
+les URL `GATEWAY__REDIS__URL`, `AEGIS__REDIS__URL` et `AEGIS_REDIS_URL` d'Estompe, qui contiennent ce mot de passe, sont des secrets de Vault. `entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses
 transcodages dans le volume `entracte-transcodage`.
 
-Aucune variable n'est écrite dans le compose. L'onglet Environment de la stack contient [`.env.example`](.env.example) puis le
-`.env.example` de chaque projet, mis bout à bout. Dokploy l'écrit dans `.env` à côté du compose à chaque déploiement, et tous les
-services le chargent en entier (`env_file: .env`) : chaque conteneur voit donc toutes les variables de la stack.
+Aucune valeur n'est écrite dans le compose. L'onglet Environment de la stack contient [`.env.example`](.env.example) puis le
+`.env.example` de chaque projet, mis bout à bout. Dokploy l'écrit dans `.env` à côté du compose à chaque déploiement (Dokploy n'écrit
+qu'un fichier). Les backends Rust (`auth-gateway`, `permission`, `aegis`, `pli`, `entracte-api`, `estompe-api`) le chargent en entier
+(`env_file: .env`). Les autres services ne reçoivent que ce qu'ils lisent, par interpolation de ce même `.env` (`${VAR}` dans
+`environment:` ou `command:`, `${VAR:?}` pour une variable obligatoire) : `estompe-web` les URL publiques du front, `estompe-postgres`
+les `POSTGRES_*`, `estompe-backup` les `POSTGRES_*` et `BACKUP_*`, `livekit` `LIVEKIT_KEYS`, les deux Redis leur mot de passe ;
+`transcribe` et `cdn` n'en reçoivent aucune.
 
 - **Secrets** : les exemples ne contiennent que des références `${{vault.plbls.<projet>:<CLE>}}`. Dokploy les résout au déploiement
   dans Vault (`plbls.fr-infra`, `infra/vault`) : fournisseur nommé `plbls` dans Settings › Secrets, moteur KV v2 `secret`, un secret
@@ -62,7 +69,8 @@ pas pour ce qui écrit ailleurs au démarrage (nginx, `entracte-api` et ffmpeg, 
 ### Ajouter une variable
 
 La lire dans le code sous un nom qu'aucun autre projet n'utilise, l'ajouter à `<projet>/.env.example` (valeur par défaut, ou référence Vault
-pour un secret, dont la valeur va dans `secret/<projet>`), puis à l'onglet Environment de la stack. Le compose ne change pas.
+pour un secret, dont la valeur va dans `secret/<projet>`), puis à l'onglet Environment de la stack. Pour un backend Rust le compose
+ne change pas ; pour un autre service, ajouter `NOM: ${NOM}` (ou `${NOM:-défaut}`, `${NOM:?message}`) à sa section `environment`.
 
 ### Reprendre les anciennes stacks
 

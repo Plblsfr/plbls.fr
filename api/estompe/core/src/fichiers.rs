@@ -127,16 +127,16 @@ fn maintenant() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-pub fn signer(cle: &[u8; 32], id: &str, exp: u64) -> String {
+pub fn signer(cle: &[u8; 32], id: &str, user: &str, exp: u64) -> String {
     let mut m = Hmac::<Sha256>::new_from_slice(cle).expect("clé HMAC");
-    m.update(format!("{id}.{exp}").as_bytes());
+    m.update(format!("{id}.{user}.{exp}").as_bytes());
     let hex: String = m
         .finalize()
         .into_bytes()
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    format!("{exp}.{hex}")
+    format!("{exp}.{user}.{hex}")
 }
 
 fn egaux(a: &str, b: &str) -> bool {
@@ -144,14 +144,14 @@ fn egaux(a: &str, b: &str) -> bool {
     a.iter().zip(b.iter()).fold(0, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-pub fn lien_valide(cle: &[u8; 32], id: &str, jeton: &str, maintenant: u64) -> bool {
-    let Some((exp, _)) = jeton.split_once('.') else {
-        return false;
+pub fn lien_valide(cle: &[u8; 32], id: &str, jeton: &str, maintenant: u64) -> Option<String> {
+    let mut parts = jeton.splitn(3, '.');
+    let (Some(exp), Some(user), Some(_)) = (parts.next(), parts.next(), parts.next()) else {
+        return None;
     };
-    let Ok(exp) = exp.parse::<u64>() else {
-        return false;
-    };
-    maintenant < exp && egaux(jeton, &signer(cle, id, exp))
+    let exp = exp.parse::<u64>().ok()?;
+    (maintenant < exp && est_uuid(user) && egaux(jeton, &signer(cle, id, user, exp)))
+        .then(|| user.to_string())
 }
 
 pub fn nom_propre(s: &str) -> String {
@@ -630,16 +630,6 @@ fn lire_fichier(l: &sqlx::postgres::PgRow) -> Fichier {
 
 const COLONNES: &str = "id::text, name, mime, key, purged_at IS NOT NULL";
 
-async fn fichier_par_id(pool: &PgPool, id: &str) -> Result<Fichier, ErreurAcces> {
-    let l = sqlx::query(sqlx::AssertSqlSafe(format!(
-        "SELECT {COLONNES} FROM files WHERE id=$1::uuid"
-    )))
-    .bind(id)
-    .fetch_one(pool)
-    .await?;
-    Ok(lire_fichier(&l))
-}
-
 async fn fichier_signalement(pool: &PgPool, id: &str) -> Result<Fichier, ErreurAcces> {
     let l = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES} FROM files WHERE id=$1::uuid AND report_id IS NOT NULL"
@@ -685,14 +675,17 @@ async fn acces(state: &AppState, id: &str, parts: &mut Parts) -> Result<Fichier,
     let pool = state.pool().map_err(IntoResponse::into_response)?;
     let jeton = parametre(parts.uri.query(), "t");
     if !jeton.is_empty() {
-        if !est_uuid(id) || !lien_valide(state.cle_liens(), id, &jeton, maintenant()) {
+        let user = est_uuid(id)
+            .then(|| lien_valide(state.cle_liens(), id, &jeton, maintenant()))
+            .flatten();
+        let Some(user) = user else {
             return Err(write_err(
                 StatusCode::FORBIDDEN,
                 "invalid_link",
                 "lien expiré ou invalide",
             ));
-        }
-        return fichier_par_id(pool, id)
+        };
+        return fichier_pour(pool, id, &user)
             .await
             .map_err(IntoResponse::into_response);
     }
@@ -770,6 +763,10 @@ pub fn analyser_plage(entete: &str, taille: u64) -> Plage {
             };
             if n < 0 {
                 return Plage::Invalide;
+            }
+            if n == 0 || taille == 0 {
+                hors = true;
+                continue;
             }
             let n = (n as u64).min(taille);
             plages.push((taille - n, n));
@@ -989,7 +986,7 @@ async fn lien(State(state): State<AppState>, Path(id): Path<String>, req: Reques
     if let Err(e) = fichier_pour(pool, &id, &u.id).await {
         return e.into_response();
     }
-    let jeton = signer(state.cle_liens(), &id, maintenant() + DUREE_LIEN);
+    let jeton = signer(state.cle_liens(), &id, &u.id, maintenant() + DUREE_LIEN);
     write_json(StatusCode::OK, &Value::from_iter([("token", jeton)]))
 }
 
@@ -1398,8 +1395,8 @@ mod tests {
         let Some(e) = env(&[], |_| {}).await else {
             return;
         };
-        e.user("alice").await;
-        e.user("bob").await;
+        let alice = e.user("alice").await;
+        let bob = e.user("bob").await;
         let id = e.envoi_ok("alice", "photo.png", PNG).await;
         let lien = format!("/files/{id}/link");
         let (s, _, _) = e.requete("POST", &lien, Some("bob"), &[], vec![]).await;
@@ -1433,10 +1430,32 @@ mod tests {
                 "invalid_link"
             );
         }
-        let perime = signer(e.state.cle_liens(), &id, maintenant() - 1);
+        let perime = signer(e.state.cle_liens(), &id, &alice, maintenant() - 1);
         assert_eq!(
             e.lire(None, &format!("/files/{id}?t={perime}")).await.0,
             StatusCode::FORBIDDEN
+        );
+
+        let (serveur, salon) = e.serveur(&alice, &[&bob]).await;
+        e.joindre(&salon, &alice, &id).await;
+        let (s, _, c) = e.requete("POST", &lien, Some("bob"), &[], vec![]).await;
+        assert_eq!(s, StatusCode::OK);
+        let de_bob = serde_json::from_slice::<Value>(&c).unwrap()["token"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let chemin = format!("/files/{id}?t={de_bob}");
+        assert_eq!(e.lire(None, &chemin).await.0, StatusCode::OK);
+        sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
+            .bind(&serveur)
+            .bind(&bob)
+            .execute(e.pool())
+            .await
+            .unwrap();
+        assert_eq!(e.lire(None, &chemin).await.0, StatusCode::NOT_FOUND);
+        assert_eq!(
+            e.lire(None, &format!("/files/{id}?t={jeton}")).await.0,
+            StatusCode::OK
         );
     }
 
@@ -1484,6 +1503,9 @@ mod tests {
         assert_eq!(s, StatusCode::RANGE_NOT_SATISFIABLE);
         assert_eq!(h[header::CONTENT_RANGE], "bytes */10");
         assert!(h.get(header::ACCEPT_RANGES).is_none() && h.get(header::CACHE_CONTROL).is_none());
+        let (s, h, _) = avec("bytes=-0").await;
+        assert_eq!(s, StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(h[header::CONTENT_RANGE], "bytes */10");
         let (s, h, c) = avec("octets=1-2").await;
         assert_eq!(
             (s, texte(&c).as_str()),
@@ -2047,6 +2069,8 @@ mod tests {
             ("bytes=0-99", "0+10"),
             ("bytes=-4", "6+4"),
             ("bytes=-99", "0+10"),
+            ("bytes=-0", "hors"),
+            ("bytes=-0,2-3", "2+2"),
             ("bytes= 2 - 3 ", "2+2"),
             ("bytes=10-", "hors"),
             ("bytes=10-12", "hors"),
@@ -2063,6 +2087,12 @@ mod tests {
         ] {
             assert_eq!(lire(entete), attendu, "{entete:?}");
         }
+        for entete in ["bytes=0-", "bytes=-1", "bytes=-0", "bytes=0-0"] {
+            assert!(
+                matches!(analyser_plage(entete, 0), NonSatisfaisante),
+                "{entete:?}"
+            );
+        }
     }
 
     fn cle_aleatoire() -> [u8; 32] {
@@ -2075,13 +2105,25 @@ mod tests {
     fn liens_et_identifiants() {
         let cle = cle_aleatoire();
         let id = "123e4567-e89b-12d3-a456-426614174000";
-        let jeton = signer(&cle, id, 2000);
-        assert!(lien_valide(&cle, id, &jeton, 1999));
-        assert!(!lien_valide(&cle, id, &jeton, 2000));
-        assert!(!lien_valide(&cle, "autre", &jeton, 1999));
-        assert!(!lien_valide(&cle_aleatoire(), id, &jeton, 1999));
-        for mauvais in ["", "x", "2000.", "+2000.ab", "-1.ab", &format!("{jeton}0")] {
-            assert!(!lien_valide(&cle, id, mauvais, 1999), "{mauvais}");
+        let user = "00000000-0000-0000-0000-0000000000aa";
+        let jeton = signer(&cle, id, user, 2000);
+        assert_eq!(lien_valide(&cle, id, &jeton, 1999).as_deref(), Some(user));
+        assert_eq!(lien_valide(&cle, id, &jeton, 2000), None);
+        assert_eq!(lien_valide(&cle, "autre", &jeton, 1999), None);
+        assert_eq!(lien_valide(&cle_aleatoire(), id, &jeton, 1999), None);
+        let autre = jeton.replace(user, "00000000-0000-0000-0000-0000000000bb");
+        let ancien = format!("2000.{}", jeton.rsplit('.').next().unwrap());
+        for mauvais in [
+            "",
+            "x",
+            "2000.",
+            "+2000.ab",
+            "-1.ab",
+            &format!("{jeton}0"),
+            &autre,
+            &ancien,
+        ] {
+            assert_eq!(lien_valide(&cle, id, mauvais, 1999), None, "{mauvais}");
         }
         assert!(est_uuid(id) && est_uuid(&id.to_uppercase()));
         for mauvais in [

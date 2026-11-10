@@ -5,6 +5,8 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
+use base64::{Engine, engine::general_purpose::STANDARD};
+
 use crate::{
     droits::{Droit, Droits},
     etat::AppState,
@@ -130,6 +132,29 @@ fn parametre(req: &Request, nom: &str) -> String {
         .unwrap_or_default()
 }
 
+fn jetons_webhook(req: &Request) -> Vec<String> {
+    let mut jetons = vec![parametre(req, "token")];
+    let autorisation = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if let Some((schema, valeur)) = autorisation.split_once(' ') {
+        if schema.eq_ignore_ascii_case("bearer") {
+            jetons.push(valeur.trim().to_string());
+        } else if schema.eq_ignore_ascii_case("basic")
+            && let Some(mdp) = STANDARD
+                .decode(valeur.trim())
+                .ok()
+                .and_then(|o| String::from_utf8(o).ok())
+                .and_then(|t| t.split_once(':').map(|(_, m)| m.to_string()))
+        {
+            jetons.push(mdp);
+        }
+    }
+    jetons
+}
+
 pub async fn garder(
     State((state, garde)): State<(AppState, Garde)>,
     mut req: Request,
@@ -167,7 +192,10 @@ pub async fn garder(
             if attendu.is_empty() {
                 return StatusCode::NOT_FOUND.into_response();
             }
-            if !jetons_egaux(attendu, &parametre(&req, "token")) {
+            if !jetons_webhook(&req)
+                .iter()
+                .any(|j| jetons_egaux(attendu, j))
+            {
                 return erreur(
                     StatusCode::UNAUTHORIZED,
                     "unauthorized",
@@ -244,5 +272,35 @@ pub async fn politique_origine(
     match &cors {
         Some(o) => avec_cors(r, o),
         None => r,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn requete(uri: &str, autorisation: Option<&str>) -> Request {
+        let mut b = Request::builder().uri(uri);
+        if let Some(a) = autorisation {
+            b = b.header(header::AUTHORIZATION, a);
+        }
+        b.body(axum::body::Body::empty()).unwrap()
+    }
+
+    #[test]
+    fn jeton_de_webhook_par_requete_bearer_ou_basic() {
+        let ok = |r: Request| jetons_webhook(&r).iter().any(|j| jetons_egaux("secret", j));
+        assert!(ok(requete("/webhooks/radarr?token=secret", None)));
+        assert!(ok(requete("/webhooks/radarr", Some("Bearer secret"))));
+        let basic = format!("Basic {}", STANDARD.encode("radarr:secret"));
+        assert!(ok(requete("/webhooks/radarr", Some(&basic))));
+        let faux = format!("Basic {}", STANDARD.encode("secret:faux"));
+        assert!(!ok(requete("/webhooks/radarr", Some(&faux))));
+        assert!(!ok(requete("/webhooks/radarr", Some("Basic %%%"))));
+        assert!(!ok(requete(
+            "/webhooks/radarr?token=faux",
+            Some("Bearer faux")
+        )));
+        assert!(!ok(requete("/webhooks/radarr", None)));
     }
 }

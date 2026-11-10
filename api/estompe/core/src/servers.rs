@@ -25,6 +25,8 @@ use crate::{
 pub const MAX_SALONS: i64 = 50;
 pub const MAX_ROLES: usize = 50;
 pub const MAX_PARTICIPANTS_VOCAL: i64 = 10;
+pub(crate) const CREATIONS_PAR_FENETRE: usize = 10;
+const FENETRE_CREATIONS: std::time::Duration = std::time::Duration::from_secs(3600);
 
 const ALPHABET_CODE: &[u8] = b"ABCDEFGHJKMNPQRSTVWXYZ23456789";
 const TYPES: [&str; 5] = ["text", "voice", "videos", "music", "cinema"];
@@ -45,10 +47,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .route("/servers/{id}", get(voir).patch(renommer).delete(supprimer))
         .route("/servers/{id}/leave", post(quitter))
         .route("/servers/{id}/channels", post(creer_salon))
-        .route(
-            "/servers/{id}/channels/order",
-            put(ordonner).patch(renommer_salon).delete(supprimer_salon),
-        )
+        .route("/servers/{id}/channels/order", put(ordonner))
         .route(
             "/servers/{id}/channels/{cid}",
             patch(renommer_salon).delete(supprimer_salon),
@@ -85,7 +84,11 @@ const DOC: &[Doc] = &[
         HttpMethod::Post,
         "/servers",
         "Créer un serveur (avec un salon texte « général » et un salon vocal « vocal »)",
-        &[("201", "Créé"), ("400", "Requête invalide")],
+        &[
+            ("201", "Créé"),
+            ("400", "Requête invalide"),
+            ("429", "`rate_limited` : 10 / h"),
+        ],
     ),
     (
         HttpMethod::Get,
@@ -447,7 +450,7 @@ pub fn param<'a>(p: &'a HashMap<String, String>, nom: &str) -> &'a str {
 }
 
 pub(crate) fn id_salon(p: &HashMap<String, String>) -> Result<String, Response> {
-    let cid = p.get("cid").map_or("order", String::as_str);
+    let cid = param(p, "cid");
     if uuid_valide(cid) {
         Ok(cid.to_string())
     } else {
@@ -460,6 +463,28 @@ pub async fn membres_ids(pool: &PgPool, server_id: &str) -> Result<Vec<String>, 
         .bind(server_id)
         .fetch_all(pool)
         .await
+}
+
+pub(crate) async fn retirer_membre<'c>(
+    conn: impl sqlx::Acquire<'c, Database = sqlx::Postgres>,
+    server_id: &str,
+    user_id: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = conn.begin().await?;
+    sqlx::query(
+        "DELETE FROM message_mentions mm USING messages m, channels c
+         WHERE mm.message_id = m.id AND m.channel_id = c.id AND c.server_id=$1::uuid AND mm.user_id=$2::uuid",
+    )
+    .bind(server_id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
+        .bind(server_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
 }
 
 fn diffuser(state: &AppState, to: &[String], typ: &str, data: &Value) {
@@ -499,6 +524,13 @@ async fn creer(
     body: Body,
 ) -> Result<Response, Response> {
     let pool = pool(&state)?;
+    if !state
+        .limiteurs()
+        .serveurs
+        .allow(&u.id, CREATIONS_PAR_FENETRE, FENETRE_CREATIONS)
+    {
+        return Ok(crate::messages::trop_de_requetes(60));
+    }
     let entree = decode(body).await?;
     let brut = champ_texte(&entree, "name").ok_or_else(mauvais)?;
     let Some(nom) = nom_propre(&brut, 50) else {
@@ -738,12 +770,7 @@ async fn quitter(
             "le créateur ne peut pas quitter son serveur, il peut le supprimer",
         ));
     }
-    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
-        .bind(&sv.id)
-        .bind(&u.id)
-        .execute(pool)
-        .await
-        .map_err(bd)?;
+    retirer_membre(pool, &sv.id, &u.id).await.map_err(bd)?;
     let mut to = membres_ids(pool, &sv.id).await.unwrap_or_default();
     to.push(u.id.clone());
     diffuser(
@@ -1038,10 +1065,11 @@ async fn renommer_salon(
         Err(e) => Err(bd(e)),
         Ok(r) if r.rows_affected() == 0 => Ok(non_trouve("salon introuvable")),
         Ok(_) => {
-            evenement_serveur(
+            evenement_salon(
                 &state,
                 pool,
                 &sv.id,
+                &cid,
                 "channel.updated",
                 &json!({ "server_id": sv.id, "id": cid, "name": nom }),
             )
@@ -1133,6 +1161,9 @@ async fn supprimer_salon(
     let pool = pool(&state)?;
     let (sv, _) = acces(&state, &u, param(&p, "id"), roles::MANAGE_CHANNELS).await?;
     let cid = id_salon(&p)?;
+    let to = roles::voyeurs_du_salon(pool, &sv.id, &cid)
+        .await
+        .map_err(bd)?;
     let r = sqlx::query("DELETE FROM channels WHERE id=$2::uuid AND server_id=$1::uuid")
         .bind(&sv.id)
         .bind(&cid)
@@ -1142,14 +1173,12 @@ async fn supprimer_salon(
     if r.rows_affected() == 0 {
         return Ok(non_trouve("salon introuvable"));
     }
-    evenement_serveur(
+    diffuser(
         &state,
-        pool,
-        &sv.id,
+        &to,
         "channel.deleted",
         &json!({ "server_id": sv.id, "id": cid }),
-    )
-    .await;
+    );
     Ok(sans_contenu())
 }
 
@@ -1353,11 +1382,17 @@ async fn rejoindre_base(pool: &PgPool, user: &str, code: &str) -> Result<(Serveu
         .bind(user)
         .execute(&mut *tx)
         .await?;
-    sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid)")
-        .bind(&sv.id)
-        .bind(user)
-        .execute(&mut *tx)
-        .await?;
+    let ajoute = sqlx::query(
+        "INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid) ON CONFLICT DO NOTHING",
+    )
+    .bind(&sv.id)
+    .bind(user)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if ajoute == 0 {
+        return Ok((sv, false));
+    }
     tx.commit().await?;
     Ok((sv, true))
 }
@@ -1529,6 +1564,106 @@ pub(crate) mod tests {
         assert!(uuid_valide("0123abcd-0123-4567-89AB-0123456789ab"));
         assert!(!uuid_valide("0123abcd-0123-4567-89ab-0123456789a"));
         assert!(!uuid_valide("pas-un-uuid"));
+    }
+
+    #[tokio::test]
+    async fn evenements_d_un_salon_prive_reserves_a_ceux_qui_le_voient() {
+        use crate::messages::tests::{cadre, recus};
+        let Some(c) = cadre().await else { return };
+        let base = format!("/servers/{}/channels", c.sid);
+        let (s, v) = c
+            .api(
+                "alice",
+                "POST",
+                &base,
+                json!({ "name": "cache", "kind": "text", "private": true }),
+            )
+            .await;
+        assert_eq!(s, 201, "{v}");
+        let cache = v["id"].as_str().unwrap().to_string();
+        let (mut a, mut b) = (c.ecouter(&c.alice), c.ecouter(&c.bob));
+        let types = |l: Vec<(String, Value)>| l.into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+        let chemin = format!("{base}/{cache}");
+        assert_eq!(
+            c.api("alice", "PATCH", &chemin, json!({ "name": "renomme" }))
+                .await
+                .0,
+            204
+        );
+        assert_eq!(types(recus(&mut a)), ["channel.updated"]);
+        assert!(recus(&mut b).is_empty());
+        let public = format!("{base}/{}", c.salon);
+        assert_eq!(
+            c.api("alice", "PATCH", &public, json!({ "name": "accueil" }))
+                .await
+                .0,
+            204
+        );
+        assert_eq!(types(recus(&mut a)), ["channel.updated"]);
+        assert_eq!(types(recus(&mut b)), ["channel.updated"]);
+        assert_eq!(c.api("alice", "DELETE", &chemin, Value::Null).await.0, 204);
+        assert_eq!(types(recus(&mut a)), ["channel.deleted"]);
+        assert!(recus(&mut b).is_empty());
+        assert_eq!(c.api("alice", "DELETE", &public, Value::Null).await.0, 204);
+        assert_eq!(types(recus(&mut a)), ["channel.deleted"]);
+        assert_eq!(types(recus(&mut b)), ["channel.deleted"]);
+    }
+
+    #[tokio::test]
+    async fn creations_de_serveurs_limitees_par_compte() {
+        let Some(e) = env().await else { return };
+        membre(&e, "alice").await;
+        membre(&e, "bob").await;
+        for i in 0..CREATIONS_PAR_FENETRE {
+            serveur(&e, &format!("s{i}"), "alice").await;
+        }
+        let corps = json!({ "name": "de trop" }).to_string();
+        let (s, v) = appel(&e, "alice", "POST", "/servers", Some(&corps)).await;
+        assert_eq!(
+            (s, v["error"].as_str()),
+            (StatusCode::TOO_MANY_REQUESTS, Some("rate_limited"))
+        );
+        serveur(&e, "autre", "bob").await;
+    }
+
+    #[tokio::test]
+    async fn adhesion_concurrente_sans_erreur() {
+        let Some(e) = env().await else { return };
+        membre(&e, "alice").await;
+        let bob = membre(&e, "bob").await;
+        let sid = serveur(&e, "Amis", "alice").await;
+        let code = invitation_de(&e, "alice", &sid, "").await;
+        let pool = e.state.pool().ok().unwrap().clone();
+        let mut autre = pool.begin().await.unwrap();
+        sqlx::query("INSERT INTO server_members (server_id, user_id) VALUES ($1::uuid,$2::uuid)")
+            .bind(&sid)
+            .bind(&bob)
+            .execute(&mut *autre)
+            .await
+            .unwrap();
+        let (p, b, c) = (pool.clone(), bob.clone(), code.clone());
+        let tache = tokio::spawn(async move { rejoindre_base(&p, &b, &c).await });
+        loop {
+            let bloque: bool = sqlx::query_scalar(
+                "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'INSERT INTO server_members%')",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            if bloque {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        autre.commit().await.unwrap();
+        let (sv, nouveau) = tache.await.unwrap().map_err(|_| "échec").unwrap();
+        assert_eq!((sv.id.as_str(), nouveau), (sid.as_str(), false));
+        let utilisations: i32 = sqlx::query_scalar("SELECT uses FROM server_invites WHERE code=$1")
+            .bind(&code)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(utilisations, 0);
     }
 
     #[tokio::test]
@@ -1849,11 +1984,10 @@ pub(crate) mod tests {
             (s, v["error"].as_str()),
             (StatusCode::BAD_REQUEST, Some("invalid_order"))
         );
-        let (s, v) = appel(&e, "alice", "PATCH", &ordre, Some(r#"{"name":"x"}"#)).await;
-        assert_eq!(
-            (s, v["error"].as_str()),
-            (StatusCode::NOT_FOUND, Some("not_found"))
-        );
+        for methode in ["PATCH", "DELETE"] {
+            let (s, _) = appel(&e, "alice", methode, &ordre, Some(r#"{"name":"x"}"#)).await;
+            assert_eq!(s, StatusCode::METHOD_NOT_ALLOWED, "{methode}");
+        }
 
         let un = format!("{base}/{premier}");
         let (s, _) = appel(&e, "alice", "PATCH", &un, Some(r#"{"name":"renomme"}"#)).await;

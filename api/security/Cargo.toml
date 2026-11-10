@@ -13,6 +13,7 @@ axum.workspace = true
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 url.workspace = true
+percent-encoding.workspace = true
 subtle.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tower-http = { workspace = true, features = ["cors", "trace", "util"] }
