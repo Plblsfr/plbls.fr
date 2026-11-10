@@ -84,7 +84,7 @@ services:
       - ${ENTRACTE_MEDIAS:-/srv/medias}:${ENTRACTE_MEDIAS:-/srv/medias}:ro
       - entracte-transcodage:/tmp/entracte
     expose: ["8080"]
-    networks: [default, postgres-net, jellyfin]
+    networks: [default, postgres-net, medias]
 
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
@@ -113,7 +113,7 @@ services:
       estompe-postgres: { condition: service_healthy }
       livekit: { condition: service_started }
     expose: ["8080"]
-    networks: [default, jellyfin, aegis-redis]
+    networks: [default, aegis-redis]
 
   transcribe:
     image: ghcr.io/speaches-ai/speaches:0.8.3-cpu@sha256:21e3df06d842fb7802ab470dd77c25f0e8c0d22950e8d8c6ae886e851af53ef8
@@ -224,9 +224,9 @@ networks:
     external: true
   dokploy-network:
     external: true
-  jellyfin:
+  medias:
     external: true
-    name: ${JELLYFIN_NETWORK:?JELLYFIN_NETWORK est obligatoire (réseau de la stack média, jamais dokploy-network)}
+    name: ${MEDIAS_NETWORK:?MEDIAS_NETWORK est obligatoire (réseau de la stack média, jamais dokploy-network)}
   security-redis:
     internal: true
   aegis-redis:

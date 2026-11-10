@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, clock, directOk, needsReopen, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, clock, needsReopen, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -70,14 +70,6 @@ describe('progression', () => {
     expect(pickEpisode([e1, e2])?.id).toBe('2')
     expect(pickEpisode([e1])?.id).toBe('1')
     expect(pickEpisode([])).toBeUndefined()
-  })
-})
-
-describe('lecture directe', () => {
-  it('dépend de ce que sait lire l\'appareil', () => {
-    expect(directOk(() => 'probably')).toBe(true)
-    expect(directOk(() => 'maybe')).toBe(true)
-    expect(directOk(() => '')).toBe(false)
   })
 })
 

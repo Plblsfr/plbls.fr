@@ -45,7 +45,7 @@ pub const TYPES_VOCAUX: [&str; 2] = ["voice", "cinema"];
 
 pub fn cinema_disponible(state: &AppState) -> bool {
     let actif = |nom: &str| state.blocs_actifs().iter().any(|b| b == nom);
-    actif("films") || (actif("regarder-ensemble") && state.config().entracte_actif())
+    actif("regarder-ensemble") && state.config().entracte_actif()
 }
 
 pub fn est_vocal(kind: &str) -> bool {

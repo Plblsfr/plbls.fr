@@ -1,4 +1,4 @@
-import type { FilmItem } from '../../blocks/films/films'
+import type { FilmItem } from './films'
 
 export interface EntracteMe {
   sub: string

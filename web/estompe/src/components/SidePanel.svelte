@@ -46,7 +46,7 @@
   import { channelMod } from '../lib/moderation.svelte'
   import type { Channel, ChannelKind } from '../lib/types'
   import { channelCreate, openNewChannel } from '../lib/channel-create.svelte'
-  import FilmsNav from '../blocks/films/FilmsNav.svelte'
+  import FilmsNav from '../sections/entracte/FilmsNav.svelte'
   import { videos } from '../blocks/videos/videos.svelte'
   import { sessionPhase, when } from '../blocks/videos/videos'
 

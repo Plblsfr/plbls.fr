@@ -4,7 +4,7 @@
   import { entracteApi, filmsApi } from '../../lib/api'
   import { saisir } from '../../lib/confirm.svelte'
   import { notify } from '../../lib/ui'
-  import { reasonLabel, type FilmReject } from '../../blocks/films/films'
+  import { reasonLabel, type FilmReject } from './films'
   import { seasonsLabel, stateLabel, stateTone, type EntracteRequest, type EntracteStatus, type RequestState } from './entracte'
 
   let tab = $state<'requests' | 'rejected' | 'status'>('requests')

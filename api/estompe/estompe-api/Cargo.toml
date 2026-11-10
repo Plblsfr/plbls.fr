@@ -20,7 +20,6 @@ serde_json.workspace = true
 estompe-core.workspace = true
 estompe-block.workspace = true
 estompe-block-gifs.workspace = true
-estompe-block-films.workspace = true
 estompe-block-musique.workspace = true
 estompe-block-vocal.workspace = true
 estompe-block-regarder-ensemble.workspace = true

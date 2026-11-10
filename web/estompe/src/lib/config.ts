@@ -4,7 +4,7 @@ interface RuntimeConfig {
   gatewayUrl?: string
   /** Émetteur Keycloak (ex. https://auth.plbls.fr/realms/default), pour la connexion PKCE de l'app Windows. */
   keycloakIssuer?: string
-  /** API d'Entracte (films et séries) ; vide = onglet films servi par le bloc films d'Estompe. */
+  /** API d'Entracte (films et séries) ; vide = pas de section Entracte ni de salon cinéma. */
   entracteUrl?: string
 }
 

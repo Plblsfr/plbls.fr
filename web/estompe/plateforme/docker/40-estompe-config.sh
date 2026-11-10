@@ -4,7 +4,7 @@
 #   GATEWAY_URL       URL d'auth-gateway, ex. https://security.plbls.fr
 #   VOICE_URL         URL publique de LiveKit (wss://...), ex. wss://voice.plbls.fr
 #   KEYCLOAK_ISSUER   (facultatif) émetteur Keycloak, utile seulement à l'app Windows
-#   ENTRACTE_PUBLIC_URL (facultatif) URL publique de l'API d'Entracte, ex. https://entracte-api.plbls.fr ; vide = bloc films
+#   ENTRACTE_PUBLIC_URL (facultatif) URL publique de l'API d'Entracte, ex. https://entracte-api.plbls.fr ; vide = pas de section Entracte
 set -eu
 
 : "${API_URL:?API_URL est obligatoire}"

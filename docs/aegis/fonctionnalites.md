@@ -81,7 +81,6 @@ Une permission dont le bloc est désactivé n'est pas déclarée.
 
 | Permission | Libellé | Défaut | Ressource | Bloc | Routes protégées | Plafond |
 | --- | --- | --- | --- | --- | --- | --- |
-| `estompe:films.use` | Films et séries | fermée | — | films | `* /films/**` | — |
 | `estompe:videos.use` | Salons Vidéos | ouverte | — | videos | `POST /channels/{cid}/videos/**`<br>`PUT /channels/{cid}/videos/**`<br>`DELETE /channels/{cid}/videos/**` | — |
 
 ## Profil
@@ -106,7 +105,6 @@ Une permission dont le bloc est désactivé n'est pas déclarée.
 | `estompe:admin.bot` | Compte « Estompe » | fermée | — | — | `* /admin/bot/**` | — |
 | `estompe:admin.badges` | Badges | fermée | — | badges | `* /admin/badges/**` | — |
 | `estompe:admin.reports` | Signalements | fermée | — | signalements | `* /admin/reports/**` | — |
-| `estompe:admin.films` | Fichiers écartés | fermée | — | films | `GET /admin/films/rejets` | — |
 | `estompe:admin.files` | Fichiers signalés | fermée | — | — | contrôle dans le code : fichiers::acces : ouvre un fichier hors conversation quand il est joint à un signalement | — |
 | `estompe:admin.polls` | Sondages | fermée | — | — | contrôle dans le code : sondages::peut_gerer : clore le sondage d'un autre | — |
 

@@ -539,12 +539,12 @@ mod tests {
     fn entetes_sensibles_masques() {
         let mut h = HeaderMap::new();
         h.insert("authorization", "Bearer abc".parse().unwrap());
-        h.insert("x-emby-token", "cle".parse().unwrap());
+        h.insert("x-service-token", "cle".parse().unwrap());
         h.insert("cookie", "a=b".parse().unwrap());
         h.insert("accept", "application/json".parse().unwrap());
         let v = entetes(&h);
         assert_eq!(v["authorization"], MASQUE);
-        assert_eq!(v["x-emby-token"], MASQUE);
+        assert_eq!(v["x-service-token"], MASQUE);
         assert_eq!(v["cookie"], MASQUE);
         assert_eq!(v["accept"], "application/json");
     }
@@ -568,8 +568,8 @@ mod tests {
         assert_eq!(v["password"], MASQUE);
         let jeton = "a".repeat(20) + "." + &"b".repeat(30);
         assert_eq!(
-            chemin(&format!("/films/flux/{jeton}/hls")),
-            format!("/films/flux/{MASQUE}/hls")
+            chemin(&format!("/flux/{jeton}/hls")),
+            format!("/flux/{MASQUE}/hls")
         );
         assert_eq!(
             chemin("/servers/6f1d3c52-8a4b-4e0f-9c11-2f7a5d1b9e00"),
@@ -581,12 +581,12 @@ mod tests {
     fn echange_contient_les_champs_demandes() {
         let e = Echange {
             request_type: "output",
-            service: Some("jellyfin"),
+            service: Some("entracte"),
             methode: "GET",
-            chemin: "http://j/Items".into(),
+            chemin: "http://e/internal/titles".into(),
             requete: Value::Null,
             request_data: Value::Null,
-            header_data: json!({"x-emby-token": MASQUE}),
+            header_data: json!({"x-service-token": MASQUE}),
             statut: Some(401),
             response_header_data: Value::Null,
             response_data: Value::String("Unauthorized".into()),
@@ -627,7 +627,9 @@ mod tests {
         .await;
         let r = sortant(
             "test",
-            reqwest::Client::new().get(url).header("X-Emby-Token", "s"),
+            reqwest::Client::new()
+                .get(url)
+                .header("X-Service-Token", "s"),
         )
         .await
         .unwrap();

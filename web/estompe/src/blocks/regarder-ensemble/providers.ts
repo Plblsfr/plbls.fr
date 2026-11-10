@@ -1,5 +1,5 @@
-import { entracteOn, filmsApi, ApiError } from '../../lib/api'
-import { absolute, directOk, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../films/films'
+import { filmsApi, ApiError } from '../../lib/api'
+import { absolute, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
@@ -228,7 +228,7 @@ const film: Factory = async (el, h) => {
     const turn = ++opening
     close()
     const ask = (q: Quality) => filmsApi.playback(ref, {
-      direct: !forceHls && (entracteOn() || directOk((t) => video.canPlayType(t))),
+      direct: !forceHls,
       audio, quality: q, start, support: support((t) => video.canPlayType(t)),
     })
     try {

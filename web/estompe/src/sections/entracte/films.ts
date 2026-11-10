@@ -30,10 +30,6 @@ export function saveDue(savedAt: number, now: number): boolean {
   return now - savedAt >= SAVE_EVERY_MS
 }
 
-export function directOk(canPlay: (mime: string) => string): boolean {
-  return canPlay('video/mp4; codecs="avc1.42E01E, mp4a.40.2"') !== ''
-}
-
 const PROBES: { kind: keyof Support; name: string; mime: string }[] = [
   { kind: 'containers', name: 'mp4', mime: 'video/mp4' },
   { kind: 'containers', name: 'webm', mime: 'video/webm' },

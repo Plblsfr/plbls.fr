@@ -16,7 +16,6 @@ export const BLOCKS: BlockDef[] = [
   { name: 'badges' },
   { name: 'signalements' },
   { name: 'activite-statut' },
-  { name: 'films', needs: ['vocal', 'regarder-ensemble'] },
 ]
 
 /** Un bloc est proposé s'il est annoncé par le serveur (`blocks` de `GET /me`) avec toutes ses dépendances ; sans liste (ancien serveur), tous le sont. */

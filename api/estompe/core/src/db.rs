@@ -191,6 +191,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n, 1);
+        let films: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name IN ('films_items', 'films_progression', 'films_rejets')",
+        )
+        .fetch_one(&p)
+        .await
+        .unwrap();
+        assert_eq!(films, 0);
     }
 
     #[tokio::test]
@@ -205,7 +212,7 @@ mod tests {
             .await
             .unwrap();
         migrate_embarquees(&p).await.unwrap();
-        assert_eq!(noms(&p).await.len(), 42);
+        assert_eq!(noms(&p).await.len(), attendus().len());
         let n: i64 = sqlx::query_scalar("SELECT count(*) FROM users")
             .fetch_one(&p)
             .await
@@ -238,7 +245,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(tables, 0);
-        assert_eq!(noms(&p).await.len(), 42);
+        assert_eq!(noms(&p).await.len(), attendus().len());
     }
 
     #[tokio::test]

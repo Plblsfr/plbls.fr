@@ -80,23 +80,7 @@ fn block_list() -> Vec<Block<AppState>> {
             needs: &[],
             mount: estompe_block_activite_statut::mount,
         },
-        Block {
-            name: "films",
-            needs: &["vocal", "regarder-ensemble"],
-            mount: estompe_block_films::mount,
-        },
     ]
-}
-
-fn variable_bloc(nom: &str, valeur: Option<String>, jellyfin_actif: bool) -> Option<String> {
-    if nom != "BLOCK_FILMS" {
-        return valeur;
-    }
-    match valeur.as_deref() {
-        None | Some("") => Some("false".into()),
-        Some("true") if !jellyfin_actif => Some("false".into()),
-        _ => valeur,
-    }
 }
 
 fn routes(set: &Set) -> (Router<AppState>, OpenApi) {
@@ -157,10 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("{e}");
         std::process::exit(1);
     });
-    let set = estompe_block::select(&block_list(), |k| {
-        variable_bloc(k, std::env::var(k).ok(), config.jellyfin_actif())
-    })
-    .unwrap_or_else(|e| {
+    let set = estompe_block::select(&block_list(), |k| std::env::var(k).ok()).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });
@@ -180,9 +161,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     estompe_core::aegis::demarrer(state.clone());
     if set.has("videos") {
         estompe_block_videos::brancher(&state);
-    }
-    if set.has("films") {
-        estompe_block_films::brancher(&state);
     }
     if set.has("regarder-ensemble") {
         estompe_block_regarder_ensemble::brancher(&state);
@@ -222,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{app, block_list, listen_addr, routes, variable_bloc};
+    use super::{app, block_list, listen_addr, routes};
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
@@ -455,14 +433,12 @@ mod tests {
                 "avatars",
                 "badges",
                 "signalements",
-                "activite-statut",
-                "films"
+                "activite-statut"
             ]
         );
         for b in &blocs {
             let attendu: &[&str] = match b.name {
                 "regarder-ensemble" | "draw2gether" | "transcription" => &["vocal"],
-                "films" => &["vocal", "regarder-ensemble"],
                 _ => &[],
             };
             assert_eq!(b.needs, attendu, "{}", b.name);
@@ -546,8 +522,7 @@ mod tests {
             (k == "BLOCK_VOCAL"
                 || k == "BLOCK_REGARDER_ENSEMBLE"
                 || k == "BLOCK_DRAW2GETHER"
-                || k == "BLOCK_TRANSCRIPTION"
-                || k == "BLOCK_FILMS")
+                || k == "BLOCK_TRANSCRIPTION")
                 .then(|| "false".to_string())
         })
         .unwrap();
@@ -594,13 +569,7 @@ mod tests {
         };
         let sans = || {
             select(&block_list(), |k| {
-                (k == "BLOCK_REGARDER_ENSEMBLE" || k == "BLOCK_FILMS").then(|| "false".to_string())
-            })
-            .unwrap()
-        };
-        let sans_films = || {
-            select(&block_list(), |k| {
-                (k == "BLOCK_FILMS").then(|| "false".to_string())
+                (k == "BLOCK_REGARDER_ENSEMBLE").then(|| "false".to_string())
             })
             .unwrap()
         };
@@ -612,11 +581,6 @@ mod tests {
             assert_eq!(
                 appel(sans(), chemin).await,
                 StatusCode::NOT_FOUND,
-                "{chemin}"
-            );
-            assert_eq!(
-                appel(sans_films(), chemin).await,
-                StatusCode::UNAUTHORIZED,
                 "{chemin}"
             );
             assert_eq!(
@@ -705,49 +669,20 @@ mod tests {
         }
     }
 
-    #[test]
-    fn films_inactif_par_defaut_et_sans_jellyfin() {
-        let v = |valeur: Option<&str>, jellyfin: bool| {
-            variable_bloc("BLOCK_FILMS", valeur.map(String::from), jellyfin)
-        };
-        assert_eq!(v(None, true).as_deref(), Some("false"));
-        assert_eq!(v(Some(""), true).as_deref(), Some("false"));
-        assert_eq!(v(Some("true"), false).as_deref(), Some("false"));
-        assert_eq!(v(Some("true"), true).as_deref(), Some("true"));
-        assert_eq!(v(Some("false"), true).as_deref(), Some("false"));
-        assert_eq!(v(Some("oui"), true).as_deref(), Some("oui"));
-        assert_eq!(variable_bloc("BLOCK_GIFS", None, false), None);
-        let set = select(&block_list(), |k| variable_bloc(k, None, true)).unwrap();
-        assert!(!set.has("films"));
-        assert!(set.has("gifs"));
-    }
-
     #[tokio::test]
-    async fn films_absent_quand_le_bloc_est_desactive() {
-        let appeler = |set: Set, chemin: &'static str| async move {
-            app(AppState::new(testutil::config(), vec![]), &set)
+    async fn plus_aucune_route_films() {
+        for chemin in [
+            "/films/library",
+            "/films/continue",
+            "/films/items/00000000-0000-0000-0000-000000000000",
+            "/admin/films/rejets",
+        ] {
+            let statut = app(AppState::new(testutil::config(), vec![]), &Set::all())
                 .oneshot(Request::get(chemin).body(Body::empty()).unwrap())
                 .await
                 .unwrap()
-                .status()
-        };
-        let sans = || {
-            select(&block_list(), |k| {
-                (k == "BLOCK_FILMS").then(|| "false".to_string())
-            })
-            .unwrap()
-        };
-        for chemin in ["/films/library", "/films/continue", "/admin/films/rejets"] {
-            assert_eq!(
-                appeler(sans(), chemin).await,
-                StatusCode::NOT_FOUND,
-                "{chemin}"
-            );
-            assert_eq!(
-                appeler(Set::all(), chemin).await,
-                StatusCode::UNAUTHORIZED,
-                "{chemin}"
-            );
+                .status();
+            assert_eq!(statut, StatusCode::NOT_FOUND, "{chemin}");
         }
     }
 

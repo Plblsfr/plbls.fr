@@ -118,12 +118,12 @@ mod tests {
         tracing::subscriber::with_default(abonne, || {
             estompe_core::journal::Echange {
                 request_type: "output",
-                service: Some("jellyfin"),
+                service: Some("entracte"),
                 methode: "GET",
-                chemin: "http://jellyfin/Items".into(),
+                chemin: "http://entracte/internal/titles".into(),
                 requete: Value::Null,
                 request_data: Value::Null,
-                header_data: serde_json::json!({"x-emby-token": estompe_core::journal::MASQUE}),
+                header_data: serde_json::json!({"x-service-token": estompe_core::journal::MASQUE}),
                 statut: Some(401),
                 response_header_data: Value::Null,
                 response_data: "Unauthorized".into(),
@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(lignes[0]["response_status"], 401);
         assert_eq!(lignes[0]["error"], "HTTP 401");
         assert_eq!(
-            lignes[0]["header_data"]["request"]["x-emby-token"],
+            lignes[0]["header_data"]["request"]["x-service-token"],
             "**MASKED**"
         );
         assert_eq!(lignes[0]["level"], "WARN");
