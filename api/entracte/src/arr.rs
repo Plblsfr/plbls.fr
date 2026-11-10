@@ -83,7 +83,8 @@ impl<'a> Client<'a> {
                 .chars()
                 .take(200)
                 .collect();
-            return Err(format!("HTTP {} {}", statut.as_u16(), corps.trim()));
+            tracing::warn!("Radarr/Sonarr : HTTP {} {}", statut.as_u16(), corps.trim());
+            return Err(format!("HTTP {}", statut.as_u16()));
         }
         let octets = rep.bytes().await.map_err(erreur)?;
         if octets.is_empty() {

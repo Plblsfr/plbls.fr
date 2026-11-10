@@ -577,12 +577,20 @@ pub async fn accepter(
     let etat: String = l.get("etat");
     match etat.as_str() {
         "en_attente" => {
-            sqlx::query("UPDATE demandes SET etat = 'acceptee', traitee_par = $2, maj = now() WHERE id = $1 AND etat = 'en_attente'")
+            let modifiees = sqlx::query("UPDATE demandes SET etat = 'acceptee', traitee_par = $2, maj = now() WHERE id = $1 AND etat = 'en_attente'")
                 .bind(id)
                 .bind(p.sub())
                 .execute(state.pool())
                 .await
-                .map_err(bd)?;
+                .map_err(bd)?
+                .rows_affected();
+            if modifiees == 0 {
+                return Err(erreur(
+                    StatusCode::CONFLICT,
+                    "invalid_state",
+                    "demande déjà traitée",
+                ));
+            }
         }
         "acceptee" if !l.get::<bool, _>("envoyee") => {}
         _ => {

@@ -74,19 +74,10 @@ impl Materiel {
         self.0.lock().unwrap().effectif
     }
 
-    pub fn replier(&self, raison: &str) {
+    pub fn signaler(&self, raison: &str) {
         let mut e = self.0.lock().unwrap();
-        if e.effectif != ModeMateriel::Cpu {
-            tracing::error!(
-                "transcodage {} en échec ({raison}) : repli sur le CPU",
-                e.effectif.code()
-            );
-            e.message = Some(format!(
-                "{} en échec ({raison}) : repli sur le CPU",
-                e.effectif.code()
-            ));
-            e.effectif = ModeMateriel::Cpu;
-        }
+        tracing::warn!("transcodage {} : {raison}", e.effectif.code());
+        e.message = Some(format!("{} : {raison}", e.effectif.code()));
     }
 
     pub async fn verifier(&self, cfg: &Config) {

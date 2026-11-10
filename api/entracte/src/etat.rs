@@ -23,6 +23,7 @@ pub struct Inner {
     transcodeur: Arc<Transcodeur>,
     materiel: Materiel,
     synchro: MutexAsync<()>,
+    relance: std::sync::atomic::AtomicBool,
     push: Push,
 }
 
@@ -56,6 +57,7 @@ impl AppState {
             aegis,
             materiel,
             synchro: MutexAsync::new(()),
+            relance: std::sync::atomic::AtomicBool::new(false),
             push,
         }))
     }
@@ -94,6 +96,18 @@ impl AppState {
 
     pub fn verrou_synchro(&self) -> &MutexAsync<()> {
         &self.0.synchro
+    }
+
+    pub fn synchro_a_relancer(&self) {
+        self.0
+            .relance
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn synchro_relancee(&self) -> bool {
+        self.0
+            .relance
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn push(&self) -> &Push {

@@ -30,14 +30,14 @@ la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt 
 ## Catalogue
 
 - Synchronisation périodique (`ENTRACTE_SYNC_MINUTES`, 15 par défaut), par les webhooks Radarr/Sonarr (`POST /webhooks/radarr?token=…`,
-  type « Webhook », évènements import, renommage et suppression) et par le bouton d'administration. Une seule à la fois.
+  type « Webhook », évènements import, renommage et suppression) et par le bouton d'administration. Une seule à la fois ; une demande reçue pendant une synchronisation en relance une à la fin.
 - Seuls les fichiers connus de Radarr (films) et Sonarr (épisodes) entrent dans le catalogue ; un fichier présent sur le disque mais inconnu
   de Radarr/Sonarr est ignoré (ceux que Jellyfin connaissait seul sortent du catalogue). Une série sans identifiant TMDB dans Sonarr est ignorée.
 - Chaque fichier passe le filtre (extensions autorisées, double extension, conteneur incohérent, absence de flux vidéo, nom suspect) puis
   ffprobe ; un fichier refusé va dans « fichiers écartés » avec sa raison (nom seul, jamais le chemin).
 - Métadonnées et affiches TMDB gardées en base : un titre dont le fichier disparaît passe « absent » sans perdre son titre, son affiche ni
   son historique. Les images sont servies par Entracte depuis son cache, jamais par une URL tierce.
-- Radarr, Sonarr ou TMDB injoignable : rien n'est retiré, la bibliothèque déjà synchronisée reste servie et l'erreur s'affiche dans
+- Radarr, Sonarr ou TMDB injoignable, ou dossier des médias inaccessible (aucun fichier lisible) : rien n'est retiré, la bibliothèque déjà synchronisée reste servie et l'erreur s'affiche dans
   Administration › état (`GET /admin/status`).
 - Identifiants publics propres à Entracte (UUID) : aucune réponse ne contient de chemin de fichier, d'identifiant Radarr/Sonarr ni d'URL TMDB.
   L'identifiant TMDB d'un titre, lui, est public (recherche et demandes).

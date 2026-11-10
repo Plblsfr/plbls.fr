@@ -32,7 +32,7 @@ droits ; une requête qui porte la session d'une autre personne est refusée. Au
 `ENTRACTE_TRANSCODE_MODE` : `cpu` (défaut, libx264), `vaapi` (Intel ou AMD), `qsv` (Intel Quick Sync), `nvenc` (NVIDIA).
 Au démarrage, Entracte vérifie le mode demandé : périphérique présent (`ENTRACTE_TRANSCODE_DEVICE`, `/dev/dri/renderD128`), encodeur dans
 ffmpeg, puis un court essai d'encodage. S'il échoue, il le dit dans ses journaux et dans Administration › état, et transcode sur le CPU.
-Un transcodage matériel qui échoue au démarrage est aussi relancé sur le CPU, avec le même signalement.
+Un transcodage matériel qui échoue au démarrage (source que le matériel ne décode pas) est relancé sur le CPU pour ce flux seulement, et signalé ; les suivants restent sur le matériel.
 
 | Mode | Décodage, mise à l'échelle, encodage |
 |---|---|

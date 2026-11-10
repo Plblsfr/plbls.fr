@@ -41,6 +41,8 @@ struct Synchro<'a> {
     state: &'a AppState,
     tmdb_en_erreur: Option<String>,
     saisons: HashMap<(i64, i32), Vec<EpisodeTmdb>>,
+    lus: usize,
+    inaccessibles: usize,
 }
 
 fn perime(date: Option<DateTime<Utc>>) -> bool {
@@ -201,16 +203,30 @@ impl Synchro<'_> {
         Ok(id)
     }
 
-    async fn fichier(&self, titre: Uuid, f: &FichierArr) -> Result<bool, sqlx::Error> {
+    fn medias_absents(&mut self) -> Result<(), String> {
+        let tous = self.inaccessibles > 0 && self.inaccessibles == self.lus;
+        self.lus = 0;
+        self.inaccessibles = 0;
+        if tous {
+            return Err(
+                "dossier des médias inaccessible : aucun fichier lisible, rien n'est retiré".into(),
+            );
+        }
+        Ok(())
+    }
+
+    async fn fichier(&mut self, titre: Uuid, f: &FichierArr) -> Result<bool, sqlx::Error> {
         let local = chemin_local(&self.state.config().chemins, &f.chemin);
         let nom = filtre::nom_de_fichier(&local).to_string();
+        let pool = self.state.pool().clone();
         let ecarter = |raison: &'static str| {
+            let pool = pool.clone();
             let local = local.clone();
             let nom = nom.clone();
             async move {
                 sqlx::query("DELETE FROM fichiers WHERE chemin = $1")
                     .bind(&local)
-                    .execute(self.pool())
+                    .execute(&pool)
                     .await?;
                 sqlx::query(
                     "INSERT INTO fichiers_ecartes (chemin, nom, raison) VALUES ($1, $2, $3)
@@ -219,7 +235,7 @@ impl Synchro<'_> {
                 .bind(&local)
                 .bind(&nom)
                 .bind(raison)
-                .execute(self.pool())
+                .execute(&pool)
                 .await
                 .map(|_| false)
             }
@@ -227,9 +243,13 @@ impl Synchro<'_> {
         if let Err(r) = filtre::verdict(&local, "mkv,matroska,webm,mp4,m4v,mov,avi", true) {
             return ecarter(r.code()).await;
         }
+        self.lus += 1;
         let meta = match tokio::fs::metadata(&local).await {
             Ok(m) if m.is_file() => m,
-            _ => return ecarter("fichier_inaccessible").await,
+            _ => {
+                self.inaccessibles += 1;
+                return Ok(false);
+            }
         };
         let taille = i64::try_from(meta.len()).unwrap_or(i64::MAX);
         let modifie: Option<DateTime<Utc>> = meta.modified().ok().map(DateTime::<Utc>::from);
@@ -288,6 +308,7 @@ impl Synchro<'_> {
             .await;
             r.map_err(|e| format!("base : {e}"))?;
         }
+        self.medias_absents()?;
         purger(self.pool(), "film", debut)
             .await
             .map_err(|e| format!("base : {e}"))
@@ -327,6 +348,7 @@ impl Synchro<'_> {
             .await;
             r.map_err(|e| format!("base : {e}"))?;
         }
+        self.medias_absents()?;
         purger(self.pool(), "episode", debut)
             .await
             .map_err(|e| format!("base : {e}"))
@@ -403,13 +425,27 @@ pub async fn recalculer_presence(pool: &PgPool) -> Result<(), sqlx::Error> {
 }
 
 pub async fn synchroniser(state: &AppState) {
-    let Ok(_verrou) = state.verrou_synchro().try_lock() else {
-        return;
-    };
+    loop {
+        let Ok(verrou) = state.verrou_synchro().try_lock() else {
+            state.synchro_a_relancer();
+            return;
+        };
+        state.synchro_relancee();
+        passe(state).await;
+        drop(verrou);
+        if !state.synchro_relancee() {
+            break;
+        }
+    }
+}
+
+async fn passe(state: &AppState) {
     let mut s = Synchro {
         state,
         tmdb_en_erreur: None,
         saisons: HashMap::new(),
+        lus: 0,
+        inaccessibles: 0,
     };
     if state.config().radarr.is_some() {
         let r = s.radarr().await;

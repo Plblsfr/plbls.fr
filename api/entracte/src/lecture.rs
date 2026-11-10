@@ -442,7 +442,9 @@ async fn relancer_sur_cpu(state: &AppState, flux: &str) -> bool {
     if p.mode == ModeMateriel::Cpu || p.copie_video {
         return false;
     }
-    state.materiel().replier("ffmpeg a échoué au démarrage");
+    state
+        .materiel()
+        .signaler("ffmpeg a échoué au démarrage d'un transcodage, relancé sur le CPU");
     p.mode = ModeMateriel::Cpu;
     state
         .transcodeur()

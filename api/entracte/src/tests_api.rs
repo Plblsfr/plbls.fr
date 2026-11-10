@@ -809,6 +809,50 @@ async fn catalogue_synchronise_filtre_et_garde_les_titres_absents() {
     sans_fuite(&e, &etat.texte(), "/admin/status");
 }
 
+#[tokio::test]
+async fn medias_inaccessibles_rien_n_est_retire() {
+    let Some(e) = env().await else { return };
+    synchro(&e).await;
+    assert_eq!(get(&e, "alice", "/library").await.json()["total"], 2);
+    let mut cfg = e.state.config().clone();
+    cfg.chemins =
+        correspondances("/movies=/medias/absent/films,/tv=/medias/absent/series").unwrap();
+    let demonte = AppState::new(cfg, e.state.pool().clone());
+    crate::catalogue::synchroniser(&demonte).await;
+    assert_eq!(get(&e, "alice", "/library").await.json()["total"], 2);
+    let etat = get(&e, "admin", "/admin/status").await.json();
+    for source in ["radarr", "sonarr"] {
+        let s = etat["sync"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["source"] == source)
+            .unwrap()
+            .clone();
+        assert!(
+            s["error"].as_str().unwrap().contains("inaccessible"),
+            "{source} : {etat}"
+        );
+    }
+    assert!(
+        get(&e, "admin", "/admin/rejected").await.json()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["reason"] != "fichier_inaccessible")
+    );
+}
+
+#[tokio::test]
+async fn synchronisation_demandee_pendant_une_autre_relancee() {
+    let Some(e) = env().await else { return };
+    let verrou = e.state.verrou_synchro().lock().await;
+    crate::catalogue::synchroniser(&e.state).await;
+    assert_eq!(get(&e, "alice", "/library").await.json()["total"], 0);
+    assert!(e.state.synchro_relancee(), "la demande est retenue");
+    drop(verrou);
+}
+
 async fn ouvrir(e: &Env, qui: &str, id: &str, corps: Value) -> Rep {
     appel(
         e,
