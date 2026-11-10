@@ -39,6 +39,10 @@ système de Chromium doivent être présentes).
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
   (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
+  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, gateway) : un fichier vidéo ou un flux HLS
+  hébergé ailleurs ne se lit pas dans « Regarder ensemble » ni dans le salon Vidéos. Les apps Windows et Android ont la même règle
+  (`tauri.conf.json`) et n'ouvrent dans le navigateur système que les liens `https:`, `mailto:` et `tel:`. Les en-têtes de sécurité
+  (`estompe-headers.inc`) s'appliquent aussi à `/updates/` et `/healthz` ; HSTS relève du proxy TLS, cette image ne le pose pas.
 
 ## Tests de bout en bout
 

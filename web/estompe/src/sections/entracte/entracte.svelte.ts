@@ -23,17 +23,19 @@ function writeLast(n: number) {
 class EntracteState {
   push = $state<'on' | 'off' | 'unsupported'>('off')
   private timer: ReturnType<typeof setInterval> | null = null
+  private run = 0
 
   async start() {
     this.stop()
+    const run = this.run
     await this.registerPush().catch(() => {})
-    if (!platform.notifications.push) {
-      void this.poll()
-      this.timer = setInterval(() => void this.poll(), POLL_MS)
-    }
+    if (run !== this.run || platform.notifications.push) return
+    void this.poll()
+    this.timer = setInterval(() => void this.poll(), POLL_MS)
   }
 
   stop() {
+    this.run++
     if (this.timer) clearInterval(this.timer)
     this.timer = null
   }

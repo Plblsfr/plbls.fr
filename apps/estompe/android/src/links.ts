@@ -7,7 +7,7 @@ export function linkAction(href: string): { hash: string } | { open: string } | 
   let u: URL
   try { u = new URL(href) } catch { return null }
   if ((u.origin === APP_ORIGIN || u.origin === location.origin) && u.hash.startsWith('#/')) return { hash: u.hash }
-  return ['http:', 'https:', 'mailto:', 'tel:'].includes(u.protocol) ? { open: u.href } : null
+  return ['https:', 'mailto:', 'tel:'].includes(u.protocol) ? { open: u.href } : null
 }
 
 /** La webview ignore target="_blank" : on ouvre les liens des messages nous-mêmes. */

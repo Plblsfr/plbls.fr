@@ -59,7 +59,7 @@ pub fn games(app: &AppHandle) -> Vec<String> {
 pub fn autostart(app: &AppHandle) {
     let Ok(path) = config_path(app) else { return };
     let (cfg, _) = Config::load(&path);
-    if cfg.enabled {
+    if cfg.enabled && cfg.check_dir().is_ok() {
         let _ = run(app, &app.state::<Bobyn>(), cfg);
     }
 }
@@ -95,6 +95,7 @@ pub async fn bobyn_state(app: AppHandle, state: State<'_, Bobyn>) -> Result<serd
 /// Enregistre les réglages et les applique tout de suite (démarre ou arrête le service selon `enabled`).
 #[tauri::command]
 pub fn bobyn_apply(app: AppHandle, state: State<Bobyn>, config: Config) -> Result<(), String> {
+    config.check_dir()?;
     config.store(&config_path(&app)?).map_err(|e| e.to_string())?;
     run(&app, &state, config)
 }
