@@ -258,12 +258,12 @@ paths:
         "204": {description: "ok — au moins un envoi accepté par le service de push"}
         "404": {description: no_subscription}
         "501": {description: no_push}
-        "502": {description: "push_failed — message = réponse du service de push"}
+        "502": {description: "push_failed — message = hôte et statut HTTP du service de push (jamais le corps de sa réponse)"}
   /push/subscription:
     put:
       tags: [comptes]
       summary: Enregistrer l'abonnement push de ce navigateur (PushSubscription.toJSON())
-      description: "Une notification est envoyée aux destinataires hors ligne (aucun WebSocket ouvert) pour une mention ou un message privé."
+      description: "Une notification est envoyée aux destinataires hors ligne (aucun WebSocket ouvert) pour une mention ou un message privé. Seuls les services push connus sont acceptés (`fcm.googleapis.com`, `updates.push.services.mozilla.com`, `*.notify.windows.com`, `web.push.apple.com`, en https sans port ni IP littérale). Au plus 10 abonnements (Web Push, FCM, PC) par compte : au-delà, le plus ancien est remplacé."
       requestBody:
         required: true
         content:
@@ -272,7 +272,7 @@ paths:
               type: object
               required: [endpoint, keys]
               properties:
-                endpoint: {type: string, description: URL https}
+                endpoint: {type: string, description: "URL https d'un service push connu"}
                 keys: {type: object, properties: {p256dh: {type: string}, auth: {type: string}}}
       responses:
         "204": {description: ok}
