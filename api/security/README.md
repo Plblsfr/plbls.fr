@@ -1,7 +1,7 @@
 # auth-gateway (security.plbls.fr)
 
 BFF et reverse proxy d'authentification pour plbls.fr, devant Keycloak. Rust + Axum + Redis.
-Architecture et décisions : [docs/security/](../../docs/security/README.md). Déploiement : `deploy/security/` (compose de production et de dev, realm Keycloak de dev, `.env.example`, `dev.env`) ; scripts de dev et de test : `scripts/security/`.
+Architecture et décisions : [docs/security/](../../docs/security/README.md). Déploiement : [`deploy/`](../../deploy/README.md) (compose de production et de dev, `dev.env`, `security/.env.example`, realm Keycloak de dev dans `security/keycloak`) ; scripts de dev et de test : `scripts/security/`.
 
 ## Développement
 
@@ -23,19 +23,13 @@ just security-dev down     # arrête tout (reset supprime aussi les volumes)
 
 ## Production
 
-Depuis `deploy/security/` :
-
-```sh
-cp .env.example .env                              # issuer Keycloak, secrets
-docker login ghcr.io                              # une fois, PAT avec read:packages
-docker compose pull && docker compose up -d
-```
+Service `auth-gateway` (et `security-redis`) de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) ; variables dans `deploy/security/.env.example` (secrets dans `secret/security` de Vault, voir [`deploy/README.md`](../../deploy/README.md)).
 
 Les routes des micro-services sont dans `config/routes.toml` (modèle : `config/routes.example.toml`), embarqué dans l'image : modifier une route = commit, CI, redéploiement.
 
-L'image est testée en PR (`.github/workflows/ci.yml`) et publiée par `.github/workflows/livraison.yml` : `edge` à chaque push sur `main`, puis `X.Y.Z`, `latest` et le SHA du commit sur un tag `security-vX.Y.Z` (la version du tag doit égaler celle de `Cargo.toml`). Pour figer une version : `GATEWAY_TAG=X.Y.Z docker compose up -d`. Aucun secret à ajouter : la CI utilise `GITHUB_TOKEN` (secret optionnel `DOKPLOY_WEBHOOK_URL`).
+L'image est testée en PR (`.github/workflows/ci.yml`) et publiée par `.github/workflows/livraison.yml` : `edge` à chaque push sur `main`, puis `X.Y.Z`, `latest` et le SHA du commit sur un tag `security-vX.Y.Z` (la version du tag doit égaler celle de `Cargo.toml`). Pour figer une version : `GATEWAY_TAG=X.Y.Z` dans le `.env` du compose. Aucun secret à ajouter : la CI utilise `GITHUB_TOKEN` (secret optionnel `DOKPLOY_WEBHOOK_URL`).
 
-Le conteneur écoute sur `127.0.0.1:8080` : le TLS est terminé par le reverse proxy de `security.plbls.fr`, qui doit ajouter l'IP cliente en dernière entrée de `X-Forwarded-For` (le gateway limite `/auth/login|register|callback` par IP, `rate_limit.auth_per_minute`) et limiter aussi le débit de Keycloak (`auth.plbls.fr`).
+Le conteneur écoute sur le port `8080` (domaine Dokploy `security.plbls.fr`) : le TLS est terminé par le reverse proxy, qui doit ajouter l'IP cliente en dernière entrée de `X-Forwarded-For` (le gateway limite `/auth/login|register|callback` par IP, `rate_limit.auth_per_minute`) et limiter aussi le débit de Keycloak (`auth.plbls.fr`).
 
 ## Configuration
 

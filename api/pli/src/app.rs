@@ -193,7 +193,7 @@ async fn auth_depot(
     let Some(permission) = &s.permission else {
         return Err(Box::new(json_rep(
             503,
-            &json!({ "error": "dépôt non configuré (AEGIS_URL et AEGIS_TOKEN, ou PERMISSION_URL et PERMISSION_SERVICE_TOKEN)" }),
+            &json!({ "error": "dépôt non configuré (AEGIS_URL et PLI_AEGIS_TOKEN, ou PERMISSION_URL et PERMISSION_SERVICE_TOKEN)" }),
         )));
     };
     let user = match fetch_identity(

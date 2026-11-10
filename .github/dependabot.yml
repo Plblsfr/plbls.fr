@@ -51,7 +51,7 @@ updates:
       - dependency-name: rust
 
   - package-ecosystem: docker-compose
-    directories: [/deploy/estompe]
+    directories: [/deploy]
     schedule: { interval: weekly }
     groups:
       compose: { patterns: ["*"] }

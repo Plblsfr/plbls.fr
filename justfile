@@ -72,6 +72,14 @@ test-estompe-api:
 build-ui:
     npm ci && npm run build --workspace packages/ui
 
+# Dépendances de dev de tous les projets, éphémères (deploy/docker-compose.dev.yml) : Postgres :5432 (postgres/postgres, bases
+# permission et aegis), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081. Variables des backends : deploy/dev.env
+dev-up:
+    docker compose -f deploy/docker-compose.dev.yml up -d --wait
+
+dev-down:
+    docker compose -f deploy/docker-compose.dev.yml down
+
 # security : dépendances de dev en Docker (Redis, Keycloak, Mailpit, écho), gateway en local.
 # Actions : up, start (build puis lance le gateway), stop, down, reset (supprime les volumes), logs, status
 security-dev action:
@@ -96,35 +104,23 @@ security-coverage:
 
 security-test-all: test-security security-coverage (security-dev "up") (security-dev "start") security-bruno security-ws security-refresh security-regressions
 
-# aegis : Postgres et Redis de dev en Docker (éphémères), backend sur 127.0.0.1:8091
-aegis-dev-up:
-    docker compose -f deploy/aegis/docker-compose.dev.yml up -d --wait
-
-aegis-dev-down:
-    docker compose -f deploy/aegis/docker-compose.dev.yml down
-
+# aegis : backend sur 127.0.0.1:8091, demande dev-up (Postgres et Redis)
 aegis-dev-run:
-    cd api/aegis && set -a && . ../../deploy/aegis/dev.env && set +a && cargo run
+    cd api/aegis && set -a && . ../../deploy/dev.env && set +a && cargo run
 
 aegis-image:
     docker build -f api/aegis/Dockerfile -t aegis:local .
 
-# permission : Postgres de dev en Docker (éphémère), backend sur 127.0.0.1:8090
-permission-dev-up:
-    docker compose -f deploy/permission/docker-compose.dev.yml up -d --wait
-
-permission-dev-down:
-    docker compose -f deploy/permission/docker-compose.dev.yml down
-
+# permission : backend sur 127.0.0.1:8090, demande dev-up (Postgres)
 permission-dev-run:
-    cd api/permission && set -a && . ../../deploy/permission/dev.env && set +a && cargo run
+    cd api/permission && set -a && . ../../deploy/dev.env && set +a && cargo run
 
-# Données de départ (applications chat et radar) puis test de bout en bout de l'API : demandent permission-dev-up et permission-dev-run
+# Données de départ (applications chat et radar) puis test de bout en bout de l'API : demandent dev-up et permission-dev-run
 permission-seed:
-    set -a && . deploy/permission/dev.env && set +a && python3 scripts/permission/seed.py
+    set -a && . deploy/dev.env && set +a && python3 scripts/permission/seed.py
 
 permission-smoke:
-    set -a && . deploy/permission/dev.env && set +a && python3 scripts/permission/smoke.py
+    set -a && . deploy/dev.env && set +a && python3 scripts/permission/smoke.py
 
 # e2e avec le vrai auth-gateway (api/security) et Keycloak (Docker)
 e2e-permission-gateway:

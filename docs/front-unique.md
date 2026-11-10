@@ -134,7 +134,7 @@ pour de vrai. `config.js` est produit par le même `generer-config.sh` que l'ima
   la première navigation depuis un lien externe (mail, messagerie). `Lax` reste nécessaire au retour de Keycloak.
 - `HttpOnly` : aucun JavaScript, d'aucun sous-domaine, ne lit le cookie. Le front sait s'il est connecté par `GET <gateway>/auth/me`.
 - Cookie de login (`<nom>_login`, anti login-CSRF) : inchangé, propre à l'hôte du gateway, `Path=/auth`.
-- Dev (`PLBLS_HTTPS=0`) : `cookie_secure=false` et nom sans préfixe `__Secure-` (déjà le cas avec `deploy/security/dev.env`).
+- Dev (`PLBLS_HTTPS=0`) : `cookie_secure=false` et nom sans préfixe `__Secure-` (déjà le cas avec `deploy/dev.env`).
 
 **CSRF entre sous-domaines** : `SameSite` ne protège pas d'un sous-domaine compromis ou tiers, puisqu'il est du même site. La
 protection repose donc sur l'en-tête `Origin`, comparé à la **liste fermée** des origines de confiance (4.1) :

@@ -7,7 +7,7 @@ Monorepo :
 | `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (et sa plateforme web, image nginx), `permission`, `pli` |
 | `apps/` | applications natives : `estompe/windows`, `estompe/android` (Tauri) et leur code commun `estompe/crates` |
 | `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
-| `deploy/` | déploiement et dev local, un dossier par projet : compose, `.env.example`, `dev.env`, realm Keycloak de dev |
+| `deploy/` | déploiement et dev local ([`deploy/README.md`](deploy/README.md)) : un compose de dev et un de production pour tout le dépôt, `dev.env`, un `.env.example` par projet, realm Keycloak de dev |
 | `scripts/` | outillage commun à la racine, scripts d'un projet dans `scripts/<projet>/` |
 | `packages/` | bibliothèques partagées (`ui`, `deepmerge`) |
 

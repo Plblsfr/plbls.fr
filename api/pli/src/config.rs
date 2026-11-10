@@ -45,9 +45,9 @@ pub fn dossier_public() -> PathBuf {
 impl Config {
     pub fn from_env(brut: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let env = |k: &str| brut(k).map(|v| nettoie(&v)).filter(|v| !v.is_empty());
-        let database_url = brut("DATABASE_URL")
+        let database_url = brut("PLI_DATABASE_URL")
             .filter(|v| !v.is_empty())
-            .ok_or("DATABASE_URL manquant (ex. postgres://user:pass@host:5432/pli)")?;
+            .ok_or("PLI_DATABASE_URL manquant (ex. postgres://user:pass@host:5432/pli)")?;
         let port = match brut("PORT").filter(|v| !v.is_empty()) {
             Some(p) => nombre("PORT", &p)?,
             None => 8080,
@@ -72,7 +72,7 @@ impl Config {
             max_bytes,
             max_pending,
             permission: env("PERMISSION_URL").zip(env("PERMISSION_SERVICE_TOKEN")),
-            aegis: env("AEGIS_URL").zip(env("AEGIS_TOKEN")),
+            aegis: env("AEGIS_URL").zip(env("PLI_AEGIS_TOKEN")),
             public_dir: dossier_public(),
         })
     }
@@ -93,8 +93,8 @@ mod tests {
 
     #[test]
     fn valeurs_par_defaut_et_guillemets() {
-        assert!(charge(&[]).unwrap_err().contains("DATABASE_URL"));
-        let c = charge(&[("DATABASE_URL", "postgres://x/pli")]).unwrap();
+        assert!(charge(&[]).unwrap_err().contains("PLI_DATABASE_URL"));
+        let c = charge(&[("PLI_DATABASE_URL", "postgres://x/pli")]).unwrap();
         assert_eq!(c.port, 8080);
         assert_eq!(c.gateway_url, "https://security.plbls.fr");
         assert_eq!(c.gateway_internal_url, c.gateway_url);
@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(c.max_pending, 50);
         assert!(c.permission.is_none());
         let c = charge(&[
-            ("DATABASE_URL", "postgres://x/pli"),
+            ("PLI_DATABASE_URL", "postgres://x/pli"),
             ("PORT", "9000"),
             ("GATEWAY_URL", " \"https://g\" "),
             ("PERMISSION_URL", "'http://p'"),

@@ -235,7 +235,9 @@ impl PermissionChecker {
                 (401, false) => {
                     " (token de service refusé : vérifier PERMISSION_SERVICE_TOKEN et PERMISSION__SERVICES__TOKENS)"
                 }
-                (401, true) => " (jeton refusé : vérifier AEGIS_TOKEN et AEGIS__SERVICES__TOKENS)",
+                (401, true) => {
+                    " (jeton refusé : vérifier PLI_AEGIS_TOKEN et AEGIS__SERVICES__TOKENS)"
+                }
                 _ => "",
             };
             return refus(format!("{source} a répondu HTTP {statut}{indice}"));

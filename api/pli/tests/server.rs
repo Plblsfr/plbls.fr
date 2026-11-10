@@ -48,7 +48,7 @@ async fn demarre_avec(extra: &[(&str, &str)]) -> Option<Serveur> {
     let (base_pg, url) = postgres().await?;
     let gw = faux_gateway().await;
     let mut env: Vec<(String, String)> = vec![
-        ("DATABASE_URL".into(), url.clone()),
+        ("PLI_DATABASE_URL".into(), url.clone()),
         ("GATEWAY_INTERNAL_URL".into(), gw.url.clone()),
         ("PERMISSION_URL".into(), gw.url.clone()),
         ("PERMISSION_SERVICE_TOKEN".into(), "tok".into()),

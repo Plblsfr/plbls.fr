@@ -1,0 +1,160 @@
+# Production de tous les services, une seule stack Dokploy (type Compose). Aucune section environment : Dokploy écrit l'onglet
+# Environment dans .env à côté de ce fichier, en résolvant au déploiement les références Vault (vault.plbls.<projet>:<CLE>),
+# et chaque service le charge en entier (env_file). Contenu de l'onglet : deploy/.env.example puis deploy/<projet>/.env.example.
+name: plbls
+services:
+  auth-gateway:
+    image: ghcr.io/plblsfr/security:${GATEWAY_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [security-redis]
+    expose: ["8080"]
+    networks: [default, dokploy-network]
+
+  security-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [security-redis-data:/data]
+
+  permission:
+    image: ghcr.io/plblsfr/permission:${PERMISSION_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    expose: ["8080"]
+    networks: [default, postgres-net]
+
+  aegis:
+    image: ghcr.io/plblsfr/aegis:${AEGIS_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [aegis-redis]
+    expose: ["8080"]
+    networks: [default, postgres-net]
+
+  aegis-redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose: ["6379"]
+
+  pli:
+    image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    expose: ["8080"]
+    networks: [default, postgres-net]
+
+  estompe-web:
+    image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    expose: ["80"]
+
+  estompe-api:
+    image: ghcr.io/plblsfr/estompe:${ESTOMPE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    volumes: [estompe-data:/data]
+    depends_on: [estompe-postgres, livekit]
+    expose: ["8080"]
+    networks: [default, jellyfin]
+
+  transcribe:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: unless-stopped
+    volumes: [transcribe-models:/home/ubuntu/.cache/huggingface/hub]
+    expose: ["8000"]
+
+  estompe-postgres:
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    restart: unless-stopped
+    env_file: .env
+    volumes: [estompe-pgdata:/var/lib/postgresql/data]
+
+  estompe-backup:
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    restart: unless-stopped
+    env_file: .env
+    volumes: [estompe-backups:/backups, estompe-data:/data:ro]
+    depends_on: [estompe-postgres]
+    command:
+      - sh
+      - -c
+      - |
+        set -u
+        export PGHOST=estompe-postgres PGUSER="$${POSTGRES_USER}" PGDATABASE="$${POSTGRES_DB}" PGPASSWORD="$${POSTGRES_PASSWORD}"
+        garder=$${BACKUP_KEEP:-14}
+        run() {
+          f=/backups/db-$$(date +%F-%H%M).sql.gz
+          if pg_dump --no-owner | gzip > $$f.tmp && [ -s $$f.tmp ]; then mv $$f.tmp $$f; echo "sauvegarde $$f ($$(du -h $$f | cut -f1))"; else rm -f $$f.tmp; echo "ÉCHEC de la sauvegarde" >&2; fi
+          if [ "$${BACKUP_FILES:-false}" = true ]; then tar czf /backups/files-$$(date +%F).tar.gz -C /data . && echo "fichiers sauvegardés"; fi
+          ls -1t /backups/db-*.sql.gz 2>/dev/null | tail -n +$$((garder + 1)) | xargs -r rm -f
+          ls -1t /backups/files-*.tar.gz 2>/dev/null | tail -n +$$((garder + 1)) | xargs -r rm -f
+        }
+        [ "$${BACKUP_NOW:-true}" = true ] && run
+        while true; do
+          now=$$(date +%s); next=$$(date -d "$$(date +%F) $${BACKUP_HOUR:-03}:00" +%s 2>/dev/null || echo $$((now + 86400)))
+          [ $$next -le $$now ] && next=$$((next + 86400))
+          sleep $$((next - now)); run
+        done
+
+  livekit:
+    image: livekit/livekit-server:v1.13.11@sha256:25cd902de7cacbd5f1f779f6a6ac1eae20ba8f56b0935934ce6b0ab80d1e3d20
+    restart: unless-stopped
+    env_file: .env
+    command: ["--config", "/etc/livekit.yaml"]
+    configs:
+      - source: livekit
+        target: /etc/livekit.yaml
+    expose: ["7880"]
+    ports:
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+
+  cdn:
+    image: ghcr.io/plblsfr/plbls-ui:${CDN_TAG:-latest}
+    restart: unless-stopped
+    volumes: [cdn-data:/srv]
+    expose: ["80"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+configs:
+  livekit:
+    content: |
+      port: 7880
+      rtc:
+        tcp_port: 7881
+        port_range_start: 50000
+        port_range_end: 50100
+        use_external_ip: true
+      webhook:
+        api_key: estompe
+        urls:
+          - http://estompe-api:8080/voice/webhook
+      room:
+        max_participants: 10
+      audio:
+        update_interval: 150
+        smooth_intervals: 1
+
+networks:
+  postgres-net:
+    external: true
+  dokploy-network:
+    external: true
+  jellyfin:
+    external: true
+    name: ${JELLYFIN_NETWORK:-dokploy-network}
+
+volumes:
+  security-redis-data:
+  estompe-pgdata:
+  estompe-data:
+  estompe-backups:
+  transcribe-models:
+  cdn-data:

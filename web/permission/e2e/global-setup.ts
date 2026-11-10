@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, "..", "..", "..");
 
 function devEnv(): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const line of readFileSync(join(root, "deploy/permission/dev.env"), "utf8").split("\n")) {
+  for (const line of readFileSync(join(root, "deploy/dev.env"), "utf8").split("\n")) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
     if (m) env[m[1]] = m[2];
   }
@@ -39,10 +39,13 @@ async function waitFor(url: string, ms = 60_000) {
 export default async function setup() {
   const env = { ...process.env, ...devEnv() };
   const docker = !process.env.E2E_DATABASE_URL;
-  const compose = ["compose", "-f", join(root, "deploy/permission/docker-compose.dev.yml")];
-  if (docker) run("docker", [...compose, "up", "-d", "--wait"]);
+  const compose = ["compose", "-f", join(root, "deploy/docker-compose.dev.yml")];
+  if (docker) {
+    run("docker", [...compose, "rm", "-sf", "postgres"], true);
+    run("docker", [...compose, "up", "-d", "--wait", "postgres"]);
+  }
   if (gateway) {
-    run("docker", ["compose", "-f", join(root, "deploy/security/docker-compose.dev.yml"), "down"], true);
+    run(join(root, "scripts/security/dev.sh"), ["down"], true);
     run(join(root, "scripts/security/dev.sh"), ["up"]);
     run(join(root, "scripts/security/dev.sh"), ["start"]);
   }
@@ -60,6 +63,6 @@ export default async function setup() {
   return () => {
     backend.kill();
     if (gateway) run(join(root, "scripts/security/dev.sh"), ["down"], true);
-    if (docker) run("docker", [...compose, "down"], true);
+    if (docker) run("docker", [...compose, "rm", "-sf", "postgres"], true);
   };
 }

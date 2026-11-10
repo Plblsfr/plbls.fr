@@ -2,21 +2,21 @@
 # Environnement de dev : dépendances en Docker, gateway en processus local (logs dans api/security/.dev/).
 set -euo pipefail
 cd "$(dirname "$0")/../../api/security"
-COMPOSE="docker compose -f ../../deploy/security/docker-compose.dev.yml"
+COMPOSE="docker compose -f ../../deploy/docker-compose.dev.yml"
+SERVICES=(redis keycloak mailpit whoami)
 PID=.dev/gateway.pid
 LOG=.dev/gateway.log
 
 running() { [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; }
 
 case "${1:-}" in
-  up)    $COMPOSE up -d --wait ;;
-  down)  "$0" stop; $COMPOSE down ;;
-  reset) "$0" stop; $COMPOSE down -v ;;
+  up)    $COMPOSE up -d --wait "${SERVICES[@]}" ;;
+  down|reset) "$0" stop; $COMPOSE rm -sfv "${SERVICES[@]}" ;;
   start) # build puis lance le gateway en arrière-plan, attend /readyz
     running && { echo "gateway déjà lancé (pid $(cat $PID))"; exit 0; }
     mkdir -p .dev
     cargo build --quiet
-    set -a; . ../../deploy/security/dev.env; set +a
+    set -a; . ../../deploy/dev.env; set +a
     nohup "${CARGO_TARGET_DIR:-../../target}/debug/auth-gateway" > "$LOG" 2>&1 &
     echo $! > "$PID"
     for _ in $(seq 1 30); do
@@ -27,7 +27,7 @@ case "${1:-}" in
   stop)  if running && kill "$(cat "$PID")"; then echo "gateway arrêté"; fi; rm -f "$PID" ;;
   logs)  tail -f "$LOG" ;;
   status)
-    $COMPOSE ps
+    $COMPOSE ps "${SERVICES[@]}"
     running && echo "gateway: pid $(cat $PID)" || echo "gateway: arrêté" ;;
   *) echo "usage: $0 {up|start|stop|down|reset|logs|status}" >&2; exit 2 ;;
 esac
