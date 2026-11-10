@@ -109,12 +109,17 @@ pub async fn regles(db: &PgPool, sub: &str) -> sqlx::Result<Vec<Regle>> {
 }
 
 pub async fn effectifs(state: &AppState, sub: &str) -> sqlx::Result<Effectifs> {
-    let generation = state.cache.generation().await;
-    if let Some(e) = state.cache.lire(generation, sub).await {
+    let version = state.cache.version(sub).await;
+    if let Some(v) = version
+        && let Some(e) = state.cache.lire(v, sub).await
+    {
         return Ok(e);
     }
     let r = regles(&state.db, sub).await?;
+    let generation = version.map_or(0, |v| v.generation);
     let e = Effectifs::calculer(sub, generation, &r, Utc::now(), state.cache.ttl());
-    state.cache.ecrire(&e).await;
+    if let Some(v) = version {
+        state.cache.ecrire(v, &e).await;
+    }
     Ok(e)
 }
