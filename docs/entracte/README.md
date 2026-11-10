@@ -10,6 +10,7 @@ On regarde à plusieurs dans le salon cinéma d'Estompe, qui lit les titres d'En
 | [`api/entracte`](../../api/entracte/README.md) | API Rust (axum, sqlx), membre du workspace Cargo |
 | [`openapi.yaml`](openapi.yaml) | routes, vérifiées par un test (chaque route du code y figure, et rien d'autre) |
 | [`transcodage.md`](transcodage.md) | lecture directe, HLS, paliers, accélération matérielle |
+| [`import-estompe.md`](import-estompe.md) | import des progressions et « déjà vus » du bloc films d'Estompe (`entracte importer-estompe`) |
 | [`deploy/entracte/.env.example`](../../deploy/entracte/.env.example) | variables, service `entracte-api` de [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml) |
 | `web/estompe/src/sections/entracte/` | section Entracte de l'app (web, PWA, Windows, Android) |
 
@@ -82,7 +83,7 @@ sous-titres à lui) ; seule la position est synchronisée, et sa progression est
 ## Bascule depuis le bloc films d'Estompe
 
 1. Entracte déployé à côté (base, sous-domaine, route du reverse proxy, secrets dans Vault, permissions accordées à l'administrateur seul).
-2. Import de l'historique depuis Estompe (issue dédiée), avant d'éteindre Jellyfin.
+2. Import de l'historique depuis Estompe, avant d'éteindre Jellyfin : `entracte importer-estompe` ([procédure](import-estompe.md)).
 3. L'app et le salon cinéma passent sur Entracte (`ENTRACTE_PUBLIC_URL` du front, `ESTOMPE_ENTRACTE_*` de l'API), avec mise à jour forcée.
 4. Retrait du bloc `films` d'Estompe et arrêt de Jellyfin (issue dédiée).
 
