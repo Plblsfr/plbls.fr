@@ -6,7 +6,6 @@ COPY package.json package-lock.json ./
 COPY packages/ui/package.json packages/ui/
 COPY packages/deepmerge/package.json packages/deepmerge/
 COPY web/estompe/package.json web/estompe/
-COPY web/permission/package.json web/permission/
 COPY web/pli/package.json web/pli/
 RUN npm ci --workspace packages/ui
 COPY packages/ui/scripts packages/ui/scripts

@@ -9,7 +9,6 @@
     "packages/ui",
     "packages/deepmerge",
     "web/estompe",
-    "web/permission",
     "web/pli"
   ],
   "scripts": {

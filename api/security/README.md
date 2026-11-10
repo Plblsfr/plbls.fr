@@ -1,7 +1,7 @@
 # auth-gateway (security.plbls.fr)
 
 BFF et reverse proxy d'authentification pour plbls.fr, devant Keycloak. Rust + Axum + Redis.
-Architecture et décisions : [docs/security/](../../docs/security/README.md). Déploiement : [`deploy/`](../../deploy/README.md) (compose de production et de dev, `dev.env`, `security/.env.example`, realm Keycloak de dev dans `security/keycloak`) ; scripts de dev et de test : `scripts/security/`.
+Déploiement : [`deploy/`](../../deploy/README.md) (compose de production et de dev, `dev.env`, `security/.env.example`, realm Keycloak de dev dans `security/keycloak`) ; scripts de dev et de test : `scripts/security/`.
 
 ## Développement
 
@@ -37,4 +37,4 @@ Le conteneur écoute sur le port `8080` (domaine Dokploy `security.plbls.fr`) : 
 
 ## Contrat avec les micro-services
 
-Voir [docs/security/gateway.md](../../docs/security/gateway.md). Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `src/identity.rs` (`verify`) est la référence pour vérifier `X-Identity-Sig`.
+Le gateway injecte des en-têtes d'identité signés (`X-User-*`, `X-Identity-Sig`, HMAC de `GATEWAY__IDENTITY__SECRET`) vers les services déclarés dans `config/routes.toml`. Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `src/identity.rs` (`verify`) est la référence pour vérifier `X-Identity-Sig`.

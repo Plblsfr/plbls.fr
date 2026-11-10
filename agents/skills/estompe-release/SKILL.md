@@ -7,7 +7,7 @@ allowed-tools: Bash(git *), Bash(cargo *), Bash(gh *), Bash(node *), Bash(npx *)
 
 # Release Estompe
 
-Référence : `docs/estompe/AGENTS.md` (branches, version, GitHub) et `docs/estompe/release.md` (release, tags, changelog). Ne jamais commiter sur `main`.
+Référence : `AGENTS.md` (section « Estompe » : branches, version, release). Ne jamais commiter sur `main`.
 
 ## Conventions
 - Jamais de `cd … &&` : lancer cargo et les scripts depuis la racine du worktree, `npm --prefix web/estompe`, `git -C`.
@@ -32,7 +32,7 @@ Un tag ne se rejoue pas (jamais d'écrasement) : un échec de livraison coûte u
 - Elles sont calculées par la CI, pas choisies : chaque fusion `feat/…` fait +1 minor, tout le reste +1 patch, à partir du dernier tag ; une branche `release/` n'ajoute rien.
 - Les prévoir : `node scripts/estompe/bump-version.mjs` (depuis la racine du worktree ; historique complet requis), lire les versions affichées, puis `git checkout -- .version` car le script réécrit `.version`.
 - Relever la version API (`api` de `.version`) et la version applis (`web`/`windows`/`android`).
-- Le nom de la branche est `release/api-vA.B.C-app-vX.Y.Z` (versions `api` et applis attendues de `.version`), voir `docs/estompe/release.md`. Si le calcul est ambigu, demander avec AskUserQuestion. Ne pas choisir seul.
+- Le nom de la branche est `release/api-vA.B.C-app-vX.Y.Z` (versions `api` et applis attendues de `.version`). Si le calcul est ambigu, demander avec AskUserQuestion. Ne pas choisir seul.
 - Une version majeure se pose à la main (les trois fichiers ci-dessus) : poser la question avant.
 - Résultat incohérent : poser la question avec AskUserQuestion.
 

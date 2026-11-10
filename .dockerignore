@@ -1,7 +1,7 @@
 # Contexte des images Rust security et estompe-api : la racine du dépôt, qui porte le workspace Cargo.
 # Cargo exige les manifestes et les sources de tous les membres : chaque image reçoit api/ (les quatre API), rien d'autre.
-# Les images construites depuis la racine avec leur propre liste (pli, permission, ui) l'ont dans <Dockerfile>.dockerignore,
-# que Docker lit à la place de ce fichier ; celles de pli et permission doivent reprendre les lignes Cargo ci-dessous.
+# Les images construites depuis la racine avec leur propre liste (pli, ui) l'ont dans <Dockerfile>.dockerignore,
+# que Docker lit à la place de ce fichier ; celle de pli doit reprendre les lignes Cargo ci-dessous.
 *
 !Cargo.toml
 !Cargo.lock

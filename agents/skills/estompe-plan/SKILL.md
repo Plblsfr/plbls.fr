@@ -22,7 +22,7 @@ Rôle : décider comment faire, sans écrire de code ni créer de branche.
 - Si `plan.md` existe déjà, demander avec AskUserQuestion s'il faut le réviser ou repartir de zéro. Ne jamais effacer une section « Revue » existante.
 
 ## 2. Étude
-- `git fetch origin`, puis lire `docs/estompe/AGENTS.md` (conventions, pièges connus, commandes de build et de test ; pour un nouveau bloc backend, `api/estompe/README.md` « Ajouter un bloc » fournit les étapes à reprendre dans le plan) et le code concerné sur `origin/main` (`git grep … origin/main`, `git show origin/main:<chemin>`).
+- `git fetch origin`, puis lire `AGENTS.md` (section « Estompe ») (conventions, pièges connus, commandes de build et de test ; pour un nouveau bloc backend, `api/estompe/README.md` « Ajouter un bloc » fournit les étapes à reprendre dans le plan) et le code concerné sur `origin/main` (`git grep … origin/main`, `git show origin/main:<chemin>`).
 - Repérer les classes et fichiers de test existants qui couvriront le changement. Aucune nouvelle classe de test : les nouveaux tests vont dans la classe de test existante du code testé.
 - Si une décision d'architecture n'est pas couverte par le brief, poser la question avec AskUserQuestion avant d'écrire le plan.
 

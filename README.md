@@ -3,10 +3,9 @@ Monorepo :
 
 | Dossier | Contenu |
 |---|---|
-| `api/` | API et services Rust (workspace Cargo racine) : `security` (auth-gateway), `aegis` (permissions), `permission` (remplacé par aegis, retiré après la bascule), `pli`, `estompe` |
-| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (et sa plateforme web, image nginx), `permission`, `pli` |
+| `api/` | API et services Rust (workspace Cargo racine) : `security` (auth-gateway), `aegis` (permissions), `pli`, `estompe` |
+| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (et sa plateforme web, image nginx), `pli` |
 | `apps/` | applications natives : `estompe/windows`, `estompe/android` (Tauri) et leur code commun `estompe/crates` |
-| `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
 | `deploy/` | déploiement et dev local ([`deploy/README.md`](deploy/README.md)) : un compose de dev et un de production pour tout le dépôt, `dev.env`, un `.env.example` par projet, realm Keycloak de dev |
 | `scripts/` | outillage commun à la racine, scripts d'un projet dans `scripts/<projet>/` |
 | `packages/` | bibliothèques partagées (`ui`, `deepmerge`) |
@@ -14,11 +13,10 @@ Monorepo :
 Les fichiers transverses d'Estompe sont à la racine : `.version`, `CHANGELOG.md`, `changelog.d/`, `agents/skills/` (lus via `.claude/skills`).
 La CI est dans `.github/workflows/`.
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans un dépôt privé.
-Plan de regroupement des fronts en une seule application : [docs/front-unique.md](docs/front-unique.md).
 
 ## npm
 
-Un seul workspace npm à la racine (`packages/ui`, `packages/deepmerge`, `web/estompe`, `web/permission`, `web/pli`), un seul `package-lock.json`
+Un seul workspace npm à la racine (`packages/ui`, `packages/deepmerge`, `web/estompe`, `web/pli`), un seul `package-lock.json`
 et une seule version de Node, celle de `.nvmrc` (reprise par les `engines`, la CI et les images Docker ; `node scripts/check-node.mjs` le vérifie).
 
 ```sh
@@ -28,11 +26,11 @@ npm run lint        # chaque projet a les mêmes scripts : lint, check, test, bu
 npm run check       # inclut check-node et ui:check
 npm test            # pli demande TEST_DATABASE_URL pour ses tests avec base
 npm run build
-npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui dans estompe, permission et pli
+npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui dans estompe et pli
 ```
 
 Les copies de `@plbls/ui` (`*/vendor/plbls-ui/`) sont générées par `scripts/sync-ui.mjs` : ne pas les modifier à la main,
-le job `front` du workflow `ci` échoue si l'une d'elles diffère de `packages/ui`. Les images de pli, permission et du CDN se construisent
+le job `front` du workflow `ci` échoue si l'une d'elles diffère de `packages/ui`. Les images de pli et du CDN se construisent
 depuis la racine du dépôt (`docker build -f api/pli/Dockerfile .`).
 
 `packages/deepmerge` est une copie de `deepmerge` 4.3.1 corrigée contre la pollution du prototype (GHSA-gcqx-w48m-w2h4, aucune version
@@ -61,10 +59,9 @@ Toute PR lance un seul workflow, `ci.yml`, sans filtre `paths` (un contrôle obl
 (`_changements.yml`, qui appelle `scripts/ci-changements.sh` par groupe de chemins) dit ce que la PR touche, les jobs ne tournent que pour
 ce qui est touché, et le job final `ci` résume les autres. Après la fusion, `livraison.yml` publie seulement ce qui a changé, sans rejouer les
 tests. Un nouveau projet ajoute son groupe de chemins à `_changements.yml` et son job à `ci.yml` (dans les `needs` de `ci`) : le ruleset ne change pas.
-Détail : [`docs/estompe/ci.md`](docs/estompe/ci.md).
 
 ## Outillage
 
 Le [`justfile`](justfile) est le seul point d'entrée (`just` liste les recettes) : `just lint` (Biome, shellcheck, ruff, liens Markdown internes),
-`just check`, `just test`, et les recettes de dev de chaque projet (`just security-dev up`, `just permission-dev-run`…).
-Les consignes pour les agents et les contributeurs sont dans [`AGENTS.md`](AGENTS.md) ; un projet peut le compléter par son propre `AGENTS.md`.
+`just check`, `just test`, et les recettes de dev de chaque projet (`just security-dev up`, `just aegis-dev-run`…).
+Les consignes pour les agents et les contributeurs, Estompe compris, sont dans [`AGENTS.md`](AGENTS.md) ; l'exploitation (sauvegardes, supervision, Jellyfin) dans [`deploy/README.md`](deploy/README.md).

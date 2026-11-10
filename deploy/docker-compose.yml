@@ -17,13 +17,6 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes: [security-redis-data:/data]
 
-  permission:
-    image: ghcr.io/plblsfr/permission:${PERMISSION_TAG:-latest}
-    restart: unless-stopped
-    env_file: .env
-    expose: ["8080"]
-    networks: [default, postgres-net]
-
   aegis:
     image: ghcr.io/plblsfr/aegis:${AEGIS_TAG:-latest}
     restart: unless-stopped

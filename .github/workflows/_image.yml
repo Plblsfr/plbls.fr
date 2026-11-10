@@ -1,4 +1,4 @@
-# Cycle commun à pli, security, permission, aegis, ui (appelé par ci.yml en PR, par livraison.yml sur main et sur tag) :
+# Cycle commun à pli, security, aegis, ui (appelé par ci.yml en PR, par livraison.yml sur main et sur tag) :
 #   PR            étape de test du Dockerfile, puis build à blanc
 #   push main     image :edge + :<sha> (sans rejouer l'étape de test, déjà passée dans la PR)
 #   tag <composant>-vX.Y.Z   image :X.Y.Z + :latest + :<sha>, puis release GitHub

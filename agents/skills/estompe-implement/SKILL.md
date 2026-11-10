@@ -21,17 +21,17 @@ allowed-tools: Bash(git *), Bash(scripts/estompe/check.sh*), Bash(*/scripts/esto
 - sinon, rien à faire : s'arrêter.
 
 ## 2. Worktree
-- `git fetch origin` (avec le jeton, voir `docs/estompe/AGENTS.md`). `.git/info/exclude` du dépôt principal contient `.worktree/` et `.ai/`.
+- `git fetch origin` (avec le jeton, voir `AGENTS.md` (section « Estompe »)). `.git/info/exclude` du dépôt principal contient `.worktree/` et `.ai/`.
 - Absent et branche jamais créée : `git -C <racine> worktree add -b <branche> .worktree/<slug-court> origin/main`.
 - Absent mais branche existante (worktree supprimé après la PR) : `git -C <racine> worktree add .worktree/<slug-court> <branche>`.
 - Présent : il doit être sur `<branche>`, arbre propre, sinon s'arrêter.
 - `npm --prefix <worktree> ci` (workspace npm à la racine du dépôt) si `node_modules` y est absent.
 
 ## 3. Code
-- Suivre le plan étape par étape (ou les corrections, dans l'ordre bloquant → important), selon `docs/estompe/AGENTS.md`.
+- Suivre le plan étape par étape (ou les corrections, dans l'ordre bloquant → important), selon `AGENTS.md` (section « Estompe »).
 - Bug : écrire d'abord le test qui échoue, le constater, puis corriger. Sans repro possible, s'arrêter sans affirmer de cause.
 - Plan faux ou incomplet : s'arrêter, expliquer, proposer avec AskUserQuestion de corriger le plan ou de relancer `/estompe-plan`.
-- Cocher dans `plan.md` chaque étape ou correction faite. Piège découvert : l'ajouter à `docs/estompe/AGENTS.md`.
+- Cocher dans `plan.md` chaque étape ou correction faite. Piège découvert : l'ajouter à `AGENTS.md` (« Conventions et pièges »).
 
 ## 4. Contrôles
 - `<worktree>/scripts/estompe/check.sh` : corriger jusqu'à ce qu'il passe. Aucune liste de commandes à recopier : le script fait foi.
@@ -54,7 +54,7 @@ Commit : <sha, rempli après le commit>
 
 ## 6. Commit
 - Pas de `changelog.d/` : rôle de `/estompe-pr`.
-- `git -C <worktree> add` des fichiers modifiés, commit `<type>(<portée>): <résumé>` (première passe, type de la branche, voir `docs/estompe/AGENTS.md`) ou `<type>(<portée>): corrections de revue`. Aucun push. Ne jamais commiter si `check.sh` échoue.
+- `git -C <worktree> add` des fichiers modifiés, commit `<type>(<portée>): <résumé>` (première passe, type de la branche, voir `AGENTS.md` (section « Estompe »)) ou `<type>(<portée>): corrections de revue`. Aucun push. Ne jamais commiter si `check.sh` échoue.
 - Reporter le sha dans `verify.md`.
 
 ## 7. Sortie

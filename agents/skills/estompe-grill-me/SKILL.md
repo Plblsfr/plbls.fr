@@ -24,7 +24,7 @@ Rôle : comprendre la demande, pas la résoudre. Aucun code, aucune branche, auc
 ## 2. Lecture
 - `gh issue view <n> --repo Plblsfr/plbls.fr --comments`. Introuvable ou fermée : s'arrêter et le dire.
 - Lire ses commentaires, les issues qu'elle cite (et leur état) et les issues proches (`gh issue list --repo Plblsfr/plbls.fr --search <mots>`) quand elles éclairent la demande.
-- Lire `docs/estompe/AGENTS.md` et le code concerné tel qu'il est sur `origin/main` : `git grep <motif> origin/main`, `git show origin/main:<chemin>`. Le but est de poser des questions précises, pas de concevoir la solution.
+- Lire `AGENTS.md` (section « Estompe ») et le code concerné tel qu'il est sur `origin/main` : `git grep <motif> origin/main`, `git show origin/main:<chemin>`. Le but est de poser des questions précises, pas de concevoir la solution.
 
 ## 3. Interrogatoire
 - Lister tout ce qui n'est pas tranché : comportement attendu, cas limites et erreurs, périmètre et hors périmètre, impact UI / API / données, migration, compatibilité avec les anciens clients, permissions et sécurité, critères de vérification mesurables, actions manuelles (secret, variable d'environnement, accès, migration à valider), dépendances non terminées.

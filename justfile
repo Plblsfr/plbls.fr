@@ -23,22 +23,22 @@ lint-python:
 lint-links:
     node scripts/check-links.mjs
 
-# Types et cohérence : svelte-check (estompe, permission), tsc (pli, packages/ui), version de Node, copies de @plbls/ui
+# Types et cohérence : svelte-check (estompe), tsc (pli, packages/ui), version de Node, copies de @plbls/ui
 check:
     npm run check
 
 build:
     npm run build
 
-# Recopie packages/ui dans estompe, permission, pli et le thème Keycloak ; ui-check échoue si une copie diverge
+# Recopie packages/ui dans estompe, pli et le thème Keycloak ; ui-check échoue si une copie diverge
 ui-sync:
     npm run ui:sync
 
 ui-check:
     npm run ui:check
 
-# Tests qui ne demandent pas de base de données : vitest de tous les frontaux et de packages/ui, Rust de security et permission
-test: test-js test-security test-permission test-aegis
+# Tests qui ne demandent pas de base de données : vitest de tous les frontaux et de packages/ui, Rust de security et aegis
+test: test-js test-security test-aegis
 
 test-js:
     npm test
@@ -46,19 +46,12 @@ test-js:
 test-security:
     cargo test --locked -p auth-gateway
 
-test-permission:
-    cargo test --locked -p permission
-
 # aegis : tests unitaires ; les tests d'intégration demandent TEST_DATABASE_URL (et TEST_REDIS_URL pour le cache)
 test-aegis:
     cargo test --locked -p aegis
 
 test-ui:
     npm ci && npm test --workspace packages/ui
-
-# e2e Playwright (Docker pour Postgres, ou E2E_DATABASE_URL vers une base vide)
-e2e-permission:
-    npm run e2e --workspace web/permission
 
 # Ces deux-là demandent un Postgres : TEST_DATABASE_URL=postgres://… just test-pli
 test-pli:
@@ -72,8 +65,8 @@ test-estompe-api:
 build-ui:
     npm ci && npm run build --workspace packages/ui
 
-# Dépendances de dev de tous les projets, éphémères (deploy/docker-compose.dev.yml) : Postgres :5432 (postgres/postgres, bases
-# permission et aegis), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081. Variables des backends : deploy/dev.env
+# Dépendances de dev de tous les projets, éphémères (deploy/docker-compose.dev.yml) : Postgres :5432 (postgres/postgres, base
+# aegis), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081. Variables des backends : deploy/dev.env
 dev-up:
     docker compose -f deploy/docker-compose.dev.yml up -d --wait
 
@@ -110,26 +103,3 @@ aegis-dev-run:
 
 aegis-image:
     docker build -f api/aegis/Dockerfile -t aegis:local .
-
-# permission : backend sur 127.0.0.1:8090, demande dev-up (Postgres)
-permission-dev-run:
-    cd api/permission && set -a && . ../../deploy/dev.env && set +a && cargo run
-
-# Données de départ (applications chat et radar) puis test de bout en bout de l'API : demandent dev-up et permission-dev-run
-permission-seed:
-    set -a && . deploy/dev.env && set +a && python3 scripts/permission/seed.py
-
-permission-smoke:
-    set -a && . deploy/dev.env && set +a && python3 scripts/permission/smoke.py
-
-# e2e avec le vrai auth-gateway (api/security) et Keycloak (Docker)
-e2e-permission-gateway:
-    E2E_GATEWAY=1 npm run e2e --workspace web/permission
-
-# Vite sur :3000 (proxy signé vers le backend :8090)
-permission-front-dev:
-    npm run dev --workspace web/permission -- --host 127.0.0.1
-
-# Image Docker complète (tests, front, backend), construite depuis la racine
-permission-image:
-    docker build -f api/permission/Dockerfile -t permission:local .

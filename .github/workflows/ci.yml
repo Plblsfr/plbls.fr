@@ -55,7 +55,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           case "$HEAD_REF" in ci/*|docs/*|release/*) echo "Branche $HEAD_REF : entrée non exigée"; exit 0;; esac
-          git diff --quiet "origin/$BASE_REF...HEAD" -- api/estompe web/estompe apps/estompe docs/estompe deploy/estompe scripts/estompe .version agents \
+          git diff --quiet "origin/$BASE_REF...HEAD" -- api/estompe web/estompe apps/estompe deploy/estompe scripts/estompe .version agents \
             && { echo "Aucun changement dans Estompe : entrée non exigée"; exit 0; }
           git diff --name-only --diff-filter=A "origin/$BASE_REF...HEAD" -- 'changelog.d/*.md' | grep -v '^changelog.d/README.md$' | grep . \
             || { echo "::error::la PR doit ajouter un fichier changelog.d/<sujet>.md (voir changelog.d/README.md)"; exit 1; }
@@ -301,18 +301,6 @@ jobs:
       dockerfile: api/pli/Dockerfile
       dir: api/pli
 
-  image-permission:
-    needs: changements
-    if: needs.changements.outputs.image_permission == 'true'
-    uses: ./.github/workflows/_image.yml
-    with:
-      component: permission
-      name: permission
-      context: .
-      dockerfile: api/permission/Dockerfile
-      dir: api/permission
-      test_target: test
-
   image-aegis:
     needs: changements
     if: needs.changements.outputs.image_aegis == 'true'
@@ -351,7 +339,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-permission, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, image-pli, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

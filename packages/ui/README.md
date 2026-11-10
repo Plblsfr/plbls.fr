@@ -121,7 +121,7 @@ et chaque fichier de `dist/` seul (`plbls-ui.css`, `plbls-ui.min.css`,
 
 ## Projets du monorepo
 
-Estompe, permission, pli et le thème Keycloak ne téléchargent rien : `npm run ui:sync` (racine du dépôt, script
+Estompe, pli et le thème Keycloak ne téléchargent rien : `npm run ui:sync` (racine du dépôt, script
 `scripts/sync-ui.mjs`) construit ce paquet et copie dans chacun le même dossier `plbls-ui/` (`plbls-ui.esm.min.js`,
 `plbls-ui.esm.min.d.ts`, `plbls-ui.min.css`, `tokens.min.css`, `VERSION`, `README.md`). Les fichiers sont commités
 (hors ligne, CSP sans CDN) ; `npm run ui:check` (job `front` du workflow `ci`) échoue si une copie diffère de ce paquet.

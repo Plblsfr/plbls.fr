@@ -23,7 +23,7 @@ Rôle : orchestrer les relecteurs et consolider. Aucune correction. **Au plus de
   - **2 → refuser** : dire que le plafond est atteint et renvoyer vers `/estompe-pr`.
 
 ## 2. Relecteurs
-Un seul message, outil Agent (`general-purpose`), lecture seule (`git -C <worktree> diff|log|show|grep`, lecture de fichiers). Ils reçoivent des chemins et des consignes, pas l'avis de la session. Référence : `<worktree>/docs/estompe/AGENTS.md`.
+Un seul message, outil Agent (`general-purpose`), lecture seule (`git -C <worktree> diff|log|show|grep`, lecture de fichiers). Ils reçoivent des chemins et des consignes, pas l'avis de la session. Référence : `<worktree>/AGENTS.md` (section « Estompe »).
 
 Consignes communes :
 - Ne signaler que ce qui est **prouvable dans ce diff** (citer la ligne et le scénario qui échoue). Pas de goût personnel, rien de ce qu'un linter ou `check.sh` attrape déjà, pas de remarque « par principe ». Dire explicitement si rien n'est à signaler.
@@ -31,7 +31,7 @@ Consignes communes :
 - Gravités : **bloquant** = bug, faille, perte de données, critère non tenu ; **important** = défaut réel mais contournable ; **mineur** = tout le reste.
 
 Revue 1 :
-- **Qualité** : erreurs et cas limites non gérés, duplication d'un helper existant, cohérence avec `docs/estompe/AGENTS.md`, tests absents pour une logique non triviale ou placés dans un nouveau fichier alors qu'un existe, commentaires ajoutés (interdits).
+- **Qualité** : erreurs et cas limites non gérés, duplication d'un helper existant, cohérence avec `AGENTS.md` (section « Estompe »), tests absents pour une logique non triviale ou placés dans un nouveau fichier alors qu'un existe, commentaires ajoutés (interdits).
 - **Sécurité** : contrôle d'accès côté serveur, validation des entrées, injections et XSS, fuites de secrets ou de données, migrations et anciens clients, dépendances ajoutées, déni de service évident.
 - **Conformité** : lire l'issue (`gh issue view <n> --repo Plblsfr/plbls.fr --comments`), `brief.md`, `plan.md`, `verify.md`. Chaque critère `C*` est-il tenu, le hors périmètre respecté, les étapes réellement faites ? Une preuve de `verify.md` qui ne tient pas est un bloquant.
 

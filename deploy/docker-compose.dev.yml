@@ -53,7 +53,5 @@ services:
 configs:
   bases:
     content: |
-      CREATE ROLE permission LOGIN PASSWORD 'permission';
-      CREATE DATABASE permission OWNER permission;
       CREATE ROLE aegis LOGIN PASSWORD 'aegis';
       CREATE DATABASE aegis OWNER aegis;

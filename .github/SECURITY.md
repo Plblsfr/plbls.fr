@@ -9,7 +9,7 @@ Utiliser le signalement privé de GitHub : onglet **Security** du dépôt, puis 
 
 Indiquer si possible :
 
-- le composant touché (`estompe-api`, `estompe-app`, `security`, `permission`, `pli`, `ui`) et sa version ;
+- le composant touché (`estompe-api`, `estompe-app`, `security`, `aegis`, `pli`, `ui`) et sa version ;
 - la description de la faille et son impact ;
 - les étapes pour la reproduire, ou une preuve de concept ;
 - une piste de correction, si vous en avez une.
