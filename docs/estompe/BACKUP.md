@@ -1,38 +1,27 @@
 # Sauvegarde et restauration
 
-Le service `estompe-backup` de la stack (`deploy/docker-compose.yml`) fait un `pg_dump` compressé au démarrage, puis chaque jour à `BACKUP_HOUR` (heure du conteneur, UTC),
-dans le volume `estompe-backups`. Les `BACKUP_KEEP` plus récents sont conservés (14 par défaut). Les messages, comptes, serveurs,
-emojis et avatars sont dans la base : c'est l'essentiel.
+La base d'Estompe est la base `estompe` du PostgreSQL partagé (`postgres-main`, stack de `plbls.fr-infra`) : messages, comptes,
+serveurs, emojis et avatars, l'essentiel. Elle est sauvegardée hors de la stack Dokploy, avec les autres bases de `postgres-main`.
 
-Les fichiers envoyés (volume `estompe-data`, 20 Go au plus) ne sont sauvegardés qu'avec `BACKUP_FILES=true` (une archive par jour).
-Sans cela, un fichier perdu apparaît comme « expiré » dans son message (le même mécanisme que la purge des plus anciens).
+Les fichiers envoyés sont dans le volume `<projet>_estompe-data` (20 Go au plus, `MAX_STORAGE_GB`) : à sauvegarder aussi, par exemple
+`docker run --rm -v <projet>_estompe-data:/data -v "$PWD":/vers alpine tar czf /vers/estompe-data-AAAA-MM-JJ.tar.gz -C /data .`.
+Sans eux, un fichier perdu apparaît comme « expiré » dans son message (le même mécanisme que la purge des plus anciens).
+Une sauvegarde sur le même disque ne protège pas d'une panne du VPS : la copier ailleurs.
 
-**Une sauvegarde sur le même disque ne protège pas d'une panne du VPS** : copier régulièrement le volume `estompe-backups` ailleurs
-(par exemple `rclone` ou `rsync` depuis l'hôte vers un autre serveur ou un stockage objet).
-
-## Restaurer la base
+## Restaurer
 
 1. Arrêter l'API pour qu'elle n'écrive plus : `docker compose stop estompe-api`.
-2. Choisir une sauvegarde : `docker compose run --rm estompe-backup ls -lh /backups`.
-3. Recréer la base et la recharger (les données actuelles sont perdues) :
+2. Recréer la base sur `postgres-main` et la recharger (les données actuelles sont perdues), propriétaire `DATABASE_USER` (`plbls`) :
 
    ```sh
-   docker compose exec estompe-postgres dropdb -U estompe estompe
-   docker compose exec estompe-postgres createdb -U estompe estompe
-   docker compose run --rm estompe-backup sh -c 'gunzip -c /backups/db-AAAA-MM-JJ-HHMM.sql.gz' | docker compose exec -T estompe-postgres psql -U estompe -d estompe -q
+   docker exec <conteneur postgres-main> dropdb -U postgres estompe
+   docker exec <conteneur postgres-main> createdb -U postgres -O plbls estompe
+   docker exec -i <conteneur postgres-main> pg_restore -U postgres -d estompe --no-owner --role=plbls < estompe.dump
    ```
 
-4. Si les fichiers sont aussi sauvegardés :
-   `docker compose run --rm -v <projet>_estompe-data:/data estompe-backup sh -c 'tar xzf /backups/files-AAAA-MM-JJ.tar.gz -C /data'`
-5. Relancer l'API : `docker compose start estompe-api`. Les migrations manquantes s'appliquent au démarrage.
+   Pour un dump SQL (`pg_dump` sans `-Fc`) : `… psql -U plbls -d estompe -q < estompe.sql` à la place de `pg_restore`.
+3. Fichiers : `docker run --rm -v <projet>_estompe-data:/data -v "$PWD":/de alpine tar xzf /de/estompe-data-AAAA-MM-JJ.tar.gz -C /data`.
+4. Relancer l'API : `docker compose start estompe-api`. Les migrations manquantes s'appliquent au démarrage.
 
-## Vérifier une sauvegarde
-
-Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. Tous les mois, la recharger dans une base de test :
-
-```sh
-docker compose exec estompe-postgres createdb -U estompe test_restore
-docker compose run --rm estompe-backup sh -c 'gunzip -c /backups/<fichier>.sql.gz' | docker compose exec -T estompe-postgres psql -U estompe -d test_restore -q
-docker compose exec estompe-postgres psql -U estompe -d test_restore -c 'SELECT count(*) FROM messages'
-docker compose exec estompe-postgres dropdb -U estompe test_restore
-```
+Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde : la recharger régulièrement dans une base de test
+(`createdb … test_restore`, même commande, `SELECT count(*) FROM messages`, puis `dropdb … test_restore`).

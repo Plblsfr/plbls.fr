@@ -14,7 +14,7 @@ WSL n'expose pas la virtualisation (`/dev/kvm` absent) : l'émulateur tourne **s
 
 Voir `web/estompe/README.md` (« Push via FCM ») : projet Firebase, app Android `fr.plbls.estompe`,
 `apps/estompe/android/src-tauri/gen/android/app/google-services.json` (ignoré par git) côté app, `FCM_SERVICE_ACCOUNT` côté API
-(`deploy/estompe/.env.example`). Sans `google-services.json`, l'APK se construit mais sans push.
+(variable commune, `deploy/.env.example`). Sans `google-services.json`, l'APK se construit mais sans push.
 
 ## 3. Build debug
 

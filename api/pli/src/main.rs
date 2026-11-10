@@ -22,7 +22,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let cfg = match pli::Config::from_env(|k| std::env::var(k).ok()) {
+    let env = commun::env::Env::charger();
+    let cfg = match pli::Config::from_env(|k| env.get(k)) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{e}");

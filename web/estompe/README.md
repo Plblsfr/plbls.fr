@@ -162,7 +162,7 @@ CI : définir la variable de dépôt `ANDROID_APK=1` et les secrets `ANDROID_KEY
 
 **Push (app fermée) via FCM.** Créer un projet Firebase (gratuit), y ajouter l'app Android `fr.plbls.estompe`, puis :
 1. télécharger `google-services.json` dans `apps/estompe/android/src-tauri/gen/android/app/` (ignoré par git ; en CI : secret `GOOGLE_SERVICES_JSON_B64`, `base64 -w0 google-services.json`). Sans lui l'APK se construit, sans push ;
-2. générer une clé de compte de service (Paramètres du projet › Comptes de service) et mettre son JSON encodé (`base64 -w0 cle.json`) dans `FCM_SERVICE_ACCOUNT` côté API (`deploy/estompe/.env.example`).
+2. générer une clé de compte de service (Paramètres du projet › Comptes de service) et mettre son JSON encodé (`base64 -w0 cle.json`) dans `FCM_SERVICE_ACCOUNT`, variable commune à Estompe et Entracte (`deploy/.env.example`, `secret/commun` de Vault).
 
 Activation : Paramètres › « Notifications push ». Le serveur envoie alors les mentions et messages privés aux destinataires hors ligne ; Google voit le titre et le texte du message passer par FCM.
 

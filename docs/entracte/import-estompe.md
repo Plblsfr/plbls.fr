@@ -24,46 +24,29 @@ Seuls les titres déjà présents dans le catalogue d'Entracte reçoivent l'hist
 
 ## Variables
 
-Passées à la commande seulement, jamais dans l'onglet Environment de Dokploy :
+Les variables propres à l'import sont passées à la commande seulement, jamais dans l'onglet Environment de Dokploy :
 
 | Variable | Rôle |
 |---|---|
-| `ENTRACTE_DATABASE_URL` | base d'Entracte (déjà dans le conteneur `entracte-api`) |
-| `ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL` | base d'Estompe, avec un rôle en lecture seule (ci-dessous) |
+| `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD` | communes, déjà dans le conteneur `entracte-api` : bases `entracte` et `estompe` du serveur partagé (`postgres-main`) |
+| `ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL` | facultative : URL complète d'une autre base d'Estompe (défaut : base `estompe` du serveur commun) |
 | `ENTRACTE_IMPORT_JELLYFIN_URL` | Jellyfin joint depuis `entracte-api` (réseau `JELLYFIN_NETWORK`), par exemple `http://jellyfin:8096` |
 | `ENTRACTE_IMPORT_JELLYFIN_API_KEY` | clé d'API Jellyfin (celle d'Estompe, `JELLYFIN_API_KEY`, ou une clé créée pour l'import) |
 
 ## Procédure en production
 
-1. Rôle en lecture seule dans `estompe-postgres` :
+1. Lancer l'import depuis le conteneur `entracte-api` (il joint `postgres-main` par `postgres-net` et Jellyfin par
+   `JELLYFIN_NETWORK`) ; la clé est lue dans le shell, pas écrite dans la commande :
 
    ```sh
-   docker exec -i <conteneur estompe-postgres> psql -U estompe -d estompe <<'SQL'
-   CREATE ROLE entracte_import LOGIN PASSWORD '<mot de passe>';
-   GRANT SELECT ON users, films_items, films_progression TO entracte_import;
-   SQL
-   ```
-
-2. Lancer l'import depuis le conteneur `entracte-api` (il joint `estompe-postgres` par le réseau de la stack et Jellyfin par
-   `JELLYFIN_NETWORK`) ; les secrets sont lus dans le shell, pas écrits dans la commande :
-
-   ```sh
-   read -rs ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL && export ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL
-   # postgres://entracte_import:<mot de passe>@estompe-postgres:5432/estompe?sslmode=disable
    read -rs ENTRACTE_IMPORT_JELLYFIN_API_KEY && export ENTRACTE_IMPORT_JELLYFIN_API_KEY
-   docker exec -e ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL -e ENTRACTE_IMPORT_JELLYFIN_API_KEY \
+   docker exec -e ENTRACTE_IMPORT_JELLYFIN_API_KEY \
      -e ENTRACTE_IMPORT_JELLYFIN_URL=http://jellyfin:8096 <conteneur entracte-api> /app/entracte importer-estompe
    ```
 
-3. Relire le rapport : lignes lues, personnes, progressions importées et gardées, « déjà vus » importés, lignes écartées, puis la liste
+2. Relire le rapport : lignes lues, personnes, progressions importées et gardées, « déjà vus » importés, lignes écartées, puis la liste
    des titres non résolus (`nom [id Jellyfin] : raison (n lignes)`). Un titre absent du catalogue d'Entracte peut être ajouté à
    Radarr/Sonarr, synchronisé, puis l'import relancé.
 
-4. Retirer le rôle :
-
-   ```sh
-   docker exec -i <conteneur estompe-postgres> psql -U estompe -d estompe -c 'DROP OWNED BY entracte_import; DROP ROLE entracte_import;'
-   ```
-
-En local : `ENTRACTE_DATABASE_URL=… ENTRACTE_IMPORT_ESTOMPE_DATABASE_URL=… ENTRACTE_IMPORT_JELLYFIN_URL=… ENTRACTE_IMPORT_JELLYFIN_API_KEY=… cargo run -p entracte -- importer-estompe`.
+En local (variables de `deploy/dev.env` chargées) : `ENTRACTE_IMPORT_JELLYFIN_URL=… ENTRACTE_IMPORT_JELLYFIN_API_KEY=… cargo run -p entracte -- importer-estompe`.
 Code et tests : `api/entracte/src/import_estompe.rs` (deux bases PostgreSQL, l'une avec les tables du bloc films d'Estompe, et un faux Jellyfin).

@@ -1,11 +1,21 @@
 #!/bin/sh
-# Génère au démarrage la configuration d'exécution (config.js) et la politique de sécurité (CSP) d'après l'environnement.
+# Génère au démarrage la configuration d'exécution (config.js) et la politique de sécurité (CSP) d'après l'environnement,
+# complété par /etc/plbls.env (plbls.env de la racine du dépôt, copié au build) pour chaque variable absente ou vide.
 #   API_URL           URL publique de l'API Estompe, ex. https://chat.plbls.fr
 #   GATEWAY_URL       URL d'auth-gateway, ex. https://security.plbls.fr
 #   VOICE_URL         URL publique de LiveKit (wss://...), ex. wss://voice.plbls.fr
 #   KEYCLOAK_ISSUER   (facultatif) émetteur Keycloak, utile seulement à l'app Windows
 #   ENTRACTE_PUBLIC_URL (facultatif) URL publique de l'API d'Entracte, ex. https://entracte-api.plbls.fr ; vide = pas de section Entracte
 set -eu
+
+if [ -r /etc/plbls.env ]; then
+  for cle in API_URL GATEWAY_URL VOICE_URL KEYCLOAK_ISSUER ENTRACTE_PUBLIC_URL; do
+    if [ -z "$(printenv "$cle" || true)" ]; then
+      valeur=$(sed -n "s/^$cle=//p" /etc/plbls.env | tail -n 1)
+      export "$cle=$valeur"
+    fi
+  done
+fi
 
 : "${API_URL:?API_URL est obligatoire}"
 GATEWAY_URL="${GATEWAY_URL:-https://security.plbls.fr}"

@@ -35,6 +35,7 @@ FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app
 COPY --from=build /src/target/release/permission /app/permission
 COPY api/permission/config /app/config
+COPY plbls.env /etc/plbls.env
 COPY --from=front /repo/web/permission/dist /app/static
 EXPOSE 8080
 ENTRYPOINT ["/app/permission"]

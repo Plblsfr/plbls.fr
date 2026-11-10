@@ -898,6 +898,7 @@ name = "estompe-api"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "commun",
  "estompe-block",
  "estompe-block-activite-statut",
  "estompe-block-apercu-liens",
@@ -1209,6 +1210,7 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "chrono",
+ "commun",
  "estompe-core",
  "futures-util",
  "hmac",

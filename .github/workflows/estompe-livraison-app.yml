@@ -231,6 +231,7 @@ jobs:
         with:
           context: web/estompe
           file: web/estompe/plateforme/Dockerfile
+          build-contexts: racine=.
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}

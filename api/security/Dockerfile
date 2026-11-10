@@ -21,5 +21,6 @@ FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app
 COPY --from=build /src/target/release/auth-gateway /app/auth-gateway
 COPY api/security/config /app/config
+COPY plbls.env /etc/plbls.env
 EXPOSE 8080
 ENTRYPOINT ["/app/auth-gateway"]

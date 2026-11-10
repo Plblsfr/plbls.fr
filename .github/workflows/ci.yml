@@ -314,10 +314,11 @@ jobs:
           cache-from: type=registry,ref=ghcr.io/plblsfr/estompe:buildcache
       - name: L'image démarre et répond sur /readyz
         run: |
-          docker run -d --name estompe-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres postgres:17-alpine
+          docker run -d --name estompe-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=estompe postgres:17-alpine
           timeout 60 sh -c 'until docker exec estompe-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
           docker run -d --name estompe-pr-api-${{ github.run_id }} --network container:estompe-pr-pg-${{ github.run_id }} --env-file deploy/estompe/.env.example \
-            -e DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' estompe-api:pr-${{ github.run_id }}
+            -e DATABASE_URL='postgres://127.0.0.1:5432?sslmode=disable' -e DATABASE_USER=postgres -e DATABASE_PASSWORD=postgres \
+            estompe-api:pr-${{ github.run_id }}
           timeout 60 sh -c 'until docker run --rm --network container:estompe-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
             || { docker logs estompe-pr-api-${{ github.run_id }}; exit 1; }
       - if: always()
@@ -342,10 +343,10 @@ jobs:
           cache-from: type=gha,scope=entracte
       - name: L'image démarre, applique ses migrations, répond sur /readyz et trouve ffmpeg
         run: |
-          docker run -d --name entracte-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres postgres:17-alpine
+          docker run -d --name entracte-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=entracte postgres:17-alpine
           timeout 60 sh -c 'until docker exec entracte-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
           docker run -d --name entracte-pr-api-${{ github.run_id }} --network container:entracte-pr-pg-${{ github.run_id }} --env-file deploy/entracte/.env.example \
-            -e ENTRACTE_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable' -e ENTRACTE_STREAM_SECRET= \
+            -e DATABASE_URL='postgres://127.0.0.1:5432?sslmode=disable' -e DATABASE_USER=postgres -e DATABASE_PASSWORD=postgres -e ENTRACTE_STREAM_SECRET= \
             -e ENTRACTE_TRANSCODE_MODE=vaapi entracte:pr-${{ github.run_id }}
           timeout 60 sh -c 'until docker run --rm --network container:entracte-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
             || { docker logs entracte-pr-api-${{ github.run_id }}; exit 1; }

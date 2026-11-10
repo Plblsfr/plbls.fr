@@ -52,7 +52,7 @@ impl Modify for Security {
             SecurityScheme::Http(
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
-                    .description(Some("Token d'un micro-service (PERMISSION__SERVICES__TOKENS), réseau interne uniquement"))
+                    .description(Some("Token d'un micro-service (PERMISSION_TOKEN_<SERVICE>), réseau interne uniquement"))
                     .build(),
             ),
         );

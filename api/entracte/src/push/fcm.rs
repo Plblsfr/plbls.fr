@@ -46,11 +46,11 @@ impl Fcm {
         }
         let brut = STANDARD
             .decode(compte_b64)
-            .map_err(|_| "ENTRACTE_FCM_SERVICE_ACCOUNT : base64 attendu".to_string())?;
+            .map_err(|_| "FCM_SERVICE_ACCOUNT : base64 attendu".to_string())?;
         let compte: CompteDeService = serde_json::from_slice(&brut)
             .ok()
             .filter(|c: &CompteDeService| !c.project_id.is_empty() && !c.client_email.is_empty())
-            .ok_or("ENTRACTE_FCM_SERVICE_ACCOUNT invalide")?;
+            .ok_or("FCM_SERVICE_ACCOUNT invalide")?;
         let cle = lire_cle(&compte.private_key)?;
         Ok(Some(Fcm {
             uri_jeton: if compte.token_uri.is_empty() {
@@ -176,13 +176,13 @@ fn lire_cle(pem: &str) -> Result<RsaKeyPair, String> {
         .map(str::trim)
         .collect();
     if corps.is_empty() {
-        return Err("ENTRACTE_FCM_SERVICE_ACCOUNT : clé privée illisible".to_string());
+        return Err("FCM_SERVICE_ACCOUNT : clé privée illisible".to_string());
     }
     let der = STANDARD
         .decode(corps)
-        .map_err(|_| "ENTRACTE_FCM_SERVICE_ACCOUNT : clé privée illisible".to_string())?;
+        .map_err(|_| "FCM_SERVICE_ACCOUNT : clé privée illisible".to_string())?;
     RsaKeyPair::from_pkcs8(&der)
-        .map_err(|_| "ENTRACTE_FCM_SERVICE_ACCOUNT : clé privée RSA attendue".to_string())
+        .map_err(|_| "FCM_SERVICE_ACCOUNT : clé privée RSA attendue".to_string())
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@
 Deux façons de s'authentifier auprès de permission :
 
 1. **Pour l'utilisateur courant** : faire suivre tels quels les en-têtes `X-User-*` / `X-Identity-*` reçus du gateway. Permission en vérifie la signature (HMAC, 60 s, couvrant aussi `X-User-Name` et `X-User-Email` : voir [gateway.md](../security/gateway.md)) avec le même secret que le gateway. L'appelant ne peut lire que **ses propres** permissions.
-2. **Pour n'importe quel compte** : `Authorization: Bearer <token du service>`. Les tokens sont déclarés côté permission : `PERMISSION__SERVICES__TOKENS=chat:<token>,radar:<token>` (un par service, révocable séparément). Un token de service ne peut **que lire** (check, permissions d'un compte), jamais administrer.
+2. **Pour n'importe quel compte** : `Authorization: Bearer <token du service>`. Chaque service a son token, dans une variable `PERMISSION_TOKEN_<SERVICE>` (`PERMISSION_TOKEN_ESTOMPE`, `PERMISSION_TOKEN_PLI`…, déclarée dans le `.env.example` du service client) que permission lit aussi : le nom du service est le suffixe en minuscules, `_` devenant `-` (un token par service, révocable séparément). Un token de service ne peut **que lire** (check, permissions d'un compte), jamais administrer.
 
 ### Vérifier une action
 
@@ -42,7 +42,7 @@ strip_prefix = true
 roles = ["user"]
 ```
 
-L'administration est protégée **dans permission** par le rôle Keycloak `permission-admin` (réglable : `server.admin_role`) ou par la permission `permission:admin` (rôle `permission/admin`, attribuable depuis l'interface). Créer ce rôle dans le realm et l'attribuer aux administrateurs. Permission doit partager `GATEWAY__IDENTITY__SECRET` (`PERMISSION__IDENTITY__SECRET`) et être joignable depuis le gateway sur le réseau Docker.
+L'administration est protégée **dans permission** par le rôle Keycloak `permission-admin` (réglable : `PERMISSION_ADMIN_ROLE`) ou par la permission `permission:admin` (rôle `permission/admin`, attribuable depuis l'interface). Créer ce rôle dans le realm et l'attribuer aux administrateurs. Permission doit partager `GATEWAY_IDENTITE_SECRET` avec le gateway et être joignable depuis le gateway sur le réseau Docker.
 
 ## Déclarer une nouvelle application
 
@@ -58,5 +58,5 @@ L'administration est protégée **dans permission** par le rôle Keycloak `permi
 Le front unique sert l'administration de permission dans Estompe (section « permissions » de l'administration). L'API Estompe relaie
 `/admin/permissions/*` vers `<gateway>/api/permission/v1/*` avec le justificatif de l'appelant : permission reste seul juge (rôle Keycloak
 `permission-admin` ou `permission:admin`). Un compte qui n'a que le rôle Keycloak `permission-admin` se connecte à Estompe et n'y voit que
-cette page, sans compte Estompe à activer (`PERMISSION_ADMIN_ROLE` côté Estompe, même valeur que `server.admin_role`). Ce compte doit
+cette page, sans compte Estompe à activer (`PERMISSION_ADMIN_ROLE`, variable commune lue par permission et par Estompe). Ce compte doit
 aussi porter le rôle demandé par la route `/api/permission` du gateway (`user`).

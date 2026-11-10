@@ -6,9 +6,6 @@ allowed_origin_suffix = "plbls.fr"
 # Extensions : "chrome-extension://<id>", "https://<id>.chromiumapp.org"
 extra_origins = []
 
-[redis]
-url = "redis://redis:6379"
-
 [oidc]
 # issuer : GATEWAY__OIDC__ISSUER (.env)
 client_id = "plbls-gateway"
@@ -24,7 +21,7 @@ cookie_secure = true
 # Requêtes par minute et par IP sur /auth/login, /auth/register et /auth/callback (0 = désactivé)
 auth_per_minute = 30
 
-# secret HMAC des en-têtes d'identité : GATEWAY__IDENTITY__SECRET
+# secret HMAC des en-têtes d'identité : GATEWAY_IDENTITE_SECRET ; redis.url : REDIS_URL et REDIS_PASSWORD ; internal.token : GATEWAY_INTERNE_TOKEN
 
 # Exemple de route :
 # [[routes]]

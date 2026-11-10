@@ -13,6 +13,7 @@ workspace = true
 testutil = ["dep:testcontainers", "dep:testcontainers-modules", "dep:jsonschema"]
 
 [dependencies]
+commun.workspace = true
 axum.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true

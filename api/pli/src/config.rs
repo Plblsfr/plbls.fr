@@ -37,16 +37,14 @@ pub fn dossier_public() -> PathBuf {
 impl Config {
     pub fn from_env(brut: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let env = |k: &str| brut(k).map(|v| nettoie(&v)).filter(|v| !v.is_empty());
-        let database_url = brut("PLI_DATABASE_URL")
-            .filter(|v| !v.is_empty())
-            .ok_or("PLI_DATABASE_URL manquant (ex. postgres://user:pass@host:5432/pli)")?;
+        let database_url = commun::env::url_base(&brut, "pli")?;
         let port = match brut("PORT").filter(|v| !v.is_empty()) {
             Some(p) => nombre("PORT", &p)?,
             None => 8080,
         };
         let gateway_url = env("GATEWAY_URL").unwrap_or_else(|| "https://security.plbls.fr".into());
         let gateway_internal_url =
-            env("GATEWAY_INTERNAL_URL").unwrap_or_else(|| gateway_url.clone());
+            env("GATEWAY_INTERNE_URL").unwrap_or_else(|| gateway_url.clone());
         let max_bytes = match env("MAX_BYTES") {
             Some(v) => nombre("MAX_BYTES", &v)?,
             None => 25 * 1024 * 1024,
@@ -63,8 +61,8 @@ impl Config {
             deposit_permission: env("DEPOSIT_PERMISSION").unwrap_or_else(|| "pli:deposit".into()),
             max_bytes,
             max_pending,
-            permission: env("PERMISSION_URL").zip(env("PERMISSION_SERVICE_TOKEN")),
-            aegis: env("AEGIS_URL").zip(env("PLI_AEGIS_TOKEN")),
+            permission: env("PERMISSION_URL").zip(env("PERMISSION_TOKEN_PLI")),
+            aegis: env("AEGIS_URL").zip(env("AEGIS_TOKEN_PLI")),
             public_dir: dossier_public(),
         })
     }
@@ -85,8 +83,9 @@ mod tests {
 
     #[test]
     fn valeurs_par_defaut_et_guillemets() {
-        assert!(charge(&[]).unwrap_err().contains("PLI_DATABASE_URL"));
-        let c = charge(&[("PLI_DATABASE_URL", "postgres://x/pli")]).unwrap();
+        assert!(charge(&[]).unwrap_err().contains("DATABASE_URL"));
+        let c = charge(&[("DATABASE_URL", "postgres://x")]).unwrap();
+        assert_eq!(c.database_url, "postgres://x/pli");
         assert_eq!(c.port, 8080);
         assert_eq!(c.gateway_url, "https://security.plbls.fr");
         assert_eq!(c.gateway_internal_url, c.gateway_url);
@@ -95,11 +94,11 @@ mod tests {
         assert_eq!(c.max_pending, 50);
         assert!(c.permission.is_none());
         let c = charge(&[
-            ("PLI_DATABASE_URL", "postgres://x/pli"),
+            ("DATABASE_URL", "postgres://x"),
             ("PORT", "9000"),
             ("GATEWAY_URL", " \"https://g\" "),
             ("PERMISSION_URL", "'http://p'"),
-            ("PERMISSION_SERVICE_TOKEN", "\"tok\""),
+            ("PERMISSION_TOKEN_PLI", "\"tok\""),
             ("MAX_BYTES", "1000"),
         ])
         .unwrap();
