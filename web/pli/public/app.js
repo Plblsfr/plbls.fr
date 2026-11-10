@@ -16,7 +16,7 @@ const fmtTtl = (s) => s < 86400 ? `${s / 3600} heure` : `${s / 86400} jour${s > 
 async function api(method, path, body, headers) {
   const res = await fetch(path, { method, body, headers });
   const out = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(out.error || 'HTTP ' + res.status), { status: res.status, reason: out.reason, userId: out.user_id });
+  if (!res.ok) throw Object.assign(new Error(out.error || 'HTTP ' + res.status), { status: res.status, userId: out.user_id });
   return out;
 }
 
@@ -79,7 +79,7 @@ async function start() {
       $('login').hidden = false;
       $('login-link').href = `${cfg.gatewayUrl}/auth/login?redirect=${encodeURIComponent(location.href)}`;
     } else msg(e.status === 403
-      ? `Accès réservé : il faut la permission ${cfg.permission} (permission.plbls.fr). Compte connecté : ${e.userId}${e.reason ? ' — ' + e.reason : ''}`
+      ? `Accès réservé : il faut la permission ${cfg.permission} (permission.plbls.fr). Compte connecté : ${e.userId}`
       : e.message, true);
     return;
   }

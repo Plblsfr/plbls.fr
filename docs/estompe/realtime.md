@@ -46,11 +46,11 @@ Chaque trame texte est un JSON `{"type": "...", "data": ...}`. Pour garder la co
 | `reaction.updated` | idem | `{message_id, emoji, user_id, pseudo, added}` — le drapeau `me` se déduit de `user_id` |
 | `mention` | l'utilisateur mentionné | objet `Message` (en plus de `message.created`/`updated` ; sert aux notifications), avec `group_mention: true` si la personne n'est mentionnée que par @everyone ou @here |
 | `channel.created` | membres du serveur ; pour un salon privé, ceux qui le voient | `{server_id, channel, after}` — `after` : salon du même type après lequel il est placé (vide : à la fin) (EST-159) |
-| `channel.updated` | idem | `{server_id, id, name}` |
+| `channel.updated` | membres qui voient le salon | `{server_id, id, name}` |
 | `channel.reordered` | membres du serveur | `{server_id, kind, ids}` — nouvel ordre des salons du type `kind` (EST-125) |
 | `banner.updated` | la personne et ses contacts | `{user_id, color}` — couleur de bannière du profil (`#rrggbb`, vide : couleur du rôle le plus élevé) (EST-124) |
-| `channel.deleted` | idem | `{server_id, id}` |
-| `server.updated` | idem | `{id, name}` |
+| `channel.deleted` | membres qui voyaient le salon | `{server_id, id}` — un membre qui perd la vue d'un salon ne reçoit rien : `roles.updated` lui fait recharger `GET /servers/{id}`, et le client oublie les salons absents de la réponse |
+| `server.updated` | membres du serveur | `{id, name}` |
 | `server_icon.updated` | membres du serveur | `{id, version}` — `version` 0 = icône retirée (initiales) ; l'image se charge par `GET /servers/{id}/icon` |
 | `server.deleted` | membres, juste avant la suppression | `{id}` |
 | `member.joined` | membres (dont le nouvel arrivant) | `{server_id, member: {id, pseudo, online}}` — `online` évite d'attendre un évènement `presence` pour un arrivant déjà connecté |

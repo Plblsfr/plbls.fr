@@ -83,8 +83,8 @@ it('CSP : media-src autorise l’API (web et app Windows)', () => {
   expect(media(readFileSync('plateforme/docker/40-estompe-config.sh', 'utf8').match(/CSP="([^"]*)"/)![1])).toContain('$API_URL')
 })
 
-// « Regarder ensemble » (EST-149) : les lecteurs de YouTube, Twitch, Vimeo et Dailymotion sont des iframes pilotées par postMessage ; aucun de leurs scripts ne s'exécute dans la page.
-it('CSP : lecteurs en iframe seulement, fichiers directs autorisés (web, Windows et Android)', () => {
+// « Regarder ensemble » (EST-149) : les lecteurs de YouTube, Twitch, Vimeo et Dailymotion sont des iframes pilotées par postMessage ; aucun de leurs scripts ne s'exécute dans la page. Médias et requêtes restent limités aux hôtes connus.
+it('CSP : lecteurs en iframe seulement, médias et requêtes sans joker (web, Windows et Android)', () => {
   const dir = (csp: string, name: string) => csp.split(';').map((d: string) => d.trim()).find((d: string) => d.startsWith(name)) ?? ''
   const tauri = JSON.parse(readFileSync('../../apps/estompe/windows/src-tauri/tauri.conf.json', 'utf8')).app.security.csp
   const android = JSON.parse(readFileSync('../../apps/estompe/android/src-tauri/tauri.conf.json', 'utf8')).app.security.csp
@@ -92,8 +92,17 @@ it('CSP : lecteurs en iframe seulement, fichiers directs autorisés (web, Window
   for (const csp of [tauri, android, web]) {
     expect(dir(csp, 'script-src')).toBe("script-src 'self' 'wasm-unsafe-eval'")
     for (const h of ['https://player.twitch.tv', 'https://clips.twitch.tv', 'https://player.vimeo.com', 'https://www.dailymotion.com', 'https://www.youtube-nocookie.com']) expect(dir(csp, 'frame-src')).toContain(h)
-    expect(dir(csp, 'media-src').split(' ')).toContain('https:')
-    expect(dir(csp, 'connect-src').split(' ')).toContain('https:')
+    for (const d of ['media-src', 'connect-src']) expect(dir(csp, d).split(' ').filter((h: string) => /^(https?|wss?):$|\*/.test(h))).toEqual([])
+  }
+  expect(dir(web, 'connect-src')).toContain('$GATEWAY_URL')
+  for (const csp of [tauri, android]) expect(dir(csp, 'connect-src')).toContain('https://estompe.plbls.fr')
+})
+
+it('apps : le navigateur système n’ouvre que des liens https, mailto et tel', () => {
+  for (const f of ['windows/src-tauri/capabilities/default.json', 'android/src-tauri/capabilities/mobile.json']) {
+    const cap = JSON.parse(readFileSync(`../../apps/estompe/${f}`, 'utf8'))
+    const opener = cap.permissions.find((p: { identifier?: string }) => p.identifier === 'opener:allow-open-url')
+    for (const { url } of opener.allow as { url: string }[]) expect(url).toMatch(/^(https:\/\/|mailto:|tel:)/)
   }
 })
 

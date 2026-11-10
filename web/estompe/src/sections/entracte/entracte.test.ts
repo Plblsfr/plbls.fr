@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { entracteApi } from '../../lib/api'
+import { platform } from '../../lib/platform'
+import { entracte } from './entracte.svelte'
 import { freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type RequestableSeries, type SearchResult } from './entracte'
 
 const serie = (seasons: Partial<RequestableSeries['seasons'][number]>[]): RequestableSeries => ({
@@ -59,5 +62,26 @@ describe('sections de l’app', () => {
     expect(sections(false, me(true))).toEqual({ messagerie: false, entracte: true })
     expect(sections(true, me(true))).toEqual({ messagerie: true, entracte: true })
     expect(sections(false, me(false))).toEqual({ messagerie: false, entracte: false })
+  })
+})
+
+describe('relevé des notifications', () => {
+  it('deux start() rapprochés ne laissent qu’un relevé périodique, et stop() pendant l’attente l’annule', async () => {
+    vi.spyOn(entracteApi, 'notifications').mockResolvedValue({ items: [], last_id: 0 })
+    const push = platform.notifications.push
+    platform.notifications.push = null
+    const actifs = new Set<unknown>()
+    const pose = vi.spyOn(globalThis, 'setInterval').mockImplementation(((() => { const t = {}; actifs.add(t); return t }) as unknown) as typeof setInterval)
+    const retire = vi.spyOn(globalThis, 'clearInterval').mockImplementation(((t: unknown) => { actifs.delete(t) }) as typeof clearInterval)
+    await Promise.all([entracte.start(), entracte.start()])
+    expect(actifs.size).toBe(1)
+    const fin = entracte.start()
+    entracte.stop()
+    await fin
+    expect(actifs.size).toBe(0)
+    platform.notifications.push = push
+    pose.mockRestore()
+    retire.mockRestore()
+    vi.restoreAllMocks()
   })
 })

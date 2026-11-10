@@ -316,10 +316,7 @@ async fn expulser(
         return Ok(raison_invalide());
     }
     let pseudo = pseudo_de(pool, uid).await;
-    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
-        .bind(&sv.id)
-        .bind(uid)
-        .execute(pool)
+    crate::servers::retirer_membre(pool, &sv.id, uid)
         .await
         .map_err(bd)?;
     state.sortir_du_vocal(&sv.id, uid).await;
@@ -370,11 +367,7 @@ async fn bannir_en_base(
             supprimes.entry(salon).or_default().push(id);
         }
     }
-    sqlx::query("DELETE FROM server_members WHERE server_id=$1::uuid AND user_id=$2::uuid")
-        .bind(serveur)
-        .bind(uid)
-        .execute(&mut *tx)
-        .await?;
+    crate::servers::retirer_membre(&mut *tx, serveur, uid).await?;
     tx.commit().await?;
     Ok((fin, libelle, supprimes))
 }

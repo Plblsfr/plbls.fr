@@ -24,6 +24,8 @@ function describe(status: number, fromBody: string): string {
   return `Erreur HTTP ${status}`;
 }
 
+const DELAI = 30_000;
+
 export async function api<T = void>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
@@ -32,8 +34,10 @@ export async function api<T = void>(method: string, path: string, body?: unknown
       credentials: "include",
       headers: body === undefined ? {} : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(DELAI),
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "TimeoutError") throw new ApiError(0, "Le gateway ne répond pas (délai dépassé)");
     throw new ApiError(0, "Gateway injoignable (réseau, CORS ou certificat)");
   }
   if (!res.ok) {
