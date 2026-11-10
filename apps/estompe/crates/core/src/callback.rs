@@ -5,6 +5,7 @@ use std::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
 
 const TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const MAX_LIGNE: usize = 8192;
 
 /// Attend « GET /callback?... » et renvoie la query string ; ignore les autres requêtes (favicon, sondes).
 pub fn accept(listener: TcpListener) -> Result<String, String> {
@@ -32,10 +33,25 @@ pub fn accept(listener: TcpListener) -> Result<String, String> {
 
 /// Renvoie la query de « GET /callback?... » ; None pour toute autre requête.
 fn read(stream: &mut TcpStream) -> Option<String> {
+    stream.set_nonblocking(false).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-    let mut buf = [0u8; 4096];
-    let n = stream.read(&mut buf).ok()?;
-    let head = String::from_utf8_lossy(&buf[..n]);
+    parse(stream)
+}
+
+fn parse(source: &mut impl Read) -> Option<String> {
+    let mut head = Vec::new();
+    let mut buf = [0u8; 1024];
+    while !head.windows(2).any(|w| w == b"\r\n") {
+        if head.len() >= MAX_LIGNE {
+            return None;
+        }
+        let n = source.read(&mut buf[..(MAX_LIGNE - head.len()).min(1024)]).ok()?;
+        if n == 0 {
+            break;
+        }
+        head.extend_from_slice(&buf[..n]);
+    }
+    let head = String::from_utf8_lossy(&head);
     let line = head.lines().next()?;
     let target = line.strip_prefix("GET ")?.split(' ').next()?;
     let query = target.strip_prefix("/callback?")?;
@@ -85,6 +101,52 @@ mod tests {
         assert_eq!(roundtrip("POST /callback?code=x HTTP/1.1\r\n\r\n"), None);
         assert_eq!(roundtrip("GET /callback HTTP/1.1\r\n\r\n"), None);
         assert_eq!(roundtrip("n'importe quoi"), None);
+    }
+
+    struct Morceaux(Vec<Vec<u8>>);
+
+    impl Read for Morceaux {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.is_empty() {
+                return Ok(0);
+            }
+            let morceau = self.0.remove(0);
+            let n = morceau.len().min(buf.len());
+            buf[..n].copy_from_slice(&morceau[..n]);
+            if n < morceau.len() {
+                self.0.insert(0, morceau[n..].to_vec());
+            }
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn lit_une_requete_arrivee_en_plusieurs_morceaux() {
+        let mut source = Morceaux(["GET /call", "back?code=abc", "&state=xyz HTTP/1.1\r", "\nHost: x\r\n\r\n"].map(|m| m.as_bytes().to_vec()).to_vec());
+        assert_eq!(parse(&mut source).as_deref(), Some("code=abc&state=xyz"));
+    }
+
+    #[test]
+    fn refuse_une_ligne_de_requete_trop_longue() {
+        let longue = format!("GET /callback?code={} HTTP/1.1\r\n\r\n", "a".repeat(MAX_LIGNE)).into_bytes();
+        assert_eq!(parse(&mut Morceaux(vec![longue])), None);
+    }
+
+    #[test]
+    fn attend_la_requete_sur_une_socket_acceptee_en_mode_non_bloquant() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (pret, attente) = std::sync::mpsc::channel::<()>();
+        let client = std::thread::spawn(move || {
+            let mut s = TcpStream::connect(addr).unwrap();
+            attente.recv().unwrap();
+            s.write_all(b"GET /callback?code=abc HTTP/1.1\r\n\r\n").unwrap();
+        });
+        let (mut stream, _) = listener.accept().unwrap();
+        stream.set_nonblocking(true).unwrap();
+        pret.send(()).unwrap();
+        assert_eq!(read(&mut stream).as_deref(), Some("code=abc"));
+        client.join().unwrap();
     }
 }
 
