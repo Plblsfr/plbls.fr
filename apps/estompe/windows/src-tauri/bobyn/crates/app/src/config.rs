@@ -129,6 +129,11 @@ impl Config {
         std::fs::write(path, serde_json::to_string_pretty(self).map_err(std::io::Error::other)?)
     }
 
+    /// Dossier de sauvegarde choisi : chemin local absolu (`X:\\…`), sans `.` ni `..`, ni partage réseau, ni racine d'un lecteur.
+    pub fn check_dir(&self) -> Result<(), String> {
+        self.dir.as_deref().map_or(Ok(()), check_dir)
+    }
+
     pub fn save_dir(&self) -> PathBuf {
         self.dir.as_ref().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("USERPROFILE").unwrap_or_default()).join("Videos").join("Replays"))
     }
@@ -173,9 +178,34 @@ pub fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
     key.map(|k| (mods, k))
 }
 
+fn check_dir(dir: &str) -> Result<(), String> {
+    let b = dir.as_bytes();
+    let drive = b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/');
+    let parts: Vec<&str> = if drive { dir[3..].split(['\\', '/']).filter(|p| !p.is_empty()).collect() } else { Vec::new() };
+    let clean = parts.iter().all(|p| *p != "." && *p != ".." && !p.chars().any(|c| c.is_control() || "<>:\"|?*".contains(c)));
+    if clean && !parts.is_empty() && dir.len() <= 240 {
+        Ok(())
+    } else {
+        Err(format!("dossier de sauvegarde refusé : {dir} (chemin complet d'un dossier local attendu, ex. D:\\Replays)"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dossier_de_sauvegarde() {
+        for ok in [r"C:\Users\moi\Videos\Replays", "D:/Replays", r"E:\Jeux\Clips\"] {
+            assert_eq!(check_dir(ok), Ok(()), "{ok}");
+        }
+        for ko in ["", "Replays", "éé/x", r"\\serveur\partage\replays", r"\\?\C:\Replays", "//serveur/partage", r"C:\", "C:", r"C:\Users\..\Windows", r"C:\.\x", r"C:Replays", r"C:\a:b", "C:\\a\u{0}b", "/home/moi"] {
+            assert!(check_dir(ko).is_err(), "{ko}");
+        }
+        assert!(Config::default().check_dir().is_ok());
+        let c = Config { dir: Some(r"\\pc\c$".into()), ..Default::default() };
+        assert!(c.check_dir().is_err());
+    }
 
     #[test]
     fn hotkeys() {

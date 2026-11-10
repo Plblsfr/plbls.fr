@@ -31,6 +31,17 @@ impl std::fmt::Display for Rejected {
 
 impl std::error::Error for Rejected {}
 
+#[derive(Debug)]
+pub struct Indisponible(pub String);
+
+impl std::fmt::Display for Indisponible {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Indisponible {}
+
 #[derive(Debug, Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
@@ -122,8 +133,67 @@ pub struct Oidc {
     jwks: RwLock<Option<JwkSet>>,
     /// Dernier rechargement du JWKS déclenché par un `kid` inconnu.
     last_reload: std::sync::Mutex<Option<Instant>>,
-    /// Clients du realm portant le scope `audience`, et date de lecture.
-    clients: RwLock<Option<(Instant, HashSet<String>)>>,
+    clients: RwLock<Clients>,
+    recharge_clients: tokio::sync::Mutex<()>,
+}
+
+#[derive(Default)]
+struct Clients {
+    liste: Option<(Instant, HashSet<String>)>,
+    echec: Option<Instant>,
+}
+
+#[derive(Debug, PartialEq)]
+enum Decision {
+    Autorise,
+    Refuse,
+    Recharger,
+    Indisponible,
+}
+
+impl Clients {
+    fn decision(&self, azp: &str) -> Decision {
+        let echec_recent = self
+            .echec
+            .is_some_and(|t| t.elapsed() < CLIENTS_MISS_RELOAD_EVERY);
+        let connu = match &self.liste {
+            Some((at, set)) if at.elapsed() < CLIENTS_TTL => {
+                if set.contains(azp) {
+                    return Decision::Autorise;
+                }
+                if at.elapsed() < CLIENTS_MISS_RELOAD_EVERY || echec_recent {
+                    return Decision::Refuse;
+                }
+                return Decision::Recharger;
+            }
+            Some((_, set)) => set.contains(azp),
+            None if echec_recent => return Decision::Indisponible,
+            None => return Decision::Recharger,
+        };
+        match (echec_recent, connu) {
+            (false, _) => Decision::Recharger,
+            (true, true) => Decision::Autorise,
+            (true, false) => Decision::Refuse,
+        }
+    }
+}
+
+const CLIENTS_PAGE: usize = 500;
+
+async fn toutes_les_pages<T, F, Fut>(max: usize, mut page: F) -> anyhow::Result<Vec<T>>
+where
+    F: FnMut(usize) -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<Vec<T>>>,
+{
+    let mut tout = Vec::new();
+    loop {
+        let lus = page(tout.len()).await?;
+        let fin = lus.len() < max;
+        tout.extend(lus);
+        if fin {
+            return Ok(tout);
+        }
+    }
 }
 
 /// Durée de validité de la liste des clients : un scope retiré à un client coupe son accès au bout de ce délai.
@@ -146,7 +216,8 @@ impl Oidc {
             meta: OnceCell::new(),
             jwks: RwLock::new(None),
             last_reload: Default::default(),
-            clients: RwLock::new(None),
+            clients: Default::default(),
+            recharge_clients: Default::default(),
         })
     }
 
@@ -265,17 +336,16 @@ impl Oidc {
         let token = self
             .token_request(vec![("grant_type", "client_credentials".into())])
             .await?;
-        // shortcut: une seule page de 1000 clients, paginer si le realm en dépasse.
-        let list: Vec<KcClient> = self
-            .http
-            .get(self.admin_url("clients"))
-            .bearer_auth(token.access_token)
-            .query(&[("max", "1000")])
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+        let url = self.admin_url("clients");
+        let list: Vec<KcClient> = toutes_les_pages(CLIENTS_PAGE, |first| {
+            let req = self
+                .http
+                .get(&url)
+                .bearer_auth(&token.access_token)
+                .query(&[("first", first), ("max", CLIENTS_PAGE)]);
+            async move { Ok(req.send().await?.error_for_status()?.json().await?) }
+        })
+        .await?;
         let scope = &self.cfg.audience;
         Ok(list
             .into_iter()
@@ -288,22 +358,43 @@ impl Oidc {
 
     /// `azp` d'un client du realm portant le scope `audience`. Liste en cache, relue à l'expiration ou sur `azp` inconnu.
     async fn client_allowed(&self, azp: &str) -> anyhow::Result<bool> {
-        let stale = match &*self.clients.read().await {
-            Some((at, set)) if at.elapsed() < CLIENTS_TTL => {
-                if set.contains(azp) {
-                    return Ok(true);
+        let mut verrou = None;
+        loop {
+            let decision = self.clients.read().await.decision(azp);
+            match decision {
+                Decision::Autorise => return Ok(true),
+                Decision::Refuse => return Ok(false),
+                Decision::Indisponible => {
+                    return Err(Indisponible("liste des clients indisponible".into()).into());
                 }
-                at.elapsed() >= CLIENTS_MISS_RELOAD_EVERY
+                Decision::Recharger if verrou.is_some() => break,
+                Decision::Recharger => verrou = Some(self.recharge_clients.lock().await),
             }
-            _ => true,
-        };
-        if !stale {
-            return Ok(false);
         }
-        let set = self.fetch_clients().await?;
-        let ok = set.contains(azp);
-        *self.clients.write().await = Some((Instant::now(), set));
-        Ok(ok)
+        let lu = self.fetch_clients().await;
+        let mut clients = self.clients.write().await;
+        match lu {
+            Ok(set) => {
+                let ok = set.contains(azp);
+                *clients = Clients {
+                    liste: Some((Instant::now(), set)),
+                    echec: None,
+                };
+                Ok(ok)
+            }
+            Err(e) => {
+                clients.echec = Some(Instant::now());
+                match &clients.liste {
+                    Some((_, set)) => {
+                        tracing::warn!(
+                            "liste des clients non relue, ancienne liste conservée: {e:#}"
+                        );
+                        Ok(set.contains(azp))
+                    }
+                    None => Err(Indisponible(format!("liste des clients: {e:#}")).into()),
+                }
+            }
+        }
     }
 
     /// Comptes dont le nom d'utilisateur, l'e-mail ou le nom commence par `search` (API admin Keycloak, compte de
@@ -531,11 +622,148 @@ mod tests {
         assert!(o.reload_allowed(true));
     }
 
+    fn clients(age: Option<Duration>, echec: Option<Duration>) -> Clients {
+        Clients {
+            liste: age.map(|a| {
+                (
+                    Instant::now() - a,
+                    HashSet::from(["plbls-android".to_string()]),
+                )
+            }),
+            echec: echec.map(|a| Instant::now() - a),
+        }
+    }
+
+    #[test]
+    fn clients_decision() {
+        let s = Duration::from_secs;
+        let cas = [
+            (
+                clients(Some(s(0)), None),
+                "plbls-android",
+                Decision::Autorise,
+            ),
+            (clients(Some(s(0)), None), "inconnu", Decision::Refuse),
+            (clients(Some(s(20)), None), "inconnu", Decision::Recharger),
+            (
+                clients(Some(s(20)), Some(s(1))),
+                "inconnu",
+                Decision::Refuse,
+            ),
+            (
+                clients(Some(s(90)), None),
+                "plbls-android",
+                Decision::Recharger,
+            ),
+            (
+                clients(Some(s(90)), Some(s(1))),
+                "plbls-android",
+                Decision::Autorise,
+            ),
+            (
+                clients(Some(s(90)), Some(s(1))),
+                "inconnu",
+                Decision::Refuse,
+            ),
+            (
+                clients(Some(s(90)), Some(s(20))),
+                "plbls-android",
+                Decision::Recharger,
+            ),
+            (clients(None, None), "plbls-android", Decision::Recharger),
+            (
+                clients(None, Some(s(1))),
+                "plbls-android",
+                Decision::Indisponible,
+            ),
+            (
+                clients(None, Some(s(20))),
+                "plbls-android",
+                Decision::Recharger,
+            ),
+        ];
+        for (i, (c, azp, attendu)) in cas.into_iter().enumerate() {
+            assert_eq!(c.decision(azp), attendu, "cas {i}");
+        }
+    }
+
+    fn oidc_injoignable() -> Oidc {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let mut o = oidc("");
+        o.cfg.issuer = format!("http://127.0.0.1:{port}/realms/plbls");
+        o
+    }
+
+    #[tokio::test]
+    async fn keycloak_down_keeps_previous_clients() {
+        let o = oidc_injoignable();
+        *o.clients.write().await = clients(Some(CLIENTS_TTL * 2), None);
+        assert!(
+            o.client_allowed("plbls-android").await.unwrap(),
+            "ancienne liste conservée"
+        );
+        assert!(!o.client_allowed("inconnu").await.unwrap());
+        assert!(
+            o.clients.read().await.echec.is_some(),
+            "échec noté : pas de rappel immédiat"
+        );
+    }
+
+    #[tokio::test]
+    async fn keycloak_down_without_clients_is_unavailable() {
+        let o = oidc_injoignable();
+        for _ in 0..2 {
+            let e = o.client_allowed("plbls-android").await.unwrap_err();
+            assert!(e.is::<Indisponible>(), "{e:#}");
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_reloads_wait_for_the_first() {
+        let o = oidc_injoignable();
+        let verrou = o.recharge_clients.lock().await;
+        let attente = o.client_allowed("plbls-android");
+        tokio::pin!(attente);
+        assert!(
+            futures_util::FutureExt::now_or_never(attente.as_mut()).is_none(),
+            "rechargement en cours : on attend"
+        );
+        *o.clients.write().await = clients(Some(Duration::ZERO), None);
+        drop(verrou);
+        assert!(attente.await.unwrap(), "liste relue par l'autre requête");
+        assert!(
+            o.clients.read().await.echec.is_none(),
+            "pas de second appel à Keycloak"
+        );
+    }
+
+    #[tokio::test]
+    async fn clients_pages_until_short_page() {
+        let mut firsts = Vec::new();
+        let tout = toutes_les_pages(2, |first| {
+            firsts.push(first);
+            async move { Ok((first..(first + 2).min(5)).collect::<Vec<_>>()) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(tout, vec![0, 1, 2, 3, 4]);
+        assert_eq!(firsts, vec![0, 2, 4]);
+        let pleines = toutes_les_pages(2, |first| async move {
+            Ok((first..(first + 2).min(4)).collect::<Vec<_>>())
+        })
+        .await
+        .unwrap();
+        assert_eq!(pleines.len(), 4, "dernière page vide");
+    }
+
     #[tokio::test]
     async fn client_allowed_uses_cached_scope_list() {
         let o = oidc("");
-        *o.clients.write().await =
-            Some((Instant::now(), HashSet::from(["plbls-android".to_string()])));
+        *o.clients.write().await = clients(Some(Duration::ZERO), None);
         assert!(
             o.client_allowed("plbls-android").await.unwrap(),
             "client connu"
