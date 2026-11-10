@@ -13,7 +13,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             estompe_core::commands::oauth_start, estompe_core::commands::oauth_wait, estompe_core::commands::native_fetch,
-            estompe_core::commands::secret_set, estompe_core::commands::secret_get, estompe_core::commands::secret_delete,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear])
         .run(tauri::generate_context!())
         .expect("erreur au lancement d'Estompe");

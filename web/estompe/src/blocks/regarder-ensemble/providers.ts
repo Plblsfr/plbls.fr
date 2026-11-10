@@ -2,7 +2,7 @@ import { entracteOn, filmsApi, ApiError } from '../../lib/api'
 import { absolute, directOk, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../films/films'
 import { playerError } from './watch'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type Hls from 'hls.js'
 
 /** État d'un lecteur, commun à toutes les sources. */
 export type PState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued'
@@ -49,11 +49,12 @@ export const PROVIDER_LABEL: Record<string, string> = {
 }
 
 /** Message reçu d'un lecteur intégré : objet, ou JSON en texte ; autre chose : null. */
-function parseMessage(data: unknown): Record<string, any> | null {
+function parseMessage(data: unknown): Record<string, unknown> | null {
   let d = data
   if (typeof d === 'string') { try { d = JSON.parse(d) } catch { return null } }
-  return d && typeof d === 'object' && !Array.isArray(d) ? (d as Record<string, any>) : null
+  return objet(d)
 }
+const objet = (x: unknown): Record<string, unknown> | null => x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>) : null
 const num = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
 
 /** iframe d'un lecteur : ses messages ne sont acceptés que de son origine et de sa fenêtre. */
@@ -87,8 +88,8 @@ export function readYouTube(data: unknown): YouTubeInfo | null {
     case 'onAutoplayBlocked': return { blocked: true }
     case 'onPlaybackRateChange': return num(m.info) ? { rate: m.info } : null
     case 'initialDelivery': case 'infoDelivery': {
-      const i = m.info
-      if (!i || typeof i !== 'object') return null
+      const i = objet(m.info)
+      if (!i) return null
       const r: YouTubeInfo = {}
       if (num(i.currentTime)) r.time = i.currentTime
       if (num(i.duration)) r.duration = i.duration
@@ -154,7 +155,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
   if (crossOrigin) v.crossOrigin = 'anonymous'
   v.style.cssText = 'width:100%;height:100%;background:#000'
   el.appendChild(v)
-  let hls: any = null
+  let hls: Hls | null = null
   let buffering = false
   const state = (): PState => {
     if (v.ended) return 'ended'
@@ -175,11 +176,12 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
       if (isHls(ref) && !v.canPlayType('application/vnd.apple.mpegurl')) {
         void import('hls.js').then(({ default: Hls }) => {
           if (!Hls.isSupported()) return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
-          hls = new Hls({ enableWorker: false }) // pas de worker : la CSP n'autorise pas blob: pour les workers
-          hls.on(Hls.Events.ERROR, (_: unknown, d: { fatal?: boolean }) => { if (d.fatal) h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).') })
-          hls.on(Hls.Events.MANIFEST_PARSED, go)
-          hls.loadSource(ref)
-          hls.attachMedia(v)
+          const l = new Hls({ enableWorker: false }) // pas de worker : la CSP n'autorise pas blob: pour les workers
+          hls = l
+          l.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).') })
+          l.on(Hls.Events.MANIFEST_PARSED, go)
+          l.loadSource(ref)
+          l.attachMedia(v)
         }).catch(() => h.onError("Le lecteur HLS n'a pas pu être chargé."))
         return
       }
@@ -348,8 +350,8 @@ export function readVimeo(data: unknown): VimeoInfo | null {
   if (!m) return null
   if (typeof m.event === 'string') {
     const i: VimeoInfo = { event: m.event }
-    const x = m.data
-    if (x && typeof x === 'object') {
+    const x = objet(m.data)
+    if (x) {
       if (num(x.seconds)) i.time = x.seconds
       if (num(x.duration)) i.duration = x.duration
       if (typeof x.method === 'string') i.method = x.method

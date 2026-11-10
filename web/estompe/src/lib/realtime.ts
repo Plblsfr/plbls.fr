@@ -1,5 +1,61 @@
 import { debug } from './debuglog.svelte'
-export interface RealtimeEvent { type: string; data: any }
+import type { ChatLine, DrawOp, DrawPrivate, DrawState } from '../blocks/draw2gether/draw'
+import type { Channel, Member, Message, NotifySettings, Read, ServerNotification, Status, WatchView } from './types'
+
+type Conversation = { channel_id: string; dm_id?: undefined } | { channel_id?: undefined; dm_id: string }
+type Salon = { channel_id: string }
+
+export interface RealtimeEvents {
+  'presence.snapshot': { online: string[]; activities?: Record<string, string> }
+  'avatar.updated': { user_id: string; version: number }
+  'server_avatar.updated': { server_id: string; user_id: string; version: number }
+  typing: Conversation & { user_id: string; pseudo: string }
+  'read.updated': Conversation & Read
+  'status.updated': { user_id: string; status: Status }
+  'activity.updated': { user_id: string; name?: string | null }
+  'notify_settings.updated': NotifySettings
+  notification: ServerNotification
+  'emoji.updated': { server_id: string }
+  presence: { user_id: string; online: boolean }
+  'message.created': Message
+  'message.updated': Message
+  'message.deleted': Conversation & { id: string }
+  'reaction.updated': { message_id: string; emoji: string; user_id: string; pseudo?: string; added: boolean }
+  'poll.voted': { message_id: string; user_id: string; options: string[]; counts: Record<string, number> }
+  'poll.closed': { message_id: string; closes_at: string }
+  mention: Message
+  'channel.created': { server_id: string; channel: Channel; after?: string }
+  'channel.updated': { server_id: string; id: string; name: string }
+  'channel.reordered': { server_id: string; ids: string[] }
+  'banner.updated': { user_id: string; color?: string }
+  'channel.deleted': { server_id: string; id: string }
+  'server.updated': { id: string; name: string }
+  'server_icon.updated': { id: string; version: number }
+  'server.deleted': { id: string }
+  'member.joined': { server_id: string; member: Member }
+  'member.left': { server_id: string; user_id: string; kind?: 'kick' | 'ban' | null; reason?: string | null; until?: string | null }
+  'roles.updated': { server_id: string }
+  'member.timeout': { server_id: string; user_id: string; until: string | null; reason?: string }
+  'member.warned': { server_id: string; reason?: string }
+  'member.nickname': { server_id: string; user_id: string; nickname?: string }
+  'messages.deleted': Salon & { ids: string[] }
+  'voice.moved': { from: string; to: string; to_name: string; by: string }
+  'voice.disconnected': Salon & { server_id: string }
+  'voice.state': Salon & { server_id: string; user_id: string; pseudo: string; joined: boolean; at?: string }
+  'watch.state': Salon & WatchView
+  'music.state': Salon & WatchView
+  'cinema.state': Salon & WatchView
+  'draw.state': Salon & { state: DrawState | null; now: number }
+  'draw.private': Salon & DrawPrivate & { rev: number }
+  'draw.chat': Salon & ChatLine
+  'draw.ops': Salon & { seq: number; ops: DrawOp[] }
+  'videos.changed': Salon
+  'voice.share': Salon & { user_id: string; source: 'screen' | 'camera'; on: boolean }
+  'voice.mod': Salon & { user_id: string; mic_off: boolean; sound_off: boolean }
+  pong: Record<string, never>
+}
+
+export type RealtimeEvent = { [K in keyof RealtimeEvents]: { type: K; data: RealtimeEvents[K] } }[keyof RealtimeEvents]
 export type RealtimeStatus = 'connecting' | 'open' | 'closed'
 
 export interface RealtimeOptions {
@@ -110,7 +166,7 @@ export class Realtime {
     ws.onmessage = (m) => {
       this.lastSeen = Date.now()
       try {
-        const ev = JSON.parse(m.data as string)
+        const ev = JSON.parse(m.data as string) as RealtimeEvent
         if (ev.type !== 'pong') this.o.onEvent(ev)
       } catch { /* trame illisible : ignorée */ }
     }

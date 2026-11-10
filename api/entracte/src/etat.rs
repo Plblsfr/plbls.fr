@@ -33,11 +33,7 @@ pub struct Inner {
 pub struct AppState(Arc<Inner>);
 
 pub fn client_http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .expect("client HTTP")
+    commun::http::client(Duration::from_secs(15))
 }
 
 impl AppState {

@@ -3,6 +3,8 @@ use std::{
     time::Duration,
 };
 
+use commun::config::nettoie;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Arr {
     pub url: String,
@@ -78,16 +80,6 @@ pub struct Config {
     pub vapid_privee: String,
     pub vapid_sujet: String,
     pub fcm: String,
-}
-
-pub fn nettoie(valeur: &str) -> String {
-    let v = valeur.trim();
-    for q in ['"', '\''] {
-        if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
-            return v[1..v.len() - 1].to_string();
-        }
-    }
-    v.to_string()
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {

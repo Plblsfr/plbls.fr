@@ -18,7 +18,7 @@ micro-services ───── réseau Docker, Bearer de service ou identité tr
 
 ## Authentification des appels
 
-- **Utilisateur** : en-têtes d'identité signés par auth-gateway (`docs/gateway.md` de security) ; `src/identity.rs` en est la copie de référence côté vérification. Secret vide = tout refusé, et le backend refuse de démarrer.
+- **Utilisateur** : en-têtes d'identité signés par auth-gateway (`docs/gateway.md` de security) ; `api/commun/src/identite.rs` (`verify`, partagé avec security et aegis) fait la vérification. Secret vide = tout refusé, et le backend refuse de démarrer.
 - **Service** : Bearer propre à chaque service, comparé en temps constant ; lecture seule.
 - **Administration** : réservée aux utilisateurs portant le rôle Keycloak `server.admin_role` **ou** la permission `permission:admin` (application réservée `permission`, créée par la migration `0002`). Le rôle Keycloak amorce le système et reste la porte de secours : pas de problème d'œuf et de poule au premier démarrage, ni de verrouillage possible.
 

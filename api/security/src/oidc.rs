@@ -207,6 +207,7 @@ const JWKS_RELOAD_EVERY: Duration = Duration::from_secs(30);
 impl Oidc {
     pub fn new(cfg: OidcSettings) -> anyhow::Result<Self> {
         let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(std::time::Duration::from_secs(5))
             .timeout(std::time::Duration::from_secs(10))
             .build()?;

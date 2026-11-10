@@ -155,6 +155,7 @@ fn client() -> Client {
         .get_or_init(|| {
             Client::builder()
                 .timeout(DELAI)
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("client HTTP")
         })

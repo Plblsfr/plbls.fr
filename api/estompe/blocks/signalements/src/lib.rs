@@ -12,10 +12,9 @@ use axum::{
 use estompe_core::{
     administration::{Admin, ecrire_bot, journaliser},
     api::ActiveUser,
-    fichiers::est_uuid,
     http::{champ, champ_texte, decode, internal, write_err, write_json},
     openapi,
-    servers::{horodatage, rfc3339},
+    servers::{horodatage, pool, rfc3339, uuid_valide},
     state::AppState,
 };
 use regex::Regex;
@@ -68,10 +67,6 @@ fn introuvable() -> Response {
 fn base(e: sqlx::Error) -> Response {
     tracing::warn!("base : {e}");
     internal()
-}
-
-fn pool(state: &AppState) -> Result<&PgPool, Response> {
-    state.pool().map_err(IntoResponse::into_response)
 }
 
 fn ajouter_non_vide(m: &mut Map<String, Value>, nom: &str, v: String) {
@@ -195,7 +190,7 @@ async fn creer(
         || tech.iter().any(|(k, v)| {
             k.is_empty() || trop_long(k, 40) || trop_long(v.as_str().unwrap_or(""), 300)
         })
-        || ids.iter().any(|i| !est_uuid(i));
+        || ids.iter().any(|i| !uuid_valide(i));
     if invalide {
         return Ok(write_err(
             StatusCode::BAD_REQUEST,
@@ -333,7 +328,7 @@ async fn detail_admin(
     _: Admin,
     Path(id): Path<String>,
 ) -> Result<Response, Response> {
-    if !est_uuid(&id) {
+    if !uuid_valide(&id) {
         return Ok(introuvable());
     }
     match signalement_admin(pool(&state)?, &id).await.map_err(base)? {
@@ -348,7 +343,7 @@ async fn modifier(
     Path(id): Path<String>,
     corps: Body,
 ) -> Result<Response, Response> {
-    if !est_uuid(&id) {
+    if !uuid_valide(&id) {
         return Ok(introuvable());
     }
     let e = decode(corps).await?;
@@ -362,7 +357,7 @@ async fn modifier(
     let libelle = STATUTS.iter().find(|(c, _)| *c == statut).map(|(_, l)| *l);
     if libelle.is_none()
         || trop_long(&notes, 4000)
-        || origine.as_deref().is_some_and(|o| !est_uuid(o))
+        || origine.as_deref().is_some_and(|o| !uuid_valide(o))
     {
         return Ok(write_err(
             StatusCode::BAD_REQUEST,
@@ -432,7 +427,7 @@ async fn supprimer(
     Admin(idn): Admin,
     Path(id): Path<String>,
 ) -> Result<Response, Response> {
-    if !est_uuid(&id) {
+    if !uuid_valide(&id) {
         return Ok(introuvable());
     }
     let pool = pool(&state)?;

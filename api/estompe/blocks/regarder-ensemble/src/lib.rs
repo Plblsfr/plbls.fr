@@ -23,6 +23,7 @@ use estompe_core::{
     http::{champ, champ_texte, decode, internal, write_err, write_json},
     messages::{self, Conv},
     openapi, roles,
+    servers::{self, uuid_valide},
     state::{AppState, FilmResolu, RefusFilm},
     users::User,
 };
@@ -168,14 +169,6 @@ struct Salon {
     id: String,
 }
 
-fn uuid_valide(s: &str) -> bool {
-    s.len() == 36
-        && s.bytes().enumerate().all(|(i, b)| match i {
-            8 | 13 | 18 | 23 => b == b'-',
-            _ => b.is_ascii_hexdigit(),
-        })
-}
-
 fn introuvable(message: &str) -> Response {
     write_err(StatusCode::NOT_FOUND, "not_found", message)
 }
@@ -223,28 +216,9 @@ async fn salon_vocal(
             "vocal indisponible",
         ));
     }
-    if !uuid_valide(cid) {
-        return Err(introuvable("introuvable"));
-    }
-    let pool = state.pool().map_err(IntoResponse::into_response)?;
-    let (serveur, kind) = sqlx::query_as::<_, (String, String)>(
-        "SELECT c.server_id::text, c.kind FROM channels c
-         JOIN server_members m ON m.server_id = c.server_id WHERE c.id=$1::uuid AND m.user_id=$2::uuid",
-    )
-    .bind(cid)
-    .bind(&user.id)
-    .fetch_optional(pool)
-    .await
-    .map_err(bd)?
-    .ok_or_else(|| introuvable("introuvable"))?;
-    let acces = state
-        .acces_serveur(&serveur, &user.id)
-        .await
-        .map_err(bd)?
-        .ok_or_else(|| introuvable("introuvable"))?;
-    if !roles::contient(acces.channel(cid), roles::VIEW_CHANNEL) {
-        return Err(introuvable("introuvable"));
-    }
+    let servers::SalonVisible {
+        id, serveur, kind, ..
+    } = servers::salon_visible(state, cid, &user.id).await?;
     if kind != genre.salon() {
         return Err(if genre == Genre::Cinema {
             write_err(
@@ -260,10 +234,7 @@ async fn salon_vocal(
             )
         });
     }
-    Ok(Salon {
-        serveur,
-        id: cid.to_string(),
-    })
+    Ok(Salon { serveur, id })
 }
 
 async fn salon_ecriture(
