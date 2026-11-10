@@ -295,8 +295,8 @@ export class AppStore {
   }
 
   handleEvent(ev: RealtimeEvent) {
-    const d = ev.data
-    switch (ev.type) {
+    const { type, data: d } = ev
+    switch (type) {
       case 'presence.snapshot':
         this.online = Object.fromEntries((d.online as string[]).map((id) => [id, true]))
         this.activities = d.activities ?? {}
@@ -308,11 +308,11 @@ export class AppStore {
         avatars.updateServer(d.server_id as string, d.user_id as string, d.version as number)
         break
       case 'typing':
-        this.onTyping(d.channel_id ? channelKey(d.channel_id) : dmKey(d.dm_id), d.user_id, d.pseudo)
+        this.onTyping(convKeyOf(d), d.user_id, d.pseudo)
         break
       case 'read.updated':
       {
-        const key = d.channel_id ? channelKey(d.channel_id) : dmKey(d.dm_id)
+        const key = convKeyOf(d)
         ;(this.reads[key] ??= {})[d.user_id] = d
         if (d.user_id === this.meId) this.clearLocalUnread(key)
         break
@@ -347,7 +347,7 @@ export class AppStore {
         this.onMessageUpdated(d as Message)
         break
       case 'message.deleted':
-        this.removeMessage(d.channel_id ? channelKey(d.channel_id) : dmKey(d.dm_id), d.id)
+        this.removeMessage(convKeyOf(d), d.id)
         if (d.channel_id) videos.changed(d.channel_id)
         break
       case 'reaction.updated':
