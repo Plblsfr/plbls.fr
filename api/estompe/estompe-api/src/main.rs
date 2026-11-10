@@ -120,10 +120,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print!("{}", routes(&Set::all()).1.to_yaml()?);
         return Ok(());
     }
+    let env = commun::env::Env::charger();
     if std::env::args().nth(1).as_deref() == Some("--manifeste-aegis") {
         let blocs = estompe_block::actifs(&block_list(), &Set::all());
-        let url = std::env::var("AEGIS_RESOURCES_URL")
-            .unwrap_or_else(|_| "http://estompe-api:8080".into());
+        let url = env
+            .get("AEGIS_RESOURCES_URL")
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "http://estompe-api:8080".into());
         println!(
             "{:#}",
             estompe_core::catalogue::manifeste(&blocs, url.trim_end_matches('/'))
@@ -137,11 +140,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
-    let config = Config::from_env().unwrap_or_else(|e| {
+    let config = Config::load(|k| env.get(k)).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });
-    let set = estompe_block::select(&block_list(), |k| std::env::var(k).ok()).unwrap_or_else(|e| {
+    let set = estompe_block::select(&block_list(), |k| env.get(k)).unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(1);
     });

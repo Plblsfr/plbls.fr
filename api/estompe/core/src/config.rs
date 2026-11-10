@@ -84,10 +84,6 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl Config {
-    pub fn from_env() -> Result<Self, ConfigError> {
-        Self::load(|k| std::env::var(k).ok())
-    }
-
     pub fn load(getenv: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
         let get = |k: &str| getenv(k).unwrap_or_default();
         let env = |k: &str, def: &str| {
@@ -107,9 +103,15 @@ impl Config {
         let max_storage_bytes = octets("MAX_STORAGE_GB", "20", 1 << 30)?;
         let max_user_storage_bytes = octets("MAX_USER_STORAGE_MB", "2048", 1 << 20)?;
         let max_video_bytes = octets("MAX_VIDEO_SIZE_MB", "100", 1 << 20)?;
+        let database_url = if get("DATABASE_URL").is_empty() {
+            String::new()
+        } else {
+            commun::env::url_base(&getenv, "estompe").map_err(ConfigError)?
+        };
+        let redis_url = commun::env::url_redis(&getenv).map_err(ConfigError)?;
         let c = Config {
             listen_addr: env("LISTEN_ADDR", ":8080"),
-            database_url: get("DATABASE_URL"),
+            database_url,
             gateway_url: env("GATEWAY_URL", "https://security.plbls.fr"),
             allowed_origins: get("ALLOWED_ORIGINS")
                 .split(',')
@@ -118,13 +120,13 @@ impl Config {
                 .map(String::from)
                 .collect(),
             permission_url: env("PERMISSION_URL", "https://permission.plbls.fr"),
-            permission_token: get("PERMISSION_TOKEN"),
+            permission_token: get("PERMISSION_TOKEN_ESTOMPE"),
             permission_name: env("PERMISSION_NAME", "estompe:access"),
             permission_admin_role: env("PERMISSION_ADMIN_ROLE", "permission-admin"),
             aegis: Aegis {
                 url: get("AEGIS_URL").trim_end_matches('/').to_string(),
-                token: get("AEGIS_TOKEN"),
-                redis_url: get("AEGIS_REDIS_URL"),
+                token: get("AEGIS_TOKEN_ESTOMPE"),
+                redis_url,
                 redis_prefix: env("AEGIS_REDIS_PREFIX", "aegis"),
                 admin_role: env("AEGIS_ADMIN_ROLE", "aegis-admin"),
                 resources_url: env("AEGIS_RESOURCES_URL", "http://estompe-api:8080")
@@ -146,10 +148,10 @@ impl Config {
             transcribe_model: env("TRANSCRIBE_MODEL", "Systran/faster-whisper-small"),
             transcribe_alpha: get("TRANSCRIBE_ALPHA") != "false",
             transcribe_language: get("TRANSCRIBE_LANGUAGE"),
-            entracte_url: get("ESTOMPE_ENTRACTE_URL")
+            entracte_url: get("ENTRACTE_INTERNE_URL")
                 .trim_end_matches('/')
                 .to_string(),
-            entracte_token: get("ESTOMPE_ENTRACTE_TOKEN"),
+            entracte_token: get("ENTRACTE_SERVICE_TOKEN"),
             livekit: Livekit {
                 url: get("LIVEKIT_URL"),
                 api_url: env("LIVEKIT_API_URL", "http://livekit:7880"),
@@ -161,9 +163,9 @@ impl Config {
             },
         };
         let jeton = if c.aegis.actif() {
-            ("AEGIS_TOKEN", &c.aegis.token)
+            ("AEGIS_TOKEN_ESTOMPE", &c.aegis.token)
         } else {
-            ("PERMISSION_TOKEN", &c.permission_token)
+            ("PERMISSION_TOKEN_ESTOMPE", &c.permission_token)
         };
         for (nom, valeur) in [
             ("DATABASE_URL", &c.database_url),
@@ -191,7 +193,7 @@ mod tests {
 
     const OBLIGATOIRES: [(&str, &str); 5] = [
         ("DATABASE_URL", "postgres://x"),
-        ("PERMISSION_TOKEN", "tok"),
+        ("PERMISSION_TOKEN_ESTOMPE", "tok"),
         ("LIVEKIT_URL", "wss://lk"),
         ("LIVEKIT_API_KEY", "k"),
         ("LIVEKIT_API_SECRET", "s"),
@@ -228,7 +230,7 @@ mod tests {
     fn valeurs_par_defaut() {
         let c = charge(&[]).unwrap();
         assert_eq!(c.listen_addr, ":8080");
-        assert_eq!(c.database_url, "postgres://x");
+        assert_eq!(c.database_url, "postgres://x/estompe");
         assert_eq!(c.gateway_url, "https://security.plbls.fr");
         assert!(c.allowed_origins.is_empty());
         assert_eq!(c.permission_url, "https://permission.plbls.fr");
@@ -416,16 +418,16 @@ mod tests {
         assert_eq!(c.aegis.redis_prefix, "aegis");
         assert_eq!(
             erreur(charge_sans(
-                &["PERMISSION_TOKEN"],
+                &["PERMISSION_TOKEN_ESTOMPE"],
                 &[("AEGIS_URL", "http://aegis:8080/")]
             )),
-            "variable manquante : AEGIS_TOKEN"
+            "variable manquante : AEGIS_TOKEN_ESTOMPE"
         );
         let c = charge_sans(
-            &["PERMISSION_TOKEN"],
+            &["PERMISSION_TOKEN_ESTOMPE"],
             &[
                 ("AEGIS_URL", "http://aegis:8080/"),
-                ("AEGIS_TOKEN", "t"),
+                ("AEGIS_TOKEN_ESTOMPE", "t"),
                 ("AEGIS_RESOURCES_URL", "http://api:8080/"),
             ],
         )
@@ -433,5 +435,12 @@ mod tests {
         assert!(c.aegis.actif());
         assert_eq!(c.aegis.url, "http://aegis:8080");
         assert_eq!(c.aegis.resources_url, "http://api:8080");
+        assert_eq!(c.aegis.redis_url, "");
+        let c = charge(&[
+            ("REDIS_URL", "redis://redis:6379"),
+            ("REDIS_PASSWORD", "mdp"),
+        ])
+        .unwrap();
+        assert_eq!(c.aegis.redis_url, "redis://:mdp@redis:6379");
     }
 }

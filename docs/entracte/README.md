@@ -75,26 +75,26 @@ par le service push (404, 410) est retiré. Seuls les services push connus sont 
 `*.notify.windows.com`, `web.push.apple.com`, en https sans port ni IP littérale) ; un abonnement enregistré hors de cette liste est retiré au
 premier envoi sans être contacté. Au plus 10 abonnements par personne : le onzième remplace le plus ancien (réabonner un appareil le
 rajeunit), pour qu'un changement d'appareil ne soit jamais refusé. Les envois partent en tâche de fond, 8 à la fois au plus : refuser une
-demande ou la synchronisation du catalogue n'attendent pas les services push, dont le corps des réponses n'est jamais journalisé. Les clés VAPID et le compte Firebase sont ceux d'Estompe, sous les noms d'Entracte
-(`ENTRACTE_VAPID_*`, `ENTRACTE_FCM_SERVICE_ACCOUNT`) : un navigateur n'a qu'un abonnement push par application, que l'app enregistre
+demande ou la synchronisation du catalogue n'attendent pas les services push, dont le corps des réponses n'est jamais journalisé. Les clés VAPID et le compte Firebase sont ceux d'Estompe, variables communes
+(`VAPID_*`, `FCM_SERVICE_ACCOUNT`) : un navigateur n'a qu'un abonnement push par application, que l'app enregistre
 auprès des deux API, et l'app Android réutilise son jeton FCM. L'app Windows n'a pas de push : elle lit `GET /notifications` et affiche
 elle-même les nouvelles.
 
 ## Salon cinéma d'Estompe
 
 Estompe garde la séance (salon `cinema`, pilotée par l'hôte, évènement `cinema.state`) et vérifie le titre par
-`GET /internal/titles/{id}?sub=` (jeton `ENTRACTE_SERVICE_TOKEN`, côté Estompe `ESTOMPE_ENTRACTE_URL` et `ESTOMPE_ENTRACTE_TOKEN`) : titre
+`GET /internal/titles/{id}?sub=` (jeton `ENTRACTE_SERVICE_TOKEN`, lu par les deux ; côté Estompe, Entracte est joint par `ENTRACTE_INTERNE_URL`) : titre
 jouable, durée, épisodes suivants et droit d'accès de l'hôte. Chaque participant ouvre son propre flux auprès d'Entracte (qualité, piste et
 sous-titres à lui) ; seule la position est synchronisée, et sa progression est enregistrée comme en lecture seule.
 
 ## Actions manuelles
 
-- `plbls.fr-infra` : base PostgreSQL (`CREATE USER entracte …; CREATE DATABASE entracte OWNER entracte;`), sous-domaine
+- `plbls.fr-infra` : base `entracte` sur `postgres-main` (`CREATE DATABASE entracte OWNER plbls;`, propriétaire : l'utilisateur commun `DATABASE_USER`), sous-domaine
   `entracte-api.plbls.fr` et sa route, Radarr et Sonarr joignables depuis la stack (réseau `MEDIAS_NETWORK`), dossier des médias monté en
   lecture seule (`ENTRACTE_MEDIAS`, mêmes chemins que Radarr/Sonarr ou `ENTRACTE_CHEMINS`), périphérique de transcodage ([transcodage.md](transcodage.md)).
-- Vault, `secret/entracte` : `ENTRACTE_DATABASE_URL`, `ENTRACTE_AEGIS_TOKEN`, `ENTRACTE_STREAM_SECRET`, `ENTRACTE_SERVICE_TOKEN`,
+- Vault, `secret/entracte` : `AEGIS_TOKEN_ENTRACTE`, `ENTRACTE_STREAM_SECRET`, `ENTRACTE_SERVICE_TOKEN`,
   `ENTRACTE_RADARR_API_KEY`, `ENTRACTE_SONARR_API_KEY`, `ENTRACTE_TMDB_API_KEY`.
-- aegis : `entracte:<jeton>` dans `AEGIS__SERVICES__TOKENS`, puis les permissions aux comptes.
+- aegis : rien à déclarer (il lit `AEGIS_TOKEN_ENTRACTE` comme application `entracte`), puis les permissions aux comptes.
 - Radarr et Sonarr : webhook vers `https://entracte-api.plbls.fr/webhooks/radarr` (ou `/webhooks/sonarr`), jeton en mot de passe (facultatif).
 - Front : `ENTRACTE_PUBLIC_URL` (web, image `estompe-web`) et `VITE_ENTRACTE_URL` au build des apps natives.
 

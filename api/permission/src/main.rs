@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
 
     let settings = Arc::new(Settings::load()?);
     if settings.identity.secret.is_empty() {
-        anyhow::bail!("PERMISSION__IDENTITY__SECRET est vide");
+        anyhow::bail!("GATEWAY_IDENTITE_SECRET est vide");
     }
     let db = PgPoolOptions::new()
         .max_connections(10)

@@ -5,9 +5,7 @@ static_dir = "static"
 # Rôle Keycloak (realm) qui donne accès à l'administration des permissions.
 admin_role = "permission-admin"
 
-# database.url : PERMISSION__DATABASE__URL (.env)
-# identity.secret : PERMISSION__IDENTITY__SECRET (le même que GATEWAY__IDENTITY__SECRET)
-# services.tokens : PERMISSION__SERVICES__TOKENS, "nom:token,nom2:token2" (micro-services autorisés à interroger
-#                   les permissions de n'importe quel compte)
-# gateway.url / gateway.internal_token : PERMISSION__GATEWAY__URL (ex. http://gateway:8080) et PERMISSION__GATEWAY__INTERNAL_TOKEN
-#                   (= GATEWAY__INTERNAL__TOKEN) ; vides = recherche de comptes par e-mail désactivée
+# database.url : base « permission » du serveur commun (DATABASE_URL, DATABASE_USER, DATABASE_PASSWORD)
+# identity.secret : GATEWAY_IDENTITE_SECRET (commun avec le gateway)
+# services.tokens : une variable PERMISSION_TOKEN_<SERVICE> par micro-service autorisé à interroger les permissions de n'importe quel compte
+# gateway.url / gateway.internal_token : GATEWAY_INTERNE_URL et GATEWAY_INTERNE_TOKEN ; vides = recherche de comptes par e-mail désactivée

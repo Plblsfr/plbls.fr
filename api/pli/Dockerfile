@@ -18,6 +18,7 @@ FROM gcr.io/distroless/cc-debian13:nonroot
 WORKDIR /app
 COPY --from=build /src/target/release/pli /app/pli
 COPY web/pli/public /app/public
+COPY plbls.env /etc/plbls.env
 ENV PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["/app/pli"]

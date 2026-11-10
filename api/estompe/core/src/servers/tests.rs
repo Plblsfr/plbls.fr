@@ -641,8 +641,8 @@ fn cinema_avec_entracte_seulement() {
     let blocs = |b: &[&str]| b.iter().map(|x| x.to_string()).collect::<Vec<_>>();
     let entracte = || {
         config_avec(&[
-            ("ESTOMPE_ENTRACTE_URL", "http://entracte:8080/"),
-            ("ESTOMPE_ENTRACTE_TOKEN", "t"),
+            ("ENTRACTE_INTERNE_URL", "http://entracte:8080/"),
+            ("ENTRACTE_SERVICE_TOKEN", "t"),
         ])
     };
     assert!(!cinema_disponible(&AppState::new(
@@ -684,8 +684,8 @@ async fn salon_cinema_seulement_avec_entracte() {
         permission,
         vec!["regarder-ensemble".into()],
         &[
-            ("ESTOMPE_ENTRACTE_URL", "http://entracte:8080"),
-            ("ESTOMPE_ENTRACTE_TOKEN", "t"),
+            ("ENTRACTE_INTERNE_URL", "http://entracte:8080"),
+            ("ENTRACTE_SERVICE_TOKEN", "t"),
         ],
     )
     .await

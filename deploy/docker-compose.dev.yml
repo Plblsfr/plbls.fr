@@ -53,9 +53,8 @@ services:
 configs:
   bases:
     content: |
-      CREATE ROLE permission LOGIN PASSWORD 'permission';
-      CREATE DATABASE permission OWNER permission;
-      CREATE ROLE aegis LOGIN PASSWORD 'aegis';
-      CREATE DATABASE aegis OWNER aegis;
-      CREATE ROLE entracte LOGIN PASSWORD 'entracte';
-      CREATE DATABASE entracte OWNER entracte;
+      CREATE DATABASE permission;
+      CREATE DATABASE aegis;
+      CREATE DATABASE pli;
+      CREATE DATABASE entracte;
+      CREATE DATABASE estompe;

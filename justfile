@@ -56,7 +56,7 @@ test-aegis:
 test-ui:
     npm ci && npm test --workspace packages/ui
 
-# e2e Playwright (Docker pour Postgres, ou E2E_DATABASE_URL vers une base vide)
+# e2e Playwright (Docker pour Postgres, ou E2E_DATABASE_URL vers un serveur dont la base permission est vide)
 e2e-permission:
     npm run e2e --workspace web/permission
 
@@ -76,8 +76,8 @@ test-entracte:
 build-ui:
     npm ci && npm run build --workspace packages/ui
 
-# Dépendances de dev de tous les projets, éphémères (deploy/docker-compose.dev.yml) : Postgres :5432 (postgres/postgres, bases
-# permission et aegis), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081. Variables des backends : deploy/dev.env
+# Dépendances de dev de tous les projets, éphémères (deploy/docker-compose.dev.yml) : Postgres :5432 (postgres/postgres, une base
+# par backend), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081. Variables des backends : deploy/dev.env
 dev-up:
     docker compose -f deploy/docker-compose.dev.yml up -d --wait
 

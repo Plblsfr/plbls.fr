@@ -5,7 +5,7 @@ routes dans [`openapi.yaml`](../../docs/entracte/openapi.yaml).
 
 | Module | Rôle |
 |---|---|
-| `config.rs` | variables `ENTRACTE_*` (liste dans [`deploy/entracte/.env.example`](../../deploy/entracte/.env.example)) |
+| `config.rs` | variables `ENTRACTE_*` et communes (valeurs dans [`plbls.env`](../../plbls.env), secrets dans [`deploy/entracte/.env.example`](../../deploy/entracte/.env.example)) |
 | `routes.rs` | table des routes : chacune a une permission ou une exception motivée ; tests de couverture et d'OpenAPI |
 | `garde.rs`, `identite.rs`, `droits.rs` | gateway (`/auth/me`, cookie ou Bearer), aegis (manifeste, `/v1/effective`), CORS et CSRF |
 | `catalogue.rs`, `arr.rs`, `tmdb.rs`, `ffprobe.rs`, `filtre.rs`, `images.rs` | synchronisation Radarr/Sonarr, métadonnées, analyse, filtre, cache d'images |

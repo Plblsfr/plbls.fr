@@ -27,7 +27,7 @@ Toujours supprimés de la requête entrante avant injection, pour empêcher l'us
 | `X-User-Roles` | Rôles realm tels quels + rôles client sous la forme `client:role`, séparés par des virgules |
 | `X-Client-Id` | `azp` : quel client a ouvert la session |
 | `X-Identity-Ts` | Horodatage Unix de l'injection |
-| `X-Identity-Sig` | HMAC-SHA256 (base64url) de `id\nroles\nclient\nts\nname\nemail` avec le secret interne, `name` et `email` tels qu'envoyés (encodés) |
+| `X-Identity-Sig` | HMAC-SHA256 (base64url) de `id\nroles\nclient\nts\nname\nemail` avec le secret interne (`GATEWAY_IDENTITE_SECRET`), `name` et `email` tels qu'envoyés (encodés) |
 | `X-Request-Id` | Identifiant de corrélation, aussi renvoyé au client (celui de l'upstream est remplacé) |
 
 Côté micro-service, on vérifie la signature et que `ts` a moins de 60 s, puis on décode `X-User-Name` et `X-User-Email` (percent-decoding UTF-8). Un en-tête absent compte comme une valeur vide dans la signature. Vérificateurs : aegis et permission. La passerelle et ces services se déploient ensemble : un ancien vérificateur refuse les nouvelles signatures, et inversement.

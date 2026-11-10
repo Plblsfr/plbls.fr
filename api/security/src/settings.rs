@@ -1,3 +1,4 @@
+use commun::env::Env;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,14 +133,50 @@ impl Settings {
     /// `config/default.toml`, puis le fichier optionnel `GATEWAY_CONFIG` (routes, dev),
     /// puis les variables `GATEWAY__SECTION__CLE`.
     pub fn load() -> anyhow::Result<Self> {
+        Self::depuis(&Env::charger())
+    }
+
+    pub fn depuis(env: &Env) -> anyhow::Result<Self> {
+        let present = |k: &str| env.get(k).filter(|v| !v.is_empty());
         let mut builder =
             config::Config::builder().add_source(config::File::with_name("config/default"));
-        if let Ok(extra) = std::env::var("GATEWAY_CONFIG") {
+        if let Some(extra) = present("GATEWAY_CONFIG") {
             builder = builder.add_source(config::File::with_name(&extra));
         }
+        let redis = commun::env::url_redis(|k| env.get(k)).map_err(anyhow::Error::msg)?;
         let cfg = builder
-            .add_source(config::Environment::with_prefix("GATEWAY").separator("__"))
+            .add_source(
+                config::Environment::with_prefix("GATEWAY")
+                    .separator("__")
+                    .source(Some(env.vars().clone())),
+            )
+            .set_override_option("redis.url", Some(redis).filter(|v| !v.is_empty()))?
+            .set_override_option("identity.secret", present("GATEWAY_IDENTITE_SECRET"))?
+            .set_override_option("internal.token", present("GATEWAY_INTERNE_TOKEN"))?
             .build()?;
         Ok(cfg.try_deserialize()?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variables_communes() {
+        let s = Settings::depuis(&Env::depuis([
+            ("REDIS_URL", "redis://redis:6379"),
+            ("REDIS_PASSWORD", "r"),
+            ("GATEWAY_IDENTITE_SECRET", "id"),
+            ("GATEWAY_INTERNE_TOKEN", "int"),
+            ("GATEWAY__OIDC__ISSUER", "https://auth/realms/x"),
+            ("GATEWAY__OIDC__CLIENT_SECRET", "cs"),
+        ]))
+        .unwrap();
+        assert_eq!(s.redis.url, "redis://:r@redis:6379");
+        assert_eq!(s.identity.secret, "id");
+        assert_eq!(s.internal.token, "int");
+        assert_eq!(s.oidc.issuer, "https://auth/realms/x");
+        assert!(Settings::depuis(&Env::depuis([("GATEWAY_IDENTITE_SECRET", "id")])).is_err());
     }
 }

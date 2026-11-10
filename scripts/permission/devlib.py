@@ -13,7 +13,7 @@ from devcommun import call_json, req
 __all__ = ["BASE", "SECRET", "call", "req", "sign"]
 
 BASE = os.environ.get("BASE", "http://127.0.0.1:8090")
-SECRET = os.environ.get("PERMISSION__IDENTITY__SECRET", "dev-identity-secret")
+SECRET = os.environ.get("GATEWAY_IDENTITE_SECRET", "dev-identity-secret")
 
 def sign(uid, roles):
     ts = int(time.time())

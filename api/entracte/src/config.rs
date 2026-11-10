@@ -146,13 +146,10 @@ pub fn chemin_local(chemins: &[Correspondance], medias: &Path, distant: &str) ->
 impl Config {
     pub fn from_env(brut: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let env = |k: &str| brut(k).map(|v| nettoie(&v)).filter(|v| !v.is_empty());
-        let database_url = env("ENTRACTE_DATABASE_URL").ok_or(
-            "ENTRACTE_DATABASE_URL manquant (ex. postgres://entracte:…@postgres-main:5432/entracte)",
-        )?;
+        let database_url = commun::env::url_base(&brut, "entracte")?;
         let gateway_public =
             env("GATEWAY_URL").unwrap_or_else(|| "https://security.plbls.fr".into());
-        let gateway_url =
-            sans_slash(env("ENTRACTE_GATEWAY_INTERNAL_URL").unwrap_or(gateway_public));
+        let gateway_url = sans_slash(env("GATEWAY_INTERNE_URL").unwrap_or(gateway_public));
         let secret_flux = match env("ENTRACTE_STREAM_SECRET") {
             Some(s) if s.len() < 32 => {
                 return Err("ENTRACTE_STREAM_SECRET : 32 caractères au moins".into());
@@ -205,7 +202,7 @@ impl Config {
             gateway_url,
             aegis: env("AEGIS_URL")
                 .map(sans_slash)
-                .zip(env("ENTRACTE_AEGIS_TOKEN")),
+                .zip(env("AEGIS_TOKEN_ENTRACTE")),
             origines: env("ENTRACTE_ALLOWED_ORIGINS")
                 .unwrap_or_default()
                 .split(',')
@@ -244,16 +241,19 @@ impl Config {
                 2,
             )?,
             inactivite: Duration::from_secs(inactivite.max(1)),
-            vapid_publique: env("ENTRACTE_VAPID_PUBLIC_KEY").unwrap_or_default(),
-            vapid_privee: env("ENTRACTE_VAPID_PRIVATE_KEY").unwrap_or_default(),
-            vapid_sujet: env("ENTRACTE_VAPID_SUBJECT").unwrap_or_default(),
-            fcm: env("ENTRACTE_FCM_SERVICE_ACCOUNT").unwrap_or_default(),
+            vapid_publique: env("VAPID_PUBLIC_KEY").unwrap_or_default(),
+            vapid_privee: env("VAPID_PRIVATE_KEY").unwrap_or_default(),
+            vapid_sujet: env("VAPID_SUBJECT").unwrap_or_default(),
+            fcm: env("FCM_SERVICE_ACCOUNT").unwrap_or_default(),
         })
     }
 
     pub fn pour_tests(database_url: &str) -> Self {
-        Self::from_env(|k| (k == "ENTRACTE_DATABASE_URL").then(|| database_url.to_string()))
-            .expect("configuration de test")
+        let mut c =
+            Self::from_env(|k| (k == "DATABASE_URL").then(|| "postgres://test".to_string()))
+                .expect("configuration de test");
+        c.database_url = database_url.to_string();
+        c
     }
 }
 
@@ -272,8 +272,8 @@ mod tests {
 
     #[test]
     fn valeurs_par_defaut() {
-        assert!(charge(&[]).unwrap_err().contains("ENTRACTE_DATABASE_URL"));
-        let c = charge(&[("ENTRACTE_DATABASE_URL", "postgres://x/e")]).unwrap();
+        assert!(charge(&[]).unwrap_err().contains("DATABASE_URL"));
+        let c = charge(&[("DATABASE_URL", "postgres://x")]).unwrap();
         assert_eq!(c.port, 8080);
         assert_eq!(c.gateway_url, "https://security.plbls.fr");
         assert!(c.aegis.is_none() && c.radarr.is_none() && c.sonarr.is_none());
@@ -287,10 +287,10 @@ mod tests {
     #[test]
     fn valeurs_lues() {
         let c = charge(&[
-            ("ENTRACTE_DATABASE_URL", "postgres://x/e"),
+            ("DATABASE_URL", "postgres://x"),
             ("GATEWAY_URL", "https://g/"),
             ("AEGIS_URL", "http://aegis:8080/"),
-            ("ENTRACTE_AEGIS_TOKEN", "\"tok\""),
+            ("AEGIS_TOKEN_ENTRACTE", "\"tok\""),
             (
                 "ENTRACTE_ALLOWED_ORIGINS",
                 "https://a.fr/, https://tauri.localhost",
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn erreurs() {
-        let base = ("ENTRACTE_DATABASE_URL", "postgres://x/e");
+        let base = ("DATABASE_URL", "postgres://x");
         assert!(charge(&[base, ("ENTRACTE_STREAM_SECRET", "court")]).is_err());
         assert!(charge(&[base, ("ENTRACTE_TRANSCODE_MODE", "amd")]).is_err());
         assert!(charge(&[base, ("ENTRACTE_CHEMINS", "/a")]).is_err());

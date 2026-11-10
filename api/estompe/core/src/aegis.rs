@@ -126,7 +126,7 @@ pub fn router() -> OpenApiRouter<AppState> {
     let routeur = OpenApiRouter::new().route(CHEMIN_RESSOURCES, get(ressources));
     let op = crate::openapi::operation(
         "interne",
-        "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN`, réseau interne ; 404 sans aegis",
+        "Serveurs listés pour aegis (`q`, `ids`) : `[{id, name}]`. Jeton `AEGIS_TOKEN_ESTOMPE`, réseau interne ; 404 sans aegis",
         &[
             ("200", "ok"),
             ("401", "jeton d'aegis attendu"),

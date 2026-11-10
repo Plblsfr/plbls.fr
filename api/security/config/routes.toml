@@ -3,7 +3,7 @@
 # Aucune route pour l'instant : seuls /auth/*, /healthz et /readyz sont actifs.
 
 # aegis : permissions des comptes (administration depuis Estompe, droits du connecté). L'administration est jugée par aegis
-# (rôle Keycloak aegis-admin ou permission aegis:admin). aegis partage GATEWAY__IDENTITY__SECRET (AEGIS__IDENTITY__SECRET).
+# (rôle Keycloak aegis-admin ou permission aegis:admin). aegis lit le même GATEWAY_IDENTITE_SECRET.
 [[routes]]
 prefix = "/api/aegis"
 upstream = "http://aegis:8080"
@@ -11,7 +11,7 @@ strip_prefix = true
 roles = ["user"]
 
 # permission.plbls.fr : API du service de permissions (utilisateurs via cookie de session).
-# Permission doit partager GATEWAY__IDENTITY__SECRET (PERMISSION__IDENTITY__SECRET) et être joignable sur le réseau Docker.
+# Permission lit le même GATEWAY_IDENTITE_SECRET et doit être joignable sur le réseau Docker.
 [[routes]]
 prefix = "/api/permission"
 upstream = "http://permission:8080"
