@@ -53,14 +53,8 @@ pub struct Config {
     pub transcribe_model: String,
     pub transcribe_alpha: bool,
     pub transcribe_language: String,
-    pub jellyfin_url: String,
-    pub jellyfin_api_key: String,
-    pub stream_secret: String,
     pub entracte_url: String,
     pub entracte_token: String,
-    pub films_max_flux: i64,
-    pub films_max_transcodages: i64,
-    pub films_cache_secondes: i64,
     pub livekit: Livekit,
 }
 
@@ -113,9 +107,6 @@ impl Config {
         let max_storage_bytes = octets("MAX_STORAGE_GB", "20", 1 << 30)?;
         let max_user_storage_bytes = octets("MAX_USER_STORAGE_MB", "2048", 1 << 20)?;
         let max_video_bytes = octets("MAX_VIDEO_SIZE_MB", "100", 1 << 20)?;
-        let films_max_flux = octets("FILMS_MAX_FLUX", "2", 1)?;
-        let films_max_transcodages = octets("FILMS_MAX_TRANSCODAGES", "2", 1)?;
-        let films_cache_secondes = octets("FILMS_CACHE_SECONDES", "60", 1)?;
         let c = Config {
             listen_addr: env("LISTEN_ADDR", ":8080"),
             database_url: get("DATABASE_URL"),
@@ -155,16 +146,10 @@ impl Config {
             transcribe_model: env("TRANSCRIBE_MODEL", "Systran/faster-whisper-small"),
             transcribe_alpha: get("TRANSCRIBE_ALPHA") != "false",
             transcribe_language: get("TRANSCRIBE_LANGUAGE"),
-            jellyfin_url: get("JELLYFIN_URL").trim_end_matches('/').to_string(),
-            jellyfin_api_key: get("JELLYFIN_API_KEY"),
-            stream_secret: get("STREAM_SECRET"),
             entracte_url: get("ESTOMPE_ENTRACTE_URL")
                 .trim_end_matches('/')
                 .to_string(),
             entracte_token: get("ESTOMPE_ENTRACTE_TOKEN"),
-            films_max_flux,
-            films_max_transcodages,
-            films_cache_secondes,
             livekit: Livekit {
                 url: get("LIVEKIT_URL"),
                 api_url: env("LIVEKIT_API_URL", "http://livekit:7880"),
@@ -191,20 +176,11 @@ impl Config {
                 return Err(ConfigError(format!("variable manquante : {nom}")));
             }
         }
-        if c.jellyfin_actif() && c.stream_secret.len() < 32 {
-            return Err(ConfigError(
-                "STREAM_SECRET doit compter au moins 32 caractères".into(),
-            ));
-        }
         Ok(c)
     }
 
     pub fn entracte_actif(&self) -> bool {
         !self.entracte_url.is_empty() && !self.entracte_token.is_empty()
-    }
-
-    pub fn jellyfin_actif(&self) -> bool {
-        !self.jellyfin_url.is_empty() && !self.jellyfin_api_key.is_empty()
     }
 }
 
@@ -246,39 +222,6 @@ mod tests {
 
     fn erreur(r: Result<Config, ConfigError>) -> String {
         r.unwrap_err().to_string()
-    }
-
-    #[test]
-    fn jellyfin_exige_un_secret_de_flux() {
-        let c = charge(&[]).unwrap();
-        assert!(!c.jellyfin_actif());
-        assert_eq!(
-            (
-                c.films_max_flux,
-                c.films_max_transcodages,
-                c.films_cache_secondes
-            ),
-            (2, 2, 60)
-        );
-        let jellyfin = [
-            ("JELLYFIN_URL", "http://jellyfin:8096/"),
-            ("JELLYFIN_API_KEY", "k"),
-        ];
-        assert_eq!(
-            erreur(charge(&jellyfin)),
-            "STREAM_SECRET doit compter au moins 32 caractères"
-        );
-        let secret = "s".repeat(32);
-        let mut avec = jellyfin.to_vec();
-        avec.push(("STREAM_SECRET", &secret));
-        let c = charge(&avec).unwrap();
-        assert!(c.jellyfin_actif());
-        assert_eq!(c.jellyfin_url, "http://jellyfin:8096");
-        assert!(!format!("{c:?}").contains(&secret));
-        assert_eq!(
-            erreur(charge(&[("FILMS_MAX_FLUX", "0")])),
-            "FILMS_MAX_FLUX doit être un entier >= 1"
-        );
     }
 
     #[test]

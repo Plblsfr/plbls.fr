@@ -2,7 +2,7 @@ import { fireEvent, render } from '@testing-library/svelte'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { filmsApi } from '../../lib/api'
-import { providers, type Adapter, type Handlers } from '../regarder-ensemble/providers'
+import { providers, type Adapter, type Handlers } from '../../blocks/regarder-ensemble/providers'
 import type { FilmDetail } from './films'
 import FilmPlayer from './FilmPlayer.svelte'
 

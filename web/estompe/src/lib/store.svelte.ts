@@ -54,10 +54,10 @@ export class AppStore {
   rights = $state<Right[]>([])
   capacites = $state.raw<Capacites | null>(null)
   isAdmin = $derived(this.rights.includes('admin'))
-  adminSections = $derived(adminSections(this.rights, (b) => this.on(b), this.capacites))
+  adminSections = $derived(adminSections(this.rights, this.capacites))
   peut = (nom: string, ressource = '*') => autorise(this.capacites, `estompe:${nom}`, ressource)
   movies = $state(false)
-  /** Salon cinéma disponible (bloc films, ou Entracte branché côté API) ; annoncé par `GET /me`. */
+  /** Salon cinéma disponible (Entracte branché côté API) ; annoncé par `GET /me`. */
   cinemaOn = $state(false)
   /** Identité et permissions annoncées par Entracte (`null` : Entracte absent, injoignable ou sans session). */
   entracteMe = $state.raw<EntracteMe | null>(null)
@@ -177,8 +177,8 @@ export class AppStore {
     this.maxVideo = me.max_video_size ?? DEFAULT_MAX_VIDEO
     this.transcription = me.transcription ?? ''
     this.blocks = me.blocks
-    this.movies = entracteOn() ? !!this.entracteMe?.permissions.access : me.movies === true && this.on('films')
-    this.cinemaOn = me.cinema ?? this.on('films')
+    this.movies = !!this.entracteMe?.permissions.access
+    this.cinemaOn = me.cinema === true
   }
 
   async activate(pseudo: string) {

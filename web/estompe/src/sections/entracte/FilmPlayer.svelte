@@ -5,8 +5,8 @@
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
-  import WatchPicker from '../regarder-ensemble/WatchPicker.svelte'
-  import { providers, type Adapter, type PState } from '../regarder-ensemble/providers'
+  import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
+  import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
   import { clock, fullTitle, QUALITY_LABEL, resumeAt, trackName, type FilmDetail, type FilmTracks } from './films'
 
   let { id }: { id: string } = $props()

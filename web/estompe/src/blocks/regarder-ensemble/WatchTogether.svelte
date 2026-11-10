@@ -9,7 +9,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { QUALITY_LABEL, trackName, type Quality } from '../films/films'
+  import { QUALITY_LABEL, trackName, type Quality } from '../../sections/entracte/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 

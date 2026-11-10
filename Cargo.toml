@@ -63,7 +63,6 @@ uuid = { version = "1", features = ["serde", "v4"] }
 estompe-core = { path = "api/estompe/core" }
 estompe-block = { path = "api/estompe/block" }
 estompe-block-gifs = { path = "api/estompe/blocks/gifs" }
-estompe-block-films = { path = "api/estompe/blocks/films" }
 estompe-block-musique = { path = "api/estompe/blocks/musique" }
 estompe-block-vocal = { path = "api/estompe/blocks/vocal" }
 estompe-block-regarder-ensemble = { path = "api/estompe/blocks/regarder-ensemble" }

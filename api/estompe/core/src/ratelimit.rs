@@ -51,7 +51,6 @@ pub struct Limiteurs {
     pub transcription: RateLimiter,
     pub signalement: RateLimiter,
     pub regarder_ensemble: RateLimiter,
-    pub films: RateLimiter,
 }
 
 #[cfg(test)]

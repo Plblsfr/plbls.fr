@@ -14,7 +14,7 @@
   import HomeView from './HomeView.svelte'
   import JoinView from './JoinView.svelte'
   import AdminSpace from '../components/AdminSpace.svelte'
-  import FilmsSpace from '../blocks/films/FilmsSpace.svelte'
+  import FilmsSpace from '../sections/entracte/FilmsSpace.svelte'
   import CreateJoinModal from '../components/CreateJoinModal.svelte'
   import NewDMModal from '../components/NewDMModal.svelte'
   import SettingsModal from '../components/SettingsModal.svelte'

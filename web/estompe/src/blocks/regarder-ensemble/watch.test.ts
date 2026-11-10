@@ -6,7 +6,7 @@ import { autoRoom, clockOffset, correction, expectedPosition, lastAction, player
 import { SyncEngine, type Io } from './watchsync'
 import { providers, type Adapter, type PState } from './providers'
 import { ApiError, filmsApi } from '../../lib/api'
-import type { FilmPlayback } from '../films/films'
+import type { FilmPlayback } from '../../sections/entracte/films'
 import type { WatchState } from '../../lib/types'
 
 vi.mock('../../vendor/plbls-ui/plbls-ui.esm.min.js', () => ({ toast: { show: vi.fn(), clear: vi.fn() } }))
@@ -448,12 +448,12 @@ describe('lecteur de film', () => {
     a.destroy()
   })
 
-  it('le lancement d\'un autre appareil sans codec de base passe en transcodage', async () => {
+  it('un appareil sans codec de base annonce un support vide : Entracte choisit le transcodage', async () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')
     const a = await providers.film(document.createElement('div'), handlers())
     a.load('e1', 0, true)
     await settled()
-    expect(filmsApi.playback).toHaveBeenCalledWith('e1', expect.objectContaining({ direct: false, audio: 0 }))
+    expect(filmsApi.playback).toHaveBeenCalledWith('e1', expect.objectContaining({ direct: true, audio: 0, support: { containers: [], video: [], audio: [] } }))
     a.destroy()
   })
 })

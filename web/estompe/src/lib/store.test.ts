@@ -43,46 +43,22 @@ beforeEach(() => {
 const ev = (type: string, data: unknown) => s.handleEvent({ type, data })
 
 describe('accès aux films', () => {
-  const avec = async (movies: boolean, blocks: string[]) => {
-    Object.assign(api, { me: vi.fn(async () => ({ activated: true, allowed: true, id: 'me', pseudo: 'moi', movies, blocks })) })
+  const avec = async (on: boolean, access: boolean) => {
+    entracteMock.on = on
+    entracteMock.me = { sub: 'kc-me', name: 'moi', email: '', permissions: { access, request: false, admin: false }, push: { web: false, fcm: false } }
+    Object.assign(api, { me: vi.fn(async () => ({ activated: true, allowed: true, id: 'me', pseudo: 'moi', movies: true, blocks: ['films', 'vocal', 'regarder-ensemble'] })) })
     await s.boot().catch(() => {})
     return s.movies
   }
-  const actifs = ['films', 'vocal', 'regarder-ensemble']
-  it('suit la permission annoncée par /me', async () => {
-    expect(await avec(true, actifs)).toBe(true)
-    expect(await avec(false, actifs)).toBe(false)
+  afterEach(() => { entracteMock.on = false; entracteMock.me = null })
+  it("suit la permission d'Entracte, jamais l'ancien champ `movies` de /me", async () => {
+    expect(await avec(true, true)).toBe(true)
+    expect(await avec(true, false)).toBe(false)
+    expect(await avec(false, true)).toBe(false)
   })
-  it('reste masqué si le bloc ou une dépendance est inactif', async () => {
-    expect(await avec(true, ['vocal', 'regarder-ensemble'])).toBe(false)
-    expect(await avec(true, ['films', 'vocal'])).toBe(false)
-  })
-
-  describe('app restée ouverte depuis un démarrage sans films', () => {
-    const plusTard = (movies: boolean, blocks: string[]) => Object.assign(api, { me: vi.fn(async () => ({ activated: true, allowed: true, id: 'me', pseudo: 'moi', admin: true, movies, blocks })) })
-    beforeEach(async () => {
-      expect(await avec(false, ['vocal', 'regarder-ensemble'])).toBe(false)
-      expect(s.isAdmin).toBe(false)
-    })
-    it('apparaît à la reconnexion du temps réel', async () => {
-      plusTard(true, actifs)
-      await s.resync()
-      expect(s.movies).toBe(true)
-      expect(s.blocks).toEqual(actifs)
-      expect(s.isAdmin).toBe(true)
-    })
-    it('apparaît au renouvellement de la session', async () => {
-      plusTard(true, actifs)
-      await (s as unknown as { recheckSession(): Promise<void> }).recheckSession()
-      expect(s.movies).toBe(true)
-    })
-    it('disparaît si la permission est retirée entre-temps', async () => {
-      plusTard(true, actifs)
-      await s.resync()
-      plusTard(false, actifs)
-      await s.resync()
-      expect(s.movies).toBe(false)
-    })
+  it('salon cinéma seulement quand /me l’annonce', async () => {
+    await avec(true, true)
+    expect(s.cinemaOn).toBe(false)
   })
 })
 

@@ -7,7 +7,7 @@ import { providers, type Adapter } from './providers'
 import { playerError } from './watch'
 import { SyncEngine, type Cmd } from './watchsync'
 import type { SessionKind } from '../../lib/types'
-import type { FilmTracks, Quality } from '../films/films'
+import type { FilmTracks, Quality } from '../../sections/entracte/films'
 
 // Chaque client lit la vidéo lui-même avec le lecteur de sa source (lib/providers.ts) : le serveur ne synchronise que l'état.
 // Ce fichier branche le moteur (lib/watchsync.ts) sur le lecteur, l'état du serveur et l'API.

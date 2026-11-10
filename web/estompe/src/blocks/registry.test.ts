@@ -13,9 +13,8 @@ describe('blockOn', () => {
     expect(blockOn(['regarder-ensemble'], 'regarder-ensemble')).toBe(false)
     expect(blockOn(['regarder-ensemble', 'vocal'], 'regarder-ensemble')).toBe(true)
   })
-  it('films dépend du vocal et de regarder-ensemble', () => {
-    expect(blockOn(['films', 'vocal'], 'films')).toBe(false)
-    expect(blockOn(['films', 'regarder-ensemble', 'vocal'], 'films')).toBe(true)
+  it("le bloc films n'existe plus : la section Entracte le remplace", () => {
+    expect(blockOn(['films', 'regarder-ensemble', 'vocal'], 'films')).toBe(false)
   })
   it('ignore un bloc inconnu', () => {
     expect(blockOn(['inconnu'], 'inconnu')).toBe(false)

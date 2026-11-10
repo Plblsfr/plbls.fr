@@ -66,8 +66,7 @@ Estompe envoie son manifeste (permissions des blocs actifs), applique la garde d
 de serveur, renvoie `capabilities` dans `GET /me` (confort d'affichage) et relaie `/admin/acces/*` vers `/v1/admin/*` d'aegis
 avec le justificatif de l'appelant : aegis reste seul juge. Détail : [fonctionnalites.md](fonctionnalites.md).
 
-En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:access` (ou `PERMISSION_NAME`), `estompe:movies` →
-`estompe:films.use`, `estompe:admin` → toutes les permissions `estompe:admin.*`, et les permissions ouvertes par défaut sont accordées.
+En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:access` (ou `PERMISSION_NAME`), `estompe:admin` → toutes les permissions `estompe:admin.*`, et les permissions ouvertes par défaut sont accordées.
 
 ## pli
 
@@ -86,7 +85,7 @@ En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:acces
 2. Donner le rôle Keycloak `aegis-admin` (et `user`) aux administrateurs.
 3. Renseigner `AEGIS_URL`, `AEGIS_TOKEN` et `AEGIS_REDIS_URL` d'abord sur une instance de test d'Estompe pour recevoir le manifeste,
    puis configurer dans Administration › accès : un rôle `Membre` avec `estompe:access` (ou l'ajouter à « Tout le monde »),
-   `estompe:films.use` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs, `pli:deposit` aux déposants.
+   `entracte:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs, `pli:deposit` aux déposants.
 4. Basculer Estompe et pli en production en renseignant leurs variables `AEGIS_*` ; revenir en arrière = les vider.
 5. Une fois la bascule confirmée : retirer `api/permission`, `web/permission`, `docs/permission`, le relais `/admin/permissions`
    d'Estompe, leurs jobs de CI, compose et tags.

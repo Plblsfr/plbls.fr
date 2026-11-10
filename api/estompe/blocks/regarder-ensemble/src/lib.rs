@@ -38,7 +38,7 @@ const BOT: &str = "00000000-0000-0000-0000-000000000001";
 const VIDEO_INVALIDE: &str = "lien non reconnu : YouTube, YouTube Music, Twitch, Vimeo, Dailymotion ou fichier vidéo (MP4, WebM, HLS)";
 const PISTE_INVALIDE: &str = "lien non reconnu : seuls les morceaux, albums et playlists de YouTube Music (music.youtube.com) sont acceptés";
 const FILM_INVALIDE: &str =
-    "seuls les films et séries de la bibliothèque se regardent dans un salon cinéma";
+    "seuls les films et séries d'Entracte se regardent dans un salon cinéma";
 const FILM_HORS_CINEMA: &str = "les films et séries se regardent dans un salon cinéma";
 const FILE_INVALIDE: &str = "file d'attente invalide : 50 liens reconnus au plus";
 
@@ -118,11 +118,11 @@ impl Contexte {
                 .collect();
             let film = sessions
                 .etat(salon)
-                .is_some_and(|e| e.provider == session::PROVIDER_FILM);
-            let restants = if film {
-                spectateurs(state, restants).await
-            } else {
-                restants
+                .filter(|e| e.provider == session::PROVIDER_FILM)
+                .map(|e| e.video);
+            let restants = match film {
+                Some(titre) => spectateurs(state, &titre, restants).await,
+                None => restants,
             };
             if let Some(suivant) = sessions.quitter(salon, membre, &restants) {
                 let cible = Salon {
@@ -135,8 +135,8 @@ impl Contexte {
     }
 }
 
-async fn spectateurs(state: &AppState, ids: Vec<String>) -> Vec<String> {
-    let Ok(pool) = state.pool() else {
+async fn spectateurs(state: &AppState, titre: &str, ids: Vec<String>) -> Vec<String> {
+    let (Ok(pool), Some(films)) = (state.pool(), state.films()) else {
         return Vec::new();
     };
     let Ok(lignes) = sqlx::query_as::<_, (String, String)>(
@@ -153,10 +153,7 @@ async fn spectateurs(state: &AppState, ids: Vec<String>) -> Vec<String> {
         let Some((_, sub)) = lignes.iter().find(|(i, _)| *i == id) else {
             continue;
         };
-        if matches!(
-            state.droit(sub, estompe_core::catalogue::FILMS).await,
-            Ok(true)
-        ) {
+        if films.resoudre(sub, titre).await.is_ok() {
             sortie.push(id);
         }
     }
@@ -378,7 +375,7 @@ async fn films(
     let (premier, suite) = films.resoudre(sub, id).await.map_err(|r| match r {
         RefusFilm::Permission => "accès aux films et séries non accordé".to_string(),
         RefusFilm::Introuvable => "titre introuvable".to_string(),
-        RefusFilm::Indisponible => "la bibliothèque est injoignable".to_string(),
+        RefusFilm::Indisponible => "Entracte est injoignable".to_string(),
     })?;
     let mut items = vec![item_film(premier, user)];
     if avec_suite {
@@ -1288,7 +1285,7 @@ mod tests {
         }
     }
 
-    struct FauxFilms;
+    struct FauxFilms(&'static [&'static str]);
 
     impl Films for FauxFilms {
         fn resoudre<'a>(
@@ -1297,7 +1294,7 @@ mod tests {
             id: &'a str,
         ) -> Pin<Box<dyn Future<Output = FilmEtSuite> + Send + 'a>> {
             Box::pin(async move {
-                if sub == "sub-bob" {
+                if self.0.contains(&sub) {
                     return Err(RefusFilm::Permission);
                 }
                 if id == "inconnu" {
@@ -1324,7 +1321,7 @@ mod tests {
             400,
             "lien film refusé sans le bloc"
         );
-        e.state.definir_films(Arc::new(FauxFilms));
+        e.state.definir_films(Arc::new(FauxFilms(&["sub-bob"])));
         let (s, _, v) = e.appel("bob", "PUT", &chemin, lien).await;
         assert_eq!(s, StatusCode::BAD_REQUEST, "rejet sans la permission");
         assert_eq!(v["message"], "accès aux films et séries non accordé");
@@ -1365,12 +1362,21 @@ mod tests {
             "un participant sans permission voit la session"
         );
         assert_eq!(v["state"]["meta"]["title"], "S1E1");
+
+        e.vocal.presents(&e.cinema, &[&e.bob]);
+        e.state
+            .sortie_salon_vocal(&e.serveur, &e.cinema, &e.alice)
+            .await;
+        assert!(
+            e.etat("cinema").await.is_null(),
+            "séance arrêtée : le seul restant n'a pas accès au titre dans Entracte"
+        );
     }
 
     #[tokio::test]
     async fn salon_cinema_reserve_aux_films_et_regarder_ensemble_sans_films() {
         let Some(e) = env(true).await else { return };
-        e.state.definir_films(Arc::new(FauxFilms));
+        e.state.definir_films(Arc::new(FauxFilms(&[])));
         e.vocal.presents(&e.salon, &[&e.alice, &e.bob]);
         e.vocal.presents(&e.cinema, &[&e.alice, &e.bob]);
         let film = r#"{"video":"film:e1"}"#;
@@ -1402,7 +1408,7 @@ mod tests {
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert_eq!(
             v["message"],
-            "seuls les films et séries de la bibliothèque se regardent dans un salon cinéma"
+            "seuls les films et séries d'Entracte se regardent dans un salon cinéma"
         );
         let (s, _, v) = e
             .appel("alice", "PUT", &format!("/voice/{}/cinema", e.salon), film)

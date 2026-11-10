@@ -5,7 +5,7 @@
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
-  import WatchPicker from '../regarder-ensemble/WatchPicker.svelte'
+  import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import FilmPoster from './FilmPoster.svelte'
   import { percent, pickEpisode, remaining, resumeAt, shortDuration, trackName, type FilmDetail, type FilmItem } from './films'
 

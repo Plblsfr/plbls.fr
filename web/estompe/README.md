@@ -33,9 +33,9 @@ système de Chromium doivent être présentes).
 - `src/sections/entracte` : section Entracte (films et séries, API à part, [`docs/entracte`](../../docs/entracte/README.md)). L'app est
   celle de plbls.fr : la messagerie d'Estompe et Entracte en sont deux sections, chacune affichée selon les permissions. Au démarrage,
   `GET /me` d'Estompe et `GET /me` d'Entracte disent ce que la personne a : Entracte seul ouvre la phase `entracte` (écran
-  `EntracteShell`, ni WebSocket ni route de la messagerie), les deux affichent Entracte à la place de l'onglet films. Avec `entracteUrl`
-  configurée (`ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps), `filmsApi` lit l'API d'Entracte : les composants de
-  `src/blocks/films` (bibliothèque, fiche, lecteur) servent pendant la bascule, puis rejoindront la section au retrait du bloc films.
+  `EntracteShell`, ni WebSocket ni route de la messagerie), les deux affichent l'onglet Entracte dans la messagerie. `filmsApi` lit l'API
+  d'Entracte (`entracteUrl` : `ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps) ; sans elle, ni section Entracte ni
+  salon cinéma. La bibliothèque, la fiche et le lecteur (`Film*.svelte`, `films.ts`) servent aussi au salon cinéma.
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
   (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.

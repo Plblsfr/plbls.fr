@@ -7,7 +7,7 @@ Deux compose pour tout le monorepo, et un `.env.example` par projet.
 | [`docker-compose.dev.yml`](docker-compose.dev.yml) | dépendances de dev de tous les projets, éphémères |
 | [`dev.env`](dev.env) | variables des backends en dev (valeurs factices) |
 | [`docker-compose.yml`](docker-compose.yml) | production de tous les services, sans section `environment` |
-| [`.env.example`](.env.example) | début de l'onglet Environment de Dokploy : tags d'images, réseau Jellyfin, variables communes |
+| [`.env.example`](.env.example) | début de l'onglet Environment de Dokploy : tags d'images, réseau de la stack média, variables communes |
 | `<projet>/.env.example` | suite de l'onglet, variables d'un projet (secrets en références Vault) : [`security`](security/.env.example), [`permission`](permission/.env.example), [`aegis`](aegis/.env.example), [`pli`](pli/.env.example), [`estompe`](estompe/.env.example), [`entracte`](entracte/.env.example) |
 
 Keycloak, le PostgreSQL partagé, la stack média et Vault sont dans le dépôt privé `plbls.fr-infra`.
@@ -29,8 +29,8 @@ Rien n'est conservé : `just dev-down` efface tout, le realm Keycloak de [`secur
 Une seule stack Dokploy (type Compose) avec [`docker-compose.yml`](docker-compose.yml) : `auth-gateway` et `security-redis`, `permission`,
 `aegis` et `aegis-redis`, `pli`, `entracte-api`, `estompe-web`, `estompe-api`, `estompe-postgres`, `estompe-backup`, `transcribe`, `livekit`, `cdn`.
 Les services se joignent par leur nom sur le réseau de la stack ; `permission`, `aegis`, `pli` et `entracte-api` rejoignent aussi `postgres-net`
-(PostgreSQL partagé, `postgres-main`), `auth-gateway` le réseau de Dokploy (Keycloak), `estompe-api` et `entracte-api` celui de la
-stack média (`JELLYFIN_NETWORK` : Jellyfin, Radarr, Sonarr). `entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses
+(PostgreSQL partagé, `postgres-main`), `auth-gateway` le réseau de Dokploy (Keycloak), `entracte-api` celui de la
+stack média (`MEDIAS_NETWORK` : Radarr, Sonarr). `entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses
 transcodages dans le volume `entracte-transcodage`.
 
 Aucune variable n'est écrite dans le compose. L'onglet Environment de la stack contient [`.env.example`](.env.example) puis le

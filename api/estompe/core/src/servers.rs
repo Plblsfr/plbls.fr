@@ -32,7 +32,7 @@ pub const TYPES_VOCAUX: [&str; 2] = ["voice", "cinema"];
 
 pub fn cinema_disponible(state: &AppState) -> bool {
     let actif = |nom: &str| state.blocs_actifs().iter().any(|b| b == nom);
-    actif("films") || (actif("regarder-ensemble") && state.config().entracte_actif())
+    actif("regarder-ensemble") && state.config().entracte_actif()
 }
 
 pub fn est_vocal(kind: &str) -> bool {
@@ -794,7 +794,7 @@ async fn creer_salon(
     if kind == "cinema" && !cinema_disponible(&state) {
         return invalide(
             "invalid_channel",
-            "salon cinéma : ni Entracte ni la bibliothèque de films ne sont branchés sur ce serveur",
+            "salon cinéma : Entracte n'est pas branché sur ce serveur",
         );
     }
     if sujet.chars().count() > 200 {
@@ -1407,22 +1407,22 @@ pub(crate) mod tests {
     pub(crate) async fn env_avec(
         autorisation: impl Fn(&testutil::Requete) -> (u16, Vec<u8>) + Send + Sync + 'static,
     ) -> Option<Env> {
-        env_avec_blocs(autorisation, vec![]).await
+        env_avec_blocs(autorisation, vec![], &[]).await
     }
 
     pub(crate) async fn env_avec_blocs(
         autorisation: impl Fn(&testutil::Requete) -> (u16, Vec<u8>) + Send + Sync + 'static,
         blocs: Vec<String>,
+        extra: &[(&str, &str)],
     ) -> Option<Env> {
         let g = faux(gateway).await;
         let p = faux(autorisation).await;
-        let state = AppState::new(
-            testutil::config_avec(&[
-                ("GATEWAY_URL", g.url.as_str()),
-                ("PERMISSION_URL", p.url.as_str()),
-            ]),
-            blocs,
-        );
+        let mut variables = vec![
+            ("GATEWAY_URL", g.url.as_str()),
+            ("PERMISSION_URL", p.url.as_str()),
+        ];
+        variables.extend_from_slice(extra);
+        let state = AppState::new(testutil::config_avec(&variables), blocs);
         let (pg, url) = testutil::postgres().await?;
         let pool = sqlx::PgPool::connect(&url).await.unwrap();
         crate::db::migrate_embarquees(&pool).await.unwrap();
@@ -1903,7 +1903,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn cinema_avec_entracte_ou_les_films() {
+    fn cinema_avec_entracte_seulement() {
         use crate::testutil::{config, config_avec};
         let blocs = |b: &[&str]| b.iter().map(|x| x.to_string()).collect::<Vec<_>>();
         let entracte = || {
@@ -1916,7 +1916,7 @@ pub(crate) mod tests {
             config(),
             blocs(&["regarder-ensemble"])
         )));
-        assert!(cinema_disponible(&AppState::new(
+        assert!(!cinema_disponible(&AppState::new(
             config(),
             blocs(&["films"])
         )));
@@ -1929,7 +1929,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn salon_cinema_seulement_avec_la_bibliotheque_de_films() {
+    async fn salon_cinema_seulement_avec_entracte() {
         let corps = r#"{"name":"ciné","kind":"cinema","user_limit":6}"#;
         let Some(sans) = env().await else { return };
         membre(&sans, "alice").await;
@@ -1947,7 +1947,16 @@ pub(crate) mod tests {
             (StatusCode::BAD_REQUEST, Some("invalid_channel"))
         );
 
-        let Some(e) = env_avec_blocs(permission, vec!["films".into()]).await else {
+        let Some(e) = env_avec_blocs(
+            permission,
+            vec!["regarder-ensemble".into()],
+            &[
+                ("ESTOMPE_ENTRACTE_URL", "http://entracte:8080"),
+                ("ESTOMPE_ENTRACTE_TOKEN", "t"),
+            ],
+        )
+        .await
+        else {
             return;
         };
         membre(&e, "alice").await;

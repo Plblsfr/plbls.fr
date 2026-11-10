@@ -1,6 +1,6 @@
 <script lang="ts">
   import { entracteApi } from '../../lib/api'
-  import { tint } from '../../blocks/films/films'
+  import { tint } from './films'
 
   let { url, title, seed }: { url: string | null | undefined; title: string; seed: string } = $props()
 

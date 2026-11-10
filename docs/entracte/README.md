@@ -1,7 +1,7 @@
 # Entracte
 
 Films et séries, à part d'Estompe : une personne peut avoir accès à Entracte sans avoir accès à la messagerie. Entracte lit son
-catalogue dans Radarr et Sonarr, décrit les titres avec TMDB, lit et transcode les fichiers lui-même (ffmpeg, sans Jellyfin), garde la
+catalogue dans Radarr et Sonarr, décrit les titres avec TMDB, lit et transcode les fichiers lui-même (ffmpeg), garde la
 progression et l'historique de chacun, reçoit les demandes de titres absents et prévient les demandeurs par notification push.
 On regarde à plusieurs dans le salon cinéma d'Estompe, qui lit les titres d'Entracte.
 
@@ -32,7 +32,7 @@ la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt 
 - Synchronisation périodique (`ENTRACTE_SYNC_MINUTES`, 15 par défaut), par les webhooks Radarr/Sonarr (`POST /webhooks/radarr?token=…`,
   type « Webhook », évènements import, renommage et suppression) et par le bouton d'administration. Une seule à la fois ; une demande reçue pendant une synchronisation en relance une à la fin.
 - Seuls les fichiers connus de Radarr (films) et Sonarr (épisodes) entrent dans le catalogue ; un fichier présent sur le disque mais inconnu
-  de Radarr/Sonarr est ignoré (ceux que Jellyfin connaissait seul sortent du catalogue). Une série sans identifiant TMDB dans Sonarr est ignorée.
+  de Radarr/Sonarr est ignoré. Une série sans identifiant TMDB dans Sonarr est ignorée.
 - Chaque fichier passe le filtre (extensions autorisées, double extension, conteneur incohérent, absence de flux vidéo, nom suspect) puis
   ffprobe ; un fichier refusé va dans « fichiers écartés » avec sa raison (nom seul, jamais le chemin).
 - Métadonnées et affiches TMDB gardées en base : un titre dont le fichier disparaît passe « absent » sans perdre son titre, son affiche ni
@@ -79,19 +79,10 @@ Estompe garde la séance (salon `cinema`, pilotée par l'hôte, évènement `cin
 jouable, durée, épisodes suivants et droit d'accès de l'hôte. Chaque participant ouvre son propre flux auprès d'Entracte (qualité, piste et
 sous-titres à lui) ; seule la position est synchronisée, et sa progression est enregistrée comme en lecture seule.
 
-## Bascule depuis le bloc films d'Estompe
-
-1. Entracte déployé à côté (base, sous-domaine, route du reverse proxy, secrets dans Vault, permissions accordées à l'administrateur seul).
-2. Import de l'historique depuis Estompe (issue dédiée), avant d'éteindre Jellyfin.
-3. L'app et le salon cinéma passent sur Entracte (`ENTRACTE_PUBLIC_URL` du front, `ESTOMPE_ENTRACTE_*` de l'API), avec mise à jour forcée.
-4. Retrait du bloc `films` d'Estompe et arrêt de Jellyfin (issue dédiée).
-
-Retour arrière possible jusqu'à l'étape 4 : vider `ENTRACTE_PUBLIC_URL` et `ESTOMPE_ENTRACTE_URL` rend l'onglet films et le salon cinéma au bloc films.
-
 ## Actions manuelles
 
 - `plbls.fr-infra` : base PostgreSQL (`CREATE USER entracte …; CREATE DATABASE entracte OWNER entracte;`), sous-domaine
-  `entracte-api.plbls.fr` et sa route, Radarr et Sonarr joignables depuis la stack (réseau `JELLYFIN_NETWORK`), dossier des médias monté en
+  `entracte-api.plbls.fr` et sa route, Radarr et Sonarr joignables depuis la stack (réseau `MEDIAS_NETWORK`), dossier des médias monté en
   lecture seule (`ENTRACTE_MEDIAS`, mêmes chemins que Radarr/Sonarr ou `ENTRACTE_CHEMINS`), périphérique de transcodage ([transcodage.md](transcodage.md)).
 - Vault, `secret/entracte` : `ENTRACTE_DATABASE_URL`, `ENTRACTE_AEGIS_TOKEN`, `ENTRACTE_STREAM_SECRET`, `ENTRACTE_SERVICE_TOKEN`,
   `ENTRACTE_RADARR_API_KEY`, `ENTRACTE_SONARR_API_KEY`, `ENTRACTE_TMDB_API_KEY`.

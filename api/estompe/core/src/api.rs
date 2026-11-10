@@ -214,7 +214,6 @@ struct MeReponse {
     rights: Vec<String>,
     activated: bool,
     suspended: Option<bool>,
-    movies: Option<bool>,
     cinema: Option<bool>,
     max_video_size: Option<u64>,
     #[schema(inline, value_type = Option<String>)]
@@ -240,7 +239,7 @@ enum Transcription {
 #[utoipa::path(get, path = "/me", tag = "compte",
     summary = "État du compte Estompe de l'utilisateur connecté",
     responses(
-        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `movies`, `permissions` = administrer permission, `users` = rechercher des comptes)", body = MeReponse),
+        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `permissions` = administrer permission, `users` = rechercher des comptes)", body = MeReponse),
         (status = 401, description = "Identité absente ou invalide", body = openapi::Error),
         (status = 503, description = "`permission_unavailable` : service de permission injoignable", body = openapi::Error),
     ))]
@@ -257,12 +256,10 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
     let admin = catalogue::CATALOGUE
         .iter()
         .any(|e| e.admin() && droits.a(&e.nom()));
-    let movies = config.jellyfin_actif() && droits.a(catalogue::FILMS);
     let capacites = droits.json("estompe:");
     let rights: Vec<&str> = [
         ("access", allowed),
         ("admin", admin),
-        ("movies", movies),
         ("permissions", permissions && !aegis),
         ("acces", permissions && aegis),
         (
@@ -301,7 +298,6 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
                     "id": u.id,
                     "pseudo": u.pseudo,
                     "sub": idn.sub,
-                    "movies": movies,
                     "cinema": crate::servers::cinema_disponible(&state),
                     "max_video_size": config.max_video_bytes,
                     "transcription": transcription,
@@ -423,7 +419,6 @@ mod tests {
         testutil::reponse_droits(r, |sub, perm| match perm {
             "estompe:access" => !sub.starts_with("sub-nope"),
             "estompe:admin" => sub == "sub-admin",
-            "estompe:movies" => sub == "sub-cinema",
             "permission:admin" => sub == "sub-perm",
             "permission:users.read" => sub == "sub-perm",
             _ => false,
@@ -656,7 +651,6 @@ mod tests {
                 "cinema",
                 "id",
                 "max_video_size",
-                "movies",
                 "pseudo",
                 "rights",
                 "sub",
@@ -683,30 +677,6 @@ mod tests {
         let (_, v) = json_de(&e.app, "GET", "/me", "admin", None).await;
         assert_eq!(v["admin"], true);
         assert_eq!(v["rights"], json!(["access", "admin"]));
-    }
-
-    #[tokio::test]
-    async fn me_movies() {
-        let secret = "s".repeat(32);
-        let jellyfin = [
-            ("JELLYFIN_URL", "http://jellyfin.test"),
-            ("JELLYFIN_API_KEY", "k"),
-            ("STREAM_SECRET", secret.as_str()),
-        ];
-        let Some(e) = env(&jellyfin, true).await else {
-            return;
-        };
-        for nom in ["cinema", "alice"] {
-            activer(&e.app, nom, nom).await;
-        }
-        let (_, v) = json_de(&e.app, "GET", "/me", "cinema", None).await;
-        assert_eq!(v["movies"], true);
-        let (_, v) = json_de(&e.app, "GET", "/me", "alice", None).await;
-        assert_eq!(v["movies"], false);
-        let sans = env(&[], true).await.unwrap();
-        activer(&sans.app, "cinema", "cinema").await;
-        let (_, v) = json_de(&sans.app, "GET", "/me", "cinema", None).await;
-        assert_eq!(v["movies"], false, "sans Jellyfin configuré");
     }
 
     #[tokio::test]

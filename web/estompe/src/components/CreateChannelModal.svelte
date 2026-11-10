@@ -15,9 +15,9 @@
     { kind: 'voice', label: 'Vocal', hint: 'Parler, partager son écran, regarder ensemble', icon: 'volume' },
     { kind: 'videos', label: 'Vidéos', hint: 'Esquisses : partager des vidéos et organiser des séances', icon: 'video' },
     { kind: 'music', label: 'Musique', hint: 'Esquisses : partager des morceaux, des playlists et écouter ensemble', icon: 'headphones' },
-    { kind: 'cinema', label: 'Cinéma', hint: 'Regarder un film ou une série de la bibliothèque ensemble, en vocal', icon: 'film' },
+    { kind: 'cinema', label: 'Cinéma', hint: 'Regarder un film ou une série d’Entracte ensemble, en vocal', icon: 'film' },
   ]
-  // Le salon cinéma n'existe que si la bibliothèque de films est activée sur l'instance.
+  // Le salon cinéma n'existe que si Entracte est branché sur l'instance.
   const KINDS = $derived(ALL_KINDS.filter((k) => k.kind !== 'cinema' || app.cinemaOn))
   const detail = $derived(app.details[serverId])
   // svelte-ignore state_referenced_locally

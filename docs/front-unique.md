@@ -147,7 +147,7 @@ protection repose donc sur l'en-tête `Origin`, comparé à la **liste fermée**
 4. toute requête qui modifie reste en `POST`/`PUT`/`PATCH`/`DELETE` (pli : `GET` ne consomme jamais).
 
 **Sous-domaines de confiance** : tout hôte sous `PLBLS_DOMAINE` reçoit le cookie dans ses requêtes, y compris ceux qui ne sont pas
-de notre code (stack média, Jellyfin, LiveKit, CDN de `@plbls/ui`, Cairn). Un tel service peut le journaliser ou le voler s'il est
+de notre code (stack média, LiveKit, CDN de `@plbls/ui`, Cairn). Un tel service peut le journaliser ou le voler s'il est
 compromis. Décision :
 
 - Keycloak (`auth.<domaine>`) est de confiance (il émet l'identité), il garde le cookie ;

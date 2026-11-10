@@ -53,7 +53,7 @@ services:
       - ${ENTRACTE_MEDIAS:-/srv/medias}:${ENTRACTE_MEDIAS:-/srv/medias}:ro
       - entracte-transcodage:/tmp/entracte
     expose: ["8080"]
-    networks: [default, postgres-net, jellyfin]
+    networks: [default, postgres-net, medias]
 
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
@@ -68,7 +68,6 @@ services:
     volumes: [estompe-data:/data]
     depends_on: [estompe-postgres, livekit]
     expose: ["8080"]
-    networks: [default, jellyfin]
 
   transcribe:
     image: ghcr.io/speaches-ai/speaches:latest-cpu
@@ -157,9 +156,9 @@ networks:
     external: true
   dokploy-network:
     external: true
-  jellyfin:
+  medias:
     external: true
-    name: ${JELLYFIN_NETWORK:-dokploy-network}
+    name: ${MEDIAS_NETWORK:-dokploy-network}
 
 volumes:
   security-redis-data:
