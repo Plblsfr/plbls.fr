@@ -64,6 +64,7 @@ paths:
                   capabilities: {type: object, additionalProperties: {type: object, properties: {allow: {type: array, items: {type: string}}, deny: {type: array, items: {type: string}}}}, description: "permissions `estompe:*` accordées : ressources autorisées (`*` = tous les serveurs) et refusées. Confort d'affichage ; le contrôle se fait côté API"}
                   activated: {type: boolean}
                   movies: {type: boolean, description: "permission `estompe:films.use` et Jellyfin configuré : accès à l'onglet Films et séries"}
+                  cinema: {type: boolean, description: "salon cinéma disponible : bloc `films` actif, ou bloc `regarder-ensemble` actif et Entracte branché (`ESTOMPE_ENTRACTE_URL`, `ESTOMPE_ENTRACTE_TOKEN`)"}
                   max_video_size: {type: integer, description: "taille maximale d'une vidéo en octets (`MAX_VIDEO_SIZE_MB`, 100 Mo par défaut)"}
                   transcription: {type: string, enum: ["", alpha, "on"], description: "transcription des messages vocaux : désactivée (`TRANSCRIBE_URL` vide), `alpha` (`TRANSCRIBE_ALPHA`, défaut : réservée aux fonctions alpha débloquées côté client) ou `on` pour tous"}
                   blocks: {type: array, items: {type: string}, description: "blocs actifs du backend (variables `BLOCK_<NOM>=false` pour en désactiver) : un bloc absent n'a pas ses routes"}
@@ -1264,7 +1265,7 @@ paths:
     post:
       tags: [serveurs]
       summary: Créer un salon (permission `manage_channels` ; 50 max par serveur)
-      description: "`cinema` : salon vocal dédié aux films et séries de la bibliothèque (session `/voice/{cid}/cinema`), accepté seulement si le bloc `films` est actif (sinon 400 `invalid_channel`)."
+      description: "`cinema` : salon vocal dédié aux films et séries (session `/voice/{cid}/cinema`), accepté seulement si le bloc `films` est actif, ou le bloc `regarder-ensemble` avec Entracte branché (sinon 400 `invalid_channel`)."
       requestBody:
         required: true
         content:
@@ -2129,19 +2130,19 @@ paths:
     get:
       tags: [vocal]
       summary: Séances en cours dans les salons cinéma visibles
-      description: "Bloc `films`. Dictionnaire id de salon → `{state, now}` (voir `GET /voice/{cid}/cinema`) ; les salons sans séance sont absents."
+      description: "Bloc `regarder-ensemble`. Dictionnaire id de salon → `{state, now}` (voir `GET /voice/{cid}/cinema`) ; les salons sans séance sont absents."
       responses: {"200": {description: ok}, "404": {description: serveur introuvable}}
   /voice/{cid}/cinema:
     parameters: [{$ref: "#/components/parameters/ChannelId"}]
     get:
       tags: [vocal]
-      summary: Séance du salon cinéma (bloc `films`)
+      summary: Séance du salon cinéma (bloc `regarder-ensemble`)
       description: "`{state, now}` comme `GET /voice/{cid}/watch` ; `state.provider` vaut toujours `film`. 400 `not_cinema_channel` si le salon n'est pas un salon cinéma. L'état est en mémoire."
       responses: {"200": {description: ok}, "404": {description: salon introuvable}}
     put:
       tags: [vocal]
       summary: Lancer un film ou une série (l'auteur devient l'hôte et pilote seul)
-      description: "Corps `{video, queue?}` : `video` vaut `film:<id>` (identifiant public d'un titre de la bibliothèque) ; tout autre lien : 400 `invalid_video`. Exige la permission `estompe:movies` et d'être présent dans le salon cinéma (vocal LiveKit). Pour un épisode sans `queue`, les épisodes suivants sont placés dans la file. `host_only` vaut toujours `true` : seul l'hôte (celui qui a lancé le titre ; au départ de l'hôte, un spectateur qui a l'accès aux films) pilote lecture, pause et position, synchronisées pour tous. 30 actions par 10 s et par personne. Évènement `cinema.state`."
+      description: "Corps `{video, queue?}` : `video` vaut `film:<id>` (identifiant public d'un titre d'Entracte si `ESTOMPE_ENTRACTE_URL` est renseignée, sinon du bloc `films`) ; tout autre lien : 400 `invalid_video`. Entracte vérifie de serveur à serveur que le titre existe et que l'hôte a `entracte:access` (sans Entracte : permission `estompe:films.use`) ; titre inconnu : 400. Exige `estompe:watch.organize` et d'être présent dans le salon cinéma (vocal LiveKit). Pour un épisode sans `queue`, les épisodes suivants sont placés dans la file. `host_only` vaut toujours `true` : seul l'hôte (celui qui a lancé le titre ; au départ de l'hôte, un spectateur qui a l'accès aux films) pilote lecture, pause et position, synchronisées pour tous. 30 actions par 10 s et par personne. Évènement `cinema.state`."
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [video], properties: {video: {type: string}, queue: {type: array, maxItems: 50, items: {type: string}}}}}}}
       responses: {"204": {description: ok}, "400": {description: "invalid_video ou not_cinema_channel"}, "403": {description: "`not_in_voice` ou hôte seul"}, "429": {description: rate_limited}}
     delete:

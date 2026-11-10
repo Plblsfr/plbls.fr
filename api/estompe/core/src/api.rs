@@ -215,6 +215,7 @@ struct MeReponse {
     activated: bool,
     suspended: Option<bool>,
     movies: Option<bool>,
+    cinema: Option<bool>,
     max_video_size: Option<u64>,
     #[schema(inline, value_type = Option<String>)]
     transcription: Option<Transcription>,
@@ -301,6 +302,7 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
                     "pseudo": u.pseudo,
                     "sub": idn.sub,
                     "movies": movies,
+                    "cinema": crate::servers::cinema_disponible(&state),
                     "max_video_size": config.max_video_bytes,
                     "transcription": transcription,
                     "blocks": state.blocs_actifs(),
@@ -651,6 +653,7 @@ mod tests {
                 "allowed",
                 "blocks",
                 "capabilities",
+                "cinema",
                 "id",
                 "max_video_size",
                 "movies",

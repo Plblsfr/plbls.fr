@@ -1,5 +1,6 @@
 #![allow(clippy::result_large_err)]
 
+mod entracte;
 mod lien;
 mod session;
 
@@ -1022,7 +1023,14 @@ pub fn routes(musique: Arc<Musique>) -> OpenApiRouter<AppState> {
 }
 
 pub fn mount(router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
-    router.merge(Lecteurs::partage().routes())
+    let lecteurs = Lecteurs::partage();
+    router
+        .merge(lecteurs.routes())
+        .merge(lecteurs.routes_cinema())
+}
+
+pub fn brancher(state: &AppState) {
+    entracte::brancher(state);
 }
 
 #[cfg(test)]

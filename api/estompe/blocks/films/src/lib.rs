@@ -71,12 +71,13 @@ fn partage() -> Arc<Contexte> {
 }
 
 pub fn mount(routeur: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
-    routeur
-        .merge(routes(partage()))
-        .merge(estompe_block_regarder_ensemble::Lecteurs::partage().routes_cinema())
+    routeur.merge(routes(partage()))
 }
 
 pub fn brancher(state: &AppState) {
+    if state.config().entracte_actif() {
+        return;
+    }
     state.definir_films(Arc::new(Resolveur {
         state: state.clone(),
         ctx: partage(),
