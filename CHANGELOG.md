@@ -4,6 +4,10 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## api 0.88.9 - 2026-11-10
+
+- [x] Estompe API : le gateway joint par le réseau Docker. L'API vérifiait chaque session et relayait aegis et permission par `GATEWAY_URL`, l'adresse publique (`https://security.plbls.fr`) : l'appel sortait du VPS et passait par Cloudflare, qui le bloquait par un défi (403, `cf-mitigated: challenge`) ; l'API répondait 401 à `/me` et la connexion bouclait sur la page de connexion. Elle lit maintenant `GATEWAY_INTERNE_URL` (`http://auth-gateway:8080` dans `plbls.env`), comme aegis, pli et Entracte, et ne garde `GATEWAY_URL` qu'en repli. Plus aucun appel entre services de la stack ne sort du VPS (LiveKit, Entracte et aegis étaient déjà joints en interne). Non vérifié : connexion réelle en production après déploiement.
+
 ## api 0.88.8 / applis 0.90.9 / pli 0.2.0 / security 0.1.4 / aegis 0.1.1 / entracte 0.1.0 / ui 2.0.1 - 2026-11-10
 
 - [x] Estompe API : migrations au démarrage simultané de deux instances sur une base neuve. `migrate` créait la table `schema_migrations` (`CREATE TABLE IF NOT EXISTS`) avant de prendre le verrou consultatif ; deux démarrages simultanés sur une base vide échouaient sur une clé en double de `pg_type` (23505). La création de la table se fait maintenant sous le même verrou (`pg_advisory_xact_lock(7001)`). Le test `migrations_concurrentes_jouees_une_fois` échouait à chaque fois contre un PostgreSQL 16 local (15 sur 15) et passe maintenant (10 sur 10) ; il passait par chance en CI. Non vérifié : démarrage réel de plusieurs instances de l'API (en production la table existe déjà, aucun effet attendu).
