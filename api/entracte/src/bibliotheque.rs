@@ -122,14 +122,7 @@ pub async fn liste(
     };
     let debut = entier(&q, "start", 0, 100_000)?;
     let limite = entier(&q, "limit", 40, 100)?.max(1);
-    let motif = recherche.map(|t| {
-        format!(
-            "%{}%",
-            t.replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_")
-        )
-    });
+    let motif = recherche.map(commun::sql::contient);
     let filtre = "WHERE t.present AND t.genre = ANY($2) AND ($3::text IS NULL OR t.titre ILIKE $3 OR t.titre_original ILIKE $3)
         AND ($4::text IS NULL OR $4 = ANY(t.genres)) AND coalesce(t.annee, 0) BETWEEN $5 AND $6";
     let genres: Vec<String> = genres.iter().map(|g| g.to_string()).collect();

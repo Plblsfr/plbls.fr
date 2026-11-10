@@ -1,15 +1,13 @@
 use std::{collections::HashMap, sync::Mutex, time::Duration};
 
 use axum::http::HeaderMap;
+use commun::http::cause;
 use serde_json::{Value, json};
 
 const DELAI: Duration = Duration::from_secs(5);
 
 pub fn client_http() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(DELAI)
-        .build()
-        .expect("client HTTP")
+    commun::http::client(DELAI)
 }
 
 pub fn vrai(v: &Value) -> bool {
@@ -41,16 +39,6 @@ fn compacte(texte: &str) -> String {
         }
     }
     sortie.chars().take(100).collect()
-}
-
-fn cause(e: &reqwest::Error) -> String {
-    let mut source: Option<&dyn std::error::Error> = Some(e);
-    let mut dernier = e.to_string();
-    while let Some(s) = source {
-        dernier = s.to_string();
-        source = s.source();
-    }
-    dernier
 }
 
 pub async fn fetch_identity(
@@ -181,19 +169,7 @@ impl PermissionChecker {
                 "open_default": false,
             }],
         });
-        let res = self
-            .http
-            .put(format!("{}/v1/manifest", self.url))
-            .bearer_auth(&self.token)
-            .json(&manifeste)
-            .send()
-            .await
-            .map_err(|e| format!("aegis injoignable ({})", cause(&e)))?;
-        if res.status().is_success() {
-            Ok(())
-        } else {
-            Err(format!("aegis a répondu HTTP {}", res.status().as_u16()))
-        }
+        commun::aegis::envoyer_manifeste(&self.http, &self.url, &self.token, &manifeste).await
     }
 
     pub async fn check(&self, user_id: &Value, maintenant: u64) -> Decision {

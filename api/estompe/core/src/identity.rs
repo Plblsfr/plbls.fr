@@ -87,6 +87,7 @@ impl Resolver {
             base_url: gateway_url.trim_end_matches('/').to_string(),
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(5))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("client HTTP"),
             now,

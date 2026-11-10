@@ -68,13 +68,6 @@ const SQL_LISTE: &str = "SELECT a.sub, a.email, a.display_name, a.last_seen_at, 
     WHERE $1 = '' OR a.sub = $1 OR lower(a.email) LIKE '%' || $2 || '%' OR lower(a.display_name) LIKE '%' || $2 || '%'
     ORDER BY a.email IS NULL, lower(a.email), a.sub LIMIT $3 OFFSET $4";
 
-fn echapper_like(s: &str) -> String {
-    s.to_lowercase()
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
-}
-
 async fn chercher(
     state: &AppState,
     q: &str,
@@ -84,7 +77,7 @@ async fn chercher(
     use sqlx::Row;
     let lignes = sqlx::query(SQL_LISTE)
         .bind(q)
-        .bind(echapper_like(q))
+        .bind(commun::sql::echapper_like(&q.to_lowercase()))
         .bind(limit)
         .bind(offset)
         .fetch_all(&state.db)

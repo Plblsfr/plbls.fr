@@ -27,7 +27,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Détail (déclencheurs, caches, jobs) : `docs/estompe/ci.md`.
 
 ## Rust
-- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/commun` (code partagé : en-têtes d'identité signés, jetons de service), `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/entracte`, `api/estompe/*`.
+- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/commun` (code partagé : en-têtes d'identité signés, jetons de service, client HTTP sans redirection, manifeste aegis, échappement `LIKE`), `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/entracte`, `api/estompe/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
 - Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`

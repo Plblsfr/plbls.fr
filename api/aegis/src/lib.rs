@@ -36,10 +36,7 @@ impl AppState {
             db,
             cache,
             spec: doc.to_pretty_json()?.into(),
-            http: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(10))
-                .redirect(reqwest::redirect::Policy::none())
-                .build()?,
+            http: commun::http::client(std::time::Duration::from_secs(10)),
         })
     }
 

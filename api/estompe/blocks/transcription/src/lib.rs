@@ -42,6 +42,7 @@ impl Service {
         Self {
             client: Client::builder()
                 .timeout(DELAI)
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("client HTTP"),
             places: Semaphore::new(SIMULTANEES),

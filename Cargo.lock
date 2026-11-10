@@ -542,8 +542,11 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "hmac",
+ "reqwest",
+ "serde_json",
  "sha2 0.11.1",
  "subtle",
+ "tokio",
 ]
 
 [[package]]
@@ -844,6 +847,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "chrono",
+ "commun",
  "futures-util",
  "hmac",
  "rand 0.10.3",
@@ -2549,6 +2553,7 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "chrono",
+ "commun",
  "rand 0.10.3",
  "reqwest",
  "serde",
