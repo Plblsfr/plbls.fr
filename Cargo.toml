@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "api/commun",
   "api/security",
   "api/permission",
   "api/aegis",
@@ -60,6 +61,7 @@ url = "2"
 utoipa = { version = "6", features = ["yaml", "uuid"] }
 utoipa-axum = "0.3"
 uuid = { version = "1", features = ["serde", "v4"] }
+commun = { path = "api/commun" }
 estompe-core = { path = "api/estompe/core" }
 estompe-block = { path = "api/estompe/block" }
 estompe-block-gifs = { path = "api/estompe/blocks/gifs" }

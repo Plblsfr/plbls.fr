@@ -2,7 +2,6 @@ pub mod annuaire;
 pub mod auth;
 pub mod cache;
 pub mod error;
-pub mod identity;
 pub mod journal;
 pub mod moteur;
 pub mod routes;

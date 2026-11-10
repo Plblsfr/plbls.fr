@@ -45,19 +45,43 @@ mod tests {
     #[test]
     fn signature_valide_alteree_perimee() {
         let secret = cle_aleatoire();
-        let sig = sign(&secret, "u1", "user", "c", 1000);
-        assert!(verify(&secret, "u1", "user", "c", 1000, &sig, 1030));
-        assert!(!verify(&secret, "u1", "admin", "c", 1000, &sig, 1030));
-        assert!(!verify(
-            &cle_aleatoire(),
+        let sig = sign(&secret, "u1", "user,chat:admin", "plbls-mobile", 1000);
+        assert!(verify(
+            &secret,
             "u1",
-            "user",
-            "c",
+            "user,chat:admin",
+            "plbls-mobile",
             1000,
             &sig,
             1030
         ));
-        assert!(!verify(&secret, "u1", "user", "c", 1000, &sig, 1061));
+        assert!(!verify(
+            &secret,
+            "u1",
+            "admin",
+            "plbls-mobile",
+            1000,
+            &sig,
+            1030
+        ));
+        assert!(!verify(
+            &cle_aleatoire(),
+            "u1",
+            "user,chat:admin",
+            "plbls-mobile",
+            1000,
+            &sig,
+            1030
+        ));
+        assert!(!verify(
+            &secret,
+            "u1",
+            "user,chat:admin",
+            "plbls-mobile",
+            1000,
+            &sig,
+            1061
+        ));
     }
 
     #[test]

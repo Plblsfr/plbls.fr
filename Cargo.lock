@@ -8,11 +8,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.23.1",
  "chrono",
+ "commun",
  "config",
  "futures-util",
- "hmac",
  "http-body-util",
  "redis",
  "reqwest",
@@ -20,7 +19,6 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "sqlx",
- "subtle",
  "tokio",
  "tower",
  "tower-http 0.7.1",
@@ -173,9 +171,9 @@ dependencies = [
  "anyhow",
  "axum",
  "base64 0.23.1",
+ "commun",
  "config",
  "futures-util",
- "hmac",
  "jsonwebtoken",
  "rand 0.10.3",
  "redis",
@@ -536,6 +534,16 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "commun"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "hmac",
+ "sha2 0.11.1",
+ "subtle",
 ]
 
 [[package]]
@@ -2485,16 +2493,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.23.1",
  "chrono",
+ "commun",
  "config",
- "hmac",
  "reqwest",
  "serde",
  "serde_json",
- "sha2 0.11.1",
  "sqlx",
- "subtle",
  "tokio",
  "tower-http 0.7.1",
  "tracing",

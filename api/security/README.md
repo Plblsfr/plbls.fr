@@ -37,4 +37,4 @@ Le conteneur écoute sur le port `8080` (domaine Dokploy `security.plbls.fr`) : 
 
 ## Contrat avec les micro-services
 
-Voir [docs/security/gateway.md](../../docs/security/gateway.md). Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `src/identity.rs` (`verify`) est la référence pour vérifier `X-Identity-Sig`.
+Voir [docs/security/gateway.md](../../docs/security/gateway.md). Les rôles transmis dans `X-User-Roles` sont les rôles realm tels quels et les rôles client sous la forme `client:role`. `api/commun/src/identite.rs` (`sign` et `verify`, partagés avec aegis et permission) est la référence pour vérifier `X-Identity-Sig`.

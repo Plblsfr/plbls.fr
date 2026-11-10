@@ -202,6 +202,9 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
+      - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP)
+        if: needs.changements.outputs.pli_server == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+        run: cargo test --locked -p commun
       - name: Tests du serveur pli (PostgreSQL 16)
         if: needs.changements.outputs.pli_server == 'true'
         env:

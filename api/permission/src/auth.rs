@@ -6,8 +6,9 @@ use axum::{
     extract::FromRequestParts,
     http::{HeaderMap, header, request::Parts},
 };
+use commun::identite as identity;
 
-use crate::{AppState, error::ApiError, identity};
+use crate::{AppState, error::ApiError};
 
 #[derive(Debug, Clone)]
 pub enum Caller {

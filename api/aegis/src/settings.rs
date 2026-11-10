@@ -125,13 +125,7 @@ pub struct Services {
 
 impl Services {
     pub fn trouver(&self, donne: &str) -> Option<&str> {
-        use subtle::ConstantTimeEq;
-        self.tokens
-            .split(',')
-            .filter_map(|e| e.trim().split_once(':'))
-            .filter(|(_, t)| !t.is_empty())
-            .find(|(_, t)| bool::from(t.as_bytes().ct_eq(donne.as_bytes())))
-            .map(|(n, _)| n)
+        commun::services::trouver(&self.tokens, donne)
     }
 
     pub fn jeton(&self, app: &str) -> Option<&str> {

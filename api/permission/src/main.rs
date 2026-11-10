@@ -1,6 +1,5 @@
 mod auth;
 mod error;
-mod identity;
 mod routes;
 mod settings;
 

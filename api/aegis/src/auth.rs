@@ -4,8 +4,9 @@ use axum::{
     extract::FromRequestParts,
     http::{HeaderMap, header, request::Parts},
 };
+use commun::identite as identity;
 
-use crate::{AppState, error::ApiError, identity, stockage};
+use crate::{AppState, error::ApiError, stockage};
 
 pub const PERMISSION_ADMIN: &str = "aegis:admin";
 

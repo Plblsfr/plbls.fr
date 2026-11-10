@@ -9,6 +9,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+commun.workspace = true
 axum.workspace = true
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
@@ -23,7 +24,6 @@ config.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-hmac.workspace = true
 rand.workspace = true
 base64.workspace = true
 tracing.workspace = true

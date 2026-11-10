@@ -30,15 +30,15 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 |---|---|---|
 | `rust` | `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `deny.toml`, tout `Dockerfile`, `api/**` (membres du workspace) | `rust-lint` |
 | `estompe_api` | `api/estompe/**`, `deploy/estompe/.env.example`, `docs/estompe/openapi.yaml`, `scripts/estompe/paquets-cargo.sh`, fichiers Cargo racine, `.dockerignore` | `rust-test` (Estompe), `estompe-api-image` ; sur `main` : image `:edge` de l'API |
-| `pli_server` | `api/pli/**`, fichiers Cargo racine | `rust-test` (pli) |
+| `pli_server` | `api/pli/**`, `api/commun/**`, fichiers Cargo racine | `rust-test` (pli, commun) |
 | `catalogue_permissions` | `api/estompe/core/src/catalogue.rs`, `docs/aegis/fonctionnalites.md` (générée, vérifiée par un test) | `rust-test` (Estompe) |
-| `aegis_server` | `api/aegis/**`, fichiers Cargo racine | `rust-test` (aegis, avec PostgreSQL et Redis) |
-| `entracte_server` | `api/entracte/**`, `docs/entracte/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Entracte, avec PostgreSQL et ffmpeg) |
+| `aegis_server` | `api/aegis/**`, `api/commun/**`, fichiers Cargo racine | `rust-test` (aegis, avec PostgreSQL et Redis ; commun) |
+| `entracte_server` | `api/entracte/**`, `api/commun/**`, `docs/entracte/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Entracte, avec PostgreSQL et ffmpeg ; commun) |
 | `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates`) | `estompe-tauri` |
 | `estompe` | `{api,web,apps,docs,deploy,scripts}/estompe/**`, `.version`, `CHANGELOG.md`, `changelog.d/**`, `agents/**` | `changelog` |
 | `lint` | JS, TS, Svelte, CSS, JSON, shell, Python, Markdown, configs des linters, `scripts/**` | `front` (`just lint`, dont les liens Markdown internes) |
 | `npm`, `front_*` | fichiers npm racine, `scripts/*` ; chaque projet npm (`web/estompe` compte aussi le TS des apps natives et `scripts/estompe/*.mjs`) | `front` : check, test, build des projets touchés (tous si les fichiers npm racine changent) |
-| `image_*` | dossier du projet, fichiers npm et Cargo racine selon l'image | `image-<projet>` (PR : étape de test du Dockerfile et build à blanc ; `main` : `:edge`) |
+| `image_*` | dossier du projet (et `api/commun/**` pour les images Rust qui en dépendent), fichiers npm et Cargo racine selon l'image | `image-<projet>` (PR : étape de test du Dockerfile et build à blanc ; `main` : `:edge`) |
 | `estompe_ci_image` | `deploy/estompe/ci/**` | `livraison.yml` : `estompe-ci-image` |
 
 ## `ci.yml` (PR)

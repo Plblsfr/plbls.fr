@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use aegis::{
-    AppState, MIGRATIONS, identity,
+    AppState, MIGRATIONS,
     settings::{
         Annuaire, Cache, Database, Gateway, Identity, Redis, Ressources, Server, Services, Settings,
     },
@@ -10,6 +10,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use commun::identite as identity;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use sqlx::Connection;
