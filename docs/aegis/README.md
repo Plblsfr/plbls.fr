@@ -17,7 +17,7 @@ Spec OpenAPI générée depuis le code : `GET /openapi.json`.
 ## En dev
 
 ```sh
-just aegis-dev-up      # Postgres (5434) et Redis (6380) éphémères
-just aegis-dev-run     # backend sur 127.0.0.1:8091 (deploy/aegis/dev.env)
+just dev-up            # Postgres (5432) et Redis (6379) éphémères, avec les autres dépendances de dev
+just aegis-dev-run     # backend sur 127.0.0.1:8091 (deploy/dev.env)
 TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres TEST_REDIS_URL=redis://localhost:6379 cargo test -p aegis
 ```

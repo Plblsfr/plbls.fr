@@ -143,7 +143,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   (`api/estompe/estompe-api/src/main.rs`) avec son nom et ses dépendances (`needs`) ; `BLOCK_<NOM>=false` le désactive (routes absentes) ;
   le serveur annonce les blocs actifs dans `blocks` de `GET /me`. Frontend : `web/estompe/src/blocks/<nom>/` avec les mêmes noms (`registry.ts`),
   `app.on('<nom>')` masque un bloc inactif. Une nouvelle fonctionnalité optionnelle = un nouveau bloc des deux côtés, documenté dans
-  `deploy/estompe/.env.example` et `deploy/estompe/docker-compose.yml`. **Procédure complète : `api/estompe/README.md`, section « Ajouter un bloc ».**
+  `deploy/estompe/.env.example`. **Procédure complète : `api/estompe/README.md`, section « Ajouter un bloc ».**
 - `web/estompe/` : code commun à toutes les applications. `src/components` et `src/views` : cœur (Svelte 5, runes) ; `src/lib` : état
   (`store.svelte.ts`, `voice.svelte.ts`, `prefs.svelte.ts`, `api.ts`) et interface `Platform` (`platform.ts`). UI : `plbls-ui` embarquée
   dans `src/vendor/plbls-ui`.
@@ -153,7 +153,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
 - Permissions : toute nouvelle route est rattachée à une permission de `api/estompe/core/src/catalogue.rs` (ou, avec un motif, à `HORS_PERMISSION`), et tout nouveau droit de serveur est plafonné par une permission ; les tests `estompe-api` et `estompe-core` l'imposent. Après un changement du catalogue : `AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour` régénère `docs/aegis/fonctionnalites.md`.
-- `deploy/estompe/` : stack Dokploy. Toute nouvelle variable d'environnement va dans `deploy/estompe/.env.example` et `deploy/estompe/docker-compose.yml`.
+- Déploiement : services `estompe-*` et `livekit` de `deploy/docker-compose.yml`, sans section `environment` (voir `deploy/README.md`). Toute nouvelle variable d'environnement va dans `deploy/estompe/.env.example` (et dans le secret Vault `plbls/estompe`), jamais dans le compose.
 - CI (détail : `docs/estompe/ci.md`) : en PR, `ci.yml` à la racine lance `rust-lint` et `rust-test` (API Rust : fmt, clippy, cargo-deny, tests avec PostgreSQL),
   `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`
   (entrée `changelog.d/` exigée), chacun seulement si la PR touche ses chemins. Après fusion, `livraison.yml` calcule `.version` (`estompe-version`),

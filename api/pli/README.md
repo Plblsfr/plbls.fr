@@ -47,14 +47,9 @@ Comme le hub : aucune route n'est ajoutée au gateway. Le cookie de session de s
 
 ## Lancer
 
-Depuis `deploy/pli/` ([`docker-compose.yml`](../../deploy/pli/docker-compose.yml), [`.env.example`](../../deploy/pli/.env.example)) :
+En production : service `pli` de la stack [`deploy/docker-compose.yml`](../../deploy/docker-compose.yml), variables dans [`deploy/pli/.env.example`](../../deploy/pli/.env.example) (secret Vault `plbls/pli`, voir [`deploy/README.md`](../../deploy/README.md)).
 
-```bash
-cp .env.example .env            # renseigner DATABASE_URL, PERMISSION_*
-docker compose up -d            # http://127.0.0.1:8080
-```
-
-Sans Docker, depuis la racine du dépôt : `cargo run -p pli` avec les variables du `.env` exportées. L'image se construit depuis la racine : `docker build -f api/pli/Dockerfile .` (fichiers envoyés : [`Dockerfile.dockerignore`](Dockerfile.dockerignore), workspace Cargo et `web/pli/public/`).
+En local, depuis la racine du dépôt : `cargo run -p pli` avec ces variables exportées. L'image se construit depuis la racine : `docker build -f api/pli/Dockerfile .` (fichiers envoyés : [`Dockerfile.dockerignore`](Dockerfile.dockerignore), workspace Cargo et `web/pli/public/`).
 
 Tests : `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres cargo test -p pli` (une base jetable est créée puis supprimée par test ; sans cette variable, les tests passent par testcontainers et sont ignorés si Docker manque). Tests du front (`web/pli/public/*.test.js`) : `npm ci` à la racine du dépôt (workspace npm), puis `npm test --workspace web/pli` (Node 26, voir `.nvmrc`).
 
