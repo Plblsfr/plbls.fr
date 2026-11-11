@@ -78,7 +78,7 @@
 </div>
 
 <style>
-  .connexion { min-height: 100%; display: flex; flex-wrap: wrap; background: var(--papier); overflow: auto; }
+  .connexion { height: 100%; display: flex; flex-wrap: wrap; background: var(--papier); overflow: auto; }
   .vitrine { flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 40px; padding: 56px; background: var(--papier-2); border-right: 1px solid var(--trait); }
   .marque { display: flex; align-items: center; gap: 12px; }
   .nom { font-family: var(--f-titre); font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
