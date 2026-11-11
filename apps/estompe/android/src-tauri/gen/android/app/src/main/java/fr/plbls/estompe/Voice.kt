@@ -10,6 +10,7 @@ import android.media.MediaRecorder
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import org.json.JSONObject
@@ -83,7 +84,7 @@ object Mic {
 
 private fun voskText(h: String?) = try { h?.let { JSONObject(it).optString("text") }?.takeIf { it.isNotBlank() } } catch (e: Exception) { null }
 
-fun utteranceGuardMs(text: String): Long = 5_000L + 120L * text.length
+fun utteranceGuardMs(text: String, rate: Float = 1f): Long = ((5_000L + 120L * text.length) / rate.coerceIn(0.5f, 2f)).toLong()
 
 private class WakeLoop(private val model: Model, private val heard: (String) -> Unit, private val failed: (String) -> Unit) {
   @Volatile private var running = true
@@ -203,6 +204,8 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
     ready()
   }
 
+  private var guardUntil = 0L
+
   fun say(text: String, then: (Boolean) -> Unit = {}) {
     val t = tts
     if (t == null || !isReady || closed) return then(false)
@@ -212,14 +215,17 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
     focus()
     val guard = Runnable { DriveService.note("synthèse vocale : phrase sans fin, moteur relancé"); failed(id) }
     guards[id] = guard
-    ui.postDelayed(guard, utteranceGuardMs(text))
+    val now = SystemClock.uptimeMillis()
+    guardUntil = maxOf(now, guardUntil) + guardMs(text)
+    ui.postDelayed(guard, guardUntil - now)
     val code = try { t.speak(text, TextToSpeech.QUEUE_ADD, null, id) } catch (e: Exception) { TextToSpeech.ERROR }
     if (code != TextToSpeech.SUCCESS) { DriveService.note("synthèse vocale : refus de lire"); failed(id) }
   }
 
+  fun guardMs(text: String): Long = utteranceGuardMs(text, settings.safeRate)
+
   private fun failed(id: String) {
     if (closed || id !in done) return
-    finished(id, false)
     restart()
   }
 
@@ -228,6 +234,7 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
     val old = tts
     tts = null
     isReady = false
+    guardUntil = 0L
     try { old?.stop() } catch (e: Exception) {}
     try { old?.shutdown() } catch (e: Exception) { DriveService.note("synthèse vocale : ${e.javaClass.simpleName}") }
     for (id in done.keys.toList()) finished(id, false)
@@ -239,6 +246,7 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
     guards.remove(id)?.let { ui.removeCallbacks(it) }
     val then = done.remove(id) ?: return
     try { then(spoken) } catch (e: Exception) { DriveService.note("synthèse vocale : rappel ${e.javaClass.simpleName}") }
+    if (done.isEmpty()) guardUntil = 0L
     if (done.isEmpty() && talking && !closed) { talking = false; Mic.give(false) }
   }
 

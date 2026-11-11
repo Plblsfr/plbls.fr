@@ -156,7 +156,7 @@ class Phone(context: Context) {
       val r = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
           if (intent.action != action) return
-          if (resultCode != Activity.RESULT_OK) { DriveService.note("envoi SMS : refus du système (code $resultCode)"); return finish(if (accepted.isEmpty()) Sent.FAILED else Sent.UNKNOWN) }
+          if (resultCode != Activity.RESULT_OK) { DriveService.note("envoi SMS : refus du système (code $resultCode)"); return finish(if (parts.size == 1) Sent.FAILED else Sent.UNKNOWN) }
           accepted.add(intent.getIntExtra(EXTRA_PART, -1))
           if (accepted.size >= parts.size) finish(Sent.OK)
         }

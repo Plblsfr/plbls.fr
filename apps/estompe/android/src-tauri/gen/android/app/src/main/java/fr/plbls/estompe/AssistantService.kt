@@ -397,8 +397,9 @@ class AssistantService : Service() {
     if (!phone.canSendSms()) return finish("Autorisez l'envoi de SMS dans Estompe.")
     if (!phone.canReadContacts()) return finish("Autorisez l'accès aux contacts dans Estompe.")
     background({ splitRecipient(name, phone.contacts()) }) { r ->
-      val body = text.ifBlank { r?.second.orEmpty().trim() }
-      pickContact(name, r?.first.orEmpty()) { c -> number(c) { n, several -> compose(ReplyTo.Text(n, c.name, several), body) } }
+      val rest = r?.second.orEmpty().trim()
+      val body = text.ifBlank { rest }
+      pickContact(name, if (text.isNotBlank() && rest.isNotEmpty()) emptyList() else r?.first.orEmpty()) { c -> number(c) { n, several -> compose(ReplyTo.Text(n, c.name, several), body) } }
     }
   }
 
@@ -485,6 +486,7 @@ class AssistantService : Service() {
 
   private fun say(text: String, then: (Boolean) -> Unit) {
     val mine = turn
+    busySince = maxOf(busySince, SystemClock.elapsedRealtime()) + voice.guardMs(text)
     voice.say(text) { said ->
       if (destroyed || mine != turn) return@say
       busySince = SystemClock.elapsedRealtime()

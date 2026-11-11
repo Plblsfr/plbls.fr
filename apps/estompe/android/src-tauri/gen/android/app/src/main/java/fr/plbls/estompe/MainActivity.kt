@@ -85,7 +85,7 @@ class EstompeNative(private val activity: MainActivity) {
         "logout" -> { session.deconnecter(); JSONObject().put("status", 200) }
         "adopt" -> { session.adopter(m.getString("refresh")); JSONObject().put("status", 200) }
         "screenshot" -> JSONObject().put("status", 200).put("image", screenshot())
-        "assistant" -> assistantMessage(m)
+        "assistant" -> try { synchronized(assistant) { assistantMessage(m) } } catch (e: JSONException) { throw e } catch (e: Exception) { DriveService.note("assistant : ${e.javaClass.simpleName}"); JSONObject().put("status", 500) }
         else -> JSONObject().put("status", 400).put("error", "opération inconnue")
       }
     } catch (e: JSONException) {

@@ -138,6 +138,8 @@ class AssistantServiceTest {
   @Test fun `délai de garde d'une phrase proportionnel à sa longueur`() {
     assertEquals(5_000L, utteranceGuardMs(""))
     assertEquals(5_000L + 120L * 10, utteranceGuardMs("abcdefghij"))
+    assertEquals(2 * (5_000L + 120L * 10), utteranceGuardMs("abcdefghij", 0.5f))
+    assertEquals((5_000L + 120L * 10) / 2, utteranceGuardMs("abcdefghij", 9f))
   }
 
   @Test fun `phrase d'échec de la musique`() {

@@ -221,7 +221,7 @@ class DriveService : Service() {
 
   private fun reply() {
     val m = last
-    if (busy) return
+    if (busy || !Mic.quiet) return
     if (m == null || !m.replyable) return voice.say("Aucun message à répondre.")
     if (!VoskModel.ready(this)) return voice.say("Modèle de reconnaissance absent. Ouvre Estompe pour le télécharger.")
     busy = true
