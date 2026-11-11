@@ -47,6 +47,47 @@ fun fold(text: String): String =
 
 private fun count(folded: String) = folded.split(" ").count { it.isNotEmpty() }
 
+private const val MAX_INPUT = 400
+
+private fun bound(text: String) = if (text.length > MAX_INPUT) text.substring(0, MAX_INPUT) else text
+
+private class Piece(val text: String, val tokens: Int, val spaced: Boolean)
+
+private val SPACES = Regex("\\s+")
+private val PIECE = Regex("[^'’-]+['’-]*")
+
+private fun pieces(original: String): List<Piece> {
+  val out = ArrayList<Piece>()
+  for (w in original.trim().split(SPACES)) {
+    var first = true
+    for (m in PIECE.findAll(w)) { out.add(Piece(m.value, count(fold(m.value)), first)); first = false }
+  }
+  return out
+}
+
+private fun original(heard: String, folded: String, from: Int): String {
+  val k = count(folded)
+  if (k == 0) return ""
+  val words = fold(heard).split(" ").filter { it.isNotEmpty() }
+  val target = folded.split(" ").filter { it.isNotEmpty() }
+  var s = -1
+  for (i in from.coerceAtLeast(0)..words.size - k) if (words.subList(i, i + k) == target) { s = i; break }
+  if (s < 0) return folded
+  var n = 0
+  val sb = StringBuilder()
+  for (p in pieces(heard)) {
+    if (p.tokens == 0) continue
+    val a = n
+    val b = n + p.tokens
+    n = b
+    if (b <= s || a >= s + k) continue
+    if (a < s || b > s + k) return folded
+    if (sb.isNotEmpty() && p.spaced) sb.append(' ')
+    sb.append(p.text)
+  }
+  return sb.toString().replace(SPACES, " ").trim { !it.isLetterOrDigit() }.ifEmpty { folded }
+}
+
 private fun tail(original: String, folded: String): String {
   val k = count(folded)
   if (k == 0) return ""
@@ -64,10 +105,11 @@ private fun tail(original: String, folded: String): String {
   return if (n == k) out.asReversed().joinToString(" ") else folded
 }
 
-private val WAKE_SINGLE = setOf("estompe", "estompes", "estompent", "estomper", "estompez", "estomp")
+private val WAKE_SINGLE = setOf("estompe", "estompes", "estomp")
 private val WAKE_PAIRS = setOf("est tombe", "est tomb", "est tombes", "est tompe", "et stomp", "et stompe")
 
-fun wakeWord(heard: String): String? {
+fun wakeWord(input: String): String? {
+  val heard = bound(input)
   val tokens = fold(heard).split(" ").filter { it.isNotEmpty() }
   var end = tokens.indexOfLast { it in WAKE_SINGLE } + 1
   if (tokens.size >= 2 && "${tokens[0]} ${tokens[1]}" in WAKE_PAIRS) end = maxOf(end, 2)
@@ -85,7 +127,7 @@ private val LEAD = Regex("^(?:(?:euh|alors|bon|donc|ok|hey|allez|please|merci|s 
   "est ce que|je voudrais|j aimerais|je veux|je souhaite|dis moi si|dis moi) )+")
 private val TRAIL = Regex("(?: (?:merci|s il (?:te|vous) plait|stp|svp|please|maintenant))+$")
 
-private val CANCEL = Regex("^(?:(?:non )?rien|non|annule|annuler|annulez|laisse tomber|laissez tomber|tant pis|oublie|oubliez)$")
+private val CANCEL = Regex("^(?:je ne veux plus|pas du tout|non|(?:non )?(?:rien|annule|annuler|annulez|laisse tomber|laissez tomber|tant pis|oublie|oubliez)(?: [a-z0-9]+){0,2})$")
 private val HELP = Regex("^(?:aide|aide moi|que peux tu faire|que pouvez vous faire|que sais tu faire|que savez vous faire|" +
   "qu est ce que (?:tu|vous) (?:sais|savez|peux|pouvez) faire|tu sais faire quoi|tu peux faire quoi)$")
 private val REPLY = Regex("^repond(?:s|re|ez)?(?: lui| leur| a (?:lui|elle|eux)| au message| a ce message)?$")
@@ -93,8 +135,8 @@ private val UNREAD = listOf(
   Regex("^$READ(?: (?:mes|les|tous mes|tous les))?$NEW $MSG(?: non lus?| recus?| recents?)?$"),
   Regex("^quels? (?:sont|est) (?:mes|les) (?:nouveaux |derniers )?$MSG(?: non lus?)?$"),
   Regex("^(?:mes (?:nouveaux |nouvelles |derniers )?|les (?:nouveaux|nouvelles|derniers) )$MSG(?: non lus?)?$"),
-  Regex("^(?:j ai|ai je|y a t il|il y a) (?:recu )?(?:des|de|un) (?:nouveaux |nouvelles )?$MSG(?: non lus?)?$"),
 )
+private val UNREAD_ASK = Regex("^(?:(?:euh|alors|bon|donc|ok|hey|allez) )*(?:est ce que? (?:j ai|il y a)|ai je|y a t il)(?: recu)? (?:des|de|un) (?:nouveaux |nouvelles )?$MSG(?: non lus?)?$")
 private val READ_FROM = listOf(
   Regex("^$READ(?: (?:mes|les|le|la|tous les|tous mes))?$NEW $MSG(?: recus)? (?:de|du|d|venant de|envoyes? par|ecrits? par|par) (.+)$"),
   Regex("^(?:qu est ce que|qu est ce qu|que|qu) m a (?:ecrit|envoye|dit) (.+)$"),
@@ -105,10 +147,11 @@ private val READ_FROM = listOf(
 private val PRONOUNS = setOf("il", "elle", "lui", "ils", "elles", "on", "tu", "vous")
 private val SEND = Regex("^(?:envoie|envoies|envoyer|envoyez|ecris|ecrire|ecrivez|dis|dire|dites)(?: (?:un|une))?(?: (?:petit|nouveau))?(?: (?:sms|message|texto))? (?:a|au) (.+)$")
 private val MARKER = Regex(" (?:pour (?:lui |leur )?(?:dire|ecrire|annoncer)(?: que| qu)?|en (?:lui )?disant(?: que| qu)?|disant(?: que| qu)?|que|qu)(?= |$)")
+private val ON_APP = Regex(" sur .+$")
 private val APP_SUFFIX = Regex("^(.+) (?:sur|avec|dans|via) (.+)$")
 private val TRANSPORTS = listOf(
   Transport.PAUSE to Regex("^(?:pause|stop|stoppe|stoppez|arrete|arretes|arretez|arreter|coupe|coupes|couper|silence|tais toi)(?:(?: (?:la|ma|de la|cette|ce|le))? (?:$NOUN|radio|son))?$"),
-  Transport.PAUSE to Regex("^(?:mets|met|mettre|mettez|remets|fais|faire|faites)(?: (?:la|ma|le|cette) $NOUN)?(?: en)? pause(?: (?:la|ma|le|cette) $NOUN)?$"),
+  Transport.PAUSE to Regex("^(?:mets|met|mettre|mettez|remets|fais|faire|faites)(?: (?:la|ma|le|cette) $NOUN| le| la)?(?: en| sur)? pause(?: (?:la|ma|le|cette) $NOUN)?$"),
   Transport.NEXT to Regex("^(?:passe|passer|passez|saute|sauter|skip|next)(?: (?:la|le|cette|ce))?(?: $NOUN)?$"),
   Transport.NEXT to Regex("^(?:(?:mets|met|mettre|mettez|passe|passer|va|aller|lance|saute|sauter)(?: a)?(?: (?:la|le|au|cette|ce))? )?(?:$NOUN )?(?:suivante?|suivants?|prochaine?|prochains?)$"),
   Transport.PREVIOUS to Regex("^(?:(?:mets|met|mettre|mettez|va|aller|reviens|revenir|retourne|retourner|lance|joue|remets)(?: a)?(?: (?:la|le|au|cette|ce|l))? )?(?:$NOUN )?(?:precedente?|precedents?|d avant)$"),
@@ -116,19 +159,31 @@ private val TRANSPORTS = listOf(
   Transport.VOLUME_UP to Regex("^(?:mets |met |mettre )?(?:le son |la musique |le volume )?plus fort(?: un peu| encore)?$"),
   Transport.VOLUME_UP to Regex("^(?:monte|montes|monter|montez|augmente|augmentes|augmenter|augmentez|hausse|hausser)(?: un peu| encore)?(?: le| la)? (?:son|volume)(?: un peu| encore)?$"),
   Transport.VOLUME_UP to Regex("^plus de (?:son|volume)$"),
+  Transport.VOLUME_UP to Regex("^(?:(?:mets|met|mettre|mettez|monte|monter|montez|augmente|augmenter|augmentez) )?(?:(?:le|la) )?(?:volume|son|musique) (?:a fond|au max|au maximum|a bloc)$"),
+  Transport.VOLUME_UP to Regex("^(?:monte|monter|montez|augmente|augmenter|augmentez)(?: un peu| encore)$"),
   Transport.VOLUME_DOWN to Regex("^(?:mets |met |mettre )?(?:le son |la musique |le volume )?(?:moins fort|plus bas|plus doucement)(?: un peu| encore)?$"),
   Transport.VOLUME_DOWN to Regex("^(?:baisse|baisses|baisser|baissez|diminue|diminues|diminuer|diminuez|descends|descendre|reduis|reduire)(?: un peu| encore)?(?: le| la)? (?:son|volume)(?: un peu| encore)?$"),
   Transport.VOLUME_DOWN to Regex("^moins de (?:son|volume)$"),
-  Transport.PLAY to Regex("^(?:lecture|play|reprends|reprendre|reprise|continue|continuer|resume|(?:mets|met|mettre|mettez|joue|jouer|jouez|lance|lancer|lancez|relance|relancer|remets|remettre|reprends|reprendre|redemarre|redemarrer|demarre|demarrer|continue|continuer|allume|allumer)(?: (?:la|ma|de la|de ma|un peu de|le|cette|ta))? (?:musique|lecture|chanson|morceau))$"),
+  Transport.VOLUME_DOWN to Regex("^(?:baisse|baisses|baisser|baissez|diminue|diminuer|diminuez)(?: un peu| encore)?$"),
+  Transport.PLAY to Regex("^(?:lecture|play|reprends|reprendre|reprise|continue|continuer|resume|(?:mets|met|mettre|mettez|joue|jouer|jouez|ecoute|ecouter|ecoutez|lance|lancer|lancez|relance|relancer|remets|remettre|reprends|reprendre|redemarre|redemarrer|demarre|demarrer|continue|continuer|allume|allumer)(?: (?:la|ma|de la|de ma|un peu de|le|cette|ta))? (?:musique|lecture|chanson|morceau))$"),
 )
 private val PLAYLIST = Regex("^(?:$PLAY_VERBS|demarre)(?: moi)? (?:ma |la |mon |une |ta |notre )?(?:playlist|liste de lecture)(?: nommee| intitulee| qui s appelle)?(?: (.+))?$")
-private val SEARCH = Regex("^(?:$PLAY_VERBS)(?: moi)? (.+)$")
+private val SEARCH = Regex("^($PLAY_VERBS)(?: moi)? (.+)$")
 private val PLAYLIST_NAME_DET = Regex("^(?:de la |de l |du |de |d )")
 private val SEARCH_DET = Regex("^(?:(?:un peu d(?:e|u|e la|e l|es) |un peu |de la |de l |du |des |de |d |" +
   "(?:la chanson|une chanson|le morceau|un morceau|le titre|un titre|l album|un album|la musique) (?:d(?:e|u|es) )?|" +
   "(?:la chanson|une chanson|le morceau|un morceau|le titre|un titre|l album|un album) |" +
   "l artiste |le groupe |le chanteur |la chanteuse |la |le |les |l )+)")
-private val PREPOSITION = Regex("^(?:au|aux|a|avec|sur|dans|en|chez|pour|par|toi|te|nous|vous) ")
+private val PREPOSITION = Regex("^(?:au|aux|a|en|chez|pour|par|toi|te|nous|vous) |^(?:sur|dans|avec) (?:(?:la|le|l|ma|mon|ta|ton|cette|ce) )?(?:pause|stop|lecture|silence)(?: |$)")
+private val AMBIGUOUS_VERBS = setOf("ecoute", "ecouter", "lance", "lancer", "lancez")
+private val DETERMINERS = setOf("un", "une", "cet", "cette")
+private val SEARCH_STOP = setOf("moi", "toi", "lui", "ca", "ce", "cela", "ceci", "celui", "celle", "le", "la", "les", "l", "bien", "tout", "tous", "toute", "toutes",
+  "quelque", "chose", "quelquechose", "attentivement", "un", "une", "des", "du", "de", "d", "y", "en", "encore", "aussi", "musique", "chanson", "morceau", "titre", "album", "artiste", "groupe")
+private val SEARCH_PRONOUN_FIRST = setOf("moi", "toi", "lui", "ca", "ce", "cela", "ceci", "celui", "celle")
+private val SEARCH_EXCLUDE = setOf("lumiere", "lumieres", "lampe", "feu", "couvert", "couverts", "table", "tele", "television", "minuteur", "minuterie", "timer", "chrono", "chronometre",
+  "reveil", "alarme", "chauffage", "clim", "climatisation", "application", "appli", "app", "machine", "manteau", "veste", "pull", "pantalon", "chaussures", "chapeau", "linge", "vaisselle",
+  "volume", "son", "stop", "pause", "message", "messages", "sms", "texto", "textos", "mes", "mon", "ton", "ta", "tes", "ma", "que", "qui", "qu", "porte", "fenetre", "telephone", "portable",
+  "ecran", "camera", "gps", "navigation", "itineraire", "wifi", "bluetooth", "mode", "calendrier", "agenda", "rappel", "cafe", "the", "eau", "ordinateur")
 private val PLAYLIST_ONLY = Regex("^(?:ma |la |une )?(?:playlist|liste de lecture)$")
 
 private fun appId(label: String, apps: List<MusicApp>): String? {
@@ -144,38 +199,88 @@ private fun extractApp(c: String, apps: List<MusicApp>): Pair<String, String> {
   return m.groupValues[1] to id
 }
 
+private fun musicLike(verb: String, asked: String, query: String): Boolean {
+  if (query.isEmpty() || PREPOSITION.containsMatchIn(asked) || PLAYLIST_ONLY.matches(query)) return false
+  val words = query.split(" ")
+  val first = words.dropWhile { it in DETERMINERS }.firstOrNull() ?: return false
+  if (first in SEARCH_EXCLUDE || first in SEARCH_PRONOUN_FIRST) return false
+  if (words.any { it == "message" || it == "messages" || it == "sms" }) return false
+  if (words.all { it in SEARCH_STOP }) return false
+  if (verb in AMBIGUOUS_VERBS && words.none { it !in SEARCH_STOP && it !in SEARCH_EXCLUDE }) return false
+  return true
+}
+
 private fun contactOf(s: String) = s.replace(TRAIL, "").replace(Regex(" (?:un|le) (?:sms|message|texto)$"), "")
   .replace(Regex("^(?:mon|ma) "), "").trim()
 
-private fun sendSms(heard: String, lead: String): Command? {
-  val rest = SEND.matchEntire(lead)?.groupValues?.get(1) ?: return null
+private fun sendSms(heard: String, lead: String, base: Int): Command? {
+  val g = SEND.matchEntire(lead)?.groups?.get(1) ?: return null
+  val rest = g.value
   val m = MARKER.find(rest)
-  val contact = contactOf(if (m == null) rest else rest.substring(0, m.range.first))
-  if (contact.isEmpty()) return null
+  val folded = contactOf(if (m == null) rest else rest.substring(0, m.range.first))
+  if (folded.isEmpty()) return null
+  val contact = original(heard, folded, base + count(lead.substring(0, g.range.first)))
   val text = if (m == null) "" else tail(heard, rest.substring(m.range.last + 1).trim())
   return Command.SendSms(contact, text)
 }
 
-fun parseCommand(heard: String, apps: List<MusicApp> = emptyList()): Command {
-  val lead = fold(heard).replace(LEAD, "").trim()
+fun parseCommand(input: String, apps: List<MusicApp> = emptyList()): Command {
+  val heard = bound(input)
+  val all = fold(heard)
+  val lead = all.replace(LEAD, "").trim()
   val c = lead.replace(TRAIL, "").trim()
   if (c.isEmpty()) return Command.Unknown
   if (CANCEL.matches(c)) return Command.Cancel
   if (HELP.matches(c)) return Command.Help
-  if (UNREAD.any { it.matches(c) }) return Command.ReadUnread
-  READ_FROM.firstNotNullOfOrNull { r -> r.matchEntire(c)?.groupValues?.get(1)?.let(::contactOf)?.takeIf { it.isNotEmpty() && it !in PRONOUNS } }
-    ?.let { return Command.ReadFrom(it) }
+  if (UNREAD.any { it.matches(c) } || UNREAD_ASK.matches(all.replace(TRAIL, "").trim())) return Command.ReadUnread
+  val base = count(all) - count(lead)
+  for (r in READ_FROM) {
+    val g = r.matchEntire(c)?.groups?.get(1) ?: continue
+    val name = contactOf(g.value).replace(ON_APP, "").trim()
+    if (name.isEmpty() || name in PRONOUNS) continue
+    return Command.ReadFrom(original(heard, name, base + count(c.substring(0, g.range.first))))
+  }
   if (REPLY.matches(c)) return Command.Reply
-  sendSms(heard, lead)?.let { return it }
+  sendSms(heard, lead, base)?.let { return it }
   val (core, app) = extractApp(c, apps)
   TRANSPORTS.firstOrNull { it.second.matches(core) }?.let { return Command.Music(it.first, app) }
   PLAYLIST.matchEntire(core)?.let { m ->
     val name = m.groups[1]?.value.orEmpty().replace(PLAYLIST_NAME_DET, "").trim()
     return if (name.isEmpty()) Command.Unknown else Command.PlayPlaylist(name, app)
   }
-  val asked = SEARCH.matchEntire(core)?.groupValues?.get(1).orEmpty()
+  val m = SEARCH.matchEntire(core) ?: return Command.Unknown
+  val asked = m.groupValues[2]
   val query = asked.replace(SEARCH_DET, "").trim()
-  return if (query.isEmpty() || PREPOSITION.containsMatchIn(asked) || PLAYLIST_ONLY.matches(query)) Command.Unknown else Command.PlaySearch(query, app)
+  return if (musicLike(m.groupValues[1], asked, query)) Command.PlaySearch(query, app) else Command.Unknown
+}
+
+fun splitRecipient(spoken: String, contacts: List<Contact>): Pair<List<Contact>, String> {
+  val whole = matchContacts(spoken, contacts)
+  if (whole.isNotEmpty()) return whole to ""
+  val words = spoken.trim().split(SPACES).filter { it.isNotEmpty() }
+  for (n in minOf(3, words.size - 1) downTo 1) {
+    val found = matchContacts(words.take(n).joinToString(" "), contacts)
+    if (found.isNotEmpty()) return found to words.drop(n).joinToString(" ")
+  }
+  return emptyList<Contact>() to ""
+}
+
+private val CANCEL_PARTS = listOf("annul", "arrete", "oublie", "stop", "laisse tomber", "tant pis", "plus tard")
+private val CANCEL_WORDS = setOf("non", "ne", "n", "pas", "rien", "jamais", "surtout", "attends", "attendez")
+private val RETRY_PARTS = listOf("recommenc", "refai", "repet", "corrige")
+private val RETRY_WORDS = setOf("redi", "redis", "redites")
+private val SEND_WORDS = setOf("envoie", "envoyer", "envoyez", "envoi")
+private val CONFIRM_WORDS = SEND_WORDS + setOf("oui", "ok", "d", "accord", "vas", "y", "allez", "le", "l", "la", "tu", "peux", "vous", "pouvez", "s", "il", "te", "plait", "merci")
+
+fun confirmAnswer(heard: String): Answer {
+  val f = fold(bound(heard))
+  val w = f.split(" ").filter { it.isNotEmpty() }
+  return when {
+    CANCEL_PARTS.any { it in f } || w.any { it in CANCEL_WORDS } -> Answer.CANCEL
+    RETRY_PARTS.any { it in f } || w.any { it in RETRY_WORDS } -> Answer.RETRY
+    w.size in 1..4 && w.any { it in SEND_WORDS } && w.all { it in CONFIRM_WORDS } -> Answer.SEND
+    else -> Answer.UNKNOWN
+  }
 }
 
 private fun distance(a: String, b: String): Int {
@@ -221,10 +326,14 @@ fun samePhone(a: String, b: String): Boolean {
 private val ORDINALS = listOf("premier premiere un une 1", "deuxieme second seconde deux 2", "troisieme trois 3", "quatrieme quatre 4",
   "cinquieme cinq 5", "sixieme six 6", "septieme sept 7", "huitieme huit 8", "neuvieme neuf 9", "dixieme dix 10").map { it.split(" ") }
 
+private val CHOICE_REJECT = setOf("pas", "ne", "n", "non", "attends", "attendez", "attend")
+
 fun pickChoice(heard: String, count: Int): Int? {
-  val tokens = fold(heard).split(" ").filter { it.isNotEmpty() }
-  if (tokens.isEmpty() || tokens.size > 5) return null
-  val index = if (tokens.any { it == "dernier" || it == "derniere" }) count - 1 else tokens.firstNotNullOfOrNull { t -> ORDINALS.indexOfFirst { t in it }.takeIf { it >= 0 } }
+  val tokens = fold(bound(heard)).split(" ").filter { it.isNotEmpty() }
+  if (tokens.isEmpty() || tokens.size > 3 || tokens.any { it in CHOICE_REJECT }) return null
+  if (tokens.indices.any { it + 1 < tokens.size && tokens[it] in setOf("un", "une") && tokens[it + 1] in setOf("seconde", "second") }) return null
+  val index = if (tokens.any { it == "dernier" || it == "derniere" }) count - 1
+    else tokens.firstNotNullOfOrNull { t -> if (t in setOf("un", "une") && tokens.size > 2) null else ORDINALS.indexOfFirst { t in it }.takeIf { it >= 0 } }
   return index?.takeIf { it in 0 until count }
 }
 

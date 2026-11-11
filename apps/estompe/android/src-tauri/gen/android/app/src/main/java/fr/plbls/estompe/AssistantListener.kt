@@ -1,6 +1,7 @@
 package fr.plbls.estompe
 
 import android.app.Notification
+import android.app.Person
 import android.app.RemoteInput
 import android.content.ComponentName
 import android.content.Context
@@ -9,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationManagerCompat
@@ -16,6 +18,15 @@ import java.text.Collator
 import java.util.Locale
 
 data class Pending(val key: String, val app: String, val label: String, val sender: String, val text: String, val time: Long, val replyable: Boolean)
+
+enum class NoteReply { SENT, GONE, FAILED }
+
+const val UNKNOWN_APP = "une application"
+
+fun groupConversation(flagged: Boolean, conversationTitle: String?, senders: List<String>): Boolean =
+  flagged || !conversationTitle.isNullOrBlank() || senders.map { fold(it) }.filter { it.isNotEmpty() }.distinct().size > 1
+
+fun sameSender(expected: String, senders: List<String>): Boolean = fold(expected).let { e -> e.isNotEmpty() && senders.any { fold(it) == e } }
 
 class AssistantListener : NotificationListenerService() {
   override fun onListenerConnected() {
@@ -40,7 +51,7 @@ class AssistantListener : NotificationListenerService() {
   }
 
   private fun label(pkg: String): String = labels.getOrPut(pkg) {
-    try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
+    try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString().trim().ifEmpty { UNKNOWN_APP } } catch (e: Exception) { UNKNOWN_APP }
   }
 
   private fun collect(apps: Set<String>): List<Pending> {
@@ -54,7 +65,7 @@ class AssistantListener : NotificationListenerService() {
         val label = label(sbn.packageName)
         val messages = styleMessages(extras)
         if (messages != null) {
-          if (Build.VERSION.SDK_INT >= 28 && extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)) continue
+          if (group(extras, messages)) continue
           messages.forEachIndexed { i, m ->
             val key = sbn.key + "#" + if (m.time > 0) m.time.toString() else "r$i"
             out.add(Pending(key, sbn.packageName, label, m.sender, m.text, if (m.time > 0) m.time else sbn.postTime, replyable))
@@ -80,11 +91,17 @@ class AssistantListener : NotificationListenerService() {
     return n.extras?.containsKey(Notification.EXTRA_MESSAGES) == true || n.category == Notification.CATEGORY_MESSAGE
   }
 
-  private fun sendReply(key: String, text: String): Boolean {
+  private fun sendReply(key: String, sender: String, text: String): NoteReply {
     val all = active()
-    val sbn = all.firstOrNull { it.key == key.substringBeforeLast('#') } ?: all.firstOrNull { it.key == key } ?: return false
-    val action = replyAction(sbn.notification) ?: return false
-    val inputs = action.remoteInputs ?: return false
+    val sbn = all.firstOrNull { it.key == key.substringBeforeLast('#') } ?: all.firstOrNull { it.key == key } ?: return NoteReply.GONE
+    val n = sbn.notification ?: return NoteReply.GONE
+    val extras = n.extras ?: return NoteReply.GONE
+    val messages = styleMessages(extras)
+    val senders = if (messages != null) { if (group(extras, messages)) return NoteReply.GONE; messages.map { it.sender } }
+      else listOf(extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty().ifEmpty { label(sbn.packageName) })
+    if (!sameSender(sender, senders)) return NoteReply.GONE
+    val action = replyAction(n) ?: return NoteReply.GONE
+    val inputs = action.remoteInputs ?: return NoteReply.GONE
     return try {
       val results = Bundle()
       for (input in inputs) if (input.allowFreeFormInput) results.putCharSequence(input.resultKey, text)
@@ -92,10 +109,10 @@ class AssistantListener : NotificationListenerService() {
       RemoteInput.addResultsToIntent(inputs, intent, results)
       if (Build.VERSION.SDK_INT >= 28) RemoteInput.setResultsSource(intent, RemoteInput.SOURCE_FREE_FORM_INPUT)
       action.actionIntent.send(this, 0, intent)
-      true
+      NoteReply.SENT
     } catch (e: Exception) {
       DriveService.note("réponse à une notification : ${e.javaClass.simpleName}")
-      false
+      NoteReply.FAILED
     }
   }
 
@@ -112,6 +129,8 @@ class AssistantListener : NotificationListenerService() {
       NotificationManagerCompat.getEnabledListenerPackages(c).contains(c.packageName)
     } catch (e: Exception) { false }
 
+    val connected get() = instance != null
+
     fun component(c: Context): ComponentName = ComponentName(c, AssistantListener::class.java)
 
     fun pending(apps: Set<String>): List<Pending> {
@@ -123,12 +142,12 @@ class AssistantListener : NotificationListenerService() {
       }
     }
 
-    fun reply(key: String, text: String): Boolean {
-      if (key.isEmpty() || text.isBlank()) return false
-      val s = instance ?: return false
-      return try { s.sendReply(key, text) } catch (e: Exception) {
+    fun reply(key: String, sender: String, text: String): NoteReply {
+      if (key.isEmpty() || text.isBlank()) return NoteReply.FAILED
+      val s = instance ?: return NoteReply.GONE
+      return try { s.sendReply(key, sender, text) } catch (e: Exception) {
         DriveService.note("réponse à une notification : ${e.javaClass.simpleName}")
-        false
+        NoteReply.FAILED
       }
     }
 
@@ -136,9 +155,11 @@ class AssistantListener : NotificationListenerService() {
     fun messagingApps(c: Context): List<MusicApp> {
       val pm = c.packageManager
       val found = LinkedHashMap<String, String>()
+      val sms = try { Telephony.Sms.getDefaultSmsPackage(c) } catch (e: Exception) { null }
+      val chosen = try { AssistantStore(c).load().apps } catch (e: Exception) { emptySet() }
       fun add(pkg: String, label: () -> String) {
-        if (pkg == c.packageName || pkg in found) return
-        found[pkg] = try { label() } catch (e: Exception) { pkg }
+        if (pkg == c.packageName || pkg in found || (pkg == sms && pkg !in chosen)) return
+        found[pkg] = try { label().trim().ifEmpty { UNKNOWN_APP } } catch (e: Exception) { UNKNOWN_APP }
       }
       try {
         instance?.packagesWithMessages()?.forEach { pkg -> add(pkg) { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } }
@@ -163,14 +184,27 @@ class AssistantListener : NotificationListenerService() {
       return try { Notification.WearableExtender(n).actions.firstOrNull { free(it) } } catch (e: Exception) { null }
     }
 
+    private fun group(extras: Bundle, messages: List<Line>): Boolean = groupConversation(
+      Build.VERSION.SDK_INT >= 28 && extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false),
+      extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString(), messages.map { it.sender })
+
+    private fun selfNames(extras: Bundle): Set<String> {
+      val names = HashSet<String>()
+      extras.getCharSequence(Notification.EXTRA_SELF_DISPLAY_NAME)?.let { names.add(fold(it.toString())) }
+      if (Build.VERSION.SDK_INT >= 28) person(extras)?.name?.let { names.add(fold(it.toString())) }
+      names.remove("")
+      return names
+    }
+
     private fun styleMessages(extras: Bundle): List<Line>? {
       val raw = parcelables(extras, Notification.EXTRA_MESSAGES) ?: return null
+      val self = selfNames(extras)
       val out = ArrayList<Line>()
       if (Build.VERSION.SDK_INT >= 28) {
         for (m in Notification.MessagingStyle.Message.getMessagesFromBundleArray(raw)) {
           val text = m.text?.toString()?.trim().orEmpty()
           val sender = (m.senderPerson?.name ?: m.sender)?.toString()?.trim().orEmpty()
-          if (text.isEmpty() || (m.senderPerson == null && m.sender == null)) continue
+          if (text.isEmpty() || (m.senderPerson == null && m.sender == null) || fold(sender) in self) continue
           out.add(Line(sender.ifEmpty { title(extras) }, text, m.timestamp))
         }
       } else {
@@ -178,15 +212,17 @@ class AssistantListener : NotificationListenerService() {
           val b = p as? Bundle ?: continue
           val text = b.getCharSequence("text")?.toString()?.trim().orEmpty()
           val sender = b.getCharSequence("sender") ?: continue
-          if (text.isEmpty()) continue
+          if (text.isEmpty() || fold(sender.toString()) in self) continue
           out.add(Line(sender.toString().trim().ifEmpty { title(extras) }, text, b.getLong("time")))
         }
       }
       return out
     }
 
-    private fun title(extras: Bundle): String =
-      (extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE) ?: extras.getCharSequence(Notification.EXTRA_TITLE))?.toString()?.trim().orEmpty()
+    private fun title(extras: Bundle): String = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+
+    @Suppress("DEPRECATION")
+    private fun person(extras: Bundle): Person? = if (Build.VERSION.SDK_INT >= 28) extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON) as? Person else null
 
     @Suppress("DEPRECATION")
     private fun parcelables(extras: Bundle, key: String): Array<Parcelable>? = extras.getParcelableArray(key)

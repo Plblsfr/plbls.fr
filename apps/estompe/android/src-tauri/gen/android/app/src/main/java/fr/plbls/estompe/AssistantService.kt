@@ -24,17 +24,23 @@ import org.json.JSONObject
 import kotlin.concurrent.thread
 
 sealed class ReplyTo {
-  data class Text(val number: String, val name: String) : ReplyTo()
+  data class Text(val number: String, val name: String, val several: Boolean = false) : ReplyTo()
   data class Note(val key: String, val name: String, val label: String, val replyable: Boolean) : ReplyTo()
 }
 
-data class Unread(val heard: Heard, val time: Long, val to: ReplyTo)
+data class Unread(val heard: Heard, val time: Long, val to: ReplyTo, val sms: Long? = null, val notes: List<String> = emptyList())
 
 enum class Confirm { SEND, RETRY, CANCEL, ASK }
 
 const val NOT_UNDERSTOOD = "Je n'ai pas compris. Dites par exemple : lis mes messages, ou mets Daft Punk."
 
+const val NOTES_MISSING = "Les notifications ne sont pas encore accessibles."
+
+const val READ_MAX = 5
+
 private val CHOICE_WORDS = listOf("un", "deux", "trois", "quatre")
+
+val CHOICE_MAX = CHOICE_WORDS.size
 
 fun scopeOf(name: Any?): AssistantScope? = (name as? String)?.let { n -> AssistantScope.values().firstOrNull { it.name.equals(n.trim(), ignoreCase = true) } }
 
@@ -49,13 +55,43 @@ fun settingsJson(s: AssistantSettings): JSONObject = JSONObject().put("scope", s
 
 fun shouldRun(s: AssistantSettings, driving: Boolean) = s.scope == AssistantScope.ALWAYS || (s.scope == AssistantScope.DRIVE && driving)
 
-fun mergeUnread(sms: List<Sms>, notes: List<Pending>, spoken: Set<String>): List<Unread> =
-  (sms.map { Unread(Heard("", it.sender, it.body), it.date, ReplyTo.Text(it.address, it.sender)) } +
-    notes.filter { it.key !in spoken }.map { Unread(Heard(it.label, it.sender, it.text), it.time, ReplyTo.Note(it.key, it.sender, it.label, it.replyable)) })
+fun mergeUnread(sms: List<Sms>, notes: List<Pending>, spoken: Set<String>): List<Unread> {
+  val fresh = notes.filter { it.key !in spoken }
+  fun same(s: Sms, p: Pending) = fold(p.text) == fold(s.body) && (fold(p.sender) == fold(s.sender) || samePhone(p.sender, s.address))
+  val twins = fresh.filter { p -> sms.any { same(it, p) } }.map { it.key }.toSet()
+  return (sms.map { s -> Unread(Heard("", s.sender, s.body), s.date, ReplyTo.Text(s.address, s.sender), s.id, fresh.filter { same(s, it) }.map { it.key }) } +
+    fresh.filter { it.key !in twins }.map { Unread(Heard(it.label, it.sender, it.text), it.time, ReplyTo.Note(it.key, it.sender, it.label, it.replyable)) })
     .sortedBy { it.time }
+}
 
-fun choices(intro: String, options: List<String>): String =
-  "$intro : " + options.take(CHOICE_WORDS.size).mapIndexed { i, o -> "${CHOICE_WORDS[i]}, $o" }.joinToString(" ; ") + ". Lequel ?"
+fun choices(intro: String, options: List<String>, rest: String = ""): String {
+  val more = options.size - CHOICE_MAX
+  val tail = if (more <= 0) "" else " ; et $more ${if (more == 1) "autre" else "autres"}" + if (rest.isEmpty()) "" else ", $rest"
+  return "$intro : " + options.take(CHOICE_MAX).mapIndexed { i, o -> "${CHOICE_WORDS[i]}, $o" }.joinToString(" ; ") + "$tail. Lequel ?"
+}
+
+fun unreadLines(read: List<Heard>, more: Int, notesMissing: Boolean, smsRead: Boolean): List<String> {
+  if (read.isEmpty() && !notesMissing) return announceMessages(emptyList())
+  val lines = ArrayList<String>()
+  if (read.isEmpty()) { if (smsRead) lines.add("Aucun nouveau SMS.") } else {
+    lines.addAll(announceMessages(read))
+    if (more > 0) lines.add("Il en reste $more.")
+  }
+  if (notesMissing) lines.add(NOTES_MISSING)
+  return lines
+}
+
+fun sentText(s: Sent): String = when (s) {
+  Sent.OK -> "Message envoyé."
+  Sent.FAILED -> "Envoi impossible."
+  Sent.UNKNOWN -> "Envoi non confirmé. Vérifiez avant de réessayer."
+}
+
+fun noteReplyText(r: NoteReply?): String = when (r) {
+  NoteReply.SENT -> "Message envoyé."
+  NoteReply.GONE -> "Ce message n'est plus disponible."
+  else -> "Envoi impossible."
+}
 
 fun confirmStep(answer: Answer, asked: Int): Confirm = when (answer) {
   Answer.SEND -> Confirm.SEND
@@ -65,7 +101,7 @@ fun confirmStep(answer: Answer, asked: Int): Confirm = when (answer) {
 }
 
 fun review(to: ReplyTo, text: String): String = when (to) {
-  is ReplyTo.Text -> "SMS pour ${to.name} : $text. Envoyer, annuler ou recommencer ?"
+  is ReplyTo.Text -> "SMS pour ${to.name}${if (to.several) ", au ${speakableNumber(to.number)}" else ""} : $text. Envoyer, annuler ou recommencer ?"
   is ReplyTo.Note -> "Réponse à ${to.name} sur ${to.label} : $text. Envoyer, annuler ou recommencer ?"
 }
 
@@ -91,6 +127,7 @@ class AssistantStore(context: Context) {
   }
 }
 
+
 class AssistantService : Service() {
   private val ui = Handler(Looper.getMainLooper())
   private lateinit var voice: Voice
@@ -102,12 +139,13 @@ class AssistantService : Service() {
   private var destroyed = false
   private var busy = false
   private var busySince = 0L
+  private var turn = 0
   private var notice: String? = null
   private var failures = 0
   private var last: ReplyTo? = null
   private val spoken = LinkedHashSet<String>()
   private var llm: Llm? = null
-  private var tone: ToneGenerator? = null
+  private val tones = HashSet<ToneGenerator>()
   private val resumeLater = Runnable { resume() }
   private val unload = Runnable { closeLlm() }
   private val tick = object : Runnable {
@@ -128,17 +166,27 @@ class AssistantService : Service() {
     ensureChannels(this)
     phone = Phone(this)
     music = MusicControl(this)
-    voice = Voice(this, DriveStore(this).load(), {}, { text -> DriveService.note("assistant : $text"); notice = text; status(text) })
+    voice = Voice(this, DriveStore(this).load(), {
+      if (notice != null) { notice = null; if (started && !destroyed) status() }
+    }) { text ->
+      DriveService.note("assistant : $text")
+      notice = text
+      if (started && !destroyed) status()
+    }
     Mic.freed = freed
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     if (intent?.action == ACTION_STOP) {
+      starting = false
       listening = false
+      if (!started) foreground(false)
+      cancelPause(this)
       stopSelf()
       return START_NOT_STICKY
     }
     if (started) foreground(true) else begin()
+    starting = false
     return START_NOT_STICKY
   }
 
@@ -146,16 +194,18 @@ class AssistantService : Service() {
     destroyed = true
     alive = false
     listening = false
+    if (busy) Mic.converse(false)
     if (Mic.freed === freed) Mic.freed = null
     ui.removeCallbacksAndMessages(null)
     voice.shutdown()
     closeLlm()
-    releaseTone()
+    for (t in tones) try { t.release() } catch (e: Exception) {}
+    tones.clear()
     super.onDestroy()
   }
 
   private fun begin() {
-    val why = blocked(this)
+    val why = blocked(this) ?: hidden()
     if (why == null && foreground(true)) {
       started = true
       cancelPause(this)
@@ -194,13 +244,14 @@ class AssistantService : Service() {
       .addAction(0, "Arrêter", stop).build()
   }
 
-  private fun status(text: String) {
+  private fun status(text: String? = null) {
     try { NotificationManagerCompat.from(this).notify(NOTIF_ID, notification(text)) } catch (e: SecurityException) { DriveService.note("assistant : notification refusée") }
   }
 
   private fun check() {
     if (busy && SystemClock.elapsedRealtime() - busySince > BUSY_MAX_MS) {
       DriveService.note("assistant : ordre bloqué, retour à la veille")
+      voice.cancel()
       done()
     }
     if (!VoiceService.running) return resume()
@@ -223,14 +274,23 @@ class AssistantService : Service() {
     failures = 0
     if (busy || destroyed) return
     val order = wakeWord(text) ?: return
+    if (!voice.isReady) {
+      DriveService.note("assistant : ordre refusé, synthèse vocale pas prête")
+      tone(ToneGenerator.TONE_PROP_NACK)
+      if (notice == null) notice = TTS_WAIT
+      status()
+      return
+    }
     busy = true
     busySince = SystemClock.elapsedRealtime()
+    turn++
+    Mic.converse(true)
     voice.unwatch()
     settings = AssistantStore(this).load()
     voice.focus()
     if (order.isNotBlank()) return execute(order)
-    beep()
-    voice.listen(ORDER_MS, false) { t -> if (t.isNullOrBlank()) done() else execute(t) }
+    tone(ToneGenerator.TONE_PROP_BEEP)
+    listen(ORDER_MS) { t -> if (t.isNullOrBlank()) done() else execute(t) }
   }
 
   private fun execute(text: String) {
@@ -242,19 +302,20 @@ class AssistantService : Service() {
   }
 
   private fun understand(text: String) {
-    if (!settings.llm || !LlmModel.AVAILABLE || !LlmModel.ready(this)) return run(Command.Unknown)
+    if (!settings.llm || !LlmModel.AVAILABLE || !LlmModel.supported() || !LlmModel.ready(this)) return run(Command.Unknown)
     ui.removeCallbacks(unload)
     val model = llm ?: Llm(this).also { llm = it }
     var answered = false
-    val wait = Runnable { if (!answered && !destroyed) voice.say("Un instant.") }
+    val mine = turn
+    val wait = Runnable { if (!answered && !destroyed && mine == turn) voice.say("Un instant.") }
     ui.postDelayed(wait, WAIT_MS)
     model.understand(text, apps) { c ->
-      if (answered || destroyed) return@understand
-      answered = true
       ui.removeCallbacks(wait)
       ui.removeCallbacks(unload)
       ui.postDelayed(unload, LLM_IDLE_MS)
-      run(c)
+      if (answered || destroyed || mine != turn) return@understand
+      answered = true
+      guard { run(c) }
     }
   }
 
@@ -268,9 +329,9 @@ class AssistantService : Service() {
         is Command.ReadFrom -> readFrom(c.contact)
         Command.Reply -> reply()
         is Command.SendSms -> sendSms(c.contact, c.text)
-        is Command.Music -> background({ music.transport(c.action, c.app.ifEmpty { settings.musicApp }) }) { played(it == true) }
-        is Command.PlaySearch -> music.search(c.query, c.app.ifEmpty { settings.musicApp }) { played(it) }
-        is Command.PlayPlaylist -> music.playlist(c.name, c.app.ifEmpty { settings.musicApp }) { played(it) }
+        is Command.Music -> background({ music.transport(c.action, c.app, settings.musicApp) }) { played(it == true) }
+        is Command.PlaySearch -> music.search(c.query, c.app.ifEmpty { settings.musicApp }, current { ok: Boolean -> played(ok) })
+        is Command.PlayPlaylist -> music.playlist(c.name, c.app.ifEmpty { settings.musicApp }, current { ok: Boolean -> played(ok) })
       }
     } catch (e: Exception) {
       failed(e)
@@ -283,7 +344,6 @@ class AssistantService : Service() {
   }
 
   private fun played(ok: Boolean) {
-    if (destroyed) return
     if (ok) done() else finish(musicFailure(AssistantListener.enabled(this)))
   }
 
@@ -292,14 +352,20 @@ class AssistantService : Service() {
     val notes = AssistantListener.enabled(this)
     if (!sms && !notes) return finish("Autorisez les SMS ou l'accès aux notifications dans Estompe.")
     val chosen = settings.apps
-    background({ Pair(if (sms) phone.unreadSms() else emptyList(), if (notes) AssistantListener.pending(chosen) else emptyList()) }) { r ->
-      val texts = r?.first.orEmpty()
-      val items = mergeUnread(texts, r?.second.orEmpty(), spoken)
-      items.lastOrNull()?.let { last = it.to }
-      sayAll(announceMessages(items.map { it.heard })) {
-        val ids = texts.map { it.id }
-        if (ids.isNotEmpty()) thread { phone.markSpoken(ids) }
-        items.forEach { (it.to as? ReplyTo.Note)?.let { n -> remember(n.key) } }
+    background({ Triple(if (sms) phone.unreadSms() else emptyList(), if (notes) AssistantListener.pending(chosen) else emptyList(),
+      notes && chosen.isNotEmpty() && !AssistantListener.connected) }) { r ->
+      val items = mergeUnread(r?.first.orEmpty(), r?.second.orEmpty(), spoken)
+      val batch = items.take(READ_MAX)
+      batch.lastOrNull()?.let { last = it.to }
+      sayAll(unreadLines(batch.map { it.heard }, items.size - batch.size, r?.third == true, sms)) { all ->
+        if (all) {
+          val ids = batch.mapNotNull { it.sms }
+          if (ids.isNotEmpty()) thread { phone.markSpoken(ids) }
+          for (u in batch) {
+            (u.to as? ReplyTo.Note)?.let { remember(it.key) }
+            u.notes.forEach { remember(it) }
+          }
+        }
         done()
       }
     }
@@ -307,11 +373,14 @@ class AssistantService : Service() {
 
   private fun readFrom(name: String) {
     if (!phone.canReadSms()) return finish("Autorisez la lecture des SMS dans Estompe.")
-    contact(name) { c ->
-      background({ phone.smsFrom(c) }) { list ->
-        if (list.isNullOrEmpty()) return@background finish("Aucun message de ${c.name}.")
-        last = ReplyTo.Text(list.last().address, c.name)
-        sayAll(announceMessages(list.map { Heard("", c.name, it.body) })) { done() }
+    if (!phone.canReadContacts()) return finish("Autorisez l'accès aux contacts dans Estompe.")
+    background({ matchContacts(name, phone.contacts()) }) { found ->
+      pickContact(name, found.orEmpty()) { c ->
+        background({ phone.smsFrom(c) }) { list ->
+          if (list.isNullOrEmpty()) return@background finish("Aucun message de ${c.name}.")
+          last = ReplyTo.Text(list.last().address, c.name)
+          sayAll(announceMessages(list.map { Heard("", c.name, it.body) })) { done() }
+        }
       }
     }
   }
@@ -326,39 +395,41 @@ class AssistantService : Service() {
 
   private fun sendSms(name: String, text: String) {
     if (!phone.canSendSms()) return finish("Autorisez l'envoi de SMS dans Estompe.")
-    contact(name) { c -> number(c) { n -> compose(ReplyTo.Text(n, c.name), text) } }
-  }
-
-  private fun contact(name: String, then: (Contact) -> Unit) {
     if (!phone.canReadContacts()) return finish("Autorisez l'accès aux contacts dans Estompe.")
-    background({ matchContacts(name, phone.contacts()) }) { found ->
-      val list = found.orEmpty().take(CHOICE_WORDS.size)
-      when (list.size) {
-        0 -> finish("Je ne trouve pas $name dans vos contacts.")
-        1 -> then(list[0])
-        else -> choose("Plusieurs contacts", list.map { it.name }) { then(list[it]) }
-      }
+    background({ splitRecipient(name, phone.contacts()) }) { r ->
+      val body = text.ifBlank { r?.second.orEmpty().trim() }
+      pickContact(name, r?.first.orEmpty()) { c -> number(c) { n, several -> compose(ReplyTo.Text(n, c.name, several), body) } }
     }
   }
 
-  private fun number(c: Contact, then: (String) -> Unit) {
-    val numbers = c.numbers.filter { it.isNotBlank() }.take(CHOICE_WORDS.size)
+  private fun pickContact(name: String, found: List<Contact>, then: (Contact) -> Unit) {
+    when (found.size) {
+      0 -> finish("Je ne trouve pas $name dans vos contacts.")
+      1 -> then(found[0])
+      else -> choose("Plusieurs contacts", found.map { it.name }, "précisez le nom") { then(found[it]) }
+    }
+  }
+
+  private fun number(c: Contact, then: (String, Boolean) -> Unit) {
+    val numbers = c.numbers.filter { it.isNotBlank() }
     when (numbers.size) {
       0 -> finish("Aucun numéro pour ${c.name}.")
-      1 -> then(numbers[0])
-      else -> choose("Plusieurs numéros pour ${c.name}", numbers.map { Phone.speakable(it) }) { then(numbers[it]) }
+      1 -> then(numbers[0], false)
+      else -> choose("Plusieurs numéros pour ${c.name}", numbers.map { Phone.speakable(it) }) { then(numbers[it], true) }
     }
   }
 
-  private fun choose(intro: String, options: List<String>, asked: Int = 1, picked: (Int) -> Unit) {
-    voice.say(choices(intro, options)) {
-      voice.listen(CHOICE_MS, false) { heard ->
+  private fun choose(intro: String, options: List<String>, rest: String = "", asked: Int = 1, picked: (Int) -> Unit) {
+    val shown = minOf(options.size, CHOICE_MAX)
+    say(choices(intro, options, rest)) { said ->
+      if (!said) return@say mute()
+      listen(CHOICE_MS) { heard ->
         val t = heard.orEmpty()
-        val i = pickChoice(t, options.size)
+        val i = pickChoice(t, shown)
         when {
-          i != null -> guard { picked(i) }
+          i != null -> picked(i)
           parseCommand(t) == Command.Cancel -> finish("D'accord.")
-          asked < 2 -> choose(intro, options, asked + 1, picked)
+          asked < 2 -> choose(intro, options, rest, asked + 1, picked)
           else -> finish("Je n'ai pas compris, j'abandonne.")
         }
       }
@@ -370,8 +441,9 @@ class AssistantService : Service() {
   }
 
   private fun dictate(to: ReplyTo) {
-    voice.say("Quel est le message ?") {
-      voice.listen(DICTATE_MS) { t ->
+    say("Quel est le message ?") { said ->
+      if (!said) return@say mute()
+      listen(DICTATE_MS, true) { t ->
         when {
           t.isNullOrBlank() -> finish("Je n'ai rien entendu.")
           parseCommand(t) == Command.Cancel -> finish("Message annulé.")
@@ -382,9 +454,11 @@ class AssistantService : Service() {
   }
 
   private fun confirm(to: ReplyTo, text: String, asked: Int) {
-    voice.say(review(to, text)) {
-      voice.listen(CONFIRM_MS) { answer ->
-        when (confirmStep(parseAnswer(answer.orEmpty()), asked)) {
+    voice.focus(true)
+    say(review(to, text)) { said ->
+      if (!said) return@say mute()
+      listen(CONFIRM_MS, true) { answer ->
+        when (confirmStep(confirmAnswer(answer.orEmpty()), asked)) {
           Confirm.SEND -> deliver(to, text)
           Confirm.RETRY -> dictate(to)
           Confirm.CANCEL -> finish("Message annulé.")
@@ -396,25 +470,53 @@ class AssistantService : Service() {
 
   private fun deliver(to: ReplyTo, text: String) {
     when (to) {
-      is ReplyTo.Text -> phone.send(to.number, text) { ok -> if (!destroyed) finish(if (ok) "Message envoyé." else "Envoi impossible.") }
-      is ReplyTo.Note -> background({ AssistantListener.reply(to.key, text) }) { ok -> finish(if (ok == true) "Message envoyé." else "Envoi impossible.") }
+      is ReplyTo.Text -> phone.send(to.number, text, current { s: Sent -> finish(sentText(s)) })
+      is ReplyTo.Note -> background({ AssistantListener.reply(to.key, to.name, text) }) { r -> finish(noteReplyText(r)) }
     }
   }
 
-  private fun sayAll(lines: List<String>, then: () -> Unit) {
-    if (lines.isEmpty()) return then()
-    lines.forEachIndexed { i, line -> voice.say(line, if (i == lines.lastIndex) then else ({})) }
+  private fun mute() {
+    DriveService.note("assistant : phrase non prononcée, ordre abandonné")
+    tone(ToneGenerator.TONE_PROP_NACK)
+    if (notice == null) notice = TTS_LOST
+    status()
+    done()
+  }
+
+  private fun say(text: String, then: (Boolean) -> Unit) {
+    val mine = turn
+    voice.say(text) { said ->
+      if (destroyed || mine != turn) return@say
+      busySince = SystemClock.elapsedRealtime()
+      guard { then(said) }
+    }
+  }
+
+  private fun listen(ms: Int, pause: Boolean = false, result: (String?) -> Unit) {
+    val mine = turn
+    voice.listen(ms, false, pause) { t ->
+      if (destroyed || mine != turn) return@listen
+      busySince = SystemClock.elapsedRealtime()
+      guard { result(t) }
+    }
+  }
+
+  private fun sayAll(lines: List<String>, then: (Boolean) -> Unit) {
+    if (lines.isEmpty()) return then(true)
+    var all = true
+    lines.forEachIndexed { i, line -> say(line) { said -> if (!said) all = false; if (i == lines.lastIndex) then(all) } }
   }
 
   private fun finish(text: String) {
-    voice.say(text) { done() }
+    say(text) { done() }
   }
 
   private fun done() {
     if (destroyed) return
     busy = false
+    turn++
+    Mic.converse(false)
     voice.abandonFocus()
-    releaseTone()
     refreshApps()
     ui.removeCallbacks(resumeLater)
     ui.postDelayed(resumeLater, RESUME_MS)
@@ -424,13 +526,19 @@ class AssistantService : Service() {
     try { block() } catch (e: Exception) { failed(e) }
   }
 
+  private fun <T> current(then: (T) -> Unit): (T) -> Unit {
+    val mine = turn
+    return { v -> ui.post { if (!destroyed && mine == turn) guard { then(v) } } }
+  }
+
   private fun <T> background(job: () -> T, then: (T?) -> Unit) {
+    val back = current(then)
     thread {
       val r = try { job() } catch (e: Exception) {
         DriveService.note("assistant : lecture impossible (${e.javaClass.simpleName})")
         null
       }
-      ui.post { if (!destroyed) guard { then(r) } }
+      back(r)
     }
   }
 
@@ -446,20 +554,14 @@ class AssistantService : Service() {
     while (spoken.size > SPOKEN_MAX) spoken.remove(spoken.first())
   }
 
-  private fun beep() {
-    releaseTone()
-    try {
-      val t = ToneGenerator(AudioManager.STREAM_MUSIC, 80)
-      tone = t
-      t.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-    } catch (e: Exception) {
+  private fun tone(kind: Int) {
+    val t = try { ToneGenerator(AudioManager.STREAM_MUSIC, 80) } catch (e: Exception) {
       DriveService.note("assistant : signal sonore ${e.javaClass.simpleName}")
+      return
     }
-  }
-
-  private fun releaseTone() {
-    try { tone?.release() } catch (e: Exception) { DriveService.note("assistant : signal sonore ${e.javaClass.simpleName}") }
-    tone = null
+    tones.add(t)
+    try { t.startTone(kind, TONE_MS) } catch (e: Exception) { DriveService.note("assistant : signal sonore ${e.javaClass.simpleName}") }
+    ui.postDelayed({ if (tones.remove(t)) try { t.release() } catch (e: Exception) {} }, TONE_MS + 250L)
   }
 
   private fun closeLlm() {
@@ -481,9 +583,12 @@ class AssistantService : Service() {
     private const val CHOICE_MS = 6_000
     private const val DICTATE_MS = 8_000
     private const val CONFIRM_MS = 7_000
+    private const val TONE_MS = 150
     private const val SPOKEN_MAX = 300
     private const val MAX_FAILURES = 5
-    private const val BUSY_MAX_MS = 300_000L
+    private const val BUSY_MAX_MS = 90_000L
+    private const val TTS_WAIT = "Synthèse vocale pas encore prête : ordre ignoré."
+    private const val TTS_LOST = "Synthèse vocale interrompue : ordre abandonné, aucun message envoyé."
     private const val PAUSE_BACKGROUND = "Assistant vocal en pause : touche pour relancer l'écoute."
     private const val PAUSE_MIC = "Assistant vocal en pause : autorise le micro dans Estompe."
     private const val PAUSE_MODEL = "Assistant vocal en pause : télécharge le modèle de reconnaissance dans Estompe."
@@ -491,14 +596,17 @@ class AssistantService : Service() {
 
     @Volatile var listening = false
     @Volatile private var alive = false
+    @Volatile private var starting = false
 
     fun sync(c: Context) {
       try {
         if (!shouldRun(AssistantStore(c).load(), DriveService.running)) return stop(c)
         if (alive) return
-        blocked(c)?.let { listening = false; return pause(c, it) }
+        (blocked(c) ?: hidden())?.let { listening = false; return pause(c, it) }
+        starting = true
         ContextCompat.startForegroundService(c, Intent(c, AssistantService::class.java).setAction(ACTION_SYNC))
       } catch (e: Exception) {
+        starting = false
         DriveService.note("démarrage de l'assistant vocal : ${e.javaClass.simpleName}")
         listening = false
         pause(c, PAUSE_BACKGROUND)
@@ -508,8 +616,12 @@ class AssistantService : Service() {
     fun stop(c: Context) {
       listening = false
       cancelPause(c)
-      try { c.stopService(Intent(c, AssistantService::class.java)) } catch (e: Exception) {
+      val service = Intent(c, AssistantService::class.java)
+      try {
+        if (starting) c.startService(Intent(service).setAction(ACTION_STOP)) else c.stopService(service)
+      } catch (e: Exception) {
         DriveService.note("arrêt de l'assistant vocal : ${e.javaClass.simpleName}")
+        try { c.stopService(service) } catch (e2: Exception) { DriveService.note("arrêt de l'assistant vocal : ${e2.javaClass.simpleName}") }
       }
     }
 
@@ -518,6 +630,8 @@ class AssistantService : Service() {
       !VoskModel.ready(c) -> PAUSE_MODEL
       else -> null
     }
+
+    private fun hidden(): String? = if (Build.VERSION.SDK_INT >= 30 && !appInForeground()) PAUSE_BACKGROUND else null
 
     private fun pause(c: Context, text: String) {
       DriveService.note(text)

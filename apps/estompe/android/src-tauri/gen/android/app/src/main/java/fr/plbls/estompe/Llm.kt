@@ -1,6 +1,7 @@
 package fr.plbls.estompe
 
 import android.content.Context
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
@@ -8,6 +9,7 @@ import android.os.SystemClock
 import java.io.File
 import java.io.FileInputStream
 import java.net.HttpURLConnection
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -26,6 +28,7 @@ object LlmModel {
 
   private fun dir(c: Context) = File(c.filesDir, "llm")
   private fun file(c: Context) = File(dir(c), NAME)
+  fun supported(): Boolean = try { Build.SUPPORTED_ABIS.contains("arm64-v8a") } catch (e: Throwable) { false }
   fun ready(c: Context): Boolean = file(c).let { it.isFile && it.length() in MIN_BYTES..MAX_BYTES }
   fun path(c: Context): String = file(c).path
 
@@ -283,8 +286,8 @@ fun commandFromLlm(output: String, apps: List<MusicApp>): Command {
 class Llm(context: Context) {
   private val app = context.applicationContext
   private val ui = Handler(Looper.getMainLooper())
-  private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "estompe-llm").apply { isDaemon = true } }
   private val lock = Any()
+  private var worker: ExecutorService? = null
   @Volatile private var model: LlamaContext? = null
   private var generating = false
   private val threads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
@@ -292,7 +295,7 @@ class Llm(context: Context) {
   fun understand(heard: String, apps: List<MusicApp>, done: (Command) -> Unit) {
     val answered = AtomicBoolean(false)
     val answer = { c: Command -> if (answered.compareAndSet(false, true)) ui.post { done(c) } }
-    if (!LlmModel.AVAILABLE || heard.isBlank() || !LlmModel.ready(app)) { answer(Command.Unknown); return }
+    if (!LlmModel.AVAILABLE || heard.isBlank() || !LlmModel.supported() || !LlmModel.ready(app)) { answer(Command.Unknown); return }
     val start = SystemClock.elapsedRealtime()
     val guard = Runnable {
       if (answered.get()) return@Runnable
@@ -302,7 +305,7 @@ class Llm(context: Context) {
     }
     ui.postDelayed(guard, TIMEOUT_MS)
     try {
-      worker.execute {
+      executor().execute {
         val c = try { if (answered.get()) Command.Unknown else run(heard, apps, answered) } catch (t: Throwable) {
           DriveService.note("llm : échec (${t.javaClass.simpleName})")
           Command.Unknown
@@ -343,20 +346,24 @@ class Llm(context: Context) {
     return m
   }
 
+  private fun executor(): ExecutorService = synchronized(lock) {
+    worker?.takeIf { !it.isShutdown } ?: Executors.newSingleThreadExecutor { r -> Thread(r, "estompe-llm").apply { isDaemon = true } }.also { worker = it }
+  }
+
   private fun stop() {
     synchronized(lock) { if (generating) try { model?.stopCompletion() } catch (t: Throwable) { DriveService.note("llm : arrêt impossible (${t.javaClass.simpleName})") } }
   }
 
   fun close() {
     stop()
-    try {
-      worker.execute {
-        val m = synchronized(lock) { model.also { model = null } }
-        try { m?.release() } catch (t: Throwable) { DriveService.note("llm : libération impossible (${t.javaClass.simpleName})") }
-      }
-    } catch (e: RejectedExecutionException) {
-      DriveService.note("llm : libération refusée")
+    val w = synchronized(lock) { worker.also { worker = null } }
+    val free = Runnable {
+      val m = synchronized(lock) { model.also { model = null } }
+      try { m?.release() } catch (t: Throwable) { DriveService.note("llm : libération impossible (${t.javaClass.simpleName})") }
     }
+    if (w == null) { if (model != null) thread(name = "estompe-llm-release") { free.run() }; return }
+    try { w.execute(free) } catch (e: RejectedExecutionException) { DriveService.note("llm : libération refusée") }
+    w.shutdown()
   }
 
   private companion object {

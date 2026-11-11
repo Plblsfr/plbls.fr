@@ -35,7 +35,7 @@ class AssistantTest {
   @Test fun `formes proches du mot d'éveil`() {
     assertEquals("pause", wakeWord("estompes pause"))
     assertEquals("pause", wakeWord("estompé pause"))
-    assertEquals("pause", wakeWord("estomper pause"))
+    assertEquals("pause", wakeWord("estomp pause"))
     assertEquals("pause", wakeWord("l'estompe pause"))
     assertEquals("pause", wakeWord("est tombe pause"))
     assertEquals("pause", wakeWord("et stomp pause"))
@@ -46,6 +46,7 @@ class AssistantTest {
     assertNull(wakeWord("il est tombé malade"))
     assertNull(wakeWord("et stop la musique"))
     assertNull(wakeWord("le soleil est tombé"))
+    for (s in listOf("il faut estomper la couleur", "estompez les bords", "ils estompent le bruit")) assertNull(s, wakeWord(s))
   }
 
   @Test fun `la forme en deux mots ne vaut qu'en début de phrase`() {
@@ -62,11 +63,19 @@ class AssistantTest {
 
   @Test fun `lecture des messages d'un contact`() {
     assertEquals(Command.ReadFrom("marie"), cmd("lis les messages de marie"))
-    assertEquals(Command.ReadFrom("jean dupont"), cmd("Lis le dernier message de Jean Dupont"))
+    assertEquals(Command.ReadFrom("Jean Dupont"), cmd("Lis le dernier message de Jean Dupont"))
     assertEquals(Command.ReadFrom("marie"), cmd("qu'est-ce que m'a écrit marie"))
     assertEquals(Command.ReadFrom("marie"), cmd("lis mes messages de marie"))
     assertEquals(Command.ReadFrom("alice"), cmd("lis-moi les sms d'alice"))
+    assertEquals(Command.ReadFrom("Éloïse Durand"), cmd("Lis les messages d'Éloïse Durand"))
+    assertEquals(Command.ReadFrom("marie"), cmd("lis les messages de marie sur whatsapp"))
+    assertEquals(Command.ReadFrom("Marie Dupont"), cmd("lis les messages de Marie Dupont sur signal"))
     assertEquals(Command.ReadFrom("marie"), cmd("quels sont les messages de marie"))
+  }
+
+  @Test fun `déclaratifs et ambigus ne lisent pas les messages`() {
+    for (s in listOf("j'ai reçu un message", "j'ai un message", "il y a un message", "j'ai des messages", "j'ai des messages ?")) assertEquals(s, Command.Unknown, cmd(s))
+    for (s in listOf("ai-je des messages", "y a-t-il des messages", "est-ce qu'il y a des messages", "quels sont mes messages", "ai-je reçu un message")) assertEquals(s, Command.ReadUnread, cmd(s))
   }
 
   @Test fun `répondre`() {
@@ -78,6 +87,9 @@ class AssistantTest {
     assertEquals(Command.SendSms("marie", ""), cmd("envoie un message à marie"))
     assertEquals(Command.SendSms("marie", ""), cmd("écris à marie"))
     assertEquals(Command.SendSms("jean dupont", ""), cmd("peux-tu envoyer un texto à jean dupont s'il te plaît"))
+    assertEquals(Command.SendSms("Éloïse Durand", ""), cmd("Envoie un SMS à Éloïse Durand"))
+    assertEquals(Command.SendSms("mère demain", ""), cmd("envoie un sms à ma mère demain"))
+    assertEquals(Command.SendSms("Marie", "J'arrive"), cmd("Dis à Marie que J'arrive"))
   }
 
   @Test fun `envoi d'un SMS avec le texte coupé sur un marqueur`() {
@@ -88,8 +100,28 @@ class AssistantTest {
     assertEquals(Command.SendSms("marie", ""), cmd("dis à marie que"))
   }
 
-  @Test fun `sans marqueur tout ce qui suit à est le nom du contact`() {
-    assertEquals(Command.SendSms("marie j arrive", ""), cmd("envoie un sms à marie j'arrive"))
+  @Test fun `sans marqueur tout ce qui suit à est le nom du contact, texte original`() {
+    assertEquals(Command.SendSms("marie j'arrive", ""), cmd("envoie un sms à marie j'arrive"))
+    assertEquals(Command.SendSms("Marie j'arrive", ""), cmd("Envoie un SMS à Marie j'arrive."))
+  }
+
+  @Test fun `séparer destinataire et texte`() {
+    val b = listOf(contact("Marie Dupont", "0611111111"), contact("Marie Martin", "0622222222"), contact("Jean Dupont", "0633333333"), contact("Paul", "0655555555"))
+    val (m, t) = splitRecipient("marie j'arrive dans dix minutes", b)
+    assertEquals(listOf("Marie Dupont", "Marie Martin"), m.map { it.name })
+    assertEquals("j'arrive dans dix minutes", t)
+    val (j, t2) = splitRecipient("jean dupont je suis en retard", b)
+    assertEquals(listOf("Jean Dupont"), j.map { it.name })
+    assertEquals("je suis en retard", t2)
+    val (w, t3) = splitRecipient("Jean Dupont", b)
+    assertEquals(listOf("Jean Dupont"), w.map { it.name })
+    assertEquals("", t3)
+    assertEquals(emptyList<Contact>() to "", splitRecipient("ma mère demain", b))
+    assertEquals(emptyList<Contact>() to "", splitRecipient("robert bonjour à tous", b))
+    assertEquals(emptyList<Contact>() to "", splitRecipient("", b))
+    val (p, t4) = splitRecipient("Paul Demain Matin", b)
+    assertEquals(listOf("Paul"), p.map { it.name })
+    assertEquals("Demain Matin", t4)
   }
 
   @Test fun `envoyer sans destinataire ne fait rien`() {
@@ -116,6 +148,62 @@ class AssistantTest {
     assertEquals(Command.PlaySearch("daft punk", ""), cmd("mets daft punk"))
     assertEquals(Command.ReadFrom("marie"), cmd("lis mes messages de marie"))
     assertEquals(Command.Music(Transport.VOLUME_UP, ""), cmd("mets le son plus fort"))
+    assertEquals(Command.Music(Transport.PAUSE, ""), cmd("mets le sur pause"))
+  }
+
+  @Test fun `volume à fond ou plus bas`() {
+    for (s in listOf("mets le volume à fond", "mets le son à fond", "monte le volume au maximum")) assertEquals(s, Command.Music(Transport.VOLUME_UP, ""), cmd(s))
+    for (s in listOf("mets le volume plus bas", "baisse un peu", "baisse")) assertEquals(s, Command.Music(Transport.VOLUME_DOWN, ""), cmd(s))
+  }
+
+  @Test fun `une recherche musicale ne s'ouvre pas sur un objet du quotidien`() {
+    for (s in listOf("mets la lumière", "mets le feu", "mets le couvert", "mets la télé", "mets un minuteur", "mets le réveil à 7 heures", "mets stop", "écoute bien",
+      "écoute-moi bien", "écoute moi", "lance moi", "mets ça", "mets-le", "mets la", "lance l'application", "lance la machine à laver", "écoute ce que Marie m'a dit",
+      "mets les messages de Marie", "mets mes messages", "mets ton manteau", "lance un minuteur", "mets le chauffage", "mets le volume", "écoute", "mets ça en route")) {
+      assertEquals(s, Command.Unknown, cmd(s))
+    }
+  }
+
+  @Test fun `titres commençant par une préposition`() {
+    assertEquals(Command.PlaySearch("sur la route de memphis", ""), cmd("mets sur la route de memphis"))
+    assertEquals(Command.PlaySearch("avec le temps", ""), cmd("mets avec le temps"))
+    assertEquals(Command.PlaySearch("sur mesure", ""), cmd("mets sur mesure"))
+    assertEquals(Command.Unknown, cmd("mets sur stop"))
+    assertEquals(Command.Unknown, cmd("joue dans le silence"))
+  }
+
+  @Test fun `recherches musicales qui continuent de marcher`() {
+    assertEquals(Command.PlaySearch("daft punk", ""), cmd("mets daft punk"))
+    assertEquals(Command.PlaySearch("jazz", ""), cmd("mets du jazz"))
+    assertEquals(Command.PlaySearch("bon jovi", ""), cmd("mets bon jovi"))
+    assertEquals(Command.PlaySearch("alors on danse", ""), cmd("mets alors on danse"))
+    assertEquals(Command.PlaySearch("nina simone", ""), cmd("écoute nina simone"))
+    assertEquals(Command.PlaySearch("daft punk", ""), cmd("lance daft punk"))
+    assertEquals(Command.Music(Transport.PLAY, ""), cmd("écoute de la musique"))
+  }
+
+  @Test fun `entrées très longues sans débordement`() {
+    val long = "euh ".repeat(5000)
+    assertEquals(Command.Unknown, parseCommand(long))
+    assertNull(wakeWord(long))
+    assertEquals(Answer.UNKNOWN, confirmAnswer(long))
+    assertNull(pickChoice(long, 3))
+    assertEquals("pause", wakeWord("estompe pause" + " ".repeat(5000)))
+  }
+
+  @Test fun `confirmation stricte avant l'envoi`() {
+    for (s in listOf("n'envoie pas", "ne l'envoie pas", "ne l'envoie surtout pas", "n'envoyez pas", "je l'envoie pas", "pas envoyer", "valide pas", "n'envoie rien",
+      "j'ai pas dit envoie", "ok je vais l'envoyer plus tard", "non", "annule", "stop", "surtout pas", "jamais envoie", "attends envoie", "laisse tomber", "tant pis", "oublie")) {
+      assertEquals(s, Answer.CANCEL, confirmAnswer(s))
+    }
+    for (s in listOf("envoyer", "envoie", "oui envoie", "ok envoyer", "vas-y envoie", "Envoie !", "d'accord envoie", "tu peux l'envoyer", "envoie merci")) {
+      assertEquals(s, Answer.SEND, confirmAnswer(s))
+    }
+    for (s in listOf("oui", "ok", "il a dit oui à sa mère", "envoie la photo à paul demain", "valide", "", "   ", "bonjour", "oui oui oui oui envoie", "je vais envoyer un message")) {
+      assertEquals(s, Answer.UNKNOWN, confirmAnswer(s))
+    }
+    for (s in listOf("recommence", "refais", "répète", "redis", "corrige")) assertEquals(s, Answer.RETRY, confirmAnswer(s))
+    assertEquals(Answer.CANCEL, confirmAnswer("recommence ne pas envoyer"))
   }
 
   @Test fun `recherche de musique sans les déterminants de tête`() {
@@ -154,7 +242,9 @@ class AssistantTest {
   }
 
   @Test fun `annuler et aide`() {
-    for (s in listOf("annule", "annuler", "laisse tomber", "rien", "non rien")) assertEquals(s, Command.Cancel, cmd(s))
+    for (s in listOf("annule", "annuler", "laisse tomber", "rien", "non rien", "non annule", "annuler tout", "oublie ça", "laisse tomber", "je ne veux plus", "pas du tout", "non", "tant pis")) assertEquals(s, Command.Cancel, cmd(s))
+    assertEquals(Command.Music(Transport.PAUSE, ""), cmd("arrête la musique"))
+    assertEquals(Command.Music(Transport.PAUSE, ""), cmd("stop"))
     for (s in listOf("aide", "qu'est-ce que tu sais faire", "que peux-tu faire")) assertEquals(s, Command.Help, cmd(s))
   }
 
@@ -243,6 +333,11 @@ class AssistantTest {
     assertNull(pickChoice("annule", 3))
     assertNull(pickChoice("", 3))
     assertNull(pickChoice("je ne sais pas trop quoi choisir parmi tout ça un jour", 3))
+    for (s in listOf("il y a un souci", "attends une seconde", "pas le deuxième", "non le premier", "ne prends pas le un", "le premier ou le deuxième s'il te plaît")) assertNull(s, pickChoice(s, 3))
+    assertEquals(0, pickChoice("le un", 3))
+    assertEquals(0, pickChoice("numéro un", 3))
+    assertEquals(0, pickChoice("une", 3))
+    assertEquals(1, pickChoice("prends le deuxième", 3))
   }
 
   @Test fun `annonce regroupée par expéditeur consécutif`() {

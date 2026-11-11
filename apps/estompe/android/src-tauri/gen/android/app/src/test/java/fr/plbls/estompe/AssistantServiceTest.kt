@@ -59,24 +59,85 @@ class AssistantServiceTest {
 
   @Test fun `choix énoncés, quatre au plus`() {
     assertEquals("Plusieurs contacts : un, Marie Dupont ; deux, Marie Martin. Lequel ?", choices("Plusieurs contacts", listOf("Marie Dupont", "Marie Martin")))
-    assertEquals("X : un, a ; deux, b ; trois, c ; quatre, d. Lequel ?", choices("X", listOf("a", "b", "c", "d", "e")))
+    assertEquals("X : un, a ; deux, b ; trois, c ; quatre, d. Lequel ?", choices("X", listOf("a", "b", "c", "d")))
+  }
+
+  @Test fun `liste tronquée annoncée`() {
+    assertEquals("X : un, a ; deux, b ; trois, c ; quatre, d ; et 1 autre. Lequel ?", choices("X", listOf("a", "b", "c", "d", "e")))
+    assertEquals("Plusieurs contacts : un, a ; deux, b ; trois, c ; quatre, d ; et 3 autres, précisez le nom. Lequel ?",
+      choices("Plusieurs contacts", listOf("a", "b", "c", "d", "e", "f", "g"), "précisez le nom"))
   }
 
   @Test fun `confirmation, jamais d'envoi sans accord explicite`() {
-    assertEquals(Confirm.SEND, confirmStep(parseAnswer("envoyer"), 1))
-    assertEquals(Confirm.RETRY, confirmStep(parseAnswer("recommencer"), 1))
-    assertEquals(Confirm.CANCEL, confirmStep(parseAnswer("annuler"), 1))
-    assertEquals(Confirm.CANCEL, confirmStep(parseAnswer("ne pas envoyer"), 1))
-    assertEquals(Confirm.ASK, confirmStep(parseAnswer(""), 1))
-    assertEquals(Confirm.ASK, confirmStep(parseAnswer("bof"), 1))
-    assertEquals(Confirm.CANCEL, confirmStep(parseAnswer(""), 2))
-    assertEquals(Confirm.CANCEL, confirmStep(parseAnswer("hein"), 2))
+    assertEquals(Confirm.SEND, confirmStep(confirmAnswer("envoyer"), 1))
+    assertEquals(Confirm.RETRY, confirmStep(confirmAnswer("recommencer"), 1))
+    assertEquals(Confirm.CANCEL, confirmStep(confirmAnswer("annuler"), 1))
+    assertEquals(Confirm.CANCEL, confirmStep(confirmAnswer("ne pas envoyer"), 1))
+    assertEquals(Confirm.ASK, confirmStep(confirmAnswer("oui"), 1))
+    assertEquals(Confirm.ASK, confirmStep(confirmAnswer(""), 1))
+    assertEquals(Confirm.ASK, confirmStep(confirmAnswer("bof"), 1))
+    assertEquals(Confirm.CANCEL, confirmStep(confirmAnswer(""), 2))
+    assertEquals(Confirm.CANCEL, confirmStep(confirmAnswer("hein"), 2))
     for (a in Answer.values()) for (n in 1..3) if (a != Answer.SEND) assertFalse(confirmStep(a, n) == Confirm.SEND)
   }
 
   @Test fun `relecture du message avant envoi`() {
     assertEquals("SMS pour Marie : j'arrive. Envoyer, annuler ou recommencer ?", review(ReplyTo.Text("06", "Marie"), "j'arrive"))
     assertEquals("Réponse à Léa sur Signal : oui. Envoyer, annuler ou recommencer ?", review(ReplyTo.Note("k", "Léa", "Signal", true), "oui"))
+  }
+
+  @Test fun `numéro relu quand le contact en a plusieurs`() {
+    assertEquals("SMS pour Marie, au 06 12 34 56 78 : j'arrive. Envoyer, annuler ou recommencer ?", review(ReplyTo.Text("+33612345678", "Marie", true), "j'arrive"))
+  }
+
+  @Test fun `SMS déjà lus par sa notification écartés`() {
+    val sms = listOf(Sms(1, "+33611223344", "Marie", "J'arrive !", 100))
+    val notes = listOf(Pending("k1", "sms.app", "Messages", "marie", "j'arrive", 101, true), Pending("k2", "sms.app", "Messages", "06 11 22 33 44", "J'arrive !", 102, true),
+      Pending("k3", "sms.app", "Messages", "Marie", "autre chose", 103, true), Pending("k4", "org.signal", "Signal", "Paul", "j'arrive", 104, true))
+    val items = mergeUnread(sms, notes, emptySet())
+    assertEquals(listOf("Marie", "Marie", "Paul"), items.map { it.heard.sender })
+    assertEquals(listOf("", "Messages", "Signal"), items.map { it.heard.source })
+    assertEquals(listOf("k1", "k2"), items[0].notes)
+    assertEquals(1L, items[0].sms)
+  }
+
+  @Test fun `lecture plafonnée et notifications pas encore accessibles`() {
+    val h = listOf(Heard("", "Marie", "salut"))
+    assertEquals(listOf("Message de Marie : salut", "Il en reste 3."), unreadLines(h, 3, false, true))
+    assertEquals(listOf("Message de Marie : salut"), unreadLines(h, 0, false, true))
+    assertEquals(listOf("Aucun nouveau message."), unreadLines(emptyList(), 0, false, true))
+    assertEquals(listOf("Aucun nouveau SMS.", NOTES_MISSING), unreadLines(emptyList(), 0, true, true))
+    assertEquals(listOf(NOTES_MISSING), unreadLines(emptyList(), 0, true, false))
+    assertEquals(listOf("Message de Marie : salut", "Il en reste 1.", NOTES_MISSING), unreadLines(h, 1, true, true))
+  }
+
+  @Test fun `issue de l'envoi annoncée sans fausse certitude`() {
+    assertEquals("Message envoyé.", sentText(Sent.OK))
+    assertEquals("Envoi impossible.", sentText(Sent.FAILED))
+    assertEquals("Envoi non confirmé. Vérifiez avant de réessayer.", sentText(Sent.UNKNOWN))
+    assertEquals("Message envoyé.", noteReplyText(NoteReply.SENT))
+    assertEquals("Ce message n'est plus disponible.", noteReplyText(NoteReply.GONE))
+    assertEquals("Envoi impossible.", noteReplyText(NoteReply.FAILED))
+    assertEquals("Envoi impossible.", noteReplyText(null))
+  }
+
+  @Test fun `conversations de groupe reconnues`() {
+    assertFalse(groupConversation(false, null, listOf("Léa", "lea", "LÉA")))
+    assertFalse(groupConversation(false, " ", listOf("Léa", "")))
+    assertTrue(groupConversation(true, null, listOf("Léa")))
+    assertTrue(groupConversation(false, "Famille", listOf("Léa")))
+    assertTrue(groupConversation(false, null, listOf("Léa", "Paul")))
+  }
+
+  @Test fun `réponse refusée si l'expéditeur a changé`() {
+    assertTrue(sameSender("Léa", listOf("Paul", "lea")))
+    assertFalse(sameSender("Léa", listOf("Paul")))
+    assertFalse(sameSender("", listOf("")))
+  }
+
+  @Test fun `délai de garde d'une phrase proportionnel à sa longueur`() {
+    assertEquals(5_000L, utteranceGuardMs(""))
+    assertEquals(5_000L + 120L * 10, utteranceGuardMs("abcdefghij"))
   }
 
   @Test fun `phrase d'échec de la musique`() {

@@ -7,15 +7,15 @@ export interface Bridge {
   // mode conduite (DriveService)
   driveSettings(): string; saveDriveSettings(json: string): void; driveActive(): boolean; driveStart(): string; driveStop(): void
   pipState?(json: string): void
-  assistantSettings?(): string; saveAssistantSettings?(json: string): string; assistantState?(): string; assistantApps?(): string; assistantMusicApps?(): string
-  assistantGrant?(what: string): void; assistantDownloadLlm?(): void; assistantDeleteLlm?(): void
+  assistantSettings?(): string; assistantState?(): string; assistantGrant?(what: string): void
   driveEngines(): string; driveBluetooth(): string; driveModel(): string; driveDownloadModel(): void; driveLog(): string
 }
 
 export const nativeBridge = () => (window as unknown as { EstompeNative?: Bridge }).EstompeNative
 
-export type SessionRequest = { op: 'login'; code: string; verifier: string; redirectUri: string } | { op: 'renew' } | { op: 'logout' } | { op: 'adopt'; refresh: string } | { op: 'screenshot' }
-export interface SessionReply { status: number; access_token?: string; expires_in?: number; error?: string; image?: string }
+export type AssistantAction = 'save' | 'apps' | 'musicApps' | 'downloadLlm' | 'deleteLlm'
+export type SessionRequest = { op: 'login'; code: string; verifier: string; redirectUri: string } | { op: 'renew' } | { op: 'logout' } | { op: 'adopt'; refresh: string } | { op: 'screenshot' } | { op: 'assistant'; action: AssistantAction; settings?: unknown }
+export interface SessionReply { status: number; access_token?: string; expires_in?: number; error?: string; image?: string; value?: string }
 export type SessionCall = (r: SessionRequest) => Promise<SessionReply>
 interface SessionChannel { postMessage(m: string): void; onmessage: ((e: { data: string }) => void) | null }
 

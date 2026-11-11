@@ -110,6 +110,7 @@ class DriveService : Service() {
   private var busy = false
   private var destroyed = false
   private var last: Incoming? = null
+  private val pumpLater: () -> Unit = { if (!destroyed) pump() }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -139,6 +140,7 @@ class DriveService : Service() {
   override fun onDestroy() {
     running = false
     destroyed = true
+    Mic.forget(pumpLater)
     ui.removeCallbacksAndMessages(null)
     queue.clear()
     voice.shutdown()
@@ -189,6 +191,7 @@ class DriveService : Service() {
   /** Lit les messages en attente, un à la fois ; le dernier lu devient la cible de « Répondre ». */
   private fun pump() {
     if (busy || !voice.isReady) return
+    if (!Mic.quiet) return Mic.whenQuiet(pumpLater)
     val m = queue.poll() ?: return voice.abandonFocus()
     busy = true
     last = m
@@ -228,11 +231,12 @@ class DriveService : Service() {
 
   private fun dictate(m: Incoming) {
     voice.say("Je vous écoute.") {
-      voice.listen(8000) { heard ->
+      voice.listen(8000, exclusive = true) { heard ->
         if (heard.isNullOrBlank()) return@listen finish("Je n'ai rien entendu.")
         val ask = if (settings.confirm) "Envoyer, annuler ou recommencer ?" else "Envoi dans quelques secondes. Dites annuler pour stopper."
-        voice.say("Vous avez dit : $heard. $ask") {
-          voice.listen(if (settings.confirm) 7000 else 3500) { answer ->
+        voice.say("Vous avez dit : $heard. $ask") { said ->
+          if (!said) return@say finish("Réponse annulée.")
+          voice.listen(if (settings.confirm) 7000 else 3500, exclusive = true) { answer ->
             when (parseAnswer(answer.orEmpty())) {
               Answer.SEND -> send(m, heard)
               Answer.CANCEL -> finish("Réponse annulée.")

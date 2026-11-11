@@ -22,6 +22,10 @@ Autorisations, demandées depuis ce même écran :
 - **Accès aux notifications** (réglage système) : lecture des autres messageries et pilotage de la musique.
 
 Le modèle de dictée français (~40 Mo) est celui du mode conduite : il doit être téléchargé.
+Une synthèse vocale française doit être installée (RHVoice, eSpeak…) : sans elle l'assistant refuse tout ordre, puisqu'il ne pourrait pas relire un SMS avant l'envoi.
+
+L'APK étant installé hors magasin, Android 13 et plus peut griser l'accès aux notifications et les permissions SMS : ouvrir la fiche de l'application
+dans les réglages système, menu ⋮, « Autoriser les paramètres restreints », puis recommencer.
 
 Tant que l'écoute est active, une notification permanente « Assistant vocal » le signale et l'indicateur de micro d'Android reste affiché.
 Android interdit de rouvrir le micro depuis l'arrière-plan : après un redémarrage du téléphone, ou quand le mode conduite démarre seul
@@ -42,10 +46,11 @@ L'ordre se dit d'une traite après le mot d'éveil (« Estompe, lis mes messages
 | Playlist | « lance ma playlist Route » |
 | Divers | « aide », « annule » |
 
-- **Lecture** : SMS non lus, puis notifications de messagerie encore présentes des applications cochées. Un SMS lu à la voix n'est pas relu
+- **Lecture** : SMS non lus et notifications de messagerie encore présentes des applications cochées, cinq messages au plus par demande.
+  « Lis les messages de Marie » lit ses derniers SMS reçus (pas ceux qui lui ont été envoyés). Un SMS lu à la voix n'est pas relu
   (Estompe le mémorise ; seule l'app SMS par défaut peut le marquer comme lu). MMS et conversations de groupe sont ignorés.
 - **Envoi** : le destinataire est cherché dans le carnet ; s'il y a plusieurs contacts ou plusieurs numéros, l'assistant les énonce et attend le choix.
-  Le destinataire et le texte sont toujours relus, et rien ne part sans « envoyer » (« annuler » et « recommencer » sont aussi compris).
+  Le destinataire et le texte sont toujours relus, et rien ne part sans le mot « envoyer » (« oui » ne suffit pas ; « annuler » et « recommencer » sont aussi compris).
   Ce comportement ne dépend pas du réglage « Confirmer avant d'envoyer » du mode conduite.
 - **Autres messageries** (Signal, WhatsApp…) : lecture de la notification et réponse par son action « Répondre » seulement ; pas d'envoi à l'initiative
   de l'utilisateur. Les messages RCS suivent cette règle : ils ne sont pas dans la base SMS.
@@ -75,5 +80,7 @@ il est chargé à la demande et libéré après deux minutes sans usage. Sans lu
 | `Music.kt` | pilotage des apps de musique (`MusicControl`) |
 | `Llm.kt` | modèle de langage local : téléchargement, consigne, validation de la sortie |
 
-Réglages côté front : `apps/estompe/android/src/SettingsAssistant.svelte` et `assistant.ts`, par les méthodes `assistant*` du pont `EstompeNative`.
+Réglages côté front : `apps/estompe/android/src/SettingsAssistant.svelte` et `assistant.ts`. L'état se lit par les méthodes `assistant*` du pont `EstompeNative` ;
+tout ce qui modifie un réglage ou liste les applications installées passe par l'opération `assistant` du canal `EstompeSession`, réservé au cadre principal
+(une iframe tierce ne peut pas activer l'écoute).
 Tests : `AssistantTest.kt`, `AssistantServiceTest.kt`, `LlmTest.kt` (JUnit) et `assistant.test.ts` (vitest).

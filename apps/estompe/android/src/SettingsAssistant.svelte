@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { nativeBridge } from './bridge'
+  import { nativeBridge, nativeSession, type AssistantAction } from './bridge'
   import { parseAssistant, parseAssistantState, parseChoices, type AssistantScope, type AssistantSettings } from './assistant'
   import { notify } from '../../../../web/estompe/src/lib/ui'
 
@@ -8,16 +8,20 @@
   let s = $state<AssistantSettings>(parseAssistant(bridge?.assistantSettings?.() ?? ''))
   let st = $state(parseAssistantState(bridge?.assistantState?.() ?? ''))
   let model = $state(bridge?.driveModel() ?? '')
-  let apps = $state(parseChoices(bridge?.assistantApps?.() ?? '[]'))
-  let musicApps = $state(parseChoices(bridge?.assistantMusicApps?.() ?? '[]'))
+  let apps = $state(parseChoices('[]'))
+  let musicApps = $state(parseChoices('[]'))
 
-  function save(patch: Partial<AssistantSettings>) {
+  async function ask(action: AssistantAction, settings?: AssistantSettings): Promise<string | undefined> {
+    const r = await nativeSession()?.({ op: 'assistant', action, settings })
+    return r?.status === 200 ? (r.value ?? '') : undefined
+  }
+
+  async function save(patch: Partial<AssistantSettings>) {
     s = { ...s, ...patch }
-    const why = bridge?.saveAssistantSettings?.(JSON.stringify($state.snapshot(s)))
-    if (why) {
-      notify.info(why)
-      s = parseAssistant(bridge?.assistantSettings?.() ?? '')
-    }
+    const why = await ask('save', $state.snapshot(s))
+    if (why === '') return
+    notify.info(why ?? 'Réglages non enregistrés.')
+    s = parseAssistant(bridge?.assistantSettings?.() ?? '')
   }
 
   function toggleApp(id: string, on: boolean) {
@@ -30,17 +34,24 @@
   }
 
   function downloadLlm() {
-    bridge?.assistantDownloadLlm?.()
+    ask('downloadLlm')
     st = { ...st, llm: 'busy' }
   }
 
+  async function loadApps() {
+    apps = parseChoices((await ask('apps')) ?? '[]')
+    musicApps = parseChoices((await ask('musicApps')) ?? '[]')
+  }
+
   onMount(() => {
+    loadApps()
     const t = setInterval(() => {
       if (!bridge) return
-      st = parseAssistantState(bridge.assistantState?.() ?? '')
+      const next = parseAssistantState(bridge.assistantState?.() ?? '')
+      const changed = next.notifications !== st.notifications
+      st = next
       model = bridge.driveModel()
-      if (apps.length === 0) apps = parseChoices(bridge.assistantApps?.() ?? '[]')
-      if (musicApps.length === 0) musicApps = parseChoices(bridge.assistantMusicApps?.() ?? '[]')
+      if (changed) loadApps()
     }, 1500)
     return () => clearInterval(t)
   })
@@ -69,7 +80,7 @@
       Attention : l'assistant répond même téléphone verrouillé. Toute personne à portée de voix peut faire lire tes messages ou dicter un SMS.
       Un SMS n'est jamais envoyé sans que l'assistant te le relise et que tu dises « envoyer ».
     </p>
-    <p class="v-note">{st.listening ? 'À l\'écoute.' : 'Pas encore à l\'écoute : vérifie les autorisations ci-dessous.'}</p>
+    <p class="v-note">{st.listening ? 'À l\'écoute.' : s.scope === 'drive' ? 'En attente : l\'écoute démarre avec le mode conduite.' : 'Pas encore à l\'écoute : vérifie les autorisations et le modèle de dictée ci-dessous.'}</p>
   {/if}
 </div>
 
@@ -127,7 +138,7 @@
     </label>
     {#if st.llm === 'ready'}
       <p class="v-note">Modèle installé.</p>
-      <button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantDeleteLlm?.()}>Supprimer le modèle</button>
+      <button class="plbls-button plbls-button--compact" onclick={() => ask('deleteLlm')}>Supprimer le modèle</button>
     {:else if st.llm === 'busy'}
       <p class="v-note">Téléchargement du modèle…</p>
     {:else}

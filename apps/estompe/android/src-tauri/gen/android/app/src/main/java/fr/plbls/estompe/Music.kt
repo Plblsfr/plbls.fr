@@ -1,5 +1,6 @@
 package fr.plbls.estompe
 
+import android.app.ActivityManager
 import android.app.SearchManager
 import android.content.ComponentName
 import android.content.Context
@@ -12,11 +13,18 @@ import android.media.session.PlaybackState
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.service.media.MediaBrowserService
 import android.view.KeyEvent
 import java.text.Collator
 import java.util.Locale
+
+fun appInForeground(): Boolean = try {
+  val info = ActivityManager.RunningAppProcessInfo()
+  ActivityManager.getMyMemoryState(info)
+  info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+} catch (e: Exception) { false }
 
 class MusicControl(private val context: Context) {
   private val app = context.applicationContext
@@ -35,11 +43,11 @@ class MusicControl(private val context: Context) {
     emptyList()
   }
 
-  fun transport(action: Transport, app: String): Boolean = try {
+  fun transport(action: Transport, app: String, fallback: String = ""): Boolean = try {
     when (action) {
       Transport.VOLUME_UP -> volume(AudioManager.ADJUST_RAISE)
       Transport.VOLUME_DOWN -> volume(AudioManager.ADJUST_LOWER)
-      Transport.PLAY -> controller(app)?.let { it.transportControls.play(); true } ?: playKey(app)
+      Transport.PLAY -> controller(app)?.let { it.transportControls.play(); true } ?: playKey(app.ifEmpty { fallback })
       Transport.PAUSE -> controller(app)?.let { it.transportControls.pause(); true } ?: false
       Transport.NEXT -> controller(app)?.let { it.transportControls.skipToNext(); true } ?: false
       Transport.PREVIOUS -> controller(app)?.let { it.transportControls.skipToPrevious(); true } ?: false
@@ -67,6 +75,7 @@ class MusicControl(private val context: Context) {
 
   private fun sessions(): List<MediaController> = try {
     app.getSystemService(MediaSessionManager::class.java)?.getActiveSessions(AssistantListener.component(app)).orEmpty()
+      .filter { it.packageName != app.packageName }
   } catch (e: SecurityException) {
     DriveService.note("musique : accès aux notifications requis pour piloter les sessions média")
     emptyList()
@@ -92,6 +101,7 @@ class MusicControl(private val context: Context) {
   private fun playKey(pkg: String): Boolean {
     val down = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY)
     val up = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY)
+    var handed = false
     if (pkg.isNotEmpty()) {
       val receiver = try {
         @Suppress("DEPRECATION")
@@ -101,13 +111,26 @@ class MusicControl(private val context: Context) {
         val to = ComponentName(receiver.packageName, receiver.name)
         app.sendBroadcast(Intent(Intent.ACTION_MEDIA_BUTTON).setComponent(to).putExtra(Intent.EXTRA_KEY_EVENT, down))
         app.sendBroadcast(Intent(Intent.ACTION_MEDIA_BUTTON).setComponent(to).putExtra(Intent.EXTRA_KEY_EVENT, up))
-        return true
+        handed = true
       }
     }
-    val audio = app.getSystemService(AudioManager::class.java) ?: return false
-    audio.dispatchMediaKeyEvent(down)
-    audio.dispatchMediaKeyEvent(up)
-    return true
+    if (!handed) {
+      val audio = app.getSystemService(AudioManager::class.java) ?: return false
+      audio.dispatchMediaKeyEvent(down)
+      audio.dispatchMediaKeyEvent(up)
+    }
+    if (!AssistantListener.enabled(app)) return handed
+    return playing(pkg)
+  }
+
+  private fun playing(pkg: String): Boolean {
+    val until = SystemClock.elapsedRealtime() + PLAY_CHECK_MS
+    while (true) {
+      val found = sessions().any { (pkg.isEmpty() || it.packageName == pkg) && it.playbackState?.state.let { s -> s == PlaybackState.STATE_PLAYING || s == PlaybackState.STATE_BUFFERING } }
+      if (found) return true
+      if (SystemClock.elapsedRealtime() >= until || Looper.myLooper() == Looper.getMainLooper()) return false
+      try { Thread.sleep(PLAY_POLL_MS) } catch (e: InterruptedException) { Thread.currentThread().interrupt(); return false }
+    }
   }
 
   private fun find(query: String, pkg: String, extras: Bundle, done: (Boolean) -> Unit) {
@@ -119,8 +142,8 @@ class MusicControl(private val context: Context) {
         c.transportControls.playFromSearch(query, extras)
         return done(true)
       }
-      if (startSearch(query, to, extras)) return done(true)
-      connect(to, { done(false) }) { browser, finish ->
+      val last = { if (appInForeground() && startSearch(query, to, extras)) done(true) else { DriveService.note("musique : recherche impossible en arrière-plan"); done(false) } }
+      val started = connect(to, { ok -> if (ok) done(true) else last() }) { browser, finish ->
         try {
           MediaController(app, browser.sessionToken).transportControls.playFromSearch(query, extras)
           finish(true)
@@ -128,7 +151,8 @@ class MusicControl(private val context: Context) {
           DriveService.note("musique : recherche refusée par le catalogue ($e)")
           finish(false)
         }
-      }.let { if (!it) done(false) }
+      }
+      if (!started) last()
     } catch (e: Exception) {
       DriveService.note("musique : recherche impossible ($e)")
       done(false)
@@ -150,47 +174,57 @@ class MusicControl(private val context: Context) {
       .firstOrNull()?.serviceInfo?.let { ComponentName(it.packageName, it.name) }
   } catch (e: Exception) { null }
 
-  private fun connect(pkg: String, failed: () -> Unit, connected: (MediaBrowser, (Boolean) -> Unit) -> Unit): Boolean {
+  private fun connect(pkg: String, result: (Boolean) -> Unit, connected: (MediaBrowser, (Boolean) -> Unit) -> Unit): Boolean {
     val component = browserComponent(pkg) ?: return false
     var browser: MediaBrowser? = null
     var over = false
     lateinit var guard: Runnable
-    fun close() {
+    fun close(later: Boolean) {
       ui.removeCallbacks(guard)
-      try { browser?.disconnect() } catch (e: Exception) { DriveService.note("musique : déconnexion du catalogue ($e)") }
+      val b = browser ?: return
       browser = null
+      val shut = Runnable { try { b.disconnect() } catch (e: Exception) { DriveService.note("musique : déconnexion du catalogue ($e)") } }
+      if (later) ui.postDelayed(shut, LINGER_MS) else shut.run()
     }
-    val finish: (Boolean) -> Unit = { ok -> if (!over) { over = true; close(); if (!ok) failed() } }
+    val finish: (Boolean) -> Unit = { ok ->
+      if (!over) {
+        over = true
+        close(ok)
+        try { result(ok) } catch (e: Exception) { DriveService.note("musique : rappel ${e.javaClass.simpleName}") }
+      }
+    }
     guard = Runnable { if (!over) { DriveService.note("musique : catalogue sans réponse"); finish(false) } }
-    return try {
-      val b = MediaBrowser(app, component, object : MediaBrowser.ConnectionCallback() {
+    val b = try {
+      MediaBrowser(app, component, object : MediaBrowser.ConnectionCallback() {
         override fun onConnected() {
           if (over) return
-          val current = browser ?: return
+          val current = browser ?: return finish(false)
           try { connected(current) { ok -> finish(ok) } } catch (e: Exception) { DriveService.note("musique : catalogue ($e)"); finish(false) }
         }
         override fun onConnectionFailed() { DriveService.note("musique : catalogue refusé à Estompe"); finish(false) }
         override fun onConnectionSuspended() { finish(false) }
       }, null)
-      browser = b
-      ui.postDelayed(guard, BROWSE_TIMEOUT_MS)
-      b.connect()
-      true
     } catch (e: Exception) {
       DriveService.note("musique : connexion au catalogue impossible ($e)")
-      over = true
-      close()
-      false
+      return false
     }
+    browser = b
+    ui.postDelayed(guard, BROWSE_TIMEOUT_MS)
+    try { b.connect() } catch (e: Exception) {
+      DriveService.note("musique : connexion au catalogue impossible ($e)")
+      finish(false)
+    }
+    return true
   }
 
   private fun browse(name: String, pkg: String, done: (Boolean) -> Unit) {
     val to = try { target(pkg) } catch (e: Exception) { "" }
     if (to.isEmpty() || name.isBlank()) { DriveService.note("musique : aucune app pour la playlist"); return done(false) }
-    var played = false
+    var fell = false
+    var settled = false
     val fallback = {
-      if (!played) {
-        played = true
+      if (!fell) {
+        fell = true
         find("playlist $name", to, Bundle().apply {
           putString(MediaStore.EXTRA_MEDIA_FOCUS, MediaStore.Audio.Playlists.ENTRY_CONTENT_TYPE)
           putString(EXTRA_PLAYLIST, name)
@@ -198,16 +232,14 @@ class MusicControl(private val context: Context) {
       }
     }
     val wanted = try { fold(name) } catch (e: Exception) { name.lowercase() }
-    val started = connect(to, { fallback() }) { browser, finish ->
+    val started = connect(to, { ok -> settled = true; if (ok) done(true) else fallback() }) { browser, finish ->
       val controller = MediaController(app, browser.sessionToken)
       var subscriptions = 0
       fun play(item: MediaBrowser.MediaItem) {
-        if (played) return
+        if (settled) return
         val id = item.mediaId ?: return finish(false)
         controller.transportControls.playFromMediaId(id, null)
-        played = true
         finish(true)
-        done(true)
       }
       fun children(parent: String, got: (List<MediaBrowser.MediaItem>?) -> Unit) {
         if (subscriptions >= MAX_SUBSCRIPTIONS) return got(null)
@@ -218,12 +250,12 @@ class MusicControl(private val context: Context) {
             if (answered) return
             answered = true
             try { browser.unsubscribe(parentId) } catch (e: Exception) {}
-            got(items)
+            try { got(items) } catch (e: Exception) { DriveService.note("musique : catalogue ($e)"); finish(false) }
           }
           override fun onError(parentId: String) {
             if (answered) return
             answered = true
-            got(null)
+            try { got(null) } catch (e: Exception) { DriveService.note("musique : catalogue ($e)"); finish(false) }
           }
         })
       }
@@ -255,6 +287,9 @@ class MusicControl(private val context: Context) {
 
   companion object {
     private const val BROWSE_TIMEOUT_MS = 8_000L
+    private const val LINGER_MS = 5_000L
+    private const val PLAY_CHECK_MS = 3_000L
+    private const val PLAY_POLL_MS = 300L
     private const val MAX_SUBSCRIPTIONS = 8
     private const val EXTRA_PLAYLIST = "android.intent.extra.playlist"
   }

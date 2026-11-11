@@ -85,6 +85,7 @@ class EstompeNative(private val activity: MainActivity) {
         "logout" -> { session.deconnecter(); JSONObject().put("status", 200) }
         "adopt" -> { session.adopter(m.getString("refresh")); JSONObject().put("status", 200) }
         "screenshot" -> JSONObject().put("status", 200).put("image", screenshot())
+        "assistant" -> assistantMessage(m)
         else -> JSONObject().put("status", 400).put("error", "opération inconnue")
       }
     } catch (e: JSONException) {
@@ -156,13 +157,21 @@ class EstompeNative(private val activity: MainActivity) {
   private fun granted(vararg permissions: String) = permissions.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
   private fun choices(apps: List<MusicApp>) = JSONArray(apps.map { JSONObject().put("id", it.id).put("label", it.label) }).toString()
   @JavascriptInterface fun assistantSettings(): String = assistant.toJson().toString()
-  @JavascriptInterface fun assistantApps(): String = choices(AssistantListener.messagingApps(activity))
-  @JavascriptInterface fun assistantMusicApps(): String = choices(MusicControl(activity).apps())
-  @JavascriptInterface fun assistantDownloadLlm() = LlmModel.download(activity)
-  @JavascriptInterface fun assistantDeleteLlm() = LlmModel.delete(activity)
 
-  @JavascriptInterface fun saveAssistantSettings(json: String): String {
-    try { assistant.save(JSONObject(json)) } catch (e: JSONException) { DriveService.note("réglages de l'assistant refusés : $e"); return "Réglages refusés." }
+  private fun assistantMessage(m: JSONObject): JSONObject {
+    val value = when (m.optString("action")) {
+      "save" -> saveAssistantSettings(m.getJSONObject("settings"))
+      "apps" -> choices(AssistantListener.messagingApps(activity))
+      "musicApps" -> choices(MusicControl(activity).apps())
+      "downloadLlm" -> { LlmModel.download(activity); "" }
+      "deleteLlm" -> { LlmModel.delete(activity); "" }
+      else -> return JSONObject().put("status", 400).put("error", "action inconnue")
+    }
+    return JSONObject().put("status", 200).put("value", value)
+  }
+
+  private fun saveAssistantSettings(settings: JSONObject): String {
+    assistant.save(settings)
     val missing = if (assistant.load().scope == AssistantScope.OFF) emptyList() else buildList {
       add(Manifest.permission.RECORD_AUDIO)
       if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
@@ -180,7 +189,7 @@ class EstompeNative(private val activity: MainActivity) {
     .put("contacts", granted(Manifest.permission.READ_CONTACTS))
     .put("model", driveModel())
     .put("llm", if (LlmModel.state.isNotEmpty()) LlmModel.state else if (LlmModel.ready(activity)) "ready" else "")
-    .put("llmAvailable", LlmModel.AVAILABLE)
+    .put("llmAvailable", LlmModel.AVAILABLE && LlmModel.supported())
     .toString()
 
   @JavascriptInterface fun assistantGrant(what: String) {

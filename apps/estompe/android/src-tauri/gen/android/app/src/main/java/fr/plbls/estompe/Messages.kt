@@ -18,6 +18,22 @@ import android.telephony.SmsManager
 import androidx.core.content.ContextCompat
 import java.util.UUID
 
+enum class Sent { OK, FAILED, UNKNOWN }
+
+fun speakableNumber(address: String): String {
+  val raw = address.trim()
+  if (raw.isEmpty()) return "numéro inconnu"
+  if (raw.any { it.isLetter() }) return raw
+  var digits = raw.filter { it.isDigit() }
+  if (digits.isEmpty()) return raw
+  if (raw.startsWith("+33") && digits.length == 11) digits = "0" + digits.substring(2)
+  else if (raw.startsWith("0033") && digits.length == 13) digits = "0" + digits.substring(4)
+  val size = if (digits.length == 10 && digits.startsWith("0")) 2 else 3
+  if (digits.length <= 6) return digits.chunked(2).joinToString(" ")
+  val head = if (raw.startsWith("+") && size == 3) "plus " else ""
+  return head + digits.chunked(size).joinToString(" ")
+}
+
 class Phone(context: Context) {
   private val app = context.applicationContext
   private val prefs = app.getSharedPreferences("assistant", Context.MODE_PRIVATE)
@@ -112,16 +128,16 @@ class Phone(context: Context) {
     } catch (e: Exception) { DriveService.note("mémoire des SMS lus : $e") }
   }
 
-  fun send(number: String, text: String, done: (Boolean) -> Unit) {
+  fun send(number: String, text: String, done: (Sent) -> Unit) {
     val ui = Handler(Looper.getMainLooper())
     ui.post { sendNow(ui, number.trim(), text, done) }
   }
 
-  private fun sendNow(ui: Handler, number: String, text: String, done: (Boolean) -> Unit) {
+  private fun sendNow(ui: Handler, number: String, text: String, done: (Sent) -> Unit) {
     var over = false
     var receiver: BroadcastReceiver? = null
     var timeout: Runnable? = null
-    fun finish(ok: Boolean) {
+    fun finish(ok: Sent) {
       if (over) return
       over = true
       timeout?.let { ui.removeCallbacks(it) }
@@ -129,26 +145,26 @@ class Phone(context: Context) {
       receiver = null
       try { done(ok) } catch (e: Exception) { DriveService.note("envoi SMS : rappel ${e.javaClass.simpleName}") }
     }
-    if (number.isEmpty() || text.isBlank()) return finish(false)
-    if (!canSendSms()) { DriveService.note("envoi SMS : permission absente"); return finish(false) }
+    if (number.isEmpty() || text.isBlank()) return finish(Sent.FAILED)
+    if (!canSendSms()) { DriveService.note("envoi SMS : permission absente"); return finish(Sent.FAILED) }
     try {
-      val sms = smsManager() ?: run { DriveService.note("envoi SMS : service indisponible"); return finish(false) }
+      val sms = smsManager() ?: run { DriveService.note("envoi SMS : service indisponible"); return finish(Sent.FAILED) }
       val parts = sms.divideMessage(text)
-      if (parts.isNullOrEmpty()) return finish(false)
+      if (parts.isNullOrEmpty()) return finish(Sent.FAILED)
       val action = app.packageName + ".SMS_SENT." + UUID.randomUUID()
       val accepted = HashSet<Int>()
       val r = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
           if (intent.action != action) return
-          if (resultCode != Activity.RESULT_OK) { DriveService.note("envoi SMS : refus du système (code $resultCode)"); return finish(false) }
+          if (resultCode != Activity.RESULT_OK) { DriveService.note("envoi SMS : refus du système (code $resultCode)"); return finish(if (accepted.isEmpty()) Sent.FAILED else Sent.UNKNOWN) }
           accepted.add(intent.getIntExtra(EXTRA_PART, -1))
-          if (accepted.size >= parts.size) finish(true)
+          if (accepted.size >= parts.size) finish(Sent.OK)
         }
       }
       if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, IntentFilter(action), Context.RECEIVER_NOT_EXPORTED)
       else app.registerReceiver(r, IntentFilter(action))
       receiver = r
-      val t = Runnable { DriveService.note("envoi SMS : pas d'accusé d'envoi"); finish(false) }
+      val t = Runnable { DriveService.note("envoi SMS : pas d'accusé d'envoi"); finish(Sent.UNKNOWN) }
       timeout = t
       ui.postDelayed(t, SEND_TIMEOUT_MS)
       val flags = PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
@@ -159,7 +175,7 @@ class Phone(context: Context) {
       sms.sendMultipartTextMessage(number, null, parts, sent, null)
     } catch (e: Exception) {
       DriveService.note("envoi SMS : ${e.javaClass.simpleName}")
-      finish(false)
+      finish(Sent.FAILED)
     }
   }
 
@@ -185,18 +201,6 @@ class Phone(context: Context) {
     private val COLUMNS = arrayOf(BaseColumns._ID, Telephony.TextBasedSmsColumns.ADDRESS, Telephony.TextBasedSmsColumns.BODY,
       Telephony.TextBasedSmsColumns.DATE)
 
-    fun speakable(address: String): String {
-      val raw = address.trim()
-      if (raw.isEmpty()) return "numéro inconnu"
-      if (raw.any { it.isLetter() }) return raw
-      var digits = raw.filter { it.isDigit() }
-      if (digits.isEmpty()) return raw
-      if (raw.startsWith("+33") && digits.length == 11) digits = "0" + digits.substring(2)
-      else if (raw.startsWith("0033") && digits.length == 13) digits = "0" + digits.substring(4)
-      val size = if (digits.length == 10 && digits.startsWith("0")) 2 else 3
-      if (digits.length <= 6) return digits.chunked(2).joinToString(" ")
-      val head = if (raw.startsWith("+") && size == 3) "plus " else ""
-      return head + digits.chunked(size).joinToString(" ")
-    }
+    fun speakable(address: String): String = speakableNumber(address)
   }
 }
