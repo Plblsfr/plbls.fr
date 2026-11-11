@@ -41,7 +41,7 @@ repartir de zéro.
 
 ## Limites
 
-- L'app de test vise **le même backend** que la production (`.env.windows`). Pour un autre backend, exporter `VITE_API_URL`,
+- L'app de test vise **le même backend** que la production (`plbls.env`). Pour un autre backend, exporter `VITE_API_URL`,
   `VITE_GATEWAY_URL` et `VITE_KEYCLOAK_ISSUER` avant le build. Les données créées pendant les essais sont donc réelles.
 - L'origine de la fenêtre est celle de la production (`https://tauri.localhost`) : la même configuration CORS et Keycloak s'applique.
 - Pas de mise à jour : reconstruire et réinstaller par-dessus.
