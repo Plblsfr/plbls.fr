@@ -1,7 +1,7 @@
 {
-  "mandatory": false,
-  "minVersion": "",
-  "message": "",
+  "mandatory": true,
+  "minVersion": "0.91.2",
+  "message": "Cette mise à jour ajoute la section Films et séries et corrige plusieurs problèmes d'affichage.",
   "platforms": {
     "web": {},
     "android": {},
