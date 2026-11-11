@@ -99,12 +99,10 @@
   .attente-texte { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
   .applis { display: flex; flex-direction: column; gap: 10px; }
   @media (max-width: 900px) {
-    .vitrine { padding: 32px 24px; gap: 28px; border-right: 0; border-bottom: 1px solid var(--trait); }
-    .entree { padding: 32px 16px 40px; }
-  }
-  @media (max-width: 560px) {
-    .atouts { grid-template-columns: minmax(0, 1fr); }
-    .accroche p { font-size: 17px; }
+    .connexion { flex-direction: column; flex-wrap: nowrap; }
+    .vitrine { flex: none; padding: 32px 16px 0; border: 0; background: none; }
+    .accroche, .atouts { display: none; }
+    .entree { flex: 1 0 auto; padding: 24px 16px 40px; }
   }
   @media (pointer: coarse) {
     .actions :global(.plbls-button) { min-height: 44px; }
