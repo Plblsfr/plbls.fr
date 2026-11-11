@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.91.3",
+    "date": "2026-11-11",
+    "new": [],
+    "fixes": [
+      "Les films se lisent de nouveau dans le navigateur et dans l'application Windows.",
+      "Le salon cinéma est de nouveau proposé à la création d'un salon."
+    ]
+  },
+  {
     "version": "0.91.2",
     "date": "2026-11-11",
     "new": [
