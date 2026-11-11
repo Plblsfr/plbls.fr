@@ -297,10 +297,6 @@ pub static HORS_PERMISSION: &[(&str, &str)] = &[
         "* /admin/acces/**",
         "administration des accès : jugée par aegis (aegis:admin ou rôle Keycloak)",
     ),
-    (
-        "* /admin/permissions/**",
-        "ancien service permission : jugé par permission, retiré après la bascule",
-    ),
 ];
 
 pub static BITS_HORS_PLAFOND: &[(Perm, &str)] = &[(
@@ -510,8 +506,7 @@ Une permission dont le bloc est désactivé n'est pas déclarée.\n",
         d.push_str(&format!("| `{}` | {m} |\n", noms_bits(*b)));
     }
     d.push_str(
-        "\n## pli et aegis\n\n| Permission | Libellé | Défaut | Contrôle |\n| --- | --- | --- | --- |\n\
-| `pli:deposit` | Déposer des fichiers | fermée | `/api/me`, `/api/shares` et la gestion des dépôts (via `POST /v1/check`) |\n\
+        "\n## aegis\n\n| Permission | Libellé | Défaut | Contrôle |\n| --- | --- | --- | --- |\n\
 | `aegis:admin` | Administrer les permissions | fermée | toute l'API d'administration ; rôle système « Administrateur aegis » |\n",
     );
     d

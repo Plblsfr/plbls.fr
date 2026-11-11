@@ -3,8 +3,8 @@ Monorepo :
 
 | Dossier | Contenu |
 |---|---|
-| `api/` | API et services Rust (workspace Cargo racine) : `commun` (code partagé par security, aegis, permission, pli et entracte), `security` (auth-gateway), `aegis` (permissions), `permission` (remplacé par aegis, retiré après la bascule), `pli`, `entracte` (films et séries, [`docs/entracte`](docs/entracte/README.md)), `estompe` |
-| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (l'app : messagerie et section Entracte ; sa plateforme web, image nginx), `permission`, `pli` |
+| `api/` | API et services Rust (workspace Cargo racine) : `commun` (code partagé par security, aegis et entracte), `security` (auth-gateway), `aegis` (permissions), `entracte` (films et séries, [`docs/entracte`](docs/entracte/README.md)), `estompe` |
+| `web/` | fronts servis dans les navigateurs (workspace npm racine) : `estompe` (l'app : messagerie et section Entracte ; sa plateforme web, image nginx) |
 | `apps/` | applications natives : `estompe/windows`, `estompe/android` (Tauri) et leur code commun `estompe/crates` |
 | `docs/` | documentation, un dossier par projet (`docs/<projet>/`) et les documents transverses |
 | `deploy/` | déploiement et dev local ([`deploy/README.md`](deploy/README.md)) : un compose de dev et un de production pour tout le dépôt, `dev.env`, un `.env.example` par projet, realm Keycloak de dev |
@@ -14,11 +14,10 @@ Monorepo :
 Les fichiers transverses d'Estompe sont à la racine : `.version`, `CHANGELOG.md`, `changelog.d/`, `agents/skills/` (lus via `.claude/skills`).
 La CI est dans `.github/workflows/`.
 L'infrastructure (Keycloak, PostgreSQL, stack média) est dans un dépôt privé.
-Plan de regroupement des fronts en une seule application : [docs/front-unique.md](docs/front-unique.md).
 
 ## npm
 
-Un seul workspace npm à la racine (`packages/ui`, `packages/deepmerge`, `web/estompe`, `web/permission`, `web/pli`), un seul `package-lock.json`
+Un seul workspace npm à la racine (`packages/ui`, `packages/deepmerge`, `web/estompe`), un seul `package-lock.json`
 et une seule version de Node, celle de `.nvmrc` (reprise par les `engines`, la CI et les images Docker ; `node scripts/check-node.mjs` le vérifie).
 
 ```sh
@@ -26,14 +25,14 @@ nvm use
 npm ci
 npm run lint        # chaque projet a les mêmes scripts : lint, check, test, build
 npm run check       # inclut check-node et ui:check
-npm test            # pli demande TEST_DATABASE_URL pour ses tests avec base
+npm test
 npm run build
-npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui dans estompe, permission et pli
+npm run ui:sync     # après un changement de packages/ui : recopie @plbls/ui dans estompe
 ```
 
 Les copies de `@plbls/ui` (`*/vendor/plbls-ui/`) sont générées par `scripts/sync-ui.mjs` : ne pas les modifier à la main,
-le job `front` du workflow `ci` échoue si l'une d'elles diffère de `packages/ui`. Les images de pli, permission et du CDN se construisent
-depuis la racine du dépôt (`docker build -f api/pli/Dockerfile .`).
+le job `front` du workflow `ci` échoue si l'une d'elles diffère de `packages/ui`. L'image du CDN se construit
+depuis la racine du dépôt (`docker build -f packages/ui/Dockerfile .`).
 
 `packages/deepmerge` est une copie de `deepmerge` 4.3.1 corrigée contre la pollution du prototype (GHSA-gcqx-w48m-w2h4, aucune version
 corrigée publiée) : comme elle porte le nom `deepmerge` en version 4.3.2, npm la lie à la place du paquet du registre pour
@@ -66,5 +65,5 @@ Détail : [`docs/estompe/ci.md`](docs/estompe/ci.md).
 ## Outillage
 
 Le [`justfile`](justfile) est le seul point d'entrée (`just` liste les recettes) : `just lint` (Biome, shellcheck, ruff, liens Markdown internes),
-`just check`, `just test`, et les recettes de dev de chaque projet (`just security-dev up`, `just permission-dev-run`…).
+`just check`, `just test`, et les recettes de dev de chaque projet (`just security-dev up`, `just aegis-dev-run`…).
 Les consignes pour les agents et les contributeurs sont dans [`AGENTS.md`](AGENTS.md) ; un projet peut le compléter par son propre `AGENTS.md`.

@@ -79,18 +79,6 @@
           }
         }
       }
-    },
-    {
-      "includes": [
-        "web/pli/public/crypto.js"
-      ],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noControlCharactersInRegex": "off"
-          }
-        }
-      }
     }
   ],
   "assist": {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Attente from '../permissions/Attente.svelte'
+  import Attente from './Attente.svelte'
   import { charger, ecrire, executer, type Catalogue, type RoleDetail, type RoleResume } from '../../lib/acces.svelte'
   import RoleEditeur from './RoleEditeur.svelte'
 

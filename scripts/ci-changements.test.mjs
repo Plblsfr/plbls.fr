@@ -54,7 +54,7 @@ test('un fichier exclu ne déclenche rien, à la racine du dossier comme plus ba
 });
 
 test('un fichier hors des chemins ne déclenche rien', async (t) => {
-  const dir = await depot(t, ['web/pli/public/index.js', 'web/estompe/Cargo.toml']);
+  const dir = await depot(t, ['web/exemple/public/index.js', 'web/estompe/Cargo.toml']);
   assert.equal(await lancer(dir, 'pull_request', backend), 'modifie=false');
 });
 
@@ -64,19 +64,19 @@ test('un fichier racine nommé exactement est suivi', async (t) => {
 });
 
 test('un push sur une branche compare le commit de fusion à son premier parent', async (t) => {
-  const dir = await depot(t, ['web/pli/public/index.js']);
+  const dir = await depot(t, ['web/exemple/public/index.js']);
   assert.equal(await lancer(dir, 'push', backend, 'refs/heads/main'), 'modifie=false');
-  assert.equal(await lancer(dir, 'push', ['web/pli/**'], 'refs/heads/main'), 'modifie=true');
+  assert.equal(await lancer(dir, 'push', ['web/exemple/**'], 'refs/heads/main'), 'modifie=true');
 });
 
 test('un tag ou un lancement manuel lance tout', async (t) => {
-  const dir = await depot(t, ['web/pli/public/index.js']);
-  assert.equal(await lancer(dir, 'push', backend, 'refs/tags/pli-v1.0.0'), 'modifie=true');
+  const dir = await depot(t, ['web/exemple/public/index.js']);
+  assert.equal(await lancer(dir, 'push', backend, 'refs/tags/ui-v1.0.0'), 'modifie=true');
   assert.equal(await lancer(dir, 'workflow_dispatch', backend, 'refs/heads/main'), 'modifie=true');
 });
 
 test('--nom choisit la clé de sortie', async (t) => {
-  const dir = await depot(t, ['web/pli/public/index.js']);
-  assert.equal(await lancer(dir, 'pull_request', ['--nom', 'pli', 'web/pli/**']), 'pli=true');
+  const dir = await depot(t, ['web/exemple/public/index.js']);
+  assert.equal(await lancer(dir, 'pull_request', ['--nom', 'exemple', 'web/exemple/**']), 'exemple=true');
   assert.equal(await lancer(dir, 'workflow_dispatch', ['--nom', 'rust', 'Cargo.toml'], 'refs/heads/main'), 'rust=true');
 });

@@ -11,7 +11,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - **Ne jamais ajouter de ligne `Co-Authored-By: Claude …` dans les messages de commit.**
 - Ne pas ajouter non plus de mention « Generated with Claude Code » dans les commits.
 - Ne jamais forcer un push ; ne pas pousser directement sur `main`, passer par une PR.
-- Tags de livraison : `<composant>-vX.Y.Z` (`pli`, `security`, `permission`, `aegis`, `entracte`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
+- Tags de livraison : `<composant>-vX.Y.Z` (`security`, `aegis`, `entracte`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
 
 ## CI
 - Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
@@ -27,10 +27,10 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Détail (déclencheurs, caches, jobs) : `docs/estompe/ci.md`.
 
 ## Rust
-- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/commun` (code partagé : en-têtes d'identité signés, jetons de service, client HTTP sans redirection, manifeste aegis, échappement `LIKE`), `api/security`, `api/permission`, `api/aegis`, `api/pli`, `api/entracte`, `api/estompe/*`.
+- Workspace Cargo unique à la racine (`Cargo.toml`) : membres `api/commun` (code partagé : en-têtes d'identité signés, jetons de service, client HTTP sans redirection, manifeste aegis, échappement `LIKE`), `api/security`, `api/aegis`, `api/entracte`, `api/estompe/*`.
   Un seul `Cargo.lock`, un seul `rust-toolchain.toml` (version aussi dans les `FROM rust:` des Dockerfiles, vérifiée par la CI), un seul `deny.toml`.
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
-- Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et les `Dockerfile.dockerignore` de pli et permission envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`
+- Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et le `Dockerfile.dockerignore` d'aegis envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`
   couvre `api/**`, lui ajouter ses groupes d'image et de tests.
 - Exception : les apps Tauri d'Estompe (`apps/estompe/{crates,windows,android}`) restent hors du workspace, avec leur `Cargo.lock` et la toolchain stable.
 - Contrôles : `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`.
@@ -55,7 +55,7 @@ point d'entrée de l'outillage (pas de Makefile par projet) : une commande de de
 - **Documentation** : décrit l'état actuel (l'historique est dans git, pas de document de migration terminé). Les liens Markdown internes
   sont vérifiés par `scripts/check-links.mjs` (`just lint` ; en PR, job `front` de `ci.yml` dès qu'un `.md` change) ; `CHANGELOG.md`, `changelog.d/` et les copies `vendor/` sont exclus.
 - **Autres scripts** : bash pour l'orchestration, `.mjs` quand le projet est déjà en Node. Pas de nouveau script Python.
-- **Python (décision)** : les scripts Python existants (tests de bout en bout de `security`, `seed.py` et `smoke.py` de `permission`)
+- **Python (décision)** : les scripts Python existants (tests de bout en bout de `security`)
   sont gardés : stdlib seulement, aucune dépendance, ils marchent. Le code commun (HTTP sans redirection, appels JSON, vérifications)
-  est dans `scripts/python/devcommun.py`, importé par le `devlib.py` de chaque projet. Ils sont vérifiés par `ruff` (config `ruff.toml`,
+  est dans `scripts/python/devcommun.py`, importé par `scripts/security/devlib.py`. Ils sont vérifiés par `ruff` (config `ruff.toml`,
   version épinglée dans `.github/workflows/ci.yml`). Un script réécrit passe en `.mjs` ou en test Rust du projet.

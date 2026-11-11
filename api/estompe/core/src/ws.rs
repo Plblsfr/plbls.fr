@@ -414,7 +414,7 @@ mod tests {
         let (pg, url) = testutil::postgres().await?;
         let config = testutil::config_avec(&[
             ("GATEWAY_URL", gateway.url.as_str()),
-            ("PERMISSION_URL", permission.url.as_str()),
+            ("AEGIS_URL", permission.url.as_str()),
             ("ALLOWED_ORIGINS", ORIGINE),
         ]);
         let debut = Instant::now();

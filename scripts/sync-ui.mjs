@@ -8,8 +8,6 @@ export const ui = join(root, 'packages/ui');
 
 export const destinations = [
   'web/estompe/src/vendor/plbls-ui',
-  'web/permission/src/vendor/plbls-ui',
-  'web/pli/public/vendor/plbls-ui',
 ];
 
 export const distFiles = ['plbls-ui.esm.min.js', 'plbls-ui.esm.min.d.ts', 'plbls-ui.min.css', 'tokens.min.css'];

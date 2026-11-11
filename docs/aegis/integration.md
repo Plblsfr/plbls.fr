@@ -62,8 +62,8 @@ Passerelle : route `/api/aegis` vers `http://aegis:8080` (`api/security/config/r
 
 | Variable | Rôle |
 | --- | --- |
-| `AEGIS_URL` | URL interne d'aegis. Vide : Estompe reste sur le service permission (`PERMISSION_*`) |
-| `AEGIS_TOKEN_ESTOMPE` | Jeton d'Estompe (application `estompe` chez aegis) ; vérifie aussi les appels d'aegis vers `/internal/aegis/resources/*` |
+| `AEGIS_URL` | URL interne d'aegis (défaut `http://aegis:8080`) |
+| `AEGIS_TOKEN_ESTOMPE` | Obligatoire. Jeton d'Estompe (application `estompe` chez aegis) ; vérifie aussi les appels d'aegis vers `/internal/aegis/resources/*` |
 | `REDIS_URL`, `REDIS_PASSWORD`, `AEGIS_REDIS_PREFIX` | Communes : abonnement aux invalidations |
 | `AEGIS_ADMIN_ROLE` | Commune : rôle Keycloak qui ouvre Administration › accès sans compte Estompe (défaut `aegis-admin`) |
 | `AEGIS_RESOURCES_URL` | URL par laquelle aegis joint Estompe (défaut `http://estompe-api:8080`) |
@@ -72,26 +72,15 @@ Estompe envoie son manifeste (permissions des blocs actifs), applique la garde d
 de serveur, renvoie `capabilities` dans `GET /me` (confort d'affichage) et relaie `/admin/acces/*` vers `/v1/admin/*` d'aegis
 avec le justificatif de l'appelant : aegis reste seul juge. Détail : [fonctionnalites.md](fonctionnalites.md).
 
-En mode permission (`AEGIS_URL` vide), les droits sont traduits : `estompe:access` (ou `PERMISSION_NAME`), `estompe:admin` → toutes les permissions `estompe:admin.*`, et les permissions ouvertes par défaut sont accordées.
-
-## pli
-
-`AEGIS_URL` et `AEGIS_TOKEN_PLI` (prioritaires sur `PERMISSION_URL` et `PERMISSION_TOKEN_PLI`) : pli envoie son manifeste
-(`pli:deposit`, fermée par défaut) et vérifie le dépôt par `POST /v1/check`.
-
 ## Entracte
 
 `AEGIS_URL` et `AEGIS_TOKEN_ENTRACTE` (application `entracte` chez aegis) : Entracte envoie son manifeste
 (`entracte:access`, `entracte:request`, `entracte:admin`, fermées par défaut) et lit les droits par `POST /v1/effective` (cache borné par
 `valid_until`, 30 s au plus). Sans aegis, toutes ses permissions sont refusées. Voir [docs/entracte](../entracte/README.md).
 
-## Bascule depuis permission
+## Mise en service
 
-1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe et de pli.
+1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe et d'Entracte.
 2. Donner le rôle Keycloak `aegis-admin` (et `user`) aux administrateurs.
-3. Renseigner `AEGIS_URL` et `AEGIS_TOKEN_ESTOMPE` d'abord sur une instance de test d'Estompe pour recevoir le manifeste,
-   puis configurer dans Administration › accès : un rôle `Membre` avec `estompe:access` (ou l'ajouter à « Tout le monde »),
-   `entracte:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs, `pli:deposit` aux déposants.
-4. Basculer Estompe et pli en production en renseignant leurs variables `AEGIS_*` ; revenir en arrière = les vider.
-5. Une fois la bascule confirmée : retirer `api/permission`, `web/permission`, `docs/permission`, le relais `/admin/permissions`
-   d'Estompe, leurs jobs de CI, compose et tags.
+3. Démarrer Estompe pour qu'il envoie son manifeste, puis configurer dans Administration › accès : un rôle `Membre` avec
+   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.

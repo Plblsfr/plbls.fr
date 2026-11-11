@@ -3,9 +3,7 @@ resolver = "3"
 members = [
   "api/commun",
   "api/security",
-  "api/permission",
   "api/aegis",
-  "api/pli",
   "api/entracte",
   "api/estompe/estompe-api",
   "api/estompe/core",

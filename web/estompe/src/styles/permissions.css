@@ -43,7 +43,6 @@
 .perm-suppr { padding: 4px 2px; border: 0; background: none; color: var(--danger); font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .perm-suppr:hover { color: color-mix(in srgb, var(--danger) 80%, var(--encre)); }
 .perm-suppr:focus-visible { outline: none; border-radius: var(--r-xs); box-shadow: var(--anneau); }
-.v-btn.perm-suppr-btn { color: var(--danger); }
 .perm-nouveau > summary { list-style: none; gap: 8px; }
 .perm-nouveau > summary::-webkit-details-marker { display: none; }
 .perm-nouveau > summary::before { content: '+'; width: 16px; color: var(--gris); font-weight: 700; text-align: center; }

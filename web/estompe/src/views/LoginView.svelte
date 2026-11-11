@@ -72,7 +72,7 @@
         </div>
       {/if}
       <hr class="v-hr" />
-      <p class="v-note">L'accès à Estompe est accordé par l'administrateur (permission.plbls.fr).</p>
+      <p class="v-note">L'accès à Estompe est accordé par l'administrateur.</p>
     </div>
   </section>
 </div>

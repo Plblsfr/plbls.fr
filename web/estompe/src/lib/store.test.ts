@@ -68,10 +68,10 @@ describe('droits annoncés par /me', () => {
     Object.assign(api, { me: vi.fn(async () => me) })
     await s.boot().catch(() => {})
   }
-  it("ouvre l'administration seule à un administrateur des permissions sans accès à Estompe", async () => {
-    await boot({ activated: false, allowed: false, admin: false, rights: ['permissions'] })
+  it("ouvre l'administration seule à un administrateur d'aegis sans accès à Estompe", async () => {
+    await boot({ activated: false, allowed: false, admin: false, rights: ['acces'] })
     expect(s.phase).toBe('admin')
-    expect(s.adminSections.map((x) => x.id)).toEqual(['permissions'])
+    expect(s.adminSections.map((x) => x.id)).toEqual(['acces'])
     expect(s.isAdmin).toBe(false)
   })
   it("refuse l'accès sans aucun droit d'administration", async () => {
@@ -81,7 +81,7 @@ describe('droits annoncés par /me', () => {
   it('déduit les droits des anciens champs sans `rights`', async () => {
     await boot({ activated: false, allowed: false, admin: true })
     expect(s.phase).toBe('admin')
-    expect(s.adminSections.some((x) => x.id === 'permissions')).toBe(false)
+    expect(s.adminSections.some((x) => x.id === 'acces')).toBe(false)
     expect(s.isAdmin).toBe(true)
   })
 })

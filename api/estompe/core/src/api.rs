@@ -17,7 +17,6 @@ use crate::{
     identity::{Erreur, Identity, cred_of},
     metrics::{Instantane, Stockage, Totaux},
     openapi::{self, Base},
-    permission,
     state::{AppState, DbIndisponible},
     users::{self, ActivateError, User},
 };
@@ -33,7 +32,6 @@ pub fn router() -> OpenApiRouter<AppState> {
         .merge(crate::fichiers::router())
         .merge(crate::servers::router())
         .merge(crate::administration::router())
-        .merge(crate::relais_permission::router())
         .merge(crate::relais_aegis::router())
         .merge(crate::aegis::router())
 }
@@ -239,19 +237,16 @@ enum Transcription {
 #[utoipa::path(get, path = "/me", tag = "compte",
     summary = "État du compte Estompe de l'utilisateur connecté",
     responses(
-        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `permissions` = administrer permission, `users` = rechercher des comptes)", body = MeReponse),
+        (status = 200, description = "`allowed: false` sans la permission d'utiliser Estompe ; `activated: false` tant que le pseudo n'est pas choisi ; `rights` : droits du compte (`access`, `admin`, `acces` = administrer aegis, `users` = rechercher des comptes)", body = MeReponse),
         (status = 401, description = "Identité absente ou invalide", body = openapi::Error),
         (status = 503, description = "`permission_unavailable` : service de permission injoignable", body = openapi::Error),
     ))]
 async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
-    let (Ok(droits), Ok(permissions)) = (
-        state.droits_de(&idn).await,
-        state.gere_permissions(&idn).await,
-    ) else {
+    let (Ok(droits), Ok(gere_acces)) = (state.droits_de(&idn).await, state.gere_acces(&idn).await)
+    else {
         return permission_indisponible();
     };
     let config = state.config();
-    let aegis = state.permissions().aegis_actif();
     let allowed = droits.a(catalogue::ACCES);
     let admin = catalogue::CATALOGUE
         .iter()
@@ -260,12 +255,8 @@ async fn me(State(state): State<AppState>, Auth(idn): Auth) -> Response {
     let rights: Vec<&str> = [
         ("access", allowed),
         ("admin", admin),
-        ("permissions", permissions && !aegis),
-        ("acces", permissions && aegis),
-        (
-            "users",
-            permissions && (aegis || droits.a(permission::COMPTES)),
-        ),
+        ("acces", gere_acces),
+        ("users", gere_acces),
     ]
     .into_iter()
     .filter_map(|(nom, ok)| ok.then_some(nom))
@@ -403,7 +394,7 @@ mod tests {
                 json!({
                     "id": format!("sub-{nom}"),
                     "name": nom,
-                    "roles": if nom.ends_with("-kc") { vec!["permission-admin"] } else { vec![] },
+                    "roles": if nom.ends_with("-kc") { vec!["aegis-admin"] } else { vec![] },
                 })
                 .to_string()
                 .into_bytes(),
@@ -413,15 +404,14 @@ mod tests {
     }
 
     fn permission(r: &testutil::Requete) -> (u16, Vec<u8>) {
-        if testutil::sub_permission(r).as_deref() == Some("sub-boom") {
+        if testutil::sub_aegis(r).as_deref() == Some("sub-boom") {
             return (500, vec![]);
         }
         testutil::reponse_droits(r, |sub, perm| match perm {
             "estompe:access" => !sub.starts_with("sub-nope"),
-            "estompe:admin" => sub == "sub-admin",
-            "permission:admin" => sub == "sub-perm",
-            "permission:users.read" => sub == "sub-perm",
-            _ => false,
+            "aegis:admin" => sub == "sub-perm",
+            p if testutil::est_admin(p) => sub == "sub-admin",
+            p => testutil::ouverte(p),
         })
     }
 
@@ -430,7 +420,7 @@ mod tests {
         let p = faux(permission).await;
         let mut vars = vec![
             ("GATEWAY_URL", g.url.as_str()),
-            ("PERMISSION_URL", p.url.as_str()),
+            ("AEGIS_URL", p.url.as_str()),
         ];
         vars.extend_from_slice(extra);
         let state = AppState::new(
@@ -603,7 +593,7 @@ mod tests {
             json!({"allow": ["*"], "deny": []})
         );
         assert!(capacites.get("estompe:admin.users").is_none());
-        assert!(capacites.get("permission:admin").is_none());
+        assert!(capacites.get("aegis:admin").is_none());
         assert_eq!(
             v,
             json!({ "activated": false, "allowed": true, "admin": false, "rights": ["access"] })
@@ -615,10 +605,10 @@ mod tests {
         v.as_object_mut().unwrap().remove("capabilities");
         assert_eq!(
             v,
-            json!({ "activated": false, "allowed": false, "admin": false, "rights": ["permissions"] })
+            json!({ "activated": false, "allowed": false, "admin": false, "rights": ["acces", "users"] })
         );
         let (_, v) = json_de(&e.app, "GET", "/me", "perm", None).await;
-        assert_eq!(v["rights"], json!(["access", "permissions", "users"]));
+        assert_eq!(v["rights"], json!(["access", "acces", "users"]));
         let (s, v) = json_de(&e.app, "GET", "/me", "boom", None).await;
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(

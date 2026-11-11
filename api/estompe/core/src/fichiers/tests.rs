@@ -34,8 +34,8 @@ fn gateway(r: &testutil::Requete) -> (u16, Vec<u8>) {
 fn permission(r: &testutil::Requete) -> (u16, Vec<u8>) {
     testutil::reponse_droits(r, |sub, p| match p {
         "estompe:access" => true,
-        "estompe:admin" => sub == "sub-admin",
-        _ => false,
+        p if testutil::est_admin(p) => sub == "sub-admin",
+        p => testutil::ouverte(p),
     })
 }
 
@@ -47,7 +47,7 @@ async fn env(extra: &[(&str, &str)], regler: impl FnOnce(&mut Config)) -> Option
     let data = dossier.path().join("data");
     let mut vars = vec![
         ("GATEWAY_URL", g.url.as_str()),
-        ("PERMISSION_URL", p.url.as_str()),
+        ("AEGIS_URL", p.url.as_str()),
         ("DATA_DIR", data.to_str().unwrap()),
     ];
     vars.extend_from_slice(extra);

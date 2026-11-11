@@ -11,8 +11,8 @@ updates:
       # le tag de dtolnay/rust-toolchain est la version de Rust (épinglée à la main), pas celle de l'action : Dependabot proposerait un tag inexistant
       - dependency-name: dtolnay/rust-toolchain
 
-  # --- npm : workspace racine (un seul package-lock.json pour estompe, permission, pli et packages/ui), donc une seule PR ---
-  # estompe et permission (Svelte 5) : svelte-check n'accepte TypeScript 7 qu'avec TypeScript 6 en parallèle et --tsgo (expérimental) : on reste en 6
+  # --- npm : workspace racine (un seul package-lock.json pour estompe et packages/ui), donc une seule PR ---
+  # estompe (Svelte 5) : svelte-check n'accepte TypeScript 7 qu'avec TypeScript 6 en parallèle et --tsgo (expérimental) : on reste en 6
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
@@ -23,7 +23,7 @@ updates:
         update-types: ["version-update:semver-major"]
 
   # --- cargo ---
-  # workspace racine (security, permission, pli, estompe-api) : un seul Cargo.lock, donc un seul groupe
+  # workspace racine (security, aegis, entracte, estompe-api) : un seul Cargo.lock, donc un seul groupe
   - package-ecosystem: cargo
     directories: [/]
     schedule: { interval: weekly }
@@ -39,7 +39,7 @@ updates:
 
   # --- images Docker : une PR pour tous les Dockerfile, une pour tous les compose ---
   - package-ecosystem: docker
-    directories: [/api/pli, /api/security, /api/permission, /api/estompe, /web/estompe/plateforme, /deploy/estompe/ci, /packages/ui]
+    directories: [/api/security, /api/estompe, /web/estompe/plateforme, /deploy/estompe/ci, /packages/ui]
     schedule: { interval: weekly }
     groups:
       dockerfiles: { patterns: ["*"] }

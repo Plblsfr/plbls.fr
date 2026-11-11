@@ -1,14 +1,14 @@
 # aegis
 
-Permissions des comptes plbls.fr. aegis décide qui peut utiliser quelle fonctionnalité d'Estompe et de pli : les
+Permissions des comptes plbls.fr. aegis décide qui peut utiliser quelle fonctionnalité d'Estompe et d'Entracte : les
 applications déclarent leurs permissions, un administrateur règle les droits de chaque compte depuis Estompe
 (Administration › accès), et les applications lisent les droits calculés, mis en cache et invalidés en direct.
 
 | Document | Contenu |
 | --- | --- |
 | [fonctionnement.md](fonctionnement.md) | Modèle (rôles, groupes, règles, portée, expiration), règle de calcul, cache Redis et propagation, décisions |
-| [integration.md](integration.md) | Brancher une application : manifeste, droits effectifs, invalidation, ressources ; configuration et bascule depuis permission |
-| [fonctionnalites.md](fonctionnalites.md) | Catalogue des permissions d'Estompe et de pli, routes protégées, plafond des rôles de serveur |
+| [integration.md](integration.md) | Brancher une application : manifeste, droits effectifs, invalidation, ressources ; configuration et mise en service |
+| [fonctionnalites.md](fonctionnalites.md) | Catalogue des permissions d'Estompe, routes protégées, plafond des rôles de serveur |
 | [interface.md](interface.md) | Écrans d'administration dans Estompe |
 
 Code : `api/aegis` (Rust, Axum, sqlx, Redis). Déploiement : `deploy/aegis`. Tag de livraison : `aegis-vX.Y.Z`.

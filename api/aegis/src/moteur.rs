@@ -374,24 +374,27 @@ mod tests {
     fn filtre_par_application() {
         let r = appliquer_portee(vec![
             brute("estompe:a", "*", Effet::Allow, Source::Compte),
-            brute("pli:deposit", "*", Effet::Allow, Source::Compte),
+            brute("entracte:request", "*", Effet::Allow, Source::Compte),
         ]);
-        let e = calc(&r).filtrer(Some("pli"));
-        assert_eq!(e.permissions.keys().collect::<Vec<_>>(), ["pli:deposit"]);
+        let e = calc(&r).filtrer(Some("entracte"));
+        assert_eq!(
+            e.permissions.keys().collect::<Vec<_>>(),
+            ["entracte:request"]
+        );
     }
 
     #[test]
     fn garde_les_applications_demandees() {
         let r = appliquer_portee(vec![
             brute("estompe:a", "*", Effet::Allow, Source::Compte),
-            brute("pli:deposit", "*", Effet::Allow, Source::Compte),
+            brute("entracte:request", "*", Effet::Allow, Source::Compte),
             brute("aegis:admin", "*", Effet::Allow, Source::Compte),
             brute("plix:a", "*", Effet::Allow, Source::Compte),
         ]);
-        let e = calc(&r).garder_apps(&["pli", "aegis"]);
+        let e = calc(&r).garder_apps(&["entracte", "aegis"]);
         assert_eq!(
             e.permissions.keys().collect::<Vec<_>>(),
-            ["aegis:admin", "pli:deposit"]
+            ["aegis:admin", "entracte:request"]
         );
     }
 

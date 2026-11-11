@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Attente from '../permissions/Attente.svelte'
+  import Attente from './Attente.svelte'
   import { ACTIONS, charger, enc, libellesPermissions, type Catalogue, type EntreeJournal } from '../../lib/acces.svelte'
   import LigneJournal from './LigneJournal.svelte'
 
