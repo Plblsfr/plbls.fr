@@ -3,6 +3,18 @@ import { filmsApi } from '../../lib/api'
 import type { FilmPlayback } from '../../sections/entracte/films'
 import { providers, type PState } from './providers'
 
+const hlsjs = vi.hoisted(() => ({ loadSource: vi.fn(), attachMedia: vi.fn() }))
+vi.mock('hls.js', () => ({
+  default: class {
+    static isSupported = () => true
+    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed' }
+    on() {}
+    loadSource(u: string) { hlsjs.loadSource(u) }
+    attachMedia(v: HTMLMediaElement) { hlsjs.attachMedia(v) }
+    destroy() {}
+  },
+}))
+
 const flux = (n: number, mode: 'direct' | 'hls' = 'direct'): FilmPlayback => ({ stream_id: `s${n}`, mode, url: `/stream/j${n}/${mode === 'direct' ? 'direct' : 'hls.m3u8'}`, duration: 3000, audio: [], subtitles: [] })
 
 function largeur(video: HTMLVideoElement, w: number) {
@@ -80,6 +92,19 @@ describe('lecteur de films : repli sur le flux transcodé', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(play).toHaveBeenCalled()
     expect(etats).not.toContain('paused')
+    a.destroy()
+  })
+
+  it('lit un flux HLS avec hls.js même quand le navigateur annonce un lecteur HLS natif', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation((t: string) => (t === 'application/vnd.apple.mpegurl' ? 'maybe' : ''))
+    vi.spyOn(filmsApi, 'playback').mockResolvedValue(flux(1, 'hls'))
+    const el = document.createElement('div')
+    const a = await providers.film(el, { onState: () => {}, onError: () => {} })
+    a.load('f', 0, true)
+    await vi.waitFor(() => expect(hlsjs.loadSource).toHaveBeenCalledWith(expect.stringContaining('/hls.m3u8')))
+    const video = el.querySelector('video')!
+    expect(hlsjs.attachMedia).toHaveBeenCalledWith(video)
+    expect(video.getAttribute('src') ?? '').not.toContain('.m3u8')
     a.destroy()
   })
 })
