@@ -80,7 +80,7 @@ pub fn en_dessous(v: &str, min: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{charger, en_dessous, parse};
+    use super::{charger, en_dessous, parse, versions};
 
     #[test]
     fn en_dessous_compare_x_y_z() {
@@ -145,9 +145,14 @@ mod tests {
     }
 
     #[test]
-    fn la_politique_embarquee_ne_force_rien() {
-        let r = charger().pour("android");
-        assert!(!r.mandatory);
-        assert_eq!(r.min_version, "");
+    fn la_politique_embarquee_est_coherente() {
+        for plateforme in ["web", "android", "windows"] {
+            let r = charger().pour(plateforme);
+            assert!(!r.mandatory || !r.message.is_empty(), "{plateforme}");
+            assert!(
+                r.min_version.is_empty() || versions(&r.min_version).is_some(),
+                "{plateforme}"
+            );
+        }
     }
 }

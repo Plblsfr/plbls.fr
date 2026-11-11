@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.91.2",
+    "date": "2026-11-11",
+    "new": [
+      "Windows et Android : la section Films et séries est disponible dans l'application."
+    ],
+    "fixes": [
+      "Un film qui restait sur un écran noir se lance maintenant tout seul dans un format compatible.",
+      "Sur téléphone et tablette, les boutons de connexion sont de nouveau visibles.",
+      "Le site affiche toujours la dernière version après une mise à jour."
+    ]
+  },
+  {
     "version": "0.90.9",
     "date": "2026-11-10",
     "new": [
