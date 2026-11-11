@@ -4,6 +4,11 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## api 0.88.10 / applis 0.91.3 - 2026-11-11
+
+- [x] Lecture des films en HLS sur Chromium. Le lecteur utilise hls.js dès que le navigateur le permet, au lieu du lecteur HLS natif que les versions récentes de Chromium (navigateur, WebView2, WebView Android) annoncent et qui échouait sur les flux d'Entracte (`DEMUXER_ERROR_COULD_NOT_PARSE`) ; le lecteur natif ne sert plus que sans MSE (iOS ancien). Non fait : vérification du profil H.264 (10 bits) avant la copie de la vidéo côté Entracte. Non vérifié : lecture sur appareil réel (navigateur Chromium, app Windows, Android, Safari/iOS).
+- [x] Salon cinéma de nouveau disponible. `ENTRACTE_INTERNE_URL` était vide dans `plbls.env` : l'API d'Estompe annonçait `cinema: false` dans `GET /me`, ce qui masquait le type de salon « Cinéma » à la création et le bouton « Regarder au cinéma » des films. Elle vaut maintenant `http://entracte-api:8080` (service et port d'Entracte dans le compose de production). Non vérifié : présence de `ENTRACTE_SERVICE_TOKEN` dans l'environnement d'`estompe-api` en production, redéploiement de l'image et lecture d'un film dans un salon cinéma.
+
 ## api 0.88.10 / applis 0.91.2 - 2026-11-11
 
 - [x] Estompe API : le gateway joint par le réseau Docker. L'API vérifiait chaque session et relayait aegis et permission par `GATEWAY_URL`, l'adresse publique (`https://security.plbls.fr`) : l'appel sortait du VPS et passait par Cloudflare, qui le bloquait par un défi (403, `cf-mitigated: challenge`) ; l'API répondait 401 à `/me` et la connexion bouclait sur la page de connexion. Elle lit maintenant `GATEWAY_INTERNE_URL` (`http://auth-gateway:8080` dans `plbls.env`), comme aegis, pli et Entracte, et ne garde `GATEWAY_URL` qu'en repli. Plus aucun appel entre services de la stack ne sort du VPS (LiveKit, Entracte et aegis étaient déjà joints en interne). Non vérifié : connexion réelle en production après déploiement.
