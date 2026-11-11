@@ -24,7 +24,7 @@
         "name": "admin"
       },
       {
-        "name": "permission-admin"
+        "name": "aegis-admin"
       }
     ],
     "client": {
@@ -249,7 +249,7 @@
       "realmRoles": [
         "user",
         "admin",
-        "permission-admin"
+        "aegis-admin"
       ]
     }
   ]

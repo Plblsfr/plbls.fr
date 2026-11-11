@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Attente from '../permissions/Attente.svelte'
+  import Attente from './Attente.svelte'
   import { charger, type Catalogue } from '../../lib/acces.svelte'
   import CatalogueVue from './CatalogueVue.svelte'
   import Comptes from './Comptes.svelte'

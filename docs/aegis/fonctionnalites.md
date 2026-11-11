@@ -120,7 +120,6 @@ Une permission dont le bloc est désactivé n'est pas déclarée.
 | `POST /voice/webhook` | webhook LiveKit signé, sans compte |
 | `GET /internal/aegis/resources/{type}` | route interne appelée par aegis avec son jeton |
 | `* /admin/acces/**` | administration des accès : jugée par aegis (aegis:admin ou rôle Keycloak) |
-| `* /admin/permissions/**` | ancien service permission : jugé par permission, retiré après la bascule |
 
 ## Droits de serveur non plafonnés
 
@@ -128,9 +127,8 @@ Une permission dont le bloc est désactivé n'est pas déclarée.
 | --- | --- |
 | `view_channel` | visibilité des salons, réglée par chaque serveur |
 
-## pli et aegis
+## aegis
 
 | Permission | Libellé | Défaut | Contrôle |
 | --- | --- | --- | --- |
-| `pli:deposit` | Déposer des fichiers | fermée | `/api/me`, `/api/shares` et la gestion des dépôts (via `POST /v1/check`) |
 | `aegis:admin` | Administrer les permissions | fermée | toute l'API d'administration ; rôle système « Administrateur aegis » |

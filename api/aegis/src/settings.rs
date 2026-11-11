@@ -178,13 +178,13 @@ mod tests {
     #[test]
     fn jetons_de_service() {
         let s = Services {
-            tokens: "estompe:abc, pli:def,casse,vide:".into(),
+            tokens: "estompe:abc, entracte:def,casse,vide:".into(),
         };
         assert_eq!(s.trouver("abc"), Some("estompe"));
-        assert_eq!(s.trouver("def"), Some("pli"));
+        assert_eq!(s.trouver("def"), Some("entracte"));
         assert_eq!(s.trouver("non"), None);
         assert_eq!(s.trouver(""), None);
-        assert_eq!(s.jeton("pli"), Some("def"));
+        assert_eq!(s.jeton("entracte"), Some("def"));
         assert_eq!(s.jeton("vide"), None);
     }
 
@@ -194,7 +194,7 @@ mod tests {
         assert!(!vide.hote_autorise("http://estompe-api:8080/x"));
         assert!(!vide.hote_autorise("file:///etc/passwd"));
         let r = Ressources {
-            allowed_hosts: "estompe-api, pli".into(),
+            allowed_hosts: "estompe-api, entracte".into(),
         };
         assert!(r.hote_autorise("http://estompe-api:8080/x"));
         assert!(!r.hote_autorise("http://ailleurs/x"));
@@ -214,7 +214,7 @@ mod tests {
             ("GATEWAY_INTERNE_URL", "http://auth-gateway:8080"),
             ("GATEWAY_INTERNE_TOKEN", "int"),
             ("AEGIS_TOKEN_ESTOMPE", "a"),
-            ("AEGIS_TOKEN_PLI", "b"),
+            ("AEGIS_TOKEN_ENTRACTE", "b"),
             ("AEGIS__RESSOURCES__ALLOWED_HOSTS", "estompe-api"),
         ]))
         .unwrap();
@@ -226,7 +226,7 @@ mod tests {
         assert_eq!(s.identity.secret, "id");
         assert_eq!(s.gateway.url, "http://auth-gateway:8080");
         assert_eq!(s.gateway.internal_token, "int");
-        assert_eq!(s.services.tokens, "estompe:a,pli:b");
+        assert_eq!(s.services.tokens, "entracte:b,estompe:a");
         assert_eq!(s.ressources.allowed_hosts, "estompe-api");
         assert_eq!(s.server.admin_role, "aegis-admin");
     }

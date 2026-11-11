@@ -53,7 +53,7 @@ pub(crate) async fn env_avec_blocs(
     let p = faux(autorisation).await;
     let mut variables = vec![
         ("GATEWAY_URL", g.url.as_str()),
-        ("PERMISSION_URL", p.url.as_str()),
+        ("AEGIS_URL", p.url.as_str()),
     ];
     variables.extend_from_slice(extra);
     let state = AppState::new(testutil::config_avec(&variables), blocs);

@@ -739,7 +739,7 @@ mod tests {
         })
         .await;
         let permission =
-            testutil::faux_permission(|sub, p| p != "estompe:admin" || sub == "sub-root").await;
+            testutil::faux_aegis(|sub, p| !testutil::est_admin(p) || sub == "sub-root").await;
         let (pg, url) = testutil::postgres().await?;
         let pool = PgPool::connect(&url).await.unwrap();
         migrate_embarquees(&pool).await.unwrap();
@@ -754,7 +754,7 @@ mod tests {
         let state = AppState::new(
             testutil::config_avec(&[
                 ("GATEWAY_URL", gateway.url.as_str()),
-                ("PERMISSION_URL", permission.url.as_str()),
+                ("AEGIS_URL", permission.url.as_str()),
             ]),
             vec![],
         );

@@ -1,6 +1,6 @@
 import type { Capacites, Me } from './types'
 
-export type Right = 'access' | 'admin' | 'permissions' | 'acces' | 'users'
+export type Right = 'access' | 'admin' | 'acces' | 'users'
 
 export const ADMIN_SECTIONS = [
   { id: 'users', label: 'utilisateurs', icon: 'users', right: 'admin', cap: 'estompe:admin.users' },
@@ -11,7 +11,6 @@ export const ADMIN_SECTIONS = [
   { id: 'stats', label: 'statistiques', icon: 'chart', right: 'admin', cap: 'estompe:admin.view' },
   { id: 'logs', label: 'logs', icon: 'file', right: 'admin', cap: 'estompe:admin.logs' },
   { id: 'acces', label: 'accès', icon: 'cadenas', right: 'acces' },
-  { id: 'permissions', label: 'permissions', icon: 'cadenas', right: 'permissions' },
 ] as const satisfies readonly { id: string; label: string; icon: string; right: Right; cap?: string }[]
 export type AdminSection = (typeof ADMIN_SECTIONS)[number]['id']
 type Section = (typeof ADMIN_SECTIONS)[number]

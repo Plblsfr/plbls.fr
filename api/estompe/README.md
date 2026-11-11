@@ -5,7 +5,7 @@ API d'Estompe en Rust (elle a remplacé l'ancien backend Go, retiré).
 ## Stack
 
 tokio, axum (WebSocket inclus), sqlx (rustls, sans vérification à la compilation), tower / tower-http, serde, tracing, reqwest (rustls).
-Les crates sont membres du workspace Cargo racine du monorepo (`../../Cargo.toml`, partagé avec `api/security`, `api/permission` et `api/pli` : un seul `Cargo.lock`).
+Les crates sont membres du workspace Cargo racine du monorepo (`../../Cargo.toml`, partagé avec `api/security`, `api/aegis` et `api/entracte` : un seul `Cargo.lock`).
 Les dépendances s'ajoutent à `[workspace.dependencies]` de ce fichier racine avec le ticket qui s'en sert. Rust 1.99.0, épinglé par `../../rust-toolchain.toml` (version aussi écrite dans `rust-version` du `Cargo.toml` racine et dans les `Dockerfile` Rust, vérifiés par la CI : les changer ensemble) ;
 licences, sources et avis de sécurité contrôlés par `../../deny.toml` (cargo-deny).
 
@@ -42,12 +42,12 @@ Les tests de base utilisent le PostgreSQL de `TEST_DATABASE_URL`, ou `postgres:1
 
 `identity::Resolver` interroge `GET {GATEWAY_URL}/auth/me` avec le Bearer reçu (prioritaire) ou le cookie `__Secure-plbls_sid` ; cache de 30 s (1000 entrées), 401/403 → invalide, tout autre échec → indisponible.
 `identity::Resolver` lit aussi les rôles Keycloak (`roles` de `/auth/me`).
-`permission::Client` lit en un appel toutes les permissions du compte, `GET {PERMISSION_URL}/v1/users/{sub}/permissions` avec le Bearer de service ; cache de 30 s ; en cas d'échec, l'accès est refusé (503 `permission_unavailable`).
-`AppState::acces` (`PERMISSION_NAME`), `AppState::droit(sub, permission::ADMIN)` et `AppState::gere_permissions` (`permission:admin` ou rôle Keycloak `PERMISSION_ADMIN_ROLE`) en dérivent ; `GET /me` les annonce dans `rights`.
-`relais_permission` relaie `/admin/permissions/*` vers `{GATEWAY_URL}/api/permission/v1/*` avec le justificatif de l'appelant (cookie et `Origin`, ou Bearer) : l'administration de permission se fait depuis l'admin d'Estompe, réservée à `gere_permissions`, sans compte Estompe.
+`permission::Client` lit en un appel les droits effectifs du compte chez aegis, `POST {AEGIS_URL}/v1/effective` avec le Bearer de service `AEGIS_TOKEN_ESTOMPE` ; cache de 30 s, borné par `valid_until` ; en cas d'échec, l'accès est refusé (503 `permission_unavailable`).
+`AppState::acces` (`estompe:access`), `AppState::droit(sub, nom)` et `AppState::gere_acces` (`aegis:admin` ou rôle Keycloak `AEGIS_ADMIN_ROLE`) en dérivent ; `GET /me` les annonce dans `rights`.
+`relais_aegis` relaie `/admin/acces/*` vers `{GATEWAY_URL}/api/aegis/v1/admin/*` avec le justificatif de l'appelant (cookie et `Origin`, ou Bearer) : l'administration des accès se fait depuis l'admin d'Estompe, réservée à `gere_acces`, sans compte Estompe.
 Les extracteurs `api::Auth` (401 `unauthorized` / 503 `authentication unavailable` en texte brut) et `api::ActiveUser` (compte activé, non suspendu, permission accordée) protègent les routes ;
 `GET /me` et `POST /activate` sont les premières routes du cœur. `http::{write_json, write_err, decode}` produisent les réponses JSON communes.
-Les tests d'API utilisent `testutil::faux` (faux gateway sur un port éphémère), `testutil::faux_permission` / `reponse_droits` (faux service de permission) et PostgreSQL.
+Les tests d'API utilisent `testutil::faux` (faux gateway sur un port éphémère), `testutil::faux_aegis` / `reponse_droits` (faux aegis : `POST /v1/effective`) et PostgreSQL.
 
 ## Serveurs, salons et invitations
 
@@ -169,7 +169,7 @@ Exemple à suivre : `blocks/gifs`. Pour un bloc `mon-bloc` :
 4. **Enregistrement** : ajouter un `Block { name: "mon-bloc", needs: &[…], mount: estompe_block_mon_bloc::mount }` à `block_list()` dans `estompe-api/src/main.rs` (le nom est celui du dossier et de `web/estompe/src/blocks/mon-bloc/`), puis mettre à jour le test `les_seize_blocs` et un test « bloc désactivé : routes absentes » sur le modèle de `gifs_absent_quand_le_bloc_est_desactive`.
 5. **Variable** : `BLOCK_MON_BLOC` (tirets remplacés par `_`) dans [`plbls.env`](../../plbls.env), section Estompe (`BLOCK_MON_BLOC=true` ; l'image le porte, le compose ne change pas), ainsi que toute variable propre au bloc, lue par `Config` si elle est commune ou par le bloc lui-même.
 6. **Documentation** : `docs/estompe/openapi.yaml` (chaque route) et `docs/estompe/realtime.md` (chaque évènement). Le test `openapi_compatible_avec_le_contrat_go` échoue si le code et ce fichier divergent.
-7. **Tests** : dans le module `#[cfg(test)]` de `src/lib.rs`, avec `testutil::postgres()`, `testutil::faux` (gateway et permission) et les migrations (`db::migrate_embarquees`). Couvrir le cas nominal, le refus de droits, les entrées invalides et l'absence du bloc quand il est désactivé.
+7. **Tests** : dans le module `#[cfg(test)]` de `src/lib.rs`, avec `testutil::postgres()`, `testutil::faux` (gateway et aegis) et les migrations (`db::migrate_embarquees`). Couvrir le cas nominal, le refus de droits, les entrées invalides et l'absence du bloc quand il est désactivé.
 8. **Migration** (si le bloc a des tables) : `core/migrations/NNN_nom.sql`, numéro suivant, jamais une migration déjà fusionnée modifiée.
 9. **Frontend** : le même nom dans `web/estompe/src/blocks/registry.ts` et un dossier `web/estompe/src/blocks/mon-bloc/`.
 10. **PR** : `changelog.d/<slug-court>.md`, puis les vérifications de « Développement ». Si le bloc remplace une fonctionnalité du cœur, dire ce qui n'a pas été vérifié.

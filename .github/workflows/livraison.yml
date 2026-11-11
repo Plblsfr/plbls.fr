@@ -5,7 +5,7 @@ name: livraison
 on:
   push:
     branches: [main]
-    tags: ["pli-v*", "permission-v*", "aegis-v*", "entracte-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+    tags: ["aegis-v*", "entracte-v*", "security-v*", "ui-v*", "estompe-api-v*"]
   workflow_dispatch:
 
 permissions:
@@ -25,34 +25,6 @@ env:
 jobs:
   changements:
     uses: ./.github/workflows/_changements.yml
-
-  image-pli:
-    needs: changements
-    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_pli == 'true') || startsWith(github.ref, 'refs/tags/pli-v')
-    permissions:
-      contents: write
-    uses: ./.github/workflows/_image.yml
-    with:
-      component: pli
-      name: pli
-      context: .
-      dockerfile: api/pli/Dockerfile
-      dir: api/pli
-    secrets: inherit
-
-  image-permission:
-    needs: changements
-    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_permission == 'true') || startsWith(github.ref, 'refs/tags/permission-v')
-    permissions:
-      contents: write
-    uses: ./.github/workflows/_image.yml
-    with:
-      component: permission
-      name: permission
-      context: .
-      dockerfile: api/permission/Dockerfile
-      dir: api/permission
-    secrets: inherit
 
   image-aegis:
     needs: changements
@@ -314,7 +286,7 @@ jobs:
           rustup toolchain install
           case "$CACHE" in
             rust-lint-*) cargo clippy --workspace --all-targets --locked -- -D warnings ;;
-            rust-test-*) cargo test --locked --no-run $(scripts/estompe/paquets-cargo.sh) && cargo test --locked --no-run -p pli ;;
+            rust-test-*) cargo test --locked --no-run $(scripts/estompe/paquets-cargo.sh) ;;
           esac
       - if: steps.existe.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { confirmer } from '../../lib/confirm.svelte'
-  import Attente from '../permissions/Attente.svelte'
+  import Attente from './Attente.svelte'
   import { charger, ecrire, enc, executer, nomCompte, quand, versIso, type Catalogue, type GroupeDetail, type GroupeResume } from '../../lib/acces.svelte'
   import ChoixCompte from './ChoixCompte.svelte'
   import FormLiaison from './FormLiaison.svelte'

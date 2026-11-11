@@ -37,14 +37,6 @@ services:
       timeout: 3s
       retries: 5
 
-  permission:
-    image: ghcr.io/plblsfr/permission:${PERMISSION_TAG:-latest}
-    restart: unless-stopped
-    <<: [*durci, *lecture-seule]
-    env_file: .env
-    expose: ["8080"]
-    networks: [default, postgres-net]
-
   aegis:
     image: ghcr.io/plblsfr/aegis:${AEGIS_TAG:-latest}
     restart: unless-stopped
@@ -54,14 +46,6 @@ services:
       redis: { condition: service_healthy }
     expose: ["8080"]
     networks: [default, postgres-net, redis]
-
-  pli:
-    image: ghcr.io/plblsfr/pli:${PLI_TAG:-latest}
-    restart: unless-stopped
-    <<: [*durci, *lecture-seule]
-    env_file: .env
-    expose: ["8080"]
-    networks: [default, postgres-net]
 
   entracte-api:
     image: ghcr.io/plblsfr/entracte:${ENTRACTE_TAG:-latest}

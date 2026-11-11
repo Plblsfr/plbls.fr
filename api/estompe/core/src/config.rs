@@ -21,22 +21,12 @@ pub struct Aegis {
     pub resources_url: String,
 }
 
-impl Aegis {
-    pub fn actif(&self) -> bool {
-        !self.url.is_empty()
-    }
-}
-
 #[derive(Clone, PartialEq, Eq)]
 pub struct Config {
     pub listen_addr: String,
     pub database_url: String,
     pub gateway_url: String,
     pub allowed_origins: Vec<String>,
-    pub permission_url: String,
-    pub permission_token: String,
-    pub permission_name: String,
-    pub permission_admin_role: String,
     pub aegis: Aegis,
     pub data_dir: String,
     pub max_storage_bytes: i64,
@@ -122,12 +112,10 @@ impl Config {
                 .filter(|p| !p.is_empty())
                 .map(String::from)
                 .collect(),
-            permission_url: env("PERMISSION_URL", "https://permission.plbls.fr"),
-            permission_token: get("PERMISSION_TOKEN_ESTOMPE"),
-            permission_name: env("PERMISSION_NAME", "estompe:access"),
-            permission_admin_role: env("PERMISSION_ADMIN_ROLE", "permission-admin"),
             aegis: Aegis {
-                url: get("AEGIS_URL").trim_end_matches('/').to_string(),
+                url: env("AEGIS_URL", "http://aegis:8080")
+                    .trim_end_matches('/')
+                    .to_string(),
                 token: get("AEGIS_TOKEN_ESTOMPE"),
                 redis_url,
                 redis_prefix: env("AEGIS_REDIS_PREFIX", "aegis"),
@@ -165,14 +153,9 @@ impl Config {
                 allow_video: get("LIVEKIT_ALLOW_VIDEO") == "true",
             },
         };
-        let jeton = if c.aegis.actif() {
-            ("AEGIS_TOKEN_ESTOMPE", &c.aegis.token)
-        } else {
-            ("PERMISSION_TOKEN_ESTOMPE", &c.permission_token)
-        };
         for (nom, valeur) in [
             ("DATABASE_URL", &c.database_url),
-            jeton,
+            ("AEGIS_TOKEN_ESTOMPE", &c.aegis.token),
             ("LIVEKIT_URL", &c.livekit.url),
             ("LIVEKIT_API_KEY", &c.livekit.key),
             ("LIVEKIT_API_SECRET", &c.livekit.secret),
@@ -196,7 +179,7 @@ mod tests {
 
     const OBLIGATOIRES: [(&str, &str); 5] = [
         ("DATABASE_URL", "postgres://x"),
-        ("PERMISSION_TOKEN_ESTOMPE", "tok"),
+        ("AEGIS_TOKEN_ESTOMPE", "tok"),
         ("LIVEKIT_URL", "wss://lk"),
         ("LIVEKIT_API_KEY", "k"),
         ("LIVEKIT_API_SECRET", "s"),
@@ -236,10 +219,8 @@ mod tests {
         assert_eq!(c.database_url, "postgres://x/estompe");
         assert_eq!(c.gateway_url, "https://security.plbls.fr");
         assert!(c.allowed_origins.is_empty());
-        assert_eq!(c.permission_url, "https://permission.plbls.fr");
-        assert_eq!(c.permission_token, "tok");
-        assert_eq!(c.permission_name, "estompe:access");
-        assert_eq!(c.permission_admin_role, "permission-admin");
+        assert_eq!(c.aegis.url, "http://aegis:8080");
+        assert_eq!(c.aegis.token, "tok");
         assert_eq!(c.data_dir, "/data");
         assert_eq!(c.max_storage_bytes, 20 << 30);
         assert_eq!(c.max_user_storage_bytes, 2048 << 20);
@@ -284,8 +265,6 @@ mod tests {
             ("LISTEN_ADDR", ":9000"),
             ("GATEWAY_URL", "http://gw"),
             ("ALLOWED_ORIGINS", " https://a , ,https://b,"),
-            ("PERMISSION_URL", "http://perm"),
-            ("PERMISSION_NAME", "app:perm"),
             ("DATA_DIR", "/tmp/d"),
             ("MAX_STORAGE_GB", "3"),
             ("MAX_USER_STORAGE_MB", "5"),
@@ -310,8 +289,6 @@ mod tests {
         assert_eq!(c.listen_addr, ":9000");
         assert_eq!(c.gateway_url, "http://gw");
         assert_eq!(c.allowed_origins, ["https://a", "https://b"]);
-        assert_eq!(c.permission_url, "http://perm");
-        assert_eq!(c.permission_name, "app:perm");
         assert_eq!(c.data_dir, "/tmp/d");
         assert_eq!(c.max_storage_bytes, 3 << 30);
         assert_eq!(c.max_user_storage_bytes, 5 << 20);
@@ -424,29 +401,16 @@ mod tests {
     }
 
     #[test]
-    fn mode_aegis() {
+    fn aegis() {
         let c = charge(&[]).unwrap();
-        assert!(!c.aegis.actif());
         assert_eq!(c.aegis.admin_role, "aegis-admin");
         assert_eq!(c.aegis.redis_prefix, "aegis");
-        assert_eq!(
-            erreur(charge_sans(
-                &["PERMISSION_TOKEN_ESTOMPE"],
-                &[("AEGIS_URL", "http://aegis:8080/")]
-            )),
-            "variable manquante : AEGIS_TOKEN_ESTOMPE"
-        );
-        let c = charge_sans(
-            &["PERMISSION_TOKEN_ESTOMPE"],
-            &[
-                ("AEGIS_URL", "http://aegis:8080/"),
-                ("AEGIS_TOKEN_ESTOMPE", "t"),
-                ("AEGIS_RESOURCES_URL", "http://api:8080/"),
-            ],
-        )
+        let c = charge(&[
+            ("AEGIS_URL", "http://aegis:9000/"),
+            ("AEGIS_RESOURCES_URL", "http://api:8080/"),
+        ])
         .unwrap();
-        assert!(c.aegis.actif());
-        assert_eq!(c.aegis.url, "http://aegis:8080");
+        assert_eq!(c.aegis.url, "http://aegis:9000");
         assert_eq!(c.aegis.resources_url, "http://api:8080");
         assert_eq!(c.aegis.redis_url, "");
         let c = charge(&[

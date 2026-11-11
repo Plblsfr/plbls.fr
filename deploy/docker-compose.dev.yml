@@ -53,8 +53,6 @@ services:
 configs:
   bases:
     content: |
-      CREATE DATABASE permission;
       CREATE DATABASE aegis;
-      CREATE DATABASE pli;
       CREATE DATABASE entracte;
       CREATE DATABASE estompe;

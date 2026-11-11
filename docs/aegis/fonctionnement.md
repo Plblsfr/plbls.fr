@@ -4,7 +4,7 @@
 
 | Objet | Rôle | Exemple |
 | --- | --- | --- |
-| **Application** | Service qui déclare ses permissions par manifeste. Clé `[a-z][a-z0-9-]{0,39}` | `estompe`, `pli`, `aegis` |
+| **Application** | Service qui déclare ses permissions par manifeste. Clé `[a-z][a-z0-9-]{0,39}` | `estompe`, `entracte`, `aegis` |
 | **Type de ressource** | Objet d'une application sur lequel une permission peut être restreinte, avec l'URL interne qui en liste les instances | `estompe:server` |
 | **Permission** | Fonctionnalité ou action. Nom complet `application:clé`, catégorie, libellé, type de ressource éventuel, ouverture par défaut | `estompe:vocal.screen` |
 | **Règle** | Une permission accordée (`allow`) ou refusée (`deny`) à un sujet, partout (`*`) ou sur une ressource, avec expiration et note facultatives | refus de `estompe:gifs.use` à alice |
@@ -72,7 +72,7 @@ L'API d'administration rend les comptes avec leur e-mail partout (journal compri
 administration ─► aegis ─► PostgreSQL (vérité)
                     ├─► Redis <prefix>:eff:<génération>:<version>:<sub>   droits calculés, TTL = min(10 min, valid_until)
                     │         <prefix>:generation, <prefix>:ver:<sub>
-                    └─► Redis pub/sub <prefix>:invalidation ─► Estompe, pli
+                    └─► Redis pub/sub <prefix>:invalidation ─► Estompe
 ```
 
 - Lecture : génération et version du compte lues ensemble, puis Redis, sinon calcul SQL (une requête) puis écriture sous la
@@ -87,8 +87,6 @@ administration ─► aegis ─► PostgreSQL (vérité)
 
 ## Décisions
 
-- Un service dédié remplace `api/permission` (RBAC par application, comptes en `sub`, permissions créées à la main) ; les
-  données ne sont pas reprises : la configuration se refait dans aegis avant la bascule ([integration.md](integration.md)).
 - Le système global seulement : les rôles de serveur d'Estompe restent ; aegis leur sert de **plafond** ([fonctionnalites.md](fonctionnalites.md)).
 - Un seul niveau d'administration (super-admin).
 - Rôles multi-applications, groupes locaux, refus explicites, expiration, portée sur une ressource.
