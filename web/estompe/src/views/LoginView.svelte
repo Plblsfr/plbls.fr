@@ -78,7 +78,7 @@
 </div>
 
 <style>
-  .connexion { min-height: 100%; display: flex; flex-wrap: wrap; background: var(--papier); overflow: auto; }
+  .connexion { height: 100%; display: flex; flex-wrap: wrap; background: var(--papier); overflow: auto; }
   .vitrine { flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 40px; padding: 56px; background: var(--papier-2); border-right: 1px solid var(--trait); }
   .marque { display: flex; align-items: center; gap: 12px; }
   .nom { font-family: var(--f-titre); font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
@@ -99,12 +99,10 @@
   .attente-texte { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
   .applis { display: flex; flex-direction: column; gap: 10px; }
   @media (max-width: 900px) {
-    .vitrine { padding: 32px 24px; gap: 28px; border-right: 0; border-bottom: 1px solid var(--trait); }
-    .entree { padding: 32px 16px 40px; }
-  }
-  @media (max-width: 560px) {
-    .atouts { grid-template-columns: minmax(0, 1fr); }
-    .accroche p { font-size: 17px; }
+    .connexion { flex-direction: column; flex-wrap: nowrap; }
+    .vitrine { flex: none; padding: 32px 16px 0; border: 0; background: none; }
+    .accroche, .atouts { display: none; }
+    .entree { flex: 1 0 auto; padding: 24px 16px 40px; }
   }
   @media (pointer: coarse) {
     .actions :global(.plbls-button) { min-height: 44px; }

@@ -63,6 +63,7 @@ pub struct Config {
     pub tmdb_cle: String,
     pub tmdb_url: String,
     pub tmdb_images: String,
+    pub tvmaze_url: String,
     pub langue: String,
     pub chemins: Vec<Correspondance>,
     pub medias: PathBuf,
@@ -221,6 +222,9 @@ impl Config {
             tmdb_images: sans_slash(
                 env("ENTRACTE_TMDB_IMAGES_URL").unwrap_or_else(|| "https://image.tmdb.org".into()),
             ),
+            tvmaze_url: sans_slash(
+                env("ENTRACTE_TVMAZE_URL").unwrap_or_else(|| "https://api.tvmaze.com".into()),
+            ),
             langue: env("ENTRACTE_LANGUE").unwrap_or_else(|| "fr-FR".into()),
             chemins: correspondances(&env("ENTRACTE_CHEMINS").unwrap_or_default())?,
             medias: PathBuf::from(env("ENTRACTE_MEDIAS").unwrap_or_else(|| "/srv/medias".into())),
@@ -253,6 +257,7 @@ impl Config {
             Self::from_env(|k| (k == "DATABASE_URL").then(|| "postgres://test".to_string()))
                 .expect("configuration de test");
         c.database_url = database_url.to_string();
+        c.tvmaze_url = String::new();
         c
     }
 }
