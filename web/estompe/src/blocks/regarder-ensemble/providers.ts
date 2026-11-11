@@ -181,10 +181,18 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
         debug.log('warn', 'lecteur', `lecture refusée : ${e instanceof DOMException ? e.name : String(e)}`)
         h.onState('paused')
       }) }
-      if (isHls(ref) && !v.canPlayType('application/vnd.apple.mpegurl')) {
+      const native = () => {
+        v.src = ref
+        v.addEventListener('loadedmetadata', go, { once: true })
+        v.load()
+      }
+      if (isHls(ref)) {
         void import('hls.js').then(({ default: Hls }) => {
-          if (!Hls.isSupported()) return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
-          const l = new Hls({ enableWorker: false }) // pas de worker : la CSP n'autorise pas blob: pour les workers
+          if (!Hls.isSupported()) {
+            if (v.canPlayType('application/vnd.apple.mpegurl')) return native()
+            return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
+          }
+          const l = new Hls({ enableWorker: false })
           hls = l
           l.on(Hls.Events.ERROR, (_, d) => {
             if (!d.fatal) return
@@ -194,12 +202,10 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
           l.on(Hls.Events.MANIFEST_PARSED, go)
           l.loadSource(ref)
           l.attachMedia(v)
-        }).catch(() => h.onError("Le lecteur HLS n'a pas pu être chargé."))
+        }).catch(() => v.canPlayType('application/vnd.apple.mpegurl') ? native() : h.onError("Le lecteur HLS n'a pas pu être chargé."))
         return
       }
-      v.src = ref
-      v.addEventListener('loadedmetadata', go, { once: true })
-      v.load()
+      native()
     },
     play: () => void v.play().catch(() => {}), pause: () => v.pause(), seek: (s) => { v.currentTime = s },
     time: () => v.currentTime, duration: () => (Number.isFinite(v.duration) ? v.duration : 0), rate: () => v.playbackRate, setRate: (r) => { v.playbackRate = r },
