@@ -1,4 +1,5 @@
 import { filmsApi, ApiError } from '../../lib/api'
+import { debug } from '../../lib/debuglog.svelte'
 import { absolute, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
@@ -165,20 +166,31 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
   const emit = () => h.onState(state())
   v.addEventListener('waiting', () => { buffering = true; emit() })
   for (const ev of ['playing', 'canplay', 'pause', 'ended', 'seeked']) v.addEventListener(ev, () => { if (ev !== 'pause' || !v.seeking) { buffering = false; emit() } })
-  v.addEventListener('error', () => h.onError('Cette vidéo ne peut pas être lue (format ou accès refusé par le site qui l\'héberge).'))
+  v.addEventListener('error', () => {
+    debug.log('warn', 'lecteur', `erreur vidéo ${v.error?.code ?? '?'} : ${v.error?.message || 'sans détail'}`)
+    h.onError('Cette vidéo ne peut pas être lue (format ou accès refusé par le site qui l\'héberge).')
+  })
   const detach = () => { hls?.destroy(); hls = null }
   const adapter: Adapter = {
     sync: 'full', canRate: true, setVolume: (x) => { v.volume = x / 100; v.muted = x === 0 },
     load: (ref, start, play) => {
       detach()
       buffering = false
-      const go = () => { if (start > 0) v.currentTime = start; if (play) void v.play().catch(() => h.onState('paused')) }
+      const go = () => { if (start > 0) v.currentTime = start; if (play) void v.play().catch((e: unknown) => {
+        if (e instanceof DOMException && (e.name === 'AbortError' || e.name === 'NotSupportedError')) return
+        debug.log('warn', 'lecteur', `lecture refusée : ${e instanceof DOMException ? e.name : String(e)}`)
+        h.onState('paused')
+      }) }
       if (isHls(ref) && !v.canPlayType('application/vnd.apple.mpegurl')) {
         void import('hls.js').then(({ default: Hls }) => {
           if (!Hls.isSupported()) return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
           const l = new Hls({ enableWorker: false }) // pas de worker : la CSP n'autorise pas blob: pour les workers
           hls = l
-          l.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).') })
+          l.on(Hls.Events.ERROR, (_, d) => {
+            if (!d.fatal) return
+            debug.log('warn', 'lecteur', `HLS ${d.type} : ${d.details}${d.response ? ` (HTTP ${d.response.code})` : ''}`)
+            h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).')
+          })
           l.on(Hls.Events.MANIFEST_PARSED, go)
           l.loadSource(ref)
           l.attachMedia(v)
@@ -200,6 +212,8 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
 const file: Factory = async (el, h) => htmlVideo(el, h).adapter
 
 
+const ATTENTE_DIRECT_MS = 10_000
+
 const film: Factory = async (el, h) => {
   let ref = ''
   let audio = 0
@@ -213,6 +227,7 @@ const film: Factory = async (el, h) => {
   let opening = 0
   let savedAt = 0
   let position = 0
+  let guet: ReturnType<typeof setTimeout> | undefined
   const store = () => { try { return localStorage } catch { return null } }
 
   const close = () => { if (stream) void filmsApi.close(stream.stream_id).catch(() => {}); stream = null }
@@ -226,6 +241,7 @@ const film: Factory = async (el, h) => {
   const showSubtitle = () => { for (let i = 0; i < video.textTracks.length; i++) video.textTracks[i].mode = i === sub ? 'showing' : 'disabled' }
   const open = async (start: number, play: boolean) => {
     const turn = ++opening
+    clearTimeout(guet)
     close()
     const ask = (q: Quality) => filmsApi.playback(ref, {
       direct: !forceHls,
@@ -240,6 +256,8 @@ const film: Factory = async (el, h) => {
       }
       if (gone || turn !== opening) { void filmsApi.close(p.stream_id).catch(() => {}); return }
       stream = p
+      debug.log('info', 'lecteur', `flux ${p.mode}, qualité ${p.quality ?? quality}`)
+      if (p.mode === 'direct' && play) guet = setTimeout(() => { if (stream === p && video.readyState < 2) repli(`aucune image après ${ATTENTE_DIRECT_MS / 1000} s en lecture directe`) }, ATTENTE_DIRECT_MS)
       offset = p.offset ?? 0
       position = start
       video.querySelectorAll('track').forEach((t) => t.remove())
@@ -257,17 +275,26 @@ const film: Factory = async (el, h) => {
       if (!gone) h.onError(e instanceof ApiError ? e.message : 'La lecture n’a pas pu démarrer.')
     }
   }
+  const repli = (m: string) => {
+    clearTimeout(guet)
+    if (gone) return
+    if (!ref || retried) { h.onError(m); return }
+    retried = true
+    forceHls = true
+    debug.log('info', 'lecteur', 'repli sur le flux transcodé (HLS)')
+    void open(position, true)
+  }
   const { adapter, video } = htmlVideo(el, {
     ...h,
-    onState: (s) => { if (s === 'playing') retried = false; h.onState(s) },
-    onError: (m) => {
-      if (gone) return
-      if (!ref || retried) { h.onError(m); return }
-      retried = true
-      forceHls = true
-      void open(position, true)
-    },
+    onState: (s) => { if (s === 'playing') { retried = false; clearTimeout(guet) } h.onState(s) },
+    onError: repli,
   }, true)
+  video.addEventListener('loadedmetadata', () => {
+    if (stream?.mode === 'direct' && video.videoWidth === 0) {
+      debug.log('warn', 'lecteur', 'lecture directe sans piste vidéo décodable')
+      repli('Cette vidéo ne peut pas être lue sur cet appareil.')
+    }
+  })
   video.addEventListener('timeupdate', () => {
     if (video.currentTime > 0) position = absolute(video.currentTime, offset)
     if (stream && saveDue(savedAt, Date.now())) save()
@@ -299,7 +326,7 @@ const film: Factory = async (el, h) => {
     setAudio: (n) => { audio = n; void open(now(), !video.paused) },
     setSubtitle: (n) => { sub = n; showSubtitle() },
     setQuality: (q) => { quality = q; saveQuality(store(), q); void open(now(), !video.paused) },
-    destroy: () => { gone = true; window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },
+    destroy: () => { gone = true; clearTimeout(guet); window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },
   }
 }
 
