@@ -101,7 +101,7 @@ sous-titres à lui) ; seule la position est synchronisée, et sa progression est
   `ENTRACTE_RADARR_API_KEY`, `ENTRACTE_SONARR_API_KEY`, `ENTRACTE_TMDB_API_KEY`.
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_ENTRACTE` comme application `entracte`), puis les permissions aux comptes.
 - Radarr et Sonarr : webhook vers `https://entracte-api.plbls.fr/webhooks/radarr` (ou `/webhooks/sonarr`), jeton en mot de passe (facultatif).
-- Front : `ENTRACTE_PUBLIC_URL` (web, image `estompe-web`) et `VITE_ENTRACTE_URL` au build des apps natives.
+- Front : `ENTRACTE_PUBLIC_URL` de `plbls.env`, lu au démarrage d'`estompe-web` et au build des apps natives (une variable de Dokploy l'emporte pour le web, `VITE_ENTRACTE_URL` pour les apps).
 
 ## Version
 

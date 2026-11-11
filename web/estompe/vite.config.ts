@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config'
+import { loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { VitePWA } from 'vite-plugin-pwa'
 import { readFileSync } from 'node:fs'
@@ -11,6 +12,14 @@ const appVersion: string = JSON.parse(readFileSync('../../apps/estompe/windows/s
 // web : plateforme/ (image nginx) ; windows et android : apps/estompe/<plateforme> (coques Tauri).
 const platformOf = (mode: string) => (mode === 'windows' || mode === 'android' ? `../../apps/estompe/${mode}` : './plateforme')
 const dir = (p: string) => fileURLToPath(new URL(p, import.meta.url))
+
+const plblsEnv = Object.fromEntries(readFileSync('../../plbls.env', 'utf8').split('\n').map((l) => /^([A-Z0-9_]+)=(.*)$/.exec(l.trim())).filter((m) => m !== null).map((m) => [m[1], m[2]]))
+const VARIABLES_NATIVES = { VITE_API_URL: 'API_URL', VITE_GATEWAY_URL: 'GATEWAY_URL', VITE_KEYCLOAK_ISSUER: 'KEYCLOAK_ISSUER', VITE_ENTRACTE_URL: 'ENTRACTE_PUBLIC_URL' }
+const nativeEnv = (mode: string) => {
+  if (mode !== 'windows' && mode !== 'android') return {}
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  return Object.fromEntries(Object.entries(VARIABLES_NATIVES).map(([vite, cle]) => [`import.meta.env.${vite}`, JSON.stringify(env[vite] || plblsEnv[cle] || '')]))
+}
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -46,7 +55,7 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
-  define: { __APP_VERSION__: JSON.stringify(appVersion) },
+  define: { __APP_VERSION__: JSON.stringify(appVersion), ...nativeEnv(mode) },
   build: { target: 'es2022', sourcemap: false },
   test: {
     environment: 'jsdom',

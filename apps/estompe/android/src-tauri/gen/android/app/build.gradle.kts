@@ -14,15 +14,15 @@ val tauriProperties = Properties().apply {
     }
 }
 
-val frontAndroid = Properties().apply {
-    val envFile = rootProject.file("../../../../../../web/estompe/.env.android")
+val plblsEnv = Properties().apply {
+    val envFile = rootProject.file("../../../../../../plbls.env")
     if (envFile.exists()) {
         envFile.inputStream().use { load(it) }
     }
 }
 
-fun urlFront(name: String): String =
-    (System.getenv(name)?.takeIf { it.isNotEmpty() } ?: frontAndroid.getProperty(name, "")).trim().trimEnd('/')
+fun urlFront(name: String, cle: String): String =
+    (System.getenv(name)?.takeIf { it.isNotEmpty() } ?: plblsEnv.getProperty(cle, "")).trim().trimEnd('/')
 
 android {
     compileSdk = 37
@@ -34,8 +34,8 @@ android {
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
-        buildConfigField("String", "KEYCLOAK_ISSUER", "\"${urlFront("VITE_KEYCLOAK_ISSUER")}\"")
-        buildConfigField("String", "API_URL", "\"${urlFront("VITE_API_URL")}\"")
+        buildConfigField("String", "KEYCLOAK_ISSUER", "\"${urlFront("VITE_KEYCLOAK_ISSUER", "KEYCLOAK_ISSUER")}\"")
+        buildConfigField("String", "API_URL", "\"${urlFront("VITE_API_URL", "API_URL")}\"")
     }
     buildTypes {
         getByName("debug") {
