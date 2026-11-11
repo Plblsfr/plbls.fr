@@ -231,6 +231,13 @@ fn reponse_tmdb(r: &Requete, panne: &AtomicBool) -> (u16, Vec<(&'static str, Str
         "/3/tv/201/season/1" => corps(
             json!({"episodes": [{"episode_number": 1, "name": "Pilote", "runtime": 40}, {"episode_number": 2, "name": "Suite", "still_path": "/e2.jpg"}]}),
         ),
+        "/search/shows" => corps(json!([{"score": 0.9, "show": {"name": "Daredevil"}}])),
+        "/3/search/multi" if r.query.contains("query=dardevil") => corps(json!({"results": [
+            {"media_type": "movie", "id": 900, "title": "Dark Devil", "popularity": 1.0}]})),
+        "/3/search/multi" if r.query.contains("query=Daredevil") => corps(json!({"results": [
+            {"media_type": "tv", "id": 61889, "name": "Marvel's Daredevil", "original_name": "Marvel's Daredevil", "popularity": 90.0},
+            {"media_type": "movie", "id": 9480, "title": "Daredevil", "release_date": "2003-02-14", "popularity": 20.0},
+            {"media_type": "movie", "id": 901, "title": "Sans rapport", "popularity": 99.0}]})),
         "/3/search/multi" => corps(json!({"results": [
             {"media_type": "movie", "id": 101, "title": "Film A", "release_date": "2020-01-01", "poster_path": "/a101.jpg"},
             {"media_type": "movie", "id": 103, "title": "Film C", "release_date": "2022-03-03", "poster_path": "/a103.jpg"},
@@ -403,6 +410,7 @@ async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
     cfg.tmdb_cle = "cle-tmdb".into();
     cfg.tmdb_url = tmdb.url.clone();
     cfg.tmdb_images = tmdb.url.clone();
+    cfg.tvmaze_url = tmdb.url.clone();
     cfg.chemins = correspondances(&format!(
         "/movies={},/tv={}",
         medias.join("films").display(),
@@ -1552,6 +1560,24 @@ async fn recherche_demandes_administration_et_notifications() {
         .unwrap()
         .clone();
     assert_eq!(c["request"]["state"], "en_attente");
+
+    let corrigee = get(&e, "alice", "/search?q=dardevil").await;
+    assert_eq!(corrigee.statut, StatusCode::OK);
+    sans_fuite(&e, &corrigee.texte(), "/search");
+    let titres: Vec<Value> = corrigee.json()["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["title"].clone())
+        .collect();
+    assert_eq!(
+        titres,
+        [
+            json!("Marvel's Daredevil"),
+            json!("Daredevil"),
+            json!("Dark Devil")
+        ]
+    );
 
     let mes = get(&e, "bob", "/requests/mine").await;
     assert_eq!(mes.json()["items"].as_array().unwrap().len(), 1);

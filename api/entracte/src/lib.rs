@@ -24,6 +24,7 @@ pub mod routes;
 pub mod sous_titres;
 pub mod tmdb;
 pub mod transcodage;
+pub mod tvmaze;
 
 #[cfg(test)]
 mod tests_api;

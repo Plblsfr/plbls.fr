@@ -57,6 +57,11 @@ fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la se
 ## Demandes
 
 - Recherche unique : titres présents et résultats TMDB absents, distingués, avec l'état d'une éventuelle demande.
+  Les résultats TMDB dont le titre (ou le titre original) contient les mots cherchés passent devant, puis les plus populaires.
+  TMDB ne tolère pas les fautes de frappe : quand aucun titre ne correspond (« dardevil »), Entracte demande à TVmaze
+  (recherche floue de séries, sans clé, `ENTRACTE_TVMAZE_URL`, `https://api.tvmaze.com` par défaut) les noms proches, relance TMDB
+  avec les deux premiers et met ces résultats devant (« Daredevil », série et film). TVmaze ne reçoit que le texte cherché ;
+  injoignable, il est ignoré et la recherche reste celle de TMDB.
 - Demande (`entracte:request`) : un film, une série entière ou des saisons précises (y compris une saison manquante d'une série présente).
   Une même demande en cours n'est pas dupliquée : la personne y est rattachée et sera prévenue comme le premier demandeur.
 - États : `en_attente`, `acceptee`, `refusee` (motif obligatoire), `disponible`.
