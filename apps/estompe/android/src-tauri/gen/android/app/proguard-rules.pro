@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class org.nehuatl.llamacpp.LlamaContext {
+    native <methods>;
+}
+-keep class org.nehuatl.llamacpp.LlamaContext$PartialCompletionCallback {
+    void onPartialCompletion(java.util.Map);
+}
+-dontwarn kotlinx.coroutines.**

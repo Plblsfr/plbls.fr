@@ -7,6 +7,8 @@ export interface Bridge {
   // mode conduite (DriveService)
   driveSettings(): string; saveDriveSettings(json: string): void; driveActive(): boolean; driveStart(): string; driveStop(): void
   pipState?(json: string): void
+  assistantSettings?(): string; saveAssistantSettings?(json: string): string; assistantState?(): string; assistantApps?(): string; assistantMusicApps?(): string
+  assistantGrant?(what: string): void; assistantDownloadLlm?(): void; assistantDeleteLlm?(): void
   driveEngines(): string; driveBluetooth(): string; driveModel(): string; driveDownloadModel(): void; driveLog(): string
 }
 

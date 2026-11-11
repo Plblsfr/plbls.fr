@@ -1,0 +1,141 @@
+<script lang="ts">
+  import { onMount } from 'svelte'
+  import { nativeBridge } from './bridge'
+  import { parseAssistant, parseAssistantState, parseChoices, type AssistantScope, type AssistantSettings } from './assistant'
+  import { notify } from '../../../../web/estompe/src/lib/ui'
+
+  const bridge = nativeBridge()
+  let s = $state<AssistantSettings>(parseAssistant(bridge?.assistantSettings?.() ?? ''))
+  let st = $state(parseAssistantState(bridge?.assistantState?.() ?? ''))
+  let model = $state(bridge?.driveModel() ?? '')
+  let apps = $state(parseChoices(bridge?.assistantApps?.() ?? '[]'))
+  let musicApps = $state(parseChoices(bridge?.assistantMusicApps?.() ?? '[]'))
+
+  function save(patch: Partial<AssistantSettings>) {
+    s = { ...s, ...patch }
+    const why = bridge?.saveAssistantSettings?.(JSON.stringify($state.snapshot(s)))
+    if (why) {
+      notify.info(why)
+      s = parseAssistant(bridge?.assistantSettings?.() ?? '')
+    }
+  }
+
+  function toggleApp(id: string, on: boolean) {
+    save({ apps: on ? [...s.apps.filter((a) => a !== id), id] : s.apps.filter((a) => a !== id) })
+  }
+
+  function downloadModel() {
+    bridge?.driveDownloadModel()
+    model = 'busy'
+  }
+
+  function downloadLlm() {
+    bridge?.assistantDownloadLlm?.()
+    st = { ...st, llm: 'busy' }
+  }
+
+  onMount(() => {
+    const t = setInterval(() => {
+      if (!bridge) return
+      st = parseAssistantState(bridge.assistantState?.() ?? '')
+      model = bridge.driveModel()
+      if (apps.length === 0) apps = parseChoices(bridge.assistantApps?.() ?? '[]')
+      if (musicApps.length === 0) musicApps = parseChoices(bridge.assistantMusicApps?.() ?? '[]')
+    }, 1500)
+    return () => clearInterval(t)
+  })
+</script>
+
+<h3 class="set-sub">Assistant vocal</h3>
+<p class="v-note">
+  Réveillé par le mot « Estompe », il écoute et comprend sur le téléphone : rien ne part vers un serveur.
+  Essaie « Estompe, lis mes messages », « Estompe, envoie un SMS à Marie » ou « Estompe, mets Daft Punk ».
+</p>
+
+<div class="plbls-field">
+  <label class="plbls-field__label" for="assistant-scope">Écoute</label>
+  <select id="assistant-scope" class="plbls-select" value={s.scope} onchange={(e) => save({ scope: e.currentTarget.value as AssistantScope })}>
+    <option value="off">Éteint</option>
+    <option value="drive">En mode conduite seulement</option>
+    <option value="always">Tout le temps</option>
+  </select>
+  {#if s.scope === 'always'}
+    <p class="v-note">
+      L'écoute permanente consomme de la batterie et garde une notification affichée. Après un redémarrage du téléphone, rouvre Estompe pour relancer l'écoute.
+    </p>
+  {/if}
+  {#if s.scope !== 'off'}
+    <p class="v-note">
+      Attention : l'assistant répond même téléphone verrouillé. Toute personne à portée de voix peut faire lire tes messages ou dicter un SMS.
+      Un SMS n'est jamais envoyé sans que l'assistant te le relise et que tu dises « envoyer ».
+    </p>
+    <p class="v-note">{st.listening ? 'À l\'écoute.' : 'Pas encore à l\'écoute : vérifie les autorisations ci-dessous.'}</p>
+  {/if}
+</div>
+
+<div class="plbls-field">
+  <span class="plbls-field__label">Autorisations</span>
+  <p class="v-note">Micro : {st.mic ? 'accordé.' : 'manquant.'}</p>
+  {#if !st.mic}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('mic')}>Autoriser le micro</button>{/if}
+  <p class="v-note">SMS et contacts : {st.sms && st.contacts ? 'accordés.' : 'manquants.'}</p>
+  {#if !st.sms || !st.contacts}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('sms')}>Autoriser les SMS et les contacts</button>{/if}
+  <p class="v-note">Accès aux notifications (pour lire les autres messageries et piloter la musique) : {st.notifications ? 'accordé.' : 'manquant.'}</p>
+  {#if !st.notifications}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('notifications')}>Ouvrir le réglage des notifications</button>{/if}
+</div>
+
+<div class="plbls-field">
+  <span class="plbls-field__label">Dictée des ordres</span>
+  {#if model === 'ready'}
+    <p class="v-note">Modèle français installé.</p>
+  {:else if model === 'busy'}
+    <p class="v-note">Téléchargement du modèle (~40 Mo)…</p>
+  {:else}
+    {#if model}<p class="v-note">{model}</p>{/if}
+    <button class="plbls-button plbls-button--compact" onclick={downloadModel}>Télécharger le modèle français (~40 Mo)</button>
+  {/if}
+</div>
+
+<div class="plbls-field">
+  <span class="plbls-field__label">Applications lues</span>
+  <p class="v-note">Les SMS sont toujours lus si l'autorisation est accordée.</p>
+  {#each apps as a (a.id)}
+    <label class="plbls-checkbox">
+      <input class="plbls-checkbox__input" type="checkbox" checked={s.apps.includes(a.id)} onchange={(e) => toggleApp(a.id, e.currentTarget.checked)} />
+      <span class="plbls-checkbox__case"></span>
+      <span class="plbls-checkbox__texte">{a.label}</span>
+    </label>
+  {:else}
+    <p class="v-note">Aucune application détectée : accorde l'accès aux notifications.</p>
+  {/each}
+</div>
+
+<div class="plbls-field">
+  <label class="plbls-field__label" for="assistant-music">Application de musique par défaut</label>
+  <select id="assistant-music" class="plbls-select" value={s.musicApp} onchange={(e) => save({ musicApp: e.currentTarget.value })}>
+    <option value="">La dernière utilisée</option>
+    {#each musicApps as m (m.id)}<option value={m.id}>{m.label}</option>{/each}
+  </select>
+</div>
+
+{#if st.llmAvailable}
+  <div class="plbls-field">
+    <span class="plbls-field__label">Compréhension étendue (IA locale)</span>
+    <label class="plbls-toggle">
+      <input class="plbls-toggle__input" type="checkbox" checked={s.llm} onchange={(e) => save({ llm: e.currentTarget.checked })} />
+      <span class="plbls-toggle__piste"></span>
+      <span class="plbls-toggle__texte">Activer la compréhension étendue</span>
+    </label>
+    {#if st.llm === 'ready'}
+      <p class="v-note">Modèle installé.</p>
+      <button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantDeleteLlm?.()}>Supprimer le modèle</button>
+    {:else if st.llm === 'busy'}
+      <p class="v-note">Téléchargement du modèle…</p>
+    {:else}
+      <p class="v-note">{st.llm || 'Modèle absent.'}</p>
+      <button class="plbls-button plbls-button--compact" onclick={downloadLlm}>Télécharger le modèle</button>
+    {/if}
+    <p class="v-note">
+      Facultatif : utilisée seulement quand aucun ordre n'est reconnu. Le modèle pèse plusieurs centaines de Mo ; rien ne quitte le téléphone.
+    </p>
+  </div>
+{/if}

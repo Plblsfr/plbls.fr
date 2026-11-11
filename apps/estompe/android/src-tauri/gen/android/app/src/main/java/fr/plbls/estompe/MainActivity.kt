@@ -152,6 +152,51 @@ class EstompeNative(private val activity: MainActivity) {
     return JSONArray(bonded.map { JSONObject().put("id", it.address).put("label", it.name ?: it.address) }).toString()
   }
 
+  private val assistant by lazy { AssistantStore(activity) }
+  private fun granted(vararg permissions: String) = permissions.all { activity.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+  private fun choices(apps: List<MusicApp>) = JSONArray(apps.map { JSONObject().put("id", it.id).put("label", it.label) }).toString()
+  @JavascriptInterface fun assistantSettings(): String = assistant.toJson().toString()
+  @JavascriptInterface fun assistantApps(): String = choices(AssistantListener.messagingApps(activity))
+  @JavascriptInterface fun assistantMusicApps(): String = choices(MusicControl(activity).apps())
+  @JavascriptInterface fun assistantDownloadLlm() = LlmModel.download(activity)
+  @JavascriptInterface fun assistantDeleteLlm() = LlmModel.delete(activity)
+
+  @JavascriptInterface fun saveAssistantSettings(json: String): String {
+    try { assistant.save(JSONObject(json)) } catch (e: JSONException) { DriveService.note("réglages de l'assistant refusés : $e"); return "Réglages refusés." }
+    val missing = if (assistant.load().scope == AssistantScope.OFF) emptyList() else buildList {
+      add(Manifest.permission.RECORD_AUDIO)
+      if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    }.filter { !granted(it) }
+    if (missing.isNotEmpty()) activity.runOnUiThread { activity.requestPermissions(missing.toTypedArray(), 3) }
+    AssistantService.sync(activity)
+    return if (missing.isEmpty()) "" else "Autorise le micro et les notifications : l'écoute démarrera ensuite."
+  }
+
+  @JavascriptInterface fun assistantState(): String = JSONObject()
+    .put("listening", AssistantService.listening)
+    .put("mic", granted(Manifest.permission.RECORD_AUDIO))
+    .put("notifications", AssistantListener.enabled(activity))
+    .put("sms", granted(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS))
+    .put("contacts", granted(Manifest.permission.READ_CONTACTS))
+    .put("model", driveModel())
+    .put("llm", if (LlmModel.state.isNotEmpty()) LlmModel.state else if (LlmModel.ready(activity)) "ready" else "")
+    .put("llmAvailable", LlmModel.AVAILABLE)
+    .toString()
+
+  @JavascriptInterface fun assistantGrant(what: String) {
+    activity.runOnUiThread {
+      try {
+        when (what) {
+          "notifications" -> activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+          "sms" -> activity.requestPermissions(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS), 4)
+          "mic" -> activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 3)
+        }
+      } catch (e: Exception) {
+        DriveService.note("autorisation $what : $e")
+      }
+    }
+  }
+
   @JavascriptInterface fun installApk(url: String, sha256: String) {
     if (install == "busy") return
     // seule l'adresse des mises à jour est acceptée ; Android refuse de toute façon un APK signé avec une autre clé
@@ -255,6 +300,7 @@ class MainActivity : TauriActivity() {
     super.onResume()
     PlaybackService.page = { action -> runOnUiThread { webView?.evaluateJavascript("window.__estompeBg && window.__estompeBg('$action')", null) } }
     VoiceService.page = { action -> runOnUiThread { webView?.evaluateJavascript("window.__estompeVoice && window.__estompeVoice('$action')", null) } }
+    AssistantService.sync(this)
   }
 
   override fun onPause() {

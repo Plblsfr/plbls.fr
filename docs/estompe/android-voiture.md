@@ -1,6 +1,7 @@
 # Estompe en voiture (Android)
 
 Deux façons de lire ses messages et d'y répondre à la voix, sans toucher le téléphone.
+Pour donner des ordres à la voix (lire les SMS, en envoyer un, lancer la musique), voir l'[assistant vocal](android-assistant.md).
 
 ## 1. Android Auto et surcouches (notifications)
 

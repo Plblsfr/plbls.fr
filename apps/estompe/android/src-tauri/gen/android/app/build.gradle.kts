@@ -91,7 +91,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.10.0")
     // mode conduite : reconnaissance vocale hors ligne (aucun service Google)
     implementation("com.alphacephei:vosk-android:0.3.47")
+    implementation("io.github.ljcamargo:llamacpp-kotlin:0.2.0") { isTransitive = false }
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.1.4")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
 }

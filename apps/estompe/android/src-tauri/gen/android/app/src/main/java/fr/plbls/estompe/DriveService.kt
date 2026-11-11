@@ -6,9 +6,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
@@ -16,18 +13,12 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import org.json.JSONObject
-import org.vosk.Model
-import org.vosk.Recognizer
-import org.vosk.android.RecognitionListener
-import org.vosk.android.SpeechService
 import java.io.File
-import java.util.Locale
 import java.util.zip.ZipInputStream
 import kotlin.concurrent.thread
 
@@ -113,28 +104,22 @@ object VoskModel {
 class DriveService : Service() {
   private val ui = Handler(Looper.getMainLooper())
   private val queue = ReadQueue()
-  private val done = HashMap<String, () -> Unit>()
   private lateinit var settings: DriveSettings
-  private lateinit var audio: AudioManager
-  private var tts: TextToSpeech? = null
-  private var ttsReady = false
+  private lateinit var voice: Voice
   private var session: MediaSession? = null
-  private var focus: Any? = null
-  private var model: Model? = null
-  private var speech: SpeechService? = null
   private var busy = false
+  private var destroyed = false
   private var last: Incoming? = null
-  private var utterance = 0
 
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onCreate() {
     super.onCreate()
     running = true
-    audio = getSystemService(AudioManager::class.java)
     settings = DriveStore(this).load()
     ensureChannels(this)
-    startTts()
+    voice = Voice(this, settings, { pump() }, ::noEngine)
+    AssistantService.sync(this)
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -153,13 +138,12 @@ class DriveService : Service() {
 
   override fun onDestroy() {
     running = false
+    destroyed = true
     ui.removeCallbacksAndMessages(null)
     queue.clear()
-    stopListening()
-    tts?.shutdown()
+    voice.shutdown()
     session?.release()
-    model?.close()
-    abandonFocus()
+    AssistantService.sync(this)
     super.onDestroy()
   }
 
@@ -191,25 +175,6 @@ class DriveService : Service() {
     try { NotificationManagerCompat.from(this).notify(NOTIF_ID, notification(text)) } catch (e: SecurityException) { /* permission retirée */ }
   }
 
-  private fun startTts() {
-    tts = TextToSpeech(this, { code ->
-      val t = tts
-      if (code != TextToSpeech.SUCCESS || t == null) return@TextToSpeech noEngine("Aucun moteur de synthèse vocale : touche pour en installer un.")
-      if (t.setLanguage(Locale.FRENCH) < TextToSpeech.LANG_AVAILABLE) return@TextToSpeech noEngine("Voix française absente : touche pour l'installer.")
-      t.setSpeechRate(settings.safeRate)
-      t.setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-      t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-        override fun onStart(id: String?) {}
-        override fun onDone(id: String?) { ui.post { id?.let { done.remove(it)?.invoke() } } }
-        @Deprecated("API < 21") override fun onError(id: String?) { ui.post { id?.let { done.remove(it)?.invoke() } } }
-        override fun onError(id: String?, code: Int) { note("synthèse vocale : erreur $code"); onError(id) }
-      })
-      ttsReady = true
-      pump()
-    }, settings.engine.ifEmpty { null })
-  }
-
   private fun noEngine(text: String) {
     note(text)
     val install = PendingIntent.getActivity(this, 3, Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -221,24 +186,14 @@ class DriveService : Service() {
     } catch (e: SecurityException) { /* permission retirée */ }
   }
 
-  /** Dit `text` puis appelle `then` (sur le fil principal) ; sans synthèse prête, `then` est appelé tout de suite. */
-  private fun say(text: String, then: () -> Unit = {}) {
-    val t = tts
-    if (t == null || !ttsReady) return then()
-    val id = "u${utterance++}"
-    done[id] = then
-    focus()
-    if (t.speak(text, TextToSpeech.QUEUE_ADD, null, id) != TextToSpeech.SUCCESS) { note("synthèse vocale : refus de lire"); done.remove(id)?.invoke() }
-  }
-
   /** Lit les messages en attente, un à la fois ; le dernier lu devient la cible de « Répondre ». */
   private fun pump() {
-    if (busy || !ttsReady) return
-    val m = queue.poll() ?: return abandonFocus()
+    if (busy || !voice.isReady) return
+    val m = queue.poll() ?: return voice.abandonFocus()
     busy = true
     last = m
     status(if (m.hidden) m.title else "Dernier message : ${m.sender}")
-    say(announce(m, settings.readContent)) { busy = false; armReply(m); pump() }
+    voice.say(announce(m, settings.readContent)) { busy = false; armReply(m); pump() }
   }
 
   /** Quelques secondes après une lecture, le bouton lecture/pause du volant lance la réponse (sans voler les touches de la musique le reste du temps). */
@@ -264,20 +219,20 @@ class DriveService : Service() {
   private fun reply() {
     val m = last
     if (busy) return
-    if (m == null || !m.replyable) return say("Aucun message à répondre.")
-    if (!VoskModel.ready(this)) return say("Modèle de reconnaissance absent. Ouvre Estompe pour le télécharger.")
+    if (m == null || !m.replyable) return voice.say("Aucun message à répondre.")
+    if (!VoskModel.ready(this)) return voice.say("Modèle de reconnaissance absent. Ouvre Estompe pour le télécharger.")
     busy = true
     foreground(true) // le micro exige le type « microphone », accordé ici car l'utilisateur vient d'agir
     dictate(m)
   }
 
   private fun dictate(m: Incoming) {
-    say("Je vous écoute.") {
-      listen(8000) { heard ->
+    voice.say("Je vous écoute.") {
+      voice.listen(8000) { heard ->
         if (heard.isNullOrBlank()) return@listen finish("Je n'ai rien entendu.")
         val ask = if (settings.confirm) "Envoyer, annuler ou recommencer ?" else "Envoi dans quelques secondes. Dites annuler pour stopper."
-        say("Vous avez dit : $heard. $ask") {
-          listen(if (settings.confirm) 7000 else 3500) { answer ->
+        voice.say("Vous avez dit : $heard. $ask") {
+          voice.listen(if (settings.confirm) 7000 else 3500) { answer ->
             when (parseAnswer(answer.orEmpty())) {
               Answer.SEND -> send(m, heard)
               Answer.CANCEL -> finish("Réponse annulée.")
@@ -294,88 +249,12 @@ class DriveService : Service() {
     thread {
       val code = Session(this).call("POST", convPath(m.conv) + "/messages", JSONObject().put("content", text).put("reply_to", m.msg))
       if (code !in 200..299) note("envoi de la réponse : code $code")
-      ui.post { finish(if (code in 200..299) "Message envoyé." else "Envoi impossible.") }
+      ui.post { if (!destroyed) finish(if (code in 200..299) "Message envoyé." else "Envoi impossible.") }
     }
   }
 
   private fun finish(text: String) {
-    say(text) { busy = false; foreground(false); pump() }
-  }
-
-  /** Écoute jusqu'à une phrase complète (ou `ms` sans parole) et rend le texte reconnu, null en cas de silence ou d'erreur. */
-  private fun listen(ms: Int, result: (String?) -> Unit) {
-    thread {
-      val loaded = try {
-        model ?: Model(VoskModel.path(this)).also { model = it }
-      } catch (e: Exception) { note("chargement du modèle : $e"); null }
-      ui.post {
-        if (loaded == null) return@post result(null)
-        micRoute(true)
-        var over = false
-        fun end(text: String?) {
-          if (over) return
-          over = true
-          stopListening()
-          micRoute(false)
-          result(text)
-        }
-        // le micro Bluetooth (kit mains libres de la voiture) met un instant à s'ouvrir
-        ui.postDelayed({
-          try {
-            val s = SpeechService(Recognizer(loaded, 16000f), 16000f)
-            speech = s
-            s.startListening(object : RecognitionListener {
-              private fun text(h: String?) = h?.let { JSONObject(it).optString("text") }?.takeIf { it.isNotBlank() }
-              override fun onPartialResult(hypothesis: String?) {}
-              override fun onResult(hypothesis: String?) { end(text(hypothesis)) }
-              override fun onFinalResult(hypothesis: String?) { end(text(hypothesis)) }
-              override fun onError(e: Exception?) { note("reconnaissance vocale : $e"); end(null) }
-              override fun onTimeout() { end(null) }
-            }, ms)
-          } catch (e: Exception) { // micro refusé ou occupé
-            note("micro : $e")
-            end(null)
-          }
-        }, 700)
-      }
-    }
-  }
-
-  private fun stopListening() {
-    speech?.shutdown()
-    speech = null
-  }
-
-  /** Bascule sur le micro Bluetooth s'il existe (l'API est dépréciée mais reste la seule valable dès Android 7). */
-  @Suppress("DEPRECATION")
-  private fun micRoute(on: Boolean) {
-    try {
-      if (on && audio.isBluetoothScoAvailableOffCall) { audio.mode = AudioManager.MODE_IN_COMMUNICATION; audio.startBluetoothSco() }
-      else if (!on) { audio.stopBluetoothSco(); audio.mode = AudioManager.MODE_NORMAL }
-    } catch (e: Exception) { note("micro Bluetooth : $e") }
-  }
-
-  /** Focus transitoire avec baisse du volume de la musique. */
-  @Suppress("DEPRECATION")
-  private fun focus() {
-    if (focus != null) return
-    if (Build.VERSION.SDK_INT >= 26) {
-      val r = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-          .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()).setOnAudioFocusChangeListener {}.build()
-      if (audio.requestAudioFocus(r) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) focus = r
-    } else {
-      val l = AudioManager.OnAudioFocusChangeListener {}
-      if (audio.requestAudioFocus(l, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) focus = l
-    }
-  }
-
-  @Suppress("DEPRECATION")
-  private fun abandonFocus() {
-    val f = focus ?: return
-    focus = null
-    if (Build.VERSION.SDK_INT >= 26 && f is AudioFocusRequest) audio.abandonAudioFocusRequest(f)
-    else if (f is AudioManager.OnAudioFocusChangeListener) audio.abandonAudioFocus(f)
+    voice.say(text) { busy = false; foreground(false); pump() }
   }
 
   companion object {
