@@ -32,6 +32,6 @@ test('broken signale un fichier absent et ignore URLs et ancres', async (t) => {
 test('les changelogs et les copies vendor sont ignorés', () => {
   assert.ok(ignored('CHANGELOG.md'));
   assert.ok(ignored('changelog.d/x.md'));
-  assert.ok(ignored('web/pli/public/vendor/plbls-ui/README.md'));
+  assert.ok(ignored('web/estompe/src/vendor/plbls-ui/README.md'));
   assert.ok(!ignored('README.md'));
 });

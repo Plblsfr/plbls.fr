@@ -188,27 +188,27 @@ mod tests {
             "postgres://u:p@h:5432/postgres?sslmode=disable",
         )]);
         assert_eq!(
-            url_base(&get, "pli").unwrap(),
-            "postgres://u:p@h:5432/pli?sslmode=disable"
+            url_base(&get, "entracte").unwrap(),
+            "postgres://u:p@h:5432/entracte?sslmode=disable"
         );
         let get = lecteur(&[
             ("DATABASE_URL", "postgres://u:p@h/?sslmode=require"),
             ("DATABASE_USER", "plbls"),
         ]);
         assert_eq!(
-            url_base(&get, "pli").unwrap(),
-            "postgres://plbls@h/pli?sslmode=require"
+            url_base(&get, "entracte").unwrap(),
+            "postgres://plbls@h/entracte?sslmode=require"
         );
     }
 
     #[test]
     fn base_sans_serveur_refusee() {
         assert!(
-            url_base(lecteur(&[]), "pli")
+            url_base(lecteur(&[]), "entracte")
                 .unwrap_err()
                 .contains("DATABASE_URL")
         );
-        assert!(url_base(lecteur(&[("DATABASE_URL", "postgres-main")]), "pli").is_err());
+        assert!(url_base(lecteur(&[("DATABASE_URL", "postgres-main")]), "entracte").is_err());
     }
 
     #[test]
@@ -226,12 +226,12 @@ mod tests {
     #[test]
     fn jetons_par_prefixe() {
         let env = Env::depuis([
-            ("AEGIS_TOKEN_PLI", "b"),
+            ("AEGIS_TOKEN_ENTRACTE", "b"),
             ("AEGIS_TOKEN_ESTOMPE", "\"a\""),
             ("AEGIS_TOKEN_VIDE", ""),
             ("AEGIS_TOKEN_", "x"),
             ("AEGIS_URL", "http://aegis:8080"),
         ]);
-        assert_eq!(env.jetons("AEGIS_TOKEN_"), "estompe:a,pli:b");
+        assert_eq!(env.jetons("AEGIS_TOKEN_"), "entracte:b,estompe:a");
     }
 }

@@ -22,7 +22,7 @@ use crate::{
     identity::{Identity, Resolver},
     messages::{Conv, EvenementMessage},
     metrics::Metrics,
-    permission::{ADMIN_PERMISSION, Client, Droits, Indisponible, Profil},
+    permission::{Client, Droits, Indisponible, Profil},
     ratelimit::Limiteurs,
     roles::{self, Access, Perm},
     updates::{self, Policy},
@@ -192,16 +192,7 @@ impl AppState {
     ) -> Self {
         AppState(Arc::new(Inner {
             identity: Resolver::with_now(&config.gateway_url, now.clone()),
-            permission: if config.aegis.actif() {
-                Client::aegis(&config.aegis.url, &config.aegis.token, now.clone())
-            } else {
-                Client::permission(
-                    &config.permission_url,
-                    &config.permission_token,
-                    &config.permission_name,
-                    now.clone(),
-                )
-            },
+            permission: Client::new(&config.aegis.url, &config.aegis.token, now.clone()),
             pool: OnceLock::new(),
             blocs_actifs,
             metrics: Metrics::default(),
@@ -261,24 +252,15 @@ impl AppState {
         self.droit(sub, catalogue::ACCES).await
     }
 
-    pub fn role_admin_permissions(&self) -> &str {
-        if self.0.permission.aegis_actif() {
-            &self.0.config.aegis.admin_role
-        } else {
-            &self.0.config.permission_admin_role
-        }
-    }
-
-    pub async fn gere_permissions(&self, idn: &Identity) -> Result<bool, Indisponible> {
-        if idn.roles.iter().any(|r| r == self.role_admin_permissions()) {
+    pub async fn gere_acces(&self, idn: &Identity) -> Result<bool, Indisponible> {
+        if idn
+            .roles
+            .iter()
+            .any(|r| *r == self.0.config.aegis.admin_role)
+        {
             return Ok(true);
         }
-        let nom = if self.0.permission.aegis_actif() {
-            catalogue::ADMIN_AEGIS
-        } else {
-            ADMIN_PERMISSION
-        };
-        Ok(self.droits_de(idn).await?.a(nom))
+        Ok(self.droits_de(idn).await?.a(catalogue::ADMIN_AEGIS))
     }
 
     pub async fn acces_serveur(

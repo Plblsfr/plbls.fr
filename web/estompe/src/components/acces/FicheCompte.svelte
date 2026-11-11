@@ -1,6 +1,6 @@
 <script lang="ts">
   import { confirmer } from '../../lib/confirm.svelte'
-  import Attente from '../permissions/Attente.svelte'
+  import Attente from './Attente.svelte'
   import {
     charger, ecrire, enc, ETATS, executer, libellesPermissions, nomCompte, origine, quand, typeDe,
     type Catalogue, type Compte, type CompteDetail, type Decision, type EffectifsExpliques, type EntreeJournal,

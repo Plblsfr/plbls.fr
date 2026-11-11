@@ -17,8 +17,9 @@ npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et 
 npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
 ```
 
-`npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway (`e2e/fake-gateway.mjs`) et deux
-utilisateurs dans deux navigateurs (Chromium via Playwright : `npx playwright install chromium`, puis les bibliothèques
+`npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
+(`e2e/fake-gateway.mjs` : `PUT /v1/manifest` accepté, `POST /v1/effective` accorde tout le catalogue d'Estompe, sauf à `mallory`,
+qui est refusé) et deux utilisateurs dans deux navigateurs (Chromium via Playwright : `npx playwright install chromium`, puis les bibliothèques
 système de Chromium doivent être présentes).
 
 ## Structure
@@ -30,6 +31,7 @@ système de Chromium doivent être présentes).
 - Un nouveau comportement propre à une plateforme : ajouter une capacité optionnelle à `Platform` (absente = rien à faire), l'implémenter dans le dossier concerné, jamais un `if` dans `src/`. Les tests de `plateforme/`, `apps/estompe/windows/`, `apps/estompe/android/` et `apps/estompe/crates/core/ts/` tournent avec ceux du frontend (`npm test`).
 - `src/blocks/<nom>` : un dossier par bloc optionnel (composants, état, tests), avec les noms et dépendances des blocs du backend (`registry.ts`). Le serveur annonce les blocs actifs dans `blocks` de `GET /me` ; `app.on('<nom>')` masque l'interface d'un bloc désactivé ou dont une dépendance l'est. Un nouveau bloc : l'ajouter à `BLOCKS` (le test échoue pour un dossier non déclaré).
 - `src/components`, `src/views` : interface du cœur.
+- `src/components/acces` (avec `src/lib/acces.svelte.ts`) : administration d'aegis, section « accès » de l'espace d'administration, ouverte au droit `acces` de `GET /me` ; les appels passent par le relais `/admin/acces` du backend.
 - `src/sections/entracte` : section Entracte (films et séries, API à part, [`docs/entracte`](../../docs/entracte/README.md)). L'app est
   celle de plbls.fr : la messagerie d'Estompe et Entracte en sont deux sections, chacune affichée selon les permissions. Au démarrage,
   `GET /me` d'Estompe et `GET /me` d'Entracte disent ce que la personne a : Entracte seul ouvre la phase `entracte` (écran

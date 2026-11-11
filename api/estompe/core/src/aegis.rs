@@ -19,9 +19,6 @@ const TTL_SANS_ABONNEMENT: Duration = Duration::from_secs(5);
 const TTL_ABONNE: Duration = Duration::from_secs(30);
 
 pub fn demarrer(state: AppState) {
-    if !state.permissions().aegis_actif() {
-        return;
-    }
     let s = state.clone();
     tokio::spawn(async move {
         let mut t = tokio::time::interval(MANIFESTE_PERIODE);
@@ -164,7 +161,7 @@ async fn ressources(
     Query(f): Query<Filtre>,
     h: HeaderMap,
 ) -> Response {
-    if !state.permissions().aegis_actif() || type_ != catalogue::SERVEUR {
+    if type_ != catalogue::SERVEUR {
         return StatusCode::NOT_FOUND.into_response();
     }
     if !jeton_valide(&state, &h) {

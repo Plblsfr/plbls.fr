@@ -105,7 +105,7 @@ async fn banc_avec(hotes: &str) -> Option<Banc> {
         },
         cache: Cache::default(),
         services: Services {
-            tokens: "estompe:jeton-estompe,pli:jeton-pli".into(),
+            tokens: "estompe:jeton-estompe,entracte:jeton-entracte".into(),
         },
         gateway: Gateway::default(),
         annuaire: Annuaire::default(),
@@ -295,7 +295,7 @@ async fn manifeste_ouvre_les_permissions_par_defaut_et_marque_les_obsoletes() {
 
     let (s, _) = b
         .appel(
-            Qui::Service("jeton-pli"),
+            Qui::Service("jeton-entracte"),
             "PUT",
             "/v1/manifest",
             Some(manifeste_estompe()),
@@ -883,14 +883,14 @@ async fn effectifs_limites_a_l_application_du_jeton() {
     b.manifeste().await;
     let (s, v) = b
         .appel(
-            Qui::Service("jeton-pli"),
+            Qui::Service("jeton-entracte"),
             "PUT",
             "/v1/manifest",
-            Some(json!({"app": "pli", "name": "pli", "permissions": [{"key": "deposit", "label": "Déposer"}]})),
+            Some(json!({"app": "entracte", "name": "entracte", "permissions": [{"key": "request", "label": "Demander"}]})),
         )
         .await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    for p in ["estompe:gifs.use", "pli:deposit", "aegis:admin"] {
+    for p in ["estompe:gifs.use", "entracte:request", "aegis:admin"] {
         b.admin(
             "POST",
             "/v1/admin/rules",
@@ -903,7 +903,7 @@ async fn effectifs_limites_a_l_application_du_jeton() {
         banc.appel(Qui::Service(jeton), "POST", "/v1/effective", Some(corps))
             .await
     };
-    let (s, v) = lire("jeton-pli", json!({"sub": "zoe"})).await;
+    let (s, v) = lire("jeton-entracte", json!({"sub": "zoe"})).await;
     assert_eq!(s, StatusCode::OK);
     let mut cles: Vec<&str> = v["permissions"]
         .as_object()
@@ -912,13 +912,13 @@ async fn effectifs_limites_a_l_application_du_jeton() {
         .map(String::as_str)
         .collect();
     cles.sort();
-    assert_eq!(cles, ["aegis:admin", "pli:deposit"]);
-    let (s, _) = lire("jeton-pli", json!({"sub": "zoe", "app": "estompe"})).await;
+    assert_eq!(cles, ["aegis:admin", "entracte:request"]);
+    let (s, _) = lire("jeton-entracte", json!({"sub": "zoe", "app": "estompe"})).await;
     assert_eq!(s, StatusCode::FORBIDDEN);
     let (s, v) = lire("jeton-estompe", json!({"sub": "zoe", "app": "estompe"})).await;
     assert_eq!(s, StatusCode::OK);
     assert!(v["permissions"].get("estompe:gifs.use").is_some());
-    assert!(v["permissions"].get("pli:deposit").is_none());
+    assert!(v["permissions"].get("entracte:request").is_none());
 }
 
 #[tokio::test]

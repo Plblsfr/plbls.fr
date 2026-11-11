@@ -1,20 +1,53 @@
+use std::{sync::LazyLock, time::Duration};
+
 use axum::{
-    extract::{Request, State},
-    http::StatusCode,
-    response::Response,
+    body::to_bytes,
+    extract::{FromRequestParts, Request, State},
+    http::{HeaderValue, StatusCode, header, request::Parts},
+    response::{IntoResponse, Response},
     routing::any,
 };
+use serde_json::Value;
 use utoipa::openapi::HttpMethod;
 use utoipa_axum::router::OpenApiRouter;
 
 use crate::{
-    http::write_err,
+    api::Auth,
+    http::{CORPS_MAX, champ, premier_objet, write_err},
+    identity::{COOKIE_NAME, Identity, cred_of},
     openapi,
-    relais_permission::{AdminPermissions, transmettre},
     state::AppState,
 };
 
 const PREFIXE: &str = "/admin/acces";
+const REPONSE_MAX: usize = 4 << 20;
+
+static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("client HTTP")
+});
+
+pub struct AdminAcces(pub Identity);
+
+impl FromRequestParts<AppState> for AdminAcces {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Response> {
+        let Auth(idn) = Auth::from_request_parts(parts, state).await?;
+        match state.gere_acces(&idn).await {
+            Ok(true) => Ok(AdminAcces(idn)),
+            Ok(false) => Err(write_err(
+                StatusCode::FORBIDDEN,
+                "forbidden",
+                "réservé aux administrateurs des accès",
+            )),
+            Err(_) => Err(indisponible()),
+        }
+    }
+}
 
 pub const ROUTES: &[(&str, &[HttpMethod], &str)] = &[
     (
@@ -145,6 +178,14 @@ const REPONSES: &[(&str, &str)] = &[
     ("503", "`permission_unavailable`"),
 ];
 
+fn indisponible() -> Response {
+    write_err(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "permission_unavailable",
+        "aegis injoignable",
+    )
+}
+
 fn segment_valide(s: &str) -> bool {
     !s.is_empty()
         && s != "."
@@ -155,18 +196,36 @@ fn segment_valide(s: &str) -> bool {
         })
 }
 
+fn decrire(statut: StatusCode) -> &'static str {
+    match statut.as_u16() {
+        400 => "requête refusée par le gateway",
+        401 => "session absente ou expirée",
+        403 => "accès refusé par aegis",
+        404 => "route /api/aegis introuvable sur le gateway",
+        502 => "aegis injoignable depuis le gateway",
+        503 => "authentification indisponible",
+        504 => "aegis ne répond pas",
+        _ => "erreur d'aegis",
+    }
+}
+
+fn code(statut: StatusCode) -> &'static str {
+    match statut.as_u16() {
+        400 => "bad_request",
+        401 => "unauthorized",
+        403 => "forbidden",
+        404 => "not_found",
+        409 => "conflict",
+        502..=504 => "permission_unavailable",
+        _ => "permission_error",
+    }
+}
+
 async fn relayer(
     State(state): State<AppState>,
-    AdminPermissions(_): AdminPermissions,
+    AdminAcces(_): AdminAcces,
     req: Request,
 ) -> Response {
-    if !state.permissions().aegis_actif() {
-        return write_err(
-            StatusCode::NOT_FOUND,
-            "not_found",
-            "aegis n'est pas configuré",
-        );
-    }
     let (parts, corps) = req.into_parts();
     let reste = parts
         .uri
@@ -187,6 +246,78 @@ async fn relayer(
         url.push_str(q);
     }
     transmettre(parts, corps, url).await
+}
+
+async fn transmettre(
+    parts: axum::http::request::Parts,
+    corps: axum::body::Body,
+    url: String,
+) -> Response {
+    let Some(cred) = cred_of(&parts.headers) else {
+        return write_err(StatusCode::UNAUTHORIZED, "unauthorized", "non authentifié");
+    };
+    let Ok(corps) = to_bytes(corps, CORPS_MAX).await else {
+        return write_err(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "too_large",
+            "corps trop volumineux",
+        );
+    };
+    let mut requete = CLIENT.request(parts.method.clone(), &url);
+    requete = if cred.cookie {
+        requete.header(header::COOKIE, format!("{COOKIE_NAME}={}", cred.value))
+    } else {
+        requete.header(header::AUTHORIZATION, cred.value)
+    };
+    if let Some(o) = parts.headers.get(header::ORIGIN) {
+        requete = requete.header(header::ORIGIN, o.clone());
+    }
+    if !corps.is_empty() {
+        requete = requete
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(corps);
+    }
+    let Ok(mut reponse) = requete.send().await else {
+        return indisponible();
+    };
+    let statut = StatusCode::from_u16(reponse.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let mut octets = Vec::new();
+    loop {
+        match reponse.chunk().await {
+            Ok(Some(m)) => {
+                octets.extend_from_slice(&m);
+                if octets.len() > REPONSE_MAX {
+                    return indisponible();
+                }
+            }
+            Ok(None) => break,
+            Err(_) => return indisponible(),
+        }
+    }
+    if !statut.is_success() {
+        let message = premier_objet(&octets)
+            .and_then(|o| match champ(&o, "error") {
+                Some(Value::String(m)) if !m.is_empty() => Some(m.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| decrire(statut).to_string());
+        return write_err(statut, code(statut), &message);
+    }
+    if statut == StatusCode::NO_CONTENT || octets.is_empty() {
+        return statut.into_response();
+    }
+    (
+        statut,
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            ),
+            (header::CACHE_CONTROL, HeaderValue::from_static("no-store")),
+        ],
+        octets,
+    )
+        .into_response()
 }
 
 #[cfg(test)]

@@ -414,10 +414,13 @@ mod tests {
             apps_lisibles("estompe", None).unwrap(),
             ["estompe", "aegis"]
         );
-        assert_eq!(apps_lisibles("pli", Some("pli")).unwrap(), ["pli"]);
-        assert_eq!(apps_lisibles("pli", Some("aegis")).unwrap(), ["aegis"]);
+        assert_eq!(
+            apps_lisibles("entracte", Some("entracte")).unwrap(),
+            ["entracte"]
+        );
+        assert_eq!(apps_lisibles("entracte", Some("aegis")).unwrap(), ["aegis"]);
         assert!(matches!(
-            apps_lisibles("pli", Some("estompe")),
+            apps_lisibles("entracte", Some("estompe")),
             Err(ApiError::Forbidden)
         ));
     }

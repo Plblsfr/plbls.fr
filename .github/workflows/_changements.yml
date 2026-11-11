@@ -11,7 +11,6 @@ on:
       catalogue_permissions: { value: "${{ jobs.changements.outputs.catalogue_permissions }}" }
       estompe_tauri: { value: "${{ jobs.changements.outputs.estompe_tauri }}" }
       estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
-      pli_server: { value: "${{ jobs.changements.outputs.pli_server }}" }
       aegis_server: { value: "${{ jobs.changements.outputs.aegis_server }}" }
       security_server: { value: "${{ jobs.changements.outputs.security_server }}" }
       entracte_server: { value: "${{ jobs.changements.outputs.entracte_server }}" }
@@ -19,8 +18,6 @@ on:
       front: { value: "${{ jobs.changements.outputs.front }}" }
       espaces: { value: "${{ jobs.changements.outputs.espaces }}" }
       npm_lock: { value: "${{ jobs.changements.outputs.npm_lock }}" }
-      image_pli: { value: "${{ jobs.changements.outputs.image_pli }}" }
-      image_permission: { value: "${{ jobs.changements.outputs.image_permission }}" }
       image_aegis: { value: "${{ jobs.changements.outputs.image_aegis }}" }
       image_entracte: { value: "${{ jobs.changements.outputs.image_entracte }}" }
       image_security: { value: "${{ jobs.changements.outputs.image_security }}" }
@@ -39,7 +36,6 @@ jobs:
       catalogue_permissions: ${{ steps.c.outputs.catalogue_permissions }}
       estompe_tauri: ${{ steps.c.outputs.estompe_tauri }}
       estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
-      pli_server: ${{ steps.c.outputs.pli_server }}
       aegis_server: ${{ steps.c.outputs.aegis_server }}
       security_server: ${{ steps.c.outputs.security_server }}
       entracte_server: ${{ steps.c.outputs.entracte_server }}
@@ -47,8 +43,6 @@ jobs:
       front: ${{ steps.e.outputs.front }}
       espaces: ${{ steps.e.outputs.espaces }}
       npm_lock: ${{ steps.c.outputs.npm_lock }}
-      image_pli: ${{ steps.c.outputs.image_pli }}
-      image_permission: ${{ steps.c.outputs.image_permission }}
       image_aegis: ${{ steps.c.outputs.image_aegis }}
       image_entracte: ${{ steps.c.outputs.image_entracte }}
       image_security: ${{ steps.c.outputs.image_security }}
@@ -79,7 +73,6 @@ jobs:
           c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
           c estompe_tauri 'apps/estompe/**' '!**/*.md'
           c estompe_ci_image 'deploy/estompe/ci/**'
-          c pli_server 'api/pli/**' 'api/commun/**' '!**/*.md' "${cargo[@]}"
           c aegis_server 'api/aegis/**' 'api/commun/**' "${cargo[@]}"
           c security_server 'api/security/**' 'api/commun/**' '!**/*.md' "${cargo[@]}"
           c entracte_server 'api/entracte/**' 'api/commun/**' '!**/*.md' docs/entracte/openapi.yaml "${cargo[@]}"
@@ -89,10 +82,6 @@ jobs:
           c npm_lock package-lock.json .nvmrc
           c front_ui 'packages/ui/**' '!**/*.md'
           c front_estompe 'web/estompe/**' 'apps/estompe/*/src/**' 'apps/estompe/crates/core/ts/**' 'scripts/estompe/*.mjs' api/estompe/core/src/catalogue.rs '!**/*.md'
-          c front_permission 'web/permission/**' '!**/*.md'
-          c front_pli 'web/pli/**' '!**/*.md'
-          c image_pli "${npm[@]}" "${cargo[@]}" 'api/pli/**' 'api/commun/**' 'web/pli/**' '!**/*.md' "${image[@]}" plbls.env
-          c image_permission "${npm[@]}" "${cargo[@]}" .dockerignore 'api/permission/**' 'api/commun/**' 'web/permission/**' '!**/*.md' "${image[@]}" plbls.env
           c image_security "${cargo[@]}" .dockerignore 'api/security/**' 'api/commun/**' '!**/*.md' "${image[@]}" plbls.env
           c image_aegis "${cargo[@]}" 'api/aegis/**' 'api/commun/**' "${image[@]}" plbls.env
           c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' 'api/commun/**' '!**/*.md' deploy/entracte/.env.example plbls.env
@@ -104,16 +93,12 @@ jobs:
           LINT: ${{ steps.c.outputs.lint }}
           UI: ${{ steps.c.outputs.front_ui }}
           ESTOMPE: ${{ steps.c.outputs.front_estompe }}
-          PERMISSION: ${{ steps.c.outputs.front_permission }}
-          PLI: ${{ steps.c.outputs.front_pli }}
         run: |
           espaces=()
           e() { if [ "$NPM" = true ] || [ "$1" = true ]; then espaces+=("$2"); fi; }
           e "$UI" packages/ui
           e false packages/deepmerge
           e "$ESTOMPE" web/estompe
-          e "$PERMISSION" web/permission
-          e "$PLI" web/pli
           front=false
           if [ "${#espaces[@]}" -gt 0 ] || [ "$LINT" = true ]; then front=true; fi
           echo "front=$front espaces=${espaces[*]}"

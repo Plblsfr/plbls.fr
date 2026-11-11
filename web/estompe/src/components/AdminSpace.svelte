@@ -8,7 +8,6 @@
   import { api } from '../lib/api'
   import { adminSection } from '../lib/admin'
   import { app } from '../lib/store.svelte'
-  import PermissionsAdmin from './permissions/PermissionsAdmin.svelte'
   import AccesAdmin from './acces/AccesAdmin.svelte'
   import { hrefs } from '../lib/route.svelte'
   import type { AdminBadge, AdminError, AdminLive, AdminLogEntry, AdminOverview, AdminStats, AdminUser } from '../lib/types'
@@ -238,8 +237,6 @@
 
   {:else if current === 'acces'}
     <AccesAdmin />
-  {:else if current === 'permissions'}
-    <PermissionsAdmin />
   {/if}
 </div>
 

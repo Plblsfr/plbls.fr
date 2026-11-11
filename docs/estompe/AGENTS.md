@@ -114,7 +114,7 @@ Le script lance, dans l'ordre : `TEST_DATABASE_URL` défini, `cargo fmt --check`
 Pendant le développement, du plus rapide au plus complet : `cargo check $(scripts/estompe/paquets-cargo.sh) --all-targets`, `cargo build $(scripts/estompe/paquets-cargo.sh)`, `cargo test $(scripts/estompe/paquets-cargo.sh) --no-run`, `cargo test $(scripts/estompe/paquets-cargo.sh)`. En local, `blaze` (indexable-inc) remplace `cargo` pour `build`, `check`, `run` et `test` (recompilation incrémentale en mémoire, voir `api/estompe/README.md`) ; `scripts/estompe/check.sh` et la CI restent sur `cargo` et la toolchain épinglée, qui font foi. Aucun linker à configurer : mesuré, mold n'apporte rien sur le linker par défaut (`api/estompe/README.md`, « Développement »).
 
 - Rust : les crates de `api/estompe` sont membres du workspace Cargo racine du monorepo (`Cargo.toml`, un seul `Cargo.lock`, `deny.toml` et
-  lints clippy communs avec `api/security`, `api/permission` et `api/pli`). La toolchain (1.99.0) est épinglée par `rust-toolchain.toml`,
+  lints clippy communs avec `api/security`, `api/aegis` et `api/entracte`). La toolchain (1.99.0) est épinglée par `rust-toolchain.toml`,
   lu depuis tout le dépôt sauf `apps/estompe/{windows,android,crates}` (apps Tauri, hors workspace, sur la stable). `scripts/estompe/paquets-cargo.sh` donne les `-p` des crates d'Estompe.
   `cargo-deny` s'installe avec `cargo install cargo-deny --locked`.
 - Plus de Docker en local. Les tests Rust utilisent le PostgreSQL de `TEST_DATABASE_URL` (compte superutilisateur, une base créée puis

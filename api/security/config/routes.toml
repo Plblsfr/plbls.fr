@@ -9,11 +9,3 @@ prefix = "/api/aegis"
 upstream = "http://aegis:8080"
 strip_prefix = true
 roles = ["user"]
-
-# permission.plbls.fr : API du service de permissions (utilisateurs via cookie de session).
-# Permission lit le même GATEWAY_IDENTITE_SECRET et doit être joignable sur le réseau Docker.
-[[routes]]
-prefix = "/api/permission"
-upstream = "http://permission:8080"
-strip_prefix = true
-roles = ["permission-admin"]
