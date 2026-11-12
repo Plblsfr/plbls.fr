@@ -4,6 +4,11 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## api 0.88.11 / applis 0.94.4 - 2026-11-12
+
+- [x] Instant replay : encodeur figé après trois images. Sur une carte AMD (`AMDh264Encoder`, 1080p à 120 i/s), l'encodeur n'acceptait que trois images par session : toutes les suivantes étaient perdues et le tampon restait vide. Quand l'encodeur annonce un changement de format de sortie, la sortie est maintenant relue dans le même évènement au lieu d'être abandonnée. Les journaux du mode debug détaillent les premiers évènements de l'encodeur et la première image encodée. Non fait : la fenêtre de l'outil Capture d'écran de Windows (`ScreenClippingHost`) est encore prise pour un jeu. Non vérifié : sur un appareil Windows ; la cause n'a pas pu être reproduite, le correctif repose sur la lecture des journaux.
+- [x] L'outil Capture d'écran de Windows n'est plus pris pour un jeu. Sa fenêtre plein écran sans bordure (`ScreenClippingHost.exe`, `SnippingTool.exe`) était détectée comme un jeu : l'instant replay redémarrait son tampon sur elle, puis sur le jeu, et le passé était perdu ; l'overlay et l'activité « en jeu » étaient concernés aussi. Non vérifié : sur un appareil Windows (compilation mingw et test de la liste seulement).
+
 ## api 0.88.11 / applis 0.94.2 - 2026-11-12
 
 - [x] Mode debug : les lignes natives s'affichent sans redémarrer. Paramètres › Debug ne lisait le journal de l'app qu'à l'activation du mode : les lignes écrites ensuite par le code natif (instant replay, partage d'écran) n'apparaissaient qu'après un redémarrage. La page relit maintenant le journal toutes les 3 secondes tant qu'elle est ouverte, sans doublon. Non vérifié : rendu de la page dans les apps Windows et Android.
