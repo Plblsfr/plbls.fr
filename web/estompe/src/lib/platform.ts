@@ -84,6 +84,16 @@ export interface Space {
   page: Component<{ section?: string; onmenu: () => void }>
 }
 
+export interface SettingsPage {
+  id: string
+  label: string
+  icon: IconName
+  badge?: string
+  index: readonly string[]
+  visible(): boolean
+  page: Component
+}
+
 export interface Platform {
   /** Plateforme déclarée au serveur (tableau de bord d'administration). */
   id(): string
@@ -108,6 +118,7 @@ export interface Platform {
     settingsPtt?: Component
     settingsShare?: Component
     settingsDebug?: Component
+    settingsPages?: SettingsPage[]
   }
   /** Démarrage de l'app principale (overlays, liens, activité…). */
   start(): void

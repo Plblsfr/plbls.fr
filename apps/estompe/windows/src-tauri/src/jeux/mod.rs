@@ -1,6 +1,26 @@
 #[cfg_attr(not(windows), allow(dead_code))]
 mod connus;
 
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(not(all(windows, feature = "instant-replay")), allow(dead_code))]
+pub enum Regle {
+    Exclu,
+    Ajoute,
+    Aucune,
+}
+
+#[cfg_attr(not(all(windows, feature = "instant-replay")), allow(dead_code))]
+pub fn regle(exe: &str, chemin: &str, ajoutes: &[String], exclus: &[String]) -> Regle {
+    let propre = |c: &str| c.trim().replace('/', "\\").to_lowercase();
+    if exclus.iter().any(|e| propre(e) == propre(exe)) {
+        Regle::Exclu
+    } else if ajoutes.iter().any(|a| propre(a) == propre(chemin)) {
+        Regle::Ajoute
+    } else {
+        Regle::Aucune
+    }
+}
+
 #[cfg(windows)]
 mod detection {
     use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
@@ -116,6 +136,30 @@ mod detection {
         found
     }
 
+    #[cfg(feature = "instant-replay")]
+    pub struct Cible {
+        pub fenetre: isize,
+        pub pid: u32,
+        pub nom: String,
+    }
+
+    #[cfg(feature = "instant-replay")]
+    pub fn cible(ajoutes: &[String], exclus: &[String]) -> Option<Cible> {
+        let h: HWND = unsafe { GetForegroundWindow() };
+        if !usable(h) {
+            return None;
+        }
+        let pid = pid_of(h);
+        let path = exe_path(pid)?;
+        let exe = exe_name(&path);
+        let nom = match super::regle(&exe, &path, ajoutes, exclus) {
+            super::Regle::Exclu => return None,
+            super::Regle::Ajoute => known_game(&exe, &path).unwrap_or_else(|| exe.trim_end_matches(".exe").to_string()),
+            super::Regle::Aucune => classify(h)?,
+        };
+        Some(Cible { fenetre: h as isize, pid, nom })
+    }
+
     pub fn foreground() -> Foreground {
         let h: HWND = unsafe { GetForegroundWindow() };
         let monitor = (!h.is_null()).then(|| monitor_rect(h)).flatten().map(|m| [m.left, m.top, m.right - m.left, m.bottom - m.top]);
@@ -126,4 +170,23 @@ mod detection {
 }
 
 #[cfg(windows)]
-pub use detection::{foreground, Foreground};
+pub use detection::foreground;
+#[cfg(all(windows, feature = "instant-replay"))]
+pub use detection::cible;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jeux_ajoutes_et_exclus() {
+        let ajoutes = [r"D:\Jeux\Mon Jeu\jeu.exe".to_string()];
+        let exclus = ["Launcher.exe".to_string()];
+        assert_eq!(regle("jeu.exe", r"d:\jeux\mon jeu\JEU.EXE", &ajoutes, &exclus), Regle::Ajoute);
+        assert_eq!(regle("jeu.exe", "D:/Jeux/Mon Jeu/jeu.exe", &ajoutes, &exclus), Regle::Ajoute);
+        assert_eq!(regle("jeu.exe", r"C:\Autre\jeu.exe", &ajoutes, &exclus), Regle::Aucune);
+        assert_eq!(regle("launcher.exe", r"C:\x\launcher.exe", &ajoutes, &exclus), Regle::Exclu);
+        assert_eq!(regle("jeu.exe", r"D:\Jeux\Mon Jeu\jeu.exe", &ajoutes, &["JEU.exe".to_string()]), Regle::Exclu);
+        assert_eq!(regle("cs2.exe", r"C:\cs2.exe", &[], &[]), Regle::Aucune);
+    }
+}

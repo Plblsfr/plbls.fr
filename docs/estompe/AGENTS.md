@@ -190,5 +190,10 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Composants partagés obligatoires** : `Modal`, `ConfirmModal`, `ContextMenu`, `Icon`, `Avatar`… avant d'en écrire un autre ; jamais `window.confirm`, `alert` ni `prompt`.
 - **Salon cinéma** : les titres sont ceux d'Entracte (`ENTRACTE_INTERNE_URL`, `ENTRACTE_SERVICE_TOKEN`) ; Estompe ne sert aucun flux ni fichier vidéo et ne garde aucune progression. Il vérifie le titre et le droit de l'hôte de serveur à serveur (`GET /internal/titles/{id}?sub=`) ; au départ de l'hôte, le suivant est un participant à qui Entracte ouvre le titre.
 - **Salons vocaux** : un salon `cinema` est aussi un salon vocal (LiveKit). Toute règle propre au vocal teste `servers::est_vocal` (backend, `kind = ANY($n)` lié à `servers::TYPES_VOCAUX` en SQL) et `isVoiceKind` (front), jamais `kind == 'voice'` seul.
+- **Instant replay** (`docs/estompe/instant-replay.md`) : le moteur est derrière la feature `instant-replay` et doit compiler pour mingw et MSVC, et sous Linux pour ses tests ;
+  tout appel Windows reste dans `replay/win/`, la logique testable ailleurs. Un objet COM de Media Foundation n'est pas `Send` : il change de fil dans `Envoi`,
+  repris par `prendre()` (un `let Envoi(x) = …` dans une fermeture ne capture que le champ, et la compilation échoue). Le crate déclare `rust-version = "1.77"` :
+  clippy refuse les API plus récentes (`is_none_or`, `ErrorKind::StorageFull`…). Les commandes qui lisent le matériel ou le disque sont `#[tauri::command(async)]` :
+  une commande synchrone tourne sur le fil principal. La galerie n'accepte qu'un chemin canonisé placé dans le dossier des clips.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.
