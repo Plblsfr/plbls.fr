@@ -83,7 +83,7 @@ Windows attribue aux jeux sur un portable à deux cartes. La capture et l'encoda
   Vidéo H.264 ou HEVC, une piste AAC « Jeu », et une piste AAC « Micro » si le micro est actif.
 - Sous-dossier caché `.estompe/` : `<clip>.mp4.json` (jeu, date, durée, codec, dimensions, cadence, pistes audio, et `origine` pour un montage exporté),
   `<clip>.mp4.jpg` (vignette, produite par le ffmpeg embarqué), `envoi/` (fichiers réencodés pour l'envoi, purgés à chaque `replay_configurer`), fichiers
-  `.part` pendant une écriture, et les fichiers de l'éditeur ([`editeur-clips.md`](editeur-clips.md) : projet, aperçu, pistes audio extraites). Renommer ou
+  `.part` pendant une écriture, et les fichiers de l'éditeur ([`editeur-clips.md`](editeur-clips.md) : aperçu, pistes audio extraites, projets dans `projets/`). Renommer ou
   supprimer un clip renomme ou supprime tous ses fichiers de `.estompe/`.
   Un MP4 déposé à la main apparaît dans la galerie sans ces informations.
 - Quota : somme des clips et de `.estompe/`. Quota déjà atteint : la sauvegarde est refusée (`quota`). Clip qui fait franchir le quota : il est écrit, puis

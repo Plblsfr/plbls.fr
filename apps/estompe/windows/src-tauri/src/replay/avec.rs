@@ -168,7 +168,12 @@ pub fn replay_clips(app: AppHandle, etat: State<Replay>) -> Result<Vec<Clip>, St
 
 #[tauri::command(async)]
 pub fn replay_renommer(app: AppHandle, etat: State<Replay>, chemin: String, nom: String) -> Result<String, String> {
-    galerie::renommer(&dossier(&app, &etat)?, &chemin, &nom).map(|c| c.to_string_lossy().into_owned())
+    let dossier = dossier(&app, &etat)?;
+    let cible = galerie::renommer(&dossier, &chemin, &nom)?;
+    if let (Some(ancien), Some(nouveau)) = (std::path::Path::new(&chemin).file_name(), cible.file_name()) {
+        super::montage::suivre_renommage(&dossier, &ancien.to_string_lossy(), &nouveau.to_string_lossy());
+    }
+    Ok(cible.to_string_lossy().into_owned())
 }
 
 #[tauri::command(async)]
