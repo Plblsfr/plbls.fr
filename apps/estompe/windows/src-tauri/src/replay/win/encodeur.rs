@@ -1,5 +1,5 @@
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +9,7 @@ use windows::Win32::Graphics::Dxgi::IDXGIAdapter1;
 use windows::Win32::System::Variant::{VARIANT, VT_BOOL, VT_UI4};
 use windows::Win32::Media::MediaFoundation::{
     eAVEncCommonRateControlMode_CBR, eAVEncH264VProfile_High, eAVEncH265VProfile_Main_420_8, ICodecAPI, IMFActivate, IMFMediaEventGenerator, IMFSample, IMFShutdown, IMFTransform,
-    METransformHaveOutput, METransformNeedInput, MFCreateMediaType, MFMediaType_Video, MFSampleExtension_CleanPoint, MFVideoFormat_H264, MFVideoFormat_HEVC, CODECAPI_AVEncCommonMeanBitRate,
+    METransformHaveOutput, METransformNeedInput, MFCreateMediaType, MFCreateMemoryBuffer, MFCreateSample, MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFMediaType_Video, MFSampleExtension_CleanPoint, MFVideoFormat_H264, MFVideoFormat_HEVC, CODECAPI_AVEncCommonMeanBitRate,
     CODECAPI_AVEncCommonRateControlMode, CODECAPI_AVEncMPVDefaultBPictureCount, CODECAPI_AVEncMPVGOPSize, CODECAPI_AVLowLatencyMode, MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
     MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_END_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER, MF_E_TRANSFORM_NEED_MORE_INPUT,
     MF_E_TRANSFORM_STREAM_CHANGE,
@@ -20,6 +20,7 @@ use super::gpu::{couleurs, type_nv12, Appareil};
 use super::materiel::{activations, initialiser, nom_activation, texte};
 use super::SOURCE;
 use crate::debuglog;
+use crate::replay::cadence::Entree;
 use crate::replay::mp4::{avec_parametres, en_longueurs};
 use crate::replay::reglages::GOP_S;
 use crate::replay::tampon::{Piste, Tampon, Unite};
@@ -48,6 +49,7 @@ pub struct Parametres {
 pub struct Encodeur {
     tx: SyncSender<Envoi<IMFSample>>,
     pub nom: String,
+    pub encodees: Arc<AtomicU64>,
 }
 
 impl Encodeur {
@@ -76,10 +78,12 @@ unsafe fn regler(api: &ICodecAPI, cle: &GUID, valeur: Option<u32>) {
     let _ = api.SetValue(cle, &variante);
 }
 
-unsafe fn configurer(activation: &IMFActivate, a: &Appareil, p: &Parametres) -> windows::core::Result<(IMFTransform, IMFMediaEventGenerator)> {
+unsafe fn configurer(activation: &IMFActivate, a: &Appareil, p: &Parametres, entree: Entree) -> windows::core::Result<(IMFTransform, IMFMediaEventGenerator)> {
     let transformation: IMFTransform = activation.ActivateObject()?;
     transformation.GetAttributes()?.SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)?;
-    transformation.ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, a.gestionnaire.as_raw() as usize)?;
+    if entree != Entree::Memoire {
+        transformation.ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, a.gestionnaire.as_raw() as usize)?;
+    }
     let sortie = MFCreateMediaType()?;
     sortie.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
     let (format, profil) = match p.codec {
@@ -130,7 +134,7 @@ struct Sortie {
     entete: Vec<u8>,
     tampon: Arc<Mutex<Tampon>>,
     arret: Arc<AtomicBool>,
-    encodees: u64,
+    encodees: Arc<AtomicU64>,
 }
 
 impl Sortie {
@@ -138,6 +142,13 @@ impl Sortie {
         let mut change = false;
         let echantillon = loop {
             let mut sorties = [MFT_OUTPUT_DATA_BUFFER::default()];
+            let flux = self.transformation.GetOutputStreamInfo(0)?;
+            if flux.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES.0) as u32 == 0 {
+                let place = flux.cbSize.max(self.parametres.largeur * self.parametres.hauteur * 2);
+                let fourni = MFCreateSample()?;
+                fourni.AddBuffer(&MFCreateMemoryBuffer(place)?)?;
+                sorties[0].pSample = ManuallyDrop::new(Some(fourni));
+            }
             let mut statut = 0u32;
             let resultat = self.transformation.ProcessOutput(0, &mut sorties, &mut statut);
             let [sortie] = sorties;
@@ -176,8 +187,7 @@ impl Sortie {
             donnees = avec_parametres(self.parametres.codec, donnees, &mut self.entete);
         }
         let duree = if duree > 0 { duree } else { 10_000_000 / self.parametres.ips as i64 };
-        self.encodees += 1;
-        if self.encodees == 1 {
+        if self.encodees.fetch_add(1, Ordering::Relaxed) == 0 {
             debuglog::log("info", SOURCE, &format!("encodeur : première image encodée ({} octets, image clé : {cle})", donnees.len()));
         }
         if !self.arret.load(Ordering::Relaxed) {
@@ -206,7 +216,7 @@ unsafe fn boucle(evenements: &IMFMediaEventGenerator, sortie: &mut Sortie, rx: &
             autres += 1;
         }
         if entrees + sorties + autres <= 6 {
-            debuglog::log("info", SOURCE, &format!("encodeur : évènement {genre} traité ({entrees} entrée(s), {sorties} sortie(s), {autres} autre(s), {} image(s) encodée(s))", sortie.encodees));
+            debuglog::log("info", SOURCE, &format!("encodeur : évènement {genre} traité ({entrees} entrée(s), {sorties} sortie(s), {autres} autre(s), {} image(s) encodée(s))", sortie.encodees.load(Ordering::Relaxed)));
         }
     }
 }
@@ -217,21 +227,24 @@ pub fn demarrer(
     parametres: Parametres,
     tampon: Arc<Mutex<Tampon>>,
     arret: Arc<AtomicBool>,
+    entree: Entree,
     echec: impl FnOnce(String) + Send + 'static,
 ) -> Result<(Encodeur, Receiver<()>), String> {
     let mut derniere = "aucun encodeur matériel pour ce format".to_string();
     for activation in activations(parametres.codec, adaptateur) {
-        match unsafe { configurer(&activation, a, &parametres) } {
+        match unsafe { configurer(&activation, a, &parametres, entree) } {
             Ok((transformation, evenements)) => {
                 let nom = nom_activation(&activation);
                 let (tx, rx) = sync_channel::<Envoi<IMFSample>>(2);
                 let (fini, termine) = sync_channel::<()>(0);
+                let encodees = Arc::new(AtomicU64::new(0));
+                let compteur = encodees.clone();
                 let fil = Envoi((transformation, evenements, activation));
                 std::thread::spawn(move || {
                     let (transformation, evenements, activation) = fil.prendre();
                     let _fini = fini;
                     let _ = initialiser();
-                    let mut sortie = Sortie { entete: unsafe { entete(&transformation) }, transformation, parametres, tampon, arret, encodees: 0 };
+                    let mut sortie = Sortie { entete: unsafe { entete(&transformation) }, transformation, parametres, tampon, arret, encodees: compteur };
                     let resultat = unsafe { boucle(&evenements, &mut sortie, &rx) };
                     unsafe {
                         let _ = sortie.transformation.ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
@@ -246,7 +259,7 @@ pub fn demarrer(
                         }
                     }
                 });
-                return Ok((Encodeur { tx, nom }, termine));
+                return Ok((Encodeur { tx, nom, encodees }, termine));
             }
             Err(e) => {
                 derniere = format!("{} : {}", nom_activation(&activation), texte(e));

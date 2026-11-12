@@ -34,6 +34,11 @@ Aucune image ne passe par le processeur. Fichiers dans `apps/estompe/windows/src
    puis un nuanceur ramène l'image en SDR (blanc SDR de l'écran lu par `DisplayConfigGetDeviceInfo`, compression des hautes lumières, gamma sRGB).
 4. **Encodage** (`win/encodeur.rs`) : MFT matériel Media Foundation (AMF, NVENC ou QuickSync par la même API), débit constant, une image clé par seconde,
    sans images B. **Aucun repli logiciel** : sans MFT matériel, la fonction est indisponible.
+   **Entrée de l'encodeur** (`cadence::Entree`) : les images lui sont données de trois façons, essayées dans l'ordre. Si l'encodeur a accepté une image et n'en a encodé
+   aucune au bout de 2 secondes (code interne `encodeur-muet`), la session redémarre avec la suivante, gardée ensuite pour les sessions de ce lancement de l'app :
+   textures de la réserve Media Foundation (`IMFVideoSampleAllocatorEx`), puis huit textures individuelles réutilisées à tour de rôle, puis mémoire vive (l'image
+   convertie est relue de la carte graphique et l'encodeur ne reçoit plus le gestionnaire D3D ; seul cas où une image passe par le processeur). Les trois échouent :
+   arrêt, code `gpu-sature`. La ligne « tampon armé » des journaux donne l'entrée en cours.
 5. **Cadence** (`cadence.rs`, `win/mod.rs`) : un minuteur haute résolution émet une image à chaque échéance. Sans nouvelle image du jeu, la dernière est
    répétée ; au-delà de 3 images de retard, les suivantes sont comptées perdues. Chaque image garde son horodatage réel : durée et synchronisation restent justes.
 6. **Son** (`win/son.rs`, `son_wasapi.rs`) : WASAPI « process loopback » sur le processus du jeu et ses enfants (piste « Jeu », stéréo), et, si le réglage est
@@ -250,6 +255,8 @@ Points d'attention pour le premier essai sur appareil :
 - MFT matériel : ordre des réglages, présence des paramètres de séquence, une unité AAC par échantillon de sortie ;
 - MFT matériel : quand `ProcessOutput` répond « changement de format », le type de sortie est reposé puis la sortie est relue dans le même évènement
   (sans relecture, l'encodeur attend indéfiniment) ; vu sur `AMDh264Encoder`, qui n'acceptait que trois images, correctif non vérifié sur appareil ;
+- MFT matériel : `AMDh264Encoder` prend une image de la réserve Media Foundation puis n'émet plus aucun évènement (vu sur Radeon RX 7800) ; cause inconnue, d'où le
+  repli sur les autres entrées, non vérifié sur appareil ;
 - retard propre à l'encodeur AAC (les horodatages de sortie du MFT sont repris tels quels) ;
 - sans annulation d'écho, le son des enceintes peut repasser dans la piste micro ;
 - profil de build `opt-level = "s"` : coût de RNNoise et de l'écriture MP4 à mesurer.

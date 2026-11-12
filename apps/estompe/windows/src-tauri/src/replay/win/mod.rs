@@ -29,7 +29,7 @@ use self::encodeur::{Encodeur, Envoi, Parametres};
 use self::gpu::{Appareil, Convertisseur};
 use self::materiel::Gpu;
 use super::automate::{Automate, Etat, Jeu};
-use super::cadence::{Cadence, Perte, Pertes};
+use super::cadence::{encodeur_muet, Cadence, Entree, Perte, Pertes};
 use super::ecriture::{FileEcriture, Tache};
 use super::galerie::Horodatage;
 use super::reglages::{self, Materiel, AUDIO_JEU_KBPS, AUDIO_MICRO_KBPS};
@@ -39,6 +39,7 @@ use crate::debuglog;
 
 const SOURCE: &str = "replay";
 const IMAGE_CHANGEE: &str = "image-changee";
+const ENCODEUR_MUET: &str = "encodeur-muet";
 const ATTENTE_ENCODEUR: Duration = Duration::from_secs(2);
 
 pub enum Message {
@@ -198,7 +199,7 @@ impl Rythme {
         };
         let mut cadence = Cadence::nouvelle(self.ips);
         let fenetre = 10 * self.ips as u64;
-        let (mut sans_image, mut releve, mut refus) = (0u64, (0u64, Pertes::default()), None);
+        let (mut sans_image, mut releve, mut refus, mut premiere) = (0u64, (0u64, Pertes::default()), None, None);
         loop {
             let attente = cadence.echeance() - (self.horloge.elapsed().as_nanos() / 100) as i64;
             if attente > 0 {
@@ -224,7 +225,10 @@ impl Rythme {
                     Ok(e)
                 });
                 match envoyee.map(|e| self.encodeur.envoyer(e)) {
-                    Ok(Ok(true)) => {}
+                    Ok(Ok(true)) => {
+                        self.convertisseur.envoyee();
+                        premiere.get_or_insert(n);
+                    }
                     Ok(Ok(false)) => cadence.perdre(Perte::Encodeur),
                     Ok(Err(())) => {
                         let _ = CloseHandle(minuteur);
@@ -241,6 +245,10 @@ impl Rythme {
                 break;
             }
             let (emises, pertes) = cadence.bilan();
+            if encodeur_muet(self.ips, premiere, emises, self.encodeur.encodees.load(Ordering::Relaxed)) {
+                (self.echec)(ENCODEUR_MUET, String::new());
+                break;
+            }
             if emises - releve.0 >= fenetre {
                 let (images, recentes) = (emises - releve.0, pertes.depuis(&releve.1));
                 let (octets, duree, debordements) = self.tampon.lock().map_or((0, 0, 0), |t| (t.octets(), t.duree(), t.debordements()));
@@ -284,6 +292,7 @@ struct Controleur {
     surveille: Option<u32>,
     file: FileEcriture,
     dernier_jeu: String,
+    entree: Entree,
 }
 
 impl Controleur {
@@ -325,6 +334,7 @@ impl Controleur {
             surveille: None,
             file,
             dernier_jeu: String::new(),
+            entree: Entree::default(),
         }
     }
 
@@ -410,7 +420,15 @@ impl Controleur {
             Message::Echec(numero, code, raison) => {
                 if self.session.as_ref().is_some_and(|s| s.numero == numero) {
                     self.session = None;
-                    if code == IMAGE_CHANGEE {
+                    if code == ENCODEUR_MUET {
+                        match self.entree.suivante() {
+                            Some(suivante) => {
+                                debuglog::log("warn", SOURCE, &format!("l'encodeur n'a encodé aucune image en 2 s avec l'entrée « {} » : nouvel essai avec « {} »", self.entree.nom(), suivante.nom()));
+                                self.entree = suivante;
+                            }
+                            None => self.echouer("gpu-sature", "l'encodeur matériel n'encode aucune image".into()),
+                        }
+                    } else if code == IMAGE_CHANGEE {
                         self.alerter(Erreur::nouvelle(code, "L'image du jeu a changé de taille : le tampon de l'instant replay redémarre."));
                     } else {
                         self.echouer(code, raison);
@@ -497,10 +515,10 @@ impl Controleur {
         let change = signaler(&self.tx);
         let capture = Capture::demarrer(&appareil, &element, r.curseur, blanc.is_some(), move || change(IMAGE_CHANGEE, String::new()));
         let capture = capture.map_err(|e| ("capture-refusee", e))?;
-        let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc).map_err(|e| ("gpu", e))?;
+        let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc, self.entree).map_err(|e| ("gpu", e))?;
         let parametres = Parametres { codec, largeur: dimensions.0, hauteur: dimensions.1, ips, debit_kbps: debit, base };
         let arret_encodeur = signaler(&self.tx);
-        let encodeur = encodeur::demarrer(&appareil, &gpu.adaptateur, parametres, self.tampon.clone(), arret.clone(), move |e| arret_encodeur("gpu-sature", e));
+        let encodeur = encodeur::demarrer(&appareil, &gpu.adaptateur, parametres, self.tampon.clone(), arret.clone(), self.entree, move |e| arret_encodeur("gpu-sature", e));
         let (encodeur, encodeur_termine) = encodeur.map_err(|e| ("gpu-sature", e))?;
         let nom_encodeur = encodeur.nom.clone();
         let signal = unsafe { CreateEventW(None, true, false, None) }.map_err(|e| ("minuteur", materiel::texte(e)))?;
@@ -537,8 +555,8 @@ impl Controleur {
         }));
         let hdr = blanc.map_or("SDR".to_string(), |b| format!("HDR converti en SDR (blanc {b:.0} nits)"));
         debuglog::log("info", SOURCE, &format!(
-            "tampon armé pour {} : encodeur {nom_encodeur}, {codec:?}, {}x{} à {ips} i/s (source {}x{}, écran {} Hz), {debit} kbit/s, {duree} s, micro {}, {hdr}",
-            jeu.nom, dimensions.0, dimensions.1, source.0, source.1, m.ecran_hz, r.micro
+            "tampon armé pour {} : encodeur {nom_encodeur}, {codec:?}, {}x{} à {ips} i/s (source {}x{}, écran {} Hz), {debit} kbit/s, {duree} s, micro {}, {hdr}, entrée « {} »",
+            jeu.nom, dimensions.0, dimensions.1, source.0, source.1, m.ecran_hz, r.micro, self.entree.nom()
         ));
         self.dernier_jeu = jeu.nom;
         self.session = Some(Session { numero, arret, signal: Envoi(signal), fils, encodeur_termine, format, micro_par_defaut });
