@@ -8,15 +8,15 @@ use windows::Win32::Foundation::{E_UNEXPECTED, VARIANT_BOOL};
 use windows::Win32::Graphics::Dxgi::IDXGIAdapter1;
 use windows::Win32::System::Variant::{VARIANT, VT_BOOL, VT_UI4};
 use windows::Win32::Media::MediaFoundation::{
-    eAVEncCommonRateControlMode_CBR, eAVEncH264VProfile_High, eAVEncH265VProfile_Main_420_8, ICodecAPI, IMFActivate, IMFMediaEventGenerator, IMFSample, IMFShutdown, IMFTransform,
-    METransformHaveOutput, METransformNeedInput, MFCreateMediaType, MFCreateMemoryBuffer, MFCreateSample, MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFMediaType_Video, MFSampleExtension_CleanPoint, MFVideoFormat_H264, MFVideoFormat_HEVC, CODECAPI_AVEncCommonMeanBitRate,
-    CODECAPI_AVEncCommonRateControlMode, CODECAPI_AVEncMPVDefaultBPictureCount, CODECAPI_AVEncMPVGOPSize, CODECAPI_AVLowLatencyMode, MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
+    eAVEncCommonRateControlMode_CBR, eAVEncH264VProfile_High, eAVEncH265VProfile_Main_420_8, ICodecAPI, IMFActivate, IMFMediaEventGenerator, IMFMediaType, IMFSample, IMFShutdown, IMFTransform,
+    METransformHaveOutput, METransformNeedInput, MFCreateMediaType, MFCreateMemoryBuffer, MFCreateSample, MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFMediaType_Video, MFSampleExtension_CleanPoint, MFSampleExtension_Discontinuity, MFVideoFormat_H264, MFVideoFormat_HEVC, MFVideoFormat_NV12, MFVideoInterlace_Progressive, CODECAPI_AVEncCommonMeanBitRate,
+    CODECAPI_AVEncCommonRateControlMode, CODECAPI_AVEncVideoForceKeyFrame, CODECAPI_AVEncMPVDefaultBPictureCount, CODECAPI_AVEncMPVGOPSize, CODECAPI_AVLowLatencyMode, MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
     MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_END_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER, MF_E_TRANSFORM_NEED_MORE_INPUT,
     MF_E_TRANSFORM_STREAM_CHANGE,
-    MF_MT_AVG_BITRATE, MF_MT_MAJOR_TYPE, MF_MT_MPEG2_PROFILE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_TRANSFORM_ASYNC_UNLOCK,
+    MF_MT_AVG_BITRATE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE, MF_MT_MPEG2_PROFILE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_TRANSFORM_ASYNC_UNLOCK,
 };
 
-use super::gpu::{couleurs, type_nv12, Appareil};
+use super::gpu::Appareil;
 use super::materiel::{activations, initialiser, nom_activation, texte};
 use super::SOURCE;
 use crate::debuglog;
@@ -78,31 +78,53 @@ unsafe fn regler(api: &ICodecAPI, cle: &GUID, valeur: Option<u32>) {
     let _ = api.SetValue(cle, &variante);
 }
 
+unsafe fn type_propose(transformation: &IMFTransform, sortie: bool, format: &GUID) -> Option<IMFMediaType> {
+    (0..64)
+        .map_while(|i| if sortie { transformation.GetOutputAvailableType(0, i) } else { transformation.GetInputAvailableType(0, i) }.ok())
+        .find(|t| t.GetGUID(&MF_MT_SUBTYPE).is_ok_and(|g| g == *format))
+}
+
+unsafe fn type_video(transformation: &IMFTransform, sortie: bool, format: &GUID, p: &Parametres) -> windows::core::Result<(IMFMediaType, bool)> {
+    let propose = type_propose(transformation, sortie, format);
+    let (t, repris) = match propose {
+        Some(t) => (t, true),
+        None => {
+            let t = MFCreateMediaType()?;
+            t.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
+            t.SetGUID(&MF_MT_SUBTYPE, format)?;
+            (t, false)
+        }
+    };
+    t.SetUINT64(&MF_MT_FRAME_SIZE, (p.largeur as u64) << 32 | p.hauteur as u64)?;
+    t.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
+    t.SetUINT64(&MF_MT_FRAME_RATE, (p.ips as u64) << 32 | 1)?;
+    Ok((t, repris))
+}
+
 unsafe fn configurer(activation: &IMFActivate, a: &Appareil, p: &Parametres, entree: Entree) -> windows::core::Result<(IMFTransform, IMFMediaEventGenerator)> {
     let transformation: IMFTransform = activation.ActivateObject()?;
     transformation.GetAttributes()?.SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)?;
     if entree != Entree::Memoire {
         transformation.ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, a.gestionnaire.as_raw() as usize)?;
     }
-    let sortie = MFCreateMediaType()?;
-    sortie.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
-    let (format, profil) = match p.codec {
-        Codec::H264 => (MFVideoFormat_H264, eAVEncH264VProfile_High.0),
-        Codec::Hevc => (MFVideoFormat_HEVC, eAVEncH265VProfile_Main_420_8.0),
-    };
-    sortie.SetGUID(&MF_MT_SUBTYPE, &format)?;
-    sortie.SetUINT32(&MF_MT_AVG_BITRATE, p.debit_kbps * 1000)?;
-    sortie.SetUINT32(&MF_MT_MPEG2_PROFILE, profil as u32)?;
-    couleurs(&sortie, p.largeur, p.hauteur, p.ips)?;
-    transformation.SetOutputType(0, &sortie, 0)?;
-    transformation.SetInputType(0, &type_nv12(p.largeur, p.hauteur, p.ips)?, 0)?;
     if let Ok(api) = transformation.cast::<ICodecAPI>() {
-        regler(&api, &CODECAPI_AVEncCommonRateControlMode, Some(eAVEncCommonRateControlMode_CBR.0 as u32));
         regler(&api, &CODECAPI_AVEncCommonMeanBitRate, Some(p.debit_kbps * 1000));
+        regler(&api, &CODECAPI_AVEncCommonRateControlMode, Some(eAVEncCommonRateControlMode_CBR.0 as u32));
         regler(&api, &CODECAPI_AVEncMPVGOPSize, Some(p.ips * GOP_S));
         regler(&api, &CODECAPI_AVEncMPVDefaultBPictureCount, Some(0));
         regler(&api, &CODECAPI_AVLowLatencyMode, None);
     }
+    let (format, profil) = match p.codec {
+        Codec::H264 => (MFVideoFormat_H264, eAVEncH264VProfile_High.0),
+        Codec::Hevc => (MFVideoFormat_HEVC, eAVEncH265VProfile_Main_420_8.0),
+    };
+    let (sortie, sortie_reprise) = type_video(&transformation, true, &format, p)?;
+    sortie.SetUINT32(&MF_MT_MPEG2_PROFILE, profil as u32)?;
+    sortie.SetUINT32(&MF_MT_AVG_BITRATE, p.debit_kbps * 1000)?;
+    transformation.SetOutputType(0, &sortie, 0)?;
+    let (entree_video, entree_reprise) = type_video(&transformation, false, &MFVideoFormat_NV12, p)?;
+    transformation.SetInputType(0, &entree_video, 0)?;
+    debuglog::log("info", SOURCE, &format!("encodeur : type de sortie proposé par l'encodeur : {sortie_reprise}, type d'entrée : {entree_reprise}"));
     let evenements = transformation.cast::<IMFMediaEventGenerator>()?;
     transformation.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)?;
     transformation.ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0)?;
@@ -207,6 +229,12 @@ unsafe fn boucle(evenements: &IMFMediaEventGenerator, sortie: &mut Sortie, rx: &
         let genre = evenement.GetType()?;
         if genre == METransformNeedInput.0 as u32 {
             let Ok(echantillon) = rx.recv().map(Envoi::prendre) else { return Ok(()) };
+            if entrees == 0 {
+                echantillon.SetUINT32(&MFSampleExtension_Discontinuity, 1)?;
+                if let Ok(api) = sortie.transformation.cast::<ICodecAPI>() {
+                    regler(&api, &CODECAPI_AVEncVideoForceKeyFrame, Some(1));
+                }
+            }
             sortie.transformation.ProcessInput(0, &echantillon, 0)?;
             entrees += 1;
         } else if genre == METransformHaveOutput.0 as u32 {
