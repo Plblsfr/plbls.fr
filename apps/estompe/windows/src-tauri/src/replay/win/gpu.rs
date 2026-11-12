@@ -242,7 +242,7 @@ impl Convertisseur {
                 allocateur.InitializeSampleAllocatorEx(2, 12, &attributs, &type_nv12(sortie.0, sortie.1, ips)?)?;
                 Cibles::Reserve(allocateur)
             }
-            Entree::Textures => {
+            Entree::Textures | Entree::Amf => {
                 let mut anneau = Vec::with_capacity(ANNEAU);
                 for _ in 0..ANNEAU {
                     anneau.push(texture_nv12(a, sortie, false)?);
@@ -279,6 +279,7 @@ impl Convertisseur {
                 Cibles::Textures { anneau, suivante } => {
                     let cible = &anneau[suivante.get()];
                     self.dessiner(a, image, cible, 0)?;
+                    a.contexte.Flush();
                     let tampon = MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, cible, 0, false)?;
                     if let Ok(plan) = tampon.cast::<IMF2DBuffer>() {
                         tampon.SetCurrentLength(plan.GetContiguousLength()?)?;

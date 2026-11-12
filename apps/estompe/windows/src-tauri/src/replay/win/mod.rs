@@ -1,3 +1,4 @@
+mod amf;
 mod capture;
 pub mod dialogue;
 mod encodeur;
@@ -515,11 +516,19 @@ impl Controleur {
         let change = signaler(&self.tx);
         let capture = Capture::demarrer(&appareil, &element, r.curseur, blanc.is_some(), move || change(IMAGE_CHANGEE, String::new()));
         let capture = capture.map_err(|e| ("capture-refusee", e))?;
-        let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc, self.entree).map_err(|e| ("gpu", e))?;
         let parametres = Parametres { codec, largeur: dimensions.0, hauteur: dimensions.1, ips, debit_kbps: debit, base };
-        let arret_encodeur = signaler(&self.tx);
-        let encodeur = encodeur::demarrer(&appareil, &gpu.adaptateur, parametres, self.tampon.clone(), arret.clone(), self.entree, move |e| arret_encodeur("gpu-sature", e));
-        let (encodeur, encodeur_termine) = encodeur.map_err(|e| ("gpu-sature", e))?;
+        let (convertisseur, encodeur, encodeur_termine) = loop {
+            let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc, self.entree).map_err(|e| ("gpu", e))?;
+            let arret_encodeur = signaler(&self.tx);
+            match encodeur::demarrer(&appareil, &gpu.adaptateur, parametres, self.tampon.clone(), arret.clone(), self.entree, move |e| arret_encodeur("gpu-sature", e)) {
+                Ok((encodeur, termine)) => break (convertisseur, encodeur, termine),
+                Err(e) if self.entree == Entree::Amf => {
+                    debuglog::log("info", SOURCE, &format!("AMF indisponible ({e}) : encodeur Media Foundation"));
+                    self.entree = Entree::Reserve;
+                }
+                Err(e) => return Err(("gpu-sature", e)),
+            }
+        };
         let nom_encodeur = encodeur.nom.clone();
         let signal = unsafe { CreateEventW(None, true, false, None) }.map_err(|e| ("minuteur", materiel::texte(e)))?;
         let horloge = Instant::now();

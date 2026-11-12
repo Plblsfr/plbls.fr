@@ -32,9 +32,11 @@ Aucune image ne passe par le processeur. Fichiers dans `apps/estompe/windows/src
    n'est capturé : ni le bureau, ni l'overlay d'Estompe, ni une fenêtre posée par-dessus. Curseur selon le réglage, bordure jaune retirée quand Windows le permet.
 3. **Conversion** (`win/gpu.rs`) : mise à l'échelle et BGRA vers NV12 (BT.709, 16-235) par le Video Processor D3D11. Écran en HDR : capture en 16 bits flottants,
    puis un nuanceur ramène l'image en SDR (blanc SDR de l'écran lu par `DisplayConfigGetDeviceInfo`, compression des hautes lumières, gamma sRGB).
-4. **Encodage** (`win/encodeur.rs`) : MFT matériel Media Foundation (AMF, NVENC ou QuickSync par la même API), débit constant, une image clé par seconde,
-   sans images B. **Aucun repli logiciel** : sans MFT matériel, la fonction est indisponible.
-   **Entrée de l'encodeur** (`cadence::Entree`) : les images lui sont données de trois façons, essayées dans l'ordre. Si l'encodeur a accepté une image et n'en a encodé
+4. **Encodage** : débit constant, une image clé par seconde, sans images B. **Aucun repli logiciel** : sans encodeur matériel, la fonction est indisponible.
+   - `win/amf.rs` : sur une carte AMD, AMF appelé directement (`amfrt64.dll` du pilote, méthodes appelées par leur rang dans les tables des en-têtes du SDK AMF 1.5).
+     C'est le premier essai : le MFT d'AMD (`AMDh264Encoder`) prend une image puis n'encode rien, quelle que soit sa configuration (vu sur Radeon RX 7800).
+   - `win/encodeur.rs` : sinon, MFT matériel Media Foundation (NVENC, QuickSync), choisi dès qu'AMF ne s'ouvre pas (bibliothèque absente, carte d'une autre marque).
+   **Entrée de l'encodeur** (`cadence::Entree`) : après AMF (huit textures individuelles), le MFT reçoit les images de trois façons, essayées dans l'ordre. Si l'encodeur a accepté une image et n'en a encodé
    aucune au bout de 2 secondes (code interne `encodeur-muet`), la session redémarre avec la suivante, gardée ensuite pour les sessions de ce lancement de l'app :
    textures de la réserve Media Foundation (`IMFVideoSampleAllocatorEx`), puis huit textures individuelles réutilisées à tour de rôle, puis mémoire vive (l'image
    convertie est relue de la carte graphique et l'encodeur ne reçoit plus le gestionnaire D3D ; seul cas où une image passe par le processeur). Les trois échouent :

@@ -22,6 +22,7 @@ impl Perte {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Entree {
     #[default]
+    Amf,
     Reserve,
     Textures,
     Memoire,
@@ -30,6 +31,7 @@ pub enum Entree {
 impl Entree {
     pub fn suivante(self) -> Option<Self> {
         match self {
+            Self::Amf => Some(Self::Reserve),
             Self::Reserve => Some(Self::Textures),
             Self::Textures => Some(Self::Memoire),
             Self::Memoire => None,
@@ -38,6 +40,7 @@ impl Entree {
 
     pub fn nom(self) -> &'static str {
         match self {
+            Self::Amf => "AMF",
             Self::Reserve => "textures de la réserve Media Foundation",
             Self::Textures => "textures individuelles",
             Self::Memoire => "mémoire vive",
@@ -213,7 +216,8 @@ mod tests {
 
     #[test]
     fn entrees_de_l_encodeur_essayees_dans_l_ordre() {
-        assert_eq!(Entree::default(), Entree::Reserve);
+        assert_eq!(Entree::default(), Entree::Amf);
+        assert_eq!(Entree::Amf.suivante(), Some(Entree::Reserve));
         assert_eq!(Entree::Reserve.suivante(), Some(Entree::Textures));
         assert_eq!(Entree::Textures.suivante(), Some(Entree::Memoire));
         assert_eq!(Entree::Memoire.suivante(), None);

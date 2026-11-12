@@ -52,7 +52,41 @@ pub struct Encodeur {
     pub encodees: Arc<AtomicU64>,
 }
 
+pub struct Depot {
+    pub parametres: Parametres,
+    pub entete: Vec<u8>,
+    pub tampon: Arc<Mutex<Tampon>>,
+    pub arret: Arc<AtomicBool>,
+    pub encodees: Arc<AtomicU64>,
+}
+
+impl Depot {
+    pub fn deposer(&mut self, brut: &[u8], pts: i64, duree: i64, cle: bool) -> bool {
+        let mut donnees = en_longueurs(brut);
+        if donnees.is_empty() && !brut.is_empty() {
+            return false;
+        }
+        if cle {
+            donnees = avec_parametres(self.parametres.codec, donnees, &mut self.entete);
+        }
+        let duree = if duree > 0 { duree } else { 10_000_000 / self.parametres.ips.max(1) as i64 };
+        if self.encodees.fetch_add(1, Ordering::Relaxed) == 0 {
+            debuglog::log("info", SOURCE, &format!("encodeur : première image encodée ({} octets, image clé : {cle})", donnees.len()));
+        }
+        if !self.arret.load(Ordering::Relaxed) {
+            if let Ok(mut t) = self.tampon.lock() {
+                t.pousser(Piste::Video, Unite { pts: self.parametres.base + pts, duree, cle, donnees: donnees.into() });
+            }
+        }
+        true
+    }
+}
+
 impl Encodeur {
+    pub fn nouveau(tx: SyncSender<Envoi<IMFSample>>, nom: String, encodees: Arc<AtomicU64>) -> Self {
+        Self { tx, nom, encodees }
+    }
+
     pub fn envoyer(&self, echantillon: IMFSample) -> Result<bool, ()> {
         match self.tx.try_send(Envoi(echantillon)) {
             Ok(()) => Ok(true),
@@ -152,11 +186,7 @@ pub unsafe fn octets(echantillon: &IMFSample) -> windows::core::Result<Vec<u8>> 
 
 struct Sortie {
     transformation: IMFTransform,
-    parametres: Parametres,
-    entete: Vec<u8>,
-    tampon: Arc<Mutex<Tampon>>,
-    arret: Arc<AtomicBool>,
-    encodees: Arc<AtomicU64>,
+    depot: Depot,
 }
 
 impl Sortie {
@@ -166,7 +196,7 @@ impl Sortie {
             let mut sorties = [MFT_OUTPUT_DATA_BUFFER::default()];
             let flux = self.transformation.GetOutputStreamInfo(0)?;
             if flux.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES.0) as u32 == 0 {
-                let place = flux.cbSize.max(self.parametres.largeur * self.parametres.hauteur * 2);
+                let place = flux.cbSize.max(self.depot.parametres.largeur * self.depot.parametres.hauteur * 2);
                 let fourni = MFCreateSample()?;
                 fourni.AddBuffer(&MFCreateMemoryBuffer(place)?)?;
                 sorties[0].pSample = ManuallyDrop::new(Some(fourni));
@@ -180,7 +210,7 @@ impl Sortie {
                 Err(e) if e.code() == MF_E_TRANSFORM_STREAM_CHANGE && !change => {
                     let disponible = self.transformation.GetOutputAvailableType(0, 0)?;
                     self.transformation.SetOutputType(0, &disponible, 0)?;
-                    self.entete = entete(&self.transformation);
+                    self.depot.entete = entete(&self.transformation);
                     change = true;
                     debuglog::log("info", SOURCE, "encodeur : format de sortie changé, sortie relue");
                 }
@@ -201,21 +231,8 @@ impl Sortie {
         let cle = echantillon.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
         let (pts, duree) = (echantillon.GetSampleTime()?, echantillon.GetSampleDuration().unwrap_or(0));
         let brut = octets(&echantillon)?;
-        let mut donnees = en_longueurs(&brut);
-        if donnees.is_empty() && !brut.is_empty() {
+        if !self.depot.deposer(&brut, pts, duree, cle) {
             return Err(windows::core::Error::new(E_UNEXPECTED, "flux de l'encodeur sans codes de début"));
-        }
-        if cle {
-            donnees = avec_parametres(self.parametres.codec, donnees, &mut self.entete);
-        }
-        let duree = if duree > 0 { duree } else { 10_000_000 / self.parametres.ips as i64 };
-        if self.encodees.fetch_add(1, Ordering::Relaxed) == 0 {
-            debuglog::log("info", SOURCE, &format!("encodeur : première image encodée ({} octets, image clé : {cle})", donnees.len()));
-        }
-        if !self.arret.load(Ordering::Relaxed) {
-            if let Ok(mut t) = self.tampon.lock() {
-                t.pousser(Piste::Video, Unite { pts: self.parametres.base + pts, duree, cle, donnees: donnees.into() });
-            }
         }
         Ok(())
     }
@@ -244,7 +261,7 @@ unsafe fn boucle(evenements: &IMFMediaEventGenerator, sortie: &mut Sortie, rx: &
             autres += 1;
         }
         if entrees + sorties + autres <= 6 {
-            debuglog::log("info", SOURCE, &format!("encodeur : évènement {genre} traité ({entrees} entrée(s), {sorties} sortie(s), {autres} autre(s), {} image(s) encodée(s))", sortie.encodees.load(Ordering::Relaxed)));
+            debuglog::log("info", SOURCE, &format!("encodeur : évènement {genre} traité ({entrees} entrée(s), {sorties} sortie(s), {autres} autre(s), {} image(s) encodée(s))", sortie.depot.encodees.load(Ordering::Relaxed)));
         }
     }
 }
@@ -258,6 +275,9 @@ pub fn demarrer(
     entree: Entree,
     echec: impl FnOnce(String) + Send + 'static,
 ) -> Result<(Encodeur, Receiver<()>), String> {
+    if entree == Entree::Amf {
+        return super::amf::demarrer(a, parametres, tampon, arret, echec);
+    }
     let mut derniere = "aucun encodeur matériel pour ce format".to_string();
     for activation in activations(parametres.codec, adaptateur) {
         match unsafe { configurer(&activation, a, &parametres, entree) } {
@@ -272,7 +292,8 @@ pub fn demarrer(
                     let (transformation, evenements, activation) = fil.prendre();
                     let _fini = fini;
                     let _ = initialiser();
-                    let mut sortie = Sortie { entete: unsafe { entete(&transformation) }, transformation, parametres, tampon, arret, encodees: compteur };
+                    let depot = Depot { parametres, entete: unsafe { entete(&transformation) }, tampon, arret, encodees: compteur };
+                    let mut sortie = Sortie { transformation, depot };
                     let resultat = unsafe { boucle(&evenements, &mut sortie, &rx) };
                     unsafe {
                         let _ = sortie.transformation.ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
@@ -282,7 +303,7 @@ pub fn demarrer(
                         let _ = activation.ShutdownObject();
                     }
                     if let Err(e) = resultat {
-                        if !sortie.arret.load(Ordering::Relaxed) {
+                        if !sortie.depot.arret.load(Ordering::Relaxed) {
                             echec(format!("l'encodeur matériel s'est arrêté : {}", texte(e)));
                         }
                     }
