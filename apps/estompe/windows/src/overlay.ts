@@ -46,20 +46,6 @@ export function overlayPlacement(pos: { x: number; y: number }, win: { w: number
   return { x: Math.round(pos.x * sf), y: Math.round(pos.y * sf), largeur: Math.round(win.w * sf), hauteur: Math.round(win.h * sf), echelle: sf }
 }
 
-export const BOBYN_OVERLAY_SIZE = { w: 300, h: 30 }
-
-export interface BobynOverlayState { dot: 'rec' | 'pause' | 'error' | 'saved' | 'marker'; text: string }
-
-/** Contenu de la pastille Bobyn : null tant que rien n'est à montrer (en attente, désactivée, pas de jeu devant). `saved` : replay écrit il y a quelques secondes ; `marked` : marqueur posé il y a un instant. */
-export function bobynOverlayState(corner: OverlayCorner | 'off', status: { state: string; text: string } | null, game: boolean, hidden: boolean, saved: string | null, marked = false): BobynOverlayState | null {
-  if (corner === 'off' || hidden || !status || status.state === 'idle') return null
-  if (saved) return { dot: 'saved', text: `Replay sauvegardé : ${saved}` }
-  if (marked) return { dot: 'marker', text: 'Marqueur posé' }
-  if (!game) return null
-  const dot = status.state === 'recording' ? 'rec' : status.state === 'paused' ? 'pause' : 'error'
-  return { dot, text: status.text.replace(/^Bobyn : /, '') }
-}
-
 export const MSG_TOAST_MAX = 4
 export const MSG_TOAST_SIZE = { w: 340, row: 64, gap: 8, reply: 44 }
 

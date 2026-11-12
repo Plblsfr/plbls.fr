@@ -33,7 +33,6 @@ const CATEGORIES: &[&str] = &[
     "vocal",
     "ecran",
     "notifications",
-    "bobyn",
     "autre",
 ];
 const PLATEFORMES: &[&str] = &["", "web", "pwa", "desktop", "android"];

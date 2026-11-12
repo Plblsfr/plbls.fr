@@ -4,4 +4,4 @@ import { setPlatform } from './lib/platform'
 import { parseHash, router } from './lib/route.svelte'
 
 setPlatform(platform)
-router.current = parseHash(location.hash) // le routeur a pu être chargé avant la plateforme : les espaces de la plateforme (#/bobyn) n'étaient pas connus
+router.current = parseHash(location.hash) // le routeur a pu être chargé avant la plateforme : les espaces de la plateforme  n'étaient pas connus

@@ -1,13 +1,8 @@
-/** App Windows (Tauri) : connexion par serveur loopback, toasts, mise à jour par le plugin updater, partage natif, overlays et Bobyn. */
+/** App Windows (Tauri) : connexion par serveur loopback, toasts, mise à jour par le plugin updater, partage natif, overlays. */
 import type { Platform } from '../../../../web/estompe/src/lib/platform'
 import { prefs } from '../../../../web/estompe/src/lib/prefs.svelte'
 import { debugStore, invoke } from '../../crates/core/ts/tauri'
 import { auth } from './auth'
-import BobynNav from './BobynNav.svelte'
-import BobynOverlay from './BobynOverlay.svelte'
-import { startBobynOverlay } from './bobyn-overlay.svelte'
-import BobynSpace from './BobynSpace.svelte'
-import { bobynVisible } from './bobyn'
 import { capture, captureSelf } from './capture'
 import { startMsgOverlay } from './msg-overlay.svelte'
 import MsgOverlay from './MsgOverlay.svelte'
@@ -30,14 +25,13 @@ export const platform: Platform = {
   globalPtt,
   debugStore,
   screenshot: { auto: true, capture: captureSelf },
-  spaces: [{ id: 'bobyn', title: 'Bobyn : replays et réglages', icon: 'film', visible: bobynVisible, nav: BobynNav, page: BobynSpace }],
+  spaces: [],
   slots: { settingsUpdate: UpdateSettings, settingsPtt: SettingsOverlay, settingsShare: SettingsShare, settingsDebug: SettingsMesures },
   start() {
     startOverlay() // overlay des participants du salon vocal
     startMsgOverlay() // messages privés et mentions sur le jeu
-    startBobynOverlay() // pastille Bobyn sur le jeu
   },
-  windows: { '#overlay': Overlay, '#bobyn-overlay': BobynOverlay, '#msg-overlay': MsgOverlay },
+  windows: { '#overlay': Overlay, '#msg-overlay': MsgOverlay },
   restoresLastView: () => false,
   openFromNotification: () => false,
   cancelNotification() {},

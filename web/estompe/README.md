@@ -103,13 +103,6 @@ Publier une version : fusionner dans `main`, puis lancer à la main le workflow 
 
 L'app n'installe que des paquets signés par la clé correspondant à la clé publique du build.
 
-### Bobyn (alpha)
-
-Replay instantané intégré à l'app Windows : le moteur Rust (capture WGC, encodage AMD AMF, audio WASAPI, MP4) est dans `apps/estompe/windows/src-tauri/bobyn/`
-(espace de travail à part ; `cd apps/estompe/windows/src-tauri/bobyn && cargo test` lance les tests portables). L'onglet « Bobyn (alpha) » des paramètres est masqué :
-7 clics sur « Version installée » (Paramètres > Application) le débloquent, 7 autres le verrouillent et arrêtent le service. Les réglages sont dans
-`bobyn.json` (dossier de configuration de l'app) ; le service ne démarre que si « Activer Bobyn » est coché.
-
 ### Mesures de performance
 
 Paramètres › Débogage, mode debug activé : « Démarrer une session », puis les scénarios guidés (repos 5 min, gros salon, défilement automatique
@@ -117,7 +110,7 @@ Paramètres › Débogage, mode debug activé : « Démarrer une session », pui
 
 - Rust (`apps/estompe/windows/src-tauri/src/mesures.rs`) relève chaque seconde la mémoire privée, le working set, son pic et le temps CPU du processus
   hôte et de **tous** les processus WebView2 (liste fournie par `ICoreWebView2Environment13::GetProcessExtendedInfos`, rafraîchie toutes les 5 s).
-  Un processus de rendu est attribué à la fenêtre principale ou à un overlay d'après l'adresse de ses cadres (`#overlay`, `#msg-overlay`, `#bobyn-overlay`).
+  Un processus de rendu est attribué à la fenêtre principale ou à un overlay d'après l'adresse de ses cadres (`#overlay`, `#msg-overlay`).
 - Le front (`web/estompe/src/lib/sonde.ts`) mesure les intervalles entre images (seulement pendant les scénarios qui en ont besoin), la latence
   réception WebSocket → affichage, la latence de saisie et le démarrage (lancement du processus → première conversation affichée).
 - Hors session, rien ne tourne : pas de fil d'échantillonnage, pas d'écouteur, pas de boucle d'images.

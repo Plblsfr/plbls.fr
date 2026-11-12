@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bobynOverlayState, msgOverlaySize, msgToastView, msgToastWanted, MSG_TOAST_SIZE, overlayAccelerator, overlayItems, overlayPlacement, overlayPosition, overlayVisible, overlaySize, pushMsgToast, sendMsgReply, type MsgToast, type OverlayItem } from './overlay'
+import { msgOverlaySize, msgToastView, msgToastWanted, MSG_TOAST_SIZE, overlayAccelerator, overlayItems, overlayPlacement, overlayPosition, overlayVisible, overlaySize, pushMsgToast, sendMsgReply, type MsgToast, type OverlayItem } from './overlay'
 import { avatars } from '../../../../web/estompe/src/blocks/avatars/avatars.svelte'
 
 vi.mock('../../../../web/estompe/src/lib/api', () => ({
@@ -62,25 +62,6 @@ describe('photos de profil de l\'overlay', () => {
   it('ne fournit rien pour un participant sans photo', () => {
     expect(avatars.src('sans-photo')).toBe('')
     expect(avatars.blob('')).toBeUndefined()
-  })
-})
-
-describe('pastille Bobyn', () => {
-  const rec = { state: 'recording', text: 'Bobyn : buffer de Jeu' }
-  it('montre l\'état seulement avec un jeu devant et un enregistrement actif', () => {
-    expect(bobynOverlayState('tr', rec, true, false, null)).toEqual({ dot: 'rec', text: 'buffer de Jeu' })
-    expect(bobynOverlayState('tr', rec, false, false, null)).toBeNull()
-    expect(bobynOverlayState('tr', { state: 'idle', text: '' }, true, false, null)).toBeNull()
-    expect(bobynOverlayState('off', rec, true, false, null)).toBeNull()
-    expect(bobynOverlayState('tr', rec, true, true, null)).toBeNull()
-  })
-  it('confirme la sauvegarde même sans jeu devant', () => {
-    expect(bobynOverlayState('tr', rec, false, false, 'a.mp4')).toEqual({ dot: 'saved', text: 'Replay sauvegardé : a.mp4' })
-  })
-  it('confirme la pose d\'un marqueur, sans masquer la confirmation d\'une sauvegarde', () => {
-    expect(bobynOverlayState('tr', rec, true, false, null, true)).toEqual({ dot: 'marker', text: 'Marqueur posé' })
-    expect(bobynOverlayState('tr', rec, true, false, 'a.mp4', true)).toEqual({ dot: 'saved', text: 'Replay sauvegardé : a.mp4' })
-    expect(bobynOverlayState('off', rec, true, false, null, true)).toBeNull()
   })
 })
 

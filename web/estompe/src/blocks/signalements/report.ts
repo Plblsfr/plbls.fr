@@ -8,7 +8,7 @@ import type { ReportStatus } from '../../lib/types'
 
 export const REPORT_CATEGORIES = [
   { id: '', label: 'Non précisée' }, { id: 'messages', label: 'Messages' }, { id: 'vocal', label: 'Vocal' }, { id: 'ecran', label: "Partage d'écran" },
-  { id: 'notifications', label: 'Notifications' }, { id: 'bobyn', label: 'Bobyn' }, { id: 'autre', label: 'Autre' },
+  { id: 'notifications', label: 'Notifications' }, { id: 'autre', label: 'Autre' },
 ]
 export const REPORT_PLATFORMS = [{ id: 'web', label: 'Web' }, { id: 'pwa', label: 'PWA' }, { id: 'desktop', label: 'Application PC' }, { id: 'android', label: 'Android' }]
 export const REPORT_STATUS: Record<ReportStatus, string> = { new: 'Nouveau', in_progress: 'En cours', resolved: 'Résolu', rejected: 'Rejeté', duplicate: 'Doublon' }
