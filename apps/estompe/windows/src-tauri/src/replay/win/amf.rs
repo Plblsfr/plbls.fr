@@ -298,6 +298,15 @@ impl Drop for Amf {
     }
 }
 
+const TAILLES_SONDEES: [(u32, u32); 6] = [(7680, 4320), (4096, 2160), (3840, 2160), (2560, 1440), (1920, 1080), (1280, 720)];
+
+pub fn sonder(appareil: &ID3D11Device, codec: Codec) -> Option<(u32, u32)> {
+    TAILLES_SONDEES.into_iter().find(|&(largeur, hauteur)| {
+        let essai = Parametres { codec, largeur, hauteur, ips: 60, debit_kbps: 10_000, base: 0 };
+        unsafe { Amf::ouvrir(appareil, &essai) }.is_ok()
+    })
+}
+
 pub fn demarrer(
     a: &Appareil,
     parametres: Parametres,

@@ -36,6 +36,7 @@ pub struct Gpu {
     pub nom: String,
     pub h264: Option<Encodeur>,
     pub hevc: Option<Encodeur>,
+    pub amf: bool,
 }
 
 fn adaptateurs() -> Vec<IDXGIAdapter1> {
@@ -110,13 +111,29 @@ fn encodeur(codec: Codec, adaptateur: &IDXGIAdapter1) -> Option<Encodeur> {
     Some(Encodeur { nom: nom_activation(&activation), mb_par_seconde: annonce.filter(|v| *v > 0).map_or(defaut, u64::from), largeur_max: cote, hauteur_max: cote })
 }
 
-pub fn gpu() -> Result<Gpu, String> {
+fn encodeur_amf(appareil: &super::gpu::Appareil, codec: Codec) -> Option<Encodeur> {
+    let (largeur_max, hauteur_max) = super::amf::sonder(&appareil.d3d, codec)?;
+    let (nom, mb_par_seconde) = match codec {
+        Codec::H264 => ("AMD AMF H.264", MB_S_H264),
+        Codec::Hevc => ("AMD AMF HEVC", MB_S_HEVC),
+    };
+    Some(Encodeur { nom: nom.into(), mb_par_seconde, largeur_max, hauteur_max })
+}
+
+pub fn gpu(amf_permis: bool) -> Result<Gpu, String> {
     initialiser()?;
     for adaptateur in adaptateurs() {
-        let (h264, hevc) = (encodeur(Codec::H264, &adaptateur), encodeur(Codec::Hevc, &adaptateur));
+        let (mut h264, mut hevc) = (encodeur(Codec::H264, &adaptateur), encodeur(Codec::Hevc, &adaptateur));
         if h264.is_some() || hevc.is_some() {
             let nom = unsafe { adaptateur.GetDesc1().map(|d| String::from_utf16_lossy(&d.Description).trim_end_matches('\0').to_string()).unwrap_or_default() };
-            return Ok(Gpu { adaptateur, nom, h264, hevc });
+            let appareil = if amf_permis { super::gpu::Appareil::creer(&adaptateur).ok() } else { None };
+            let sondes = appareil.as_ref().map(|a| (encodeur_amf(a, Codec::H264), encodeur_amf(a, Codec::Hevc)));
+            let amf = sondes.as_ref().is_some_and(|(a, b)| a.is_some() || b.is_some());
+            if let Some((a, b)) = sondes {
+                h264 = a.or(h264);
+                hevc = b.or(hevc);
+            }
+            return Ok(Gpu { adaptateur, nom, h264, hevc, amf });
         }
     }
     Err("aucun encodeur vidéo matériel (AMD, NVIDIA ou Intel) : l'instant replay est indisponible sur cette machine".into())

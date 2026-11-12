@@ -17,6 +17,9 @@ mod ecriture;
 pub(crate) mod galerie;
 #[cfg(feature = "instant-replay")]
 #[cfg_attr(not(windows), allow(dead_code))]
+mod garde;
+#[cfg(feature = "instant-replay")]
+#[cfg_attr(not(windows), allow(dead_code))]
 mod micro;
 #[cfg(feature = "instant-replay")]
 mod montage;

@@ -35,6 +35,13 @@ Aucune image ne passe par le processeur. Fichiers dans `apps/estompe/windows/src
 4. **Encodage** : débit constant, une image clé par seconde, sans images B. **Aucun repli logiciel** : sans encodeur matériel, la fonction est indisponible.
    - `win/amf.rs` : sur une carte AMD, AMF appelé directement (`amfrt64.dll` du pilote, méthodes appelées par leur rang dans les tables des en-têtes du SDK AMF 1.5).
      C'est le premier essai : le MFT d'AMD (`AMDh264Encoder`) prend une image puis n'encode rien, quelle que soit sa configuration (vu sur Radeon RX 7800).
+     **Garde-fou** (`garde.rs`) : AMF est appelé sans filet, une erreur à cet endroit ferme l'app. Avant chaque essai (lecture des limites au démarrage du moteur,
+     puis ouverture d'une session tant qu'aucune image n'a été encodée), le fichier `estompe-amf.txt` du dossier des journaux reçoit `essai <version>` ; il passe à
+     `libre` si l'essai se termine sans image, à `valide` à la première image encodée. Au lancement, `essai` pour la version en cours signifie que l'app s'est arrêtée
+     pendant un essai : AMF n'est plus appelé, l'encodeur Media Foundation est pris et le front reçoit `replay://erreur` `amf-desactive`, jusqu'à la version suivante.
+     Un arrêt après la première image encodée n'est pas couvert.
+     **Limites** : les résolutions maximales annoncées viennent d'un essai d'ouverture d'AMF (de 7680x4320 à 1280x720, la première acceptée) ; le plafond de
+     macroblocs par seconde est celui du niveau 5.2 (H.264) ou 6.2 (HEVC), AMF ne l'annonçant pas par ce chemin.
    - `win/encodeur.rs` : sinon, MFT matériel Media Foundation (NVENC, QuickSync), choisi dès qu'AMF ne s'ouvre pas (bibliothèque absente, carte d'une autre marque).
    **Entrée de l'encodeur** (`cadence::Entree`) : après AMF (huit textures individuelles), le MFT reçoit les images de trois façons, essayées dans l'ordre. Si l'encodeur a accepté une image et n'en a encodé
    aucune au bout de 2 secondes (code interne `encodeur-muet`), la session redémarre avec la suivante, gardée ensuite pour les sessions de ce lancement de l'app :
