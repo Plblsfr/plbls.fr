@@ -4,6 +4,10 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## api 0.88.11 / applis 0.94.5 - 2026-11-12
+
+- [x] Instant replay : repli quand l'encodeur n'encode rien. Sur une carte AMD (`AMDh264Encoder`), l'encodeur prenait une image puis n'émettait plus aucun évènement : tampon vide, toutes les images perdues. Si aucune image n'est encodée 2 secondes après la première acceptée, la session redémarre en donnant les images autrement : textures individuelles au lieu de la réserve Media Foundation, puis mémoire vive (image relue de la carte graphique, encodeur sans gestionnaire D3D). L'entrée qui marche est gardée jusqu'à la fermeture de l'app et écrite dans les journaux ; si aucune ne marche, l'instant replay s'arrête avec un message. L'échantillon de sortie est fourni à l'encodeur quand il ne le fournit pas lui-même. Non fait : la cause du blocage avec la réserve n'est pas connue ; un encodeur bloqué garde son fil jusqu'à la fermeture de l'app. Non vérifié : sur un appareil Windows, pour les trois entrées (compilation mingw et tests de la logique seulement) ; coût de l'entrée par la mémoire vive sur les i/s du jeu.
+
 ## api 0.88.11 / applis 0.94.4 - 2026-11-12
 
 - [x] Instant replay : encodeur figé après trois images. Sur une carte AMD (`AMDh264Encoder`, 1080p à 120 i/s), l'encodeur n'acceptait que trois images par session : toutes les suivantes étaient perdues et le tampon restait vide. Quand l'encodeur annonce un changement de format de sortie, la sortie est maintenant relue dans le même évènement au lieu d'être abandonnée. Les journaux du mode debug détaillent les premiers évènements de l'encodeur et la première image encodée. Non fait : la fenêtre de l'outil Capture d'écran de Windows (`ScreenClippingHost`) est encore prise pour un jeu. Non vérifié : sur un appareil Windows ; la cause n'a pas pu être reproduite, le correctif repose sur la lecture des journaux.
