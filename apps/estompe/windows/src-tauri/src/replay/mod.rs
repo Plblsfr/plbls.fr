@@ -19,6 +19,8 @@ pub(crate) mod galerie;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod micro;
 #[cfg(feature = "instant-replay")]
+mod montage;
+#[cfg(feature = "instant-replay")]
 #[cfg_attr(not(windows), allow(dead_code))]
 mod mp4;
 #[cfg(feature = "instant-replay")]
@@ -34,5 +36,7 @@ mod win;
 
 #[cfg(feature = "instant-replay")]
 pub use avec::*;
+#[cfg(feature = "instant-replay")]
+pub use montage::*;
 #[cfg(not(feature = "instant-replay"))]
 pub use sans::*;

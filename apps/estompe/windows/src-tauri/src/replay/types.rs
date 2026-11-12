@@ -159,6 +159,7 @@ pub struct Clip {
     pub hauteur: u32,
     pub ips: u32,
     pub pistes_audio: u32,
+    pub origine: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]

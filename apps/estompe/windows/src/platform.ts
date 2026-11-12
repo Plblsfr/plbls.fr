@@ -9,6 +9,7 @@ import MsgOverlay from './MsgOverlay.svelte'
 import { notifications } from './notifications'
 import Overlay from './Overlay.svelte'
 import { overlayUi, startOverlay, toggleOverlay } from './overlay.svelte'
+import { demarrerMontage } from './montage.svelte'
 import { globalPtt } from './ptt-global'
 import { ESPACE, PAGE_REGLAGES } from './replay'
 import { startReplayOverlay } from './replay-overlay.svelte'
@@ -42,7 +43,7 @@ export const platform: Platform = {
   start() {
     startOverlay() // overlay des participants du salon vocal
     startMsgOverlay() // messages privés et mentions sur le jeu
-    void demarrerReplay()
+    void demarrerReplay().then(demarrerMontage)
     startReplayOverlay()
   },
   windows: { '#overlay': Overlay, '#msg-overlay': MsgOverlay, '#replay-overlay': ReplayOverlay },

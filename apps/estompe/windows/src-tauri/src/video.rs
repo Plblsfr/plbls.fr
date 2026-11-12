@@ -23,7 +23,7 @@ pub(crate) fn temp_tag() -> String {
     format!("estompe-h264-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
-fn parse_duration(text: &str) -> f64 {
+pub(crate) fn parse_duration(text: &str) -> f64 {
     text.split("Duration: ").nth(1).and_then(|s| s.get(..11)).map_or(0.0, |d| {
         let mut p = d.split(':').map(|x| x.parse::<f64>().unwrap_or(0.0));
         p.next().unwrap_or(0.0) * 3600.0 + p.next().unwrap_or(0.0) * 60.0 + p.next().unwrap_or(0.0)
@@ -35,12 +35,19 @@ pub(crate) fn duration(app: &AppHandle, path: &Path) -> f64 {
     parse_duration(&out)
 }
 
+fn encoder_list(app: &AppHandle) -> &'static str {
+    static E: OnceLock<String> = OnceLock::new();
+    E.get_or_init(|| command(app).ok().and_then(|mut c| c.arg("-encoders").output().ok()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default())
+}
+
 pub(crate) fn encoders(app: &AppHandle) -> &'static Vec<&'static str> {
     static E: OnceLock<Vec<&'static str>> = OnceLock::new();
-    E.get_or_init(|| {
-        let out = command(app).ok().and_then(|mut c| c.arg("-encoders").output().ok()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
-        ["h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"].into_iter().filter(|e| out.contains(e)).collect()
-    })
+    E.get_or_init(|| ["h264_nvenc", "h264_amf", "h264_qsv", "h264_mf"].into_iter().filter(|e| encoder_list(app).contains(e)).collect())
+}
+
+#[cfg_attr(not(feature = "instant-replay"), allow(dead_code))]
+pub(crate) fn software_encoders(app: &AppHandle) -> Vec<&'static str> {
+    ["libx264", "libopenh264"].into_iter().filter(|e| encoder_list(app).contains(e)).collect()
 }
 
 pub fn convert_kbps(size: u64, duration: f64) -> u32 {

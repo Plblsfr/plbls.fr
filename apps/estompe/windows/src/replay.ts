@@ -21,7 +21,7 @@ export interface Options {
 export interface Etat { etat: 'inactif' | 'arme' | 'pause' | 'indisponible'; jeu: string | null; raison: string | null; codec: Codec | null; largeur: number; hauteur: number; ips: number; microParDefaut: boolean }
 export interface Clip {
   chemin: string; nom: string; jeu: string | null; date: string; dureeS: number; tailleOctets: number; vignette: string | null
-  codec: Codec | null; largeur: number; hauteur: number; ips: number; pistesAudio: number
+  codec: Codec | null; largeur: number; hauteur: number; ips: number; pistesAudio: number; origine?: string | null
 }
 export interface ClipEnregistre { chemin: string; nom: string; jeu: string; dureeS: number; tailleOctets: number }
 export interface Stockage { utiliseOctets: number; quotaOctets: number; depasse: boolean; plusAnciens: string[] }

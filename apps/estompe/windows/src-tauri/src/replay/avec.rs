@@ -13,12 +13,13 @@ const HORS_WINDOWS: &str = "instant replay disponible sous Windows uniquement";
 pub struct Replay {
     reglages: Mutex<Reglages>,
     autorise: Mutex<Option<PathBuf>>,
+    pub(super) exports: super::montage::Exports,
     #[cfg(windows)]
     moteur: std::sync::OnceLock<super::win::Moteur>,
 }
 
 impl Replay {
-    fn reglages(&self) -> Reglages {
+    pub(super) fn reglages(&self) -> Reglages {
         self.reglages.lock().map(|r| r.clone()).unwrap_or_default()
     }
 
@@ -28,7 +29,7 @@ impl Replay {
     }
 }
 
-fn dossier(app: &AppHandle, etat: &Replay) -> Result<PathBuf, String> {
+pub(super) fn dossier(app: &AppHandle, etat: &Replay) -> Result<PathBuf, String> {
     let dossier = galerie::dossier_effectif(etat.reglages().dossier.as_deref(), app.path().video_dir().ok())?;
     let mut autorise = etat.autorise.lock().map_err(|e| e.to_string())?;
     if autorise.as_ref() != Some(&dossier) {
@@ -118,6 +119,9 @@ pub fn replay_configurer(app: AppHandle, etat: State<Replay>, reglages: Reglages
     *etat.reglages.lock().map_err(|e| e.to_string())? = reglages.clone();
     let dossier = dossier(&app, &etat)?;
     galerie::purger_envois(&dossier);
+    if etat.exports.en_cours().is_empty() {
+        super::montage::purger_partiels(&dossier);
+    }
     #[cfg(windows)]
     return etat.moteur(&app).envoyer(super::win::Message::Configurer(Box::new(reglages), dossier));
     #[cfg(not(windows))]

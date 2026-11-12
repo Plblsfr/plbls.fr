@@ -8,6 +8,7 @@ use super::types::{Clip, Codec, Stockage};
 
 pub const ANNEXES: &str = ".estompe";
 pub const ENVOIS: &str = "envoi";
+pub const PISTES_MAX: usize = 4;
 const INTERDITS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 const RESERVES: [&str; 22] = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
 
@@ -22,6 +23,8 @@ pub struct Annexe {
     pub hauteur: u32,
     pub ips: u32,
     pub pistes_audio: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origine: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,6 +113,11 @@ pub fn annexe(dossier: &Path, clip: &Path, extension: &str) -> PathBuf {
     dossier.join(ANNEXES).join(format!("{nom}.{extension}"))
 }
 
+pub fn extensions() -> Vec<String> {
+    let fixes = ["json", "jpg", "montage.json", "apercu.mp4"].map(String::from);
+    fixes.into_iter().chain((0..PISTES_MAX).map(|i| format!("piste{i}.m4a"))).collect()
+}
+
 pub fn creer_annexes(dossier: &Path) -> std::io::Result<PathBuf> {
     let annexes = dossier.join(ANNEXES);
     if !annexes.is_dir() {
@@ -164,6 +172,7 @@ pub fn lister(dossier: &Path) -> Vec<Clip> {
             hauteur: a.as_ref().map_or(0, |a| a.hauteur),
             ips: a.as_ref().map_or(0, |a| a.ips),
             pistes_audio: a.as_ref().map_or(0, |a| a.pistes_audio),
+            origine: a.as_ref().and_then(|a| a.origine.clone()),
             jeu: a.map(|a| a.jeu),
         }
     });
@@ -200,8 +209,8 @@ pub fn renommer(dossier: &Path, chemin: &str, nom: &str) -> Result<PathBuf, Stri
         return Err("un clip porte déjà ce nom".into());
     }
     fs::rename(&source, &cible).map_err(|e| format!("renommage impossible : {e}"))?;
-    for extension in ["json", "jpg"] {
-        let _ = fs::rename(annexe(dossier, &source, extension), annexe(dossier, &cible, extension));
+    for extension in extensions() {
+        let _ = fs::rename(annexe(dossier, &source, &extension), annexe(dossier, &cible, &extension));
     }
     Ok(cible)
 }
@@ -210,8 +219,8 @@ pub fn supprimer(dossier: &Path, chemins: &[String]) -> Result<(), String> {
     let clips: Vec<PathBuf> = chemins.iter().map(|c| dans_dossier(dossier, c)).collect::<Result<_, _>>()?;
     for clip in clips {
         fs::remove_file(&clip).map_err(|e| format!("suppression impossible : {e}"))?;
-        for extension in ["json", "jpg"] {
-            let _ = fs::remove_file(annexe(dossier, &clip, extension));
+        for extension in extensions() {
+            let _ = fs::remove_file(annexe(dossier, &clip, &extension));
         }
     }
     Ok(())
@@ -378,9 +387,12 @@ pub(crate) mod tests {
         let a = clip(&d, "Jeu 2026-01-01 10-00-00.mp4", 10);
         clip(&d, "copie.mp4", 5);
         creer_annexes(&d).unwrap();
-        let info = Annexe { jeu: "Jeu".into(), date: "2026-01-01T10:00:00".into(), duree_s: 30.5, codec: Codec::Hevc, largeur: 2560, hauteur: 1440, ips: 144, pistes_audio: 2 };
+        let info = Annexe { jeu: "Jeu".into(), date: "2026-01-01T10:00:00".into(), duree_s: 30.5, codec: Codec::Hevc, largeur: 2560, hauteur: 1440, ips: 144, pistes_audio: 2, origine: None };
         fs::write(annexe(&d, Path::new(&a), "json"), serde_json::to_vec(&info).unwrap()).unwrap();
         fs::write(annexe(&d, Path::new(&a), "jpg"), b"jpg").unwrap();
+        for derive in ["montage.json", "apercu.mp4", "piste1.m4a"] {
+            fs::write(annexe(&d, Path::new(&a), derive), b"x").unwrap();
+        }
         let clips = lister(&d);
         assert_eq!(clips.len(), 2);
         let c = clips.iter().find(|c| c.nom.starts_with("Jeu")).unwrap();
@@ -396,8 +408,10 @@ pub(crate) mod tests {
         assert_eq!(b, d.join("Beau tir.mp4"));
         assert_eq!(lire_annexe(&d, &b), Some(info));
         assert!(annexe(&d, &b, "jpg").is_file() && !annexe(&d, Path::new(&a), "jpg").exists());
+        assert!(annexe(&d, &b, "montage.json").is_file() && annexe(&d, &b, "piste1.m4a").is_file() && !annexe(&d, Path::new(&a), "apercu.mp4").exists());
         supprimer(&d, &[b.to_string_lossy().into_owned()]).unwrap();
         assert!(!b.exists() && !annexe(&d, &b, "json").exists() && !annexe(&d, &b, "jpg").exists());
+        assert!(extensions().iter().all(|e| !annexe(&d, &b, e).exists()));
         assert_eq!(lister(&d).len(), 1);
         let _ = fs::remove_dir_all(&d);
     }
