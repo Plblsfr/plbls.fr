@@ -139,6 +139,7 @@ mod imp {
     }
 
     /// Processus propriétaire d'une fenêtre (`w:…`) ; `None` pour un écran.
+    #[cfg_attr(not(feature = "livekit-native"), allow(dead_code))]
     pub fn window_pid(id: &str) -> Option<u32> {
         let n: u32 = id.strip_prefix("w:")?.parse().ok()?;
         Window::all().ok()?.into_iter().find(|w| w.id().ok() == Some(n))?.pid().ok()

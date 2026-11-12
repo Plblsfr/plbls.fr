@@ -1,4 +1,5 @@
 import type { IconName } from '../components/Icon.svelte'
+import type { SettingsPage } from './platform'
 
 export const SETTINGS_TABS = [
   { id: 'account', label: 'Compte' },
@@ -30,15 +31,16 @@ export const SETTINGS_INDEX: Record<SettingsTab, readonly string[]> = {
 
 const plain = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
 
-export function searchSettings(query: string): { id: SettingsTab; label: string; hits: string[] }[] {
+export function searchSettings(query: string, pages: readonly SettingsPage[] = []): { id: string; label: string; hits: string[] }[] {
   const q = plain(query)
-  return SETTINGS_TABS.flatMap((t) => {
+  const tabs = [...SETTINGS_TABS.map((t) => ({ id: t.id as string, label: t.label, index: SETTINGS_INDEX[t.id] })), ...pages]
+  return tabs.flatMap((t) => {
     if (!q) return [{ id: t.id, label: t.label, hits: [] }]
-    const hits = SETTINGS_INDEX[t.id].filter((s) => plain(s).includes(q))
+    const hits = t.index.filter((s) => plain(s).includes(q))
     return plain(t.label).includes(q) || hits.length ? [{ id: t.id, label: t.label, hits }] : []
   })
 }
 
 /** `request` : onglet à ouvrir ; le Shell ouvre la fenêtre, qui le consomme. */
-export const settingsNav = $state<{ request: SettingsTab | '' }>({ request: '' })
-export const openSettings = (tab: SettingsTab) => { settingsNav.request = tab }
+export const settingsNav = $state<{ request: string }>({ request: '' })
+export const openSettings = (tab: SettingsTab | (string & {})) => { settingsNav.request = tab }

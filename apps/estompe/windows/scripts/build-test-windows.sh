@@ -6,7 +6,9 @@ TICKET="${1:?Usage : $0 <ticket> (ex. EST-123)}"
 cd "$(dirname "$0")/.."
 export PATH="$PWD/../../../node_modules/.bin:$PATH"
 TARGET=x86_64-pc-windows-gnu
-tauri build --config src-tauri/tauri.test.conf.json --target "$TARGET" --bundles nsis -- --profile "${PROFILE:-release}"
+# L'instant replay (feature instant-replay) est compris ; INSTANT_REPLAY=0 le retire du build.
+FEATURES=(--features instant-replay); if [ "${INSTANT_REPLAY:-1}" = 0 ]; then FEATURES=(); fi
+tauri build --config src-tauri/tauri.test.conf.json --target "$TARGET" --bundles nsis -- --profile "${PROFILE:-release}" "${FEATURES[@]}"
 mkdir -p dist-test && rm -f dist-test/*.exe
 cp src-tauri/target/"$TARGET"/"${PROFILE:-release}"/bundle/nsis/Estompe\ Test_*_x64-setup.exe dist-test/"Estompe-Test-$TICKET-setup.exe"
 # Sous WSL : copie dans les Téléchargements de Windows (DOWNLOADS pour un autre dossier)

@@ -128,7 +128,7 @@
       run: () => puis(() => app.setStatus(st).catch((err) => notify.error(err, 'Changement de statut impossible'))),
     })),
     { id: 'profil', groupe: 'action', icone: 'perso', label: 'Voir mon profil', run: () => puis(() => openProfile(app.meId, serverId)) },
-    ...SETTINGS_TABS.map((t): Entree => ({ id: `param:${t.id}`, groupe: 'action', icone: 'reglages', label: `Paramètres › ${t.label}`, run: () => puis(() => openSettings(t.id)) })),
+    ...[...SETTINGS_TABS, ...(platform.slots.settingsPages ?? []).filter((p) => p.visible())].map((t): Entree => ({ id: `param:${t.id}`, groupe: 'action', icone: 'reglages', label: `Paramètres › ${t.label}`, run: () => puis(() => openSettings(t.id)) })),
   ])
 
   const correspond = (e: Entree) => fold(e.label).includes(texte) || (!!e.detail && fold(e.detail).includes(texte))

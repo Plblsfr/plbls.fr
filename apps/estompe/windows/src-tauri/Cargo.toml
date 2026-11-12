@@ -26,22 +26,25 @@ tauri-plugin-single-instance = "2" # une seule instance par utilisateur (EST-113
 slint = { version = "=1.18.1", optional = true, default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts"] }
 base64 = { version = "0.22", optional = true }
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
+nnnoiseless = { version = "0.5", optional = true, default-features = false }
 
 # Capture d'écran et de fenêtres (sélecteur de partage, façon Discord) : le webview ne sait pas désigner une source précise
 [target.'cfg(windows)'.dependencies]
 xcap = { version = "0.9", default-features = false, features = ["image", "wgc"] } # wgc : Windows Graphics Capture, pour les fenêtres accélérées par le GPU (navigateurs, jeux)
 tauri-winrt-notification = "0.8" # toasts avec boutons (déjà tiré par tauri-plugin-notification)
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_ProcessStatus", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] } # détection d'un jeu au premier plan (overlay)
 webview2-com = "0.39"
 windows-core = "0.62"
 # Partage d'écran natif (EST-18) : capture en Rust puis publication WebRTC sans repasser par le webview (SDK LiveKit).
 # Derrière une feature : libwebrtc est précompilé et ne vise que la cible MSVC.
 # Son du partage natif (EST-52) : capture WASAPI « process loopback » (le son d'une fenêtre, ou celui du système sans Estompe).
 wasapi = { version = "0.24", optional = true }
+windows = { version = "0.62", optional = true, features = ["Foundation", "Graphics", "Graphics_Capture", "Graphics_DirectX", "Graphics_DirectX_Direct3D11", "Win32_Devices_Display", "Win32_Foundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D_Fxc", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Gdi", "Win32_Media_MediaFoundation", "Win32_Security", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Threading", "Win32_System_Variant", "Win32_System_WinRT", "Win32_System_WinRT_Direct3D11", "Win32_System_WinRT_Graphics_Capture", "Win32_UI_Accessibility", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging"] }
 livekit = { version = "0.9", optional = true, default-features = false, features = ["native", "rustls-tls-webpki-roots"] }
 
 [features]
 livekit-native = ["dep:livekit", "dep:wasapi"]
+instant-replay = ["dep:windows", "dep:wasapi", "dep:nnnoiseless"]
 overlay-natif = ["dep:slint", "dep:base64", "image/png", "image/webp", "image/gif"]
 
 # Binaire léger : cible de moins de 20 Mo

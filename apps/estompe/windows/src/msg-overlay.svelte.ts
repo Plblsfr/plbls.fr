@@ -16,13 +16,20 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let queue: Promise<void> = Promise.resolve()
 let last: MsgOverlayState | null = null
 
-function expire(id: string) {
+export function expirer(timers: Map<string, ReturnType<typeof setTimeout>>, id: string, retirer: () => boolean) {
   clearTimeout(timers.get(id))
   timers.set(id, setTimeout(() => {
     timers.delete(id)
-    if (live.replying) return expire(id) // la saisie en cours garde les notifications
-    live.toasts = live.toasts.filter((t) => t.id !== id)
+    if (!retirer()) expirer(timers, id, retirer)
   }, Math.max(2, prefs.msgSeconds) * 1000))
+}
+
+function expire(id: string) {
+  expirer(timers, id, () => {
+    if (live.replying) return false // la saisie en cours garde les notifications
+    live.toasts = live.toasts.filter((t) => t.id !== id)
+    return true
+  })
 }
 
 function onNotification(n: Parameters<Parameters<typeof tapNotifications>[0]>[0]) {

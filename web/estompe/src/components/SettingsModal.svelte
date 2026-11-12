@@ -22,6 +22,7 @@
   import SettingsReports from '../blocks/signalements/SettingsReports.svelte'
 
   const { settingsUpdate: Update, settingsPtt: Ptt, settingsShare: Share, settingsVoice: Player } = platform.slots
+  const pages = $derived((platform.slots.settingsPages ?? []).filter((p) => p.visible()))
   import { transcriptionOn } from '../blocks/transcription/transcript'
 
   let { onclose }: { onclose: () => void } = $props()
@@ -29,12 +30,13 @@
   // Onglet demandé (lien depuis un message), sinon le dernier ouvert. Sur mobile, on commence par la liste des catégories.
   const asked = settingsNav.request
   settingsNav.request = ''
-  const valid = (t: string): t is SettingsTab => SETTINGS_TABS.some((x) => x.id === t)
-  let tab = $state<SettingsTab>(valid(asked) ? asked : valid(prefs.settingsTab) ? prefs.settingsTab : 'account')
+  const valid = (t: string) => SETTINGS_TABS.some((x) => x.id === t) || pages.some((p) => p.id === t)
+  let tab = $state(valid(asked) ? asked : valid(prefs.settingsTab) ? prefs.settingsTab : 'account')
+  const page = $derived(pages.find((p) => p.id === tab))
   let view = $state<'list' | 'page'>(asked || !(typeof matchMedia !== 'undefined' && matchMedia('(max-width: 700px)').matches) ? 'page' : 'list')
   let query = $state('')
-  const found = $derived(searchSettings(query))
-  function go(t: SettingsTab) {
+  const found = $derived(searchSettings(query, pages))
+  function go(t: string) {
     tab = t
     view = 'page'
     prefs.settingsTab = t
@@ -187,9 +189,10 @@
     </div>
     <div class="p-onglets">
       {#each found as t (t.id)}
+        {@const extra = pages.find((p) => p.id === t.id)}
         <button class="p-onglet" class:on={tab === t.id} aria-current={tab === t.id ? 'page' : undefined} onclick={() => go(t.id)}>
-          <Icon name={SETTINGS_ICONS[t.id]} size={18} />
-          <span class="p-onglet-txt"><span>{t.label}</span>{#if t.hits.length}<span class="p-onglet-hits">{t.hits.slice(0, 3).join(' · ')}</span>{/if}</span>
+          <Icon name={extra?.icon ?? SETTINGS_ICONS[t.id as SettingsTab]} size={18} />
+          <span class="p-onglet-txt"><span>{t.label}{#if extra?.badge} <span class="plbls-badge">{extra.badge}</span>{/if}</span>{#if t.hits.length}<span class="p-onglet-hits">{t.hits.slice(0, 3).join(' · ')}</span>{/if}</span>
         </button>
       {:else}
         <p class="v-note p-vide">Aucun réglage ne correspond.</p>
@@ -201,7 +204,7 @@
   <div class="p-page">
     <header class="p-top">
       <button class="plbls-button plbls-button--compact plbls-button--discret p-retour" onclick={() => (view = 'list')}>‹ Paramètres</button>
-      <h2 class="p-titre" id="set-h">{SETTINGS_TABS.find((t) => t.id === tab)?.label}</h2>
+      <h2 class="p-titre" id="set-h">{page?.label ?? SETTINGS_TABS.find((t) => t.id === tab)?.label}{#if page?.badge} <span class="plbls-badge">{page.badge}</span>{/if}</h2>
       <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={onclose}><Icon name="x" size={16} />Fermer</button>
     </header>
 
@@ -523,6 +526,9 @@
             </section>
           </div>
         </div>
+
+      {:else if page}
+        <page.page />
 
       {:else if Update}
         <div class="p-carte p-carte-pleine">

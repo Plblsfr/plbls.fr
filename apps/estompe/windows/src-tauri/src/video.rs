@@ -7,7 +7,7 @@ fn embedded_ffmpeg(resources: Option<PathBuf>) -> Result<PathBuf, String> {
     resources.map(|d| d.join("ffmpeg.exe")).filter(|exe| exe.is_file()).ok_or_else(|| "ffmpeg embarqué introuvable : réinstaller Estompe".to_string())
 }
 
-fn command(app: &AppHandle) -> Result<Command, String> {
+pub(crate) fn command(app: &AppHandle) -> Result<Command, String> {
     let mut c = Command::new(embedded_ffmpeg(app.path().resource_dir().ok())?);
     c.args(["-hide_banner", "-nostdin"]);
     #[cfg(windows)]
@@ -18,7 +18,7 @@ fn command(app: &AppHandle) -> Result<Command, String> {
     Ok(c)
 }
 
-fn temp_tag() -> String {
+pub(crate) fn temp_tag() -> String {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     format!("estompe-h264-{}-{}", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
@@ -30,12 +30,12 @@ fn parse_duration(text: &str) -> f64 {
     })
 }
 
-fn duration(app: &AppHandle, path: &Path) -> f64 {
+pub(crate) fn duration(app: &AppHandle, path: &Path) -> f64 {
     let out = command(app).ok().and_then(|mut c| c.arg("-i").arg(path).output().ok()).map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default();
     parse_duration(&out)
 }
 
-fn encoders(app: &AppHandle) -> &'static Vec<&'static str> {
+pub(crate) fn encoders(app: &AppHandle) -> &'static Vec<&'static str> {
     static E: OnceLock<Vec<&'static str>> = OnceLock::new();
     E.get_or_init(|| {
         let out = command(app).ok().and_then(|mut c| c.arg("-encoders").output().ok()).map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();

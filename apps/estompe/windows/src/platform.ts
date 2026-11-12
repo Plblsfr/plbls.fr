@@ -10,8 +10,15 @@ import { notifications } from './notifications'
 import Overlay from './Overlay.svelte'
 import { overlayUi, startOverlay, toggleOverlay } from './overlay.svelte'
 import { globalPtt } from './ptt-global'
+import { ESPACE, PAGE_REGLAGES } from './replay'
+import { startReplayOverlay } from './replay-overlay.svelte'
+import { demarrerReplay, replay } from './replay.svelte'
+import ReplayGalerie from './ReplayGalerie.svelte'
+import ReplayNav from './ReplayNav.svelte'
+import ReplayOverlay from './ReplayOverlay.svelte'
 import SettingsMesures from './SettingsMesures.svelte'
 import SettingsOverlay from './SettingsOverlay.svelte'
+import SettingsReplay from './SettingsReplay.svelte'
 import SettingsShare from './SettingsShare.svelte'
 import UpdateSettings from './UpdateSettings.svelte'
 import { updates } from './updates'
@@ -25,13 +32,20 @@ export const platform: Platform = {
   globalPtt,
   debugStore,
   screenshot: { auto: true, capture: captureSelf },
-  spaces: [],
-  slots: { settingsUpdate: UpdateSettings, settingsPtt: SettingsOverlay, settingsShare: SettingsShare, settingsDebug: SettingsMesures },
+  spaces: [{ id: ESPACE, title: 'Clips', icon: 'clap', visible: () => replay.present && (replay.reglages.actif || replay.clips.length > 0), nav: ReplayNav, page: ReplayGalerie }],
+  slots: { settingsUpdate: UpdateSettings, settingsPtt: SettingsOverlay, settingsShare: SettingsShare, settingsDebug: SettingsMesures,
+    settingsPages: [{
+      id: PAGE_REGLAGES, label: 'Instant replay', icon: 'replay', badge: 'bêta', visible: () => replay.present, page: SettingsReplay,
+      index: ['Clips', 'Tampon', 'Résolution', 'Images par seconde', 'Durée gardée', 'Qualité', 'Codec', 'Enregistrer mon micro', 'Afficher le curseur', 'Raccourci de sauvegarde', 'Jeux ajoutés', 'Jeux exclus', 'Dossier des clips', 'Quota'],
+    }],
+  },
   start() {
     startOverlay() // overlay des participants du salon vocal
     startMsgOverlay() // messages privés et mentions sur le jeu
+    void demarrerReplay()
+    startReplayOverlay()
   },
-  windows: { '#overlay': Overlay, '#msg-overlay': MsgOverlay },
+  windows: { '#overlay': Overlay, '#msg-overlay': MsgOverlay, '#replay-overlay': ReplayOverlay },
   restoresLastView: () => false,
   openFromNotification: () => false,
   cancelNotification() {},

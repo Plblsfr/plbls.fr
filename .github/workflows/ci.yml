@@ -242,8 +242,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config gcc-mingw-w64-x86-64
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-pc-windows-gnu
       - id: cargo
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -260,6 +262,9 @@ jobs:
       - name: Tests de l'overlay natif (feature overlay-natif)
         working-directory: apps/estompe/windows/src-tauri
         run: cargo test --lib --features overlay-natif overlay_natif
+      - name: Tests de l'instant replay (feature instant-replay, logique sans GPU)
+        working-directory: apps/estompe/windows/src-tauri
+        run: cargo test --lib --features instant-replay replay
       - name: Tests du crate commun
         working-directory: apps/estompe/crates/core
         run: cargo test
@@ -268,6 +273,9 @@ jobs:
         run: mkdir -p ../../../../web/estompe/dist && cargo check
       - name: ffmpeg épinglé téléchargeable et vérifié
         run: TAURI_ENV_PLATFORM=windows node apps/estompe/windows/scripts/fetch-ffmpeg.mjs && test -s apps/estompe/windows/src-tauri/binaries/ffmpeg.exe
+      - name: Compilation Windows de l'instant replay (mingw, sans édition de liens)
+        working-directory: apps/estompe/windows/src-tauri
+        run: cargo check --lib --target x86_64-pc-windows-gnu --features instant-replay
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
