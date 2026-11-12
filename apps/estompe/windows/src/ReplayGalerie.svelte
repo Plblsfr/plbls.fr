@@ -4,6 +4,8 @@
   import { confirmer, saisir } from '../../../../web/estompe/src/lib/confirm.svelte'
   import { openSettings } from '../../../../web/estompe/src/lib/settings.svelte'
   import { notify } from '../../../../web/estompe/src/lib/ui'
+  import { editeur, ouvrirEditeur } from './montage.svelte'
+  import ReplayEditeur from './ReplayEditeur.svelte'
   import ReplayEnvoi from './ReplayEnvoi.svelte'
   import { dateClip, detailsClip, dureeClip, jeuDe, PAGE_REGLAGES, partUtilisee, raccourciLisible, taille, trierClips, type Clip } from './replay'
   import { chargerClips, ouvrirDossier, renommerClip, replay, supprimerClips, texteErreur, urlFichier } from './replay.svelte'
@@ -36,12 +38,16 @@
 
   const ACTIONS: { id: string; label: string; icon: IconName; texte?: boolean; run: (c: Clip) => void }[] = [
     { id: 'envoyer', label: 'Envoyer dans un salon', icon: 'envoi', texte: true, run: (c) => (envoye = c) },
+    { id: 'modifier', label: 'Modifier', icon: 'ciseaux', run: (c) => void ouvrirEditeur(c) },
     { id: 'renommer', label: 'Renommer', icon: 'crayon', run: (c) => void renommer(c) },
     { id: 'supprimer', label: 'Supprimer', icon: 'corbeille', run: (c) => void supprimer(c) },
   ]
   const lire = (c: Clip) => { illisible = false; lu = c }
 </script>
 
+{#if editeur.ouverture}
+  {#key editeur.ouverture.chemin}<ReplayEditeur {onmenu} />{/key}
+{:else}
 <header class="main-head">
   <button class="ib burger" onclick={onmenu} aria-label="Menu"><Icon name="menu" /></button>
   <div class="main-head-t"><h1 class="truncate">{section ?? 'Clips'}</h1><span class="plbls-badge">bêta</span></div>
@@ -65,8 +71,19 @@
       </div>
     {/if}
   {/if}
+  {#if editeur.preparation}
+    {@const p = editeur.preparation}
+    <div class="v-alert" role="status">
+      <Icon name="ciseaux" size={18} />
+      {#if p.pct === null}<span>Ouverture de « {p.nom} » dans l’éditeur…</span>{:else}{@render avancement(`Préparation de l’aperçu de « ${p.nom} »`, p.pct)}{/if}
+    </div>
+  {/if}
   {#each replay.travaux as t (t.id)}
-    <div class="v-alert" role="status"><Icon name="envoie" size={18} /><span>{t.libelle}…</span></div>
+    <div class="v-alert" role="status">
+      <Icon name="envoie" size={18} />
+      {#if t.pct === undefined}<span>{t.libelle}…</span>{:else}{@render avancement(t.libelle, t.pct)}{/if}
+      {#if t.annuler}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={t.annuler}>Annuler</button>{/if}
+    </div>
   {/each}
   {#if clips.length}
     <ul class="rg-grille">
@@ -79,6 +96,7 @@
           </button>
           <div class="rg-infos">
             <strong class="truncate" title={c.nom}>{c.nom}</strong>
+            {#if c.origine}<span class="v-note truncate rg-montage" title="Montage d’après {c.origine}"><span class="plbls-badge">Montage</span>d’après {c.origine}</span>{/if}
             <span class="v-note truncate">{[jeuDe(c), dateClip(c.date)].filter(Boolean).join(' · ')}</span>
             <span class="v-note truncate">{detailsClip(c)}</span>
           </div>
@@ -107,6 +125,14 @@
     </div>
   {/if}
 </div>
+{/if}
+
+{#snippet avancement(libelle: string, pct: number)}
+  <div class="plbls-progress grow">
+    <div class="plbls-progress__entete"><span>{libelle}</span><span>{pct} %</span></div>
+    <div class="plbls-progress__piste" role="progressbar" aria-label={libelle} aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct}><div class="plbls-progress__remplissage" style:width="{pct}%"></div></div>
+  </div>
+{/snippet}
 
 {#if lu}
   <Modal title={lu.nom} wide onclose={() => (lu = null)}>
@@ -137,6 +163,7 @@
   .rg-lecture { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgb(0 0 0 / 55%); color: #fff; opacity: 0; transition: opacity var(--d) var(--sortie); }
   .rg-vignette:hover .rg-lecture, .rg-vignette:focus-visible .rg-lecture { opacity: 1; }
   .rg-duree { position: absolute; right: 8px; bottom: 8px; padding: 2px 6px; border-radius: var(--r-xs); background: rgb(0 0 0 / 70%); color: #fff; font-size: 12px; }
+  .rg-montage .plbls-badge { margin-right: 6px; }
   .rg-infos { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 14px 4px; }
   .rg-actions { display: flex; align-items: center; gap: 4px; padding: 6px 8px 10px 14px; }
   .rg-grand { margin-right: auto; }

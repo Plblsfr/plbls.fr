@@ -68,7 +68,7 @@ pub fn ecrire(t: &Tache) -> Result<Ecrit, Erreur> {
     let f = t.instantane.format;
     let duree_s = t.instantane.duree() as f64 / UNITE_TEMPS as f64;
     let pistes_audio = [&t.instantane.jeu, &t.instantane.micro].iter().filter(|p| !p.is_empty()).count() as u32;
-    let annexe = Annexe { jeu: t.jeu.clone(), date: t.date.iso(), duree_s, codec: f.codec, largeur: f.largeur, hauteur: f.hauteur, ips: f.ips, pistes_audio };
+    let annexe = Annexe { jeu: t.jeu.clone(), date: t.date.iso(), duree_s, codec: f.codec, largeur: f.largeur, hauteur: f.hauteur, ips: f.ips, pistes_audio, origine: None };
     let _ = fs::write(galerie::annexe(&t.dossier, &chemin, "json"), serde_json::to_vec(&annexe).unwrap_or_default());
     Ok(Ecrit {
         clip: ClipEnregistre { chemin: chemin.to_string_lossy().into_owned(), nom, jeu: t.jeu.clone(), duree_s, taille_octets: taille },

@@ -242,7 +242,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config gcc-mingw-w64-x86-64
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends unzip ffmpeg libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libasound2-dev pkg-config gcc-mingw-w64-x86-64
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: x86_64-pc-windows-gnu
@@ -262,7 +262,7 @@ jobs:
       - name: Tests de l'overlay natif (feature overlay-natif)
         working-directory: apps/estompe/windows/src-tauri
         run: cargo test --lib --features overlay-natif overlay_natif
-      - name: Tests de l'instant replay (feature instant-replay, logique sans GPU)
+      - name: Tests de l'instant replay et de l'éditeur de clips (feature instant-replay, logique sans GPU, export réel par le ffmpeg du runner)
         working-directory: apps/estompe/windows/src-tauri
         run: cargo test --lib --features instant-replay replay
       - name: Tests du crate commun

@@ -12,7 +12,7 @@ import {
   type Clip, type ClipEnregistre, type Disponibilite, type ErreurReplay, type Etat, type MessageOverlay, type Options, type ReglagesMoteur, type ReglagesReplay, type Stockage,
 } from './replay'
 
-export interface Travail { id: string; libelle: string }
+export interface Travail { id: string; libelle: string; pct?: number; source?: string; annuler?: () => void }
 
 export const replay = $state<{
   present: boolean; version: string; reglages: ReglagesReplay; dispo: Disponibilite | null; options: Options | null; erreurOptions: string; etat: Etat
