@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.94.4",
+    "date": "2026-11-12",
+    "new": [],
+    "fixes": [
+      "Application Windows : l'instant replay enregistre de nouveau avec les cartes graphiques AMD.",
+      "Application Windows : l'outil Capture d'écran de Windows n'est plus pris pour un jeu."
+    ]
+  },
+  {
     "version": "0.94.2",
     "date": "2026-11-12",
     "new": [],
