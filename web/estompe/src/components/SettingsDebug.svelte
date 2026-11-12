@@ -20,6 +20,13 @@
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 40) void tick().then(() => (el.scrollTop = el.scrollHeight))
   })
 
+  $effect(() => {
+    if (!debug.enabled || !platform.debugStore) return
+    void debug.refresh()
+    const suivi = setInterval(() => void debug.refresh(), 3000)
+    return () => clearInterval(suivi)
+  })
+
   async function copy() {
     try { await navigator.clipboard.writeText(all()); notify.info('Journal copié.') } catch { notify.info('Copie impossible.') }
   }
