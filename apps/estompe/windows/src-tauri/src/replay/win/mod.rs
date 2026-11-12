@@ -29,7 +29,7 @@ use self::encodeur::{Encodeur, Envoi, Parametres};
 use self::gpu::{Appareil, Convertisseur};
 use self::materiel::Gpu;
 use super::automate::{Automate, Etat, Jeu};
-use super::cadence::Cadence;
+use super::cadence::{Cadence, Perte, Pertes};
 use super::ecriture::{FileEcriture, Tache};
 use super::galerie::Horodatage;
 use super::reglages::{self, Materiel, AUDIO_JEU_KBPS, AUDIO_MICRO_KBPS};
@@ -198,7 +198,7 @@ impl Rythme {
         };
         let mut cadence = Cadence::nouvelle(self.ips);
         let fenetre = 10 * self.ips as u64;
-        let (mut sans_image, mut releve) = (0u64, (0u64, 0u64));
+        let (mut sans_image, mut releve, mut refus) = (0u64, (0u64, Pertes::default()), None);
         loop {
             let attente = cadence.echeance() - (self.horloge.elapsed().as_nanos() / 100) as i64;
             if attente > 0 {
@@ -225,33 +225,46 @@ impl Rythme {
                 });
                 match envoyee.map(|e| self.encodeur.envoyer(e)) {
                     Ok(Ok(true)) => {}
+                    Ok(Ok(false)) => cadence.perdre(Perte::Encodeur),
                     Ok(Err(())) => {
                         let _ = CloseHandle(minuteur);
                         return;
                     }
-                    _ => cadence.perdre(1),
+                    Err(e) => {
+                        cadence.perdre(Perte::Conversion);
+                        refus = Some(materiel::texte(e));
+                    }
                 }
             }
             if sans_image > 5 * self.ips as u64 {
                 (self.echec)("capture-refusee", "le jeu ne fournit aucune image à la capture (plein écran exclusif ou protection)".into());
                 break;
             }
-            let (emises, perdues) = cadence.bilan();
+            let (emises, pertes) = cadence.bilan();
             if emises - releve.0 >= fenetre {
-                let (images, pertes) = (emises - releve.0, perdues - releve.1);
+                let (images, recentes) = (emises - releve.0, pertes.depuis(&releve.1));
                 let (octets, duree, debordements) = self.tampon.lock().map_or((0, 0, 0), |t| (t.octets(), t.duree(), t.debordements()));
+                let refus: Option<String> = refus.take();
+                let conversion = refus.as_ref().map_or(String::new(), |e| format!(" : {e}"));
                 debuglog::log("info", SOURCE, &format!(
-                    "images : {images} émises, {pertes} perdues sur 10 s ({emises} émises, {perdues} perdues depuis le démarrage) ; tampon : {} Mo, {} s, {debordements} débordement(s)",
+                    "images : {images} émises, {} perdues sur 10 s (retard {}, encodeur {}, conversion {}{conversion}) ; {emises} émises, {} perdues depuis le démarrage (retard {}, encodeur {}, conversion {}) ; tampon : {} Mo, {} s, {debordements} débordement(s)",
+                    recentes.total(), recentes.retard, recentes.encodeur, recentes.conversion,
+                    pertes.total(), pertes.retard, pertes.encodeur, pertes.conversion,
                     octets / (1024 * 1024), duree / UNITE_TEMPS
                 ));
-                if pertes * 5 > images {
-                    (self.alerte)(Erreur::nouvelle("gpu-sature", "Carte graphique saturée : l'instant replay perd des images."));
+                if let Some(cause) = recentes.alerte(images) {
+                    let (code, message) = cause.erreur();
+                    let detail = refus.filter(|_| cause == Perte::Conversion).map_or(String::new(), |e| format!(" ({e})"));
+                    (self.alerte)(Erreur::nouvelle(code, format!("{message}{detail}")));
                 }
-                releve = (emises, perdues);
+                releve = (emises, pertes);
             }
         }
-        let (emises, perdues) = cadence.bilan();
-        debuglog::log("info", SOURCE, &format!("arrêt de la capture : {emises} images émises, {perdues} perdues"));
+        let (emises, pertes) = cadence.bilan();
+        debuglog::log("info", SOURCE, &format!(
+            "arrêt de la capture : {emises} images émises, {} perdues (retard {}, encodeur {}, conversion {})",
+            pertes.total(), pertes.retard, pertes.encodeur, pertes.conversion
+        ));
         let _ = CloseHandle(minuteur);
     }
 }
