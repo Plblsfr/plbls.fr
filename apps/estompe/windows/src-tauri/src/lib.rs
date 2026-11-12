@@ -100,7 +100,8 @@ pub fn run() {
             replay::replay_disponible, replay::replay_options, replay::replay_configurer, replay::replay_etat, replay::replay_sauvegarder, replay::replay_partage,
             replay::replay_clips, replay::replay_renommer, replay::replay_supprimer, replay::replay_ouvrir_dossier, replay::replay_stockage, replay::replay_vers_h264,
             replay::replay_choisir_executable, replay::replay_choisir_dossier,
-            replay::montage_ouvrir, replay::montage_enregistrer, replay::montage_exporter, replay::montage_annuler, replay::montage_exports,
+            replay::montage_ouvrir, replay::montage_clip, replay::montage_projets, replay::montage_renommer, replay::montage_supprimer,
+            replay::montage_enregistrer, replay::montage_exporter, replay::montage_annuler, replay::montage_exports,
             overlay_natif::overlay_natif_disponible, overlay_natif::overlay_natif_afficher, overlay_natif::overlay_natif_fermer,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear]);
     // La fenêtre se masque au lieu de se fermer (bureau uniquement : sur mobile, c'est le système qui gère l'app).

@@ -201,5 +201,11 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   retour de la commande qui l'a lancé : le front ne suit un export que par ses évènements. Le Chromium de Playwright ne lit ni H.264 ni AAC : un contrôle de
   l'aperçu dans le navigateur se fait avec un fichier VP9 et des pistes WAV. Un raccourci de l'éditeur ne doit pas se déclencher depuis un champ de saisie, mais
   une poignée (`role="slider"`) qui garde le focus après un glisser ne doit pas bloquer annuler et rétablir.
+  Le texte d'un montage n'est pas rendu par `drawtext` : la webview le dessine (`dessinerTexte`) et l'export incruste l'image, aux dimensions exactes de la
+  sortie ; changer le calcul de la sortie d'un côté (`dimensionsSortie`, `dimensions_sortie`) sans l'autre fait refuser l'export. Le ffmpeg embarqué n'a pas
+  de `-filter_complex_script` : le graphe passe en argument, limité par la ligne de commande de Windows. Une entrée ffmpeg ne se relit pas en arrière : un
+  passage placé avant un autre du même clip prend une entrée de plus (`planifier`), sinon ses images s'accumulent en mémoire. `drawbox` ne rend pas un pixel
+  opaque sur un fond transparent sans `replace=1`. Une sortie au rapport imposé se calcule en multiples pairs du rapport, pas en arrondissant largeur et hauteur.
+  Dans la vue, seule la vidéo du segment lu est « active » : les évènements des autres vidéos (pause au changement de clip) sont ignorés.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.
