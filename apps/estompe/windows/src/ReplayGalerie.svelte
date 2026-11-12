@@ -4,7 +4,9 @@
   import { confirmer, saisir } from '../../../../web/estompe/src/lib/confirm.svelte'
   import { openSettings } from '../../../../web/estompe/src/lib/settings.svelte'
   import { notify } from '../../../../web/estompe/src/lib/ui'
-  import { editeur, ouvrirEditeur } from './montage.svelte'
+  import { invoke } from '../../crates/core/ts/tauri'
+  import type { Projet } from './montage'
+  import { chargerProjets, editeur, ouvrirEditeur } from './montage.svelte'
   import ReplayEditeur from './ReplayEditeur.svelte'
   import ReplayEnvoi from './ReplayEnvoi.svelte'
   import { dateClip, detailsClip, dureeClip, jeuDe, PAGE_REGLAGES, partUtilisee, raccourciLisible, taille, trierClips, type Clip } from './replay'
@@ -13,6 +15,7 @@
   let { section, onmenu }: { section?: string; onmenu: () => void } = $props()
 
   void chargerClips()
+  void chargerProjets()
 
   const clips = $derived(trierClips(replay.clips, section))
   let lu = $state<Clip | null>(null)
@@ -43,10 +46,18 @@
     { id: 'supprimer', label: 'Supprimer', icon: 'corbeille', run: (c) => void supprimer(c) },
   ]
   const lire = (c: Clip) => { illisible = false; lu = c }
+  async function renommerProjet(p: Projet) {
+    const nom = await saisir({ titre: 'Renommer le montage', action: 'Renommer', saisie: { label: 'Nom du montage', valeur: p.nom } })
+    if (nom?.trim() && nom.trim() !== p.nom) await tenter(() => invoke('montage_renommer', { projet: p.id, nom }).then(chargerProjets))
+  }
+  async function supprimerProjet(p: Projet) {
+    if (await confirmer({ titre: 'Supprimer le montage', message: `Supprimer le montage « ${p.nom} » ? Les clips qu’il utilise et les fichiers déjà exportés restent dans la galerie.`, action: 'Supprimer', destructif: true })) await tenter(() => invoke('montage_supprimer', { projet: p.id }).then(chargerProjets))
+  }
+  const sansExtension = (nom: string) => nom.replace(/\.mp4$/i, '')
 </script>
 
-{#if editeur.ouverture}
-  {#key editeur.ouverture.chemin}<ReplayEditeur {onmenu} />{/key}
+{#if editeur.id}
+  {#key editeur.id}<ReplayEditeur {onmenu} />{/key}
 {:else}
 <header class="main-head">
   <button class="ib burger" onclick={onmenu} aria-label="Menu"><Icon name="menu" /></button>
@@ -85,6 +96,26 @@
       {#if t.annuler}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={t.annuler}>Annuler</button>{/if}
     </div>
   {/each}
+  {#if editeur.projets.length && !section}
+    <section class="rg-projets" aria-label="Montages">
+      <h2 class="side-title">Montages</h2>
+      <ul>
+        {#each editeur.projets as p (p.id)}
+          <li class="rg-projet">
+            <Icon name="ciseaux" size={18} />
+            <div class="rg-projet-infos">
+              <strong class="truncate" title={p.nom}>{p.nom}</strong>
+              <span class="v-note truncate">{[`${p.clips.length} clip${p.clips.length > 1 ? 's' : ''}`, dureeClip(p.dureeS), dateClip(p.date)].filter(Boolean).join(' · ')}</span>
+              {#if p.manquants.length}<span class="v-tag att" title={p.manquants.map(sansExtension).join(', ')}><Icon name="alerte" size={12} />{p.manquants.length > 1 ? `${p.manquants.length} clips introuvables` : `Clip introuvable : ${sansExtension(p.manquants[0])}`}</span>{/if}
+            </div>
+            <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void ouvrirEditeur({ projet: p.id, nom: p.nom })}>Rouvrir</button>
+            <button class="v-ib" aria-label="Renommer le montage {p.nom}" title="Renommer" onclick={() => void renommerProjet(p)}><Icon name="crayon" size={18} /></button>
+            <button class="v-ib" aria-label="Supprimer le montage {p.nom}" title="Supprimer" onclick={() => void supprimerProjet(p)}><Icon name="corbeille" size={18} /></button>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
   {#if clips.length}
     <ul class="rg-grille">
       {#each clips as c (c.chemin)}
@@ -155,6 +186,11 @@
   .rg-page { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: 24px; scrollbar-width: thin; }
   .rg-usage { max-width: 420px; }
   .rg-page .v-alert { align-items: center; }
+  .rg-projets ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px 16px; margin: 6px 0 0; padding: 0; list-style: none; }
+  .rg-projets .side-title { margin: 0; padding: 0; }
+  .rg-projet { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 8px 8px 14px; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--o1); }
+  .rg-projet-infos { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+  .rg-projet-infos > * { max-width: 100%; }
   .rg-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
   .rg-clip { display: flex; flex-direction: column; min-width: 0; border-radius: var(--r-l); background: var(--surface); box-shadow: var(--o1); overflow: hidden; }
   .rg-vignette { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; padding: 0; border: 0; background: var(--papier-2); color: var(--gris); cursor: pointer; }

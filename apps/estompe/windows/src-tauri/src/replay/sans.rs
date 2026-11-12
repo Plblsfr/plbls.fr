@@ -86,20 +86,43 @@ pub async fn replay_choisir_dossier() -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-pub async fn montage_ouvrir(chemin: String) -> Result<serde_json::Value, String> {
+pub async fn montage_ouvrir(chemin: Option<String>, projet: Option<String>) -> Result<serde_json::Value, String> {
+    let _ = (chemin, projet);
+    absent()
+}
+
+#[tauri::command]
+pub async fn montage_clip(chemin: String) -> Result<serde_json::Value, String> {
     let _ = chemin;
     absent()
 }
 
 #[tauri::command]
-pub fn montage_enregistrer(chemin: String, montage: serde_json::Value) -> Result<(), String> {
-    let _ = (chemin, montage);
+pub fn montage_projets() -> Vec<serde_json::Value> {
+    Vec::new()
+}
+
+#[tauri::command]
+pub fn montage_renommer(projet: String, nom: String) -> Result<(), String> {
+    let _ = (projet, nom);
     absent()
 }
 
 #[tauri::command]
-pub fn montage_exporter(chemin: String, montage: serde_json::Value) -> Result<serde_json::Value, String> {
-    let _ = (chemin, montage);
+pub fn montage_supprimer(projet: String) -> Result<(), String> {
+    let _ = projet;
+    absent()
+}
+
+#[tauri::command]
+pub fn montage_enregistrer(projet: String, montage: serde_json::Value) -> Result<(), String> {
+    let _ = (projet, montage);
+    absent()
+}
+
+#[tauri::command]
+pub fn montage_exporter(projet: String, montage: serde_json::Value, images: Vec<Vec<u8>>) -> Result<serde_json::Value, String> {
+    let _ = (projet, montage, images);
     absent()
 }
 
@@ -123,6 +146,6 @@ mod tests {
         assert!(!replay_disponible().disponible);
         assert_eq!(replay_etat().etat, "indisponible");
         assert!(replay_sauvegarder().is_err() && replay_clips().is_err());
-        assert!(montage_annuler(1).is_err() && montage_exports().is_empty());
+        assert!(montage_annuler(1).is_err() && montage_exports().is_empty() && montage_projets().is_empty());
     }
 }
