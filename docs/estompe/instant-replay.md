@@ -255,6 +255,9 @@ Points d'attention pour le premier essai sur appareil :
 - MFT matériel : ordre des réglages, présence des paramètres de séquence, une unité AAC par échantillon de sortie ;
 - MFT matériel : quand `ProcessOutput` répond « changement de format », le type de sortie est reposé puis la sortie est relue dans le même évènement
   (sans relecture, l'encodeur attend indéfiniment) ; vu sur `AMDh264Encoder`, qui n'acceptait que trois images, correctif non vérifié sur appareil ;
+- MFT matériel : la configuration suit celle de l'encodeur Media Foundation de ffmpeg (`libavcodec/mfenc.c`) : réglages `ICodecAPI` avant le type de sortie, types
+  repris de ceux que l'encodeur propose puis ajustés (taille, cadence, profil, débit), première image marquée discontinuité et image clé. Les types ne portent
+  plus les attributs de couleur ; non vérifié sur appareil ;
 - MFT matériel : `AMDh264Encoder` prend une image de la réserve Media Foundation puis n'émet plus aucun évènement (vu sur Radeon RX 7800) ; cause inconnue, d'où le
   repli sur les autres entrées, non vérifié sur appareil ;
 - retard propre à l'encodeur AAC (les horodatages de sortie du MFT sont repris tels quels) ;
