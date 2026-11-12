@@ -85,6 +85,35 @@ pub async fn replay_choisir_dossier() -> Result<Option<String>, String> {
     absent()
 }
 
+#[tauri::command]
+pub async fn montage_ouvrir(chemin: String) -> Result<serde_json::Value, String> {
+    let _ = chemin;
+    absent()
+}
+
+#[tauri::command]
+pub fn montage_enregistrer(chemin: String, montage: serde_json::Value) -> Result<(), String> {
+    let _ = (chemin, montage);
+    absent()
+}
+
+#[tauri::command]
+pub fn montage_exporter(chemin: String, montage: serde_json::Value) -> Result<serde_json::Value, String> {
+    let _ = (chemin, montage);
+    absent()
+}
+
+#[tauri::command]
+pub fn montage_annuler(id: u64) -> Result<(), String> {
+    let _ = id;
+    absent()
+}
+
+#[tauri::command]
+pub fn montage_exports() -> Vec<serde_json::Value> {
+    Vec::new()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +123,6 @@ mod tests {
         assert!(!replay_disponible().disponible);
         assert_eq!(replay_etat().etat, "indisponible");
         assert!(replay_sauvegarder().is_err() && replay_clips().is_err());
+        assert!(montage_annuler(1).is_err() && montage_exports().is_empty());
     }
 }

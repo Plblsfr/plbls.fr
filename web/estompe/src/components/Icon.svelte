@@ -95,6 +95,8 @@
   const propres = {
     mail: '<path d="M3 5h18v14H3zM3 7l9 6 9-6"/>',
     minus: '<path d="M5 12h14"/>',
+    retablis: '<path d="M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3"/>',
+    ciseaux: '<path d="M6 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8.1 9.1 20 20M20 4 8.1 14.9"/>',
     calendar: '<path d="M3 5h18v16H3zM3 10h18M8 3v4M16 3v4"/>',
     list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
     grid: '<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',

@@ -81,8 +81,10 @@ Windows attribue aux jeux sur un portable à deux cartes. La capture et l'encoda
 - Dossier des clips : `Vidéos/Estompe` par défaut. Rien n'y est créé avant la première sauvegarde.
 - Clip : `<Jeu> AAAA-MM-JJ HH-MM-SS.mp4` (heure locale, caractères interdits par Windows retirés, ` (2)` en cas de collision).
   Vidéo H.264 ou HEVC, une piste AAC « Jeu », et une piste AAC « Micro » si le micro est actif.
-- Sous-dossier caché `.estompe/` : `<clip>.mp4.json` (jeu, date, durée, codec, dimensions, cadence, pistes audio), `<clip>.mp4.jpg` (vignette, produite par le
-  ffmpeg embarqué), `envoi/` (fichiers réencodés pour l'envoi, purgés à chaque `replay_configurer`), fichiers `.part` pendant une écriture.
+- Sous-dossier caché `.estompe/` : `<clip>.mp4.json` (jeu, date, durée, codec, dimensions, cadence, pistes audio, et `origine` pour un montage exporté),
+  `<clip>.mp4.jpg` (vignette, produite par le ffmpeg embarqué), `envoi/` (fichiers réencodés pour l'envoi, purgés à chaque `replay_configurer`), fichiers
+  `.part` pendant une écriture, et les fichiers de l'éditeur ([`editeur-clips.md`](editeur-clips.md) : projet, aperçu, pistes audio extraites). Renommer ou
+  supprimer un clip renomme ou supprime tous ses fichiers de `.estompe/`.
   Un MP4 déposé à la main apparaît dans la galerie sans ces informations.
 - Quota : somme des clips et de `.estompe/`. Quota déjà atteint : la sauvegarde est refusée (`quota`). Clip qui fait franchir le quota : il est écrit, puis
   `replay://erreur` `quota` prévient. **Aucun clip n'est jamais supprimé par le moteur** : `replay_stockage` propose les plus anciens, le front confirme.
@@ -100,7 +102,7 @@ Commandes Tauri. Les objets sont en `camelCase`. Toute commande peut échouer av
 | `replay_etat` | | `{ etat, jeu, raison, codec, largeur, hauteur, ips, microParDefaut }` |
 | `replay_sauvegarder` | | rien (le résultat arrive par évènement) |
 | `replay_partage` | `actif`, `suspendre` (optionnel) | rien |
-| `replay_clips` | | `[{ chemin, nom, jeu, date, dureeS, tailleOctets, vignette, codec, largeur, hauteur, ips, pistesAudio }]`, du plus récent au plus ancien |
+| `replay_clips` | | `[{ chemin, nom, jeu, date, dureeS, tailleOctets, vignette, codec, largeur, hauteur, ips, pistesAudio, origine }]`, du plus récent au plus ancien |
 | `replay_renommer` | `chemin`, `nom` | nouveau chemin |
 | `replay_supprimer` | `chemins` | rien |
 | `replay_ouvrir_dossier` | | rien |
@@ -140,7 +142,7 @@ Précisions :
   tout de suite (i/s du partage en chute). `actif: false` relance le tampon.
 - Galerie : `chemin` doit désigner un `.mp4` placé directement dans le dossier des clips (chemin canonisé, liens suivis) ; tout autre chemin est refusé.
   `date` est une date ISO locale sans fuseau pour un clip d'Estompe, en UTC avec `Z` pour un fichier sans annexe. Sans annexe : `jeu`, `codec` et `vignette`
-  valent `null`, les nombres valent 0.
+  valent `null`, les nombres valent 0. `origine` est le nom du clip source d'un montage exporté, `null` sinon.
 - `replay_vers_h264` : renvoie le clip lui-même s'il est déjà en H.264, à une seule piste audio et sous `tailleMaxOctets`. Sinon produit un fichier dans
   `.estompe/envoi/` (lisible par `asset:`) avec le ffmpeg embarqué : les deux pistes audio sont mélangées en une, la vidéo est copiée si elle convient, ou
   réencodée par un encodeur matériel au débit qui tient dans la taille (`galerie::debit_pour_taille`, hauteur réduite sous 6 Mbit/s). Échoue si le clip est
@@ -175,6 +177,7 @@ et l'espace sont masqués et aucune autre commande `replay_*` n'est appelée.
 | `replay.svelte.ts` | état (`replay`), enregistrement des réglages, `replay_configurer`, écoute des évènements, raccourci global, signal de partage d'écran, actions de la galerie, envoi |
 | `SettingsReplay.svelte` | Paramètres › Instant replay |
 | `ReplayNav.svelte`, `ReplayGalerie.svelte`, `ReplayEnvoi.svelte` | espace « Clips » : menu latéral, galerie, envoi dans un salon |
+| `montage.ts`, `montage.svelte.ts`, `ReplayEditeur.svelte` | éditeur de clips ([`editeur-clips.md`](editeur-clips.md)) |
 | `replay-overlay.svelte.ts`, `ReplayOverlay.svelte` | fenêtre d'overlay `replay-overlay` (capacité `src-tauri/capabilities/replay-overlay.json`) |
 
 - **Réglages** : Paramètres › Instant replay (mention « bêta » dans l'onglet et dans la page). Ils sont enregistrés sur l'appareil (`localStorage`, clé
@@ -190,7 +193,8 @@ et l'espace sont masqués et aucune autre commande `replay_*` n'est appelée.
 - **Galerie** : espace « Clips » de la barre des serveurs, visible dès que la fonction est activée ou qu'un clip existe ; un filtre par jeu dans le menu latéral.
   Lire (lecteur intégré, message si la webview ne lit pas le fichier, HEVC notamment), renommer, supprimer et « supprimer les plus anciens » quand le quota est
   atteint (toujours avec confirmation), ouvrir le dossier, espace utilisé. Elle se recharge sur `replay://clip`. Les actions d'un clip sont la liste `ACTIONS`
-  de `ReplayGalerie.svelte`, les travaux en cours la liste `replay.travaux` : l'éditeur et les exports s'y ajouteront.
+  de `ReplayGalerie.svelte`, les travaux en cours la liste `replay.travaux` (envois, et exports de l'éditeur avec leur progression et leur annulation).
+  « Modifier » ouvre l'éditeur de clips dans le même espace : voir [`editeur-clips.md`](editeur-clips.md).
 - **Envoyer dans un salon** : choix d'un salon texte où l'on peut joindre un fichier, ou d'une conversation privée, puis envoi par `uploadAttachment` et
   `app.send`. `decisionEnvoi` choisit : tel quel (H.264, une piste audio, sous la limite), `replay_vers_h264` (HEVC, deux pistes ou codec inconnu), réencodage
   plus léger proposé au-delà de la limite (`max_video_size` de `GET /me`, passé en `tailleMaxOctets`), refus quand le débit qui tiendrait est sous 300 kbit/s.

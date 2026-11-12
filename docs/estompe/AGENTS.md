@@ -195,5 +195,11 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   repris par `prendre()` (un `let Envoi(x) = …` dans une fermeture ne capture que le champ, et la compilation échoue). Le crate déclare `rust-version = "1.77"` :
   clippy refuse les API plus récentes (`is_none_or`, `ErrorKind::StorageFull`…). Les commandes qui lisent le matériel ou le disque sont `#[tauri::command(async)]` :
   une commande synchrone tourne sur le fil principal. La galerie n'accepte qu'un chemin canonisé placé dans le dossier des clips.
+- **Éditeur de clips** (`docs/estompe/editeur-clips.md`) : le ffmpeg embarqué est un build LGPL, sans `libx264` ; le seul encodeur H.264 logiciel garanti est
+  `libopenh264`, et aucun `ffprobe` n'est embarqué (les flux se lisent dans la sortie de `ffmpeg -i`). Un export se coupe en images (`fps` puis
+  `trim=start_frame/end_frame`), pas en secondes : couper la vidéo par le temps décale d'une image selon les arrondis. Un évènement de fin d'export peut arriver avant le
+  retour de la commande qui l'a lancé : le front ne suit un export que par ses évènements. Le Chromium de Playwright ne lit ni H.264 ni AAC : un contrôle de
+  l'aperçu dans le navigateur se fait avec un fichier VP9 et des pistes WAV. Un raccourci de l'éditeur ne doit pas se déclencher depuis un champ de saisie, mais
+  une poignée (`role="slider"`) qui garde le focus après un glisser ne doit pas bloquer annuler et rétablir.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.
