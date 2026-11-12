@@ -11,12 +11,15 @@ use windows::Win32::Media::MediaFoundation::{
     eAVEncCommonRateControlMode_CBR, eAVEncH264VProfile_High, eAVEncH265VProfile_Main_420_8, ICodecAPI, IMFActivate, IMFMediaEventGenerator, IMFSample, IMFShutdown, IMFTransform,
     METransformHaveOutput, METransformNeedInput, MFCreateMediaType, MFMediaType_Video, MFSampleExtension_CleanPoint, MFVideoFormat_H264, MFVideoFormat_HEVC, CODECAPI_AVEncCommonMeanBitRate,
     CODECAPI_AVEncCommonRateControlMode, CODECAPI_AVEncMPVDefaultBPictureCount, CODECAPI_AVEncMPVGOPSize, CODECAPI_AVLowLatencyMode, MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
-    MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_END_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER, MF_E_TRANSFORM_STREAM_CHANGE,
+    MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_END_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER, MF_E_TRANSFORM_NEED_MORE_INPUT,
+    MF_E_TRANSFORM_STREAM_CHANGE,
     MF_MT_AVG_BITRATE, MF_MT_MAJOR_TYPE, MF_MT_MPEG2_PROFILE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_TRANSFORM_ASYNC_UNLOCK,
 };
 
 use super::gpu::{couleurs, type_nv12, Appareil};
 use super::materiel::{activations, initialiser, nom_activation, texte};
+use super::SOURCE;
+use crate::debuglog;
 use crate::replay::mp4::{avec_parametres, en_longueurs};
 use crate::replay::reglages::GOP_S;
 use crate::replay::tampon::{Piste, Tampon, Unite};
@@ -127,26 +130,41 @@ struct Sortie {
     entete: Vec<u8>,
     tampon: Arc<Mutex<Tampon>>,
     arret: Arc<AtomicBool>,
+    encodees: u64,
 }
 
 impl Sortie {
     unsafe fn lire(&mut self) -> windows::core::Result<()> {
-        let mut sorties = [MFT_OUTPUT_DATA_BUFFER::default()];
-        let mut statut = 0u32;
-        let resultat = self.transformation.ProcessOutput(0, &mut sorties, &mut statut);
-        let [sortie] = sorties;
-        let echantillon = ManuallyDrop::into_inner(sortie.pSample);
-        drop(ManuallyDrop::into_inner(sortie.pEvents));
-        match resultat {
-            Err(e) if e.code() == MF_E_TRANSFORM_STREAM_CHANGE => {
-                let disponible = self.transformation.GetOutputAvailableType(0, 0)?;
-                self.transformation.SetOutputType(0, &disponible, 0)?;
-                self.entete = entete(&self.transformation);
-                return Ok(());
+        let mut change = false;
+        let echantillon = loop {
+            let mut sorties = [MFT_OUTPUT_DATA_BUFFER::default()];
+            let mut statut = 0u32;
+            let resultat = self.transformation.ProcessOutput(0, &mut sorties, &mut statut);
+            let [sortie] = sorties;
+            let echantillon = ManuallyDrop::into_inner(sortie.pSample);
+            drop(ManuallyDrop::into_inner(sortie.pEvents));
+            match resultat {
+                Err(e) if e.code() == MF_E_TRANSFORM_STREAM_CHANGE && !change => {
+                    let disponible = self.transformation.GetOutputAvailableType(0, 0)?;
+                    self.transformation.SetOutputType(0, &disponible, 0)?;
+                    self.entete = entete(&self.transformation);
+                    change = true;
+                    debuglog::log("info", SOURCE, "encodeur : format de sortie changé, sortie relue");
+                }
+                Err(e) if change && (e.code() == E_UNEXPECTED || e.code() == MF_E_TRANSFORM_NEED_MORE_INPUT) => {
+                    debuglog::log("info", SOURCE, &format!("encodeur : aucune sortie après le changement de format ({})", texte(e)));
+                    return Ok(());
+                }
+                autre => {
+                    autre?;
+                    break echantillon;
+                }
             }
-            autre => autre?,
-        }
-        let Some(echantillon) = echantillon else { return Ok(()) };
+        };
+        let Some(echantillon) = echantillon else {
+            debuglog::log("warn", SOURCE, "encodeur : sortie annoncée sans échantillon");
+            return Ok(());
+        };
         let cle = echantillon.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
         let (pts, duree) = (echantillon.GetSampleTime()?, echantillon.GetSampleDuration().unwrap_or(0));
         let brut = octets(&echantillon)?;
@@ -158,6 +176,10 @@ impl Sortie {
             donnees = avec_parametres(self.parametres.codec, donnees, &mut self.entete);
         }
         let duree = if duree > 0 { duree } else { 10_000_000 / self.parametres.ips as i64 };
+        self.encodees += 1;
+        if self.encodees == 1 {
+            debuglog::log("info", SOURCE, &format!("encodeur : première image encodée ({} octets, image clé : {cle})", donnees.len()));
+        }
         if !self.arret.load(Ordering::Relaxed) {
             if let Ok(mut t) = self.tampon.lock() {
                 t.pousser(Piste::Video, Unite { pts: self.parametres.base + pts, duree, cle, donnees: donnees.into() });
@@ -168,6 +190,7 @@ impl Sortie {
 }
 
 unsafe fn boucle(evenements: &IMFMediaEventGenerator, sortie: &mut Sortie, rx: &Receiver<Envoi<IMFSample>>) -> windows::core::Result<()> {
+    let (mut entrees, mut sorties, mut autres) = (0u64, 0u64, 0u64);
     loop {
         let evenement = evenements.GetEvent(MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS(0))?;
         evenement.GetStatus()?.ok()?;
@@ -175,8 +198,15 @@ unsafe fn boucle(evenements: &IMFMediaEventGenerator, sortie: &mut Sortie, rx: &
         if genre == METransformNeedInput.0 as u32 {
             let Ok(echantillon) = rx.recv().map(Envoi::prendre) else { return Ok(()) };
             sortie.transformation.ProcessInput(0, &echantillon, 0)?;
+            entrees += 1;
         } else if genre == METransformHaveOutput.0 as u32 {
             sortie.lire()?;
+            sorties += 1;
+        } else {
+            autres += 1;
+        }
+        if entrees + sorties + autres <= 6 {
+            debuglog::log("info", SOURCE, &format!("encodeur : évènement {genre} traité ({entrees} entrée(s), {sorties} sortie(s), {autres} autre(s), {} image(s) encodée(s))", sortie.encodees));
         }
     }
 }
@@ -201,7 +231,7 @@ pub fn demarrer(
                     let (transformation, evenements, activation) = fil.prendre();
                     let _fini = fini;
                     let _ = initialiser();
-                    let mut sortie = Sortie { entete: unsafe { entete(&transformation) }, transformation, parametres, tampon, arret };
+                    let mut sortie = Sortie { entete: unsafe { entete(&transformation) }, transformation, parametres, tampon, arret, encodees: 0 };
                     let resultat = unsafe { boucle(&evenements, &mut sortie, &rx) };
                     unsafe {
                         let _ = sortie.transformation.ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);

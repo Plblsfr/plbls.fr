@@ -214,7 +214,8 @@ et l'espace sont masqués et aucune autre commande `replay_*` n'est appelée.
 Avec le mode debug, source `replay` : carte graphique et encodeurs trouvés, puis à chaque armement l'encodeur retenu, le codec, la résolution et la cadence
 effectives, le débit, la durée ; toutes les 10 secondes les images émises et perdues par cause (retard, encodeur, conversion, avec la dernière erreur de
 conversion) et la taille du tampon ; chaque changement d'état avec sa raison ;
-chaque clip enregistré ou refusé.
+chaque clip enregistré ou refusé. L'encodeur journalise ses six premiers évènements (entrées acceptées, sorties lues), un changement de format de sortie et la
+première image encodée : un encodeur qui n'accepte que quelques images puis se fige se lit là.
 
 ## Vérification
 
@@ -247,6 +248,8 @@ Points d'attention pour le premier essai sur appareil :
 
 - texture de Windows Graphics Capture donnée telle quelle au Video Processor (certains pilotes exigent une copie) ;
 - MFT matériel : ordre des réglages, présence des paramètres de séquence, une unité AAC par échantillon de sortie ;
+- MFT matériel : quand `ProcessOutput` répond « changement de format », le type de sortie est reposé puis la sortie est relue dans le même évènement
+  (sans relecture, l'encodeur attend indéfiniment) ; vu sur `AMDh264Encoder`, qui n'acceptait que trois images, correctif non vérifié sur appareil ;
 - retard propre à l'encodeur AAC (les horodatages de sortie du MFT sont repris tels quels) ;
 - sans annulation d'écho, le son des enceintes peut repasser dans la piste micro ;
 - profil de build `opt-level = "s"` : coût de RNNoise et de l'écriture MP4 à mesurer.
