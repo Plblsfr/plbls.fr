@@ -1,4 +1,4 @@
-/*! @plbls/ui v2.0.1 — MIT */
+/*! @plbls/ui v2.0.2 — MIT */
 export type PlblsTheme = 'light' | 'dark' | 'auto'
 export type PlblsToastType = 'info' | 'succes' | 'erreur'
 

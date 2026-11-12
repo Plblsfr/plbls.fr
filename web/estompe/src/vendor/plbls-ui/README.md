@@ -1,4 +1,4 @@
-# @plbls/ui 2.0.1
+# @plbls/ui 2.0.2
 
 Copie générée de `packages/ui` par `npm run ui:sync` (script `scripts/sync-ui.mjs` à la racine du dépôt) : ne pas modifier ces fichiers.
 Ils sont dans le dépôt pour que l'application fonctionne hors ligne sans autoriser le CDN dans sa CSP.

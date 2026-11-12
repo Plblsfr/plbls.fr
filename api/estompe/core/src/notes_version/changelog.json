@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.94.0",
+    "date": "2026-11-12",
+    "new": [
+      "Application Windows : enregistrez les dernières secondes de votre jeu en un clic avec Alt+F10 (instant replay, en bêta, à activer dans Paramètres › Instant replay).",
+      "Application Windows : retrouvez vos clips dans l'espace Clips, rognez-les, assemblez-en plusieurs, ajoutez du texte, changez la vitesse, puis envoyez-les dans un salon."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.91.3",
     "date": "2026-11-11",
     "new": [],
