@@ -38,6 +38,13 @@ export function parseLines(raw: string): Entry[] {
   return out
 }
 
+const cle = (e: Entry) => `${e.t}|${e.l}|${e.s}|${e.m}`
+export function mergeEntries(current: Entry[], extra: Entry[]): Entry[] {
+  const vus = new Set(current.map(cle))
+  const neuves = extra.filter((e) => !vus.has(cle(e)))
+  return neuves.length ? [...current, ...neuves].sort((a, b) => a.t - b.t).slice(-MAX_ENTRIES) : current
+}
+
 const text = (a: unknown[]) => a.map((x) => (x instanceof Error ? x.message : typeof x === 'string' ? x : (() => { try { return JSON.stringify(x) } catch { return String(x) } })())).join(' ')
 
 class DebugLog {
@@ -76,6 +83,13 @@ class DebugLog {
     this.entries.push(e)
     if (this.entries.length > MAX_ENTRIES) this.entries.splice(0, this.entries.length - MAX_ENTRIES)
     platform.debugStore?.write(JSON.stringify(e))
+  }
+
+  async refresh() {
+    const store = platform.debugStore
+    if (!this.enabled || !store) return
+    const lues = parseLines(await store.read())
+    if (this.enabled) this.entries = mergeEntries(this.entries, lues)
   }
 
   async clear() {
