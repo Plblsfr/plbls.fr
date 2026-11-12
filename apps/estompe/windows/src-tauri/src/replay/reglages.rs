@@ -118,6 +118,15 @@ pub fn dimensions(r: Resolution, source: (u32, u32)) -> (u32, u32) {
     ((l & !1).max(2), (h & !1).max(2))
 }
 
+pub fn niveau_h264(dim: (u32, u32), ips: u32) -> u32 {
+    let image = macroblocs(dim);
+    let debit = image * ips as u64;
+    [(31, 3_600, 108_000), (40, 8_192, 245_760), (42, 8_704, 522_240), (50, 22_080, 589_824), (51, 36_864, 983_040)]
+        .into_iter()
+        .find(|&(_, image_max, debit_max)| image <= image_max && debit <= debit_max)
+        .map_or(52, |(niveau, _, _)| niveau)
+}
+
 fn macroblocs(dim: (u32, u32)) -> u64 {
     dim.0.div_ceil(16) as u64 * dim.1.div_ceil(16) as u64
 }
@@ -220,6 +229,19 @@ mod tests {
 
     fn materiel(hz: u32, source: (u32, u32)) -> Materiel {
         Materiel { ecran_hz: hz, source, h264: encodeur(MB_S_H264, 4096), hevc: encodeur(MB_S_HEVC, 8192), ram_libre: 16 << 30 }
+    }
+
+    #[test]
+    fn niveau_h264_selon_la_taille_et_la_cadence() {
+        assert_eq!(niveau_h264((1280, 720), 30), 31);
+        assert_eq!(niveau_h264((1280, 720), 60), 40);
+        assert_eq!(niveau_h264((1920, 1080), 30), 40);
+        assert_eq!(niveau_h264((1920, 1080), 60), 42);
+        assert_eq!(niveau_h264((1920, 1080), 120), 51);
+        assert_eq!(niveau_h264((1920, 1080), 144), 52);
+        assert_eq!(niveau_h264((2560, 1440), 60), 51);
+        assert_eq!(niveau_h264((2560, 1440), 144), 52);
+        assert_eq!(niveau_h264((3840, 2160), 60), 52);
     }
 
     #[test]

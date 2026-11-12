@@ -13,7 +13,7 @@ use windows::Win32::Media::MediaFoundation::{
     CODECAPI_AVEncCommonRateControlMode, CODECAPI_AVEncMPVDefaultBPictureCount, CODECAPI_AVEncMPVGOPSize, CODECAPI_AVLowLatencyMode, MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
     MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_END_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER, MF_E_TRANSFORM_NEED_MORE_INPUT,
     MF_E_TRANSFORM_STREAM_CHANGE,
-    MF_MT_AVG_BITRATE, MF_MT_MAJOR_TYPE, MF_MT_MPEG2_PROFILE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_TRANSFORM_ASYNC_UNLOCK,
+    MF_MT_AVG_BITRATE, MF_MT_MAJOR_TYPE, MF_MT_MPEG2_LEVEL, MF_MT_MPEG2_PROFILE, MF_MT_MPEG_SEQUENCE_HEADER, MF_MT_SUBTYPE, MF_TRANSFORM_ASYNC_UNLOCK,
 };
 
 use super::gpu::{couleurs, type_nv12, Appareil};
@@ -22,7 +22,7 @@ use super::SOURCE;
 use crate::debuglog;
 use crate::replay::cadence::Entree;
 use crate::replay::mp4::{avec_parametres, en_longueurs};
-use crate::replay::reglages::GOP_S;
+use crate::replay::reglages::{niveau_h264, GOP_S};
 use crate::replay::tampon::{Piste, Tampon, Unite};
 use crate::replay::types::Codec;
 
@@ -94,7 +94,19 @@ unsafe fn configurer(activation: &IMFActivate, a: &Appareil, p: &Parametres, ent
     sortie.SetUINT32(&MF_MT_AVG_BITRATE, p.debit_kbps * 1000)?;
     sortie.SetUINT32(&MF_MT_MPEG2_PROFILE, profil as u32)?;
     couleurs(&sortie, p.largeur, p.hauteur, p.ips)?;
-    transformation.SetOutputType(0, &sortie, 0)?;
+    let niveau = (p.codec == Codec::H264).then(|| niveau_h264((p.largeur, p.hauteur), p.ips));
+    if let Some(niveau) = niveau {
+        sortie.SetUINT32(&MF_MT_MPEG2_LEVEL, niveau)?;
+    }
+    match (transformation.SetOutputType(0, &sortie, 0), niveau) {
+        (Ok(()), Some(niveau)) => debuglog::log("info", SOURCE, &format!("encodeur : niveau H.264 {}.{} demandé", niveau / 10, niveau % 10)),
+        (Err(e), Some(niveau)) => {
+            debuglog::log("warn", SOURCE, &format!("encodeur : niveau H.264 {}.{} refusé ({}), niveau laissé à l'encodeur", niveau / 10, niveau % 10, texte(e)));
+            sortie.DeleteItem(&MF_MT_MPEG2_LEVEL)?;
+            transformation.SetOutputType(0, &sortie, 0)?;
+        }
+        (resultat, None) => resultat?,
+    }
     transformation.SetInputType(0, &type_nv12(p.largeur, p.hauteur, p.ips)?, 0)?;
     if let Ok(api) = transformation.cast::<ICodecAPI>() {
         regler(&api, &CODECAPI_AVEncCommonRateControlMode, Some(eAVEncCommonRateControlMode_CBR.0 as u32));
