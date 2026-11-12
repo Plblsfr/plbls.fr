@@ -2,8 +2,11 @@ mod foreground;
 mod jeux;
 mod mesures;
 mod overlay_natif;
+mod replay;
 mod capture;
 mod screen_native;
+#[cfg(all(windows, any(feature = "livekit-native", feature = "instant-replay")))]
+mod son_wasapi;
 mod toast;
 mod video;
 mod webview2_options;
@@ -51,6 +54,7 @@ pub fn run() {
         .manage(estompe_core::commands::OAuth::default())
         .manage(screen_native::ScreenNative::default())
         .manage(mesures::Mesures::default())
+        .manage(replay::Replay::default())
         .setup(|#[allow(unused_variables)] app| {
             {
                 use tauri::Manager as _;
@@ -93,6 +97,9 @@ pub fn run() {
             foreground::foreground_info, capture::capture_sources, capture::capture_thumb, capture::capture_self,
             toast::toast_show, screen_native::screen_native_start, screen_native::screen_native_stop,
             mesures::mesures_demarrer, mesures::mesures_arreter, mesures::mesures_systeme, webview2_options::webview2_options_get, webview2_options::webview2_options_set,
+            replay::replay_disponible, replay::replay_options, replay::replay_configurer, replay::replay_etat, replay::replay_sauvegarder, replay::replay_partage,
+            replay::replay_clips, replay::replay_renommer, replay::replay_supprimer, replay::replay_ouvrir_dossier, replay::replay_stockage, replay::replay_vers_h264,
+            replay::replay_choisir_executable, replay::replay_choisir_dossier,
             overlay_natif::overlay_natif_disponible, overlay_natif::overlay_natif_afficher, overlay_natif::overlay_natif_fermer,
             estompe_core::debuglog::debug_set, estompe_core::debuglog::debug_write, estompe_core::debuglog::debug_read, estompe_core::debuglog::debug_clear]);
     // La fenêtre se masque au lieu de se fermer (bureau uniquement : sur mobile, c'est le système qui gère l'app).

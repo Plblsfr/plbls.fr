@@ -45,72 +45,35 @@ mod imp {
     const CHANNELS: u32 = 2;
     const FRAME: usize = (RATE / 100) as usize; // 10 ms par canal : taille imposée à la source sans file d'attente
 
-    /// Son du partage (EST-52) : « process loopback » WASAPI, converti en trames de 10 ms (PCM 16 bits) pour `source`.
+    /// Son du partage (EST-52) : « process loopback » WASAPI (`son_wasapi::capturer`), converti en trames de 10 ms (PCM 16 bits) pour `source`.
     /// Fenêtre : le son de son processus (et de ses enfants) seul. Écran : tout le système sauf Estompe, pour ne pas renvoyer
     /// la voix des participants dans le partage (écho). `ready` reçoit le résultat de l'ouverture, puis la boucle tourne jusqu'à `stop`.
     fn capture_audio(pid: u32, include_tree: bool, source: NativeAudioSource, stop: Arc<AtomicBool>, ready: std::sync::mpsc::Sender<Result<(), String>>) {
-        use std::collections::VecDeque;
-        use wasapi::{initialize_mta, AudioClient, Direction, SampleType, StreamMode, WaveFormat};
-
-        let open = || -> Result<_, String> {
-            initialize_mta().ok().map_err(|e| e.to_string())?;
-            let format = WaveFormat::new(32, 32, &SampleType::Float, RATE as usize, CHANNELS as usize, None);
-            let mut client = AudioClient::new_application_loopback_client(pid, include_tree).map_err(|e| e.to_string())?;
-            client
-                .initialize_client(&format, &Direction::Capture, &StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: 0 })
-                .map_err(|e| e.to_string())?;
-            let event = client.set_get_eventhandle().map_err(|e| e.to_string())?;
-            let capture = client.get_audiocaptureclient().map_err(|e| e.to_string())?;
-            client.start_stream().map_err(|e| e.to_string())?;
-            Ok((client, event, capture))
-        };
-        let (client, event, capture) = match open() {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = ready.send(Err(e));
-                return;
-            }
-        };
-        let _ = ready.send(Ok(()));
-
-        let (frame_bytes, mut queue) = (FRAME * CHANNELS as usize * 4, VecDeque::<u8>::new());
-        while !stop.load(Ordering::Relaxed) {
-            // Pas de paquet quand rien ne joue : l'attente expire, c'est normal (elle sert à revoir le drapeau d'arrêt).
-            let _ = event.wait_for_event(100);
-            while capture.get_next_packet_size().ok().flatten().unwrap_or(0) > 0 {
-                if capture.read_from_device_to_deque(&mut queue).is_err() {
-                    return;
+        use crate::son_wasapi::{capturer, pcm16};
+        let frame_bytes = FRAME * CHANNELS as usize * 4;
+        capturer(
+            || wasapi::AudioClient::new_application_loopback_client(pid, include_tree).map_err(|e| e.to_string()),
+            CHANNELS as usize,
+            &stop,
+            |r| {
+                let _ = ready.send(r);
+            },
+            |queue| {
+                while queue.len() >= frame_bytes {
+                    let bytes: Vec<u8> = queue.drain(..frame_bytes).collect();
+                    let mut frame = AudioFrame::new(RATE, CHANNELS, FRAME as u32);
+                    frame.data = pcm16(&bytes).into();
+                    if tauri::async_runtime::block_on(source.capture_frame(&frame)).is_err() {
+                        return false;
+                    }
                 }
-            }
-            while queue.len() >= frame_bytes {
-                let bytes: Vec<u8> = queue.drain(..frame_bytes).collect();
-                let mut frame = AudioFrame::new(RATE, CHANNELS, FRAME as u32);
-                frame.data = pcm16(&bytes).into();
-                if tauri::async_runtime::block_on(source.capture_frame(&frame)).is_err() {
-                    return;
-                }
-            }
-        }
-        let _ = client.stop_stream();
-    }
-
-    /// Échantillons flottants 32 bits (little-endian) en entiers 16 bits.
-    fn pcm16(bytes: &[u8]) -> Vec<i16> {
-        bytes.chunks_exact(4).map(|b| (f32::from_le_bytes([b[0], b[1], b[2], b[3]]).clamp(-1.0, 1.0) * i16::MAX as f32) as i16).collect()
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::pcm16;
-
-        #[test]
-        fn convertit_et_borne_les_echantillons() {
-            let bytes: Vec<u8> = [0.0f32, 1.0, -1.0, 2.0, 0.5].iter().flat_map(|f| f.to_le_bytes()).collect();
-            assert_eq!(pcm16(&bytes), vec![0, i16::MAX, -i16::MAX, i16::MAX, 16383]);
-        }
+                true
+            },
+        );
     }
 
     /// Renvoie les encodeurs vidéo disponibles (pour savoir si l'encodage matériel existe).
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(state: &ScreenNative, url: String, token: String, id: String, fps: u32, height: u32, bitrate: u64, audio: bool) -> Result<String, String> {
         stop(state);
         let (room, _events) = Room::connect(&url, &token, RoomOptions::default()).await.map_err(|e| e.to_string())?;
@@ -200,6 +163,7 @@ mod imp {
 #[cfg(not(all(windows, feature = "livekit-native")))]
 mod imp {
     use super::*;
+    #[allow(clippy::too_many_arguments)]
     pub async fn start(_: &ScreenNative, _: String, _: String, _: String, _: u32, _: u32, _: u64, _: bool) -> Result<String, String> {
         Err("partage d'écran natif indisponible : installeur compilé sans la feature livekit-native (variable de dépôt NATIVE_ALPHA=1 absente)".into())
     }
@@ -208,6 +172,7 @@ mod imp {
 
 /// Publie la source `id` (écran `m:…` ou fenêtre `w:…`, voir `capture_sources`) avec le jeton du participant `#screen`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn screen_native_start(state: tauri::State<'_, ScreenNative>, url: String, token: String, id: String, fps: u32, height: u32, bitrate: u64, audio: bool) -> Result<String, String> {
     crate::debuglog::log("info", "natif/partage", &format!("démarrage : source {id}, {fps} i/s, {height} px, {bitrate} bit/s, son {audio}"));
     let r = imp::start(&state, url, token, id, fps, height, bitrate, audio).await;

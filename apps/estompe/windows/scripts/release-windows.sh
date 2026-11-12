@@ -10,10 +10,12 @@ export PATH="$PWD/../../../node_modules/.bin:$PATH"
 export TAURI_SIGNING_PRIVATE_KEY="${TAURI_SIGNING_PRIVATE_KEY:-$HOME/.tauri/estompe.key}"
 # NATIVE_ALPHA=1 (variable du dépôt) : build « alpha » du partage d'écran natif en Rust (EST-18). libwebrtc n'existe que pour MSVC :
 # compilation croisée avec cargo-xwin et feature livekit-native. Sans, build normal inchangé (mingw).
+# L'instant replay (feature instant-replay, docs/estompe/instant-replay.md) compile sur les deux cibles ; INSTANT_REPLAY=0 le retire du build.
+REPLAY=instant-replay; if [ "${INSTANT_REPLAY:-1}" = 0 ]; then REPLAY=; fi
 if [ "${NATIVE_ALPHA:-}" = 1 ]; then
-  TARGET=x86_64-pc-windows-msvc; RUNNER=(--runner cargo-xwin); FEATURES=(--features livekit-native)
+  TARGET=x86_64-pc-windows-msvc; RUNNER=(--runner cargo-xwin); FEATURES=(--features "livekit-native $REPLAY")
 else
-  TARGET=x86_64-pc-windows-gnu; RUNNER=(); FEATURES=()
+  TARGET=x86_64-pc-windows-gnu; RUNNER=(); FEATURES=(); if [ -n "$REPLAY" ]; then FEATURES=(--features "$REPLAY"); fi
 fi
 # En CI, la version de .version est écrite dans les fichiers de l'app (scripts/estompe/bump-version.mjs --apply) ; en local, celle de tauri.conf.json.
 if [ -n "${CI:-}" ]; then echo "Version : $(node ../../../scripts/estompe/bump-version.mjs --apply)"; fi
