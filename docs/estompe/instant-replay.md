@@ -158,9 +158,12 @@ Précisions :
 | `replay://erreur` | `{ code, message }` |
 
 Codes d'erreur : `tampon-vide`, `disque-plein`, `dossier-inaccessible`, `quota`, `ecriture` (clip non enregistré, sauf `quota` après un clip écrit) ;
-`capture-refusee`, `gpu-sature`, `sans-encodeur`, `gpu`, `minuteur`, `tampon` (arrêt du tampon) ; `image-changee` (redémarrage) ;
-`son-indisponible`, `micro-indisponible` (la piste manque, le tampon tourne). `gpu-sature` est aussi émis, sans arrêt, quand plus de 20 % des images sont
-perdues sur 10 secondes.
+`capture-refusee`, `gpu-sature` (encodeur refusé ou arrêté), `sans-encodeur`, `gpu`, `minuteur`, `tampon` (arrêt du tampon) ; `image-changee` (redémarrage) ;
+`son-indisponible`, `micro-indisponible` (la piste manque, le tampon tourne).
+
+Quand plus de 20 % des images sont perdues sur 10 secondes, un avertissement est émis sans arrêt du tampon, avec le code de la cause qui en a perdu le plus
+(`cadence::Perte`) : `capture-en-retard` (la boucle de capture a plus de 3 images de retard), `encodeur-sature` (la file de l'encodeur est pleine),
+`conversion` (l'allocation ou la conversion de l'image a échoué). Ces codes ne disent pas que la carte graphique est saturée : aucun ne mesure sa charge.
 
 L'overlay natif (`overlay_natif`) ne sait afficher que les participants du vocal : l'indicateur, « Clip enregistré » et les messages d'erreur sont à afficher
 par le front à partir de ces évènements.
@@ -209,7 +212,8 @@ et l'espace sont masqués et aucune autre commande `replay_*` n'est appelée.
 ## Journaux
 
 Avec le mode debug, source `replay` : carte graphique et encodeurs trouvés, puis à chaque armement l'encodeur retenu, le codec, la résolution et la cadence
-effectives, le débit, la durée ; toutes les 10 secondes les images émises et perdues et la taille du tampon ; chaque changement d'état avec sa raison ;
+effectives, le débit, la durée ; toutes les 10 secondes les images émises et perdues par cause (retard, encodeur, conversion, avec la dernière erreur de
+conversion) et la taille du tampon ; chaque changement d'état avec sa raison ;
 chaque clip enregistré ou refusé.
 
 ## Vérification
