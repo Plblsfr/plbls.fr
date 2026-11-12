@@ -20,6 +20,36 @@ impl Perte {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Entree {
+    #[default]
+    Reserve,
+    Textures,
+    Memoire,
+}
+
+impl Entree {
+    pub fn suivante(self) -> Option<Self> {
+        match self {
+            Self::Reserve => Some(Self::Textures),
+            Self::Textures => Some(Self::Memoire),
+            Self::Memoire => None,
+        }
+    }
+
+    pub fn nom(self) -> &'static str {
+        match self {
+            Self::Reserve => "textures de la réserve Media Foundation",
+            Self::Textures => "textures individuelles",
+            Self::Memoire => "mémoire vive",
+        }
+    }
+}
+
+pub fn encodeur_muet(ips: u32, premiere: Option<u64>, courante: u64, encodees: u64) -> bool {
+    encodees == 0 && premiere.is_some_and(|p| courante.saturating_sub(p) >= 2 * ips.max(1) as u64)
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Pertes {
     pub retard: u64,
     pub encodeur: u64,
@@ -170,6 +200,23 @@ mod tests {
         assert_eq!(Pertes::default().alerte(600), None);
         let codes = [Perte::Retard, Perte::Encodeur, Perte::Conversion].map(|p| p.erreur().0);
         assert_eq!(codes, ["capture-en-retard", "encodeur-sature", "conversion"]);
+    }
+
+    #[test]
+    fn encodeur_muet_apres_deux_secondes_sans_image_encodee() {
+        assert!(!encodeur_muet(120, None, 10_000, 0));
+        assert!(!encodeur_muet(120, Some(5), 244, 0));
+        assert!(encodeur_muet(120, Some(5), 245, 0));
+        assert!(!encodeur_muet(120, Some(5), 10_000, 1));
+        assert!(encodeur_muet(0, Some(0), 2, 0));
+    }
+
+    #[test]
+    fn entrees_de_l_encodeur_essayees_dans_l_ordre() {
+        assert_eq!(Entree::default(), Entree::Reserve);
+        assert_eq!(Entree::Reserve.suivante(), Some(Entree::Textures));
+        assert_eq!(Entree::Textures.suivante(), Some(Entree::Memoire));
+        assert_eq!(Entree::Memoire.suivante(), None);
     }
 
     #[test]
