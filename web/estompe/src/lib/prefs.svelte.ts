@@ -1,4 +1,4 @@
-/** Réglages de l'overlay de l'app Windows (pastille des participants, messages, Bobyn). */
+/** Réglages de l'overlay de l'app Windows (pastille des participants, messages). */
 export type OverlayCorner = 'tl' | 'ml' | 'bl' | 'tr' | 'mr' | 'br'
 export type OverlayWhen = 'games' | 'always' | 'never'
 export type OverlaySize = 'sm' | 'md' | 'lg'
@@ -53,8 +53,6 @@ interface Stored {
   overlayWhen: OverlayWhen; overlayKey: string; overlayCorner: OverlayCorner; overlaySize: OverlaySize; overlayMode: OverlayMode; overlayNatif: boolean
   /** Messages privés et mentions dans l'overlay (app Windows) : quoi afficher, contenu masqué, durée en secondes, raccourcis globaux « répondre » et « ouvrir ». */
   msgOverlay: MsgOverlayKinds; msgHide: boolean; msgSeconds: number; msgReplyKey: string; msgOpenKey: string
-  /** Pastille Bobyn sur le jeu enregistré (app Windows) : coin, ou 'off'. */
-  bobynOverlay: OverlayCorner | 'off'
   /** Partager le jeu en cours avec les personnes côtoyées (app Windows) ; désactivé par défaut. */
   shareActivity: boolean
   /** Montrer le morceau écouté seul dans l'activité (🎵 Écoute …) ; désactivé par défaut. */
@@ -63,7 +61,7 @@ interface Stored {
   floatingPlayer: boolean
   /** Mode debug (EST-48) : journal détaillé, voir debuglog. */
   debug: boolean
-  /** Fonctions alpha débloquées (onglet Bobyn) : réglage local, masqué. */
+  /** Fonctions alpha débloquées (transcription, partage) : réglage local, masqué. */
   alpha: boolean
   /** Ordre des serveurs dans la barre de gauche (identifiants), choisi par glisser-déposer. */
   serverOrder: string[]
@@ -74,7 +72,7 @@ const DEFAULTS: Stored = { desktopNotifications: true, density: 'confortable', s
   vad: false, vadThreshold: -45, cameraQuality: '720p', videoCodec: 'auto', cameraFx: 'none', cameraBlur: 10, cameraBg: 'aube', customBg: '',
   camOverlay: { enabled: false, x: 1, y: 1, size: 0.22, shape: 'rect', margin: 24, border: false, shadow: true, mirror: false },
   joinSound: 'rise', leaveSound: 'fall', soundVolume: 60, customJoin: '', customLeave: '', volumes: {}, musicVolume: 80, screenVolumes: {}, mutedVoice: {}, mutedScreen: {}, settingsTab: 'account', notifAsked: false,
-  overlayWhen: 'games', overlayKey: 'Control+Shift+KeyO', overlayCorner: 'ml', overlaySize: 'md', overlayMode: 'all', overlayNatif: false, msgOverlay: 'both', msgHide: false, msgSeconds: 8, msgReplyKey: 'Control+Shift+KeyR', msgOpenKey: 'Control+Shift+KeyE', bobynOverlay: 'tr', shareActivity: false, shareListening: false, floatingPlayer: true, debug: false, alpha: false, serverOrder: [],
+  overlayWhen: 'games', overlayKey: 'Control+Shift+KeyO', overlayCorner: 'ml', overlaySize: 'md', overlayMode: 'all', overlayNatif: false, msgOverlay: 'both', msgHide: false, msgSeconds: 8, msgReplyKey: 'Control+Shift+KeyR', msgOpenKey: 'Control+Shift+KeyE', shareActivity: false, shareListening: false, floatingPlayer: true, debug: false, alpha: false, serverOrder: [],
 }
 
 function load(): Stored {
@@ -151,7 +149,6 @@ class Prefs {
   msgSeconds = $state(DEFAULTS.msgSeconds)
   msgReplyKey = $state(DEFAULTS.msgReplyKey)
   msgOpenKey = $state(DEFAULTS.msgOpenKey)
-  bobynOverlay = $state<OverlayCorner | 'off'>(DEFAULTS.bobynOverlay)
   shareActivity = $state(DEFAULTS.shareActivity)
   shareListening = $state(DEFAULTS.shareListening)
   floatingPlayer = $state(DEFAULTS.floatingPlayer)
@@ -170,7 +167,7 @@ class Prefs {
       ptt: this.ptt, pttKey: this.pttKey, voiceSounds: this.voiceSounds, screenRes: this.screenRes, screenFps: this.screenFps, screenAuto: this.screenAuto, watchAuto: this.watchAuto, watchAutoSet: this.watchAutoSet,
       vad: this.vad, vadThreshold: this.vadThreshold, cameraQuality: this.cameraQuality, videoCodec: this.videoCodec, cameraFx: this.cameraFx, cameraBlur: this.cameraBlur, cameraBg: this.cameraBg, customBg: this.customBg, camOverlay: $state.snapshot(this.camOverlay),
       joinSound: this.joinSound, leaveSound: this.leaveSound, soundVolume: this.soundVolume, customJoin: this.customJoin, customLeave: this.customLeave, volumes: $state.snapshot(this.volumes), musicVolume: this.musicVolume, screenVolumes: $state.snapshot(this.screenVolumes), mutedVoice: $state.snapshot(this.mutedVoice), mutedScreen: $state.snapshot(this.mutedScreen), settingsTab: this.settingsTab, notifAsked: this.notifAsked,
-      overlayWhen: this.overlayWhen, overlayKey: this.overlayKey, overlayCorner: this.overlayCorner, overlaySize: this.overlaySize, overlayMode: this.overlayMode, overlayNatif: this.overlayNatif, msgOverlay: this.msgOverlay, msgHide: this.msgHide, msgSeconds: this.msgSeconds, msgReplyKey: this.msgReplyKey, msgOpenKey: this.msgOpenKey, bobynOverlay: this.bobynOverlay, shareActivity: this.shareActivity, shareListening: this.shareListening, floatingPlayer: this.floatingPlayer, debug: this.debug, alpha: this.alpha, serverOrder: $state.snapshot(this.serverOrder),
+      overlayWhen: this.overlayWhen, overlayKey: this.overlayKey, overlayCorner: this.overlayCorner, overlaySize: this.overlaySize, overlayMode: this.overlayMode, overlayNatif: this.overlayNatif, msgOverlay: this.msgOverlay, msgHide: this.msgHide, msgSeconds: this.msgSeconds, msgReplyKey: this.msgReplyKey, msgOpenKey: this.msgOpenKey, shareActivity: this.shareActivity, shareListening: this.shareListening, floatingPlayer: this.floatingPlayer, debug: this.debug, alpha: this.alpha, serverOrder: $state.snapshot(this.serverOrder),
     }
     try { localStorage.setItem(KEY, JSON.stringify(s)) } catch { /* ignoré */ }
     applyMotion(this.reduceMotion)

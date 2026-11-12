@@ -1,5 +1,3 @@
-//! Jeux reconnus sans réglage, dans l'esprit de la liste de jeux détectables de Discord (en bien plus petit) :
-//! une liste intégrée (`games.json`), puis les dossiers de bibliothèque des lanceurs (Steam, Epic, GOG, Xbox), dont le nom du dossier fait le nom du jeu.
 use serde::Deserialize;
 use std::sync::OnceLock;
 
@@ -16,7 +14,7 @@ struct Entry {
 
 fn entries() -> &'static [Entry] {
     static LIST: OnceLock<Vec<Entry>> = OnceLock::new();
-    LIST.get_or_init(|| serde_json::from_str(include_str!("games.json")).expect("games.json invalide"))
+    LIST.get_or_init(|| serde_json::from_str(include_str!("connus.json")).expect("connus.json invalide"))
 }
 
 /// Dossiers de bibliothèque : le jeu porte le nom du dossier qui suit.

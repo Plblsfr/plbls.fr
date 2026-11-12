@@ -1,11 +1,11 @@
-mod bobyn;
 mod foreground;
+mod jeux;
 mod mesures;
 mod overlay_natif;
-mod replays;
 mod capture;
 mod screen_native;
 mod toast;
+mod video;
 mod webview2_options;
 mod webview_data;
 
@@ -50,8 +50,6 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(estompe_core::commands::OAuth::default())
         .manage(screen_native::ScreenNative::default())
-        .manage(bobyn::Bobyn::default())
-        .manage(replays::Replays::default())
         .manage(mesures::Mesures::default())
         .setup(|#[allow(unused_variables)] app| {
             {
@@ -89,11 +87,9 @@ pub fn run() {
                     })
                     .build(app)?;
             }
-            bobyn::autostart(app.handle());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![bobyn::bobyn_state, bobyn::bobyn_apply, bobyn::bobyn_save, replays::replays_list, replays::replays_thumb, replays::replays_tracks, replays::replays_rename, replays::replays_markers_set, replays::replays_delete, replays::replays_reveal,
-            replays::replays_copy, replays::replays_export, replays::replays_cancel, replays::replays_plan, replays::replays_keyframes, replays::replays_encoders, replays::video_to_h264, estompe_core::commands::oauth_start, estompe_core::commands::oauth_wait, estompe_core::commands::native_fetch, estompe_core::commands::secret_set, estompe_core::commands::secret_get, estompe_core::commands::secret_delete,
+        .invoke_handler(tauri::generate_handler![video::video_to_h264, estompe_core::commands::oauth_start, estompe_core::commands::oauth_wait, estompe_core::commands::native_fetch, estompe_core::commands::secret_set, estompe_core::commands::secret_get, estompe_core::commands::secret_delete,
             foreground::foreground_info, capture::capture_sources, capture::capture_thumb, capture::capture_self,
             toast::toast_show, screen_native::screen_native_start, screen_native::screen_native_stop,
             mesures::mesures_demarrer, mesures::mesures_arreter, mesures::mesures_systeme, webview2_options::webview2_options_get, webview2_options::webview2_options_set,

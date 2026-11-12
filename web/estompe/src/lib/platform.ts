@@ -74,7 +74,7 @@ export interface DebugStore {
   clear(): Promise<void>
 }
 
-/** Espace dédié d'une plateforme (ex. Bobyn) : entrée dans la barre des serveurs, menu latéral et page. */
+/** Espace dédié d'une plateforme (ex. une bibliothèque de l'app) : entrée dans la barre des serveurs, menu latéral et page. */
 export interface Space {
   id: string
   title: string

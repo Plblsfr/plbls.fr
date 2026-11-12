@@ -108,7 +108,6 @@ fn role_source(source: &str) -> &'static str {
     match source.rsplit_once('#').map(|(_, ancre)| ancre) {
         Some("overlay") => "overlay-vocal",
         Some("msg-overlay") => "overlay-messages",
-        Some("bobyn-overlay") => "overlay-bobyn",
         _ => "principale",
     }
 }
@@ -559,10 +558,6 @@ mod tests {
         assert_eq!(
             role_rendu(["https://tauri.localhost/index.html#msg-overlay"]),
             "overlay-messages"
-        );
-        assert_eq!(
-            role_rendu(["https://tauri.localhost/index.html#bobyn-overlay"]),
-            "overlay-bobyn"
         );
         assert_eq!(
             role_rendu([

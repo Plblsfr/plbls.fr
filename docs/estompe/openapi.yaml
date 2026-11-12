@@ -928,7 +928,7 @@ paths:
       summary: "Signaler un bug (limite : 5 par heure). Les captures (images, 5 au plus) sont d'abord envoyées par `POST /files` puis jointes par `file_ids` ; les logs (40 000 caractères au plus) sont masqués côté serveur"
       requestBody:
         required: true
-        content: {application/json: {schema: {type: object, required: [title, description], properties: {title: {type: string, maxLength: 120}, description: {type: string, maxLength: 4000}, category: {type: string, enum: [messages, vocal, ecran, notifications, bobyn, autre]}, platform: {type: string, enum: [web, pwa, desktop, android]}, tech: {type: object, additionalProperties: {type: string}, description: "20 entrées au plus"}, logs: {type: string}, file_ids: {type: array, items: {type: string, format: uuid}}}}}}
+        content: {application/json: {schema: {type: object, required: [title, description], properties: {title: {type: string, maxLength: 120}, description: {type: string, maxLength: 4000}, category: {type: string, enum: [messages, vocal, ecran, notifications, autre]}, platform: {type: string, enum: [web, pwa, desktop, android]}, tech: {type: object, additionalProperties: {type: string}, description: "20 entrées au plus"}, logs: {type: string}, file_ids: {type: array, items: {type: string, format: uuid}}}}}}
       responses:
         "201": {description: "créé — {id, status}"}
         "400": {description: "invalid_report / invalid_files"}

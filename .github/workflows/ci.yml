@@ -251,9 +251,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             apps/estompe/windows/src-tauri/target
-            apps/estompe/windows/src-tauri/bobyn/target
             apps/estompe/android/src-tauri/target
-          key: tauri-test-v1-${{ hashFiles('apps/estompe/windows/src-tauri/Cargo.lock', 'apps/estompe/windows/src-tauri/bobyn/Cargo.lock', 'apps/estompe/android/src-tauri/Cargo.lock') }}
+          key: tauri-test-v1-${{ hashFiles('apps/estompe/windows/src-tauri/Cargo.lock', 'apps/estompe/android/src-tauri/Cargo.lock') }}
           restore-keys: tauri-test-v1-
       - name: Tests de l'app Windows
         working-directory: apps/estompe/windows/src-tauri
@@ -267,9 +266,6 @@ jobs:
       - name: Compilation de l'app Android (hors Android)
         working-directory: apps/estompe/android/src-tauri
         run: mkdir -p ../../../../web/estompe/dist && cargo check
-      - name: Tests de Bobyn
-        working-directory: apps/estompe/windows/src-tauri/bobyn
-        run: cargo test
       - name: ffmpeg épinglé téléchargeable et vérifié
         run: TAURI_ENV_PLATFORM=windows node apps/estompe/windows/scripts/fetch-ffmpeg.mjs && test -s apps/estompe/windows/src-tauri/binaries/ffmpeg.exe
       - if: steps.cargo.outputs.cache-hit != 'true'
@@ -279,7 +275,6 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             apps/estompe/windows/src-tauri/target
-            apps/estompe/windows/src-tauri/bobyn/target
             apps/estompe/android/src-tauri/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 

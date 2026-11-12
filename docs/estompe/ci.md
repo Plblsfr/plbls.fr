@@ -56,7 +56,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 - `rust-test` : tests des crates d'Estompe (PostgreSQL 17, port 5432), d'aegis et d'Entracte
   (PostgreSQL 17, ffmpeg installé par apt), chacun selon son groupe.
   Les services tournent à côté du runner : joignables par `localhost` et leur port publié. Une base par test sur un seul serveur.
-- `estompe-tauri` : tests des apps Tauri (GTK/WebKit), `cargo check` de l'app Android, Bobyn, ffmpeg épinglé.
+- `estompe-tauri` : tests des apps Tauri (GTK/WebKit), `cargo check` de l'app Android, ffmpeg épinglé.
 - `estompe-api-image` : construit l'image de l'API sans la publier (cache `:buildcache` du registre en lecture), la démarre à côté d'un
   PostgreSQL et attend `GET /readyz` (60 s au plus). Conteneurs et tag portent l'identifiant du run.
 - `entracte-image` : construit l'image d'Entracte sans la publier (cache GitHub Actions), la démarre avec `deploy/entracte/.env.example`

@@ -52,6 +52,6 @@ Ces chiffres ne remplacent pas la mesure dans l'app Windows (WebView2, jeu réel
 3. Comportement en plein écran exclusif et en fenêtré sans bordure, avec un jeu réel. Une fenêtre « layered » n'apparaît pas au-dessus d'un jeu
    en plein écran exclusif DirectX, pas plus qu'une webview.
 4. **C4**, décision écrite dans l'issue, chiffres à l'appui. Si l'overlay natif est généralisé :
-   - porter de la même façon l'overlay des messages (sans champ de réponse, qui demande une saisie) et la pastille Bobyn ;
+   - porter de la même façon l'overlay des messages (sans champ de réponse, qui demande une saisie) ;
    - ajouter l'attribution visible exigée par la licence royalty-free de Slint ;
    - mesurer l'effet sur la taille de l'installeur.

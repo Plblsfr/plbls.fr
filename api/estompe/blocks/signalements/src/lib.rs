@@ -27,15 +27,7 @@ use utoipa_axum::router::OpenApiRouter;
 const PAR_HEURE: usize = 5;
 const LOGS_MAX: usize = 40000;
 const CAPTURES_MAX: usize = 5;
-const CATEGORIES: &[&str] = &[
-    "",
-    "messages",
-    "vocal",
-    "ecran",
-    "notifications",
-    "bobyn",
-    "autre",
-];
+const CATEGORIES: &[&str] = &["", "messages", "vocal", "ecran", "notifications", "autre"];
 const PLATEFORMES: &[&str] = &["", "web", "pwa", "desktop", "android"];
 const STATUTS: &[(&str, &str)] = &[
     ("new", "nouveau"),

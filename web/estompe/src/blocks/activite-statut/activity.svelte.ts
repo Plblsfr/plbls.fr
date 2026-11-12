@@ -1,4 +1,4 @@
-/** Activité : jeu en cours (même détection que Bobyn), affiché sur son propre profil et, si l'utilisateur y consent, partagé. */
+/** Activité : jeu en cours, affiché sur son propre profil et, si l'utilisateur y consent, partagé. */
 import { api } from '../../lib/api'
 import { platform } from '../../lib/platform'
 import { prefs } from '../../lib/prefs.svelte'

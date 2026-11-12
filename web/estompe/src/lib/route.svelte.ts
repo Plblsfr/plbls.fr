@@ -1,4 +1,4 @@
-/** Routeur minimal sur le hash : #/ · #/s/<serveur>/<salon>[/<message>] · #/dm/<id>[/<message>] · #/join/<code> · #/admin/<section> · #/<espace de la plateforme>/<section> (ex. #/bobyn/settings) */
+/** Routeur minimal sur le hash : #/ · #/s/<serveur>/<salon>[/<message>] · #/dm/<id>[/<message>] · #/join/<code> · #/admin/<section> · #/<espace de la plateforme>/<section>  */
 import { platform, platformReady } from './platform'
 
 

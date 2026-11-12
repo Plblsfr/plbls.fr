@@ -1,9 +1,0 @@
-[package]
-name = "bobyn-encode"
-version = "0.1.0"
-edition = "2021"
-publish = false
-
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true }
-bobyn-buffer = { path = "../buffer" }
