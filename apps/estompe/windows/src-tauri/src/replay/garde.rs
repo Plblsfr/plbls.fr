@@ -19,6 +19,39 @@ pub fn etat_lu(contenu: Option<&str>, version: &str) -> Etat {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Essai {
+    pub h264: Option<(u32, u32)>,
+    pub hevc: Option<(u32, u32)>,
+}
+
+pub const FIN_ESSAI: &str = "amf fin";
+
+pub fn ligne_essai(codec: &str, taille: (u32, u32)) -> String {
+    format!("amf {codec} {} {}", taille.0, taille.1)
+}
+
+pub fn lire_essai(sortie: &str) -> Option<Essai> {
+    let mut essai = Essai::default();
+    let mut fini = false;
+    for ligne in sortie.lines().map(str::trim) {
+        let mots: Vec<&str> = ligne.split_whitespace().collect();
+        match mots.as_slice() {
+            ["amf", "fin"] => fini = true,
+            ["amf", codec, largeur, hauteur] => {
+                let taille = largeur.parse().ok().zip(hauteur.parse().ok());
+                match *codec {
+                    "h264" => essai.h264 = taille,
+                    "hevc" => essai.hevc = taille,
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    fini.then_some(essai)
+}
+
 pub struct Garde {
     fichier: Option<PathBuf>,
     version: String,
@@ -76,6 +109,16 @@ mod tests {
         assert_eq!(etat_lu(Some("valide 1.0.0"), "1.0.1"), Etat::Libre);
         assert_eq!(etat_lu(Some("libre 1.0.0"), "1.0.0"), Etat::Libre);
         assert_eq!(etat_lu(Some("n'importe quoi"), "1.0.0"), Etat::Libre);
+    }
+
+    #[test]
+    fn essai_hors_processus_lu_seulement_s_il_est_complet() {
+        let complet = format!("{}\r\namf refus hevc Init : code 1\n{}\n{FIN_ESSAI}\n", ligne_essai("h264", (4096, 2160)), ligne_essai("av1", (1, 1)));
+        assert_eq!(lire_essai(&complet), Some(Essai { h264: Some((4096, 2160)), hevc: None }));
+        assert_eq!(lire_essai(&ligne_essai("h264", (4096, 2160))), None);
+        assert_eq!(lire_essai(""), None);
+        assert_eq!(lire_essai(FIN_ESSAI), Some(Essai::default()));
+        assert_eq!(lire_essai("amf hevc x 2160\namf fin"), Some(Essai::default()));
     }
 
     #[test]

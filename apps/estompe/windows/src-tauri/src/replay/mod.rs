@@ -37,6 +37,9 @@ mod tampon;
 #[cfg(all(feature = "instant-replay", windows))]
 mod win;
 
+#[cfg(all(feature = "instant-replay", windows))]
+pub use win::essai_encodeur;
+
 #[cfg(feature = "instant-replay")]
 pub use avec::*;
 #[cfg(feature = "instant-replay")]

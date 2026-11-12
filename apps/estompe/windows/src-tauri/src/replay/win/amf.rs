@@ -1,19 +1,26 @@
+use std::cell::Cell;
 use std::ffi::c_void;
+use std::io::{Read, Write};
+use std::os::windows::process::CommandExt;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, sync_channel, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows::core::{Interface, GUID};
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
+use windows::Win32::Graphics::Dxgi::IDXGIAdapter1;
 use windows::Win32::Media::MediaFoundation::{IMFDXGIBuffer, IMFSample};
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
 use super::encodeur::{Depot, Encodeur, Envoi, Parametres};
-use super::gpu::Appareil;
-use super::materiel::{initialiser, texte};
+use super::gpu::{texture_nv12, Appareil};
+use super::materiel::{adaptateur_de, initialiser, texte};
 use super::SOURCE;
 use crate::debuglog;
+use crate::replay::garde::{ligne_essai, lire_essai, Essai, FIN_ESSAI};
+use crate::replay::mp4::en_longueurs;
 use crate::replay::reglages::GOP_S;
 use crate::replay::tampon::Tampon;
 use crate::replay::types::Codec;
@@ -45,6 +52,7 @@ const ESSAIS_ENTREE_PLEINE: u32 = 20;
 const ATTENTE: Duration = Duration::from_millis(4);
 
 type Objet = *mut c_void;
+type Recevoir<'a> = &'a mut dyn FnMut(&[u8], i64, bool) -> bool;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -190,20 +198,20 @@ impl Amf {
         Ok(composant)
     }
 
-    unsafe fn vider(&mut self, depot: &mut Depot) -> Result<(), String> {
+    unsafe fn vider(&mut self, recevoir: Recevoir) -> Result<(), String> {
         loop {
             let mut donnee: Objet = std::ptr::null_mut();
             let code = methode::<unsafe extern "system" fn(Objet, *mut Objet) -> i32>(self.composant, COMP_QUERY_OUTPUT)(self.composant, &mut donnee);
             if code == AMF_REPEAT || donnee.is_null() {
                 return Ok(());
             }
-            let lu = verifier(code, "QueryOutput").and_then(|_| self.deposer(donnee, depot));
+            let lu = verifier(code, "QueryOutput").and_then(|_| self.deposer(donnee, recevoir));
             liberer(donnee);
             lu?;
         }
     }
 
-    unsafe fn deposer(&self, donnee: Objet, depot: &mut Depot) -> Result<(), String> {
+    unsafe fn deposer(&self, donnee: Objet, recevoir: Recevoir) -> Result<(), String> {
         let mut tampon: Objet = std::ptr::null_mut();
         verifier(methode::<unsafe extern "system" fn(Objet, *const GUID, *mut Objet) -> i32>(donnee, QUERY_INTERFACE)(donnee, &IID_BUFFER, &mut tampon), "QueryInterface(AMFBuffer)")?;
         if tampon.is_null() {
@@ -220,19 +228,22 @@ impl Amf {
             Codec::Hevc => "HevcOutputDataType",
         });
         methode::<unsafe extern "system" fn(Objet, *const u16, *mut Variante) -> i32>(donnee, GET_PROPERTY)(donnee, nom.as_ptr(), &mut genre);
-        if depot.deposer(&octets, pts, self.duree, genre.donnees[0] as i64 == 0) {
+        if recevoir(&octets, pts, genre.donnees[0] as i64 == 0) {
             Ok(())
         } else {
             Err("flux AMF sans codes de début".into())
         }
     }
 
-    unsafe fn soumettre(&mut self, echantillon: &IMFSample, depot: &mut Depot) -> Result<(), String> {
+    unsafe fn soumettre(&mut self, echantillon: &IMFSample, recevoir: Recevoir) -> Result<(), String> {
         let pts = echantillon.GetSampleTime().map_err(texte)?;
         let tampon = echantillon.GetBufferByIndex(0).and_then(|t| t.cast::<IMFDXGIBuffer>()).map_err(texte)?;
         let mut brute = std::ptr::null_mut();
         tampon.GetResource(&ID3D11Texture2D::IID, &mut brute).map_err(texte)?;
-        let texture = ID3D11Texture2D::from_raw(brute);
+        self.soumettre_texture(&ID3D11Texture2D::from_raw(brute), pts, recevoir)
+    }
+
+    unsafe fn soumettre_texture(&mut self, texture: &ID3D11Texture2D, pts: i64, recevoir: Recevoir) -> Result<(), String> {
         let mut surface: Objet = std::ptr::null_mut();
         let creation = methode::<unsafe extern "system" fn(Objet, Objet, *mut Objet, Objet) -> i32>(self.contexte, CTX_SURFACE_FROM_DX11)(self.contexte, texture.as_raw(), &mut surface, std::ptr::null_mut());
         verifier(creation, "CreateSurfaceFromDX11Native")?;
@@ -259,7 +270,7 @@ impl Amf {
             if code != AMF_INPUT_FULL {
                 break;
             }
-            if let Err(e) = self.vider(depot) {
+            if let Err(e) = self.vider(recevoir) {
                 liberer(surface);
                 return Err(e);
             }
@@ -276,10 +287,12 @@ impl Amf {
     }
 
     unsafe fn tourner(&mut self, rx: &Receiver<Envoi<IMFSample>>, depot: &mut Depot) -> Result<(), String> {
+        let duree = self.duree;
+        let mut recevoir = |octets: &[u8], pts: i64, cle: bool| depot.deposer(octets, pts, duree, cle);
         loop {
-            self.vider(depot)?;
+            self.vider(&mut recevoir)?;
             match rx.recv_timeout(ATTENTE) {
-                Ok(echantillon) => self.soumettre(&echantillon.prendre(), depot)?,
+                Ok(echantillon) => self.soumettre(&echantillon.prendre(), &mut recevoir)?,
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => return Ok(()),
             }
@@ -299,11 +312,104 @@ impl Drop for Amf {
 }
 
 const TAILLES_SONDEES: [(u32, u32); 6] = [(7680, 4320), (4096, 2160), (3840, 2160), (2560, 1440), (1920, 1080), (1280, 720)];
+const TAILLE_ESSAI: (u32, u32) = (1280, 720);
+const IMAGES_ESSAI: i64 = 30;
+const DELAI_IMAGE: Duration = Duration::from_secs(3);
+const DELAI_ESSAI: Duration = Duration::from_secs(20);
+const SANS_FENETRE: u32 = 0x0800_0000;
+pub const ARGUMENT_ESSAI: &str = "--essai-amf";
 
-pub fn sonder(appareil: &ID3D11Device, codec: Codec) -> Option<(u32, u32)> {
+fn sonder(appareil: &ID3D11Device, codec: Codec) -> Option<(u32, u32)> {
     TAILLES_SONDEES.into_iter().find(|&(largeur, hauteur)| {
         let essai = Parametres { codec, largeur, hauteur, ips: 60, debit_kbps: 10_000, base: 0 };
         unsafe { Amf::ouvrir(appareil, &essai) }.is_ok()
+    })
+}
+
+unsafe fn encoder_une_image(appareil: &Appareil, codec: Codec) -> Result<(), String> {
+    let p = Parametres { codec, largeur: TAILLE_ESSAI.0, hauteur: TAILLE_ESSAI.1, ips: 60, debit_kbps: 8000, base: 0 };
+    let mut amf = Amf::ouvrir(&appareil.d3d, &p)?;
+    let texture = texture_nv12(appareil, TAILLE_ESSAI, false).map_err(texte)?;
+    let (images, correcte) = (Cell::new(0u32), Cell::new(true));
+    let mut recevoir = |octets: &[u8], _: i64, cle: bool| {
+        if images.get() == 0 && (!cle || en_longueurs(octets).is_empty()) {
+            correcte.set(false);
+        }
+        images.set(images.get() + 1);
+        true
+    };
+    let limite = Instant::now() + DELAI_IMAGE;
+    let mut soumises = 0i64;
+    while images.get() == 0 && Instant::now() < limite {
+        if soumises < IMAGES_ESSAI {
+            amf.soumettre_texture(&texture, soumises * amf.duree, &mut recevoir)?;
+            soumises += 1;
+        }
+        amf.vider(&mut recevoir)?;
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    match (images.get(), correcte.get()) {
+        (0, _) => Err("aucune image encodée en 3 s".into()),
+        (_, false) => Err("première image sans image clé ou sans codes de début".into()),
+        _ => Ok(()),
+    }
+}
+
+pub fn essai_encodeur(mut arguments: impl Iterator<Item = String>) -> Option<i32> {
+    if arguments.next().as_deref() != Some(ARGUMENT_ESSAI) {
+        return None;
+    }
+    let (Some(haut), Some(bas)) = (arguments.next().and_then(|a| a.parse::<i32>().ok()), arguments.next().and_then(|a| a.parse::<u32>().ok())) else { return Some(2) };
+    let mut sortie = std::io::stdout();
+    let _ = initialiser();
+    let Some(adaptateur) = adaptateur_de(haut, bas) else { return Some(3) };
+    let Ok(appareil) = Appareil::creer(&adaptateur) else { return Some(4) };
+    for (codec, nom) in [(Codec::H264, "h264"), (Codec::Hevc, "hevc")] {
+        let Some(taille) = sonder(&appareil.d3d, codec) else { continue };
+        let ligne = match unsafe { encoder_une_image(&appareil, codec) } {
+            Ok(()) => ligne_essai(nom, taille),
+            Err(e) => format!("amf refus {nom} {e}"),
+        };
+        let _ = writeln!(sortie, "{ligne}");
+        let _ = sortie.flush();
+    }
+    let _ = writeln!(sortie, "{FIN_ESSAI}");
+    let _ = sortie.flush();
+    Some(0)
+}
+
+pub fn essai_hors_processus(adaptateur: &IDXGIAdapter1) -> Result<Essai, String> {
+    let luid = unsafe { adaptateur.GetDesc1() }.map_err(texte)?.AdapterLuid;
+    let programme = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut commande = Command::new(programme);
+    commande.args([ARGUMENT_ESSAI.to_string(), luid.HighPart.to_string(), luid.LowPart.to_string()]);
+    commande.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).creation_flags(SANS_FENETRE);
+    let mut enfant = commande.spawn().map_err(|e| e.to_string())?;
+    let mut tuyau = enfant.stdout.take().ok_or("sortie de l'essai illisible")?;
+    let lecture = std::thread::spawn(move || {
+        let mut texte = String::new();
+        let _ = tuyau.read_to_string(&mut texte);
+        texte
+    });
+    let limite = Instant::now() + DELAI_ESSAI;
+    let code = loop {
+        match enfant.try_wait() {
+            Ok(Some(statut)) => break statut.code(),
+            Ok(None) if Instant::now() < limite => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                let _ = enfant.kill();
+                let _ = enfant.wait();
+                break None;
+            }
+        }
+    };
+    let texte = lecture.join().unwrap_or_default();
+    for ligne in texte.lines().filter(|l| l.starts_with("amf refus")) {
+        debuglog::log("warn", SOURCE, &format!("essai d'AMF : {ligne}"));
+    }
+    lire_essai(&texte).ok_or_else(|| match code {
+        Some(c) => format!("le programme d'essai s'est arrêté avec le code {c:#x}"),
+        None => "le programme d'essai n'a pas répondu en 20 s".to_string(),
     })
 }
 

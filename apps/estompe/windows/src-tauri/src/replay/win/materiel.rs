@@ -16,6 +16,7 @@ use windows::Win32::Media::MediaFoundation::{
 use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_MULTITHREADED};
 use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
 
+use crate::replay::garde::Essai;
 use crate::replay::reglages::{Encodeur, Materiel, MB_S_H264, MB_S_HEVC};
 use crate::replay::types::Codec;
 
@@ -36,7 +37,7 @@ pub struct Gpu {
     pub nom: String,
     pub h264: Option<Encodeur>,
     pub hevc: Option<Encodeur>,
-    pub amf: bool,
+    pub amf: Essai,
 }
 
 fn adaptateurs() -> Vec<IDXGIAdapter1> {
@@ -111,8 +112,12 @@ fn encodeur(codec: Codec, adaptateur: &IDXGIAdapter1) -> Option<Encodeur> {
     Some(Encodeur { nom: nom_activation(&activation), mb_par_seconde: annonce.filter(|v| *v > 0).map_or(defaut, u64::from), largeur_max: cote, hauteur_max: cote })
 }
 
-fn encodeur_amf(appareil: &super::gpu::Appareil, codec: Codec) -> Option<Encodeur> {
-    let (largeur_max, hauteur_max) = super::amf::sonder(&appareil.d3d, codec)?;
+pub fn adaptateur_de(haut: i32, bas: u32) -> Option<IDXGIAdapter1> {
+    adaptateurs().into_iter().find(|a| luid(a).is_some_and(|l| l.HighPart == haut && l.LowPart == bas))
+}
+
+fn encodeur_amf(codec: Codec, taille: Option<(u32, u32)>) -> Option<Encodeur> {
+    let (largeur_max, hauteur_max) = taille?;
     let (nom, mb_par_seconde) = match codec {
         Codec::H264 => ("AMD AMF H.264", MB_S_H264),
         Codec::Hevc => ("AMD AMF HEVC", MB_S_HEVC),
@@ -123,16 +128,18 @@ fn encodeur_amf(appareil: &super::gpu::Appareil, codec: Codec) -> Option<Encodeu
 pub fn gpu(amf_permis: bool) -> Result<Gpu, String> {
     initialiser()?;
     for adaptateur in adaptateurs() {
-        let (mut h264, mut hevc) = (encodeur(Codec::H264, &adaptateur), encodeur(Codec::Hevc, &adaptateur));
+        let (h264, hevc) = (encodeur(Codec::H264, &adaptateur), encodeur(Codec::Hevc, &adaptateur));
         if h264.is_some() || hevc.is_some() {
             let nom = unsafe { adaptateur.GetDesc1().map(|d| String::from_utf16_lossy(&d.Description).trim_end_matches('\0').to_string()).unwrap_or_default() };
-            let appareil = if amf_permis { super::gpu::Appareil::creer(&adaptateur).ok() } else { None };
-            let sondes = appareil.as_ref().map(|a| (encodeur_amf(a, Codec::H264), encodeur_amf(a, Codec::Hevc)));
-            let amf = sondes.as_ref().is_some_and(|(a, b)| a.is_some() || b.is_some());
-            if let Some((a, b)) = sondes {
-                h264 = a.or(h264);
-                hevc = b.or(hevc);
-            }
+            let amf = if amf_permis {
+                super::amf::essai_hors_processus(&adaptateur).unwrap_or_else(|e| {
+                    crate::debuglog::log("warn", super::SOURCE, &format!("AMF écarté : {e}"));
+                    Essai::default()
+                })
+            } else {
+                Essai::default()
+            };
+            let (h264, hevc) = (encodeur_amf(Codec::H264, amf.h264).or(h264), encodeur_amf(Codec::Hevc, amf.hevc).or(hevc));
             return Ok(Gpu { adaptateur, nom, h264, hevc, amf });
         }
     }

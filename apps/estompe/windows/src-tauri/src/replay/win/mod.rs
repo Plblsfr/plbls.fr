@@ -1,4 +1,5 @@
 mod amf;
+pub use amf::essai_encodeur;
 mod capture;
 pub mod dialogue;
 mod encodeur;
@@ -36,7 +37,7 @@ use super::galerie::Horodatage;
 use super::garde::Garde;
 use super::reglages::{self, Materiel, AUDIO_JEU_KBPS, AUDIO_MICRO_KBPS};
 use super::tampon::{Format, Tampon, UNITE_TEMPS};
-use super::types::{Disponibilite, Erreur, EtatPublic, Reglages};
+use super::types::{Codec, Disponibilite, Erreur, EtatPublic, Reglages};
 use crate::debuglog;
 
 const SOURCE: &str = "replay";
@@ -353,13 +354,11 @@ impl Controleur {
     fn gpu(&mut self) -> &Result<Gpu, String> {
         if self.gpu.is_none() {
             let permis = self.garde.permis();
-            self.garde.debut();
             let gpu = materiel::gpu(permis);
-            self.garde.relacher();
             if !permis {
                 self.alerter(Erreur::nouvelle("amf-desactive", "Encodeur AMF désactivé après un arrêt brutal pendant son essai : l'instant replay utilise l'encodeur de Windows jusqu'à la prochaine mise à jour."));
             }
-            if !gpu.as_ref().is_ok_and(|g| g.amf) {
+            if !gpu.as_ref().is_ok_and(|g| g.amf.h264.is_some() || g.amf.hevc.is_some()) {
                 self.entree = Entree::Reserve;
             }
             match &gpu {
@@ -540,6 +539,13 @@ impl Controleur {
         let capture = Capture::demarrer(&appareil, &element, r.curseur, blanc.is_some(), move || change(IMAGE_CHANGEE, String::new()));
         let capture = capture.map_err(|e| ("capture-refusee", e))?;
         let parametres = Parametres { codec, largeur: dimensions.0, hauteur: dimensions.1, ips, debit_kbps: debit, base };
+        let amf_essaye = match codec {
+            Codec::H264 => gpu.amf.h264.is_some(),
+            Codec::Hevc => gpu.amf.hevc.is_some(),
+        };
+        if self.entree == Entree::Amf && !amf_essaye {
+            self.entree = Entree::Reserve;
+        }
         let (convertisseur, encodeur, encodeur_termine) = loop {
             let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc, self.entree).map_err(|e| ("gpu", e))?;
             let arret_encodeur = signaler(&self.tx);

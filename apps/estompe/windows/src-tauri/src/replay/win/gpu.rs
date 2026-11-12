@@ -185,7 +185,7 @@ pub struct Convertisseur {
     source: (u32, u32),
 }
 
-unsafe fn texture_nv12(a: &Appareil, taille: (u32, u32), lecture: bool) -> windows::core::Result<ID3D11Texture2D> {
+pub(super) unsafe fn texture_nv12(a: &Appareil, taille: (u32, u32), lecture: bool) -> windows::core::Result<ID3D11Texture2D> {
     let description = D3D11_TEXTURE2D_DESC {
         Width: taille.0,
         Height: taille.1,
