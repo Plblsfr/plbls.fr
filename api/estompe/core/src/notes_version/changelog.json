@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.94.6",
+    "date": "2026-11-12",
+    "new": [],
+    "fixes": [
+      "Application Windows : nouvel essai de correction de l'instant replay sur les cartes graphiques AMD."
+    ]
+  },
+  {
     "version": "0.94.5",
     "date": "2026-11-12",
     "new": [],

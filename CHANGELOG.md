@@ -4,6 +4,10 @@ Suivi de l'avancement. Les décisions de fond sont dans `docs/init-idea.md`.
 
 ## Non publié
 
+## api 0.88.11 / applis 0.94.6 - 2026-11-12
+
+- [x] Instant replay : configuration de l'encodeur alignée sur celle de ffmpeg. Sur une carte AMD (`AMDh264Encoder`), l'encodeur prenait une image puis n'encodait rien, à 60 comme à 120 i/s et quelle que soit la façon de lui donner les images. Les réglages (débit constant, image clé par seconde, pas d'images B, faible latence) sont maintenant posés avant le type de sortie et non après ; les types de sortie et d'entrée repartent de ceux que l'encodeur propose ; la première image est marquée discontinuité et image clé. Non fait : les types ne portent plus les attributs de couleur (BT.709, plage 16-235), le flux ne les signale donc plus. Non vérifié : sur un appareil Windows ; la cause du blocage n'est pas identifiée, ce changement retire les écarts avec un client connu pour fonctionner.
+
 ## api 0.88.11 / applis 0.94.5 - 2026-11-12
 
 - [x] Instant replay : repli quand l'encodeur n'encode rien. Sur une carte AMD (`AMDh264Encoder`), l'encodeur prenait une image puis n'émettait plus aucun évènement : tampon vide, toutes les images perdues. Si aucune image n'est encodée 2 secondes après la première acceptée, la session redémarre en donnant les images autrement : textures individuelles au lieu de la réserve Media Foundation, puis mémoire vive (image relue de la carte graphique, encodeur sans gestionnaire D3D). L'entrée qui marche est gardée jusqu'à la fermeture de l'app et écrite dans les journaux ; si aucune ne marche, l'instant replay s'arrête avec un message. L'échantillon de sortie est fourni à l'encodeur quand il ne le fournit pas lui-même. Non fait : la cause du blocage avec la réserve n'est pas connue ; un encodeur bloqué garde son fil jusqu'à la fermeture de l'app. Non vérifié : sur un appareil Windows, pour les trois entrées (compilation mingw et tests de la logique seulement) ; coût de l'entrée par la mémoire vive sur les i/s du jeu.
