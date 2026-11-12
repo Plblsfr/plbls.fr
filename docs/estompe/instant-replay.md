@@ -163,6 +163,45 @@ perdues sur 10 secondes.
 L'overlay natif (`overlay_natif`) ne sait afficher que les participants du vocal : l'indicateur, « Clip enregistré » et les messages d'erreur sont à afficher
 par le front à partir de ces évènements.
 
+## Interface
+
+Tout le front de la fonction est dans `apps/estompe/windows/src/` ; le frontend commun ne la connaît que par `Platform` (un onglet de `slots.settingsPages`,
+un espace de `spaces`, une fenêtre de `windows`). Sur un build sans la feature (`replay_etat` répond la raison « instant replay absent de ce build »), l'onglet
+et l'espace sont masqués et aucune autre commande `replay_*` n'est appelée.
+
+| Fichier | Rôle |
+|---|---|
+| `replay.ts` | types du contrat et logique pure : défauts, lecture des réglages enregistrés, réglages envoyés au moteur, décision d'envoi, tri de la galerie, messages de l'overlay |
+| `replay.svelte.ts` | état (`replay`), enregistrement des réglages, `replay_configurer`, écoute des évènements, raccourci global, signal de partage d'écran, actions de la galerie, envoi |
+| `SettingsReplay.svelte` | Paramètres › Instant replay |
+| `ReplayNav.svelte`, `ReplayGalerie.svelte`, `ReplayEnvoi.svelte` | espace « Clips » : menu latéral, galerie, envoi dans un salon |
+| `replay-overlay.svelte.ts`, `ReplayOverlay.svelte` | fenêtre d'overlay `replay-overlay` (capacité `src-tauri/capabilities/replay-overlay.json`) |
+
+- **Réglages** : Paramètres › Instant replay (mention « bêta » dans l'onglet et dans la page). Ils sont enregistrés sur l'appareil (`localStorage`, clé
+  `estompe.replay`) avec la version de l'app : au lancement, si la version a changé, la fonction repart désactivée et les autres réglages sont gardés.
+  Le micro, la réduction de bruit et le volume viennent de Paramètres › Voix et vidéo (`prefs.micId`, `prefs.noise`, `prefs.micGain`) et ne sont lus que si
+  « Enregistrer mon micro » est allumé ; le libellé du micro est celui de `enumerateDevices()`. Chaque changement renvoie `replay_configurer` (un envoi
+  identique au précédent est ignoré).
+- **Choix hors de portée** : résolutions et cadences refusées par `replay_options` sont grisées, la raison au survol et rappelée sous les choix ; la durée est
+  plafonnée à `dureeMaxS` avec `raisonDuree` ; le codec, le débit et la mémoire du tampon annoncés sont affichés. Sans encodeur matériel
+  (`replay_disponible`), la page affiche la raison et l'interrupteur d'activation est bloqué.
+- **Raccourci** : `Alt+F10` par défaut, modifiable dans la page (vérifié comme les autres raccourcis globaux). Il n'est enregistré auprès de Windows que si
+  la fonction est activée, et appelle `replay_sauvegarder`.
+- **Galerie** : espace « Clips » de la barre des serveurs, visible dès que la fonction est activée ou qu'un clip existe ; un filtre par jeu dans le menu latéral.
+  Lire (lecteur intégré, message si la webview ne lit pas le fichier, HEVC notamment), renommer, supprimer et « supprimer les plus anciens » quand le quota est
+  atteint (toujours avec confirmation), ouvrir le dossier, espace utilisé. Elle se recharge sur `replay://clip`. Les actions d'un clip sont la liste `ACTIONS`
+  de `ReplayGalerie.svelte`, les travaux en cours la liste `replay.travaux` : l'éditeur et les exports s'y ajouteront.
+- **Envoyer dans un salon** : choix d'un salon texte où l'on peut joindre un fichier, ou d'une conversation privée, puis envoi par `uploadAttachment` et
+  `app.send`. `decisionEnvoi` choisit : tel quel (H.264, une piste audio, sous la limite), `replay_vers_h264` (HEVC, deux pistes ou codec inconnu), réencodage
+  plus léger proposé au-delà de la limite (`max_video_size` de `GET /me`, passé en `tailleMaxOctets`), refus quand le débit qui tiendrait est sous 300 kbit/s.
+- **Partage d'écran** : `replay_partage` suit `voice.screen` (partage natif ou de la webview) tant que la fonction est activée. `suspendre` n'est pas utilisé :
+  le front ne mesure pas les i/s du partage.
+- **En jeu** : la fenêtre `replay-overlay` (transparente, traversée par les clics, dans le coin haut droit de l'écran du jeu, haut gauche si l'overlay des
+  participants occupe le haut droit) montre une pastille « Replay » tant que l'état est `arme`, puis « Clip enregistré », les pauses, les indisponibilités
+  (`raison` de `replay://etat`) et les messages de `replay://erreur`. Un message disparaît après la durée d'affichage des messages de l'overlay
+  (`prefs.msgSeconds`, même minuterie que l'overlay des messages). La fenêtre n'existe pas tant qu'il n'y a rien à montrer. Une erreur est aussi affichée
+  dans la fenêtre principale.
+
 ## Journaux
 
 Avec le mode debug, source `replay` : carte graphique et encodeurs trouvés, puis à chaque armement l'encodeur retenu, le codec, la résolution et la cadence
@@ -185,15 +224,15 @@ compilé pour Windows, jamais exécuté.
 | C7 micro hors vocal, réduction de bruit | RNNoise et gain : test. Capture WASAPI : non vérifié |
 | C8 son du jeu seul | non vérifié (même capture que le partage d'écran natif) |
 | C9 synchronisation à 40 ms | horodatage et comblement des silences : test. Sur un clip réel : non vérifié |
-| C10 indisponible sans encodeur, choix grisés avec raison | raisons : test. Lecture du matériel : non vérifié |
+| C10 indisponible sans encodeur, choix grisés avec raison | raisons : test. Page des réglages : rendu contrôlé avec des commandes simulées. Lecture du matériel : non vérifié |
 | C11 HEVC au-delà de H.264, envoi en H.264 | choix du codec, `hvcC`, arguments ffmpeg : test. Encodeur HEVC et réencodage réels : non vérifié |
 | C12 jeux ajoutés et exclus | règle : test. Détection réelle : non vérifié |
 | C13 HDR | non vérifié |
 | C14 curseur, overlay absent | non vérifié |
 | C15 partage d'écran prioritaire | automate : test. Refus réel d'une seconde session : non vérifié |
 | C16 deux appuis, deux clips | file d'écriture : test. Effet sur les i/s : non vérifié |
-| C17 quota et disque plein | test (aucune suppression, codes d'erreur) |
-| C18 désactivé par défaut, mention « bêta » | défaut côté Rust : test. Le reste est dans le front |
+| C17 quota et disque plein | test (aucune suppression, codes d'erreur). Avertissement et suppression confirmée dans la galerie : rendu contrôlé avec des commandes simulées |
+| C18 désactivé par défaut, mention « bêta » | défauts et désactivation après une mise à jour : test (Rust et `replay.test.ts`). Mention « bêta » : dans l'onglet et la page des réglages |
 | C19 logique sans GPU testée en CI | test |
 
 Points d'attention pour le premier essai sur appareil :

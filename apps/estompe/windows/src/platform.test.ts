@@ -7,7 +7,7 @@ afterEach(() => setPlatform(web))
 
 describe('plateforme Windows', () => {
   it('déclare les fenêtres d\'overlay et le raccourci global', () => {
-    expect(Object.keys(platform.windows)).toEqual(['#overlay', '#msg-overlay'])
+    expect(Object.keys(platform.windows)).toEqual(['#overlay', '#msg-overlay', '#replay-overlay'])
     expect(platform.globalPtt).toBeDefined()
     expect(web.globalPtt).toBeUndefined()
   })

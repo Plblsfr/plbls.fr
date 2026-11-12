@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "replay-overlay",
+  "description": "Overlay de l'instant replay : reçoit de la fenêtre principale l'indicateur du tampon et les messages (clip enregistré, pause, erreur).",
+  "windows": [
+    "replay-overlay"
+  ],
+  "permissions": [
+    "core:event:default"
+  ],
+  "platforms": [
+    "windows",
+    "linux",
+    "macOS"
+  ]
+}
