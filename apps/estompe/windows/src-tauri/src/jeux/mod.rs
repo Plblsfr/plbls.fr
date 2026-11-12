@@ -21,18 +21,25 @@ pub fn regle(exe: &str, chemin: &str, ajoutes: &[String], exclus: &[String]) -> 
     }
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+const NOT_GAMES: &[&str] = &[
+    "explorer.exe", "estompe.exe", "applicationframehost.exe", "searchhost.exe", "shellexperiencehost.exe",
+    "startmenuexperiencehost.exe", "textinputhost.exe", "lockapp.exe", "taskmgr.exe", "chrome.exe", "msedge.exe", "firefox.exe",
+    "brave.exe", "opera.exe", "vivaldi.exe", "mpv.exe", "vlc.exe", "mpc-hc64.exe", "wmplayer.exe", "microsoft.media.player.exe", "powerpnt.exe", "discord.exe",
+    "screenclippinghost.exe", "snippingtool.exe",
+];
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn hors_jeu(exe: &str) -> bool {
+    NOT_GAMES.iter().any(|n| n.eq_ignore_ascii_case(exe))
+}
+
 #[cfg(windows)]
 mod detection {
     use windows_sys::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
     use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
-
-    const NOT_GAMES: &[&str] = &[
-        "explorer.exe", "estompe.exe", "applicationframehost.exe", "searchhost.exe", "shellexperiencehost.exe",
-        "startmenuexperiencehost.exe", "textinputhost.exe", "lockapp.exe", "taskmgr.exe", "chrome.exe", "msedge.exe", "firefox.exe",
-        "brave.exe", "opera.exe", "vivaldi.exe", "mpv.exe", "vlc.exe", "mpc-hc64.exe", "wmplayer.exe", "microsoft.media.player.exe", "powerpnt.exe", "discord.exe",
-    ];
 
     pub struct Foreground {
         pub game: bool,
@@ -71,7 +78,7 @@ mod detection {
     }
 
     fn known_game(exe: &str, path: &str) -> Option<String> {
-        if NOT_GAMES.iter().any(|n| n.eq_ignore_ascii_case(exe)) {
+        if super::hors_jeu(exe) {
             return None;
         }
         super::connus::name_of(exe, path)
@@ -97,7 +104,7 @@ mod detection {
         let exe = exe_name(&path);
         let known = known_game(&exe, &path);
         if known.is_none() {
-            if NOT_GAMES.iter().any(|n| n.eq_ignore_ascii_case(&exe)) {
+            if super::hors_jeu(&exe) {
                 return None;
             }
             let style = unsafe { GetWindowLongW(h, GWL_STYLE) } as u32;
@@ -188,5 +195,13 @@ mod tests {
         assert_eq!(regle("launcher.exe", r"C:\x\launcher.exe", &ajoutes, &exclus), Regle::Exclu);
         assert_eq!(regle("jeu.exe", r"D:\Jeux\Mon Jeu\jeu.exe", &ajoutes, &["JEU.exe".to_string()]), Regle::Exclu);
         assert_eq!(regle("cs2.exe", r"C:\cs2.exe", &[], &[]), Regle::Aucune);
+    }
+
+    #[test]
+    fn outils_de_windows_jamais_pris_pour_un_jeu() {
+        assert!(hors_jeu("ScreenClippingHost.exe"));
+        assert!(hors_jeu("SnippingTool.exe"));
+        assert!(hors_jeu("explorer.exe"));
+        assert!(!hors_jeu("cod.exe"));
     }
 }
