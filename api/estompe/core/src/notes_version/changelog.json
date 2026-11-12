@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.94.2",
+    "date": "2026-11-12",
+    "new": [],
+    "fixes": [
+      "Application Windows : quand l'instant replay perd des images, le message indique maintenant pourquoi.",
+      "Mode debug : le journal affiche les nouvelles lignes sans redémarrer l'application."
+    ]
+  },
+  {
     "version": "0.94.0",
     "date": "2026-11-12",
     "new": [
