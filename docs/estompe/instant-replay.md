@@ -32,9 +32,22 @@ Aucune image ne passe par le processeur. Fichiers dans `apps/estompe/windows/src
    n'est capturé : ni le bureau, ni l'overlay d'Estompe, ni une fenêtre posée par-dessus. Curseur selon le réglage, bordure jaune retirée quand Windows le permet.
 3. **Conversion** (`win/gpu.rs`) : mise à l'échelle et BGRA vers NV12 (BT.709, 16-235) par le Video Processor D3D11. Écran en HDR : capture en 16 bits flottants,
    puis un nuanceur ramène l'image en SDR (blanc SDR de l'écran lu par `DisplayConfigGetDeviceInfo`, compression des hautes lumières, gamma sRGB).
-4. **Encodage** (`win/encodeur.rs`) : MFT matériel Media Foundation (AMF, NVENC ou QuickSync par la même API), débit constant, une image clé par seconde,
-   sans images B. **Aucun repli logiciel** : sans MFT matériel, la fonction est indisponible.
-   **Entrée de l'encodeur** (`cadence::Entree`) : les images lui sont données de trois façons, essayées dans l'ordre. Si l'encodeur a accepté une image et n'en a encodé
+4. **Encodage** : débit constant, une image clé par seconde, sans images B. **Aucun repli logiciel** : sans encodeur matériel, la fonction est indisponible.
+   - `win/amf.rs` : sur une carte AMD, AMF appelé directement (`amfrt64.dll` du pilote, méthodes appelées par leur rang dans les tables des en-têtes du SDK AMF 1.5).
+     C'est le premier essai : le MFT d'AMD (`AMDh264Encoder`) prend une image puis n'encode rien, quelle que soit sa configuration (vu sur Radeon RX 7800).
+     **Essai hors de l'app** (`amf::essai_hors_processus`, modèle des `obs-amf-test` d'OBS) : AMF est appelé sans filet, une erreur à cet endroit ferme le
+     programme. Au démarrage du moteur, l'app relance donc son propre exécutable avec `--essai-amf <LUID de la carte>` (traité en tête de `run()`, avant Tauri et
+     l'instance unique) : ce second processus ouvre AMF de 7680x4320 à 1280x720 pour chaque codec, encode une image en 1280x720, écrit une ligne `amf <codec>
+     <largeur> <hauteur>` par codec réussi puis `amf fin`, et quitte. S'il plante, ne répond pas en 20 s ou n'écrit pas `amf fin`, AMF n'est pas utilisé pendant
+     ce lancement et l'encodeur Media Foundation est pris. Un codec sans ligne ne passe jamais par AMF. Les résolutions maximales annoncées dans les réglages
+     viennent de cet essai ; le plafond de macroblocs par seconde est celui du niveau 5.2 (H.264) ou 6.2 (HEVC), AMF ne l'annonçant pas par ce chemin.
+     **Garde-fou dans l'app** (`garde.rs`) : seconde protection, pour une session ouverte dans l'app après un essai réussi. À l'ouverture d'une session AMF tant
+     qu'aucune image n'a été encodée, le fichier `estompe-amf.txt` du dossier des journaux reçoit `essai <version>` ; il passe à `libre` si la session se termine
+     sans image, à `valide` à la première image encodée. Au lancement, `essai` pour la version en cours signifie que l'app s'est arrêtée pendant une telle session :
+     AMF n'est plus essayé ni appelé, et le front reçoit `replay://erreur` `amf-desactive`, jusqu'à la version suivante. Un arrêt après la première image
+     encodée n'est pas couvert.
+   - `win/encodeur.rs` : sinon, MFT matériel Media Foundation (NVENC, QuickSync), choisi dès qu'AMF ne s'ouvre pas (bibliothèque absente, carte d'une autre marque).
+   **Entrée de l'encodeur** (`cadence::Entree`) : après AMF (huit textures individuelles), le MFT reçoit les images de trois façons, essayées dans l'ordre. Si l'encodeur a accepté une image et n'en a encodé
    aucune au bout de 2 secondes (code interne `encodeur-muet`), la session redémarre avec la suivante, gardée ensuite pour les sessions de ce lancement de l'app :
    textures de la réserve Media Foundation (`IMFVideoSampleAllocatorEx`), puis huit textures individuelles réutilisées à tour de rôle, puis mémoire vive (l'image
    convertie est relue de la carte graphique et l'encodeur ne reçoit plus le gestionnaire D3D ; seul cas où une image passe par le processeur). Les trois échouent :
