@@ -94,6 +94,8 @@
   {#if !st.notifications}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('notifications')}>Ouvrir le réglage des notifications</button>{/if}
   <p class="v-note">Affichage par-dessus les autres applications (bandeau « J'écoute… » et ce qui a été compris, ouverture de l'application de musique depuis l'arrière-plan) : {st.overlay ? 'accordé.' : 'manquant.'}</p>
   {#if !st.overlay}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('overlay')}>Autoriser l'affichage par-dessus</button>{/if}
+  <p class="v-note">Batterie sans restriction (pour que l'écoute continue écran éteint ou Estompe en arrière-plan) : {st.battery ? 'accordé.' : 'manquant.'}</p>
+  {#if !st.battery}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('battery')}>Lever la restriction de batterie</button>{/if}
 </div>
 
 <div class="plbls-field">

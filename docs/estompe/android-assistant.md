@@ -21,7 +21,8 @@ Autorisations, demandées depuis ce même écran :
 - **SMS** et **contacts** : lecture et envoi de SMS, noms du carnet ;
 - **Accès aux notifications** (réglage système) : lecture des autres messageries et pilotage de la musique ;
 - **Affichage par-dessus les autres applications** (réglage système, facultatif) : bandeau à l'écran quand l'assistant s'active,
-  et ouverture de l'application de musique quand Estompe n'est pas à l'écran.
+  et ouverture de l'application de musique quand Estompe n'est pas à l'écran ;
+- **Batterie sans restriction** (réglage système, conseillé) : sans elle, certains téléphones arrêtent Estompe en arrière-plan ou écran éteint.
 
 Le modèle de dictée français (~40 Mo) est celui du mode conduite : il doit être téléchargé.
 Une synthèse vocale française doit être installée (RHVoice, eSpeak…) : sans elle l'assistant refuse tout ordre, puisqu'il ne pourrait pas relire un SMS avant l'envoi.
@@ -29,6 +30,8 @@ Une synthèse vocale française doit être installée (RHVoice, eSpeak…) : san
 L'APK étant installé hors magasin, Android 13 et plus peut griser l'accès aux notifications et les permissions SMS : ouvrir la fiche de l'application
 dans les réglages système, menu ⋮, « Autoriser les paramètres restreints », puis recommencer.
 
+Écran éteint ou Estompe en arrière-plan, l'écoute continue : le service garde le processeur éveillé (verrou d'éveil partiel) tant qu'il tourne,
+ce qui consomme de la batterie.
 Tant que l'écoute est active, une notification permanente « Assistant vocal » le signale et l'indicateur de micro d'Android reste affiché.
 Android interdit de rouvrir le micro depuis l'arrière-plan : après un redémarrage du téléphone, ou quand le mode conduite démarre seul
 à la connexion Bluetooth, la notification « Assistant vocal en pause » demande d'ouvrir Estompe pour relancer l'écoute.

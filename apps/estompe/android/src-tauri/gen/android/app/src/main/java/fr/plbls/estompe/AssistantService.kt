@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -166,6 +167,7 @@ class AssistantService : Service() {
   private val spoken = LinkedHashSet<String>()
   private var llm: Llm? = null
   private val tones = HashSet<ToneGenerator>()
+  private var awake: PowerManager.WakeLock? = null
   private val resumeLater = Runnable { resume() }
   private val unload = Runnable { closeLlm() }
   private val tick = object : Runnable {
@@ -218,6 +220,8 @@ class AssistantService : Service() {
     if (busy) Mic.converse(false)
     if (Mic.freed === freed) Mic.freed = null
     ui.removeCallbacksAndMessages(null)
+    try { awake?.let { if (it.isHeld) it.release() } } catch (e: Exception) { DriveService.note("assistant : libération du verrou d'éveil ${e.javaClass.simpleName}") }
+    awake = null
     overlay.hide()
     voice.shutdown()
     closeLlm()
@@ -230,6 +234,7 @@ class AssistantService : Service() {
     val why = blocked(this) ?: hidden()
     if (why == null && foreground(true)) {
       started = true
+      keepAwake()
       cancelPause(this)
       refreshApps()
       ui.post(tick)
@@ -239,6 +244,15 @@ class AssistantService : Service() {
     listening = false
     pause(this, why ?: PAUSE_BACKGROUND)
     stopSelf()
+  }
+
+  private fun keepAwake() {
+    if (awake != null) return
+    try {
+      awake = getSystemService(PowerManager::class.java)?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "estompe:assistant")?.apply { setReferenceCounted(false); acquire() }
+    } catch (e: Exception) {
+      DriveService.note("assistant : verrou d'éveil ${e.javaClass.simpleName}")
+    }
   }
 
   private fun foreground(mic: Boolean): Boolean {
@@ -683,6 +697,10 @@ class AssistantService : Service() {
         try { c.stopService(service) } catch (e2: Exception) { DriveService.note("arrêt de l'assistant vocal : ${e2.javaClass.simpleName}") }
       }
     }
+
+    fun unrestricted(c: Context): Boolean = try {
+      c.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(c.packageName) == true
+    } catch (e: Exception) { false }
 
     private fun blocked(c: Context): String? = when {
       ContextCompat.checkSelfPermission(c, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED -> PAUSE_MIC

@@ -188,6 +188,7 @@ class EstompeNative(private val activity: MainActivity) {
     .put("sms", granted(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS))
     .put("contacts", granted(Manifest.permission.READ_CONTACTS))
     .put("overlay", AssistantOverlay.allowed(activity))
+    .put("battery", AssistantService.unrestricted(activity))
     .put("model", driveModel())
     .put("llm", if (LlmModel.state.isNotEmpty()) LlmModel.state else if (LlmModel.ready(activity)) "ready" else "")
     .put("llmAvailable", LlmModel.AVAILABLE && LlmModel.supported())
@@ -200,6 +201,7 @@ class EstompeNative(private val activity: MainActivity) {
           "notifications" -> activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
           "sms" -> activity.requestPermissions(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_CONTACTS), 4)
           "mic" -> activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 3)
+          "battery" -> activity.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + activity.packageName)))
           "overlay" -> activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + activity.packageName)))
         }
       } catch (e: Exception) {
