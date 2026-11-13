@@ -1,12 +1,14 @@
 package fr.plbls.estompe
 
 import java.text.Normalizer
+import java.util.Calendar
+import java.util.TimeZone
 
 enum class Transport { PLAY, PAUSE, NEXT, PREVIOUS, VOLUME_UP, VOLUME_DOWN }
 
 sealed class Command {
   object ReadUnread : Command()
-  data class ReadFrom(val contact: String) : Command()
+  data class ReadFrom(val contact: String, val single: Boolean = false) : Command()
   object Reply : Command()
   data class SendSms(val contact: String, val text: String) : Command()
   data class Music(val action: Transport, val app: String) : Command()
@@ -23,7 +25,7 @@ data class Contact(val name: String, val numbers: List<String>)
 
 data class Sms(val id: Long, val address: String, val sender: String, val body: String, val date: Long)
 
-data class Heard(val source: String, val sender: String, val text: String)
+data class Heard(val source: String, val sender: String, val text: String, val time: Long = 0)
 
 enum class AssistantScope { OFF, DRIVE, ALWAYS }
 
@@ -36,7 +38,7 @@ data class AssistantSettings(
 
 const val WAKE_WORD = "estompe"
 
-const val HELP_TEXT = "Vous pouvez dire : lis mes messages, lis les messages de Marie, envoie un SMS à Marie, mets Daft Punk, pause, suivant, ou lance ma playlist Route."
+const val HELP_TEXT = "Vous pouvez dire : lis mes messages, lis le dernier message de Marie, envoie un SMS à Marie, mets Daft Punk, lance YouTube Music, pause, suivant, ou lance ma playlist Route."
 
 private val MARKS = Regex("\\p{M}")
 private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
@@ -106,7 +108,8 @@ private fun tail(original: String, folded: String): String {
 }
 
 private val WAKE_SINGLE = setOf("estompe", "estompes", "estomp")
-private val WAKE_PAIRS = setOf("est tombe", "est tomb", "est tombes", "est tompe", "et stomp", "et stompe")
+private val WAKE_PAIRS = setOf("est tombe", "est tomb", "est tombes", "est tompe", "et stomp", "et stompe", "est tombee", "est tombees", "es tombe", "et tombe", "et tombee",
+  "et tombes", "est tomber", "et tomber", "est tompes", "et tompe", "esse tombe")
 
 fun wakeWord(input: String): String? {
   val heard = bound(input)
@@ -184,13 +187,21 @@ private val SEARCH_EXCLUDE = setOf("lumiere", "lumieres", "lampe", "feu", "couve
   "reveil", "alarme", "chauffage", "clim", "climatisation", "application", "appli", "app", "machine", "manteau", "veste", "pull", "pantalon", "chaussures", "chapeau", "linge", "vaisselle",
   "volume", "son", "stop", "pause", "message", "messages", "sms", "texto", "textos", "mes", "mon", "ton", "ta", "tes", "ma", "que", "qui", "qu", "porte", "fenetre", "telephone", "portable",
   "ecran", "camera", "gps", "navigation", "itineraire", "wifi", "bluetooth", "mode", "calendrier", "agenda", "rappel", "cafe", "the", "eau", "ordinateur")
+private val OPEN = Regex("^(?:$PLAY_VERBS|ouvre|ouvrir|ouvrez|demarre|demarrer|demarrez)(?: moi)? (?:(?:l |la |le )?(?:application|appli|app) )?(.+)$")
+private val YOUTUBE = Regex("(?:^| )(?:you ?tube?|you ?tub|yt)(?= |$)")
+private val MUSIC_WORD = Regex("(?:^| )(?:musique|musiques|musik|musics)(?= |$)")
 private val PLAYLIST_ONLY = Regex("^(?:ma |la |une )?(?:playlist|liste de lecture)$")
 
+fun appKey(label: String): String = fold(label).replace(YOUTUBE, " youtube").replace(MUSIC_WORD, " music").trim()
+
 private fun appId(label: String, apps: List<MusicApp>): String? {
-  val exact = apps.filter { fold(it.label) == label }
-  if (exact.size == 1) return exact[0].id
-  val words = label.split(" ")
-  return apps.filter { a -> fold(a.label).split(" ").let { lw -> words.all { it in lw } } }.singleOrNull()?.id
+  val said = appKey(label)
+  if (said.isEmpty()) return null
+  val keyed = apps.map { it to appKey(it.label) }
+  val exact = keyed.filter { it.second == said || it.second.replace(" ", "") == said.replace(" ", "") }
+  if (exact.size == 1) return exact[0].first.id
+  val words = said.split(" ")
+  return keyed.filter { (_, k) -> k.split(" ").let { lw -> words.all { it in lw } } }.singleOrNull()?.first?.id
 }
 
 private fun extractApp(c: String, apps: List<MusicApp>): Pair<String, String> {
@@ -238,7 +249,9 @@ fun parseCommand(input: String, apps: List<MusicApp> = emptyList()): Command {
     val g = r.matchEntire(c)?.groups?.get(1) ?: continue
     val name = contactOf(g.value).replace(ON_APP, "").trim()
     if (name.isEmpty() || name in PRONOUNS) continue
-    return Command.ReadFrom(original(heard, name, base + count(c.substring(0, g.range.first))))
+    val before = c.substring(0, g.range.first).split(" ")
+    val single = "message" in before || "texto" in before || ("sms" in before && ("le" in before || "dernier" in before))
+    return Command.ReadFrom(original(heard, name, base + count(c.substring(0, g.range.first))), single)
   }
   if (REPLY.matches(c)) return Command.Reply
   sendSms(heard, lead, base)?.let { return it }
@@ -248,6 +261,7 @@ fun parseCommand(input: String, apps: List<MusicApp> = emptyList()): Command {
     val name = m.groups[1]?.value.orEmpty().replace(PLAYLIST_NAME_DET, "").trim()
     return if (name.isEmpty()) Command.Unknown else Command.PlayPlaylist(name, app)
   }
+  OPEN.matchEntire(c)?.let { o -> appId(o.groupValues[1], apps)?.let { return Command.Music(Transport.PLAY, it) } }
   val m = SEARCH.matchEntire(core) ?: return Command.Unknown
   val asked = m.groupValues[2]
   val query = asked.replace(SEARCH_DET, "").trim()
@@ -339,7 +353,29 @@ fun pickChoice(heard: String, count: Int): Int? {
 
 private fun ofName(name: String) = if (fold(name).firstOrNull() in "aeiou".toList()) "d'$name" else "de $name"
 
-fun announceMessages(items: List<Heard>): List<String> {
+private val DAYS = listOf("dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi")
+private val MONTHS = listOf("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre")
+private const val DAY_MS = 86_400_000L
+
+fun whenText(time: Long, now: Long, zone: TimeZone = TimeZone.getDefault()): String {
+  if (time <= 0 || now <= 0) return ""
+  val ago = now - time
+  if (ago < 120_000) return "à l'instant"
+  if (ago < 3_600_000) return "il y a ${ago / 60_000} minutes"
+  val t = Calendar.getInstance(zone).apply { timeInMillis = time }
+  val n = Calendar.getInstance(zone).apply { timeInMillis = now }
+  val minute = t.get(Calendar.MINUTE)
+  val hour = "à ${t.get(Calendar.HOUR_OF_DAY)} h" + if (minute == 0) "" else " " + minute.toString().padStart(2, '0')
+  val days = Math.floorDiv(now + zone.getOffset(now), DAY_MS) - Math.floorDiv(time + zone.getOffset(time), DAY_MS)
+  if (days == 0L) return hour
+  if (days == 1L) return "hier $hour"
+  if (days in 2..6) return "${DAYS[t.get(Calendar.DAY_OF_WEEK) - 1]} $hour"
+  val day = t.get(Calendar.DAY_OF_MONTH).let { if (it == 1) "1er" else it.toString() }
+  val year = if (t.get(Calendar.YEAR) == n.get(Calendar.YEAR)) "" else " ${t.get(Calendar.YEAR)}"
+  return "le $day ${MONTHS[t.get(Calendar.MONTH)]}$year"
+}
+
+fun announceMessages(items: List<Heard>, now: Long = 0, zone: TimeZone = TimeZone.getDefault()): List<String> {
   if (items.isEmpty()) return listOf("Aucun nouveau message.")
   val groups = ArrayList<MutableList<Pair<Heard, String>>>()
   for (h in items) {
@@ -350,12 +386,15 @@ fun announceMessages(items: List<Heard>): List<String> {
   }
   return groups.map { g ->
     val h = g[0].first
-    val via = if (h.source.isBlank()) "" else " sur ${h.source}"
+    val sms = h.source.isBlank()
+    val via = if (sms) "" else " sur ${h.source}"
     val n = g.size
+    val at = whenText(g.last().first.time, now, zone)
+    val date = if (at.isEmpty()) "" else if (n == 1) ", $at" else ", le dernier $at"
     when {
-      g[0].second.isEmpty() -> "${h.sender} a envoyé ${if (n == 1) "un message" else "$n messages"} sans texte$via"
-      n == 1 -> "Message ${ofName(h.sender)}$via : ${g[0].second}"
-      else -> "$n messages ${ofName(h.sender)}$via : " + g.joinToString(" ") { (_, t) -> if (t.last() in ".!?…") t else "$t." }
+      g[0].second.isEmpty() -> "${h.sender} a envoyé ${if (n == 1) (if (sms) "un SMS" else "un message") else "$n ${if (sms) "SMS" else "messages"}"} sans texte$via$date"
+      n == 1 -> "${if (sms) "SMS" else "Message"} ${ofName(h.sender)}$via$date : ${g[0].second}"
+      else -> "$n ${if (sms) "SMS" else "messages"} ${ofName(h.sender)}$via$date : " + g.joinToString(" ") { (_, t) -> if (t.last() in ".!?…") t else "$t." }
     }
   }
 }

@@ -46,7 +46,7 @@ class AssistantServiceTest {
     val sms = listOf(Sms(1, "0611", "Marie", "salut", 100), Sms(2, "0622", "Paul", "ok", 300))
     val notes = listOf(Pending("k1", "org.signal", "Signal", "Léa", "coucou", 200, true), Pending("k2", "org.signal", "Signal", "Léa", "vu", 50, false))
     val items = mergeUnread(sms, notes, setOf("k2"))
-    assertEquals(listOf(Heard("", "Marie", "salut"), Heard("Signal", "Léa", "coucou"), Heard("", "Paul", "ok")), items.map { it.heard })
+    assertEquals(listOf(Heard("", "Marie", "salut", 100), Heard("Signal", "Léa", "coucou", 200), Heard("", "Paul", "ok", 300)), items.map { it.heard })
     assertEquals(ReplyTo.Text("0622", "Paul"), items.last().to)
     assertEquals(ReplyTo.Note("k1", "Léa", "Signal", true), items[1].to)
     assertTrue(mergeUnread(emptyList(), notes, setOf("k1", "k2")).isEmpty())
@@ -103,12 +103,12 @@ class AssistantServiceTest {
 
   @Test fun `lecture plafonnée et notifications pas encore accessibles`() {
     val h = listOf(Heard("", "Marie", "salut"))
-    assertEquals(listOf("Message de Marie : salut", "Il en reste 3."), unreadLines(h, 3, false, true))
-    assertEquals(listOf("Message de Marie : salut"), unreadLines(h, 0, false, true))
+    assertEquals(listOf("SMS de Marie : salut", "Il en reste 3."), unreadLines(h, 3, false, true))
+    assertEquals(listOf("SMS de Marie : salut"), unreadLines(h, 0, false, true))
     assertEquals(listOf("Aucun nouveau message."), unreadLines(emptyList(), 0, false, true))
     assertEquals(listOf("Aucun nouveau SMS.", NOTES_MISSING), unreadLines(emptyList(), 0, true, true))
     assertEquals(listOf(NOTES_MISSING), unreadLines(emptyList(), 0, true, false))
-    assertEquals(listOf("Message de Marie : salut", "Il en reste 1.", NOTES_MISSING), unreadLines(h, 1, true, true))
+    assertEquals(listOf("SMS de Marie : salut", "Il en reste 1.", NOTES_MISSING), unreadLines(h, 1, true, true))
   }
 
   @Test fun `issue de l'envoi annoncée sans fausse certitude`() {
@@ -145,5 +145,20 @@ class AssistantServiceTest {
   @Test fun `phrase d'échec de la musique`() {
     assertTrue(musicFailure(false).startsWith("Je n'ai rien à piloter."))
     assertEquals("L'application de musique n'a pas répondu.", musicFailure(true))
+    assertTrue(musicFailure(true, false).contains("par-dessus les autres applications"))
+  }
+
+  @Test fun `notifications d'un contact rapprochées par nom ou numéro`() {
+    val marie = Contact("Marie Dupont", listOf("0611223344"))
+    assertTrue(fromSender("marie", marie, "Marie Dupont"))
+    assertTrue(fromSender("marie", marie, "+33 6 11 22 33 44"))
+    assertFalse(fromSender("marie", marie, "Marie Martin"))
+    assertTrue(fromSender("marie", null, "Marie Martin"))
+    assertFalse(fromSender("marie", null, "Paul"))
+    assertFalse(fromSender("", null, "Paul"))
+  }
+
+  @Test fun `ordre entendu affiché entre guillemets`() {
+    assertEquals("« lis mes messages »", heardText(" lis mes messages "))
   }
 }

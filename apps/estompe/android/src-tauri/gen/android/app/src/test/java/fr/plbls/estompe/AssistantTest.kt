@@ -63,7 +63,7 @@ class AssistantTest {
 
   @Test fun `lecture des messages d'un contact`() {
     assertEquals(Command.ReadFrom("marie"), cmd("lis les messages de marie"))
-    assertEquals(Command.ReadFrom("Jean Dupont"), cmd("Lis le dernier message de Jean Dupont"))
+    assertEquals(Command.ReadFrom("Jean Dupont", true), cmd("Lis le dernier message de Jean Dupont"))
     assertEquals(Command.ReadFrom("marie"), cmd("qu'est-ce que m'a écrit marie"))
     assertEquals(Command.ReadFrom("marie"), cmd("lis mes messages de marie"))
     assertEquals(Command.ReadFrom("alice"), cmd("lis-moi les sms d'alice"))
@@ -342,7 +342,7 @@ class AssistantTest {
 
   @Test fun `annonce regroupée par expéditeur consécutif`() {
     val items = listOf(Heard("", "Marie", "premier texte"), Heard("", "Marie", "Deuxième texte"), Heard("", "Paul", "salut"))
-    assertEquals(listOf("2 messages de Marie : premier texte. Deuxième texte.", "Message de Paul : salut"), announceMessages(items))
+    assertEquals(listOf("2 SMS de Marie : premier texte. Deuxième texte.", "SMS de Paul : salut"), announceMessages(items))
   }
 
   @Test fun `annonce avec la source quand ce n'est pas un SMS`() {
@@ -351,25 +351,73 @@ class AssistantTest {
 
   @Test fun `expéditeurs et sources différents ne sont pas fusionnés`() {
     val items = listOf(Heard("", "Marie", "a"), Heard("Signal", "Marie", "b"), Heard("", "Marie", "c"), Heard("", "Marie", "d"))
-    assertEquals(listOf("Message de Marie : a", "Message de Marie sur Signal : b", "2 messages de Marie : c. d."), announceMessages(items))
+    assertEquals(listOf("SMS de Marie : a", "Message de Marie sur Signal : b", "2 SMS de Marie : c. d."), announceMessages(items))
   }
 
   @Test fun `élision devant une voyelle`() {
-    assertEquals(listOf("Message d'Alice : coucou"), announceMessages(listOf(Heard("", "Alice", "coucou"))))
-    assertEquals(listOf("2 messages d'Éloïse : a. b."), announceMessages(listOf(Heard("", "Éloïse", "a"), Heard("", "Éloïse", "b"))))
+    assertEquals(listOf("SMS d'Alice : coucou"), announceMessages(listOf(Heard("", "Alice", "coucou"))))
+    assertEquals(listOf("2 SMS d'Éloïse : a. b."), announceMessages(listOf(Heard("", "Éloïse", "a"), Heard("", "Éloïse", "b"))))
   }
 
   @Test fun `texte nettoyé, ponctuation conservée`() {
     val items = listOf(Heard("", "Marie", "regarde https://exemple.fr/x 😀"), Heard("", "Marie", "ça va ?"))
-    assertEquals(listOf("2 messages de Marie : regarde un lien. ça va ?"), announceMessages(items))
+    assertEquals(listOf("2 SMS de Marie : regarde un lien. ça va ?"), announceMessages(items))
   }
 
   @Test fun `message sans texte`() {
-    assertEquals(listOf("Marie a envoyé un message sans texte"), announceMessages(listOf(Heard("", "Marie", "😀"))))
+    assertEquals(listOf("Marie a envoyé un SMS sans texte"), announceMessages(listOf(Heard("", "Marie", "😀"))))
     assertEquals(listOf("Marie a envoyé 2 messages sans texte sur Signal"), announceMessages(listOf(Heard("Signal", "Marie", ""), Heard("Signal", "Marie", "  "))))
   }
 
   @Test fun `liste vide`() {
     assertEquals(listOf("Aucun nouveau message."), announceMessages(emptyList()))
+  }
+
+  @Test fun `le mot d'éveil mal transcrit est reconnu en tête de phrase`() {
+    assertEquals("lis mes messages", wakeWord("est tombée lis mes messages"))
+    assertEquals("pause", wakeWord("et tombe pause"))
+    assertNull(wakeWord("il est tombé hier"))
+  }
+
+  @Test fun `un seul message quand la demande est au singulier`() {
+    assertEquals(Command.ReadFrom("marie", true), cmd("lis le message de marie"))
+    assertEquals(Command.ReadFrom("marie", true), cmd("lis-moi le dernier sms de marie"))
+    assertEquals(Command.ReadFrom("marie", true), cmd("le dernier message de marie"))
+    assertEquals(Command.ReadFrom("marie", false), cmd("lis les derniers messages de marie"))
+    assertEquals(Command.ReadFrom("marie", false), cmd("lis les sms de marie"))
+  }
+
+  @Test fun `ouvrir une application de musique par son nom, même mal transcrit`() {
+    for (s in listOf("lance youtube music", "lance youtube musique", "ouvre you tube musique", "mets youtube", "démarre l'application youtube music", "lance yt music",
+      "est-ce que tu peux lancer youtube musique s'il te plaît")) {
+      assertEquals(s, Command.Music(Transport.PLAY, ytm.id), cmd(s))
+    }
+    assertEquals(Command.Music(Transport.PLAY, "com.spotify"), cmd("ouvre spotify"))
+    assertEquals(Command.Music(Transport.PLAY, "yt"), parseCommand("lance youtube musique", listOf(MusicApp("yt", "YT Music"), vlc)))
+    assertEquals(Command.PlaySearch("daft punk", ytm.id), cmd("mets daft punk sur youtube musique"))
+    assertEquals(Command.PlaySearch("deezer", ""), cmd("lance deezer"))
+    assertEquals(Command.Unknown, cmd("ouvre la fenêtre"))
+  }
+
+  @Test fun `date d'un message dite simplement`() {
+    val utc = java.util.TimeZone.getTimeZone("UTC")
+    val now = 1_763_042_400_000L
+    assertEquals("", whenText(0, now, utc))
+    assertEquals("à l'instant", whenText(now - 30_000, now, utc))
+    assertEquals("à l'instant", whenText(now + 60_000, now, utc))
+    assertEquals("il y a 12 minutes", whenText(now - 12 * 60_000, now, utc))
+    assertEquals("à 9 h 05", whenText(now - 4 * 3_600_000 - 55 * 60_000, now, utc))
+    assertEquals("hier à 14 h", whenText(now - 24 * 3_600_000, now, utc))
+    assertEquals("mardi à 14 h", whenText(now - 2 * 24 * 3_600_000, now, utc))
+    assertEquals("le 1er novembre", whenText(now - 12L * 24 * 3_600_000, now, utc))
+    assertEquals("le 13 novembre 2024", whenText(now - 365L * 24 * 3_600_000, now, utc))
+  }
+
+  @Test fun `l'annonce dit la provenance et la date`() {
+    val utc = java.util.TimeZone.getTimeZone("UTC")
+    val now = 1_763_042_400_000L
+    val items = listOf(Heard("", "Marie", "a", now - 24 * 3_600_000), Heard("", "Marie", "b", now - 12 * 60_000), Heard("WhatsApp", "Paul", "salut", now - 30_000))
+    assertEquals(listOf("2 SMS de Marie, le dernier il y a 12 minutes : a. b.", "Message de Paul sur WhatsApp, à l'instant : salut"), announceMessages(items, now, utc))
+    assertEquals(listOf("SMS de Marie, hier à 14 h : a"), announceMessages(items.take(1), now, utc))
   }
 }

@@ -74,7 +74,8 @@ class Phone(context: Context) {
     val spoken = spokenIds()
     val found = ArrayList<Triple<Long, String, Pair<String, Long>>>()
     try {
-      app.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, COLUMNS, Telephony.TextBasedSmsColumns.READ + " = 0", null,
+      app.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, COLUMNS,
+        Telephony.TextBasedSmsColumns.READ + " = 0 AND " + Telephony.TextBasedSmsColumns.DATE + " > ?", arrayOf((System.currentTimeMillis() - UNREAD_AGE_MS).toString()),
         Telephony.TextBasedSmsColumns.DATE + " DESC")?.use { c ->
         var n = 0
         while (n < UNREAD_MAX && c.moveToNext()) {
@@ -195,6 +196,7 @@ class Phone(context: Context) {
     private const val SPOKEN_KEY = "spokenSms"
     private const val SPOKEN_MAX = 500
     private const val UNREAD_MAX = 50
+    private const val UNREAD_AGE_MS = 7 * 86_400_000L
     private const val SCAN_MAX = 1000
     private const val SEND_TIMEOUT_MS = 30_000L
     private const val EXTRA_PART = "part"

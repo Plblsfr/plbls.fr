@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.provider.Settings
 import android.service.media.MediaBrowserService
 import android.view.KeyEvent
 import java.text.Collator
@@ -47,7 +48,7 @@ class MusicControl(private val context: Context) {
     when (action) {
       Transport.VOLUME_UP -> volume(AudioManager.ADJUST_RAISE)
       Transport.VOLUME_DOWN -> volume(AudioManager.ADJUST_LOWER)
-      Transport.PLAY -> controller(app)?.let { it.transportControls.play(); true } ?: playKey(app.ifEmpty { fallback })
+      Transport.PLAY -> controller(app)?.let { it.transportControls.play(); true } ?: start(app.ifEmpty { fallback })
       Transport.PAUSE -> controller(app)?.let { it.transportControls.pause(); true } ?: false
       Transport.NEXT -> controller(app)?.let { it.transportControls.skipToNext(); true } ?: false
       Transport.PREVIOUS -> controller(app)?.let { it.transportControls.skipToPrevious(); true } ?: false
@@ -63,6 +64,35 @@ class MusicControl(private val context: Context) {
 
   fun playlist(name: String, app: String, done: (Boolean) -> Unit) {
     ui.post { browse(name, app, once(done)) }
+  }
+
+  fun canLaunch(): Boolean = appInForeground() || try { Settings.canDrawOverlays(app) } catch (e: Exception) { false }
+
+  private fun start(pkg: String): Boolean {
+    val keyed = playKey(pkg)
+    if (keyed && AssistantListener.enabled(app)) return true
+    return open(pkg) || keyed
+  }
+
+  private fun open(pkg: String): Boolean {
+    if (pkg.isEmpty()) return false
+    if (!canLaunch()) { DriveService.note("musique : ouverture de l'app impossible en arrière-plan"); return false }
+    val intent = try { app.packageManager.getLaunchIntentForPackage(pkg) } catch (e: Exception) { null }
+    if (intent == null) { DriveService.note("musique : app sans écran d'accueil"); return false }
+    try { app.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) {
+      DriveService.note("musique : ouverture de l'app refusée ($e)")
+      return false
+    }
+    val until = SystemClock.elapsedRealtime() + OPEN_WAIT_MS
+    while (Looper.myLooper() != Looper.getMainLooper() && SystemClock.elapsedRealtime() < until) {
+      val c = sessions().firstOrNull { it.packageName == pkg }
+      if (c != null) {
+        try { c.transportControls.play() } catch (e: Exception) { DriveService.note("musique : lecture refusée ($e)") }
+        break
+      }
+      try { Thread.sleep(PLAY_POLL_MS) } catch (e: InterruptedException) { Thread.currentThread().interrupt(); break }
+    }
+    return true
   }
 
   private fun once(done: (Boolean) -> Unit): (Boolean) -> Unit {
@@ -142,7 +172,7 @@ class MusicControl(private val context: Context) {
         c.transportControls.playFromSearch(query, extras)
         return done(true)
       }
-      val last = { if (appInForeground() && startSearch(query, to, extras)) done(true) else { DriveService.note("musique : recherche impossible en arrière-plan"); done(false) } }
+      val last = { if (canLaunch() && startSearch(query, to, extras)) done(true) else { DriveService.note("musique : recherche impossible en arrière-plan"); done(false) } }
       val started = connect(to, { ok -> if (ok) done(true) else last() }) { browser, finish ->
         try {
           MediaController(app, browser.sessionToken).transportControls.playFromSearch(query, extras)
@@ -290,6 +320,7 @@ class MusicControl(private val context: Context) {
     private const val LINGER_MS = 5_000L
     private const val PLAY_CHECK_MS = 3_000L
     private const val PLAY_POLL_MS = 300L
+    private const val OPEN_WAIT_MS = 6_000L
     private const val MAX_SUBSCRIPTIONS = 8
     private const val EXTRA_PLAYLIST = "android.intent.extra.playlist"
   }

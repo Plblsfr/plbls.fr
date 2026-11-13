@@ -60,7 +60,7 @@
 <h3 class="set-sub">Assistant vocal</h3>
 <p class="v-note">
   Réveillé par le mot « Estompe », il écoute et comprend sur le téléphone : rien ne part vers un serveur.
-  Essaie « Estompe, lis mes messages », « Estompe, envoie un SMS à Marie » ou « Estompe, mets Daft Punk ».
+  Essaie « Estompe, lis mes messages », « Estompe, envoie un SMS à Marie », « Estompe, mets Daft Punk » ou « Estompe, lance YouTube Music ».
 </p>
 
 <div class="plbls-field">
@@ -92,6 +92,8 @@
   {#if !st.sms || !st.contacts}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('sms')}>Autoriser les SMS et les contacts</button>{/if}
   <p class="v-note">Accès aux notifications (pour lire les autres messageries et piloter la musique) : {st.notifications ? 'accordé.' : 'manquant.'}</p>
   {#if !st.notifications}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('notifications')}>Ouvrir le réglage des notifications</button>{/if}
+  <p class="v-note">Affichage par-dessus les autres applications (bandeau « J'écoute… » et ce qui a été compris, ouverture de l'application de musique depuis l'arrière-plan) : {st.overlay ? 'accordé.' : 'manquant.'}</p>
+  {#if !st.overlay}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('overlay')}>Autoriser l'affichage par-dessus</button>{/if}
 </div>
 
 <div class="plbls-field">
