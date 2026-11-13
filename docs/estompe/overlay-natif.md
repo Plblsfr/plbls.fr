@@ -46,7 +46,7 @@ Ces chiffres ne remplacent pas la mesure dans l'app Windows (WebView2, jeu réel
 ## Reste à mesurer pour décider
 
 1. **C1**, coût actuel : 5 sessions du scénario « Partie de jeu avec overlays » de la mesure intégrée (Paramètres › Débogage), interrupteur natif désactivé.
-   Le rôle `overlay-vocal` de l'export donne la mémoire et le CPU du processus de rendu de l'overlay.
+   L'export ne sépare pas les processus de rendu par fenêtre : comparer le total et le type `rendu`.
 2. **C3**, gain : 5 sessions identiques avec l'overlay natif. Il tourne dans le processus hôte : comparer le total et le rôle `hote`.
    Puis `node apps/estompe/windows/scripts/synthese-mesures.mjs <exports>`.
 3. Comportement en plein écran exclusif et en fenêtré sans bordure, avec un jeu réel. Une fenêtre « layered » n'apparaît pas au-dessus d'un jeu

@@ -1,7 +1,6 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::Serialize;
-use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -101,23 +100,6 @@ pub fn genre_processus(kind: i32) -> &'static str {
         4 => "gpu",
         5 | 6 => "plugin",
         _ => "autre",
-    }
-}
-
-fn role_source(source: &str) -> &'static str {
-    match source.rsplit_once('#').map(|(_, ancre)| ancre) {
-        Some("overlay") => "overlay-vocal",
-        Some("msg-overlay") => "overlay-messages",
-        _ => "principale",
-    }
-}
-
-pub fn role_rendu<'a>(sources: impl IntoIterator<Item = &'a str>) -> &'static str {
-    let roles: BTreeSet<&'static str> = sources.into_iter().map(role_source).collect();
-    match roles.len() {
-        0 => "inactif",
-        1 => roles.into_iter().next().unwrap_or("inactif"),
-        _ => "mixte",
     }
 }
 
@@ -260,17 +242,13 @@ pub fn mesures_systeme(app: AppHandle) -> Systeme {
 
 #[cfg(windows)]
 mod plateforme {
-    use super::{
-        filetime_en_epoque_ms, filetime_en_ms, genre_processus, role_rendu, Compteurs, Processus,
-    };
+    use super::{filetime_en_epoque_ms, filetime_en_ms, genre_processus, Compteurs, Processus};
     use std::sync::{Arc, Mutex};
     use tauri::{AppHandle, Manager};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
-        ICoreWebView2Controller, ICoreWebView2Environment13, ICoreWebView2ProcessExtendedInfo,
-        ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2_2, COREWEBVIEW2_PROCESS_KIND,
+        ICoreWebView2Environment8, COREWEBVIEW2_PROCESS_KIND,
     };
-    use webview2_com::{CoTaskMemPWSTR, GetProcessExtendedInfosCompletedHandler};
-    use windows_core::{Interface, BOOL, PWSTR};
+    use windows_core::Interface;
     use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
     use windows_sys::Win32::Graphics::Gdi::{
         EnumDisplayDevicesW, DISPLAY_DEVICEW, DISPLAY_DEVICE_ATTACHED_TO_DESKTOP,
@@ -424,71 +402,23 @@ mod plateforme {
         noms
     }
 
-    unsafe fn sources(
-        info: &ICoreWebView2ProcessExtendedInfo,
-    ) -> windows_core::Result<Vec<String>> {
-        let mut liste = Vec::new();
-        let it = info.AssociatedFrameInfos()?.GetIterator()?;
-        let mut encore = BOOL::default();
-        it.HasCurrent(&mut encore)?;
-        while encore.as_bool() {
-            let mut source = PWSTR::null();
-            it.GetCurrent()?.Source(&mut source)?;
-            liste.push(CoTaskMemPWSTR::from(source).to_string());
-            it.MoveNext(&mut encore)?;
-        }
-        Ok(liste)
-    }
-
-    unsafe fn lire(
-        liste: &ICoreWebView2ProcessExtendedInfoCollection,
-    ) -> windows_core::Result<Vec<Processus>> {
+    unsafe fn lire(env: &ICoreWebView2Environment8) -> windows_core::Result<Vec<Processus>> {
+        let liste = env.GetProcessInfos()?;
         let mut n = 0u32;
         liste.Count(&mut n)?;
         let mut out = Vec::with_capacity(n as usize);
         for i in 0..n {
-            let info = liste.GetValueAtIndex(i)?;
-            let p = info.ProcessInfo()?;
+            let p = liste.GetValueAtIndex(i)?;
             let (mut pid, mut kind) = (0i32, COREWEBVIEW2_PROCESS_KIND::default());
             p.ProcessId(&mut pid)?;
             p.Kind(&mut kind)?;
-            let genre = genre_processus(kind.0);
-            let role = if genre == "rendu" {
-                let s = sources(&info).unwrap_or_default();
-                role_rendu(s.iter().map(String::as_str))
-            } else {
-                "commun"
-            };
             out.push(Processus {
                 pid: pid as u32,
-                genre,
-                role,
+                genre: genre_processus(kind.0),
+                role: "commun",
             });
         }
         Ok(out)
-    }
-
-    unsafe fn demander(
-        ctrl: &ICoreWebView2Controller,
-        connus: Arc<Mutex<Vec<Processus>>>,
-    ) -> windows_core::Result<()> {
-        let env = ctrl
-            .CoreWebView2()?
-            .cast::<ICoreWebView2_2>()?
-            .Environment()?
-            .cast::<ICoreWebView2Environment13>()?;
-        let rappel =
-            GetProcessExtendedInfosCompletedHandler::create(Box::new(move |resultat, liste| {
-                resultat?;
-                if let Some(liste) = liste {
-                    let lus = lire(&liste)?;
-                    if let Ok(mut c) = connus.lock() {
-                        *c = lus;
-                    }
-                }
-                Ok(())
-            }));
-        env.GetProcessExtendedInfos(&rappel)
     }
 
     pub fn rafraichir(app: &AppHandle, connus: Arc<Mutex<Vec<Processus>>>) {
@@ -496,7 +426,13 @@ mod plateforme {
             return;
         };
         let _ = w.with_webview(move |wv| {
-            let _ = unsafe { demander(&wv.controller(), connus) };
+            let lus = wv
+                .environment()
+                .cast::<ICoreWebView2Environment8>()
+                .and_then(|env| unsafe { lire(&env) });
+            if let (Ok(lus), Ok(mut c)) = (lus, connus.lock()) {
+                *c = lus;
+            }
         });
     }
 }
@@ -539,34 +475,6 @@ mod tests {
         assert_eq!(genre_processus(2), "utilitaire");
         assert_eq!(genre_processus(4), "gpu");
         assert_eq!(genre_processus(42), "autre");
-    }
-
-    #[test]
-    fn role_d_un_processus_de_rendu_selon_ses_cadres() {
-        assert_eq!(role_rendu(["https://tauri.localhost/"]), "principale");
-        assert_eq!(
-            role_rendu([
-                "https://tauri.localhost/",
-                "https://www.youtube-nocookie.com/embed/x"
-            ]),
-            "principale"
-        );
-        assert_eq!(
-            role_rendu(["https://tauri.localhost/index.html#overlay"]),
-            "overlay-vocal"
-        );
-        assert_eq!(
-            role_rendu(["https://tauri.localhost/index.html#msg-overlay"]),
-            "overlay-messages"
-        );
-        assert_eq!(
-            role_rendu([
-                "https://tauri.localhost/",
-                "https://tauri.localhost/index.html#overlay"
-            ]),
-            "mixte"
-        );
-        assert_eq!(role_rendu(std::iter::empty()), "inactif");
     }
 
     #[test]
