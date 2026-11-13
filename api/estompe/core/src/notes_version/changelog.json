@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.95.0",
+    "date": "2026-11-13",
+    "new": [],
+    "fixes": [
+      "Application Windows : l'instant replay utilise maintenant directement l'encodeur des cartes graphiques AMD, pour enregistrer de nouveau avec ces cartes."
+    ]
+  },
+  {
     "version": "0.94.5",
     "date": "2026-11-12",
     "new": [],
