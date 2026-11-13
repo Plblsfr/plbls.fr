@@ -86,12 +86,14 @@ fn large(s: &str) -> Vec<u16> {
 unsafe fn methode<F: Copy>(objet: Objet, rang: usize) -> F {
     if objet.is_null() {
         panic!("AMF : objet nul");
+    } else {
+        let table = *(objet as *const *const usize);
+        if table.is_null() {
+            panic!("AMF : table nulle");
+        } else {
+            std::mem::transmute_copy(&*table.add(rang))
+        }
     }
-    let table = *(objet as *const *const usize);
-    if table.is_null() {
-        panic!("AMF : table nulle");
-    }
-    std::mem::transmute_copy(&*table.add(rang))
 }
 
 unsafe fn liberer(objet: Objet) {
