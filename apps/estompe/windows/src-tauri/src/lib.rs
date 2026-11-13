@@ -32,6 +32,10 @@ fn memoire_basse(w: &tauri::Window, bas: bool) {
 }
 
 pub fn run() {
+    #[cfg(all(feature = "instant-replay", windows))]
+    if let Some(code) = replay::essai_encodeur(std::env::args().skip(1)) {
+        std::process::exit(code);
+    }
     let dossier = webview_data::dossier_donnees();
     if let Some(dossier) = &dossier {
         webview_data::purger_si_nouvelle_version(dossier, env!("CARGO_PKG_VERSION"));

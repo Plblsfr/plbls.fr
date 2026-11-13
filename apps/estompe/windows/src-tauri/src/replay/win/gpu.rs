@@ -185,7 +185,7 @@ pub struct Convertisseur {
     source: (u32, u32),
 }
 
-unsafe fn texture_nv12(a: &Appareil, taille: (u32, u32), lecture: bool) -> windows::core::Result<ID3D11Texture2D> {
+pub(super) unsafe fn texture_nv12(a: &Appareil, taille: (u32, u32), lecture: bool) -> windows::core::Result<ID3D11Texture2D> {
     let description = D3D11_TEXTURE2D_DESC {
         Width: taille.0,
         Height: taille.1,
@@ -242,7 +242,7 @@ impl Convertisseur {
                 allocateur.InitializeSampleAllocatorEx(2, 12, &attributs, &type_nv12(sortie.0, sortie.1, ips)?)?;
                 Cibles::Reserve(allocateur)
             }
-            Entree::Textures => {
+            Entree::Textures | Entree::Amf => {
                 let mut anneau = Vec::with_capacity(ANNEAU);
                 for _ in 0..ANNEAU {
                     anneau.push(texture_nv12(a, sortie, false)?);
@@ -279,6 +279,7 @@ impl Convertisseur {
                 Cibles::Textures { anneau, suivante } => {
                     let cible = &anneau[suivante.get()];
                     self.dessiner(a, image, cible, 0)?;
+                    a.contexte.Flush();
                     let tampon = MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, cible, 0, false)?;
                     if let Ok(plan) = tampon.cast::<IMF2DBuffer>() {
                         tampon.SetCurrentLength(plan.GetContiguousLength()?)?;

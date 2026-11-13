@@ -1,3 +1,5 @@
+mod amf;
+pub use amf::essai_encodeur;
 mod capture;
 pub mod dialogue;
 mod encodeur;
@@ -12,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, WPARAM};
 use windows::Win32::System::Threading::{
     CreateEventW, CreateWaitableTimerExW, GetCurrentThread, GetCurrentThreadId, OpenProcess, SetEvent, SetThreadPriority, SetWaitableTimer, WaitForMultipleObjects, WaitForSingleObject,
@@ -32,9 +34,10 @@ use super::automate::{Automate, Etat, Jeu};
 use super::cadence::{encodeur_muet, Cadence, Entree, Perte, Pertes};
 use super::ecriture::{FileEcriture, Tache};
 use super::galerie::Horodatage;
+use super::garde::Garde;
 use super::reglages::{self, Materiel, AUDIO_JEU_KBPS, AUDIO_MICRO_KBPS};
 use super::tampon::{Format, Tampon, UNITE_TEMPS};
-use super::types::{Disponibilite, Erreur, EtatPublic, Reglages};
+use super::types::{Codec, Disponibilite, Erreur, EtatPublic, Reglages};
 use crate::debuglog;
 
 const SOURCE: &str = "replay";
@@ -189,6 +192,7 @@ struct Rythme {
     tampon: Arc<Mutex<Tampon>>,
     echec: Box<dyn Fn(&'static str, String)>,
     alerte: Box<dyn Fn(Erreur)>,
+    garde: Arc<Garde>,
 }
 
 impl Rythme {
@@ -200,6 +204,7 @@ impl Rythme {
         let mut cadence = Cadence::nouvelle(self.ips);
         let fenetre = 10 * self.ips as u64;
         let (mut sans_image, mut releve, mut refus, mut premiere) = (0u64, (0u64, Pertes::default()), None, None);
+        let mut validee = false;
         loop {
             let attente = cadence.echeance() - (self.horloge.elapsed().as_nanos() / 100) as i64;
             if attente > 0 {
@@ -245,7 +250,12 @@ impl Rythme {
                 break;
             }
             let (emises, pertes) = cadence.bilan();
-            if encodeur_muet(self.ips, premiere, emises, self.encodeur.encodees.load(Ordering::Relaxed)) {
+            let encodees = self.encodeur.encodees.load(Ordering::Relaxed);
+            if encodees > 0 && !validee {
+                validee = true;
+                self.garde.valider();
+            }
+            if encodeur_muet(self.ips, premiere, emises, encodees) {
                 (self.echec)(ENCODEUR_MUET, String::new());
                 break;
             }
@@ -293,11 +303,13 @@ struct Controleur {
     file: FileEcriture,
     dernier_jeu: String,
     entree: Entree,
+    garde: Arc<Garde>,
 }
 
 impl Controleur {
     fn nouveau(app: AppHandle, tx: Sender<Message>, etat: Arc<Mutex<EtatPublic>>) -> Self {
         let emetteur = app.clone();
+        let garde = Arc::new(Garde::charger(app.path().app_log_dir().ok(), &app.package_info().version.to_string()));
         let file = FileEcriture::demarrer(
             || unsafe {
                 let _ = SetThreadPriority(GetCurrentThread(), THREAD_MODE_BACKGROUND_BEGIN);
@@ -335,12 +347,20 @@ impl Controleur {
             file,
             dernier_jeu: String::new(),
             entree: Entree::default(),
+            garde,
         }
     }
 
     fn gpu(&mut self) -> &Result<Gpu, String> {
         if self.gpu.is_none() {
-            let gpu = materiel::gpu();
+            let permis = self.garde.permis();
+            let gpu = materiel::gpu(permis);
+            if !permis {
+                self.alerter(Erreur::nouvelle("amf-desactive", "Encodeur AMF désactivé après un arrêt brutal pendant son essai : l'instant replay utilise l'encodeur de Windows jusqu'à la prochaine mise à jour."));
+            }
+            if !gpu.as_ref().is_ok_and(|g| g.amf.h264.is_some() || g.amf.hevc.is_some()) {
+                self.entree = Entree::Reserve;
+            }
             match &gpu {
                 Ok(g) => {
                     let nom = |e: &Option<reglages::Encodeur>| e.as_ref().map_or("aucun".to_string(), |e| format!("{} ({} macroblocs/s)", e.nom, e.mb_par_seconde));
@@ -358,6 +378,9 @@ impl Controleur {
         for message in rx {
             self.traiter(message);
             self.accorder();
+            if self.session.is_none() {
+                self.garde.relacher();
+            }
             self.publier();
         }
     }
@@ -515,11 +538,30 @@ impl Controleur {
         let change = signaler(&self.tx);
         let capture = Capture::demarrer(&appareil, &element, r.curseur, blanc.is_some(), move || change(IMAGE_CHANGEE, String::new()));
         let capture = capture.map_err(|e| ("capture-refusee", e))?;
-        let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc, self.entree).map_err(|e| ("gpu", e))?;
         let parametres = Parametres { codec, largeur: dimensions.0, hauteur: dimensions.1, ips, debit_kbps: debit, base };
-        let arret_encodeur = signaler(&self.tx);
-        let encodeur = encodeur::demarrer(&appareil, &gpu.adaptateur, parametres, self.tampon.clone(), arret.clone(), self.entree, move |e| arret_encodeur("gpu-sature", e));
-        let (encodeur, encodeur_termine) = encodeur.map_err(|e| ("gpu-sature", e))?;
+        let amf_essaye = match codec {
+            Codec::H264 => gpu.amf.h264.is_some(),
+            Codec::Hevc => gpu.amf.hevc.is_some(),
+        };
+        if self.entree == Entree::Amf && !amf_essaye {
+            self.entree = Entree::Reserve;
+        }
+        let (convertisseur, encodeur, encodeur_termine) = loop {
+            let convertisseur = Convertisseur::creer(&appareil, capture.taille, dimensions, ips, blanc, self.entree).map_err(|e| ("gpu", e))?;
+            let arret_encodeur = signaler(&self.tx);
+            if self.entree == Entree::Amf {
+                self.garde.debut();
+            }
+            match encodeur::demarrer(&appareil, &gpu.adaptateur, parametres, self.tampon.clone(), arret.clone(), self.entree, move |e| arret_encodeur("gpu-sature", e)) {
+                Ok((encodeur, termine)) => break (convertisseur, encodeur, termine),
+                Err(e) if self.entree == Entree::Amf => {
+                    debuglog::log("info", SOURCE, &format!("AMF indisponible ({e}) : encodeur Media Foundation"));
+                    self.garde.relacher();
+                    self.entree = Entree::Reserve;
+                }
+                Err(e) => return Err(("gpu-sature", e)),
+            }
+        };
         let nom_encodeur = encodeur.nom.clone();
         let signal = unsafe { CreateEventW(None, true, false, None) }.map_err(|e| ("minuteur", materiel::texte(e)))?;
         let horloge = Instant::now();
@@ -543,7 +585,7 @@ impl Controleur {
             }
         }
 
-        let (echec, alerte, tampon) = (signaler(&self.tx), self.app.clone(), self.tampon.clone());
+        let (echec, alerte, tampon, garde) = (signaler(&self.tx), self.app.clone(), self.tampon.clone(), self.garde.clone());
         let rythme = Envoi((capture, appareil, convertisseur, encodeur, signal));
         fils.push(std::thread::spawn(move || {
             let _ = materiel::initialiser();
@@ -551,7 +593,7 @@ impl Controleur {
             let alerte: Box<dyn Fn(Erreur)> = Box::new(move |e| {
                 let _ = alerte.emit("replay://erreur", &e);
             });
-            unsafe { Rythme { capture, appareil, convertisseur, encodeur, ips, horloge, signal, tampon, echec: Box::new(echec), alerte }.tourner() };
+            unsafe { Rythme { capture, appareil, convertisseur, encodeur, ips, horloge, signal, tampon, echec: Box::new(echec), alerte, garde }.tourner() };
         }));
         let hdr = blanc.map_or("SDR".to_string(), |b| format!("HDR converti en SDR (blanc {b:.0} nits)"));
         debuglog::log("info", SOURCE, &format!(
