@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.95.1",
+    "date": "2026-11-13",
+    "new": [],
+    "fixes": [
+      "Application Windows : démarrer une mesure de performance (Paramètres › Débogage) ne fait plus fermer l'application."
+    ]
+  },
+  {
     "version": "0.95.0",
     "date": "2026-11-13",
     "new": [],
