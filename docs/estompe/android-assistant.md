@@ -40,7 +40,7 @@ Android interdit de rouvrir le micro depuis l'arrière-plan : après un redémar
 
 Estompe peut être choisie comme **assistant numérique** du téléphone (réglages système › Applications par défaut ; bouton dans les réglages de l'assistant).
 Le geste d'assistant du système (appui long sur le bouton d'alimentation ou d'accueil, balayage depuis un coin) ou le bouton de commande vocale d'un volant
-ou d'un casque Bluetooth ouvre alors `AssistActivity`, une activité transparente qui lance l'écoute d'un seul ordre, après le signal sonore, sans mot d'éveil.
+ou d'un casque Bluetooth ouvre alors `AssistActivity`, une activité transparente qui lance l'écoute d'un seul ordre, après « Oui ? », sans mot d'éveil.
 
 Le micro n'est ouvert que le temps de l'ordre et le service s'arrête ensuite : rien ne tourne entre deux ordres. Cela marche quel que soit le réglage
 « Écoute », y compris « Éteint », et après un redémarrage du téléphone, puisque c'est l'activité qui met Estompe au premier plan avant d'ouvrir le micro.
@@ -49,7 +49,7 @@ L'ordre est écouté par le micro du téléphone, pas par celui de la voiture.
 
 ## Ordres
 
-L'ordre se dit d'une traite après le mot d'éveil (« Estompe, lis mes messages »), ou après le signal sonore si l'on ne dit que « Estompe ».
+L'ordre se dit d'une traite après le mot d'éveil (« Estompe, lis mes messages »), ou après que l'assistant a répondu « Oui ? » si l'on ne dit que « Estompe ».
 Un ordre non compris est redemandé une fois (« Je n'ai pas compris. Répétez ? ») sans redire le mot d'éveil.
 
 Dès que le mot d'éveil est reconnu, un bandeau s'affiche en haut de l'écran, par-dessus l'application en cours : « J'écoute… », puis la phrase

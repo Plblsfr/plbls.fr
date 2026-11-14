@@ -38,6 +38,8 @@ const val NOT_UNDERSTOOD = "Je n'ai pas compris. Dites par exemple : lis mes mes
 
 const val REPEAT = "Je n'ai pas compris. Répétez ?"
 
+const val PROMPT = "Oui ?"
+
 const val LISTENING = "J'écoute…"
 
 const val SPEAKING = "Je réponds…"
@@ -349,8 +351,10 @@ class AssistantService : Service() {
     settings = AssistantStore(this).load()
     voice.focus()
     if (order.isNotBlank()) return execute(order)
-    tone(ToneGenerator.TONE_PROP_BEEP)
-    listen(ORDER_MS) { t -> if (t.isNullOrBlank()) done() else execute(t) }
+    say(PROMPT) { said ->
+      if (!said) return@say mute()
+      listen(ORDER_MS) { t -> if (t.isNullOrBlank()) done() else execute(t) }
+    }
   }
 
   private fun execute(text: String, again: Boolean = false) {
