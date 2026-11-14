@@ -152,6 +152,15 @@
   {:else}
     <p class="v-note">Aucune application détectée : accorde l'accès aux notifications.</p>
   {/each}
+  <label class="plbls-toggle">
+    <input class="plbls-toggle__input" type="checkbox" checked={s.announce} onchange={(e) => save({ announce: e.currentTarget.checked })} />
+    <span class="plbls-toggle__piste"></span>
+    <span class="plbls-toggle__texte">Annoncer les messages qui arrivent</span>
+  </label>
+  <p class="v-note">
+    À l'arrivée d'un message d'une application cochée, pendant que l'écoute est active, l'assistant dit « Message de Marie. Je le lis ? »
+    et attend « oui », « non » ou « réponds ». Le contenu n'est lu que sur ta réponse.
+  </p>
 </div>
 
 <div class="plbls-field">

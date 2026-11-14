@@ -32,6 +32,8 @@ class AssistantServiceTest {
     assertEquals(listOf("a", "b"), (0 until j.getJSONArray("apps").length()).map { j.getJSONArray("apps").getString(it) })
     assertEquals("m", j.getString("musicApp"))
     assertTrue(j.getBoolean("llm"))
+    assertFalse(j.getBoolean("announce"))
+    assertTrue(settingsFrom(JSONObject().put("announce", true), AssistantSettings()).announce)
     assertEquals(current, settingsFrom(settingsJson(current), AssistantSettings()))
   }
 

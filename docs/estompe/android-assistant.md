@@ -36,6 +36,22 @@ Tant que l'écoute est active, une notification permanente « Assistant vocal »
 Android interdit de rouvrir le micro depuis l'arrière-plan : après un redémarrage du téléphone, ou quand le mode conduite démarre seul
 à la connexion Bluetooth, la notification « Assistant vocal en pause » demande d'ouvrir Estompe pour relancer l'écoute.
 
+## Annonce des messages qui arrivent
+
+Réglage « Annoncer les messages qui arrivent » (éteint par défaut). Quand un message d'une application cochée arrive pendant que l'écoute est active,
+l'assistant dit « Message de Marie sur Signal. Je le lis ? » et écoute quelques secondes : « oui » le lit, « réponds » ouvre la dictée d'une réponse,
+« non » ou le silence referment. Le contenu n'est jamais lu sans cette réponse. Plus tard, « Estompe, lis-le » lit le dernier message annoncé.
+Une annonce au plus toutes les vingt secondes, aucune pendant un ordre, une dictée ou un appel vocal ; les conversations de groupe sont ignorées.
+
+## Android Auto
+
+Android Auto ne laisse aucune application tierce jouer le rôle d'assistant vocal (bouton du volant et micro de l'écran sont réservés à celui de Google) et n'accepte,
+pour un APK installé hors Play Store, que les applications média et les notifications de messagerie. Estompe se déclare donc comme application média (`CarService`) :
+son icône apparaît sur l'écran de la voiture avec trois actions, « Donner un ordre », « Lire mes messages » et « Lire le dernier message », et l'écran de lecture
+affiche l'état de l'assistant (« À l'écoute », la phrase entendue, la réponse). L'écoute doit déjà tourner sur le téléphone : Android interdit d'ouvrir le micro
+depuis l'arrière-plan. Le mot d'éveil reste capté par le micro du téléphone. Pendant un ordre, les touches lecture/pause du volant vont à Estompe ; elles reviennent
+à l'application de musique dès qu'il est terminé. Activer « Sources inconnues » dans les réglages développeur d'Android Auto (voir [`android-voiture.md`](android-voiture.md)).
+
 ## Déclenchement par bouton
 
 Estompe peut être choisie comme **assistant numérique** du téléphone (réglages système › Applications par défaut ; bouton dans les réglages de l'assistant).
@@ -131,6 +147,7 @@ il est chargé à la demande et libéré après deux minutes sans usage. Sans lu
 | `Assistant.kt` | logique pure : mot d'éveil, motifs des ordres, rapprochement des contacts, annonce des messages |
 | `AssistantService.kt` | service au premier plan : veille du mot d'éveil, dialogues, réglages (`AssistantStore`) |
 | `AssistantOverlay.kt` | bandeau affiché par-dessus les autres applications |
+| `CarService.kt` | entrée « média » d'Android Auto : actions et état sur l'écran de la voiture |
 | `AssistActivity.kt` | déclenchement par le geste d'assistant du système ou le bouton vocal Bluetooth |
 | `Voice.kt` | synthèse, écoute Vosk, focus audio, arbitre du micro ; partagé avec `DriveService` |
 | `Hearing.kt` | détection du mot d'éveil par grammaire, décodage d'un ordre en deux passes |

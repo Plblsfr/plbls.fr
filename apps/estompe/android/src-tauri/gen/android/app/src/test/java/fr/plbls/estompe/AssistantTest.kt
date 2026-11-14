@@ -471,4 +471,19 @@ class AssistantTest {
     assertEquals(Command.ReadUnread, cmd("lis mes essaie messe"))
     assertEquals(Command.ReadFrom("maman", true), cmd("lis le dernier sms de maman"))
   }
+
+  @Test fun `lire le dernier message annoncé`() {
+    for (p in listOf("lis-le", "lis le", "lis le message", "lis-moi ça", "lis le dernier message", "qu'est-ce qu'elle dit", "lit le")) assertEquals(p, Command.ReadLast, cmd(p))
+    assertEquals(Command.ReadUnread, cmd("lis mes messages"))
+    assertEquals(Command.ReadFrom("marie", true), cmd("lis le dernier message de marie"))
+  }
+
+  @Test fun `réponse à l'annonce d'un message`() {
+    for (p in listOf("oui", "oui lis", "lis-le", "vas-y", "d'accord", "ok")) assertEquals(p, Follow.READ, followUp(p))
+    for (p in listOf("réponds", "réponds-lui")) assertEquals(p, Follow.REPLY, followUp(p))
+    for (p in listOf("non", "non merci", "plus tard", "pas maintenant", "", "ne le lis pas", "il fait beau aujourd'hui dans le sud")) assertEquals(p, Follow.NONE, followUp(p))
+    for (p in FOLLOW_PHRASES) assertTrue(p, followUp(p) != Follow.NONE || fold(p).split(" ").any { it in setOf("non", "plus") })
+    assertEquals("Message de Maman sur Messages. Je le lis ?", incomingLine("Maman", "Messages"))
+    assertEquals("Message d'Alice. Je le lis ?", incomingLine("Alice", ""))
+  }
 }

@@ -63,11 +63,12 @@ fun scopeOf(name: Any?): AssistantScope? = (name as? String)?.let { n -> Assista
 fun settingsFrom(j: JSONObject, s: AssistantSettings): AssistantSettings {
   val apps = (j.opt("apps") as? JSONArray)?.let { a -> (0 until a.length()).mapNotNull { (a.opt(it) as? String)?.trim()?.takeIf { p -> p.isNotEmpty() } }.toSet() }
   return AssistantSettings(scope = scopeOf(j.opt("scope")) ?: s.scope, apps = apps ?: s.apps,
-    musicApp = (j.opt("musicApp") as? String)?.trim() ?: s.musicApp, llm = j.opt("llm") as? Boolean ?: s.llm)
+    musicApp = (j.opt("musicApp") as? String)?.trim() ?: s.musicApp, llm = j.opt("llm") as? Boolean ?: s.llm,
+    announce = j.opt("announce") as? Boolean ?: s.announce)
 }
 
 fun settingsJson(s: AssistantSettings): JSONObject = JSONObject().put("scope", s.scope.name.lowercase())
-  .put("apps", JSONArray(s.apps.sorted())).put("musicApp", s.musicApp).put("llm", s.llm)
+  .put("apps", JSONArray(s.apps.sorted())).put("musicApp", s.musicApp).put("llm", s.llm).put("announce", s.announce)
 
 fun shouldRun(s: AssistantSettings, driving: Boolean) = s.scope == AssistantScope.ALWAYS || (s.scope == AssistantScope.DRIVE && driving)
 
@@ -145,6 +146,7 @@ class AssistantStore(context: Context) {
     apps = prefs.getStringSet("apps", null).orEmpty().toSet(),
     musicApp = prefs.getString("musicApp", "").orEmpty(),
     llm = prefs.getBoolean("llm", false),
+    announce = prefs.getBoolean("announce", false),
   )
 
   fun toJson(s: AssistantSettings = load()): JSONObject = settingsJson(s)
@@ -156,7 +158,7 @@ class AssistantStore(context: Context) {
   fun save(j: JSONObject) {
     val s = settingsFrom(j, load())
     prefs.edit().putString("scope", s.scope.name.lowercase()).putStringSet("apps", HashSet(s.apps)).putString("musicApp", s.musicApp)
-      .putBoolean("llm", s.llm).apply()
+      .putBoolean("llm", s.llm).putBoolean("announce", s.announce).apply()
   }
 }
 
@@ -182,6 +184,8 @@ class AssistantService : Service() {
   private val tones = HashSet<ToneGenerator>()
   private var awake: PowerManager.WakeLock? = null
   private var pendingAsk = false
+  private var announced: String? = null
+  private var announcedAt = -ANNOUNCE_GAP_MS
   private val resumeLater = Runnable { resume() }
   private val unload = Runnable { closeLlm() }
   private val tick = object : Runnable {
@@ -216,6 +220,7 @@ class AssistantService : Service() {
       if (started && !destroyed) status()
     }
     Mic.freed = freed
+    instance = this
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -238,6 +243,8 @@ class AssistantService : Service() {
   override fun onDestroy() {
     destroyed = true
     alive = false
+    if (instance === this) instance = null
+    CarService.show("", "", false)
     listening = false
     if (busy) Mic.converse(false)
     if (Mic.freed === freed) Mic.freed = null
@@ -350,15 +357,53 @@ class AssistantService : Service() {
   }
 
   private fun wake(order: String) {
-    if (busy || destroyed) return
+    if (!open()) return
+    if (order.isNotBlank()) return execute(order)
+    say(PROMPT) { said ->
+      if (!said) return@say mute()
+      listen(ORDER_MS, known = voice.phrases) { t -> if (t.isNullOrBlank()) done() else execute(t) }
+    }
+  }
+
+  private fun announce(p: Pending) {
+    val now = SystemClock.elapsedRealtime()
+    if (!started || now - announcedAt < ANNOUNCE_GAP_MS || VoiceService.running || Mic.busy || !open(true)) return
+    announcedAt = now
+    announced = p.sender
+    last = ReplyTo.Note(p.key, p.sender, p.label, p.replyable)
+    say(incomingLine(p.sender, p.label)) { said ->
+      if (!said) return@say mute()
+      listen(CHOICE_MS, known = FOLLOW_PHRASES) { t ->
+        when (followUp(t.orEmpty())) {
+          Follow.READ -> readUnread(announced)
+          Follow.REPLY -> reply()
+          Follow.NONE -> done()
+        }
+      }
+    }
+  }
+
+  private fun remote(action: String) {
+    when {
+      action == "stop" -> if (busy) { voice.cancel(); done() }
+      action == "ask" -> wake("")
+      action == "unread" -> if (open()) readUnread()
+      action == "last" -> if (open()) readUnread(announced, announced == null)
+      action.startsWith("say:") -> wake(action.substring(4).ifBlank { return })
+    }
+  }
+
+  private fun open(quiet: Boolean = false): Boolean {
+    if (busy || destroyed) return false
     if (!voice.isReady) {
+      if (quiet) return false
       DriveService.note("assistant : ordre refusé, synthèse vocale pas prête")
       tone(ToneGenerator.TONE_PROP_NACK)
       if (notice == null) notice = TTS_WAIT
       status()
       overlay.show(TTS_WAIT)
       overlay.hide(HIDE_MS)
-      return
+      return false
     }
     busy = true
     busySince = SystemClock.elapsedRealtime()
@@ -367,15 +412,12 @@ class AssistantService : Service() {
     voice.unwatch()
     settings = AssistantStore(this).load()
     voice.focus()
-    if (order.isNotBlank()) return execute(order)
-    say(PROMPT) { said ->
-      if (!said) return@say mute()
-      listen(ORDER_MS, known = voice.phrases) { t -> if (t.isNullOrBlank()) done() else execute(t) }
-    }
+    return true
   }
 
   private fun execute(text: String, again: Boolean = false) {
     overlay.show(heardText(text), OverlayState.HEARD)
+    CarService.show(OverlayState.HEARD.caption, text, true)
     status("Entendu : ${heardText(text)}")
     val c = try { parseCommand(text, apps) } catch (e: Exception) {
       DriveService.note("assistant : analyse impossible (${e.javaClass.simpleName})")
@@ -424,6 +466,7 @@ class AssistantService : Service() {
         Command.Help -> finish(HELP_TEXT)
         Command.Cancel -> finish("D'accord.")
         Command.ReadUnread -> readUnread()
+        Command.ReadLast -> readUnread(announced, announced == null)
         is Command.ReadFrom -> readFrom(c.contact, c.single)
         Command.Reply -> reply()
         is Command.SendSms -> sendSms(c.contact, c.text)
@@ -445,15 +488,17 @@ class AssistantService : Service() {
     if (ok) done() else finish(musicFailure(AssistantListener.enabled(this), music.canLaunch()))
   }
 
-  private fun readUnread() {
+  private fun readUnread(from: String? = null, one: Boolean = false) {
     val sms = phone.canReadSms()
     val notes = AssistantListener.enabled(this)
     if (!sms && !notes) return finish("Autorisez les SMS ou l'accès aux notifications dans Estompe.")
     val chosen = settings.apps
     background({ Triple(if (sms) phone.unreadSms() else emptyList(), if (notes) AssistantListener.pending(chosen) else emptyList(),
       notes && chosen.isNotEmpty() && !AssistantListener.connected) }) { r ->
-      val items = mergeUnread(r?.first.orEmpty(), r?.second.orEmpty(), spoken)
-      val batch = items.takeLast(READ_MAX)
+      val all = mergeUnread(r?.first.orEmpty(), r?.second.orEmpty(), spoken)
+      val items = if (from == null) all else all.filter { fold(it.heard.sender) == fold(from) }.ifEmpty { all }
+      val batch = items.takeLast(if (one) 1 else READ_MAX)
+      announced = null
       batch.lastOrNull()?.let { last = it.to }
       sayAll(unreadLines(batch.map { it.heard }, items.size - batch.size, r?.third == true, sms, System.currentTimeMillis())) { all ->
         if (all) {
@@ -611,7 +656,7 @@ class AssistantService : Service() {
 
   private fun say(text: String, display: Boolean = true, then: (Boolean) -> Unit) {
     val mine = turn
-    if (display) { overlay.show(text); status(SPEAKING) }
+    if (display) { overlay.show(text); status(SPEAKING); CarService.show(OverlayState.SPEAK.caption, text, true) }
     busySince = maxOf(busySince, SystemClock.elapsedRealtime()) + voice.guardMs(text)
     voice.say(text) { said ->
       if (destroyed || mine != turn) return@say
@@ -623,6 +668,7 @@ class AssistantService : Service() {
   private fun listen(ms: Int, pause: Boolean = false, known: Set<String>? = null, result: (String?) -> Unit) {
     val mine = turn
     overlay.show(LISTENING, OverlayState.LISTEN)
+    CarService.show(OverlayState.LISTEN.caption, LISTENING, true)
     status(LISTENING)
     voice.listen(ms, false, pause, known) { t ->
       if (destroyed || mine != turn) return@listen
@@ -653,6 +699,7 @@ class AssistantService : Service() {
     Mic.converse(false)
     voice.abandonFocus()
     overlay.hide(HIDE_MS)
+    CarService.show("", "", false)
     status()
     refreshApps()
     ui.removeCallbacks(resumeLater)
@@ -745,6 +792,7 @@ class AssistantService : Service() {
     private const val HIDE_MS = 2_500L
     private const val ASK_TRIES = 25
     private const val RECORD_MAX = 60
+    private const val ANNOUNCE_GAP_MS = 20_000L
     private const val ASK_WAIT_MS = 200L
     private const val SPOKEN_MAX = 300
     private const val MAX_FAILURES = 5
@@ -757,6 +805,7 @@ class AssistantService : Service() {
     private const val PAUSE_BUSY = "Assistant vocal en pause : micro indisponible, touche pour relancer l'écoute."
 
     @Volatile var listening = false
+    val busyNow get() = instance?.busy == true
     @Volatile private var alive = false
     @Volatile private var starting = false
 
@@ -773,6 +822,20 @@ class AssistantService : Service() {
         listening = false
         pause(c, PAUSE_BACKGROUND)
       }
+    }
+
+    @Volatile private var instance: AssistantService? = null
+
+    fun incoming(p: Pending) {
+      val s = instance ?: return
+      s.ui.post { if (!s.destroyed) s.guard { s.announce(p) } }
+    }
+
+    fun remote(action: String): Boolean {
+      val s = instance ?: return false
+      if (s.destroyed || !s.started) return false
+      s.ui.post { if (!s.destroyed) s.guard { s.remote(action) } }
+      return true
     }
 
     fun ask(c: Context): Boolean {

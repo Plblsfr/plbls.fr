@@ -1,10 +1,10 @@
 import { parseChoices, type Choice } from './drive'
 
 export type AssistantScope = 'off' | 'drive' | 'always'
-export type AssistantSettings = { scope: AssistantScope; apps: string[]; musicApp: string; llm: boolean }
+export type AssistantSettings = { scope: AssistantScope; apps: string[]; musicApp: string; llm: boolean; announce: boolean }
 export type AssistantState = { listening: boolean; mic: boolean; notifications: boolean; sms: boolean; contacts: boolean; overlay: boolean; battery: boolean; role: boolean; debug: boolean; record: boolean; recordings: string; model: string; llm: string; llmAvailable: boolean }
 
-export const ASSISTANT_DEFAULTS: AssistantSettings = { scope: 'off', apps: [], musicApp: '', llm: false }
+export const ASSISTANT_DEFAULTS: AssistantSettings = { scope: 'off', apps: [], musicApp: '', llm: false, announce: false }
 export const ASSISTANT_STATE_DEFAULTS: AssistantState = { listening: false, mic: false, notifications: false, sms: false, contacts: false, overlay: false, battery: false, role: false, debug: false, record: false, recordings: '', model: '', llm: '', llmAvailable: false }
 
 function read(json: string): Record<string, unknown> {
@@ -22,7 +22,7 @@ export function parseAssistant(json: string): AssistantSettings {
   const scope: AssistantScope = j.scope === 'drive' || j.scope === 'always' ? j.scope : d.scope
   return {
     scope, apps: Array.isArray(j.apps) ? j.apps.filter((a): a is string => typeof a === 'string') : [],
-    musicApp: typeof j.musicApp === 'string' ? j.musicApp : d.musicApp, llm: typeof j.llm === 'boolean' ? j.llm : d.llm,
+    musicApp: typeof j.musicApp === 'string' ? j.musicApp : d.musicApp, llm: typeof j.llm === 'boolean' ? j.llm : d.llm, announce: typeof j.announce === 'boolean' ? j.announce : d.announce,
   }
 }
 

@@ -56,16 +56,18 @@ class MessageLog(context: Context) {
     }
   }
 
-  fun add(fresh: List<Pending>, apps: Set<String>) = synchronized(LOCK) {
+  fun add(fresh: List<Pending>, apps: Set<String>): List<Pending> = synchronized(LOCK) {
     try {
       val old = load()
       val all = logMerge(old, fresh, System.currentTimeMillis(), apps)
-      if (all == old) return@synchronized
+      if (all == old) return@synchronized emptyList()
       val a = JSONArray()
       for (p in all) a.put(JSONObject().put("key", p.key).put("app", p.app).put("label", p.label).put("sender", p.sender).put("text", p.text).put("time", p.time))
       file.writeText(a.toString())
+      fresh.filter { f -> old.none { sameMessage(it, f) } }
     } catch (e: Exception) {
       DriveService.note("mémoire des messages : écriture ${e.javaClass.simpleName}")
+      emptyList()
     }
   }
 
@@ -85,19 +87,22 @@ class AssistantListener : NotificationListenerService() {
   override fun onListenerConnected() {
     super.onListenerConnected()
     instance = this
-    remember(active().toList())
+    remember(active().toList(), false)
   }
 
   override fun onNotificationPosted(sbn: StatusBarNotification?) {
-    if (sbn != null) remember(listOf(sbn))
+    if (sbn != null) remember(listOf(sbn), true)
   }
 
-  private fun remember(posted: List<StatusBarNotification>) {
+  private fun remember(posted: List<StatusBarNotification>, announce: Boolean) {
     try {
       val settings = AssistantStore(this).load()
       if (settings.scope == AssistantScope.OFF || settings.apps.isEmpty()) return
       val fresh = posted.filter { it.packageName in settings.apps }.flatMap { extract(it) }
-      if (fresh.isNotEmpty()) MessageLog(this).add(fresh, settings.apps)
+      if (fresh.isEmpty()) return
+      val added = MessageLog(this).add(fresh, settings.apps)
+      val newest = added.maxByOrNull { it.time } ?: return
+      if (announce && settings.announce && System.currentTimeMillis() - newest.time < ANNOUNCE_AGE_MS) AssistantService.incoming(newest)
     } catch (e: Exception) {
       DriveService.note("mémoire des messages : ${e.javaClass.simpleName}")
     }
@@ -195,6 +200,7 @@ class AssistantListener : NotificationListenerService() {
     @Volatile private var instance: AssistantListener? = null
     private val labels = java.util.concurrent.ConcurrentHashMap<String, String>()
     private const val SHARE_MAX = 30
+    private const val ANNOUNCE_AGE_MS = 120_000L
 
     fun enabled(c: Context): Boolean = try {
       NotificationManagerCompat.getEnabledListenerPackages(c).contains(c.packageName)

@@ -3,8 +3,8 @@ import { ASSISTANT_DEFAULTS, ASSISTANT_STATE_DEFAULTS, parseAssistant, parseAssi
 
 describe('parseAssistant', () => {
   it('lit les réglages du pont', () => {
-    expect(parseAssistant('{"scope":"always","apps":["org.thoughtcrime.securesms","com.whatsapp"],"musicApp":"com.spotify.music","llm":true}')).toEqual({
-      scope: 'always', apps: ['org.thoughtcrime.securesms', 'com.whatsapp'], musicApp: 'com.spotify.music', llm: true,
+    expect(parseAssistant('{"scope":"always","apps":["org.thoughtcrime.securesms","com.whatsapp"],"musicApp":"com.spotify.music","llm":true,"announce":true}')).toEqual({
+      scope: 'always', apps: ['org.thoughtcrime.securesms', 'com.whatsapp'], musicApp: 'com.spotify.music', llm: true, announce: true,
     })
     expect(parseAssistant('{"scope":"drive"}').scope).toBe('drive')
   })

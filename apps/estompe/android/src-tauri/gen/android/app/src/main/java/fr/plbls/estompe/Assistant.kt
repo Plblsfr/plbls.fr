@@ -8,6 +8,7 @@ enum class Transport { PLAY, PAUSE, NEXT, PREVIOUS, VOLUME_UP, VOLUME_DOWN }
 
 sealed class Command {
   object ReadUnread : Command()
+  object ReadLast : Command()
   data class ReadFrom(val contact: String, val single: Boolean = false) : Command()
   object Reply : Command()
   data class SendSms(val contact: String, val text: String) : Command()
@@ -34,6 +35,7 @@ data class AssistantSettings(
   val apps: Set<String> = emptySet(),
   val musicApp: String = "",
   val llm: Boolean = false,
+  val announce: Boolean = false,
 )
 
 const val WAKE_WORD = "estompe"
@@ -149,9 +151,25 @@ val WAKE_DECOYS: List<String> = ("le la les un une des du de d et est on il elle
 
 val FIXED_ORDERS: List<String> = listOf("pause", "stop", "suivant", "suivante", "précédent", "chanson suivante", "chanson précédente", "plus fort", "moins fort",
   "monte le son", "baisse le son", "monte le volume", "baisse le volume", "lis mes messages", "lis les messages", "lis mes nouveaux messages", "est-ce que j'ai des messages",
-  "réponds", "aide", "annule", "reprends", "reprends la musique", "lecture", "mets la musique", "mets de la musique", "arrête la musique")
+  "lis le message", "lis le dernier message", "réponds", "aide", "annule", "reprends", "reprends la musique", "lecture", "mets la musique", "mets de la musique", "arrête la musique")
 
 val CONFIRM_PHRASES: Set<String> = setOf("envoyer", "envoie", "oui envoie", "oui envoyer", "ok envoie", "vas-y envoie", "annuler", "annule", "non", "stop", "recommencer", "recommence")
+
+val FOLLOW_PHRASES: Set<String> = setOf("oui", "oui lis", "lis", "lis le", "lis le message", "vas-y", "d'accord", "non", "non merci", "plus tard", "réponds")
+
+enum class Follow { READ, REPLY, NONE }
+
+fun followUp(heard: String): Follow {
+  val w = fold(bound(heard)).split(" ").filter { it.isNotEmpty() }
+  return when {
+    w.isEmpty() || w.size > 5 || w.any { it in setOf("non", "pas", "plus", "tard", "annule", "annuler", "stop", "jamais") } -> Follow.NONE
+    w.any { it.startsWith("repond") } -> Follow.REPLY
+    w.any { it in setOf("oui", "lis", "lit", "lire", "vas", "ok", "accord") } -> Follow.READ
+    else -> Follow.NONE
+  }
+}
+
+fun incomingLine(sender: String, source: String): String = "Message ${ofName(sender)}${if (source.isBlank()) "" else " sur $source"}. Je le lis ?"
 
 val CHOICE_PHRASES: Set<String> = setOf("un", "deux", "trois", "quatre", "le premier", "le deuxième", "le troisième", "le quatrième", "la première", "la deuxième",
   "la troisième", "la quatrième", "le dernier", "la dernière", "annuler", "annule")
@@ -212,6 +230,11 @@ private val UNREAD = listOf(
   Regex("^$READ(?: (?:mes|les|tous mes|tous les))?$NEW $MSG(?: non lus?| recus?| recents?)?$"),
   Regex("^quels? (?:sont|est) (?:mes|les) (?:nouveaux |derniers )?$MSG(?: non lus?)?$"),
   Regex("^(?:mes (?:nouveaux |nouvelles |derniers )?|les (?:nouveaux|nouvelles|derniers) )$MSG(?: non lus?)?$"),
+)
+private val READ_LAST = listOf(
+  Regex("^$READ (?:le|la|ca|ce message|le message|le dernier|le dernier message|le dernier sms|ce sms|le sms)$"),
+  Regex("^qu est ce qu (?:il|elle) (?:dit|a dit|raconte|veut)$"),
+  Regex("^(?:c est quoi|que dit) (?:le|ce) message$"),
 )
 private val UNREAD_ASK = Regex("^(?:(?:euh|alors|bon|donc|ok|hey|allez) )*(?:est ce que? (?:j ai|il y a)|ai je|y a t il)(?: recu)? (?:des|de|un) (?:nouveaux |nouvelles )?$MSG(?: non lus?)?$")
 private val READ_FROM = listOf(
@@ -350,6 +373,7 @@ private fun parseExact(input: String, apps: List<MusicApp>): Command {
   if (c.isEmpty()) return Command.Unknown
   if (CANCEL.matches(c)) return Command.Cancel
   if (HELP.matches(c)) return Command.Help
+  if (READ_LAST.any { it.matches(c) }) return Command.ReadLast
   if (UNREAD.any { it.matches(c) } || UNREAD_ASK.matches(all.replace(TRAIL, "").trim())) return Command.ReadUnread
   val base = count(all) - count(lead)
   for (r in READ_FROM) {
