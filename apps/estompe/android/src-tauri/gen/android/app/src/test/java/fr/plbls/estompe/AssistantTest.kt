@@ -456,7 +456,19 @@ class AssistantTest {
     assertEquals(Command.Music(Transport.PLAY, ""), cmd("reprend la musique"))
     assertEquals(Command.PlaySearch("jazz", ""), cmd("jour du jazz"))
     assertEquals(Command.ReadUnread, cmd("mes messages"))
+    assertEquals(Command.PlaySearch("allo la peur", ""), cmd("mais allo la peur"))
     assertEquals(Command.Unknown, cmd("mais non"))
     assertEquals(Command.Unknown, cmd("mais oui c'est ça"))
+  }
+
+  @Test fun `le mot SMS mal transcrit est rétabli`() {
+    assertEquals(Command.ReadFrom("maman", true), cmd("le dernier essaie messe de maman"))
+    assertEquals(Command.ReadFrom("maman", true), cmd("lis le dernier essaie messe de maman"))
+    assertEquals(Command.ReadFrom("maman"), cmd("messe de maman"))
+    assertEquals(Command.ReadFrom("maman", true), cmd("dernier sms de maman"))
+    assertEquals(Command.SendSms("marie", ""), cmd("envoie un ses mais à marie"))
+    assertEquals(Command.SendSms("marie", ""), cmd("envoie un cms à marie"))
+    assertEquals(Command.ReadUnread, cmd("lis mes essaie messe"))
+    assertEquals(Command.ReadFrom("maman", true), cmd("lis le dernier sms de maman"))
   }
 }

@@ -139,7 +139,7 @@ val CONFIRM_PHRASES: Set<String> = setOf("envoyer", "envoie", "oui envoie", "oui
 val CHOICE_PHRASES: Set<String> = setOf("un", "deux", "trois", "quatre", "le premier", "le deuxième", "le troisième", "le quatrième", "la première", "la deuxième",
   "la troisième", "la quatrième", "le dernier", "la dernière", "annuler", "annule")
 
-private const val PHRASE_NAMES = 300
+private const val PHRASE_NAMES = 200
 private val NOT_SPOKEN = Regex("[^\\p{L}'’ -]+")
 
 fun grammarWords(text: String): String = text.lowercase().replace('’', '\'').replace(NOT_SPOKEN, " ").replace(SPACES, " ").trim()
@@ -163,6 +163,8 @@ fun commandPhrases(contacts: List<String>, apps: List<String>): Set<String> {
     val of = if (fold(n).firstOrNull() in "aeiouh".toList()) "d'$n" else "de $n"
     out.add("lis les messages $of")
     out.add("lis le dernier message $of")
+    out.add("lis le dernier sms $of")
+    out.add("lis les sms $of")
     out.add("envoie un sms à $n")
     out.add("envoie un message à $n")
   }
@@ -200,7 +202,7 @@ private val READ_FROM = listOf(
   Regex("^(?:qu est ce que|qu est ce qu|que|qu) m a (?:ecrit|envoye|dit) (.+)$"),
   Regex("^qu est ce que (.+) m a (?:ecrit|envoye|dit)$"),
   Regex("^quels? (?:sont|est) (?:les|le) (?:nouveaux |derniers |dernier )?(?:messages?|sms) (?:de|du|d) (.+)$"),
-  Regex("^(?:les|le dernier|le) (?:messages?|sms) (?:de|du|d) (.+)$"),
+  Regex("^(?:les |le dernier |les derniers |le |dernier |derniers )?(?:messages?|sms|textos?) (?:de|du|d) (.+)$"),
 )
 private val PRONOUNS = setOf("il", "elle", "lui", "ils", "elles", "on", "tu", "vous")
 private val SEND = Regex("^(?:envoie|envoies|envoyer|envoyez|ecris|ecrire|ecrivez|dis|dire|dites)(?: (?:un|une))?(?: (?:petit|nouveau))?(?: (?:sms|message|texto))? (?:a|au) (.+)$")
@@ -291,7 +293,7 @@ private fun sendSms(heard: String, lead: String, base: Int): Command? {
 }
 
 private val REPAIRS = listOf(
-  "mets" to setOf("mais", "mes", "messe", "mai", "met", "m es", "mettent"),
+  "mets" to setOf("mais", "mes", "mai", "met", "m es", "mettent"),
   "lance" to setOf("l ancien", "l ancienne", "lancer", "lances", "lancent", "l anse", "lancement"),
   "lis" to setOf("ii", "lit", "li", "lie", "lise", "lies", "lu", "il"),
   "joue" to setOf("jour", "jo", "joues", "jouent", "joux"),
@@ -305,11 +307,14 @@ private val REPAIRS = listOf(
 private val REPAIR_STOP = setOf("non", "oui", "si", "bon", "enfin", "alors", "quoi", "bien", "ok", "pourquoi", "comment", "attends", "merci", "voila", "c", "est", "ca", "pas",
   "mal", "vrai", "qu", "que", "il", "elle", "je", "tu", "on", "ne", "sais", "moi", "toi", "ou", "et", "donc", "quand", "meme")
 
+private val SMS_HEARD = Regex("(?i)(?<![\\p{L}])(?:(?:essaie|essaies|essai|essaye|esse|est-ce|c'est|ses|ces|s|se) (?:messe|messes|mes|mais|aime s|m s|emme esse)|messes?|cms|s m s)(?![\\p{L}])")
+
 private fun repair(heard: String): String? {
-  val words = heard.trim().split(SPACES).filter { it.isNotEmpty() }
+  val sms = heard.replace(SMS_HEARD, "sms")
+  val words = sms.trim().split(SPACES).filter { it.isNotEmpty() }
   val first = fold(words.firstOrNull() ?: return null)
-  if (first.isEmpty()) return null
-  val to = REPAIRS.firstOrNull { first in it.second }?.first ?: return null
+  val to = REPAIRS.firstOrNull { first in it.second }?.first
+  if (to == null) return sms.takeIf { it != heard }
   return (listOf(to) + words.drop(1)).joinToString(" ")
 }
 
