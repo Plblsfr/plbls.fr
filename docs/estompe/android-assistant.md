@@ -78,7 +78,11 @@ Le bandeau suit le thème clair ou sombre du téléphone et n'apparaît pas sur 
   Le destinataire et le texte sont toujours relus, et rien ne part sans le mot « envoyer » (« oui » ne suffit pas ; « annuler » et « recommencer » sont aussi compris).
   Ce comportement ne dépend pas du réglage « Confirmer avant d'envoyer » du mode conduite.
 - **Autres messageries** (Signal, WhatsApp…) : lecture de la notification et réponse par son action « Répondre » seulement ; pas d'envoi à l'initiative
-  de l'utilisateur. Les messages RCS suivent cette règle : ils ne sont pas dans la base SMS.
+  de l'utilisateur. Les messages RCS suivent cette règle : ils ne sont pas dans la base SMS, il faut cocher l'application de SMS dans « Applications lues ».
+- **Mémoire des messages** : les messages des applications cochées sont notés à l'arrivée de leur notification (`MessageLog`, fichier privé de l'application,
+  300 messages et 30 jours au plus) pour que « lis le dernier message de Marie » retrouve un RCS ou un message WhatsApp dont la notification a disparu.
+  Seuls les messages arrivés après l'activation y figurent ; la mémoire est effacée quand l'écoute est éteinte ou qu'aucune application n'est cochée.
+  Un message retrouvé dans cette mémoire et venu de l'application de SMS reçoit sa réponse par SMS.
 - **Musique** : le transport agit sur la session média active. La recherche et les playlists dépendent de ce que l'application accepte ;
   quand elle n'ouvre pas son catalogue, la playlist est lancée par une recherche sur son nom.
   Le nom de l'application est rapproché même mal transcrit (« YouTube Musique », « you tube music », « YT Music »).

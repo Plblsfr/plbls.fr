@@ -173,6 +173,7 @@ class EstompeNative(private val activity: MainActivity) {
 
   private fun saveAssistantSettings(settings: JSONObject): String {
     assistant.save(settings)
+    assistant.load().let { s -> if (s.scope == AssistantScope.OFF || s.apps.isEmpty()) MessageLog(activity).clear() }
     val missing = if (assistant.load().scope == AssistantScope.OFF) emptyList() else buildList {
       add(Manifest.permission.RECORD_AUDIO)
       if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)

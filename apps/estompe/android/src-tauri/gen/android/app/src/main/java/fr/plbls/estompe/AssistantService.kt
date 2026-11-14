@@ -474,7 +474,10 @@ class AssistantService : Service() {
     val notes = AssistantListener.enabled(this)
     if (!sms && !notes) return finish("Autorisez les SMS et les contacts, ou l'accès aux notifications, dans Estompe.")
     val chosen = settings.apps
-    background({ (if (sms) matchContacts(name, phone.contacts()) else emptyList()) to (if (notes) AssistantListener.pending(chosen) else emptyList()) }) { r ->
+    background({
+      val active = if (notes) AssistantListener.pending(chosen) else emptyList()
+      (if (sms) matchContacts(name, phone.contacts()) else emptyList()) to (active + AssistantListener.remembered(this, chosen, active))
+    }) { r ->
       val found = r?.first.orEmpty()
       val pending = r?.second.orEmpty()
       if (found.isEmpty()) {
@@ -483,7 +486,8 @@ class AssistantService : Service() {
       }
       pickContact(name, found) { c ->
         background({ phone.smsFrom(c).also { found -> if (BuildConfig.DEBUG) traceContact(c, found, pending) } }) { list ->
-          readItems(c.name, mergeUnread(list.orEmpty(), pending.filter { fromSender(name, c, it.sender) }, emptySet()), single)
+          readItems(c.name, mergeUnread(list.orEmpty(), pending.filter { fromSender(name, c, it.sender) }, emptySet()), single,
+            c.numbers.firstOrNull { it.isNotBlank() }?.let { ReplyTo.Text(it, c.name) })
         }
       }
     }
@@ -498,10 +502,11 @@ class AssistantService : Service() {
       ", ${pending.count { fromSender(c.name, c, it.sender) }} notification(s) en attente, applications lues : ${settings.apps.size}")
   }
 
-  private fun readItems(name: String, items: List<Unread>, single: Boolean) {
+  private fun readItems(name: String, items: List<Unread>, single: Boolean, bySms: ReplyTo.Text? = null) {
     val batch = items.takeLast(if (single) 1 else READ_MAX)
     if (batch.isEmpty()) return finish("Aucun message de $name.")
-    last = batch.last().to
+    val to = batch.last().to
+    last = if (to is ReplyTo.Note && !to.replyable && bySms != null && to.label == AssistantListener.smsLabel(this)) bySms else to
     sayAll(announceMessages(batch.map { it.heard }, System.currentTimeMillis())) { done() }
   }
 

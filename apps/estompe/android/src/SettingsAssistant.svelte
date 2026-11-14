@@ -138,7 +138,11 @@
 
 <div class="plbls-field">
   <span class="plbls-field__label">Applications lues</span>
-  <p class="v-note">Les SMS sont toujours lus si l'autorisation est accordée.</p>
+  <p class="v-note">
+    Les SMS sont toujours lus si l'autorisation est accordée. Les messages RCS (« chat ») n'en font pas partie : coche ton application de SMS pour qu'ils soient lus aussi.
+    Les messages des applications cochées sont mémorisés 30 jours sur le téléphone à l'arrivée de leur notification, pour « lis le dernier message de… » ;
+    cette mémoire est effacée quand l'écoute est éteinte ou qu'aucune application n'est cochée.
+  </p>
   {#each apps as a (a.id)}
     <label class="plbls-checkbox">
       <input class="plbls-checkbox__input" type="checkbox" checked={s.apps.includes(a.id)} onchange={(e) => toggleApp(a.id, e.currentTarget.checked)} />

@@ -14,6 +14,9 @@ import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationManagerCompat
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.text.Collator
 import java.util.Locale
 
@@ -22,6 +25,56 @@ data class Pending(val key: String, val app: String, val label: String, val send
 enum class NoteReply { SENT, GONE, FAILED }
 
 const val UNKNOWN_APP = "une application"
+
+const val LOG_DAYS = 30
+
+const val LOG_MAX = 300
+
+fun sameMessage(a: Pending, b: Pending): Boolean =
+  a.app == b.app && a.text == b.text && fold(a.sender) == fold(b.sender) && kotlin.math.abs(a.time - b.time) < 60_000
+
+fun logMerge(old: List<Pending>, fresh: List<Pending>, now: Long, apps: Set<String>): List<Pending> {
+  val all = ArrayList(old)
+  for (f in fresh) if (all.none { sameMessage(it, f) }) all.add(f.copy(key = "log#${f.app}#${f.time}#${f.text.hashCode()}", replyable = false))
+  return all.filter { it.app in apps && now - it.time < LOG_DAYS * 86_400_000L }.sortedBy { it.time }.takeLast(LOG_MAX)
+}
+
+class MessageLog(context: Context) {
+  private val file = File(context.applicationContext.filesDir, "assistant-messages.json")
+
+  fun load(): List<Pending> = synchronized(LOCK) {
+    try {
+      if (!file.exists()) return emptyList()
+      val a = JSONArray(file.readText())
+      (0 until a.length()).mapNotNull { i ->
+        val j = a.optJSONObject(i) ?: return@mapNotNull null
+        Pending(j.optString("key"), j.optString("app"), j.optString("label"), j.optString("sender"), j.optString("text"), j.optLong("time"), false)
+      }
+    } catch (e: Exception) {
+      DriveService.note("mémoire des messages : lecture ${e.javaClass.simpleName}")
+      emptyList()
+    }
+  }
+
+  fun add(fresh: List<Pending>, apps: Set<String>) = synchronized(LOCK) {
+    try {
+      val old = load()
+      val all = logMerge(old, fresh, System.currentTimeMillis(), apps)
+      if (all == old) return@synchronized
+      val a = JSONArray()
+      for (p in all) a.put(JSONObject().put("key", p.key).put("app", p.app).put("label", p.label).put("sender", p.sender).put("text", p.text).put("time", p.time))
+      file.writeText(a.toString())
+    } catch (e: Exception) {
+      DriveService.note("mémoire des messages : écriture ${e.javaClass.simpleName}")
+    }
+  }
+
+  fun clear() = synchronized(LOCK) { try { file.delete() } catch (e: Exception) {} }
+
+  companion object {
+    private val LOCK = Any()
+  }
+}
 
 fun groupConversation(flagged: Boolean, conversationTitle: String?, senders: List<String>): Boolean =
   flagged || !conversationTitle.isNullOrBlank() || senders.map { fold(it) }.filter { it.isNotEmpty() }.distinct().size > 1
@@ -32,6 +85,22 @@ class AssistantListener : NotificationListenerService() {
   override fun onListenerConnected() {
     super.onListenerConnected()
     instance = this
+    remember(active().toList())
+  }
+
+  override fun onNotificationPosted(sbn: StatusBarNotification?) {
+    if (sbn != null) remember(listOf(sbn))
+  }
+
+  private fun remember(posted: List<StatusBarNotification>) {
+    try {
+      val settings = AssistantStore(this).load()
+      if (settings.scope == AssistantScope.OFF || settings.apps.isEmpty()) return
+      val fresh = posted.filter { it.packageName in settings.apps }.flatMap { extract(it) }
+      if (fresh.isNotEmpty()) MessageLog(this).add(fresh, settings.apps)
+    } catch (e: Exception) {
+      DriveService.note("mémoire des messages : ${e.javaClass.simpleName}")
+    }
   }
 
   override fun onListenerDisconnected() {
@@ -54,18 +123,20 @@ class AssistantListener : NotificationListenerService() {
     try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString().trim().ifEmpty { UNKNOWN_APP } } catch (e: Exception) { UNKNOWN_APP }
   }
 
-  private fun collect(apps: Set<String>): List<Pending> {
+  private fun collect(apps: Set<String>): List<Pending> = active().filter { it.packageName in apps }.flatMap { extract(it) }.sortedBy { it.time }
+
+  private fun extract(sbn: StatusBarNotification): List<Pending> {
     val out = ArrayList<Pending>()
-    for (sbn in active()) {
+    run {
       try {
-        if (sbn.packageName !in apps || !eligible(sbn)) continue
+        if (!eligible(sbn)) return@run
         val n = sbn.notification
-        val extras = n.extras ?: continue
+        val extras = n.extras ?: return@run
         val replyable = replyAction(n) != null
         val label = label(sbn.packageName)
         val messages = styleMessages(extras)
         if (messages != null) {
-          if (group(extras, messages)) continue
+          if (group(extras, messages)) return@run
           messages.forEachIndexed { i, m ->
             val key = sbn.key + "#" + if (m.time > 0) m.time.toString() else "r$i"
             out.add(Pending(key, sbn.packageName, label, m.sender, m.text, if (m.time > 0) m.time else sbn.postTime, replyable))
@@ -73,7 +144,7 @@ class AssistantListener : NotificationListenerService() {
         } else if (n.category == Notification.CATEGORY_MESSAGE) {
           val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.trim().orEmpty()
           val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-          if (text.isEmpty()) continue
+          if (text.isEmpty()) return@run
           val time = if (n.`when` > 0) n.`when` else sbn.postTime
           out.add(Pending(sbn.key + "#" + time, sbn.packageName, label, sender.ifEmpty { label }, text, time, replyable))
         }
@@ -81,7 +152,7 @@ class AssistantListener : NotificationListenerService() {
         DriveService.note("écoute des notifications : notification illisible (${e.javaClass.simpleName})")
       }
     }
-    return out.sortedBy { it.time }
+    return out
   }
 
   private fun eligible(sbn: StatusBarNotification): Boolean {
@@ -142,6 +213,14 @@ class AssistantListener : NotificationListenerService() {
       }
     }
 
+    fun smsLabel(c: Context): String = try {
+      val pkg = Telephony.Sms.getDefaultSmsPackage(c)
+      if (pkg == null) "" else c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString().trim()
+    } catch (e: Exception) { "" }
+
+    fun remembered(c: Context, apps: Set<String>, active: List<Pending>): List<Pending> =
+      if (apps.isEmpty()) emptyList() else MessageLog(c).load().filter { h -> h.app in apps && active.none { sameMessage(it, h) } }
+
     fun reply(key: String, sender: String, text: String): NoteReply {
       if (key.isEmpty() || text.isBlank()) return NoteReply.FAILED
       val s = instance ?: return NoteReply.GONE
@@ -155,10 +234,8 @@ class AssistantListener : NotificationListenerService() {
     fun messagingApps(c: Context): List<MusicApp> {
       val pm = c.packageManager
       val found = LinkedHashMap<String, String>()
-      val sms = try { Telephony.Sms.getDefaultSmsPackage(c) } catch (e: Exception) { null }
-      val chosen = try { AssistantStore(c).load().apps } catch (e: Exception) { emptySet() }
       fun add(pkg: String, label: () -> String) {
-        if (pkg == c.packageName || pkg in found || (pkg == sms && pkg !in chosen)) return
+        if (pkg == c.packageName || pkg in found) return
         found[pkg] = try { label().trim().ifEmpty { UNKNOWN_APP } } catch (e: Exception) { UNKNOWN_APP }
       }
       try {

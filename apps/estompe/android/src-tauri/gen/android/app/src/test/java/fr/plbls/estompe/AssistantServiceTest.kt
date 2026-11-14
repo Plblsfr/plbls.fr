@@ -161,4 +161,17 @@ class AssistantServiceTest {
   @Test fun `ordre entendu affiché entre guillemets`() {
     assertEquals("« lis mes messages »", heardText(" lis mes messages "))
   }
+
+  @Test fun `mémoire des messages sans doublon, bornée dans le temps et aux applications cochées`() {
+    val day = 86_400_000L
+    val now = 100 * day
+    val old = listOf(Pending("log#a", "sms.app", "Messages", "Maman", "coucou", now - 2 * day, false), Pending("log#b", "org.signal", "Signal", "Paul", "vieux", now - 40 * day, false))
+    val fresh = listOf(Pending("k#1", "sms.app", "Messages", "maman", "coucou", now - 2 * day + 5_000, true), Pending("k#2", "sms.app", "Messages", "Maman", "tu viens ?", now - 1000, true),
+      Pending("k#3", "com.autre", "Autre", "X", "y", now, true))
+    val all = logMerge(old, fresh, now, setOf("sms.app", "org.signal"))
+    assertEquals(listOf("coucou", "tu viens ?"), all.map { it.text })
+    assertTrue(all.all { !it.replyable && it.key.startsWith("log#") })
+    assertEquals(all, logMerge(all, fresh, now, setOf("sms.app", "org.signal")))
+    assertTrue(logMerge(all, emptyList(), now, emptySet()).isEmpty())
+  }
 }
