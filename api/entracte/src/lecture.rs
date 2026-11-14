@@ -21,7 +21,7 @@ use crate::{
     config::ModeMateriel,
     droits::Droit,
     etat::AppState,
-    ffprobe::Analyse,
+    ffprobe::{self, Analyse},
     flux::{Acces, Limites, Mode, Ouverture, Refus, maintenant_unix},
     garde::Personne,
     http::{self, bd, erreur, introuvable, invalide, objet, ok},
@@ -236,16 +236,27 @@ pub async fn ouvrir(
     };
     arreter_flux(&state, &morts).await;
     let base = format!("/stream/{signe}");
+    let mut decalage = 0.0;
     let url = if mode == Mode::Hls {
+        let copie_video =
+            hauteur.is_none() && video.codec == "h264" && support.video.iter().any(|c| c == "h264");
+        let mut depart = debut;
+        decalage = debut;
+        if copie_video && debut > 0.0 {
+            let source = std::path::Path::new(&chemin);
+            let ffprobe = &state.config().ffprobe;
+            match ffprobe::depart_de_copie(ffprobe, source, video.index, debut).await {
+                Some(d) => (decalage, depart) = (d.image_cle, d.viser),
+                None => tracing::warn!("image clé avant {debut} s introuvable, reprise approchée"),
+            }
+        }
         let params = Parametres {
             source: PathBuf::from(&chemin),
             index_video: video.index,
             index_audio: analyse.audio.get(audio).map(|a| a.index),
             hauteur,
-            copie_video: hauteur.is_none()
-                && video.codec == "h264"
-                && support.video.iter().any(|c| c == "h264"),
-            debut,
+            copie_video,
+            debut: depart,
             mode: state.materiel().mode(),
             peripherique: state.config().peripherique.clone(),
         };
@@ -281,7 +292,7 @@ pub async fn ouvrir(
         "mode": if mode == Mode::Hls { "hls" } else { "direct" },
         "url": url,
         "start": debut,
-        "offset": if mode == Mode::Hls { debut } else { 0.0 },
+        "offset": decalage,
         "duration": l.get::<Option<f64>, _>("duree").or(analyse.duree),
         "quality": palier,
         "qualities": pistes["qualities"],

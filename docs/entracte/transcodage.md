@@ -10,6 +10,13 @@ la qualité voulue, la piste audio et la position de départ.
 - **HLS** sinon : ffmpeg écrit une playlist et des segments MPEG-TS de 4 s dans un dossier temporaire propre au flux. Vidéo H.264, audio AAC
   stéréo 160 kb/s. En « Originale » d'une source H.264, la vidéo est recopiée sans réencodage (seul l'audio est converti).
 
+Départ en cours de titre (`start`) : une vidéo réencodée commence exactement à la position demandée. Une vidéo recopiée ne peut commencer
+que sur une image clé : Entracte cherche avec ffprobe celle qui précède la position, lance ffmpeg dessus (en visant une demi-seconde après
+elle, loin de toute autre image clé, parce que ffmpeg ajuste lui-même la position qu'on lui donne) et renvoie cette image clé dans `offset`.
+Le lecteur avance alors dans le flux jusqu'à `start` : l'image et le temps affiché sont ceux demandés. Une position à moins d'une seconde
+après une image clé repart de l'image clé d'avant. Sans image clé trouvée (conteneur que ffprobe ne sait pas parcourir ainsi, comme le
+MPEG-TS), la reprise reste approchée, à un groupe d'images près.
+
 Paliers manuels, jamais au-dessus de la source : Originale (12 Mb/s au plus si réencodée), 1080p (8 Mb/s), 720p (4 Mb/s), 480p (1,5 Mb/s).
 Changer de piste audio, de palier ou de sous-titres rouvre un flux à la position courante (`start`) ; l'ancien est fermé et son
 transcodage arrêté. En HLS, la position réelle vaut `offset` (renvoyé par l'API) plus le temps du lecteur.

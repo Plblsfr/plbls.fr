@@ -128,7 +128,7 @@ pub fn arguments(p: &Parametres, dossier: &Path) -> Vec<String> {
         a.extend(entree_materielle(p.mode, &p.peripherique));
     }
     if p.debut > 0.0 {
-        a.extend(["-ss".into(), format!("{:.3}", p.debut)]);
+        a.extend(["-ss".into(), format!("{:.6}", p.debut)]);
     }
     a.extend(["-i".into(), p.source.to_string_lossy().to_string()]);
     a.extend(["-map".into(), format!("0:{}", p.index_video)]);
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn ligne_cpu() {
         let l = ligne(&params(ModeMateriel::Cpu, Some(720)));
-        assert!(l.starts_with("-nostdin -hide_banner -loglevel error -ss 125.500 -i /medias/Film.mkv -map 0:0 -map 0:2 "), "{l}");
+        assert!(l.starts_with("-nostdin -hide_banner -loglevel error -ss 125.500000 -i /medias/Film.mkv -map 0:0 -map 0:2 "), "{l}");
         assert!(l.contains("-vf scale=-2:720,format=yuv420p -c:v libx264 -preset veryfast -profile:v high -b:v 4000k -maxrate 4000k -bufsize 8000k"), "{l}");
         assert!(l.contains("-c:a aac -ac 2 -b:a 160k"), "{l}");
         assert!(
