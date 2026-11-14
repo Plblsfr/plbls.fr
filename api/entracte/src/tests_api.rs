@@ -258,8 +258,13 @@ fn reponse_radarr(r: &Requete, m: &Mutex<Monde>) -> (u16, Vec<u8>) {
         ("GET", "/api/v3/movie/lookup/tmdb") => {
             corps(json!({"title": "Film C", "tmdbId": 103, "year": 2022}))
         }
-        ("GET", "/api/v3/qualityprofile") => corps(json!([{"id": 7}])),
-        ("GET", "/api/v3/rootfolder") => corps(json!([{"path": "/movies"}])),
+        ("GET", "/api/v3/qualityprofile") => {
+            corps(json!([{"id": 7, "name": "HD-1080p"}, {"id": 9, "name": "Ultra-HD"}]))
+        }
+        ("GET", "/api/v3/rootfolder") => corps(
+            json!([{"path": "/movies", "freeSpace": 5000}, {"path": "/movies-4k", "freeSpace": 90}]),
+        ),
+        ("GET", "/api/v3/tag") => corps(json!([{"id": 2, "label": "vf"}])),
         ("POST", "/api/v3/movie") if m.radarr_ajouts_refuses => (400, b"refus".to_vec()),
         ("POST", "/api/v3/movie") => (201, b"{}".to_vec()),
         ("GET", p) if p.starts_with("/api/v3/movie/") => match m
@@ -1659,12 +1664,61 @@ async fn recherche_demandes_administration_et_notifications() {
     );
     assert!(r.json()["send_error"].as_str().unwrap().contains("400"));
     e.monde.lock().unwrap().radarr_ajouts_refuses = false;
+    assert_eq!(
+        get(&e, "alice", "/admin/requests/options?kind=movie")
+            .await
+            .statut,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        get(&e, "admin", "/admin/requests/options").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+    let options = get(&e, "admin", "/admin/requests/options?kind=movie")
+        .await
+        .json();
+    assert_eq!(
+        options,
+        json!({
+            "folders": [{"path": "/movies", "free": 5000}, {"path": "/movies-4k", "free": 90}],
+            "profiles": [{"id": 7, "name": "HD-1080p"}, {"id": 9, "name": "Ultra-HD"}],
+            "tags": [{"id": 2, "label": "vf"}],
+            "defaults": {"folder": "/movies", "profile": 7, "tags": [], "availability": null},
+        })
+    );
+    for mauvais in [
+        json!({"folder": 3}),
+        json!({"profile": "hd"}),
+        json!({"tags": [0]}),
+    ] {
+        let r = appel(
+            &e,
+            Some("admin"),
+            "POST",
+            &format!("/admin/requests/{id_c}/accept"),
+            Some(mauvais),
+        )
+        .await;
+        assert_eq!(r.statut, StatusCode::BAD_REQUEST, "{}", r.texte());
+    }
     let r = appel(
         &e,
         Some("admin"),
         "POST",
         &format!("/admin/requests/{id_c}/accept"),
-        None,
+        Some(json!({"folder": "/ailleurs"})),
+    )
+    .await;
+    assert_eq!(
+        (r.json()["sent"].clone(), r.json()["send_error"].clone()),
+        (json!(false), json!("emplacement inconnu"))
+    );
+    let r = appel(
+        &e,
+        Some("admin"),
+        "POST",
+        &format!("/admin/requests/{id_c}/accept"),
+        Some(json!({"folder": "/movies-4k", "profile": 9, "tags": [2]})),
     )
     .await;
     assert_eq!(
@@ -1682,9 +1736,10 @@ async fn recherche_demandes_administration_et_notifications() {
         (
             ajout["tmdbId"].clone(),
             ajout["qualityProfileId"].clone(),
-            ajout["rootFolderPath"].clone()
+            ajout["rootFolderPath"].clone(),
+            ajout["tags"].clone()
         ),
-        (json!(103), json!(7), json!("/movies"))
+        (json!(103), json!(9), json!("/movies-4k"), json!([2]))
     );
     assert_eq!(ajout["addOptions"]["searchForMovie"], true);
     assert_eq!(

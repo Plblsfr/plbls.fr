@@ -4,6 +4,7 @@
   import { entracteApi, filmsApi } from '../../lib/api'
   import { saisir } from '../../lib/confirm.svelte'
   import { notify } from '../../lib/ui'
+  import AcceptModal from './AcceptModal.svelte'
   import { reasonLabel, type FilmReject } from './films'
   import { seasonsLabel, stateLabel, stateTone, type EntracteRequest, type EntracteStatus, type RequestState } from './entracte'
 
@@ -14,6 +15,7 @@
   let rejected = $state<FilmReject[] | null>(null)
   let status = $state<EntracteStatus | null>(null)
   let busy = $state('')
+  let accepting = $state<EntracteRequest | null>(null)
 
   const date = (s: string | null) => (s ? new Date(s).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : 'jamais')
 
@@ -24,14 +26,10 @@
   $effect(() => { if (tab === 'rejected') void filmsApi.rejects().then((r) => (rejected = r.items)).catch((e) => { rejected = []; notify.error(e, 'Liste indisponible') }) })
   $effect(() => { if (tab === 'status') void entracteApi.status().then((s) => (status = s)).catch((e) => notify.error(e, 'État indisponible')) })
 
-  async function accept(r: EntracteRequest) {
-    busy = r.id
-    try {
-      const out = await entracteApi.accept(r.id)
-      if (out.send_error) notify.fail(`Acceptée, mais l’envoi a échoué : ${out.send_error}`)
-      else notify.ok(`« ${r.title} » envoyé à ${r.kind === 'movie' ? 'Radarr' : 'Sonarr'}.`)
-      await loadRequests()
-    } catch (e) { notify.error(e, 'La demande n’a pas pu être acceptée') } finally { busy = '' }
+  function accepted(out: EntracteRequest) {
+    if (out.send_error) notify.fail(`Acceptée, mais l’envoi a échoué : ${out.send_error}`)
+    else notify.ok(`« ${out.title} » envoyé à ${out.kind === 'movie' ? 'Radarr' : 'Sonarr'}.`)
+    void loadRequests()
   }
 
   async function refuse(r: EntracteRequest) {
@@ -83,7 +81,7 @@
             </span>
             <span class="v-tag {stateTone(r.state)}">{stateLabel(r.state)}</span>
             {#if r.state === 'en_attente' || (r.state === 'acceptee' && !r.sent)}
-              <button class="plbls-button plbls-button--compact" disabled={busy === r.id} onclick={() => void accept(r)}>{r.state === 'acceptee' ? 'Renvoyer' : 'Accepter'}</button>
+              <button class="plbls-button plbls-button--compact" disabled={busy === r.id} onclick={() => (accepting = r)}>{r.state === 'acceptee' ? 'Renvoyer' : 'Accepter'}</button>
             {/if}
             {#if r.state === 'en_attente' || r.state === 'acceptee'}
               <button class="plbls-button plbls-button--compact plbls-button--contour plbls-button--danger" disabled={busy === r.id} onclick={() => void refuse(r)}>Refuser</button>
@@ -127,6 +125,7 @@
     {/if}
   {/if}
 </div>
+{#if accepting}<AcceptModal request={accepting} onclose={() => (accepting = null)} ondone={accepted} />{/if}
 
 <style>
   .adm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--espace-2); }

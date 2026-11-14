@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { entracteApi } from '../../lib/api'
 import { platform } from '../../lib/platform'
 import { entracte } from './entracte.svelte'
-import { freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type RequestableSeries, type SearchResult } from './entracte'
+import { freeSpace, initialChoice, freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type RequestableSeries, type SearchResult, type SendOptions } from './entracte'
 
 const serie = (seasons: Partial<RequestableSeries['seasons'][number]>[]): RequestableSeries => ({
   tmdb_id: 201, title: 'La Série', year: 2019, poster_url: null,
@@ -83,5 +83,32 @@ describe('relevé des notifications', () => {
     pose.mockRestore()
     retire.mockRestore()
     vi.restoreAllMocks()
+  })
+})
+
+describe('réglages d’envoi à Radarr ou Sonarr', () => {
+  const options = (defaults: SendOptions['defaults']): SendOptions => ({
+    folders: [{ path: '/films', free: 5 * 1024 ** 3 }, { path: '/films-4k', free: null }],
+    profiles: [{ id: 1, name: 'Any' }, { id: 6, name: 'HD-1080p' }],
+    tags: [{ id: 3, label: 'vf' }],
+    defaults,
+  })
+
+  it('part des réglages habituels du service', () => {
+    expect(initialChoice(options({ folder: '/films-4k', profile: 6, tags: [3], availability: 'released' }))).toEqual({ folder: '/films-4k', profile: 6, tags: [3] })
+  })
+
+  it('se rabat sur les premiers proposés et ignore un tag disparu', () => {
+    expect(initialChoice(options({ folder: '/ailleurs', profile: null, tags: [8], availability: null }))).toEqual({ folder: '/films', profile: 1, tags: [] })
+  })
+
+  it('ne propose rien sans emplacement ou sans profil', () => {
+    expect(initialChoice({ ...options({ folder: null, profile: null, tags: [], availability: null }), folders: [] })).toBeNull()
+  })
+
+  it('affiche l’espace libre', () => {
+    expect(freeSpace(5 * 1024 ** 3)).toBe('5 Go libres')
+    expect(freeSpace(1536 * 1024 ** 3)).toBe('1,5 To libres')
+    expect(freeSpace(null)).toBe('')
   })
 })

@@ -65,9 +65,14 @@ fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la se
 - Demande (`entracte:request`) : un film, une série entière ou des saisons précises (y compris une saison manquante d'une série présente).
   Une même demande en cours n'est pas dupliquée : la personne y est rattachée et sera prévenue comme le premier demandeur.
 - États : `en_attente`, `acceptee`, `refusee` (motif obligatoire), `disponible`.
-- Accepter envoie le titre à Radarr (film surveillé, recherche lancée) ou à Sonarr (saisons demandées surveillées, recherche lancée),
-  avec le profil de qualité et le dossier racine de la configuration (à défaut, les premiers déclarés). Un envoi en échec laisse la demande
-  « acceptée » avec l'erreur, et « Accepter » renvoie.
+- Accepter envoie le titre à Radarr (film surveillé, recherche lancée) ou à Sonarr (saisons demandées surveillées, recherche lancée).
+  L'administrateur choisit l'emplacement (dossier racine), le profil de qualité et les tags parmi ceux de Radarr/Sonarr
+  (`GET /admin/requests/options`). Les valeurs proposées sont celles que Radarr/Sonarr utilise déjà : la configuration d'Entracte
+  (`ENTRACTE_RADARR_ROOT_FOLDER`, `ENTRACTE_RADARR_QUALITY_PROFILE`, idem `SONARR`) si elle y existe, sinon le dossier et le profil les plus
+  utilisés par les titres de sa bibliothèque, les tags que porte plus de la moitié d'entre eux et, pour Radarr, la disponibilité minimale
+  la plus utilisée (`released` à défaut) ; sans bibliothèque, les premiers déclarés. Un titre ajouté sans les tags habituels peut n'être
+  cherché par aucun indexeur : dans Radarr/Sonarr, un indexeur qui porte des tags ne sert qu'aux titres qui en partagent un.
+  Un envoi en échec laisse la demande « acceptée » avec l'erreur, et « Renvoyer » rouvre le choix.
 - « Disponible » : quand la synchronisation voit arriver le fichier (film), ou tous les épisodes annoncés par TMDB des saisons demandées.
   Une série demandée entière se ferme quand toutes les saisons dont TMDB annonce des épisodes sont complètes ; une saison annoncée plus
   tard sans épisode ne la bloque pas, une saison en cours de diffusion la garde ouverte jusqu'à son dernier épisode annoncé.

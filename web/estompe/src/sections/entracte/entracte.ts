@@ -30,6 +30,30 @@ export interface EntracteRequest {
   requesters?: { name: string; joined_at: string }[]
 }
 
+/** Réglages d'envoi proposés par Radarr ou Sonarr, et ceux qu'ils utilisent déjà le plus (`defaults`). */
+export interface SendOptions {
+  folders: { path: string; free: number | null }[]
+  profiles: { id: number; name: string }[]
+  tags: { id: number; label: string }[]
+  defaults: { folder: string | null; profile: number | null; tags: number[]; availability: string | null }
+}
+export interface SendChoice { folder: string; profile: number; tags: number[] }
+
+/** Choix présenté à l'ouverture : les réglages habituels de Radarr/Sonarr, à défaut les premiers proposés ; rien s'il manque un dossier ou un profil. */
+export function initialChoice(o: SendOptions): SendChoice | null {
+  const folder = o.folders.find((f) => f.path === o.defaults.folder) ?? o.folders[0]
+  const profile = o.profiles.find((p) => p.id === o.defaults.profile) ?? o.profiles[0]
+  if (!folder || !profile) return null
+  return { folder: folder.path, profile: profile.id, tags: o.defaults.tags.filter((t) => o.tags.some((x) => x.id === t)) }
+}
+
+export function freeSpace(octets: number | null): string {
+  if (octets === null || octets < 0) return ''
+  const go = octets / 1024 ** 3
+  const texte = go >= 1000 ? `${(go / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} To` : `${Math.round(go).toLocaleString('fr-FR')} Go`
+  return `${texte} libres`
+}
+
 export interface SearchResult extends Partial<Omit<FilmItem, 'id' | 'kind' | 'title' | 'year'>> {
   id: string | null
   kind: 'movie' | 'series' | 'episode'

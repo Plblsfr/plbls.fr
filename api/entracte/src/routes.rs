@@ -189,6 +189,12 @@ pub fn table() -> Vec<(Route, MethodRouter<AppState>)> {
             get(demandes::liste_admin),
         ),
         r(
+            Method::GET,
+            "/admin/requests/options",
+            Garde::Droit(Admin),
+            get(demandes::options_envoi),
+        ),
+        r(
             Method::POST,
             "/admin/requests/{id}/accept",
             Garde::Droit(Admin),
