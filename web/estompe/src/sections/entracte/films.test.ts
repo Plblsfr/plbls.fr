@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, clock, needsReopen, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, clock, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -98,5 +98,20 @@ describe('Entracte : formats, qualité et position', () => {
     expect(needsReopen(550, 600, 120)).toBe(true)
     expect(needsReopen(650, 600, 120)).toBe(false)
     expect(needsReopen(900, 600, 120)).toBe(true)
+  })
+})
+
+describe('Entracte : sous-titres d’un flux qui ne commence pas à zéro', () => {
+  it('ramène les répliques au temps du lecteur', () => {
+    const cues = [{ startTime: 590, endTime: 602 }, { startTime: 660, endTime: 663.5 }]
+    shiftCues(cues, 600)
+    expect(cues).toEqual([{ startTime: -10, endTime: 2 }, { startTime: 60, endTime: 63.5 }])
+  })
+
+  it('ne touche à rien en lecture directe ou sans réplique', () => {
+    const cues = [{ startTime: 5, endTime: 8 }]
+    shiftCues(cues, 0)
+    shiftCues(null, 600)
+    expect(cues).toEqual([{ startTime: 5, endTime: 8 }])
   })
 })
