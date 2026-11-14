@@ -148,7 +148,7 @@ paths:
         Lecture directe si le fichier est lisible tel quel par le client (qualité originale, conteneur et codecs annoncés,
         première piste audio), sinon HLS transcodé par ffmpeg (un transcodage par spectateur ; rouvrir le même titre remplace
         l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, url}]}`.
-        En HLS, la position réelle vaut `offset` + le temps du lecteur.
+        En HLS, la position réelle vaut `offset` + le temps du lecteur ; `offset` est au plus `start` (image clé qui précède, quand la vidéo est recopiée) et le lecteur avance jusqu'à `start`.
       responses:
         "200": { description: flux ouvert }
         "400": { description: piste, qualité ou position invalide }

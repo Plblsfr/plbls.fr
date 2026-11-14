@@ -1177,7 +1177,12 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
         .unwrap();
     assert_eq!(
         (r3["mode"].clone(), p.copie_video, p.debut),
-        (json!("hls"), true, 4.0)
+        (json!("hls"), true, 0.0),
+        "une copie de la vidéo part de l'image clé qui précède la position demandée"
+    );
+    assert_eq!(
+        (r3["start"].clone(), r3["offset"].clone()),
+        (json!(4.0), json!(0.0))
     );
     assert!(
         e.state
