@@ -329,7 +329,7 @@ class AssistantService : Service() {
 
   private fun heard(text: String) {
     failures = 0
-    wake(wakeWord(text) ?: return)
+    wake(wakeWord(text) ?: text)
   }
 
   private fun wake(order: String) {
@@ -353,7 +353,7 @@ class AssistantService : Service() {
     if (order.isNotBlank()) return execute(order)
     say(PROMPT) { said ->
       if (!said) return@say mute()
-      listen(ORDER_MS) { t -> if (t.isNullOrBlank()) done() else execute(t) }
+      listen(ORDER_MS, known = voice.phrases) { t -> if (t.isNullOrBlank()) done() else execute(t) }
     }
   }
 
@@ -388,7 +388,7 @@ class AssistantService : Service() {
   private fun askAgain() {
     say(REPEAT) { said ->
       if (!said) return@say mute()
-      listen(ORDER_MS) { t -> if (t.isNullOrBlank()) done() else execute(t, true) }
+      listen(ORDER_MS, known = voice.phrases) { t -> if (t.isNullOrBlank()) done() else execute(t, true) }
     }
   }
 
@@ -510,7 +510,7 @@ class AssistantService : Service() {
     val shown = minOf(options.size, CHOICE_MAX)
     say(choices(intro, options, rest)) { said ->
       if (!said) return@say mute()
-      listen(CHOICE_MS) { heard ->
+      listen(CHOICE_MS, known = CHOICE_PHRASES) { heard ->
         val t = heard.orEmpty()
         val i = pickChoice(t, shown)
         when {
@@ -544,7 +544,7 @@ class AssistantService : Service() {
     voice.focus(true)
     say(review(to, text)) { said ->
       if (!said) return@say mute()
-      listen(CONFIRM_MS, true) { answer ->
+      listen(CONFIRM_MS, true, CONFIRM_PHRASES) { answer ->
         when (confirmStep(confirmAnswer(answer.orEmpty()), asked)) {
           Confirm.SEND -> deliver(to, text)
           Confirm.RETRY -> dictate(to)
@@ -581,11 +581,11 @@ class AssistantService : Service() {
     }
   }
 
-  private fun listen(ms: Int, pause: Boolean = false, result: (String?) -> Unit) {
+  private fun listen(ms: Int, pause: Boolean = false, known: Set<String>? = null, result: (String?) -> Unit) {
     val mine = turn
     overlay.show(LISTENING)
     status(LISTENING)
-    voice.listen(ms, false, pause) { t ->
+    voice.listen(ms, false, pause, known) { t ->
       if (destroyed || mine != turn) return@listen
       busySince = SystemClock.elapsedRealtime()
       guard { result(t) }
@@ -643,7 +643,9 @@ class AssistantService : Service() {
   private fun refreshApps() {
     thread {
       val found = music.apps()
-      ui.post { if (!destroyed) apps = found }
+      val names = try { phone.contacts().map { it.name } } catch (e: Exception) { emptyList() }
+      val known = commandPhrases(names, found.map { it.label })
+      ui.post { if (!destroyed) { apps = found; voice.phrases = known } }
     }
   }
 

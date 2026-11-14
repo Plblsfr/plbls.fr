@@ -420,4 +420,43 @@ class AssistantTest {
     assertEquals(listOf("2 SMS de Marie, le dernier il y a 12 minutes : a. b.", "Message de Paul sur WhatsApp, à l'instant : salut"), announceMessages(items, now, utc))
     assertEquals(listOf("SMS de Marie, hier à 14 h : a"), announceMessages(items.take(1), now, utc))
   }
+
+  @Test fun `chaque ordre de la grammaire est compris par l'analyse`() {
+    val phrases = commandPhrases(listOf("Marie Dupont", "Alice", "Jean-Luc", "  ", "Dr. Paul (bureau) 2"), listOf("YouTube Music", "Spotify", "VLC"))
+    for (p in phrases) assertTrue(p, parseCommand(p, apps) != Command.Unknown)
+    assertTrue(phrases.containsAll(FIXED_ORDERS))
+    assertEquals(Command.ReadFrom("marie dupont"), cmd("lis les messages de marie dupont"))
+    assertTrue("lis les messages de marie" in phrases)
+    assertTrue("lis le dernier message d'alice" in phrases)
+    assertTrue("envoie un sms à jean-luc" in phrases)
+    assertTrue("lis les messages de dr paul bureau" in phrases)
+    assertEquals(Command.Music(Transport.PLAY, ytm.id), cmd("lance youtube music"))
+    assertTrue("ouvre youtube music" in phrases)
+  }
+
+  @Test fun `la grammaire reste bornée et bien formée`() {
+    val many = (0 until 2000).map { n -> "ab" + n.toString(26).map { c -> 'a' + Character.digit(c, 26) }.joinToString("") }
+    assertTrue(commandPhrases(many, emptyList()).size < 1500)
+    assertEquals("[\"pause\",\"dis \\\"oui\\\"\",\"[unk]\"]", grammarJson(listOf("pause", "dis \"oui\"")))
+    assertTrue(wakeGrammar().startsWith("[\"estompe\","))
+    assertEquals("jean-luc d'arc pro", grammarWords("  Jean-Luc  D’Arc (pro) 06 "))
+  }
+
+  @Test fun `réponses de confirmation et de choix de la grammaire`() {
+    for (p in CONFIRM_PHRASES) assertTrue(p, confirmAnswer(p) != Answer.UNKNOWN)
+    for (p in CHOICE_PHRASES) assertTrue(p, pickChoice(p, 4) != null || parseCommand(p) == Command.Cancel)
+  }
+
+  @Test fun `homophones du premier mot corrigés quand rien n'est compris`() {
+    assertEquals(Command.PlaySearch("daft punk", ""), cmd("mais daft punk"))
+    assertEquals(Command.Music(Transport.PLAY, ytm.id), cmd("l'ancien youtube music"))
+    assertEquals(Command.ReadFrom("marie"), cmd("ii les messages de marie"))
+    assertEquals(Command.ReadFrom("paul", true), cmd("lit le dernier message de paul"))
+    assertEquals(Command.Music(Transport.PAUSE, ""), cmd("posait"))
+    assertEquals(Command.Music(Transport.PLAY, ""), cmd("reprend la musique"))
+    assertEquals(Command.PlaySearch("jazz", ""), cmd("jour du jazz"))
+    assertEquals(Command.ReadUnread, cmd("mes messages"))
+    assertEquals(Command.Unknown, cmd("mais non"))
+    assertEquals(Command.Unknown, cmd("mais oui c'est ça"))
+  }
 }

@@ -86,11 +86,11 @@ private fun voskText(h: String?) = try { h?.let { JSONObject(it).optString("text
 
 fun utteranceGuardMs(text: String, rate: Float = 1f): Long = ((5_000L + 120L * text.length) / rate.coerceIn(0.5f, 2f)).toLong()
 
-private class WakeLoop(private val model: Model, private val heard: (String) -> Unit, private val failed: (String) -> Unit) {
-  @Volatile private var running = true
+private abstract class MicLoop(private val label: String, private val failed: (String) -> Unit) {
+  @Volatile protected var running = true
   private var worker: Thread? = null
 
-  fun start() { worker = thread(name = "estompe-wake") { loop() } }
+  fun start() { worker = thread(name = label) { loop() } }
 
   fun stop() {
     running = false
@@ -100,19 +100,21 @@ private class WakeLoop(private val model: Model, private val heard: (String) -> 
     try { w.join(JOIN_MS) } catch (e: InterruptedException) { Thread.currentThread().interrupt() }
   }
 
+  protected abstract fun open()
+  protected abstract fun feed(buf: ShortArray, n: Int): Boolean
+  protected abstract fun close(error: Boolean)
+
   private fun loop() {
     var record: AudioRecord? = null
-    var recognizer: Recognizer? = null
     var error: String? = null
     try {
-      val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+      val min = AudioRecord.getMinBufferSize(HEAR_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
       if (min <= 0) throw IllegalStateException("tampon $min")
-      val buf = ShortArray(RATE / 10)
-      val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, buf.size * 2) * 2)
+      val buf = ShortArray(HEAR_RATE / 10)
+      val r = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, HEAR_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, buf.size * 2) * 2)
       record = r
       if (r.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("micro non initialisé")
-      val rec = Recognizer(model, RATE.toFloat())
-      recognizer = rec
+      open()
       r.startRecording()
       if (r.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IllegalStateException("micro occupé")
       var empty = 0
@@ -121,22 +123,66 @@ private class WakeLoop(private val model: Model, private val heard: (String) -> 
         if (n < 0) throw IllegalStateException("lecture du micro $n")
         if (n == 0) { if (++empty > MAX_EMPTY) throw IllegalStateException("micro muet"); continue }
         empty = 0
-        if (rec.acceptWaveForm(buf, n) && running) voskText(rec.result)?.let(heard)
+        if (!feed(buf, n)) break
       }
     } catch (t: Throwable) {
       if (running) error = t.javaClass.simpleName + (t.message?.let { " $it" } ?: "")
     } finally {
       try { record?.stop() } catch (t: Throwable) {}
       try { record?.release() } catch (t: Throwable) {}
-      try { recognizer?.close() } catch (t: Throwable) {}
+      try { close(error != null) } catch (t: Throwable) {}
     }
     error?.let(failed)
   }
 
   companion object {
-    private const val RATE = 16000
     private const val JOIN_MS = 600L
     private const val MAX_EMPTY = 50
+  }
+}
+
+private class WakeLoop(private val model: Model, private val phrases: () -> Set<String>, private val heard: (String) -> Unit, failed: (String) -> Unit) :
+  MicLoop("estompe-wake", failed) {
+  private var detector: WakeDetector? = null
+
+  override fun open() { detector = WakeDetector(model, phrases) }
+
+  override fun feed(buf: ShortArray, n: Int): Boolean {
+    val order = detector?.feed(buf, n)
+    if (order != null && running) heard(order)
+    return true
+  }
+
+  override fun close(error: Boolean) {
+    detector?.close()
+    detector = null
+  }
+}
+
+private class OrderLoop(private val model: Model, private val phrases: Set<String>, private val ms: Int, private val result: (String?) -> Unit) :
+  MicLoop("estompe-ordre", { result(null) }) {
+  private var decoder: OrderDecoder? = null
+  private var until = 0L
+  private var text: String? = null
+  private var answered = false
+
+  override fun open() {
+    decoder = OrderDecoder(model, phrases)
+    until = SystemClock.elapsedRealtime() + ms
+  }
+
+  override fun feed(buf: ShortArray, n: Int): Boolean {
+    text = decoder?.feed(buf, n)
+    if (text != null) return false
+    if (SystemClock.elapsedRealtime() < until) return true
+    text = decoder?.finish()
+    return false
+  }
+
+  override fun close(error: Boolean) {
+    decoder?.close()
+    decoder = null
+    if (!error && running && !answered) { answered = true; result(text) }
   }
 }
 
@@ -159,6 +205,8 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
   private var speech: SpeechService? = null
   private var recognizer: Recognizer? = null
   private var wake: WakeLoop? = null
+  private var order: OrderLoop? = null
+  @Volatile var phrases: Set<String> = emptySet()
   private var watchWanted = false
   private var watchToken = 0
   private var watchChanged: ((Boolean, Boolean) -> Unit)? = null
@@ -250,7 +298,7 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
     if (done.isEmpty() && talking && !closed) { talking = false; Mic.give(false) }
   }
 
-  fun listen(ms: Int, bluetooth: Boolean = true, exclusive: Boolean = false, result: (String?) -> Unit) {
+  fun listen(ms: Int, bluetooth: Boolean = true, exclusive: Boolean = false, known: Set<String>? = null, result: (String?) -> Unit) {
     if (closed) return
     if (Mic.hearing) {
       DriveService.note("micro occupé par une autre écoute")
@@ -279,6 +327,17 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
         }
         ui.postDelayed({
           if (closed || mine != turn) return@postDelayed
+          if (known != null) {
+            try {
+              val loop = OrderLoop(loaded, known, ms) { t -> ui.post { end(t) } }
+              order = loop
+              loop.start()
+            } catch (e: Throwable) {
+              DriveService.note("micro : $e")
+              end(null)
+            }
+            return@postDelayed
+          }
           try {
             val r = Recognizer(loaded, 16000f)
             recognizer = r
@@ -325,7 +384,7 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
       ui.post {
         if (closed || token != watchToken) return@post
         if (loaded == null || Mic.busy) return@post stopWatch(loaded == null)
-        val loop = WakeLoop(loaded, { text -> ui.post { if (!closed && token == watchToken) heard(text) } }) { why ->
+        val loop = WakeLoop(loaded, { phrases }, { text -> ui.post { if (!closed && token == watchToken) heard(text) } }) { why ->
           ui.post {
             if (closed || token != watchToken) return@post
             DriveService.note("veille du mot d'éveil : $why")
@@ -370,8 +429,11 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
   private fun stopListening() {
     val s = speech
     val r = recognizer
+    val o = order
     speech = null
     recognizer = null
+    order = null
+    o?.stop()
     try { s?.stop(); s?.shutdown() } catch (e: Exception) { DriveService.note("micro : ${e.javaClass.simpleName}") }
     try { r?.close() } catch (e: Exception) { DriveService.note("micro : ${e.javaClass.simpleName}") }
   }

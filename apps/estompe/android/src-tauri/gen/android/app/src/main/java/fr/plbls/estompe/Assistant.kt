@@ -119,6 +119,61 @@ fun wakeWord(input: String): String? {
   return if (end == 0) null else tail(heard, tokens.drop(end).joinToString(" "))
 }
 
+val WAKE_DECOYS: List<String> = ("le la les un une des du de d et est on il elle ils elles je j tu nous vous ce c ça se s ne n pas plus que qu qui quoi où quand " +
+  "comment pourquoi oui non si mais ou donc car à au aux en dans sur sous avec sans pour par chez vers entre avant après pendant depuis mon ma mes ton ta tes son sa ses " +
+  "notre votre leur leurs me te lui y a ai as avons avez ont suis es sommes êtes sont été être avoir fait faire fais dit dire dis va vais vas aller allez vient venir " +
+  "peux peut pouvez veux veut voulez dois doit faut sais sait vu voir vois pris prendre mis mettre mets passe passer reste rester donne donner parle parler pense penser " +
+  "trouve trouver arrive arriver tout tous toute toutes très bien bon bonne mal peu beaucoup trop assez encore déjà toujours jamais aussi alors puis ensuite ici là " +
+  "maintenant aujourd'hui hier demain matin soir nuit jour heure heures minute minutes temps fois an ans année semaine mois maison voiture route train ville rue travail " +
+  "école enfant enfants homme femme ami amis père mère frère soeur chose choses monde vie main tête eau pain café restaurant manger boire dormir acheter grand petit " +
+  "nouveau vieux beau premier dernier prochain autre même deux trois quatre cinq six sept huit neuf dix vingt cent mille gauche droite haut bas devant derrière merci " +
+  "bonjour salut pardon attention regarde écoute attends stop estomac tombe tombé tomber instant message messages musique téléphone problème question réponse idée " +
+  "moment côté part cas point place nom numéro").split(" ")
+
+val FIXED_ORDERS: List<String> = listOf("pause", "stop", "suivant", "suivante", "précédent", "chanson suivante", "chanson précédente", "plus fort", "moins fort",
+  "monte le son", "baisse le son", "monte le volume", "baisse le volume", "lis mes messages", "lis les messages", "lis mes nouveaux messages", "est-ce que j'ai des messages",
+  "réponds", "aide", "annule", "reprends", "reprends la musique", "lecture", "mets la musique", "mets de la musique", "arrête la musique")
+
+val CONFIRM_PHRASES: Set<String> = setOf("envoyer", "envoie", "oui envoie", "oui envoyer", "ok envoie", "vas-y envoie", "annuler", "annule", "non", "stop", "recommencer", "recommence")
+
+val CHOICE_PHRASES: Set<String> = setOf("un", "deux", "trois", "quatre", "le premier", "le deuxième", "le troisième", "le quatrième", "la première", "la deuxième",
+  "la troisième", "la quatrième", "le dernier", "la dernière", "annuler", "annule")
+
+private const val PHRASE_NAMES = 300
+private val NOT_SPOKEN = Regex("[^\\p{L}'’ -]+")
+
+fun grammarWords(text: String): String = text.lowercase().replace('’', '\'').replace(NOT_SPOKEN, " ").replace(SPACES, " ").trim()
+
+fun grammarJson(phrases: Collection<String>): String =
+  (phrases + "[unk]").joinToString(",", "[", "]") { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" }
+
+fun wakeGrammar(): String = grammarJson(listOf(WAKE_WORD) + WAKE_DECOYS)
+
+fun commandPhrases(contacts: List<String>, apps: List<String>): Set<String> {
+  val out = LinkedHashSet<String>(FIXED_ORDERS)
+  val names = LinkedHashSet<String>()
+  for (c in contacts) {
+    val full = grammarWords(c)
+    if (full.isEmpty()) continue
+    names.add(full)
+    names.add(full.substringBefore(' '))
+    if (names.size >= PHRASE_NAMES) break
+  }
+  for (n in names) {
+    val of = if (fold(n).firstOrNull() in "aeiouh".toList()) "d'$n" else "de $n"
+    out.add("lis les messages $of")
+    out.add("lis le dernier message $of")
+    out.add("envoie un sms à $n")
+    out.add("envoie un message à $n")
+  }
+  for (a in apps) for (label in setOf(grammarWords(a), appKey(a))) {
+    if (label.isEmpty()) continue
+    out.add("lance $label")
+    out.add("ouvre $label")
+  }
+  return out
+}
+
 private const val NOUN = "(?:musique|lecture|chanson|morceau|titre|piste)"
 private const val MSG = "(?:messages?|sms|textos?)"
 private const val NEW = "(?: (?:nouveaux|nouvelles|nouveau|nouvelle|derniers|dernieres|dernier|derniere))*"
@@ -235,7 +290,37 @@ private fun sendSms(heard: String, lead: String, base: Int): Command? {
   return Command.SendSms(contact, text)
 }
 
+private val REPAIRS = listOf(
+  "mets" to setOf("mais", "mes", "messe", "mai", "met", "m es", "mettent"),
+  "lance" to setOf("l ancien", "l ancienne", "lancer", "lances", "lancent", "l anse", "lancement"),
+  "lis" to setOf("ii", "lit", "li", "lie", "lise", "lies", "lu", "il"),
+  "joue" to setOf("jour", "jo", "joues", "jouent", "joux"),
+  "ouvre" to setOf("ouvres", "ouvrent", "ouvert"),
+  "envoie" to setOf("envoi", "envoient", "envois"),
+  "dis" to setOf("dit", "dits"),
+  "reprends" to setOf("reprend"),
+  "pause" to setOf("pose", "poses", "posait", "poser", "pauses"),
+)
+
+private val REPAIR_STOP = setOf("non", "oui", "si", "bon", "enfin", "alors", "quoi", "bien", "ok", "pourquoi", "comment", "attends", "merci", "voila", "c", "est", "ca", "pas",
+  "mal", "vrai", "qu", "que", "il", "elle", "je", "tu", "on", "ne", "sais", "moi", "toi", "ou", "et", "donc", "quand", "meme")
+
+private fun repair(heard: String): String? {
+  val words = heard.trim().split(SPACES).filter { it.isNotEmpty() }
+  val first = fold(words.firstOrNull() ?: return null)
+  if (first.isEmpty()) return null
+  val to = REPAIRS.firstOrNull { first in it.second }?.first ?: return null
+  return (listOf(to) + words.drop(1)).joinToString(" ")
+}
+
 fun parseCommand(input: String, apps: List<MusicApp> = emptyList()): Command {
+  val c = parseExact(input, apps)
+  if (c != Command.Unknown) return c
+  val fixed = parseExact(repair(bound(input)) ?: return c, apps)
+  return if (fixed is Command.PlaySearch && fold(fixed.query).split(" ").all { it in REPAIR_STOP }) c else fixed
+}
+
+private fun parseExact(input: String, apps: List<MusicApp>): Command {
   val heard = bound(input)
   val all = fold(heard)
   val lead = all.replace(LEAD, "").trim()

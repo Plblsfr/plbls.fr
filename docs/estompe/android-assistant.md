@@ -85,6 +85,24 @@ Le bandeau n'apparaît pas sur l'écran de verrouillage.
   Une application fermée, ou qui refuse son catalogue aux autres applications (YouTube Music), est ouverte à l'écran : Android ne le permet depuis
   l'arrière-plan que si Estompe a l'autorisation d'affichage par-dessus les autres applications.
 
+## Reconnaissance
+
+Tout passe par le modèle Vosk français du mode conduite, utilisé de trois façons (`Hearing.kt`) :
+
+- **Veille** : le reconnaisseur est restreint à une grammaire, le mot « estompe » et quelques centaines de mots courants qui servent de leurres.
+  Il n'a qu'à distinguer le mot d'éveil du reste, ce qui coûte environ dix fois moins de calcul que la dictée libre et le rate moins souvent.
+  Le son des quinze dernières secondes est gardé en mémoire vive, jamais écrit sur le disque.
+- **Ordre** : ce qui suit le mot d'éveil (repris dans cette mémoire) ou la question « Oui ? » est décodé deux fois. D'abord contre la liste des ordres connus
+  (`commandPhrases` : ordres fixes, « lis les messages de… » et « envoie un SMS à… » pour chaque contact, « lance… » pour chaque application de musique) ;
+  si la phrase reconnue est exactement l'une d'elles, elle est retenue. Sinon la dictée libre s'applique, comme pour un titre ou un artiste.
+  Les confirmations (« envoyer », « annuler »…) et les choix (« un », « deux »…) suivent le même principe.
+- **Dictée** du texte d'un SMS : dictée libre seule.
+
+Quand rien n'est compris, l'analyse réessaie en corrigeant les homophones courants du premier mot (« mais » pour « mets », « l'ancien » pour « lance »,
+« posait » pour « pause »…).
+
+Un nom de contact ou d'application absent du vocabulaire du modèle n'entre pas dans la grammaire : il reste reconnu, moins bien, par la dictée libre.
+
 ## Écran verrouillé
 
 L'assistant répond écran verrouillé : toute personne à portée de voix peut faire lire les messages ou dicter un SMS. La relecture avant envoi est la seule barrière.
@@ -105,6 +123,7 @@ il est chargé à la demande et libéré après deux minutes sans usage. Sans lu
 | `AssistantOverlay.kt` | bandeau affiché par-dessus les autres applications |
 | `AssistActivity.kt` | déclenchement par le geste d'assistant du système ou le bouton vocal Bluetooth |
 | `Voice.kt` | synthèse, écoute Vosk, focus audio, arbitre du micro ; partagé avec `DriveService` |
+| `Hearing.kt` | détection du mot d'éveil par grammaire, décodage d'un ordre en deux passes |
 | `Messages.kt` | SMS et contacts (`Phone`) |
 | `AssistantListener.kt` | notifications des autres messageries, sessions média |
 | `Music.kt` | pilotage des apps de musique (`MusicControl`) |
