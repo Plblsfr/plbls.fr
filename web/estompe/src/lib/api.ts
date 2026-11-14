@@ -2,7 +2,7 @@ import { config } from './config'
 import { debug } from './debuglog.svelte'
 import type { DrawOp, DrawView } from '../blocks/draw2gether/draw'
 import type { FilmDetail, FilmItem, FilmPlayback, FilmReject, PlaybackRequest } from '../sections/entracte/films'
-import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, RequestKind, RequestableSeries, SearchResult } from '../sections/entracte/entracte'
+import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, RequestKind, RequestableSeries, SearchResult, SendChoice, SendOptions } from '../sections/entracte/entracte'
 import type {
   AdminLive, AdminOverview, AdminBadge, Badge, BadgeInput, AdminUser, AdminStats, AdminLogEntry, AdminError,
   Person,
@@ -405,7 +405,8 @@ export const entracteApi = {
   request: (b: { kind: RequestKind; tmdb_id: number; seasons?: number[] }) => esend<EntracteRequest>('POST', '/requests', b),
   mine: () => eget<{ items: EntracteRequest[] }>('/requests/mine'),
   adminRequests: (f: Record<string, string>) => eget<{ items: EntracteRequest[] }>(`/admin/requests?${new URLSearchParams(Object.entries(f).filter(([, v]) => v))}`),
-  accept: (id: string) => esend<EntracteRequest>('POST', `/admin/requests/${enc(id)}/accept`),
+  sendOptions: (kind: RequestKind) => eget<SendOptions>(`/admin/requests/options?kind=${kind}`),
+  accept: (id: string, choice?: SendChoice) => esend<EntracteRequest>('POST', `/admin/requests/${enc(id)}/accept`, choice),
   refuse: (id: string, reason: string) => esend<EntracteRequest>('POST', `/admin/requests/${enc(id)}/refuse`, { reason }),
   status: () => eget<EntracteStatus>('/admin/status'),
   sync: () => esend<void>('POST', '/admin/sync'),

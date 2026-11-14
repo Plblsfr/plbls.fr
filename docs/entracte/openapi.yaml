@@ -262,11 +262,30 @@ paths:
       responses:
         "200": { description: "`{items: [Demande]}`" }
         "403": { $ref: "#/components/responses/403" }
+  /admin/requests/options:
+    get:
+      summary: "Réglages d'envoi proposés par Radarr (`kind=movie`) ou Sonarr (`kind=series`)"
+      description: >-
+        `{folders: [{path, free}], profiles: [{id, name}], tags: [{id, label}], defaults: {folder, profile, tags, availability}}`.
+        `defaults` : pour le dossier et le profil, la configuration d'Entracte si Radarr/Sonarr la connaît, sinon la valeur la plus
+        utilisée par les titres déjà dans Radarr/Sonarr, sinon la première déclarée ; `tags` : ceux que porte plus de la moitié des
+        titres ; `availability` (Radarr) : disponibilité minimale la plus utilisée.
+        Seule réponse qui porte des chemins, ceux des dossiers racines de Radarr/Sonarr, pour l'administrateur.
+      responses:
+        "200": { description: réglages }
+        "400": { description: "`kind` manquant ou inconnu" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré ou injoignable" }
   /admin/requests/{id}/accept:
     parameters: [{ $ref: "#/components/parameters/id" }]
     post:
       summary: "Accepter (ou renvoyer une demande acceptée dont l'envoi a échoué) ; envoie le titre à Radarr ou Sonarr"
+      description: >-
+        Corps facultatif `{folder, profile, tags: [id]}` : dossier racine, profil de qualité et tags du titre ajouté, parmi ceux de
+        `GET /admin/requests/options`. Absents : les `defaults` de cette route (`tags: []` pour n'en poser aucun).
+        Une valeur inconnue de Radarr/Sonarr laisse la demande acceptée avec `send_error`.
       responses:
+        "400": { description: réglage mal formé }
         "200": { description: Demande (`send_error` si l'envoi a échoué) }
         "403": { $ref: "#/components/responses/403" }
         "409": { description: "`invalid_state`" }

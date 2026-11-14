@@ -523,7 +523,72 @@ pub async fn liste_admin(
     })))
 }
 
-pub async fn envoyer(state: &AppState, id: Uuid) -> Result<(), Response> {
+fn reglages(corps: &serde_json::Map<String, Value>) -> Result<arr::Reglages, Response> {
+    let racine = match corps.get("folder") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(r)) if !r.is_empty() && r.chars().count() <= 500 => Some(r.clone()),
+        Some(_) => return Err(invalide("emplacement invalide")),
+    };
+    let profil = match corps.get("profile") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(
+            v.as_i64()
+                .filter(|p| *p > 0)
+                .ok_or_else(|| invalide("profil de qualité invalide"))?,
+        ),
+    };
+    let tags = match corps.get("tags") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(t)) if t.len() <= 20 => Some(
+            t.iter()
+                .map(|x| x.as_i64().filter(|n| *n > 0))
+                .collect::<Option<Vec<i64>>>()
+                .ok_or_else(|| invalide("tags invalides"))?,
+        ),
+        Some(_) => return Err(invalide("tags invalides")),
+    };
+    Ok(arr::Reglages {
+        racine,
+        profil,
+        tags,
+    })
+}
+
+pub async fn options_envoi(
+    State(state): State<AppState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Result<Response, Response> {
+    let genre = q
+        .get("kind")
+        .and_then(|k| genre_demande(k))
+        .ok_or_else(|| invalide("kind : movie ou series"))?;
+    let (nom, config, bibliotheque) = if genre == "film" {
+        ("Radarr", &state.config().radarr, "/movie")
+    } else {
+        ("Sonarr", &state.config().sonarr, "/series")
+    };
+    let Some(c) = config else {
+        return Err(http::indisponible(
+            "arr_unavailable",
+            &format!("{nom} non configuré"),
+        ));
+    };
+    match arr::Client::new(c, state.http())
+        .options(bibliotheque)
+        .await
+    {
+        Ok(o) => Ok(ok(&o)),
+        Err(e) => {
+            tracing::warn!("réglages de {nom} : {e}");
+            Err(http::indisponible(
+                "arr_unavailable",
+                &format!("{nom} injoignable"),
+            ))
+        }
+    }
+}
+
+pub async fn envoyer(state: &AppState, id: Uuid, choix: &arr::Reglages) -> Result<(), Response> {
     let l = lire_demande(state, id).await?;
     let genre: String = l.get("genre");
     let tmdb_id: i64 = l.get("tmdb_id");
@@ -533,7 +598,7 @@ pub async fn envoyer(state: &AppState, id: Uuid) -> Result<(), Response> {
             None => Err("Radarr non configuré".to_string()),
             Some(c) => {
                 arr::Client::new(c, state.http())
-                    .ajouter_film(tmdb_id)
+                    .ajouter_film(tmdb_id, choix)
                     .await
             }
         }
@@ -547,7 +612,7 @@ pub async fn envoyer(state: &AppState, id: Uuid) -> Result<(), Response> {
                     .ok()
                     .and_then(|f| f.tvdb_id);
                 arr::Client::new(c, state.http())
-                    .ajouter_serie(tmdb_id, tvdb, saisons.as_deref())
+                    .ajouter_serie(tmdb_id, tvdb, saisons.as_deref(), choix)
                     .await
             }
         }
@@ -570,8 +635,10 @@ pub async fn accepter(
     State(state): State<AppState>,
     p: Personne,
     Path(id): Path<String>,
+    corps: Body,
 ) -> Result<Response, Response> {
     let id = uuid(&id)?;
+    let choix = reglages(&objet(corps).await?)?;
     let l = lire_demande(&state, id).await?;
     let etat: String = l.get("etat");
     match etat.as_str() {
@@ -600,7 +667,7 @@ pub async fn accepter(
             ));
         }
     }
-    envoyer(&state, id).await?;
+    envoyer(&state, id, &choix).await?;
     marquer_disponibles(&state).await;
     Ok(ok(&demande_publique(
         &lire_demande(&state, id).await?,
