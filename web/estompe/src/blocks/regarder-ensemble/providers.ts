@@ -1,6 +1,6 @@
 import { filmsApi, ApiError } from '../../lib/api'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
+import { absolute, shiftCues, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
@@ -272,6 +272,7 @@ const film: Factory = async (el, h) => {
         t.kind = 'subtitles'
         t.label = s.label ?? s.language ?? `Piste ${s.n + 1}`
         if (s.language) t.srclang = s.language
+        t.addEventListener('load', () => shiftCues(t.track.cues, p.offset ?? 0), { once: true })
         t.src = filmsApi.base + s.url
       }
       showSubtitle()

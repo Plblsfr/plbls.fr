@@ -3,7 +3,7 @@ import { tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { filmsApi } from '../../lib/api'
 import { providers, type Adapter, type Handlers } from '../../blocks/regarder-ensemble/providers'
-import type { FilmDetail } from './films'
+import { IDLE_MS, type FilmDetail } from './films'
 import FilmPlayer from './FilmPlayer.svelte'
 
 const detail: FilmDetail = {
@@ -66,5 +66,54 @@ describe('FilmPlayer : son', () => {
     const boutons = vue.getAllByRole('button').filter((b) => b.classList.contains('film-track'))
     await fireEvent.click(boutons[1])
     expect(adapter.setAudio).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('FilmPlayer : commandes masquées sans geste', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+  const lecteur = async () => {
+    const m = monter()
+    await pret(m.adapter)
+    vi.useFakeTimers()
+    return { ...m, racine: m.vue.container.querySelector('.film-player')! }
+  }
+
+  it('masque les commandes pendant la lecture, un geste les ramène', async () => {
+    const { handlers, racine } = await lecteur()
+    handlers().onState('playing')
+    await tick()
+    expect(racine.classList.contains('idle')).toBe(false)
+    await vi.advanceTimersByTimeAsync(IDLE_MS)
+    expect(racine.classList.contains('idle')).toBe(true)
+    await fireEvent.pointerMove(racine)
+    expect(racine.classList.contains('idle')).toBe(false)
+    await vi.advanceTimersByTimeAsync(IDLE_MS)
+    expect(racine.classList.contains('idle')).toBe(true)
+  })
+
+  it('les garde en pause', async () => {
+    const { handlers, racine } = await lecteur()
+    handlers().onState('paused')
+    await tick()
+    await vi.advanceTimersByTimeAsync(IDLE_MS * 2)
+    expect(racine.classList.contains('idle')).toBe(false)
+  })
+
+  it('les ramène quand la lecture s’arrête et les garde tant que le choix des pistes est ouvert', async () => {
+    const { handlers, racine, vue } = await lecteur()
+    handlers().onState('playing')
+    await tick()
+    await vi.advanceTimersByTimeAsync(IDLE_MS)
+    expect(racine.classList.contains('idle')).toBe(true)
+    handlers().onState('paused')
+    await tick()
+    expect(racine.classList.contains('idle')).toBe(false)
+    handlers().onState('playing')
+    handlers().onTracks?.({ audio: [], subtitles: [], audioN: 0, subN: null })
+    await tick()
+    await fireEvent.click(vue.getByText('Audio et sous-titres'))
+    await vi.advanceTimersByTimeAsync(IDLE_MS * 2)
+    expect(racine.classList.contains('idle')).toBe(false)
   })
 })

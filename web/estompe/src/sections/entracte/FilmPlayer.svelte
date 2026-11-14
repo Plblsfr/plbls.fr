@@ -7,7 +7,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { clock, fullTitle, QUALITY_LABEL, resumeAt, trackName, type FilmDetail, type FilmTracks } from './films'
+  import { clock, IDLE_MS, fullTitle, QUALITY_LABEL, resumeAt, trackName, type FilmDetail, type FilmTracks } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -25,6 +25,8 @@
   let panel = $state(false)
   let picker = $state(false)
   let error = $state('')
+  let idle = $state(false)
+  let idleTimer: ReturnType<typeof setTimeout> | undefined
 
   const playing = $derived(st === 'playing' || st === 'buffering')
   const back = $derived(item?.series_id ? hrefs.films('item', item.series_id) : hrefs.films('item', id))
@@ -32,6 +34,14 @@
   const toggle = () => (playing ? player?.pause() : player?.play())
   const seek = (s: number) => { player?.seek(Math.max(0, duration ? Math.min(s, duration) : s)); position = s }
   const fullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root?.requestFullscreen().catch(() => {}) }
+
+  const wake = () => {
+    idle = false
+    clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => { idle = playing && !panel && !picker && drag === null && !root?.querySelector(':focus-visible') }, IDLE_MS)
+  }
+
+  $effect(() => { void playing; void panel; void picker; wake() })
 
   const toggleMute = () => { muted = !muted; if (!muted && volume === 0) volume = 100 }
 
@@ -54,11 +64,11 @@
       a.load(id, resumeAt(it), true)
       poll = setInterval(() => { position = a.time(); duration = a.duration?.() || it.duration }, 500)
     })().catch((e) => { if (!gone) notify.error(e, 'La lecture n’a pas pu démarrer'); error = 'La lecture n’a pas pu démarrer.' })
-    return () => { gone = true; clearInterval(poll); player?.destroy(); player = null }
+    return () => { gone = true; clearInterval(poll); clearTimeout(idleTimer); player?.destroy(); player = null }
   })
 </script>
 
-<div class="film-player" bind:this={root}>
+<div class="film-player" class:idle bind:this={root} onpointermove={wake} onpointerdown={wake} onkeydown={wake} onfocusin={wake} role="presentation">
   <div class="film-player-top">
     <a class="watch-btn" href={back} aria-label="Fermer le lecteur"><Icon name="x" size={22} /></a>
     <div class="grow film-player-title"><strong class="truncate">{item ? fullTitle(item) : ''}</strong><span class="film-player-sub">Regarder seul</span></div>
