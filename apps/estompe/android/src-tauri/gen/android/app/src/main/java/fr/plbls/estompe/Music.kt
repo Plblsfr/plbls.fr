@@ -6,6 +6,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.media.MediaMetadata
+import android.net.Uri
 import android.media.browse.MediaBrowser
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -167,17 +169,31 @@ class MusicControl(private val context: Context) {
     try {
       val to = target(pkg)
       if (to.isEmpty() || query.isBlank()) { DriveService.note("musique : aucune app pour la recherche"); return done(false) }
-      val c = controller(to)
-      if (c != null) {
-        c.transportControls.playFromSearch(query, extras)
-        return done(true)
-      }
       val last = {
         when {
           !canLaunch() -> { DriveService.note("musique : ouverture de $to impossible en arrière-plan sans l'affichage par-dessus les autres applications"); done(false) }
           startSearch(query, to, extras) -> done(true)
           else -> { DriveService.note("musique : $to n'accepte pas la recherche par intention"); done(false) }
         }
+      }
+      val c = controller(to)
+      if (c != null) {
+        val before = track(c)
+        val was = playingNow(c)
+        c.transportControls.playFromSearch(query, extras)
+        var checks = 0
+        lateinit var check: Runnable
+        check = Runnable {
+          val now = sessions().firstOrNull { it.packageName == to }
+          val changed = now != null && (track(now) != before || (!was && playingNow(now)))
+          when {
+            changed -> done(true)
+            ++checks < SEARCH_CHECKS -> ui.postDelayed(check, PLAY_POLL_MS * 2)
+            else -> { DriveService.note("musique : $to n'a pas réagi à la recherche par sa session, ouverture de l'application"); last() }
+          }
+        }
+        ui.postDelayed(check, PLAY_POLL_MS * 2)
+        return
       }
       val started = connect(to, { ok -> if (ok) done(true) else last() }) { browser, finish ->
         try {
@@ -195,10 +211,27 @@ class MusicControl(private val context: Context) {
     }
   }
 
+  private fun track(c: MediaController): String = try {
+    c.metadata?.let { m -> (m.getString(MediaMetadata.METADATA_KEY_MEDIA_ID) ?: "") + "|" + (m.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "") }.orEmpty()
+  } catch (e: Exception) { "" }
+
+  private fun playingNow(c: MediaController): Boolean = try {
+    c.playbackState?.state.let { it == PlaybackState.STATE_PLAYING || it == PlaybackState.STATE_BUFFERING }
+  } catch (e: Exception) { false }
+
   private fun startSearch(query: String, pkg: String, extras: Bundle): Boolean = try {
     val intent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).setPackage(pkg).putExtras(extras)
       .putExtra(SearchManager.QUERY, query).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    if (intent.resolveActivity(app.packageManager) == null) false else { app.startActivity(intent); true }
+    val web = Intent(Intent.ACTION_VIEW, Uri.parse("https://music.youtube.com/search?q=" + Uri.encode(query))).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    when {
+      intent.resolveActivity(app.packageManager) != null -> { app.startActivity(intent); true }
+      pkg.contains("youtube") && web.resolveActivity(app.packageManager) != null -> {
+        DriveService.note("musique : $pkg ouvert sur la recherche, sans lecture automatique")
+        app.startActivity(web)
+        true
+      }
+      else -> false
+    }
   } catch (e: Exception) {
     DriveService.note("musique : lancement de la recherche refusé ($e)")
     false
@@ -327,6 +360,7 @@ class MusicControl(private val context: Context) {
     private const val PLAY_CHECK_MS = 3_000L
     private const val PLAY_POLL_MS = 300L
     private const val OPEN_WAIT_MS = 6_000L
+    private const val SEARCH_CHECKS = 7
     private const val MAX_SUBSCRIPTIONS = 8
     private const val EXTRA_PLAYLIST = "android.intent.extra.playlist"
   }
