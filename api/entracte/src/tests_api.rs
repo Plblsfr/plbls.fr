@@ -705,6 +705,20 @@ async fn origine_et_cors() {
     .await;
     assert_eq!(r.statut, StatusCode::OK);
     assert_eq!(r.entetes["access-control-allow-credentials"], "true");
+    let tele = [("origin", "https://www.gstatic.com")];
+    let r = appel_avec(&e, None, "GET", "/stream/x/hls.m3u8", None, &tele).await;
+    assert_eq!(r.statut, StatusCode::UNAUTHORIZED);
+    assert_eq!(r.entetes["access-control-allow-origin"], "*");
+    assert!(!r.entetes.contains_key("access-control-allow-credentials"));
+    let r = appel_avec(&e, None, "OPTIONS", "/stream/x/direct", None, &tele).await;
+    assert_eq!(r.statut, StatusCode::NO_CONTENT);
+    assert_eq!(r.entetes["access-control-allow-origin"], "*");
+    assert_eq!(r.entetes["access-control-allow-headers"], "Range");
+    let r = appel_avec(&e, Some("alice"), "GET", "/library", None, &tele).await;
+    assert_eq!(r.statut, StatusCode::OK);
+    assert!(!r.entetes.contains_key("access-control-allow-origin"));
+    let r = appel_avec(&e, None, "DELETE", "/streams/x", None, &tele).await;
+    assert!(!r.entetes.contains_key("access-control-allow-origin"));
 }
 
 #[tokio::test]

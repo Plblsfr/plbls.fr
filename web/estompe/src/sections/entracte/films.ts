@@ -22,6 +22,18 @@ export interface FilmPlayback {
   qualities?: Quality[]
 }
 export interface FilmTracks { audio: FilmTrack[]; subtitles: FilmTrack[]; audioN: number; subN: number | null; qualities?: Quality[]; quality?: Quality }
+/** Diffusion sur un autre appareil (Chromecast, AirPlay) par le navigateur. */
+export type CastState = 'disconnected' | 'connecting' | 'connected'
+
+const CAST_REFUSALS: Record<string, string> = {
+  NotFoundError: 'Aucune télé ni appareil de diffusion trouvé sur ce réseau.',
+  NotSupportedError: 'Ce titre ne peut pas être diffusé depuis ce navigateur.',
+  InvalidAccessError: 'Appuyez de nouveau sur « Diffuser » pour choisir l’appareil.',
+}
+
+/** Message à afficher quand le navigateur refuse d'ouvrir le choix de l'appareil (rien si la personne a seulement fermé le choix). */
+export const castRefusal = (name: string): string | null => CAST_REFUSALS[name] ?? null
+
 export interface FilmReject { name: string; reason: string; seen_at: string }
 
 export const SAVE_EVERY_MS = 15_000

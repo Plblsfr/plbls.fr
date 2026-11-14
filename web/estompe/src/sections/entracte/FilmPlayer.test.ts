@@ -14,7 +14,7 @@ const detail: FilmDetail = {
 function monter() {
   const adapter = {
     sync: 'full', canRate: true, setVolume: vi.fn(), setAudio: vi.fn(), setSubtitle: vi.fn(), load: vi.fn(), play: vi.fn(), pause: vi.fn(),
-    seek: vi.fn(), time: () => 0, duration: () => 3000, rate: () => 1, setRate: vi.fn(), state: () => 'paused', destroy: vi.fn(),
+    cast: vi.fn().mockResolvedValue(null), seek: vi.fn(), time: () => 0, duration: () => 3000, rate: () => 1, setRate: vi.fn(), state: () => 'paused', destroy: vi.fn(),
   } satisfies Adapter
   let handlers: Handlers | undefined
   vi.spyOn(filmsApi, 'item').mockResolvedValue(detail)
@@ -92,6 +92,15 @@ describe('FilmPlayer : commandes masquées sans geste', () => {
     expect(racine.classList.contains('idle')).toBe(true)
   })
 
+  it('les garde pendant une diffusion sur une télé', async () => {
+    const { handlers, racine } = await lecteur()
+    handlers().onState('playing')
+    handlers().onCast?.('connected')
+    await tick()
+    await vi.advanceTimersByTimeAsync(IDLE_MS * 2)
+    expect(racine.classList.contains('idle')).toBe(false)
+  })
+
   it('les garde en pause', async () => {
     const { handlers, racine } = await lecteur()
     handlers().onState('paused')
@@ -115,5 +124,28 @@ describe('FilmPlayer : commandes masquées sans geste', () => {
     await fireEvent.click(vue.getByText('Audio et sous-titres'))
     await vi.advanceTimersByTimeAsync(IDLE_MS * 2)
     expect(racine.classList.contains('idle')).toBe(false)
+  })
+})
+
+describe('FilmPlayer : diffusion sur une télé', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('ne montre le bouton que si le lecteur annonce la diffusion', async () => {
+    const { adapter, vue, handlers } = monter()
+    await pret(adapter)
+    expect(vue.queryByLabelText('Diffuser sur une télé')).toBeNull()
+    handlers().onCast?.('disconnected')
+    await tick()
+    await fireEvent.click(vue.getByLabelText('Diffuser sur une télé'))
+    expect(adapter.cast).toHaveBeenCalledTimes(1)
+  })
+
+  it('signale la diffusion en cours', async () => {
+    const { adapter, vue, handlers } = monter()
+    await pret(adapter)
+    handlers().onCast?.('connected')
+    await tick()
+    expect(vue.getByRole('status').textContent).toContain('Diffusion sur un autre appareil')
+    expect(vue.getByLabelText('Diffusion en cours, changer d’appareil').getAttribute('aria-pressed')).toBe('true')
   })
 })

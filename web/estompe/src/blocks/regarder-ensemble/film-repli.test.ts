@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { filmsApi } from '../../lib/api'
-import type { FilmPlayback } from '../../sections/entracte/films'
+import { castRefusal, type FilmPlayback } from '../../sections/entracte/films'
 import { providers, type PState } from './providers'
 
 const hlsjs = vi.hoisted(() => ({ loadSource: vi.fn(), attachMedia: vi.fn() }))
@@ -105,6 +105,100 @@ describe('lecteur de films : repli sur le flux transcodé', () => {
     const video = el.querySelector('video')!
     expect(hlsjs.attachMedia).toHaveBeenCalledWith(video)
     expect(video.getAttribute('src') ?? '').not.toContain('.m3u8')
+    a.destroy()
+  })
+})
+
+describe('lecteur de films : diffusion sur une télé', () => {
+  let prompt: ReturnType<typeof vi.fn>
+  const distant = () => {
+    const cible = new EventTarget()
+    Object.assign(cible, { state: 'disconnected', prompt, watchAvailability: vi.fn().mockResolvedValue(1), cancelWatchAvailability: vi.fn().mockResolvedValue(undefined) })
+    Object.defineProperty(HTMLMediaElement.prototype, 'remote', { configurable: true, get: () => cible })
+    return cible
+  }
+  const ouvrir = async (mode: 'direct' | 'hls', onCast = vi.fn()) => {
+    vi.spyOn(filmsApi, 'playback').mockResolvedValue(flux(1, mode))
+    const el = document.createElement('div')
+    const a = await providers.film(el, { onState: () => {}, onError: () => {}, onCast })
+    a.load('f', 0, false)
+    await vi.waitFor(() => expect(mode === 'hls' ? hlsjs.loadSource : vi.mocked(HTMLMediaElement.prototype.load)).toHaveBeenCalled())
+    return { a, video: el.querySelector('video')!, onCast }
+  }
+  beforeEach(() => {
+    hlsjs.loadSource.mockClear()
+    prompt = vi.fn().mockResolvedValue(undefined)
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {})
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
+    vi.spyOn(filmsApi, 'close').mockResolvedValue(undefined as never)
+    vi.spyOn(filmsApi, 'progress').mockResolvedValue(undefined as never)
+  })
+  afterEach(() => { Reflect.deleteProperty(HTMLMediaElement.prototype, 'remote'); vi.restoreAllMocks() })
+
+  it('ne propose rien sans l’API de diffusion du navigateur', async () => {
+    const { a, onCast } = await ouvrir('direct')
+    expect(a.cast).toBeUndefined()
+    expect(onCast).not.toHaveBeenCalled()
+    a.destroy()
+  })
+
+  it('annonce la diffusion puis suit l’état de la connexion', async () => {
+    const cible = distant()
+    const { a, onCast } = await ouvrir('direct')
+    await vi.waitFor(() => expect(onCast).toHaveBeenLastCalledWith('disconnected'))
+    Object.assign(cible, { state: 'connected' })
+    cible.dispatchEvent(new Event('connect'))
+    expect(onCast).toHaveBeenLastCalledWith('connected')
+    a.destroy()
+  })
+
+  it('ne propose rien quand le navigateur a désactivé la diffusion', async () => {
+    const cible = distant()
+    Object.assign(cible, { watchAvailability: vi.fn().mockRejectedValue(new DOMException('désactivée', 'NotSupportedError')) })
+    const { a, onCast } = await ouvrir('direct')
+    await Promise.resolve()
+    expect(onCast).not.toHaveBeenCalled()
+    a.destroy()
+  })
+
+  it('ouvre le choix de l’appareil sur une lecture directe', async () => {
+    distant()
+    const { a } = await ouvrir('direct')
+    expect(await a.cast!()).toBeNull()
+    expect(prompt).toHaveBeenCalledTimes(1)
+    a.destroy()
+  })
+
+  it('recharge un flux HLS dans le lecteur natif avant de proposer la diffusion', async () => {
+    distant()
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation((t) => (t === 'application/vnd.apple.mpegurl' ? 'maybe' : ''))
+    const { a, video } = await ouvrir('hls')
+    expect(video.getAttribute('src')).toBeNull()
+    const fini = a.cast!()
+    await vi.waitFor(() => expect(video.getAttribute('src')).toContain('/stream/j1/hls.m3u8'))
+    expect(prompt).not.toHaveBeenCalled()
+    video.dispatchEvent(new Event('loadedmetadata'))
+    expect(await fini).toBeNull()
+    expect(prompt).toHaveBeenCalledTimes(1)
+    a.destroy()
+  })
+
+  it('explique le refus quand le navigateur ne lit pas le HLS lui-même', async () => {
+    distant()
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('')
+    const { a } = await ouvrir('hls')
+    expect(await a.cast!()).toBe(castRefusal('NotSupportedError'))
+    expect(prompt).not.toHaveBeenCalled()
+    a.destroy()
+  })
+
+  it('rend le message du refus du navigateur, rien si le choix est seulement fermé', async () => {
+    distant()
+    const { a } = await ouvrir('direct')
+    prompt.mockRejectedValueOnce(new DOMException('aucun appareil', 'NotFoundError'))
+    expect(await a.cast!()).toBe(castRefusal('NotFoundError'))
+    prompt.mockRejectedValueOnce(new DOMException('fermé', 'NotAllowedError'))
+    expect(await a.cast!()).toBeNull()
     a.destroy()
   })
 })
