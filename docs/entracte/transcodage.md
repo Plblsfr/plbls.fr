@@ -44,8 +44,11 @@ Le lecteur de l'app propose « Diffuser » quand le navigateur a l'API Remote Pl
 AirPlay depuis Safari) ; aucun script tiers n'est chargé. Le navigateur ouvre son choix d'appareil, puis la télé lit elle-même l'URL du
 flux, que son jeton signé suffit à ouvrir. La lecture, la pause et la position restent pilotées depuis l'app, qui continue d'enregistrer la progression.
 
-- Un flux HLS lu par hls.js ne se diffuse pas : au premier appui, le lecteur recharge le même flux dans le lecteur natif du navigateur
-  (s'il lit le HLS lui-même), puis ouvre le choix de l'appareil. Si le navigateur refuse alors faute de geste récent, un second appui suffit.
+- Un flux HLS lu par hls.js ne se diffuse pas. À l'appui, le lecteur demande d'abord au navigateur si un appareil existe (sonde sans
+  chargement) : sans appareil, la lecture en cours n'est pas touchée. Sinon il rouvre un flux à la position en cours dans le lecteur natif
+  du navigateur (s'il lit le HLS lui-même), puis ouvre le choix de l'appareil ; si le navigateur refuse alors faute de geste récent, un
+  second appui suffit. Le lecteur natif ne sait pas se déplacer dans un flux en cours d'écriture : chaque saut rouvre un flux, et la fin
+  de la diffusion revient à hls.js.
 - Les routes `/stream/…` répondent `Access-Control-Allow-Origin: *` (sans `Allow-Credentials`) à une origine hors de
   `ENTRACTE_ALLOWED_ORIGINS` : le récepteur d'une télé lit playlists et segments depuis sa propre origine. Seul le jeton de l'URL ouvre
   le flux ; aucune autre route n'est concernée.

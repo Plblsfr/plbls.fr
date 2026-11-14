@@ -311,19 +311,40 @@ const film: Factory = async (el, h) => {
       return castRefusal(name)
     }
   }
+  const now = () => absolute(video.currentTime, offset)
+  const reachable = (url: string) => new Promise<boolean>((ok) => {
+    const probe = document.createElement('video')
+    probe.preload = 'none'
+    probe.src = url
+    const r = probe.remote as RemotePlayback | undefined
+    if (!r) { ok(true); return }
+    let watch: number | undefined
+    let answered = false
+    const release = () => { if (watch !== undefined) void r.cancelWatchAvailability(watch).catch(() => {}); probe.removeAttribute('src') }
+    r.watchAvailability((found) => { if (answered) return; answered = true; release(); ok(found) })
+      .then((n) => { watch = n; if (answered) release() }, () => ok(true))
+  })
   const cast = async (): Promise<string | null> => {
     if (!stream) return null
     if (stream.mode !== 'hls' || tele) return ask()
     if (!video.canPlayType(HLS_MIME)) return castRefusal('NotSupportedError')
-    tele = true
     const p = stream
+    if (!(await reachable(filmsApi.base + p.url))) return castRefusal('NotFoundError')
+    if (gone || stream !== p) return null
+    tele = true
     const loaded = new Promise<void>((ok) => video.addEventListener('loadedmetadata', () => ok(), { once: true }))
-    adapter.load(filmsApi.base + p.url, video.currentTime, !video.paused)
+    await open(now(), !video.paused)
+    if (gone || !stream) return null
     await loaded
-    return gone || stream !== p ? null : ask()
+    return gone ? null : ask()
   }
   if (remote) {
     for (const ev of ['connecting', 'connect', 'disconnect']) remote.addEventListener(ev, () => { if (!gone) h.onCast?.(remote.state) })
+    remote.addEventListener('disconnect', () => {
+      if (gone || !tele || stream?.mode !== 'hls') return
+      tele = false
+      void open(now(), !video.paused)
+    })
     remote.watchAvailability(() => {}).then((n) => remote.cancelWatchAvailability(n).catch(() => {}), (e: unknown) => {
       if (e instanceof DOMException && e.name === 'NotSupportedError') throw e
     }).then(() => { if (!gone) h.onCast?.(remote.state) }, () => {})
@@ -341,14 +362,13 @@ const film: Factory = async (el, h) => {
   video.addEventListener('pause', () => { if (stream && !video.seeking) save() })
   const leave = () => { if (stream) filmsApi.closeOnExit(stream.stream_id) }
   window.addEventListener('pagehide', leave)
-  const now = () => absolute(video.currentTime, offset)
   return {
     ...adapter,
     time: now,
     duration: total,
     seek: (s) => {
       const ready = Number.isFinite(video.duration) ? video.duration : 0
-      if (stream?.mode === 'hls' && stream.offset !== undefined && needsReopen(s, offset, ready)) { position = s; void open(s, !video.paused); return }
+      if (stream?.mode === 'hls' && stream.offset !== undefined && (tele || needsReopen(s, offset, ready))) { position = s; void open(s, !video.paused); return }
       adapter.seek(Math.max(0, s - offset))
     },
     load: (r, start, play) => {
