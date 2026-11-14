@@ -172,7 +172,13 @@ class MusicControl(private val context: Context) {
         c.transportControls.playFromSearch(query, extras)
         return done(true)
       }
-      val last = { if (canLaunch() && startSearch(query, to, extras)) done(true) else { DriveService.note("musique : recherche impossible en arrière-plan"); done(false) } }
+      val last = {
+        when {
+          !canLaunch() -> { DriveService.note("musique : ouverture de $to impossible en arrière-plan sans l'affichage par-dessus les autres applications"); done(false) }
+          startSearch(query, to, extras) -> done(true)
+          else -> { DriveService.note("musique : $to n'accepte pas la recherche par intention"); done(false) }
+        }
+      }
       val started = connect(to, { ok -> if (ok) done(true) else last() }) { browser, finish ->
         try {
           MediaController(app, browser.sessionToken).transportControls.playFromSearch(query, extras)

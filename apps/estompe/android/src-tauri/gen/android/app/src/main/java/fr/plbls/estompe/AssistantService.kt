@@ -364,7 +364,14 @@ class AssistantService : Service() {
       DriveService.note("assistant : analyse impossible (${e.javaClass.simpleName})")
       Command.Unknown
     }
+    trace("entendu « $text »", c)
     if (c == Command.Unknown) understand(text, again) else run(c, again)
+  }
+
+  private fun trace(what: String, c: Command) {
+    if (!BuildConfig.DEBUG) return
+    val s = c.toString()
+    DriveService.note("assistant : $what → ${c.javaClass.simpleName}${if ('(' in s) s.substring(s.indexOf('(')) else ""}")
   }
 
   private fun understand(text: String, again: Boolean) {
@@ -381,6 +388,7 @@ class AssistantService : Service() {
       ui.postDelayed(unload, LLM_IDLE_MS)
       if (answered || destroyed || mine != turn) return@understand
       answered = true
+      trace("modèle de langue", c)
       guard { run(c, again) }
     }
   }
