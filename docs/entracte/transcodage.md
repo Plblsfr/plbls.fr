@@ -16,6 +16,8 @@ elle, loin de toute autre image clé, parce que ffmpeg ajuste lui-même la posit
 Le lecteur avance alors dans le flux jusqu'à `start` : l'image et le temps affiché sont ceux demandés. Une position à moins d'une seconde
 après une image clé repart de l'image clé d'avant. Sans image clé trouvée (conteneur que ffprobe ne sait pas parcourir ainsi, comme le
 MPEG-TS), la reprise reste approchée, à un groupe d'images près.
+La playlist n'est alors servie qu'une fois écrit le segment qui suit celui du point de reprise (5 s d'attente au plus) : servie plus tôt,
+le lecteur atteindrait la fin du premier segment avant de recharger la playlist et s'arrêterait quelques secondes.
 
 Paliers manuels, jamais au-dessus de la source : Originale (12 Mb/s au plus si réencodée), 1080p (8 Mb/s), 720p (4 Mb/s), 480p (1,5 Mb/s).
 Changer de piste audio, de palier ou de sous-titres rouvre un flux à la position courante (`start`) ; l'ancien est fermé et son
@@ -44,8 +46,11 @@ Le lecteur de l'app propose « Diffuser » quand le navigateur a l'API Remote Pl
 AirPlay depuis Safari) ; aucun script tiers n'est chargé. Le navigateur ouvre son choix d'appareil, puis la télé lit elle-même l'URL du
 flux, que son jeton signé suffit à ouvrir. La lecture, la pause et la position restent pilotées depuis l'app, qui continue d'enregistrer la progression.
 
-- Un flux HLS lu par hls.js ne se diffuse pas : au premier appui, le lecteur recharge le même flux dans le lecteur natif du navigateur
-  (s'il lit le HLS lui-même), puis ouvre le choix de l'appareil. Si le navigateur refuse alors faute de geste récent, un second appui suffit.
+- Un flux HLS lu par hls.js ne se diffuse pas. À l'appui, le lecteur demande d'abord au navigateur si un appareil existe (sonde sans
+  chargement) : sans appareil, la lecture en cours n'est pas touchée. Sinon il rouvre un flux à la position en cours dans le lecteur natif
+  du navigateur (s'il lit le HLS lui-même), puis ouvre le choix de l'appareil ; si le navigateur refuse alors faute de geste récent, un
+  second appui suffit. Le lecteur natif ne sait pas se déplacer dans un flux en cours d'écriture : chaque saut rouvre un flux, et la fin
+  de la diffusion revient à hls.js.
 - Les routes `/stream/…` répondent `Access-Control-Allow-Origin: *` (sans `Allow-Credentials`) à une origine hors de
   `ENTRACTE_ALLOWED_ORIGINS` : le récepteur d'une télé lit playlists et segments depuis sa propre origine. Seul le jeton de l'URL ouvre
   le flux ; aucune autre route n'est concernée.

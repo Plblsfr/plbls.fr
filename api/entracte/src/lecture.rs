@@ -31,6 +31,7 @@ use crate::{
 };
 
 const ATTENTE_PLAYLIST: Duration = Duration::from_secs(40);
+const ATTENTE_AVANCE: Duration = Duration::from_secs(5);
 const ATTENTE_SEGMENT: Duration = Duration::from_secs(30);
 const PAS: Duration = Duration::from_millis(150);
 
@@ -257,6 +258,7 @@ pub async fn ouvrir(
             hauteur,
             copie_video,
             debut: depart,
+            avance: (debut - decalage).max(0.0),
             mode: state.materiel().mode(),
             peripherique: state.config().peripherique.clone(),
         };
@@ -484,6 +486,26 @@ pub fn playlist_propre(brut: &str) -> String {
     sortie
 }
 
+pub fn playlist_suffisante(texte: &str, avance: f64) -> bool {
+    let durees: Vec<f64> = texte
+        .lines()
+        .filter_map(|l| l.strip_prefix("#EXTINF:"))
+        .filter_map(|l| l.split(',').next()?.trim().parse().ok())
+        .collect();
+    if durees.is_empty() {
+        return false;
+    }
+    if avance <= 0.0 || texte.contains("#EXT-X-ENDLIST") {
+        return true;
+    }
+    let mut fin = 0.0;
+    let depart = durees.iter().position(|d| {
+        fin += d;
+        fin > avance
+    });
+    depart.is_some_and(|i| i + 1 < durees.len())
+}
+
 pub async fn hls(
     State(state): State<AppState>,
     Path(jeton): Path<String>,
@@ -495,11 +517,23 @@ pub async fn hls(
     }
     let _garde = state.flux().lecture(&a.flux);
     let limite = Instant::now() + ATTENTE_PLAYLIST;
+    let patience = Instant::now() + ATTENTE_AVANCE;
+    let avance = state
+        .transcodeur()
+        .parametres(&a.flux)
+        .map_or(0.0, |p| p.avance);
     let mut relance = false;
     loop {
         if let Some(d) = state.transcodeur().dossier(&a.flux)
             && let Ok(texte) = tokio::fs::read_to_string(d.join(PLAYLIST)).await
-            && texte.contains("#EXTINF")
+            && playlist_suffisante(
+                &texte,
+                if Instant::now() > patience {
+                    0.0
+                } else {
+                    avance
+                },
+            )
         {
             let mut r = Response::new(Body::from(playlist_propre(&texte)));
             entetes_de_flux(&mut r, "application/vnd.apple.mpegurl");
@@ -799,6 +833,21 @@ mod tests {
         ] {
             assert_eq!(plage(&h(faux), 100), Err(()), "{faux}");
         }
+    }
+
+    #[test]
+    fn playlist_servie_quand_elle_depasse_le_segment_de_depart() {
+        let p = |n: usize| "#EXTM3U\n".to_string() + &"#EXTINF:10.000000,\nseg.ts\n".repeat(n);
+        assert!(!playlist_suffisante("#EXTM3U\n", 0.0));
+        assert!(playlist_suffisante(&p(1), 0.0));
+        assert!(
+            !playlist_suffisante(&p(1), 7.0),
+            "le lecteur s'arrêterait à 10 s"
+        );
+        assert!(playlist_suffisante(&p(2), 7.0));
+        assert!(!playlist_suffisante(&p(2), 12.0));
+        assert!(playlist_suffisante(&p(3), 12.0));
+        assert!(playlist_suffisante(&(p(1) + "#EXT-X-ENDLIST\n"), 7.0));
     }
 
     #[test]
