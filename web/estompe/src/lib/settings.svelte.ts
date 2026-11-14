@@ -3,6 +3,7 @@ import type { IconName } from '../components/Icon.svelte'
 export const SETTINGS_TABS = [
   { id: 'account', label: 'Compte' },
   { id: 'notifications', label: 'Notifications' },
+  { id: 'assistant', label: 'Assistant vocal' },
   { id: 'voice', label: 'Voix et vidéo' },
   { id: 'appearance', label: 'Apparence' },
   { id: 'app', label: 'Application' },
@@ -11,14 +12,18 @@ export const SETTINGS_TABS = [
 ] as const
 export type SettingsTab = (typeof SETTINGS_TABS)[number]['id']
 
+export const SETTINGS_BETA: readonly SettingsTab[] = ['assistant']
+
 export const SETTINGS_ICONS: Record<SettingsTab, IconName> = {
-  account: 'perso', notifications: 'cloche', voice: 'mic', appearance: 'soleil', app: 'telecharge', debug: 'bug', reports: 'drapeau',
+  account: 'perso', notifications: 'cloche', assistant: 'onde', voice: 'mic', appearance: 'soleil', app: 'telecharge', debug: 'bug', reports: 'drapeau',
 }
 
 export const SETTINGS_INDEX: Record<SettingsTab, readonly string[]> = {
   account: ['Avatar', 'Photo de profil par serveur', 'Se déconnecter', 'Profil', 'Session'],
   notifications: ['Messages privés et mentions', 'Notification de test', 'Ne pas déranger', 'Types de notifications', 'Messages privés', 'Mentions', 'Messages de salon',
     'Activité vocale', 'Contenu et son', 'Aperçu des notifications', 'Son à la réception', 'Par serveur et par salon', 'Ignorer @everyone et @here', 'Push'],
+  assistant: ['Mot d\'éveil', 'Écoute', 'Applications lues', 'Annoncer les messages', 'Application de musique', 'Déclenchement par bouton', 'Autorisations',
+    'Dictée des ordres', 'Compréhension étendue'],
   voice: ['Micro', 'Sortie audio', 'Caméra', 'Volume du micro', 'Réduction de bruit', 'Activation du micro', 'Détection de voix', 'Push-to-talk', 'Tester mon micro',
     'Seuil de voix', 'Regarder automatiquement les streams', "Sons d'arrivée et de départ", 'Volume des sons', "Son de l'écran", 'Qualité de la caméra', 'Codec vidéo',
     'Arrière-plan de la caméra', 'Flou', 'Incrustation caméra', "Afficher ce que j'écoute", "Résolution du partage d'écran", 'Images par seconde'],

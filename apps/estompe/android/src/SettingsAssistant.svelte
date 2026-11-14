@@ -57,7 +57,6 @@
   })
 </script>
 
-<h3 class="set-sub">Assistant vocal</h3>
 <p class="v-note">
   Réveillé par le mot « Estompe », il écoute et comprend sur le téléphone : rien ne part vers un serveur.
   Essaie « Estompe, lis mes messages », « Estompe, envoie un SMS à Marie », « Estompe, mets Daft Punk » ou « Estompe, lance YouTube Music ».

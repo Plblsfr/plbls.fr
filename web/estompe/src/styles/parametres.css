@@ -16,6 +16,7 @@
 .p-onglet:focus-visible { outline: none; box-shadow: var(--anneau); }
 .p-onglet .icon { flex: none; }
 .p-onglet-txt { display: flex; flex-direction: column; min-width: 0; }
+.p-beta { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px; background: var(--rose-doux); color: var(--rose-texte); font-family: var(--f-texte, inherit); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; vertical-align: middle; }
 .p-onglet-hits { font-size: 12px; font-weight: 400; color: var(--gris); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-vide { padding: 8px 10px; }
 .p-version { margin-top: auto; padding: 10px; font-size: 11px; color: var(--gris); }

@@ -6,7 +6,7 @@ Il complète le [mode conduite](android-voiture.md), dont il réutilise la synth
 
 ## Activer
 
-Paramètres › Notifications › **Assistant vocal** :
+Paramètres › **Assistant vocal** (onglet marqué « bêta », présent dans l'app Android seulement) :
 
 | Réglage | Effet |
 |---|---|

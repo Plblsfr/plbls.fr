@@ -6,6 +6,7 @@ import { nativeBridge, nativeSession } from './bridge'
 import { openFromNotification, setupLinks } from './links'
 import { notifications } from './notifications'
 import SettingsDrive from './SettingsDrive.svelte'
+import SettingsAssistant from './SettingsAssistant.svelte'
 import { setupBgAudio } from './bgaudio.svelte'
 import SettingsBgAudio from './SettingsBgAudio.svelte'
 import { setupPip } from './pip.svelte'
@@ -27,7 +28,7 @@ export const platform: Platform = {
     },
   },
   spaces: [],
-  slots: { get settingsNotifications() { return nativeBridge()?.driveSettings ? SettingsDrive : undefined }, get settingsVoice() { return nativeBridge()?.pipState ? SettingsPlayer : undefined }, get settingsDebug() { return nativeBridge()?.bgAudioUpdate ? SettingsBgAudio : undefined } },
+  slots: { get settingsNotifications() { return nativeBridge()?.driveSettings ? SettingsDrive : undefined }, get settingsAssistant() { return nativeBridge()?.assistantSettings ? SettingsAssistant : undefined }, get settingsVoice() { return nativeBridge()?.pipState ? SettingsPlayer : undefined }, get settingsDebug() { return nativeBridge()?.bgAudioUpdate ? SettingsBgAudio : undefined } },
   voiceCall,
   start() { setupLinks(); setupVoiceCall(); setupPip(); setupBgAudio() },
   windows: {},

@@ -3,7 +3,6 @@
   import { nativeBridge } from './bridge'
   import { parseChoices, parseDrive, type DriveSettings } from './drive'
   import { debug } from '../../../../web/estompe/src/lib/debuglog.svelte'
-  import SettingsAssistant from './SettingsAssistant.svelte'
   import { notify } from '../../../../web/estompe/src/lib/ui'
 
   const bridge = nativeBridge()
@@ -111,4 +110,3 @@
   </div>
 {/if}
 
-{#if bridge?.assistantSettings}<SettingsAssistant />{/if}

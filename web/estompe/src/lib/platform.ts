@@ -104,6 +104,8 @@ export interface Platform {
     /** Réglages › Application : mise à jour de l'app. */
     settingsUpdate?: Component
     settingsNotifications?: Component
+    /** Réglages › Assistant vocal : onglet affiché seulement si la plateforme le fournit. */
+    settingsAssistant?: Component
     settingsVoice?: Component
     settingsPtt?: Component
     settingsShare?: Component
