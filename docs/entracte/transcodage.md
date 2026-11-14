@@ -16,6 +16,8 @@ elle, loin de toute autre image clé, parce que ffmpeg ajuste lui-même la posit
 Le lecteur avance alors dans le flux jusqu'à `start` : l'image et le temps affiché sont ceux demandés. Une position à moins d'une seconde
 après une image clé repart de l'image clé d'avant. Sans image clé trouvée (conteneur que ffprobe ne sait pas parcourir ainsi, comme le
 MPEG-TS), la reprise reste approchée, à un groupe d'images près.
+La playlist n'est alors servie qu'une fois écrit le segment qui suit celui du point de reprise (5 s d'attente au plus) : servie plus tôt,
+le lecteur atteindrait la fin du premier segment avant de recharger la playlist et s'arrêterait quelques secondes.
 
 Paliers manuels, jamais au-dessus de la source : Originale (12 Mb/s au plus si réencodée), 1080p (8 Mb/s), 720p (4 Mb/s), 480p (1,5 Mb/s).
 Changer de piste audio, de palier ou de sous-titres rouvre un flux à la position courante (`start`) ; l'ancien est fermé et son
