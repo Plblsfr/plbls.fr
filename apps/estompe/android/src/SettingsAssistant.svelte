@@ -85,6 +85,17 @@
 </div>
 
 <div class="plbls-field">
+  <span class="plbls-field__label">Déclenchement par bouton</span>
+  <p class="v-note">
+    Choisis Estompe comme assistant numérique du téléphone : un appui long sur le bouton d'alimentation ou d'accueil, le geste d'assistant,
+    ou le bouton de commande vocale du volant ou d'un casque Bluetooth lance l'écoute d'un ordre, sans dire « Estompe ».
+    Le micro n'est ouvert que le temps de l'ordre : aucune consommation le reste du temps, même avec l'écoute réglée sur « Éteint ».
+  </p>
+  <p class="v-note">{st.role ? 'Estompe est l\'assistant du téléphone.' : 'Estompe n\'est pas l\'assistant du téléphone.'}</p>
+  {#if !st.role}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('role')}>Choisir l'assistant du téléphone</button>{/if}
+</div>
+
+<div class="plbls-field">
   <span class="plbls-field__label">Autorisations</span>
   <p class="v-note">Micro : {st.mic ? 'accordé.' : 'manquant.'}</p>
   {#if !st.mic}<button class="plbls-button plbls-button--compact" onclick={() => bridge?.assistantGrant?.('mic')}>Autoriser le micro</button>{/if}

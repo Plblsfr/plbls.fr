@@ -3,6 +3,7 @@ package fr.plbls.estompe
 import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
+import android.app.role.RoleManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -168,6 +169,7 @@ class AssistantService : Service() {
   private var llm: Llm? = null
   private val tones = HashSet<ToneGenerator>()
   private var awake: PowerManager.WakeLock? = null
+  private var pendingAsk = false
   private val resumeLater = Runnable { resume() }
   private val unload = Runnable { closeLlm() }
   private val tick = object : Runnable {
@@ -208,8 +210,11 @@ class AssistantService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
+    val ask = intent?.action == ACTION_ASK
+    if (ask) pendingAsk = true
     if (started) foreground(true) else begin()
     starting = false
+    if (ask) ask(0)
     return START_NOT_STICKY
   }
 
@@ -275,7 +280,7 @@ class AssistantService : Service() {
     val stop = PendingIntent.getService(this, 11, Intent(this, AssistantService::class.java).setAction(ACTION_STOP),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     return NotificationCompat.Builder(this, "drive").setSmallIcon(R.drawable.ic_notification).setColor(getColor(R.color.notification_accent))
-      .setContentTitle("Assistant vocal").setContentText(text ?: notice ?: "Dis “Estompe” pour donner un ordre.")
+      .setContentTitle("Assistant vocal").setContentText(text ?: notice ?: if (wanted()) "Dis “Estompe” pour donner un ordre." else "Ordre en cours.")
       .setOngoing(true).setOnlyAlertOnce(true).setSilent(true).setPriority(NotificationCompat.PRIORITY_LOW).setContentIntent(open)
       .addAction(0, "Arrêter", stop).build()
   }
@@ -290,13 +295,18 @@ class AssistantService : Service() {
       voice.cancel()
       done()
     }
+    if (!busy && !pendingAsk && !wanted()) {
+      listening = false
+      stopSelf()
+      return
+    }
     if (!VoiceService.running) return resume()
     voice.unwatch()
     listening = false
   }
 
   private fun resume() {
-    if (destroyed || !started || busy || Mic.busy || VoiceService.running) return
+    if (destroyed || !started || busy || Mic.busy || VoiceService.running || !wanted()) return
     voice.watch(::heard) { on, failed ->
       listening = on
       if (failed && !destroyed && ++failures >= MAX_FAILURES) {
@@ -306,10 +316,22 @@ class AssistantService : Service() {
     }
   }
 
+  private fun wanted() = shouldRun(AssistantStore(this).load(), DriveService.running)
+
+  private fun ask(tries: Int) {
+    if (destroyed || !started || busy || VoiceService.running) { pendingAsk = false; return }
+    if (!voice.isReady && tries < ASK_TRIES) { ui.postDelayed({ ask(tries + 1) }, ASK_WAIT_MS); return }
+    pendingAsk = false
+    wake("")
+  }
+
   private fun heard(text: String) {
     failures = 0
+    wake(wakeWord(text) ?: return)
+  }
+
+  private fun wake(order: String) {
     if (busy || destroyed) return
-    val order = wakeWord(text) ?: return
     if (!voice.isReady) {
       DriveService.note("assistant : ordre refusé, synthèse vocale pas prête")
       tone(ToneGenerator.TONE_PROP_NACK)
@@ -645,6 +667,7 @@ class AssistantService : Service() {
   companion object {
     const val ACTION_SYNC = "fr.plbls.estompe.assistant.SYNC"
     const val ACTION_STOP = "fr.plbls.estompe.assistant.STOP"
+    const val ACTION_ASK = "fr.plbls.estompe.assistant.ASK"
     private const val NOTIF_ID = 4245
     private const val PAUSE_ID = 4246
     private const val TICK_MS = 3_000L
@@ -657,6 +680,8 @@ class AssistantService : Service() {
     private const val CONFIRM_MS = 7_000
     private const val TONE_MS = 150
     private const val HIDE_MS = 2_500L
+    private const val ASK_TRIES = 25
+    private const val ASK_WAIT_MS = 200L
     private const val SPOKEN_MAX = 300
     private const val MAX_FAILURES = 5
     private const val BUSY_MAX_MS = 90_000L
@@ -673,7 +698,7 @@ class AssistantService : Service() {
 
     fun sync(c: Context) {
       try {
-        if (!shouldRun(AssistantStore(c).load(), DriveService.running)) return stop(c)
+        if (!shouldRun(AssistantStore(c).load(), DriveService.running)) { if (alive) return; return stop(c) }
         if (alive) return
         (blocked(c) ?: hidden())?.let { listening = false; return pause(c, it) }
         starting = true
@@ -685,6 +710,23 @@ class AssistantService : Service() {
         pause(c, PAUSE_BACKGROUND)
       }
     }
+
+    fun ask(c: Context): Boolean {
+      try {
+        if (blocked(c) != null) return false
+        starting = true
+        ContextCompat.startForegroundService(c, Intent(c, AssistantService::class.java).setAction(ACTION_ASK))
+        return true
+      } catch (e: Exception) {
+        starting = false
+        DriveService.note("assistant sur demande : ${e.javaClass.simpleName}")
+        return false
+      }
+    }
+
+    fun assistantRole(c: Context): Boolean = try {
+      Build.VERSION.SDK_INT >= 29 && c.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+    } catch (e: Exception) { false }
 
     fun stop(c: Context) {
       listening = false

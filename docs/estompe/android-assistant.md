@@ -36,6 +36,17 @@ Tant que l'écoute est active, une notification permanente « Assistant vocal »
 Android interdit de rouvrir le micro depuis l'arrière-plan : après un redémarrage du téléphone, ou quand le mode conduite démarre seul
 à la connexion Bluetooth, la notification « Assistant vocal en pause » demande d'ouvrir Estompe pour relancer l'écoute.
 
+## Déclenchement par bouton
+
+Estompe peut être choisie comme **assistant numérique** du téléphone (réglages système › Applications par défaut ; bouton dans les réglages de l'assistant).
+Le geste d'assistant du système (appui long sur le bouton d'alimentation ou d'accueil, balayage depuis un coin) ou le bouton de commande vocale d'un volant
+ou d'un casque Bluetooth ouvre alors `AssistActivity`, une activité transparente qui lance l'écoute d'un seul ordre, après le signal sonore, sans mot d'éveil.
+
+Le micro n'est ouvert que le temps de l'ordre et le service s'arrête ensuite : rien ne tourne entre deux ordres. Cela marche quel que soit le réglage
+« Écoute », y compris « Éteint », et après un redémarrage du téléphone, puisque c'est l'activité qui met Estompe au premier plan avant d'ouvrir le micro.
+L'activité s'affiche sur l'écran de verrouillage : comme pour le mot d'éveil, la relecture avant envoi est la seule barrière.
+L'ordre est écouté par le micro du téléphone, pas par celui de la voiture.
+
 ## Ordres
 
 L'ordre se dit d'une traite après le mot d'éveil (« Estompe, lis mes messages »), ou après le signal sonore si l'on ne dit que « Estompe ».
@@ -92,6 +103,7 @@ il est chargé à la demande et libéré après deux minutes sans usage. Sans lu
 | `Assistant.kt` | logique pure : mot d'éveil, motifs des ordres, rapprochement des contacts, annonce des messages |
 | `AssistantService.kt` | service au premier plan : veille du mot d'éveil, dialogues, réglages (`AssistantStore`) |
 | `AssistantOverlay.kt` | bandeau affiché par-dessus les autres applications |
+| `AssistActivity.kt` | déclenchement par le geste d'assistant du système ou le bouton vocal Bluetooth |
 | `Voice.kt` | synthèse, écoute Vosk, focus audio, arbitre du micro ; partagé avec `DriveService` |
 | `Messages.kt` | SMS et contacts (`Phone`) |
 | `AssistantListener.kt` | notifications des autres messageries, sessions média |
