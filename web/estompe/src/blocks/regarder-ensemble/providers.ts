@@ -1,6 +1,6 @@
 import { filmsApi, ApiError } from '../../lib/api'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, needsReopen, saveDue, savedQuality, saveQuality, support, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
+import { absolute, castRefusal, needsReopen, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
@@ -14,6 +14,8 @@ export interface Handlers {
   /** Le navigateur ou la webview a refusé la lecture automatique. */
   onBlocked?(): void
   onTracks?(t: FilmTracks): void
+  /** Diffusion sur un autre appareil (télé) : absente tant que le lecteur ne l'annonce pas. */
+  onCast?(s: CastState): void
 }
 
 /**
@@ -31,6 +33,8 @@ export interface Adapter {
   setSubtitle?(n: number | null): void
   /** Palier de qualité (Entracte) : rouvre le flux à la même position. */
   setQuality?(q: Quality): void
+  /** Ouvre le choix de l'appareil du navigateur ; renvoie le message à afficher si la diffusion n'a pas pu être proposée. */
+  cast?(): Promise<string | null>
   load(ref: string, start: number, play: boolean): void
   play(): void
   pause(): void
@@ -150,7 +154,9 @@ const youtube: Factory = async (el, h) => {
 
 const isHls = (u: string) => /\.m3u8(\?|#|$)/i.test(u)
 
-function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter: Adapter; video: HTMLVideoElement } {
+const HLS_MIME = 'application/vnd.apple.mpegurl'
+
+function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false): { adapter: Adapter; video: HTMLVideoElement } {
   const v = document.createElement('video')
   v.playsInline = true
   if (crossOrigin) v.crossOrigin = 'anonymous'
@@ -186,10 +192,10 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
         v.addEventListener('loadedmetadata', go, { once: true })
         v.load()
       }
-      if (isHls(ref)) {
+      if (isHls(ref) && !(nativeHls() && v.canPlayType(HLS_MIME))) {
         void import('hls.js').then(({ default: Hls }) => {
           if (!Hls.isSupported()) {
-            if (v.canPlayType('application/vnd.apple.mpegurl')) return native()
+            if (v.canPlayType(HLS_MIME)) return native()
             return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
           }
           const l = new Hls({ enableWorker: false })
@@ -202,7 +208,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false): { adapter
           l.on(Hls.Events.MANIFEST_PARSED, go)
           l.loadSource(ref)
           l.attachMedia(v)
-        }).catch(() => v.canPlayType('application/vnd.apple.mpegurl') ? native() : h.onError("Le lecteur HLS n'a pas pu être chargé."))
+        }).catch(() => v.canPlayType(HLS_MIME) ? native() : h.onError("Le lecteur HLS n'a pas pu être chargé."))
         return
       }
       native()
@@ -234,6 +240,7 @@ const film: Factory = async (el, h) => {
   let savedAt = 0
   let position = 0
   let guet: ReturnType<typeof setTimeout> | undefined
+  let tele = false
   const store = () => { try { return localStorage } catch { return null } }
 
   const close = () => { if (stream) void filmsApi.close(stream.stream_id).catch(() => {}); stream = null }
@@ -294,7 +301,32 @@ const film: Factory = async (el, h) => {
     ...h,
     onState: (s) => { if (s === 'playing') { retried = false; clearTimeout(guet) } h.onState(s) },
     onError: repli,
-  }, true)
+  }, true, () => tele)
+  const remote = video.remote as RemotePlayback | undefined
+  const ask = async (): Promise<string | null> => {
+    try { await remote!.prompt(); return null } catch (e) {
+      const name = e instanceof DOMException ? e.name : ''
+      debug.log('info', 'lecteur', `diffusion non proposée : ${name || String(e)}`)
+      return castRefusal(name)
+    }
+  }
+  const cast = async (): Promise<string | null> => {
+    if (!stream) return null
+    if (stream.mode !== 'hls' || tele) return ask()
+    if (!video.canPlayType(HLS_MIME)) return castRefusal('NotSupportedError')
+    tele = true
+    const p = stream
+    const loaded = new Promise<void>((ok) => video.addEventListener('loadedmetadata', () => ok(), { once: true }))
+    adapter.load(filmsApi.base + p.url, video.currentTime, !video.paused)
+    await loaded
+    return gone || stream !== p ? null : ask()
+  }
+  if (remote) {
+    for (const ev of ['connecting', 'connect', 'disconnect']) remote.addEventListener(ev, () => { if (!gone) h.onCast?.(remote.state) })
+    remote.watchAvailability(() => {}).then((n) => remote.cancelWatchAvailability(n).catch(() => {}), (e: unknown) => {
+      if (e instanceof DOMException && e.name === 'NotSupportedError') throw e
+    }).then(() => { if (!gone) h.onCast?.(remote.state) }, () => {})
+  }
   video.addEventListener('loadedmetadata', () => {
     if (stream?.mode === 'direct' && video.videoWidth === 0) {
       debug.log('warn', 'lecteur', 'lecture directe sans piste vidéo décodable')
@@ -327,11 +359,13 @@ const film: Factory = async (el, h) => {
       quality = savedQuality(store())
       forceHls = false
       retried = false
+      tele = false
       void open(start, play)
     },
     setAudio: (n) => { audio = n; void open(now(), !video.paused) },
     setSubtitle: (n) => { sub = n; showSubtitle() },
     setQuality: (q) => { quality = q; saveQuality(store(), q); void open(now(), !video.paused) },
+    ...(remote ? { cast } : {}),
     destroy: () => { gone = true; clearTimeout(guet); window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },
   }
 }

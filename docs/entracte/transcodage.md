@@ -31,6 +31,19 @@ droits ; une requête qui porte la session d'une autre personne est refusée. Au
 - Un flux sans requête depuis `ENTRACTE_INACTIVITE_SECONDES` (300) est fermé : ffmpeg est arrêté et ses fichiers supprimés.
   Le dossier temporaire est vidé au démarrage.
 
+## Diffusion sur une télé
+
+Le lecteur de l'app propose « Diffuser » quand le navigateur a l'API Remote Playback (`video.remote` : Chromecast depuis Chrome et Edge,
+AirPlay depuis Safari) ; aucun script tiers n'est chargé. Le navigateur ouvre son choix d'appareil, puis la télé lit elle-même l'URL du
+flux, que son jeton signé suffit à ouvrir. La lecture, la pause et la position restent pilotées depuis l'app, qui continue d'enregistrer la progression.
+
+- Un flux HLS lu par hls.js ne se diffuse pas : au premier appui, le lecteur recharge le même flux dans le lecteur natif du navigateur
+  (s'il lit le HLS lui-même), puis ouvre le choix de l'appareil. Si le navigateur refuse alors faute de geste récent, un second appui suffit.
+- Les routes `/stream/…` répondent `Access-Control-Allow-Origin: *` (sans `Allow-Credentials`) à une origine hors de
+  `ENTRACTE_ALLOWED_ORIGINS` : le récepteur d'une télé lit playlists et segments depuis sa propre origine. Seul le jeton de l'URL ouvre
+  le flux ; aucune autre route n'est concernée.
+- Les sous-titres ne suivent pas sur la télé. Sans cette API, ou si le navigateur ou la webview la désactive, le bouton n'apparaît pas.
+
 ## Accélération matérielle
 
 `ENTRACTE_TRANSCODE_MODE` : `cpu` (défaut, libx264), `vaapi` (Intel ou AMD), `qsv` (Intel Quick Sync), `nvenc` (NVIDIA).

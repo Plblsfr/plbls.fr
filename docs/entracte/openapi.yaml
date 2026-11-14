@@ -10,6 +10,7 @@ info:
     Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
     vérifié par `GET /auth/me` du gateway. Droits : permissions aegis `entracte:access`, `entracte:request`, `entracte:admin`,
     fermées par défaut. Requêtes modifiantes avec cookie : `Origin` dans `ENTRACTE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
+    Les flux signés (`/stream/…`) acceptent toute origine en lecture (`Access-Control-Allow-Origin: *`, sans cookie) : une télé les lit depuis sa propre origine.
     Erreurs : `{"error": "<code>", "message": "…"}`.
 servers:
   - url: https://entracte-api.plbls.fr

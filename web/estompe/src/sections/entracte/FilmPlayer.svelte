@@ -7,7 +7,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { clock, fullTitle, QUALITY_LABEL, resumeAt, trackName, type FilmDetail, type FilmTracks } from './films'
+  import { clock, fullTitle, QUALITY_LABEL, resumeAt, trackName, type CastState, type FilmDetail, type FilmTracks } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -25,6 +25,7 @@
   let panel = $state(false)
   let picker = $state(false)
   let error = $state('')
+  let cast = $state<CastState | null>(null)
 
   const playing = $derived(st === 'playing' || st === 'buffering')
   const back = $derived(item?.series_id ? hrefs.films('item', item.series_id) : hrefs.films('item', id))
@@ -32,6 +33,8 @@
   const toggle = () => (playing ? player?.pause() : player?.play())
   const seek = (s: number) => { player?.seek(Math.max(0, duration ? Math.min(s, duration) : s)); position = s }
   const fullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root?.requestFullscreen().catch(() => {}) }
+
+  const diffuser = async () => { const m = await player?.cast?.(); if (m) notify.fail(m) }
 
   const toggleMute = () => { muted = !muted; if (!muted && volume === 0) volume = 100 }
 
@@ -48,6 +51,7 @@
         onState: (s) => { st = s; if (s === 'playing') error = '' },
         onError: (m) => { error = m },
         onTracks: (t) => { tracks = t },
+        onCast: (s) => { cast = s },
       })
       if (gone) { a.destroy(); return }
       player = a
@@ -70,6 +74,9 @@
       <div class="watch-msg plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>
     {:else if !playing && item}
       <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
+    {/if}
+    {#if cast === 'connected' && !error}
+      <div class="watch-msg film-cast" role="status"><Icon name="diffuser" size={18} /> Diffusion sur un autre appareil</div>
     {/if}
     {#if panel && tracks}
       <section class="film-tracks-panel" aria-label="Pistes">
@@ -104,6 +111,7 @@
       <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
       <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" oninput={(e) => { volume = Number(e.currentTarget.value); muted = volume === 0 }} />
       {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}><Icon name="bulle" size={16} /> {tracks.qualities && tracks.qualities.length > 1 ? 'Audio, sous-titres, qualité' : 'Audio et sous-titres'}</button>{/if}
+      {#if cast && player?.cast}<button class="watch-btn" onclick={diffuser} aria-label={cast === 'disconnected' ? 'Diffuser sur une télé' : 'Diffusion en cours, changer d’appareil'} aria-pressed={cast !== 'disconnected'}><Icon name="diffuser" size={20} /></button>{/if}
       <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran"><Icon name="agrandir" size={20} /></button>
     </div>
   </div>

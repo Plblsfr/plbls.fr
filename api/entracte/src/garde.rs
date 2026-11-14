@@ -223,6 +223,19 @@ fn avec_cors(mut r: Response, origine: &HeaderValue) -> Response {
     r
 }
 
+fn avec_cors_de_flux(mut r: Response) -> Response {
+    let h = r.headers_mut();
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    h.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("Content-Range, Content-Length, Accept-Ranges"),
+    );
+    r
+}
+
 fn a_un_cookie(h: &HeaderMap) -> bool {
     h.get_all(header::COOKIE)
         .iter()
@@ -241,6 +254,27 @@ pub async fn politique_origine(
         .and_then(|o| o.to_str().ok())
         .unwrap_or_default();
     let autorisee = !texte.is_empty() && state.config().origines.iter().any(|o| o == texte);
+    let flux_ouvert = !autorisee
+        && origine.is_some()
+        && matches!(*req.method(), Method::GET | Method::OPTIONS)
+        && req.uri().path().starts_with("/stream/");
+    if flux_ouvert && req.method() == Method::OPTIONS {
+        let mut r = avec_cors_de_flux(StatusCode::NO_CONTENT.into_response());
+        let h = r.headers_mut();
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            HeaderValue::from_static("GET"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            HeaderValue::from_static("Range"),
+        );
+        h.insert(
+            header::ACCESS_CONTROL_MAX_AGE,
+            HeaderValue::from_static("600"),
+        );
+        return r;
+    }
     let cors = origine.filter(|_| autorisee);
     if let Some(o) = &cors
         && req.method() == Method::OPTIONS
@@ -271,6 +305,7 @@ pub async fn politique_origine(
     };
     match &cors {
         Some(o) => avec_cors(r, o),
+        None if flux_ouvert => avec_cors_de_flux(r),
         None => r,
     }
 }
