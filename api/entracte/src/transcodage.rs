@@ -20,6 +20,7 @@ pub struct Parametres {
     pub hauteur: Option<i64>,
     pub copie_video: bool,
     pub debut: f64,
+    pub avance: f64,
     pub mode: ModeMateriel,
     pub peripherique: String,
 }
@@ -352,6 +353,7 @@ mod tests {
             hauteur,
             copie_video: false,
             debut: 125.5,
+            avance: 0.0,
             mode,
             peripherique: "/dev/dri/renderD128".into(),
         }
