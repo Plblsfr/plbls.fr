@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.96.1",
+    "date": "2026-11-14",
+    "new": [
+      "Entracte : diffusez un film ou un épisode sur votre télé avec le nouveau bouton Diffuser du lecteur (Chromecast depuis Chrome ou Edge, AirPlay depuis Safari)."
+    ],
+    "fixes": [
+      "Entracte : les commandes du lecteur se masquent toutes seules pendant la lecture et reviennent au moindre geste.",
+      "Entracte : les sous-titres ne sont plus cachés sous la barre de commandes et restent calés sur l'image."
+    ]
+  },
+  {
     "version": "0.95.1",
     "date": "2026-11-13",
     "new": [],
