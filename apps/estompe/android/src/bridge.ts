@@ -13,7 +13,7 @@ export interface Bridge {
 
 export const nativeBridge = () => (window as unknown as { EstompeNative?: Bridge }).EstompeNative
 
-export type AssistantAction = 'save' | 'apps' | 'musicApps' | 'downloadLlm' | 'deleteLlm'
+export type AssistantAction = 'save' | 'apps' | 'musicApps' | 'downloadLlm' | 'deleteLlm' | 'record'
 export type SessionRequest = { op: 'login'; code: string; verifier: string; redirectUri: string } | { op: 'renew' } | { op: 'logout' } | { op: 'adopt'; refresh: string } | { op: 'screenshot' } | { op: 'assistant'; action: AssistantAction; settings?: unknown }
 export interface SessionReply { status: number; access_token?: string; expires_in?: number; error?: string; image?: string; value?: string }
 export type SessionCall = (r: SessionRequest) => Promise<SessionReply>

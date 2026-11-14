@@ -23,8 +23,8 @@ describe('parseAssistant', () => {
 
 describe('parseAssistantState', () => {
   it('lit l\'état du pont', () => {
-    const s = parseAssistantState('{"listening":true,"mic":true,"notifications":false,"sms":true,"contacts":true,"overlay":true,"battery":true,"role":true,"model":"ready","llm":"busy","llmAvailable":true}')
-    expect(s).toEqual({ listening: true, mic: true, notifications: false, sms: true, contacts: true, overlay: true, battery: true, role: true, model: 'ready', llm: 'busy', llmAvailable: true })
+    const s = parseAssistantState('{"listening":true,"mic":true,"notifications":false,"sms":true,"contacts":true,"overlay":true,"battery":true,"role":true,"debug":true,"record":true,"recordings":"/x","model":"ready","llm":"busy","llmAvailable":true}')
+    expect(s).toEqual({ listening: true, mic: true, notifications: false, sms: true, contacts: true, overlay: true, battery: true, role: true, debug: true, record: true, recordings: '/x', model: 'ready', llm: 'busy', llmAvailable: true })
   })
   it('garde un message d\'erreur de modèle tel quel', () => {
     expect(parseAssistantState('{"model":"Réseau indisponible","llm":"Disque plein"}')).toMatchObject({ model: 'Réseau indisponible', llm: 'Disque plein' })

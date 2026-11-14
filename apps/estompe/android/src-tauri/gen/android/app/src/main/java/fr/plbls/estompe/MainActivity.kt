@@ -163,6 +163,7 @@ class EstompeNative(private val activity: MainActivity) {
       "save" -> saveAssistantSettings(m.getJSONObject("settings"))
       "apps" -> choices(AssistantListener.messagingApps(activity))
       "musicApps" -> choices(MusicControl(activity).apps())
+      "record" -> { assistant.setRecording(m.getJSONObject("settings").optBoolean("on")); "" }
       "downloadLlm" -> { LlmModel.download(activity); "" }
       "deleteLlm" -> { LlmModel.delete(activity); "" }
       else -> return JSONObject().put("status", 400).put("error", "action inconnue")
@@ -190,6 +191,9 @@ class EstompeNative(private val activity: MainActivity) {
     .put("overlay", AssistantOverlay.allowed(activity))
     .put("battery", AssistantService.unrestricted(activity))
     .put("role", AssistantService.assistantRole(activity))
+    .put("debug", BuildConfig.DEBUG)
+    .put("record", assistant.recording())
+    .put("recordings", AssistantService.recordings(activity)?.path.orEmpty())
     .put("model", driveModel())
     .put("llm", if (LlmModel.state.isNotEmpty()) LlmModel.state else if (LlmModel.ready(activity)) "ready" else "")
     .put("llmAvailable", LlmModel.AVAILABLE && LlmModel.supported())

@@ -111,6 +111,23 @@ private val WAKE_SINGLE = setOf("estompe", "estompes", "estomp")
 private val WAKE_PAIRS = setOf("est tombe", "est tomb", "est tombes", "est tompe", "et stomp", "et stompe", "est tombee", "est tombees", "es tombe", "et tombe", "et tombee",
   "et tombes", "est tomber", "et tomber", "est tompes", "et tompe", "esse tombe")
 
+private val HEARD_AS_WAKE = setOf("estompe", "estompes", "estomp", "estampe", "estampes", "eston", "estons", "estant", "estante", "estombe", "estom", "aston", "estomper",
+  "estompent", "estompee", "instant", "instante", "esther")
+private val HEARD_AS_WAKE_PAIRS = setOf("est on", "est ton", "est tombe", "est tombee", "et on", "et ton", "es ton", "est en", "est dont")
+
+fun stripWake(heard: String): String? {
+  val words = heard.trim().split(SPACES).filter { it.isNotEmpty() }
+  val first = fold(words.firstOrNull() ?: return null)
+  val two = if (words.size >= 2) "$first ${fold(words[1])}" else ""
+  val drop = when {
+    first in HEARD_AS_WAKE_PAIRS -> 1
+    two in HEARD_AS_WAKE_PAIRS -> 2
+    first in HEARD_AS_WAKE -> 1
+    else -> return null
+  }
+  return words.drop(drop).joinToString(" ")
+}
+
 fun wakeWord(input: String): String? {
   val heard = bound(input)
   val tokens = fold(heard).split(" ").filter { it.isNotEmpty() }

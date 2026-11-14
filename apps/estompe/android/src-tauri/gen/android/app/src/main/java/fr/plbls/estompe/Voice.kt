@@ -354,7 +354,7 @@ class Voice(private val context: Context, private val settings: DriveSettings, p
             DriveService.note("micro : $e")
             end(null)
           }
-        }, if (bluetooth) 700L else 300L)
+        }, if (bluetooth) 700L else if (known != null) 100L else 300L)
       }
     }
   }

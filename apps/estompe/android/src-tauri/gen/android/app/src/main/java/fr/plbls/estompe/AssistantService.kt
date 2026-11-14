@@ -23,6 +23,12 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.concurrent.thread
 
 sealed class ReplyTo {
@@ -143,6 +149,10 @@ class AssistantStore(context: Context) {
 
   fun toJson(s: AssistantSettings = load()): JSONObject = settingsJson(s)
 
+  fun recording(): Boolean = BuildConfig.DEBUG && prefs.getBoolean("record", false)
+
+  fun setRecording(on: Boolean) { prefs.edit().putBoolean("record", BuildConfig.DEBUG && on).apply() }
+
   fun save(j: JSONObject) {
     val s = settingsFrom(j, load())
     prefs.edit().putString("scope", s.scope.name.lowercase()).putStringSet("apps", HashSet(s.apps)).putString("musicApp", s.musicApp)
@@ -193,6 +203,11 @@ class AssistantService : Service() {
     phone = Phone(this)
     music = MusicControl(this)
     overlay = AssistantOverlay(this)
+    if (BuildConfig.DEBUG) {
+      hearTrace = { DriveService.note("assistant : $it") }
+      val store = AssistantStore(this)
+      hearDump = { label, samples, count -> if (store.recording()) record(label, samples.copyOf(count)) }
+    }
     voice = Voice(this, DriveStore(this).load(), {
       if (notice != null) { notice = null; if (started && !destroyed) status() }
     }) { text ->
@@ -226,6 +241,8 @@ class AssistantService : Service() {
     listening = false
     if (busy) Mic.converse(false)
     if (Mic.freed === freed) Mic.freed = null
+    hearTrace = null
+    hearDump = null
     ui.removeCallbacksAndMessages(null)
     try { awake?.let { if (it.isHeld) it.release() } } catch (e: Exception) { DriveService.note("assistant : libération du verrou d'éveil ${e.javaClass.simpleName}") }
     awake = null
@@ -358,7 +375,7 @@ class AssistantService : Service() {
   }
 
   private fun execute(text: String, again: Boolean = false) {
-    overlay.show(heardText(text))
+    overlay.show(heardText(text), OverlayState.HEARD)
     status("Entendu : ${heardText(text)}")
     val c = try { parseCommand(text, apps) } catch (e: Exception) {
       DriveService.note("assistant : analyse impossible (${e.javaClass.simpleName})")
@@ -591,7 +608,7 @@ class AssistantService : Service() {
 
   private fun listen(ms: Int, pause: Boolean = false, known: Set<String>? = null, result: (String?) -> Unit) {
     val mine = turn
-    overlay.show(LISTENING)
+    overlay.show(LISTENING, OverlayState.LISTEN)
     status(LISTENING)
     voice.listen(ms, false, pause, known) { t ->
       if (destroyed || mine != turn) return@listen
@@ -672,6 +689,24 @@ class AssistantService : Service() {
     ui.postDelayed({ if (tones.remove(t)) try { t.release() } catch (e: Exception) {} }, TONE_MS + 250L)
   }
 
+  private fun record(label: String, samples: ShortArray) {
+    thread {
+      try {
+        val dir = recordings(this) ?: return@thread
+        dir.mkdirs()
+        val name = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date()) + "-$label.wav"
+        val data = ByteBuffer.allocate(44 + samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        data.put("RIFF".toByteArray()).putInt(36 + samples.size * 2).put("WAVEfmt ".toByteArray()).putInt(16).putShort(1).putShort(1)
+          .putInt(HEAR_RATE).putInt(HEAR_RATE * 2).putShort(2).putShort(16).put("data".toByteArray()).putInt(samples.size * 2)
+        for (s in samples) data.putShort(s)
+        File(dir, name).writeBytes(data.array())
+        dir.listFiles()?.sortedBy { it.name }?.dropLast(RECORD_MAX)?.forEach { it.delete() }
+      } catch (e: Exception) {
+        DriveService.note("assistant : enregistrement de diagnostic ${e.javaClass.simpleName}")
+      }
+    }
+  }
+
   private fun closeLlm() {
     ui.removeCallbacks(unload)
     try { llm?.close() } catch (e: Exception) { DriveService.note("assistant : libération du modèle de langue ${e.javaClass.simpleName}") }
@@ -695,6 +730,7 @@ class AssistantService : Service() {
     private const val TONE_MS = 150
     private const val HIDE_MS = 2_500L
     private const val ASK_TRIES = 25
+    private const val RECORD_MAX = 60
     private const val ASK_WAIT_MS = 200L
     private const val SPOKEN_MAX = 300
     private const val MAX_FAILURES = 5
@@ -737,6 +773,8 @@ class AssistantService : Service() {
         return false
       }
     }
+
+    fun recordings(c: Context): File? = try { c.getExternalFilesDir("assistant") } catch (e: Exception) { null }
 
     fun assistantRole(c: Context): Boolean = try {
       Build.VERSION.SDK_INT >= 29 && c.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true

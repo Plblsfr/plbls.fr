@@ -55,7 +55,7 @@ Un ordre non compris est redemandé une fois (« Je n'ai pas compris. Répétez 
 Dès que le mot d'éveil est reconnu, un bandeau s'affiche en haut de l'écran, par-dessus l'application en cours : « J'écoute… », puis la phrase
 comprise entre guillemets, puis ce que l'assistant répond. Il disparaît à la fin de l'ordre, ou d'un toucher. Sans l'autorisation d'affichage
 par-dessus les autres applications, seule la notification « Assistant vocal » suit ces étapes (« J'écoute… », « Entendu : … », « Je réponds… »).
-Le bandeau n'apparaît pas sur l'écran de verrouillage.
+Le bandeau suit le thème clair ou sombre du téléphone et n'apparaît pas sur l'écran de verrouillage.
 
 | Ordre | Exemples |
 |---|---|
@@ -102,6 +102,12 @@ Quand rien n'est compris, l'analyse réessaie en corrigeant les homophones coura
 « posait » pour « pause »…).
 
 Un nom de contact ou d'application absent du vocabulaire du modèle n'entre pas dans la grammaire : il reste reconnu, moins bien, par la dictée libre.
+
+### Diagnostic (version de test seulement)
+
+Dans un APK debug, le journal (`adb logcat -s EstompeDrive`) donne pour chaque ordre la phrase retenue, le résultat de la grammaire et celui de la dictée libre.
+Le réglage « Enregistrer le son des ordres », absent d'une version de production, garde en plus ces extraits en WAV dans le dossier de l'application
+(`adb pull /sdcard/Android/data/fr.plbls.estompe/files/assistant`), 60 fichiers au plus, pour mesurer la reconnaissance sur une vraie voix.
 
 ## Écran verrouillé
 

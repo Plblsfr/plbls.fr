@@ -11,7 +11,7 @@
   let apps = $state(parseChoices('[]'))
   let musicApps = $state(parseChoices('[]'))
 
-  async function ask(action: AssistantAction, settings?: AssistantSettings): Promise<string | undefined> {
+  async function ask(action: AssistantAction, settings?: unknown): Promise<string | undefined> {
     const r = await nativeSession()?.({ op: 'assistant', action, settings })
     return r?.status === 200 ? (r.value ?? '') : undefined
   }
@@ -83,6 +83,21 @@
     <p class="v-note">{st.listening ? 'À l\'écoute.' : s.scope === 'drive' ? 'En attente : l\'écoute démarre avec le mode conduite.' : 'Pas encore à l\'écoute : vérifie les autorisations et le modèle de dictée ci-dessous.'}</p>
   {/if}
 </div>
+
+{#if st.debug}
+  <div class="plbls-field">
+    <span class="plbls-field__label">Diagnostic (version de test)</span>
+    <label class="plbls-toggle">
+      <input class="plbls-toggle__input" type="checkbox" checked={st.record} onchange={(e) => { const on = e.currentTarget.checked; st = { ...st, record: on }; ask('record', { on }) }} />
+      <span class="plbls-toggle__piste"></span>
+      <span class="plbls-toggle__texte">Enregistrer le son des ordres</span>
+    </label>
+    <p class="v-note">
+      Garde sur le téléphone le son de la phrase qui contient le mot d'éveil et de chaque ordre, confirmation ou choix écouté (60 fichiers au plus),
+      pour mesurer la reconnaissance sur ta voix. La dictée d'un SMS après « Quel est le message ? » n'est pas enregistrée. Rien n'est envoyé. Dossier : {st.recordings || 'indisponible'}.
+    </p>
+  </div>
+{/if}
 
 <div class="plbls-field">
   <span class="plbls-field__label">Déclenchement par bouton</span>
