@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import android.provider.BaseColumns
 import android.provider.ContactsContract
 import android.provider.Telephony
@@ -119,6 +120,29 @@ class Phone(context: Context) {
     return found.sortedWith(compareBy<Sms>({ it.date }, { it.id }))
   }
 
+  fun mmsFrom(contact: Contact): Pair<Int, Long> {
+    if (!canReadSms() || contact.numbers.isEmpty()) return 0 to 0L
+    var count = 0
+    var newest = 0L
+    try {
+      app.contentResolver.query(Uri.parse("content://mms/inbox"), arrayOf(BaseColumns._ID, "date"), null, null, "date DESC")?.use { c ->
+        var n = 0
+        while (n < MMS_SCAN && c.moveToNext()) {
+          n++
+          val from = app.contentResolver.query(Uri.parse("content://mms/${c.getLong(0)}/addr"), arrayOf("address"), "type = 137", null, null)?.use { a ->
+            if (a.moveToFirst()) a.getString(0).orEmpty() else ""
+          }.orEmpty()
+          if (contact.numbers.none { samePhone(it, from) }) continue
+          count++
+          newest = maxOf(newest, c.getLong(1) * 1000)
+        }
+      }
+    } catch (e: Exception) {
+      DriveService.note("lecture des MMS d'un contact : ${e.javaClass.simpleName}")
+    }
+    return count to newest
+  }
+
   fun markSpoken(ids: Collection<Long>) {
     if (ids.isEmpty()) return
     try {
@@ -198,6 +222,7 @@ class Phone(context: Context) {
     private const val UNREAD_MAX = 50
     private const val UNREAD_AGE_MS = 7 * 86_400_000L
     private const val SCAN_MAX = 1000
+    private const val MMS_SCAN = 40
     private const val SEND_TIMEOUT_MS = 30_000L
     private const val EXTRA_PART = "part"
     private val COLUMNS = arrayOf(BaseColumns._ID, Telephony.TextBasedSmsColumns.ADDRESS, Telephony.TextBasedSmsColumns.BODY,

@@ -482,11 +482,20 @@ class AssistantService : Service() {
         return@background if (items.isEmpty()) finish("Je ne trouve aucun message de $name.") else readItems(items[0].heard.sender, items, single)
       }
       pickContact(name, found) { c ->
-        background({ phone.smsFrom(c) }) { list ->
+        background({ phone.smsFrom(c).also { found -> if (BuildConfig.DEBUG) traceContact(c, found, pending) } }) { list ->
           readItems(c.name, mergeUnread(list.orEmpty(), pending.filter { fromSender(name, c, it.sender) }, emptySet()), single)
         }
       }
     }
+  }
+
+  private fun traceContact(c: Contact, sms: List<Sms>, pending: List<Pending>) {
+    val day = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE)
+    val mms = phone.mmsFrom(c)
+    DriveService.note("assistant : contact « ${c.name} », ${c.numbers.size} numéro(s), ${sms.size} SMS reçus" +
+      (sms.lastOrNull()?.let { ", le plus récent du ${day.format(Date(it.date))}" } ?: "") +
+      ", ${mms.first} MMS récents" + (if (mms.first > 0) ", le plus récent du ${day.format(Date(mms.second))}" else "") +
+      ", ${pending.count { fromSender(c.name, c, it.sender) }} notification(s) en attente, applications lues : ${settings.apps.size}")
   }
 
   private fun readItems(name: String, items: List<Unread>, single: Boolean) {
