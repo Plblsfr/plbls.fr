@@ -316,6 +316,11 @@ html[data-theater] .watch-voice .vbtn.off, html[data-theater] .watch-voice .vspl
 .film-player-video .watch-video { position: absolute; inset: 0; }
 .film-player-video .watch-video > video { display: block; }
 .film-player-video .watch-msg { bottom: 120px; }
+.film-player-top, .film-player-bar, .film-player .watch-big { transition: opacity 0.3s ease; }
+.film-player.idle { cursor: none; }
+.film-player.idle :is(.film-player-top, .film-player-bar, .watch-big) { opacity: 0; pointer-events: none; }
+.film-player video::-webkit-media-text-track-container { transition: transform 0.3s ease; }
+.film-player:not(.idle) video::-webkit-media-text-track-container { transform: translateY(-120px); }
 .film-cast { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: var(--r); background: #1e1b19; }
 .film-player .watch-btn[aria-pressed='true'] { background: #5e2b40; }
 .film-tracks-panel { position: absolute; right: 14px; bottom: 120px; z-index: 2; display: flex; flex-direction: column; gap: 1px; width: min(240px, calc(100% - 28px)); max-height: calc(100% - 200px); overflow-y: auto; padding: 6px; border-radius: var(--r); background: #1e1b19; box-shadow: 0 0 0 1px rgb(255 255 255 / 10%), 0 12px 28px rgb(0 0 0 / 45%); }
@@ -350,6 +355,7 @@ html[data-theater] .watch-voice .vbtn.off, html[data-theater] .watch-voice .vspl
   .film-episode-art { width: 88px; }
   .film-tracks-panel { bottom: 170px; max-height: calc(100% - 260px); }
   .film-player-video .watch-msg { bottom: 170px; }
+  .film-player:not(.idle) video::-webkit-media-text-track-container { transform: translateY(-170px); }
   .film-art-title { font-size: 14px; }
   .film-hero { padding-inline: 16px; min-height: 320px; }
   .film-body { padding: 16px; }

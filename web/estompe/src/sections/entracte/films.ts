@@ -37,6 +37,8 @@ export const castRefusal = (name: string): string | null => CAST_REFUSALS[name] 
 export interface FilmReject { name: string; reason: string; seen_at: string }
 
 export const SAVE_EVERY_MS = 15_000
+/** Sans geste pendant ce temps, une lecture en cours masque ses commandes. */
+export const IDLE_MS = 2500
 
 export function saveDue(savedAt: number, now: number): boolean {
   return now - savedAt >= SAVE_EVERY_MS
@@ -83,6 +85,12 @@ export function saveQuality(store: Pick<Storage, 'setItem'> | null, q: Quality) 
 
 /** Position dans le titre d'après le temps du lecteur (un flux HLS d'Entracte commence à `offset`). */
 export const absolute = (t: number, offset: number) => t + offset
+
+/** Ramène les répliques d'une piste (horaires du titre) au temps du lecteur, dont le flux HLS commence à `offset`. */
+export function shiftCues(cues: ArrayLike<{ startTime: number; endTime: number }> | null | undefined, offset: number) {
+  if (!cues || !offset) return
+  for (let i = 0; i < cues.length; i++) { cues[i].startTime -= offset; cues[i].endTime -= offset }
+}
 
 /** Faut-il rouvrir le flux pour atteindre `target` ? (HLS : avant le début du flux ou au-delà de ce qui est transcodé) */
 export function needsReopen(target: number, offset: number, ready: number): boolean {
