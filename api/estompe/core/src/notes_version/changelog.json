@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.97.2",
+    "date": "2026-11-15",
+    "new": [
+      "Entracte : à l'acceptation d'une demande, choisissez le dossier, la qualité et les tags avant le lancement de la recherche.",
+      "Les partages d'écran sont plus fluides : une nouvelle option « Privilégier la fluidité » (activée par défaut) garde la cadence et baisse la résolution quand la connexion ou l'ordinateur ralentit."
+    ],
+    "fixes": [
+      "Entracte : reprendre un titre repart de la bonne image, sans retard ni début muet, et la lecture ne s'arrête plus juste après une reprise.",
+      "Entracte : le bouton Diffuser ne coupe plus la lecture et reprend à la position en cours.",
+      "Application Windows : le partage d'une fenêtre est beaucoup plus fluide."
+    ]
+  },
+  {
     "version": "0.96.1",
     "date": "2026-11-14",
     "new": [
