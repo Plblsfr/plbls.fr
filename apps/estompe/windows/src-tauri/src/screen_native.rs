@@ -125,7 +125,7 @@ mod imp {
                 let mut next = Instant::now();
                 // Mesures pour le mode debug (EST-50) : images reçues de la capture, publiées, et durée moyenne / max de conversion + envoi.
                 let (mut t0, mut got, mut sent, mut sum, mut max) = (Instant::now(), 0u32, 0u32, Duration::ZERO, Duration::ZERO);
-                crate::capture::run(&id, &flag, &AtomicU32::new(120), |img| {
+                crate::capture::run(&id, &flag, &AtomicU32::new(if id.starts_with("w:") { fps.clamp(1, 120) } else { 120 }), |img| {
                     let now = Instant::now();
                     got += 1;
                     if now.duration_since(t0) >= Duration::from_secs(2) {

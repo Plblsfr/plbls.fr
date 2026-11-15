@@ -4,6 +4,7 @@ mod mesures;
 mod overlay_natif;
 mod replay;
 mod capture;
+mod capture_fenetre;
 mod screen_native;
 #[cfg(all(windows, any(feature = "livekit-native", feature = "instant-replay")))]
 mod son_wasapi;

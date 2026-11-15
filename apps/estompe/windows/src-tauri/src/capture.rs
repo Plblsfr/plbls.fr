@@ -226,7 +226,13 @@ mod imp {
             }
             let _ = rec.stop();
         } else {
-            // Fenêtre : une capture par image (plus lente : quelques dizaines d'images/s au mieux).
+            #[cfg(feature = "capture-fenetre")]
+            if let Some(n) = id.strip_prefix("w:").and_then(|n| n.parse::<u32>().ok()) {
+                match crate::capture_fenetre::capturer(n as i32 as isize, fps.load(Ordering::Relaxed), stop_flag, &mut send) {
+                    Ok(()) => return,
+                    Err(e) => crate::debuglog::log("warn", "natif/partage", &format!("capture continue de la fenêtre interrompue, repli image par image : {e}")),
+                }
+            }
             while !stop_flag.load(Ordering::Relaxed) {
                 let t = Instant::now();
                 match grab_at(id) {

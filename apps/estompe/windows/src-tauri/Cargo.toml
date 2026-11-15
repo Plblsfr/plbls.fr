@@ -43,7 +43,8 @@ windows = { version = "0.62", optional = true, features = ["Foundation", "Graphi
 livekit = { version = "0.9", optional = true, default-features = false, features = ["native", "rustls-tls-webpki-roots"] }
 
 [features]
-livekit-native = ["dep:livekit", "dep:wasapi"]
+livekit-native = ["dep:livekit", "dep:wasapi", "capture-fenetre"]
+capture-fenetre = ["dep:windows"]
 instant-replay = ["dep:windows", "dep:wasapi", "dep:nnnoiseless"]
 overlay-natif = ["dep:slint", "dep:base64", "image/png", "image/webp", "image/gif"]
 
