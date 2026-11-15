@@ -9,12 +9,12 @@
 
   const RES_LABEL: Record<ScreenRes, string> = { '720p': '720p', '1080p': '1080p', '1440p': '1440p', '2160p': '4K' }
   const CAMERA_LABEL: Record<CameraQuality, string> = { '360p': '360p (connexion faible)', '720p': '720p (recommandé)', '1080p': '1080p (connexion rapide)' }
-  const PRESETS: { id: string; label: string; hint: string; res: ScreenRes; fps: ScreenFps }[] = [
-    { id: 'fluide', label: 'Fluide', hint: 'Jeux et vidéos : mouvement fluide', res: '1080p', fps: 60 },
-    { id: 'net', label: 'Net', hint: 'Documents et code : image nette', res: '1440p', fps: 30 },
-    { id: 'eco', label: 'Économie de données', hint: 'Connexion lente ou mobile', res: '720p', fps: 30 },
+  const PRESETS: { id: string; label: string; hint: string; res: ScreenRes; fps: ScreenFps; motion: boolean }[] = [
+    { id: 'fluide', label: 'Fluide', hint: 'Jeux et vidéos : mouvement fluide', res: '1080p', fps: 60, motion: true },
+    { id: 'net', label: 'Net', hint: 'Documents et code : image nette', res: '1440p', fps: 30, motion: false },
+    { id: 'eco', label: 'Économie de données', hint: 'Connexion lente ou mobile', res: '720p', fps: 30, motion: true },
   ]
-  const preset = (p: (typeof PRESETS)[number]) => { prefs.screenRes = p.res; prefs.screenFps = p.fps }
+  const preset = (p: (typeof PRESETS)[number]) => { prefs.screenRes = p.res; prefs.screenFps = p.fps; prefs.screenMotion = p.motion }
   const mbps = (bits: number) => `${(bits / 1e6).toFixed(bits < 1e7 ? 1 : 0).replace('.0', '')} Mb/s`
 
   // Choix effectif : ramené aux plafonds du serveur (affichés grisés dans les listes).
@@ -127,7 +127,7 @@
         {/if}
         <div class="presets" role="radiogroup" aria-label="Qualité du partage">
           {#each PRESETS as p (p.id)}
-            {@const on = eff.res === p.res && eff.fps === p.fps}
+            {@const on = eff.res === p.res && eff.fps === p.fps && prefs.screenMotion === p.motion}
             <button class="preset" class:sel={on} role="radio" aria-checked={on} onclick={() => preset(p)}><strong>{p.label}</strong><span class="small muted">{p.hint}</span></button>
           {/each}
         </div>
@@ -145,11 +145,16 @@
             {#each SCREEN_FPS as f (f)}<option value={f} disabled={f > voice.limits.fps}>{f} i/s{f > voice.limits.fps ? ' (non proposé par le serveur)' : ''}</option>{/each}
           </select>
           <p class="small muted">Partage : <strong>{RES_LABEL[eff.res]} · {eff.fps} i/s</strong>, environ {mbps(screenBitrate(eff.res, eff.fps))} montants.
-            {#if prefs.screenAuto}Si la connexion ou l'ordinateur ne suit pas, la qualité baisse toute seule (images/s d'abord, puis résolution).{:else}La qualité choisie est maintenue, même si la connexion est mauvaise.{/if}
+            {#if prefs.screenAuto}Si la connexion ou l'ordinateur ne suit pas, la qualité baisse toute seule ({prefs.screenMotion ? 'résolution d\'abord, puis images/s' : 'images/s d\'abord, puis résolution'}).{:else}La qualité choisie est maintenue, même si la connexion est mauvaise.{/if}
             {#if eff.fps > 60}Beaucoup de systèmes plafonnent la capture d'écran à 60 i/s.{/if}
             {#if SCREEN_RES[eff.res].height > 1080}Au-delà de 1080p, chaque spectateur consomme aussi beaucoup côté serveur.{/if}</p>
         </div>
         </details>
+        <label class="plbls-checkbox">
+          <input class="plbls-checkbox__input" type="checkbox" bind:checked={prefs.screenMotion} />
+          <span class="plbls-checkbox__case"></span>
+          <span class="plbls-checkbox__texte">Privilégier la fluidité (jeux, vidéos) plutôt que la netteté du texte</span>
+        </label>
         <label class="plbls-checkbox">
           <input class="plbls-checkbox__input" type="checkbox" bind:checked={prefs.screenAuto} />
           <span class="plbls-checkbox__case"></span>

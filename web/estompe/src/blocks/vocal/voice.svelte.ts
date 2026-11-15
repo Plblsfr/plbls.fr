@@ -33,11 +33,15 @@ export function clampScreen(res: ScreenRes, fps: ScreenFps, max: { fps: number; 
 }
 
 /** Palier inférieur quand la connexion ou le processeur ne suivent pas : d'abord les images/s, puis la résolution. */
-export function stepDown(c: { res: ScreenRes; fps: ScreenFps }): { res: ScreenRes; fps: ScreenFps } | null {
-  if (c.fps > 30) return { res: c.res, fps: c.fps === 120 ? 60 : 30 }
+export function stepDown(c: { res: ScreenRes; fps: ScreenFps }, motion = false): { res: ScreenRes; fps: ScreenFps } | null {
   const i = RES_ORDER.indexOf(c.res)
+  if (motion && i > 0) return { res: RES_ORDER[i - 1], fps: c.fps }
+  if (c.fps > 30) return { res: c.res, fps: c.fps === 120 ? 60 : 30 }
   return i > 0 ? { res: RES_ORDER[i - 1], fps: 30 } : null
 }
+
+export const screenMode = (motion: boolean): { hint: 'motion' | 'detail'; degradation: RTCDegradationPreference } =>
+  motion ? { hint: 'motion', degradation: 'maintain-framerate' } : { hint: 'detail', degradation: 'maintain-resolution' }
 
 export const CAMERA: Record<CameraQuality, { width: number; height: number; fps: number; bitrate: number }> = {
   '360p': { width: 640, height: 360, fps: 30, bitrate: 700_000 },
@@ -626,7 +630,7 @@ class VoiceController {
         audio: prefs.screenAudio,
       })
       const v = s.getVideoTracks()[0]
-      v.contentHint = 'detail'
+      v.contentHint = screenMode(prefs.screenMotion).hint
       this.setSource(v)
       v.addEventListener('ended', () => { if (this.preview === s) this.closePicker() }) // « Arrêter le partage » de la barre du navigateur
       this.preview = s
@@ -708,10 +712,14 @@ class VoiceController {
     debug.log('info', 'partage', `publication ${res} ${fps} i/s`)
     try {
       const { LocalVideoTrack, LocalAudioTrack, Track } = await import('livekit-client')
+      const mode = screenMode(prefs.screenMotion)
+      s.getVideoTracks()[0].contentHint = mode.hint
       await lp.publishTrack(new LocalVideoTrack(s.getVideoTracks()[0], undefined, true), {
         source: Track.Source.ScreenShare,
         screenShareEncoding: { maxBitrate: screenBitrate(res, fps), maxFramerate: fps },
-        degradationPreference: 'maintain-resolution',
+        degradationPreference: mode.degradation,
+        videoCodec: prefs.videoCodec === 'auto' ? undefined : prefs.videoCodec,
+        backupCodec: true,
         // Au-delà de 1080p, des couches réduites (simulcast) évitent d'imposer le flux entier aux spectateurs à faible débit.
         simulcast: SCREEN_RES[res].height > 1080,
       })
@@ -739,7 +747,7 @@ class VoiceController {
       // Un serveur sans cette route renvoie un jeton normal : Rust se connecterait avec notre identité et LiveKit nous éjecterait du salon.
       const sub = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub as string
       if (!sub.endsWith('#screen')) throw new Error("le serveur ne gère pas encore le partage natif (jeton sans `#screen`), il faut déployer le backend")
-      notify.info(`Alpha : encodeurs disponibles ${await platform.capture!.start(url, token, src.id, fps, SCREEN_RES[res].height, screenBitrate(res, fps), prefs.screenAudio)}`)
+      notify.info(`Alpha : encodeurs disponibles ${await platform.capture!.start(url, token, src.id, fps, SCREEN_RES[res].height, screenBitrate(res, fps), prefs.screenAudio, prefs.screenMotion)}`)
     } catch (e) {
       debug.log('error', 'partage natif', `échec : ${e instanceof Error ? e.message : String(e)}`)
       this.error = `Partage d'écran natif impossible : ${e instanceof Error ? e.message : String(e)}`
@@ -850,6 +858,9 @@ class VoiceController {
   /** Applique un palier à la capture en cours (sans relancer le partage) : contraintes de la piste et débit maximal de l'encodeur. */
   private async applyScreen(track: LocalVideoTrack, c: { res: ScreenRes; fps: ScreenFps }) {
     const q = SCREEN_RES[c.res]
+    const mode = screenMode(prefs.screenMotion)
+    track.mediaStreamTrack.contentHint = mode.hint
+    await track.setDegradationPreference(mode.degradation).catch(() => {})
     await track.mediaStreamTrack
       .applyConstraints({ frameRate: { ideal: c.fps }, width: { ideal: q.width }, height: { ideal: q.height } })
       .catch(() => {})
@@ -895,7 +906,7 @@ class VoiceController {
       strikes = limited ? strikes + 1 : 0
       if (strikes < 3) return
       strikes = 0
-      const next = stepDown(cur)
+      const next = stepDown(cur, prefs.screenMotion)
       if (!next) return
       cur = next
       await this.applyScreen(track, next)

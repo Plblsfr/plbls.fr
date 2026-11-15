@@ -24,7 +24,7 @@ interface Stored {
   /** Transcrire automatiquement mes messages vocaux (EST-158). */
   transcribeAuto: boolean
   micId: string; speakerId: string; cameraId: string; noise: NoiseMode
-  micGain: number; screenAudio: boolean; ptt: boolean; pttKey: string; voiceSounds: boolean; screenRes: ScreenRes; screenFps: ScreenFps; screenAuto: boolean
+  micGain: number; screenAudio: boolean; ptt: boolean; pttKey: string; voiceSounds: boolean; screenRes: ScreenRes; screenFps: ScreenFps; screenAuto: boolean; screenMotion: boolean
   /** Regarder automatiquement les streams des autres (sinon : tuile « Regarder », flux non reçu). */
   watchAuto: boolean
   /** Vrai une fois l'option réglée explicitement : sinon la valeur enregistrée est ignorée au profit du défaut (EST-81). */
@@ -68,7 +68,7 @@ interface Stored {
 }
 const KEY = 'estompe.prefs'
 const DEFAULTS: Stored = { desktopNotifications: true, density: 'confortable', showPreviews: true, theme: 'auto', reduceMotion: false, transcribeAuto: true,
-  micId: '', speakerId: '', cameraId: '', noise: 'strong', micGain: 100, screenAudio: true, ptt: false, pttKey: 'KeyV', voiceSounds: true, screenRes: '1080p', screenFps: 30, screenAuto: true, watchAuto: true, watchAutoSet: false,
+  micId: '', speakerId: '', cameraId: '', noise: 'strong', micGain: 100, screenAudio: true, ptt: false, pttKey: 'KeyV', voiceSounds: true, screenRes: '1080p', screenFps: 30, screenAuto: true, screenMotion: true, watchAuto: true, watchAutoSet: false,
   vad: false, vadThreshold: -45, cameraQuality: '720p', videoCodec: 'auto', cameraFx: 'none', cameraBlur: 10, cameraBg: 'aube', customBg: '',
   camOverlay: { enabled: false, x: 1, y: 1, size: 0.22, shape: 'rect', margin: 24, border: false, shadow: true, mirror: false },
   joinSound: 'rise', leaveSound: 'fall', soundVolume: 60, customJoin: '', customLeave: '', volumes: {}, musicVolume: 80, screenVolumes: {}, mutedVoice: {}, mutedScreen: {}, settingsTab: 'account', notifAsked: false,
@@ -115,6 +115,7 @@ class Prefs {
   screenRes = $state<ScreenRes>(DEFAULTS.screenRes)
   screenFps = $state<ScreenFps>(DEFAULTS.screenFps)
   screenAuto = $state(DEFAULTS.screenAuto)
+  screenMotion = $state(DEFAULTS.screenMotion)
   watchAuto = $state(DEFAULTS.watchAuto)
   watchAutoSet = $state(DEFAULTS.watchAutoSet)
   vad = $state(DEFAULTS.vad)
@@ -164,7 +165,7 @@ class Prefs {
     const s: Stored = {
       desktopNotifications: this.desktopNotifications, density: this.density, showPreviews: this.showPreviews, theme: this.theme, reduceMotion: this.reduceMotion, transcribeAuto: this.transcribeAuto,
       micId: this.micId, speakerId: this.speakerId, cameraId: this.cameraId, noise: this.noise, micGain: this.micGain, screenAudio: this.screenAudio,
-      ptt: this.ptt, pttKey: this.pttKey, voiceSounds: this.voiceSounds, screenRes: this.screenRes, screenFps: this.screenFps, screenAuto: this.screenAuto, watchAuto: this.watchAuto, watchAutoSet: this.watchAutoSet,
+      ptt: this.ptt, pttKey: this.pttKey, voiceSounds: this.voiceSounds, screenRes: this.screenRes, screenFps: this.screenFps, screenAuto: this.screenAuto, screenMotion: this.screenMotion, watchAuto: this.watchAuto, watchAutoSet: this.watchAutoSet,
       vad: this.vad, vadThreshold: this.vadThreshold, cameraQuality: this.cameraQuality, videoCodec: this.videoCodec, cameraFx: this.cameraFx, cameraBlur: this.cameraBlur, cameraBg: this.cameraBg, customBg: this.customBg, camOverlay: $state.snapshot(this.camOverlay),
       joinSound: this.joinSound, leaveSound: this.leaveSound, soundVolume: this.soundVolume, customJoin: this.customJoin, customLeave: this.customLeave, volumes: $state.snapshot(this.volumes), musicVolume: this.musicVolume, screenVolumes: $state.snapshot(this.screenVolumes), mutedVoice: $state.snapshot(this.mutedVoice), mutedScreen: $state.snapshot(this.mutedScreen), settingsTab: this.settingsTab, notifAsked: this.notifAsked,
       overlayWhen: this.overlayWhen, overlayKey: this.overlayKey, overlayCorner: this.overlayCorner, overlaySize: this.overlaySize, overlayMode: this.overlayMode, overlayNatif: this.overlayNatif, msgOverlay: this.msgOverlay, msgHide: this.msgHide, msgSeconds: this.msgSeconds, msgReplyKey: this.msgReplyKey, msgOpenKey: this.msgOpenKey, shareActivity: this.shareActivity, shareListening: this.shareListening, floatingPlayer: this.floatingPlayer, debug: this.debug, alpha: this.alpha, serverOrder: $state.snapshot(this.serverOrder),
