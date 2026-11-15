@@ -26,7 +26,33 @@ function monter() {
 const pret = async (adapter: { load: ReturnType<typeof vi.fn> }) => vi.waitFor(() => expect(adapter.load).toHaveBeenCalled())
 
 describe('FilmPlayer : son', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
+
+  it('reprend le volume réglé à la lecture précédente', async () => {
+    const premier = monter()
+    await pret(premier.adapter)
+    await fireEvent.input(premier.vue.getByLabelText('Volume'), { target: { value: '40' } })
+    premier.vue.unmount()
+    const { adapter, vue } = monter()
+    await pret(adapter)
+    await tick()
+    expect((vue.getByLabelText('Volume') as HTMLInputElement).value).toBe('40')
+    expect(adapter.setVolume).toHaveBeenLastCalledWith(40)
+  })
+
+  it('reste muet si le son était coupé', async () => {
+    const premier = monter()
+    await pret(premier.adapter)
+    await fireEvent.click(premier.vue.getByLabelText('Couper le son'))
+    premier.vue.unmount()
+    const { adapter, vue } = monter()
+    await pret(adapter)
+    await tick()
+    expect(adapter.setVolume).toHaveBeenLastCalledWith(0)
+    await fireEvent.click(vue.getByLabelText('Rétablir le son'))
+    await tick()
+    expect(adapter.setVolume).toHaveBeenLastCalledWith(100)
+  })
 
   it('applique le volume réglé au lecteur', async () => {
     const { adapter, vue } = monter()
@@ -66,6 +92,110 @@ describe('FilmPlayer : son', () => {
     const boutons = vue.getAllByRole('button').filter((b) => b.classList.contains('film-track'))
     await fireEvent.click(boutons[1])
     expect(adapter.setAudio).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('FilmPlayer : pistes par défaut', () => {
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
+
+  const piste = (n: number, language: string, label: string | null = null, forced = false) => ({ n, language, label, forced })
+  const ouvrir = async () => {
+    const m = monter()
+    await pret(m.adapter)
+    m.handlers().onTracks?.({ audio: [piste(0, 'eng'), piste(1, 'fre', 'VFF')], subtitles: [piste(0, 'eng'), piste(1, 'fre', 'Forcés', true)], audioN: 0, subN: null })
+    await tick()
+    await fireEvent.click(m.vue.getByText('Audio et sous-titres'))
+    return m
+  }
+
+  it('applique la langue choisie au titre en cours et la retient', async () => {
+    const { adapter, vue } = await ouvrir()
+    await fireEvent.change(vue.getByLabelText('Audio'), { target: { value: 'vff' } })
+    expect(adapter.setAudio).toHaveBeenCalledWith(1)
+    expect(JSON.parse(localStorage.getItem('entracte.lecture')!).audio).toBe('vff')
+  })
+
+  it('applique les sous-titres forcés de la langue écoutée et les retient', async () => {
+    const { adapter, vue, handlers } = await ouvrir()
+    await fireEvent.change(vue.getByLabelText('Sous-titres'), { target: { value: 'forced' } })
+    expect(adapter.setSubtitle).toHaveBeenLastCalledWith(null)
+    handlers().onTracks?.({ audio: [piste(0, 'eng'), piste(1, 'fre', 'VFF')], subtitles: [piste(0, 'eng'), piste(1, 'fre', 'Forcés', true)], audioN: 1, subN: null })
+    await tick()
+    await fireEvent.change(vue.getByLabelText('Sous-titres'), { target: { value: 'forced' } })
+    expect(adapter.setSubtitle).toHaveBeenLastCalledWith(1)
+    expect(JSON.parse(localStorage.getItem('entracte.lecture')!).subtitles).toBe('forced')
+  })
+  it('fait suivre les sous-titres forcés quand la langue par défaut change', async () => {
+    const { adapter, vue } = await ouvrir()
+    await fireEvent.change(vue.getByLabelText('Sous-titres'), { target: { value: 'forced' } })
+    expect(adapter.setSubtitle).toHaveBeenLastCalledWith(null)
+    await fireEvent.change(vue.getByLabelText('Audio'), { target: { value: 'vff' } })
+    expect(adapter.setSubtitle).toHaveBeenLastCalledWith(1)
+    expect(adapter.setAudio).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('FilmPlayer : clavier', () => {
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
+
+  it('met en pause et relance avec Espace', async () => {
+    const { adapter, handlers } = monter()
+    await pret(adapter)
+    await fireEvent.keyDown(document.body, { key: ' ' })
+    expect(adapter.play).toHaveBeenCalledTimes(1)
+    handlers().onState('playing')
+    await tick()
+    await fireEvent.keyDown(document.body, { key: 'k' })
+    expect(adapter.pause).toHaveBeenCalledTimes(1)
+  })
+
+  it('avance, recule et règle le son', async () => {
+    const { adapter, vue } = monter()
+    await pret(adapter)
+    await fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+    expect(adapter.seek).toHaveBeenLastCalledWith(10)
+    await fireEvent.keyDown(document.body, { key: 'ArrowLeft' })
+    expect(adapter.seek).toHaveBeenLastCalledWith(0)
+    await fireEvent.keyDown(document.body, { key: 'ArrowDown' })
+    await tick()
+    expect(adapter.setVolume).toHaveBeenLastCalledWith(95)
+    await fireEvent.keyDown(document.body, { key: 'm' })
+    await tick()
+    expect(adapter.setVolume).toHaveBeenLastCalledWith(0)
+    await fireEvent.keyDown(document.body, { key: 'ArrowUp' })
+    await tick()
+    expect(adapter.setVolume).toHaveBeenLastCalledWith(5)
+    expect(vue.getByLabelText('Couper le son')).toBeTruthy()
+  })
+
+  it('bascule le plein écran avec F', async () => {
+    const { adapter, vue } = monter()
+    await pret(adapter)
+    const racine = vue.container.querySelector('.film-player') as HTMLElement
+    racine.requestFullscreen = vi.fn().mockResolvedValue(undefined)
+    await fireEvent.keyDown(document.body, { key: 'f' })
+    expect(racine.requestFullscreen).toHaveBeenCalledTimes(1)
+  })
+
+  it('ne réagit ni aux combinaisons ni depuis une liste de choix', async () => {
+    const { adapter, vue, handlers } = monter()
+    await pret(adapter)
+    await fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true })
+    handlers().onTracks?.({ audio: [], subtitles: [], audioN: 0, subN: null })
+    await tick()
+    await fireEvent.click(vue.getByText('Audio et sous-titres'))
+    await fireEvent.keyDown(vue.getByLabelText('Audio'), { key: ' ' })
+    expect(adapter.play).not.toHaveBeenCalled()
+  })
+
+  it('laisse Espace à la commande atteinte au clavier', async () => {
+    const { adapter, vue } = monter()
+    await pret(adapter)
+    const bouton = vue.getByLabelText('Couper le son')
+    vi.spyOn(bouton, 'matches').mockImplementation((s) => s === ':focus-visible' || s === 'button, a, input')
+    const libre = await fireEvent.keyDown(bouton, { key: ' ' })
+    expect(libre).toBe(true)
+    expect(adapter.play).not.toHaveBeenCalled()
   })
 })
 

@@ -250,7 +250,7 @@ pub fn pistes(a: &Analyse) -> Value {
             "n": n, "label": libelle_audio(p), "language": p.langue,
         })).collect::<Vec<_>>(),
         "subtitles": a.sous_titres.iter().enumerate().map(|(n, s)| json!({
-            "n": n, "label": libelle_sous_titre(s), "language": s.langue,
+            "n": n, "label": libelle_sous_titre(s), "language": s.langue, "forced": s.force,
         })).collect::<Vec<_>>(),
         "qualities": paliers(a),
     })

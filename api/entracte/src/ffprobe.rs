@@ -29,6 +29,8 @@ pub struct SousTitre {
     pub langue: Option<String>,
     pub titre: Option<String>,
     pub externe: Option<String>,
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -88,6 +90,7 @@ impl Analyse {
                     langue: tags(s, "language"),
                     titre: tags(s, "title"),
                     externe: None,
+                    force: s["disposition"]["forced"].as_i64().unwrap_or(0) == 1,
                 })
                 .collect(),
         }
@@ -247,6 +250,9 @@ pub async fn sous_titres_externes(video: &Path) -> Vec<SousTitre> {
             langue,
             titre: None,
             externe: Some(texte),
+            force: morceaux[..morceaux.len() - 1]
+                .iter()
+                .any(|m| m.eq_ignore_ascii_case("forced")),
         });
     }
     trouves.sort_by(|a, b| a.externe.cmp(&b.externe));
@@ -267,7 +273,7 @@ mod tests {
                 {"index": 1, "codec_type": "video", "codec_name": "hevc", "width": 3840, "height": 2160, "disposition": {"attached_pic": 0}},
                 {"index": 2, "codec_type": "audio", "codec_name": "eac3", "channels": 6, "tags": {"language": "fre", "title": "VF"}},
                 {"index": 3, "codec_type": "audio", "codec_name": "aac", "tags": {"language": "und"}},
-                {"index": 4, "codec_type": "subtitle", "codec_name": "subrip", "tags": {"language": "fre"}},
+                {"index": 4, "codec_type": "subtitle", "codec_name": "subrip", "disposition": {"forced": 1}, "tags": {"language": "fre"}},
                 {"index": 5, "codec_type": "subtitle", "codec_name": "hdmv_pgs_subtitle"}
             ]
         }));
@@ -280,6 +286,7 @@ mod tests {
         assert_eq!(a.audio[1].langue, None);
         assert_eq!(a.audio[1].canaux, 2);
         assert_eq!(a.sous_titres.len(), 1);
+        assert!(a.sous_titres[0].force);
     }
 
     #[test]
@@ -385,5 +392,9 @@ mod tests {
         assert_eq!(noms, ["Film.en.forced.ass", "Film.fr.srt", "Film.vtt"]);
         assert_eq!(s[1].langue.as_deref(), Some("fr"));
         assert_eq!(s[2].langue, None);
+        assert_eq!(
+            s.iter().map(|x| x.force).collect::<Vec<_>>(),
+            [true, false, false]
+        );
     }
 }

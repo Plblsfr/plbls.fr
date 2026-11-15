@@ -1,6 +1,6 @@
 import { filmsApi, ApiError } from '../../lib/api'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, castRefusal, shiftCues, needsReopen, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
+import { absolute, castRefusal, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
@@ -241,6 +241,8 @@ const film: Factory = async (el, h) => {
   let position = 0
   let guet: ReturnType<typeof setTimeout> | undefined
   let tele = false
+  let audioPending = false
+  let subPending = false
   const store = () => { try { return localStorage } catch { return null } }
 
   const close = () => { if (stream) void filmsApi.close(stream.stream_id).catch(() => {}); stream = null }
@@ -256,6 +258,13 @@ const film: Factory = async (el, h) => {
     const turn = ++opening
     clearTimeout(guet)
     close()
+    if (audioPending) {
+      const pref = playPrefs(store()).audio
+      const tracks = pref === 'auto' ? [] : await filmsApi.item(ref).then((i) => i.audio ?? [], () => [])
+      if (gone || turn !== opening) return
+      if (audioPending) audio = pickAudio(tracks, pref)
+      audioPending = false
+    }
     const ask = (q: Quality) => filmsApi.playback(ref, {
       direct: !forceHls,
       audio, quality: q, start, support: support((t) => video.canPlayType(t)),
@@ -273,6 +282,8 @@ const film: Factory = async (el, h) => {
       if (p.mode === 'direct' && play) guet = setTimeout(() => { if (stream === p && video.readyState < 2) repli(`aucune image après ${ATTENTE_DIRECT_MS / 1000} s en lecture directe`) }, ATTENTE_DIRECT_MS)
       offset = p.offset ?? 0
       position = start
+      if (subPending) sub = pickSubtitle(p.subtitles, playPrefs(store()).subtitles, p.audio[audio])
+      subPending = false
       video.querySelectorAll('track').forEach((t) => t.remove())
       for (const s of p.subtitles) {
         const t = video.appendChild(document.createElement('track'))
@@ -376,6 +387,9 @@ const film: Factory = async (el, h) => {
       ref = r
       position = start
       audio = 0
+      sub = null
+      audioPending = true
+      subPending = true
       offset = 0
       quality = savedQuality(store())
       forceHls = false
@@ -383,8 +397,8 @@ const film: Factory = async (el, h) => {
       tele = false
       void open(start, play)
     },
-    setAudio: (n) => { audio = n; void open(now(), !video.paused) },
-    setSubtitle: (n) => { sub = n; showSubtitle() },
+    setAudio: (n) => { audio = n; audioPending = false; void open(now(), !video.paused) },
+    setSubtitle: (n) => { sub = n; subPending = false; showSubtitle() },
     setQuality: (q) => { quality = q; saveQuality(store(), q); void open(now(), !video.paused) },
     ...(remote ? { cast } : {}),
     destroy: () => { gone = true; clearTimeout(guet); window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },

@@ -90,7 +90,7 @@ paths:
     parameters: [{ $ref: "#/components/parameters/id" }]
     get:
       summary: "Fiche d'un film, d'une série ou d'un épisode"
-      description: "Titre, plus pour un fichier présent : `audio`, `subtitles` (`[{n, label, language}]`) et `qualities` (`original`, `1080p`, `720p`, `480p` sous la résolution de la source)."
+      description: "Titre, plus pour un fichier présent : `audio` (`[{n, label, language}]`), `subtitles` (`[{n, label, language, forced}]`, `forced` : piste marquée forcée dans le fichier ou fichier voisin `.forced.`) et `qualities` (`original`, `1080p`, `720p`, `480p` sous la résolution de la source)."
       responses:
         "200": { description: Titre }
         "403": { $ref: "#/components/responses/403" }
@@ -147,7 +147,7 @@ paths:
         Corps : `{quality: original|1080p|720p|480p, audio: n, start: secondes, support: {containers, video, audio}}`.
         Lecture directe si le fichier est lisible tel quel par le client (qualité originale, conteneur et codecs annoncés,
         première piste audio), sinon HLS transcodé par ffmpeg (un transcodage par spectateur ; rouvrir le même titre remplace
-        l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, url}]}`.
+        l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, forced, url}]}`.
         En HLS, la position réelle vaut `offset` + le temps du lecteur ; `offset` est au plus `start` (image clé qui précède, quand la vidéo est recopiée) et le lecteur avance jusqu'à `start`.
       responses:
         "200": { description: flux ouvert }

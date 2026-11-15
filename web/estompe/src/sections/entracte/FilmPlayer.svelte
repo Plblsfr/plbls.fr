@@ -7,7 +7,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { clock, IDLE_MS, fullTitle, QUALITY_LABEL, resumeAt, trackName, type CastState, type FilmDetail, type FilmTracks } from './films'
+  import { AUDIO_PREFS, clock, IDLE_MS, fullTitle, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type CastState, type FilmDetail, type FilmTracks, type SubtitlePref } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -19,8 +19,12 @@
   let position = $state(0)
   let duration = $state(0)
   let drag = $state<number | null>(null)
-  let volume = $state(100)
-  let muted = $state(false)
+  const store = () => { try { return localStorage } catch { return null } }
+  const saved = playPrefs(store())
+  let volume = $state(saved.volume)
+  let muted = $state(saved.muted)
+  let audioPref = $state<AudioPref>(saved.audio)
+  let subtitlePref = $state<SubtitlePref>(saved.subtitles)
   let tracks = $state<FilmTracks | null>(null)
   let panel = $state(false)
   let picker = $state(false)
@@ -46,7 +50,52 @@
 
   const diffuser = async () => { const m = await player?.cast?.(); if (m) notify.fail(m) }
 
-  const toggleMute = () => { muted = !muted; if (!muted && volume === 0) volume = 100 }
+  const setSound = (v: number, m: boolean) => { volume = Math.min(100, Math.max(0, v)); muted = m; savePlayPrefs(store(), { volume, muted }) }
+  const toggleMute = () => setSound(!muted || volume > 0 ? volume : 100, !muted)
+  const nudge = (d: number) => { const v = Math.min(100, Math.max(0, (muted ? 0 : volume) + d)); setSound(v, v === 0) }
+
+  const applySubtitle = (audioN: number) => {
+    if (!tracks) return
+    const subN = pickSubtitle(tracks.subtitles, subtitlePref, tracks.audio.find((a) => a.n === audioN))
+    player?.setSubtitle?.(subN)
+    tracks = { ...tracks, subN }
+  }
+  const preferAudio = (pref: AudioPref) => {
+    audioPref = pref
+    savePlayPrefs(store(), { audio: pref })
+    if (!tracks) return
+    const n = pickAudio(tracks.audio, pref)
+    if (n === tracks.audioN) return
+    if (subtitlePref === 'forced') applySubtitle(n)
+    player?.setAudio?.(n)
+  }
+  const preferSubtitle = (pref: SubtitlePref) => {
+    subtitlePref = pref
+    savePlayPrefs(store(), { subtitles: pref })
+    if (tracks) applySubtitle(tracks.audioN)
+  }
+
+  const ACTIONS = {
+    toggle: () => toggle(),
+    back: () => seek(position - SEEK_STEP),
+    forward: () => seek(position + SEEK_STEP),
+    louder: () => nudge(VOLUME_STEP),
+    quieter: () => nudge(-VOLUME_STEP),
+    mute: () => toggleMute(),
+    fullscreen: () => fullscreen(),
+  }
+  const key = (e: KeyboardEvent) => {
+    const action = shortcut(e)
+    if (!action || e.defaultPrevented || !player || picker) return
+    if (document.querySelector('plbls-modal, [aria-modal="true"], [role="menu"]')) return
+    const t = e.target instanceof HTMLElement ? e.target : null
+    if (t?.isContentEditable || t?.matches('textarea, select, input:not([type="range"])')) return
+    if ((e.key === ' ' || e.key.startsWith('Arrow')) && t?.matches('button, a, input') && t.matches(':focus-visible')) return
+    e.preventDefault()
+    if (e.key === ' ' && t?.matches('button, a')) t.blur()
+    ACTIONS[action]()
+    wake()
+  }
 
   $effect(() => { const v = muted ? 0 : volume; player?.setVolume?.(v) })
 
@@ -72,6 +121,7 @@
   })
 </script>
 
+<svelte:window onkeydown={key} />
 <div class="film-player" class:idle bind:this={root} onpointermove={wake} onpointerdown={wake} onkeydown={wake} onfocusin={wake} role="presentation">
   <div class="film-player-top">
     <a class="watch-btn" href={back} aria-label="Fermer le lecteur"><Icon name="x" size={22} /></a>
@@ -105,6 +155,19 @@
             <button class="film-track" aria-pressed={q === tracks.quality} onclick={() => player?.setQuality?.(q)}>{QUALITY_LABEL[q]}</button>
           {/each}
         {/if}
+        <div class="film-mh">Par défaut, pour tous les titres</div>
+        <div class="film-pref">
+          <label for="film-pref-audio">Audio</label>
+          <select id="film-pref-audio" value={audioPref} onchange={(e) => preferAudio(e.currentTarget.value as AudioPref)}>
+            {#each AUDIO_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
+          </select>
+        </div>
+        <div class="film-pref">
+          <label for="film-pref-sous-titres">Sous-titres</label>
+          <select id="film-pref-sous-titres" value={subtitlePref} onchange={(e) => preferSubtitle(e.currentTarget.value as SubtitlePref)}>
+            {#each SUBTITLE_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
+          </select>
+        </div>
       </section>
     {/if}
   </div>
@@ -113,16 +176,16 @@
       oninput={(e) => (drag = Number(e.currentTarget.value))}
       onchange={(e) => { seek(Number(e.currentTarget.value)); drag = null }} />
     <div class="film-player-buttons">
-      <button class="watch-btn" onclick={toggle} aria-label={playing ? 'Pause' : 'Lecture'}><Icon name={playing ? 'pause' : 'lecture'} size={22} /></button>
-      <button class="film-chip" onclick={() => seek(position - 10)} aria-label="Reculer de 10 secondes">−10 s</button>
+      <button class="watch-btn" onclick={toggle} aria-label={playing ? 'Pause' : 'Lecture'} title="Espace ou K" aria-keyshortcuts="Space K"><Icon name={playing ? 'pause' : 'lecture'} size={22} /></button>
+      <button class="film-chip" onclick={() => seek(position - 10)} aria-label="Reculer de 10 secondes" title="Flèche gauche ou J" aria-keyshortcuts="ArrowLeft J">−10 s</button>
       <button class="film-chip" onclick={() => seek(position + 30)} aria-label="Avancer de 30 secondes">+30 s</button>
       <span class="watch-time v-mono">{clock(drag ?? position)} / {clock(duration)}</span>
       <span class="grow"></span>
-      <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted}><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
-      <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" oninput={(e) => { volume = Number(e.currentTarget.value); muted = volume === 0 }} />
+      <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted} title="M" aria-keyshortcuts="M"><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
+      <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" title="Flèches haut et bas" oninput={(e) => { const v = Number(e.currentTarget.value); setSound(v, v === 0) }} />
       {#if tracks}<button class="film-chip" aria-expanded={panel} onclick={() => (panel = !panel)}><Icon name="bulle" size={16} /> {tracks.qualities && tracks.qualities.length > 1 ? 'Audio, sous-titres, qualité' : 'Audio et sous-titres'}</button>{/if}
       {#if cast && player?.cast}<button class="watch-btn" onclick={diffuser} aria-label={cast === 'disconnected' ? 'Diffuser sur une télé' : 'Diffusion en cours, changer d’appareil'} aria-pressed={cast !== 'disconnected'}><Icon name="diffuser" size={20} /></button>{/if}
-      <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran"><Icon name="agrandir" size={20} /></button>
+      <button class="watch-btn" onclick={fullscreen} aria-label="Plein écran" title="F" aria-keyshortcuts="F"><Icon name="agrandir" size={20} /></button>
     </div>
   </div>
 </div>
