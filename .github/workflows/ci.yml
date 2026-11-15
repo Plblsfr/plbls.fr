@@ -273,9 +273,9 @@ jobs:
         run: mkdir -p ../../../../web/estompe/dist && cargo check
       - name: ffmpeg épinglé téléchargeable et vérifié
         run: TAURI_ENV_PLATFORM=windows node apps/estompe/windows/scripts/fetch-ffmpeg.mjs && test -s apps/estompe/windows/src-tauri/binaries/ffmpeg.exe
-      - name: Compilation Windows de l'instant replay (mingw, sans édition de liens)
+      - name: Compilation Windows de l'instant replay et de la capture de fenêtre (mingw, sans édition de liens)
         working-directory: apps/estompe/windows/src-tauri
-        run: cargo check --lib --target x86_64-pc-windows-gnu --features instant-replay
+        run: cargo check --lib --target x86_64-pc-windows-gnu --features "instant-replay capture-fenetre"
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

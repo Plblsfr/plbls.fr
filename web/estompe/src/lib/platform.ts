@@ -28,7 +28,7 @@ export interface CaptureDriver {
   listSources(): Promise<CaptureSource[]>
   /** Miniature sous forme d'URL locale (à libérer avec URL.revokeObjectURL). */
   thumbUrl(id: string): Promise<string>
-  start(url: string, token: string, id: string, fps: number, height: number, bitrate: number, audio: boolean): Promise<string>
+  start(url: string, token: string, id: string, fps: number, height: number, bitrate: number, audio: boolean, motion: boolean): Promise<string>
   stop(): Promise<void>
 }
 
