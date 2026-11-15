@@ -11,7 +11,7 @@ export const capture: CaptureDriver = {
     const buf = await invoke<ArrayBuffer>('capture_thumb', { id })
     return URL.createObjectURL(new Blob([buf], { type: 'image/jpeg' }))
   },
-  start: (url, token, id, fps, height, bitrate, audio) => invoke<string>('screen_native_start', { url, token, id, fps, height, bitrate, audio }),
+  start: (url, token, id, fps, height, bitrate, audio, motion) => invoke<string>('screen_native_start', { url, token, id, fps, height, bitrate, audio, motion }),
   stop: () => invoke('screen_native_stop'),
 }
 

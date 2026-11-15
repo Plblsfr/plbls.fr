@@ -74,11 +74,10 @@ mod imp {
 
     /// Renvoie les encodeurs vidéo disponibles (pour savoir si l'encodage matériel existe).
     #[allow(clippy::too_many_arguments)]
-    pub async fn start(state: &ScreenNative, url: String, token: String, id: String, fps: u32, height: u32, bitrate: u64, audio: bool) -> Result<String, String> {
+    pub async fn start(state: &ScreenNative, url: String, token: String, id: String, fps: u32, height: u32, bitrate: u64, audio: bool, motion: bool) -> Result<String, String> {
         stop(state);
         let (room, _events) = Room::connect(&url, &token, RoomOptions::default()).await.map_err(|e| e.to_string())?;
-        // is_screencast : texte net plutôt qu'images fluides quand la bande passante manque
-        let source = NativeVideoSource::new(VideoResolution { width: 1920, height: 1080 }, true);
+        let source = NativeVideoSource::new(VideoResolution { width: 1920, height: 1080 }, !motion);
         let track = LocalVideoTrack::create_video_track("écran", RtcVideoSource::Native(source.clone()));
         room.local_participant()
             .publish_track(LocalTrack::Video(track), TrackPublishOptions {
@@ -164,7 +163,7 @@ mod imp {
 mod imp {
     use super::*;
     #[allow(clippy::too_many_arguments)]
-    pub async fn start(_: &ScreenNative, _: String, _: String, _: String, _: u32, _: u32, _: u64, _: bool) -> Result<String, String> {
+    pub async fn start(_: &ScreenNative, _: String, _: String, _: String, _: u32, _: u32, _: u64, _: bool, _: bool) -> Result<String, String> {
         Err("partage d'écran natif indisponible : installeur compilé sans la feature livekit-native (variable de dépôt NATIVE_ALPHA=1 absente)".into())
     }
     pub fn stop(_: &ScreenNative) {}
@@ -173,9 +172,9 @@ mod imp {
 /// Publie la source `id` (écran `m:…` ou fenêtre `w:…`, voir `capture_sources`) avec le jeton du participant `#screen`.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub async fn screen_native_start(state: tauri::State<'_, ScreenNative>, url: String, token: String, id: String, fps: u32, height: u32, bitrate: u64, audio: bool) -> Result<String, String> {
-    crate::debuglog::log("info", "natif/partage", &format!("démarrage : source {id}, {fps} i/s, {height} px, {bitrate} bit/s, son {audio}"));
-    let r = imp::start(&state, url, token, id, fps, height, bitrate, audio).await;
+pub async fn screen_native_start(state: tauri::State<'_, ScreenNative>, url: String, token: String, id: String, fps: u32, height: u32, bitrate: u64, audio: bool, motion: bool) -> Result<String, String> {
+    crate::debuglog::log("info", "natif/partage", &format!("démarrage : source {id}, {fps} i/s, {height} px, {bitrate} bit/s, son {audio}, fluidité {motion}"));
+    let r = imp::start(&state, url, token, id, fps, height, bitrate, audio, motion).await;
     match &r {
         Ok(enc) => crate::debuglog::log("info", "natif/partage", &format!("publié, encodeurs {enc}")),
         Err(e) => crate::debuglog::log("error", "natif/partage", &format!("échec : {e}")),

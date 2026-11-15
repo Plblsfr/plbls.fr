@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { redact, filterEntries, parseLines, debug } from './debuglog.svelte'
 import { prefs } from './prefs.svelte'
-import { clampScreen, stepDown, screenBitrate } from '../blocks/vocal/voice.svelte'
+import { clampScreen, stepDown, screenBitrate, screenMode } from '../blocks/vocal/voice.svelte'
 
 describe('partage d\'écran', () => {
   it('ramène le choix aux plafonds du serveur', () => {
@@ -14,6 +14,16 @@ describe('partage d\'écran', () => {
     expect(stepDown({ res: '2160p', fps: 60 })).toEqual({ res: '2160p', fps: 30 })
     expect(stepDown({ res: '2160p', fps: 30 })).toEqual({ res: '1440p', fps: 30 })
     expect(stepDown({ res: '720p', fps: 30 })).toBeNull()
+  })
+  it('en fluidité, descend d\'abord la résolution, puis les images/s, puis s\'arrête', () => {
+    expect(stepDown({ res: '1440p', fps: 60 }, true)).toEqual({ res: '1080p', fps: 60 })
+    expect(stepDown({ res: '1080p', fps: 60 }, true)).toEqual({ res: '720p', fps: 60 })
+    expect(stepDown({ res: '720p', fps: 60 }, true)).toEqual({ res: '720p', fps: 30 })
+    expect(stepDown({ res: '720p', fps: 30 }, true)).toBeNull()
+  })
+  it('la fluidité garde les images/s, la netteté garde la résolution', () => {
+    expect(screenMode(true)).toEqual({ hint: 'motion', degradation: 'maintain-framerate' })
+    expect(screenMode(false)).toEqual({ hint: 'detail', degradation: 'maintain-resolution' })
   })
   it('le débit croît avec les images/s', () => {
     expect(screenBitrate('1080p', 60)).toBeGreaterThan(screenBitrate('1080p', 30))
