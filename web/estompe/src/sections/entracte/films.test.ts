@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, clock, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, clock, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -113,5 +113,102 @@ describe('Entracte : sous-titres d’un flux qui ne commence pas à zéro', () =
     shiftCues(cues, 0)
     shiftCues(null, 600)
     expect(cues).toEqual([{ startTime: 5, endTime: 8 }])
+  })
+})
+
+const piste = (n: number, language: string | null, label: string | null = null, forced?: boolean) => ({ n, language, label, forced })
+const memoire = (depart: Record<string, string> = {}) => {
+  const m = new Map(Object.entries(depart))
+  return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => { m.set(k, v) } }
+}
+
+describe('préférences de lecture', () => {
+  it('part des valeurs par défaut et ignore un contenu invalide', () => {
+    const defauts = { audio: 'auto', subtitles: 'none', volume: 100, muted: false }
+    expect(playPrefs(null)).toEqual(defauts)
+    expect(playPrefs(memoire({ 'entracte.lecture': 'pas du json' }))).toEqual(defauts)
+    expect(playPrefs(memoire({ 'entracte.lecture': '{"audio":"klingon","subtitles":7,"volume":"fort","muted":"oui"}' }))).toEqual(defauts)
+    expect(playPrefs(memoire({ 'entracte.lecture': '{"volume":250}' })).volume).toBe(100)
+  })
+
+  it('garde le volume et les choix d’une lecture à l’autre', () => {
+    const m = memoire()
+    savePlayPrefs(m, { volume: 35, muted: true })
+    savePlayPrefs(m, { audio: 'vff', subtitles: 'forced' })
+    expect(playPrefs(m)).toEqual({ audio: 'vff', subtitles: 'forced', volume: 35, muted: true })
+  })
+})
+
+describe('piste audio par défaut', () => {
+  const pistes = [piste(0, 'eng', 'English (EAC3, 5.1)'), piste(1, 'fre', 'VFQ (AC3, 5.1)'), piste(2, 'fre', 'VFF (AC3, 5.1)'), piste(3, 'fre', 'VFF Audiodescription (AAC, stéréo)')]
+
+  it('garde la première piste du fichier sans préférence', () => {
+    expect(pickAudio(pistes, 'auto')).toBe(0)
+  })
+
+  it('choisit la version française demandée', () => {
+    expect(pickAudio(pistes, 'vff')).toBe(2)
+    expect(pickAudio(pistes, 'vfq')).toBe(1)
+    expect(pickAudio(pistes, 'vf')).toBe(1)
+    expect(pickAudio(pistes, 'en')).toBe(0)
+  })
+
+  it('se rabat sur une autre version française, puis sur la première piste', () => {
+    expect(pickAudio([piste(0, 'eng'), piste(1, 'fre', 'VFQ')], 'vff')).toBe(1)
+    expect(pickAudio([piste(0, 'jpn'), piste(1, 'eng')], 'vff')).toBe(0)
+    expect(pickAudio([], 'vf')).toBe(0)
+  })
+
+  it('reconnaît la langue dans le libellé quand le fichier ne la donne pas', () => {
+    expect(pickAudio([piste(0, null, 'English'), piste(1, null, 'TrueFrench 5.1')], 'vff')).toBe(1)
+    expect(pickAudio([piste(0, null, 'Piste (AAC, stéréo)'), piste(1, 'fr-CA')], 'vfq')).toBe(1)
+  })
+
+  it('évite l’audiodescription quand une autre piste convient', () => {
+    expect(pickAudio([piste(0, 'eng'), piste(1, 'fre', 'VFF Audiodescription'), piste(2, 'fre', 'Français')], 'vff')).toBe(2)
+  })
+})
+
+describe('sous-titres par défaut', () => {
+  const pistes = [piste(0, 'eng', 'English'), piste(1, 'fre', 'Français forcés'), piste(2, 'fre', 'Français SDH'), piste(3, 'fre', 'Français'), piste(4, 'eng', 'Signs', true)]
+
+  it('reconnaît une piste forcée par son marqueur ou son libellé', () => {
+    expect(pistes.map(isForced)).toEqual([false, true, false, false, true])
+  })
+
+  it('n’affiche rien sans préférence', () => {
+    expect(pickSubtitle(pistes, 'none', piste(0, 'fre'))).toBeNull()
+  })
+
+  it('prend les sous-titres forcés de la langue de la piste audio', () => {
+    expect(pickSubtitle(pistes, 'forced', piste(0, 'fre', 'VFF'))).toBe(1)
+    expect(pickSubtitle(pistes, 'forced', piste(0, 'eng'))).toBe(4)
+    expect(pickSubtitle(pistes, 'forced', piste(0, 'jpn'))).toBeNull()
+    expect(pickSubtitle(pistes, 'forced')).toBe(1)
+    expect(pickSubtitle([piste(0, 'fre', 'Français')], 'forced', piste(0, 'fre'))).toBeNull()
+  })
+
+  it('prend les sous-titres complets de la langue demandée, les forcés à défaut', () => {
+    expect(pickSubtitle(pistes, 'fr')).toBe(3)
+    expect(pickSubtitle(pistes, 'en')).toBe(0)
+    expect(pickSubtitle([piste(0, 'fre', null, true)], 'fr')).toBe(0)
+    expect(pickSubtitle([piste(0, 'eng')], 'fr')).toBeNull()
+  })
+})
+
+describe('raccourcis clavier du lecteur', () => {
+  const touche = (key: string, over: Partial<KeyboardEvent> = {}) => shortcut({ key, ctrlKey: false, metaKey: false, altKey: false, ...over })
+
+  it('associe les touches aux commandes', () => {
+    expect([' ', 'k', 'K', 'ArrowLeft', 'j', 'ArrowRight', 'l', 'ArrowUp', 'ArrowDown', 'm', 'f', 'F'].map((k) => touche(k)))
+      .toEqual(['toggle', 'toggle', 'toggle', 'back', 'back', 'forward', 'forward', 'louder', 'quieter', 'mute', 'fullscreen', 'fullscreen'])
+  })
+
+  it('laisse passer les autres touches et les combinaisons', () => {
+    expect(touche('a')).toBeNull()
+    expect(touche('Enter')).toBeNull()
+    expect(touche('k', { ctrlKey: true })).toBeNull()
+    expect(touche('f', { metaKey: true })).toBeNull()
+    expect(touche('ArrowLeft', { altKey: true })).toBeNull()
   })
 })

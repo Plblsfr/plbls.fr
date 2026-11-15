@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { API_URL, filmsApi } from '../../lib/api'
-import type { FilmPlayback } from '../../sections/entracte/films'
+import type { FilmDetail, FilmPlayback } from '../../sections/entracte/films'
 import { providers } from './providers'
 
 const flux = (n: number): FilmPlayback => ({ stream_id: `s${n}`, mode: 'direct', url: `/films/stream/j${n}/direct`, duration: 3000, audio: [], subtitles: [] })
@@ -13,7 +13,7 @@ describe('lecteur de films : son', () => {
     vi.spyOn(filmsApi, 'close').mockResolvedValue(undefined as never)
     vi.spyOn(filmsApi, 'progress').mockResolvedValue(undefined as never)
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
 
   it('rouvre le flux avec la piste choisie à la position demandée, même avant le chargement', async () => {
     let n = 0
@@ -30,6 +30,34 @@ describe('lecteur de films : son', () => {
     video.dispatchEvent(new Event('loadedmetadata'))
     expect(video.currentTime).toBe(600)
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
+    a.destroy()
+  })
+
+  it('ouvre le titre avec la langue et les sous-titres choisis par défaut', async () => {
+    localStorage.setItem('entracte.lecture', JSON.stringify({ audio: 'vff', subtitles: 'forced' }))
+    const audio = [{ n: 0, label: 'English', language: 'eng' }, { n: 1, label: 'VFF', language: 'fre' }]
+    const subtitles = [{ n: 0, label: 'English', language: 'eng', url: '/s/0' }, { n: 1, label: 'Forcés', language: 'fre', forced: true, url: '/s/1' }]
+    vi.spyOn(filmsApi, 'item').mockResolvedValue({ audio, subtitles } as unknown as FilmDetail)
+    const playback = vi.spyOn(filmsApi, 'playback').mockResolvedValue({ ...flux(1), audio, subtitles })
+    const pistes = vi.fn()
+    const a = await providers.film(document.createElement('div'), { onState: () => {}, onError: () => {}, onTracks: pistes })
+    a.load('f', 0, true)
+    await vi.waitFor(() => expect(pistes).toHaveBeenCalled())
+    expect(playback).toHaveBeenCalledTimes(1)
+    expect(playback).toHaveBeenCalledWith('f', expect.objectContaining({ audio: 1 }))
+    expect(pistes).toHaveBeenLastCalledWith(expect.objectContaining({ audioN: 1, subN: 1 }))
+    a.destroy()
+  })
+
+  it('garde la piste choisie à la main pendant l’ouverture', async () => {
+    localStorage.setItem('entracte.lecture', JSON.stringify({ audio: 'vff' }))
+    vi.spyOn(filmsApi, 'item').mockResolvedValue({ audio: [{ n: 0, label: null, language: 'eng' }, { n: 1, label: 'VFF', language: 'fre' }, { n: 2, label: null, language: 'jpn' }] } as unknown as FilmDetail)
+    const playback = vi.spyOn(filmsApi, 'playback').mockResolvedValue(flux(1))
+    const a = await providers.film(document.createElement('div'), { onState: () => {}, onError: () => {} })
+    a.load('f', 0, true)
+    a.setAudio?.(2)
+    await vi.waitFor(() => expect(playback).toHaveBeenCalled())
+    expect(playback).toHaveBeenLastCalledWith('f', expect.objectContaining({ audio: 2 }))
     a.destroy()
   })
 

@@ -8,7 +8,7 @@ export interface FilmItem {
   /** Entracte : date du dernier visionnage complet. */
   seen_at?: string | null
 }
-export interface FilmTrack { n: number; label: string | null; language: string | null }
+export interface FilmTrack { n: number; label: string | null; language: string | null; forced?: boolean }
 export interface FilmDetail extends FilmItem { audio: FilmTrack[]; subtitles: FilmTrack[]; qualities?: Quality[] }
 export type Quality = 'original' | '1080p' | '720p' | '480p'
 /** Formats que le client sait lire tels quels, annoncés à Entracte (lecture directe ou HLS). */
@@ -81,6 +81,87 @@ export function savedQuality(store: Pick<Storage, 'getItem'> | null, offered?: Q
 
 export function saveQuality(store: Pick<Storage, 'setItem'> | null, q: Quality) {
   try { store?.setItem(QUALITY_KEY, q) } catch { /* stockage indisponible */ }
+}
+
+export type AudioPref = 'auto' | 'vf' | 'vff' | 'vfq' | 'en'
+export type SubtitlePref = 'none' | 'forced' | 'fr' | 'en'
+export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean }
+export const AUDIO_PREFS: [AudioPref, string][] = [['auto', 'Piste du fichier'], ['vf', 'Français (VF)'], ['vff', 'Français de France (VFF)'], ['vfq', 'Français du Québec (VFQ)'], ['en', 'Anglais']]
+export const SUBTITLE_PREFS: [SubtitlePref, string][] = [['none', 'Aucun'], ['forced', 'Forcés seulement'], ['fr', 'Français'], ['en', 'Anglais']]
+const PLAY_KEY = 'entracte.lecture'
+const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false }
+
+export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
+  let p: Partial<PlayPrefs> = {}
+  try { const v: unknown = JSON.parse(store?.getItem(PLAY_KEY) ?? '{}'); if (v && typeof v === 'object') p = v } catch { p = {} }
+  const volume = typeof p.volume === 'number' && Number.isFinite(p.volume) ? Math.min(100, Math.max(0, Math.round(p.volume))) : PLAY_DEFAULTS.volume
+  return {
+    audio: AUDIO_PREFS.some(([id]) => id === p.audio) ? p.audio! : PLAY_DEFAULTS.audio,
+    subtitles: SUBTITLE_PREFS.some(([id]) => id === p.subtitles) ? p.subtitles! : PLAY_DEFAULTS.subtitles,
+    volume, muted: p.muted === true,
+  }
+}
+
+export function savePlayPrefs(store: Pick<Storage, 'getItem' | 'setItem'> | null, patch: Partial<PlayPrefs>) {
+  try { store?.setItem(PLAY_KEY, JSON.stringify({ ...playPrefs(store), ...patch })) } catch { return }
+}
+
+const text = (t: FilmTrack) => `${t.label ?? ''} ${t.language ?? ''}`
+const FAMILIES: [string, RegExp, RegExp][] = [
+  ['fr', /^(fr|fre|fra)(-|$)/i, /\b(vf[fqi2]?|vostfr|truefrench|french|fran[cç]ais)/i],
+  ['en', /^(en|eng)(-|$)/i, /\b(english|anglais)/i],
+]
+
+export function trackFamily(t: FilmTrack): string | null {
+  const known = FAMILIES.find(([, code, word]) => (t.language ? code.test(t.language) : word.test(t.label ?? '')))
+  return known ? known[0] : t.language ? t.language.toLowerCase().split('-')[0] : null
+}
+
+export const isForced = (t: FilmTrack) => t.forced === true || /forc/i.test(t.label ?? '')
+
+const VFF = /\bvff\b|truefrench|\bfrance\b|\bfr-fr\b/i
+const VFQ = /\bvfq\b|qu[ée]b|canad|\bfr-ca\b/i
+const ASIDE = /comment|audio ?desc|descripti/i
+const IMPAIRED = /\bsdh\b|malentendant|\bcc\b/i
+
+const best = <T extends FilmTrack>(tracks: T[], score: (t: T) => number): T | undefined => {
+  let top: T | undefined
+  let max = 0
+  for (const t of tracks) { const s = score(t); if (s > max) { max = s; top = t } }
+  return top
+}
+
+export function pickAudio(tracks: FilmTrack[], pref: AudioPref): number {
+  if (pref === 'auto') return 0
+  const family = pref === 'en' ? 'en' : 'fr'
+  const wanted = pref === 'vff' ? VFF : pref === 'vfq' ? VFQ : null
+  const other = pref === 'vff' ? VFQ : pref === 'vfq' ? VFF : null
+  return best(tracks, (t) => {
+    if (trackFamily(t) !== family) return 0
+    const variant = wanted?.test(text(t)) ? 2 : other?.test(text(t)) ? 0 : 1
+    return 1 + variant + (ASIDE.test(t.label ?? '') ? 0 : 3)
+  })?.n ?? 0
+}
+
+export function pickSubtitle(tracks: FilmTrack[], pref: SubtitlePref, audio?: FilmTrack): number | null {
+  if (pref === 'none') return null
+  if (pref === 'forced') {
+    const family = audio ? trackFamily(audio) : null
+    return best(tracks, (t) => (isForced(t) && (!family || trackFamily(t) === family) ? 1 : 0))?.n ?? null
+  }
+  return best(tracks, (t) => (trackFamily(t) !== pref ? 0 : 1 + (isForced(t) ? 0 : 2) + (IMPAIRED.test(t.label ?? '') ? 0 : 1)))?.n ?? null
+}
+
+export type Shortcut = 'toggle' | 'back' | 'forward' | 'louder' | 'quieter' | 'mute' | 'fullscreen'
+export const SEEK_STEP = 10
+export const VOLUME_STEP = 5
+const SHORTCUTS: Record<string, Shortcut> = {
+  ' ': 'toggle', k: 'toggle', ArrowLeft: 'back', j: 'back', ArrowRight: 'forward', l: 'forward', ArrowUp: 'louder', ArrowDown: 'quieter', m: 'mute', f: 'fullscreen',
+}
+
+export function shortcut(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>): Shortcut | null {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null
+  return SHORTCUTS[e.key.length === 1 ? e.key.toLowerCase() : e.key] ?? null
 }
 
 /** Position dans le titre d'après le temps du lecteur (un flux HLS d'Entracte commence à `offset`). */
