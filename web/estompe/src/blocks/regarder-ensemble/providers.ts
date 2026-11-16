@@ -1,9 +1,10 @@
 import { filmsApi, ApiError } from '../../lib/api'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, castRefusal, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
+import { absolute, castRefusal, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality, type Range } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
+import type { HlsConfig } from 'hls.js'
 
 /** État d'un lecteur, commun à toutes les sources. */
 export type PState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued'
@@ -42,6 +43,7 @@ export interface Adapter {
   time(): number
   /** Durée de la vidéo (s), 0 si inconnue (direct). */
   duration?(): number
+  buffered?(): Range[]
   rate(): number
   setRate(r: number): void
   state(): PState
@@ -156,9 +158,10 @@ const isHls = (u: string) => /\.m3u8(\?|#|$)/i.test(u)
 
 const HLS_MIME = 'application/vnd.apple.mpegurl'
 
-function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false): { adapter: Adapter; video: HTMLVideoElement } {
+function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false, hlsConfig: Partial<HlsConfig> = {}): { adapter: Adapter; video: HTMLVideoElement } {
   const v = document.createElement('video')
   v.playsInline = true
+  v.preload = 'auto'
   if (crossOrigin) v.crossOrigin = 'anonymous'
   v.style.cssText = 'width:100%;height:100%;background:#000'
   el.appendChild(v)
@@ -198,7 +201,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
             if (v.canPlayType(HLS_MIME)) return native()
             return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
           }
-          const l = new Hls({ enableWorker: false })
+          const l = new Hls({ enableWorker: false, ...hlsConfig })
           hls = l
           l.on(Hls.Events.ERROR, (_, d) => {
             if (!d.fatal) return
@@ -215,6 +218,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
     },
     play: () => void v.play().catch(() => {}), pause: () => v.pause(), seek: (s) => { v.currentTime = s },
     time: () => v.currentTime, duration: () => (Number.isFinite(v.duration) ? v.duration : 0), rate: () => v.playbackRate, setRate: (r) => { v.playbackRate = r },
+    buffered: () => { const r: Range[] = []; for (let i = 0; i < v.buffered.length; i++) r.push([v.buffered.start(i), v.buffered.end(i)]); return r },
     state,
     destroy: () => { detach(); v.pause(); v.removeAttribute('src'); v.load(); v.remove() },
   }
@@ -225,6 +229,7 @@ const file: Factory = async (el, h) => htmlVideo(el, h).adapter
 
 
 const ATTENTE_DIRECT_MS = 10_000
+export const TAMPON_FILM: Partial<HlsConfig> = { maxBufferLength: 60, maxBufferSize: 100 * 1024 * 1024, backBufferLength: 20 }
 
 const film: Factory = async (el, h) => {
   let ref = ''
@@ -313,7 +318,7 @@ const film: Factory = async (el, h) => {
     ...h,
     onState: (s) => { if (s === 'playing') { retried = false; clearTimeout(guet) } h.onState(s) },
     onError: repli,
-  }, true, () => tele)
+  }, true, () => tele, TAMPON_FILM)
   const remote = video.remote as RemotePlayback | undefined
   const ask = async (): Promise<string | null> => {
     try { await remote!.prompt(); return null } catch (e) {
@@ -377,6 +382,7 @@ const film: Factory = async (el, h) => {
     ...adapter,
     time: now,
     duration: total,
+    buffered: () => adapter.buffered!().map(([a, b]): Range => [absolute(a, offset), absolute(b, offset)]),
     seek: (s) => {
       const ready = Number.isFinite(video.duration) ? video.duration : 0
       if (stream?.mode === 'hls' && stream.offset !== undefined && (tele || needsReopen(s, offset, ready))) { position = s; void open(s, !video.paused); return }

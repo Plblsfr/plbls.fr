@@ -9,7 +9,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { QUALITY_LABEL, trackName, type Quality } from '../../sections/entracte/films'
+  import { QUALITY_LABEL, seekTrack, trackName, type Quality } from '../../sections/entracte/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 
@@ -105,7 +105,7 @@
           <div class="watch-bar" role="group" aria-label="Lecture">
             <button class="watch-btn" disabled={!canDrive} onclick={toggle} aria-label={s.playing ? 'Pause' : 'Lecture'}><Icon name={s.playing ? 'pause' : 'lecture'} size={22} /></button>
             <span class="watch-time v-mono">{clock(drag ?? player.position)}{player.duration ? ` / ${clock(player.duration)}` : ''}</span>
-            <input class="watch-range watch-seek grow" style="--p:{pct(drag ?? player.position, player.duration)}" type="range" min="0" max={Math.max(player.duration, 1)} step="1" disabled={!canDrive || !player.duration} value={drag ?? player.position} aria-label="Position dans la vidéo"
+            <input class="watch-range watch-seek grow" style="--p:{pct(drag ?? player.position, player.duration)};--piste:{seekTrack(drag ?? player.position, player.duration, player.buffered)}" type="range" min="0" max={Math.max(player.duration, 1)} step="1" disabled={!canDrive || !player.duration} value={drag ?? player.position} aria-label="Position dans la vidéo"
               oninput={(e) => (drag = Number(e.currentTarget.value))}
               onchange={(e) => { player?.command({ action: 'seek', position: Number(e.currentTarget.value) }); drag = null }} />
             <div class="watch-bar-title grow"><strong class="truncate">{s.meta?.title ?? PROVIDER_LABEL[s.provider] ?? 'Vidéo'}</strong><span class="watch-by">ajouté par {s.by}</span></div>

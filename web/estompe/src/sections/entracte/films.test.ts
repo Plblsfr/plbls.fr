@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, clock, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, bufferedAhead, clock, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -210,5 +210,32 @@ describe('raccourcis clavier du lecteur', () => {
     expect(touche('k', { ctrlKey: true })).toBeNull()
     expect(touche('f', { metaKey: true })).toBeNull()
     expect(touche('ArrowLeft', { altKey: true })).toBeNull()
+  })
+})
+
+describe('préchargement sur la barre de position', () => {
+  const VIDE = 'rgb(255 255 255 / 22%)'
+  const CHARGE = 'rgb(255 255 255 / 52%)'
+
+  it('réunit les plages qui se touchent et écarte les plages vides', () => {
+    expect(mergeRanges([[40, 60], [0, 10], [10.2, 20], [30, 30], [Number.NaN, 5]])).toEqual([[0, 20], [40, 60]])
+  })
+
+  it('peint la partie lue, puis ce qui est chargé après elle, puis le reste', () => {
+    expect(seekTrack(50, 200, [[40, 100]])).toBe(`linear-gradient(to right, var(--rose-fonce) 0 25%, ${CHARGE} 25% 50%, ${VIDE} 50% 100%)`)
+  })
+
+  it('montre une plage chargée plus loin, séparée de la position', () => {
+    expect(seekTrack(20, 200, [[0, 40], [100, 150]])).toBe(`linear-gradient(to right, var(--rose-fonce) 0 10%, ${CHARGE} 10% 20%, ${VIDE} 20% 50%, ${CHARGE} 50% 75%, ${VIDE} 75% 100%)`)
+  })
+
+  it('ne dépasse pas la durée et reste vide sans durée connue', () => {
+    expect(seekTrack(150, 200, [[100, 260]])).toBe(`linear-gradient(to right, var(--rose-fonce) 0 75%, ${CHARGE} 75% 100%)`)
+    expect(seekTrack(10, 0, [[0, 30]])).toBe(`linear-gradient(to right, ${VIDE} 0 100%)`)
+  })
+
+  it('compte la durée chargée après la position, dans la plage qui la contient', () => {
+    expect(bufferedAhead(50, [[40, 100], [100.3, 130], [300, 400]])).toBe(80)
+    expect(bufferedAhead(200, [[40, 100], [300, 400]])).toBe(0)
   })
 })

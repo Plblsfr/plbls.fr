@@ -178,6 +178,45 @@ export function needsReopen(target: number, offset: number, ready: number): bool
   return target < offset - 0.5 || target > offset + ready + 5
 }
 
+export type Range = [number, number]
+
+const PISTE_LUE = 'var(--rose-fonce)'
+const PISTE_CHARGEE = 'rgb(255 255 255 / 52%)'
+const PISTE_VIDE = 'rgb(255 255 255 / 22%)'
+
+export function mergeRanges(ranges: Range[], gap = 0.5): Range[] {
+  const out: Range[] = []
+  for (const [a, b] of ranges.filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b > a).sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1]
+    if (last && a <= last[1] + gap) last[1] = Math.max(last[1], b)
+    else out.push([a, b])
+  }
+  return out
+}
+
+export function seekTrack(position: number, duration: number, ranges: Range[]): string {
+  if (!(duration > 0)) return `linear-gradient(to right, ${PISTE_VIDE} 0 100%)`
+  const pct = (s: number) => `${Math.round(Math.min(1, Math.max(0, s / duration)) * 10000) / 100}%`
+  const lu = Math.min(duration, Math.max(0, position))
+  const stops = [`${PISTE_LUE} 0 ${pct(lu)}`]
+  let at = lu
+  for (const [a, b] of mergeRanges(ranges)) {
+    const from = Math.max(a, at)
+    const to = Math.min(b, duration)
+    if (to <= from) continue
+    if (from > at) stops.push(`${PISTE_VIDE} ${pct(at)} ${pct(from)}`)
+    stops.push(`${PISTE_CHARGEE} ${pct(from)} ${pct(to)}`)
+    at = to
+  }
+  if (at < duration) stops.push(`${PISTE_VIDE} ${pct(at)} 100%`)
+  return `linear-gradient(to right, ${stops.join(', ')})`
+}
+
+export function bufferedAhead(position: number, ranges: Range[]): number {
+  const r = mergeRanges(ranges).find(([a, b]) => position >= a - 0.5 && position < b)
+  return r ? Math.max(0, r[1] - position) : 0
+}
+
 export function clock(sec: number): string {
   const t = Math.max(0, Math.floor(sec))
   const h = Math.floor(t / 3600)

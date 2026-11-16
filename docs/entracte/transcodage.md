@@ -28,6 +28,18 @@ Sous-titres texte (SRT, WebVTT, ASS, SSA), intégrés au fichier ou à côté (`
 Une piste n'est extraite qu'une fois à la fois : les requêtes simultanées sur la même piste attendent le même ffmpeg, deux extractions
 au plus tournent en même temps sur le serveur, et un échec est renvoyé tel quel pendant 60 s sans relancer ffmpeg.
 
+## Préchargement
+
+Le lecteur charge la suite du titre en avance et le montre : sur la barre de position, la partie déjà chargée par l'appareil est plus claire
+que le reste (plages `buffered` de la vidéo, ramenées au temps du titre par `offset` en HLS), et le lecteur « Regarder seul » affiche la
+durée chargée après la position en cours, ainsi qu'un indicateur quand la lecture attend des données.
+
+- Lecture directe : la vidéo est créée avec `preload="auto"`, le navigateur charge donc avant le premier appui sur lecture (utile au
+  cinéma, où chacun charge en pause avant le départ commun) ; la quantité gardée en avance reste décidée par le navigateur.
+- HLS (hls.js) : au moins 60 s d'avance, et jusqu'à 100 Mo quand le débit le permet (10 min au plus, soit environ 100 s en 1080p,
+  200 s en 720p), contre 30 s et 60 Mo par défaut. Seules les 20 s déjà lues sont gardées, pour laisser la mémoire à l'avance.
+  ffmpeg transcode plus vite que la lecture : c'est le lecteur, pas le serveur, qui borne l'avance.
+
 ## Flux signés et limites
 
 Le jeton d'un flux (dans l'URL) est signé (HMAC, `ENTRACTE_STREAM_SECRET`), lié à la personne et vérifié à chaque requête contre ses

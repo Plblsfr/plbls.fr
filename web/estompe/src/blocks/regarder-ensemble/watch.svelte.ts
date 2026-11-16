@@ -7,7 +7,7 @@ import { providers, type Adapter } from './providers'
 import { playerError } from './watch'
 import { SyncEngine, type Cmd } from './watchsync'
 import type { SessionKind } from '../../lib/types'
-import type { FilmTracks, Quality } from '../../sections/entracte/films'
+import type { FilmTracks, Quality, Range } from '../../sections/entracte/films'
 
 // Chaque client lit la vidéo lui-même avec le lecteur de sa source (lib/providers.ts) : le serveur ne synchronise que l'état.
 // Ce fichier branche le moteur (lib/watchsync.ts) sur le lecteur, l'état du serveur et l'API.
@@ -24,6 +24,7 @@ export class WatchPlayer {
   position = $state(0)
   duration = $state(0)
   tracks = $state<FilmTracks | null>(null)
+  buffered = $state.raw<Range[]>([])
   private p: Adapter | null = null
   private engine: SyncEngine | null = null
   private prov = ''
@@ -49,6 +50,7 @@ export class WatchPlayer {
     this.prov = prov
     this.slow = false
     this.tracks = null
+    this.buffered = []
     this.engine?.destroy()
     this.engine = null
     this.p?.destroy()
@@ -116,6 +118,7 @@ export class WatchPlayer {
     if (!this.engine || this.error) return
     this.engine.tick()
     this.duration = this.p?.duration?.() ?? 0
+    this.buffered = this.p?.buffered?.() ?? []
     this.sync()
   }
 
