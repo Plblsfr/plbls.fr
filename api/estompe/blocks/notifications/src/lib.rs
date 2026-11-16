@@ -1475,10 +1475,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        e.etat.notifier(&evenement_mp(&dm, "1", "bloqué")).await;
-        attendre(|| async { faux_fcm.nombre() >= ENVOIS_SIMULTANES }).await;
-        assert_eq!(faux_fcm.nombre(), ENVOIS_SIMULTANES);
-
         let (_conn, mut recu, _) = e.etat.hub().register(
             &alice,
             Cred {
@@ -1486,13 +1482,24 @@ mod tests {
                 cookie: false,
             },
         );
+        e.etat.notifier(&evenement_mp(&dm, "1", "bloqué")).await;
+        attendre(|| async { faux_fcm.nombre() >= ENVOIS_SIMULTANES }).await;
+        assert_eq!(faux_fcm.nombre(), ENVOIS_SIMULTANES);
+
         e.etat.notifier(&evenement_mp(&dm, "2", "en direct")).await;
-        let direct = tokio::time::timeout(Duration::from_secs(5), recu.recv())
-            .await
-            .expect("file de notifications bloquée par les envois")
-            .unwrap();
-        let direct: Value = serde_json::from_str(&direct).unwrap();
-        assert_eq!(direct["data"]["tag"], "msg-2");
+        let mut tags = Vec::new();
+        while tags.last().map(String::as_str) != Some("msg-2") {
+            let direct = tokio::time::timeout(Duration::from_secs(5), recu.recv())
+                .await
+                .expect("file de notifications bloquée par les envois")
+                .unwrap();
+            let direct: Value = serde_json::from_str(&direct).unwrap();
+            tags.push(direct["data"]["tag"].as_str().unwrap().to_string());
+        }
+        assert!(
+            tags.len() <= 2 && tags.iter().all(|t| t == "msg-1" || t == "msg-2"),
+            "{tags:?}"
+        );
 
         verrou.add_permits(1);
         attendre(|| async { faux_fcm.nombre() > ENVOIS_SIMULTANES }).await;
