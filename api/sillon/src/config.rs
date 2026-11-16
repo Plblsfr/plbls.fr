@@ -37,6 +37,9 @@ pub struct Config {
     pub max_transcodages: usize,
     pub ajouts: crate::quota::Reglages,
     pub analyse_parallele: usize,
+    pub reco: crate::recommandation::Reglages,
+    pub listenbrainz: Option<crate::listenbrainz::Reglages>,
+    pub decouverte: crate::decouverte::Reglages,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -159,6 +162,9 @@ impl Config {
                 env("SILLON_ANALYSE_PARALLELE"),
                 1,
             )?,
+            reco: crate::recommandation::Reglages::from_env(&env)?,
+            listenbrainz: crate::listenbrainz::Reglages::from_env(&env)?,
+            decouverte: crate::decouverte::Reglages::from_env(&env)?,
         })
     }
 
@@ -167,6 +173,7 @@ impl Config {
             Self::from_env(|k| (k == "DATABASE_URL").then(|| "postgres://test".to_string()))
                 .expect("configuration de test");
         c.database_url = database_url.to_string();
+        c.listenbrainz = None;
         c
     }
 }

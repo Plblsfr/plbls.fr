@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{body::Body, extract::State, http::StatusCode, response::Response};
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value, json};
@@ -8,7 +10,7 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{bd, horodatage, invalide, json, ok},
-    ordre::{self, Contexte, Element, Suggestions},
+    ordre::{self, Contexte, Element, Place, Suggestions},
     playlists::{
         PISTES_MAX, booleen, champ_uuid, contenu, entier, objet, pistes_de_source, pistes_json,
         plafond, texte,
@@ -76,8 +78,44 @@ impl File {
             .unwrap_or(self.index);
     }
 
-    fn melanger(&mut self, sub: &str) {
+    fn appliquer(&mut self, places: Vec<Place>) {
+        let mut anciens: HashMap<Uuid, Elem> = std::mem::take(&mut self.elements)
+            .into_iter()
+            .map(|e| (e.id, e))
+            .collect();
+        let mut rang = anciens.values().map(|e| e.rang_source).max().unwrap_or(-1);
+        self.elements = places
+            .into_iter()
+            .map(|p| match p.element.and_then(|id| anciens.remove(&id)) {
+                Some(e) => e,
+                None => {
+                    rang += 1;
+                    Elem {
+                        id: Uuid::new_v4(),
+                        piste: p.piste,
+                        rang_source: rang,
+                        suggeree: p.suggeree,
+                    }
+                }
+            })
+            .collect();
+    }
+
+    fn sans_suggestions(&mut self, passees: bool) {
         let courant = self.courant();
+        let index = self.index;
+        let mut i = 0;
+        self.elements.retain(|e| {
+            i += 1;
+            !e.suggeree || Some(e.id) == courant || (passees && i <= index)
+        });
+        self.suivre(courant);
+    }
+
+    async fn melanger(&mut self, state: &AppState, sub: &str) {
+        let courant = self.courant();
+        self.elements
+            .retain(|e| !e.suggeree || Some(e.id) == courant);
         self.graine = ordre::graine();
         let elements: Vec<Element> = self
             .elements
@@ -87,39 +125,61 @@ impl File {
                 piste: e.piste,
             })
             .collect();
-        let places = ordre::melanger(&Contexte {
-            sub,
-            graine: self.graine,
-            premier: courant,
-            elements: &elements,
-            suggestions: self.suggestions,
-        });
-        let mut anciens = std::mem::take(&mut self.elements);
-        let mut rang = anciens.iter().map(|e| e.rang_source).max().unwrap_or(-1);
-        self.elements = places
-            .into_iter()
-            .map(|p| {
-                match p
-                    .element
-                    .and_then(|id| anciens.iter().position(|e| e.id == id))
-                {
-                    Some(i) => anciens.swap_remove(i),
-                    None => {
-                        rang += 1;
-                        Elem {
-                            id: Uuid::new_v4(),
-                            piste: p.piste,
-                            rang_source: rang,
-                            suggeree: p.suggeree,
-                        }
-                    }
-                }
-            })
-            .collect();
+        let places = ordre::melanger(
+            state,
+            &Contexte {
+                sub,
+                graine: self.graine,
+                premier: courant,
+                elements: &elements,
+                suggestions: self.suggestions,
+            },
+        )
+        .await;
+        self.appliquer(places);
         self.index = 0;
     }
 
+    async fn prolonger(&mut self, state: &AppState, sub: &str) -> bool {
+        let Some(rythme) = self.suggestions.rythme().filter(|_| self.aleatoire) else {
+            return false;
+        };
+        let mut places: Vec<Place> = self
+            .elements
+            .iter()
+            .map(|e| Place {
+                element: Some(e.id),
+                piste: e.piste,
+                suggeree: e.suggeree,
+            })
+            .collect();
+        if !ordre::a_prolonger(&places, self.index, rythme) {
+            return false;
+        }
+        let contexte = Contexte {
+            sub,
+            graine: self.graine,
+            premier: None,
+            elements: &[],
+            suggestions: self.suggestions,
+        };
+        if ordre::prolonger(state, &contexte, &mut places, self.index).await == 0 {
+            return false;
+        }
+        self.appliquer(places);
+        true
+    }
+
+    fn source(&self) -> Vec<Uuid> {
+        self.elements
+            .iter()
+            .filter(|e| !e.suggeree)
+            .map(|e| e.piste)
+            .collect()
+    }
+
     fn remettre_en_ordre(&mut self) {
+        self.sans_suggestions(false);
         let courant = self.courant();
         self.elements.sort_by_key(|e| e.rang_source);
         self.suivre(courant);
@@ -199,9 +259,17 @@ async fn charger(c: &mut PgConnection, sub: &str, verrou: bool) -> Result<File, 
     })
 }
 
-pub async fn etat_public(pool: &PgPool, f: &File) -> Result<Value, sqlx::Error> {
+pub async fn etat_public(pool: &PgPool, sub: &str, f: &File) -> Result<Value, sqlx::Error> {
     let ids: Vec<Uuid> = f.elements.iter().map(|e| e.piste).collect();
     let pistes = pistes_json(pool, &ids).await?;
+    let decouvertes: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT DISTINCT p.id FROM ajouts a JOIN albums al ON al.mbid = ANY(a.albums) JOIN pistes p ON p.album_id = al.id
+         WHERE a.sub = $2 AND a.origine = 'decouverte' AND a.etat <> 'supprime' AND p.id = ANY($1)",
+    )
+    .bind(&ids)
+    .bind(sub)
+    .fetch_all(pool)
+    .await?;
     Ok(json!({
         "revision": f.revision,
         "source": f.source.as_ref().map(|s| json!({"type": s.genre, "id": s.id, "name": s.nom})),
@@ -215,6 +283,7 @@ pub async fn etat_public(pool: &PgPool, f: &File) -> Result<Value, sqlx::Error> 
         "items": f.elements.iter().zip(pistes).map(|(e, piste)| json!({
             "id": e.id,
             "suggested": e.suggeree,
+            "discovery": decouvertes.contains(&e.piste),
             "track": piste,
         })).collect::<Vec<_>>(),
     }))
@@ -224,7 +293,9 @@ pub async fn lire(State(state): State<AppState>, p: Personne) -> Result<Response
     let mut c = state.pool().acquire().await.map_err(bd)?;
     let f = charger(&mut c, p.sub(), false).await.map_err(bd)?;
     drop(c);
-    Ok(ok(&etat_public(state.pool(), &f).await.map_err(bd)?))
+    Ok(ok(&etat_public(state.pool(), p.sub(), &f)
+        .await
+        .map_err(bd)?))
 }
 
 struct Ecriture<'a> {
@@ -250,7 +321,7 @@ async fn ouvrir<'a>(
     let file = charger(&mut tx, sub, true).await.map_err(bd)?;
     if file.revision != attendue {
         drop(tx);
-        let courant = etat_public(state.pool(), &file).await.map_err(bd)?;
+        let courant = etat_public(state.pool(), sub, &file).await.map_err(bd)?;
         return Err(json(
             StatusCode::CONFLICT,
             &json!({
@@ -313,7 +384,12 @@ async fn fermer(state: &AppState, sub: &str, e: Ecriture<'_>) -> Result<Response
     .await
     .map_err(bd)?;
     tx.commit().await.map_err(bd)?;
-    Ok(ok(&etat_public(state.pool(), &f).await.map_err(bd)?))
+    Ok(ok(&etat_public(state.pool(), sub, &f).await.map_err(bd)?))
+}
+
+fn decouvrir(state: &AppState, f: &File) -> Option<Vec<Uuid>> {
+    (f.aleatoire && f.suggestions != Suggestions::Off && state.config().listenbrainz.is_some())
+        .then(|| f.source())
 }
 
 fn position(corps: &Map<String, Value>) -> Result<Option<f64>, Response> {
@@ -413,9 +489,14 @@ pub async fn remplacer(
     f.position = position;
     f.aleatoire = aleatoire.unwrap_or(f.aleatoire);
     if f.aleatoire {
-        f.melanger(p.sub());
+        f.melanger(&state, p.sub()).await;
     }
-    fermer(&state, p.sub(), e).await
+    let source = decouvrir(&state, f);
+    let r = fermer(&state, p.sub(), e).await?;
+    if let Some(source) = source {
+        crate::decouverte::declencher(&state, &p, source);
+    }
+    Ok(r)
 }
 
 pub async fn modifier(
@@ -436,7 +517,9 @@ pub async fn modifier(
     };
     let mut e = ouvrir(&state, p.sub(), &corps).await?;
     let f = &mut e.file;
+    let avant = f.suggestions;
     let aleatoire = modes(f, &corps)?;
+    let mut planifie = false;
     if let Some(i) = index {
         if i >= f.elements.len() {
             return Err(invalide("index hors de la file"));
@@ -450,7 +533,8 @@ pub async fn modifier(
     match aleatoire {
         Some(true) if !f.aleatoire => {
             f.aleatoire = true;
-            f.melanger(p.sub());
+            f.melanger(&state, p.sub()).await;
+            planifie = true;
         }
         Some(false) if f.aleatoire => {
             f.aleatoire = false;
@@ -477,7 +561,19 @@ pub async fn modifier(
         })?;
         f.position = 0.0;
     }
-    fermer(&state, p.sub(), e).await
+    let f = &mut e.file;
+    if f.aleatoire && f.suggestions == Suggestions::Off && avant != Suggestions::Off {
+        f.sans_suggestions(true);
+    }
+    if !planifie && (index.is_some() || pas.is_some() || f.suggestions != avant) {
+        planifie = f.prolonger(&state, p.sub()).await;
+    }
+    let source = decouvrir(&state, f).filter(|_| planifie);
+    let r = fermer(&state, p.sub(), e).await?;
+    if let Some(source) = source {
+        crate::decouverte::declencher(&state, &p, source);
+    }
+    Ok(r)
 }
 
 pub async fn ajouter(

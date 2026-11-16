@@ -365,6 +365,30 @@ pub fn table() -> Vec<Entree> {
             Garde::Droit(Droit::Admin),
             post(analyse::relancer),
         ),
+        entree(
+            Method::GET,
+            "/tracks/{id}/similar",
+            Garde::Droit(Droit::Acces),
+            get(crate::recommandation::similaires),
+        ),
+        entree(
+            Method::POST,
+            "/recommendations/dismiss",
+            Garde::Droit(Droit::Acces),
+            post(crate::recommandation::refuser),
+        ),
+        entree(
+            Method::GET,
+            "/admin/recommendations/explain",
+            Garde::Droit(Droit::Admin),
+            get(crate::recommandation::expliquer),
+        ),
+        entree(
+            Method::GET,
+            "/admin/discovery",
+            Garde::Droit(Droit::Admin),
+            get(crate::decouverte::admin),
+        ),
     ]
 }
 
