@@ -122,6 +122,7 @@
                 <button class="v-btn sm ghost" onclick={() => void ecarter(e)}>Ne plus proposer</button>
               </span>
             {/if}
+            <SillonLike kind="tracks" id={e.track.id} titre={e.track.title} />
             <button class="v-ib sm" onclick={() => faire(lecteur.retirer(e.id))} aria-label={`Retirer ${e.track.title} de la file`} title="Retirer de la file"><Icon name="x" size={16} /></button>
           </li>
         {/each}
@@ -133,7 +134,7 @@
 </div>
 
 <style>
-  .sillon-reglages { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+  .sillon-reglages { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
   .sillon-reglage { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .sillon-interrupteur { max-width: 420px; cursor: pointer; }
   .sillon-interrupteur input { flex: none; width: 18px; height: 18px; accent-color: var(--rose-fonce); }

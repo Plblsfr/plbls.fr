@@ -47,7 +47,7 @@
   <div class="film-filters">
     <h2 class="v-titre film-filters-title">Ajouter de la musique</h2>
     <form class="sillon-ajout-form" onsubmit={chercher}>
-      <span class="film-search grow"><Icon name="cherche" size={16} /><input class="plbls-input" type="search" aria-label="Chercher un artiste ou un album à ajouter" placeholder="Artiste ou album absent…" maxlength="100" bind:value={q} /></span>
+      <span class="film-search"><Icon name="cherche" size={16} /><input class="plbls-input" type="search" aria-label="Chercher un artiste ou un album à ajouter" placeholder="Artiste ou album absent…" maxlength="100" bind:value={q} /></span>
       <button class="plbls-button" disabled={!q.trim() || loading}>Chercher</button>
     </form>
   </div>
@@ -100,13 +100,14 @@
 </div>
 
 <style>
-  .sillon-ajout-form { display: flex; flex: 1 1 420px; gap: 8px; }
+  .sillon-ajout-form { display: flex; flex: 1 1 420px; grid-column: 1 / -1; gap: 8px; min-width: 0; }
+  .sillon-ajout-form .film-search { flex: 1 1 auto; min-width: 0; }
   .sillon-absents { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
   .sillon-absent-l { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 56px; padding: 6px 10px; border-radius: var(--r); }
   .sillon-absent-l:hover { background: var(--papier-2); }
   .sillon-absent-art { position: relative; flex: none; width: 44px; height: 44px; overflow: hidden; border-radius: var(--r-s); }
   .sillon-absent-art.sillon-rond { border-radius: 50%; }
-  .sillon-absent-t { display: grid; flex: 1 1 200px; min-width: 0; line-height: 1.3; }
+  .sillon-absent-t { display: grid; flex: 1 1 0; min-width: 0; line-height: 1.3; }
   .sillon-refus { flex-basis: 100%; margin: 0 0 4px 58px; padding: 8px 12px; border-radius: var(--r-s); background: var(--danger-fond); color: var(--danger); font-size: 13px; }
   @media (max-width: 720px) { .sillon-refus { margin-left: 0; } }
 </style>

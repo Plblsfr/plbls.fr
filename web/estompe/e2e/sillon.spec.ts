@@ -302,6 +302,7 @@ async function capture(page: Page, nom: string, attendre?: () => Promise<void>) 
     await page.setViewportSize({ width: l, height: h })
     await attendre?.()
     await page.evaluate(() => document.fonts.ready)
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
     await page.screenshot({ path: `${CAPTURES}/${nom}-${suffixe}.png` })
   }
   if (avant) await page.setViewportSize(avant)

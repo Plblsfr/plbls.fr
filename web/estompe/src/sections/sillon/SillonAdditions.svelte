@@ -50,7 +50,7 @@
   .sillon-ajout { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 56px; padding: 6px 10px; border-radius: var(--r); }
   .sillon-ajout-art { position: relative; flex: none; width: 44px; height: 44px; overflow: hidden; border-radius: var(--r-s); }
   .sillon-ajout-art.sillon-rond { border-radius: 50%; }
-  .sillon-ajout-t { display: grid; flex: 1 1 200px; min-width: 0; line-height: 1.3; }
+  .sillon-ajout-t { display: grid; flex: 1 1 0; min-width: 0; line-height: 1.3; }
   .sillon-ajout-t a { color: inherit; }
   .sillon-raison { color: var(--danger); }
 </style>
