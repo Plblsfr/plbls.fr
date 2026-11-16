@@ -1,8 +1,11 @@
 <script lang="ts" module>
   import { Lru } from '../../lib/lru'
-  import type { LinkPreview } from '../../lib/types'
+  import { hrefs } from '../../lib/route.svelte'
+  import type { LinkPreview, SillonCard } from '../../lib/types'
 
   const cache = new Lru<string, Promise<LinkPreview | null>>(200)
+  const GENRES: Record<SillonCard['type'], string> = { album: 'Album', track: 'Titre', artist: 'Artiste' }
+  const ecouter = (s: SillonCard) => (s.type === 'artist' ? hrefs.musique('artist', s.id) : hrefs.musique('album', s.album ?? s.id))
 </script>
 
 <script lang="ts">
@@ -10,8 +13,9 @@
   import Icon from '../../components/Icon.svelte'
   import Lightbox from '../../components/Lightbox.svelte'
   import { youtubeVideo } from '../regarder-ensemble/youtube'
+  import SillonCover from '../../sections/sillon/SillonCover.svelte'
 
-  let { url }: { url: string } = $props()
+  let { url, message }: { url: string; message?: string } = $props()
 
   const yt = $derived(youtubeVideo(url))
   // Le lecteur n'est chargé qu'au clic ; une miniature introuvable (vidéo indisponible) laisse le lien simple.
@@ -20,8 +24,9 @@
   let big = $state(false)
   const embedUrl = $derived(yt && `https://www.youtube-nocookie.com/embed/${yt.id}?autoplay=1&start=${yt.start}`)
 
-  // Un aperçu ne se demande qu'une fois par lien parmi les 200 derniers affichés (le serveur met aussi en cache).
-  const preview = $derived(cache.getOrSet(url, () => api.linkPreview(url).catch(() => null)))
+  // Un aperçu ne se demande qu'une fois par lien et par message parmi les 200 derniers affichés (le serveur met aussi en cache) :
+  // une carte Sillon dépend de l'auteur du message.
+  const preview = $derived(cache.getOrSet(`${message ?? ''} ${url}`, () => api.linkPreview(url, message).catch(() => null)))
 </script>
 
 {#if yt}
@@ -53,7 +58,18 @@
   {/if}
 {:else}
 {#await preview then p}
-  {#if p}
+  {#if p?.sillon}
+    {@const s = p.sillon}
+    <div class="lien-apercu sillon-carte">
+      <span class="sillon-carte-pochette"><SillonCover id={s.cover?.id ?? s.id} title={s.title} image={!!s.cover} kind={s.cover?.kind === 'artist' ? 'artiste' : 'album'} size="small" /></span>
+      <span>
+        <span class="lien-site">Sillon · {GENRES[s.type]}</span>
+        <strong>{s.title}</strong>
+        {#if s.type !== 'artist'}<span class="lien-desc">{s.artist}</span>{/if}
+        {#if s.listen}<a class="plbls-button plbls-button--compact sillon-carte-ecouter" href={ecouter(s)}><Icon name="lecture" size={14} /> Écouter</a>{/if}
+      </span>
+    </div>
+  {:else if p}
     <a class="lien-apercu" class:avec-image={!!p.image} href={p.url} target="_blank" rel="noopener noreferrer nofollow">
       <span>
         {#if p.site_name}<span class="lien-site">{p.site_name}</span>{/if}

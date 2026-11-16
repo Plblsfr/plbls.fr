@@ -113,7 +113,9 @@ export interface Mention {
   created_at: string
   group?: boolean
 }
-export interface LinkPreview { url: string; title: string; description?: string; image?: string; site_name?: string }
+export interface LinkPreview { url: string; title: string; description?: string; image?: string; site_name?: string; sillon?: SillonCard }
+/** Carte d'un lien Sillon (#212) : vue par l'auteur du message ; `listen` dit si le lecteur peut ouvrir la section. */
+export interface SillonCard { type: 'album' | 'track' | 'artist'; id: string; title: string; artist: string; album: string | null; cover: { kind: 'album' | 'artist'; id: string } | null; listen: boolean }
 export interface VoiceParticipant { user_id: string; pseudo: string; screen?: boolean; camera?: boolean; since?: string; mic_off?: boolean; sound_off?: boolean }
 /** Music2gether (EST-160) : morceau YouTube Music décrit par le serveur ; `cover` est un chemin de l'API (GET /music/cover/{id}). */
 export interface MusicMeta { title: string; artist: string; album: string; duration: number; cover: string }
