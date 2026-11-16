@@ -7,7 +7,7 @@ import { providers, type Adapter } from './providers'
 import { playerError } from './watch'
 import { SyncEngine, type Cmd } from './watchsync'
 import type { SessionKind } from '../../lib/types'
-import type { FilmTracks, Quality } from '../../sections/entracte/films'
+import type { BufferPref, FilmTracks, Quality, Range } from '../../sections/entracte/films'
 
 // Chaque client lit la vidéo lui-même avec le lecteur de sa source (lib/providers.ts) : le serveur ne synchronise que l'état.
 // Ce fichier branche le moteur (lib/watchsync.ts) sur le lecteur, l'état du serveur et l'API.
@@ -21,9 +21,11 @@ export class WatchPlayer {
   /** Coupe-circuit déclenché : la synchronisation reprend seule après quelques secondes. */
   suspended = $state(false)
   slow = $state(false)
+  loading = $state(false)
   position = $state(0)
   duration = $state(0)
   tracks = $state<FilmTracks | null>(null)
+  buffered = $state.raw<Range[]>([])
   private p: Adapter | null = null
   private engine: SyncEngine | null = null
   private prov = ''
@@ -48,7 +50,9 @@ export class WatchPlayer {
     const gen = ++this.gen
     this.prov = prov
     this.slow = false
+    this.loading = false
     this.tracks = null
+    this.buffered = []
     this.engine?.destroy()
     this.engine = null
     this.p?.destroy()
@@ -75,6 +79,7 @@ export class WatchPlayer {
         send: (action, b) => api.watchAction(this.cid, action, b, this.kind),
         ended: (rev) => void api.watchAction(this.cid, 'ended', { rev }, this.kind).catch(() => {}),
         ready: (ready) => void api.watchReady(this.cid, ready, this.kind).catch(() => {}),
+        ...(this.kind === 'cinema' ? { wait: () => void api.watchReady(this.cid, false, this.kind, true).catch(() => {}) } : {}),
         refused: (e) => notify.error(e ?? new Error('Le serveur n’a pas répondu'), 'Action refusée'),
         log: (m) => debug.log('info', this.tag, m),
       })
@@ -109,6 +114,7 @@ export class WatchPlayer {
     this.suspended = e.suspended
     this.blocked = e.stalled
     this.slow = e.slow
+    this.loading = e.loading
     this.position = e.position
   }
 
@@ -116,6 +122,7 @@ export class WatchPlayer {
     if (!this.engine || this.error) return
     this.engine.tick()
     this.duration = this.p?.duration?.() ?? 0
+    this.buffered = this.p?.buffered?.() ?? []
     this.sync()
   }
 
@@ -133,6 +140,7 @@ export class WatchPlayer {
   setSubtitle(n: number | null) { this.p?.setSubtitle?.(n); if (this.tracks) this.tracks = { ...this.tracks, subN: n } }
   /** Palier propre à ce participant (Entracte) : seule la position de la séance est partagée. */
   setQuality(q: Quality) { this.p?.setQuality?.(q) }
+  setBuffer(b: BufferPref) { this.p?.setBuffer?.(b) }
 
   /** Un morceau de Music2gether que le lecteur refuse (intégration désactivée, région, âge) est passé : le premier client à le signaler avance la file. */
   private skipUnplayable(): boolean {

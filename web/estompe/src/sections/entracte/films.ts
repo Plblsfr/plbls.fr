@@ -85,11 +85,13 @@ export function saveQuality(store: Pick<Storage, 'setItem'> | null, q: Quality) 
 
 export type AudioPref = 'auto' | 'vf' | 'vff' | 'vfq' | 'en'
 export type SubtitlePref = 'none' | 'forced' | 'fr' | 'en'
-export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean }
+export type BufferPref = 'normal' | 'long' | 'all'
+export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean; buffer: BufferPref }
+export const BUFFER_PREFS: [BufferPref, string][] = [['normal', 'Normal (1 à 3 min)'], ['long', 'Long (15 min)'], ['all', 'Tout le film']]
 export const AUDIO_PREFS: [AudioPref, string][] = [['auto', 'Piste du fichier'], ['vf', 'Français (VF)'], ['vff', 'Français de France (VFF)'], ['vfq', 'Français du Québec (VFQ)'], ['en', 'Anglais']]
 export const SUBTITLE_PREFS: [SubtitlePref, string][] = [['none', 'Aucun'], ['forced', 'Forcés seulement'], ['fr', 'Français'], ['en', 'Anglais']]
 const PLAY_KEY = 'entracte.lecture'
-const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false }
+const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal' }
 
 export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
   let p: Partial<PlayPrefs> = {}
@@ -99,6 +101,7 @@ export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
     audio: AUDIO_PREFS.some(([id]) => id === p.audio) ? p.audio! : PLAY_DEFAULTS.audio,
     subtitles: SUBTITLE_PREFS.some(([id]) => id === p.subtitles) ? p.subtitles! : PLAY_DEFAULTS.subtitles,
     volume, muted: p.muted === true,
+    buffer: BUFFER_PREFS.some(([id]) => id === p.buffer) ? p.buffer! : PLAY_DEFAULTS.buffer,
   }
 }
 
@@ -176,6 +179,45 @@ export function shiftCues(cues: ArrayLike<{ startTime: number; endTime: number }
 /** Faut-il rouvrir le flux pour atteindre `target` ? (HLS : avant le début du flux ou au-delà de ce qui est transcodé) */
 export function needsReopen(target: number, offset: number, ready: number): boolean {
   return target < offset - 0.5 || target > offset + ready + 5
+}
+
+export type Range = [number, number]
+
+const PISTE_LUE = 'var(--rose-fonce)'
+const PISTE_CHARGEE = 'rgb(255 255 255 / 52%)'
+const PISTE_VIDE = 'rgb(255 255 255 / 22%)'
+
+export function mergeRanges(ranges: Range[], gap = 0.5): Range[] {
+  const out: Range[] = []
+  for (const [a, b] of ranges.filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b > a).sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1]
+    if (last && a <= last[1] + gap) last[1] = Math.max(last[1], b)
+    else out.push([a, b])
+  }
+  return out
+}
+
+export function seekTrack(position: number, duration: number, ranges: Range[]): string {
+  if (!(duration > 0)) return `linear-gradient(to right, ${PISTE_VIDE} 0 100%)`
+  const pct = (s: number) => `${Math.round(Math.min(1, Math.max(0, s / duration)) * 10000) / 100}%`
+  const lu = Math.min(duration, Math.max(0, position))
+  const stops = [`${PISTE_LUE} 0 ${pct(lu)}`]
+  let at = lu
+  for (const [a, b] of mergeRanges(ranges)) {
+    const from = Math.max(a, at)
+    const to = Math.min(b, duration)
+    if (to <= from) continue
+    if (from > at) stops.push(`${PISTE_VIDE} ${pct(at)} ${pct(from)}`)
+    stops.push(`${PISTE_CHARGEE} ${pct(from)} ${pct(to)}`)
+    at = to
+  }
+  if (at < duration) stops.push(`${PISTE_VIDE} ${pct(at)} 100%`)
+  return `linear-gradient(to right, ${stops.join(', ')})`
+}
+
+export function bufferedAhead(position: number, ranges: Range[]): number {
+  const r = mergeRanges(ranges).find(([a, b]) => position >= a - 0.5 && position < b)
+  return r ? Math.max(0, r[1] - position) : 0
 }
 
 export function clock(sec: number): string {

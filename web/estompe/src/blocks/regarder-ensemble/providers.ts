@@ -1,9 +1,11 @@
 import { filmsApi, ApiError } from '../../lib/api'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, castRefusal, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality } from '../../sections/entracte/films'
+import { absolute, castRefusal, mergeRanges, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, bufferedAhead, savedQuality, savePlayPrefs, saveQuality, support, type BufferPref, type CastState, type FilmPlayback, type FilmTracks, type Quality, type Range } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
+import type { FragmentLoaderContext, HlsConfig, Loader } from 'hls.js'
+import { Avance, BUDGETS, cachedLoader, type Budget } from './avance'
 
 /** État d'un lecteur, commun à toutes les sources. */
 export type PState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued'
@@ -33,6 +35,7 @@ export interface Adapter {
   setSubtitle?(n: number | null): void
   /** Palier de qualité (Entracte) : rouvre le flux à la même position. */
   setQuality?(q: Quality): void
+  setBuffer?(b: BufferPref): void
   /** Ouvre le choix de l'appareil du navigateur ; renvoie le message à afficher si la diffusion n'a pas pu être proposée. */
   cast?(): Promise<string | null>
   load(ref: string, start: number, play: boolean): void
@@ -42,6 +45,8 @@ export interface Adapter {
   time(): number
   /** Durée de la vidéo (s), 0 si inconnue (direct). */
   duration?(): number
+  buffered?(): Range[]
+  ready?(): boolean
   rate(): number
   setRate(r: number): void
   state(): PState
@@ -155,14 +160,17 @@ const youtube: Factory = async (el, h) => {
 const isHls = (u: string) => /\.m3u8(\?|#|$)/i.test(u)
 
 const HLS_MIME = 'application/vnd.apple.mpegurl'
+const AVANCE_PRETE = 5
 
-function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false): { adapter: Adapter; video: HTMLVideoElement } {
+function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false, hlsConfig: Partial<HlsConfig> = {}, budget: () => Budget | null = () => null): { adapter: Adapter; video: HTMLVideoElement } {
   const v = document.createElement('video')
   v.playsInline = true
+  v.preload = 'auto'
   if (crossOrigin) v.crossOrigin = 'anonymous'
   v.style.cssText = 'width:100%;height:100%;background:#000'
   el.appendChild(v)
   let hls: Hls | null = null
+  let avance: Avance | null = null
   let buffering = false
   const state = (): PState => {
     if (v.ended) return 'ended'
@@ -176,7 +184,9 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
     debug.log('warn', 'lecteur', `erreur vidéo ${v.error?.code ?? '?'} : ${v.error?.message || 'sans détail'}`)
     h.onError('Cette vidéo ne peut pas être lue (format ou accès refusé par le site qui l\'héberge).')
   })
-  const detach = () => { hls?.destroy(); hls = null }
+  const detach = () => { hls?.destroy(); hls = null; avance?.destroy(); avance = null }
+  const ranges = () => { const r: Range[] = []; for (let i = 0; i < v.buffered.length; i++) r.push([v.buffered.start(i), v.buffered.end(i)]); return r }
+  for (const ev of ['timeupdate', 'seeking']) v.addEventListener(ev, () => avance?.wake())
   const adapter: Adapter = {
     sync: 'full', canRate: true, setVolume: (x) => { v.volume = x / 100; v.muted = x === 0 },
     load: (ref, start, play) => {
@@ -198,8 +208,12 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
             if (v.canPlayType(HLS_MIME)) return native()
             return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
           }
-          const l = new Hls({ enableWorker: false })
+          const b = budget()
+          const av = b ? new Avance(b, () => v.currentTime) : null
+          const l = new Hls({ enableWorker: false, ...hlsConfig, ...(av ? { fLoader: cachedLoader(Hls.DefaultConfig.loader as new (c: HlsConfig) => Loader<FragmentLoaderContext>, av) } : {}) })
           hls = l
+          avance = av
+          if (av) l.on(Hls.Events.LEVEL_UPDATED, (_, d) => av.setFragments(d.details.fragments.map((x) => ({ url: x.url, start: x.start, duration: x.duration }))))
           l.on(Hls.Events.ERROR, (_, d) => {
             if (!d.fatal) return
             debug.log('warn', 'lecteur', `HLS ${d.type} : ${d.details}${d.response ? ` (HTTP ${d.response.code})` : ''}`)
@@ -215,6 +229,8 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
     },
     play: () => void v.play().catch(() => {}), pause: () => v.pause(), seek: (s) => { v.currentTime = s },
     time: () => v.currentTime, duration: () => (Number.isFinite(v.duration) ? v.duration : 0), rate: () => v.playbackRate, setRate: (r) => { v.playbackRate = r },
+    buffered: () => (avance ? mergeRanges([...ranges(), ...avance.ranges()]) : ranges()),
+    ready: () => v.readyState >= 4 || (v.readyState >= 3 && bufferedAhead(v.currentTime, ranges()) >= AVANCE_PRETE),
     state,
     destroy: () => { detach(); v.pause(); v.removeAttribute('src'); v.load(); v.remove() },
   }
@@ -225,6 +241,7 @@ const file: Factory = async (el, h) => htmlVideo(el, h).adapter
 
 
 const ATTENTE_DIRECT_MS = 10_000
+export const TAMPON_FILM: Partial<HlsConfig> = { maxBufferLength: 60, maxBufferSize: 100 * 1024 * 1024, backBufferLength: 20 }
 
 const film: Factory = async (el, h) => {
   let ref = ''
@@ -313,7 +330,7 @@ const film: Factory = async (el, h) => {
     ...h,
     onState: (s) => { if (s === 'playing') { retried = false; clearTimeout(guet) } h.onState(s) },
     onError: repli,
-  }, true, () => tele)
+  }, true, () => tele, TAMPON_FILM, () => BUDGETS[playPrefs(store()).buffer])
   const remote = video.remote as RemotePlayback | undefined
   const ask = async (): Promise<string | null> => {
     try { await remote!.prompt(); return null } catch (e) {
@@ -377,6 +394,7 @@ const film: Factory = async (el, h) => {
     ...adapter,
     time: now,
     duration: total,
+    buffered: () => adapter.buffered!().map(([a, b]): Range => [absolute(a, offset), absolute(b, offset)]),
     seek: (s) => {
       const ready = Number.isFinite(video.duration) ? video.duration : 0
       if (stream?.mode === 'hls' && stream.offset !== undefined && (tele || needsReopen(s, offset, ready))) { position = s; void open(s, !video.paused); return }
@@ -400,6 +418,7 @@ const film: Factory = async (el, h) => {
     setAudio: (n) => { audio = n; audioPending = false; void open(now(), !video.paused) },
     setSubtitle: (n) => { sub = n; subPending = false; showSubtitle() },
     setQuality: (q) => { quality = q; saveQuality(store(), q); void open(now(), !video.paused) },
+    setBuffer: (b) => { savePlayPrefs(store(), { buffer: b }); if (stream?.mode === 'hls' && !tele) void open(now(), !video.paused) },
     ...(remote ? { cast } : {}),
     destroy: () => { gone = true; clearTimeout(guet); window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },
   }
