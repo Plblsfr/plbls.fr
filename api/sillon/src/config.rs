@@ -30,6 +30,13 @@ pub struct Config {
     pub medias: PathBuf,
     pub periode_synchro: Duration,
     pub ffprobe: String,
+    pub ffmpeg: String,
+    pub secret_flux: String,
+    pub cache: PathBuf,
+    pub cache_max_octets: u64,
+    pub max_transcodages: usize,
+    pub ajouts: crate::quota::Reglages,
+    pub analyse_parallele: usize,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -100,6 +107,23 @@ impl Config {
         let gateway_public =
             env("GATEWAY_URL").unwrap_or_else(|| "https://security.plbls.fr".into());
         let minutes: u64 = nombre("SILLON_SYNC_MINUTES", env("SILLON_SYNC_MINUTES"), 15)?;
+        let secret_flux = match env("SILLON_STREAM_SECRET") {
+            Some(s) if s.len() < 32 => {
+                return Err("SILLON_STREAM_SECRET : 32 caractères au moins".into());
+            }
+            Some(s) => s,
+            None => format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            ),
+        };
+        let cache_go: u64 = nombre("SILLON_CACHE_GO", env("SILLON_CACHE_GO"), 10)?;
+        let max_transcodages: usize =
+            nombre("SILLON_MAX_TRANSCODAGES", env("SILLON_MAX_TRANSCODAGES"), 2)?;
+        if max_transcodages == 0 {
+            return Err("SILLON_MAX_TRANSCODAGES : 1 au moins".into());
+        }
         Ok(Self {
             port: nombre("SILLON_PORT", env("SILLON_PORT"), 8080)?,
             database_url,
@@ -124,6 +148,17 @@ impl Config {
             medias: PathBuf::from(env("SILLON_MEDIAS").unwrap_or_else(|| "/srv/musique".into())),
             periode_synchro: Duration::from_secs(minutes * 60),
             ffprobe: env("SILLON_FFPROBE").unwrap_or_else(|| "ffprobe".into()),
+            ffmpeg: env("SILLON_FFMPEG").unwrap_or_else(|| "ffmpeg".into()),
+            secret_flux,
+            cache: PathBuf::from(env("SILLON_CACHE").unwrap_or_else(|| "/tmp/sillon".into())),
+            cache_max_octets: cache_go.saturating_mul(1 << 30),
+            max_transcodages,
+            ajouts: crate::quota::Reglages::from_env(&env)?,
+            analyse_parallele: nombre(
+                "SILLON_ANALYSE_PARALLELE",
+                env("SILLON_ANALYSE_PARALLELE"),
+                1,
+            )?,
         })
     }
 
@@ -162,6 +197,62 @@ mod tests {
         assert_eq!(c.medias, Path::new("/srv/musique"));
         assert_eq!(c.periode_synchro, Duration::from_secs(900));
         assert_eq!(c.ffprobe, "ffprobe");
+        assert_eq!(c.ffmpeg, "ffmpeg");
+        assert_eq!(c.secret_flux.len(), 64);
+        assert_ne!(
+            c.secret_flux,
+            charge(&[("DATABASE_URL", "postgres://x")])
+                .unwrap()
+                .secret_flux
+        );
+        assert_eq!(c.cache, Path::new("/tmp/sillon"));
+        assert_eq!(c.cache_max_octets, 10 << 30);
+        assert_eq!(c.max_transcodages, 2);
+        assert_eq!(c.analyse_parallele, 1);
+    }
+
+    #[test]
+    fn variables_de_lecture() {
+        let base = ("DATABASE_URL", "postgres://x");
+        let secret = "s".repeat(32);
+        let c = charge(&[
+            base,
+            ("SILLON_FFMPEG", "/usr/bin/ffmpeg"),
+            ("SILLON_STREAM_SECRET", &secret),
+            ("SILLON_CACHE", "/var/cache/sillon"),
+            ("SILLON_CACHE_GO", "3"),
+            ("SILLON_MAX_TRANSCODAGES", "4"),
+        ])
+        .unwrap();
+        assert_eq!(c.ffmpeg, "/usr/bin/ffmpeg");
+        assert_eq!(c.secret_flux, secret);
+        assert_eq!(c.cache, Path::new("/var/cache/sillon"));
+        assert_eq!(c.cache_max_octets, 3 << 30);
+        assert_eq!(c.max_transcodages, 4);
+        for faux in [
+            ("SILLON_STREAM_SECRET", "court"),
+            ("SILLON_CACHE_GO", "x"),
+            ("SILLON_MAX_TRANSCODAGES", "0"),
+        ] {
+            assert!(
+                charge(&[base, faux]).unwrap_err().contains(faux.0),
+                "{faux:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn variables_d_analyse() {
+        let base = ("DATABASE_URL", "postgres://x");
+        let c = charge(&[base, ("SILLON_ANALYSE_PARALLELE", "3")]).unwrap();
+        assert_eq!(c.analyse_parallele, 3);
+        let c = charge(&[base, ("SILLON_ANALYSE_PARALLELE", "0")]).unwrap();
+        assert_eq!(c.analyse_parallele, 0);
+        assert!(
+            charge(&[base, ("SILLON_ANALYSE_PARALLELE", "-1")])
+                .unwrap_err()
+                .contains("SILLON_ANALYSE_PARALLELE")
+        );
     }
 
     #[test]
