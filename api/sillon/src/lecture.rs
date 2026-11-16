@@ -1017,7 +1017,7 @@ mod tests {
         assert_eq!(r.statut, StatusCode::OK);
         assert_eq!(
             r.json(),
-            json!({"quality": "originale", "qualities": ["originale", "haute", "normale", "basse"]})
+            json!({"quality": "originale", "qualities": ["originale", "haute", "normale", "basse"], "discovery": true})
         );
         let r = e
             .appel(

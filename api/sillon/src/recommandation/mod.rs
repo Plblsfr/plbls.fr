@@ -72,6 +72,7 @@ pub struct Profil {
     pub refusees: HashSet<Uuid>,
     pub sautees: HashSet<Uuid>,
     pub decouvertes: HashSet<Uuid>,
+    pub reservees: HashSet<Uuid>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -225,6 +226,8 @@ impl Donnees {
     pub fn ecartee(&self, piste: Uuid) -> Option<&'static str> {
         if self.profil.refusees.contains(&piste) {
             Some("dismissed")
+        } else if self.profil.reservees.contains(&piste) {
+            Some("discovery_of_another")
         } else if self.profil.sautees.contains(&piste) {
             Some("skipped_recently")
         } else {
@@ -334,6 +337,16 @@ async fn profil(
         })
         .map(|l| l.get(1))
         .collect();
+    p.reservees = sqlx::query_scalar(
+        "SELECT p.id FROM ajouts a JOIN albums al ON al.mbid = ANY(a.albums) JOIN pistes p ON p.album_id = al.id
+         WHERE a.sub <> $1 AND a.origine = 'decouverte' AND a.etat <> 'supprime'
+           AND NOT EXISTS (SELECT 1 FROM ajouts b WHERE b.sub = $1 AND al.mbid = ANY(b.albums))",
+    )
+    .bind(sub)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect();
     Ok(p)
 }
 
@@ -637,4 +650,435 @@ pub async fn expliquer(
             "discovery": c.decouverte,
         },
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    use crate::{
+        analyse::{DIMENSION, VERSION},
+        playlists::tests::catalogue,
+        testutil::{Env, env},
+    };
+
+    async fn file(e: &Env, qui: &str, corps: Value) -> Value {
+        let revision = e.get(qui, "/queue").await.json()["revision"].clone();
+        let mut corps = corps;
+        corps["revision"] = revision;
+        let methode = if corps.get("source").is_some() {
+            "PUT"
+        } else {
+            "PATCH"
+        };
+        let r = e.appel(Some(qui), methode, "/queue", Some(corps)).await;
+        assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        r.json()
+    }
+
+    fn suggerees(f: &Value) -> Vec<(usize, String, String)> {
+        f["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i["suggested"] == true)
+            .map(|(n, i)| {
+                (
+                    n,
+                    i["id"].as_str().unwrap().to_string(),
+                    i["track"]["id"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    async fn album(e: &Env, piste: &str) -> String {
+        e.get("alice", &format!("/tracks/{piste}")).await.json()["album"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn suggestions_dans_la_file_sans_analyse_ni_listenbrainz() {
+        let Some(e) = env().await else { return };
+        let p = catalogue(e.state.pool(), 30).await;
+        let source = json!({"type": "album", "id": album(&e, &p[0]).await});
+        let de_la_source: Vec<&String> = p.iter().step_by(3).collect();
+        assert!(e.state.analyse().voisins().is_empty() && e.state.config().listenbrainz.is_none());
+
+        let f = file(
+            &e,
+            "alice",
+            json!({"source": source, "shuffle": true, "suggestions": "off"}),
+        )
+        .await;
+        assert_eq!(f["items"].as_array().unwrap().len(), 10);
+        assert!(suggerees(&f).is_empty(), "désactivées : aucune");
+        let f = file(
+            &e,
+            "alice",
+            json!({"source": source, "shuffle": false, "suggestions": "frequent"}),
+        )
+        .await;
+        assert!(suggerees(&f).is_empty(), "sans aléatoire : aucune");
+
+        let f = file(
+            &e,
+            "alice",
+            json!({"source": source, "shuffle": true, "suggestions": "frequent"}),
+        )
+        .await;
+        let s = suggerees(&f);
+        assert_eq!(
+            s.iter().map(|x| x.0).collect::<Vec<_>>(),
+            [4, 9],
+            "une suggestion toutes les 4 pistes de la source : {f}"
+        );
+        assert!(s.iter().all(|x| !de_la_source.contains(&&x.2)));
+        assert_eq!(f["items"].as_array().unwrap().len(), 12);
+        assert!(
+            f["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|i| i["discovery"] == false)
+        );
+        let mut jouees: Vec<&str> = f["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|i| i["suggested"] == false)
+            .map(|i| i["track"]["id"].as_str().unwrap())
+            .collect();
+        jouees.sort();
+        let mut attendues: Vec<&str> = de_la_source.iter().map(|x| x.as_str()).collect();
+        attendues.sort();
+        assert_eq!(jouees, attendues, "chaque piste de la source une fois");
+        let leger = file(
+            &e,
+            "alice",
+            json!({"source": source, "shuffle": true, "suggestions": "light"}),
+        )
+        .await;
+        assert_eq!(
+            suggerees(&leger).iter().map(|x| x.0).collect::<Vec<_>>(),
+            [10]
+        );
+
+        let f = file(
+            &e,
+            "alice",
+            json!({"source": source, "shuffle": true, "suggestions": "frequent"}),
+        )
+        .await;
+        let (sautee, refusee) = (suggerees(&f)[0].clone(), suggerees(&f)[1].clone());
+        let r = e
+            .appel(
+                Some("alice"),
+                "POST",
+                "/history",
+                Some(
+                    json!({"track": sautee.2, "played": 3.0, "ended_by": "skip", "item": sautee.1}),
+                ),
+            )
+            .await;
+        assert_eq!(r.json()["suggested"], true, "{}", r.texte());
+        let r = e
+            .appel(
+                Some("alice"),
+                "POST",
+                "/recommendations/dismiss",
+                Some(json!({"track": refusee.2})),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::NO_CONTENT, "{}", r.texte());
+        for _ in 0..8 {
+            let f = file(
+                &e,
+                "alice",
+                json!({"source": source, "shuffle": true, "suggestions": "frequent"}),
+            )
+            .await;
+            let s = suggerees(&f);
+            assert_eq!(s.len(), 2);
+            assert!(
+                s.iter().all(|x| x.2 != sautee.2 && x.2 != refusee.2),
+                "suggestion sautée ou refusée reproposée"
+            );
+        }
+        let detail = e
+            .get(
+                "admin",
+                &format!(
+                    "/admin/recommendations/explain?track={}&sub=sub-alice",
+                    sautee.2
+                ),
+            )
+            .await
+            .json();
+        assert_eq!(detail["excluded"], "skipped_recently");
+        assert!(detail["signals"]["skips"].as_f64().unwrap() > 0.4);
+        sqlx::query(
+            "UPDATE ecoutes SET debut = debut - interval '15 days' WHERE sub = 'sub-alice'",
+        )
+        .execute(e.state.pool())
+        .await
+        .unwrap();
+        let detail = e
+            .get(
+                "admin",
+                &format!(
+                    "/admin/recommendations/explain?track={}&sub=sub-alice",
+                    sautee.2
+                ),
+            )
+            .await
+            .json();
+        assert_eq!(detail["excluded"], Value::Null, "délai passé : {detail}");
+        let chez_bruno = file(
+            &e,
+            "bruno",
+            json!({"source": source, "shuffle": true, "suggestions": "frequent"}),
+        )
+        .await;
+        assert_eq!(suggerees(&chez_bruno).len(), 2);
+
+        let f = file(&e, "alice", json!({"suggestions": "off"})).await;
+        assert!(suggerees(&f).is_empty(), "coupées : retirées de la suite");
+        let f = file(&e, "alice", json!({"suggestions": "light"})).await;
+        assert_eq!(suggerees(&f).len(), 1);
+        let f = file(&e, "alice", json!({"index": 10})).await;
+        assert_eq!(f["items"][10]["suggested"], true);
+        let f = file(&e, "alice", json!({"shuffle": false})).await;
+        assert_eq!(suggerees(&f).len(), 1, "seule la suggestion en cours reste");
+        assert_eq!(
+            f["items"][f["index"].as_u64().unwrap() as usize]["suggested"],
+            true
+        );
+
+        for (corps, statut) in [
+            (json!({}), StatusCode::BAD_REQUEST),
+            (json!({"track": "x"}), StatusCode::BAD_REQUEST),
+            (json!({"track": Uuid::new_v4()}), StatusCode::NOT_FOUND),
+        ] {
+            let r = e
+                .appel(
+                    Some("alice"),
+                    "POST",
+                    "/recommendations/dismiss",
+                    Some(corps.clone()),
+                )
+                .await;
+            assert_eq!(r.statut, statut, "{corps}");
+        }
+    }
+
+    #[tokio::test]
+    async fn fenetre_suivante_planifiee_en_avancant() {
+        let Some(e) = env().await else { return };
+        let p = catalogue(e.state.pool(), 300).await;
+        let f = file(
+            &e,
+            "alice",
+            json!({"source": {"type": "search", "query": "tout"}, "tracks": p[..200], "shuffle": true, "suggestions": "frequent"}),
+        )
+        .await;
+        let premiere = suggerees(&f);
+        assert_eq!(premiere.len(), 10, "fenêtre de 50 éléments");
+        let f = file(&e, "alice", json!({"index": 20})).await;
+        assert_eq!(suggerees(&f), premiere, "encore 25 éléments planifiés");
+        let f = file(&e, "alice", json!({"index": 40})).await;
+        let seconde = suggerees(&f);
+        assert_eq!(seconde[..10], premiere[..]);
+        assert!(seconde.len() > 15, "{}", seconde.len());
+        assert!(
+            seconde.windows(2).all(|s| s[1].0 - s[0].0 == 5),
+            "rythme gardé d'une fenêtre à l'autre"
+        );
+        assert_eq!(f["index"], 40);
+        let pistes: std::collections::HashSet<&String> = seconde.iter().map(|s| &s.2).collect();
+        assert_eq!(pistes.len(), seconde.len());
+        assert!(seconde.iter().all(|s| !p[..200].contains(&s.2)));
+    }
+
+    async fn analyser(e: &Env, vecteurs: &[(&String, f32)]) {
+        for (piste, x) in vecteurs {
+            let v: Vec<f32> = (0..DIMENSION)
+                .map(|d| x * (1.0 + d as f32 / 10.0))
+                .collect();
+            sqlx::query(
+                "INSERT INTO analyses (piste_id, contenu_le, version, vecteur, tonalite, majeur) VALUES ($1, now(), $2, $3, 0, true)",
+            )
+            .bind(Uuid::parse_str(piste).unwrap())
+            .bind(VERSION)
+            .bind(v)
+            .execute(e.state.pool())
+            .await
+            .unwrap();
+        }
+        crate::analyse::recharger(&e.state).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pistes_similaires_et_explication_du_score() {
+        let Some(e) = env().await else { return };
+        let p = catalogue(e.state.pool(), 12).await;
+        analyser(
+            &e,
+            &[
+                (&p[0], 0.0),
+                (&p[1], 0.1),
+                (&p[2], 0.3),
+                (&p[3], 5.0),
+                (&p[4], 5.1),
+                (&p[5], -8.0),
+                (&p[6], 0.2),
+            ],
+        )
+        .await;
+        sqlx::query("UPDATE pistes SET present = false WHERE id = $1")
+            .bind(Uuid::parse_str(&p[6]).unwrap())
+            .execute(e.state.pool())
+            .await
+            .unwrap();
+        let r = e.get("alice", &format!("/tracks/{}/similar", p[0])).await;
+        assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        let ids: Vec<&str> = r.json()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["id"].as_str().unwrap())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|i| p.iter().find(|x| x.as_str() == i).unwrap().as_str())
+            .collect();
+        assert_eq!(ids, [&p[1], &p[2], &p[3], &p[4], &p[5]]);
+        assert_eq!(
+            r.json()["items"][0]["album"]["title"].as_str().is_some(),
+            true,
+            "format des pistes de la bibliothèque"
+        );
+        let r = e
+            .get("alice", &format!("/tracks/{}/similar?limit=2", p[0]))
+            .await;
+        assert_eq!(r.json()["items"].as_array().unwrap().len(), 2);
+        let r = e.get("alice", &format!("/tracks/{}/similar", p[9])).await;
+        assert_eq!(r.json(), json!({"items": []}), "piste non analysée");
+        for (chemin, statut) in [
+            (
+                format!("/tracks/{}/similar?limit=0", p[0]),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                format!("/tracks/{}/similar?limit=101", p[0]),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                format!("/tracks/{}/similar", Uuid::new_v4()),
+                StatusCode::NOT_FOUND,
+            ),
+            ("/tracks/x/similar".to_string(), StatusCode::NOT_FOUND),
+        ] {
+            assert_eq!(e.get("alice", &chemin).await.statut, statut, "{chemin}");
+        }
+
+        file(
+            &e,
+            "alice",
+            json!({"source": {"type": "search", "query": "q"}, "tracks": [p[0], p[1]]}),
+        )
+        .await;
+        let expliquer = |piste: &str| {
+            let chemin = format!("/admin/recommendations/explain?track={piste}&sub=sub-alice");
+            let e = &e;
+            async move {
+                let r = e.get("admin", &chemin).await;
+                assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+                r.json()
+            }
+        };
+        let proche = expliquer(&p[2]).await;
+        let loin = expliquer(&p[5]).await;
+        assert!(proche["signals"]["audio"].as_f64() > loin["signals"]["audio"].as_f64());
+        assert!(proche["total"].as_f64() > loin["total"].as_f64());
+        assert_eq!(
+            proche["context"],
+            json!({"tracks": 2, "previous": p[0], "analysed": true})
+        );
+        assert_eq!(proche["weights"]["audio"], 1.0);
+        let somme: f64 = proche["contributions"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|v| v.as_f64().unwrap())
+            .sum();
+        assert!((somme - proche["total"].as_f64().unwrap()).abs() < 1e-4);
+        assert_eq!(expliquer(&p[0]).await["excluded"], "in_source");
+        assert_eq!(expliquer(&p[6]).await["excluded"], "unavailable");
+        let neutre = expliquer(&p[9]).await;
+        assert_eq!(
+            neutre["signals"]["audio"], 0.5,
+            "piste non analysée : neutre"
+        );
+        assert_eq!(neutre["inputs"]["distance_context"], Value::Null);
+
+        let avant = expliquer(&p[4]).await;
+        let r = e
+            .appel(
+                Some("alice"),
+                "PUT",
+                &format!("/likes/tracks/{}", p[3]),
+                None,
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::NO_CONTENT);
+        let apres = expliquer(&p[4]).await;
+        assert!(
+            apres["signals"]["affinity"].as_f64().unwrap()
+                > avant["signals"]["affinity"].as_f64().unwrap() + 0.05,
+            "voisine d'une piste likée : {avant} {apres}"
+        );
+        assert!(apres["total"].as_f64() > avant["total"].as_f64());
+        assert!(apres["inputs"]["distance_liked"].as_f64().unwrap() < 0.5);
+        let ailleurs = (expliquer(&p[5]).await, loin);
+        assert_eq!(
+            ailleurs.0["signals"]["affinity"],
+            ailleurs.1["signals"]["affinity"]
+        );
+
+        for chemin in [
+            "/admin/recommendations/explain".to_string(),
+            format!("/admin/recommendations/explain?track={}", p[0]),
+            "/admin/recommendations/explain?track=x&sub=sub-alice".to_string(),
+        ] {
+            assert_eq!(
+                e.get("admin", &chemin).await.statut,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        let r = e
+            .get(
+                "admin",
+                &format!(
+                    "/admin/recommendations/explain?track={}&sub=sub-alice",
+                    Uuid::new_v4()
+                ),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::NOT_FOUND);
+        let r = e
+            .get(
+                "alice",
+                &format!(
+                    "/admin/recommendations/explain?track={}&sub=sub-alice",
+                    p[0]
+                ),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::FORBIDDEN);
+    }
 }

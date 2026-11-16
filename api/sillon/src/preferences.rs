@@ -80,3 +80,61 @@ pub async fn ecrire(
     .map_err(bd)?;
     reponse(state.pool(), p.sub()).await.map_err(bd)
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use serde_json::json;
+
+    use crate::testutil::env;
+
+    #[tokio::test]
+    async fn decouverte_vraie_par_defaut_et_ecriture_partielle() {
+        let Some(e) = env().await else { return };
+        let ecrire = |corps| e.appel(Some("alice"), "PUT", "/preferences", Some(corps));
+        assert_eq!(
+            e.get("alice", "/preferences").await.json()["discovery"],
+            true
+        );
+        let r = ecrire(json!({"discovery": false})).await;
+        assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        assert_eq!(
+            (r.json()["discovery"].clone(), r.json()["quality"].clone()),
+            (json!(false), json!("originale"))
+        );
+        let r = ecrire(json!({"quality": "basse"})).await.json();
+        assert_eq!(
+            (r["discovery"].clone(), r["quality"].clone()),
+            (json!(false), json!("basse"))
+        );
+        let r = ecrire(json!({"discovery": true})).await.json();
+        assert_eq!(
+            (r["discovery"].clone(), r["quality"].clone()),
+            (json!(true), json!("basse"))
+        );
+        let r = ecrire(json!({"discovery": false, "quality": "haute"})).await;
+        assert_eq!(
+            e.get("alice", "/preferences").await.json(),
+            json!({"quality": "haute", "qualities": ["originale", "haute", "normale", "basse"], "discovery": false})
+        );
+        assert_eq!(r.statut, StatusCode::OK);
+        assert_eq!(
+            e.get("bruno", "/preferences").await.json()["discovery"],
+            true
+        );
+        for faux in [
+            json!({"discovery": "non"}),
+            json!({"discovery": 0}),
+            json!({"quality": "basse", "discovery": "oui"}),
+            json!({"autre": 1}),
+        ] {
+            let r = ecrire(faux.clone()).await;
+            assert_eq!(r.statut, StatusCode::BAD_REQUEST, "{faux}");
+        }
+        assert_eq!(
+            e.get("alice", "/preferences").await.json()["quality"],
+            "haute",
+            "refus sans effet"
+        );
+    }
+}

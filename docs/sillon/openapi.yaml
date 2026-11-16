@@ -343,9 +343,10 @@ paths:
       summary: "File de lecture de la personne, la même sur tous ses appareils"
       description: |
         File : `{revision, source: {type, id, name}|null, index, position, shuffle, repeat, suggestions, seed, updated_at,
-        items: [{id, suggested, track: Piste}]}`. `items` est dans l'ordre de lecture (mélangé si `shuffle`), `index` désigne l'élément
-        courant, `position` la position en secondes dans la piste. `repeat` : `off`, `all`, `one`. `suggestions` : `off`, `light`,
-        `frequent` (gardé, sans effet pour l'instant) ; `suggested` : élément suggéré hors de la source (toujours faux pour l'instant) ;
+        items: [{id, suggested, discovery, track: Piste}]}`. `items` est dans l'ordre de lecture (mélangé si `shuffle`), `index` désigne l'élément
+        courant, `position` la position en secondes dans la piste. `repeat` : `off`, `all`, `one`. `suggestions` : `off`, `light`
+        (une piste suggérée toutes les 10 pistes de la source), `frequent` (toutes les 4), effectif en aléatoire seulement ;
+        `suggested` : élément suggéré hors de la source ; `discovery` : piste d'un album téléchargé par la découverte pour cette personne ;
         `seed` : graine du mélange. Une piste absente reste dans la file (`available: false`) ; le client la passe. Sans file : révision 0, `items` vide.
       responses:
         "200": { description: "File" }
@@ -358,7 +359,9 @@ paths:
         la file courante dans `queue`, rien n'est écrit. Pistes : `tracks` (obligatoire pour une source `search`), sinon celles de la source
         (`album` : toutes, par disque et numéro ; `artist` : pistes présentes ; `playlist` : ses éléments ; `likes` : « Titres likés »).
         `index` : piste de départ dans l'ordre de la source. `shuffle`, `repeat` et `suggestions` gardent leur valeur s'ils sont omis ;
-        en aléatoire, la piste de départ passe en tête et le reste est mélangé.
+        en aléatoire, la piste de départ passe en tête et le reste est ordonné par la recommandation (pas deux fois le même artiste
+        à la suite quand c'est possible, pistes souvent sautées repoussées, transitions proches) ; avec `suggestions`, des pistes hors
+        source sont insérées dans les 50 éléments à venir, et la recherche de découvertes est lancée en tâche de fond.
       requestBody:
         content:
           application/json:
@@ -392,7 +395,9 @@ paths:
       description: |
         `index` change de piste (position remise à 0 sauf si `position` est donnée). `step` (1 ou -1) passe à la piste disponible
         suivante ou précédente en sautant les absentes, en bouclant si `repeat` n'est pas `off` ; 422 `end_of_queue` s'il n'y en a pas.
-        `shuffle: true` mélange (nouvelle graine, piste courante en tête), `false` rend l'ordre de la source en gardant la piste courante.
+        `shuffle: true` mélange (nouvelle graine, piste courante en tête), `false` rend l'ordre de la source en gardant la piste courante
+        et retire les suggestions. En aléatoire avec `suggestions`, un changement de piste complète les suggestions des 50 éléments à venir
+        quand moins de 25 sont planifiés ; `suggestions: off` retire les suggestions pas encore jouées.
       requestBody:
         content:
           application/json:
@@ -588,21 +593,26 @@ paths:
         "503": { description: "`server_busy` (`Retry-After`), `aegis_unavailable`" }
   /preferences:
     get:
-      summary: "Préférences de lecture de la personne"
+      summary: "Préférences de la personne : qualité de lecture et découverte automatique"
       responses:
-        "200": { description: "`{quality, qualities: [originale, haute, normale, basse]}` ; `originale` par défaut" }
+        "200": { description: "`{quality, qualities: [originale, haute, normale, basse], discovery}` ; `originale` et `discovery: true` par défaut" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
     put:
-      summary: "Change la qualité de lecture par défaut"
+      summary: "Change la qualité de lecture par défaut, la découverte automatique, ou les deux ; un champ absent n'est pas modifié"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [quality], properties: { quality: { type: string, enum: [originale, haute, normale, basse] } } }
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                quality: { type: string, enum: [originale, haute, normale, basse] }
+                discovery: { type: boolean, description: "faux : aucun album n'est téléchargé pour cette personne par la découverte" }
       responses:
-        "200": { description: "`{quality, qualities}`" }
-        "400": { description: "`invalid`" }
+        "200": { description: "`{quality, qualities, discovery}`" }
+        "400": { description: "`invalid` : valeur invalide, ou ni `quality` ni `discovery`" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
   /additions/search:
@@ -727,5 +737,51 @@ paths:
       summary: "Remet en file les analyses en erreur"
       responses:
         "202": { description: "`{requeued}` : nombre de tâches remises en file" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /tracks/{id}/similar:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Pistes disponibles les plus proches à l'oreille (analyse audio), de la plus proche à la plus lointaine"
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: "`{items: [piste]}` au format des pistes de la bibliothèque ; liste vide tant que la piste n'est pas analysée" }
+        "400": { description: "`invalid` : limite invalide" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /recommendations/dismiss:
+    post:
+      summary: "« Ne plus proposer » : la piste n'est plus suggérée à la personne ; si elle vient d'une découverte faite pour elle, son album n'est plus redemandé pour elle"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [track], properties: { track: { type: string, format: uuid } } }
+      responses:
+        "204": { description: "Enregistré (sans effet si déjà fait)" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : piste inconnue" }
+  /admin/recommendations/explain:
+    get:
+      summary: "Détail du score d'une piste candidate pour une personne, dans le contexte de sa file (source et piste courante), pour régler les poids"
+      parameters:
+        - { name: track, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: sub, in: query, required: true, schema: { type: string, maxLength: 200 }, description: "identifiant de la personne" }
+      responses:
+        "200": { description: "`{track, sub, context: {tracks, previous, analysed}, excluded: null|in_source|unavailable|dismissed|discovery_of_another|skipped_recently, weights, signals, contributions, total, inputs}` ; `weights`, `signals` et `contributions` portent `audio, metadata, similarity, affinity, discovery, skips, recent_track, recent_artist` (`signals` aussi `total`) ; `inputs` : `{distance_context, distance_previous, shared_genres, year_gap, same_artist, artist_similarity, plays, skips, liked, artist_liked, in_playlist, distance_liked, discovery}`, `null` pour un signal absent (neutre)" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : piste inconnue" }
+  /admin/discovery:
+    get:
+      summary: "Découverte automatique : budget, ajouts d'origine découverte et découvertes proposées à la suppression"
+      responses:
+        "200": { description: "`{enabled, budget: {used, limit, daily_limit, trial_days}, items: [ajout avec author, similar_to, track_title, size], removal_candidates: [{addition, album, size, author: {sub, name}, similar_to, track_title, skips, available_since}]}` ; `used` et `limit` en octets ; `similar_to` : nom de l'artiste écouté dont l'artiste ajouté est proche ; `removal_candidates` : albums de découverte jamais écoutés en entier après `SILLON_DECOUVERTE_ESSAI_JOURS` ou sautés 3 fois sans écoute complète, du plus gros au plus petit, à supprimer par `DELETE /admin/albums/{id}`" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
