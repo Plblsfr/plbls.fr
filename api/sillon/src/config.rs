@@ -37,6 +37,9 @@ pub struct Config {
     pub max_transcodages: usize,
     pub ajouts: crate::quota::Reglages,
     pub analyse_parallele: usize,
+    pub reco: crate::recommandation::Reglages,
+    pub listenbrainz: Option<crate::listenbrainz::Reglages>,
+    pub decouverte: crate::decouverte::Reglages,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -159,6 +162,9 @@ impl Config {
                 env("SILLON_ANALYSE_PARALLELE"),
                 1,
             )?,
+            reco: crate::recommandation::Reglages::from_env(&env)?,
+            listenbrainz: crate::listenbrainz::Reglages::from_env(&env)?,
+            decouverte: crate::decouverte::Reglages::from_env(&env)?,
         })
     }
 
@@ -167,6 +173,7 @@ impl Config {
             Self::from_env(|k| (k == "DATABASE_URL").then(|| "postgres://test".to_string()))
                 .expect("configuration de test");
         c.database_url = database_url.to_string();
+        c.listenbrainz = None;
         c
     }
 }
@@ -233,6 +240,38 @@ mod tests {
             ("SILLON_STREAM_SECRET", "court"),
             ("SILLON_CACHE_GO", "x"),
             ("SILLON_MAX_TRANSCODAGES", "0"),
+        ] {
+            assert!(
+                charge(&[base, faux]).unwrap_err().contains(faux.0),
+                "{faux:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn variables_de_recommandation() {
+        let base = ("DATABASE_URL", "postgres://x");
+        let c = charge(&[base]).unwrap();
+        assert_eq!(c.reco.poids, crate::recommandation::score::Poids::default());
+        assert_eq!(c.reco.delai_suggestion, chrono::Duration::days(14));
+        assert!(c.listenbrainz.is_some() && c.decouverte.active);
+        assert!(Config::pour_tests("postgres://x").listenbrainz.is_none());
+        let c = charge(&[
+            base,
+            ("SILLON_RECO_POIDS", "audio=2,decouverte=0"),
+            ("SILLON_SUGGESTION_DELAI_JOURS", "3"),
+            ("SILLON_LISTENBRAINZ_URL", "off"),
+            ("SILLON_DECOUVERTE", "false"),
+        ])
+        .unwrap();
+        assert_eq!((c.reco.poids.audio, c.reco.poids.decouverte), (2.0, 0.0));
+        assert_eq!(c.reco.delai_suggestion, chrono::Duration::days(3));
+        assert!(c.listenbrainz.is_none() && !c.decouverte.active);
+        for faux in [
+            ("SILLON_RECO_POIDS", "volume=1"),
+            ("SILLON_SUGGESTION_DELAI_JOURS", "-1"),
+            ("SILLON_DECOUVERTE", "oui"),
+            ("SILLON_DECOUVERTE_PAR_JOUR", "x"),
         ] {
             assert!(
                 charge(&[base, faux]).unwrap_err().contains(faux.0),
