@@ -4,7 +4,7 @@ Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir acc�
 Sillon écoute la bibliothèque gérée par Lidarr ; la section web vient
 par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
 la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque, l'analyse audio des pistes, la recommandation (aléatoire intelligent, titres
-suggérés) et la découverte de titres absents et l'interface web.
+suggérés), la découverte de titres absents et l'interface web.
 
 | Où | Quoi |
 |---|---|
