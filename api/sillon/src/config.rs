@@ -35,6 +35,7 @@ pub struct Config {
     pub cache: PathBuf,
     pub cache_max_octets: u64,
     pub max_transcodages: usize,
+    pub ajouts: crate::quota::Reglages,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -151,6 +152,7 @@ impl Config {
             cache: PathBuf::from(env("SILLON_CACHE").unwrap_or_else(|| "/tmp/sillon".into())),
             cache_max_octets: cache_go.saturating_mul(1 << 30),
             max_transcodages,
+            ajouts: crate::quota::Reglages::from_env(&env)?,
         })
     }
 

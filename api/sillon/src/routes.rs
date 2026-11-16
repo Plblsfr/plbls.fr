@@ -297,6 +297,60 @@ pub fn table() -> Vec<Entree> {
             Garde::Droit(Droit::Acces),
             put(preferences::ecrire),
         ),
+        entree(
+            Method::GET,
+            "/additions/search",
+            Garde::Droit(Droit::Ajout),
+            get(crate::ajouts::rechercher),
+        ),
+        entree(
+            Method::POST,
+            "/additions",
+            Garde::Droit(Droit::Ajout),
+            post(crate::ajouts::creer),
+        ),
+        entree(
+            Method::GET,
+            "/additions/mine",
+            Garde::Droit(Droit::Ajout),
+            get(crate::ajouts::miennes),
+        ),
+        entree(
+            Method::GET,
+            "/admin/disk",
+            Garde::Droit(Droit::Admin),
+            get(crate::admin_ajouts::disque),
+        ),
+        entree(
+            Method::GET,
+            "/admin/additions",
+            Garde::Droit(Droit::Admin),
+            get(crate::admin_ajouts::liste),
+        ),
+        entree(
+            Method::POST,
+            "/admin/additions/{id}/retry",
+            Garde::Droit(Droit::Admin),
+            post(crate::admin_ajouts::relancer),
+        ),
+        entree(
+            Method::GET,
+            "/admin/albums",
+            Garde::Droit(Droit::Admin),
+            get(crate::admin_ajouts::albums),
+        ),
+        entree(
+            Method::DELETE,
+            "/admin/albums/{id}",
+            Garde::Droit(Droit::Admin),
+            axum::routing::delete(crate::admin_ajouts::supprimer_album),
+        ),
+        entree(
+            Method::DELETE,
+            "/admin/artists/{id}",
+            Garde::Droit(Droit::Admin),
+            axum::routing::delete(crate::admin_ajouts::supprimer_artiste),
+        ),
     ]
 }
 

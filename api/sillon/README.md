@@ -26,7 +26,10 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `file.rs` | file de lecture par personne, révision et 409, « lire ensuite », « ajouter à la file », aléatoire, piste suivante disponible |
 | `ordre.rs` | ordre de lecture aléatoire (`melanger`, graine) et déplacement d'une plage (`deplacer`) |
 | `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
-| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique) |
+| `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
+| `quota.rs` | réglages de l'ajout (`SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
+| `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille (filtre des albums jamais écoutés) |
+| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions) |
 
 ## Schéma du catalogue
 
@@ -42,6 +45,8 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `images` | cache des images (clé `<type>/<uuid>/<taille>`, type `cover`, `poster` ou `fanart` ; version = URL Lidarr) |
 | `mesures` | par `(piste_id, contenu_le)` du fichier : `niveau` (LUFS intégré), `pic` (dBTP), `plage` (LRA), `echantillons`, `frequence` ; la mesure d'un fichier remplacé efface l'ancienne |
 | `preferences` | par `sub` : `qualite` (`originale`, `haute`, `normale`, `basse`) |
+| `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le` ; un seul ajout actif par `(type, mbid)` |
+| `exclusions` | MBID d'album ou d'artiste supprimé par un admin, qui ne peut plus être ajouté |
 
 ## Schéma des playlists, de la file et de l'historique (`0004_playlists.sql`)
 
@@ -77,6 +82,12 @@ Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unacc
 - `file::avancer(présentes, index, pas, boucle)` : prochaine piste disponible ; `file::element(pool, sub, id)` : `suggeree` d'un élément.
 - `playlists::{contenu, pistes_de_source, pistes_json}` : pistes d'une requête ou d'une source, JSON public des pistes en gardant
   l'ordre et les doublons ; `playlists::plafond(message)` : 422 `limit_reached`.
+- `ajouts::ajouter_album(&AppState, DemandeAjout { mbid, personne: Auteur { sub, nom }, origine })` (et `ajouter_artiste`, `ajouter(…, Genre, …)`) :
+  chemin d'ajout complet hors requête HTTP (`origine` : `Origine::Manuel` ou `Origine::Decouverte`, limite journalière comptée par origine) ;
+  `Ok(Resultat::Envoye(id) | DejaPresent | EnCours(id) | Refuse(Refus::DisquePlein { occupation, estimation } | LimiteJournaliere { limite } | Exclu))`,
+  `Err(ErreurAjout)` (`reponse_erreur` la traduit en HTTP, `reponse_resultat` le résultat).
+- `ajouts::est_exclu(&PgPool, &[mbid])`, `ajouts::suivre(&AppState)` (met à jour les états), `ajouts::relancer(&AppState, id)`.
+- `quota::occupation(&AppState) -> Occupation { taille, en_cours, plafond }` (`depasse(estimation)`, `public()`) ; `quota::estimer(durée, débit)`.
 - `config::chemin_local(...)` : traduction et vérification d'un chemin Lidarr (sous `SILLON_MEDIAS`, liens résolus).
 - `volume::mesurer(ffmpeg, &Path) -> Mesure` (niveau, pic, plage, échantillons, fréquence ; un seul décodage), `volume::enregistrer`,
   `volume::lire(&PgPool, piste, contenu_le)`, `volume::mesure_de(&PgPool, ffmpeg, &FichierPiste)` (lue en base, sinon mesurée et
@@ -100,6 +111,8 @@ Image : `docker build -f api/sillon/Dockerfile .` (contexte : racine du dépôt)
 
 `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres just test-sillon` : une base jetable par test, migrations
 appliquées, faux gateway et faux aegis (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`, `alice`, `bruno`, `admin`).
+Les tests de l'ajout (`ajouts.rs`, module `tests`) étendent ce faux Lidarr (`lidarr_ajouts` : recherche MusicBrainz `mb_artistes`,
+`mb_albums`, création d'artiste, surveillance, commandes, file, historique, suppressions).
 Les tests du catalogue (`tests_api.rs`, `bibliotheque()`) montent un faux Lidarr (`Monde`, modifiable pendant le test) et de vrais fichiers
 flac, mp3 et opus générés par ffmpeg dans un dossier temporaire ; ils demandent ffmpeg et ffprobe (sinon ignorés, avec un message).
 Playlists, likes, file et historique : tests dans les modules (`playlists::tests` : `catalogue()` insère un petit catalogue en base,

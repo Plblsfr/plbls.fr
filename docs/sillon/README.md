@@ -3,7 +3,7 @@
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
 par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
-la lecture audio, les playlists, les likes, la file de lecture et l'historique.
+la lecture audio, les playlists, les likes, la file de lecture, l'historique et l'ajout autonome de musique avec plafond du disque.
 
 | Où | Quoi |
 |---|---|
@@ -123,6 +123,38 @@ et l'historique, avec `available: false`.
   Une écoute compte (`counted`) au-delà de 30 s ou de la moitié de la piste ; seules celles-là entrent dans les pistes et artistes les
   plus écoutés (`/history/top/tracks`, `/history/top/artists`, période `week`, `month`, `year` ou `all`). Écoutes récentes paginées par curseur.
 
+## Ajout de musique
+
+- Recherche (`GET /additions/search?q=`, `sillon:add`) : artistes et albums par la recherche de Lidarr (MusicBrainz, `/artist/lookup`,
+  `/album/lookup`), 20 au plus chacun, marqués « déjà en bibliothèque » (`in_library`), « en cours » (`in_progress`) ou exclus, avec la
+  taille estimée de chaque album. Identifiant : MBID MusicBrainz.
+- Ajout (`POST /additions`, `{kind: album|artist, mbid}`), sans validation : envoyé tout de suite à Lidarr. Artiste créé si besoin
+  (`POST /artist` : `SILLON_LIDARR_RACINE`, `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES`, `monitored`, `addOptions.monitor: none`),
+  puis seul l'album demandé est surveillé (`PUT /album/monitor`) et sa recherche lancée (`POST /command` `AlbumSearch`). Ajout d'un artiste :
+  ses albums studio seulement (type `Album`, sans type secondaire). Albums pas encore connus de Lidarr juste après la création de l'artiste :
+  le suivi les surveille et lance la recherche dès qu'ils apparaissent (`RefreshArtist` demandé si l'artiste existait déjà). Lidarr en erreur
+  pendant l'envoi : 502, rien n'est enregistré. Un même titre déjà en cours renvoie l'ajout existant (`existing: true`) ; un album présent, 409
+  `already_available` ; un album ou un artiste supprimé par un admin, 409 `excluded`.
+- Limite : `SILLON_AJOUTS_PAR_JOUR` ajouts par personne sur 24 heures glissantes (429 `daily_limit`).
+- Plafond : `SILLON_MEDIAS_GO`. Occupation = taille des fichiers du catalogue (relevée à chaque synchronisation) + estimation des ajouts en
+  cours (envoyés, en téléchargement, partiels), moins ce qui en est déjà arrivé. Estimation = durée de l'album (ou des albums studio
+  manquants d'un artiste ; une heure si inconnue) × débit de la meilleure qualité permise par le profil de qualité (`GET /qualityprofile` :
+  FLAC 1000 kbit/s, 24 bits 2304, WAV 1411, sinon le nombre du nom, MP3-320 → 320). Un ajout qui ferait dépasser le plafond est refusé (507
+  `disk_full` avec `used`, `pending`, `limit`, `free`, `estimated`) et rien n'est envoyé à Lidarr. Limite et plafond sont vérifiés sous un
+  verrou PostgreSQL (`pg_advisory_xact_lock`) dans la transaction qui enregistre l'ajout : deux ajouts simultanés ne dépassent pas le plafond à eux deux.
+- Suivi : état `sent`, `downloading` (dans la file de Lidarr, `GET /queue`), `partial` (des fichiers arrivés, rien dans la file),
+  `available` (tous les albums visés complets dans Lidarr et présents dans Sillon), `failed` (avec la raison : message de l'historique de
+  Lidarr, `GET /history`, évènement `downloadFailed`, ou « aucun résultat après N h » passé `SILLON_AJOUTS_DELAI_HEURES`), `deleted`.
+  Mis à jour après chaque webhook de Lidarr (import, grab, échecs ; après la synchronisation qu'il déclenche) et toutes les 5 minutes.
+  « Mes ajouts » : `GET /additions/mine`.
+- Administration (`sillon:admin`) : occupation et plafond (`GET /admin/disk`), ajouts de tous avec leur auteur (`GET /admin/additions`,
+  filtre `state`), relance d'un échec (`POST /admin/additions/{id}/retry`, plafond vérifié), suppression d'un album ou d'un artiste
+  (`DELETE /admin/albums/{id}`, `DELETE /admin/artists/{id}` : Lidarr supprime fichiers et entrée, `deleteFiles=true`,
+  `addImportListExclusion=true` ; Sillon l'exclut de tout nouvel ajout puis synchronise : ses pistes passent absentes, sans être supprimées
+  des playlists), albums présents triés par taille avec l'auteur de leur ajout (`GET /admin/albums` ; `never_played=true` : seulement ceux dont aucune piste
+  n'a d'écoute comptée dans l'historique, toutes personnes confondues).
+- Sillon ne supprime jamais un fichier lui-même (dossier monté en lecture seule) : tout passe par Lidarr.
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -142,6 +174,11 @@ et l'historique, avec `available: false`.
 | `SILLON_CACHE` | `plbls.env` (`/tmp/sillon`) | cache des fichiers transcodés, volume `sillon-cache` du compose |
 | `SILLON_CACHE_GO` | `plbls.env` (10) | plafond du cache en Go |
 | `SILLON_MAX_TRANSCODAGES` | `plbls.env` (2) | encodages simultanés au plus (1 au moins) |
+| `SILLON_LIDARR_RACINE` | `plbls.env` (`/music`) | dossier racine de Lidarr des artistes ajoutés ; vide = pas d'ajout |
+| `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES` | `plbls.env` (1) | identifiants des profils de qualité et de métadonnées (« albums studio ») de Lidarr ; 0 = pas d'ajout |
+| `SILLON_AJOUTS_PAR_JOUR` | `plbls.env` (10) | ajouts par personne sur 24 heures glissantes |
+| `SILLON_MEDIAS_GO` | `plbls.env` (500) | plafond du dossier de la musique, en Gio ; 0 = sans plafond |
+| `SILLON_AJOUTS_DELAI_HEURES` | `plbls.env` (72) | délai sans résultat avant qu'un ajout passe en échec |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles
@@ -152,6 +189,8 @@ et l'historique, avec `available: false`.
   Lidarr joignable depuis la stack (réseau `MEDIAS_NETWORK`). La migration crée l'extension `unaccent` (extension de confiance : le
   propriétaire de la base suffit).
 - Lidarr : connexion « Webhook » vers `https://sillon-api.plbls.fr/webhooks/lidarr`, évènements import, renommage et suppression, jeton en mot de passe.
+- Lidarr : profil de métadonnées « albums studio », profil de qualité et dossier racine, leurs valeurs dans `SILLON_LIDARR_*` ;
+  connexion « Webhook » avec aussi les évènements grab et échecs (téléchargement, import) pour le suivi des ajouts.
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_SILLON` comme application `sillon`), puis les permissions aux comptes.
 
 ## Version

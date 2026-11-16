@@ -497,9 +497,13 @@ pub fn evenement_utile(corps: &[u8]) -> bool {
 }
 
 pub async fn webhook(State(state): State<AppState>, corps: Bytes) -> Response {
-    if evenement_utile(&corps) {
-        tokio::spawn(async move { catalogue::synchroniser(&state).await });
-    }
+    let utile = evenement_utile(&corps);
+    tokio::spawn(async move {
+        if utile {
+            catalogue::synchroniser(&state).await;
+        }
+        crate::ajouts::apres_webhook(&state, &corps).await;
+    });
     http::sans_contenu()
 }
 
