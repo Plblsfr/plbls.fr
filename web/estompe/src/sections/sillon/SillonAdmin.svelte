@@ -1,13 +1,12 @@
 <script lang="ts">
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
-  import { ApiError } from '../../lib/api'
   import { confirmer } from '../../lib/confirm.svelte'
   import { notify } from '../../lib/ui'
   import SillonAdditions from './SillonAdditions.svelte'
   import SillonCover from './SillonCover.svelte'
   import { echec } from './sillon.svelte'
-  import { octets, occupation, refusAjout, sillonApi, type Ajout, type Album, type Analyse, type Decouverte, type Disque, type Statut } from './sillon'
+  import { ETATS_AJOUT, octets, occupation, refusAjout, sillonApi, type Ajout, type Album, type Analyse, type Decouverte, type Disque, type Statut } from './sillon'
 
   type Onglet = 'disque' | 'albums' | 'synchro' | 'analyse' | 'ecartes' | 'decouverte'
   const ONGLETS: { id: Onglet; label: string }[] = [
@@ -27,7 +26,6 @@
   let analyse = $state<Analyse | null>(null)
   let ecartes = $state<{ name: string; reason: string; seen_at: string }[] | null>(null)
   let decouverte = $state<Decouverte | null>(null)
-  let sansDecouverte = $state(false)
   let liste = $state<{ charger: () => Promise<void> }>()
   const date = (s: string | null) => (s ? new Date(s).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
   const part = (d: Disque) => (d.limit ? Math.min(100, ((d.used + d.pending) / d.limit) * 100) : 0)
@@ -38,9 +36,7 @@
     synchro: async () => { statut = await sillonApi.statut() },
     analyse: async () => { analyse = await sillonApi.analyse() },
     ecartes: async () => { ecartes = (await sillonApi.rejetes()).items },
-    decouverte: async () => {
-      try { decouverte = await sillonApi.decouverte(); sansDecouverte = false } catch (e) { if (e instanceof ApiError && e.status === 404) sansDecouverte = true; else throw e }
-    },
+    decouverte: async () => { decouverte = await sillonApi.decouverte() },
   }
   const charger = (o: Onglet) => chargeurs[o]().catch((e) => echec(e, 'L’administration est indisponible'))
 
@@ -54,7 +50,7 @@
     } catch (e) { notify.fail(refusAjout(e)) }
   }
 
-  async function supprimer(a: Album, artiste: boolean) {
+  async function supprimer(a: Album, artiste: boolean, apres: Onglet = 'albums') {
     const nom = artiste ? a.artist.name : a.title
     const ok = await confirmer({
       titre: artiste ? `Supprimer l’artiste « ${nom} » ?` : `Supprimer l’album « ${nom} » ?`,
@@ -65,7 +61,7 @@
     try {
       await (artiste ? sillonApi.supprimerArtiste(a.artist.id) : sillonApi.supprimerAlbum(a.id))
       notify.ok(`« ${nom} » est supprimé.`)
-      await charger('albums')
+      await charger(apres)
     } catch (e) { notify.error(e, 'La suppression a échoué') }
   }
 
@@ -180,24 +176,38 @@
     </section>
   {:else}
     <section class="film-section">
-      {#if sansDecouverte}
-        <p class="v-note">La découverte n’est pas encore disponible sur ce serveur.</p>
-      {:else if decouverte}
+      {#if decouverte}
+        {@const d = decouverte}
         <div class="v-card sillon-disque-carte">
           <p class="v-eyebrow">Budget de la découverte</p>
-          <p class="sillon-chiffre">{octets(decouverte.budget.used)}{decouverte.budget.limit != null ? ` sur ${octets(decouverte.budget.limit)}` : ''}</p>
-          {#if decouverte.budget.limit}<div class="v-prog rose"><i style="width:{Math.min(100, (decouverte.budget.used / decouverte.budget.limit) * 100)}%"></i></div>{/if}
+          <p class="sillon-chiffre">{octets(d.budget.used)} sur {octets(d.budget.limit)}</p>
+          {#if d.budget.limit}<div class="v-prog rose" role="progressbar" aria-label="Budget de la découverte" aria-valuenow={Math.round(Math.min(100, (d.budget.used / d.budget.limit) * 100))} aria-valuemin="0" aria-valuemax="100"><i style="width:{Math.min(100, (d.budget.used / d.budget.limit) * 100)}%"></i></div>{/if}
+          <p class="v-note"><span class="v-tag" class:ok={d.enabled} class:att={!d.enabled}>{d.enabled ? 'Active' : 'Inactive'}</span> {d.budget.daily_limit} ajout{d.budget.daily_limit > 1 ? 's' : ''} par personne et par jour · essai de {d.budget.trial_days} jours avant de proposer la suppression</p>
         </div>
-        {#each [['Ajouts de la découverte', decouverte.additions], ['Jamais écoutés, supprimables', decouverte.removable]] as const as [titre, items] (titre)}
-          <h2 class="v-titre sillon-sous-titre">{titre}</h2>
-          {#if items.length}
-            <ul class="sillon-admin-liste">
-              {#each items as a, i (i)}
-                <li><span class="grow sillon-admin-t"><strong class="truncate">{a.title}</strong><span class="v-note">{[a.artist, a.size != null ? octets(a.size) : '', a.at ? date(a.at) : ''].filter(Boolean).join(' · ')}</span></span>{#if a.state}<span class="v-tag">{a.state}</span>{/if}</li>
-              {/each}
-            </ul>
-          {:else}<p class="v-note">Aucun.</p>{/if}
-        {/each}
+        <h2 class="v-titre sillon-sous-titre">À supprimer</h2>
+        {#if d.removal_candidates.length}
+          <p class="v-note sillon-aide-admin">Jamais écoutés en entier après l’essai, ou sautés trois fois.</p>
+          <ul class="sillon-admin-liste">
+            {#each d.removal_candidates as c (`${c.addition}-${c.album.id}`)}
+              <li>
+                <span class="sillon-admin-art"><SillonCover id={c.album.id} title={c.album.title} image={c.album.cover} size="small" /></span>
+                <span class="grow sillon-admin-t"><strong class="truncate">{c.album.title}</strong><span class="v-note truncate">{[c.album.artist.name, octets(c.size), c.similar_to ? `proche de ${c.similar_to}` : '', `pour ${c.author.name}`].filter(Boolean).join(' · ')}</span><span class="v-note">{[c.skips ? `${c.skips} saut${c.skips > 1 ? 's' : ''}` : 'jamais écouté', c.available_since ? `présent depuis le ${date(c.available_since)}` : ''].filter(Boolean).join(' · ')}</span></span>
+                <button class="v-btn sm sec" onclick={() => void supprimer(c.album, false, 'decouverte')} aria-label={`Supprimer l’album ${c.album.title}`}>Supprimer</button>
+              </li>
+            {/each}
+          </ul>
+        {:else}<p class="v-note">Aucune découverte à supprimer.</p>{/if}
+        <h2 class="v-titre sillon-sous-titre">Ajouts de la découverte</h2>
+        {#if d.items.length}
+          <ul class="sillon-admin-liste">
+            {#each d.items as a (a.id)}
+              <li>
+                <span class="grow sillon-admin-t"><strong class="truncate">{a.title}</strong><span class="v-note truncate">{[a.artist.name, octets(a.size || a.estimated_size), a.similar_to ? `proche de ${a.similar_to}` : '', a.track_title ? `pour « ${a.track_title} »` : '', a.author.name, date(a.created_at)].filter(Boolean).join(' · ')}</span>{#if a.reason}<span class="v-note sillon-erreur">{a.reason}</span>{/if}</span>
+                <span class="v-tag" class:ok={a.state === 'available'} class:att={a.state === 'downloading' || a.state === 'sent' || a.state === 'partial'} class:dgr={a.state === 'failed'}>{ETATS_AJOUT[a.state]}</span>
+              </li>
+            {/each}
+          </ul>
+        {:else}<p class="v-note">Aucun ajout de la découverte.</p>{/if}
       {:else}<Loader />{/if}
     </section>
   {/if}
@@ -221,4 +231,5 @@
   .sillon-admin-t { display: grid; flex: 1 1 220px; min-width: 0; line-height: 1.35; }
   .sillon-erreur { color: var(--danger); }
   .sillon-sous-titre { margin: 20px 0 8px; font-size: 20px; }
+  .sillon-aide-admin { margin: 0 0 8px 10px; }
 </style>

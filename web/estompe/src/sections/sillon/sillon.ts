@@ -130,6 +130,7 @@ export const sillonApi = {
   topArtistes: (period: Periode) => get<{ items: { artist: Artiste; plays: number }[] }>(`/history/top/artists?period=${period}&limit=20`),
 
   nePlusProposer: (track: string) => send<void>('POST', '/recommendations/dismiss', { track }),
+  similaires: (id: string, limit = 30) => get<{ items: Piste[] }>(`/tracks/${enc(id)}/similar?limit=${limit}`),
 
   chercherAjout: (q: string) => get<ResultatsAjout>(`/additions/search?q=${enc(q)}`),
   ajouter: (kind: 'album' | 'artist', mbid: string) => send<Ajout & { existing?: boolean }>('POST', '/additions', { kind, mbid }),
@@ -146,10 +147,10 @@ export const sillonApi = {
   synchroniser: () => send<{ started: boolean }>('POST', '/admin/sync'),
   analyse: () => get<Analyse>('/admin/analysis'),
   relancerAnalyse: () => send<{ requeued: number }>('POST', '/admin/analysis/retry'),
-  decouverte: async () => lireDecouverte(await get<unknown>('/admin/discovery')),
+  decouverte: () => get<Decouverte>('/admin/discovery'),
 }
 
-export interface Preferences { quality: Qualite; qualities: Qualite[]; discovery?: boolean }
+export interface Preferences { quality: Qualite; qualities: Qualite[]; discovery: boolean }
 
 export interface Playlist { id: string; name: string; description: string | null; track_count: number; duration: number | null; cover_albums: string[]; created_at: string; updated_at: string }
 export interface ElementPlaylist { id: string; position: number; added_at: string; track: Piste }
@@ -166,14 +167,21 @@ export const SUGGESTIONS: { id: Suggestions; label: string }[] = [
   { id: 'frequent', label: 'Fréquentes' },
 ]
 export type TypeSource = 'album' | 'playlist' | 'artist' | 'likes' | 'search'
-export interface ElementFile { id: string; suggested: boolean; discovery?: boolean; track: Piste }
+export interface ElementFile { id: string; suggested: boolean; discovery: boolean; track: Piste }
+export const marqueDe = (e: Pick<ElementFile, 'suggested' | 'discovery'> | null | undefined) => (e?.discovery ? 'Découverte' : e?.suggested ? 'Suggestion' : null)
+export type Repetition = 'off' | 'all' | 'one'
+export const REPETITIONS: { id: Repetition; label: string }[] = [
+  { id: 'off', label: 'Sans répétition' },
+  { id: 'all', label: 'Répéter la file' },
+  { id: 'one', label: 'Répéter le titre' },
+]
 export interface FileServeur {
   revision: number
   source: { type: TypeSource; id: string | null; name: string } | null
   index: number
   position: number
   shuffle: boolean
-  repeat: 'off' | 'all' | 'one'
+  repeat: Repetition
   suggestions: Suggestions
   seed: number | null
   updated_at: string | null
@@ -193,31 +201,14 @@ export interface Occupation { used: number; pending: number; limit: number | nul
 export type Disque = Occupation & { daily_limit: number; configured: boolean }
 export interface Statut { sync: { source: string; succeeded_at: string | null; attempted_at: string | null; error: string | null }[]; running: boolean; configured: { lidarr: boolean; webhook: boolean }; library: { artists: number; albums: number; tracks: number; absent_tracks: number; files: number; rejected: number; size: number } }
 export interface Analyse { version: number; parallel: number; paused: boolean; tasks: { pending: number; running: number; done: number; failed: number }; tracks: number; analysed: number; loaded: number; errors: { track: string; title: string; error: string | null; attempts: number; at: string }[] }
-export interface AjoutDecouverte { title: string; artist: string; state: string; size: number | null; at: string | null }
-export interface Decouverte { budget: { used: number; limit: number | null }; additions: AjoutDecouverte[]; removable: AjoutDecouverte[] }
+export interface Decouverte {
+  enabled: boolean
+  budget: { used: number; limit: number; daily_limit: number; trial_days: number }
+  items: (Ajout & { author: { sub: string; name: string }; similar_to: string | null; track_title: string | null; size: number })[]
+  removal_candidates: { addition: string; album: Album; size: number; author: { sub: string; name: string }; similar_to: string | null; track_title: string | null; skips: number; available_since: string | null }[]
+}
 
 const nombre = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-const chaine = (v: unknown) => (typeof v === 'string' ? v : null)
-const objetDe = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {})
-
-function ajoutDecouverte(v: unknown): AjoutDecouverte {
-  const o = objetDe(v)
-  const artiste = objetDe(o.artist)
-  return {
-    title: chaine(o.title) ?? chaine(o.name) ?? 'Sans titre',
-    artist: chaine(artiste.name) ?? chaine(o.artist) ?? '',
-    state: chaine(o.state) ?? '',
-    size: nombre(o.size) ?? nombre(o.estimated_size),
-    at: chaine(o.created_at) ?? chaine(o.at) ?? null,
-  }
-}
-
-export function lireDecouverte(v: unknown): Decouverte {
-  const o = objetDe(v)
-  const b = objetDe(o.budget)
-  const liste = (x: unknown) => (Array.isArray(x) ? x.map(ajoutDecouverte) : [])
-  return { budget: { used: nombre(b.used) ?? 0, limit: nombre(b.limit) }, additions: liste(o.additions), removable: liste(o.removable) }
-}
 
 export function octets(n: number | null | undefined) {
   if (n == null) return '—'
@@ -234,6 +225,7 @@ export function occupation(o: Occupation) {
 
 export function refusAjout(e: unknown): string {
   if (!(e instanceof ApiError)) return 'L’ajout n’a pas pu être envoyé.'
+  if (e.code === 'discovery_budget') return 'Budget de la découverte atteint.'
   if (e.status === 507) {
     const d = e.data
     const o: Occupation = { used: nombre(d.used) ?? 0, pending: nombre(d.pending) ?? 0, limit: nombre(d.limit), free: nombre(d.free) }

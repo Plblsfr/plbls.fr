@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../lib/api'
 import { medias } from '../../lib/medias'
 import { contexteDe, Lecteur, sourceDe, type ContexteAudio, type DetailsAction, type ElementAudio, type Environnement, type NoeudGain, type ServeurFile } from './sillon.svelte'
-import { anneeEtType, debut, deplacerListe, dureeExacte, gainLineaire, lireDecouverte, octets, refusAjout, sections, sillonApi, support, totalAlbum, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste } from './sillon'
+import { anneeEtType, debut, deplacerListe, dureeExacte, gainLineaire, marqueDe, octets, refusAjout, sections, sillonApi, support, totalAlbum, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste } from './sillon'
 
 class FauxAudio implements ElementAudio {
   src = ''
@@ -200,7 +200,7 @@ describe('lecteur', () => {
 
   it('qualité choisie annoncée au serveur, et préchargement refait après un changement', async () => {
     const b = banc()
-    vi.spyOn(sillonApi, 'qualite').mockResolvedValue({ quality: 'basse', qualities: [] })
+    vi.spyOn(sillonApi, 'qualite').mockResolvedValue({ quality: 'basse', qualities: [], discovery: true })
     b.lecteur.jouer(album)
     await attendre(() => b.audios[0]?.lectures === 1)
     b.audios[0].emettre('playing')
@@ -281,7 +281,7 @@ type Corps = Record<string, unknown>
 function fauxServeur(catalogue: Piste[]) {
   let n = 0
   const el = (t: Piste, suggested = false, discovery = false): ElementFile => ({ id: `e${++n}`, suggested, discovery, track: t })
-  const etat = { f: { revision: 0, source: null, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', seed: null, updated_at: null, items: [] } as FileServeur }
+  const etat = { planifier: [] as ElementFile[], f: { revision: 0, source: null, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', seed: null, updated_at: null, items: [] } as FileServeur }
   const appels: [string, Corps][] = []
   const ecoutes: EcouteEnvoyee[] = []
   const piste = (id: unknown) => catalogue.find((p) => p.id === id)!
@@ -295,7 +295,9 @@ function fauxServeur(catalogue: Piste[]) {
     lire: async () => structuredClone(etat.f),
     remplacer: (b) => ecrire('PUT', b, () => ({ items: (b.tracks as string[]).map((id) => el(piste(id))), index: b.index as number, position: 0, source: b.source ? { type: 'album', id: (b.source as { id: string }).id, name: 'Album' } : null })),
     modifier: (b) => ecrire('PATCH', b, (f) => ({
-      ...(b.index !== undefined ? { index: b.index as number, position: (b.position as number | undefined) ?? 0 } : {}),
+      ...(b.index !== undefined ? { index: b.index as number, position: (b.position as number | undefined) ?? 0 } : b.position !== undefined ? { position: b.position as number } : {}),
+      ...(b.index !== undefined && etat.planifier.length ? { items: [...f.items.slice(0, (b.index as number) + 1), ...etat.planifier.splice(0), ...f.items.slice((b.index as number) + 1)] } : {}),
+      ...(b.repeat ? { repeat: b.repeat as FileServeur['repeat'] } : {}),
       ...(b.shuffle !== undefined ? { shuffle: b.shuffle as boolean, items: [f.items[f.index], ...f.items.filter((_, k) => k !== f.index).reverse()], index: 0 } : {}),
       ...(b.suggestions ? { suggestions: b.suggestions as FileServeur['suggestions'] } : {}),
     })),
@@ -323,14 +325,14 @@ describe('file serveur', () => {
     expect(b.lecteur.element?.id).toBe('e1')
     b.lecteur.suivant()
     await attendre(() => srv.etat.f.index === 1)
-    expect(srv.appels[1]).toEqual(['PATCH', { revision: 1, index: 1, position: 0 }])
+    expect(srv.appels[1]).toEqual(['PATCH', { revision: 1, index: 1 }])
     await attendre(() => b.audios[0]?.src.endsWith('/p2'))
     const a = b.audios[0]
     a.emettre('playing')
     a.currentTime = 16
     a.emettre('timeupdate')
     await attendre(() => srv.etat.f.position === 16)
-    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 2, index: 1, position: 16 }])
+    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 2, position: 16 }])
     b.lecteur.pause()
     await attendre(() => srv.appels.length === 4)
   })
@@ -413,6 +415,95 @@ describe('file serveur', () => {
   })
 })
 
+describe('répétition, fenêtre de suggestions, titres similaires', () => {
+  it('répétition : aucune, file, titre ; envoyée au serveur et suivie en fin de piste et de file', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    b.lecteur.jouer([piste(1), piste(2)], 1)
+    await attendre(() => b.lecteur.elements.length === 2 && b.audios[0]?.lectures === 1)
+    expect(b.lecteur.repetition).toBe('off')
+    expect(b.lecteur.peutSuivre).toBe(false)
+    expect(b.lecteur.suivante).toBeNull()
+
+    await b.lecteur.changerRepetition()
+    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 1, repeat: 'all' }])
+    expect(b.lecteur.repetition).toBe('all')
+    expect(b.lecteur.peutSuivre).toBe(true)
+    expect(b.lecteur.suivante?.id).toBe('p1')
+    const a = b.audios[0]
+    a.emettre('playing')
+    await attendre(() => b.audios[1].src.endsWith('/p1'))
+    a.emettre('ended')
+    await attendre(() => b.lecteur.index === 0 && b.audios[1].lectures === 1)
+    await attendre(() => srv.etat.f.index === 0)
+    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 2, index: 0 }])
+
+    await b.lecteur.changerRepetition()
+    expect(b.lecteur.repetition).toBe('one')
+    expect(b.lecteur.suivante?.id).toBe('p1')
+    const c = b.audios[1]
+    c.emettre('playing')
+    await attendre(() => b.audios[0].src.endsWith('/p1'))
+    c.emettre('ended')
+    await attendre(() => b.audios[0].lectures === 2)
+    expect(b.lecteur.index).toBe(0)
+    expect(b.lecteur.piste?.id).toBe('p1')
+
+    b.lecteur.suivant()
+    await attendre(() => b.lecteur.index === 1)
+    await b.lecteur.changerRepetition()
+    expect(srv.appels.filter(([, c]) => c.repeat).map(([, c]) => c.repeat)).toEqual(['all', 'one', 'off'])
+    expect(b.lecteur.peutSuivre).toBe(false)
+  })
+
+  it('changement de piste : index envoyé, suggestions ajoutées par le serveur rechargées et préchargées', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3 && b.audios[0]?.lectures === 1)
+    srv.etat.planifier = [srv.el(piste(4), true), srv.el(piste(9, { id: 'p9' }), true, true)]
+    b.lecteur.suivant()
+    await attendre(() => b.lecteur.elements.length === 5)
+    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 1, index: 1 }])
+    expect(b.lecteur.aSuivre.map((p) => p.id)).toEqual(['p4', 'p9', 'p3'])
+    expect(b.lecteur.elements.slice(2, 4).map(marqueDe)).toEqual(['Suggestion', 'Découverte'])
+    await attendre(() => b.audios[0]?.src.endsWith('/p2'))
+    b.audios[0].emettre('playing')
+    await attendre(() => b.audios[1].src.endsWith('/p4'))
+  })
+
+  it('« ne plus proposer » : refus envoyé puis élément retiré de la file en cours', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    const refus = vi.spyOn(sillonApi, 'nePlusProposer').mockResolvedValue(undefined)
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3)
+    await b.lecteur.nePlusProposer(b.lecteur.elements[2])
+    expect(refus).toHaveBeenCalledWith('p3')
+    expect(srv.appels.at(-1)).toEqual(['POST /queue/remove', { revision: 1, items: ['e3'] }])
+    expect(b.lecteur.aSuivre.map((p) => p.id)).toEqual(['p2'])
+  })
+
+  it('titres similaires : les pistes proches remplacent la file et se jouent', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    const proches = vi.spyOn(sillonApi, 'similaires').mockResolvedValue({ items: [piste(3), piste(4)] })
+    expect(await b.lecteur.similaires(piste(1))).toBe(2)
+    expect(proches).toHaveBeenCalledWith('p1')
+    await attendre(() => b.audios[0]?.lectures === 1)
+    expect(b.audios[0].src).toBe('https://sillon.test/stream/p3')
+    expect(srv.appels[0]).toEqual(['PUT', { revision: 0, tracks: ['p3', 'p4'], index: 0 }])
+    proches.mockResolvedValue({ items: [] })
+    expect(await b.lecteur.similaires(piste(1))).toBe(0)
+  })
+
+  it('titres similaires : GET /tracks/{id}/similar avec la limite', async () => {
+    const f = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"items":[]}', { headers: { 'Content-Type': 'application/json' } }))
+    await sillonApi.similaires('p1', 10)
+    expect(String(f.mock.calls[0][0])).toMatch(/\/tracks\/p1\/similar\?limit=10$/)
+  })
+})
+
 describe('playlists, ajouts et administration', () => {
   it('déplacement dans une liste', () => {
     expect(deplacerListe([1, 2, 3, 4], 0, 2)).toEqual([2, 3, 1, 4])
@@ -438,13 +529,16 @@ describe('playlists, ajouts et administration', () => {
     expect(e.data).toMatchObject({ used: 1, estimated: 5 })
   })
 
-  it('découverte de l’administration : champs absents tolérés', () => {
-    expect(lireDecouverte(null)).toEqual({ budget: { used: 0, limit: null }, additions: [], removable: [] })
-    expect(lireDecouverte({ budget: { used: 5, limit: 10 }, additions: [{ title: 'A', artist: { name: 'B' }, state: 'available', estimated_size: 3 }], removable: [{ name: 'C' }] })).toEqual({
-      budget: { used: 5, limit: 10 },
-      additions: [{ title: 'A', artist: 'B', state: 'available', size: 3, at: null }],
-      removable: [{ title: 'C', artist: '', state: '', size: null, at: null }],
-    })
+  it('budget de la découverte atteint (507 discovery_budget) : message propre, sans occupation', () => {
+    expect(refusAjout(new ApiError(507, 'discovery_budget', 'budget de découverte atteint'))).toBe('Budget de la découverte atteint.')
+  })
+
+  it('marque d’un élément de file : découverte distincte de suggestion', () => {
+    expect(marqueDe({ suggested: true, discovery: false })).toBe('Suggestion')
+    expect(marqueDe({ suggested: true, discovery: true })).toBe('Découverte')
+    expect(marqueDe({ suggested: false, discovery: true })).toBe('Découverte')
+    expect(marqueDe({ suggested: false, discovery: false })).toBeNull()
+    expect(marqueDe(null)).toBeNull()
   })
 
   it('source de la file selon le contexte, et retour', () => {

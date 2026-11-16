@@ -8,7 +8,7 @@
   import SillonCover from './SillonCover.svelte'
   import SillonLike from './SillonLike.svelte'
   import { choix, collection, lecteur, menuPiste } from './sillon.svelte'
-  import { SUGGESTIONS, sillonApi, type ElementFile, type Suggestions } from './sillon'
+  import { marqueDe, REPETITIONS, SUGGESTIONS, type ElementFile, type Suggestions } from './sillon'
 
   const courant = $derived(lecteur.element ?? (lecteur.piste ? { id: '', suggested: false, discovery: false, track: lecteur.piste } : null))
   const suite = $derived(lecteur.elements.slice(lecteur.index + 1).map((e, k) => ({ e, i: lecteur.index + 1 + k })))
@@ -47,8 +47,7 @@
 
   async function ecarter(e: ElementFile) {
     try {
-      await sillonApi.nePlusProposer(e.track.id)
-      await lecteur.retirer(e.id)
+      await lecteur.nePlusProposer(e)
       notify.ok('Ce titre ne sera plus proposé.')
     } catch (err) { notify.error(err, 'La suggestion n’a pas pu être écartée') }
   }
@@ -60,6 +59,7 @@
     { label: 'Retirer de la file', run: () => faire(lecteur.retirer(e.id)), danger: true },
   ])
 
+  const repetition = $derived(REPETITIONS.find((r) => r.id === lecteur.repetition)?.label ?? '')
   const changerSuggestions = (v: Suggestions) => faire(lecteur.reglerSuggestions(v))
   const changerDecouverte = (v: boolean) => void lecteur.changerDecouverte(v).catch((e) => notify.error(e, 'Le réglage n’a pas pu être enregistré'))
 </script>
@@ -69,6 +69,7 @@
 
   <section class="film-section sillon-reglages" aria-label="Lecture aléatoire et suggestions">
     <button class="v-chip" aria-pressed={lecteur.aleatoire} onclick={() => faire(lecteur.basculerAleatoire())}><Icon name="shuffle" size={16} /> Aléatoire</button>
+    <button class="v-chip" aria-pressed={lecteur.repetition !== 'off'} onclick={() => faire(lecteur.changerRepetition())} aria-label={`Répétition : ${repetition}`} title="Changer la répétition"><Icon name="repeat" size={16} /> {repetition}</button>
     <div class="sillon-reglage">
       <span class="v-lbl" id="sillon-suggestions">Suggestions</span>
       <div class="v-seg" role="radiogroup" aria-labelledby="sillon-suggestions">
@@ -89,7 +90,7 @@
       <div class="sillon-file-ligne cur">
         <span class="sillon-file-art"><SillonCover id={courant.track.album.id} title={courant.track.album.title} image={courant.track.album.cover} size="small" /></span>
         <span class="grow sillon-file-t"><strong class="truncate">{courant.track.title}</strong><span class="v-note truncate">{courant.track.artist.name} · {courant.track.album.title}</span></span>
-        {#if courant.suggested}<span class="v-tag rose">{courant.discovery ? 'Découverte' : 'Suggestion'}</span>{/if}
+        {#if marqueDe(courant)}<span class="v-tag" class:rose={!courant.discovery} class:info={courant.discovery}>{marqueDe(courant)}</span>{/if}
         <SillonLike kind="tracks" id={courant.track.id} titre={courant.track.title} />
       </div>
     </section>
@@ -101,15 +102,15 @@
       <p class="v-note sillon-aide">Glisse un titre ou utilise Alt + ↑ / ↓ pour changer l’ordre.</p>
       <ol class="sillon-file" bind:this={liste}>
         {#each suite as { e, i } (e.id)}
-          {@const marque = e.suggested || e.discovery}
-          <li class="sillon-file-ligne" class:marque class:tire={tire === i} class:survol={survol === i && tire !== i} data-element={e.id} use:ctx={() => menu(e, i)}
+          {@const marque = marqueDe(e)}
+          <li class="sillon-file-ligne" class:marque={!!marque} class:decouverte={e.discovery} class:tire={tire === i} class:survol={survol === i && tire !== i} data-element={e.id} use:ctx={() => menu(e, i)}
             draggable="true" ondragstart={(ev) => { tire = i; ev.dataTransfer?.setData('text/plain', e.track.title) }} ondragend={() => { tire = -1; survol = -1 }}
             ondragover={(ev) => { if (tire >= 0) { ev.preventDefault(); survol = i } }} ondrop={(ev) => { ev.preventDefault(); const f = tire; tire = -1; survol = -1; void bouger(f, i) }}>
             <span class="sillon-poignee" aria-hidden="true"><Icon name="poignee" size={16} /></span>
-            <button class="sillon-file-jouer" onclick={() => lecteur.aller(i)} onkeydown={(ev) => touche(ev, i)} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label={`Lire : ${e.track.title}, ${e.track.artist.name}${marque ? ` (${e.discovery ? 'découverte' : 'suggestion'})` : ''}`}>
+            <button class="sillon-file-jouer" onclick={() => lecteur.aller(i)} onkeydown={(ev) => touche(ev, i)} aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown" aria-label={`Lire : ${e.track.title}, ${e.track.artist.name}${marque ? ` (${marque.toLowerCase()})` : ''}`}>
               <span class="sillon-file-art"><SillonCover id={e.track.album.id} title={e.track.album.title} image={e.track.album.cover} size="small" /></span>
               <span class="grow sillon-file-t"><strong class="truncate">{e.track.title}</strong><span class="v-note truncate">{e.track.artist.name} · {e.track.album.title}</span></span>
-              {#if marque}<span class="v-tag rose">{e.discovery ? 'Découverte' : 'Suggestion'}</span>{/if}
+              {#if marque}<span class="v-tag" class:rose={!e.discovery} class:info={e.discovery}>{marque}</span>{/if}
               <span class="v-mono v-mute sillon-file-duree">{clock(e.track.duration ?? 0)}</span>
             </button>
             {#if marque}
@@ -144,6 +145,7 @@
   .sillon-file-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 6px; border-radius: var(--r); }
   .sillon-file-ligne.cur { padding: 8px 10px; background: var(--rose-doux); }
   .sillon-file-ligne.marque { background: color-mix(in srgb, var(--rose) 28%, transparent); box-shadow: inset 3px 0 0 var(--rose-fonce); }
+  .sillon-file-ligne.marque.decouverte { background: var(--info-fond); box-shadow: inset 3px 0 0 var(--info); }
   .sillon-file-ligne.tire { opacity: 0.45; }
   .sillon-file-ligne.survol { box-shadow: inset 0 2px 0 var(--rose-fonce); }
   .sillon-poignee { display: inline-grid; place-items: center; flex: none; width: 20px; color: var(--gris); cursor: grab; }

@@ -4,7 +4,7 @@ import { confirmer, saisir } from '../../lib/confirm.svelte'
 import type { MenuItem } from '../../lib/ctxmenu.svelte'
 import { hrefs, router } from '../../lib/route.svelte'
 import { notify } from '../../lib/ui'
-import { debut, dureeExacte, gainLineaire, SILLON_URL, sillonApi, support, type Contenu, type DemandeLecture, type FichePlaylist, type Playlist, titresDe, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste, type Qualite, type Suggestions, type Support, type TypeSource } from './sillon'
+import { debut, dureeExacte, gainLineaire, SILLON_URL, sillonApi, support, type Contenu, type DemandeLecture, type FichePlaylist, type Playlist, titresDe, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste, type Qualite, REPETITIONS, type Repetition, type Suggestions, type Support, type TypeSource } from './sillon'
 
 export interface ElementAudio {
   src: string
@@ -141,6 +141,9 @@ export class Lecteur {
   get element(): ElementFile | null { return this.elements[this.index] ?? null }
   get aleatoire() { return !!this.serveur?.shuffle }
   get suggestions(): Suggestions { return this.serveur?.suggestions ?? 'off' }
+  get repetition(): Repetition { return this.serveur?.repeat ?? 'off' }
+  get suivante(): Piste | null { return this.file[this.prochain(true)] ?? null }
+  get peutSuivre() { return this.prochain(false) >= 0 }
 
   jouer(pistes: Piste[], depart = 0, contexte: Contexte = { type: 'pistes' }, melanger = false) {
     const dispo = pistes.filter((p) => p.available)
@@ -169,9 +172,25 @@ export class Lecteur {
 
   basculerAleatoire() { return this.ecrireFile((s, revision) => s.modifier({ revision, shuffle: !this.aleatoire })) }
   reglerSuggestions(v: Suggestions) { return this.ecrireFile((s, revision) => s.modifier({ revision, suggestions: v })) }
+  changerRepetition() {
+    const k = REPETITIONS.findIndex((r) => r.id === this.repetition)
+    const repeat = REPETITIONS[(k + 1) % REPETITIONS.length].id
+    return this.ecrireFile((s, revision) => s.modifier({ revision, repeat }))
+  }
   lireEnsuite(c: Contenu) { return this.ecrireFile((s, revision) => s.ajouter({ revision, mode: 'next', ...c })) }
   ajouterAFile(c: Contenu) { return this.ecrireFile((s, revision) => s.ajouter({ revision, mode: 'end', ...c })) }
   retirer(id: string) { return this.ecrireFile((s, revision) => s.retirer({ revision, items: [id] })) }
+
+  async nePlusProposer(e: ElementFile) {
+    await sillonApi.nePlusProposer(e.track.id)
+    await this.retirer(e.id)
+  }
+
+  async similaires(p: Piste) {
+    const { items } = await sillonApi.similaires(p.id)
+    this.jouer(items)
+    return items.filter((x) => x.available).length
+  }
 
   deplacerElement(id: string, versId: string) {
     return this.ecrireFile((s, revision, f) => {
@@ -212,14 +231,15 @@ export class Lecteur {
   }
 
   suivant() {
-    if (this.index + 1 >= this.file.length) return
+    const i = this.prochain(false)
+    if (i < 0) return
     this.brancher()
-    void this.demarrer(this.index + 1)
+    void this.demarrer(i)
   }
 
   precedent() {
-    if (this.position > 3 || this.index <= 0) this.deplacer(0)
-    else { this.brancher(); void this.demarrer(this.index - 1) }
+    if (this.position > 3 || (this.index <= 0 && this.repetition === 'off') || this.file.length < 2) this.deplacer(0)
+    else { this.brancher(); void this.demarrer(this.index > 0 ? this.index - 1 : this.file.length - 1) }
   }
 
   aller(index: number) {
@@ -263,12 +283,12 @@ export class Lecteur {
     try {
       const p = await sillonApi.preferences()
       this.qualite = p.quality
-      this.decouverte = p.discovery ?? true
+      this.decouverte = p.discovery
     } catch { this.qualite = null }
   }
 
   async changerDecouverte(v: boolean) {
-    this.decouverte = (await sillonApi.decouverteActive(v)).discovery ?? v
+    this.decouverte = (await sillonApi.decouverteActive(v)).discovery
   }
 
   async changerQualite(q: Qualite) {
@@ -354,8 +374,17 @@ export class Lecteur {
     const position = Math.round(this.position * 10) / 10
     void this.ecrireFile((s, revision, f) => {
       const index = this.positionServeur(f)
-      return index < 0 ? null : s.modifier({ revision, index, position })
+      if (index < 0 || !f) return null
+      return s.modifier(index === f.index ? { revision, position } : { revision, index, ...(position ? { position } : {}) })
     }).catch(() => {})
+  }
+
+  private prochain(fin: boolean) {
+    const n = this.file.length
+    if (!n || this.index < 0) return -1
+    if (fin && this.repetition === 'one') return this.index
+    if (this.index + 1 < n) return this.index + 1
+    return this.repetition === 'off' ? -1 : 0
   }
 
   private cloturer(fin: EcouteEnvoyee['ended_by']) {
@@ -464,7 +493,7 @@ export class Lecteur {
   }
 
   private precharger() {
-    const p = this.file[this.index + 1]
+    const p = this.file[this.prochain(true)]
     const e = this.slots?.[1 - this.actif]
     if (!p || !e || e.piste?.id === p.id) return
     void this.charger(e, p).catch(() => { if (e.piste?.id === p.id) e.piste = null })
@@ -525,7 +554,8 @@ export class Lecteur {
 
   private fin() {
     this.cloturer('end')
-    if (this.index + 1 < this.file.length) { void this.demarrer(this.index + 1); return }
+    const i = this.prochain(true)
+    if (i >= 0) { void this.demarrer(i); return }
     this.etat(false)
     this.position = 0
     this.deplacer(0)
@@ -713,6 +743,7 @@ export function menuContenu(contenu: Contenu, titre: string): MenuItem[] {
 export function menuPiste(p: Piste, extra: MenuItem[] = []): MenuItem[] {
   return [
     ...(p.available ? menuContenu({ tracks: [p.id] }, p.title) : []),
+    ...(p.available ? [{ label: 'Titres similaires', run: () => void lecteur.similaires(p).then((n) => { if (!n) notify.info('Aucun titre similaire pour l’instant : l’analyse de ce titre n’est peut-être pas terminée.') }, (e) => notify.error(e, 'Les titres similaires sont indisponibles')) }] : []),
     ...extra,
     { label: aimes.a('tracks', p.id) ? 'Retirer des titres likés' : 'Ajouter aux titres likés', run: () => void aimes.basculer('tracks', p.id), sep: true },
     { label: 'Voir l’album', run: () => router.go(hrefs.musique('album', p.album.id)) },
