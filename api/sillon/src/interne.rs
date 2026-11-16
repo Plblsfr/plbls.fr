@@ -65,17 +65,19 @@ pub async fn apercu(
         .await
         .map_err(bd)?
         .ok_or_else(introuvable)?;
-    let image = l.get::<bool, _>("image");
-    let pochette: Value = match genre {
-        "artist" => json!({ "kind": "artist", "id": id }),
-        _ => json!({ "kind": "album", "id": l.get::<Uuid, _>("album") }),
+    let album = (genre != "artist").then(|| l.get::<Uuid, _>("album"));
+    let cover = match album {
+        _ if !l.get::<bool, _>("image") => Value::Null,
+        Some(a) => json!({ "kind": "album", "id": a }),
+        None => json!({ "kind": "artist", "id": id }),
     };
     Ok(ok(&json!({
         "type": genre,
         "id": id,
         "title": l.get::<String, _>("titre"),
         "artist": l.get::<String, _>("nom"),
-        "cover": if image { pochette } else { Value::Null },
+        "album": album,
+        "cover": cover,
     })))
 }
 

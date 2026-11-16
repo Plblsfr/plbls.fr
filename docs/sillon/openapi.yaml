@@ -71,7 +71,7 @@ paths:
         - { name: id, in: query, required: true, schema: { type: string, format: uuid } }
         - { name: sub, in: query, required: true, schema: { type: string, maxLength: 200 } }
       responses:
-        "200": { description: "`{type, id, title, artist, cover: {kind: album|artist, id}|null}` ; pour un artiste, `title` et `artist` valent son nom" }
+        "200": { description: "`{type, id, title, artist, album: uuid|null, cover: {kind: album|artist, id}|null}` ; `album` : l'album de la piste ou l'album lui-même (`null` pour un artiste) ; pour un artiste, `title` et `artist` valent son nom" }
         "400": { description: "`invalid` : type inconnu ou `sub` absent" }
         "401": { description: "`unauthorized` : jeton de service absent ou faux" }
         "403": { $ref: "#/components/responses/403" }

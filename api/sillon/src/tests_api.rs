@@ -1269,15 +1269,17 @@ async fn apercu_interne_reserve_au_jeton_de_service_et_a_sillon_access() {
     };
     assert_eq!(
         r.json(),
-        json!({"type": "album", "id": album_id, "title": "Lemonade", "artist": album["artist"]["name"], "cover": pochette})
+        json!({"type": "album", "id": album_id, "title": "Lemonade", "artist": album["artist"]["name"], "album": album_id, "cover": pochette})
     );
     b.sans_fuite(&r.texte(), "aperçu d'album");
     let r = apercu(ok, format!("type=track&id={piste_id}&sub=sub-alice")).await;
     assert_eq!(r.json()["title"], "Formation");
     assert_eq!(r.json()["cover"], pochette);
+    assert_eq!(r.json()["album"], album_id.as_str());
     let r = apercu(ok, format!("type=artist&id={artiste_id}&sub=sub-alice")).await;
     assert_eq!(r.json()["type"], "artist");
     assert_eq!(r.json()["title"], album["artist"]["name"]);
+    assert_eq!(r.json()["album"], Value::Null);
     for qui in ["sub-personne", "sub-inconnu"] {
         let r = apercu(ok, format!("type=album&id={album_id}&sub={qui}")).await;
         assert_eq!(r.statut, StatusCode::FORBIDDEN, "{qui}");
