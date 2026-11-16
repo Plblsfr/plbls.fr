@@ -3,7 +3,7 @@
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
 par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
-la lecture audio, les playlists, les likes, la file de lecture, l'historique et l'ajout autonome de musique avec plafond du disque.
+la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque et l'analyse audio des pistes.
 
 | Où | Quoi |
 |---|---|
@@ -155,6 +155,35 @@ et l'historique, avec `available: false`.
   n'a d'écoute comptée dans l'historique, toutes personnes confondues).
 - Sillon ne supprime jamais un fichier lui-même (dossier monté en lecture seule) : tout passe par Lidarr.
 
+## Analyse audio
+
+- Chaque fichier (celui de la piste, le plus gros s'il y en a plusieurs) est décodé par ffmpeg en PCM mono 22 050 Hz sur sa sortie
+  standard, lu au fil de l'eau (mémoire bornée, sauf l'enveloppe d'attaques : 4 octets par tranche de 23 ms), et les descripteurs sont
+  calculés en Rust, sans bibliothèque native, hors du fil de l'exécuteur : tempo (autocorrélation de l'enveloppe d'attaques, de 50 à
+  220 battements par minute, préférence autour de 120), énergie (niveau efficace, dB) et dynamique (écart type du niveau des trames à
+  moins de 20 dB du niveau moyen), centroïde, étalement et pente du spectre, taux de passage par zéro, chroma sur 12 classes
+  (tonalité et mode estimés par corrélation avec les profils de Krumhansl), moyennes et variances de 12 coefficients cepstraux (26
+  bandes mel). Trames de 2048 échantillons tous les 512 ; les moyennes sont pondérées par le niveau de la trame, pour que le bruit
+  d'encodage dans les silences ne compte pas.
+- Le résultat est un vecteur de 43 dimensions à l'échelle nominale (table `analyses`, avec le tempo, la tonalité et le mode),
+  versionné : `analyse::VERSION` monte à chaque changement d'algorithme, et les pistes analysées avec une version plus ancienne
+  repassent en file.
+- File de tâches en base (`taches_analyse`, une ligne par fichier : `attente`, `en_cours`, `faite`, `erreur`, tentatives, erreur) :
+  alimentée à la fin de chaque synchronisation (fichier nouveau, `contenu_le` changé ou version plus ancienne), au démarrage et toutes
+  les 5 minutes ; les fichiers les plus récents passent d'abord, le stock existant ensuite. `SILLON_ANALYSE_PARALLELE` ouvriers (1 par
+  défaut, 0 = pas d'analyse), ffmpeg lancé par `nice -n 19` sur un seul fil. Une tâche = les descripteurs, puis la mesure du niveau
+  EBU R128 si elle manque (deuxième décodage : la mesure compte les échantillons à la fréquence d'origine) : toute la bibliothèque
+  est ainsi mesurée, pas seulement les pistes déjà lues. Trois tentatives, puis `erreur` (les tâches déjà essayées passent après les
+  autres : un fichier illisible ne bloque pas la file). Une analyse interrompue par un arrêt du service est reprise au démarrage.
+- Pendant un transcodage de lecture, aucune analyse ne démarre, et celle en cours est arrêtée puis remise en file sans compter de
+  tentative.
+- Voisins : les vecteurs des pistes présentes sont chargés en mémoire (`AppState::analyse().voisins()`), chaque dimension centrée et
+  réduite par sa moyenne et son écart type sur la bibliothèque (écart type plancher 0,1), recalculés à chaque rechargement : au
+  démarrage, toutes les 100 analyses et quand la file se vide. Distance : écart quadratique moyen par dimension. Une piste non
+  analysée n'a pas de voisins (`None`), jamais d'erreur.
+- Administration (`sillon:admin`) : `GET /admin/analysis` (avancement, pause, erreurs sans chemin ni nom de fichier) et
+  `POST /admin/analysis/retry` (remet en file les tâches en erreur).
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -179,6 +208,7 @@ et l'historique, avec `available: false`.
 | `SILLON_AJOUTS_PAR_JOUR` | `plbls.env` (10) | ajouts par personne sur 24 heures glissantes |
 | `SILLON_MEDIAS_GO` | `plbls.env` (500) | plafond du dossier de la musique, en Gio ; 0 = sans plafond |
 | `SILLON_AJOUTS_DELAI_HEURES` | `plbls.env` (72) | délai sans résultat avant qu'un ajout passe en échec |
+| `SILLON_ANALYSE_PARALLELE` | `plbls.env` (1) | analyses audio simultanées ; 0 = pas d'analyse |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles

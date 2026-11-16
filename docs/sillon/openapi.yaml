@@ -714,3 +714,18 @@ paths:
         "404": { description: "`not_found`" }
         "409": { description: "`not_in_lidarr`" }
         "502": { description: "`lidarr_unavailable`" }
+  /admin/analysis:
+    get:
+      summary: "Avancement de l'analyse audio et tâches en erreur"
+      description: "`paused` : un transcodage de lecture est en cours, l'analyse attend. `loaded` : pistes dont le vecteur est en mémoire pour le calcul des voisins. Les erreurs ne portent ni chemin ni nom de fichier (200 au plus, les plus récentes)."
+      responses:
+        "200": { description: "`{version, parallel, paused, tasks: {pending, running, done, failed}, tracks, analysed, loaded, errors: [{track, title, error, attempts, at}]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/analysis/retry:
+    post:
+      summary: "Remet en file les analyses en erreur"
+      responses:
+        "202": { description: "`{requeued}` : nombre de tâches remises en file" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }

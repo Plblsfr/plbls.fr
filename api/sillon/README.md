@@ -20,6 +20,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `flux.rs` | jetons de flux signés (`Billet`, `signer`, `valider`), `Range`, service d'un fichier ou d'un fichier en cours d'encodage |
 | `transcodage.rs` | qualités et formats, ligne ffmpeg, `Transcodeur` : cache disque, encodages simultanés plafonnés, éviction LRU |
 | `volume.rs` | mesure EBU R128 par ffmpeg (`mesurer`), stockage par piste et `contenu_le`, gains piste et album |
+| `analyse/` | analyse audio : `decodage.rs` (ffmpeg en PCM mono 22 050 Hz, lu en flux), `descripteurs.rs` (FFT, `Extracteur`, `Descripteurs`, vecteur de 43 dimensions), `file.rs` (file de tâches en base), `voisins.rs` (`Voisins` en mémoire), `mod.rs` (ouvriers, pause pendant un transcodage, rechargement, routes d'administration) |
 | `preferences.rs` | `GET`/`PUT /preferences` (qualité par personne) |
 | `playlists.rs` | playlists privées (éléments ordonnés, plage déplacée, doublons signalés, plafonds) ; aides communes : corps JSON (`objet`, `texte`, `champ_uuid`…), `contenu` (pistes, album, artiste ou playlist d'une requête), `pistes_de_source`, `pistes_json` |
 | `likes.rs` | likes de pistes, albums et artistes ; « Titres likés » |
@@ -29,7 +30,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
 | `quota.rs` | réglages de l'ajout (`SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
 | `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille (filtre des albums jamais écoutés) |
-| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions) |
+| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions ; `0006_analyse.sql` : analyses et file de tâches) |
 
 ## Schéma du catalogue
 
@@ -44,6 +45,8 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `synchronisations` | par source (`lidarr`) : dernière réussite, dernier essai, erreur |
 | `images` | cache des images (clé `<type>/<uuid>/<taille>`, type `cover`, `poster` ou `fanart` ; version = URL Lidarr) |
 | `mesures` | par `(piste_id, contenu_le)` du fichier : `niveau` (LUFS intégré), `pic` (dBTP), `plage` (LRA), `echantillons`, `frequence` ; la mesure d'un fichier remplacé efface l'ancienne |
+| `analyses` | par `piste_id` : `contenu_le` du fichier analysé, `version`, `vecteur` (`real[]`, 43 dimensions à l'échelle nominale), `tempo` (battements par minute, nul sans pulsation), `tonalite` (0 = do … 11 = si), `majeur` |
+| `taches_analyse` | par `fichier_id` : `contenu_le`, `version`, `etat` (`attente`, `en_cours`, `faite`, `erreur`), `tentatives`, `erreur` (sans chemin) |
 | `preferences` | par `sub` : `qualite` (`originale`, `haute`, `normale`, `basse`) |
 | `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le` ; un seul ajout actif par `(type, mbid)` |
 | `exclusions` | MBID d'album ou d'artiste supprimé par un admin, qui ne peut plus être ajouté |
@@ -122,3 +125,10 @@ Les tests de lecture (`lecture.rs`, module `tests`) réutilisent `bibliotheque_a
 plafond d'encodages et l'échec d'encodage, un faux ffmpeg (script qui attend un fichier témoin ou échoue pour `libopus`, et passe la
 main au vrai ffmpeg sinon).
 Sans `TEST_DATABASE_URL`, les tests passent par testcontainers (ignorés sans Docker).
+- `AppState::analyse().voisins() -> Arc<Voisins>` : vecteurs normalisés des pistes présentes et analysées (instantané, remplacé à chaque
+  rechargement). `voisins(piste, n) -> Option<Vec<(Uuid, f32)>>` (les plus proches d'abord, sans la piste), `distance(a, b) -> Option<f32>`,
+  `vecteur(piste) -> Option<&[f32]>`, `barycentre(&[Uuid]) -> Option<Vec<f32>>` (pistes non analysées ignorées),
+  `plus_proches(&vecteur, n, &exclure) -> Vec<(Uuid, f32)>`, `len()`. Piste non analysée : `None`. Balayage complet : moins de
+  50 ms par requête sur 50 000 pistes en build de test non optimisé.
+- `analyse::signaler(&AppState)` : alimente la file et réveille les ouvriers (appelé à la fin de `catalogue::synchroniser`) ;
+  `analyse::analyser(ffmpeg, chemin) -> Result<Descripteurs, String>` ; `analyse::recharger(&AppState)` ; `analyse::VERSION`.

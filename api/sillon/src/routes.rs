@@ -16,6 +16,8 @@ use crate::{
 
 use crate::{lecture, preferences};
 
+use crate::analyse;
+
 const FLUX: Garde = Garde::Jeton(
     "jeton de flux signé, lié à la personne et à la piste, droits vérifiés à chaque requête",
 );
@@ -350,6 +352,18 @@ pub fn table() -> Vec<Entree> {
             "/admin/artists/{id}",
             Garde::Droit(Droit::Admin),
             axum::routing::delete(crate::admin_ajouts::supprimer_artiste),
+        ),
+        entree(
+            Method::GET,
+            "/admin/analysis",
+            Garde::Droit(Droit::Admin),
+            get(analyse::etat),
+        ),
+        entree(
+            Method::POST,
+            "/admin/analysis/retry",
+            Garde::Droit(Droit::Admin),
+            post(analyse::relancer),
         ),
     ]
 }

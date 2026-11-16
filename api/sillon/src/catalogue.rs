@@ -478,6 +478,7 @@ pub async fn synchroniser(state: &AppState) {
             break;
         }
     }
+    crate::analyse::signaler(state).await;
 }
 
 async fn passe(state: &AppState) {
