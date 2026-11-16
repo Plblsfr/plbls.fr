@@ -1,4 +1,4 @@
-# Contexte des images Rust security, estompe-api et entracte : la racine du dépôt, qui porte le workspace Cargo.
+# Contexte des images Rust security, estompe-api, entracte et sillon : la racine du dépôt, qui porte le workspace Cargo.
 # Cargo exige les manifestes et les sources de tous les membres : chaque image reçoit api/ (toutes les API) et plbls.env, rien d'autre.
 # Les images construites depuis la racine avec leur propre liste (ui) l'ont dans <Dockerfile>.dockerignore,
 # que Docker lit à la place de ce fichier ; celle d'aegis doit reprendre les lignes Cargo et plbls.env ci-dessous.

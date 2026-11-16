@@ -56,3 +56,4 @@ configs:
       CREATE DATABASE aegis;
       CREATE DATABASE entracte;
       CREATE DATABASE estompe;
+      CREATE DATABASE sillon;

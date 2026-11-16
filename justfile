@@ -60,6 +60,10 @@ test-estompe-api:
 test-entracte:
     cargo test --locked -p entracte
 
+# Sillon : une base jetable par test (TEST_DATABASE_URL, sinon testcontainers)
+test-sillon:
+    cargo test --locked -p sillon
+
 # Reconstruit packages/ui/dist (non versionné)
 build-ui:
     npm ci && npm run build --workspace packages/ui
@@ -109,3 +113,10 @@ entracte-dev-run:
 
 entracte-image:
     docker build -f api/entracte/Dockerfile -t entracte:local .
+
+# Sillon : backend sur 127.0.0.1:8093, demande dev-up, le gateway et aegis (AEGIS_URL=http://127.0.0.1:8091)
+sillon-dev-run:
+    set -a && . deploy/dev.env && set +a && AEGIS_URL="${AEGIS_URL:-http://127.0.0.1:8091}" cargo run -p sillon
+
+sillon-image:
+    docker build -f api/sillon/Dockerfile -t sillon:local .

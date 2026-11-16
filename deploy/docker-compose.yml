@@ -58,6 +58,14 @@ services:
     expose: ["8080"]
     networks: [default, postgres-net, medias]
 
+  sillon-api:
+    image: ghcr.io/plblsfr/sillon:${SILLON_TAG:-latest}
+    restart: unless-stopped
+    <<: *durci
+    env_file: .env
+    expose: ["8080"]
+    networks: [default, postgres-net]
+
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
     restart: unless-stopped
