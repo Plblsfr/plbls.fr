@@ -96,6 +96,10 @@ it('CSP : lecteurs en iframe seulement, médias et requêtes sans joker (web, Wi
   }
   expect(dir(web, 'connect-src')).toContain('$GATEWAY_URL')
   for (const csp of [tauri, android]) expect(dir(csp, 'connect-src')).toContain('https://estompe.plbls.fr')
+  for (const d of ['media-src', 'connect-src']) {
+    expect(dir(web, d)).toContain('$SILLON_PUBLIC_URL')
+    for (const csp of [tauri, android]) expect(dir(csp, d)).toContain('https://sillon-api.plbls.fr')
+  }
 })
 
 it('apps : le navigateur système n’ouvre que des liens https, mailto et tel', () => {
