@@ -6,6 +6,8 @@ import { applyCameraFx } from '../../lib/camerafx'
 import { Composer, overlayRect } from '../../lib/camoverlay'
 import { platform as web } from '@platform'
 import { setPlatform } from '../../lib/platform'
+import { medias } from '../../lib/medias'
+import { api } from '../../lib/api'
 
 const switchTo = vi.fn()
 const bgProcessor = vi.fn((t: { opts: Record<string, unknown> }) => ({ t, updateTransformerOptions: switchTo }))
@@ -224,5 +226,18 @@ describe('vocal en arrière-plan', () => {
     await voice.leave()
     setPlatform(web)
     expect(update).toHaveBeenCalledWith({ channelId: null, muted: false, deafened: false })
+  })
+})
+
+describe('autres médias', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('rejoindre un salon vocal l’annonce avant la connexion (la musique de Sillon se met en pause)', async () => {
+    const demarre = vi.spyOn(medias, 'demarre')
+    vi.spyOn(api, 'voiceToken').mockRejectedValue(new Error('hors ligne'))
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await voice.join('salon-musique')
+    expect(demarre).toHaveBeenCalledWith('vocal')
+    expect(voice.state).toBe('idle')
   })
 })

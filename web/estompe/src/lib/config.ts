@@ -6,6 +6,7 @@ interface RuntimeConfig {
   keycloakIssuer?: string
   /** API d'Entracte (films et séries) ; vide = pas de section Entracte ni de salon cinéma. */
   entracteUrl?: string
+  sillonUrl?: string
 }
 
 const rc: RuntimeConfig = (typeof window !== 'undefined' && (window as unknown as { __ESTOMPE__?: RuntimeConfig }).__ESTOMPE__) || {}
@@ -16,4 +17,5 @@ export const config = {
   gatewayUrl: strip(rc.gatewayUrl || import.meta.env.VITE_GATEWAY_URL || 'https://security.plbls.fr'),
   keycloakIssuer: strip(rc.keycloakIssuer || import.meta.env.VITE_KEYCLOAK_ISSUER || ''),
   entracteUrl: strip(rc.entracteUrl || import.meta.env.VITE_ENTRACTE_URL || ''),
+  sillonUrl: strip(rc.sillonUrl || import.meta.env.VITE_SILLON_URL || ''),
 }

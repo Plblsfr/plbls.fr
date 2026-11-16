@@ -1,13 +1,35 @@
 #![allow(clippy::result_large_err)]
 
+pub mod bibliotheque;
+pub mod catalogue;
 pub mod config;
 pub mod droits;
 pub mod etat;
+pub mod ffprobe;
+pub mod filtre;
 pub mod garde;
 pub mod http;
 pub mod identite;
+pub mod images;
 pub mod interne;
+pub mod lidarr;
 pub mod routes;
+
+pub mod admin_ajouts;
+pub mod ajouts;
+pub mod file;
+pub mod flux;
+pub mod historique;
+pub mod lecture;
+pub mod likes;
+pub mod ordre;
+pub mod playlists;
+pub mod preferences;
+pub mod quota;
+pub mod transcodage;
+pub mod volume;
+
+pub mod analyse;
 
 #[cfg(test)]
 mod tests_api;

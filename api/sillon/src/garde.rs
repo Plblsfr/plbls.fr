@@ -4,11 +4,12 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 use crate::{
     droits::{Droit, Droits},
     etat::AppState,
-    http::erreur,
+    http::{erreur, jetons_egaux},
     identite::{Identite, Refus, justificatif},
 };
 
@@ -16,14 +17,16 @@ use crate::{
 pub enum Garde {
     Droit(Droit),
     Session(&'static str),
+    Webhook(&'static str),
     Public(&'static str),
+    Jeton(&'static str),
 }
 
 impl Garde {
     pub fn motif(self) -> Option<&'static str> {
         match self {
             Garde::Droit(_) => None,
-            Garde::Session(m) | Garde::Public(m) => Some(m),
+            Garde::Session(m) | Garde::Webhook(m) | Garde::Public(m) | Garde::Jeton(m) => Some(m),
         }
     }
 }
@@ -104,6 +107,40 @@ pub async fn personne(
     Ok(Personne { identite, droits })
 }
 
+fn parametre(req: &Request, nom: &str) -> String {
+    req.uri()
+        .query()
+        .unwrap_or_default()
+        .split('&')
+        .filter_map(|p| p.split_once('='))
+        .find(|(k, _)| *k == nom)
+        .map(|(_, v)| v.to_string())
+        .unwrap_or_default()
+}
+
+fn jetons_webhook(req: &Request) -> Vec<String> {
+    let mut jetons = vec![parametre(req, "token")];
+    let autorisation = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if let Some((schema, valeur)) = autorisation.split_once(' ') {
+        if schema.eq_ignore_ascii_case("bearer") {
+            jetons.push(valeur.trim().to_string());
+        } else if schema.eq_ignore_ascii_case("basic")
+            && let Some(mdp) = STANDARD
+                .decode(valeur.trim())
+                .ok()
+                .and_then(|o| String::from_utf8(o).ok())
+                .and_then(|t| t.split_once(':').map(|(_, m)| m.to_string()))
+        {
+            jetons.push(mdp);
+        }
+    }
+    jetons
+}
+
 pub async fn garder(
     State((state, garde)): State<(AppState, Garde)>,
     mut req: Request,
@@ -123,7 +160,23 @@ pub async fn garder(
             }
             Err(r) => return r,
         },
-        Garde::Public(_) => {}
+        Garde::Webhook(_) => {
+            let attendu = &state.config().jeton_webhook;
+            if attendu.is_empty() {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            if !jetons_webhook(&req)
+                .iter()
+                .any(|j| jetons_egaux(attendu, j))
+            {
+                return erreur(
+                    StatusCode::UNAUTHORIZED,
+                    "unauthorized",
+                    "jeton de webhook attendu",
+                );
+            }
+        }
+        Garde::Public(_) | Garde::Jeton(_) => {}
     }
     next.run(req).await
 }
@@ -140,6 +193,19 @@ fn avec_cors(mut r: Response, origine: &HeaderValue) -> Response {
         HeaderValue::from_static("Content-Range, Content-Length, Accept-Ranges"),
     );
     h.append(header::VARY, HeaderValue::from_static("Origin"));
+    r
+}
+
+fn avec_cors_de_flux(mut r: Response) -> Response {
+    let h = r.headers_mut();
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    h.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("Content-Range, Content-Length, Accept-Ranges"),
+    );
     r
 }
 
@@ -161,6 +227,30 @@ pub async fn politique_origine(
         .and_then(|o| o.to_str().ok())
         .unwrap_or_default();
     let autorisee = !texte.is_empty() && state.config().origines.iter().any(|o| o == texte);
+    let flux_ouvert = !autorisee
+        && origine.is_some()
+        && matches!(*req.method(), Method::GET | Method::OPTIONS)
+        && req.uri().path().starts_with("/stream/");
+    if flux_ouvert {
+        if req.method() == Method::OPTIONS {
+            let mut r = avec_cors_de_flux(StatusCode::NO_CONTENT.into_response());
+            let h = r.headers_mut();
+            h.insert(
+                header::ACCESS_CONTROL_ALLOW_METHODS,
+                HeaderValue::from_static("GET"),
+            );
+            h.insert(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                HeaderValue::from_static("Range"),
+            );
+            h.insert(
+                header::ACCESS_CONTROL_MAX_AGE,
+                HeaderValue::from_static("600"),
+            );
+            return r;
+        }
+        return avec_cors_de_flux(next.run(req).await);
+    }
     let cors = origine.filter(|_| autorisee);
     if let Some(o) = &cors
         && req.method() == Method::OPTIONS
@@ -192,5 +282,36 @@ pub async fn politique_origine(
     match &cors {
         Some(o) => avec_cors(r, o),
         None => r,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn requete(uri: &str, autorisation: Option<&str>) -> Request {
+        let mut b = Request::builder().uri(uri);
+        if let Some(a) = autorisation {
+            b = b.header(header::AUTHORIZATION, a);
+        }
+        b.body(axum::body::Body::empty()).unwrap()
+    }
+
+    #[test]
+    fn jeton_de_webhook_par_requete_bearer_ou_basic() {
+        let ok = |r: Request| jetons_webhook(&r).iter().any(|j| jetons_egaux("secret", j));
+        assert!(ok(requete("/webhooks/lidarr?token=secret", None)));
+        assert!(ok(requete("/webhooks/lidarr", Some("Bearer secret"))));
+        let basic = format!("Basic {}", STANDARD.encode("lidarr:secret"));
+        assert!(ok(requete("/webhooks/lidarr", Some(&basic))));
+        let faux = format!("Basic {}", STANDARD.encode("secret:faux"));
+        assert!(!ok(requete("/webhooks/lidarr", Some(&faux))));
+        assert!(!ok(requete("/webhooks/lidarr", Some("Basic %%%"))));
+        assert!(!ok(requete(
+            "/webhooks/lidarr?token=faux",
+            Some("Bearer faux")
+        )));
+        assert!(!ok(requete("/webhooks/lidarr", None)));
+        assert!(!jetons_egaux("", ""));
     }
 }
