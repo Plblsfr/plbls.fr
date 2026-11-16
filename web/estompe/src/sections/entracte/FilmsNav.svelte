@@ -39,7 +39,7 @@
   {#if droits?.request && entracte.push === 'off'}
     <button class="plbls-button plbls-button--compact plbls-button--contour film-notif" onclick={() => void notifier()}><Icon name="cloche" size={16} /> Être prévenu de mes demandes</button>
   {/if}
-  {#if app.phase !== 'entracte'}<p class="v-well v-note film-hint">Rejoins un salon cinéma pour lancer une séance à plusieurs.</p>{/if}
+  {#if app.phase !== 'sections'}<p class="v-well v-note film-hint">Rejoins un salon cinéma pour lancer une séance à plusieurs.</p>{/if}
   <p class="v-note film-tmdb">{TMDB_ATTRIBUTION}</p>
 </div>
 

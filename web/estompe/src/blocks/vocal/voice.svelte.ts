@@ -8,6 +8,7 @@ import { collectWatchers } from './stage'
 import { gainOf, ownerOf } from '../../lib/volume'
 import { shouldSubscribe } from './stage'
 import { notify } from '../../lib/ui'
+import { medias } from '../../lib/medias'
 import { platform, type CaptureSource } from '../../lib/platform'
 import { debug } from '../../lib/debuglog.svelte'
 import type { Room, Track as LkTrack, LocalVideoTrack, AudioCaptureOptions, VideoCaptureOptions, TrackPublishOptions } from 'livekit-client'
@@ -200,6 +201,7 @@ class VoiceController {
     this.error = ''
     this.state = 'connecting'
     this.channelId = channelId
+    medias.demarre('vocal')
     let attempt: Room | undefined
     try {
       const [{ Room, RoomEvent, Track }, t] = await Promise.all([import('livekit-client'), api.voiceToken(channelId)])

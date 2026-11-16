@@ -65,6 +65,7 @@ services:
     env_file: .env
     volumes:
       - ${SILLON_MEDIAS:-/srv/musique}:${SILLON_MEDIAS:-/srv/musique}:ro
+      - sillon-cache:/tmp/sillon
     expose: ["8080"]
     networks: [default, postgres-net, medias]
 
@@ -78,6 +79,7 @@ services:
       VOICE_URL: ${VOICE_URL:-}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
       ENTRACTE_PUBLIC_URL: ${ENTRACTE_PUBLIC_URL:-}
+      SILLON_PUBLIC_URL: ${SILLON_PUBLIC_URL:-}
     expose: ["8080"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
@@ -167,3 +169,4 @@ volumes:
   transcribe-models:
   cdn-data:
   entracte-transcodage:
+  sillon-cache:

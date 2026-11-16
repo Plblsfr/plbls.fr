@@ -11,7 +11,7 @@
   import DeniedView from './views/DeniedView.svelte'
   import AdminView from './views/AdminView.svelte'
   import Shell from './views/Shell.svelte'
-  import EntracteShell from './sections/entracte/EntracteShell.svelte'
+  import SectionsShell from './views/SectionsShell.svelte'
   import ForcedUpdate from './components/ForcedUpdate.svelte'
   import MediaPicker from './components/MediaPicker.svelte'
   import ContextMenu from './components/ContextMenu.svelte'
@@ -54,8 +54,8 @@
   <AdminView />
 {:else if app.phase === 'activate'}
   <ActivateView />
-{:else if app.phase === 'entracte'}
-  <EntracteShell />
+{:else if app.phase === 'sections'}
+  <SectionsShell />
 {:else if app.phase === 'error'}
   <div class="acces">
     <div class="acces-carte">

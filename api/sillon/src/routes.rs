@@ -3,7 +3,7 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, get, post},
+    routing::{MethodRouter, get, post, put},
 };
 
 use crate::{
@@ -13,6 +13,14 @@ use crate::{
     garde::{self, Garde},
     interne,
 };
+
+use crate::{lecture, preferences};
+
+use crate::analyse;
+
+const FLUX: Garde = Garde::Jeton(
+    "jeton de flux signé, lié à la personne et à la piste, droits vérifiés à chaque requête",
+);
 
 pub struct Route {
     pub methode: Method,
@@ -139,6 +147,223 @@ pub fn table() -> Vec<Entree> {
                 "appelé par Lidarr (import, renommage, suppression), jeton SILLON_WEBHOOK_TOKEN",
             ),
             post(bibliotheque::webhook),
+        ),
+        entree(
+            Method::GET,
+            "/playlists",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::playlists::lister),
+        ),
+        entree(
+            Method::POST,
+            "/playlists",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::playlists::creer),
+        ),
+        entree(
+            Method::GET,
+            "/playlists/{id}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::playlists::lire),
+        ),
+        entree(
+            Method::PATCH,
+            "/playlists/{id}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::patch(crate::playlists::modifier),
+        ),
+        entree(
+            Method::DELETE,
+            "/playlists/{id}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::delete(crate::playlists::supprimer),
+        ),
+        entree(
+            Method::POST,
+            "/playlists/{id}/tracks",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::playlists::ajouter),
+        ),
+        entree(
+            Method::DELETE,
+            "/playlists/{id}/tracks/{item}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::delete(crate::playlists::retirer),
+        ),
+        entree(
+            Method::POST,
+            "/playlists/{id}/move",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::playlists::deplacer),
+        ),
+        entree(
+            Method::GET,
+            "/likes",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::likes::identifiants),
+        ),
+        entree(
+            Method::GET,
+            "/likes/{kind}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::likes::liste),
+        ),
+        entree(
+            Method::PUT,
+            "/likes/{kind}/{id}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::put(crate::likes::aimer),
+        ),
+        entree(
+            Method::DELETE,
+            "/likes/{kind}/{id}",
+            Garde::Droit(Droit::Acces),
+            axum::routing::delete(crate::likes::retirer),
+        ),
+        entree(
+            Method::GET,
+            "/queue",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::file::lire),
+        ),
+        entree(
+            Method::PUT,
+            "/queue",
+            Garde::Droit(Droit::Acces),
+            axum::routing::put(crate::file::remplacer),
+        ),
+        entree(
+            Method::PATCH,
+            "/queue",
+            Garde::Droit(Droit::Acces),
+            axum::routing::patch(crate::file::modifier),
+        ),
+        entree(
+            Method::POST,
+            "/queue/tracks",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::file::ajouter),
+        ),
+        entree(
+            Method::POST,
+            "/queue/remove",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::file::retirer),
+        ),
+        entree(
+            Method::POST,
+            "/queue/move",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::file::deplacer),
+        ),
+        entree(
+            Method::POST,
+            "/history",
+            Garde::Droit(Droit::Acces),
+            axum::routing::post(crate::historique::enregistrer),
+        ),
+        entree(
+            Method::GET,
+            "/history",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::historique::recentes),
+        ),
+        entree(
+            Method::GET,
+            "/history/top/tracks",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::historique::top_pistes),
+        ),
+        entree(
+            Method::GET,
+            "/history/top/artists",
+            Garde::Droit(Droit::Acces),
+            axum::routing::get(crate::historique::top_artistes),
+        ),
+        entree(
+            Method::POST,
+            "/tracks/{id}/playback",
+            Garde::Droit(Droit::Acces),
+            post(lecture::ouvrir),
+        ),
+        entree(Method::GET, "/stream/{jeton}", FLUX, get(lecture::flux)),
+        entree(
+            Method::GET,
+            "/preferences",
+            Garde::Droit(Droit::Acces),
+            get(preferences::lire),
+        ),
+        entree(
+            Method::PUT,
+            "/preferences",
+            Garde::Droit(Droit::Acces),
+            put(preferences::ecrire),
+        ),
+        entree(
+            Method::GET,
+            "/additions/search",
+            Garde::Droit(Droit::Ajout),
+            get(crate::ajouts::rechercher),
+        ),
+        entree(
+            Method::POST,
+            "/additions",
+            Garde::Droit(Droit::Ajout),
+            post(crate::ajouts::creer),
+        ),
+        entree(
+            Method::GET,
+            "/additions/mine",
+            Garde::Droit(Droit::Ajout),
+            get(crate::ajouts::miennes),
+        ),
+        entree(
+            Method::GET,
+            "/admin/disk",
+            Garde::Droit(Droit::Admin),
+            get(crate::admin_ajouts::disque),
+        ),
+        entree(
+            Method::GET,
+            "/admin/additions",
+            Garde::Droit(Droit::Admin),
+            get(crate::admin_ajouts::liste),
+        ),
+        entree(
+            Method::POST,
+            "/admin/additions/{id}/retry",
+            Garde::Droit(Droit::Admin),
+            post(crate::admin_ajouts::relancer),
+        ),
+        entree(
+            Method::GET,
+            "/admin/albums",
+            Garde::Droit(Droit::Admin),
+            get(crate::admin_ajouts::albums),
+        ),
+        entree(
+            Method::DELETE,
+            "/admin/albums/{id}",
+            Garde::Droit(Droit::Admin),
+            axum::routing::delete(crate::admin_ajouts::supprimer_album),
+        ),
+        entree(
+            Method::DELETE,
+            "/admin/artists/{id}",
+            Garde::Droit(Droit::Admin),
+            axum::routing::delete(crate::admin_ajouts::supprimer_artiste),
+        ),
+        entree(
+            Method::GET,
+            "/admin/analysis",
+            Garde::Droit(Droit::Admin),
+            get(analyse::etat),
+        ),
+        entree(
+            Method::POST,
+            "/admin/analysis/retry",
+            Garde::Droit(Droit::Admin),
+            post(analyse::relancer),
         ),
     ]
 }
