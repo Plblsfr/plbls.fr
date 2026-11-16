@@ -5,10 +5,13 @@
   import { hrefs } from '../../lib/route.svelte'
   import SillonAlbums from './SillonAlbums.svelte'
   import SillonCover from './SillonCover.svelte'
-  import { echec } from './sillon.svelte'
+  import { menuFrom } from '../../lib/ctxmenu.svelte'
+  import SillonLike from './SillonLike.svelte'
+  import { copierLien, echec, menuContenu } from './sillon.svelte'
   import { sillonApi, type FicheArtiste } from './sillon'
 
   let { id }: { id: string } = $props()
+  let plus = $state<HTMLButtonElement>()
 
   let fiche = $state<FicheArtiste | null>(null)
   let manque = $state(false)
@@ -34,6 +37,10 @@
           <p class="v-eyebrow">{[`${presents.length} album${presents.length > 1 ? 's' : ''}`, ...fiche.genres.slice(0, 3)].join(' · ')}</p>
           <h1>{fiche.name}</h1>
           {#if fiche.overview}<p class="film-overview sillon-resume">{fiche.overview}</p>{/if}
+          <div class="film-actions">
+            <SillonLike kind="artists" id={fiche.id} titre={fiche.name} grand />
+            <button class="v-ib sq" bind:this={plus} aria-label="Plus d’actions sur l’artiste" title="Plus" onclick={() => fiche && plus && menuFrom(plus, [...(presents.length ? menuContenu({ artist: fiche.id }, fiche.name) : []), { label: 'Copier le lien', run: () => fiche && copierLien('artist', fiche.id), sep: !!presents.length }])}><Icon name="plus3" size={18} /></button>
+          </div>
         </div>
       </div>
     </div>

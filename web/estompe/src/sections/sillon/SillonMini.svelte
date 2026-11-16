@@ -2,7 +2,9 @@
   import Icon from '../../components/Icon.svelte'
   import MiniProgress from '../../components/MiniProgress.svelte'
   import { hrefs } from '../../lib/route.svelte'
+  import { notify } from '../../lib/ui'
   import SillonCover from './SillonCover.svelte'
+  import SillonLike from './SillonLike.svelte'
   import { lecteur } from './sillon.svelte'
 
   let { bande = false }: { bande?: boolean } = $props()
@@ -16,7 +18,7 @@
   <div class="lect sillon-lect" class:bande role="group" aria-label="Sillon, lecture en cours">
     <div class="lect-l">
       <a class="lect-pochette" href={hrefs.musique('album', p.album.id)} aria-label={`Album ${p.album.title}`}><SillonCover id={p.album.id} title={p.album.title} image={p.album.cover} size="small" /></a>
-      <span class="lect-t"><span class="lect-titre">{p.title}</span><span class="lect-sous">{p.artist.name}{#if lecteur.attente} · Chargement…{/if}</span></span>
+      <span class="lect-t"><span class="lect-titre">{p.title}</span><span class="lect-sous">{p.artist.name}{#if lecteur.element?.suggested} · {lecteur.element.discovery ? 'Découverte' : 'Suggestion'}{/if}{#if lecteur.attente} · Chargement…{/if}</span></span>
       {#if !bande}<button class="ib lect-ib" onclick={() => lecteur.precedent()} aria-label="Précédent" title="Précédent"><Icon name="precedent" size={16} /></button>{/if}
       <button class="ib lect-ib" onclick={() => lecteur.basculer()} aria-label={lecteur.lecture ? 'Pause' : 'Lecture'} title={lecteur.lecture ? 'Pause' : 'Lecture'}><Icon name={lecteur.lecture ? 'pause' : 'play'} size={16} /></button>
       <button class="ib lect-ib" onclick={() => lecteur.suivant()} disabled={!lecteur.aSuivre.length} aria-label="Suivant" title="Suivant"><Icon name="next" size={16} /></button>
@@ -29,6 +31,9 @@
       <MiniProgress pos={lecteur.position} total={lecteur.duree} onseek={(s) => lecteur.deplacer(s)} />
       <div class="lect-l">
         <span class="grow v-mono lect-file">{lecteur.aSuivre.length ? `À suivre : ${lecteur.aSuivre[0].title}` : 'Fin de la file'}</span>
+        <span class="lect-like"><SillonLike kind="tracks" id={p.id} titre={p.title} /></span>
+        <button class="ib lect-ib" class:on={lecteur.aleatoire} aria-pressed={lecteur.aleatoire} onclick={() => void lecteur.basculerAleatoire().catch((e) => notify.error(e, 'La file n’a pas pu être modifiée'))} aria-label="Aléatoire" title="Aléatoire"><Icon name="shuffle" size={16} /></button>
+        <a class="ib lect-ib" href={hrefs.musique('queue')} aria-label="File de lecture" title="File de lecture"><Icon name="list" size={16} /></a>
         {#if volumeOuvert}<input class="lect-volume" type="range" min="0" max="100" value={Math.round(lecteur.volume * 100)} oninput={(e) => lecteur.regler(Number(e.currentTarget.value) / 100)} aria-label="Volume de Sillon" />{/if}
         <button class="ib lect-ib" onclick={() => (volumeOuvert = !volumeOuvert)} aria-expanded={volumeOuvert} aria-label="Volume de Sillon" title="Volume"><Icon name="volmax" size={16} /></button>
         <button class="ib lect-ib" onclick={() => lecteur.arreter()} aria-label="Arrêter la musique" title="Arrêter"><Icon name="x" size={16} /></button>
@@ -46,6 +51,9 @@
   .lect-sous { font-size: 11.5px; opacity: 0.72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .lect-ib { width: 32px; height: 32px; color: inherit; }
   .lect .v-btn.sm { height: 30px; }
+  .lect-ib.on { color: var(--rose-fonce); }
+  .lect-like :global(.v-ib) { color: inherit; }
+  .lect-like :global(.v-ib[aria-pressed='true']) { color: var(--rose-fonce); }
   .lect-err { margin: 0; font-size: 12px; color: var(--danger); }
   .lect-file { min-width: 0; overflow: hidden; font-size: 10.5px; opacity: 0.72; white-space: nowrap; text-overflow: ellipsis; }
   .lect-volume { width: 0; flex: 1 1 80px; min-width: 60px; accent-color: var(--rose-fonce); }

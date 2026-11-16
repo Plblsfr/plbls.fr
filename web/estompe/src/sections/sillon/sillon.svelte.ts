@@ -142,7 +142,7 @@ export class Lecteur {
   get aleatoire() { return !!this.serveur?.shuffle }
   get suggestions(): Suggestions { return this.serveur?.suggestions ?? 'off' }
 
-  jouer(pistes: Piste[], depart = 0, contexte: Contexte = { type: 'pistes' }) {
+  jouer(pistes: Piste[], depart = 0, contexte: Contexte = { type: 'pistes' }, melanger = false) {
     const dispo = pistes.filter((p) => p.available)
     if (!dispo.length) return
     this.cloturer('skip')
@@ -155,7 +155,7 @@ export class Lecteur {
     medias.demarre('sillon')
     void this.demarrer(index)
     const source = sourceDe(contexte)
-    void this.ecrireFile((s, revision) => s.remplacer({ revision, tracks: dispo.map((p) => p.id), index, ...(source ? { source } : {}) })).catch(() => {})
+    void this.ecrireFile((s, revision) => s.remplacer({ revision, tracks: dispo.map((p) => p.id), index, ...(source ? { source } : {}), ...(melanger ? { shuffle: true } : {}) })).catch(() => {})
   }
 
   async chargerFile() {
