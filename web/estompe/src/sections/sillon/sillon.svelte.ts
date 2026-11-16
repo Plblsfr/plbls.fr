@@ -582,13 +582,13 @@ export const lecteur = new Lecteur({
   pochette: (album) => sillonApi.pochette(album, 'medium'),
   stockage: (() => { try { return navigateur ? localStorage : null } catch { return null } })(),
   serveur: {
-    lire: sillonApi.file,
-    remplacer: sillonApi.remplacerFile,
-    modifier: sillonApi.modifierFile,
-    ajouter: sillonApi.ajouterAFile,
-    retirer: sillonApi.retirerDeFile,
-    deplacer: sillonApi.deplacerDansFile,
-    ecoute: sillonApi.enregistrerEcoute,
+    lire: () => sillonApi.file(),
+    remplacer: (b) => sillonApi.remplacerFile(b),
+    modifier: (b) => sillonApi.modifierFile(b),
+    ajouter: (b) => sillonApi.ajouterAFile(b),
+    retirer: (b) => sillonApi.retirerDeFile(b),
+    deplacer: (b) => sillonApi.deplacerDansFile(b),
+    ecoute: (b) => sillonApi.enregistrerEcoute(b),
   },
 })
 
@@ -611,7 +611,14 @@ class Aimes {
 
   charger(forcer = false) {
     if (this.charge && !forcer) return this.charge
-    this.charge = sillonApi.likes().then((l) => { this.tracks = new Set(l.tracks); this.albums = new Set(l.albums); this.artists = new Set(l.artists) }).catch(() => { this.charge = null })
+    this.charge = (async () => {
+      try {
+        const l = await sillonApi.likes()
+        this.tracks = new Set(l.tracks)
+        this.albums = new Set(l.albums)
+        this.artists = new Set(l.artists)
+      } catch { this.charge = null }
+    })()
     return this.charge
   }
 
