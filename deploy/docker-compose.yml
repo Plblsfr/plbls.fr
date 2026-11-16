@@ -63,8 +63,10 @@ services:
     restart: unless-stopped
     <<: *durci
     env_file: .env
+    volumes:
+      - ${SILLON_MEDIAS:-/srv/musique}:${SILLON_MEDIAS:-/srv/musique}:ro
     expose: ["8080"]
-    networks: [default, postgres-net]
+    networks: [default, postgres-net, medias]
 
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}

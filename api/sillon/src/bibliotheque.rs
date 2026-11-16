@@ -482,7 +482,17 @@ pub fn evenement_utile(corps: &[u8]) -> bool {
     let v: Value = serde_json::from_slice(corps).unwrap_or_default();
     !matches!(
         v["eventType"].as_str(),
-        Some("Test" | "Grab" | "HealthIssue" | "HealthRestored" | "ApplicationUpdate")
+        Some(
+            "Test"
+                | "Grab"
+                | "Health"
+                | "HealthIssue"
+                | "HealthRestored"
+                | "ApplicationUpdate"
+                | "DownloadFailure"
+                | "ImportFailure"
+                | "ManualInteractionRequired"
+        )
     )
 }
 
