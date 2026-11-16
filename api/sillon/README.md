@@ -17,6 +17,11 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `images.rs` | pochettes et images d'artistes : téléchargées depuis Lidarr, cache en base, trois tailles |
 | `bibliotheque.rs` | routes de la bibliothèque, recherche, administration du catalogue, webhook ; JSON publics réutilisables |
 | `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue) |
+| `playlists.rs` | playlists privées (éléments ordonnés, plage déplacée, doublons signalés, plafonds) ; aides communes : corps JSON (`objet`, `texte`, `champ_uuid`…), `contenu` (pistes, album, artiste ou playlist d'une requête), `pistes_de_source`, `pistes_json` |
+| `likes.rs` | likes de pistes, albums et artistes ; « Titres likés » |
+| `file.rs` | file de lecture par personne, révision et 409, « lire ensuite », « ajouter à la file », aléatoire, piste suivante disponible |
+| `ordre.rs` | ordre de lecture aléatoire (`melanger`, graine) et déplacement d'une plage (`deplacer`) |
+| `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
 
 ## Schéma du catalogue
 
@@ -30,6 +35,19 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `fichiers_ecartes` | chemin, nom, raison |
 | `synchronisations` | par source (`lidarr`) : dernière réussite, dernier essai, erreur |
 | `images` | cache des images (clé `<type>/<uuid>/<taille>`, type `cover`, `poster` ou `fanart` ; version = URL Lidarr) |
+
+## Schéma des playlists, de la file et de l'historique (`0004_playlists.sql`)
+
+| Table | Contenu |
+|---|---|
+| `playlists` | `sub`, `nom`, `description`, dates |
+| `playlists_pistes` | élément : `id`, `playlist_id`, `piste_id`, `position` (unique par playlist, contrainte différée), `ajoute_le` |
+| `likes` | `(sub, type, cible)` : type `track`, `album` ou `artist` |
+| `files` | une ligne par `sub` : `revision`, source (`source_type`, `source_id`, `source_nom`), `index_courant`, `position`, `aleatoire`, `repetition`, `graine`, `suggestions` |
+| `files_elements` | `rang` (ordre de lecture), `id` de l'élément, `piste_id`, `rang_source` (ordre de la source, rendu quand l'aléatoire s'arrête), `suggeree` |
+| `ecoutes` | `sub`, `piste_id`, `debut`, `duree_ecoutee`, `duree_piste`, `fin` (`completed`, `skipped`, `interrupted`), `compte`, source, `suggeree` |
+
+Les références à `pistes` n'ont pas de `ON DELETE` : une piste n'est jamais supprimée.
 
 Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unaccent` puis `simple`).
 
@@ -45,6 +63,13 @@ Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unacc
   `get`, `liste`, et les lectures typées (`artistes`, `albums`, `pistes`, `fichiers`, `image`, `version`). Erreurs en texte, sans URL.
 - `bibliotheque::{COLONNES_PISTE, JOINTURES_PISTE, piste_publique, pistes_par_ids}` (et leurs équivalents artiste et album) : JSON public
   d'une piste, dans l'ordre des identifiants donnés ; `curseur`, `lire_curseur` : pagination.
+- `ordre::melanger(&Contexte) -> Vec<Place>` : seule construction de l'ordre aléatoire de la file. `Contexte` : `sub`, `graine`
+  (gardée dans `files.graine`), `premier` (élément mis en tête), `elements` (identifiant d'élément et piste), `suggestions` ; `Place` :
+  élément existant ou nouvelle piste, `suggeree`. Ici, mélange uniforme (Fisher-Yates, SplitMix64) déterministe pour une graine, sans
+  suggestion : le lot 7 remplace l'implémentation sans changer le schéma ni l'API (une `Place` sans élément devient un élément suggéré).
+- `file::avancer(présentes, index, pas, boucle)` : prochaine piste disponible ; `file::element(pool, sub, id)` : `suggeree` d'un élément.
+- `playlists::{contenu, pistes_de_source, pistes_json}` : pistes d'une requête ou d'une source, JSON public des pistes en gardant
+  l'ordre et les doublons ; `playlists::plafond(message)` : 422 `limit_reached`.
 - `config::chemin_local(...)` : traduction et vérification d'un chemin Lidarr (sous `SILLON_MEDIAS`, liens résolus).
 
 ## Ajouter une route
@@ -65,4 +90,7 @@ Image : `docker build -f api/sillon/Dockerfile .` (contexte : racine du dépôt)
 appliquées, faux gateway et faux aegis (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`, `alice`, `bruno`, `admin`).
 Les tests du catalogue (`tests_api.rs`, `bibliotheque()`) montent un faux Lidarr (`Monde`, modifiable pendant le test) et de vrais fichiers
 flac, mp3 et opus générés par ffmpeg dans un dossier temporaire ; ils demandent ffmpeg et ffprobe (sinon ignorés, avec un message).
+Playlists, likes, file et historique : tests dans les modules (`playlists::tests` : `catalogue()` insère un petit catalogue en base,
+`creer()`, `pistes_de()`), dont des appels simultanés (tâches tokio) pour les déplacements et les révisions de la file ; la piste retirée
+du catalogue passe par `tests_api::bibliotheque()`.
 Sans `TEST_DATABASE_URL`, les tests passent par testcontainers (ignorés sans Docker).

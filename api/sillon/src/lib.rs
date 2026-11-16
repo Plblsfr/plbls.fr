@@ -15,6 +15,12 @@ pub mod interne;
 pub mod lidarr;
 pub mod routes;
 
+pub mod file;
+pub mod historique;
+pub mod likes;
+pub mod ordre;
+pub mod playlists;
+
 #[cfg(test)]
 mod tests_api;
 #[cfg(test)]

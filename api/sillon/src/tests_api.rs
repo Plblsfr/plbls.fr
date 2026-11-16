@@ -338,7 +338,13 @@ async fn sante_disponibilite_et_migrations() {
             .fetch_all(e.state.pool())
             .await
             .unwrap();
-    assert_eq!(versions, [1, 2]);
+    assert_eq!(
+        versions,
+        crate::MIGRATIONS
+            .iter()
+            .map(|m| m.version)
+            .collect::<Vec<_>>()
+    );
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;
@@ -346,7 +352,7 @@ async fn sante_disponibilite_et_migrations() {
     assert_eq!(r.json()["error"], "not_ready");
 }
 
-const LIDARR: i64 = 987_000;
+pub(crate) const LIDARR: i64 = 987_000;
 
 fn ffmpeg_present() -> bool {
     ["ffmpeg", "ffprobe"].iter().all(|o| {
@@ -357,7 +363,7 @@ fn ffmpeg_present() -> bool {
     })
 }
 
-fn generer(dest: &Path, codec: &[&str]) {
+pub(crate) fn generer(dest: &Path, codec: &[&str]) {
     std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
     let ok = std::process::Command::new("ffmpeg")
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
@@ -370,16 +376,16 @@ fn generer(dest: &Path, codec: &[&str]) {
     assert!(ok, "génération de {}", dest.display());
 }
 
-const FLAC: &[&str] = &["-c:a", "flac"];
+pub(crate) const FLAC: &[&str] = &["-c:a", "flac"];
 const MP3: &[&str] = &["-c:a", "libmp3lame", "-b:a", "128k"];
 const OPUS: &[&str] = &["-c:a", "libopus", "-b:a", "64k"];
 
 #[derive(Default)]
-struct Monde {
+pub(crate) struct Monde {
     artistes: Vec<Value>,
     albums: Vec<Value>,
-    pistes: Vec<Value>,
-    fichiers: Vec<Value>,
+    pub(crate) pistes: Vec<Value>,
+    pub(crate) fichiers: Vec<Value>,
     en_panne: bool,
 }
 
@@ -538,20 +544,20 @@ fn reponse_lidarr(r: &Requete, m: &Mutex<Monde>) -> (u16, Vec<(&'static str, Str
     }
 }
 
-struct Bibliotheque {
-    e: Env,
+pub(crate) struct Bibliotheque {
+    pub(crate) e: Env,
     lidarr: Faux,
-    monde: Arc<Mutex<Monde>>,
+    pub(crate) monde: Arc<Mutex<Monde>>,
     medias: tempfile::TempDir,
     _dehors: tempfile::TempDir,
 }
 
 impl Bibliotheque {
-    fn chemin(&self, relatif: &str) -> std::path::PathBuf {
+    pub(crate) fn chemin(&self, relatif: &str) -> std::path::PathBuf {
         self.medias.path().join(relatif)
     }
 
-    async fn synchro(&self) {
+    pub(crate) async fn synchro(&self) {
         crate::catalogue::synchroniser(&self.e.state).await;
     }
 
@@ -582,7 +588,7 @@ impl Bibliotheque {
         }
     }
 
-    async fn album(&self, titre: &str) -> Value {
+    pub(crate) async fn album(&self, titre: &str) -> Value {
         let s = self
             .get("alice", &format!("/search?q={}", encode(titre)))
             .await
@@ -612,7 +618,7 @@ fn encode(t: &str) -> String {
         .collect()
 }
 
-fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
+pub(crate) fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
     album["tracks"]
         .as_array()
         .unwrap()
@@ -621,7 +627,7 @@ fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("{titre} : {album}"))
 }
 
-async fn bibliotheque() -> Option<Bibliotheque> {
+pub(crate) async fn bibliotheque() -> Option<Bibliotheque> {
     if !ffmpeg_present() {
         eprintln!("ignoré : ffmpeg ou ffprobe absent");
         return None;
