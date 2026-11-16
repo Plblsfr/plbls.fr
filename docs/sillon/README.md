@@ -93,6 +93,16 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
   est remesuré). La réponse donne les gains piste et album (dB) pour atteindre -18 LUFS et les pics ; le client applique. Gain d'album :
   moyenne énergétique, pondérée par la durée, des pistes déjà mesurées de l'album.
 
+## Interface
+
+Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
+d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (reprise, ajouts récents), artistes, fiche artiste,
+fiche album, recherche, écran « pas d'accès ». Un moteur de lecture unique : deux éléments audio (la piste suivante est demandée et chargée
+pendant la piste en cours), gain de normalisation appliqué par Web Audio, formats annoncés d'après `canPlayType`, qualité réglable
+(`PUT /preferences`), bouton « Activer le son » si la lecture automatique est refusée, Media Session. Le mini-lecteur reste dans la
+messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre met la musique en pause. La file est locale au lecteur
+(album ou liste en cours) ; la reprise est gardée dans le navigateur.
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -112,6 +122,7 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
 | `SILLON_CACHE` | `plbls.env` (`/tmp/sillon`) | cache des fichiers transcodés, volume `sillon-cache` du compose |
 | `SILLON_CACHE_GO` | `plbls.env` (10) | plafond du cache en Go |
 | `SILLON_MAX_TRANSCODAGES` | `plbls.env` (2) | encodages simultanés au plus (1 au moins) |
+| `SILLON_PUBLIC_URL` | `plbls.env` (`https://sillon-api.plbls.fr`) | URL publique de l'API pour le front (`estompe-web` au démarrage : `config.js` et CSP ; apps au build, `VITE_SILLON_URL` l'emporte) ; vide = pas de section |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles
