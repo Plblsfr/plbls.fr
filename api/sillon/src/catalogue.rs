@@ -191,7 +191,13 @@ impl Synchro<'_> {
         };
         self.lisibles += 1;
         let taille = i64::try_from(meta.len()).unwrap_or(i64::MAX);
-        let modifie: Option<DateTime<Utc>> = meta.modified().ok().map(DateTime::<Utc>::from);
+        let modifie: Option<DateTime<Utc>> = meta
+            .modified()
+            .ok()
+            .map(DateTime::<Utc>::from)
+            .and_then(|d| {
+                chrono::DurationRound::duration_trunc(d, chrono::TimeDelta::microseconds(1)).ok()
+            });
         let connu = sqlx::query("SELECT taille, modifie_le, duree FROM fichiers WHERE chemin = $1")
             .bind(&local)
             .fetch_optional(self.pool())
@@ -472,6 +478,7 @@ pub async fn synchroniser(state: &AppState) {
             break;
         }
     }
+    crate::analyse::signaler(state).await;
 }
 
 async fn passe(state: &AppState) {

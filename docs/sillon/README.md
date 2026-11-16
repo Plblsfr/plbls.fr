@@ -2,7 +2,8 @@
 
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
-par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr) et la lecture audio.
+par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
+la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque, l'analyse audio des pistes et l'interface web.
 
 | Où | Quoi |
 |---|---|
@@ -93,6 +94,96 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
   est remesuré). La réponse donne les gains piste et album (dB) pour atteindre -18 LUFS et les pics ; le client applique. Gain d'album :
   moyenne énergétique, pondérée par la durée, des pistes déjà mesurées de l'album.
 
+## Playlists, likes, file de lecture et historique
+
+Tout est privé et propre à la personne (`sub` du gateway), sous `sillon:access` ; la playlist, la file ou l'élément d'une autre personne
+répond 404. Une piste retirée du catalogue n'est jamais supprimée (elle passe absente) : elle reste dans les playlists, la file, les likes
+et l'historique, avec `available: false`.
+
+- **Playlists** (`/playlists`) : créer, renommer, décrire, supprimer ; ajouter à la fin des pistes, un album, les pistes présentes d'un
+  artiste ou une autre playlist de la personne (copie) ; retirer un élément ; déplacer une plage (`from`, `count`, `to`). Chaque élément a
+  son identifiant (une piste peut y être plusieurs fois) et sa position, de 0 à n-1 sans trou ni doublon : chaque modification verrouille
+  la playlist, les appels simultanés passent l'un après l'autre. Doublons : écartés et signalés (`duplicates`), ajoutés avec
+  `allow_duplicates: true`. Pochette : `cover_albums`, les quatre premiers albums (avec pochette) dans l'ordre de la playlist, que le
+  client compose à partir de `/albums/{id}/cover`. Plafonds : 500 playlists par personne, 10 000 pistes par playlist, nom de 1 à 100
+  caractères, description de 1 000 ; dépassement : 422 `limit_reached` (ou 400 `invalid` pour une longueur), avec un message lisible.
+- **Likes** (`/likes`) : piste, album ou artiste (`PUT` et `DELETE /likes/{tracks|albums|artists}/{id}`, idempotents ; 50 000 par type).
+  `GET /likes` donne les identifiants, `GET /likes/tracks` « Titres likés » sous la forme d'une playlist (du plus récent au plus ancien).
+- **File de lecture** (`/queue`) : une par personne, en base, rendue à l'identique sur tous ses appareils : source (`album`, `playlist`,
+  `artist`, `likes`, `search`), éléments dans l'ordre de lecture, index courant, position dans la piste, aléatoire, répétition (`off`,
+  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`, gardé sans effet pour l'instant), graine du mélange (`seed`) et, par
+  élément, `suggested` (toujours faux pour l'instant). « Lire ensuite » insère après la piste courante, « ajouter à la file » à la fin.
+  Chaque écriture porte la `revision` de la dernière file reçue : si un autre appareil a écrit entre-temps, 409 `conflict` avec la file
+  courante (`queue`), rien n'est écrit ; le client recommence sur cet état. Le client envoie sa position (`PATCH /queue`) à intervalle et
+  à chaque changement de piste ; `step` passe à la piste disponible suivante ou précédente en sautant les absentes. Aléatoire : la piste
+  courante passe en tête, le reste est mélangé par `ordre::melanger` (mélange uniforme, déterministe pour une graine) ; le désactiver rend
+  l'ordre de la source. 10 000 éléments au plus.
+- **Historique** (`/history`) : le client envoie une écoute à la fin de chaque lecture (piste, secondes écoutées, `ended_by`, source,
+  élément de la file). Fin : `completed` (fin atteinte), `skipped` (sortie avant la fin vers une autre piste) ou `interrupted` (arrêt).
+  Une écoute compte (`counted`) au-delà de 30 s ou de la moitié de la piste ; seules celles-là entrent dans les pistes et artistes les
+  plus écoutés (`/history/top/tracks`, `/history/top/artists`, période `week`, `month`, `year` ou `all`). Écoutes récentes paginées par curseur.
+
+## Ajout de musique
+
+- Recherche (`GET /additions/search?q=`, `sillon:add`) : artistes et albums par la recherche de Lidarr (MusicBrainz, `/artist/lookup`,
+  `/album/lookup`), 20 au plus chacun, marqués « déjà en bibliothèque » (`in_library`), « en cours » (`in_progress`) ou exclus, avec la
+  taille estimée de chaque album. Identifiant : MBID MusicBrainz.
+- Ajout (`POST /additions`, `{kind: album|artist, mbid}`), sans validation : envoyé tout de suite à Lidarr. Artiste créé si besoin
+  (`POST /artist` : `SILLON_LIDARR_RACINE`, `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES`, `monitored`, `addOptions.monitor: none`),
+  puis seul l'album demandé est surveillé (`PUT /album/monitor`) et sa recherche lancée (`POST /command` `AlbumSearch`). Ajout d'un artiste :
+  ses albums studio seulement (type `Album`, sans type secondaire). Albums pas encore connus de Lidarr juste après la création de l'artiste :
+  le suivi les surveille et lance la recherche dès qu'ils apparaissent (`RefreshArtist` demandé si l'artiste existait déjà). Lidarr en erreur
+  pendant l'envoi : 502, rien n'est enregistré. Un même titre déjà en cours renvoie l'ajout existant (`existing: true`) ; un album présent, 409
+  `already_available` ; un album ou un artiste supprimé par un admin, 409 `excluded`.
+- Limite : `SILLON_AJOUTS_PAR_JOUR` ajouts par personne sur 24 heures glissantes (429 `daily_limit`).
+- Plafond : `SILLON_MEDIAS_GO`. Occupation = taille des fichiers du catalogue (relevée à chaque synchronisation) + estimation des ajouts en
+  cours (envoyés, en téléchargement, partiels), moins ce qui en est déjà arrivé. Estimation = durée de l'album (ou des albums studio
+  manquants d'un artiste ; une heure si inconnue) × débit de la meilleure qualité permise par le profil de qualité (`GET /qualityprofile` :
+  FLAC 1000 kbit/s, 24 bits 2304, WAV 1411, sinon le nombre du nom, MP3-320 → 320). Un ajout qui ferait dépasser le plafond est refusé (507
+  `disk_full` avec `used`, `pending`, `limit`, `free`, `estimated`) et rien n'est envoyé à Lidarr. Limite et plafond sont vérifiés sous un
+  verrou PostgreSQL (`pg_advisory_xact_lock`) dans la transaction qui enregistre l'ajout : deux ajouts simultanés ne dépassent pas le plafond à eux deux.
+- Suivi : état `sent`, `downloading` (dans la file de Lidarr, `GET /queue`), `partial` (des fichiers arrivés, rien dans la file),
+  `available` (tous les albums visés complets dans Lidarr et présents dans Sillon), `failed` (avec la raison : message de l'historique de
+  Lidarr, `GET /history`, évènement `downloadFailed`, ou « aucun résultat après N h » passé `SILLON_AJOUTS_DELAI_HEURES`), `deleted`.
+  Mis à jour après chaque webhook de Lidarr (import, grab, échecs ; après la synchronisation qu'il déclenche) et toutes les 5 minutes.
+  « Mes ajouts » : `GET /additions/mine`.
+- Administration (`sillon:admin`) : occupation et plafond (`GET /admin/disk`), ajouts de tous avec leur auteur (`GET /admin/additions`,
+  filtre `state`), relance d'un échec (`POST /admin/additions/{id}/retry`, plafond vérifié), suppression d'un album ou d'un artiste
+  (`DELETE /admin/albums/{id}`, `DELETE /admin/artists/{id}` : Lidarr supprime fichiers et entrée, `deleteFiles=true`,
+  `addImportListExclusion=true` ; Sillon l'exclut de tout nouvel ajout puis synchronise : ses pistes passent absentes, sans être supprimées
+  des playlists), albums présents triés par taille avec l'auteur de leur ajout (`GET /admin/albums` ; `never_played=true` : seulement ceux dont aucune piste
+  n'a d'écoute comptée dans l'historique, toutes personnes confondues).
+- Sillon ne supprime jamais un fichier lui-même (dossier monté en lecture seule) : tout passe par Lidarr.
+
+## Analyse audio
+
+- Chaque fichier (celui de la piste, le plus gros s'il y en a plusieurs) est décodé par ffmpeg en PCM mono 22 050 Hz sur sa sortie
+  standard, lu au fil de l'eau (mémoire bornée, sauf l'enveloppe d'attaques : 4 octets par tranche de 23 ms), et les descripteurs sont
+  calculés en Rust, sans bibliothèque native, hors du fil de l'exécuteur : tempo (autocorrélation de l'enveloppe d'attaques, de 50 à
+  220 battements par minute, préférence autour de 120), énergie (niveau efficace, dB) et dynamique (écart type du niveau des trames à
+  moins de 20 dB du niveau moyen), centroïde, étalement et pente du spectre, taux de passage par zéro, chroma sur 12 classes
+  (tonalité et mode estimés par corrélation avec les profils de Krumhansl), moyennes et variances de 12 coefficients cepstraux (26
+  bandes mel). Trames de 2048 échantillons tous les 512 ; les moyennes sont pondérées par le niveau de la trame, pour que le bruit
+  d'encodage dans les silences ne compte pas.
+- Le résultat est un vecteur de 43 dimensions à l'échelle nominale (table `analyses`, avec le tempo, la tonalité et le mode),
+  versionné : `analyse::VERSION` monte à chaque changement d'algorithme, et les pistes analysées avec une version plus ancienne
+  repassent en file.
+- File de tâches en base (`taches_analyse`, une ligne par fichier : `attente`, `en_cours`, `faite`, `erreur`, tentatives, erreur) :
+  alimentée à la fin de chaque synchronisation (fichier nouveau, `contenu_le` changé ou version plus ancienne), au démarrage et toutes
+  les 5 minutes ; les fichiers les plus récents passent d'abord, le stock existant ensuite. `SILLON_ANALYSE_PARALLELE` ouvriers (1 par
+  défaut, 0 = pas d'analyse), ffmpeg lancé par `nice -n 19` sur un seul fil. Une tâche = les descripteurs, puis la mesure du niveau
+  EBU R128 si elle manque (deuxième décodage : la mesure compte les échantillons à la fréquence d'origine) : toute la bibliothèque
+  est ainsi mesurée, pas seulement les pistes déjà lues. Trois tentatives, puis `erreur` (les tâches déjà essayées passent après les
+  autres : un fichier illisible ne bloque pas la file). Une analyse interrompue par un arrêt du service est reprise au démarrage.
+- Pendant un transcodage de lecture, aucune analyse ne démarre, et celle en cours est arrêtée puis remise en file sans compter de
+  tentative.
+- Voisins : les vecteurs des pistes présentes sont chargés en mémoire (`AppState::analyse().voisins()`), chaque dimension centrée et
+  réduite par sa moyenne et son écart type sur la bibliothèque (écart type plancher 0,1), recalculés à chaque rechargement : au
+  démarrage, toutes les 100 analyses et quand la file se vide. Distance : écart quadratique moyen par dimension. Une piste non
+  analysée n'a pas de voisins (`None`), jamais d'erreur.
+- Administration (`sillon:admin`) : `GET /admin/analysis` (avancement, pause, erreurs sans chemin ni nom de fichier) et
+  `POST /admin/analysis/retry` (remet en file les tâches en erreur).
+
 ## Interface
 
 Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
@@ -122,6 +213,12 @@ messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre 
 | `SILLON_CACHE` | `plbls.env` (`/tmp/sillon`) | cache des fichiers transcodés, volume `sillon-cache` du compose |
 | `SILLON_CACHE_GO` | `plbls.env` (10) | plafond du cache en Go |
 | `SILLON_MAX_TRANSCODAGES` | `plbls.env` (2) | encodages simultanés au plus (1 au moins) |
+| `SILLON_LIDARR_RACINE` | `plbls.env` (`/music`) | dossier racine de Lidarr des artistes ajoutés ; vide = pas d'ajout |
+| `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES` | `plbls.env` (1) | identifiants des profils de qualité et de métadonnées (« albums studio ») de Lidarr ; 0 = pas d'ajout |
+| `SILLON_AJOUTS_PAR_JOUR` | `plbls.env` (10) | ajouts par personne sur 24 heures glissantes |
+| `SILLON_MEDIAS_GO` | `plbls.env` (500) | plafond du dossier de la musique, en Gio ; 0 = sans plafond |
+| `SILLON_AJOUTS_DELAI_HEURES` | `plbls.env` (72) | délai sans résultat avant qu'un ajout passe en échec |
+| `SILLON_ANALYSE_PARALLELE` | `plbls.env` (1) | analyses audio simultanées ; 0 = pas d'analyse |
 | `SILLON_PUBLIC_URL` | `plbls.env` (`https://sillon-api.plbls.fr`) | URL publique de l'API pour le front (`estompe-web` au démarrage : `config.js` et CSP ; apps au build, `VITE_SILLON_URL` l'emporte) ; vide = pas de section |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
@@ -133,6 +230,8 @@ messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre 
   Lidarr joignable depuis la stack (réseau `MEDIAS_NETWORK`). La migration crée l'extension `unaccent` (extension de confiance : le
   propriétaire de la base suffit).
 - Lidarr : connexion « Webhook » vers `https://sillon-api.plbls.fr/webhooks/lidarr`, évènements import, renommage et suppression, jeton en mot de passe.
+- Lidarr : profil de métadonnées « albums studio », profil de qualité et dossier racine, leurs valeurs dans `SILLON_LIDARR_*` ;
+  connexion « Webhook » avec aussi les évènements grab et échecs (téléchargement, import) pour le suivi des ajouts.
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_SILLON` comme application `sillon`), puis les permissions aux comptes.
 
 ## Version

@@ -20,6 +20,7 @@ pub struct Inner {
     synchro: MutexAsync<()>,
     relance: std::sync::atomic::AtomicBool,
     lecture: crate::lecture::Lecture,
+    analyse: crate::analyse::Analyse,
 }
 
 #[derive(Clone)]
@@ -46,6 +47,7 @@ impl AppState {
             synchro: MutexAsync::new(()),
             relance: std::sync::atomic::AtomicBool::new(false),
             lecture,
+            analyse: crate::analyse::Analyse::default(),
         }))
     }
 
@@ -93,6 +95,10 @@ impl AppState {
         &self.0.lecture
     }
 
+    pub fn analyse(&self) -> &crate::analyse::Analyse {
+        &self.0.analyse
+    }
+
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {
         match &self.0.aegis {
             Some(a) => a.droits(id).await,
@@ -103,6 +109,7 @@ impl AppState {
     pub fn demarrer_taches(&self) {
         let transcodeur = self.lecture().transcodeur().clone();
         tokio::spawn(async move { transcodeur.preparer().await });
+        crate::analyse::demarrer(self);
         if self.aegis().is_some() {
             let etat = self.clone();
             tokio::spawn(async move {
@@ -128,5 +135,6 @@ impl AppState {
                 }
             });
         }
+        crate::ajouts::demarrer(self);
     }
 }

@@ -379,7 +379,7 @@ jobs:
             sillon:pr-${{ github.run_id }}
           timeout 60 sh -c 'until docker run --rm --network container:sillon-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
             || { docker logs sillon-pr-api-${{ github.run_id }}; exit 1; }
-          docker exec sillon-pr-pg-${{ github.run_id }} psql -U postgres -d sillon -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 2 \
+          docker exec sillon-pr-pg-${{ github.run_id }} psql -U postgres -d sillon -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 6 \
             || { docker logs sillon-pr-api-${{ github.run_id }}; exit 1; }
           docker exec sillon-pr-api-${{ github.run_id }} ffmpeg -version > /dev/null
           docker exec sillon-pr-api-${{ github.run_id }} ffprobe -version > /dev/null
