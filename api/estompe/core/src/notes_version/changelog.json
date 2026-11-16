@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.99.0",
+    "date": "2026-11-16",
+    "new": [
+      "Entracte : choisissez une fois pour toutes votre langue et vos sous-titres préférés (panneau Audio et sous-titres) ; chaque film s'ouvre directement sur la bonne piste.",
+      "Entracte : le lecteur se pilote au clavier (Espace pour lecture ou pause, flèches pour avancer, reculer et régler le volume, M pour couper le son, F pour le plein écran) et retient votre volume.",
+      "Entracte : la barre de lecture montre ce qui est déjà chargé, et le nouveau réglage Préchargement peut charger jusqu'à tout le film en avance, pour une lecture sans coupure.",
+      "Salon cinéma : quand la vidéo d'un participant charge, la séance se met en pause pour tout le monde et reprend seule dès que chacun est prêt.",
+      "Entracte : en acceptant une demande, choisissez le dossier, la qualité et les tags du film ou de la série.",
+      "Partage d'écran : nouvelle option Privilégier la fluidité, activée par défaut, qui garde une image fluide quand la connexion faiblit."
+    ],
+    "fixes": [
+      "Entracte : la reprise d'un film repart de la bonne image, avec le son, et ne s'arrête plus quelques secondes après.",
+      "Entracte : le bouton Diffuser ne coupe plus la lecture en cours.",
+      "Application Windows : le partage d'une fenêtre est beaucoup plus fluide."
+    ]
+  },
+  {
     "version": "0.96.1",
     "date": "2026-11-14",
     "new": [
