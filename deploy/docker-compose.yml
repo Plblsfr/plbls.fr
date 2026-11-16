@@ -65,6 +65,7 @@ services:
     env_file: .env
     volumes:
       - ${SILLON_MEDIAS:-/srv/musique}:${SILLON_MEDIAS:-/srv/musique}:ro
+      - sillon-cache:/tmp/sillon
     expose: ["8080"]
     networks: [default, postgres-net, medias]
 
@@ -167,3 +168,4 @@ volumes:
   transcribe-models:
   cdn-data:
   entracte-transcodage:
+  sillon-cache:

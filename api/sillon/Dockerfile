@@ -18,9 +18,11 @@ FROM debian:trixie-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
-  && useradd --system --uid 65532 --no-create-home sillon
+  && useradd --system --uid 65532 --no-create-home sillon \
+  && mkdir -p /tmp/sillon && chown sillon /tmp/sillon
 COPY --from=build /src/target/release/sillon /app/sillon
 COPY plbls.env /etc/plbls.env
 USER 65532
+ENV SILLON_CACHE=/tmp/sillon
 EXPOSE 8080
 ENTRYPOINT ["/app/sillon"]
