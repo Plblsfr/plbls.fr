@@ -135,5 +135,6 @@ impl AppState {
                 }
             });
         }
+        crate::ajouts::demarrer(self);
     }
 }
