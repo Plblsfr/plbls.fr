@@ -11,6 +11,7 @@ export interface Io {
   send(action: string, b: { position?: number; rate?: number; video: string }): Promise<unknown>
   ended(rev: number): void
   ready(ready: boolean): void
+  wait?(): void
   /** Commande refusée ou perdue : le lecteur est recalé sur le serveur. */
   refused(e?: unknown): void
   log(msg: string): void
@@ -21,6 +22,7 @@ const BREAKER_N = 20 // évènements du serveur par seconde au-delà desquels la
 const BREAKER_PAUSE_MS = 5000
 const SEEK_TOLERANCE = 0.5
 const LOAD_MS = 15000
+const WAIT_MS = 1000
 
 /**
  * Machine à états de la synchronisation d'un lecteur. Le serveur fait foi : l'état reçu est appliqué au lecteur sans jamais produire de commande ;
@@ -45,6 +47,8 @@ export class SyncEngine {
   private loadingSince = 0
   private key = ''
   private sentReady: boolean | null = null
+  private notReadySince = 0
+  private sentWait = false
 
   constructor(private p: Adapter, private io: Io) {}
 
@@ -100,6 +104,8 @@ export class SyncEngine {
       this.repeatRev = s.rev
       this.video = s.video
       this.sentReady = null
+      this.notReadySince = 0
+      this.sentWait = false
       this.stalled = false
       this.waitingSince = 0
       this.phase = 'loading'
@@ -161,11 +167,14 @@ export class SyncEngine {
   /** État du lecteur observé (chargement, fin, tampon) : jamais de commande. */
   observe(st: PState) {
     if (st === 'buffering') this.report(false)
-    else if (st === 'playing' || st === 'paused' || st === 'cued') this.report(true)
+    else if (st === 'playing' || ((st === 'paused' || st === 'cued') && this.p.ready?.() !== false)) this.report(true)
     if (st === 'playing') { this.stalled = false; this.waitingSince = 0 }
     if (this.phase === 'error') return
     if (st === 'ended') { const c = this.cur; if (c) this.io.ended(c.state.rev); return }
-    if (this.phase === 'loading' && (st === 'playing' || st === 'paused' || st === 'cued')) this.phase = this.base === null ? 'synced' : 'pending'
+    if (this.phase === 'loading' && (st === 'playing' || st === 'paused' || st === 'cued')) {
+      this.phase = this.base === null ? 'synced' : 'pending'
+      if (this.base === null && this.cur && !this.cur.state.playing) this.applyServer()
+    }
     else if (this.phase === 'synced' && st === 'buffering') this.phase = 'buffering'
     else if (this.phase === 'buffering' && st !== 'buffering') this.phase = 'synced'
   }
@@ -177,9 +186,32 @@ export class SyncEngine {
   }
 
   /** Appelé régulièrement : position affichée et recalage de la lecture (jamais en pause, jamais pendant une commande, aucun `play`). */
+  get loading() {
+    if (this.phase === 'error') return false
+    return this.phase === 'loading' || this.p.state() === 'buffering'
+  }
+
+  private watchReady(s: WatchState) {
+    const st = this.p.state()
+    const late = this.phase === 'loading' || st === 'buffering' || (st !== 'playing' && this.sentReady === false && this.p.ready?.() === false)
+    if (!late) {
+      this.notReadySince = 0
+      this.sentWait = false
+      if (this.sentReady === false && st !== 'unstarted' && st !== 'ended') this.report(true)
+      return
+    }
+    this.notReadySince ||= Date.now()
+    if (this.sentWait || !this.io.wait || !(s.playing || s.waiting?.length) || Date.now() - this.notReadySince < WAIT_MS) return
+    this.sentWait = true
+    this.sentReady = false
+    this.io.wait()
+  }
+
   tick() {
     const c = this.cur
-    if (!c || this.phase === 'loading' || this.phase === 'error' || this.p.sync === 'start') return
+    if (!c || this.phase === 'error' || this.p.sync === 'start') return
+    this.watchReady(c.state)
+    if (this.phase === 'loading') return
     const s = c.state
     const st = this.p.state()
     const pos = this.p.time()

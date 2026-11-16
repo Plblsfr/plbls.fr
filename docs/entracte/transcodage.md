@@ -28,6 +28,32 @@ Sous-titres texte (SRT, WebVTT, ASS, SSA), intégrés au fichier ou à côté (`
 Une piste n'est extraite qu'une fois à la fois : les requêtes simultanées sur la même piste attendent le même ffmpeg, deux extractions
 au plus tournent en même temps sur le serveur, et un échec est renvoyé tel quel pendant 60 s sans relancer ffmpeg.
 
+## Préchargement
+
+Le lecteur charge la suite du titre en avance et le montre : sur la barre de position, la partie déjà chargée par l'appareil est plus claire
+que le reste (plages `buffered` de la vidéo et segments gardés en mémoire, ramenés au temps du titre par `offset` en HLS). Le lecteur
+« Regarder seul » affiche la durée chargée après la position en cours, et les deux lecteurs un indicateur quand la lecture attend des données.
+
+- Lecture directe : la vidéo est créée avec `preload="auto"`, le navigateur charge donc avant le premier appui sur lecture ; la quantité
+  gardée en avance reste décidée par le navigateur, quel que soit le réglage.
+- HLS (hls.js) : au moins 60 s d'avance dans le tampon de la vidéo, et jusqu'à 100 Mo quand le débit le permet (10 min au plus, soit
+  environ 100 s en 1080p, 200 s en 720p), contre 30 s et 60 Mo par défaut. Seules les 20 s déjà lues y sont gardées. Le navigateur borne
+  ce tampon (de l'ordre de 150 Mo) : aller plus loin passe par le réglage ci-dessous.
+- Réglage « Préchargement » (panneau « Audio et sous-titres » du lecteur, liste de la barre au salon cinéma), retenu sur l'appareil avec
+  les autres préférences de lecture : « Normal » (le tampon ci-dessus), « Long » (15 min d'avance, 2 Go au plus) ou « Tout le film »
+  (jusqu'à la fin, 16 Go au plus). Hors « Normal », le lecteur télécharge lui-même les segments HLS en avance, un à la fois, et les
+  garde en mémoire (`Blob`, `web/estompe/src/blocks/regarder-ensemble/avance.ts`) ; hls.js les y prend au lieu de les redemander, un saut
+  dans la partie chargée est donc immédiat. Quand la limite est atteinte, ce qui est à plus de 30 s derrière la position est libéré.
+  Changer le réglage, la piste audio ou la qualité rouvre un flux : ce qui était chargé est perdu.
+  ffmpeg transcode plus vite que la lecture : le lecteur suit la playlist à mesure qu'elle s'allonge.
+
+## Attente commune au salon cinéma
+
+Quand le lecteur d'un participant attend des données plus d'une seconde pendant la lecture (ou n'a pas fini de charger le titre), il le
+signale (`POST /voice/{cid}/cinema/ready` avec `{ready: false, wait: true}`) : la séance passe en pause pour tous à la position atteinte,
+et le lecteur affiche qui est attendu. Elle reprend seule quand chaque personne attendue a au moins 5 s de vidéo chargée devant elle, ou
+a quitté le salon. Une lecture ou une pause demandée par l'hôte annule l'attente ; un lecteur en erreur ne met personne en pause.
+
 ## Flux signés et limites
 
 Le jeton d'un flux (dans l'URL) est signé (HMAC, `ENTRACTE_STREAM_SECRET`), lié à la personne et vérifié à chaque requête contre ses

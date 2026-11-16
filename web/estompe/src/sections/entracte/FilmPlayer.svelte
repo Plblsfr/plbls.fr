@@ -7,7 +7,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { AUDIO_PREFS, clock, IDLE_MS, fullTitle, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type CastState, type FilmDetail, type FilmTracks, type SubtitlePref } from './films'
+  import { AUDIO_PREFS, BUFFER_PREFS, bufferedAhead, clock, IDLE_MS, fullTitle, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type BufferPref, type CastState, type FilmDetail, type FilmTracks, type Range, type SubtitlePref } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -18,6 +18,7 @@
   let st = $state<PState>('unstarted')
   let position = $state(0)
   let duration = $state(0)
+  let buffered = $state.raw<Range[]>([])
   let drag = $state<number | null>(null)
   const store = () => { try { return localStorage } catch { return null } }
   const saved = playPrefs(store())
@@ -25,6 +26,7 @@
   let muted = $state(saved.muted)
   let audioPref = $state<AudioPref>(saved.audio)
   let subtitlePref = $state<SubtitlePref>(saved.subtitles)
+  let bufferPref = $state<BufferPref>(saved.buffer)
   let tracks = $state<FilmTracks | null>(null)
   let panel = $state(false)
   let picker = $state(false)
@@ -34,6 +36,7 @@
   let cast = $state<CastState | null>(null)
 
   const playing = $derived(st === 'playing' || st === 'buffering')
+  const ahead = $derived(Math.floor(bufferedAhead(position, buffered)))
   const back = $derived(item?.series_id ? hrefs.films('item', item.series_id) : hrefs.films('item', id))
   const pct = (v: number, max: number) => `${max ? Math.min(100, (v / max) * 100) : 0}%`
   const toggle = () => (playing ? player?.pause() : player?.play())
@@ -73,6 +76,12 @@
     subtitlePref = pref
     savePlayPrefs(store(), { subtitles: pref })
     if (tracks) applySubtitle(tracks.audioN)
+  }
+
+  const preferBuffer = (pref: BufferPref) => {
+    bufferPref = pref
+    savePlayPrefs(store(), { buffer: pref })
+    player?.setBuffer?.(pref)
   }
 
   const ACTIONS = {
@@ -115,7 +124,7 @@
       if (gone) { a.destroy(); return }
       player = a
       a.load(id, resumeAt(it), true)
-      poll = setInterval(() => { position = a.time(); duration = a.duration?.() || it.duration }, 500)
+      poll = setInterval(() => { position = a.time(); duration = a.duration?.() || it.duration; buffered = a.buffered?.() ?? [] }, 500)
     })().catch((e) => { if (!gone) notify.error(e, 'La lecture n’a pas pu démarrer'); error = 'La lecture n’a pas pu démarrer.' })
     return () => { gone = true; clearInterval(poll); clearTimeout(idleTimer); player?.destroy(); player = null }
   })
@@ -134,6 +143,8 @@
       <div class="watch-msg plbls-alert plbls-alert--erreur" role="alert"><p class="plbls-alert__corps">{error}</p></div>
     {:else if !playing && item}
       <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
+    {:else if st === 'buffering'}
+      <span class="plbls-spinner film-wait" role="status" aria-label="Chargement"></span>
     {/if}
     {#if cast === 'connected' && !error}
       <div class="watch-msg film-cast" role="status"><Icon name="diffuser" size={18} /> Diffusion sur un autre appareil</div>
@@ -168,11 +179,18 @@
             {#each SUBTITLE_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
           </select>
         </div>
+        <div class="film-pref">
+          <label for="film-pref-prechargement">Préchargement</label>
+          <select id="film-pref-prechargement" value={bufferPref} onchange={(e) => preferBuffer(e.currentTarget.value as BufferPref)}>
+            {#each BUFFER_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
+          </select>
+        </div>
+        <p class="film-pref-note">Garde la suite du film en mémoire sur cet appareil. Sans effet quand le fichier est lu tel quel : le navigateur décide alors seul.</p>
       </section>
     {/if}
   </div>
   <div class="film-player-bar" role="group" aria-label="Lecture">
-    <input class="watch-range film-seek" style="--p:{pct(drag ?? position, duration)}" type="range" min="0" max={Math.max(duration, 1)} step="1" value={drag ?? position} aria-label="Position dans la vidéo"
+    <input class="watch-range film-seek" style="--p:{pct(drag ?? position, duration)};--piste:{seekTrack(drag ?? position, duration, buffered)}" type="range" min="0" max={Math.max(duration, 1)} step="1" value={drag ?? position} aria-label="Position dans la vidéo"
       oninput={(e) => (drag = Number(e.currentTarget.value))}
       onchange={(e) => { seek(Number(e.currentTarget.value)); drag = null }} />
     <div class="film-player-buttons">
@@ -180,6 +198,7 @@
       <button class="film-chip" onclick={() => seek(position - 10)} aria-label="Reculer de 10 secondes" title="Flèche gauche ou J" aria-keyshortcuts="ArrowLeft J">−10 s</button>
       <button class="film-chip" onclick={() => seek(position + 30)} aria-label="Avancer de 30 secondes">+30 s</button>
       <span class="watch-time v-mono">{clock(drag ?? position)} / {clock(duration)}</span>
+      {#if ahead > 0}<span class="film-ahead v-mono" title="Durée déjà chargée après la position en cours">{clock(ahead)} en avance</span>{/if}
       <span class="grow"></span>
       <button class="watch-btn" onclick={toggleMute} aria-label={muted ? 'Rétablir le son' : 'Couper le son'} aria-pressed={muted} title="M" aria-keyshortcuts="M"><Icon name={muted ? 'volcoupe' : 'volmax'} size={20} /></button>
       <input class="watch-range watch-vol" style="--p:{muted ? 0 : volume}%" type="range" min="0" max="100" value={muted ? 0 : volume} aria-label="Volume" title="Flèches haut et bas" oninput={(e) => { const v = Number(e.currentTarget.value); setSound(v, v === 0) }} />

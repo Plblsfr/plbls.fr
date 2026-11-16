@@ -4,12 +4,12 @@
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import { WatchPlayer, watchView } from './watch.svelte'
-  import { lastAction } from './watch'
+  import { lastAction, waitingText } from './watch'
   import VoiceControls from '../vocal/VoiceControls.svelte'
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { QUALITY_LABEL, trackName, type Quality } from '../../sections/entracte/films'
+  import { BUFFER_PREFS, playPrefs, QUALITY_LABEL, seekTrack, trackName, type BufferPref, type Quality } from '../../sections/entracte/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 
@@ -20,6 +20,7 @@
   const canDrive = $derived(!!s && (!s.host_only || s.host === app.meId))
   const isHost = $derived(s?.host === app.meId)
   const action = $derived(s ? lastAction(s) : '')
+  const waiting = $derived(waitingText(s?.waiting, app.meId ?? '', people))
   const fail = (e: unknown) => notify.error(e, 'Action impossible')
 
   let host = $state<HTMLElement>()
@@ -31,6 +32,7 @@
   const wake = () => { idle = false; clearTimeout(idleTimer); idleTimer = setTimeout(() => (idle = !!s?.playing && !host?.closest('.watch-player')?.matches(':focus-within')), 2500) }
   let vol = $state(100)
   let muted = $state(false)
+  let buffer = $state<BufferPref>(playPrefs((() => { try { return localStorage } catch { return null } })()).buffer)
   const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
 
@@ -98,14 +100,21 @@
           </div>
         {:else if player?.blocked}
           <button class="watch-msg plbls-button v-rose" onclick={() => player?.resume()}><Icon name="lecture" size={18} /> Lancer la lecture</button>
-        {:else if player && !live && !s.playing && canDrive}
-          <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
+        {:else}
+          {#if waiting}
+            <div class="watch-msg watch-wait plbls-alert" role="status"><span class="plbls-spinner plbls-spinner--sm" aria-hidden="true"></span><p class="plbls-alert__corps">{waiting}{canDrive ? ' Appuyez sur lecture pour reprendre sans attendre.' : ''}</p></div>
+          {/if}
+          {#if player && !live && !s.playing && canDrive}
+            <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
+          {:else if player?.loading && !live}
+            <span class="plbls-spinner film-wait" role="status" aria-label="Chargement"></span>
+          {/if}
         {/if}
         {#if player && !live}
           <div class="watch-bar" role="group" aria-label="Lecture">
             <button class="watch-btn" disabled={!canDrive} onclick={toggle} aria-label={s.playing ? 'Pause' : 'Lecture'}><Icon name={s.playing ? 'pause' : 'lecture'} size={22} /></button>
             <span class="watch-time v-mono">{clock(drag ?? player.position)}{player.duration ? ` / ${clock(player.duration)}` : ''}</span>
-            <input class="watch-range watch-seek grow" style="--p:{pct(drag ?? player.position, player.duration)}" type="range" min="0" max={Math.max(player.duration, 1)} step="1" disabled={!canDrive || !player.duration} value={drag ?? player.position} aria-label="Position dans la vidéo"
+            <input class="watch-range watch-seek grow" style="--p:{pct(drag ?? player.position, player.duration)};--piste:{seekTrack(drag ?? player.position, player.duration, player.buffered)}" type="range" min="0" max={Math.max(player.duration, 1)} step="1" disabled={!canDrive || !player.duration} value={drag ?? player.position} aria-label="Position dans la vidéo"
               oninput={(e) => (drag = Number(e.currentTarget.value))}
               onchange={(e) => { player?.command({ action: 'seek', position: Number(e.currentTarget.value) }); drag = null }} />
             <div class="watch-bar-title grow"><strong class="truncate">{s.meta?.title ?? PROVIDER_LABEL[s.provider] ?? 'Vidéo'}</strong><span class="watch-by">ajouté par {s.by}</span></div>
@@ -129,6 +138,9 @@
                   {#each tracks.qualities as q (q)}<option value={q}>{QUALITY_LABEL[q]}</option>{/each}
                 </select>
               {/if}
+              <select class="watch-rate" value={buffer} onchange={(e) => { buffer = e.currentTarget.value as BufferPref; player?.setBuffer(buffer) }} aria-label="Préchargement" title="Préchargement sur cet appareil">
+                {#each BUFFER_PREFS as [v, nom] (v)}<option value={v}>Préchargement : {nom}</option>{/each}
+              </select>
             {/if}
             <select class="watch-rate" disabled={!canDrive} value={s.rate} onchange={(e) => player?.command({ action: 'rate', rate: Number(e.currentTarget.value) })} aria-label="Vitesse">
               {#each RATES as r (r)}<option value={r}>×{r}</option>{/each}

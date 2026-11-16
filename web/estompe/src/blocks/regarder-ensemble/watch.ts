@@ -63,6 +63,16 @@ export function lastAction(s: Pick<WatchState, 'act' | 'by'>): string {
     case 'seek': return `${who} a changé la position`
     case 'rate': return `${who} a changé la vitesse`
     case 'video': return `${who} a changé de vidéo`
+    case 'wait': return `Lecture en pause : ${who} charge la vidéo`
     default: return ''
   }
+}
+
+export function waitingText(waiting: string[] | undefined, me: string, people: { user_id: string; pseudo: string }[]): string {
+  if (!waiting?.length) return ''
+  const others = waiting.filter((id) => id !== me).map((id) => people.find((p) => p.user_id === id)?.pseudo ?? 'quelqu’un')
+  const names = waiting.includes(me) ? ['votre appareil', ...others] : others
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]}` : names[0]
+  const verb = names.length > 1 ? 'chargent' : 'charge'
+  return `Lecture en pause : ${list} ${verb} la vidéo. Elle reprendra toute seule.`
 }
