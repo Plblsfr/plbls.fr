@@ -2,7 +2,8 @@
 
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
-par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr) et l'ajout autonome de musique avec plafond du disque.
+par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
+la lecture audio, les playlists, les likes, la file de lecture, l'historique et l'ajout autonome de musique avec plafond du disque.
 
 | Où | Quoi |
 |---|---|
@@ -66,6 +67,62 @@ présents, séparément, plein texte PostgreSQL sans accents ni casse (configura
 (`LIKE` échappé par `commun::sql`) : « beyonce » trouve « Beyoncé ». Administration (`sillon:admin`) : état des synchronisations et
 compteurs de la bibliothèque, fichiers écartés, lancement manuel.
 
+## Lecture
+
+- `POST /tracks/{id}/playback` (`sillon:access`) reçoit ce que le client lit (`codecs`, `containers`) et la qualité voulue (`quality` :
+  `originale`, `haute`, `normale`, `basse` ; sans elle, la préférence de la personne, `GET`/`PUT /preferences`, `originale` par défaut).
+  Elle renvoie une URL de flux signée (`/stream/{jeton}`, valable 6 h), le format servi, la durée exacte et les gains de volume.
+- Lecture directe : le fichier d'origine, avec `Range` et son `Content-Type` exact (`audio/flac`, `audio/mpeg`, `audio/ogg; codecs=…`,
+  `audio/mp4`…), quand le codec et le conteneur sont annoncés lisibles et que la qualité est `originale` ; aussi pour une source avec
+  perte qui ne dépasse pas le palier demandé (un MP3 à 128 kb/s en `normale`).
+- Sinon, transcodage par ffmpeg du fichier entier (pas de HLS) : Opus dans Ogg si le client annonce `opus` et `ogg`, AAC (ADTS) sinon,
+  à 96 (`basse`), 160 (`normale`) ou 256 kb/s (`haute` ; `originale` quand la lecture directe est impossible), stéréo au plus. Le
+  résultat va dans le cache disque (`SILLON_CACHE`, plafond `SILLON_CACHE_GO`, éviction du moins récemment lu, jamais d'un fichier en
+  cours de lecture ou d'encodage) et y est servi avec `Range` ; une deuxième demande ne relance pas ffmpeg. L'encodage démarre dès la
+  demande de lecture (la piste suivante peut être demandée d'avance pour le préchargement) ; pendant l'encodage, le flux est servi au fil
+  de l'eau (200 sans `Content-Length`), et un échec coupe la connexion plutôt que de livrer un fichier tronqué. Au-delà de
+  `SILLON_MAX_TRANSCODAGES` encodages simultanés : 503 `server_busy` avec `Retry-After`.
+- Jeton de flux : signé par HMAC-SHA256 (`SILLON_STREAM_SECRET`), il porte la personne, la piste, le fichier, le format et l'expiration ;
+  il ne sert que sa piste (fichier changé depuis : 404, redemander la lecture). Les droits (`sillon:access`) sont revérifiés à chaque
+  requête ; une session d'une autre personne présentée avec le jeton : 403. CORS ouvert (`*`, sans identifiants) sur `/stream/`, pour
+  `<audio>` et Web Audio depuis toute origine.
+- Sans blanc : une piste = un fichier complet. La réponse donne `samples` et `sample_rate`, durée exacte de la source en échantillons
+  (comptée au décodage, la même en transcodage), `output_sample_rate` et `encoder_delay`, échantillons à retirer au début du flux décodé
+  (1024 en AAC ; 0 en Opus, dont le pre-skip est retiré par le décodeur, et en direct).
+- Volume : niveau intégré, plage et pic réel (EBU R128, filtre `ebur128` de ffmpeg) mesurés à la première lecture d'un fichier, puis les
+  autres pistes de l'album en tâche de fond, gardés en base (table `mesures`, par piste et `contenu_le` du fichier : un fichier remplacé
+  est remesuré). La réponse donne les gains piste et album (dB) pour atteindre -18 LUFS et les pics ; le client applique. Gain d'album :
+  moyenne énergétique, pondérée par la durée, des pistes déjà mesurées de l'album.
+
+## Playlists, likes, file de lecture et historique
+
+Tout est privé et propre à la personne (`sub` du gateway), sous `sillon:access` ; la playlist, la file ou l'élément d'une autre personne
+répond 404. Une piste retirée du catalogue n'est jamais supprimée (elle passe absente) : elle reste dans les playlists, la file, les likes
+et l'historique, avec `available: false`.
+
+- **Playlists** (`/playlists`) : créer, renommer, décrire, supprimer ; ajouter à la fin des pistes, un album, les pistes présentes d'un
+  artiste ou une autre playlist de la personne (copie) ; retirer un élément ; déplacer une plage (`from`, `count`, `to`). Chaque élément a
+  son identifiant (une piste peut y être plusieurs fois) et sa position, de 0 à n-1 sans trou ni doublon : chaque modification verrouille
+  la playlist, les appels simultanés passent l'un après l'autre. Doublons : écartés et signalés (`duplicates`), ajoutés avec
+  `allow_duplicates: true`. Pochette : `cover_albums`, les quatre premiers albums (avec pochette) dans l'ordre de la playlist, que le
+  client compose à partir de `/albums/{id}/cover`. Plafonds : 500 playlists par personne, 10 000 pistes par playlist, nom de 1 à 100
+  caractères, description de 1 000 ; dépassement : 422 `limit_reached` (ou 400 `invalid` pour une longueur), avec un message lisible.
+- **Likes** (`/likes`) : piste, album ou artiste (`PUT` et `DELETE /likes/{tracks|albums|artists}/{id}`, idempotents ; 50 000 par type).
+  `GET /likes` donne les identifiants, `GET /likes/tracks` « Titres likés » sous la forme d'une playlist (du plus récent au plus ancien).
+- **File de lecture** (`/queue`) : une par personne, en base, rendue à l'identique sur tous ses appareils : source (`album`, `playlist`,
+  `artist`, `likes`, `search`), éléments dans l'ordre de lecture, index courant, position dans la piste, aléatoire, répétition (`off`,
+  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`, gardé sans effet pour l'instant), graine du mélange (`seed`) et, par
+  élément, `suggested` (toujours faux pour l'instant). « Lire ensuite » insère après la piste courante, « ajouter à la file » à la fin.
+  Chaque écriture porte la `revision` de la dernière file reçue : si un autre appareil a écrit entre-temps, 409 `conflict` avec la file
+  courante (`queue`), rien n'est écrit ; le client recommence sur cet état. Le client envoie sa position (`PATCH /queue`) à intervalle et
+  à chaque changement de piste ; `step` passe à la piste disponible suivante ou précédente en sautant les absentes. Aléatoire : la piste
+  courante passe en tête, le reste est mélangé par `ordre::melanger` (mélange uniforme, déterministe pour une graine) ; le désactiver rend
+  l'ordre de la source. 10 000 éléments au plus.
+- **Historique** (`/history`) : le client envoie une écoute à la fin de chaque lecture (piste, secondes écoutées, `ended_by`, source,
+  élément de la file). Fin : `completed` (fin atteinte), `skipped` (sortie avant la fin vers une autre piste) ou `interrupted` (arrêt).
+  Une écoute compte (`counted`) au-delà de 30 s ou de la moitié de la piste ; seules celles-là entrent dans les pistes et artistes les
+  plus écoutés (`/history/top/tracks`, `/history/top/artists`, période `week`, `month`, `year` ou `all`). Écoutes récentes paginées par curseur.
+
 ## Ajout de musique
 
 - Recherche (`GET /additions/search?q=`, `sillon:add`) : artistes et albums par la recherche de Lidarr (MusicBrainz, `/artist/lookup`,
@@ -111,6 +168,11 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
 | `SILLON_CHEMINS` | `plbls.env` (vide) | correspondances `distant=local` séparées par des virgules, quand Lidarr voit la musique ailleurs |
 | `SILLON_SYNC_MINUTES` | `plbls.env` (15) | période de synchronisation ; 0 = webhook et bouton seulement |
 | `SILLON_FFPROBE` | `plbls.env` (`ffprobe`) | ffprobe de l'image |
+| `SILLON_FFMPEG` | `plbls.env` (`ffmpeg`) | ffmpeg de l'image (transcodage, mesure du volume) |
+| `SILLON_STREAM_SECRET` | Vault `secret/sillon` | clé de signature des URL de flux, 32 caractères au moins ; absente = clé aléatoire au démarrage |
+| `SILLON_CACHE` | `plbls.env` (`/tmp/sillon`) | cache des fichiers transcodés, volume `sillon-cache` du compose |
+| `SILLON_CACHE_GO` | `plbls.env` (10) | plafond du cache en Go |
+| `SILLON_MAX_TRANSCODAGES` | `plbls.env` (2) | encodages simultanés au plus (1 au moins) |
 | `SILLON_LIDARR_RACINE` | `plbls.env` (`/music`) | dossier racine de Lidarr des artistes ajoutés ; vide = pas d'ajout |
 | `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES` | `plbls.env` (1) | identifiants des profils de qualité et de métadonnées (« albums studio ») de Lidarr ; 0 = pas d'ajout |
 | `SILLON_AJOUTS_PAR_JOUR` | `plbls.env` (10) | ajouts par personne sur 24 heures glissantes |
@@ -121,7 +183,7 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
 ## Actions manuelles
 
 - `plbls.fr-infra` : base `sillon` sur `postgres-main` (`CREATE DATABASE sillon OWNER plbls;`), sous-domaine `sillon-api.plbls.fr` et sa route.
-- Vault, `secret/sillon` : `AEGIS_TOKEN_SILLON`, `SILLON_LIDARR_CLE`, `SILLON_WEBHOOK_TOKEN`.
+- Vault, `secret/sillon` : `AEGIS_TOKEN_SILLON`, `SILLON_LIDARR_CLE`, `SILLON_WEBHOOK_TOKEN`, `SILLON_STREAM_SECRET` (`openssl rand -hex 32`).
 - `plbls.fr-infra` : dossier de la musique monté en lecture seule (`SILLON_MEDIAS`, mêmes chemins que Lidarr ou `SILLON_CHEMINS`),
   Lidarr joignable depuis la stack (réseau `MEDIAS_NETWORK`). La migration crée l'extension `unaccent` (extension de confiance : le
   propriétaire de la base suffit).

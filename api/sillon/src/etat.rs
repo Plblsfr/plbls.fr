@@ -19,6 +19,7 @@ pub struct Inner {
     aegis: Option<Aegis>,
     synchro: MutexAsync<()>,
     relance: std::sync::atomic::AtomicBool,
+    lecture: crate::lecture::Lecture,
 }
 
 #[derive(Clone)]
@@ -35,6 +36,7 @@ impl AppState {
             .aegis
             .as_ref()
             .map(|(url, jeton)| Aegis::new(url, jeton, http.clone()));
+        let lecture = crate::lecture::Lecture::nouveau(&cfg);
         Self(Arc::new(Inner {
             identites: Resolveur::new(&cfg.gateway_url, http.clone()),
             cfg,
@@ -43,6 +45,7 @@ impl AppState {
             aegis,
             synchro: MutexAsync::new(()),
             relance: std::sync::atomic::AtomicBool::new(false),
+            lecture,
         }))
     }
 
@@ -86,6 +89,10 @@ impl AppState {
             .swap(false, std::sync::atomic::Ordering::SeqCst)
     }
 
+    pub fn lecture(&self) -> &crate::lecture::Lecture {
+        &self.0.lecture
+    }
+
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {
         match &self.0.aegis {
             Some(a) => a.droits(id).await,
@@ -94,6 +101,8 @@ impl AppState {
     }
 
     pub fn demarrer_taches(&self) {
+        let transcodeur = self.lecture().transcodeur().clone();
+        tokio::spawn(async move { transcodeur.preparer().await });
         if self.aegis().is_some() {
             let etat = self.clone();
             tokio::spawn(async move {

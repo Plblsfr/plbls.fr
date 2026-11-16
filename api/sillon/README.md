@@ -16,10 +16,20 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `filtre.rs`, `ffprobe.rs` | filtre des fichiers (extension, double extension, nom suspect, conteneur, flux audio) et analyse ffprobe |
 | `images.rs` | pochettes et images d'artistes : téléchargées depuis Lidarr, cache en base, trois tailles |
 | `bibliotheque.rs` | routes de la bibliothèque, recherche, administration du catalogue, webhook ; JSON publics réutilisables |
+| `lecture.rs` | `POST /tracks/{id}/playback` (choix direct ou transcodé, jeton, gains) et `GET /stream/{jeton}` (droits revérifiés, direct, cache ou encodage en cours) |
+| `flux.rs` | jetons de flux signés (`Billet`, `signer`, `valider`), `Range`, service d'un fichier ou d'un fichier en cours d'encodage |
+| `transcodage.rs` | qualités et formats, ligne ffmpeg, `Transcodeur` : cache disque, encodages simultanés plafonnés, éviction LRU |
+| `volume.rs` | mesure EBU R128 par ffmpeg (`mesurer`), stockage par piste et `contenu_le`, gains piste et album |
+| `preferences.rs` | `GET`/`PUT /preferences` (qualité par personne) |
+| `playlists.rs` | playlists privées (éléments ordonnés, plage déplacée, doublons signalés, plafonds) ; aides communes : corps JSON (`objet`, `texte`, `champ_uuid`…), `contenu` (pistes, album, artiste ou playlist d'une requête), `pistes_de_source`, `pistes_json` |
+| `likes.rs` | likes de pistes, albums et artistes ; « Titres likés » |
+| `file.rs` | file de lecture par personne, révision et 409, « lire ensuite », « ajouter à la file », aléatoire, piste suivante disponible |
+| `ordre.rs` | ordre de lecture aléatoire (`melanger`, graine) et déplacement d'une plage (`deplacer`) |
+| `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
 | `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
 | `quota.rs` | réglages de l'ajout (`SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
 | `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille |
-| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0005_ajouts.sql` : ajouts et exclusions) |
+| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions) |
 
 ## Schéma du catalogue
 
@@ -33,9 +43,23 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `fichiers_ecartes` | chemin, nom, raison |
 | `synchronisations` | par source (`lidarr`) : dernière réussite, dernier essai, erreur |
 | `images` | cache des images (clé `<type>/<uuid>/<taille>`, type `cover`, `poster` ou `fanart` ; version = URL Lidarr) |
-
+| `mesures` | par `(piste_id, contenu_le)` du fichier : `niveau` (LUFS intégré), `pic` (dBTP), `plage` (LRA), `echantillons`, `frequence` ; la mesure d'un fichier remplacé efface l'ancienne |
+| `preferences` | par `sub` : `qualite` (`originale`, `haute`, `normale`, `basse`) |
 | `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le` ; un seul ajout actif par `(type, mbid)` |
 | `exclusions` | MBID d'album ou d'artiste supprimé par un admin, qui ne peut plus être ajouté |
+
+## Schéma des playlists, de la file et de l'historique (`0004_playlists.sql`)
+
+| Table | Contenu |
+|---|---|
+| `playlists` | `sub`, `nom`, `description`, dates |
+| `playlists_pistes` | élément : `id`, `playlist_id`, `piste_id`, `position` (unique par playlist, contrainte différée), `ajoute_le` |
+| `likes` | `(sub, type, cible)` : type `track`, `album` ou `artist` |
+| `files` | une ligne par `sub` : `revision`, source (`source_type`, `source_id`, `source_nom`), `index_courant`, `position`, `aleatoire`, `repetition`, `graine`, `suggestions` |
+| `files_elements` | `rang` (ordre de lecture), `id` de l'élément, `piste_id`, `rang_source` (ordre de la source, rendu quand l'aléatoire s'arrête), `suggeree` |
+| `ecoutes` | `sub`, `piste_id`, `debut`, `duree_ecoutee`, `duree_piste`, `fin` (`completed`, `skipped`, `interrupted`), `compte`, source, `suggeree` |
+
+Les références à `pistes` n'ont pas de `ON DELETE` : une piste n'est jamais supprimée.
 
 Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unaccent` puis `simple`).
 
@@ -51,6 +75,13 @@ Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unacc
   `get`, `liste`, et les lectures typées (`artistes`, `albums`, `pistes`, `fichiers`, `image`, `version`). Erreurs en texte, sans URL.
 - `bibliotheque::{COLONNES_PISTE, JOINTURES_PISTE, piste_publique, pistes_par_ids}` (et leurs équivalents artiste et album) : JSON public
   d'une piste, dans l'ordre des identifiants donnés ; `curseur`, `lire_curseur` : pagination.
+- `ordre::melanger(&Contexte) -> Vec<Place>` : seule construction de l'ordre aléatoire de la file. `Contexte` : `sub`, `graine`
+  (gardée dans `files.graine`), `premier` (élément mis en tête), `elements` (identifiant d'élément et piste), `suggestions` ; `Place` :
+  élément existant ou nouvelle piste, `suggeree`. Ici, mélange uniforme (Fisher-Yates, SplitMix64) déterministe pour une graine, sans
+  suggestion : le lot 7 remplace l'implémentation sans changer le schéma ni l'API (une `Place` sans élément devient un élément suggéré).
+- `file::avancer(présentes, index, pas, boucle)` : prochaine piste disponible ; `file::element(pool, sub, id)` : `suggeree` d'un élément.
+- `playlists::{contenu, pistes_de_source, pistes_json}` : pistes d'une requête ou d'une source, JSON public des pistes en gardant
+  l'ordre et les doublons ; `playlists::plafond(message)` : 422 `limit_reached`.
 - `ajouts::ajouter_album(&AppState, DemandeAjout { mbid, personne: Auteur { sub, nom }, origine })` (et `ajouter_artiste`, `ajouter(…, Genre, …)`) :
   chemin d'ajout complet hors requête HTTP (`origine` : `Origine::Manuel` ou `Origine::Decouverte`, limite journalière comptée par origine) ;
   `Ok(Resultat::Envoye(id) | DejaPresent | EnCours(id) | Refuse(Refus::DisquePlein { occupation, estimation } | LimiteJournaliere { limite } | Exclu))`,
@@ -58,6 +89,11 @@ Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unacc
 - `ajouts::est_exclu(&PgPool, &[mbid])`, `ajouts::suivre(&AppState)` (met à jour les états), `ajouts::relancer(&AppState, id)`.
 - `quota::occupation(&AppState) -> Occupation { taille, en_cours, plafond }` (`depasse(estimation)`, `public()`) ; `quota::estimer(durée, débit)`.
 - `config::chemin_local(...)` : traduction et vérification d'un chemin Lidarr (sous `SILLON_MEDIAS`, liens résolus).
+- `volume::mesurer(ffmpeg, &Path) -> Mesure` (niveau, pic, plage, échantillons, fréquence ; un seul décodage), `volume::enregistrer`,
+  `volume::lire(&PgPool, piste, contenu_le)`, `volume::mesure_de(&PgPool, ffmpeg, &FichierPiste)` (lue en base, sinon mesurée et
+  enregistrée), `volume::gains(&PgPool, piste, Option<&Mesure>)`, `volume::non_mesurees_de_l_album`.
+- `preferences::qualite_de(&PgPool, sub) -> Qualite`.
+- `AppState::lecture().transcodeur()` : `Transcodeur` (`lancements`, `en_cours`, `lecteurs`, `plafonner`, `taille`).
 
 ## Ajouter une route
 
@@ -79,4 +115,10 @@ Les tests de l'ajout (`ajouts.rs`, module `tests`) étendent ce faux Lidarr (`li
 `mb_albums`, création d'artiste, surveillance, commandes, file, historique, suppressions).
 Les tests du catalogue (`tests_api.rs`, `bibliotheque()`) montent un faux Lidarr (`Monde`, modifiable pendant le test) et de vrais fichiers
 flac, mp3 et opus générés par ffmpeg dans un dossier temporaire ; ils demandent ffmpeg et ffprobe (sinon ignorés, avec un message).
+Playlists, likes, file et historique : tests dans les modules (`playlists::tests` : `catalogue()` insère un petit catalogue en base,
+`creer()`, `pistes_de()`), dont des appels simultanés (tâches tokio) pour les déplacements et les révisions de la file ; la piste retirée
+du catalogue passe par `tests_api::bibliotheque()`.
+Les tests de lecture (`lecture.rs`, module `tests`) réutilisent `bibliotheque_avec()` (cache dans un dossier temporaire) et, pour le
+plafond d'encodages et l'échec d'encodage, un faux ffmpeg (script qui attend un fichier témoin ou échoue pour `libopus`, et passe la
+main au vrai ffmpeg sinon).
 Sans `TEST_DATABASE_URL`, les tests passent par testcontainers (ignorés sans Docker).
