@@ -23,7 +23,7 @@ updates:
         update-types: ["version-update:semver-major"]
 
   # --- cargo ---
-  # workspace racine (security, aegis, entracte, estompe-api) : un seul Cargo.lock, donc un seul groupe
+  # workspace racine (security, aegis, entracte, sillon, estompe-api) : un seul Cargo.lock, donc un seul groupe
   - package-ecosystem: cargo
     directories: [/]
     schedule: { interval: weekly }

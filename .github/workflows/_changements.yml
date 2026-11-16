@@ -14,12 +14,14 @@ on:
       aegis_server: { value: "${{ jobs.changements.outputs.aegis_server }}" }
       security_server: { value: "${{ jobs.changements.outputs.security_server }}" }
       entracte_server: { value: "${{ jobs.changements.outputs.entracte_server }}" }
+      sillon_server: { value: "${{ jobs.changements.outputs.sillon_server }}" }
       lint: { value: "${{ jobs.changements.outputs.lint }}" }
       front: { value: "${{ jobs.changements.outputs.front }}" }
       espaces: { value: "${{ jobs.changements.outputs.espaces }}" }
       npm_lock: { value: "${{ jobs.changements.outputs.npm_lock }}" }
       image_aegis: { value: "${{ jobs.changements.outputs.image_aegis }}" }
       image_entracte: { value: "${{ jobs.changements.outputs.image_entracte }}" }
+      image_sillon: { value: "${{ jobs.changements.outputs.image_sillon }}" }
       image_security: { value: "${{ jobs.changements.outputs.image_security }}" }
       image_ui: { value: "${{ jobs.changements.outputs.image_ui }}" }
 
@@ -39,12 +41,14 @@ jobs:
       aegis_server: ${{ steps.c.outputs.aegis_server }}
       security_server: ${{ steps.c.outputs.security_server }}
       entracte_server: ${{ steps.c.outputs.entracte_server }}
+      sillon_server: ${{ steps.c.outputs.sillon_server }}
       lint: ${{ steps.c.outputs.lint }}
       front: ${{ steps.e.outputs.front }}
       espaces: ${{ steps.e.outputs.espaces }}
       npm_lock: ${{ steps.c.outputs.npm_lock }}
       image_aegis: ${{ steps.c.outputs.image_aegis }}
       image_entracte: ${{ steps.c.outputs.image_entracte }}
+      image_sillon: ${{ steps.c.outputs.image_sillon }}
       image_security: ${{ steps.c.outputs.image_security }}
       image_ui: ${{ steps.c.outputs.image_ui }}
     steps:
@@ -76,6 +80,7 @@ jobs:
           c aegis_server 'api/aegis/**' 'api/commun/**' "${cargo[@]}"
           c security_server 'api/security/**' 'api/commun/**' '!**/*.md' "${cargo[@]}"
           c entracte_server 'api/entracte/**' 'api/commun/**' '!**/*.md' docs/entracte/openapi.yaml "${cargo[@]}"
+          c sillon_server 'api/sillon/**' 'api/commun/**' '!**/*.md' docs/sillon/openapi.yaml "${cargo[@]}"
           c lint '**/*.js' '**/*.mjs' '**/*.cjs' '**/*.ts' '**/*.svelte' '**/*.css' '**/*.json' '**/*.sh' '**/*.py' '**/*.md' \
             .nvmrc .shellcheckrc biome.json ruff.toml justfile 'scripts/**'
           c npm "${npm[@]}" 'scripts/*' biome.json tsconfig.base.json
@@ -85,6 +90,7 @@ jobs:
           c image_security "${cargo[@]}" .dockerignore 'api/security/**' 'api/commun/**' '!**/*.md' "${image[@]}" plbls.env
           c image_aegis "${cargo[@]}" 'api/aegis/**' 'api/commun/**' "${image[@]}" plbls.env
           c image_entracte "${cargo[@]}" .dockerignore 'api/entracte/**' 'api/commun/**' '!**/*.md' deploy/entracte/.env.example plbls.env
+          c image_sillon "${cargo[@]}" .dockerignore 'api/sillon/**' 'api/commun/**' '!**/*.md' deploy/sillon/.env.example plbls.env
           c image_ui "${npm[@]}" 'packages/ui/**' '!**/*.md' "${image[@]}"
       - id: e
         name: Projets npm à vérifier (job front)
