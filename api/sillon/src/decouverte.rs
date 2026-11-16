@@ -530,6 +530,8 @@ mod tests {
         (200, corps.to_string().into_bytes())
     }
 
+    type Regle = fn(&mut Config);
+
     struct Banc {
         b: Bibliotheque,
         lb: Faux,
@@ -810,30 +812,28 @@ mod tests {
         let Some(mut t) = banc(|c| c.ajouts.par_jour = 0).await else {
             return;
         };
-        let cas: [(&str, &str, fn(&mut Config)); 5] = [
-            ("budget de découverte atteint", "bruno", |c| {
+        let cas: [(&str, Regle); 5] = [
+            ("budget de découverte atteint", |c| {
                 c.ajouts.decouverte_budget = 1
             }),
-            ("budget de découverte nul", "bruno", |c| {
+            ("budget de découverte nul", |c| {
                 c.ajouts.decouverte_budget = 0
             }),
-            ("plafond global atteint", "bruno", |c| {
-                c.ajouts.plafond = Some(1)
-            }),
-            ("limite journalière atteinte", "bruno", |c| {
+            ("plafond global atteint", |c| c.ajouts.plafond = Some(1)),
+            ("limite journalière atteinte", |c| {
                 c.ajouts.decouverte_par_jour = 0
             }),
-            ("interrupteur global coupé", "bruno", |c| {
+            ("interrupteur global coupé", |c| {
                 c.decouverte.active = false
             }),
         ];
         let initiale = t.b.e.state.config().clone();
-        for (quoi, qui, regle) in cas {
+        for (quoi, regle) in cas {
             t.regler(|c| {
                 *c = initiale.clone();
                 regle(c);
             });
-            t.ecouter(qui).await;
+            t.ecouter("bruno").await;
             assert_eq!(t.ecritures(), [], "{quoi}");
         }
         t.regler(|c| *c = initiale.clone());

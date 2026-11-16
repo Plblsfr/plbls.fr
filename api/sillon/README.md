@@ -21,16 +21,19 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `transcodage.rs` | qualités et formats, ligne ffmpeg, `Transcodeur` : cache disque, encodages simultanés plafonnés, éviction LRU |
 | `volume.rs` | mesure EBU R128 par ffmpeg (`mesurer`), stockage par piste et `contenu_le`, gains piste et album |
 | `analyse/` | analyse audio : `decodage.rs` (ffmpeg en PCM mono 22 050 Hz, lu en flux), `descripteurs.rs` (FFT, `Extracteur`, `Descripteurs`, vecteur de 43 dimensions), `file.rs` (file de tâches en base), `voisins.rs` (`Voisins` en mémoire), `mod.rs` (ouvriers, pause pendant un transcodage, rechargement, routes d'administration) |
-| `preferences.rs` | `GET`/`PUT /preferences` (qualité par personne) |
+| `preferences.rs` | `GET`/`PUT /preferences` (qualité et découverte par personne, écriture partielle) |
 | `playlists.rs` | playlists privées (éléments ordonnés, plage déplacée, doublons signalés, plafonds) ; aides communes : corps JSON (`objet`, `texte`, `champ_uuid`…), `contenu` (pistes, album, artiste ou playlist d'une requête), `pistes_de_source`, `pistes_json` |
 | `likes.rs` | likes de pistes, albums et artistes ; « Titres likés » |
 | `file.rs` | file de lecture par personne, révision et 409, « lire ensuite », « ajouter à la file », aléatoire, piste suivante disponible |
-| `ordre.rs` | ordre de lecture aléatoire (`melanger`, graine) et déplacement d'une plage (`deplacer`) |
+| `ordre.rs` | ordre de lecture aléatoire (`ordonner`, pur ; `melanger` et `prolonger`, qui chargent les données), insertion des suggestions (`inserer`, `a_prolonger`) et déplacement d'une plage (`deplacer`) |
+| `recommandation/` | `score.rs` (score pur, `Poids`, `Habitude`, `Candidat`, `Detail`), `mod.rs` (`charger` : entrées du score en quelques requêtes ; `Donnees` : `noter`, `choisir` ; routes `similar`, `dismiss`, `explain`) |
+| `listenbrainz.rs` | artistes similaires et enregistrements populaires par MBID, gardés en base, débit limité, pause après erreur |
+| `decouverte.rs` | recherche en tâche de fond d'un titre absent et envoi de son album par `ajouts`, promotion des découvertes likées, `GET /admin/discovery` |
 | `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
 | `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
 | `quota.rs` | réglages de l'ajout (`SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
 | `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille (filtre des albums jamais écoutés) |
-| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions ; `0006_analyse.sql` : analyses et file de tâches) |
+| `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions ; `0006_analyse.sql` : analyses et file de tâches ; `0007_recommandation.sql` : similarités, refus, préférence et colonnes de découverte) |
 
 ## Schéma du catalogue
 
@@ -47,8 +50,10 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `mesures` | par `(piste_id, contenu_le)` du fichier : `niveau` (LUFS intégré), `pic` (dBTP), `plage` (LRA), `echantillons`, `frequence` ; la mesure d'un fichier remplacé efface l'ancienne |
 | `analyses` | par `piste_id` : `contenu_le` du fichier analysé, `version`, `vecteur` (`real[]`, 43 dimensions à l'échelle nominale), `tempo` (battements par minute, nul sans pulsation), `tonalite` (0 = do … 11 = si), `majeur` |
 | `taches_analyse` | par `fichier_id` : `contenu_le`, `version`, `etat` (`attente`, `en_cours`, `faite`, `erreur`), `tentatives`, `erreur` (sans chemin) |
-| `preferences` | par `sub` : `qualite` (`originale`, `haute`, `normale`, `basse`) |
-| `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le` ; un seul ajout actif par `(type, mbid)` |
+| `preferences` | par `sub` : `qualite` (`originale`, `haute`, `normale`, `basse`), `decouverte` (vraie par défaut) |
+| `artistes_similaires`, `enregistrements_populaires`, `similarites_releves` | résultats de ListenBrainz par MBID d'artiste (similaire et score entre 0 et 1 ; enregistrement, titre, album, écoutes, rang) et date du dernier relevé par genre (`similaires`, `populaires`) |
+| `refus`, `refus_albums` | « ne plus proposer » : piste par personne ; MBID de l'album d'une découverte refusée, par personne |
+| `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le` ; un seul ajout actif par `(type, mbid)` ; pour une découverte : `similaire_a` (nom de l'artiste écouté), `enregistrement` et `titre_piste` (titre visé), `promu_le` (découverte devenue ajout ordinaire) |
 | `exclusions` | MBID d'album ou d'artiste supprimé par un admin, qui ne peut plus être ajouté |
 
 ## Schéma des playlists, de la file et de l'historique (`0004_playlists.sql`)
@@ -78,16 +83,22 @@ Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unacc
   `get`, `liste`, et les lectures typées (`artistes`, `albums`, `pistes`, `fichiers`, `image`, `version`). Erreurs en texte, sans URL.
 - `bibliotheque::{COLONNES_PISTE, JOINTURES_PISTE, piste_publique, pistes_par_ids}` (et leurs équivalents artiste et album) : JSON public
   d'une piste, dans l'ordre des identifiants donnés ; `curseur`, `lire_curseur` : pagination.
-- `ordre::melanger(&Contexte) -> Vec<Place>` : seule construction de l'ordre aléatoire de la file. `Contexte` : `sub`, `graine`
-  (gardée dans `files.graine`), `premier` (élément mis en tête), `elements` (identifiant d'élément et piste), `suggestions` ; `Place` :
-  élément existant ou nouvelle piste, `suggeree`. Ici, mélange uniforme (Fisher-Yates, SplitMix64) déterministe pour une graine, sans
-  suggestion : le lot 7 remplace l'implémentation sans changer le schéma ni l'API (une `Place` sans élément devient un élément suggéré).
+- `ordre::melanger(&AppState, &Contexte).await -> Vec<Place>` : seule construction de l'ordre aléatoire de la file. `Contexte` : `sub`,
+  `graine` (gardée dans `files.graine`), `premier` (élément mis en tête), `elements` (identifiant d'élément et piste), `suggestions` ;
+  `Place` : élément existant ou nouvelle piste, `suggeree` (une `Place` sans élément devient un élément suggéré). `ordre::prolonger`
+  complète les suggestions de la fenêtre à venir. Les calculs sont purs (`ordre::ordonner`, `ordre::inserer` sur `recommandation::Donnees`).
+- `recommandation::charger(&AppState, &Demande { sub, source, exclues, graine, candidats, maintenant })` : entrées du score ;
+  `Donnees::noter(piste, précédente) -> score::Detail`, `Donnees::choisir`, `Donnees::ecartee` ; `recommandation::metas`, `artistes_principaux`.
+- `listenbrainz::similaires(&AppState, mbid)`, `listenbrainz::populaires(&AppState, mbid)` : lecture en base, rafraîchie si besoin ;
+  jamais d'erreur quand le service est en panne (résultats gardés, ou liste vide).
+- `decouverte::declencher(&AppState, &Personne, source)` : lance la recherche en tâche de fond (sans effet si une recherche tourne déjà
+  pour la personne) ; `decouverte::promouvoir(&PgPool)` ; `quota::budget_decouverte`, `quota::decouvertes_du_jour`.
 - `file::avancer(présentes, index, pas, boucle)` : prochaine piste disponible ; `file::element(pool, sub, id)` : `suggeree` d'un élément.
 - `playlists::{contenu, pistes_de_source, pistes_json}` : pistes d'une requête ou d'une source, JSON public des pistes en gardant
   l'ordre et les doublons ; `playlists::plafond(message)` : 422 `limit_reached`.
 - `ajouts::ajouter_album(&AppState, DemandeAjout { mbid, personne: Auteur { sub, nom }, origine })` (et `ajouter_artiste`, `ajouter(…, Genre, …)`) :
   chemin d'ajout complet hors requête HTTP (`origine` : `Origine::Manuel` ou `Origine::Decouverte`, limite journalière comptée par origine) ;
-  `Ok(Resultat::Envoye(id) | DejaPresent | EnCours(id) | Refuse(Refus::DisquePlein { occupation, estimation } | LimiteJournaliere { limite } | Exclu))`,
+  `Ok(Resultat::Envoye(id) | DejaPresent | EnCours(id) | Refuse(Refus::DisquePlein { occupation, estimation } | LimiteJournaliere { limite } | Exclu | BudgetDecouverte { utilise, budget }))`,
   `Err(ErreurAjout)` (`reponse_erreur` la traduit en HTTP, `reponse_resultat` le résultat).
 - `ajouts::est_exclu(&PgPool, &[mbid])`, `ajouts::suivre(&AppState)` (met à jour les états), `ajouts::relancer(&AppState, id)`.
 - `quota::occupation(&AppState) -> Occupation { taille, en_cours, plafond }` (`depasse(estimation)`, `public()`) ; `quota::estimer(durée, débit)`.

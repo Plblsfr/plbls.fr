@@ -957,9 +957,8 @@ mod tests {
             .map(|i| p.iter().find(|x| x.as_str() == i).unwrap().as_str())
             .collect();
         assert_eq!(ids, [&p[1], &p[2], &p[3], &p[4], &p[5]]);
-        assert_eq!(
-            r.json()["items"][0]["album"]["title"].as_str().is_some(),
-            true,
+        assert!(
+            r.json()["items"][0]["album"]["title"].is_string(),
             "format des pistes de la bibliothèque"
         );
         let r = e

@@ -249,6 +249,38 @@ mod tests {
     }
 
     #[test]
+    fn variables_de_recommandation() {
+        let base = ("DATABASE_URL", "postgres://x");
+        let c = charge(&[base]).unwrap();
+        assert_eq!(c.reco.poids, crate::recommandation::score::Poids::default());
+        assert_eq!(c.reco.delai_suggestion, chrono::Duration::days(14));
+        assert!(c.listenbrainz.is_some() && c.decouverte.active);
+        assert!(Config::pour_tests("postgres://x").listenbrainz.is_none());
+        let c = charge(&[
+            base,
+            ("SILLON_RECO_POIDS", "audio=2,decouverte=0"),
+            ("SILLON_SUGGESTION_DELAI_JOURS", "3"),
+            ("SILLON_LISTENBRAINZ_URL", "off"),
+            ("SILLON_DECOUVERTE", "false"),
+        ])
+        .unwrap();
+        assert_eq!((c.reco.poids.audio, c.reco.poids.decouverte), (2.0, 0.0));
+        assert_eq!(c.reco.delai_suggestion, chrono::Duration::days(3));
+        assert!(c.listenbrainz.is_none() && !c.decouverte.active);
+        for faux in [
+            ("SILLON_RECO_POIDS", "volume=1"),
+            ("SILLON_SUGGESTION_DELAI_JOURS", "-1"),
+            ("SILLON_DECOUVERTE", "oui"),
+            ("SILLON_DECOUVERTE_PAR_JOUR", "x"),
+        ] {
+            assert!(
+                charge(&[base, faux]).unwrap_err().contains(faux.0),
+                "{faux:?}"
+            );
+        }
+    }
+
+    #[test]
     fn variables_d_analyse() {
         let base = ("DATABASE_URL", "postgres://x");
         let c = charge(&[base, ("SILLON_ANALYSE_PARALLELE", "3")]).unwrap();
