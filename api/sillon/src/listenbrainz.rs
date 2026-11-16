@@ -120,7 +120,8 @@ pub fn lire_similaires(v: &Value, source: &str) -> Vec<Similaire> {
         .filter(|s| s.mbid != source)
         .collect();
     l.sort_by(|a, b| b.score.total_cmp(&a.score).then(a.mbid.cmp(&b.mbid)));
-    l.dedup_by(|b, a| a.mbid == b.mbid);
+    let mut vus = std::collections::HashSet::new();
+    l.retain(|s| vus.insert(s.mbid.clone()));
     l.truncate(SIMILAIRES_MAX);
     let max = l.first().map_or(1.0, |s| s.score);
     for s in &mut l {
@@ -336,4 +337,274 @@ pub async fn populaires(state: &AppState, mbid: &str) -> Result<Vec<Populaire>, 
             ecoutes: l.get(4),
         })
         .collect())
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::testutil::{Faux, env_avec, faux};
+
+    const A: &str = "056e4f3e-d505-4dad-8ec1-d04f521cbb56";
+    const B: &str = "a5c4d3a3-6f1d-4b1a-9a6e-8b2d6b6c1a01";
+    const C: &str = "b7e2a1c4-1f2e-4c3d-8a9b-0c1d2e3f4a5b";
+
+    pub(crate) fn reglages(url: &str, intervalle: Duration) -> Reglages {
+        Reglages {
+            url: url.to_string(),
+            labs: url.to_string(),
+            intervalle,
+            fraicheur: chrono::Duration::days(30),
+        }
+    }
+
+    #[test]
+    fn reglages_lus() {
+        let r = Reglages::from_env(&|_| None).unwrap().unwrap();
+        assert_eq!(
+            (r.url.as_str(), r.labs.as_str()),
+            (
+                "https://api.listenbrainz.org",
+                "https://labs.api.listenbrainz.org"
+            )
+        );
+        assert_eq!(
+            (r.intervalle, r.fraicheur),
+            (Duration::from_secs(1), chrono::Duration::days(30))
+        );
+        let env = |k: &str| match k {
+            "SILLON_LISTENBRAINZ_URL" => Some("http://lb:1/".to_string()),
+            "SILLON_LISTENBRAINZ_LABS_URL" => Some("http://labs:2".into()),
+            "SILLON_LISTENBRAINZ_INTERVALLE_MS" => Some("250".into()),
+            "SILLON_SIMILARITE_JOURS" => Some("7".into()),
+            _ => None,
+        };
+        let r = Reglages::from_env(&env).unwrap().unwrap();
+        assert_eq!(
+            (r.url.as_str(), r.labs.as_str()),
+            ("http://lb:1", "http://labs:2")
+        );
+        assert_eq!(
+            (r.intervalle, r.fraicheur),
+            (Duration::from_millis(250), chrono::Duration::days(7))
+        );
+        let coupe = |k: &str| (k == "SILLON_LISTENBRAINZ_URL").then(|| "off".to_string());
+        assert_eq!(Reglages::from_env(&coupe).unwrap(), None);
+        for nom in [
+            "SILLON_LISTENBRAINZ_INTERVALLE_MS",
+            "SILLON_SIMILARITE_JOURS",
+        ] {
+            assert!(
+                Reglages::from_env(&|k| (k == nom).then(|| "x".into()))
+                    .unwrap_err()
+                    .contains(nom)
+            );
+        }
+    }
+
+    #[test]
+    fn reponses_lues_avec_tolerance() {
+        let plat = json!([
+            {"artist_mbid": B, "name": "Proche", "score": 500, "comment": "x"},
+            {"artist_mbid": C, "name": "Lointain", "score": "125"},
+            {"artist_mbid": A, "name": "Lui-même", "score": 900},
+            {"artist_mbid": "pas-un-mbid", "name": "Faux", "score": 900},
+            {"artist_mbid": B, "name": "Doublon", "score": 100},
+            {"name": "Sans identifiant", "score": 1},
+            {"artist_mbid": C.to_uppercase(), "score": 0},
+            "bruit",
+        ]);
+        let l = lire_similaires(&plat, A);
+        assert_eq!(
+            l,
+            [
+                Similaire {
+                    mbid: B.into(),
+                    nom: "Proche".into(),
+                    score: 1.0
+                },
+                Similaire {
+                    mbid: C.into(),
+                    nom: "Lointain".into(),
+                    score: 0.25
+                },
+            ]
+        );
+        let imbrique = json!([
+            {"type": "markup", "data": "<p>titre</p>"},
+            {"type": "dataset", "columns": ["artist_mbid"], "data": [{"artist_mbid": C, "artist_name": "Seul", "score": 3.5}]},
+        ]);
+        assert_eq!(
+            lire_similaires(&imbrique, A),
+            [Similaire {
+                mbid: C.into(),
+                nom: "Seul".into(),
+                score: 1.0
+            }]
+        );
+        for vide in [
+            json!(null),
+            json!({"error": "x"}),
+            json!([]),
+            json!("texte"),
+        ] {
+            assert!(lire_similaires(&vide, A).is_empty());
+            assert!(lire_populaires(&vide).is_empty());
+        }
+        let populaires = json!({"payload": [
+            {"recording_mbid": B, "recording_name": "Second", "release_name": "Album", "total_listen_count": 10},
+            {"recording_mbid": A, "recording_name": " Premier ", "release_name": "Album", "release_group_mbid": C,
+             "total_listen_count": 99, "artist_name": "X"},
+            {"recording_mbid": A, "recording_name": "Doublon", "total_listen_count": 5},
+            {"recording_mbid": C, "total_listen_count": 500},
+            {"recording_mbid": "x", "recording_name": "Faux"},
+            {"recording_mbid": C, "title": "Sans album"},
+        ]});
+        assert_eq!(
+            lire_populaires(&populaires),
+            [
+                Populaire {
+                    mbid: A.into(),
+                    titre: "Premier".into(),
+                    album_mbid: Some(C.into()),
+                    album_titre: Some("Album".into()),
+                    ecoutes: 99
+                },
+                Populaire {
+                    mbid: B.into(),
+                    titre: "Second".into(),
+                    album_mbid: None,
+                    album_titre: Some("Album".into()),
+                    ecoutes: 10
+                },
+                Populaire {
+                    mbid: C.into(),
+                    titre: "Sans album".into(),
+                    album_mbid: None,
+                    album_titre: None,
+                    ecoutes: 0
+                },
+            ]
+        );
+        let beaucoup: Vec<Value> = (0..200)
+            .map(|i| json!({"artist_mbid": uuid::Uuid::from_u128(i + 1), "name": "n", "score": i + 1}))
+            .collect();
+        assert_eq!(lire_similaires(&json!(beaucoup), A).len(), SIMILAIRES_MAX);
+    }
+
+    async fn service(panne: Arc<AtomicBool>) -> Faux {
+        faux(move |r| {
+            if panne.load(Ordering::SeqCst) {
+                return (503, b"panne".to_vec());
+            }
+            let corps = if r.chemin == "/similar-artists/json" {
+                json!([{"artist_mbid": B, "name": "Proche", "score": 40}, {"artist_mbid": C, "name": "Autre", "score": 10}])
+            } else if r.chemin == format!("/1/popularity/top-recordings-for-artist/{B}") {
+                json!([{"recording_mbid": C, "recording_name": "Titre", "release_name": "Album", "total_listen_count": 7}])
+            } else {
+                return (404, vec![]);
+            };
+            (200, corps.to_string().into_bytes())
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn resultats_gardes_en_base_rafraichis_apres_le_delai_et_panne_sans_effet() {
+        let panne = Arc::new(AtomicBool::new(false));
+        let lb = service(panne.clone()).await;
+        let url = lb.url.clone();
+        let Some(e) =
+            env_avec(move |c| c.listenbrainz = Some(reglages(&url, Duration::ZERO))).await
+        else {
+            return;
+        };
+        let s = &e.state;
+        let l = similaires(s, A).await.unwrap();
+        assert_eq!(
+            l.iter()
+                .map(|x| (x.mbid.as_str(), x.nom.as_str(), x.score))
+                .collect::<Vec<_>>(),
+            [(B, "Proche", 1.0), (C, "Autre", 0.25)]
+        );
+        let r = &lb.requetes()[0];
+        assert_eq!(
+            (r.methode.as_str(), r.chemin.as_str()),
+            ("GET", "/similar-artists/json")
+        );
+        assert!(r.query.contains(&format!("artist_mbids={A}")) && r.query.contains("algorithm="));
+        assert!(r.entete("user-agent").starts_with("sillon/"));
+        assert_eq!(similaires(s, A).await.unwrap(), l);
+        assert_eq!(
+            lb.appels(),
+            1,
+            "résultat gardé en base : pas de second appel"
+        );
+        let p = populaires(s, B).await.unwrap();
+        assert_eq!(p.len(), 1);
+        assert_eq!(
+            (p[0].titre.as_str(), p[0].album_titre.as_deref()),
+            ("Titre", Some("Album"))
+        );
+        assert_eq!(populaires(s, B).await.unwrap(), p);
+        assert_eq!(lb.appels(), 2);
+        assert!(similaires(s, "mb-pas-un-uuid").await.unwrap().is_empty());
+        assert_eq!(lb.appels(), 2, "identifiant invalide : aucun appel");
+        let releve: chrono::DateTime<Utc> = sqlx::query_scalar(
+            "SELECT releve_le FROM similarites_releves WHERE genre = 'similaires' AND mbid = $1",
+        )
+        .bind(A)
+        .fetch_one(s.pool())
+        .await
+        .unwrap();
+        assert!(Utc::now() - releve < chrono::Duration::minutes(1));
+
+        sqlx::query("UPDATE similarites_releves SET releve_le = now() - interval '31 days'")
+            .execute(s.pool())
+            .await
+            .unwrap();
+        assert_eq!(similaires(s, A).await.unwrap(), l);
+        assert_eq!(lb.appels(), 3, "rafraîchi après le délai");
+
+        sqlx::query("UPDATE similarites_releves SET releve_le = now() - interval '31 days'")
+            .execute(s.pool())
+            .await
+            .unwrap();
+        panne.store(true, Ordering::SeqCst);
+        assert_eq!(
+            similaires(s, A).await.unwrap(),
+            l,
+            "panne : anciens résultats gardés"
+        );
+        assert_eq!(lb.appels(), 4);
+        assert_eq!(populaires(s, B).await.unwrap(), p);
+        assert!(similaires(s, C).await.unwrap().is_empty());
+        assert_eq!(lb.appels(), 4, "en pause après une erreur : plus d'appel");
+    }
+
+    #[tokio::test]
+    async fn appels_espaces_par_la_limite_de_debit() {
+        let lb = service(Arc::default()).await;
+        let url = lb.url.clone();
+        let intervalle = Duration::from_millis(300);
+        let Some(e) = env_avec(move |c| c.listenbrainz = Some(reglages(&url, intervalle))).await
+        else {
+            return;
+        };
+        let debut = Instant::now();
+        let (a, b, c) = tokio::join!(
+            similaires(&e.state, A),
+            similaires(&e.state, B),
+            similaires(&e.state, C)
+        );
+        assert!(a.is_ok() && b.is_ok() && c.is_ok());
+        assert_eq!(lb.appels(), 3);
+        assert!(debut.elapsed() >= 2 * intervalle, "{:?}", debut.elapsed());
+    }
 }
