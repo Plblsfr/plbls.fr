@@ -31,10 +31,11 @@ Une seule stack Dokploy (type Compose) avec [`docker-compose.yml`](docker-compos
 `entracte-api`, `sillon-api`, `estompe-web`, `estompe-api`, `transcribe`, `livekit`, `cdn`.
 Les services se joignent par leur nom sur le réseau de la stack ; `aegis`, `entracte-api`, `sillon-api` et `estompe-api` rejoignent
 aussi `postgres-net` (PostgreSQL partagé, `postgres-main`, une base par service), `auth-gateway` le réseau de Dokploy (Keycloak),
-`entracte-api` celui de la stack média (`MEDIAS_NETWORK` : Radarr, Sonarr ; obligatoire, le déploiement échoue sans lui plutôt que de joindre
+`entracte-api` et `sillon-api` celui de la stack média (`MEDIAS_NETWORK` : Radarr, Sonarr, Lidarr ; obligatoire, le déploiement échoue sans lui plutôt que de joindre
 `dokploy-network`). Le Redis partagé (`redis` : sessions du gateway, cache et invalidations d'aegis, persistance AOF dans `redis-data`) est
 seul sur son réseau `internal: true`, joint par `auth-gateway`, `aegis` et `estompe-api`, et exige `REDIS_PASSWORD` (`requirepass`).
-`entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses transcodages dans le volume `entracte-transcodage`.
+`entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses transcodages dans le volume `entracte-transcodage` ; `sillon-api` monte
+`SILLON_MEDIAS` (musique) en lecture seule.
 Les sauvegardes de `postgres-main` sont faites hors de cette stack.
 
 ### Variables

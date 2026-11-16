@@ -35,3 +35,31 @@ pub fn interne() -> Response {
         "erreur interne",
     )
 }
+
+pub fn sans_contenu() -> Response {
+    StatusCode::NO_CONTENT.into_response()
+}
+
+pub fn invalide(message: &str) -> Response {
+    erreur(StatusCode::BAD_REQUEST, "invalid", message)
+}
+
+pub fn indisponible(code: &str, message: &str) -> Response {
+    erreur(StatusCode::BAD_GATEWAY, code, message)
+}
+
+pub fn bd(e: sqlx::Error) -> Response {
+    tracing::warn!("base : {e}");
+    interne()
+}
+
+pub fn horodatage(d: &chrono::DateTime<chrono::Utc>) -> String {
+    d.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+pub fn jetons_egaux(attendu: &str, donne: &str) -> bool {
+    use subtle::ConstantTimeEq;
+    !attendu.is_empty()
+        && attendu.len() == donne.len()
+        && bool::from(attendu.as_bytes().ct_eq(donne.as_bytes()))
+}

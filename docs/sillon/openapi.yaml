@@ -57,3 +57,135 @@ paths:
         "200": { description: "`{sub, name, email, permissions: {access, add, admin}, sections: [string]}`" }
         "401": { $ref: "#/components/responses/401" }
         "502": { $ref: "#/components/responses/502" }
+  /artists:
+    get:
+      summary: "Artistes présents, par nom (sans accents), pagination par curseur"
+      parameters:
+        - { name: cursor, in: query, schema: { type: string }, description: "`next_cursor` de la page précédente" }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: genre, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        "200": { description: "`{items: [Artiste], next_cursor: string|null}`, Artiste : `{id, name, overview, genres, image, fanart, available, album_count}`" }
+        "400": { description: "`invalid` : limite, curseur ou genre invalide" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /artists/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Fiche artiste et tous ses albums (absents compris, `available: false`)"
+      responses:
+        "200": { description: "Artiste et `albums: [Album]`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /artists/{id}/image:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Image de l'artiste, téléchargée depuis Lidarr et mise en cache"
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [poster, fanart], default: poster } }
+        - { name: size, in: query, schema: { type: string, enum: [small, medium, large], default: small } }
+      responses:
+        "200": { description: "Image (JPEG, PNG, GIF ou WebP)" }
+        "400": { description: "`invalid` : type ou taille inconnus" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : artiste ou image absents" }
+        "502": { description: "`lidarr_unavailable` : Lidarr injoignable et image jamais mise en cache" }
+  /albums/recent:
+    get:
+      summary: "Ajouts récents : albums présents, du plus récemment arrivé au plus ancien, pagination par curseur"
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200": { description: "`{items: [Album], next_cursor}`, Album : `{id, title, type, secondary_types, release_date, year, genres, cover, available, added_at, track_count, duration, artist: {id, name}}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /albums/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Fiche album et ses pistes, par disque et numéro (absentes comprises, `available: false`)"
+      responses:
+        "200": { description: "Album et `tracks: [Piste]`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /albums/{id}/cover:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Pochette de l'album, téléchargée depuis Lidarr et mise en cache"
+      parameters:
+        - { name: size, in: query, schema: { type: string, enum: [small, medium, large], default: small } }
+      responses:
+        "200": { description: "Image" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+        "502": { description: "`lidarr_unavailable`" }
+  /tracks/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Piste, présente ou absente"
+      responses:
+        "200": { description: "Piste : `{id, title, disc, number, duration, explicit, available, album: {id, title, year, cover}, artist: {id, name}, format: {codec, container, bitrate, sample_rate, channels, bits}|null}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /genres:
+    get:
+      summary: "Genres portés par au moins un artiste ou un album présent"
+      responses:
+        "200": { description: "`{items: [{name, artist_count, album_count}]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /search:
+    get:
+      summary: "Recherche plein texte sans accents dans les artistes, albums et pistes présents"
+      description: "Mots entiers (`to_tsvector` avec `unaccent`) ou sous-chaîne (`LIKE` échappé), sans tenir compte des accents ni de la casse."
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 }, description: "par catégorie" }
+      responses:
+        "200": { description: "`{artists: [Artiste], albums: [Album], tracks: [Piste]}`" }
+        "400": { description: "`invalid` : recherche vide ou trop longue" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/status:
+    get:
+      summary: "État des synchronisations et de la bibliothèque"
+      responses:
+        "200": { description: "`{sync: [{source, succeeded_at, attempted_at, error}], running, configured: {lidarr, webhook}, library: {artists, albums, tracks, absent_tracks, files, rejected, size}}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/rejected:
+    get:
+      summary: "Fichiers écartés (nom seul et raison)"
+      description: "Raisons : `hors_medias`, `extension_interdite`, `double_extension`, `conteneur_incoherent`, `sans_flux_audio`, `nom_suspect`, `analyse_impossible`."
+      responses:
+        "200": { description: "`{items: [{name, reason, seen_at}]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/sync:
+    post:
+      summary: "Lance une synchronisation (relancée à la fin de celle en cours s'il y en a une)"
+      responses:
+        "202": { description: "`{started: true}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /webhooks/lidarr:
+    post:
+      summary: "Webhook de Lidarr : relance la synchronisation (sauf évènements Test, Grab, santé et mise à jour)"
+      description: "Jeton `SILLON_WEBHOOK_TOKEN` en mot de passe du Basic auth (nom libre), en `Authorization: Bearer` ou en `?token=…`."
+      security: []
+      responses:
+        "204": { description: "Reçu" }
+        "401": { description: "`unauthorized` : jeton absent ou faux" }
+        "404": { description: "`SILLON_WEBHOOK_TOKEN` vide : webhook coupé" }
