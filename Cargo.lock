@@ -3242,6 +3242,8 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "commun",
+ "futures-util",
+ "hmac",
  "reqwest",
  "serde",
  "serde_json",

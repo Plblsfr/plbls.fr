@@ -15,6 +15,12 @@ pub mod interne;
 pub mod lidarr;
 pub mod routes;
 
+pub mod flux;
+pub mod lecture;
+pub mod preferences;
+pub mod transcodage;
+pub mod volume;
+
 #[cfg(test)]
 mod tests_api;
 #[cfg(test)]
