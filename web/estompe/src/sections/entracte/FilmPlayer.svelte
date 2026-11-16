@@ -7,7 +7,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { AUDIO_PREFS, bufferedAhead, clock, IDLE_MS, fullTitle, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type CastState, type FilmDetail, type FilmTracks, type Range, type SubtitlePref } from './films'
+  import { AUDIO_PREFS, BUFFER_PREFS, bufferedAhead, clock, IDLE_MS, fullTitle, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type BufferPref, type CastState, type FilmDetail, type FilmTracks, type Range, type SubtitlePref } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -26,6 +26,7 @@
   let muted = $state(saved.muted)
   let audioPref = $state<AudioPref>(saved.audio)
   let subtitlePref = $state<SubtitlePref>(saved.subtitles)
+  let bufferPref = $state<BufferPref>(saved.buffer)
   let tracks = $state<FilmTracks | null>(null)
   let panel = $state(false)
   let picker = $state(false)
@@ -75,6 +76,12 @@
     subtitlePref = pref
     savePlayPrefs(store(), { subtitles: pref })
     if (tracks) applySubtitle(tracks.audioN)
+  }
+
+  const preferBuffer = (pref: BufferPref) => {
+    bufferPref = pref
+    savePlayPrefs(store(), { buffer: pref })
+    player?.setBuffer?.(pref)
   }
 
   const ACTIONS = {
@@ -172,6 +179,13 @@
             {#each SUBTITLE_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
           </select>
         </div>
+        <div class="film-pref">
+          <label for="film-pref-prechargement">Préchargement</label>
+          <select id="film-pref-prechargement" value={bufferPref} onchange={(e) => preferBuffer(e.currentTarget.value as BufferPref)}>
+            {#each BUFFER_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
+          </select>
+        </div>
+        <p class="film-pref-note">Garde la suite du film en mémoire sur cet appareil. Sans effet quand le fichier est lu tel quel : le navigateur décide alors seul.</p>
       </section>
     {/if}
   </div>

@@ -333,6 +333,7 @@ html[data-theater] .watch-voice .vbtn.off, html[data-theater] .watch-voice .vspl
 .film-track[aria-pressed='true'] { background: #5e2b40; color: #f1ece6; font-weight: 600; }
 .film-pref { display: flex; flex-direction: column; gap: 4px; padding: 4px 10px 8px; color: #d5cec6; font-size: 13px; }
 .film-pref select { min-height: 36px; padding: 0 8px; border: 1px solid rgb(255 255 255 / 18%); border-radius: var(--r-xs); background: #2a2623; color: #f1ece6; font: inherit; font-size: 14px; }
+.film-pref-note { margin: 0; padding: 0 10px 8px; color: #a9a097; font-size: 12px; line-height: 1.35; }
 .film-pref select:focus-visible { outline: 2px solid #f1ece6; outline-offset: 2px; }
 .film-player-bar { position: relative; z-index: 3; flex: none; display: flex; flex-direction: column; padding: 28px 14px calc(env(safe-area-inset-bottom) + 10px); background: linear-gradient(transparent, rgb(0 0 0 / 75%)); }
 .film-seek { width: 100%; }

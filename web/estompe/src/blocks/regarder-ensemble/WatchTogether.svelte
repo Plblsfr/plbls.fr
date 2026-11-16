@@ -9,7 +9,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { QUALITY_LABEL, seekTrack, trackName, type Quality } from '../../sections/entracte/films'
+  import { BUFFER_PREFS, playPrefs, QUALITY_LABEL, seekTrack, trackName, type BufferPref, type Quality } from '../../sections/entracte/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 
@@ -32,6 +32,7 @@
   const wake = () => { idle = false; clearTimeout(idleTimer); idleTimer = setTimeout(() => (idle = !!s?.playing && !host?.closest('.watch-player')?.matches(':focus-within')), 2500) }
   let vol = $state(100)
   let muted = $state(false)
+  let buffer = $state<BufferPref>(playPrefs((() => { try { return localStorage } catch { return null } })()).buffer)
   const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
 
@@ -137,6 +138,9 @@
                   {#each tracks.qualities as q (q)}<option value={q}>{QUALITY_LABEL[q]}</option>{/each}
                 </select>
               {/if}
+              <select class="watch-rate" value={buffer} onchange={(e) => { buffer = e.currentTarget.value as BufferPref; player?.setBuffer(buffer) }} aria-label="Préchargement" title="Préchargement sur cet appareil">
+                {#each BUFFER_PREFS as [v, nom] (v)}<option value={v}>Préchargement : {nom}</option>{/each}
+              </select>
             {/if}
             <select class="watch-rate" disabled={!canDrive} value={s.rate} onchange={(e) => player?.command({ action: 'rate', rate: Number(e.currentTarget.value) })} aria-label="Vitesse">
               {#each RATES as r (r)}<option value={r}>×{r}</option>{/each}

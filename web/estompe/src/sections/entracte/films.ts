@@ -85,11 +85,13 @@ export function saveQuality(store: Pick<Storage, 'setItem'> | null, q: Quality) 
 
 export type AudioPref = 'auto' | 'vf' | 'vff' | 'vfq' | 'en'
 export type SubtitlePref = 'none' | 'forced' | 'fr' | 'en'
-export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean }
+export type BufferPref = 'normal' | 'long' | 'all'
+export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean; buffer: BufferPref }
+export const BUFFER_PREFS: [BufferPref, string][] = [['normal', 'Normal (1 à 3 min)'], ['long', 'Long (15 min)'], ['all', 'Tout le film']]
 export const AUDIO_PREFS: [AudioPref, string][] = [['auto', 'Piste du fichier'], ['vf', 'Français (VF)'], ['vff', 'Français de France (VFF)'], ['vfq', 'Français du Québec (VFQ)'], ['en', 'Anglais']]
 export const SUBTITLE_PREFS: [SubtitlePref, string][] = [['none', 'Aucun'], ['forced', 'Forcés seulement'], ['fr', 'Français'], ['en', 'Anglais']]
 const PLAY_KEY = 'entracte.lecture'
-const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false }
+const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal' }
 
 export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
   let p: Partial<PlayPrefs> = {}
@@ -99,6 +101,7 @@ export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
     audio: AUDIO_PREFS.some(([id]) => id === p.audio) ? p.audio! : PLAY_DEFAULTS.audio,
     subtitles: SUBTITLE_PREFS.some(([id]) => id === p.subtitles) ? p.subtitles! : PLAY_DEFAULTS.subtitles,
     volume, muted: p.muted === true,
+    buffer: BUFFER_PREFS.some(([id]) => id === p.buffer) ? p.buffer! : PLAY_DEFAULTS.buffer,
   }
 }
 

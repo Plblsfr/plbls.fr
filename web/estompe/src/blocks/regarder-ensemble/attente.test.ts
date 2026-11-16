@@ -18,9 +18,8 @@ function setup(wait = true) {
     seek: (s) => { pl.calls.push('seek ' + s) }, time: () => 10, rate: () => 1, setRate() {},
     state: () => pl.st, ready: () => pl.ready, destroy() {},
   }
-  const io: Io & { wait: ReturnType<typeof vi.fn> } = {
-    server: () => ({ state, offset: 0 }), send: () => Promise.resolve(), ended: vi.fn(), ready: vi.fn(), refused: vi.fn(), log() {}, wait: vi.fn(),
-  }
+  const asked = vi.fn<() => void>()
+  const io = { server: () => ({ state, offset: 0 }), send: () => Promise.resolve(), ended: vi.fn(), ready: vi.fn<(r: boolean) => void>(), refused: vi.fn(), log() {}, wait: asked } satisfies Io
   const e = new SyncEngine(p, wait ? io : { ...io, wait: undefined })
   const push = (n: Partial<WatchState>) => { state = { ...state, ...n, at: new Date(Date.now()).toISOString() }; e.receive() }
   const pass = (ms: number) => { for (let i = 0; i < ms; i += 500) { vi.advanceTimersByTime(500); e.tick() } }

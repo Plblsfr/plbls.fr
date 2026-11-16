@@ -124,18 +124,18 @@ const memoire = (depart: Record<string, string> = {}) => {
 
 describe('préférences de lecture', () => {
   it('part des valeurs par défaut et ignore un contenu invalide', () => {
-    const defauts = { audio: 'auto', subtitles: 'none', volume: 100, muted: false }
+    const defauts = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal' }
     expect(playPrefs(null)).toEqual(defauts)
     expect(playPrefs(memoire({ 'entracte.lecture': 'pas du json' }))).toEqual(defauts)
-    expect(playPrefs(memoire({ 'entracte.lecture': '{"audio":"klingon","subtitles":7,"volume":"fort","muted":"oui"}' }))).toEqual(defauts)
+    expect(playPrefs(memoire({ 'entracte.lecture': '{"audio":"klingon","subtitles":7,"volume":"fort","muted":"oui","buffer":"infini"}' }))).toEqual(defauts)
     expect(playPrefs(memoire({ 'entracte.lecture': '{"volume":250}' })).volume).toBe(100)
   })
 
   it('garde le volume et les choix d’une lecture à l’autre', () => {
     const m = memoire()
     savePlayPrefs(m, { volume: 35, muted: true })
-    savePlayPrefs(m, { audio: 'vff', subtitles: 'forced' })
-    expect(playPrefs(m)).toEqual({ audio: 'vff', subtitles: 'forced', volume: 35, muted: true })
+    savePlayPrefs(m, { audio: 'vff', subtitles: 'forced', buffer: 'all' })
+    expect(playPrefs(m)).toEqual({ audio: 'vff', subtitles: 'forced', volume: 35, muted: true, buffer: 'all' })
   })
 })
 

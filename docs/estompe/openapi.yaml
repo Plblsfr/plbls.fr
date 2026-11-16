@@ -2009,7 +2009,8 @@ paths:
     post:
       tags: [vocal]
       summary: Indiquer que son lecteur est prêt ou en chargement
-      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ready], properties: {ready: {type: boolean}}}}}}
+      description: "`{ready: false, wait: true}` pendant la lecture d'un film : la séance est mise en pause pour tous (`act` vaut `wait`, la personne entre dans `waiting`) et reprend seule (`act` vaut `resume`) quand toutes les personnes attendues ont envoyé `ready: true` ou sont parties. Une lecture ou une pause demandée par l'hôte annule l'attente."
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [ready], properties: {ready: {type: boolean}, wait: {type: boolean}}}}}}
       responses: {"204": {description: ok}, "403": {description: not_in_voice}, "404": {description: no_watch}}
   /voice/{cid}/cinema/options:
     parameters: [{$ref: "#/components/parameters/ChannelId"}]
