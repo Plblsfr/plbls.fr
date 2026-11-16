@@ -4,6 +4,7 @@
   import { hrefs } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
+  import { medias } from '../../lib/medias'
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
@@ -116,7 +117,7 @@
       if (gone) return
       item = it
       const a = await providers.film(host!, {
-        onState: (s) => { st = s; if (s === 'playing') error = '' },
+        onState: (s) => { if (s === 'playing' && st !== 'playing' && st !== 'buffering') medias.demarre('film'); st = s; if (s === 'playing') error = '' },
         onError: (m) => { error = m },
         onTracks: (t) => { tracks = t },
         onCast: (s) => { cast = s },

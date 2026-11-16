@@ -35,7 +35,7 @@ aussi `postgres-net` (PostgreSQL partagé, `postgres-main`, une base par service
 `dokploy-network`). Le Redis partagé (`redis` : sessions du gateway, cache et invalidations d'aegis, persistance AOF dans `redis-data`) est
 seul sur son réseau `internal: true`, joint par `auth-gateway`, `aegis` et `estompe-api`, et exige `REDIS_PASSWORD` (`requirepass`).
 `entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses transcodages dans le volume `entracte-transcodage` ; `sillon-api` monte
-`SILLON_MEDIAS` (musique) en lecture seule.
+`SILLON_MEDIAS` (musique) en lecture seule et garde ses fichiers transcodés dans le volume `sillon-cache`.
 Les sauvegardes de `postgres-main` sont faites hors de cette stack.
 
 ### Variables
@@ -45,8 +45,8 @@ Trois sources, de la moins prioritaire à la plus prioritaire :
 1. **Défauts du code** (`config/default.toml` de security et aegis ; valeurs par défaut des autres).
 2. **[`plbls.env`](../plbls.env)** (racine du dépôt) : toutes les valeurs non secrètes de production, copiées dans chaque image au build
    (`/etc/plbls.env`, autre chemin par `PLBLS_ENV`). Format `CLE=valeur`, sans guillemets ni interpolation. Changer une valeur = une PR,
-   puis les images reconstruites par la CI. `estompe-web` en lit `API_URL`, `GATEWAY_URL`, `VOICE_URL`, `KEYCLOAK_ISSUER` et
-   `ENTRACTE_PUBLIC_URL` au démarrage.
+   puis les images reconstruites par la CI. `estompe-web` en lit `API_URL`, `GATEWAY_URL`, `VOICE_URL`, `KEYCLOAK_ISSUER`,
+   `ENTRACTE_PUBLIC_URL` et `SILLON_PUBLIC_URL` au démarrage.
 3. **Environnement du conteneur** : l'onglet Environment de la stack, qui contient [`.env.example`](.env.example) puis le `.env.example`
    de chaque projet, mis bout à bout. Dokploy l'écrit dans `.env` à côté du compose à chaque déploiement. Les backends Rust
    (`auth-gateway`, `aegis`, `entracte-api`, `sillon-api`, `estompe-api`) le chargent en entier (`env_file: .env`) ; les autres

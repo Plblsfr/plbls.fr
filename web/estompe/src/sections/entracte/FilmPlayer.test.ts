@@ -5,6 +5,7 @@ import { filmsApi } from '../../lib/api'
 import { providers, type Adapter, type Handlers } from '../../blocks/regarder-ensemble/providers'
 import { IDLE_MS, type FilmDetail } from './films'
 import FilmPlayer from './FilmPlayer.svelte'
+import { medias } from '../../lib/medias'
 
 const detail: FilmDetail = {
   id: 'f', kind: 'movie', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: null, episode: null,
@@ -277,5 +278,22 @@ describe('FilmPlayer : diffusion sur une télé', () => {
     await tick()
     expect(vue.getByRole('status').textContent).toContain('Diffusion sur un autre appareil')
     expect(vue.getByLabelText('Diffusion en cours, changer d’appareil').getAttribute('aria-pressed')).toBe('true')
+  })
+})
+
+describe('FilmPlayer : autres médias', () => {
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
+
+  it('le démarrage du film est annoncé une fois (la musique de Sillon se met en pause), pas à chaque reprise après mise en mémoire tampon', async () => {
+    const demarre = vi.spyOn(medias, 'demarre')
+    const { adapter, handlers } = monter()
+    await pret(adapter)
+    handlers().onState('playing')
+    handlers().onState('buffering')
+    handlers().onState('playing')
+    expect(demarre.mock.calls).toEqual([['film']])
+    handlers().onState('paused')
+    handlers().onState('playing')
+    expect(demarre.mock.calls).toEqual([['film'], ['film']])
   })
 })

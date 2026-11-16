@@ -1,6 +1,8 @@
 import { api, ApiError, API_URL, entracteApi, entracteOn, setUnauthorizedHandler } from './api'
 import type { EntracteMe } from '../sections/entracte/entracte'
 import { entracte } from '../sections/entracte/entracte.svelte'
+import { sillonApi, sillonOn, type SillonMe } from '../sections/sillon/sillon'
+import { lecteur } from '../sections/sillon/sillon.svelte'
 import { Realtime, wsUrl, type RealtimeEvent } from './realtime'
 import { platform } from './platform'
 import { prefs } from './prefs.svelte'
@@ -22,8 +24,8 @@ import { convKeyOf, channelKey, dmKey, defaultNotifySettings } from './types'
 import { sonde } from './sonde'
 import type { Capacites, Me, Status, NotifySettings, PermKey, Channel, ConvKey, DM, Mention, Message, NewPoll, Read, Server, ServerDetail, VoiceParticipant, WatchState, WatchView, SessionKind } from './types'
 
-/** `entracte` : la personne n'a qu'Entracte (sans messagerie) ; ni WebSocket ni appel aux routes de la messagerie. */
-export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'entracte' | 'error'
+/** `sections` : la personne n'a qu'Entracte ou Sillon (sans messagerie) ; ni WebSocket ni appel aux routes de la messagerie. */
+export type Phase = 'loading' | 'login' | 'denied' | 'admin' | 'activate' | 'ready' | 'sections' | 'error'
 
 export interface Conv {
   messages: Message[]
@@ -61,6 +63,8 @@ export class AppStore {
   cinemaOn = $state(false)
   /** Identité et permissions annoncées par Entracte (`null` : Entracte absent, injoignable ou sans session). */
   entracteMe = $state.raw<EntracteMe | null>(null)
+  sillonMe = $state.raw<SillonMe | null>(null)
+  musique = $state(false)
   servers = $state<Server[]>([])
   details = $state<Record<string, ServerDetail>>({})
   dms = $state<DM[]>([])
@@ -102,7 +106,7 @@ export class AppStore {
 
   constructor() {
     setUnauthorizedHandler(() => {
-      if (this.phase === 'ready' || this.phase === 'activate' || this.phase === 'entracte') this.sessionLost()
+      if (this.phase === 'ready' || this.phase === 'activate' || this.phase === 'sections') this.sessionLost()
       this.stopRealtime()
     })
     if (typeof window !== 'undefined') window.addEventListener('focus', () => this.current && this.markRead(this.current))
@@ -117,32 +121,49 @@ export class AppStore {
     return !!this.entracteMe?.permissions.access
   }
 
-  /** Section Entracte seule : pas de messagerie, pas de WebSocket ; l'app s'ouvre sur Entracte. */
-  private openEntracteOnly() {
-    this.movies = true
+  private async loadSillon(): Promise<boolean> {
+    if (!sillonOn()) { this.sillonMe = null; return false }
+    try { this.sillonMe = await sillonApi.me() } catch { this.sillonMe = null }
+    this.musique = !!this.sillonMe?.permissions.access
+    if (this.musique) void lecteur.chargerPreferences()
+    return this.musique
+  }
+
+  private async loadSections(): Promise<boolean> {
+    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon()])
+    return films || musique
+  }
+
+  private openSectionsOnly() {
+    this.movies = !!this.entracteMe?.permissions.access
     this.stopRealtime()
-    if (!location.hash.startsWith('#/films')) { history.replaceState(null, '', hrefs.films()); router.current = parseHash(hrefs.films()) }
-    this.phase = 'entracte'
-    void entracte.start()
+    const ici = (this.movies && location.hash.startsWith('#/films')) || (this.musique && location.hash.startsWith('#/musique'))
+    if (!ici) {
+      const cible = this.movies ? hrefs.films() : hrefs.musique()
+      history.replaceState(null, '', cible)
+      router.current = parseHash(cible)
+    }
+    this.phase = 'sections'
+    if (this.movies) void entracte.start()
   }
 
   async boot() {
     this.phase = 'loading'
-    const avecEntracte = this.loadEntracte()
+    const avecSections = this.loadSections()
     try {
       let me: Me
       try { me = await api.me() } catch (e) {
-        if (await avecEntracte) { this.openEntracteOnly(); return }
+        if (await avecSections) { this.openSectionsOnly(); return }
         throw e
       }
       this.rights = rightsOf(me)
       this.capacites = me.capabilities ?? null
       if (!me.allowed) {
-        if (await avecEntracte) { this.openEntracteOnly(); return }
+        if (await avecSections) { this.openSectionsOnly(); return }
         this.phase = this.adminSections.length ? 'admin' : 'denied'
         return
       }
-      await avecEntracte
+      await avecSections
       if (!me.activated) {
         this.phase = 'activate'
         return
@@ -275,6 +296,7 @@ export class AppStore {
   private sessionLost() {
     this.phase = 'login'
     entracte.stop()
+    lecteur.arreter()
     void voice.leave()
   }
 
