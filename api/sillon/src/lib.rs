@@ -15,8 +15,13 @@ pub mod interne;
 pub mod lidarr;
 pub mod routes;
 
+pub mod file;
 pub mod flux;
+pub mod historique;
 pub mod lecture;
+pub mod likes;
+pub mod ordre;
+pub mod playlists;
 pub mod preferences;
 pub mod transcodage;
 pub mod volume;

@@ -189,6 +189,357 @@ paths:
         "204": { description: "Reçu" }
         "401": { description: "`unauthorized` : jeton absent ou faux" }
         "404": { description: "`SILLON_WEBHOOK_TOKEN` vide : webhook coupé" }
+  /playlists:
+    get:
+      summary: "Playlists de la personne, de la plus récemment modifiée à la plus ancienne"
+      responses:
+        "200": { description: "`{items: [Playlist]}`, Playlist : `{id, name, description, track_count, duration, cover_albums: [uuid] (quatre premiers albums avec pochette, dans l'ordre de la playlist), created_at, updated_at}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+    post:
+      summary: "Crée une playlist privée"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                description: { type: string, maxLength: 1000 }
+      responses:
+        "201": { description: "Playlist et `items: []`" }
+        "400": { description: "`invalid` : nom vide ou trop long, description trop longue" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "422": { description: "`limit_reached` : 500 playlists au plus" }
+  /playlists/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: "Playlist et ses éléments, dans l'ordre (pistes absentes comprises, `available: false`)"
+      responses:
+        "200": { description: "Playlist et `items: [{id, position, added_at, track: Piste}]` ; `id` désigne l'élément (une même piste peut y être deux fois)" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : inconnue ou playlist d'une autre personne" }
+    patch:
+      summary: "Renomme ou décrit la playlist"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                description: { type: string, maxLength: 1000 }
+      responses:
+        "200": { description: "Playlist et ses éléments" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+    delete:
+      summary: "Supprime la playlist"
+      responses:
+        "204": { description: "Supprimée" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /playlists/{id}/tracks:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: "Ajoute à la fin des pistes, un album, un artiste ou une autre playlist (un seul contenu)"
+      description: "Les pistes déjà présentes (ou répétées dans l'ajout) sont des doublons : écartées et signalées dans `duplicates`, ajoutées quand même avec `allow_duplicates: true`."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tracks: { type: array, maxItems: 10000, items: { type: string, format: uuid } }
+                album: { type: string, format: uuid }
+                artist: { type: string, format: uuid, description: "pistes présentes de l'artiste" }
+                playlist: { type: string, format: uuid, description: "playlist de la même personne" }
+                allow_duplicates: { type: boolean, default: false }
+      responses:
+        "200": { description: "Playlist, ses éléments, `added` (nombre) et `duplicates: [uuid]` (pistes en double)" }
+        "400": { description: "`invalid` : aucun ou plusieurs contenus, identifiant invalide, piste inconnue" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : playlist, album, artiste ou playlist source inconnus" }
+        "422": { description: "`limit_reached` : 10 000 pistes par playlist au plus" }
+  /playlists/{id}/tracks/{item}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: item, in: path, required: true, schema: { type: string, format: uuid }, description: "identifiant de l'élément" }
+    delete:
+      summary: "Retire un élément ; les positions suivantes se resserrent"
+      responses:
+        "200": { description: "Playlist et ses éléments" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /playlists/{id}/move:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: "Déplace une plage d'éléments : `count` éléments depuis la position `from`, placés à la position `to` de la liste obtenue"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: integer, minimum: 0 }
+                count: { type: integer, minimum: 1, default: 1 }
+                to: { type: integer, minimum: 0 }
+      responses:
+        "200": { description: "Playlist et ses éléments (positions 0 à n-1, sans trou ni doublon)" }
+        "400": { description: "`invalid` : plage hors de la playlist" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+  /likes:
+    get:
+      summary: "Identifiants likés, du plus récent au plus ancien"
+      responses:
+        "200": { description: "`{tracks: [uuid], albums: [uuid], artists: [uuid]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /likes/{kind}:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [tracks, albums, artists] } }
+    get:
+      summary: "Likes d'un type ; « Titres likés » (`tracks`) se lit comme une playlist"
+      responses:
+        "200": { description: "`tracks` : `{name, track_count, duration, cover_albums, items: [{liked_at, track: Piste}]}` ; `albums` : `{items: [Album et liked_at]}` ; `artists` : `{items: [Artiste et liked_at]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : type inconnu" }
+  /likes/{kind}/{id}:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [tracks, albums, artists] } }
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      summary: "Like une piste, un album ou un artiste (idempotent)"
+      responses:
+        "204": { description: "Liké" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : type ou cible inconnus" }
+        "422": { description: "`limit_reached` : 50 000 likes par type au plus" }
+    delete:
+      summary: "Retire le like (idempotent)"
+      responses:
+        "204": { description: "Retiré" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : type inconnu" }
+  /queue:
+    get:
+      summary: "File de lecture de la personne, la même sur tous ses appareils"
+      description: |
+        File : `{revision, source: {type, id, name}|null, index, position, shuffle, repeat, suggestions, seed, updated_at,
+        items: [{id, suggested, track: Piste}]}`. `items` est dans l'ordre de lecture (mélangé si `shuffle`), `index` désigne l'élément
+        courant, `position` la position en secondes dans la piste. `repeat` : `off`, `all`, `one`. `suggestions` : `off`, `light`,
+        `frequent` (gardé, sans effet pour l'instant) ; `suggested` : élément suggéré hors de la source (toujours faux pour l'instant) ;
+        `seed` : graine du mélange. Une piste absente reste dans la file (`available: false`) ; le client la passe. Sans file : révision 0, `items` vide.
+      responses:
+        "200": { description: "File" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+    put:
+      summary: "Remplace la file (nouvelle lecture d'une source)"
+      description: |
+        Toute écriture sur la file porte `revision`, celle de la dernière file reçue : si elle a changé entre-temps, 409 `conflict` avec
+        la file courante dans `queue`, rien n'est écrit. Pistes : `tracks` (obligatoire pour une source `search`), sinon celles de la source
+        (`album` : toutes, par disque et numéro ; `artist` : pistes présentes ; `playlist` : ses éléments ; `likes` : « Titres likés »).
+        `index` : piste de départ dans l'ordre de la source. `shuffle`, `repeat` et `suggestions` gardent leur valeur s'ils sont omis ;
+        en aléatoire, la piste de départ passe en tête et le reste est mélangé.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision: { type: integer }
+                source:
+                  type: object
+                  properties:
+                    type: { type: string, enum: [album, playlist, artist, likes, search] }
+                    id: { type: string, format: uuid }
+                    query: { type: string, maxLength: 100, description: "texte de la recherche (source `search`)" }
+                tracks: { type: array, maxItems: 10000, items: { type: string, format: uuid } }
+                index: { type: integer, minimum: 0, default: 0 }
+                position: { type: number, minimum: 0, maximum: 86400, default: 0 }
+                shuffle: { type: boolean }
+                repeat: { type: string, enum: [off, all, one] }
+                suggestions: { type: string, enum: [off, light, frequent] }
+      responses:
+        "200": { description: "File" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : source inconnue (ou playlist d'une autre personne)" }
+        "409": { description: "`conflict` : révision périmée, file courante dans `queue`" }
+        "422": { description: "`limit_reached` : 10 000 pistes dans la file au plus" }
+    patch:
+      summary: "Position, piste courante et modes ; envoyé à intervalle pendant la lecture et à chaque changement de piste"
+      description: |
+        `index` change de piste (position remise à 0 sauf si `position` est donnée). `step` (1 ou -1) passe à la piste disponible
+        suivante ou précédente en sautant les absentes, en bouclant si `repeat` n'est pas `off` ; 422 `end_of_queue` s'il n'y en a pas.
+        `shuffle: true` mélange (nouvelle graine, piste courante en tête), `false` rend l'ordre de la source en gardant la piste courante.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision: { type: integer }
+                index: { type: integer, minimum: 0 }
+                position: { type: number, minimum: 0, maximum: 86400 }
+                step: { type: integer, enum: [-1, 1] }
+                shuffle: { type: boolean }
+                repeat: { type: string, enum: [off, all, one] }
+                suggestions: { type: string, enum: [off, light, frequent] }
+      responses:
+        "200": { description: "File" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`conflict`" }
+        "422": { description: "`end_of_queue`" }
+  /queue/tracks:
+    post:
+      summary: "« Lire ensuite » (`mode: next`, juste après la piste courante) ou « ajouter à la file » (`mode: end`, à la fin)"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision: { type: integer }
+                mode: { type: string, enum: [next, end], default: end }
+                tracks: { type: array, maxItems: 10000, items: { type: string, format: uuid } }
+                album: { type: string, format: uuid }
+                artist: { type: string, format: uuid }
+                playlist: { type: string, format: uuid }
+      responses:
+        "200": { description: "File" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`conflict`" }
+        "422": { description: "`limit_reached`" }
+  /queue/remove:
+    post:
+      summary: "Retire des éléments de la file"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, items]
+              properties:
+                revision: { type: integer }
+                items: { type: array, items: { type: string, format: uuid } }
+      responses:
+        "200": { description: "File" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`conflict`" }
+  /queue/move:
+    post:
+      summary: "Déplace une plage d'éléments de la file (comme `/playlists/{id}/move`) ; la piste courante reste la même"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, from, to]
+              properties:
+                revision: { type: integer }
+                from: { type: integer, minimum: 0 }
+                count: { type: integer, minimum: 1, default: 1 }
+                to: { type: integer, minimum: 0 }
+      responses:
+        "200": { description: "File" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "409": { description: "`conflict`" }
+  /history:
+    get:
+      summary: "Écoutes récentes, de la plus récente à la plus ancienne, pagination par curseur"
+      parameters:
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200": { description: "`{items: [{id, track: Piste, started_at, played, ended, counted, source: {type, id}|null, suggested}], next_cursor}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+    post:
+      summary: "Enregistre une lecture, à la fin de chacune"
+      description: |
+        `ended` : `completed` si `ended_by` vaut `end` ou si la lecture atteint la fin de la piste (à 1 s près), sinon `skipped`
+        (`ended_by: skip`, sortie avant la fin vers une autre piste) ou `interrupted` (`ended_by: stop`). `counted` : écoute qui compte
+        (30 s au moins ou la moitié de la piste). `item` : élément de la file lu, d'où vient `suggested`. `id` (facultatif, choisi par le
+        client) rend l'envoi idempotent.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track, played, ended_by]
+              properties:
+                id: { type: string, format: uuid }
+                track: { type: string, format: uuid }
+                played: { type: number, minimum: 0, description: "secondes écoutées, au plus la durée de la piste (+5 %, +5 s)" }
+                ended_by: { type: string, enum: [end, skip, stop] }
+                started_at: { type: string, format: date-time, description: "30 jours au plus dans le passé ; par défaut maintenant moins `played`" }
+                source:
+                  type: object
+                  properties:
+                    type: { type: string, enum: [album, playlist, artist, likes, search] }
+                    id: { type: string, format: uuid }
+                item: { type: string, format: uuid }
+      responses:
+        "201": { description: "`{id, ended, counted, suggested}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : piste inconnue" }
+  /history/top/tracks:
+    get:
+      summary: "Pistes les plus écoutées (écoutes qui comptent) sur la période"
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [week, month, year, all], default: month } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: "`{items: [{track: Piste, plays}]}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /history/top/artists:
+    get:
+      summary: "Artistes les plus écoutés (écoutes qui comptent) sur la période"
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [week, month, year, all], default: month } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200": { description: "`{items: [{artist: Artiste, plays}]}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
   /tracks/{id}/playback:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

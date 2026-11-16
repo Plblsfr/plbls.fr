@@ -359,7 +359,7 @@ async fn sante_disponibilite_et_migrations() {
     assert_eq!(r.json()["error"], "not_ready");
 }
 
-const LIDARR: i64 = 987_000;
+pub(crate) const LIDARR: i64 = 987_000;
 
 pub(crate) fn ffmpeg_present() -> bool {
     ["ffmpeg", "ffprobe"].iter().all(|o| {
@@ -388,11 +388,11 @@ pub(crate) const MP3: &[&str] = &["-c:a", "libmp3lame", "-b:a", "128k"];
 const OPUS: &[&str] = &["-c:a", "libopus", "-b:a", "64k"];
 
 #[derive(Default)]
-struct Monde {
+pub(crate) struct Monde {
     artistes: Vec<Value>,
     albums: Vec<Value>,
-    pistes: Vec<Value>,
-    fichiers: Vec<Value>,
+    pub(crate) pistes: Vec<Value>,
+    pub(crate) fichiers: Vec<Value>,
     en_panne: bool,
 }
 
@@ -554,7 +554,7 @@ fn reponse_lidarr(r: &Requete, m: &Mutex<Monde>) -> (u16, Vec<(&'static str, Str
 pub(crate) struct Bibliotheque {
     pub(crate) e: Env,
     lidarr: Faux,
-    monde: Arc<Mutex<Monde>>,
+    pub(crate) monde: Arc<Mutex<Monde>>,
     pub(crate) medias: tempfile::TempDir,
     _dehors: tempfile::TempDir,
 }

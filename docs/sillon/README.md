@@ -2,7 +2,8 @@
 
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
-par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr) et la lecture audio.
+par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
+la lecture audio, les playlists, les likes, la file de lecture et l'historique.
 
 | Où | Quoi |
 |---|---|
@@ -92,6 +93,35 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
   autres pistes de l'album en tâche de fond, gardés en base (table `mesures`, par piste et `contenu_le` du fichier : un fichier remplacé
   est remesuré). La réponse donne les gains piste et album (dB) pour atteindre -18 LUFS et les pics ; le client applique. Gain d'album :
   moyenne énergétique, pondérée par la durée, des pistes déjà mesurées de l'album.
+
+## Playlists, likes, file de lecture et historique
+
+Tout est privé et propre à la personne (`sub` du gateway), sous `sillon:access` ; la playlist, la file ou l'élément d'une autre personne
+répond 404. Une piste retirée du catalogue n'est jamais supprimée (elle passe absente) : elle reste dans les playlists, la file, les likes
+et l'historique, avec `available: false`.
+
+- **Playlists** (`/playlists`) : créer, renommer, décrire, supprimer ; ajouter à la fin des pistes, un album, les pistes présentes d'un
+  artiste ou une autre playlist de la personne (copie) ; retirer un élément ; déplacer une plage (`from`, `count`, `to`). Chaque élément a
+  son identifiant (une piste peut y être plusieurs fois) et sa position, de 0 à n-1 sans trou ni doublon : chaque modification verrouille
+  la playlist, les appels simultanés passent l'un après l'autre. Doublons : écartés et signalés (`duplicates`), ajoutés avec
+  `allow_duplicates: true`. Pochette : `cover_albums`, les quatre premiers albums (avec pochette) dans l'ordre de la playlist, que le
+  client compose à partir de `/albums/{id}/cover`. Plafonds : 500 playlists par personne, 10 000 pistes par playlist, nom de 1 à 100
+  caractères, description de 1 000 ; dépassement : 422 `limit_reached` (ou 400 `invalid` pour une longueur), avec un message lisible.
+- **Likes** (`/likes`) : piste, album ou artiste (`PUT` et `DELETE /likes/{tracks|albums|artists}/{id}`, idempotents ; 50 000 par type).
+  `GET /likes` donne les identifiants, `GET /likes/tracks` « Titres likés » sous la forme d'une playlist (du plus récent au plus ancien).
+- **File de lecture** (`/queue`) : une par personne, en base, rendue à l'identique sur tous ses appareils : source (`album`, `playlist`,
+  `artist`, `likes`, `search`), éléments dans l'ordre de lecture, index courant, position dans la piste, aléatoire, répétition (`off`,
+  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`, gardé sans effet pour l'instant), graine du mélange (`seed`) et, par
+  élément, `suggested` (toujours faux pour l'instant). « Lire ensuite » insère après la piste courante, « ajouter à la file » à la fin.
+  Chaque écriture porte la `revision` de la dernière file reçue : si un autre appareil a écrit entre-temps, 409 `conflict` avec la file
+  courante (`queue`), rien n'est écrit ; le client recommence sur cet état. Le client envoie sa position (`PATCH /queue`) à intervalle et
+  à chaque changement de piste ; `step` passe à la piste disponible suivante ou précédente en sautant les absentes. Aléatoire : la piste
+  courante passe en tête, le reste est mélangé par `ordre::melanger` (mélange uniforme, déterministe pour une graine) ; le désactiver rend
+  l'ordre de la source. 10 000 éléments au plus.
+- **Historique** (`/history`) : le client envoie une écoute à la fin de chaque lecture (piste, secondes écoutées, `ended_by`, source,
+  élément de la file). Fin : `completed` (fin atteinte), `skipped` (sortie avant la fin vers une autre piste) ou `interrupted` (arrêt).
+  Une écoute compte (`counted`) au-delà de 30 s ou de la moitié de la piste ; seules celles-là entrent dans les pistes et artistes les
+  plus écoutés (`/history/top/tracks`, `/history/top/artists`, période `week`, `month`, `year` ou `all`). Écoutes récentes paginées par curseur.
 
 ## Variables
 
