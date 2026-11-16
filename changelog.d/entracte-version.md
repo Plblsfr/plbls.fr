@@ -1,1 +1,0 @@
-- [x] Entracte : version 0.2.2. `Cargo.toml` et `Cargo.lock` passent à 0.2.2, la livraison refusant un tag dont la version diffère de celle du `Cargo.toml` (le tag `entracte-v0.2.1` pointait une version 0.2.0 et n'a rien livré). Non fait : retrait du tag `entracte-v0.2.1`. Non vérifié : construction de l'image au tag `entracte-v0.2.2`.
