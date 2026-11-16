@@ -135,6 +135,15 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             Garde::Public(_) => {
                 assert!(appel(None).await.statut.is_success(), "{m} {chemin}");
             }
+            Garde::Service(_) => {
+                for qui in [None, Some("admin"), Some("jeton-faux")] {
+                    assert_eq!(
+                        appel(qui).await.statut,
+                        StatusCode::UNAUTHORIZED,
+                        "{m} {chemin} pour {qui:?}"
+                    );
+                }
+            }
             Garde::Jeton(_) => {
                 for qui in [None, Some("admin")] {
                     let r = appel(qui).await;
@@ -1220,4 +1229,110 @@ async fn albums_jamais_ecoutes_tries_par_taille() {
             .statut,
         StatusCode::FORBIDDEN
     );
+}
+
+#[tokio::test]
+async fn apercu_interne_reserve_au_jeton_de_service_et_a_sillon_access() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    let album = b.album("Lemonade").await;
+    let (album_id, artiste_id) = (
+        album["id"].as_str().unwrap().to_string(),
+        album["artist"]["id"].as_str().unwrap().to_string(),
+    );
+    let piste_id = piste(&album, "Formation")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let apercu = |jeton: &'static str, requete: String| {
+        let e = &b.e;
+        async move {
+            e.appel_avec(
+                None,
+                "GET",
+                &format!("/internal/preview?{requete}"),
+                None,
+                &[("authorization", jeton)],
+            )
+            .await
+        }
+    };
+    let ok = "Bearer jeton-service";
+    let r = apercu(ok, format!("type=album&id={album_id}&sub=sub-alice")).await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let pochette = if album["cover"] == true {
+        json!({"kind": "album", "id": album_id})
+    } else {
+        Value::Null
+    };
+    assert_eq!(
+        r.json(),
+        json!({"type": "album", "id": album_id, "title": "Lemonade", "artist": album["artist"]["name"], "cover": pochette})
+    );
+    b.sans_fuite(&r.texte(), "aperçu d'album");
+    let r = apercu(ok, format!("type=track&id={piste_id}&sub=sub-alice")).await;
+    assert_eq!(r.json()["title"], "Formation");
+    assert_eq!(r.json()["cover"], pochette);
+    let r = apercu(ok, format!("type=artist&id={artiste_id}&sub=sub-alice")).await;
+    assert_eq!(r.json()["type"], "artist");
+    assert_eq!(r.json()["title"], album["artist"]["name"]);
+    for qui in ["sub-personne", "sub-inconnu"] {
+        let r = apercu(ok, format!("type=album&id={album_id}&sub={qui}")).await;
+        assert_eq!(r.statut, StatusCode::FORBIDDEN, "{qui}");
+        assert!(!r.texte().contains("Lemonade"));
+    }
+    for jeton in ["", "Bearer faux", "Bearer jeton-webhook"] {
+        let r = apercu(jeton, format!("type=album&id={album_id}&sub=sub-alice")).await;
+        assert_eq!(r.statut, StatusCode::UNAUTHORIZED, "{jeton}");
+    }
+    let liste =
+        b.e.appel(
+            Some("alice"),
+            "POST",
+            "/playlists",
+            Some(json!({"name": "Secrète"})),
+        )
+        .await
+        .json()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    let existante = apercu(ok, format!("type=playlist&id={liste}&sub=sub-alice")).await;
+    let absente = apercu(
+        ok,
+        "type=playlist&id=00000000-0000-0000-0000-000000000009&sub=sub-alice".into(),
+    )
+    .await;
+    assert_eq!(existante.statut, StatusCode::NOT_FOUND);
+    assert_eq!(
+        (existante.statut, existante.corps.clone()),
+        (absente.statut, absente.corps)
+    );
+    assert!(!existante.texte().contains("Secrète"));
+    let r = apercu(
+        ok,
+        "type=album&id=00000000-0000-0000-0000-000000000009&sub=sub-alice".into(),
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::NOT_FOUND);
+    for requete in [
+        format!("type=genre&id={album_id}&sub=sub-alice"),
+        format!("type=album&id={album_id}"),
+    ] {
+        let r = apercu(ok, requete.clone()).await;
+        assert_eq!(r.statut, StatusCode::BAD_REQUEST, "{requete}");
+    }
+    let sans = env_avec(|c| c.jeton_service = String::new()).await.unwrap();
+    let r = sans
+        .appel_avec(
+            None,
+            "GET",
+            "/internal/preview?type=album&id=x&sub=sub-alice",
+            None,
+            &[("authorization", "Bearer ")],
+        )
+        .await;
+    assert_eq!(r.statut, StatusCode::NOT_FOUND);
 }

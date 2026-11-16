@@ -20,13 +20,18 @@ pub enum Garde {
     Webhook(&'static str),
     Public(&'static str),
     Jeton(&'static str),
+    Service(&'static str),
 }
 
 impl Garde {
     pub fn motif(self) -> Option<&'static str> {
         match self {
             Garde::Droit(_) => None,
-            Garde::Session(m) | Garde::Webhook(m) | Garde::Public(m) | Garde::Jeton(m) => Some(m),
+            Garde::Session(m)
+            | Garde::Webhook(m)
+            | Garde::Public(m)
+            | Garde::Jeton(m)
+            | Garde::Service(m) => Some(m),
         }
     }
 }
@@ -107,6 +112,14 @@ pub async fn personne(
     Ok(Personne { identite, droits })
 }
 
+fn bearer(entetes: &HeaderMap) -> &str {
+    entetes
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default()
+}
+
 fn parametre(req: &Request, nom: &str) -> String {
     req.uri()
         .query()
@@ -173,6 +186,19 @@ pub async fn garder(
                     StatusCode::UNAUTHORIZED,
                     "unauthorized",
                     "jeton de webhook attendu",
+                );
+            }
+        }
+        Garde::Service(_) => {
+            let attendu = &state.config().jeton_service;
+            if attendu.is_empty() {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            if !jetons_egaux(attendu, bearer(req.headers())) {
+                return erreur(
+                    StatusCode::UNAUTHORIZED,
+                    "unauthorized",
+                    "jeton de service attendu",
                 );
             }
         }

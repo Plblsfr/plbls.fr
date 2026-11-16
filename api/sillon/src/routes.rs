@@ -70,6 +70,14 @@ pub fn table() -> Vec<Entree> {
         ),
         entree(
             Method::GET,
+            "/internal/preview",
+            Garde::Service(
+                "appel de serveur à serveur d'Estompe (carte de lien), jeton SILLON_SERVICE_TOKEN, sillon:access de sub vérifié",
+            ),
+            get(interne::apercu),
+        ),
+        entree(
+            Method::GET,
             "/artists",
             Garde::Droit(Droit::Acces),
             get(bibliotheque::artistes),
