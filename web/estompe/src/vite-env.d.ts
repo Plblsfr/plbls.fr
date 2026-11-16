@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_KEYCLOAK_ISSUER?: string
   /** URL de l'API d'Entracte (ex. https://entracte-api.plbls.fr) ; vide = pas de section Entracte. */
   readonly VITE_ENTRACTE_URL?: string
+  readonly VITE_SILLON_URL?: string
 }
 
 declare module 'virtual:pwa-register' {

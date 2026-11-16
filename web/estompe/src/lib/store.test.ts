@@ -11,6 +11,12 @@ vi.mock('./api', () => ({
   entracteOn: () => entracteMock.on,
   entracteApi: { me: vi.fn(async () => { if (!entracteMock.me) throw new Error('sans session'); return entracteMock.me }), fcmSubscribe: vi.fn(async () => {}), pushSubscribe: vi.fn(async () => {}), notifications: vi.fn(async () => ({ items: [], last_id: 0 })) },
 }))
+const sillonMock = vi.hoisted(() => ({ on: false, me: null as null | { sub: string; name: string; email: string; permissions: { access: boolean; add: boolean; admin: boolean }; sections: string[] } }))
+vi.mock('../sections/sillon/sillon', async (orig) => ({
+  ...(await orig<typeof import('../sections/sillon/sillon')>()),
+  sillonOn: () => sillonMock.on,
+  sillonApi: { me: vi.fn(async () => { if (!sillonMock.me) throw new Error('sans session'); return sillonMock.me }), preferences: vi.fn(async () => ({ quality: 'haute', qualities: [] })) },
+}))
 vi.mock('./realtime', () => ({ Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
 import { AppStore } from './store.svelte'
@@ -100,7 +106,7 @@ describe('sections selon les permissions (Entracte)', () => {
 
   it('Entracte seul : section Entracte, sans messagerie ni appel à ses routes', async () => {
     await boot({ activated: false, allowed: false, admin: false, rights: [] }, droits(true))
-    expect(s.phase).toBe('entracte')
+    expect(s.phase).toBe('sections')
     expect(s.movies).toBe(true)
     expect(api.servers).not.toHaveBeenCalled()
     expect(location.hash).toBe('#/films')
@@ -125,9 +131,54 @@ describe('sections selon les permissions (Entracte)', () => {
   })
   it('Entracte joignable quand Estompe refuse la session : section Entracte ; sinon connexion', async () => {
     await boot('refus', droits(true))
-    expect(s.phase).toBe('entracte')
+    expect(s.phase).toBe('sections')
     await boot('refus', null)
     expect(s.phase).toBe('login')
+  })
+})
+
+describe('sections selon les permissions (Sillon)', () => {
+  const sillon = (access: boolean) => ({ sub: 'kc-me', name: 'moi', email: '', permissions: { access, add: false, admin: false }, sections: access ? ['library'] : [] })
+  const boot = async (me: Record<string, unknown>, s1: ReturnType<typeof sillon> | null, films: boolean | null = null) => {
+    sillonMock.on = true
+    sillonMock.me = s1
+    entracteMock.on = films !== null
+    entracteMock.me = films === null ? null : { sub: 'kc-me', name: 'moi', email: '', permissions: { access: films, request: false, admin: false }, push: { web: false, fcm: false } }
+    Object.assign(api, { me: vi.fn(async () => me) })
+    vi.mocked(api.servers).mockClear()
+    history.replaceState(null, '', '#/')
+    await s.boot().catch(() => {})
+  }
+  const refus = { activated: false, allowed: false, admin: false, rights: [] }
+  afterEach(() => { sillonMock.on = false; sillonMock.me = null; entracteMock.on = false; entracteMock.me = null })
+
+  it('Sillon seul : la section Sillon s’ouvre directement, sans messagerie', async () => {
+    await boot(refus, sillon(true))
+    expect(s.phase).toBe('sections')
+    expect(s.musique).toBe(true)
+    expect(s.movies).toBe(false)
+    expect(location.hash).toBe('#/musique')
+    expect(api.servers).not.toHaveBeenCalled()
+  })
+  it('Sillon et Entracte sans messagerie : les deux sections, Entracte d’abord', async () => {
+    await boot(refus, sillon(true), true)
+    expect(s.phase).toBe('sections')
+    expect(s.musique && s.movies).toBe(true)
+    expect(location.hash).toBe('#/films')
+  })
+  it('Estompe et Sillon : messagerie avec la section Sillon ; sans sillon:access, pas de section', async () => {
+    const estompe = { activated: true, allowed: true, id: 'me', pseudo: 'moi', blocks: [] }
+    await boot(estompe, sillon(true))
+    expect(s.phase).toBe('ready')
+    expect(s.musique).toBe(true)
+    await boot(estompe, sillon(false))
+    expect(s.phase).toBe('ready')
+    expect(s.musique).toBe(false)
+    expect(s.sillonMe?.permissions.access).toBe(false)
+  })
+  it('Sillon sans sillon:access et sans messagerie : page « aucun accès »', async () => {
+    await boot(refus, sillon(false))
+    expect(s.phase).toBe('denied')
   })
 })
 

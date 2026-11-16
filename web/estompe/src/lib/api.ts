@@ -87,7 +87,7 @@ async function call(base: string, method: string, path: string, body?: unknown):
   return res
 }
 
-async function requestAt<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
+export async function requestAt<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
   const res = await call(base, method, path, body)
   if (res.status === 204) return undefined as T
   const ct = res.headers.get('Content-Type') ?? ''
@@ -102,7 +102,7 @@ const putImage = (path: string, img: Blob) => requestAt<void>(API_URL, 'PUT', pa
 /** Télécharge une image avec l'authentification. */
 const blobAt = async (base: string, path: string) => (await call(base, 'GET', path)).blob()
 /** Télécharge une image avec l'authentification et la rend en URL locale. */
-const imageAt = async (base: string, path: string) => URL.createObjectURL(await blobAt(base, path))
+export const imageAt = async (base: string, path: string) => URL.createObjectURL(await blobAt(base, path))
 const imageUrl = (path: string) => imageAt(API_URL, path)
 
 const enc = encodeURIComponent
