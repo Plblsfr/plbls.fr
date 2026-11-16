@@ -15,6 +15,10 @@ pub mod interne;
 pub mod lidarr;
 pub mod routes;
 
+pub mod admin_ajouts;
+pub mod ajouts;
+pub mod quota;
+
 #[cfg(test)]
 mod tests_api;
 #[cfg(test)]

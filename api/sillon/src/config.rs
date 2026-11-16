@@ -30,6 +30,7 @@ pub struct Config {
     pub medias: PathBuf,
     pub periode_synchro: Duration,
     pub ffprobe: String,
+    pub ajouts: crate::quota::Reglages,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -124,6 +125,7 @@ impl Config {
             medias: PathBuf::from(env("SILLON_MEDIAS").unwrap_or_else(|| "/srv/musique".into())),
             periode_synchro: Duration::from_secs(minutes * 60),
             ffprobe: env("SILLON_FFPROBE").unwrap_or_else(|| "ffprobe".into()),
+            ajouts: crate::quota::Reglages::from_env(&env)?,
         })
     }
 
