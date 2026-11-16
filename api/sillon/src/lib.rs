@@ -21,6 +21,8 @@ pub mod preferences;
 pub mod transcodage;
 pub mod volume;
 
+pub mod analyse;
+
 #[cfg(test)]
 mod tests_api;
 #[cfg(test)]

@@ -35,6 +35,7 @@ pub struct Config {
     pub cache: PathBuf,
     pub cache_max_octets: u64,
     pub max_transcodages: usize,
+    pub analyse_parallele: usize,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -151,6 +152,11 @@ impl Config {
             cache: PathBuf::from(env("SILLON_CACHE").unwrap_or_else(|| "/tmp/sillon".into())),
             cache_max_octets: cache_go.saturating_mul(1 << 30),
             max_transcodages,
+            analyse_parallele: nombre(
+                "SILLON_ANALYSE_PARALLELE",
+                env("SILLON_ANALYSE_PARALLELE"),
+                1,
+            )?,
         })
     }
 
@@ -200,6 +206,7 @@ mod tests {
         assert_eq!(c.cache, Path::new("/tmp/sillon"));
         assert_eq!(c.cache_max_octets, 10 << 30);
         assert_eq!(c.max_transcodages, 2);
+        assert_eq!(c.analyse_parallele, 1);
     }
 
     #[test]
@@ -230,6 +237,20 @@ mod tests {
                 "{faux:?}"
             );
         }
+    }
+
+    #[test]
+    fn variables_d_analyse() {
+        let base = ("DATABASE_URL", "postgres://x");
+        let c = charge(&[base, ("SILLON_ANALYSE_PARALLELE", "3")]).unwrap();
+        assert_eq!(c.analyse_parallele, 3);
+        let c = charge(&[base, ("SILLON_ANALYSE_PARALLELE", "0")]).unwrap();
+        assert_eq!(c.analyse_parallele, 0);
+        assert!(
+            charge(&[base, ("SILLON_ANALYSE_PARALLELE", "-1")])
+                .unwrap_err()
+                .contains("SILLON_ANALYSE_PARALLELE")
+        );
     }
 
     #[test]

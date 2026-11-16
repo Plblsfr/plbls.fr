@@ -16,6 +16,8 @@ use crate::{
 
 use crate::{lecture, preferences};
 
+use crate::analyse;
+
 const FLUX: Garde = Garde::Jeton(
     "jeton de flux signé, lié à la personne et à la piste, droits vérifiés à chaque requête",
 );
@@ -164,6 +166,18 @@ pub fn table() -> Vec<Entree> {
             "/preferences",
             Garde::Droit(Droit::Acces),
             put(preferences::ecrire),
+        ),
+        entree(
+            Method::GET,
+            "/admin/analysis",
+            Garde::Droit(Droit::Admin),
+            get(analyse::etat),
+        ),
+        entree(
+            Method::POST,
+            "/admin/analysis/retry",
+            Garde::Droit(Droit::Admin),
+            post(analyse::relancer),
         ),
     ]
 }
