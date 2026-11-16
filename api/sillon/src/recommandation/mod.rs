@@ -905,6 +905,86 @@ mod tests {
         assert!(seconde.iter().all(|s| !p[..200].contains(&s.2)));
     }
 
+    #[tokio::test]
+    async fn fenetre_de_file_avec_ses_requetes_sur_cinquante_mille_pistes() {
+        let Some(e) = env().await else { return };
+        let pool = e.state.pool();
+        sqlx::query(
+            "INSERT INTO artistes (mbid, nom, nom_tri, present) SELECT 'a-' || i, 'Artiste ' || i, 'Artiste ' || i, true FROM generate_series(1, 2000) i",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO albums (mbid, artiste_id, titre, annee, present)
+             SELECT 'al-' || ar.mbid || '-' || n, ar.id, 'Album ' || n, 1970 + n * 10, true FROM artistes ar, generate_series(1, 5) n",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pistes (album_id, artiste_id, mbid_enregistrement, titre, numero, duree, present)
+             SELECT al.id, al.artiste_id, 'rec-' || n, 'Piste ' || n, n, 200, true FROM albums al, generate_series(1, 5) n",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO analyses (piste_id, contenu_le, version, vecteur, tonalite, majeur)
+             SELECT p.id, now(), $1, ARRAY(SELECT (p.numero * 3 + random())::real FROM generate_series(1, $2)), 0, true FROM pistes p",
+        )
+        .bind(VERSION)
+        .bind(DIMENSION as i32)
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO ecoutes (sub, piste_id, debut, duree_ecoutee, duree_piste, fin, compte)
+             SELECT 'sub-alice', p.id, now() - n * interval '1 day', 100, 200, CASE WHEN n % 3 = 0 THEN 'skipped' ELSE 'completed' END, true
+             FROM (SELECT id FROM pistes ORDER BY id LIMIT 5000) p, generate_series(1, 4) n",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO likes (sub, type, cible) SELECT 'sub-alice', 'track', id FROM pistes ORDER BY id DESC LIMIT 300",
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+        assert_eq!(crate::analyse::recharger(&e.state).await.unwrap(), 50_000);
+        let source: Vec<Uuid> =
+            sqlx::query_scalar("SELECT id FROM pistes ORDER BY md5(id::text) LIMIT 1000")
+                .fetch_all(pool)
+                .await
+                .unwrap();
+        let elements: Vec<crate::ordre::Element> = source
+            .iter()
+            .map(|p| crate::ordre::Element {
+                id: Uuid::new_v4(),
+                piste: *p,
+            })
+            .collect();
+        let contexte = crate::ordre::Contexte {
+            sub: "sub-alice",
+            graine: 9,
+            premier: None,
+            elements: &elements,
+            suggestions: crate::ordre::Suggestions::Frequent,
+        };
+        crate::ordre::melanger(&e.state, &contexte).await;
+        let debut = std::time::Instant::now();
+        let places = crate::ordre::melanger(&e.state, &contexte).await;
+        let duree = debut.elapsed();
+        assert_eq!(places.iter().filter(|p| p.suggeree).count(), 10);
+        assert_eq!(places.len(), 1010);
+        let seuil = if cfg!(debug_assertions) { 2000 } else { 200 };
+        eprintln!(
+            "fenêtre de file avec ses requêtes sur 50 000 pistes : {duree:?} (seuil {seuil} ms)"
+        );
+        assert!(duree.as_millis() < seuil, "{duree:?}");
+    }
+
     async fn analyser(e: &Env, vecteurs: &[(&String, f32)]) {
         for (piste, x) in vecteurs {
             let v: Vec<f32> = (0..DIMENSION)

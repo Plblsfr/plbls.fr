@@ -229,9 +229,10 @@ et l'historique, avec `available: false`.
 - **Routes** : `GET /tracks/{id}/similar` (pistes proches à l'oreille), `POST /recommendations/dismiss` (« ne plus proposer »),
   `GET /admin/recommendations/explain?track=&sub=` (`sillon:admin` : signaux, poids, contributions et entrées du score d'une piste
   dans le contexte de la file de la personne).
-- Mesure : fenêtre de file (barycentre, 200 voisins parmi 50 000 vecteurs, ordre de 1 000 pistes, 10 suggestions) calculée en mémoire
-  en 131 ms sans optimisation (test `fenetre_de_file_rapide_sur_cinquante_mille_pistes`, seuil de 200 ms en build optimisé, 1 s sinon).
-  Les requêtes de chargement ne sont pas comprises dans cette mesure.
+- Mesure sur 50 000 pistes analysées (source de 1 000 pistes, 200 voisins, 10 suggestions, 20 000 écoutes et 300 likes pour la
+  personne) : 65 ms requêtes comprises en build optimisé (250 ms sans optimisation, test
+  `fenetre_de_file_avec_ses_requetes_sur_cinquante_mille_pistes`), dont 10 ms de calcul en mémoire (135 ms sans optimisation, test
+  `fenetre_de_file_rapide_sur_cinquante_mille_pistes`). Seuils des tests : 200 ms en build optimisé ; 2 s et 1 s sans optimisation.
 
 ### ListenBrainz
 
