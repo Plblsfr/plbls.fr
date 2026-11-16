@@ -26,6 +26,7 @@ pub struct Config {
     pub origines: Vec<String>,
     pub lidarr: Option<Lidarr>,
     pub jeton_webhook: String,
+    pub jeton_service: String,
     pub chemins: Vec<Correspondance>,
     pub medias: PathBuf,
     pub periode_synchro: Duration,
@@ -147,6 +148,7 @@ impl Config {
                     cle,
                 }),
             jeton_webhook: env("SILLON_WEBHOOK_TOKEN").unwrap_or_default(),
+            jeton_service: env("SILLON_SERVICE_TOKEN").unwrap_or_default(),
             chemins: correspondances(&env("SILLON_CHEMINS").unwrap_or_default())?,
             medias: PathBuf::from(env("SILLON_MEDIAS").unwrap_or_else(|| "/srv/musique".into())),
             periode_synchro: Duration::from_secs(minutes * 60),
@@ -201,6 +203,7 @@ mod tests {
         assert!(c.aegis.is_none());
         assert!(c.origines.is_empty());
         assert!(c.lidarr.is_none() && c.jeton_webhook.is_empty() && c.chemins.is_empty());
+        assert!(c.jeton_service.is_empty());
         assert_eq!(c.medias, Path::new("/srv/musique"));
         assert_eq!(c.periode_synchro, Duration::from_secs(900));
         assert_eq!(c.ffprobe, "ffprobe");
@@ -312,6 +315,7 @@ mod tests {
             ("SILLON_LIDARR_URL", "http://lidarr:8686/"),
             ("SILLON_LIDARR_CLE", "k"),
             ("SILLON_WEBHOOK_TOKEN", "w"),
+            ("SILLON_SERVICE_TOKEN", "s"),
             ("SILLON_CHEMINS", "/music=/medias/musique"),
             ("SILLON_MEDIAS", "/medias"),
             ("SILLON_SYNC_MINUTES", "0"),
@@ -325,6 +329,7 @@ mod tests {
             })
         );
         assert_eq!(c.jeton_webhook, "w");
+        assert_eq!(c.jeton_service, "s");
         assert!(c.periode_synchro.is_zero());
         assert_eq!(
             chemin_local(&c.chemins, &c.medias, "/music/A/B/01.flac").as_deref(),

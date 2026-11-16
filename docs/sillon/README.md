@@ -283,6 +283,19 @@ pendant la piste en cours), gain de normalisation appliqué par Web Audio, forma
 messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre met la musique en pause. La file est locale au lecteur
 (album ou liste en cours) ; la reprise est gardée dans le navigateur.
 
+## Carte de lien dans Estompe
+
+Seul lien entre Sillon et Estompe : un lien vers la section Sillon de l'app (`https://estompe.plbls.fr/#/musique/<album|artist|track>/<id>`,
+une origine de `ALLOWED_ORIGINS` d'Estompe) collé dans un message devient une carte. Estompe appelle `GET /internal/preview?type=&id=&sub=`
+(jeton `SILLON_SERVICE_TOKEN`, lu par les deux ; côté Estompe, Sillon est joint par `SILLON_INTERNE_URL`) avec le `sub` de l'auteur du
+message : titre, artiste, type, album et image à afficher, seulement si l'auteur a `sillon:access` (sinon 403, avant toute lecture du
+catalogue, et pas de carte). Une playlist, privée, ne donne jamais de carte : la route répond 404 sans lire `sub` ni la base, qu'elle
+existe ou non. Le bouton « Écouter » (fiche album, ou artiste) n'est montré qu'à un lecteur qui a lui-même `sillon:access`.
+
+Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'identifiant de l'image ; l'app du lecteur la demande à Sillon
+(`/albums/{id}/cover`, `/artists/{id}/image`) avec sa propre session, comme dans la section. Les pochettes restent réservées à
+`sillon:access` : un lecteur sans accès voit la carte (titre, artiste) avec la vignette de repli.
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -293,6 +306,8 @@ messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre 
 | `SILLON_LIDARR_URL` | `plbls.env` (`http://lidarr:8686`) | Lidarr, joint par le réseau de la stack média (`MEDIAS_NETWORK`) |
 | `SILLON_LIDARR_CLE` | Vault `secret/sillon` | clé d'API de Lidarr ; sans elle (ou sans URL), pas de catalogue |
 | `SILLON_WEBHOOK_TOKEN` | Vault `secret/sillon` | jeton du webhook Lidarr ; vide = webhook coupé (404) |
+| `SILLON_SERVICE_TOKEN` | Vault `secret/sillon` | Bearer de `GET /internal/preview`, envoyé par Estompe (lu par les deux) ; vide = route coupée (404), pas de carte |
+| `SILLON_INTERNE_URL` | `plbls.env` (`http://sillon-api:8080`) | Sillon joint par Estompe de serveur à serveur (cartes de liens) ; vide = pas de carte |
 | `SILLON_MEDIAS` | `plbls.env` (`/srv/musique`) | dossier de la musique, monté en lecture seule au même chemin par le compose |
 | `SILLON_CHEMINS` | `plbls.env` (vide) | correspondances `distant=local` séparées par des virgules, quand Lidarr voit la musique ailleurs |
 | `SILLON_SYNC_MINUTES` | `plbls.env` (15) | période de synchronisation ; 0 = webhook et bouton seulement |
@@ -324,7 +339,7 @@ messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre 
 ## Actions manuelles
 
 - `plbls.fr-infra` : base `sillon` sur `postgres-main` (`CREATE DATABASE sillon OWNER plbls;`), sous-domaine `sillon-api.plbls.fr` et sa route.
-- Vault, `secret/sillon` : `AEGIS_TOKEN_SILLON`, `SILLON_LIDARR_CLE`, `SILLON_WEBHOOK_TOKEN`, `SILLON_STREAM_SECRET` (`openssl rand -hex 32`).
+- Vault, `secret/sillon` : `AEGIS_TOKEN_SILLON`, `SILLON_LIDARR_CLE`, `SILLON_WEBHOOK_TOKEN`, `SILLON_STREAM_SECRET`, `SILLON_SERVICE_TOKEN` (`openssl rand -hex 32`).
 - `plbls.fr-infra` : dossier de la musique monté en lecture seule (`SILLON_MEDIAS`, mêmes chemins que Lidarr ou `SILLON_CHEMINS`),
   Lidarr joignable depuis la stack (réseau `MEDIAS_NETWORK`). La migration crée l'extension `unaccent` (extension de confiance : le
   propriétaire de la base suffit).
