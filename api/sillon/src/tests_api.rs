@@ -1160,3 +1160,64 @@ async fn synchronisation_demandee_pendant_une_autre_relancee() {
         4
     );
 }
+
+#[tokio::test]
+async fn albums_jamais_ecoutes_tries_par_taille() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    let lemonade = b.album("Lemonade").await;
+    let takk = b.album("Takk…").await;
+    let titres = |r: Rep| -> Vec<String> {
+        assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        let j = r.json();
+        let items = j["items"].as_array().unwrap();
+        let tailles: Vec<i64> = items.iter().map(|a| a["size"].as_i64().unwrap()).collect();
+        assert!(tailles.windows(2).all(|t| t[0] >= t[1]), "{j}");
+        items
+            .iter()
+            .map(|a| a["title"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let tous = titres(b.get("admin", "/admin/albums").await);
+    assert!(tous.contains(&"Lemonade".to_string()) && tous.contains(&"Takk…".to_string()));
+    assert_eq!(
+        titres(b.get("admin", "/admin/albums?never_played=true").await),
+        tous
+    );
+    let ecouter = |album: &Value, titre: &str, secondes: f64, fin: &str| json!({"track": piste(album, titre)["id"], "played": secondes, "ended_by": fin});
+    let r =
+        b.e.appel(
+            Some("bruno"),
+            "POST",
+            "/history",
+            Some(ecouter(&takk, "Glósóli", 0.2, "skip")),
+        )
+        .await;
+    assert_eq!(r.json()["counted"], false, "{}", r.texte());
+    let r =
+        b.e.appel(
+            Some("alice"),
+            "POST",
+            "/history",
+            Some(ecouter(&lemonade, "Formation", 2.0, "end")),
+        )
+        .await;
+    assert_eq!(r.json()["counted"], true, "{}", r.texte());
+    let jamais = titres(b.get("admin", "/admin/albums?never_played=true").await);
+    assert!(jamais.contains(&"Takk…".to_string()), "{jamais:?}");
+    assert!(!jamais.contains(&"Lemonade".to_string()), "{jamais:?}");
+    assert_eq!(
+        titres(b.get("admin", "/admin/albums?never_played=false").await),
+        tous
+    );
+    let r = b.get("admin", "/admin/albums?never_played=oui").await;
+    assert_eq!(r.statut, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        b.get("alice", "/admin/albums?never_played=true")
+            .await
+            .statut,
+        StatusCode::FORBIDDEN
+    );
+}

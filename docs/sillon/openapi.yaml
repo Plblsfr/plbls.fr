@@ -684,9 +684,10 @@ paths:
       summary: "Albums présents, du plus gros au plus petit"
       parameters:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { name: never_played, in: query, description: "`true` : seulement les albums dont aucune piste n'a d'écoute comptée (`counted`) dans l'historique, toutes personnes confondues", schema: { type: boolean, default: false } }
       responses:
         "200": { description: "`{items: [Album et size, added_by]}`" }
-        "400": { description: "`invalid`" }
+        "400": { description: "`invalid` : limite ou `never_played` invalide" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
   /admin/albums/{id}:

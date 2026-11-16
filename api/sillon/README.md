@@ -28,7 +28,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
 | `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
 | `quota.rs` | réglages de l'ajout (`SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
-| `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille |
+| `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille (filtre des albums jamais écoutés) |
 | `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions) |
 
 ## Schéma du catalogue

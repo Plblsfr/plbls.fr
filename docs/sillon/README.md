@@ -151,7 +151,8 @@ et l'historique, avec `available: false`.
   filtre `state`), relance d'un échec (`POST /admin/additions/{id}/retry`, plafond vérifié), suppression d'un album ou d'un artiste
   (`DELETE /admin/albums/{id}`, `DELETE /admin/artists/{id}` : Lidarr supprime fichiers et entrée, `deleteFiles=true`,
   `addImportListExclusion=true` ; Sillon l'exclut de tout nouvel ajout puis synchronise : ses pistes passent absentes, sans être supprimées
-  des playlists), albums présents triés par taille avec l'auteur de leur ajout (`GET /admin/albums`).
+  des playlists), albums présents triés par taille avec l'auteur de leur ajout (`GET /admin/albums` ; `never_played=true` : seulement ceux dont aucune piste
+  n'a d'écoute comptée dans l'historique, toutes personnes confondues).
 - Sillon ne supprime jamais un fichier lui-même (dossier monté en lecture seule) : tout passe par Lidarr.
 
 ## Variables

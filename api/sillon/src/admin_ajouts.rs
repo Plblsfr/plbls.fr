@@ -156,15 +156,23 @@ pub async fn albums(State(state): State<AppState>, Query(q): Params) -> Result<R
             .filter(|n| (1..=500).contains(n))
             .ok_or_else(|| invalide("limite invalide"))?,
     };
+    let jamais_ecoutes = match q.get("never_played").map(String::as_str) {
+        None | Some("" | "false") => false,
+        Some("true") => true,
+        Some(_) => return Err(invalide("never_played : true ou false")),
+    };
     let lignes = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES_ALBUM}, t.taille,
            (SELECT a.nom FROM ajouts a WHERE al.mbid = ANY(a.albums) ORDER BY a.cree_le DESC LIMIT 1) AS ajoute_par
          FROM albums al JOIN artistes ar ON ar.id = al.artiste_id
          JOIN LATERAL (SELECT coalesce(sum(f.taille), 0)::bigint AS taille FROM fichiers f JOIN pistes p ON p.id = f.piste_id
                        WHERE p.album_id = al.id) t ON true
-         WHERE al.present ORDER BY t.taille DESC, al.id LIMIT $1"
+         WHERE al.present
+           AND NOT ($2 AND EXISTS (SELECT 1 FROM ecoutes e JOIN pistes p ON p.id = e.piste_id WHERE p.album_id = al.id AND e.compte))
+         ORDER BY t.taille DESC, al.id LIMIT $1"
     )))
     .bind(n)
+    .bind(jamais_ecoutes)
     .fetch_all(state.pool())
     .await
     .map_err(bd)?;
