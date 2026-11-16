@@ -15,6 +15,7 @@ npm test             # tests unitaires (vitest) : markdown/XSS, API, WebSocket, 
 npm run build
 npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et Rust requis)
 npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
+npm run e2e:sillon   # section Sillon : permissions, lecture d'un album, mini-lecteur dans la messagerie, « Activer le son » : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -34,14 +35,26 @@ système de Chromium doivent être présentes).
 - `src/components/acces` (avec `src/lib/acces.svelte.ts`) : administration d'aegis, section « accès » de l'espace d'administration, ouverte au droit `acces` de `GET /me` ; les appels passent par le relais `/admin/acces` du backend.
 - `src/sections/entracte` : section Entracte (films et séries, API à part, [`docs/entracte`](../../docs/entracte/README.md)). L'app est
   celle de plbls.fr : la messagerie d'Estompe et Entracte en sont deux sections, chacune affichée selon les permissions. Au démarrage,
-  `GET /me` d'Estompe et `GET /me` d'Entracte disent ce que la personne a : Entracte seul ouvre la phase `entracte` (écran
-  `EntracteShell`, ni WebSocket ni route de la messagerie), les deux affichent l'onglet Entracte dans la messagerie. `filmsApi` lit l'API
+  `GET /me` d'Estompe et `GET /me` d'Entracte disent ce que la personne a : Entracte seul ouvre la phase `sections` (écran
+  `SectionsShell`, ni WebSocket ni route de la messagerie), les deux affichent l'onglet Entracte dans la messagerie. `filmsApi` lit l'API
   d'Entracte (`entracteUrl` : `ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps) ; sans elle, ni section Entracte ni
   salon cinéma. La bibliothèque, la fiche et le lecteur (`Film*.svelte`, `films.ts`) servent aussi au salon cinéma.
+  Sans messagerie, la phase `sections` (`views/SectionsShell.svelte`) affiche Entracte, Sillon ou les deux, sans WebSocket.
+- `src/sections/sillon` : section Sillon (musique, API à part, [`docs/sillon`](../../docs/sillon/README.md)), affichée selon `GET /me` de
+  Sillon (`sillon:access`) comme Entracte ; `sillonUrl` : `SILLON_PUBLIC_URL` de l'image, `VITE_SILLON_URL` au build des apps ; sans elle,
+  pas de section. `sillon.ts` : client de l'API et calculs purs (formats annoncés d'après `canPlayType`, gain, délai de l'encodeur) ;
+  `sillon.svelte.ts` : moteur de lecture unique (`Lecteur`, singleton `lecteur`), testable sans DOM (fabrique d'éléments audio, contexte
+  Web Audio, Media Session et stockage injectés). Deux éléments `<audio crossorigin="anonymous">` : la piste suivante est demandée et chargée
+  dès que la piste en cours joue, puis lancée sur `ended` ; gain de normalisation (piste, ou album quand on écoute un album, plafonné par le
+  pic) par un `GainNode` si le contexte audio tourne, sinon par le volume de l'élément (atténuation seule) : un contexte suspendu faute de
+  geste ne coupe jamais le son. La file est locale (album ou liste en cours, `lecteur.jouer(pistes, index, contexte)`) ; la reprise
+  (file, piste, position) est gardée dans le navigateur. Le mini-lecteur (`SillonMini`) est dans le dock de la barre latérale et, sous 900 px,
+  en bande au bas de la vue : la lecture continue dans la messagerie et dans Entracte. `lib/medias.ts` : un film d'Entracte qui démarre
+  (`FilmPlayer`) ou un salon vocal rejoint (`voice.join`) l'annonce, et Sillon se met en pause.
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
-  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
-  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, gateway) : un fichier vidéo ou un flux HLS
+  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
+  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, gateway) : un fichier vidéo ou un flux HLS
   hébergé ailleurs ne se lit pas dans « Regarder ensemble » ni dans le salon Vidéos. Les apps Windows et Android ont la même règle
   (`tauri.conf.json`) et n'ouvrent dans le navigateur système que les liens `https:`, `mailto:` et `tel:`. Les en-têtes de sécurité
   (`estompe-headers.inc`) s'appliquent aussi à `/updates/` et `/healthz` ; HSTS relève du proxy TLS, cette image ne le pose pas.
@@ -54,14 +67,15 @@ navigateur dans Docker : `docker run --network host -v ~/.cache/ms-playwright:/m
 puis `PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3111/ npm run e2e`.
 
 `npm run e2e:entracte` (`playwright.entracte.config.ts`, `e2e/entracte.spec.ts`) construit le front avec des API fictives et les simule
-dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les deux). `CHROMIUM_PATH` désigne un Chromium déjà installé
+dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les deux). `npm run e2e:sillon` (`playwright.sillon.config.ts`,
+`e2e/sillon.spec.ts`) fait de même pour Sillon, avec des pistes WAV générées dans le test (le Chromium de Playwright ne lit ni AAC ni MP3 de façon fiable). `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
 
 ## Application Windows
 
 Nécessite Rust et, sous Windows, WebView2 (présent sur Windows 11). Configuration figée à la compilation
-(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`** et `ENTRACTE_PUBLIC_URL`
-(vide = pas de section Entracte). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER` ou `VITE_ENTRACTE_URL` de l'environnement l'emporte.
+(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL` et `SILLON_PUBLIC_URL`
+(vide = pas de section Entracte ou Sillon). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL` ou `VITE_SILLON_URL` de l'environnement l'emporte.
 
 ```sh
 cd ../../apps/estompe/windows && PATH=../../../node_modules/.bin:$PATH tauri build   # installeur NSIS dans apps/estompe/windows/src-tauri/target/release/bundle/nsis (le CLI Tauri est installé par `npm ci` à la racine du dépôt)

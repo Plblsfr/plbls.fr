@@ -4,7 +4,7 @@ Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir acc�
 Sillon écoute la bibliothèque gérée par Lidarr ; la section web vient
 par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
 la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque, l'analyse audio des pistes, la recommandation (aléatoire intelligent, titres
-suggérés) et la découverte de titres absents.
+suggérés) et la découverte de titres absents et l'interface web.
 
 | Où | Quoi |
 |---|---|
@@ -273,6 +273,16 @@ et l'historique, avec `available: false`.
 - Limites connues : la correspondance entre l'enregistrement de ListenBrainz et l'album de Lidarr se fait par le titre de l'album
   (ou son MBID de groupe quand ListenBrainz le donne) ; un titre paru seulement en single ou sur une compilation n'est pas découvert.
 
+## Interface
+
+Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
+d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (reprise, ajouts récents), artistes, fiche artiste,
+fiche album, recherche, écran « pas d'accès ». Un moteur de lecture unique : deux éléments audio (la piste suivante est demandée et chargée
+pendant la piste en cours), gain de normalisation appliqué par Web Audio, formats annoncés d'après `canPlayType`, qualité réglable
+(`PUT /preferences`), bouton « Activer le son » si la lecture automatique est refusée, Media Session. Le mini-lecteur reste dans la
+messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre met la musique en pause. La file est locale au lecteur
+(album ou liste en cours) ; la reprise est gardée dans le navigateur.
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -308,6 +318,7 @@ et l'historique, avec `available: false`.
 | `SILLON_DECOUVERTE_GO` | `plbls.env` (20) | budget de la découverte en Gio ; 0 = aucune découverte |
 | `SILLON_DECOUVERTE_PAR_JOUR` | `plbls.env` (2) | albums découverts par personne sur 24 heures glissantes |
 | `SILLON_DECOUVERTE_ESSAI_JOURS` | `plbls.env` (30) | délai sans écoute complète avant de proposer une découverte à la suppression |
+| `SILLON_PUBLIC_URL` | `plbls.env` (`https://sillon-api.plbls.fr`) | URL publique de l'API pour le front (`estompe-web` au démarrage : `config.js` et CSP ; apps au build, `VITE_SILLON_URL` l'emporte) ; vide = pas de section |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles

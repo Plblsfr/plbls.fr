@@ -1,0 +1,21 @@
+.sillon-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.sillon-carre { aspect-ratio: 1; }
+.sillon-rond { aspect-ratio: 1; border-radius: 50%; }
+.sillon-absent { background: var(--papier); color: var(--encre); }
+.sillon-artiste { align-items: center; text-align: center; }
+.sillon-artiste strong { max-width: 100%; }
+.sillon-hero { min-height: 0; padding-top: 24px; }
+.sillon-hero .film-hero-body { margin-top: 8px; }
+.sillon-hero .film-body-poster { width: 220px; aspect-ratio: 1; overflow: hidden; box-shadow: var(--o2); }
+.sillon-hero .film-info h1 { font-size: clamp(30px, 5vw, 56px); }
+.sillon-portrait { border-radius: 50%; }
+.sillon-vide { align-items: flex-start; }
+@media (max-width: 720px) {
+  .sillon-hero { padding: 16px 16px 20px; }
+  .sillon-hero .film-hero-body { gap: 18px; }
+  .sillon-hero .film-body-poster { display: block; width: 148px; }
+  .sillon-hero + .film-body { padding: 16px 8px 32px; }
+  .sillon-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
+}
+.sillon-bande { display: none; flex: none; }
+@media (max-width: 900px) { .sillon-bande { display: block; } }
