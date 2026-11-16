@@ -3,7 +3,7 @@
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
 par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
-la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque et l'analyse audio des pistes.
+la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque, l'analyse audio des pistes et l'interface web.
 
 | Où | Quoi |
 |---|---|
@@ -184,6 +184,16 @@ et l'historique, avec `available: false`.
 - Administration (`sillon:admin`) : `GET /admin/analysis` (avancement, pause, erreurs sans chemin ni nom de fichier) et
   `POST /admin/analysis/retry` (remet en file les tâches en erreur).
 
+## Interface
+
+Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
+d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (reprise, ajouts récents), artistes, fiche artiste,
+fiche album, recherche, écran « pas d'accès ». Un moteur de lecture unique : deux éléments audio (la piste suivante est demandée et chargée
+pendant la piste en cours), gain de normalisation appliqué par Web Audio, formats annoncés d'après `canPlayType`, qualité réglable
+(`PUT /preferences`), bouton « Activer le son » si la lecture automatique est refusée, Media Session. Le mini-lecteur reste dans la
+messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre met la musique en pause. La file est locale au lecteur
+(album ou liste en cours) ; la reprise est gardée dans le navigateur.
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -209,6 +219,7 @@ et l'historique, avec `available: false`.
 | `SILLON_MEDIAS_GO` | `plbls.env` (500) | plafond du dossier de la musique, en Gio ; 0 = sans plafond |
 | `SILLON_AJOUTS_DELAI_HEURES` | `plbls.env` (72) | délai sans résultat avant qu'un ajout passe en échec |
 | `SILLON_ANALYSE_PARALLELE` | `plbls.env` (1) | analyses audio simultanées ; 0 = pas d'analyse |
+| `SILLON_PUBLIC_URL` | `plbls.env` (`https://sillon-api.plbls.fr`) | URL publique de l'API pour le front (`estompe-web` au démarrage : `config.js` et CSP ; apps au build, `VITE_SILLON_URL` l'emporte) ; vide = pas de section |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles

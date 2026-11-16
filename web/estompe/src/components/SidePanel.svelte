@@ -47,6 +47,9 @@
   import type { Channel, ChannelKind } from '../lib/types'
   import { channelCreate, openNewChannel } from '../lib/channel-create.svelte'
   import FilmsNav from '../sections/entracte/FilmsNav.svelte'
+  import SillonNav from '../sections/sillon/SillonNav.svelte'
+  import SillonMini from '../sections/sillon/SillonMini.svelte'
+  import { lecteur } from '../sections/sillon/sillon.svelte'
   import { videos } from '../blocks/videos/videos.svelte'
   import { sessionPhase, when } from '../blocks/videos/videos'
 
@@ -102,7 +105,7 @@
   const openMeMenu = () => menuFrom(meBtn!, menuMoi(serverId), true)
   const enVocal = $derived(voice.state !== 'idle' && !!voiceChannel)
   const musiqueIci = $derived(enVocal && app.on('musique') && !!voice.channelId && !!app.music[voice.channelId]?.state?.meta)
-  const joue = $derived(enVocal || musiqueIci || !!solo.current)
+  const joue = $derived(enVocal || musiqueIci || !!solo.current || !!lecteur.piste)
   const sousTitre = $derived(app.activityOf(app.meId) ? `🎮 ${app.activityOf(app.meId)}` : app.listeningOf(app.meId) ? `🎵 Écoute ${app.listeningOf(app.meId)}` : STATUS_LABEL[app.presenceOf(app.meId)])
   const modere = (p: { mic_off?: boolean; sound_off?: boolean }) => !!(p.mic_off || p.sound_off)
 
@@ -136,6 +139,8 @@
     </div>
   {:else if route.name === 'films' && app.movies}
     <FilmsNav />
+  {:else if route.name === 'musique' && app.musique}
+    <SillonNav />
   {:else if space?.visible()}
     <space.nav />
   {:else if detail}
@@ -217,6 +222,7 @@
       <div class="dock">
         {#if musiqueIci && voice.channelId}<MusicMini channelId={voice.channelId} salon />{/if}
         <SoloMini />
+        <SillonMini />
         {#if enVocal && voiceChannel}
           <div class="voice-bar" role="region" aria-label="Vocal">
             <div class="voice-head">

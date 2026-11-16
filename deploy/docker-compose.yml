@@ -79,6 +79,7 @@ services:
       VOICE_URL: ${VOICE_URL:-}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
       ENTRACTE_PUBLIC_URL: ${ENTRACTE_PUBLIC_URL:-}
+      SILLON_PUBLIC_URL: ${SILLON_PUBLIC_URL:-}
     expose: ["8080"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
