@@ -3,10 +3,12 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, get},
+    routing::{MethodRouter, get, post},
 };
 
 use crate::{
+    bibliotheque,
+    droits::Droit,
     etat::AppState,
     garde::{self, Garde},
     interne,
@@ -57,6 +59,86 @@ pub fn table() -> Vec<Entree> {
                 "annonce à l'app l'identité, les permissions et les sections, y compris sans sillon:access",
             ),
             get(interne::moi),
+        ),
+        entree(
+            Method::GET,
+            "/artists",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::artistes),
+        ),
+        entree(
+            Method::GET,
+            "/artists/{id}",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::artiste),
+        ),
+        entree(
+            Method::GET,
+            "/artists/{id}/image",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::image_artiste),
+        ),
+        entree(
+            Method::GET,
+            "/albums/recent",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::recents),
+        ),
+        entree(
+            Method::GET,
+            "/albums/{id}",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::album),
+        ),
+        entree(
+            Method::GET,
+            "/albums/{id}/cover",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::pochette),
+        ),
+        entree(
+            Method::GET,
+            "/tracks/{id}",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::piste),
+        ),
+        entree(
+            Method::GET,
+            "/genres",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::genres),
+        ),
+        entree(
+            Method::GET,
+            "/search",
+            Garde::Droit(Droit::Acces),
+            get(bibliotheque::recherche),
+        ),
+        entree(
+            Method::GET,
+            "/admin/status",
+            Garde::Droit(Droit::Admin),
+            get(bibliotheque::etat),
+        ),
+        entree(
+            Method::GET,
+            "/admin/rejected",
+            Garde::Droit(Droit::Admin),
+            get(bibliotheque::ecartes),
+        ),
+        entree(
+            Method::POST,
+            "/admin/sync",
+            Garde::Droit(Droit::Admin),
+            post(bibliotheque::lancer_synchro),
+        ),
+        entree(
+            Method::POST,
+            "/webhooks/lidarr",
+            Garde::Webhook(
+                "appelé par Lidarr (import, renommage, suppression), jeton SILLON_WEBHOOK_TOKEN",
+            ),
+            post(bibliotheque::webhook),
         ),
     ]
 }

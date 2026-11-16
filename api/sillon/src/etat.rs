@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use sqlx::PgPool;
+use tokio::sync::Mutex as MutexAsync;
 
 use crate::{
     config::Config,
@@ -16,6 +17,8 @@ pub struct Inner {
     http: reqwest::Client,
     identites: Resolveur,
     aegis: Option<Aegis>,
+    synchro: MutexAsync<()>,
+    relance: std::sync::atomic::AtomicBool,
 }
 
 #[derive(Clone)]
@@ -38,6 +41,8 @@ impl AppState {
             pool,
             http,
             aegis,
+            synchro: MutexAsync::new(()),
+            relance: std::sync::atomic::AtomicBool::new(false),
         }))
     }
 
@@ -61,6 +66,26 @@ impl AppState {
         self.0.aegis.as_ref()
     }
 
+    pub fn verrou_synchro(&self) -> &MutexAsync<()> {
+        &self.0.synchro
+    }
+
+    pub fn synchro_en_cours(&self) -> bool {
+        self.0.synchro.try_lock().is_err()
+    }
+
+    pub fn synchro_a_relancer(&self) {
+        self.0
+            .relance
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn synchro_relancee(&self) -> bool {
+        self.0
+            .relance
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {
         match &self.0.aegis {
             Some(a) => a.droits(id).await,
@@ -80,6 +105,17 @@ impl AppState {
                     {
                         tracing::warn!("manifeste non envoyé à aegis : {e}");
                     }
+                }
+            });
+        }
+        let periode = self.config().periode_synchro;
+        if self.config().lidarr.is_some() && !periode.is_zero() {
+            let etat = self.clone();
+            tokio::spawn(async move {
+                let mut t = tokio::time::interval(periode);
+                loop {
+                    t.tick().await;
+                    crate::catalogue::synchroniser(&etat).await;
                 }
             });
         }

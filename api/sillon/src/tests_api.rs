@@ -116,12 +116,21 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
                     "{m} {chemin}"
                 );
             }
+            Garde::Webhook(_) => {
+                for qui in [None, Some("admin"), Some("jeton-faux")] {
+                    assert_eq!(
+                        appel(qui).await.statut,
+                        StatusCode::UNAUTHORIZED,
+                        "{m} {chemin} pour {qui:?}"
+                    );
+                }
+            }
             Garde::Public(_) => {
                 assert!(appel(None).await.statut.is_success(), "{m} {chemin}");
             }
         }
     }
-    assert_eq!(droits_vus, Droit::TOUS);
+    assert!(Droit::TOUS.iter().all(|d| droits_vus.contains(d)));
 }
 
 #[tokio::test]
@@ -322,7 +331,7 @@ async fn sante_disponibilite_et_migrations() {
             .fetch_all(e.state.pool())
             .await
             .unwrap();
-    assert_eq!(versions, [1]);
+    assert_eq!(versions, [1, 2]);
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;
