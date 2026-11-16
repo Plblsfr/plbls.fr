@@ -217,15 +217,15 @@ jobs:
         env:
           TEST_REDIS_URL: redis://localhost:6379
         run: cargo test --locked -p auth-gateway
-      - name: ffmpeg pour les tests d'Entracte
-        if: needs.changements.outputs.entracte_server == 'true'
+      - name: ffmpeg pour les tests d'Entracte et de Sillon
+        if: needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true'
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg
       - name: Tests d'Entracte (PostgreSQL 17, ffmpeg)
         if: needs.changements.outputs.entracte_server == 'true'
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked -p entracte
-      - name: Tests de Sillon (PostgreSQL 17)
+      - name: Tests de Sillon (PostgreSQL 17, ffmpeg)
         if: needs.changements.outputs.sillon_server == 'true'
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
@@ -378,7 +378,7 @@ jobs:
             sillon:pr-${{ github.run_id }}
           timeout 60 sh -c 'until docker run --rm --network container:sillon-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
             || { docker logs sillon-pr-api-${{ github.run_id }}; exit 1; }
-          docker exec sillon-pr-pg-${{ github.run_id }} psql -U postgres -d sillon -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 1 \
+          docker exec sillon-pr-pg-${{ github.run_id }} psql -U postgres -d sillon -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 2 \
             || { docker logs sillon-pr-api-${{ github.run_id }}; exit 1; }
           docker exec sillon-pr-api-${{ github.run_id }} ffmpeg -version > /dev/null
           docker exec sillon-pr-api-${{ github.run_id }} ffprobe -version > /dev/null
