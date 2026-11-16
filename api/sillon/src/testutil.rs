@@ -294,6 +294,7 @@ pub async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
     cfg.aegis = Some((aegis.url.clone(), "jeton-aegis".into()));
     cfg.origines = vec!["https://estompe.plbls.fr".into()];
     cfg.jeton_webhook = "jeton-webhook".into();
+    cfg.jeton_service = "jeton-service".into();
     cfg.periode_synchro = Duration::ZERO;
     regler(&mut cfg);
     let pool = PgPoolOptions::new()

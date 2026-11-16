@@ -57,6 +57,26 @@ paths:
         "200": { description: "`{sub, name, email, permissions: {access, add, admin}, sections: [string]}`" }
         "401": { $ref: "#/components/responses/401" }
         "502": { $ref: "#/components/responses/502" }
+  /internal/preview:
+    get:
+      summary: "Aperçu d'un lien Sillon pour une carte d'Estompe (de serveur à serveur)"
+      description: |
+        Jeton `SILLON_SERVICE_TOKEN` en `Authorization: Bearer`, envoyé par Estompe. Les droits de `sub` sont demandés à aegis :
+        sans `sillon:access`, 403 avant toute lecture du catalogue. Une playlist (privée) répond toujours 404 `not_found`, avant
+        même la lecture de `sub`, qu'elle existe ou non. `cover` dit quelle image afficher (`/albums/{id}/cover` ou
+        `/artists/{id}/image`, qui exigent toujours `sillon:access`) ; `null` sans image.
+      security: []
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, enum: [album, track, artist, playlist] } }
+        - { name: id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: sub, in: query, required: true, schema: { type: string, maxLength: 200 } }
+      responses:
+        "200": { description: "`{type, id, title, artist, album: uuid|null, cover: {kind: album|artist, id}|null}` ; `album` : l'album de la piste ou l'album lui-même (`null` pour un artiste) ; pour un artiste, `title` et `artist` valent son nom" }
+        "400": { description: "`invalid` : type inconnu ou `sub` absent" }
+        "401": { description: "`unauthorized` : jeton de service absent ou faux" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : identifiant inconnu, playlist, ou `SILLON_SERVICE_TOKEN` vide (route coupée, corps vide)" }
+        "503": { $ref: "#/components/responses/503" }
   /artists:
     get:
       summary: "Artistes présents, par nom (sans accents), pagination par curseur"

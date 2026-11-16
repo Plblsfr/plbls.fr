@@ -255,7 +255,7 @@
           {#each m.attachments as a (a.id)}{#if a.kind === 'voice'}<VoiceMessage attachment={a} {mine} />{:else}<AttachmentView attachment={a} />{/if}{/each}
         </div>
       {/if}
-      {#if link}<LinkCard url={link} />{/if}
+      {#if link}<LinkCard url={link} message={m.id} />{/if}
     {/if}
 
     {#if m.reactions.length || readers.length}

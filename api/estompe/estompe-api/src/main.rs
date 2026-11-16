@@ -168,6 +168,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if set.has("regarder-ensemble") {
         estompe_block_regarder_ensemble::brancher(&state);
     }
+    if set.has("apercu-liens") {
+        estompe_block_apercu_liens::brancher(&state);
+    }
     let ouverture = {
         let state = state.clone();
         async move {
