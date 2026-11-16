@@ -3,7 +3,7 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, get, post},
+    routing::{MethodRouter, get, post, put},
 };
 
 use crate::{
@@ -13,6 +13,12 @@ use crate::{
     garde::{self, Garde},
     interne,
 };
+
+use crate::{lecture, preferences};
+
+const FLUX: Garde = Garde::Jeton(
+    "jeton de flux signé, lié à la personne et à la piste, droits vérifiés à chaque requête",
+);
 
 pub struct Route {
     pub methode: Method,
@@ -271,6 +277,25 @@ pub fn table() -> Vec<Entree> {
             "/history/top/artists",
             Garde::Droit(Droit::Acces),
             axum::routing::get(crate::historique::top_artistes),
+        ),
+        entree(
+            Method::POST,
+            "/tracks/{id}/playback",
+            Garde::Droit(Droit::Acces),
+            post(lecture::ouvrir),
+        ),
+        entree(Method::GET, "/stream/{jeton}", FLUX, get(lecture::flux)),
+        entree(
+            Method::GET,
+            "/preferences",
+            Garde::Droit(Droit::Acces),
+            get(preferences::lire),
+        ),
+        entree(
+            Method::PUT,
+            "/preferences",
+            Garde::Droit(Droit::Acces),
+            put(preferences::ecrire),
         ),
     ]
 }

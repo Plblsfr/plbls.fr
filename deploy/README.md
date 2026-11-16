@@ -35,7 +35,7 @@ aussi `postgres-net` (PostgreSQL partagé, `postgres-main`, une base par service
 `dokploy-network`). Le Redis partagé (`redis` : sessions du gateway, cache et invalidations d'aegis, persistance AOF dans `redis-data`) est
 seul sur son réseau `internal: true`, joint par `auth-gateway`, `aegis` et `estompe-api`, et exige `REDIS_PASSWORD` (`requirepass`).
 `entracte-api` monte `ENTRACTE_MEDIAS` en lecture seule et garde ses transcodages dans le volume `entracte-transcodage` ; `sillon-api` monte
-`SILLON_MEDIAS` (musique) en lecture seule.
+`SILLON_MEDIAS` (musique) en lecture seule et garde ses fichiers transcodés dans le volume `sillon-cache`.
 Les sauvegardes de `postgres-main` sont faites hors de cette stack.
 
 ### Variables

@@ -540,3 +540,68 @@ paths:
         "400": { description: "`invalid`" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
+  /tracks/{id}/playback:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: "Ouvre la lecture d'une piste : URL de flux signée, format, durée exacte et gains de volume"
+      description: |
+        Corps `{codecs?: [string], containers?: [string], quality?: originale|haute|normale|basse}` : codecs (`flac`, `mp3`, `opus`,
+        `vorbis`, `aac`, `alac`, `pcm`…) et conteneurs (`flac`, `mp3`, `ogg`, `mp4`, `webm`, `wav`, `aiff`, `aac`…) que le client lit,
+        32 au plus chacun ; sans `quality`, la préférence de la personne (`GET /preferences`).
+        Lecture directe (fichier d'origine) quand le codec et le conteneur sont annoncés et que la qualité est `originale` (ou que la
+        source, avec perte, ne dépasse pas le palier) ; sinon transcodage en Opus (Ogg) si le client annonce `opus` et `ogg`, en AAC (ADTS)
+        sinon, à 96 (`basse`), 160 (`normale`) ou 256 kb/s (`haute`, et `originale` quand la lecture directe est impossible).
+        Le transcodage démarre dès cette demande : la piste suivante peut être demandée d'avance pour le préchargement.
+        `samples` et `sample_rate` : durée exacte de la source en échantillons (mesurée au décodage), identique en transcodage ;
+        `encoder_delay` : échantillons (à `output_sample_rate`) à retirer au début du flux décodé (1024 en AAC, 0 en Opus, dont le
+        pre-skip est appliqué par le décodeur, et en direct). `gain` : niveau intégré EBU R128 (`loudness`, LUFS), pic réel
+        (`track_peak`, `album_peak`, dBTP) et gains à appliquer (dB) pour atteindre `reference` (-18 LUFS), piste et album (album : pistes
+        déjà mesurées) ; `null` tant que la mesure est impossible. Le niveau est mesuré à la première lecture puis gardé en base.
+      responses:
+        "200": { description: "`{track, url, expires_at, mode: direct|transcode, quality, format: {codec, container, mime, bitrate}, duration, samples, sample_rate, output_sample_rate, encoder_delay, gain: {reference, loudness, track, track_peak, album, album_peak}}` ; `url` relative (`/stream/…`), valable 6 h" }
+        "400": { description: "`invalid` : corps, liste ou qualité invalide" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : piste inconnue ou absente" }
+        "503": { description: "`server_busy` : plafond de transcodages simultanés atteint (`Retry-After`), ou `aegis_unavailable`" }
+  /stream/{jeton}:
+    parameters:
+      - { name: jeton, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Flux audio d'une piste (URL signée de `POST /tracks/{id}/playback`)"
+      description: |
+        Sans session : le jeton, signé (HMAC, `SILLON_STREAM_SECRET`), porte la personne, la piste, le fichier, le format et
+        l'expiration ; les droits (`sillon:access`) sont vérifiés à chaque requête. Une session d'une autre personne : 403.
+        Fichier d'origine ou fichier transcodé en cache : `Range` (206, `Content-Range`), `Content-Type` exact. Pendant l'encodage, le
+        fichier est servi au fil de l'eau (200 sans `Content-Length`, `Accept-Ranges: none`) ; un échec d'encodage coupe la connexion,
+        jamais un flux tronqué présenté comme complet. CORS ouvert (`*`, sans identifiants) aux origines non déclarées.
+      security: []
+      responses:
+        "200": { description: "Audio" }
+        "206": { description: "Audio, plage demandée" }
+        "401": { description: "`stream_expired` : jeton expiré, modifié ou invalide" }
+        "403": { description: "`forbidden` : flux d'une autre personne, ou `sillon:access` retirée" }
+        "404": { description: "`not_found` : fichier de la piste changé ou disparu (redemander la lecture)" }
+        "416": { description: "Plage impossible" }
+        "502": { description: "`transcode_failed`, `transcode_timeout`" }
+        "503": { description: "`server_busy` (`Retry-After`), `aegis_unavailable`" }
+  /preferences:
+    get:
+      summary: "Préférences de lecture de la personne"
+      responses:
+        "200": { description: "`{quality, qualities: [originale, haute, normale, basse]}` ; `originale` par défaut" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+    put:
+      summary: "Change la qualité de lecture par défaut"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [quality], properties: { quality: { type: string, enum: [originale, haute, normale, basse] } } }
+      responses:
+        "200": { description: "`{quality, qualities}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
