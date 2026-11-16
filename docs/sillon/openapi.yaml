@@ -189,3 +189,111 @@ paths:
         "204": { description: "Reçu" }
         "401": { description: "`unauthorized` : jeton absent ou faux" }
         "404": { description: "`SILLON_WEBHOOK_TOKEN` vide : webhook coupé" }
+  /additions/search:
+    get:
+      summary: "Recherche d'artistes et d'albums par la recherche de Lidarr (MusicBrainz), marqués présents, en cours ou exclus"
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
+      responses:
+        "200": { description: "`{artists: [{mbid, name, disambiguation, type, overview, in_library, in_progress, excluded}], albums: [{mbid, title, type, secondary_types, year, duration, artist: {mbid, name}, in_library, in_progress, excluded, estimated_size}]}` (20 au plus chacun)" }
+        "400": { description: "`invalid` : recherche vide ou trop longue" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`lidarr_unavailable`" }
+        "503": { description: "`not_configured` : Lidarr non configuré" }
+  /additions:
+    post:
+      summary: "Ajoute un album (seul surveillé) ou un artiste (albums studio surveillés) : envoyé à Lidarr tout de suite, recherche lancée"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, mbid]
+              properties:
+                kind: { type: string, enum: [album, artist] }
+                mbid: { type: string, format: uuid, description: "MBID MusicBrainz de l'album ou de l'artiste" }
+      responses:
+        "201": { description: "Ajout : `{id, kind, mbid, title, artist: {mbid, name}, origin: manual|discovery, state: sent|downloading|partial|available|failed|deleted, reason, estimated_size, albums: [uuid], created_at, updated_at}`" }
+        "200": { description: "Ajout déjà en cours pour ce titre, avec `existing: true`" }
+        "400": { description: "`invalid` : kind ou mbid invalide" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : inconnu de MusicBrainz" }
+        "409": { description: "`already_available` (déjà dans la bibliothèque) ou `excluded` (retiré par un administrateur)" }
+        "429": { description: "`daily_limit` : `SILLON_AJOUTS_PAR_JOUR` ajouts sur 24 heures glissantes" }
+        "502": { description: "`lidarr_unavailable` : rien n'est enregistré" }
+        "503": { description: "`not_configured` : Lidarr, dossier racine ou profils non configurés" }
+        "507": { description: "`disk_full` : le plafond `SILLON_MEDIAS_GO` serait dépassé ; `{used, pending, limit, free, estimated}` ; rien n'est envoyé à Lidarr" }
+  /additions/mine:
+    get:
+      summary: "Mes ajouts, du plus récent au plus ancien (200 au plus)"
+      responses:
+        "200": { description: "`{items: [Ajout]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/disk:
+    get:
+      summary: "Occupation du dossier de la musique et plafond"
+      responses:
+        "200": { description: "`{used, pending, limit, free, daily_limit, configured}` (octets ; `limit` et `free` nuls sans plafond)" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/additions:
+    get:
+      summary: "Ajouts de tous, avec leur auteur (500 au plus)"
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [sent, downloading, partial, available, failed, deleted] } }
+      responses:
+        "200": { description: "`{items: [Ajout et author: {sub, name}]}`" }
+        "400": { description: "`invalid` : état inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/additions/{id}/retry:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: "Relance un ajout en échec (plafond vérifié, recherche renvoyée à Lidarr)"
+      responses:
+        "201": { description: "Ajout relancé" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`invalid_state` : l'ajout n'est pas en échec, ou le même titre est déjà en cours" }
+        "502": { description: "`lidarr_unavailable` : l'ajout reste en échec" }
+        "507": { description: "`disk_full`" }
+  /admin/albums:
+    get:
+      summary: "Albums présents, du plus gros au plus petit"
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200": { description: "`{items: [Album et size, added_by]}`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/albums/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      summary: "Supprime l'album dans Lidarr avec ses fichiers et l'exclut (il ne revient pas seul), puis synchronise : ses pistes passent absentes"
+      responses:
+        "204": { description: "Supprimé" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`not_in_lidarr`" }
+        "502": { description: "`lidarr_unavailable` : rien n'est supprimé" }
+  /admin/artists/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      summary: "Supprime l'artiste dans Lidarr avec ses fichiers et l'exclut, puis synchronise"
+      responses:
+        "204": { description: "Supprimé" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`not_in_lidarr`" }
+        "502": { description: "`lidarr_unavailable`" }
