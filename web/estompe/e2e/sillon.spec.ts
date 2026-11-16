@@ -33,7 +33,9 @@ const pistes = DUREES.map((d, i) => ({
 type Element = { id: string; suggested: boolean; discovery: boolean; track: (typeof pistes)[number] }
 type Liste = { id: string; name: string; description: null; created_at: string; updated_at: string; items: { id: string; position: number; added_at: string; track: (typeof pistes)[number] }[] }
 const suggestion = { ...pistes[0], id: 'c0000000-0000-0000-0000-000000000009', title: 'Titre suggéré', album: { ...pistes[0].album, id: 'b0000000-0000-0000-0000-000000000009', title: 'Ailleurs' }, artist: { id: 'a0000000-0000-0000-0000-000000000009', name: 'Voisins' } }
-const catalogue = [...pistes, suggestion]
+const decouverte = { ...pistes[2], id: 'c0000000-0000-0000-0000-00000000000a', title: 'Titre découvert', album: { ...pistes[2].album, id: 'b0000000-0000-0000-0000-00000000000a', title: 'Lointain' }, artist: { id: 'a0000000-0000-0000-0000-00000000000a', name: 'Inconnus' } }
+const catalogue = [...pistes, suggestion, decouverte]
+const albumDecouvert = { ...album, id: decouverte.album.id, title: 'Lointain', added_at: '2026-10-01T10:00:00Z', track_count: 1, duration: 30, artist: { id: decouverte.artist.id, name: decouverte.artist.name } }
 const GO = 1e9
 
 function serveurSillon() {
@@ -51,10 +53,12 @@ function serveurSillon() {
       { id: 'f0000000-0000-0000-0000-000000000003', kind: 'album', mbid: 'e0000000-0000-0000-0000-000000000006', title: 'Premier Pressage', artist: { mbid: 'e0000000-0000-0000-0000-000000000007', name: 'Les Sillons' }, origin: 'discovery', state: 'available', reason: null, estimated_size: 640e6, albums: [album.id], created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-01T12:00:00Z', author: { sub: 'kc-moi', name: 'moi' } },
     ] as Record<string, unknown>[],
     relances: [] as string[],
+    supprimes: [] as string[],
+    decouverteAjoutee: false,
   }
   const resume = (l: Liste) => ({ id: l.id, name: l.name, description: null, track_count: l.items.length, duration: l.items.reduce((s, e) => s + (e.track.duration ?? 0), 0), cover_albums: [], created_at: l.created_at, updated_at: l.updated_at })
   const fiche = (l: Liste) => ({ ...resume(l), items: l.items.map((e, i) => ({ ...e, position: i })) })
-  const el = (t: (typeof pistes)[number], suggested = false): Element => ({ id: uuid(), suggested, discovery: false, track: t })
+  const el = (t: (typeof pistes)[number], suggested = false, discovery = false): Element => ({ id: uuid(), suggested, discovery, track: t })
   const piste = (id: string) => catalogue.find((x) => x.id === id)!
   const contenu = (b: Record<string, unknown>) => (b.album ? pistes : ((b.tracks as string[] | undefined) ?? []).map(piste))
   const deplacer = <T>(l: T[], from: number, to: number) => { const r = [...l]; const [x] = r.splice(from, 1); r.splice(to, 0, x); return r }
@@ -127,6 +131,10 @@ async function simuler(page: Page, p: Profil, srv = serveurSillon()) {
       etat.likes[k] = m === 'PUT' ? [like[2], ...etat.likes[k].filter((x) => x !== like[2])] : etat.likes[k].filter((x) => x !== like[2])
       return route.fulfill({ status: 204, headers: cors })
     }
+    const proches = /^\/tracks\/([^/]+)\/similar$/.exec(url.pathname)
+    if (proches) return json(route, { items: [pistes[3], pistes[2]].slice(0, Number(url.searchParams.get('limit') ?? 20)) })
+    const albumAdmin = /^\/admin\/albums\/([^/]+)$/.exec(url.pathname)
+    if (albumAdmin && m === 'DELETE') { etat.supprimes.push(albumAdmin[1]); return route.fulfill({ status: 204, headers: cors }) }
     const relance = /^\/admin\/additions\/([^/]+)\/retry$/.exec(url.pathname)
     if (relance) { etat.relances.push(relance[1]); const a = etat.ajouts.find((x) => x.id === relance[1])!; a.state = 'sent'; a.reason = null; return json(route, a, 201) }
     const playback = /^\/tracks\/([^/]+)\/playback$/.exec(url.pathname)
@@ -159,9 +167,15 @@ async function simuler(page: Page, p: Profil, srv = serveurSillon()) {
           Object.assign(etat.file, { source: source ? { type: source.type, id: source.id ?? null, name: 'Source' } : null, shuffle: melange, items: melange ? [...depart, ...avecSuggestion] : [...items.slice(0, corps.index as number), ...depart, ...items.slice(corps.index as number)], index: melange ? 0 : corps.index, position: 0 })
         })
         return ecrireFile(() => {
-          if (corps.index !== undefined) { etat.file.index = corps.index as number; etat.file.position = (corps.position as number | undefined) ?? 0 }
+          if (corps.index !== undefined) { etat.file.index = corps.index as number; etat.file.position = 0 }
+          if (corps.position !== undefined) etat.file.position = corps.position as number
+          if (corps.repeat) etat.file.repeat = corps.repeat as string
           if (corps.suggestions) etat.file.suggestions = corps.suggestions as string
           if (corps.shuffle !== undefined) etat.file.shuffle = corps.shuffle as boolean
+          if (corps.index !== undefined && etat.file.shuffle && etat.file.suggestions !== 'off' && !etat.decouverteAjoutee) {
+            etat.decouverteAjoutee = true
+            etat.file.items.splice(etat.file.index + 1, 0, srv.el(decouverte, true, true))
+          }
         })
       case '/queue/tracks': return ecrireFile(() => { const k = corps.mode === 'next' ? etat.file.index + 1 : etat.file.items.length; etat.file.items.splice(k, 0, ...srv.contenu(corps).map((t) => srv.el(t))) })
       case '/queue/remove': return ecrireFile(() => { etat.file.items = etat.file.items.filter((e) => !(corps.items as string[]).includes(e.id)) })
@@ -187,7 +201,12 @@ async function simuler(page: Page, p: Profil, srv = serveurSillon()) {
       case '/admin/status': return json(route, { sync: [{ source: 'lidarr', succeeded_at: '2026-11-16T09:00:00Z', attempted_at: '2026-11-16T09:00:00Z', error: null }], running: false, configured: { lidarr: true, webhook: true }, library: { artists: 1, albums: 1, tracks: 4, absent_tracks: 0, files: 4, rejected: 1, size: 640e6 } })
       case '/admin/rejected': return json(route, { items: [{ name: 'pochette.exe', reason: 'extension_interdite', seen_at: '2026-11-15T09:00:00Z' }] })
       case '/admin/analysis': return json(route, { version: 1, parallel: 2, paused: false, tasks: { pending: 0, running: 0, done: 4, failed: 1 }, tracks: 4, analysed: 3, loaded: 3, errors: [{ track: pistes[3].id, title: 'Morceau 4', error: 'décodage impossible', attempts: 3, at: '2026-11-16T08:00:00Z' }] })
-      case '/admin/discovery': return json(route, { budget: { used: 12 * GO, limit: 50 * GO }, additions: [{ title: 'Ailleurs', artist: { name: 'Voisins' }, state: 'available', estimated_size: 400e6 }], removable: [] })
+      case '/admin/discovery': return json(route, {
+        enabled: true,
+        budget: { used: 12 * GO, limit: 50 * GO, daily_limit: 1, trial_days: 30 },
+        items: [{ id: 'f0000000-0000-0000-0000-00000000000a', kind: 'album', mbid: 'e0000000-0000-0000-0000-00000000000a', title: 'Lointain', artist: { mbid: 'e0000000-0000-0000-0000-00000000000b', name: 'Inconnus' }, origin: 'discovery', state: 'available', reason: null, estimated_size: 400e6, albums: [albumDecouvert.id], created_at: '2026-10-01T09:00:00Z', updated_at: '2026-10-01T10:00:00Z', author: { sub: 'kc-moi', name: 'moi' }, similar_to: 'Les Sillons', track_title: 'Titre découvert', size: 380e6 }],
+        removal_candidates: etat.supprimes.includes(albumDecouvert.id) ? [] : [{ addition: 'f0000000-0000-0000-0000-00000000000a', album: albumDecouvert, size: 380e6, author: { sub: 'kc-moi', name: 'moi' }, similar_to: 'Les Sillons', track_title: 'Titre découvert', skips: 3, available_since: '2026-10-01T10:00:00Z' }],
+      })
       case '/albums/recent': return json(route, { items: [album], next_cursor: null })
       case '/artists': return json(route, { items: [artiste], next_cursor: null })
       case `/artists/${artiste.id}`: return json(route, { ...artiste, albums: [album] })
@@ -373,9 +392,10 @@ test('C2 : la lecture interrompue est proposée à la reprise à la même piste 
   await expect.poll(() => s.etat.ecoutes.at(-1)).toMatchObject({ track: pistes[2].id, ended_by: 'skip', source: { type: 'album', id: album.id } })
 })
 
-test('C3 : aléatoire avec suggestions, piste suggérée marquée, ajoutée à la playlist ou écartée', async ({ page }) => {
+test('C3 : aléatoire avec suggestions et découverte marquées distinctement, répétition, suggestion ajoutée à la playlist ou écartée', async ({ page }) => {
   const srv = serveurSillon()
-  srv.etat.playlists.push({ id: 'd0000000-0000-0000-0000-0000000000aa', name: 'Ma playlist', description: null, created_at: '2026-11-16T10:00:00Z', updated_at: '2026-11-16T10:00:00Z', items: pistes.map((t, i) => ({ id: `d0000000-0000-0000-0000-0000000001${i}0`, position: i, added_at: '', track: t })) })
+  const longues = [pistes[2], pistes[3]]
+  srv.etat.playlists.push({ id: 'd0000000-0000-0000-0000-0000000000aa', name: 'Ma playlist', description: null, created_at: '2026-11-16T10:00:00Z', updated_at: '2026-11-16T10:00:00Z', items: longues.map((t, i) => ({ id: `d0000000-0000-0000-0000-0000000001${i}0`, position: i, added_at: '', track: t })) })
   await simuler(page, { estompe: false, sillon: true }, srv)
   await page.goto('/#/musique/queue')
   await page.getByRole('radio', { name: 'Fréquentes' }).click()
@@ -385,18 +405,53 @@ test('C3 : aléatoire avec suggestions, piste suggérée marquée, ajoutée à l
   await expect(mini(page)).toBeVisible()
   await expect.poll(() => srv.etat.file.shuffle).toBe(true)
   await mini(page).getByRole('link', { name: 'File de lecture' }).click()
-  const suggeree = page.locator('.sillon-file-ligne.marque')
+  const suggeree = page.locator('.sillon-file-ligne.marque:not(.decouverte)')
   await expect(suggeree).toContainText('Titre suggéré')
   await expect(suggeree.locator('.v-tag')).toHaveText('Suggestion')
-  await expect(page.locator('.sillon-file-ligne:not(.marque) .v-tag', { hasText: 'Suggestion' })).toHaveCount(0)
-  await capture(page, 'file-suggestion')
+  await expect(page.locator('.sillon-file-ligne.decouverte')).toHaveCount(0)
+
+  const autre = srv.etat.file.items[1].track
+  await page.getByRole('button', { name: `Lire : ${autre.title}, ${autre.artist.name}` }).click()
+  await expect.poll(() => srv.etat.file.index).toBe(1)
+  const decouverteLigne = page.locator('.sillon-file-ligne.decouverte')
+  await expect(decouverteLigne).toContainText('Titre découvert')
+  await expect(decouverteLigne.locator('.v-tag.info')).toHaveText('Découverte')
+  await expect(page.getByRole('button', { name: 'Lire : Titre découvert, Inconnus (découverte)' })).toBeVisible()
+  await expect(suggeree.locator('.v-tag.rose')).toHaveText('Suggestion')
+
+  const repeter = page.locator('.sillon-reglages').getByRole('button', { name: /^Répétition/ })
+  await expect(repeter).toHaveText('Sans répétition')
+  await repeter.click()
+  await expect.poll(() => srv.etat.file.repeat).toBe('all')
+  await expect(repeter).toHaveText('Répéter la file')
+  await expect(repeter).toHaveAttribute('aria-pressed', 'true')
+  await expect(mini(page).getByRole('button', { name: 'Répétition : Répéter la file' })).toHaveAttribute('aria-pressed', 'true')
+  await capture(page, 'file-suggestion-decouverte')
+
   await suggeree.getByRole('button', { name: 'Ajouter à « Ma playlist »' }).click()
   await expect(suggeree.getByText('Ajouté à « Ma playlist »')).toBeVisible()
   expect(srv.etat.playlists[0].items.at(-1)?.track.id).toBe(suggestion.id)
   await suggeree.getByRole('button', { name: 'Ne plus proposer' }).click()
-  await expect(page.locator('.sillon-file-ligne.marque')).toHaveCount(0)
+  await expect(page.locator('.sillon-file-ligne.marque:not(.decouverte)')).toHaveCount(0)
   expect(srv.etat.ecartees).toEqual([suggestion.id])
   expect(srv.etat.file.items.some((e) => e.track.id === suggestion.id)).toBe(false)
+  await expect(decouverteLigne).toBeVisible()
+})
+
+test('Titres similaires depuis le menu d’une piste, et like dans la bande du mini-lecteur au téléphone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const s = await simuler(page, { estompe: false, sillon: true })
+  const bande = page.locator('.sillon-lect.bande')
+  await page.goto(`/#/musique/album/${album.id}`)
+  await ligne(page, 'Morceau 1').click({ button: 'right' })
+  await page.getByRole('menuitem', { name: 'Titres similaires' }).click()
+  await expect(bande).toContainText('Morceau 4')
+  await expect.poll(() => s.etat.file.items.map((e) => e.track.title)).toEqual(['Morceau 4', 'Morceau 3'])
+  await expect(bande.getByRole('button', { name: 'Pause' })).toBeVisible()
+  await bande.getByRole('button', { name: 'Aimer Morceau 4' }).click()
+  await expect(bande.getByRole('button', { name: 'Ne plus aimer Morceau 4' })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => s.etat.likes.tracks).toEqual([pistes[3].id])
+  await capture(page, 'mini-telephone-like')
 })
 
 test('C4 : sans sillon:add ni sillon:admin, ni recherche d’absents, ni ajout, ni administration', async ({ page }) => {
@@ -454,6 +509,13 @@ test('Administration : occupation, relance d’un échec, suppression, synchroni
   await expect(page.getByText('pochette.exe')).toBeVisible()
   await page.getByRole('tab', { name: 'Découverte' }).click()
   await expect(page.getByText('12 Go sur 50 Go')).toBeVisible()
+  await expect(page.getByText('Active', { exact: true })).toBeVisible()
+  await expect(page.locator('.sillon-admin-liste li', { hasText: 'Titre découvert' }).last()).toContainText('Disponible')
+  await capture(page, 'administration-decouverte')
+  await page.getByRole('button', { name: 'Supprimer l’album Lointain' }).click()
+  await page.getByRole('button', { name: 'Supprimer', exact: true }).click()
+  await expect.poll(() => s.etat.supprimes).toEqual([albumDecouvert.id])
+  await expect(page.getByText('Aucune découverte à supprimer.')).toBeVisible()
 })
 
 test('C6 : une URL d’album ouverte à froid affiche l’album après connexion', async ({ page }) => {
