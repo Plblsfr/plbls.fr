@@ -5,6 +5,7 @@ members = [
   "api/security",
   "api/aegis",
   "api/entracte",
+  "api/sillon",
   "api/estompe/estompe-api",
   "api/estompe/core",
   "api/estompe/block",

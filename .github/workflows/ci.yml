@@ -168,7 +168,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -204,7 +204,7 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
       - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP)
-        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true'
+        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true'
         run: cargo test --locked -p commun
       - name: Tests d'aegis (PostgreSQL 17, Redis)
         if: needs.changements.outputs.aegis_server == 'true'
@@ -225,6 +225,11 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked -p entracte
+      - name: Tests de Sillon (PostgreSQL 17)
+        if: needs.changements.outputs.sillon_server == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+        run: cargo test --locked -p sillon
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -347,6 +352,39 @@ jobs:
       - if: always()
         run: docker rm -f entracte-pr-api-${{ github.run_id }} entracte-pr-pg-${{ github.run_id }}
 
+  sillon-image:
+    needs: changements
+    if: needs.changements.outputs.image_sillon == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: api/sillon/Dockerfile
+          push: false
+          load: true
+          tags: sillon:pr-${{ github.run_id }}
+          cache-from: type=gha,scope=sillon
+      - name: L'image démarre, applique ses migrations, répond sur /readyz et porte ffmpeg et ffprobe
+        run: |
+          docker run -d --name sillon-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=sillon postgres:17-alpine
+          timeout 60 sh -c 'until docker exec sillon-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
+          docker run -d --name sillon-pr-api-${{ github.run_id }} --network container:sillon-pr-pg-${{ github.run_id }} --env-file deploy/sillon/.env.example \
+            -e DATABASE_URL='postgres://127.0.0.1:5432?sslmode=disable' -e DATABASE_USER=postgres -e DATABASE_PASSWORD=postgres \
+            sillon:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until docker run --rm --network container:sillon-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
+            || { docker logs sillon-pr-api-${{ github.run_id }}; exit 1; }
+          docker exec sillon-pr-pg-${{ github.run_id }} psql -U postgres -d sillon -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 1 \
+            || { docker logs sillon-pr-api-${{ github.run_id }}; exit 1; }
+          docker exec sillon-pr-api-${{ github.run_id }} ffmpeg -version > /dev/null
+          docker exec sillon-pr-api-${{ github.run_id }} ffprobe -version > /dev/null
+      - if: always()
+        run: docker rm -f sillon-pr-api-${{ github.run_id }} sillon-pr-pg-${{ github.run_id }}
+
   image-aegis:
     needs: changements
     if: needs.changements.outputs.image_aegis == 'true'
@@ -391,7 +429,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

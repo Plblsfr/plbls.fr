@@ -2,7 +2,7 @@
 
 ## Brancher une application
 
-1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`),
+1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`, `AEGIS_TOKEN_SILLON`),
    déclarée dans le `.env.example` de l'application et lue aussi par aegis, qui en tire le nom de l'application (suffixe en minuscules,
    `_` devenant `-`) ; un jeton par application, comparé en temps constant, révocable séparément. Le jeton ne lit que les droits de son application (plus `aegis:admin`) et ne déclare que son application.
 2. **Manifeste** au démarrage puis toutes les 10 minutes :
@@ -78,9 +78,15 @@ avec le justificatif de l'appelant : aegis reste seul juge. Détail : [fonctionn
 (`entracte:access`, `entracte:request`, `entracte:admin`, fermées par défaut) et lit les droits par `POST /v1/effective` (cache borné par
 `valid_until`, 30 s au plus). Sans aegis, toutes ses permissions sont refusées. Voir [docs/entracte](../entracte/README.md).
 
+## Sillon
+
+`AEGIS_URL` et `AEGIS_TOKEN_SILLON` (application `sillon` chez aegis) : Sillon envoie son manifeste (`sillon:access`, `sillon:add`,
+`sillon:admin`, fermées par défaut) et lit les droits comme Entracte. Sans aegis, toutes ses permissions sont refusées.
+Voir [docs/sillon](../sillon/README.md).
+
 ## Mise en service
 
-1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe et d'Entracte.
+1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe, d'Entracte et de Sillon.
 2. Donner le rôle Keycloak `aegis-admin` (et `user`) aux administrateurs.
 3. Démarrer Estompe pour qu'il envoie son manifeste, puis configurer dans Administration › accès : un rôle `Membre` avec
-   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.
+   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access` et `sillon:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.
