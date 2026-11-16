@@ -1,7 +1,10 @@
 import { ApiError } from '../../lib/api'
 import { medias } from '../../lib/medias'
+import { confirmer, saisir } from '../../lib/confirm.svelte'
+import type { MenuItem } from '../../lib/ctxmenu.svelte'
+import { hrefs, router } from '../../lib/route.svelte'
 import { notify } from '../../lib/ui'
-import { debut, dureeExacte, gainLineaire, SILLON_URL, sillonApi, support, type DemandeLecture, type Lecture, type Piste, type Qualite, type Support } from './sillon'
+import { debut, dureeExacte, gainLineaire, SILLON_URL, sillonApi, support, type Contenu, type DemandeLecture, type FichePlaylist, type Playlist, titresDe, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste, type Qualite, type Suggestions, type Support, type TypeSource } from './sillon'
 
 export interface ElementAudio {
   src: string
@@ -49,17 +52,46 @@ export interface Environnement {
   metadonnees?(m: Metadonnees): unknown
   pochette?(album: string): Promise<string>
   stockage?: Pick<Storage, 'getItem' | 'setItem'> | null
+  serveur?: ServeurFile | null
+  identifiant?(): string
 }
 
-export type Contexte = { type: 'album'; id: string } | { type: 'pistes' }
+type Corps = Record<string, unknown>
 
-export interface Reprise { file: Piste[]; index: number; position: number; contexte: Contexte }
+export interface ServeurFile {
+  lire(): Promise<FileServeur>
+  remplacer(b: Corps): Promise<FileServeur>
+  modifier(b: Corps): Promise<FileServeur>
+  ajouter(b: Corps): Promise<FileServeur>
+  retirer(b: Corps): Promise<FileServeur>
+  deplacer(b: Corps): Promise<FileServeur>
+  ecoute(b: EcouteEnvoyee): Promise<unknown>
+}
+
+export type Contexte = { type: 'album' | 'playlist' | 'artist'; id: string } | { type: 'likes' } | { type: 'pistes'; query?: string }
+
+export function sourceDe(c: Contexte): { type: TypeSource; id?: string; query?: string } | undefined {
+  if (c.type === 'pistes') return c.query ? { type: 'search', query: c.query } : undefined
+  return c.type === 'likes' ? { type: 'likes' } : { type: c.type, id: c.id }
+}
+
+export function contexteDe(s: FileServeur['source']): Contexte {
+  if (!s) return { type: 'pistes' }
+  if (s.type === 'search') return { type: 'pistes', query: s.name }
+  if (s.type === 'likes') return { type: 'likes' }
+  return s.id ? { type: s.type, id: s.id } : { type: 'pistes' }
+}
+
+export function conflit(e: unknown): FileServeur | null {
+  const q = e instanceof ApiError && e.status === 409 ? (e.data.queue as FileServeur | undefined) : undefined
+  return q && Array.isArray(q.items) ? q : null
+}
+
+const ENVOI_POSITION = 15
 
 interface Emplacement { el: ElementAudio; piste: Piste | null; lecture: Lecture | null; gain: NoeudGain | null; jeton: number }
 
-const CLE_REPRISE = 'sillon.reprise'
 const CLE_VOLUME = 'sillon.volume'
-const MAX_REPRISE = 200
 
 const lireJson = <T>(s: Environnement['stockage'], cle: string): T | null => {
   try { const v = s?.getItem(cle); return v ? (JSON.parse(v) as T) : null } catch { return null }
@@ -79,8 +111,11 @@ export class Lecteur {
   duree = $state(0)
   volume = $state(1)
   qualite = $state<Qualite | null>(null)
+  decouverte = $state(true)
   erreur = $state('')
-  reprise = $state.raw<Reprise | null>(null)
+  elements = $state.raw<ElementFile[]>([])
+  serveur = $state.raw<FileServeur | null>(null)
+  aReprendre = $state(false)
 
   private slots: [Emplacement, Emplacement] | null = null
   private actif = 0
@@ -89,37 +124,66 @@ export class Lecteur {
   private tour = 0
   private actionsPosees = false
   private art: { album: string; url: string } | null = null
+  private ecritures: Promise<unknown> = Promise.resolve()
+  private envoye = 0
+  private ecoute: { piste: Piste; element: string | undefined; joue: number; dernier: number } | null = null
 
   constructor(private env: Environnement) {
     medias.ecouter((s) => { if (s !== 'sillon') this.pause() })
     const v = lireJson<number>(env.stockage, CLE_VOLUME)
     if (typeof v === 'number' && v >= 0 && v <= 1) this.volume = v
-    this.reprise = lireJson<Reprise>(env.stockage, CLE_REPRISE)
   }
 
   get piste(): Piste | null { return this.file[this.index] ?? null }
   get aSuivre(): Piste[] { return this.file.slice(this.index + 1) }
   get elementActif(): ElementAudio | null { return this.slots?.[this.actif].el ?? null }
   get elementSuivant(): ElementAudio | null { return this.slots?.[1 - this.actif].el ?? null }
+  get element(): ElementFile | null { return this.elements[this.index] ?? null }
+  get aleatoire() { return !!this.serveur?.shuffle }
+  get suggestions(): Suggestions { return this.serveur?.suggestions ?? 'off' }
 
   jouer(pistes: Piste[], depart = 0, contexte: Contexte = { type: 'pistes' }) {
     const dispo = pistes.filter((p) => p.available)
     if (!dispo.length) return
+    this.cloturer('skip')
+    const index = Math.max(0, dispo.indexOf(pistes[depart]))
     this.file = dispo
+    this.elements = []
     this.contexte = contexte
+    this.aReprendre = false
     this.brancher()
     medias.demarre('sillon')
-    void this.demarrer(Math.max(0, dispo.indexOf(pistes[depart])))
+    void this.demarrer(index)
+    const source = sourceDe(contexte)
+    void this.ecrireFile((s, revision) => s.remplacer({ revision, tracks: dispo.map((p) => p.id), index, ...(source ? { source } : {}) })).catch(() => {})
   }
 
-  reprendreSauvegarde() {
-    const r = this.reprise
-    if (!r?.file.length) return
-    this.file = r.file
-    this.contexte = r.contexte
-    this.brancher()
-    medias.demarre('sillon')
-    void this.demarrer(Math.min(Math.max(0, r.index), r.file.length - 1), r.position)
+  async chargerFile() {
+    const s = this.env.serveur
+    if (!s) return
+    try {
+      const f = await s.lire()
+      if (!this.piste && !this.serveur) this.recevoir(f)
+    } catch { return }
+  }
+
+  basculerAleatoire() { return this.ecrireFile((s, revision) => s.modifier({ revision, shuffle: !this.aleatoire })) }
+  reglerSuggestions(v: Suggestions) { return this.ecrireFile((s, revision) => s.modifier({ revision, suggestions: v })) }
+  lireEnsuite(c: Contenu) { return this.ecrireFile((s, revision) => s.ajouter({ revision, mode: 'next', ...c })) }
+  ajouterAFile(c: Contenu) { return this.ecrireFile((s, revision) => s.ajouter({ revision, mode: 'end', ...c })) }
+  retirer(id: string) { return this.ecrireFile((s, revision) => s.retirer({ revision, items: [id] })) }
+
+  deplacerElement(id: string, versId: string) {
+    return this.ecrireFile((s, revision, f) => {
+      const from = f?.items.findIndex((e) => e.id === id) ?? -1
+      const to = f?.items.findIndex((e) => e.id === versId) ?? -1
+      return from < 0 || to < 0 || from === to ? null : s.deplacer({ revision, from, to })
+    })
+  }
+
+  quitter() {
+    this.cloturer('stop')
+    this.envoyerPosition()
   }
 
   basculer() { if (this.lecture) this.pause(); else this.reprendre() }
@@ -129,14 +193,15 @@ export class Lecteur {
     if (!e) return
     e.el.pause()
     this.etat(false)
-    this.sauver()
+    this.envoyerPosition()
   }
 
   reprendre() {
-    const e = this.slots?.[this.actif]
-    if (!e || !this.piste) return
+    if (!this.piste) return
+    const e = this.emplacements()[this.actif]
     this.brancher()
     medias.demarre('sillon')
+    this.aReprendre = false
     if (e.lecture && e.piste?.id === this.piste.id) void this.jouerElement(e)
     else void this.demarrer(this.index, this.position)
   }
@@ -168,6 +233,7 @@ export class Lecteur {
     const e = this.slots?.[this.actif]
     const s = Math.max(0, Math.min(t, this.duree || t))
     this.position = s
+    if (this.ecoute) this.ecoute.dernier = s
     if (e?.lecture) e.el.currentTime = s + debut(e.lecture)
   }
 
@@ -178,10 +244,12 @@ export class Lecteur {
   }
 
   arreter() {
+    this.quitter()
     this.tour++
     for (const e of this.slots ?? []) { e.jeton++; e.el.pause(); e.el.removeAttribute('src'); e.el.load(); e.piste = null; e.lecture = null }
-    this.sauver()
     this.file = []
+    this.elements = []
+    this.aReprendre = false
     this.index = -1
     this.position = 0
     this.duree = 0
@@ -192,7 +260,15 @@ export class Lecteur {
   }
 
   async chargerPreferences() {
-    try { this.qualite = (await sillonApi.preferences()).quality } catch { this.qualite = null }
+    try {
+      const p = await sillonApi.preferences()
+      this.qualite = p.quality
+      this.decouverte = p.discovery ?? true
+    } catch { this.qualite = null }
+  }
+
+  async changerDecouverte(v: boolean) {
+    this.decouverte = (await sillonApi.decouverteActive(v)).discovery ?? v
   }
 
   async changerQualite(q: Qualite) {
@@ -202,11 +278,94 @@ export class Lecteur {
     if (this.lecture) this.precharger()
   }
 
-  sauver() {
-    if (!this.piste) return
-    const debutFile = Math.max(0, Math.min(this.index, this.file.length - MAX_REPRISE))
-    this.reprise = { file: this.file.slice(debutFile, debutFile + MAX_REPRISE), index: this.index - debutFile, position: this.position, contexte: this.contexte }
-    ecrire(this.env.stockage, CLE_REPRISE, this.reprise)
+  private ecrireFile(faire: (s: ServeurFile, revision: number, f: FileServeur | null) => Promise<FileServeur> | null): Promise<void> {
+    const s = this.env.serveur
+    if (!s) return Promise.resolve()
+    const t = this.ecritures.then(async () => {
+      for (let essai = 0; essai < 2; essai++) {
+        const p = faire(s, this.serveur?.revision ?? 0, this.serveur)
+        if (!p) return
+        try {
+          this.recevoir(await p)
+          return
+        } catch (e) {
+          if (essai || !(e instanceof ApiError && e.status === 409)) throw e
+          this.recevoir(conflit(e) ?? (await s.lire()))
+        }
+      }
+    })
+    this.ecritures = t.catch(() => {})
+    return t
+  }
+
+  private indexServeur(f: FileServeur, dispo: ElementFile[]) {
+    for (let k = Math.max(0, f.index); k < f.items.length; k++) {
+      const i = dispo.indexOf(f.items[k])
+      if (i >= 0) return i
+    }
+    return dispo.length ? 0 : -1
+  }
+
+  private recevoir(f: FileServeur) {
+    this.serveur = f
+    const dispo = f.items.filter((e) => e.track.available)
+    const cur = this.element
+    const p = this.piste
+    const srv = this.indexServeur(f, dispo)
+    let i = cur ? dispo.findIndex((e) => e.id === cur.id) : -1
+    if (i < 0 && p && !cur) i = dispo[srv]?.track.id === p.id ? srv : dispo.findIndex((e) => e.track.id === p.id)
+    this.elements = dispo
+    this.file = dispo.map((e) => e.track)
+    if (i >= 0) {
+      this.index = i
+      const ec = this.ecoute
+      if (ec && !ec.element && dispo[i].track.id === ec.piste.id) ec.element = dispo[i].id
+      if (this.lecture) this.precharger()
+      this.signalerPiste()
+      return
+    }
+    this.index = srv
+    if (p) {
+      if (this.lecture && srv >= 0) void this.demarrer(srv)
+      return
+    }
+    this.contexte = contexteDe(f.source)
+    this.position = srv >= 0 && dispo[srv] === f.items[f.index] ? f.position : 0
+    this.duree = dispo[srv]?.track.duration ?? 0
+    this.aReprendre = srv >= 0
+  }
+
+  private positionServeur(f: FileServeur | null) {
+    const id = this.element?.id
+    const k = id ? f?.items.findIndex((e) => e.id === id) ?? -1 : -1
+    return k
+  }
+
+  private signalerPiste() {
+    const f = this.serveur
+    const k = this.positionServeur(f)
+    if (!f || k < 0 || k === f.index) return
+    this.envoyerPosition()
+  }
+
+  private envoyerPosition() {
+    if (!this.serveur || !this.element) return
+    this.envoye = this.position
+    const position = Math.round(this.position * 10) / 10
+    void this.ecrireFile((s, revision, f) => {
+      const index = this.positionServeur(f)
+      return index < 0 ? null : s.modifier({ revision, index, position })
+    }).catch(() => {})
+  }
+
+  private cloturer(fin: EcouteEnvoyee['ended_by']) {
+    const e = this.ecoute
+    this.ecoute = null
+    const s = this.env.serveur
+    if (!e || !s || e.joue < 1) return
+    const source = sourceDe(this.contexte)
+    const id = this.env.identifiant?.() ?? crypto.randomUUID()
+    void s.ecoute({ id, track: e.piste.id, played: Math.round(e.joue * 10) / 10, ended_by: fin, ...(source ? { source: { type: source.type, ...(source.id ? { id: source.id } : {}) } } : {}), ...(e.element ? { item: e.element } : {}) }).catch(() => {})
   }
 
   private etat(lecture: boolean) {
@@ -226,6 +385,13 @@ export class Lecteur {
       el.addEventListener('timeupdate', () => {
         if (!this.estActif(e) || !e.lecture) return
         this.position = Math.max(0, el.currentTime - debut(e.lecture))
+        const ec = this.ecoute
+        if (ec && ec.piste.id === e.piste?.id) {
+          const d = this.position - ec.dernier
+          if (d > 0 && d < 3) ec.joue += d
+          ec.dernier = this.position
+        }
+        if (this.lecture && Math.abs(this.position - this.envoye) >= ENVOI_POSITION) this.envoyerPosition()
         this.positionSession()
       })
       el.addEventListener('playing', () => {
@@ -309,10 +475,14 @@ export class Lecteur {
     const slots = this.emplacements()
     const p = this.file[index]
     if (!p) return
+    this.cloturer('skip')
     this.index = index
     this.position = position
+    this.envoye = position
+    this.ecoute = { piste: p, element: this.elements[index]?.id, joue: 0, dernier: position }
     this.duree = p.duration ?? 0
     this.erreur = ''
+    this.signalerPiste()
     const autre = slots[1 - this.actif]
     const pret = autre.piste?.id === p.id && !!autre.lecture && position === 0
     const ancien = slots[this.actif]
@@ -333,7 +503,6 @@ export class Lecteur {
       if (position && e.lecture) e.el.currentTime = position + debut(e.lecture)
     }
     this.duree = dureeExacte(e.lecture, p)
-    this.sauver()
     await this.jouerElement(e)
   }
 
@@ -355,6 +524,7 @@ export class Lecteur {
   }
 
   private fin() {
+    this.cloturer('end')
     if (this.index + 1 < this.file.length) { void this.demarrer(this.index + 1); return }
     this.etat(false)
     this.position = 0
@@ -411,13 +581,135 @@ export const lecteur = new Lecteur({
   metadonnees: (m) => (typeof MediaMetadata === 'undefined' ? null : new MediaMetadata(m)),
   pochette: (album) => sillonApi.pochette(album, 'medium'),
   stockage: (() => { try { return navigateur ? localStorage : null } catch { return null } })(),
+  serveur: {
+    lire: sillonApi.file,
+    remplacer: sillonApi.remplacerFile,
+    modifier: sillonApi.modifierFile,
+    ajouter: sillonApi.ajouterAFile,
+    retirer: sillonApi.retirerDeFile,
+    deplacer: sillonApi.deplacerDansFile,
+    ecoute: sillonApi.enregistrerEcoute,
+  },
 })
 
-if (navigateur) window.addEventListener('pagehide', () => lecteur.sauver())
+if (navigateur) window.addEventListener('pagehide', () => lecteur.quitter())
 
 export const vue = $state({ refuse: false })
 
 export function echec(e: unknown, message: string) {
   if (e instanceof ApiError && e.status === 403) vue.refuse = true
   else notify.error(e, message)
+}
+
+export type GenreLike = 'tracks' | 'albums' | 'artists'
+
+class Aimes {
+  tracks = $state.raw(new Set<string>())
+  albums = $state.raw(new Set<string>())
+  artists = $state.raw(new Set<string>())
+  private charge: Promise<void> | null = null
+
+  charger(forcer = false) {
+    if (this.charge && !forcer) return this.charge
+    this.charge = sillonApi.likes().then((l) => { this.tracks = new Set(l.tracks); this.albums = new Set(l.albums); this.artists = new Set(l.artists) }).catch(() => { this.charge = null })
+    return this.charge
+  }
+
+  a(kind: GenreLike, id: string) { return this[kind].has(id) }
+
+  async basculer(kind: GenreLike, id: string) {
+    const oui = !this[kind].has(id)
+    const poser = (v: boolean) => { const s = new Set(this[kind]); if (v) s.add(id); else s.delete(id); this[kind] = s }
+    poser(oui)
+    try { await sillonApi.liker(kind, id, oui) } catch (e) { poser(!oui); notify.error(e, 'Le like n’a pas pu être enregistré') }
+  }
+}
+
+export const aimes = new Aimes()
+
+class Collection {
+  playlists = $state.raw<Playlist[]>([])
+  charge = $state(false)
+
+  async charger() {
+    try { this.playlists = (await sillonApi.playlists()).items; this.charge = true } catch (e) { echec(e, 'Les playlists sont indisponibles') }
+  }
+
+  maj(p: Playlist) {
+    const { items: _, ...r } = p as FichePlaylist
+    this.playlists = [r, ...this.playlists.filter((x) => x.id !== p.id)]
+  }
+
+  async creer(): Promise<FichePlaylist | null> {
+    const nom = await saisir({ titre: 'Nouvelle playlist', action: 'Créer', saisie: { label: 'Nom de la playlist' } })
+    if (!nom?.trim()) return null
+    try {
+      const p = await sillonApi.creerPlaylist(nom.trim())
+      this.maj(p)
+      return p
+    } catch (e) { notify.error(e, 'La playlist n’a pas pu être créée'); return null }
+  }
+
+  async renommer(p: Playlist): Promise<FichePlaylist | null> {
+    const nom = await saisir({ titre: 'Renommer la playlist', action: 'Renommer', saisie: { label: 'Nom de la playlist', valeur: p.name } })
+    if (!nom?.trim() || nom.trim() === p.name) return null
+    try {
+      const r = await sillonApi.renommerPlaylist(p.id, nom.trim())
+      this.maj(r)
+      return r
+    } catch (e) { notify.error(e, 'La playlist n’a pas pu être renommée'); return null }
+  }
+
+  async supprimer(p: Playlist) {
+    if (!(await confirmer({ titre: `Supprimer « ${p.name} » ?`, message: 'La playlist et son ordre seront perdus. Les pistes restent dans la bibliothèque.', action: 'Supprimer', destructif: true }))) return false
+    try {
+      await sillonApi.supprimerPlaylist(p.id)
+      this.playlists = this.playlists.filter((x) => x.id !== p.id)
+      return true
+    } catch (e) { notify.error(e, 'La playlist n’a pas pu être supprimée'); return false }
+  }
+
+  async ajouter(id: string, contenu: Contenu) {
+    try {
+      let r = await sillonApi.ajouterAPlaylist(id, contenu)
+      if (!r.added && r.duplicates.length) {
+        if (!(await confirmer({ titre: 'Déjà dans la playlist', message: r.duplicates.length > 1 ? `${r.duplicates.length} titres y sont déjà. Les ajouter quand même ?` : 'Ce titre y est déjà. L’ajouter quand même ?', action: 'Ajouter quand même' }))) return null
+        r = await sillonApi.ajouterAPlaylist(id, contenu, true)
+      }
+      this.maj(r)
+      notify.ok(`${titresDe(r.added)} ajouté${r.added > 1 ? 's' : ''} à « ${r.name} ».`)
+      return r
+    } catch (e) { notify.error(e, 'L’ajout à la playlist a échoué'); return null }
+  }
+}
+
+export const collection = new Collection()
+
+export const choix = $state<{ contenu: Contenu | null; titre: string }>({ contenu: null, titre: '' })
+
+export const lien = (section: string, id: string) => `${location.origin}${location.pathname}${hrefs.musique(section, id)}`
+
+export function copierLien(section: string, id: string) {
+  void navigator.clipboard.writeText(lien(section, id)).then(() => notify.ok('Lien copié.'), (e) => notify.error(e, 'Copie impossible'))
+}
+
+const action = (p: Promise<unknown>, message: string, erreur: string) => void p.then(() => notify.ok(message), (e) => notify.error(e, erreur))
+
+export function menuContenu(contenu: Contenu, titre: string): MenuItem[] {
+  return [
+    { label: 'Lire ensuite', run: () => action(lecteur.lireEnsuite(contenu), 'Ajouté après le titre en cours.', 'La file n’a pas pu être modifiée') },
+    { label: 'Ajouter à la file', run: () => action(lecteur.ajouterAFile(contenu), 'Ajouté à la file.', 'La file n’a pas pu être modifiée') },
+    { label: 'Ajouter à une playlist…', run: () => { choix.contenu = contenu; choix.titre = titre } },
+  ]
+}
+
+export function menuPiste(p: Piste, extra: MenuItem[] = []): MenuItem[] {
+  return [
+    ...(p.available ? menuContenu({ tracks: [p.id] }, p.title) : []),
+    ...extra,
+    { label: aimes.a('tracks', p.id) ? 'Retirer des titres likés' : 'Ajouter aux titres likés', run: () => void aimes.basculer('tracks', p.id), sep: true },
+    { label: 'Voir l’album', run: () => router.go(hrefs.musique('album', p.album.id)) },
+    { label: 'Voir l’artiste', run: () => router.go(hrefs.musique('artist', p.artist.id)) },
+    { label: 'Copier le lien', run: () => copierLien('track', p.id) },
+  ]
 }

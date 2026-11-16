@@ -15,7 +15,7 @@ export const API_URL = config.apiUrl
 export const ENTRACTE_URL = config.entracteUrl
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) {
+  constructor(public status: number, public code: string, message: string, public data: Record<string, unknown> = {}) {
     super(message)
   }
 }
@@ -74,15 +74,17 @@ async function call(base: string, method: string, path: string, body?: unknown):
   if (!res.ok) {
     let code = 'http_' + res.status
     let msg = res.statusText
+    let data: Record<string, unknown> = {}
     try {
       const e = await res.json()
       code = e.error ?? code
       msg = e.message ?? msg
+      if (e && typeof e === 'object') data = e
     } catch { /* corps non JSON */ }
     debug.log('warn', 'réseau', `${method} ${path.split('?')[0]} ✗ ${code} : ${msg}`)
     if (res.status === 401) onUnauthorized?.()
     if (res.status === 426 && base === API_URL) onUpgradeRequired?.(msg)
-    throw new ApiError(res.status, code, msg)
+    throw new ApiError(res.status, code, msg, data)
   }
   return res
 }

@@ -125,7 +125,7 @@ export class AppStore {
     if (!sillonOn()) { this.sillonMe = null; return false }
     try { this.sillonMe = await sillonApi.me() } catch { this.sillonMe = null }
     this.musique = !!this.sillonMe?.permissions.access
-    if (this.musique) void lecteur.chargerPreferences()
+    if (this.musique) { void lecteur.chargerPreferences(); void lecteur.chargerFile() }
     return this.musique
   }
 

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../lib/api'
 import { medias } from '../../lib/medias'
-import { Lecteur, type ContexteAudio, type DetailsAction, type ElementAudio, type Environnement, type NoeudGain } from './sillon.svelte'
-import { anneeEtType, debut, dureeExacte, gainLineaire, sections, sillonApi, support, totalAlbum, type Lecture, type Piste } from './sillon'
+import { contexteDe, Lecteur, sourceDe, type ContexteAudio, type DetailsAction, type ElementAudio, type Environnement, type NoeudGain, type ServeurFile } from './sillon.svelte'
+import { anneeEtType, debut, deplacerListe, dureeExacte, gainLineaire, lireDecouverte, octets, refusAjout, sections, sillonApi, support, totalAlbum, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste } from './sillon'
 
 class FauxAudio implements ElementAudio {
   src = ''
@@ -273,20 +274,186 @@ describe('lecteur', () => {
     expect(b.lecteur.lecture).toBe(false)
   })
 
-  it('reprise : la file et la position sont gardées et relancées', async () => {
-    const b = banc()
-    b.lecteur.jouer(album, 1, { type: 'album', id: 'a1' })
-    await attendre(() => b.lecteur.lecture)
-    b.lecteur.position = 63
+})
+
+type Corps = Record<string, unknown>
+
+function fauxServeur(catalogue: Piste[]) {
+  let n = 0
+  const el = (t: Piste, suggested = false, discovery = false): ElementFile => ({ id: `e${++n}`, suggested, discovery, track: t })
+  const etat = { f: { revision: 0, source: null, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', seed: null, updated_at: null, items: [] } as FileServeur }
+  const appels: [string, Corps][] = []
+  const ecoutes: EcouteEnvoyee[] = []
+  const piste = (id: unknown) => catalogue.find((p) => p.id === id)!
+  const ecrire = (verbe: string, b: Corps, g: (f: FileServeur) => Partial<FileServeur>) => {
+    appels.push([verbe, b])
+    if (b.revision !== etat.f.revision) return Promise.reject(new ApiError(409, 'conflict', 'conflit', { queue: structuredClone(etat.f) }))
+    etat.f = { ...etat.f, ...g(etat.f), revision: etat.f.revision + 1 }
+    return Promise.resolve(structuredClone(etat.f))
+  }
+  const serveur: ServeurFile = {
+    lire: async () => structuredClone(etat.f),
+    remplacer: (b) => ecrire('PUT', b, () => ({ items: (b.tracks as string[]).map((id) => el(piste(id))), index: b.index as number, position: 0, source: b.source ? { type: 'album', id: (b.source as { id: string }).id, name: 'Album' } : null })),
+    modifier: (b) => ecrire('PATCH', b, (f) => ({
+      ...(b.index !== undefined ? { index: b.index as number, position: (b.position as number | undefined) ?? 0 } : {}),
+      ...(b.shuffle !== undefined ? { shuffle: b.shuffle as boolean, items: [f.items[f.index], ...f.items.filter((_, k) => k !== f.index).reverse()], index: 0 } : {}),
+      ...(b.suggestions ? { suggestions: b.suggestions as FileServeur['suggestions'] } : {}),
+    })),
+    ajouter: (b) => ecrire('POST /queue/tracks', b, (f) => {
+      const nouveaux = (b.tracks as string[]).map((id) => el(piste(id)))
+      const k = b.mode === 'next' ? f.index + 1 : f.items.length
+      return { items: [...f.items.slice(0, k), ...nouveaux, ...f.items.slice(k)] }
+    }),
+    retirer: (b) => ecrire('POST /queue/remove', b, (f) => ({ items: f.items.filter((e) => !(b.items as string[]).includes(e.id)) })),
+    deplacer: (b) => ecrire('POST /queue/move', b, (f) => ({ items: deplacerListe(f.items, b.from as number, b.to as number) })),
+    ecoute: async (b) => { ecoutes.push(b) },
+  }
+  return { serveur, appels, ecoutes, etat, el }
+}
+
+const catalogue = [piste(1), piste(2), piste(3), piste(4)]
+
+describe('file serveur', () => {
+  it('jouer remplace la file du serveur ; changement de piste et position envoyés', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3)
+    expect(srv.appels[0]).toEqual(['PUT', { revision: 0, tracks: ['p1', 'p2', 'p3'], index: 0, source: { type: 'album', id: 'a1' } }])
+    expect(b.lecteur.element?.id).toBe('e1')
+    b.lecteur.suivant()
+    await attendre(() => srv.etat.f.index === 1)
+    expect(srv.appels[1]).toEqual(['PATCH', { revision: 1, index: 1, position: 0 }])
+    await attendre(() => b.audios[0]?.src.endsWith('/p2'))
+    const a = b.audios[0]
+    a.emettre('playing')
+    a.currentTime = 16
+    a.emettre('timeupdate')
+    await attendre(() => srv.etat.f.position === 16)
+    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 2, index: 1, position: 16 }])
     b.lecteur.pause()
-    const sauve = JSON.parse(b.stock.get('sillon.reprise')!)
-    expect(sauve.index).toBe(1)
-    expect(sauve.position).toBe(63)
-    const c = banc({ stockage: { getItem: (k) => b.stock.get(k) ?? null, setItem: () => {} } })
-    expect(c.lecteur.reprise?.file[1].id).toBe('p2')
-    c.lecteur.reprendreSauvegarde()
-    await attendre(() => c.audios[0]?.lectures === 1)
-    expect(c.lecteur.piste?.id).toBe('p2')
-    expect(c.audios[0].currentTime).toBe(63)
+    await attendre(() => srv.appels.length === 4)
+  })
+
+  it('409 : l’état courant est rechargé puis l’écriture rejouée', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.serveur?.revision === 1)
+    srv.etat.f = { ...srv.etat.f, revision: 7, items: [...srv.etat.f.items, srv.el(piste(4))] }
+    await b.lecteur.basculerAleatoire()
+    expect(srv.appels.slice(1).map(([v, c]) => [v, c.revision])).toEqual([['PATCH', 1], ['PATCH', 7]])
+    expect(b.lecteur.aleatoire).toBe(true)
+    expect(b.lecteur.file.map((p) => p.id)).toEqual(['p1', 'p4', 'p3', 'p2'])
+    expect(b.lecteur.index).toBe(0)
+    expect(b.audios[0].lectures).toBe(1)
+  })
+
+  it('reprise au démarrage : même piste et même position, proposée sans lecture automatique', async () => {
+    const srv = fauxServeur(catalogue)
+    srv.etat.f = { ...srv.etat.f, revision: 3, index: 1, position: 63, source: { type: 'album', id: 'a1', name: 'Album' }, items: [srv.el(piste(1)), srv.el(piste(2)), srv.el(piste(3))] }
+    const b = banc({ serveur: srv.serveur })
+    await b.lecteur.chargerFile()
+    expect(b.lecteur.piste?.id).toBe('p2')
+    expect(b.lecteur.position).toBe(63)
+    expect(b.lecteur.aReprendre).toBe(true)
+    expect(b.lecteur.contexte).toEqual({ type: 'album', id: 'a1' })
+    expect(b.audios).toHaveLength(0)
+    b.lecteur.reprendre()
+    await attendre(() => b.audios[0]?.lectures === 1)
+    expect(b.audios[0].src).toBe('https://sillon.test/stream/p2')
+    expect(b.audios[0].currentTime).toBe(63)
+    expect(b.lecteur.aReprendre).toBe(false)
+    expect(srv.appels).toEqual([])
+  })
+
+  it('les pistes absentes de la file serveur sont passées', async () => {
+    const srv = fauxServeur(catalogue)
+    srv.etat.f = { ...srv.etat.f, revision: 1, index: 0, items: [srv.el(piste(1, { available: false })), srv.el(piste(2))] }
+    const b = banc({ serveur: srv.serveur })
+    await b.lecteur.chargerFile()
+    expect(b.lecteur.file.map((p) => p.id)).toEqual(['p2'])
+    expect(b.lecteur.position).toBe(0)
+  })
+
+  it('écoutes enregistrées : sautée, puis terminée, avec la source et l’élément', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur, identifiant: () => 'id' })
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3 && b.audios[0]?.lectures === 1)
+    const a = b.audios[0]
+    for (const t of [1, 2, 3, 4, 5]) { a.currentTime = t; a.emettre('timeupdate') }
+    b.lecteur.suivant()
+    expect(srv.ecoutes).toEqual([{ id: 'id', track: 'p1', played: 5, ended_by: 'skip', source: { type: 'album', id: 'a1' }, item: 'e1' }])
+    await attendre(() => a.src.endsWith('/p2') && a.lectures === 2)
+    a.emettre('playing')
+    for (const t of [1, 2, 120, 121]) { a.currentTime = t; a.emettre('timeupdate') }
+    a.emettre('ended')
+    expect(srv.ecoutes[1]).toMatchObject({ track: 'p2', played: 3, ended_by: 'end', item: 'e2' })
+  })
+
+  it('lire ensuite, retirer et déplacer passent par le serveur ; suggestions marquées', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3)
+    await b.lecteur.lireEnsuite({ tracks: ['p4'] })
+    expect(srv.appels.at(-1)).toEqual(['POST /queue/tracks', { revision: 1, mode: 'next', tracks: ['p4'] }])
+    expect(b.lecteur.aSuivre.map((p) => p.id)).toEqual(['p4', 'p2', 'p3'])
+    await b.lecteur.deplacerElement('e4', 'e3')
+    expect(srv.appels.at(-1)).toEqual(['POST /queue/move', { revision: 2, from: 1, to: 3 }])
+    expect(b.lecteur.aSuivre.map((p) => p.id)).toEqual(['p2', 'p3', 'p4'])
+    await b.lecteur.retirer('e2')
+    expect(b.lecteur.aSuivre.map((p) => p.id)).toEqual(['p3', 'p4'])
+    srv.etat.f = { ...srv.etat.f, items: [...srv.etat.f.items, srv.el(piste(1, { id: 'p9' }), true, true)] }
+    await b.lecteur.reglerSuggestions('frequent')
+    expect(b.lecteur.suggestions).toBe('frequent')
+    expect(b.lecteur.elements.at(-1)).toMatchObject({ suggested: true, discovery: true })
+    expect(b.audios[0].lectures).toBe(1)
+  })
+})
+
+describe('playlists, ajouts et administration', () => {
+  it('déplacement dans une liste', () => {
+    expect(deplacerListe([1, 2, 3, 4], 0, 2)).toEqual([2, 3, 1, 4])
+    expect(deplacerListe([1, 2, 3, 4], 3, 0)).toEqual([4, 1, 2, 3])
+    expect(deplacerListe([1, 2], 0, 5)).toEqual([1, 2])
+  })
+
+  it('tailles et refus lisibles : disque plein avec l’occupation, limite du jour, déjà présent', () => {
+    expect(octets(512)).toBe('512 o')
+    expect(octets(1_500_000_000)).toBe('1,5 Go')
+    expect(octets(200_000_000_000)).toBe('200 Go')
+    const plein = new ApiError(507, 'disk_full', 'le disque de la musique serait plein', { used: 480e9, pending: 10e9, limit: 500e9, free: 10e9, estimated: 2e10 })
+    expect(refusAjout(plein)).toBe('Disque plein : 490 Go sur 500 Go occupés, 10 Go libres ; cet ajout demande environ 20 Go.')
+    expect(refusAjout(new ApiError(429, 'daily_limit', 'limite de 5 ajouts par jour atteinte'))).toBe('Limite d’ajouts atteinte : limite de 5 ajouts par jour atteinte.')
+    expect(refusAjout(new ApiError(409, 'already_available', 'x'))).toBe('Déjà dans la bibliothèque.')
+    expect(refusAjout(new ApiError(409, 'excluded', 'x'))).toMatch(/administrateur/)
+  })
+
+  it('le message d’erreur de l’API garde son corps (507, 409 de la file)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: 'disk_full', message: 'plein', used: 1, pending: 0, limit: 2, free: 1, estimated: 5 }), { status: 507, headers: { 'Content-Type': 'application/json' } }))
+    const e = await sillonApi.ajouter('album', 'm').catch((x) => x)
+    expect(e).toBeInstanceOf(ApiError)
+    expect(e.data).toMatchObject({ used: 1, estimated: 5 })
+  })
+
+  it('découverte de l’administration : champs absents tolérés', () => {
+    expect(lireDecouverte(null)).toEqual({ budget: { used: 0, limit: null }, additions: [], removable: [] })
+    expect(lireDecouverte({ budget: { used: 5, limit: 10 }, additions: [{ title: 'A', artist: { name: 'B' }, state: 'available', estimated_size: 3 }], removable: [{ name: 'C' }] })).toEqual({
+      budget: { used: 5, limit: 10 },
+      additions: [{ title: 'A', artist: 'B', state: 'available', size: 3, at: null }],
+      removable: [{ title: 'C', artist: '', state: '', size: null, at: null }],
+    })
+  })
+
+  it('source de la file selon le contexte, et retour', () => {
+    expect(sourceDe({ type: 'playlist', id: 'x' })).toEqual({ type: 'playlist', id: 'x' })
+    expect(sourceDe({ type: 'likes' })).toEqual({ type: 'likes' })
+    expect(sourceDe({ type: 'pistes' })).toBeUndefined()
+    expect(sourceDe({ type: 'pistes', query: 'daft' })).toEqual({ type: 'search', query: 'daft' })
+    expect(contexteDe({ type: 'search', id: null, name: 'daft' })).toEqual({ type: 'pistes', query: 'daft' })
+    expect(contexteDe({ type: 'playlist', id: 'x', name: 'P' })).toEqual({ type: 'playlist', id: 'x' })
+    expect(contexteDe(null)).toEqual({ type: 'pistes' })
   })
 })
