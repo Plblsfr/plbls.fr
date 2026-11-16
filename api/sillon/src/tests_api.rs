@@ -752,7 +752,12 @@ async fn synchronisation_cree_artistes_albums_et_pistes_avec_formats() {
             (Some(codec), Some(conteneur)),
             "{p}"
         );
-        assert_eq!(p["format"]["sample_rate"].as_i64().is_some(), true, "{p}");
+        assert!(
+            p["format"]["sample_rate"]
+                .as_i64()
+                .is_some_and(|f| f >= 44_100),
+            "{p}"
+        );
         assert_eq!(p["format"]["channels"], 1, "{p}");
         assert!((p["duration"].as_f64().unwrap() - 2.0).abs() < 0.2, "{p}");
         assert_eq!(p["available"], true);
