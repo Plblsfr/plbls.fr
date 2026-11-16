@@ -26,3 +26,26 @@ describe('LinkCard YouTube', () => {
     expect(document.querySelector('.lightbox')).toBeNull()
   })
 })
+
+describe('LinkCard Sillon', () => {
+  const carte = (o: object) => ({ url: 'https://estompe.plbls.fr/#/musique/album/a1', title: 'Lemonade', description: 'Beyoncé', site_name: 'Sillon', sillon: { type: 'album', id: 'a1', title: 'Lemonade', artist: 'Beyoncé', album: 'a1', cover: null, listen: true, ...o } })
+
+  it('affiche titre et artiste, et « Écouter » ouvre la section', async () => {
+    const spy = vi.spyOn(api, 'linkPreview').mockResolvedValue(carte({}) as any)
+    const { findByText, getByText } = render(LinkCard, { url: 'https://estompe.plbls.fr/#/musique/album/a1', message: '42' })
+    await findByText('Lemonade')
+    expect(getByText('Beyoncé')).toBeTruthy()
+    expect(spy).toHaveBeenCalledWith('https://estompe.plbls.fr/#/musique/album/a1', '42')
+    expect(getByText('Écouter').closest('a')?.getAttribute('href')).toBe('#/musique/album/a1')
+  })
+
+  it("ouvre l'album d'un titre et masque « Écouter » sans accès", async () => {
+    vi.spyOn(api, 'linkPreview').mockResolvedValue(carte({ type: 'track', id: 't1', title: 'Formation', album: 'a2', listen: false }) as any)
+    const { findByText, queryByText } = render(LinkCard, { url: 'https://estompe.plbls.fr/#/musique/track/t1', message: '43' })
+    await findByText('Formation')
+    expect(queryByText('Écouter')).toBeNull()
+    vi.spyOn(api, 'linkPreview').mockResolvedValue(carte({ type: 'track', id: 't1', title: 'Formation 2', album: 'a2' }) as any)
+    const r = render(LinkCard, { url: 'https://estompe.plbls.fr/#/musique/track/t1', message: '44' })
+    expect((await r.findByText('Écouter')).closest('a')?.getAttribute('href')).toBe('#/musique/album/a2')
+  })
+})

@@ -45,6 +45,8 @@ pub struct Config {
     pub transcribe_language: String,
     pub entracte_url: String,
     pub entracte_token: String,
+    pub sillon_url: String,
+    pub sillon_token: String,
     pub livekit: Livekit,
 }
 
@@ -143,6 +145,8 @@ impl Config {
                 .trim_end_matches('/')
                 .to_string(),
             entracte_token: get("ENTRACTE_SERVICE_TOKEN"),
+            sillon_url: get("SILLON_INTERNE_URL").trim_end_matches('/').to_string(),
+            sillon_token: get("SILLON_SERVICE_TOKEN"),
             livekit: Livekit {
                 url: get("LIVEKIT_URL"),
                 api_url: env("LIVEKIT_API_URL", "http://livekit:7880"),
@@ -169,6 +173,10 @@ impl Config {
 
     pub fn entracte_actif(&self) -> bool {
         !self.entracte_url.is_empty() && !self.entracte_token.is_empty()
+    }
+
+    pub fn sillon_actif(&self) -> bool {
+        !self.sillon_url.is_empty() && !self.sillon_token.is_empty()
     }
 }
 
@@ -247,6 +255,28 @@ mod tests {
             (0, 0)
         );
         assert!(!c.livekit.allow_video);
+        assert!(!c.sillon_actif());
+    }
+
+    #[test]
+    fn sillon_actif_avec_l_url_et_le_jeton() {
+        let c = charge(&[
+            ("SILLON_INTERNE_URL", "http://sillon-api:8080/"),
+            ("SILLON_SERVICE_TOKEN", "j"),
+        ])
+        .unwrap();
+        assert_eq!(c.sillon_url, "http://sillon-api:8080");
+        assert!(c.sillon_actif());
+        assert!(
+            !charge(&[("SILLON_INTERNE_URL", "http://s")])
+                .unwrap()
+                .sillon_actif()
+        );
+        assert!(
+            !charge(&[("SILLON_SERVICE_TOKEN", "j")])
+                .unwrap()
+                .sillon_actif()
+        );
     }
 
     #[test]
