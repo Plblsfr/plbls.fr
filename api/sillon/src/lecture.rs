@@ -699,6 +699,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn synchro_sans_changement_garde_jetons_cache_et_mesures() {
+        let Some(t) = banc(|_| {}).await else { return };
+        t.b.synchro().await;
+        let id = t.id("Lemonade", "Formation").await;
+        let piste_id = Uuid::parse_str(&id).unwrap();
+        let pool = t.b.e.state.pool().clone();
+        let direct = t
+            .lire(
+                "alice",
+                &id,
+                json!({"codecs": ["flac"], "containers": ["flac"], "quality": "originale"}),
+            )
+            .await
+            .json();
+        let transcode = t.lire("alice", &id, SANS_FLAC()).await.json();
+        assert_eq!(transcode["mode"], "transcode", "{transcode}");
+        let r = t.flux(transcode["url"].as_str().unwrap(), &[]).await;
+        assert_eq!(r.statut, StatusCode::OK);
+        attendre_async(
+            || async { t.transcodeur().en_cours() == 0 },
+            "fin de l'encodage",
+        )
+        .await;
+        assert_eq!(t.transcodeur().lancements(), 1);
+        let avant = catalogue::fichier_de_piste(&pool, piste_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let mesure = volume::lire(&pool, piste_id, avant.contenu_le)
+            .await
+            .unwrap()
+            .expect("mesure enregistrée à la première lecture");
+
+        t.b.synchro().await;
+
+        let apres = catalogue::fichier_de_piste(&pool, piste_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!((apres.id, apres.contenu_le), (avant.id, avant.contenu_le));
+        let relue = volume::lire(&pool, piste_id, apres.contenu_le)
+            .await
+            .unwrap()
+            .expect("mesure perdue après la synchronisation");
+        assert_eq!(relue.niveau, mesure.niveau);
+        for j in [&direct, &transcode] {
+            let r = t.flux(j["url"].as_str().unwrap(), &[]).await;
+            assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        }
+        assert_eq!(t.transcodeur().lancements(), 1, "ffmpeg relancé");
+        assert_eq!(t.en_cache(".opus").len(), 1);
+        let encore = t.lire("alice", &id, SANS_FLAC()).await.json();
+        for cle in ["loudness", "track", "track_peak"] {
+            assert_eq!(encore["gain"][cle], transcode["gain"][cle], "{cle}");
+        }
+    }
+
+    #[tokio::test]
     async fn url_de_flux_expiree_modifiee_ou_d_une_autre_piste_refusee() {
         let Some(t) = banc(|_| {}).await else { return };
         t.b.synchro().await;
