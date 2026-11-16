@@ -292,7 +292,9 @@ mod tests {
     use super::*;
     use crate::transcodage::Format;
 
-    const SECRET: &str = "0123456789abcdef0123456789abcdef";
+    static SECRET: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
+    });
 
     fn billet() -> Billet {
         Billet {
@@ -310,12 +312,12 @@ mod tests {
     #[test]
     fn jeton_signe_expire_ou_modifie_refuse() {
         let b = billet();
-        let j = signer(SECRET, &b);
-        assert_eq!(valider(SECRET, &j, 1_000), Some(b.clone()));
-        assert_eq!(valider(SECRET, &j, 2_000), None);
-        assert_eq!(valider(&SECRET.replace('0', "1"), &j, 1_000), None);
+        let j = signer(&SECRET, &b);
+        assert_eq!(valider(&SECRET, &j, 1_000), Some(b.clone()));
+        assert_eq!(valider(&SECRET, &j, 2_000), None);
+        assert_eq!(valider(&format!("{}x", *SECRET), &j, 1_000), None);
         let autre = signer(
-            SECRET,
+            &SECRET,
             &Billet {
                 piste: Uuid::from_u128(3),
                 ..b.clone()
@@ -332,14 +334,14 @@ mod tests {
             String::new(),
             "a.b".into(),
         ] {
-            assert_eq!(valider(SECRET, &faux, 1_000), None, "{faux}");
+            assert_eq!(valider(&SECRET, &faux, 1_000), None, "{faux}");
         }
         let direct = Billet {
             variante: Variante::Direct,
             ..b
         };
         assert_eq!(
-            valider(SECRET, &signer(SECRET, &direct), 1_000),
+            valider(&SECRET, &signer(&SECRET, &direct), 1_000),
             Some(direct)
         );
     }
