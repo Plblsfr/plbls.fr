@@ -1,6 +1,6 @@
 import { filmsApi, ApiError } from '../../lib/api'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, castRefusal, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality, type Range } from '../../sections/entracte/films'
+import { absolute, castRefusal, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, bufferedAhead, savedQuality, saveQuality, support, type CastState, type FilmPlayback, type FilmTracks, type Quality, type Range } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
@@ -44,6 +44,7 @@ export interface Adapter {
   /** Durée de la vidéo (s), 0 si inconnue (direct). */
   duration?(): number
   buffered?(): Range[]
+  ready?(): boolean
   rate(): number
   setRate(r: number): void
   state(): PState
@@ -157,6 +158,7 @@ const youtube: Factory = async (el, h) => {
 const isHls = (u: string) => /\.m3u8(\?|#|$)/i.test(u)
 
 const HLS_MIME = 'application/vnd.apple.mpegurl'
+const AVANCE_PRETE = 5
 
 function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false, hlsConfig: Partial<HlsConfig> = {}): { adapter: Adapter; video: HTMLVideoElement } {
   const v = document.createElement('video')
@@ -180,6 +182,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
     h.onError('Cette vidéo ne peut pas être lue (format ou accès refusé par le site qui l\'héberge).')
   })
   const detach = () => { hls?.destroy(); hls = null }
+  const ranges = () => { const r: Range[] = []; for (let i = 0; i < v.buffered.length; i++) r.push([v.buffered.start(i), v.buffered.end(i)]); return r }
   const adapter: Adapter = {
     sync: 'full', canRate: true, setVolume: (x) => { v.volume = x / 100; v.muted = x === 0 },
     load: (ref, start, play) => {
@@ -218,7 +221,8 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
     },
     play: () => void v.play().catch(() => {}), pause: () => v.pause(), seek: (s) => { v.currentTime = s },
     time: () => v.currentTime, duration: () => (Number.isFinite(v.duration) ? v.duration : 0), rate: () => v.playbackRate, setRate: (r) => { v.playbackRate = r },
-    buffered: () => { const r: Range[] = []; for (let i = 0; i < v.buffered.length; i++) r.push([v.buffered.start(i), v.buffered.end(i)]); return r },
+    buffered: ranges,
+    ready: () => v.readyState >= 4 || (v.readyState >= 3 && bufferedAhead(v.currentTime, ranges()) >= AVANCE_PRETE),
     state,
     destroy: () => { detach(); v.pause(); v.removeAttribute('src'); v.load(); v.remove() },
   }

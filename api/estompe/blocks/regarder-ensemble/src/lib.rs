@@ -626,12 +626,22 @@ async fn pret(
         Ok(p) => p.unwrap_or_default(),
         Err(r) => return r,
     };
+    let attendre = match type_de(&corps, "wait", Value::as_bool) {
+        Ok(a) => a.unwrap_or_default(),
+        Err(r) => return r,
+    };
     let salon = match salon_ecriture(&state, genre, &cid, &user).await {
         Ok(s) => s,
         Err(r) => return r,
     };
-    appliquer(&state, &ctx, genre, &salon, true, |s, _| {
-        session::pret(s.expect("session requise"), &user.id, pret)
+    appliquer(&state, &ctx, genre, &salon, true, |s, now| {
+        session::pret(
+            s.expect("session requise"),
+            &utilisateur(&user),
+            pret,
+            attendre,
+            now,
+        )
     })
     .await
 }

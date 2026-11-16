@@ -21,6 +21,7 @@ export class WatchPlayer {
   /** Coupe-circuit déclenché : la synchronisation reprend seule après quelques secondes. */
   suspended = $state(false)
   slow = $state(false)
+  loading = $state(false)
   position = $state(0)
   duration = $state(0)
   tracks = $state<FilmTracks | null>(null)
@@ -49,6 +50,7 @@ export class WatchPlayer {
     const gen = ++this.gen
     this.prov = prov
     this.slow = false
+    this.loading = false
     this.tracks = null
     this.buffered = []
     this.engine?.destroy()
@@ -77,6 +79,7 @@ export class WatchPlayer {
         send: (action, b) => api.watchAction(this.cid, action, b, this.kind),
         ended: (rev) => void api.watchAction(this.cid, 'ended', { rev }, this.kind).catch(() => {}),
         ready: (ready) => void api.watchReady(this.cid, ready, this.kind).catch(() => {}),
+        ...(this.kind === 'cinema' ? { wait: () => void api.watchReady(this.cid, false, this.kind, true).catch(() => {}) } : {}),
         refused: (e) => notify.error(e ?? new Error('Le serveur n’a pas répondu'), 'Action refusée'),
         log: (m) => debug.log('info', this.tag, m),
       })
@@ -111,6 +114,7 @@ export class WatchPlayer {
     this.suspended = e.suspended
     this.blocked = e.stalled
     this.slow = e.slow
+    this.loading = e.loading
     this.position = e.position
   }
 

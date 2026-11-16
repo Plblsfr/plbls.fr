@@ -192,7 +192,7 @@ export const api = {
   watchStop: (cid: string, kind: SessionKind = 'watch') => send<void>('DELETE', `/voice/${cid}/${kind}`),
   watchAction: (cid: string, action: string, b: { position?: number; rate?: number; rev?: number; video?: string } = {}, kind: SessionKind = 'watch') => post<void>(`/voice/${cid}/${kind}/action`, { action, ...b }),
   watchRepeat: (cid: string, repeat: '' | 'one' | 'all', kind: SessionKind = 'watch') => send<void>('PUT', `/voice/${cid}/${kind}/options`, { repeat }),
-  watchReady: (cid: string, ready: boolean, kind: SessionKind = 'watch') => post<void>(`/voice/${cid}/${kind}/ready`, { ready }),
+  watchReady: (cid: string, ready: boolean, kind: SessionKind = 'watch', wait = false) => post<void>(`/voice/${cid}/${kind}/ready`, wait ? { ready, wait } : { ready }),
   watchHostOnly: (cid: string, host_only: boolean, kind: SessionKind = 'watch') => send<void>('PUT', `/voice/${cid}/${kind}/options`, { host_only }),
   watchEnqueue: (cid: string, video: string, kind: SessionKind = 'watch') => post<void>(`/voice/${cid}/${kind}/queue`, { video }),
   watchReorder: (cid: string, ids: string[], kind: SessionKind = 'watch') => send<void>('PUT', `/voice/${cid}/${kind}/queue`, { ids }),

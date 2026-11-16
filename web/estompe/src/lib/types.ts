@@ -124,7 +124,7 @@ export interface WatchItem { id: string; provider: string; video: string; by: st
 export interface WatchState {
   rev: number; provider: string; video: string; playing: boolean; pos: number; rate: number; at: string
   host: string; host_only: boolean; by_id: string; by: string; act: string
-  queue: WatchItem[]; ready: Record<string, boolean>
+  queue: WatchItem[]; ready: Record<string, boolean>; waiting?: string[]
   meta?: MusicMeta; repeat: '' | 'one' | 'all'; history: WatchItem[]
 }
 /** Salon « Vidéos » (EST-149). `provider` : youtube, twitch_vod, twitch_clip, twitch_live, vimeo, dailymotion, file, page, simple (carte sans lecteur). */

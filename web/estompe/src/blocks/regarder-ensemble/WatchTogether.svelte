@@ -4,7 +4,7 @@
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import { WatchPlayer, watchView } from './watch.svelte'
-  import { lastAction } from './watch'
+  import { lastAction, waitingText } from './watch'
   import VoiceControls from '../vocal/VoiceControls.svelte'
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
@@ -20,6 +20,7 @@
   const canDrive = $derived(!!s && (!s.host_only || s.host === app.meId))
   const isHost = $derived(s?.host === app.meId)
   const action = $derived(s ? lastAction(s) : '')
+  const waiting = $derived(waitingText(s?.waiting, app.meId ?? '', people))
   const fail = (e: unknown) => notify.error(e, 'Action impossible')
 
   let host = $state<HTMLElement>()
@@ -98,8 +99,15 @@
           </div>
         {:else if player?.blocked}
           <button class="watch-msg plbls-button v-rose" onclick={() => player?.resume()}><Icon name="lecture" size={18} /> Lancer la lecture</button>
-        {:else if player && !live && !s.playing && canDrive}
-          <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
+        {:else}
+          {#if waiting}
+            <div class="watch-msg watch-wait plbls-alert" role="status"><span class="plbls-spinner plbls-spinner--sm" aria-hidden="true"></span><p class="plbls-alert__corps">{waiting}{canDrive ? ' Appuyez sur lecture pour reprendre sans attendre.' : ''}</p></div>
+          {/if}
+          {#if player && !live && !s.playing && canDrive}
+            <button class="watch-big" onclick={toggle} aria-label="Lecture"><Icon name="lecture" size={34} /></button>
+          {:else if player?.loading && !live}
+            <span class="plbls-spinner film-wait" role="status" aria-label="Chargement"></span>
+          {/if}
         {/if}
         {#if player && !live}
           <div class="watch-bar" role="group" aria-label="Lecture">

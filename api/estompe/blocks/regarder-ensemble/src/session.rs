@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -52,6 +52,7 @@ pub struct Etat {
     pub act: String,
     pub queue: Vec<Item>,
     pub ready: BTreeMap<String, bool>,
+    pub waiting: BTreeSet<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Meta>,
     pub repeat: String,
@@ -141,6 +142,7 @@ impl Etat {
             act: String::new(),
             queue: Vec::new(),
             ready: BTreeMap::new(),
+            waiting: BTreeSet::new(),
             meta: None,
             repeat: String::new(),
             history: Vec::new(),
@@ -166,6 +168,7 @@ impl Etat {
         self.rate = 1.0;
         self.pos = 0.0;
         self.act = "video".into();
+        self.waiting.clear();
     }
 
     fn avancer(&mut self) -> bool {
@@ -187,6 +190,14 @@ impl Etat {
         let it = self.queue.remove(0);
         self.lire(it);
         true
+    }
+
+    fn reprendre(&mut self, now: SystemTime) {
+        if self.waiting.is_empty() && !self.playing {
+            self.playing = true;
+            self.at = now;
+            self.act = "resume".into();
+        }
     }
 
     pub fn position(&self, now: SystemTime) -> f64 {
@@ -292,6 +303,7 @@ pub fn agir(s: &Etat, u: &Utilisateur, a: &Action, now: SystemTime) -> Resultat 
         n.pos = 0.0;
         n.playing = false;
         n.ready = BTreeMap::new();
+        n.waiting.clear();
         if s.repeat == "one" || (s.repeat == "all" && s.queue.is_empty() && s.history.is_empty()) {
             n.playing = true;
             n.rate = 1.0;
@@ -311,10 +323,12 @@ pub fn agir(s: &Etat, u: &Utilisateur, a: &Action, now: SystemTime) -> Resultat 
         "play" => {
             n.playing = true;
             n.pos = a.position;
+            n.waiting.clear();
         }
         "pause" => {
             n.playing = false;
             n.pos = a.position;
+            n.waiting.clear();
         }
         "seek" => n.pos = a.position,
         "previous" => {
@@ -343,9 +357,26 @@ pub fn agir(s: &Etat, u: &Utilisateur, a: &Action, now: SystemTime) -> Resultat 
     Ok(Some(n))
 }
 
-pub fn pret(s: &Etat, uid: &str, pret: bool) -> Resultat {
+pub fn pret(s: &Etat, u: &Utilisateur, pret: bool, attendre: bool, now: SystemTime) -> Resultat {
     let mut n = s.clone();
-    n.ready.insert(uid.to_string(), pret);
+    n.ready.insert(u.id.to_string(), pret);
+    if !pret && attendre && s.provider == PROVIDER_FILM && (s.playing || !s.waiting.is_empty()) {
+        if s.playing {
+            n.pos = s.position(now);
+            n.playing = false;
+            n.at = now;
+            n.act = "wait".into();
+            n.by = u.pseudo.to_string();
+            n.by_id = u.id.to_string();
+        }
+        if n.waiting.insert(u.id.to_string()) || s.playing {
+            return Ok(Some(n));
+        }
+    }
+    if pret && n.waiting.remove(u.id) {
+        n.reprendre(now);
+        return Ok(Some(n));
+    }
     n.rev -= 1;
     Ok(Some(n))
 }
@@ -491,6 +522,9 @@ impl Sessions {
         };
         let mut n = s.clone();
         n.ready.remove(membre);
+        if n.waiting.remove(membre) {
+            n.reprendre(SystemTime::now());
+        }
         if s.host == membre {
             n.host.clone_from(premier);
         }
@@ -877,11 +911,98 @@ mod tests {
         .unwrap();
         let avant = s.etat("c").unwrap();
         let n = s
-            .appliquer("c", true, |e, _| pret(e.unwrap(), "b", true))
+            .appliquer("c", true, |e, now| {
+                pret(e.unwrap(), &u("b"), true, false, now)
+            })
             .unwrap()
             .unwrap();
         assert_eq!(n.rev, avant.rev);
         assert_eq!(n.ready.get("b"), Some(&true));
+    }
+
+    fn seance() -> Etat {
+        demarre(vec![film("1", "a")])
+    }
+
+    #[test]
+    fn attente_met_en_pause_puis_reprend_quand_tous_sont_prets() {
+        let e = seance();
+        let n = pret(&e, &u("b"), false, true, t(110)).unwrap().unwrap();
+        assert!(!n.playing);
+        assert_eq!(
+            (n.pos, n.at, n.act.as_str(), n.by.as_str()),
+            (10.0, t(110), "wait", "b")
+        );
+        assert!(n.waiting.contains("b"));
+        assert_eq!(n.rev, e.rev);
+        let n = pret(&n, &u("c"), false, true, t(112)).unwrap().unwrap();
+        assert_eq!((n.playing, n.pos, n.waiting.len()), (false, 10.0, 2));
+        let n = pret(&n, &u("b"), true, false, t(115)).unwrap().unwrap();
+        assert!(!n.playing && n.waiting.contains("c"));
+        let n = pret(&n, &u("c"), true, false, t(120)).unwrap().unwrap();
+        assert!(n.playing && n.waiting.is_empty());
+        assert_eq!((n.pos, n.at, n.act.as_str()), (10.0, t(120), "resume"));
+    }
+
+    #[test]
+    fn attente_reservee_aux_films_et_a_la_demande() {
+        let e = demarre(vec![it("1", "v1", "a")]);
+        let n = pret(&e, &u("b"), false, true, t(110)).unwrap().unwrap();
+        assert!(n.playing && n.waiting.is_empty());
+        assert_eq!(n.rev, e.rev - 1);
+        let n = pret(&seance(), &u("b"), false, false, t(110))
+            .unwrap()
+            .unwrap();
+        assert!(n.playing && n.waiting.is_empty());
+    }
+
+    #[test]
+    fn attente_sans_effet_sur_une_pause_voulue() {
+        let e = agir(&seance(), &u("a"), &act("pause", 5.0), t(105))
+            .unwrap()
+            .unwrap();
+        let n = pret(&e, &u("b"), false, true, t(110)).unwrap().unwrap();
+        assert!(!n.playing && n.waiting.is_empty());
+        assert_eq!(n.rev, e.rev - 1);
+        let n = pret(&n, &u("b"), true, false, t(111)).unwrap().unwrap();
+        assert!(!n.playing);
+    }
+
+    #[test]
+    fn lecture_ou_pause_voulue_annule_l_attente() {
+        let e = pret(&seance(), &u("b"), false, true, t(110))
+            .unwrap()
+            .unwrap();
+        let n = agir(&e, &u("a"), &act("play", 10.0), t(111))
+            .unwrap()
+            .unwrap();
+        assert!(n.playing && n.waiting.is_empty());
+        let n = agir(&e, &u("a"), &act("pause", 10.0), t(111))
+            .unwrap()
+            .unwrap();
+        assert!(n.waiting.is_empty());
+        let n = pret(&n, &u("b"), true, false, t(112)).unwrap().unwrap();
+        assert!(!n.playing);
+        let n = agir(&e, &u("a"), &act("seek", 50.0), t(111))
+            .unwrap()
+            .unwrap();
+        assert!(!n.playing && n.waiting.contains("b"));
+    }
+
+    #[test]
+    fn depart_de_la_personne_attendue_relance_la_lecture() {
+        let s = Sessions::default();
+        s.appliquer("c", false, |_, now| {
+            demarrer(None, &u("a"), vec![film("1", "a")], None, now)
+        })
+        .unwrap();
+        s.appliquer("c", true, |e, now| {
+            pret(e.unwrap(), &u("b"), false, true, now)
+        })
+        .unwrap();
+        assert!(!s.etat("c").unwrap().playing);
+        let n = s.quitter("c", "b", &["a".to_string()]).unwrap().unwrap();
+        assert!(n.playing && n.waiting.is_empty());
     }
 
     #[test]
@@ -961,8 +1082,10 @@ mod tests {
             demarrer(None, &u("a"), vec![it("1", "v1", "a")], None, now)
         })
         .unwrap();
-        s.appliquer("c", true, |e, _| pret(e.unwrap(), "a", true))
-            .unwrap();
+        s.appliquer("c", true, |e, now| {
+            pret(e.unwrap(), &u("a"), true, false, now)
+        })
+        .unwrap();
         let rev = s.etat("c").unwrap().rev;
         assert_eq!(s.quitter("autre", "a", &[]), None);
         let n = s.quitter("c", "a", &["b".into()]).unwrap().unwrap();
