@@ -2,7 +2,7 @@
 
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
 Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
-par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service et le catalogue (bibliothèque synchronisée depuis Lidarr).
+par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr) et la lecture audio.
 
 | Où | Quoi |
 |---|---|
@@ -66,6 +66,33 @@ présents, séparément, plein texte PostgreSQL sans accents ni casse (configura
 (`LIKE` échappé par `commun::sql`) : « beyonce » trouve « Beyoncé ». Administration (`sillon:admin`) : état des synchronisations et
 compteurs de la bibliothèque, fichiers écartés, lancement manuel.
 
+## Lecture
+
+- `POST /tracks/{id}/playback` (`sillon:access`) reçoit ce que le client lit (`codecs`, `containers`) et la qualité voulue (`quality` :
+  `originale`, `haute`, `normale`, `basse` ; sans elle, la préférence de la personne, `GET`/`PUT /preferences`, `originale` par défaut).
+  Elle renvoie une URL de flux signée (`/stream/{jeton}`, valable 6 h), le format servi, la durée exacte et les gains de volume.
+- Lecture directe : le fichier d'origine, avec `Range` et son `Content-Type` exact (`audio/flac`, `audio/mpeg`, `audio/ogg; codecs=…`,
+  `audio/mp4`…), quand le codec et le conteneur sont annoncés lisibles et que la qualité est `originale` ; aussi pour une source avec
+  perte qui ne dépasse pas le palier demandé (un MP3 à 128 kb/s en `normale`).
+- Sinon, transcodage par ffmpeg du fichier entier (pas de HLS) : Opus dans Ogg si le client annonce `opus` et `ogg`, AAC (ADTS) sinon,
+  à 96 (`basse`), 160 (`normale`) ou 256 kb/s (`haute` ; `originale` quand la lecture directe est impossible), stéréo au plus. Le
+  résultat va dans le cache disque (`SILLON_CACHE`, plafond `SILLON_CACHE_GO`, éviction du moins récemment lu, jamais d'un fichier en
+  cours de lecture ou d'encodage) et y est servi avec `Range` ; une deuxième demande ne relance pas ffmpeg. L'encodage démarre dès la
+  demande de lecture (la piste suivante peut être demandée d'avance pour le préchargement) ; pendant l'encodage, le flux est servi au fil
+  de l'eau (200 sans `Content-Length`), et un échec coupe la connexion plutôt que de livrer un fichier tronqué. Au-delà de
+  `SILLON_MAX_TRANSCODAGES` encodages simultanés : 503 `server_busy` avec `Retry-After`.
+- Jeton de flux : signé par HMAC-SHA256 (`SILLON_STREAM_SECRET`), il porte la personne, la piste, le fichier, le format et l'expiration ;
+  il ne sert que sa piste (fichier changé depuis : 404, redemander la lecture). Les droits (`sillon:access`) sont revérifiés à chaque
+  requête ; une session d'une autre personne présentée avec le jeton : 403. CORS ouvert (`*`, sans identifiants) sur `/stream/`, pour
+  `<audio>` et Web Audio depuis toute origine.
+- Sans blanc : une piste = un fichier complet. La réponse donne `samples` et `sample_rate`, durée exacte de la source en échantillons
+  (comptée au décodage, la même en transcodage), `output_sample_rate` et `encoder_delay`, échantillons à retirer au début du flux décodé
+  (1024 en AAC ; 0 en Opus, dont le pre-skip est retiré par le décodeur, et en direct).
+- Volume : niveau intégré, plage et pic réel (EBU R128, filtre `ebur128` de ffmpeg) mesurés à la première lecture d'un fichier, puis les
+  autres pistes de l'album en tâche de fond, gardés en base (table `mesures`, par piste et `contenu_le` du fichier : un fichier remplacé
+  est remesuré). La réponse donne les gains piste et album (dB) pour atteindre -18 LUFS et les pics ; le client applique. Gain d'album :
+  moyenne énergétique, pondérée par la durée, des pistes déjà mesurées de l'album.
+
 ## Variables
 
 | Variable | Source | Rôle |
@@ -80,12 +107,17 @@ compteurs de la bibliothèque, fichiers écartés, lancement manuel.
 | `SILLON_CHEMINS` | `plbls.env` (vide) | correspondances `distant=local` séparées par des virgules, quand Lidarr voit la musique ailleurs |
 | `SILLON_SYNC_MINUTES` | `plbls.env` (15) | période de synchronisation ; 0 = webhook et bouton seulement |
 | `SILLON_FFPROBE` | `plbls.env` (`ffprobe`) | ffprobe de l'image |
+| `SILLON_FFMPEG` | `plbls.env` (`ffmpeg`) | ffmpeg de l'image (transcodage, mesure du volume) |
+| `SILLON_STREAM_SECRET` | Vault `secret/sillon` | clé de signature des URL de flux, 32 caractères au moins ; absente = clé aléatoire au démarrage |
+| `SILLON_CACHE` | `plbls.env` (`/tmp/sillon`) | cache des fichiers transcodés, volume `sillon-cache` du compose |
+| `SILLON_CACHE_GO` | `plbls.env` (10) | plafond du cache en Go |
+| `SILLON_MAX_TRANSCODAGES` | `plbls.env` (2) | encodages simultanés au plus (1 au moins) |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles
 
 - `plbls.fr-infra` : base `sillon` sur `postgres-main` (`CREATE DATABASE sillon OWNER plbls;`), sous-domaine `sillon-api.plbls.fr` et sa route.
-- Vault, `secret/sillon` : `AEGIS_TOKEN_SILLON`, `SILLON_LIDARR_CLE`, `SILLON_WEBHOOK_TOKEN`.
+- Vault, `secret/sillon` : `AEGIS_TOKEN_SILLON`, `SILLON_LIDARR_CLE`, `SILLON_WEBHOOK_TOKEN`, `SILLON_STREAM_SECRET` (`openssl rand -hex 32`).
 - `plbls.fr-infra` : dossier de la musique monté en lecture seule (`SILLON_MEDIAS`, mêmes chemins que Lidarr ou `SILLON_CHEMINS`),
   Lidarr joignable depuis la stack (réseau `MEDIAS_NETWORK`). La migration crée l'extension `unaccent` (extension de confiance : le
   propriétaire de la base suffit).

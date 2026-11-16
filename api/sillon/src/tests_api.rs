@@ -135,6 +135,17 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             Garde::Public(_) => {
                 assert!(appel(None).await.statut.is_success(), "{m} {chemin}");
             }
+            Garde::Jeton(_) => {
+                for qui in [None, Some("admin")] {
+                    let r = appel(qui).await;
+                    assert_eq!(
+                        r.statut,
+                        StatusCode::UNAUTHORIZED,
+                        "{m} {chemin} pour {qui:?}"
+                    );
+                    assert_eq!(r.json()["error"], "stream_expired");
+                }
+            }
         }
     }
     assert!(Droit::TOUS.iter().all(|d| droits_vus.contains(d)));
@@ -338,7 +349,9 @@ async fn sante_disponibilite_et_migrations() {
             .fetch_all(e.state.pool())
             .await
             .unwrap();
-    assert_eq!(versions, [1, 2]);
+    let attendues: Vec<i64> = crate::MIGRATIONS.iter().map(|m| m.version).collect();
+    assert_eq!(versions, attendues);
+    assert_eq!(attendues[..2], [1, 2]);
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;
@@ -348,7 +361,7 @@ async fn sante_disponibilite_et_migrations() {
 
 const LIDARR: i64 = 987_000;
 
-fn ffmpeg_present() -> bool {
+pub(crate) fn ffmpeg_present() -> bool {
     ["ffmpeg", "ffprobe"].iter().all(|o| {
         std::process::Command::new(o)
             .arg("-version")
@@ -357,7 +370,7 @@ fn ffmpeg_present() -> bool {
     })
 }
 
-fn generer(dest: &Path, codec: &[&str]) {
+pub(crate) fn generer(dest: &Path, codec: &[&str]) {
     std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
     let ok = std::process::Command::new("ffmpeg")
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
@@ -370,8 +383,8 @@ fn generer(dest: &Path, codec: &[&str]) {
     assert!(ok, "génération de {}", dest.display());
 }
 
-const FLAC: &[&str] = &["-c:a", "flac"];
-const MP3: &[&str] = &["-c:a", "libmp3lame", "-b:a", "128k"];
+pub(crate) const FLAC: &[&str] = &["-c:a", "flac"];
+pub(crate) const MP3: &[&str] = &["-c:a", "libmp3lame", "-b:a", "128k"];
 const OPUS: &[&str] = &["-c:a", "libopus", "-b:a", "64k"];
 
 #[derive(Default)]
@@ -538,20 +551,20 @@ fn reponse_lidarr(r: &Requete, m: &Mutex<Monde>) -> (u16, Vec<(&'static str, Str
     }
 }
 
-struct Bibliotheque {
-    e: Env,
+pub(crate) struct Bibliotheque {
+    pub(crate) e: Env,
     lidarr: Faux,
     monde: Arc<Mutex<Monde>>,
-    medias: tempfile::TempDir,
+    pub(crate) medias: tempfile::TempDir,
     _dehors: tempfile::TempDir,
 }
 
 impl Bibliotheque {
-    fn chemin(&self, relatif: &str) -> std::path::PathBuf {
+    pub(crate) fn chemin(&self, relatif: &str) -> std::path::PathBuf {
         self.medias.path().join(relatif)
     }
 
-    async fn synchro(&self) {
+    pub(crate) async fn synchro(&self) {
         crate::catalogue::synchroniser(&self.e.state).await;
     }
 
@@ -559,7 +572,7 @@ impl Bibliotheque {
         self.e.get(qui, chemin).await
     }
 
-    fn sans_fuite(&self, texte: &str, contexte: &str) {
+    pub(crate) fn sans_fuite(&self, texte: &str, contexte: &str) {
         let medias = self.medias.path().to_string_lossy().to_string();
         for interdit in [
             medias.as_str(),
@@ -582,7 +595,7 @@ impl Bibliotheque {
         }
     }
 
-    async fn album(&self, titre: &str) -> Value {
+    pub(crate) async fn album(&self, titre: &str) -> Value {
         let s = self
             .get("alice", &format!("/search?q={}", encode(titre)))
             .await
@@ -612,7 +625,7 @@ fn encode(t: &str) -> String {
         .collect()
 }
 
-fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
+pub(crate) fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
     album["tracks"]
         .as_array()
         .unwrap()
@@ -621,7 +634,13 @@ fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("{titre} : {album}"))
 }
 
-async fn bibliotheque() -> Option<Bibliotheque> {
+pub(crate) async fn bibliotheque() -> Option<Bibliotheque> {
+    bibliotheque_avec(|_| {}).await
+}
+
+pub(crate) async fn bibliotheque_avec(
+    regler: impl FnOnce(&mut crate::config::Config) + Send + 'static,
+) -> Option<Bibliotheque> {
     if !ffmpeg_present() {
         eprintln!("ignoré : ffmpeg ou ffprobe absent");
         return None;
@@ -657,6 +676,7 @@ async fn bibliotheque() -> Option<Bibliotheque> {
         });
         c.chemins = correspondances(&format!("/music={}", local.display())).unwrap();
         c.medias = local;
+        regler(c);
     })
     .await?;
     Some(Bibliotheque {
