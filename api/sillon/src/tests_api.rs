@@ -1,12 +1,19 @@
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
+
 use axum::{Router, http::Method, http::StatusCode, routing::get};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{
+    config::{Lidarr, correspondances},
     droits::Droit,
+    etat::AppState,
     garde::{Garde, Personne},
     http::ok,
     routes::{self, Entree, entree},
-    testutil::{Env, appel_sur, attendre, env, env_avec},
+    testutil::{Env, Faux, Rep, Requete, appel_sur, attendre, env, env_avec, faux_avec_entetes},
 };
 
 async fn sonde(p: Personne) -> axum::response::Response {
@@ -116,12 +123,21 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
                     "{m} {chemin}"
                 );
             }
+            Garde::Webhook(_) => {
+                for qui in [None, Some("admin"), Some("jeton-faux")] {
+                    assert_eq!(
+                        appel(qui).await.statut,
+                        StatusCode::UNAUTHORIZED,
+                        "{m} {chemin} pour {qui:?}"
+                    );
+                }
+            }
             Garde::Public(_) => {
                 assert!(appel(None).await.statut.is_success(), "{m} {chemin}");
             }
         }
     }
-    assert_eq!(droits_vus, Droit::TOUS);
+    assert!(Droit::TOUS.iter().all(|d| droits_vus.contains(d)));
 }
 
 #[tokio::test]
@@ -322,10 +338,798 @@ async fn sante_disponibilite_et_migrations() {
             .fetch_all(e.state.pool())
             .await
             .unwrap();
-    assert_eq!(versions, [1]);
+    assert_eq!(versions, [1, 2]);
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;
     assert_eq!(r.statut, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(r.json()["error"], "not_ready");
+}
+
+const LIDARR: i64 = 987_000;
+
+fn ffmpeg_present() -> bool {
+    ["ffmpeg", "ffprobe"].iter().all(|o| {
+        std::process::Command::new(o)
+            .arg("-version")
+            .output()
+            .is_ok_and(|s| s.status.success())
+    })
+}
+
+fn generer(dest: &Path, codec: &[&str]) {
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    let ok = std::process::Command::new("ffmpeg")
+        .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=2"])
+        .args(codec)
+        .arg(dest)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok, "génération de {}", dest.display());
+}
+
+const FLAC: &[&str] = &["-c:a", "flac"];
+const MP3: &[&str] = &["-c:a", "libmp3lame", "-b:a", "128k"];
+const OPUS: &[&str] = &["-c:a", "libopus", "-b:a", "64k"];
+
+#[derive(Default)]
+struct Monde {
+    artistes: Vec<Value>,
+    albums: Vec<Value>,
+    pistes: Vec<Value>,
+    fichiers: Vec<Value>,
+    en_panne: bool,
+}
+
+impl Monde {
+    fn piste(
+        &mut self,
+        id: i64,
+        album: i64,
+        titre: &str,
+        numero: i64,
+        fichier: Option<(i64, &str)>,
+    ) {
+        self.pistes.retain(|p| p["id"] != id);
+        self.pistes.push(json!({
+            "id": id, "albumId": album, "artistId": artiste_de(album), "foreignRecordingId": format!("rec-{titre}"),
+            "foreignTrackId": format!("trk-{titre}"), "title": titre, "trackNumber": numero.to_string(),
+            "absoluteTrackNumber": numero, "mediumNumber": 1, "duration": 2000, "explicit": false,
+            "hasFile": fichier.is_some(), "trackFileId": fichier.map_or(0, |f| f.0),
+        }));
+        if let Some((f, chemin)) = fichier {
+            self.fichiers.retain(|x| x["id"] != f);
+            self.fichiers.push(
+                json!({"id": f, "artistId": artiste_de(album), "albumId": album,
+                "path": format!("/music/{chemin}"), "size": 1234}),
+            );
+        }
+    }
+}
+
+fn artiste_de(album: i64) -> i64 {
+    if album == LIDARR + 30 {
+        LIDARR + 3
+    } else {
+        LIDARR + 1
+    }
+}
+
+fn monde() -> Monde {
+    let mut m = Monde {
+        artistes: vec![
+            json!({"id": LIDARR + 1, "artistName": "Beyoncé", "sortName": "Beyonce", "foreignArtistId": "mb-beyonce",
+                   "overview": "Chanteuse.", "genres": ["R&B", "Pop"],
+                   "images": [{"coverType": "poster", "url": "/MediaCover/987001/poster.jpg?lastWrite=1"}],
+                   "statistics": {"trackFileCount": 8}}),
+            json!({"id": LIDARR + 2, "artistName": "Sans fichiers", "foreignArtistId": "mb-vide",
+                   "statistics": {"trackFileCount": 0}}),
+            json!({"id": LIDARR + 3, "artistName": "Sigur Rós", "foreignArtistId": "mb-sigur", "genres": ["Post-rock"],
+                   "statistics": {"trackFileCount": 1}}),
+        ],
+        albums: vec![
+            json!({"id": LIDARR + 10, "artistId": LIDARR + 1, "foreignAlbumId": "mb-lemonade", "title": "Lemonade",
+                   "albumType": "Album", "releaseDate": "2016-04-23T00:00:00Z", "genres": ["R&B"],
+                   "images": [{"coverType": "cover", "url": "/MediaCover/Albums/987010/cover.jpg?lastWrite=2"}]}),
+            json!({"id": LIDARR + 11, "artistId": LIDARR + 1, "foreignAlbumId": "mb-beyonce-album", "title": "Beyoncé",
+                   "albumType": "Album", "releaseDate": "2013-12-13T00:00:00Z"}),
+            json!({"id": LIDARR + 30, "artistId": LIDARR + 3, "foreignAlbumId": "mb-takk", "title": "Takk…",
+                   "albumType": "Album", "releaseDate": "2005-09-12T00:00:00Z"}),
+        ],
+        ..Monde::default()
+    };
+    let lemonade = LIDARR + 10;
+    m.piste(
+        LIDARR + 100,
+        lemonade,
+        "Formation",
+        1,
+        Some((LIDARR + 200, "Beyonce/Lemonade/01 Formation.flac")),
+    );
+    m.piste(
+        LIDARR + 101,
+        lemonade,
+        "Hold Up",
+        2,
+        Some((LIDARR + 201, "Beyonce/Lemonade/02 Hold Up.mp3")),
+    );
+    m.piste(
+        LIDARR + 102,
+        lemonade,
+        "Sorry",
+        3,
+        Some((LIDARR + 202, "Beyonce/Lemonade/03 Sorry.opus")),
+    );
+    m.piste(
+        LIDARR + 103,
+        lemonade,
+        "Daddy Lessons",
+        4,
+        Some((LIDARR + 203, "Beyonce/Lemonade/lien.flac")),
+    );
+    m.piste(
+        LIDARR + 104,
+        lemonade,
+        "Love Drought",
+        5,
+        Some((LIDARR + 204, "Beyonce/Lemonade/Love.exe.flac")),
+    );
+    m.piste(
+        LIDARR + 105,
+        lemonade,
+        "Sandcastles",
+        6,
+        Some((LIDARR + 205, "Beyonce/Lemonade/faux.flac")),
+    );
+    m.piste(LIDARR + 106, lemonade, "Forward", 7, None);
+    m.pistes.push(json!({"id": LIDARR + 107, "albumId": lemonade, "artistId": LIDARR + 1, "foreignRecordingId": "rec-Freedom", "title": "Freedom",
+        "trackNumber": "8", "mediumNumber": 1, "hasFile": true, "trackFileId": LIDARR + 207}));
+    m.fichiers.push(json!({"id": LIDARR + 207, "artistId": LIDARR + 1, "path": "/autre/Freedom.flac", "size": 1}));
+    m.piste(LIDARR + 110, LIDARR + 11, "Beyoncé Medley", 1, None);
+    m.piste(
+        LIDARR + 300,
+        LIDARR + 30,
+        "Glósóli",
+        1,
+        Some((LIDARR + 400, "Sigur Ros/Takk/01 Glosoli.flac")),
+    );
+    m
+}
+
+fn reponse_lidarr(r: &Requete, m: &Mutex<Monde>) -> (u16, Vec<(&'static str, String)>, Vec<u8>) {
+    let m = m.lock().unwrap();
+    if r.entete("x-api-key") != "cle-lidarr" {
+        return (401, vec![], vec![]);
+    }
+    if m.en_panne {
+        return (500, vec![], b"panne".to_vec());
+    }
+    let corps = |v: Value| {
+        (
+            200,
+            vec![("content-type", "application/json".to_string())],
+            v.to_string().into_bytes(),
+        )
+    };
+    let de_l_artiste = |l: &[Value]| {
+        let id: i64 = r
+            .query
+            .strip_prefix("artistId=")
+            .and_then(|i| i.parse().ok())
+            .unwrap_or(-1);
+        corps(json!(
+            l.iter().filter(|x| x["artistId"] == id).collect::<Vec<_>>()
+        ))
+    };
+    match r.chemin.as_str() {
+        "/api/v1/system/status" => corps(json!({"version": "2.9.6.4552"})),
+        "/api/v1/artist" => corps(json!(m.artistes)),
+        "/api/v1/album" => de_l_artiste(&m.albums),
+        "/api/v1/track" => de_l_artiste(&m.pistes),
+        "/api/v1/trackfile" => de_l_artiste(&m.fichiers),
+        c if c.starts_with("/api/v1/mediacover/") => (
+            200,
+            vec![("content-type", "image/jpeg".to_string())],
+            format!("IMG-{}", c.rsplit('/').next().unwrap_or_default()).into_bytes(),
+        ),
+        _ => (404, vec![], vec![]),
+    }
+}
+
+struct Bibliotheque {
+    e: Env,
+    lidarr: Faux,
+    monde: Arc<Mutex<Monde>>,
+    medias: tempfile::TempDir,
+    _dehors: tempfile::TempDir,
+}
+
+impl Bibliotheque {
+    fn chemin(&self, relatif: &str) -> std::path::PathBuf {
+        self.medias.path().join(relatif)
+    }
+
+    async fn synchro(&self) {
+        crate::catalogue::synchroniser(&self.e.state).await;
+    }
+
+    async fn get(&self, qui: &str, chemin: &str) -> Rep {
+        self.e.get(qui, chemin).await
+    }
+
+    fn sans_fuite(&self, texte: &str, contexte: &str) {
+        let medias = self.medias.path().to_string_lossy().to_string();
+        for interdit in [
+            medias.as_str(),
+            "/music",
+            "/autre",
+            "MediaCover",
+            "lastWrite",
+            self.lidarr.url.as_str(),
+            "cle-lidarr",
+            "9870",
+            "9871",
+            "9872",
+            "9873",
+            "9874",
+        ] {
+            assert!(
+                !texte.contains(interdit),
+                "{contexte} : « {interdit} » dans {texte}"
+            );
+        }
+    }
+
+    async fn album(&self, titre: &str) -> Value {
+        let s = self
+            .get("alice", &format!("/search?q={}", encode(titre)))
+            .await
+            .json();
+        let id = s["albums"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["title"] == titre)
+            .unwrap_or_else(|| panic!("{titre} : {s}"))["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        self.get("alice", &format!("/albums/{id}")).await.json()
+    }
+}
+
+fn encode(t: &str) -> String {
+    t.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
+fn piste<'a>(album: &'a Value, titre: &str) -> &'a Value {
+    album["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["title"] == titre)
+        .unwrap_or_else(|| panic!("{titre} : {album}"))
+}
+
+async fn bibliotheque() -> Option<Bibliotheque> {
+    if !ffmpeg_present() {
+        eprintln!("ignoré : ffmpeg ou ffprobe absent");
+        return None;
+    }
+    let medias = tempfile::tempdir().unwrap();
+    let dehors = tempfile::tempdir().unwrap();
+    let r = medias.path();
+    generer(&r.join("Beyonce/Lemonade/01 Formation.flac"), FLAC);
+    generer(&r.join("Beyonce/Lemonade/02 Hold Up.mp3"), MP3);
+    generer(&r.join("Beyonce/Lemonade/03 Sorry.opus"), OPUS);
+    generer(&r.join("Beyonce/Lemonade/Love.exe.flac"), FLAC);
+    generer(&r.join("Beyonce/Lemonade/faux.mp3"), MP3);
+    std::fs::rename(
+        r.join("Beyonce/Lemonade/faux.mp3"),
+        r.join("Beyonce/Lemonade/faux.flac"),
+    )
+    .unwrap();
+    generer(&dehors.path().join("secret.flac"), FLAC);
+    std::os::unix::fs::symlink(
+        dehors.path().join("secret.flac"),
+        r.join("Beyonce/Lemonade/lien.flac"),
+    )
+    .unwrap();
+    generer(&r.join("Sigur Ros/Takk/01 Glosoli.flac"), FLAC);
+    let monde = Arc::new(Mutex::new(monde()));
+    let m = monde.clone();
+    let lidarr = faux_avec_entetes(move |r| reponse_lidarr(r, &m)).await;
+    let (url, local) = (lidarr.url.clone(), r.to_path_buf());
+    let e = env_avec(move |c| {
+        c.lidarr = Some(Lidarr {
+            url,
+            cle: "cle-lidarr".into(),
+        });
+        c.chemins = correspondances(&format!("/music={}", local.display())).unwrap();
+        c.medias = local;
+    })
+    .await?;
+    Some(Bibliotheque {
+        e,
+        lidarr,
+        monde,
+        medias,
+        _dehors: dehors,
+    })
+}
+
+#[tokio::test]
+async fn synchronisation_cree_artistes_albums_et_pistes_avec_formats() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    let etat = b.get("admin", "/admin/status").await;
+    let ej = etat.json();
+    assert_eq!(ej["sync"][0]["source"], "lidarr", "{ej}");
+    assert!(ej["sync"][0]["error"].is_null(), "{ej}");
+    assert_eq!(ej["library"]["artists"], 2, "{ej}");
+    assert_eq!(ej["library"]["albums"], 2, "{ej}");
+    assert_eq!(ej["library"]["tracks"], 4, "{ej}");
+    b.sans_fuite(&etat.texte(), "/admin/status");
+
+    let artistes = b.get("alice", "/artists").await;
+    assert_eq!(artistes.statut, StatusCode::OK);
+    let aj = artistes.json();
+    let noms: Vec<&str> = aj["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(noms, ["Beyoncé", "Sigur Rós"]);
+    assert_eq!(aj["items"][0]["genres"], json!(["Pop", "R&B"]));
+    assert_eq!(aj["items"][0]["album_count"], 1);
+    b.sans_fuite(&artistes.texte(), "/artists");
+    let p1 = b.get("alice", "/artists?limit=1").await.json();
+    assert_eq!(p1["items"][0]["name"], "Beyoncé");
+    let suite = p1["next_cursor"].as_str().unwrap();
+    let p2 = b
+        .get("alice", &format!("/artists?limit=1&cursor={suite}"))
+        .await
+        .json();
+    assert_eq!(p2["items"][0]["name"], "Sigur Rós");
+    assert!(p2["next_cursor"].is_null());
+    assert_eq!(
+        b.get("alice", "/artists?genre=Post-rock").await.json()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        b.get("alice", "/artists?limit=0").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        b.get("alice", "/artists?cursor=xyz").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+
+    let beyonce = aj["items"][0]["id"].as_str().unwrap().to_string();
+    let fiche = b.get("alice", &format!("/artists/{beyonce}")).await;
+    let fj = fiche.json();
+    assert_eq!(fj["albums"][0]["title"], "Lemonade");
+    assert_eq!(fj["albums"][0]["year"], 2016);
+    assert_eq!(fj["albums"][0]["type"], "Album");
+    assert_eq!(fj["albums"][0]["track_count"], 3);
+    b.sans_fuite(&fiche.texte(), "/artists/{id}");
+
+    let lemonade = b.album("Lemonade").await;
+    let titres: Vec<&str> = lemonade["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(titres, ["Formation", "Hold Up", "Sorry"]);
+    for (titre, codec, conteneur) in [
+        ("Formation", "flac", "flac"),
+        ("Hold Up", "mp3", "mp3"),
+        ("Sorry", "opus", "ogg"),
+    ] {
+        let p = piste(&lemonade, titre);
+        assert_eq!(
+            (
+                p["format"]["codec"].as_str(),
+                p["format"]["container"].as_str()
+            ),
+            (Some(codec), Some(conteneur)),
+            "{p}"
+        );
+        assert!(
+            p["format"]["sample_rate"]
+                .as_i64()
+                .is_some_and(|f| f >= 44_100),
+            "{p}"
+        );
+        assert_eq!(p["format"]["channels"], 1, "{p}");
+        assert!((p["duration"].as_f64().unwrap() - 2.0).abs() < 0.2, "{p}");
+        assert_eq!(p["available"], true);
+    }
+    assert_eq!(piste(&lemonade, "Hold Up")["number"], 2);
+    let id = piste(&lemonade, "Sorry")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let p = b.get("alice", &format!("/tracks/{id}")).await;
+    assert_eq!(p.json()["album"]["title"], "Lemonade");
+    assert_eq!(p.json()["artist"]["name"], "Beyoncé");
+    b.sans_fuite(&p.texte(), "/tracks/{id}");
+    assert_eq!(
+        b.get("alice", "/tracks/pas-un-uuid").await.statut,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        b.get("alice", &format!("/tracks/{}", uuid::Uuid::new_v4()))
+            .await
+            .statut,
+        StatusCode::NOT_FOUND
+    );
+
+    let recents = b.get("alice", "/albums/recent").await;
+    assert_eq!(recents.json()["items"].as_array().unwrap().len(), 2);
+    b.sans_fuite(&recents.texte(), "/albums/recent");
+    let genres = b.get("alice", "/genres").await.json();
+    let noms: Vec<&str> = genres["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|g| g["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(noms, ["Pop", "Post-rock", "R&B"]);
+
+    let image = b.get("alice", &format!("/artists/{beyonce}/image")).await;
+    assert_eq!(
+        (image.statut, image.texte().as_str()),
+        (StatusCode::OK, "IMG-poster-250.jpg")
+    );
+    assert_eq!(image.entetes["content-type"], "image/jpeg");
+    let grande = b
+        .get("alice", &format!("/artists/{beyonce}/image?size=large"))
+        .await;
+    assert_eq!(grande.texte(), "IMG-poster.jpg");
+    assert_eq!(
+        b.get("alice", &format!("/artists/{beyonce}/image?type=fanart"))
+            .await
+            .statut,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        b.get("alice", &format!("/artists/{beyonce}/image?size=huge"))
+            .await
+            .statut,
+        StatusCode::BAD_REQUEST
+    );
+    let album = lemonade["id"].as_str().unwrap();
+    let cover = b
+        .get("alice", &format!("/albums/{album}/cover?size=medium"))
+        .await;
+    assert_eq!(
+        (cover.statut, cover.texte().as_str()),
+        (StatusCode::OK, "IMG-cover-500.jpg")
+    );
+    b.monde.lock().unwrap().en_panne = true;
+    let cache = b
+        .get("alice", &format!("/albums/{album}/cover?size=medium"))
+        .await;
+    assert_eq!(
+        (cache.statut, cache.texte().as_str()),
+        (StatusCode::OK, "IMG-cover-500.jpg"),
+        "servie depuis le cache"
+    );
+    assert_eq!(
+        b.get("alice", &format!("/albums/{album}/cover?size=large"))
+            .await
+            .statut,
+        StatusCode::BAD_GATEWAY
+    );
+}
+
+#[tokio::test]
+async fn fichiers_hors_medias_ou_refuses_ecartes_avec_leur_raison() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    let r = b.get("admin", "/admin/rejected").await;
+    b.sans_fuite(&r.texte(), "/admin/rejected");
+    let mut ecartes: Vec<(String, String)> = r.json()["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            (
+                f["name"].as_str().unwrap().to_string(),
+                f["reason"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    ecartes.sort();
+    assert_eq!(
+        ecartes,
+        [
+            ("Freedom.flac".to_string(), "hors_medias".to_string()),
+            ("Love.exe.flac".into(), "double_extension".into()),
+            ("faux.flac".into(), "conteneur_incoherent".into()),
+            ("lien.flac".into(), "hors_medias".into()),
+        ]
+    );
+    let lemonade = b.album("Lemonade").await;
+    for titre in [
+        "Daddy Lessons",
+        "Love Drought",
+        "Sandcastles",
+        "Freedom",
+        "Forward",
+    ] {
+        assert!(
+            lemonade["tracks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|p| p["title"] != titre),
+            "{titre}"
+        );
+    }
+    assert_eq!(
+        b.get("admin", "/admin/status").await.json()["library"]["rejected"],
+        4
+    );
+    assert_eq!(
+        b.get("alice", "/admin/rejected").await.statut,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn fichier_supprime_piste_absente_puis_retablie_avec_le_meme_identifiant() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    let avant = b.album("Lemonade").await;
+    let id = piste(&avant, "Formation")["id"].clone();
+    let fichier = b.chemin("Beyonce/Lemonade/01 Formation.flac");
+    std::fs::remove_file(&fichier).unwrap();
+    b.synchro().await;
+    let absent = b.album("Lemonade").await;
+    let p = piste(&absent, "Formation");
+    assert_eq!(
+        (p["id"].clone(), p["available"].clone(), p["format"].clone()),
+        (id.clone(), json!(false), Value::Null)
+    );
+    assert_eq!(absent["track_count"], 2);
+    let id_str = id.as_str().unwrap();
+    assert_eq!(
+        b.get("alice", &format!("/tracks/{id_str}")).await.json()["available"],
+        false
+    );
+    assert_eq!(
+        b.get("admin", "/admin/status").await.json()["library"]["absent_tracks"],
+        1
+    );
+
+    generer(&fichier, FLAC);
+    {
+        let mut m = b.monde.lock().unwrap();
+        m.pistes.retain(|p| p["title"] != "Formation");
+        m.fichiers.retain(|f| f["id"] != LIDARR + 200);
+        m.piste(
+            LIDARR + 120,
+            LIDARR + 10,
+            "Formation",
+            1,
+            Some((LIDARR + 220, "Beyonce/Lemonade/01 Formation.flac")),
+        );
+    }
+    b.synchro().await;
+    let retour = b.album("Lemonade").await;
+    let p = piste(&retour, "Formation");
+    assert_eq!((p["id"].clone(), p["available"].clone()), (id, json!(true)));
+    assert_eq!(p["format"]["codec"], "flac");
+    assert_eq!(
+        b.get("admin", "/admin/status").await.json()["library"]["absent_tracks"],
+        0
+    );
+}
+
+#[tokio::test]
+async fn webhook_d_import_ajoute_la_piste_et_jeton_exige() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    assert!(
+        b.get("alice", "/search?q=medley").await.json()["tracks"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    generer(&b.chemin("Beyonce/Beyonce/01 Medley.flac"), FLAC);
+    b.monde.lock().unwrap().piste(
+        LIDARR + 110,
+        LIDARR + 11,
+        "Beyoncé Medley",
+        1,
+        Some((LIDARR + 210, "Beyonce/Beyonce/01 Medley.flac")),
+    );
+    let corps = Some(json!({"eventType": "Download", "artist": {"id": LIDARR + 1}}));
+    for chemin in ["/webhooks/lidarr", "/webhooks/lidarr?token=faux"] {
+        let r = b.e.appel(None, "POST", chemin, corps.clone()).await;
+        assert_eq!(r.statut, StatusCode::UNAUTHORIZED, "{chemin}");
+    }
+    let r =
+        b.e.appel_avec(
+            None,
+            "POST",
+            "/webhooks/lidarr",
+            corps.clone(),
+            &[("authorization", "Bearer faux")],
+        )
+        .await;
+    assert_eq!(r.statut, StatusCode::UNAUTHORIZED);
+    assert!(
+        b.get("alice", "/search?q=medley").await.json()["tracks"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let r =
+        b.e.appel(None, "POST", "/webhooks/lidarr?token=jeton-webhook", corps)
+            .await;
+    assert_eq!(r.statut, StatusCode::NO_CONTENT);
+    let limite = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while b.get("alice", "/search?q=medley").await.json()["tracks"]
+        .as_array()
+        .unwrap()
+        .is_empty()
+    {
+        assert!(std::time::Instant::now() < limite, "piste importée absente");
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let sansjeton = env_avec(|c| c.jeton_webhook = String::new()).await.unwrap();
+    let r = sansjeton
+        .appel(None, "POST", "/webhooks/lidarr?token=", None)
+        .await;
+    assert_eq!(r.statut, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn recherche_sans_accents_par_categorie() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    generer(&b.chemin("Beyonce/Beyonce/01 Medley.flac"), FLAC);
+    b.monde.lock().unwrap().piste(
+        LIDARR + 110,
+        LIDARR + 11,
+        "Beyoncé Medley",
+        1,
+        Some((LIDARR + 210, "Beyonce/Beyonce/01 Medley.flac")),
+    );
+    b.synchro().await;
+    let r = b.get("alice", "/search?q=beyonce").await;
+    assert_eq!(r.statut, StatusCode::OK);
+    let s = r.json();
+    let noms = |cat: &str, champ: &str| -> Vec<String> {
+        s[cat]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x[champ].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(noms("artists", "name"), ["Beyoncé"]);
+    assert_eq!(noms("albums", "title"), ["Beyoncé"]);
+    assert_eq!(noms("tracks", "title"), ["Beyoncé Medley"]);
+    b.sans_fuite(&r.texte(), "/search");
+    for q in ["BEYONCÉ", "glosoli", "sigur%20ros", "hold", "takk"] {
+        let s = b.get("alice", &format!("/search?q={q}")).await.json();
+        let total: usize = ["artists", "albums", "tracks"]
+            .iter()
+            .map(|c| s[c].as_array().unwrap().len())
+            .sum();
+        assert!(total > 0, "{q} : {s}");
+    }
+    let s = b.get("alice", "/search?q=%25").await.json();
+    assert!(
+        ["artists", "albums", "tracks"]
+            .iter()
+            .all(|c| s[c].as_array().unwrap().is_empty()),
+        "« % » échappé : {s}"
+    );
+    assert_eq!(
+        b.get("alice", "/search?q=").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        b.get("alice", &format!("/search?q={}", "a".repeat(101)))
+            .await
+            .statut,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn lidarr_en_panne_ou_dossier_inaccessible_rien_n_est_retire() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    b.synchro().await;
+    let compte = |e: &Value| {
+        (
+            e["library"]["tracks"].clone(),
+            e["library"]["absent_tracks"].clone(),
+        )
+    };
+    assert_eq!(
+        compte(&b.get("admin", "/admin/status").await.json()),
+        (json!(4), json!(0))
+    );
+    b.monde.lock().unwrap().en_panne = true;
+    b.synchro().await;
+    let etat = b.get("admin", "/admin/status").await;
+    let ej = etat.json();
+    assert_eq!(compte(&ej), (json!(4), json!(0)));
+    assert_eq!(ej["sync"][0]["error"], "Lidarr : HTTP 500", "{ej}");
+    assert!(ej["sync"][0]["succeeded_at"].is_string());
+    b.sans_fuite(&etat.texte(), "/admin/status");
+    assert_eq!(b.album("Lemonade").await["track_count"], 3);
+
+    b.monde.lock().unwrap().en_panne = false;
+    let mut cfg = b.e.state.config().clone();
+    let absent = b.medias.path().join("demonte");
+    cfg.chemins = correspondances(&format!("/music={}", absent.display())).unwrap();
+    cfg.medias = absent;
+    crate::catalogue::synchroniser(&AppState::new(cfg, b.e.state.pool().clone())).await;
+    let ej = b.get("admin", "/admin/status").await.json();
+    assert_eq!(compte(&ej), (json!(4), json!(0)));
+    assert!(
+        ej["sync"][0]["error"]
+            .as_str()
+            .unwrap()
+            .contains("inaccessible"),
+        "{ej}"
+    );
+    b.synchro().await;
+    assert!(b.get("admin", "/admin/status").await.json()["sync"][0]["error"].is_null());
+}
+
+#[tokio::test]
+async fn synchronisation_demandee_pendant_une_autre_relancee() {
+    let Some(b) = bibliotheque().await else {
+        return;
+    };
+    let verrou = b.e.state.verrou_synchro().lock().await;
+    let r = b.get("admin", "/admin/sync").await;
+    assert_eq!(r.statut, StatusCode::METHOD_NOT_ALLOWED);
+    let r = b.e.appel(Some("admin"), "POST", "/admin/sync", None).await;
+    assert_eq!(r.statut, StatusCode::ACCEPTED);
+    crate::catalogue::synchroniser(&b.e.state).await;
+    assert!(b.get("admin", "/admin/status").await.json()["running"] == true);
+    assert_eq!(b.lidarr.appels(), 0);
+    drop(verrou);
+    b.e.state.synchro_a_relancer();
+    crate::catalogue::synchroniser(&b.e.state).await;
+    assert!(!b.e.state.synchro_relancee());
+    assert_eq!(
+        b.get("admin", "/admin/status").await.json()["library"]["tracks"],
+        4
+    );
 }
