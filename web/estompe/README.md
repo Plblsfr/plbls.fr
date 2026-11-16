@@ -15,7 +15,7 @@ npm test             # tests unitaires (vitest) : markdown/XSS, API, WebSocket, 
 npm run build
 npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et Rust requis)
 npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
-npm run e2e:sillon   # section Sillon : permissions, lecture d'un album, mini-lecteur dans la messagerie, « Activer le son » : API simulées
+npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -47,8 +47,12 @@ système de Chromium doivent être présentes).
   Web Audio, Media Session et stockage injectés). Deux éléments `<audio crossorigin="anonymous">` : la piste suivante est demandée et chargée
   dès que la piste en cours joue, puis lancée sur `ended` ; gain de normalisation (piste, ou album quand on écoute un album, plafonné par le
   pic) par un `GainNode` si le contexte audio tourne, sinon par le volume de l'élément (atténuation seule) : un contexte suspendu faute de
-  geste ne coupe jamais le son. La file est locale (album ou liste en cours, `lecteur.jouer(pistes, index, contexte)`) ; la reprise
-  (file, piste, position) est gardée dans le navigateur. Le mini-lecteur (`SillonMini`) est dans le dock de la barre latérale et, sous 900 px,
+  geste ne coupe jamais le son. La file est celle du serveur (`/queue`, injectée par `serveur`) : `lecteur.jouer(pistes, index, contexte)`
+  la remplace, `lecteur.elements` donne ses éléments (`suggested`, `discovery`), chaque écriture porte la révision et un 409 recharge l'état
+  puis rejoue ; la position est envoyée toutes les 15 s de lecture, à la pause et en quittant la page, et chaque écoute part à l'historique.
+  Au démarrage (`chargerFile`), la file du serveur est proposée à la reprise (`aReprendre`). Seul le volume reste dans le navigateur.
+  `aimes` (likes), `collection` (playlists) et `menuPiste` / `menuContenu` (menu contextuel commun : lire ensuite, file, playlist, lien) sont
+  dans `sillon.svelte.ts`. Le mini-lecteur (`SillonMini`) est dans le dock de la barre latérale et, sous 900 px,
   en bande au bas de la vue : la lecture continue dans la messagerie et dans Entracte. `lib/medias.ts` : un film d'Entracte qui démarre
   (`FilmPlayer`) ou un salon vocal rejoint (`voice.join`) l'annonce, et Sillon se met en pause.
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
