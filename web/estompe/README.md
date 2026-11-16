@@ -48,8 +48,11 @@ système de Chromium doivent être présentes).
   dès que la piste en cours joue, puis lancée sur `ended` ; gain de normalisation (piste, ou album quand on écoute un album, plafonné par le
   pic) par un `GainNode` si le contexte audio tourne, sinon par le volume de l'élément (atténuation seule) : un contexte suspendu faute de
   geste ne coupe jamais le son. La file est celle du serveur (`/queue`, injectée par `serveur`) : `lecteur.jouer(pistes, index, contexte)`
-  la remplace, `lecteur.elements` donne ses éléments (`suggested`, `discovery`), chaque écriture porte la révision et un 409 recharge l'état
-  puis rejoue ; la position est envoyée toutes les 15 s de lecture, à la pause et en quittant la page, et chaque écoute part à l'historique.
+  la remplace, `lecteur.elements` donne ses éléments (`suggested`, `discovery`, marque par `marqueDe`), chaque écriture porte la révision
+  et un 409 recharge l'état puis rejoue ; chaque changement de piste envoie l'`index` (le serveur y ajoute les suggestions suivantes,
+  reçues et préchargées), la position seule part toutes les 15 s de lecture, à la pause et en quittant la page, la répétition
+  (`lecteur.repetition`, `changerRepetition`) décide de la suite en fin de titre et de file, et chaque écoute part à l'historique.
+  `lecteur.similaires(piste)` joue les titres proches, `lecteur.nePlusProposer(element)` refuse puis retire de la file.
   Au démarrage (`chargerFile`), la file du serveur est proposée à la reprise (`aReprendre`). Seul le volume reste dans le navigateur.
   `aimes` (likes), `collection` (playlists) et `menuPiste` / `menuContenu` (menu contextuel commun : lire ensuite, file, playlist, lien) sont
   dans `sillon.svelte.ts`. Le mini-lecteur (`SillonMini`) est dans le dock de la barre latérale et, sous 900 px,
