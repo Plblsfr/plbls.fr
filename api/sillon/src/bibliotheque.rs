@@ -36,7 +36,8 @@ pub const COLONNES_PISTE: &str = "p.id, p.titre, p.disque, p.numero, p.duree, p.
     ar.id AS artiste_id, ar.nom AS artiste_nom,
     f.codec, f.conteneur, f.debit, f.frequence, f.canaux, f.bits";
 
-pub const JOINTURES_PISTE: &str = "FROM pistes p JOIN albums al ON al.id = p.album_id JOIN artistes ar ON ar.id = p.artiste_id
+pub const JOINTURES_PISTE: &str =
+    "FROM pistes p JOIN albums al ON al.id = p.album_id JOIN artistes ar ON ar.id = p.artiste_id
     LEFT JOIN LATERAL (SELECT codec, conteneur, debit, frequence, canaux, bits FROM fichiers
                        WHERE piste_id = p.id ORDER BY taille DESC, id LIMIT 1) f ON true";
 
@@ -153,7 +154,12 @@ pub fn lire_curseur(q: &HashMap<String, String>) -> Result<Option<(String, Uuid)
     Ok(Some((cle, id)))
 }
 
-fn page(lignes: &[PgRow], n: i64, public: fn(&PgRow) -> Value, cle: impl Fn(&PgRow) -> String) -> Value {
+fn page(
+    lignes: &[PgRow],
+    n: i64,
+    public: fn(&PgRow) -> Value,
+    cle: impl Fn(&PgRow) -> String,
+) -> Value {
     let n = usize::try_from(n).unwrap_or(0);
     let suite = (lignes.len() > n)
         .then(|| lignes.get(n.saturating_sub(1)))
@@ -165,7 +171,11 @@ fn page(lignes: &[PgRow], n: i64, public: fn(&PgRow) -> Value, cle: impl Fn(&PgR
     })
 }
 
-fn texte_borne(q: &HashMap<String, String>, nom: &str, max: usize) -> Result<Option<String>, Response> {
+fn texte_borne(
+    q: &HashMap<String, String>,
+    nom: &str,
+    max: usize,
+) -> Result<Option<String>, Response> {
     let t = q.get(nom).map(|t| t.trim()).filter(|t| !t.is_empty());
     if t.is_some_and(|t| t.chars().count() > max) {
         return Err(invalide(&format!("{nom} trop long")));
@@ -173,7 +183,10 @@ fn texte_borne(q: &HashMap<String, String>, nom: &str, max: usize) -> Result<Opt
     Ok(t.map(String::from))
 }
 
-pub async fn artistes(State(state): State<AppState>, Query(q): Params) -> Result<Response, Response> {
+pub async fn artistes(
+    State(state): State<AppState>,
+    Query(q): Params,
+) -> Result<Response, Response> {
     let n = limite(&q, 50, 200)?;
     let genre = texte_borne(&q, "genre", 64)?;
     let apres = lire_curseur(&q)?;
@@ -194,7 +207,10 @@ pub async fn artistes(State(state): State<AppState>, Query(q): Params) -> Result
     Ok(ok(&page(&lignes, n, artiste_public, |l| l.get("tri"))))
 }
 
-pub async fn artiste(State(state): State<AppState>, Path(id): Path<String>) -> Result<Response, Response> {
+pub async fn artiste(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, Response> {
     let id = uuid(&id)?;
     let l = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES_ARTISTE} FROM artistes ar WHERE ar.id = $1"
@@ -217,7 +233,10 @@ pub async fn artiste(State(state): State<AppState>, Path(id): Path<String>) -> R
     Ok(ok(&v))
 }
 
-pub async fn album(State(state): State<AppState>, Path(id): Path<String>) -> Result<Response, Response> {
+pub async fn album(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, Response> {
     let id = uuid(&id)?;
     let l = sqlx::query(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES_ALBUM} FROM albums al JOIN artistes ar ON ar.id = al.artiste_id WHERE al.id = $1"
@@ -240,7 +259,10 @@ pub async fn album(State(state): State<AppState>, Path(id): Path<String>) -> Res
     Ok(ok(&v))
 }
 
-pub async fn piste(State(state): State<AppState>, Path(id): Path<String>) -> Result<Response, Response> {
+pub async fn piste(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, Response> {
     let id = uuid(&id)?;
     pistes_par_ids(state.pool(), &[id])
         .await
@@ -250,7 +272,10 @@ pub async fn piste(State(state): State<AppState>, Path(id): Path<String>) -> Res
         .ok_or_else(introuvable)
 }
 
-pub async fn recents(State(state): State<AppState>, Query(q): Params) -> Result<Response, Response> {
+pub async fn recents(
+    State(state): State<AppState>,
+    Query(q): Params,
+) -> Result<Response, Response> {
     let n = limite(&q, 50, 200)?;
     let apres = match lire_curseur(&q)? {
         None => None,
@@ -296,10 +321,14 @@ pub async fn genres(State(state): State<AppState>) -> Result<Response, Response>
     Ok(ok(&json!({ "items": items })))
 }
 
-const CORRESPOND: &str = "x.present AND (x.recherche @@ plainto_tsquery('sillon', $1) OR x.cle LIKE sans_accents($2))";
+const CORRESPOND: &str =
+    "x.present AND (x.recherche @@ plainto_tsquery('sillon', $1) OR x.cle LIKE sans_accents($2))";
 const RANG: &str = "ts_rank(x.recherche, plainto_tsquery('sillon', $1)) DESC, (x.cle = sans_accents($1)) DESC, x.cle, x.id";
 
-pub async fn recherche(State(state): State<AppState>, Query(q): Params) -> Result<Response, Response> {
+pub async fn recherche(
+    State(state): State<AppState>,
+    Query(q): Params,
+) -> Result<Response, Response> {
     let texte = texte_borne(&q, "q", 100)?.ok_or_else(|| invalide("recherche vide"))?;
     let n = limite(&q, 10, 50)?;
     let motif = commun::sql::contient(&texte);
@@ -356,7 +385,9 @@ async fn servir_image(
         .await
         .map_err(bd)?
         .ok_or_else(introuvable)?;
-    let (Some(lidarr_id), Some(version)) = (l.get::<Option<i64>, _>(0), l.get::<Option<String>, _>(1)) else {
+    let (Some(lidarr_id), Some(version)) =
+        (l.get::<Option<i64>, _>(0), l.get::<Option<String>, _>(1))
+    else {
         return Err(introuvable());
     };
     let (mime, octets) = images::lire(state, sujet, id, lidarr_id, &version, taille)
@@ -449,7 +480,10 @@ pub async fn lancer_synchro(State(state): State<AppState>) -> Response {
 
 pub fn evenement_utile(corps: &[u8]) -> bool {
     let v: Value = serde_json::from_slice(corps).unwrap_or_default();
-    !matches!(v["eventType"].as_str(), Some("Test" | "Grab" | "HealthIssue" | "HealthRestored" | "ApplicationUpdate"))
+    !matches!(
+        v["eventType"].as_str(),
+        Some("Test" | "Grab" | "HealthIssue" | "HealthRestored" | "ApplicationUpdate")
+    )
 }
 
 pub async fn webhook(State(state): State<AppState>, corps: Bytes) -> Response {
@@ -472,8 +506,17 @@ mod tests {
             Some(("beyonce".to_string(), id))
         );
         assert_eq!(lire_curseur(&HashMap::new()).unwrap(), None);
-        for c in ["%%%", "e30", &URL_SAFE_NO_PAD.encode("[\"a\", \"pas-un-uuid\"]"), &"a".repeat(2000)] {
-            assert_eq!(lire_curseur(&q(c)).unwrap_err().status(), StatusCode::BAD_REQUEST, "{c}");
+        for c in [
+            "%%%",
+            "e30",
+            &URL_SAFE_NO_PAD.encode("[\"a\", \"pas-un-uuid\"]"),
+            &"a".repeat(2000),
+        ] {
+            assert_eq!(
+                lire_curseur(&q(c)).unwrap_err().status(),
+                StatusCode::BAD_REQUEST,
+                "{c}"
+            );
         }
     }
 

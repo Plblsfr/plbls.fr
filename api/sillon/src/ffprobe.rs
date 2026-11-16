@@ -122,7 +122,9 @@ mod tests {
                 "channels": 2, "bits_per_raw_sample": "24", "duration": "3.5"}]
         }));
         assert_eq!((flac.bits, flac.duree), (Some(24), Some(3.5)));
-        let vide = Analyse::depuis(&json!({"format": {"format_name": "png_pipe"}, "streams": [{"codec_type": "video"}]}));
+        let vide = Analyse::depuis(
+            &json!({"format": {"format_name": "png_pipe"}, "streams": [{"codec_type": "video"}]}),
+        );
         assert_eq!(vide.codec, None);
     }
 }

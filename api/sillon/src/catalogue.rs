@@ -111,7 +111,7 @@ struct Etat {
 
 struct Synchro<'a> {
     state: &'a AppState,
-    lus: usize,
+    lisibles: usize,
     inaccessibles: usize,
 }
 
@@ -171,7 +171,6 @@ impl Synchro<'_> {
 
     async fn fichier(&mut self, f: &FichierLidarr) -> Result<Option<Etat>, sqlx::Error> {
         let config = self.state.config();
-        self.lus += 1;
         let Some(local) = chemin_local(&config.chemins, &config.medias, &f.chemin) else {
             tracing::warn!(
                 "fichier hors de SILLON_MEDIAS écarté : {}",
@@ -190,6 +189,7 @@ impl Synchro<'_> {
                 return Ok(None);
             }
         };
+        self.lisibles += 1;
         let taille = i64::try_from(meta.len()).unwrap_or(i64::MAX);
         let modifie: Option<DateTime<Utc>> = meta.modified().ok().map(DateTime::<Utc>::from);
         let connu = sqlx::query("SELECT taille, modifie_le, duree FROM fichiers WHERE chemin = $1")
@@ -413,7 +413,7 @@ impl Synchro<'_> {
                 .await
                 .map_err(base)?;
         }
-        if self.inaccessibles > 0 && self.inaccessibles == self.lus {
+        if self.inaccessibles > 0 && self.lisibles == 0 {
             return Err(
                 "dossier de la musique inaccessible : aucun fichier lisible, rien n'est retiré"
                     .into(),
@@ -480,7 +480,7 @@ async fn passe(state: &AppState) {
     }
     let mut s = Synchro {
         state,
-        lus: 0,
+        lisibles: 0,
         inaccessibles: 0,
     };
     let mut r = s.lidarr().await;

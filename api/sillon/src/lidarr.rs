@@ -92,7 +92,11 @@ fn image(v: &Value, genre: &str) -> Option<String> {
     v["images"]
         .as_array()?
         .iter()
-        .find(|i| i["coverType"].as_str().is_some_and(|t| t.eq_ignore_ascii_case(genre)))
+        .find(|i| {
+            i["coverType"]
+                .as_str()
+                .is_some_and(|t| t.eq_ignore_ascii_case(genre))
+        })
         .and_then(|i| texte(i, "url").or_else(|| Some(genre.to_string())))
 }
 
@@ -345,7 +349,10 @@ mod tests {
             (p[0].numero, p[0].duree, p[0].fichier_id),
             (Some(2), Some(221.0), Some(21))
         );
-        assert_eq!((p[1].numero, p[1].disque, p[1].fichier_id), (Some(3), 2, None));
+        assert_eq!(
+            (p[1].numero, p[1].disque, p[1].fichier_id),
+            (Some(3), 2, None)
+        );
         let f = c.fichiers(3).await.unwrap();
         assert_eq!(f.len(), 1);
         assert_eq!(f[&21].taille, 42);

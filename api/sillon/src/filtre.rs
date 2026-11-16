@@ -147,8 +147,15 @@ mod tests {
             ("a.flac ", "flac", Raison::NomSuspect),
             ("", "flac", Raison::NomSuspect),
         ] {
-            assert_eq!(verdict(&format!("/m/{nom}"), c, true), Err(raison), "{nom:?}");
+            assert_eq!(
+                verdict(&format!("/m/{nom}"), c, true),
+                Err(raison),
+                "{nom:?}"
+            );
         }
-        assert_eq!(verdict("/m/a.flac", "flac", false), Err(Raison::SansFluxAudio));
+        assert_eq!(
+            verdict("/m/a.flac", "flac", false),
+            Err(Raison::SansFluxAudio)
+        );
     }
 }
