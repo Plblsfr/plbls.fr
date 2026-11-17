@@ -281,7 +281,7 @@ type Corps = Record<string, unknown>
 function fauxServeur(catalogue: Piste[]) {
   let n = 0
   const el = (t: Piste, suggested = false, discovery = false): ElementFile => ({ id: `e${++n}`, suggested, discovery, track: t })
-  const etat = { planifier: [] as ElementFile[], f: { revision: 0, source: null, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', seed: null, updated_at: null, items: [] } as FileServeur }
+  const etat = { planifier: [] as ElementFile[], f: { revision: 0, source: null, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', endless: true, seed: null, updated_at: null, items: [] } as FileServeur }
   const appels: [string, Corps][] = []
   const ecoutes: EcouteEnvoyee[] = []
   const piste = (id: unknown) => catalogue.find((p) => p.id === id)!
@@ -293,13 +293,18 @@ function fauxServeur(catalogue: Piste[]) {
   }
   const serveur: ServeurFile = {
     lire: async () => structuredClone(etat.f),
-    remplacer: (b) => ecrire('PUT', b, () => ({ items: (b.tracks as string[]).map((id) => el(piste(id))), index: b.index as number, position: 0, source: b.source ? { type: 'album', id: (b.source as { id: string }).id, name: 'Album' } : null })),
+    remplacer: (b) => ecrire('PUT', b, () => {
+      const source = b.source as { type: string; id?: string } | undefined
+      if (source?.type === 'library') return { items: catalogue.filter((p) => p.available).reverse().map((p) => el(p)), index: 0, position: 0, shuffle: true, source: { type: 'library', id: null, name: 'Bibliothèque' } }
+      return { items: (b.tracks as string[]).map((id) => el(piste(id))), index: b.index as number, position: 0, source: source ? { type: 'album', id: source.id ?? null, name: 'Album' } : null }
+    }),
     modifier: (b) => ecrire('PATCH', b, (f) => ({
       ...(b.index !== undefined ? { index: b.index as number, position: (b.position as number | undefined) ?? 0 } : b.position !== undefined ? { position: b.position as number } : {}),
       ...(b.index !== undefined && etat.planifier.length ? { items: [...f.items.slice(0, (b.index as number) + 1), ...etat.planifier.splice(0), ...f.items.slice((b.index as number) + 1)] } : {}),
       ...(b.repeat ? { repeat: b.repeat as FileServeur['repeat'] } : {}),
       ...(b.shuffle !== undefined ? { shuffle: b.shuffle as boolean, items: [f.items[f.index], ...f.items.filter((_, k) => k !== f.index).reverse()], index: 0 } : {}),
       ...(b.suggestions ? { suggestions: b.suggestions as FileServeur['suggestions'] } : {}),
+      ...(b.endless !== undefined ? { endless: b.endless as boolean } : {}),
     })),
     ajouter: (b) => ecrire('POST /queue/tracks', b, (f) => {
       const nouveaux = (b.tracks as string[]).map((id) => el(piste(id)))
@@ -497,6 +502,34 @@ describe('répétition, fenêtre de suggestions, titres similaires', () => {
     expect(await b.lecteur.similaires(piste(1))).toBe(0)
   })
 
+  it('tout mélanger : la bibliothèque tirée par le serveur remplace la file et se joue', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3)
+    const dispo = catalogue.filter((p) => p.available).length
+    expect(await b.lecteur.melangerTout()).toBe(dispo)
+    expect(srv.appels.at(-1)).toEqual(['PUT', { revision: srv.etat.f.revision - 1, source: { type: 'library' } }])
+    expect(b.lecteur.contexte).toEqual({ type: 'library' })
+    expect(b.lecteur.aleatoire).toBe(true)
+    expect(b.lecteur.aReprendre).toBe(false)
+    const premiere = srv.etat.f.items[0].track.id
+    expect(b.lecteur.piste?.id).toBe(premiere)
+    await attendre(() => b.audios.some((a) => a.src.endsWith(`/${premiere}`) && a.lectures >= 1))
+    expect(await banc({}).lecteur.melangerTout()).toBe(0)
+  })
+
+  it('lecture sans fin : active par défaut, réglée sur le serveur', async () => {
+    const srv = fauxServeur(catalogue)
+    const b = banc({ serveur: srv.serveur })
+    expect(b.lecteur.sansFin).toBe(true)
+    b.lecteur.jouer(album, 0, { type: 'album', id: 'a1' })
+    await attendre(() => b.lecteur.elements.length === 3)
+    await b.lecteur.reglerSansFin(false)
+    expect(srv.appels.at(-1)).toEqual(['PATCH', { revision: 1, endless: false }])
+    expect(b.lecteur.sansFin).toBe(false)
+  })
+
   it('titres similaires : GET /tracks/{id}/similar avec la limite', async () => {
     const f = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"items":[]}', { headers: { 'Content-Type': 'application/json' } }))
     await sillonApi.similaires('p1', 10)
@@ -555,6 +588,8 @@ describe('playlists, ajouts et administration', () => {
   it('source de la file selon le contexte, et retour', () => {
     expect(sourceDe({ type: 'playlist', id: 'x' })).toEqual({ type: 'playlist', id: 'x' })
     expect(sourceDe({ type: 'likes' })).toEqual({ type: 'likes' })
+    expect(sourceDe({ type: 'library' })).toEqual({ type: 'library' })
+    expect(contexteDe({ type: 'library', id: null, name: 'Bibliothèque' })).toEqual({ type: 'library' })
     expect(sourceDe({ type: 'pistes' })).toBeUndefined()
     expect(sourceDe({ type: 'pistes', query: 'daft' })).toEqual({ type: 'search', query: 'daft' })
     expect(contexteDe({ type: 'search', id: null, name: 'daft' })).toEqual({ type: 'pistes', query: 'daft' })

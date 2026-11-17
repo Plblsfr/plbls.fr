@@ -989,7 +989,9 @@ pub(crate) mod tests {
                 Some("alice"),
                 "PUT",
                 "/queue",
-                Some(json!({"revision": 0, "source": {"type": "album", "id": album}})),
+                Some(
+                    json!({"revision": 0, "source": {"type": "album", "id": album}, "endless": false}),
+                ),
             )
             .await
             .json();

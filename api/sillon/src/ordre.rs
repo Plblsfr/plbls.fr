@@ -80,6 +80,11 @@ impl SplitMix {
 
 pub const FENETRE: usize = 8;
 pub const HORIZON: usize = 50;
+pub const SUITE: usize = 10;
+pub const SEUIL_SUITE: usize = 3;
+pub const LOT_BIBLIOTHEQUE: usize = 50;
+pub const PAR_ARTISTE: usize = 3;
+const JEU: f32 = 1.0;
 
 impl Suggestions {
     pub fn rythme(self) -> Option<usize> {
@@ -300,7 +305,7 @@ pub fn a_prolonger(places: &[Place], index: usize, rythme: usize) -> bool {
     false
 }
 
-async fn donnees(state: &AppState, c: &Contexte<'_>, places: &[Place]) -> Donnees {
+async fn donnees(state: &AppState, c: &Contexte<'_>, places: &[Place], candidats: bool) -> Donnees {
     let source: Vec<Uuid> = places
         .iter()
         .filter(|p| !p.suggeree)
@@ -312,7 +317,7 @@ async fn donnees(state: &AppState, c: &Contexte<'_>, places: &[Place]) -> Donnee
         source: &source,
         exclues: &exclues,
         graine: c.graine,
-        candidats: c.suggestions != Suggestions::Off,
+        candidats,
         maintenant: Utc::now(),
     };
     match charger(state, &demande).await {
@@ -334,7 +339,7 @@ pub async fn melanger(state: &AppState, c: &Contexte<'_>) -> Vec<Place> {
             suggeree: false,
         })
         .collect();
-    let d = donnees(state, c, &brutes).await;
+    let d = donnees(state, c, &brutes, c.suggestions != Suggestions::Off).await;
     let mut places = ordonner(c, &d);
     if let Some(rythme) = c.suggestions.rythme() {
         inserer(&mut places, 0, rythme, &d);
@@ -351,8 +356,142 @@ pub async fn prolonger(
     let Some(rythme) = c.suggestions.rythme() else {
         return 0;
     };
-    let d = donnees(state, c, places).await;
+    let d = donnees(state, c, places, true).await;
     inserer(places, index, rythme, &d)
+}
+
+pub async fn suite(state: &AppState, c: &Contexte<'_>, places: &[Place], n: usize) -> Vec<Uuid> {
+    let d = donnees(state, c, places, true).await;
+    let mut prises: HashSet<Uuid> = places.iter().map(|p| p.piste).collect();
+    let mut artistes: HashSet<Uuid> = HashSet::new();
+    let mut precedente = places.last().map(|p| p.piste);
+    let mut sortie = Vec::with_capacity(n);
+    while sortie.len() < n {
+        let Some(p) = d.choisir(precedente, &prises, &artistes) else {
+            break;
+        };
+        prises.insert(p);
+        artistes.extend(d.metas.get(&p).map(|m| m.artiste));
+        precedente = Some(p);
+        sortie.push(p);
+    }
+    sortie
+}
+
+pub fn choisir_dans(d: &Donnees, bassin: &[Uuid], graine: i64, n: usize) -> Vec<Uuid> {
+    let mut bassin: Vec<Uuid> = bassin
+        .iter()
+        .copied()
+        .filter(|p| d.ecartee(*p).is_none())
+        .collect();
+    bassin.sort();
+    bassin.dedup();
+    let mut g = SplitMix(graine as u64);
+    let mut notes: Vec<(f32, Uuid)> = bassin
+        .into_iter()
+        .map(|p| (d.noter(p, None).total + JEU * g.unite(), p))
+        .collect();
+    notes.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    let mut par_artiste: HashMap<Uuid, usize> = HashMap::new();
+    let (mut prises, mut reste) = (Vec::with_capacity(n), Vec::new());
+    for (_, p) in notes {
+        let libre = d.metas.get(&p).is_none_or(|m| {
+            let k = par_artiste.entry(m.artiste).or_default();
+            *k += 1;
+            *k <= PAR_ARTISTE
+        });
+        if libre && prises.len() < n {
+            prises.push(p);
+        } else {
+            reste.push(p);
+        }
+    }
+    let manque = n.saturating_sub(prises.len());
+    prises.extend(reste.into_iter().take(manque));
+    let elements: Vec<Element> = prises
+        .iter()
+        .map(|p| Element { id: *p, piste: *p })
+        .collect();
+    let contexte = Contexte {
+        sub: "",
+        graine,
+        premier: None,
+        elements: &elements,
+        suggestions: Suggestions::Off,
+    };
+    ordonner(&contexte, d)
+        .into_iter()
+        .map(|p| p.piste)
+        .collect()
+}
+
+async fn bassin(
+    state: &AppState,
+    sub: &str,
+    graine: i64,
+    exclues: &[Uuid],
+    n: usize,
+) -> Result<(Donnees, Vec<Uuid>), sqlx::Error> {
+    let demande = Demande {
+        sub,
+        source: &[],
+        exclues: &[],
+        graine,
+        candidats: false,
+        maintenant: Utc::now(),
+    };
+    let mut d = charger(state, &demande).await?;
+    let exclues: HashSet<Uuid> = exclues.iter().copied().collect();
+    let p = &d.profil;
+    let mut familieres: Vec<Uuid> = p
+        .aimees
+        .iter()
+        .chain(&p.en_playlist)
+        .chain(&p.decouvertes)
+        .chain(
+            p.pistes
+                .iter()
+                .filter(|(_, h)| h.completes > 0)
+                .map(|x| x.0),
+        )
+        .copied()
+        .filter(|x| !exclues.contains(x))
+        .collect();
+    familieres.sort();
+    familieres.dedup();
+    let mut g = SplitMix((graine as u64) ^ 0x5151);
+    let mut cles: Vec<(u64, Uuid)> = familieres.into_iter().map(|x| (g.suivant(), x)).collect();
+    cles.sort();
+    let mut bassin: Vec<Uuid> = cles.into_iter().take(4 * n).map(|x| x.1).collect();
+    let autres: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM pistes WHERE present AND id <> ALL($1) ORDER BY md5(id::text || $2) LIMIT $3",
+    )
+    .bind(exclues.iter().copied().collect::<Vec<_>>())
+    .bind(graine.to_string())
+    .bind(i64::try_from(6 * n).unwrap_or(i64::MAX))
+    .fetch_all(state.pool())
+    .await?;
+    bassin.extend(autres);
+    let connues = crate::recommandation::metas(state.pool(), &bassin).await?;
+    bassin.retain(|x| connues.get(x).is_some_and(|m| m.present));
+    d.metas.extend(connues);
+    Ok((d, bassin))
+}
+
+pub async fn tirer(
+    state: &AppState,
+    sub: &str,
+    graine: i64,
+    exclues: &[Uuid],
+    n: usize,
+) -> Vec<Uuid> {
+    match bassin(state, sub, graine, exclues, n).await {
+        Ok((d, bassin)) => choisir_dans(&d, &bassin, graine, n),
+        Err(e) => {
+            tracing::warn!("recommandation : {e}");
+            Vec::new()
+        }
+    }
 }
 
 pub fn deplacer<T>(liste: &mut Vec<T>, depuis: usize, nombre: usize, vers: usize) -> bool {
@@ -735,6 +874,54 @@ mod tests {
         let seuil = if cfg!(debug_assertions) { 1000 } else { 200 };
         eprintln!("fenêtre de file sur {n} pistes : {duree:?} (seuil {seuil} ms)");
         assert!(duree.as_millis() < seuil, "{duree:?}");
+    }
+
+    #[test]
+    fn tirage_de_bibliotheque_selon_les_gouts() {
+        let artistes: Vec<usize> = (0..400).map(|i| i % 80).collect();
+        let mut d = donnees(&artistes);
+        let bassin: Vec<Uuid> = (0..400).map(id).collect();
+        let (decouverte, refusee, sautee) = (id(7), id(8), id(9));
+        d.profil.decouvertes.insert(decouverte);
+        d.profil.refusees.insert(refusee);
+        d.profil.pistes.insert(
+            sautee,
+            Habitude {
+                sauts: 2,
+                derniere: Some(t0() - Duration::hours(30)),
+                sauts_recents: vec![t0() - Duration::hours(30), t0() - Duration::hours(31)],
+                ..Habitude::default()
+            },
+        );
+        let aimees: Vec<Uuid> = (100..140).map(id).collect();
+        d.profil.aimees.extend(aimees.iter().copied());
+        let mut pris_aimees = 0;
+        for graine in 0..40 {
+            let t = choisir_dans(&d, &bassin, graine, 50);
+            assert_eq!(t, choisir_dans(&d, &bassin, graine, 50));
+            assert_ne!(t, choisir_dans(&d, &bassin, graine + 100, 50));
+            let uniques: HashSet<Uuid> = t.iter().copied().collect();
+            assert_eq!((t.len(), uniques.len()), (50, 50));
+            assert!(t.contains(&decouverte), "découverte pas encore écoutée");
+            assert!(!t.contains(&refusee) && !t.contains(&sautee));
+            let mut par_artiste: HashMap<Uuid, usize> = HashMap::new();
+            for p in &t {
+                *par_artiste.entry(d.metas[p].artiste).or_default() += 1;
+            }
+            assert!(par_artiste.values().all(|n| *n <= PAR_ARTISTE));
+            assert!(
+                t.windows(2)
+                    .all(|w| d.metas[&w[0]].artiste != d.metas[&w[1]].artiste)
+            );
+            pris_aimees += t.iter().filter(|p| aimees.contains(p)).count();
+        }
+        let part = pris_aimees as f32 / (40.0 * 40.0);
+        assert!(
+            part > 1.5 * 50.0 / 400.0,
+            "titres likés tirés plus souvent que les autres : {part}"
+        );
+        assert_eq!(choisir_dans(&d, &bassin[..5], 1, 50).len(), 5);
+        assert!(choisir_dans(&d, &[], 1, 50).is_empty());
     }
 
     #[test]

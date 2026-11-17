@@ -111,8 +111,8 @@ et l'historique, avec `available: false`.
 - **Likes** (`/likes`) : piste, album ou artiste (`PUT` et `DELETE /likes/{tracks|albums|artists}/{id}`, idempotents ; 50 000 par type).
   `GET /likes` donne les identifiants, `GET /likes/tracks` « Titres likés » sous la forme d'une playlist (du plus récent au plus ancien).
 - **File de lecture** (`/queue`) : une par personne, en base, rendue à l'identique sur tous ses appareils : source (`album`, `playlist`,
-  `artist`, `likes`, `search`), éléments dans l'ordre de lecture, index courant, position dans la piste, aléatoire, répétition (`off`,
-  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`), graine du mélange (`seed`) et, par
+  `artist`, `likes`, `search`, `library`), éléments dans l'ordre de lecture, index courant, position dans la piste, aléatoire, répétition (`off`,
+  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`), lecture sans fin (`endless`, vraie par défaut), graine du mélange (`seed`) et, par
   élément, `suggested` (piste suggérée hors de la source) et `discovery` (piste d'une découverte faite pour la personne). « Lire ensuite » insère après la piste courante, « ajouter à la file » à la fin.
   Chaque écriture porte la `revision` de la dernière file reçue : si un autre appareil a écrit entre-temps, 409 `conflict` avec la file
   courante (`queue`), rien n'est écrit ; le client recommence sur cet état. Le client envoie sa position (`PATCH /queue`) à intervalle et
@@ -252,6 +252,18 @@ et l'historique, avec `available: false`.
   L'élément est marqué `suggested` dans la file et l'écoute `suggested` dans l'historique. Liker une suggestion, l'écouter en entier
   ou la sauter agit par l'affinité et les pénalités ; « ajouter à la playlist » est l'appel ordinaire `POST /playlists/{id}/tracks`.
   Désactiver `suggestions` retire celles qui ne sont pas encore jouées.
+- **Lecture sans fin** (`endless`, hors répétition) : quand il reste moins de 3 éléments après la piste courante (file remplacée,
+  changement de piste ou de mode, élément retiré), 10 pistes hors de la file sont ajoutées à la fin, marquées `suggested` : mêmes
+  candidats et même score que les titres suggérés, d'après les pistes de la source, un artiste différent à chaque fois tant qu'il en
+  reste. Un titre lancé seul reçoit donc tout de suite sa suite. Couper `endless` retire la suite pas encore jouée.
+- **Toute la bibliothèque** (source `library`, « Tout mélanger ») : `ordre::tirer` tire 50 pistes présentes parmi 200 pistes
+  familières au plus (likées, en playlist, déjà écoutées en entier, découvertes) et 300 prises au hasard, notées par le score sans
+  contexte (affinité, sauts et écoutes récentes) plus un tirage de la graine entre 0 et 1 : les titres aimés sortent plus souvent,
+  ceux écoutés ou sautés récemment moins, une découverte pas encore écoutée toujours ; jamais une piste refusée, réservée ou
+  suggérée puis sautée récemment, 3 pistes par artiste au plus, puis l'ordre de l'aléatoire. La file est toujours en aléatoire, sans
+  titres suggérés ; avec `endless`, 50 pistes de plus sont tirées près de la fin (les pistes déjà dans la file d'abord écartées,
+  puis seulement les 10 dernières jouées et celles à venir quand la bibliothèque est épuisée). Au-delà de 10 000 éléments, les plus
+  anciens déjà joués sortent de la file.
 - **Sans signal** : bibliothèque non analysée, ListenBrainz coupé ou en panne, erreur de base pendant le chargement : la file se
   construit quand même (signaux neutres ; au pire, mélange par la graine seule).
 - **Routes** : `GET /tracks/{id}/similar` (pistes proches à l'oreille), `POST /recommendations/dismiss` (« ne plus proposer »),
@@ -278,7 +290,7 @@ et l'historique, avec `available: false`.
 
 ### Découverte
 
-- Quand une personne écoute en aléatoire avec suggestions, une tâche de fond (une à la fois par personne, jamais dans la requête)
+- Quand une personne écoute en lecture sans fin (hors répétition) ou en aléatoire avec suggestions, une tâche de fond (une à la fois par personne, jamais dans la requête)
   cherche un titre **absent** : artistes similaires (ListenBrainz) aux 5 artistes les plus présents dans la source, leurs 10
   enregistrements les plus écoutés, sans ceux déjà dans la bibliothèque (même enregistrement, ou même titre du même artiste),
   notés par le score (métadonnées, similarité, affinité ; pas de proximité audio) puis par leur rang.
@@ -304,7 +316,7 @@ et l'historique, avec `available: false`.
 ## Interface
 
 Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
-d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (reprise, ajouts récents), artistes, fiche artiste,
+d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (« Tout mélanger », reprise, ajouts récents), artistes, fiche artiste,
 fiche album, titre (l'album, le titre mis en avant), recherche, playlists et « Titres likés », file de lecture, historique (écoutes
 récentes, titres et artistes les plus écoutés), écran « pas d'accès » ; avec `sillon:add`, « Ajouter de la musique » (recherche d'absents,
 pochette ou portrait de chaque résultat demandés à Sillon, vignette de repli sans image ou si elle échoue, refus lisibles : disque plein
@@ -325,7 +337,8 @@ suivante, que le lecteur reçoit dans la réponse et précharge), la position se
 quittant la page ; la répétition (aucune, la file, le titre : `repeat` `off`, `all`, `one`) se change dans le mini-lecteur et la file et
 le moteur la suit en fin de titre et de file ; « Lire ensuite », « Ajouter à la file », retirer et réordonner passent par les routes de la file ; un 409 recharge
 l'état courant puis rejoue l'écriture. Au démarrage, la file du serveur est proposée à la reprise (même piste, même position), sans
-lecture automatique. Chaque lecture terminée, sautée ou arrêtée est envoyée à l'historique. Aléatoire, suggestions (`off`, `light`,
+lecture automatique. Chaque lecture terminée, sautée ou arrêtée est envoyée à l'historique. « Tout mélanger », à l'accueil, remplace la file par la source `library` et lance la lecture. Aléatoire, lecture sans fin
+(`endless`), suggestions (`off`, `light`,
 `frequent`) et, avec `sillon:add`, découverte (`PUT /preferences`) se règlent dans la file ; les titres suggérés ou découverts y sont
 marqués « Suggestion » ou « Découverte » (élément `discovery`, marque distincte), avec « Ajouter à la playlist » et « Ne plus proposer »
 (`POST /recommendations/dismiss`, puis retrait de l'élément par `POST /queue/remove`, le refus ne touchant pas la file en cours).

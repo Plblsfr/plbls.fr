@@ -167,7 +167,7 @@ export const SUGGESTIONS: { id: Suggestions; label: string }[] = [
   { id: 'light', label: 'Légères' },
   { id: 'frequent', label: 'Fréquentes' },
 ]
-export type TypeSource = 'album' | 'playlist' | 'artist' | 'likes' | 'search'
+export type TypeSource = 'album' | 'playlist' | 'artist' | 'likes' | 'search' | 'library'
 export interface ElementFile { id: string; suggested: boolean; discovery: boolean; track: Piste }
 export const marqueDe = (e: Pick<ElementFile, 'suggested' | 'discovery'> | null | undefined) => (e?.discovery ? 'Découverte' : e?.suggested ? 'Suggestion' : null)
 export type Repetition = 'off' | 'all' | 'one'
@@ -184,6 +184,7 @@ export interface FileServeur {
   shuffle: boolean
   repeat: Repetition
   suggestions: Suggestions
+  endless: boolean
   seed: number | null
   updated_at: string | null
   items: ElementFile[]

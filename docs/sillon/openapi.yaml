@@ -362,12 +362,13 @@ paths:
     get:
       summary: "File de lecture de la personne, la même sur tous ses appareils"
       description: |
-        File : `{revision, source: {type, id, name}|null, index, position, shuffle, repeat, suggestions, seed, updated_at,
+        File : `{revision, source: {type, id, name}|null, index, position, shuffle, repeat, suggestions, endless, seed, updated_at,
         items: [{id, suggested, discovery, track: Piste}]}`. `items` est dans l'ordre de lecture (mélangé si `shuffle`), `index` désigne l'élément
         courant, `position` la position en secondes dans la piste. `repeat` : `off`, `all`, `one`. `suggestions` : `off`, `light`
         (une piste suggérée toutes les 10 pistes de la source), `frequent` (toutes les 4), effectif en aléatoire seulement ;
         `suggested` : élément suggéré hors de la source ; `discovery` : piste d'un album téléchargé par la découverte pour cette personne ;
-        `seed` : graine du mélange. Une piste absente reste dans la file (`available: false`) ; le client la passe. Sans file : révision 0, `items` vide.
+        `endless` : lecture sans fin, vraie par défaut (hors répétition, des pistes proches de la source, marquées `suggested`, sont
+        ajoutées quand il reste moins de 3 éléments après la piste courante) ; `seed` : graine du mélange. Une piste absente reste dans la file (`available: false`) ; le client la passe. Sans file : révision 0, `items` vide.
       responses:
         "200": { description: "File" }
         "401": { $ref: "#/components/responses/401" }
@@ -377,11 +378,13 @@ paths:
       description: |
         Toute écriture sur la file porte `revision`, celle de la dernière file reçue : si elle a changé entre-temps, 409 `conflict` avec
         la file courante dans `queue`, rien n'est écrit. Pistes : `tracks` (obligatoire pour une source `search`), sinon celles de la source
-        (`album` : toutes, par disque et numéro ; `artist` : pistes présentes ; `playlist` : ses éléments ; `likes` : « Titres likés »).
-        `index` : piste de départ dans l'ordre de la source. `shuffle`, `repeat` et `suggestions` gardent leur valeur s'ils sont omis ;
+        (`album` : toutes, par disque et numéro ; `artist` : pistes présentes ; `playlist` : ses éléments ; `likes` : « Titres likés » ;
+        `library` : 50 pistes de toute la bibliothèque tirées selon les goûts de la personne, toujours en aléatoire, sans `tracks`,
+        prolongées de 50 en 50 avec `endless`).
+        `index` : piste de départ dans l'ordre de la source. `shuffle`, `repeat`, `suggestions` et `endless` gardent leur valeur s'ils sont omis ;
         en aléatoire, la piste de départ passe en tête et le reste est ordonné par la recommandation (pas deux fois le même artiste
         à la suite quand c'est possible, pistes souvent sautées repoussées, transitions proches) ; avec `suggestions`, des pistes hors
-        source sont insérées dans les 50 éléments à venir, et la recherche de découvertes est lancée en tâche de fond.
+        source sont insérées dans les 50 éléments à venir ; avec `suggestions` ou `endless`, la recherche de découvertes est lancée en tâche de fond.
       requestBody:
         content:
           application/json:
@@ -393,7 +396,7 @@ paths:
                 source:
                   type: object
                   properties:
-                    type: { type: string, enum: [album, playlist, artist, likes, search] }
+                    type: { type: string, enum: [album, playlist, artist, likes, search, library] }
                     id: { type: string, format: uuid }
                     query: { type: string, maxLength: 100, description: "texte de la recherche (source `search`)" }
                 tracks: { type: array, maxItems: 10000, items: { type: string, format: uuid } }
@@ -402,6 +405,7 @@ paths:
                 shuffle: { type: boolean }
                 repeat: { type: string, enum: [off, all, one] }
                 suggestions: { type: string, enum: [off, light, frequent] }
+                endless: { type: boolean }
       responses:
         "200": { description: "File" }
         "400": { description: "`invalid`" }
@@ -417,7 +421,8 @@ paths:
         suivante ou précédente en sautant les absentes, en bouclant si `repeat` n'est pas `off` ; 422 `end_of_queue` s'il n'y en a pas.
         `shuffle: true` mélange (nouvelle graine, piste courante en tête), `false` rend l'ordre de la source en gardant la piste courante
         et retire les suggestions. En aléatoire avec `suggestions`, un changement de piste complète les suggestions des 50 éléments à venir
-        quand moins de 25 sont planifiés ; `suggestions: off` retire les suggestions pas encore jouées.
+        quand moins de 25 sont planifiés ; `suggestions: off` retire les suggestions pas encore jouées. `endless: false` retire la suite
+        pas encore jouée ; avec `endless`, un changement de piste ou de mode prolonge la file près de sa fin.
       requestBody:
         content:
           application/json:
@@ -432,6 +437,7 @@ paths:
                 shuffle: { type: boolean }
                 repeat: { type: string, enum: [off, all, one] }
                 suggestions: { type: string, enum: [off, light, frequent] }
+                endless: { type: boolean }
       responses:
         "200": { description: "File" }
         "400": { description: "`invalid`" }
@@ -534,7 +540,7 @@ paths:
                 source:
                   type: object
                   properties:
-                    type: { type: string, enum: [album, playlist, artist, likes, search] }
+                    type: { type: string, enum: [album, playlist, artist, likes, search, library] }
                     id: { type: string, format: uuid }
                 item: { type: string, format: uuid }
       responses:

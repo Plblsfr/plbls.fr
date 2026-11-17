@@ -24,8 +24,8 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `preferences.rs` | `GET`/`PUT /preferences` (qualité et découverte par personne, écriture partielle) |
 | `playlists.rs` | playlists privées (éléments ordonnés, plage déplacée, doublons signalés, plafonds) ; aides communes : corps JSON (`objet`, `texte`, `champ_uuid`…), `contenu` (pistes, album, artiste ou playlist d'une requête), `pistes_de_source`, `pistes_json` |
 | `likes.rs` | likes de pistes, albums et artistes ; « Titres likés » |
-| `file.rs` | file de lecture par personne, révision et 409, « lire ensuite », « ajouter à la file », aléatoire, piste suivante disponible |
-| `ordre.rs` | ordre de lecture aléatoire (`ordonner`, pur ; `melanger` et `prolonger`, qui chargent les données), insertion des suggestions (`inserer`, `a_prolonger`) et déplacement d'une plage (`deplacer`) |
+| `file.rs` | file de lecture par personne, révision et 409, « lire ensuite », « ajouter à la file », aléatoire, lecture sans fin, source `library` (toute la bibliothèque), piste suivante disponible |
+| `ordre.rs` | ordre de lecture aléatoire (`ordonner`, pur ; `melanger` et `prolonger`, qui chargent les données), insertion des suggestions (`inserer`, `a_prolonger`), suite de la lecture sans fin (`suite`), tirage de toute la bibliothèque (`choisir_dans`, pur ; `tirer`) et déplacement d'une plage (`deplacer`) |
 | `recommandation/` | `score.rs` (score pur, `Poids`, `Habitude`, `Candidat`, `Detail`), `mod.rs` (`charger` : entrées du score en quelques requêtes ; `Donnees` : `noter`, `choisir` ; routes `similar`, `dismiss`, `explain`) |
 | `listenbrainz.rs` | artistes similaires et enregistrements populaires par MBID, gardés en base, débit limité, pause après erreur |
 | `decouverte.rs` | recherche en tâche de fond d'un titre absent et envoi de son album par `ajouts`, promotion des découvertes likées, `GET /admin/discovery` |
@@ -64,7 +64,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `playlists` | `sub`, `nom`, `description`, dates |
 | `playlists_pistes` | élément : `id`, `playlist_id`, `piste_id`, `position` (unique par playlist, contrainte différée), `ajoute_le` |
 | `likes` | `(sub, type, cible)` : type `track`, `album` ou `artist` |
-| `files` | une ligne par `sub` : `revision`, source (`source_type`, `source_id`, `source_nom`), `index_courant`, `position`, `aleatoire`, `repetition`, `graine`, `suggestions` |
+| `files` | une ligne par `sub` : `revision`, source (`source_type`, `source_id`, `source_nom`), `index_courant`, `position`, `aleatoire`, `repetition`, `graine`, `suggestions`, `sans_fin` |
 | `files_elements` | `rang` (ordre de lecture), `id` de l'élément, `piste_id`, `rang_source` (ordre de la source, rendu quand l'aléatoire s'arrête), `suggeree` |
 | `ecoutes` | `sub`, `piste_id`, `debut`, `duree_ecoutee`, `duree_piste`, `fin` (`completed`, `skipped`, `interrupted`), `compte`, source, `suggeree` |
 
