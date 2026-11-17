@@ -30,6 +30,7 @@ futures-util = { version = "0.3", default-features = false, features = ["std", "
 hmac = "0.13"
 html5gum = { version = "0.9", default-features = false }
 http-body-util = "0.1"
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 include_dir = "0.7"
 jsonschema = { version = "0.60", default-features = false }
 jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }

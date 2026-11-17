@@ -16,6 +16,5 @@ subtle.workspace = true
 percent-encoding.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 serde_json.workspace = true
-
-[dev-dependencies]
 tokio.workspace = true
+
