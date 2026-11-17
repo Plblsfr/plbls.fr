@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../lib/api'
 import { medias } from '../../lib/medias'
 import { contexteDe, Lecteur, sourceDe, type ContexteAudio, type DetailsAction, type ElementAudio, type Environnement, type NoeudGain, type ServeurFile } from './sillon.svelte'
-import { anneeEtType, debut, deplacerListe, dureeExacte, gainLineaire, marqueDe, octets, refusAjout, sections, sillonApi, support, totalAlbum, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste } from './sillon'
+import { anneeEtType, debut, deplacerListe, dureeExacte, gainLineaire, marqueDe, octets, refusAjout, sections, sillonApi, support, totalAlbum, vignetteAbsent, type EcouteEnvoyee, type ElementFile, type FileServeur, type Lecture, type Piste } from './sillon'
 
 class FauxAudio implements ElementAudio {
   src = ''
@@ -527,6 +527,17 @@ describe('playlists, ajouts et administration', () => {
     const e = await sillonApi.ajouter('album', 'm').catch((x) => x)
     expect(e).toBeInstanceOf(ApiError)
     expect(e.data).toMatchObject({ used: 1, estimated: 5 })
+  })
+
+  it('image d’un résultat de recherche d’ajout : référence de Sillon, image de la bibliothèque si présent, repli sinon', async () => {
+    const ref = '0123456789abcdef0123456789abcdef'
+    expect(vignetteAbsent({ mbid: 'm1', image: ref, library: null })).toEqual({ id: 'm1', image: false, ajout: ref })
+    expect(vignetteAbsent({ mbid: 'm1', image: null, library: null })).toEqual({ id: 'm1', image: false, ajout: null })
+    expect(vignetteAbsent({ mbid: 'm1', image: null, library: { id: 'u1', image: true } })).toEqual({ id: 'u1', image: true, ajout: null })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('x', { status: 200, headers: { 'Content-Type': 'image/jpeg' } }))
+    URL.createObjectURL = vi.fn(() => 'blob:ajout')
+    expect(await sillonApi.imageAjout(ref, 'small')).toBe('blob:ajout')
+    expect(String(fetch.mock.calls[0][0])).toMatch(new RegExp(`/additions/images/${ref}\\?size=small$`))
   })
 
   it('budget de la découverte atteint (507 discovery_budget) : message propre, sans occupation', () => {

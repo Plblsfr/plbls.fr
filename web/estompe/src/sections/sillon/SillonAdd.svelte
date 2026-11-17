@@ -5,7 +5,7 @@
   import { notify } from '../../lib/ui'
   import SillonCover from './SillonCover.svelte'
   import { echec } from './sillon.svelte'
-  import { anneeEtType, dureeTotale, octets, refusAjout, sillonApi, type ResultatsAjout } from './sillon'
+  import { anneeEtType, dureeTotale, octets, refusAjout, sillonApi, vignetteAbsent, type ResultatsAjout } from './sillon'
 
   let q = $state('')
   let res = $state<ResultatsAjout | null>(null)
@@ -63,7 +63,7 @@
           {#each res.albums as a (a.mbid)}
             {@const e = etat(a)}
             <li class="sillon-absent-l">
-              <span class="sillon-absent-art"><SillonCover id={a.mbid} title={a.title ?? ''} image={false} size="small" /></span>
+              <span class="sillon-absent-art"><SillonCover {...vignetteAbsent(a)} title={a.title ?? ''} size="small" /></span>
               <span class="grow sillon-absent-t">
                 <strong class="truncate">{a.title ?? 'Sans titre'}</strong>
                 <span class="v-note truncate">{[a.artist.name, anneeEtType({ year: a.year, type: a.type, secondary_types: a.secondary_types }), a.duration ? dureeTotale(a.duration) : '', a.estimated_size ? `≈ ${octets(a.estimated_size)}` : ''].filter(Boolean).join(' · ')}</span>
@@ -82,7 +82,7 @@
           {#each res.artists as a (a.mbid)}
             {@const e = etat(a)}
             <li class="sillon-absent-l">
-              <span class="sillon-absent-art sillon-rond"><SillonCover id={a.mbid} title={a.name ?? ''} image={false} kind="artiste" size="small" /></span>
+              <span class="sillon-absent-art sillon-rond"><SillonCover {...vignetteAbsent(a)} title={a.name ?? ''} kind="artiste" size="small" /></span>
               <span class="grow sillon-absent-t">
                 <strong class="truncate">{a.name ?? 'Sans nom'}</strong>
                 <span class="v-note truncate">{[a.disambiguation, a.type].filter(Boolean).join(' · ') || 'Albums studio'}</span>

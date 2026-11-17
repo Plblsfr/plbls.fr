@@ -641,12 +641,38 @@ paths:
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
       responses:
-        "200": { description: "`{artists: [{mbid, name, disambiguation, type, overview, in_library, in_progress, excluded}], albums: [{mbid, title, type, secondary_types, year, duration, artist: {mbid, name}, in_library, in_progress, excluded, estimated_size}]}` (20 au plus chacun ; `estimated_size` nul si Lidarr n'a ni dossier racine ni profil lisible)" }
+        "200":
+          description: >-
+            `{artists: [{mbid, name, disambiguation, type, overview, image, library, in_library, in_progress, excluded}], albums: [{mbid,
+            title, type, secondary_types, year, duration, artist: {mbid, name}, image, library, in_library, in_progress, excluded,
+            estimated_size}]}` (20 au plus chacun ; `estimated_size` nul si Lidarr n'a ni dossier racine ni profil lisible). `image` :
+            référence opaque (32 caractères hexadécimaux) de l'image que Lidarr propose (pochette, portrait de l'artiste), à lire par
+            `GET /additions/images/{id}`, nulle sans image ou pour un élément déjà présent ; `library` : `{id, image}` de l'élément présent
+            dans la bibliothèque (image par `/albums/{id}/cover` ou `/artists/{id}/image` si `image` est vrai), nul sinon. La recherche ne
+            télécharge aucune image.
         "400": { description: "`invalid` : recherche vide ou trop longue" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
         "502": { description: "`lidarr_unavailable`" }
         "503": { description: "`not_configured` : Lidarr non configuré" }
+  /additions/images/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, pattern: "^[0-9a-f]{32}$" }, description: "référence `image` d'un résultat de recherche ou d'un ajout" }
+    get:
+      summary: "Image d'un résultat de recherche d'ajout ou d'un ajout, téléchargée par Sillon, réduite et gardée en base"
+      description: >-
+        Sillon ne télécharge que l'adresse qu'il a lue lui-même dans une réponse de Lidarr (recherche des 7 derniers jours ou ajout) :
+        http(s), adresses publiques seulement (privées, de bouclage et de lien local refusées, y compris après résolution et redirection),
+        5 Mio au plus, 10 s au plus, contenu JPEG, PNG, GIF ou WebP vérifié, 4 téléchargements simultanés au plus. Les trois tailles
+        (250, 500 et 1200 pixels de côté au plus, jamais agrandies) sont gardées en base au premier appel.
+      parameters:
+        - { name: size, in: query, schema: { type: string, enum: [small, medium, large], default: small } }
+      responses:
+        "200": { description: "Image (JPEG, ou PNG si elle a de la transparence)" }
+        "400": { description: "`invalid` : taille inconnue" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : référence inconnue ou expirée, image introuvable, refusée, trop grosse ou illisible" }
   /additions:
     post:
       summary: "Ajoute un album (seul surveillé) ou un artiste (albums studio surveillés) : envoyé à Lidarr tout de suite, recherche lancée"
@@ -661,7 +687,7 @@ paths:
                 kind: { type: string, enum: [album, artist] }
                 mbid: { type: string, format: uuid, description: "MBID MusicBrainz de l'album ou de l'artiste" }
       responses:
-        "201": { description: "Ajout : `{id, kind, mbid, title, artist: {mbid, name}, origin: manual|discovery, state: sent|downloading|partial|available|failed|deleted, reason, estimated_size, albums: [uuid], created_at, updated_at}`" }
+        "201": { description: "Ajout : `{id, kind, mbid, title, artist: {mbid, name}, origin: manual|discovery, state: sent|downloading|partial|available|failed|deleted, reason, estimated_size, albums: [uuid], image, created_at, updated_at}` ; `image` : référence de l'image lue dans Lidarr (`GET /additions/images/{id}`), nulle sans image" }
         "200": { description: "Ajout déjà en cours pour ce titre, avec `existing: true`" }
         "400": { description: "`invalid` : kind ou mbid invalide" }
         "401": { $ref: "#/components/responses/401" }

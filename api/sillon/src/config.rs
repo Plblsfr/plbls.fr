@@ -41,6 +41,7 @@ pub struct Config {
     pub reco: crate::recommandation::Reglages,
     pub listenbrainz: Option<crate::listenbrainz::Reglages>,
     pub decouverte: crate::decouverte::Reglages,
+    pub images_privees: bool,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -167,6 +168,7 @@ impl Config {
             reco: crate::recommandation::Reglages::from_env(&env)?,
             listenbrainz: crate::listenbrainz::Reglages::from_env(&env)?,
             decouverte: crate::decouverte::Reglages::from_env(&env)?,
+            images_privees: false,
         })
     }
 

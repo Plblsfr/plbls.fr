@@ -314,6 +314,12 @@ pub fn table() -> Vec<Entree> {
             get(crate::ajouts::rechercher),
         ),
         entree(
+            Method::GET,
+            "/additions/images/{id}",
+            Garde::Droit(Droit::Ajout),
+            get(crate::images::image_ajout),
+        ),
+        entree(
             Method::POST,
             "/additions",
             Garde::Droit(Droit::Ajout),

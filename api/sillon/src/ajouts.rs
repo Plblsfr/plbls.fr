@@ -19,13 +19,15 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{self, bd, erreur, horodatage, indisponible, invalide, ok},
-    lidarr,
+    images, lidarr,
     quota::{self, ETATS_ACTIFS, Occupation},
 };
 
 pub const PERIODE_SUIVI: Duration = Duration::from_secs(300);
 const VERROU: i64 = 0x5111_0005;
 const RESULTATS_MAX: usize = 20;
+const IMAGES_ALBUM: &[&str] = &["cover", "disc"];
+const IMAGES_ARTISTE: &[&str] = &["poster", "fanart"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Genre {
@@ -152,6 +154,7 @@ struct Cible {
     artiste_nom: String,
     albums: Vec<String>,
     estimation: i64,
+    image: Option<String>,
 }
 
 fn texte(v: &Value, cle: &str) -> Option<String> {
@@ -252,6 +255,21 @@ async fn presents(
     Ok(l.into_iter().collect())
 }
 
+async fn en_bibliotheque(
+    pool: &PgPool,
+    table: &str,
+    image: &str,
+    mbids: &[String],
+) -> Result<HashMap<String, (Uuid, bool)>, sqlx::Error> {
+    let l: Vec<(String, Uuid, bool)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT mbid, id, {image} IS NOT NULL FROM {table} WHERE present AND mbid = ANY($1)"
+    )))
+    .bind(mbids)
+    .fetch_all(pool)
+    .await?;
+    Ok(l.into_iter().map(|(m, id, i)| (m, (id, i))).collect())
+}
+
 async fn en_cours_parmi(pool: &PgPool, mbids: &[String]) -> Result<HashSet<String>, sqlx::Error> {
     let l: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "SELECT DISTINCT m FROM ajouts a, unnest(array_append(a.albums, a.mbid)) m
@@ -311,6 +329,7 @@ async fn cible(
                 artiste_nom: texte(&a["artist"], "artistName").unwrap_or_default(),
                 albums: vec![mbid.to_string()],
                 estimation: quota::estimer(duree_album(a), debit),
+                image: images::image_distante(a, IMAGES_ALBUM),
             }))
         }
         Genre::Artiste => {
@@ -320,6 +339,7 @@ async fn cible(
                 .find(|a| a["foreignArtistId"].as_str() == Some(mbid))
                 .ok_or(ErreurAjout::Introuvable)?;
             let nom = texte(a, "artistName").unwrap_or_default();
+            let image = images::image_distante(a, IMAGES_ARTISTE);
             let studio: Vec<(String, f64)> = if nom.is_empty() {
                 Vec::new()
             } else {
@@ -353,6 +373,7 @@ async fn cible(
                 artiste_nom: nom,
                 albums: Vec::new(),
                 estimation,
+                image,
             }))
         }
     }
@@ -408,8 +429,8 @@ async fn reserver(
         })));
     }
     let id: Option<Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
-        "INSERT INTO ajouts (type, mbid, titre, artiste_mbid, artiste_nom, origine, sub, nom, estimation, albums)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        "INSERT INTO ajouts (type, mbid, titre, artiste_mbid, artiste_nom, origine, sub, nom, estimation, albums, image)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (type, mbid) WHERE etat IN {ETATS_ACTIFS} DO NOTHING RETURNING id"
     )))
     .bind(genre.code())
@@ -422,6 +443,7 @@ async fn reserver(
     .bind(&d.personne.nom)
     .bind(c.estimation)
     .bind(&c.albums)
+    .bind(c.image.as_deref().map(images::reference))
     .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -459,6 +481,9 @@ pub async fn ajouter(
     };
     if est_exclu(pool, &[&cible.artiste_mbid]).await? {
         return Ok(Resultat::Refuse(Refus::Exclu));
+    }
+    if let Err(e) = images::enregistrer(pool, cible.image.as_slice()).await {
+        tracing::warn!("image d'ajout non enregistrée : {e}");
     }
     let id = match reserver(state, genre, &mbid, &cible, &d).await? {
         Ok(id) => id,
@@ -877,12 +902,15 @@ pub fn demarrer(state: &AppState) {
         loop {
             t.tick().await;
             suivre(&etat).await;
+            if let Err(e) = images::purger(etat.pool()).await {
+                tracing::warn!("purge des images d'ajout : {e}");
+            }
         }
     });
 }
 
 pub const COLONNES_AJOUT: &str = "a.id, a.type, a.mbid, a.titre, a.artiste_mbid, a.artiste_nom, a.origine, a.sub, a.nom,
-    a.etat, a.raison, a.estimation, a.cree_le, a.maj,
+    a.image, a.etat, a.raison, a.estimation, a.cree_le, a.maj,
     ARRAY(SELECT al.id FROM albums al WHERE al.present AND al.mbid = ANY(a.albums) ORDER BY al.sortie, al.id) AS presents";
 
 pub fn etat_public(etat: &str) -> &'static str {
@@ -927,6 +955,7 @@ pub fn ajout_public(l: &PgRow, admin: bool) -> Value {
         }),
         "estimated_size": l.get::<i64, _>("estimation"),
         "albums": l.get::<Vec<Uuid>, _>("presents"),
+        "image": l.get::<Option<String>, _>("image"),
         "created_at": horodatage(&l.get("cree_le")),
         "updated_at": horodatage(&l.get("maj")),
     });
@@ -1118,24 +1147,62 @@ pub async fn rechercher(
         .collect();
     let pool = state.pool();
     let (artistes_presents, albums_presents, en_cours, exclus) = (
-        presents(pool, "artistes", &mbids).await.map_err(bd)?,
-        presents(pool, "albums", &mbids).await.map_err(bd)?,
+        en_bibliotheque(pool, "artistes", "image", &mbids)
+            .await
+            .map_err(bd)?,
+        en_bibliotheque(pool, "albums", "pochette", &mbids)
+            .await
+            .map_err(bd)?,
         en_cours_parmi(pool, &mbids).await.map_err(bd)?,
         exclus_parmi(pool, &mbids).await.map_err(bd)?,
     );
+    let distante = |m: &String, a: &Value, presents: &HashMap<String, (Uuid, bool)>, genres| {
+        (!presents.contains_key(m))
+            .then(|| images::image_distante(a, genres))
+            .flatten()
+    };
+    let urls_artistes: Vec<Option<String>> = artistes
+        .iter()
+        .map(|(m, a)| distante(m, a, &artistes_presents, IMAGES_ARTISTE))
+        .collect();
+    let urls_albums: Vec<Option<String>> = albums
+        .iter()
+        .map(|(m, a)| distante(m, a, &albums_presents, IMAGES_ALBUM))
+        .collect();
+    let urls: Vec<String> = urls_artistes
+        .iter()
+        .chain(&urls_albums)
+        .flatten()
+        .cloned()
+        .collect();
+    let enregistrees = match images::enregistrer(pool, &urls).await {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("images de la recherche d'ajout non enregistrées : {e}");
+            false
+        }
+    };
+    let image = |u: &Option<String>| u.as_deref().filter(|_| enregistrees).map(images::reference);
+    let bibliotheque = |m: &String, presents: &HashMap<String, (Uuid, bool)>| {
+        presents
+            .get(m)
+            .map(|(id, image)| json!({"id": id, "image": image}))
+    };
     let debit = reglages(&state, &c).await.ok().map(|r| r.debit);
     Ok(ok(&json!({
-        "artists": artistes.iter().map(|(m, a)| json!({
+        "artists": artistes.iter().zip(&urls_artistes).map(|((m, a), u)| json!({
             "mbid": m,
             "name": texte(a, "artistName"),
             "disambiguation": texte(a, "disambiguation"),
             "type": texte(a, "artistType"),
             "overview": texte(a, "overview"),
-            "in_library": artistes_presents.contains(m),
+            "image": image(u),
+            "library": bibliotheque(m, &artistes_presents),
+            "in_library": artistes_presents.contains_key(m),
             "in_progress": en_cours.contains(m),
             "excluded": exclus.contains(m),
         })).collect::<Vec<_>>(),
-        "albums": albums.iter().map(|(m, a)| {
+        "albums": albums.iter().zip(&urls_albums).map(|((m, a), u)| {
             let artiste = texte(&a["artist"], "foreignArtistId").unwrap_or_default();
             json!({
                 "mbid": m,
@@ -1145,7 +1212,9 @@ pub async fn rechercher(
                 "year": annee(a),
                 "duration": Some(duree_album(a)).filter(|d| *d > 0.0),
                 "artist": {"mbid": artiste, "name": texte(&a["artist"], "artistName")},
-                "in_library": albums_presents.contains(m),
+                "image": image(u),
+                "library": bibliotheque(m, &albums_presents),
+                "in_library": albums_presents.contains_key(m),
                 "in_progress": en_cours.contains(m),
                 "excluded": exclus.contains(m) || exclus.contains(&artiste),
                 "estimated_size": debit.map(|d| quota::estimer(duree_album(a), d)),
@@ -1162,9 +1231,10 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
+        images::tests::{dimensions, image_de_test},
         routes,
         tests_api::{Bibliotheque, FLAC, LIDARR, Monde, bibliotheque, encode, generer},
-        testutil::Requete,
+        testutil::{Faux, Requete, faux_avec_entetes},
     };
 
     pub(crate) type ReponseFausse = (u16, Vec<(&'static str, String)>, Vec<u8>);
@@ -1354,11 +1424,22 @@ pub(crate) mod tests {
         }
     }
 
-    fn regler(b: &mut Bibliotheque, f: impl FnOnce(&mut quota::Reglages)) {
+    fn reconfigurer(b: &mut Bibliotheque, f: impl FnOnce(&mut crate::config::Config)) {
         let mut cfg = b.e.state.config().clone();
-        f(&mut cfg.ajouts);
+        f(&mut cfg);
         b.e.state = AppState::new(cfg, b.e.state.pool().clone());
         b.e.app = routes::routeur(b.e.state.clone());
+    }
+
+    fn regler(b: &mut Bibliotheque, f: impl FnOnce(&mut quota::Reglages)) {
+        reconfigurer(b, |c| f(&mut c.ajouts));
+    }
+
+    const IMAGES: &str = "https://imagecache.exemple.invalid";
+
+    fn images_lidarr(genre: &str, nom: &str) -> Value {
+        json!([{"coverType": genre, "url": format!("/MediaCover/{nom}/{genre}.jpg"),
+            "remoteUrl": format!("{IMAGES}/{nom}.jpg")}])
     }
 
     async fn monde_ajouts(f: impl FnOnce(&mut quota::Reglages)) -> Option<Bibliotheque> {
@@ -1368,7 +1449,8 @@ pub(crate) mod tests {
             let artiste = json!({"artistName": "Daft Punk", "foreignArtistId": DAFT});
             m.mb_artistes
                 .push(json!({"artistName": "Daft Punk", "foreignArtistId": DAFT,
-                "artistType": "Group", "disambiguation": "French duo", "overview": "Duo."}));
+                "artistType": "Group", "disambiguation": "French duo", "overview": "Duo.",
+                "images": images_lidarr("poster", "daft")}));
             for (mbid, titre, genre, secondaires, ms) in [
                 (DISCOVERY, "Discovery", "Album", json!([]), 3_600_000),
                 (HOMEWORK, "Homework", "Album", json!([]), 2_400_000),
@@ -1377,7 +1459,7 @@ pub(crate) mod tests {
             ] {
                 m.mb_albums.push(json!({"foreignAlbumId": mbid, "title": titre, "albumType": genre,
                     "secondaryTypes": secondaires, "duration": ms, "releaseDate": "2001-03-12T00:00:00Z",
-                    "artist": artiste}));
+                    "artist": artiste, "images": images_lidarr("cover", &titre.to_lowercase().replace(' ', "-"))}));
             }
         }
         regler(&mut b, f);
@@ -1748,6 +1830,9 @@ pub(crate) mod tests {
             ),
             (json!(true), json!(false))
         );
+        assert_eq!(s["albums"][0]["library"]["id"], album.as_str());
+        assert_eq!(s["albums"][0]["library"]["image"], fiche["cover"]);
+        assert_eq!(s["albums"][0]["image"], Value::Null);
         let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
         assert_eq!(
             (r.statut, r.json()["error"].clone()),
@@ -2389,5 +2474,266 @@ pub(crate) mod tests {
             requetes(&b, "PUT", "/api/v1/album/monitor")[0].json(),
             json!({"albumIds": [LIDARR + 51], "monitored": true})
         );
+    }
+
+    async fn serveur_images() -> Faux {
+        let daft = image_de_test(800, 400, image::ImageFormat::Jpeg);
+        let discovery = image_de_test(1000, 1000, image::ImageFormat::Png);
+        let homework = image_de_test(2000, 2000, image::ImageFormat::Jpeg);
+        let mut gros = b"\xff\xd8\xff\xe0".to_vec();
+        gros.resize(images::IMAGE_AJOUT_MAX + 1, 0);
+        faux_avec_entetes(move |r| {
+            let (mime, corps) = match r.chemin.as_str() {
+                "/daft.jpg" => ("image/jpeg", daft.clone()),
+                "/discovery.jpg" => ("image/png", discovery.clone()),
+                "/homework.jpg" => ("image/jpeg", homework.clone()),
+                "/alive-2007.jpg" => ("text/html", b"<html>pas une image</html>".to_vec()),
+                "/one-more-time.jpg" => ("image/jpeg", gros.clone()),
+                _ => return (404, vec![], vec![]),
+            };
+            (200, vec![("content-type", mime.to_string())], corps)
+        })
+        .await
+    }
+
+    async fn monde_images(prives: bool) -> Option<(Bibliotheque, Faux)> {
+        let mut b = monde_ajouts(|_| {}).await?;
+        reconfigurer(&mut b, |c| c.images_privees = prives);
+        let img = serveur_images().await;
+        {
+            let mut garde = b.monde.lock().unwrap();
+            let m = &mut *garde;
+            for v in m.mb_artistes.iter_mut().chain(m.mb_albums.iter_mut()) {
+                let t = v["images"].to_string().replace(IMAGES, &img.url);
+                v["images"] = serde_json::from_str(&t).unwrap();
+            }
+        }
+        Some((b, img))
+    }
+
+    fn images_de(b: &Bibliotheque, mbid: &str, images: Value) {
+        let mut m = b.monde.lock().unwrap();
+        let a = m
+            .mb_albums
+            .iter_mut()
+            .find(|a| a["foreignAlbumId"] == mbid)
+            .unwrap();
+        a["images"] = images;
+    }
+
+    async fn recherche_d_images(b: &Bibliotheque, img: &Faux, q: &str) -> Value {
+        let r = b.get("bruno", &format!("/additions/search?q={q}")).await;
+        assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        b.sans_fuite(&r.texte(), "/additions/search");
+        assert!(!r.texte().contains(&img.url), "{}", r.texte());
+        r.json()
+    }
+
+    fn image_de(s: &Value, titre: &str) -> Value {
+        s["albums"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["title"] == titre)
+            .unwrap_or_else(|| panic!("{titre} : {s}"))["image"]
+            .clone()
+    }
+
+    async fn lire_image(
+        b: &Bibliotheque,
+        qui: &str,
+        id: &str,
+        taille: &str,
+    ) -> crate::testutil::Rep {
+        b.get(qui, &format!("/additions/images/{id}?size={taille}"))
+            .await
+    }
+
+    #[tokio::test]
+    async fn recherche_donne_des_references_d_image_servies_reduites_puis_depuis_la_base() {
+        let Some((b, img)) = monde_images(true).await else {
+            return;
+        };
+        images_de(
+            &b,
+            HOMEWORK,
+            json!([{"coverType": "cover", "url": format!("{}/homework.jpg", img.url)}]),
+        );
+        images_de(&b, SINGLE, json!([]));
+        let s = recherche_d_images(&b, &img, "daft").await;
+        assert_eq!(img.appels(), 0);
+        let daft = s["artists"][0]["image"].as_str().unwrap().to_string();
+        assert_eq!(daft, images::reference(&format!("{}/daft.jpg", img.url)));
+        assert_eq!(s["artists"][0]["library"], Value::Null);
+        assert_eq!(image_de(&s, "One More Time"), Value::Null);
+        let discovery = image_de(&s, "Discovery").as_str().unwrap().to_string();
+        let homework = image_de(&s, "Homework").as_str().unwrap().to_string();
+
+        let p = lire_image(&b, "bruno", &daft, "small").await;
+        assert_eq!(p.statut, StatusCode::OK, "{}", p.texte());
+        assert_eq!(p.entetes["content-type"], "image/jpeg");
+        assert_eq!(p.entetes["cache-control"], "private, max-age=86400");
+        assert_eq!(dimensions(&p.corps), (250, 125));
+        assert_eq!(img.appels(), 1);
+        assert_eq!(img.requetes()[0].entete("user-agent"), images_agent());
+        for (taille, attendu) in [
+            ("medium", (500, 250)),
+            ("large", (800, 400)),
+            ("small", (250, 125)),
+        ] {
+            let p = lire_image(&b, "bruno", &daft, taille).await;
+            assert_eq!(p.statut, StatusCode::OK);
+            assert_eq!(dimensions(&p.corps), attendu, "{taille}");
+        }
+        assert_eq!(img.appels(), 1);
+
+        let p = lire_image(&b, "admin", &discovery, "small").await;
+        assert_eq!(
+            (
+                p.entetes["content-type"].to_str().unwrap(),
+                dimensions(&p.corps)
+            ),
+            ("image/png", (250, 250))
+        );
+        let p = lire_image(&b, "bruno", &homework, "medium").await;
+        assert_eq!(
+            (
+                p.entetes["content-type"].to_str().unwrap(),
+                dimensions(&p.corps)
+            ),
+            ("image/jpeg", (500, 500))
+        );
+        assert_eq!(img.appels(), 3);
+
+        let lidarr = b.lidarr.appels();
+        for inconnu in [
+            "0123456789abcdef0123456789abcdef".to_string(),
+            "zz".to_string(),
+            daft.to_uppercase(),
+            format!("{daft}0"),
+        ] {
+            let r = lire_image(&b, "bruno", &inconnu, "small").await;
+            assert_eq!(r.statut, StatusCode::NOT_FOUND, "{inconnu}");
+        }
+        assert_eq!((img.appels(), b.lidarr.appels()), (3, lidarr));
+        assert_eq!(
+            lire_image(&b, "bruno", &daft, "huge").await.statut,
+            StatusCode::BAD_REQUEST
+        );
+        let r = lire_image(&b, "alice", &daft, "small").await;
+        assert_eq!(r.statut, StatusCode::FORBIDDEN);
+        assert!(r.texte().contains("sillon:add"), "{}", r.texte());
+    }
+
+    fn images_agent() -> String {
+        format!("Sillon/{}", env!("CARGO_PKG_VERSION"))
+    }
+
+    #[tokio::test]
+    async fn image_absente_trop_grosse_ou_qui_n_en_est_pas_une_donne_404() {
+        let Some((b, img)) = monde_images(true).await else {
+            return;
+        };
+        images_de(
+            &b,
+            HOMEWORK,
+            json!([{"coverType": "cover", "remoteUrl": format!("{}/absente.jpg", img.url)}]),
+        );
+        let s = recherche_d_images(&b, &img, "daft").await;
+        for titre in ["Alive 2007", "One More Time", "Homework"] {
+            let id = image_de(&s, titre).as_str().unwrap().to_string();
+            for _ in 0..2 {
+                let r = lire_image(&b, "bruno", &id, "small").await;
+                assert_eq!(r.statut, StatusCode::NOT_FOUND, "{titre} : {}", r.texte());
+            }
+        }
+        assert_eq!(img.appels(), 6);
+        drop(img);
+        let r = b.get("bruno", "/additions/search?q=daft").await;
+        assert_eq!(r.statut, StatusCode::OK);
+        let daft = r.json()["artists"][0]["image"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(
+            lire_image(&b, "bruno", &daft, "small").await.statut,
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn image_vers_une_adresse_privee_refusee_sans_aucun_appel() {
+        let Some((b, img)) = monde_images(false).await else {
+            return;
+        };
+        images_de(
+            &b,
+            DISCOVERY,
+            json!([{"coverType": "cover", "remoteUrl": "http://169.254.169.254/latest/meta-data"}]),
+        );
+        images_de(
+            &b,
+            HOMEWORK,
+            json!([{"coverType": "cover", "remoteUrl": "http://[::1]/cover.jpg"}]),
+        );
+        let s = recherche_d_images(&b, &img, "daft").await;
+        let ids = [
+            s["artists"][0]["image"].as_str().unwrap().to_string(),
+            image_de(&s, "Discovery").as_str().unwrap().to_string(),
+            image_de(&s, "Homework").as_str().unwrap().to_string(),
+        ];
+        for id in ids {
+            let r = lire_image(&b, "bruno", &id, "small").await;
+            assert_eq!(r.statut, StatusCode::NOT_FOUND, "{}", r.texte());
+        }
+        assert_eq!(img.appels(), 0);
+    }
+
+    #[tokio::test]
+    async fn l_ajout_garde_son_image_pour_mes_ajouts_et_l_administration_apres_la_purge() {
+        let Some((b, img)) = monde_images(true).await else {
+            return;
+        };
+        let s = recherche_d_images(&b, &img, "discovery").await;
+        let discovery = image_de(&s, "Discovery");
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        assert_eq!(r.json()["image"], discovery);
+        assert_eq!(mon_ajout(&b, "bruno", DISCOVERY).await["image"], discovery);
+        let admin = b.get("admin", "/admin/additions").await;
+        b.sans_fuite(&admin.texte(), "/admin/additions");
+        assert!(!admin.texte().contains(&img.url));
+        assert_eq!(admin.json()["items"][0]["image"], discovery);
+        let r = ajouter_http(&b, "bruno", "artist", DAFT).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        assert_eq!(
+            r.json()["image"],
+            images::reference(&format!("{}/daft.jpg", img.url)).as_str()
+        );
+
+        let homework = image_de(&recherche_d_images(&b, &img, "homework").await, "Homework");
+        let homework = homework.as_str().unwrap();
+        assert_eq!(
+            lire_image(&b, "bruno", homework, "small").await.statut,
+            StatusCode::OK
+        );
+        sqlx::query("UPDATE images_ajout SET vue_le = now() - interval '8 days'")
+            .execute(b.e.state.pool())
+            .await
+            .unwrap();
+        images::purger(b.e.state.pool()).await.unwrap();
+        assert_eq!(
+            lire_image(&b, "bruno", homework, "small").await.statut,
+            StatusCode::NOT_FOUND
+        );
+        let restantes: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM images WHERE cle LIKE 'ajout/%'")
+                .fetch_one(b.e.state.pool())
+                .await
+                .unwrap();
+        assert_eq!(restantes, 0);
+        let p = lire_image(&b, "bruno", discovery.as_str().unwrap(), "small").await;
+        assert_eq!(p.statut, StatusCode::OK);
+        assert_eq!(dimensions(&p.corps), (250, 250));
     }
 }

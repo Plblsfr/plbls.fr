@@ -99,6 +99,7 @@ export const sillonApi = {
   recherche: (q: string) => get<Resultats>(`/search?q=${enc(q)}&limit=20`),
   pochette: (id: string, size: Taille) => imageAt(SILLON_URL, `/albums/${enc(id)}/cover?size=${size}`),
   portrait: (id: string, size: Taille, type: 'poster' | 'fanart' = 'poster') => imageAt(SILLON_URL, `/artists/${enc(id)}/image?type=${type}&size=${size}`),
+  imageAjout: (id: string, size: Taille) => imageAt(SILLON_URL, `/additions/images/${enc(id)}?size=${size}`),
   lecture: (id: string, b: DemandeLecture) => send<Lecture>('POST', `/tracks/${enc(id)}/playback`, b),
   preferences: () => get<Preferences>('/preferences'),
   qualite: (quality: Qualite) => send<Preferences>('PUT', '/preferences', { quality }),
@@ -192,11 +193,12 @@ export type Periode = 'week' | 'month' | 'year' | 'all'
 export interface Ecoute { id: string; track: Piste; started_at: string; played: number; ended: 'completed' | 'skipped' | 'interrupted'; counted: boolean; source: { type: TypeSource; id: string | null } | null; suggested: boolean }
 export interface EcouteEnvoyee { id: string; track: string; played: number; ended_by: 'end' | 'skip' | 'stop'; source?: { type: TypeSource; id?: string }; item?: string }
 
-export interface ArtisteAbsent { mbid: string; name: string | null; disambiguation: string | null; type: string | null; overview: string | null; in_library: boolean; in_progress: boolean; excluded: boolean }
-export interface AlbumAbsent { mbid: string; title: string | null; type: string | null; secondary_types: string[]; year: number | null; duration: number | null; artist: { mbid: string; name: string | null }; in_library: boolean; in_progress: boolean; excluded: boolean; estimated_size: number | null }
+export interface ImageAbsent { mbid: string; image: string | null; library: { id: string; image: boolean } | null }
+export interface ArtisteAbsent extends ImageAbsent { name: string | null; disambiguation: string | null; type: string | null; overview: string | null; in_library: boolean; in_progress: boolean; excluded: boolean }
+export interface AlbumAbsent extends ImageAbsent { title: string | null; type: string | null; secondary_types: string[]; year: number | null; duration: number | null; artist: { mbid: string; name: string | null }; in_library: boolean; in_progress: boolean; excluded: boolean; estimated_size: number | null }
 export interface ResultatsAjout { artists: ArtisteAbsent[]; albums: AlbumAbsent[] }
 export type EtatAjout = 'sent' | 'downloading' | 'partial' | 'available' | 'failed' | 'deleted'
-export interface Ajout { id: string; kind: 'album' | 'artist'; mbid: string; title: string; artist: { mbid: string; name: string }; origin: 'manual' | 'discovery'; state: EtatAjout; reason: string | null; estimated_size: number; albums: string[]; created_at: string; updated_at: string; author?: { sub: string; name: string } }
+export interface Ajout { id: string; kind: 'album' | 'artist'; mbid: string; title: string; artist: { mbid: string; name: string }; origin: 'manual' | 'discovery'; state: EtatAjout; reason: string | null; estimated_size: number; albums: string[]; image: string | null; created_at: string; updated_at: string; author?: { sub: string; name: string } }
 export interface Occupation { used: number; pending: number; limit: number | null; free: number | null }
 export type Disque = Occupation & { daily_limit: number; configured: boolean }
 export interface Statut { sync: { source: string; succeeded_at: string | null; attempted_at: string | null; error: string | null }[]; running: boolean; configured: { lidarr: boolean; webhook: boolean }; library: { artists: number; albums: number; tracks: number; absent_tracks: number; files: number; rejected: number; size: number } }
@@ -222,6 +224,9 @@ export function octets(n: number | null | undefined) {
 export function occupation(o: Occupation) {
   return o.limit ? `${octets(o.used + o.pending)} sur ${octets(o.limit)}` : `${octets(o.used + o.pending)}, sans plafond`
 }
+
+export const vignetteAbsent = (o: ImageAbsent) =>
+  o.library ? { id: o.library.id, image: o.library.image, ajout: null } : { id: o.mbid, image: false, ajout: o.image }
 
 export function refusAjout(e: unknown): string {
   if (!(e instanceof ApiError)) return 'L’ajout n’a pas pu être envoyé.'

@@ -129,6 +129,20 @@ et l'historique, avec `available: false`.
 - Recherche (`GET /additions/search?q=`, `sillon:add`) : artistes et albums par la recherche de Lidarr (MusicBrainz, `/artist/lookup`,
   `/album/lookup`), 20 au plus chacun, marqués « déjà en bibliothèque » (`in_library`), « en cours » (`in_progress`) ou exclus, avec la
   taille estimée de chaque album. Identifiant : MBID MusicBrainz.
+- Images de la recherche : Lidarr donne pour chaque résultat un tableau `images` (`{coverType, url, remoteUrl}`) ; pour un élément pas
+  encore dans Lidarr, l'image n'est que sur un hôte externe. Sillon garde l'adresse (`remoteUrl`, sinon `url` si elle est absolue en
+  http(s) ; pochette `cover` puis `disc`, portrait `poster` puis `fanart`) dans la table `images_ajout` et ne renvoie qu'une référence
+  opaque, `image` (32 caractères hexadécimaux, début du SHA-256 de l'adresse), jamais l'adresse. La recherche ne télécharge rien.
+  `GET /additions/images/{image}?size=small|medium|large` (`sillon:add`) télécharge l'image au premier appel, seulement si la référence
+  vient d'une recherche des 7 derniers jours ou d'un ajout : http(s), ports 80 et 443, adresses publiques seulement (privées, de bouclage,
+  de lien local refusées, vérifiées sur l'adresse écrite, après résolution DNS et à chaque redirection, 3 au plus ; client de
+  `commun::http::client_public`, sans proxy), 5 Mio et 10 s au plus, JPEG, PNG, GIF ou WebP vérifiés au décodage, 4 téléchargements
+  simultanés au plus. Les trois tailles (250, 500 et 1200 pixels de côté au plus, jamais agrandies ; JPEG, PNG si l'image a de la
+  transparence) sont gardées dans la table `images` et servies ensuite sans appel sortant. Référence inconnue ou expirée, image absente,
+  refusée, trop grosse ou illisible : 404, sans erreur 5xx. Un élément déjà dans la bibliothèque n'a pas de référence : `library: {id,
+  image}` désigne sa fiche et son image (`/albums/{id}/cover`, `/artists/{id}/image`). L'ajout garde la référence de son image (`image` de
+  l'ajout, affichée dans « Mes ajouts » et l'administration). Les références de plus de 7 jours qui ne sont liées à aucun ajout sont
+  supprimées, avec leurs images, toutes les 5 minutes (avec le suivi des ajouts).
 - Ajout (`POST /additions`, `{kind: album|artist, mbid}`), sans validation : envoyé tout de suite à Lidarr. Artiste créé si besoin
   (`POST /artist` : dossier racine, profils, tags, `monitorNewItems: none`, `addOptions.monitor: none` et `albumsToMonitor` limité à
   l'album demandé). Lidarr crée un artiste non surveillé quand `addOptions.monitor` vaut `none`, et n'en récupère alors aucune sortie hors
@@ -293,7 +307,8 @@ Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/
 d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (reprise, ajouts récents), artistes, fiche artiste,
 fiche album, titre (l'album, le titre mis en avant), recherche, playlists et « Titres likés », file de lecture, historique (écoutes
 récentes, titres et artistes les plus écoutés), écran « pas d'accès » ; avec `sillon:add`, « Ajouter de la musique » (recherche d'absents,
-refus lisibles : disque plein avec l'occupation, limite du jour, déjà présent ou exclu) et « Mes ajouts » ; avec `sillon:admin`,
+pochette ou portrait de chaque résultat demandés à Sillon, vignette de repli sans image ou si elle échoue, refus lisibles : disque plein
+avec l'occupation, limite du jour, déjà présent ou exclu) et « Mes ajouts » (image de l'ajout tant que l'album n'est pas dans la bibliothèque) ; avec `sillon:admin`,
 « Administration » (occupation et plafond, ajouts et relance des échecs, suppression d'album ou d'artiste, albums jamais écoutés,
 synchronisations, analyse, fichiers écartés ; onglet « Découverte » d'après `GET /admin/discovery` : état, budget utilisé sur le budget,
 limite par jour et durée d'essai, découvertes proposées à la suppression avec leur raison, supprimées par `DELETE /admin/albums/{id}`
@@ -381,6 +396,10 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
 - Lidarr : connexion « Webhook » vers `https://sillon-api.plbls.fr/webhooks/lidarr`, évènements import, renommage et suppression, jeton en mot de passe.
 - Lidarr : un dossier racine dont les profils par défaut sont le profil de qualité voulu et un profil de métadonnées « albums studio »
   (Sillon les lit, rien à recopier dans `SILLON_LIDARR_*`) ; connexion « Webhook » avec aussi les évènements grab et échecs (téléchargement, import) pour le suivi des ajouts.
+- Réseau : sortie HTTP(S) directe (sans proxy, ports 80 et 443) de `sillon-api` vers les hôtes des images que donne Lidarr dans ses
+  recherches (`remoteUrl` : en général `coverartarchive.org` et ses redirections vers `archive.org` pour les pochettes, `assets.fanart.tv`
+  ou `imagecache.lidarr.audio` pour les artistes ; à vérifier dans une réponse de `/api/v1/album/lookup` du Lidarr en service). Sans cette
+  sortie, la recherche répond et affiche la vignette de repli.
 - Réseau : sortie HTTPS de `sillon-api` vers `api.listenbrainz.org` et `labs.api.listenbrainz.org` (sinon `SILLON_LISTENBRAINZ_URL=off`).
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_SILLON` comme application `sillon`), puis les permissions aux comptes.
 
