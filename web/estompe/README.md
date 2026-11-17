@@ -43,6 +43,8 @@ système de Chromium doivent être présentes).
 - `src/sections/sillon` : section Sillon (musique, API à part, [`docs/sillon`](../../docs/sillon/README.md)), affichée selon `GET /me` de
   Sillon (`sillon:access`) comme Entracte ; `sillonUrl` : `SILLON_PUBLIC_URL` de l'image, `VITE_SILLON_URL` au build des apps ; sans elle,
   pas de section. `sillon.ts` : client de l'API et calculs purs (formats annoncés d'après `canPlayType`, gain, délai de l'encodeur) ;
+  `SillonCover` affiche toute image de Sillon (pochette, portrait, ou image d'un résultat d'ajout par sa référence `ajout`, choisie par
+  `vignetteAbsent`), toujours demandée à Sillon avec la session puis rendue en URL `blob:`, vignette de repli sans image ou en échec ;
   `sillon.svelte.ts` : moteur de lecture unique (`Lecteur`, singleton `lecteur`), testable sans DOM (fabrique d'éléments audio, contexte
   Web Audio, Media Session et stockage injectés). Deux éléments `<audio crossorigin="anonymous">` : la piste suivante est demandée et chargée
   dès que la piste en cours joue, puis lancée sur `ended` ; gain de normalisation (piste, ou album quand on écoute un album, plafonné par le

@@ -14,7 +14,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `lidarr.rs` | client de l'API v1 de Lidarr (`Client` : artistes, albums, pistes, fichiers, images ; `reglages_ajout` : dossier racine, profils et tags d'un ajout pris dans Lidarr ou surchargés ; `requete`, `envoyer`, `get` pour les autres appels ; refus de validation préfixés par `REFUS`) |
 | `catalogue.rs` | synchronisation (une à la fois, relance), présence des pistes, albums et artistes, accès aux fichiers pour les lots suivants |
 | `filtre.rs`, `ffprobe.rs` | filtre des fichiers (extension, double extension, nom suspect, conteneur, flux audio) et analyse ffprobe |
-| `images.rs` | pochettes et images d'artistes : téléchargées depuis Lidarr, cache en base, trois tailles |
+| `images.rs` | pochettes et images d'artistes : téléchargées depuis Lidarr, cache en base, trois tailles ; images des résultats de recherche d'ajout (`Distantes` : téléchargement limité aux adresses publiques, réduction en trois tailles par le crate `image`, références dans `images_ajout`) |
 | `bibliotheque.rs` | routes de la bibliothèque, recherche, administration du catalogue, webhook ; JSON publics réutilisables |
 | `lecture.rs` | `POST /tracks/{id}/playback` (choix direct ou transcodé, jeton, gains) et `GET /stream/{jeton}` (droits revérifiés, direct, cache ou encodage en cours) |
 | `flux.rs` | jetons de flux signés (`Billet`, `signer`, `valider`), `Range`, service d'un fichier ou d'un fichier en cours d'encodage |
@@ -46,14 +46,15 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `genres`, `artistes_genres`, `albums_genres` | genres de Lidarr par artiste et par album |
 | `fichiers_ecartes` | chemin, nom, raison |
 | `synchronisations` | par source (`lidarr`) : dernière réussite, dernier essai, erreur |
-| `images` | cache des images (clé `<type>/<uuid>/<taille>`, type `cover`, `poster` ou `fanart` ; version = URL Lidarr) |
+| `images` | cache des images (clé `<type>/<uuid>/<taille>`, type `cover`, `poster` ou `fanart` ; version = URL Lidarr ; images d'ajout : clé `ajout/<référence>/<taille>`, version vide) |
+| `images_ajout` | référence opaque `id` (32 caractères hexadécimaux, début du SHA-256 de l'adresse) → `url` distante lue dans une réponse de Lidarr, `vue_le` (dernière recherche) ; purgée après 7 jours sauf si un ajout la porte (`ajouts.image`) |
 | `mesures` | par `(piste_id, contenu_le)` du fichier : `niveau` (LUFS intégré), `pic` (dBTP), `plage` (LRA), `echantillons`, `frequence` ; la mesure d'un fichier remplacé efface l'ancienne |
 | `analyses` | par `piste_id` : `contenu_le` du fichier analysé, `version`, `vecteur` (`real[]`, 43 dimensions à l'échelle nominale), `tempo` (battements par minute, nul sans pulsation), `tonalite` (0 = do … 11 = si), `majeur` |
 | `taches_analyse` | par `fichier_id` : `contenu_le`, `version`, `etat` (`attente`, `en_cours`, `faite`, `erreur`), `tentatives`, `erreur` (sans chemin) |
 | `preferences` | par `sub` : `qualite` (`originale`, `haute`, `normale`, `basse`), `decouverte` (vraie par défaut) |
 | `artistes_similaires`, `enregistrements_populaires`, `similarites_releves` | résultats de ListenBrainz par MBID d'artiste (similaire et score entre 0 et 1 ; enregistrement, titre, album, écoutes, rang) et date du dernier relevé par genre (`similaires`, `populaires`) |
 | `refus`, `refus_albums` | « ne plus proposer » : piste par personne ; MBID de l'album d'une découverte refusée, par personne |
-| `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le` ; un seul ajout actif par `(type, mbid)` ; pour une découverte : `similaire_a` (nom de l'artiste écouté), `enregistrement` et `titre_piste` (titre visé), `promu_le` (découverte devenue ajout ordinaire) |
+| `ajouts` | `type` (`album`, `artiste`), `mbid`, titre et artiste, `origine` (`manuel`, `decouverte`), auteur (`sub`, `nom`), `etat` (`envoye`, `telechargement`, `partiel`, `disponible`, `echec`, `supprime`), `raison`, `estimation` (octets), `albums` (MBID des albums visés), identifiants Lidarr (jamais exposés), `surveille` (surveillance et recherche faites), `envoye_le`, `image` (référence de `images_ajout`) ; un seul ajout actif par `(type, mbid)` ; pour une découverte : `similaire_a` (nom de l'artiste écouté), `enregistrement` et `titre_piste` (titre visé), `promu_le` (découverte devenue ajout ordinaire) |
 | `exclusions` | MBID d'album ou d'artiste supprimé par un admin, qui ne peut plus être ajouté |
 
 ## Schéma des playlists, de la file et de l'historique (`0004_playlists.sql`)
@@ -100,6 +101,9 @@ Fonction SQL `sans_accents(text)` et configuration de recherche `sillon` (`unacc
   chemin d'ajout complet hors requête HTTP (`origine` : `Origine::Manuel` ou `Origine::Decouverte`, limite journalière comptée par origine) ;
   `Ok(Resultat::Envoye(id) | DejaPresent | EnCours(id) | Refuse(Refus::DisquePlein { occupation, estimation } | LimiteJournaliere { limite } | Exclu | BudgetDecouverte { utilise, budget }))`,
   `Err(ErreurAjout)` (`reponse_erreur` la traduit en HTTP, `reponse_resultat` le résultat).
+- `images::image_distante(&Value, genres) -> Option<String>` (adresse d'image d'un résultat de Lidarr), `images::reference(url)`,
+  `images::enregistrer(&PgPool, &[url])`, `images::purger(&PgPool)` ; `AppState::images()` : `Distantes` (client de
+  `commun::http::client_public`, `Config::images_privees` à vrai seulement dans les tests, pour le faux serveur d'images en 127.0.0.1).
 - `ajouts::est_exclu(&PgPool, &[mbid])`, `ajouts::suivre(&AppState)` (met à jour les états), `ajouts::relancer(&AppState, id)`.
 - `quota::occupation(&AppState) -> Occupation { taille, en_cours, plafond }` (`depasse(estimation)`, `public()`) ; `quota::estimer(durée, débit)`.
 - `config::chemin_local(...)` : traduction et vérification d'un chemin Lidarr (sous `SILLON_MEDIAS`, liens résolus).
@@ -126,7 +130,8 @@ Image : `docker build -f api/sillon/Dockerfile .` (contexte : racine du dépôt)
 `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres just test-sillon` : une base jetable par test, migrations
 appliquées, faux gateway et faux aegis (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`, `alice`, `bruno`, `admin`).
 Les tests de l'ajout (`ajouts.rs`, module `tests`) étendent ce faux Lidarr (`lidarr_ajouts` : recherche MusicBrainz `mb_artistes`,
-`mb_albums`, création d'artiste, surveillance, commandes, file, historique, suppressions).
+`mb_albums`, création d'artiste, surveillance, commandes, file, historique, suppressions) ; leurs `images` pointent vers
+`https://imagecache.exemple.invalid`, remplacé par un faux serveur d'images (`monde_images`) dans les tests des images d'ajout.
 Les tests du catalogue (`tests_api.rs`, `bibliotheque()`) montent un faux Lidarr (`Monde`, modifiable pendant le test) et de vrais fichiers
 flac, mp3 et opus générés par ffmpeg dans un dossier temporaire ; ils demandent ffmpeg et ffprobe (sinon ignorés, avec un message).
 Playlists, likes, file et historique : tests dans les modules (`playlists::tests` : `catalogue()` insère un petit catalogue en base,
