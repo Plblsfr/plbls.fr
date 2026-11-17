@@ -110,6 +110,9 @@
     repeat: '<path d="M4 11V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 13v2a3 3 0 0 1-3 3H4M7 21l-3-3 3-3"/>',
     phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
     'camera-off': '<path d="M3 7h12v10H3zM15 10l6-3v10l-6-3M3 3l18 18"/>',
+    coeur: '<path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 3.9 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.1 0 5.3 2.9 4.2 6.2C19.5 15.4 12 20 12 20z"/>',
+    coeurplein: '<path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 3.9 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.1 0 5.3 2.9 4.2 6.2C19.5 15.4 12 20 12 20z"/>',
+    poignee: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/>',
   } as const
 
   const alias = {
@@ -147,7 +150,7 @@
   export type IconName = keyof typeof v3 | keyof typeof propres | keyof typeof alias
 
   const traces: Record<string, string> = { ...v3, ...propres }
-  const pleins = new Set<string>(['plus3', 'lecture', 'pause'])
+  const pleins = new Set<string>(['plus3', 'lecture', 'pause', 'coeurplein'])
   const epais = new Set<string>(['envoi', 'ok'])
 
   export function cleIcone(name: IconName): string {

@@ -277,11 +277,32 @@ et l'historique, avec `available: false`.
 
 Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
 d'après `GET /me` ; sans messagerie, l'app s'ouvre directement sur elle. Vues : accueil (reprise, ajouts récents), artistes, fiche artiste,
-fiche album, recherche, écran « pas d'accès ». Un moteur de lecture unique : deux éléments audio (la piste suivante est demandée et chargée
-pendant la piste en cours), gain de normalisation appliqué par Web Audio, formats annoncés d'après `canPlayType`, qualité réglable
-(`PUT /preferences`), bouton « Activer le son » si la lecture automatique est refusée, Media Session. Le mini-lecteur reste dans la
-messagerie et dans Entracte ; un film d'Entracte ou un salon vocal qui démarre met la musique en pause. La file est locale au lecteur
-(album ou liste en cours) ; la reprise est gardée dans le navigateur.
+fiche album, titre (l'album, le titre mis en avant), recherche, playlists et « Titres likés », file de lecture, historique (écoutes
+récentes, titres et artistes les plus écoutés), écran « pas d'accès » ; avec `sillon:add`, « Ajouter de la musique » (recherche d'absents,
+refus lisibles : disque plein avec l'occupation, limite du jour, déjà présent ou exclu) et « Mes ajouts » ; avec `sillon:admin`,
+« Administration » (occupation et plafond, ajouts et relance des échecs, suppression d'album ou d'artiste, albums jamais écoutés,
+synchronisations, analyse, fichiers écartés ; onglet « Découverte » d'après `GET /admin/discovery` : état, budget utilisé sur le budget,
+limite par jour et durée d'essai, découvertes proposées à la suppression avec leur raison, supprimées par `DELETE /admin/albums/{id}`
+après confirmation, et ajouts de la découverte avec leur état). Sans la permission, ni lien ni vue. L'état d'un ajout se relit à l'ouverture de la
+vue et par « Actualiser » (pas de WebSocket). URL stables et copiables : `#/musique/artist/{id}`, `#/musique/album/{id}`,
+`#/musique/track/{id}`, `#/musique/playlist/{id}` (« Copier le lien ») ; ouvertes avant connexion, elles sont rendues après.
+
+Un moteur de lecture unique : deux éléments audio (la piste suivante est demandée et chargée pendant la piste en cours), gain de
+normalisation appliqué par Web Audio, formats annoncés d'après `canPlayType`, qualité réglable (`PUT /preferences`), bouton « Activer le
+son » si la lecture automatique est refusée, Media Session. Le mini-lecteur reste dans la messagerie et dans Entracte ; un film d'Entracte
+ou un salon vocal qui démarre met la musique en pause. La file est celle du serveur (`/queue`) : lancer un album, une playlist ou une
+liste la remplace (`PUT`), chaque changement de piste envoie son `index` par `PATCH` (le serveur y planifie la fenêtre de suggestions
+suivante, que le lecteur reçoit dans la réponse et précharge), la position seule part toutes les 15 s de lecture, à la pause et en
+quittant la page ; la répétition (aucune, la file, le titre : `repeat` `off`, `all`, `one`) se change dans le mini-lecteur et la file et
+le moteur la suit en fin de titre et de file ; « Lire ensuite », « Ajouter à la file », retirer et réordonner passent par les routes de la file ; un 409 recharge
+l'état courant puis rejoue l'écriture. Au démarrage, la file du serveur est proposée à la reprise (même piste, même position), sans
+lecture automatique. Chaque lecture terminée, sautée ou arrêtée est envoyée à l'historique. Aléatoire, suggestions (`off`, `light`,
+`frequent`) et, avec `sillon:add`, découverte (`PUT /preferences`) se règlent dans la file ; les titres suggérés ou découverts y sont
+marqués « Suggestion » ou « Découverte » (élément `discovery`, marque distincte), avec « Ajouter à la playlist » et « Ne plus proposer »
+(`POST /recommendations/dismiss`, puis retrait de l'élément par `POST /queue/remove`, le refus ne touchant pas la file en cours).
+« Titres similaires », dans le menu de tout titre, lance la lecture des pistes proches (`GET /tracks/{id}/similar`). Au téléphone, la
+bande du mini-lecteur porte le like du titre en cours. Réordonner une playlist ou la file : au
+glisser, ou au clavier (Alt + ↑ / ↓, ou « Monter » / « Descendre » dans le menu du titre).
 
 ## Carte de lien dans Estompe
 

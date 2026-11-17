@@ -5,10 +5,13 @@
   import { hrefs } from '../../lib/route.svelte'
   import SillonCover from './SillonCover.svelte'
   import SillonTracks from './SillonTracks.svelte'
-  import { echec, lecteur, type Contexte } from './sillon.svelte'
+  import { menuFrom } from '../../lib/ctxmenu.svelte'
+  import SillonLike from './SillonLike.svelte'
+  import { copierLien, echec, lecteur, menuContenu, type Contexte } from './sillon.svelte'
   import { anneeEtType, sillonApi, titresDe, totalAlbum, type FicheAlbum } from './sillon'
 
-  let { id }: { id: string } = $props()
+  let { id, focus }: { id: string; focus?: string } = $props()
+  let plus = $state<HTMLButtonElement>()
 
   let fiche = $state<FicheAlbum | null>(null)
   let manque = $state(false)
@@ -41,13 +44,15 @@
             {:else}
               <button class="plbls-button" disabled={!lisibles} onclick={() => fiche && lecteur.jouer(fiche.tracks, 0, contexte)}><Icon name="lecture" size={18} /> Écouter l’album</button>
             {/if}
+            <SillonLike kind="albums" id={fiche.id} titre={fiche.title} grand />
+            <button class="v-ib sq" bind:this={plus} aria-label="Plus d’actions sur l’album" title="Plus" onclick={() => fiche && plus && menuFrom(plus, [...(lisibles ? menuContenu({ album: fiche.id }, fiche.title) : []), { label: 'Copier le lien', run: () => fiche && copierLien('album', fiche.id), sep: !!lisibles }])}><Icon name="plus3" size={18} /></button>
           </div>
           {#if !fiche.available}<p class="v-note"><span class="v-tag">Indisponible</span> Les fichiers de cet album ne sont plus sur le serveur.</p>{/if}
         </div>
       </div>
     </div>
     <section class="film-body">
-      <SillonTracks pistes={fiche.tracks} {contexte} album />
+      <SillonTracks pistes={fiche.tracks} {contexte} album {focus} />
     </section>
   </div>
 {:else if manque}
