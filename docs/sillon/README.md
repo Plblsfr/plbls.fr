@@ -1,9 +1,10 @@
 # Sillon
 
 Service de musique de plbls.fr, à part d'Estompe : une personne peut avoir accès à Sillon sans avoir accès à la messagerie.
-Sillon écoute la bibliothèque gérée par Lidarr ; playlists, ajout autonome de musique et aléatoire avec recommandation viennent
+Sillon écoute la bibliothèque gérée par Lidarr ; la section web vient
 par lots (issue chapeau [#202](https://github.com/Plblsfr/plbls.fr/issues/202)). Ce document décrit ce qui existe aujourd'hui : le socle du service, le catalogue (bibliothèque synchronisée depuis Lidarr),
-la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque, l'analyse audio des pistes et l'interface web.
+la lecture audio, les playlists, les likes, la file de lecture, l'historique, l'ajout autonome de musique avec plafond du disque, l'analyse audio des pistes, la recommandation (aléatoire intelligent, titres
+suggérés), la découverte de titres absents et l'interface web.
 
 | Où | Quoi |
 |---|---|
@@ -111,13 +112,13 @@ et l'historique, avec `available: false`.
   `GET /likes` donne les identifiants, `GET /likes/tracks` « Titres likés » sous la forme d'une playlist (du plus récent au plus ancien).
 - **File de lecture** (`/queue`) : une par personne, en base, rendue à l'identique sur tous ses appareils : source (`album`, `playlist`,
   `artist`, `likes`, `search`), éléments dans l'ordre de lecture, index courant, position dans la piste, aléatoire, répétition (`off`,
-  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`, gardé sans effet pour l'instant), graine du mélange (`seed`) et, par
-  élément, `suggested` (toujours faux pour l'instant). « Lire ensuite » insère après la piste courante, « ajouter à la file » à la fin.
+  `all`, `one`), réglage `suggestions` (`off`, `light`, `frequent`), graine du mélange (`seed`) et, par
+  élément, `suggested` (piste suggérée hors de la source) et `discovery` (piste d'une découverte faite pour la personne). « Lire ensuite » insère après la piste courante, « ajouter à la file » à la fin.
   Chaque écriture porte la `revision` de la dernière file reçue : si un autre appareil a écrit entre-temps, 409 `conflict` avec la file
   courante (`queue`), rien n'est écrit ; le client recommence sur cet état. Le client envoie sa position (`PATCH /queue`) à intervalle et
   à chaque changement de piste ; `step` passe à la piste disponible suivante ou précédente en sautant les absentes. Aléatoire : la piste
-  courante passe en tête, le reste est mélangé par `ordre::melanger` (mélange uniforme, déterministe pour une graine) ; le désactiver rend
-  l'ordre de la source. 10 000 éléments au plus.
+  courante passe en tête, le reste est ordonné par `ordre::melanger` (voir « Recommandation ») ; le désactiver rend
+  l'ordre de la source et retire les suggestions. 10 000 éléments au plus.
 - **Historique** (`/history`) : le client envoie une écoute à la fin de chaque lecture (piste, secondes écoutées, `ended_by`, source,
   élément de la file). Fin : `completed` (fin atteinte), `skipped` (sortie avant la fin vers une autre piste) ou `interrupted` (arrêt).
   Une écoute compte (`counted`) au-delà de 30 s ou de la moitié de la piste ; seules celles-là entrent dans les pistes et artistes les
@@ -184,6 +185,94 @@ et l'historique, avec `available: false`.
 - Administration (`sillon:admin`) : `GET /admin/analysis` (avancement, pause, erreurs sans chemin ni nom de fichier) et
   `POST /admin/analysis/retry` (remet en file les tâches en erreur).
 
+## Recommandation
+
+- **Score** (`recommandation/score.rs`, fonction pure : ni base ni horloge, le « maintenant » est un paramètre). Pour un candidat, une
+  personne et un contexte (pistes de la source, piste précédente) :
+  `total = audio·A + metadonnees·M + similarite·S + affinite·F + decouverte·D − sauts·Ps − piste_recente·Pp − artiste_recent·Pa`.
+  Chaque signal est entre 0 et 1 ; un signal absent vaut 0,5 (neutre), une pénalité absente 0.
+  - `A`, proximité audio : moyenne de `1/(1+d)` pour la distance au barycentre du contexte et la distance à la piste précédente
+    (celles qui existent : une piste non analysée est neutre).
+  - `M`, métadonnées : `0,5·genres + 0,25·époque + 0,25·lien` ; genres = part des genres du candidat (album et artiste) présents dans
+    le contexte ; époque = `max(0, 1 − écart/20)` entre l'année de l'album et l'année moyenne du contexte ; lien = 1 pour un artiste
+    du contexte, 0,5 pour un artiste similaire à l'un d'eux (ListenBrainz), 0 sinon.
+  - `S`, similarité ListenBrainz entre l'artiste du candidat et ceux du contexte (la plus forte, 1 pour le même artiste, 0 si les
+    artistes du contexte sont connus de ListenBrainz sans lien avec lui, neutre si aucun ne l'est).
+  - `F`, affinité : `0,6·goût(piste) + 0,4·goût(artiste) + 0,25·piste likée + 0,15·artiste liké + 0,1·en playlist + 0,2·voisine`,
+    borné à 1 ; `goût = 0,5 + (taux − 0,5)·0,5^(jours depuis la dernière écoute / 90)` avec `taux = (complètes + 1)/(complètes + sauts + 2)` ;
+    `voisine = max(0, 1 − distance à la piste likée la plus proche)` : liker une piste remonte ses voisines.
+  - `D` : 1 pour le titre visé par une découverte faite pour la personne, tant qu'elle ne l'a pas écouté en entier.
+  - `Ps`, sauts récents : somme de `0,5^(jours/7)` sur les sauts des 30 derniers jours postérieurs à la dernière écoute complète,
+    divisée par 2, bornée à 1 ; `Pp = 0,5^(jours depuis la dernière écoute de la piste / 3)` ; `Pa = 0,5^(heures depuis la dernière
+    écoute de l'artiste / 2)`.
+  - Poids par défaut : `audio=1`, `metadonnees=0.6`, `similarite=0.5`, `affinite=1`, `decouverte=2`, `sauts=1.5`, `piste_recente=1`,
+    `artiste_recent=0.4` ; `SILLON_RECO_POIDS` en change tout ou partie (`audio=1.2,sauts=2`).
+- **Entrées** (`recommandation::charger`), lues avant le calcul en quelques requêtes : habitudes de la personne par piste et par
+  artiste (écoutes complètes, sauts, dernière écoute), likes, playlists, refus, métadonnées des pistes de la source et des candidats,
+  similarités gardées en base, voisins en mémoire.
+- **Ordre de l'aléatoire** (`ordre::ordonner`, pur ; `ordre::melanger` charge les entrées puis l'appelle) : seules les pistes de la
+  source, chacune une fois. Chaque piste reçoit un tirage de la graine entre 0 et 1, plus `Ps` : une piste sautée deux fois récemment
+  passe après toutes les autres. L'ordre est ensuite parcouru par fenêtre de 8 : jamais le même artiste que la piste précédente tant
+  que c'est possible (l'artiste majoritaire est placé d'office quand il le faut : si un ordre sans répétition existe, il est trouvé),
+  puis le meilleur de la fenêtre (rang du tirage, transition audio proche, autre album). Même graine et mêmes données : même ordre.
+- **Titres suggérés** : en aléatoire avec `suggestions`, une piste hors source est insérée toutes les 10 pistes de la source (`light`)
+  ou toutes les 4 (`frequent`), dans les 50 éléments à venir ; la fenêtre suivante est planifiée quand un changement de piste en
+  laisse moins de 25 (« à chaque fenêtre de pistes à venir »). Candidats : les 200 pistes les plus proches du barycentre de la source,
+  les découvertes de la personne, et, tant que la bibliothèque n'est pas analysée, 400 pistes tirées avec la graine ; jamais une
+  piste de la file, absente, refusée (« ne plus proposer »), réservée (découverte d'une autre personne) ou suggérée puis sautée depuis
+  moins de `SILLON_SUGGESTION_DELAI_JOURS`. La mieux notée est prise, d'un artiste pas encore suggéré dans la fenêtre quand il y en a.
+  L'élément est marqué `suggested` dans la file et l'écoute `suggested` dans l'historique. Liker une suggestion, l'écouter en entier
+  ou la sauter agit par l'affinité et les pénalités ; « ajouter à la playlist » est l'appel ordinaire `POST /playlists/{id}/tracks`.
+  Désactiver `suggestions` retire celles qui ne sont pas encore jouées.
+- **Sans signal** : bibliothèque non analysée, ListenBrainz coupé ou en panne, erreur de base pendant le chargement : la file se
+  construit quand même (signaux neutres ; au pire, mélange par la graine seule).
+- **Routes** : `GET /tracks/{id}/similar` (pistes proches à l'oreille), `POST /recommendations/dismiss` (« ne plus proposer »),
+  `GET /admin/recommendations/explain?track=&sub=` (`sillon:admin` : signaux, poids, contributions et entrées du score d'une piste
+  dans le contexte de la file de la personne).
+- Mesure sur 50 000 pistes analysées (source de 1 000 pistes, 200 voisins, 10 suggestions, 20 000 écoutes et 300 likes pour la
+  personne) : 65 ms requêtes comprises en build optimisé (250 ms sans optimisation, test
+  `fenetre_de_file_avec_ses_requetes_sur_cinquante_mille_pistes`), dont 10 ms de calcul en mémoire (135 ms sans optimisation, test
+  `fenetre_de_file_rapide_sur_cinquante_mille_pistes`). Seuils des tests : 200 ms en build optimisé ; 2 s et 1 s sans optimisation.
+
+### ListenBrainz
+
+- `listenbrainz.rs` lit les artistes similaires à un artiste et ses enregistrements les plus écoutés, par MBID, et les garde en base
+  avec leur date (`artistes_similaires`, `enregistrements_populaires`, `similarites_releves`) ; ils sont relus après
+  `SILLON_SIMILARITE_JOURS`. Un appel au plus par `SILLON_LISTENBRAINZ_INTERVALLE_MS` ; après une erreur, plus d'appel pendant
+  5 minutes et les anciens résultats restent servis. Jamais d'appel pendant la construction de la file : la lecture se fait dans la
+  tâche de fond lancée par l'écoute en aléatoire avec suggestions.
+- Points d'API supposés, **non vérifiés face au vrai service** (testés avec un faux serveur seulement) :
+  `GET {SILLON_LISTENBRAINZ_LABS_URL}/similar-artists/json?artist_mbids=<mbid>&algorithm=session_based_days_7500_session_300_contribution_5_threshold_10_limit_100_filter_True_skip_30`
+  (objets `{artist_mbid, name, score}`) et `GET {SILLON_LISTENBRAINZ_URL}/1/popularity/top-recordings-for-artist/<mbid>` (objets
+  `{recording_mbid, recording_name, release_name, release_group_mbid?, total_listen_count}`). La lecture est tolérante : tout objet
+  portant `artist_mbid` (ou `recording_mbid`) est pris, où qu'il soit dans la réponse ; scores ramenés entre 0 et 1 par le plus fort ;
+  50 artistes et 20 enregistrements gardés. Aucune donnée personnelle n'est envoyée (MBID d'artistes seulement, `User-Agent: sillon/<version>`).
+
+### Découverte
+
+- Quand une personne écoute en aléatoire avec suggestions, une tâche de fond (une à la fois par personne, jamais dans la requête)
+  cherche un titre **absent** : artistes similaires (ListenBrainz) aux 5 artistes les plus présents dans la source, leurs 10
+  enregistrements les plus écoutés, sans ceux déjà dans la bibliothèque (même enregistrement, ou même titre du même artiste),
+  notés par le score (métadonnées, similarité, affinité ; pas de proximité audio) puis par leur rang.
+- L'album du meilleur titre est cherché dans Lidarr (albums studio de l'artiste dont le titre est celui donné par ListenBrainz ;
+  le plus court quand plusieurs portent le titre) et envoyé par le chemin d'ajout ordinaire avec l'origine `decouverte`, la personne,
+  l'artiste écouté dont il est proche et le titre visé. Cinq titres essayés au plus, un album envoyé au plus par recherche.
+- À l'import, le titre devient prioritaire (`D`) parmi les suggestions de cette personne, marqué `discovery` dans sa file ; les autres
+  personnes ne le reçoivent pas en suggestion tant que l'ajout reste une découverte.
+- Garde-fous : `sillon:add`, préférence `discovery` (`PUT /preferences`, vraie par défaut), interrupteur `SILLON_DECOUVERTE`,
+  `SILLON_DECOUVERTE_PAR_JOUR` albums par personne sur 24 heures glissantes (comptés à part de `SILLON_AJOUTS_PAR_JOUR`), budget
+  `SILLON_DECOUVERTE_GO` (fichiers des découvertes présentes, estimation de celles en cours) en plus du plafond `SILLON_MEDIAS_GO`
+  qui s'applique comme à tout ajout ; le budget ne limite jamais un ajout manuel. Jamais un album présent, en cours, exclu par un
+  admin (album ou artiste) ou refusé par la personne (« ne plus proposer » sur une de ses pistes).
+- Une découverte likée ou mise en playlist (par qui que ce soit) devient un ajout ordinaire (`origine = manuel`, `promu_le`) et sort
+  du budget ; c'est constaté à la recherche suivante et à l'ouverture de l'administration.
+- Administration (`GET /admin/discovery`, `sillon:admin`) : budget, ajouts d'origine découverte (personne, artiste proche, titre
+  visé, état, taille), et découvertes proposées à la suppression, triées par taille : jamais écoutées en entier
+  `SILLON_DECOUVERTE_ESSAI_JOURS` après leur arrivée, ou sautées 3 fois sans écoute complète. La suppression est celle des albums
+  (`DELETE /admin/albums/{id}`), qui exclut l'album.
+- Limites connues : la correspondance entre l'enregistrement de ListenBrainz et l'album de Lidarr se fait par le titre de l'album
+  (ou son MBID de groupe quand ListenBrainz le donne) ; un titre paru seulement en single ou sur une compilation n'est pas découvert.
+
 ## Interface
 
 Section Sillon de l'app plbls.fr ([`web/estompe/src/sections/sillon`](../../web/estompe/README.md)), affichée à qui a `sillon:access`
@@ -234,6 +323,16 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
 | `SILLON_MEDIAS_GO` | `plbls.env` (500) | plafond du dossier de la musique, en Gio ; 0 = sans plafond |
 | `SILLON_AJOUTS_DELAI_HEURES` | `plbls.env` (72) | délai sans résultat avant qu'un ajout passe en échec |
 | `SILLON_ANALYSE_PARALLELE` | `plbls.env` (1) | analyses audio simultanées ; 0 = pas d'analyse |
+| `SILLON_RECO_POIDS` | `plbls.env` (vide) | poids du score, `nom=valeur` séparés par des virgules (`audio`, `metadonnees`, `similarite`, `affinite`, `decouverte`, `sauts`, `piste_recente`, `artiste_recent`) ; un poids omis garde sa valeur par défaut |
+| `SILLON_SUGGESTION_DELAI_JOURS` | `plbls.env` (14) | délai avant de reproposer une suggestion sautée |
+| `SILLON_LISTENBRAINZ_URL` | `plbls.env` (`https://api.listenbrainz.org`) | API de ListenBrainz (enregistrements populaires) ; `off` = pas de ListenBrainz, donc pas de découverte |
+| `SILLON_LISTENBRAINZ_LABS_URL` | `plbls.env` (`https://labs.api.listenbrainz.org`) | API « labs » de ListenBrainz (artistes similaires) |
+| `SILLON_LISTENBRAINZ_INTERVALLE_MS` | `plbls.env` (1000) | intervalle minimal entre deux appels à ListenBrainz |
+| `SILLON_SIMILARITE_JOURS` | `plbls.env` (30) | âge au-delà duquel similarités et enregistrements populaires sont relus |
+| `SILLON_DECOUVERTE` | `plbls.env` (`true`) | interrupteur global de la découverte (`true` ou `false`) |
+| `SILLON_DECOUVERTE_GO` | `plbls.env` (20) | budget de la découverte en Gio ; 0 = aucune découverte |
+| `SILLON_DECOUVERTE_PAR_JOUR` | `plbls.env` (2) | albums découverts par personne sur 24 heures glissantes |
+| `SILLON_DECOUVERTE_ESSAI_JOURS` | `plbls.env` (30) | délai sans écoute complète avant de proposer une découverte à la suppression |
 | `SILLON_PUBLIC_URL` | `plbls.env` (`https://sillon-api.plbls.fr`) | URL publique de l'API pour le front (`estompe-web` au démarrage : `config.js` et CSP ; apps au build, `VITE_SILLON_URL` l'emporte) ; vide = pas de section |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
@@ -247,6 +346,7 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
 - Lidarr : connexion « Webhook » vers `https://sillon-api.plbls.fr/webhooks/lidarr`, évènements import, renommage et suppression, jeton en mot de passe.
 - Lidarr : profil de métadonnées « albums studio », profil de qualité et dossier racine, leurs valeurs dans `SILLON_LIDARR_*` ;
   connexion « Webhook » avec aussi les évènements grab et échecs (téléchargement, import) pour le suivi des ajouts.
+- Réseau : sortie HTTPS de `sillon-api` vers `api.listenbrainz.org` et `labs.api.listenbrainz.org` (sinon `SILLON_LISTENBRAINZ_URL=off`).
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_SILLON` comme application `sillon`), puis les permissions aux comptes.
 
 ## Version

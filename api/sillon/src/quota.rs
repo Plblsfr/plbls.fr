@@ -25,6 +25,8 @@ pub struct Reglages {
     pub par_jour: u32,
     pub plafond: Option<u64>,
     pub delai: Duration,
+    pub decouverte_par_jour: u32,
+    pub decouverte_budget: u64,
 }
 
 impl Reglages {
@@ -48,6 +50,17 @@ impl Reglages {
             par_jour: nombre("SILLON_AJOUTS_PAR_JOUR", env("SILLON_AJOUTS_PAR_JOUR"), 10)?,
             plafond: (go > 0).then(|| go.saturating_mul(GO)),
             delai: Duration::from_secs(heures.saturating_mul(3600)),
+            decouverte_par_jour: nombre(
+                "SILLON_DECOUVERTE_PAR_JOUR",
+                env("SILLON_DECOUVERTE_PAR_JOUR"),
+                2,
+            )?,
+            decouverte_budget: nombre::<u64>(
+                "SILLON_DECOUVERTE_GO",
+                env("SILLON_DECOUVERTE_GO"),
+                20,
+            )?
+            .saturating_mul(GO),
         })
     }
 
@@ -114,6 +127,28 @@ pub async fn occupation_sur(
 pub async fn occupation(state: &AppState) -> Result<Occupation, sqlx::Error> {
     let mut conn = state.pool().acquire().await?;
     occupation_sur(state, &mut conn).await
+}
+
+pub async fn budget_decouverte(conn: &mut PgConnection) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT coalesce(sum(CASE WHEN a.etat = 'disponible' THEN t.taille ELSE greatest(a.estimation, t.taille) END), 0)::bigint
+         FROM ajouts a JOIN LATERAL (
+            SELECT coalesce(sum(f.taille), 0)::bigint AS taille FROM fichiers f JOIN pistes p ON p.id = f.piste_id
+              JOIN albums al ON al.id = p.album_id WHERE al.mbid = ANY(a.albums)) t ON true
+         WHERE a.origine = 'decouverte' AND a.etat IN ('envoye', 'telechargement', 'partiel', 'disponible')",
+    )
+    .fetch_one(conn)
+    .await
+}
+
+pub async fn decouvertes_du_jour(conn: &mut PgConnection, sub: &str) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT count(*) FROM ajouts WHERE sub = $1 AND (origine = 'decouverte' OR promu_le IS NOT NULL)
+           AND cree_le > now() - interval '1 day'",
+    )
+    .bind(sub)
+    .fetch_one(conn)
+    .await
 }
 
 pub fn debit_qualite(nom: &str) -> u64 {
@@ -242,6 +277,20 @@ mod tests {
         let defaut = Reglages::from_env(&|_| None).unwrap();
         assert!(!defaut.configure());
         assert_eq!((defaut.par_jour, defaut.plafond), (10, None));
+        assert_eq!(
+            (defaut.decouverte_par_jour, defaut.decouverte_budget),
+            (2, 20 * GO)
+        );
+        let regle = Reglages::from_env(&|k| match k {
+            "SILLON_DECOUVERTE_PAR_JOUR" => Some("1".into()),
+            "SILLON_DECOUVERTE_GO" => Some("0".into()),
+            _ => None,
+        })
+        .unwrap();
+        assert_eq!((regle.decouverte_par_jour, regle.decouverte_budget), (1, 0));
+        assert!(
+            Reglages::from_env(&|k| (k == "SILLON_DECOUVERTE_GO").then(|| "-1".into())).is_err()
+        );
         assert_eq!(defaut.delai, Duration::from_secs(72 * 3600));
         assert!(Reglages::from_env(&|k| (k == "SILLON_MEDIAS_GO").then(|| "x".into())).is_err());
     }

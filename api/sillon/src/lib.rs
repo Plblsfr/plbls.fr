@@ -31,6 +31,10 @@ pub mod volume;
 
 pub mod analyse;
 
+pub mod decouverte;
+pub mod listenbrainz;
+pub mod recommandation;
+
 #[cfg(test)]
 mod tests_api;
 #[cfg(test)]
