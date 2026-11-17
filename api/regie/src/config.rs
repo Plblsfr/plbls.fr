@@ -77,8 +77,10 @@ impl Config {
         };
         let depots = match env("REGIE_DEPOTS") {
             None => None,
-            Some(d) if !d.starts_with('/') => {
-                return Err(format!("REGIE_DEPOTS : chemin absolu attendu ({d})"));
+            Some(d) if !d.starts_with('/') || d.contains("..") => {
+                return Err(format!(
+                    "REGIE_DEPOTS : chemin absolu sans « .. » attendu ({d})"
+                ));
             }
             Some(d) => {
                 let d = sans_slash(d);
@@ -224,6 +226,7 @@ mod tests {
             ("REGIE_PORT", "x"),
             ("REGIE_SUIVI_MS", "100"),
             ("REGIE_DEPOTS", "relatif"),
+            ("REGIE_DEPOTS", "/srv/medias/../etc"),
             ("REGIE_DEPOTS_GO", "x"),
         ] {
             assert!(charge(&[faux]).unwrap_err().contains(faux.0), "{faux:?}");

@@ -78,8 +78,19 @@ fn es(e: std::io::Error) -> Response {
     interne()
 }
 
-fn dossier(d: &Depots, hash: &str) -> PathBuf {
-    d.dossier.join(hash)
+fn racine(d: &Depots) -> PathBuf {
+    let texte = d.dossier.to_string_lossy();
+    if texte.contains("..") {
+        return PathBuf::new();
+    }
+    PathBuf::from(texte.as_ref())
+}
+
+fn dossier(d: &Depots, id: &str) -> PathBuf {
+    if id.contains("..") {
+        return PathBuf::new();
+    }
+    racine(d).join(id)
 }
 
 fn chemin_de(d: &Depots, hash: &str, f: &Fichier) -> PathBuf {
@@ -97,9 +108,9 @@ async fn confiner(d: &Depots, chemin: &Chemin) -> std::io::Result<PathBuf> {
     };
     let (parent, nom) = chemin.parent().zip(chemin.file_name()).ok_or_else(refus)?;
     tokio::fs::create_dir_all(parent).await?;
-    let racine = tokio::fs::canonicalize(&d.dossier).await?;
+    let depots = tokio::fs::canonicalize(racine(d)).await?;
     let reel = tokio::fs::canonicalize(parent).await?;
-    if !reel.starts_with(&racine) || reel == racine {
+    if !reel.starts_with(&depots) || reel == depots {
         return Err(refus());
     }
     let cible = reel.join(nom);
@@ -178,7 +189,7 @@ async fn vue(d: &Depots, hash: &str, depot: &Depot) -> Value {
 
 async fn identifiants(d: &Depots) -> Vec<String> {
     let mut noms = Vec::new();
-    let Ok(mut lecture) = tokio::fs::read_dir(&d.dossier).await else {
+    let Ok(mut lecture) = tokio::fs::read_dir(racine(d)).await else {
         return noms;
     };
     while let Ok(Some(e)) = lecture.next_entry().await {
