@@ -31,7 +31,7 @@
   <ul class="sillon-ajouts">
     {#each ajouts as a (a.id)}
       <li class="sillon-ajout">
-        <span class="sillon-ajout-art" class:sillon-rond={a.kind === 'artist'}><SillonCover id={a.albums[0] ?? a.mbid} title={a.title} image={!!a.albums[0]} size="small" /></span>
+        <span class="sillon-ajout-art" class:sillon-rond={a.kind === 'artist'}><SillonCover id={a.albums[0] ?? a.mbid} title={a.title} image={!!a.albums[0]} ajout={a.image} size="small" /></span>
         <span class="grow sillon-ajout-t">
           <strong class="truncate">{#if a.albums[0] && a.state === 'available'}<a href={hrefs.musique('album', a.albums[0])}>{a.title}</a>{:else}{a.title}{/if}</strong>
           <span class="v-note truncate">{[a.kind === 'artist' ? 'Artiste' : a.artist.name, date(a.created_at), a.estimated_size ? `≈ ${octets(a.estimated_size)}` : '', a.origin === 'discovery' ? 'Découverte' : '', a.author?.name].filter(Boolean).join(' · ')}</span>

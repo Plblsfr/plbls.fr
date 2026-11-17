@@ -37,6 +37,13 @@ const decouverte = { ...pistes[2], id: 'c0000000-0000-0000-0000-00000000000a', t
 const catalogue = [...pistes, suggestion, decouverte]
 const albumDecouvert = { ...album, id: decouverte.album.id, title: 'Lointain', added_at: '2026-10-01T10:00:00Z', track_count: 1, duration: 30, artist: { id: decouverte.artist.id, name: decouverte.artist.name } }
 const GO = 1e9
+const IMAGES_AJOUT: Record<string, [string, string]> = {
+  a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0: ['#2f6f5e', '#e8d9a8'],
+  b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1: ['#7a2e3b', '#f2c14e'],
+  d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3: ['#24476b', '#9fd3c7'],
+}
+const IMAGE_CASSEE = 'c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2'
+const svg = ([fond, motif]: [string, string]) => `<svg xmlns="http://www.w3.org/2000/svg" width="250" height="250" viewBox="0 0 250 250"><rect width="250" height="250" fill="${fond}"/><path d="M0 250L250 0M-60 190L190-60M60 310L310 60" stroke="${motif}" stroke-width="34"/><rect x="70" y="70" width="110" height="110" fill="none" stroke="${motif}" stroke-width="14"/></svg>`
 
 function serveurSillon() {
   let n = 0
@@ -49,7 +56,7 @@ function serveurSillon() {
     ecartees: [] as string[],
     ajouts: [
       { id: 'f0000000-0000-0000-0000-000000000001', kind: 'album', mbid: 'e0000000-0000-0000-0000-000000000004', title: 'Introuvable', artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, origin: 'manual', state: 'failed', reason: 'aucune source trouvée par Lidarr', estimated_size: 400e6, albums: [], created_at: '2026-11-15T18:00:00Z', updated_at: '2026-11-16T08:00:00Z', author: { sub: 'kc-moi', name: 'moi' } },
-      { id: 'f0000000-0000-0000-0000-000000000002', kind: 'album', mbid: 'e0000000-0000-0000-0000-000000000005', title: 'En Route', artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, origin: 'manual', state: 'downloading', reason: null, estimated_size: 350e6, albums: [], created_at: '2026-11-16T09:30:00Z', updated_at: '2026-11-16T09:40:00Z', author: { sub: 'kc-moi', name: 'moi' } },
+      { id: 'f0000000-0000-0000-0000-000000000002', kind: 'album', mbid: 'e0000000-0000-0000-0000-000000000005', title: 'En Route', artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, origin: 'manual', state: 'downloading', reason: null, estimated_size: 350e6, albums: [], image: 'd3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3', created_at: '2026-11-16T09:30:00Z', updated_at: '2026-11-16T09:40:00Z', author: { sub: 'kc-moi', name: 'moi' } },
       { id: 'f0000000-0000-0000-0000-000000000003', kind: 'album', mbid: 'e0000000-0000-0000-0000-000000000006', title: 'Premier Pressage', artist: { mbid: 'e0000000-0000-0000-0000-000000000007', name: 'Les Sillons' }, origin: 'discovery', state: 'available', reason: null, estimated_size: 640e6, albums: [album.id], created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-01T12:00:00Z', author: { sub: 'kc-moi', name: 'moi' } },
     ] as Record<string, unknown>[],
     relances: [] as string[],
@@ -135,6 +142,12 @@ async function simuler(page: Page, p: Profil, srv = serveurSillon()) {
     if (proches) return json(route, { items: [pistes[3], pistes[2]].slice(0, Number(url.searchParams.get('limit') ?? 20)) })
     const albumAdmin = /^\/admin\/albums\/([^/]+)$/.exec(url.pathname)
     if (albumAdmin && m === 'DELETE') { etat.supprimes.push(albumAdmin[1]); return route.fulfill({ status: 204, headers: cors }) }
+    const imageAjout = /^\/additions\/images\/([^/]+)$/.exec(url.pathname)
+    if (imageAjout) {
+      const couleurs = IMAGES_AJOUT[imageAjout[1]]
+      if (!couleurs) return json(route, { error: 'not_found', message: 'introuvable' }, 404)
+      return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: svg(couleurs), headers: cors })
+    }
     const relance = /^\/admin\/additions\/([^/]+)\/retry$/.exec(url.pathname)
     if (relance) { etat.relances.push(relance[1]); const a = etat.ajouts.find((x) => x.id === relance[1])!; a.state = 'sent'; a.reason = null; return json(route, a, 201) }
     const playback = /^\/tracks\/([^/]+)\/playback$/.exec(url.pathname)
@@ -186,10 +199,15 @@ async function simuler(page: Page, p: Profil, srv = serveurSillon()) {
       case '/history/top/tracks': case '/history/top/artists': return json(route, { items: [] })
       case '/recommendations/dismiss': etat.ecartees.push(String(corps.track)); return route.fulfill({ status: 204, headers: cors })
       case '/additions/search': return json(route, {
-        artists: [{ mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents', disambiguation: 'groupe de test', type: 'Group', overview: null, in_library: false, in_progress: false, excluded: false }],
+        artists: [
+          { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents', disambiguation: 'groupe de test', type: 'Group', overview: null, image: 'a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0', library: null, in_library: false, in_progress: false, excluded: false },
+          { mbid: 'e0000000-0000-0000-0000-000000000008', name: 'Sans Visage', disambiguation: null, type: 'Person', overview: null, image: null, library: null, in_library: false, in_progress: false, excluded: false },
+        ],
         albums: [
-          { mbid: 'e0000000-0000-0000-0000-000000000001', title: 'Trop Lourd', type: 'Album', secondary_types: [], year: 2021, duration: 3600, artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, in_library: false, in_progress: false, excluded: false, estimated_size: 20 * GO },
-          { mbid: 'e0000000-0000-0000-0000-000000000003', title: 'Déjà Là', type: 'Album', secondary_types: [], year: 2019, duration: 2400, artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, in_library: true, in_progress: false, excluded: false, estimated_size: 300e6 },
+          { mbid: 'e0000000-0000-0000-0000-000000000001', title: 'Trop Lourd', type: 'Album', secondary_types: [], year: 2021, duration: 3600, artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, image: 'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1', library: null, in_library: false, in_progress: false, excluded: false, estimated_size: 20 * GO },
+          { mbid: 'e0000000-0000-0000-0000-000000000009', title: 'Sans Pochette', type: 'EP', secondary_types: [], year: 2022, duration: 1200, artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, image: null, library: null, in_library: false, in_progress: false, excluded: false, estimated_size: 150e6 },
+          { mbid: 'e0000000-0000-0000-0000-00000000000c', title: 'Pochette Perdue', type: 'Album', secondary_types: [], year: 2020, duration: 2000, artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, image: IMAGE_CASSEE, library: null, in_library: false, in_progress: false, excluded: false, estimated_size: 250e6 },
+          { mbid: 'e0000000-0000-0000-0000-000000000003', title: 'Déjà Là', type: 'Album', secondary_types: [], year: 2019, duration: 2400, artist: { mbid: 'e0000000-0000-0000-0000-000000000002', name: 'Les Absents' }, image: null, library: { id: album.id, image: false }, in_library: true, in_progress: false, excluded: false, estimated_size: 300e6 },
         ],
       })
       case '/additions':
@@ -487,6 +505,36 @@ test('C5 : ajout refusé pour disque plein, avec l’occupation ; « Mes ajouts 
   await expect(page.locator('.sillon-ajout', { hasText: 'En Route' })).toContainText('Téléchargement')
   await expect(page.getByRole('button', { name: 'Relancer' })).toHaveCount(0)
   await capture(page, 'mes-ajouts')
+})
+
+test('Images de la recherche d’ajout : pochette et portrait servis par Sillon, vignette de repli sans image ou en échec', async ({ page }) => {
+  await simuler(page, { estompe: false, sillon: true, add: true })
+  const demandes: string[] = []
+  page.on('request', (r) => { if (r.resourceType() === 'image' || r.url().includes('/additions/images/')) demandes.push(r.url()) })
+  await page.goto('/#/musique/add')
+  await page.getByLabel('Chercher un artiste ou un album à ajouter').fill('absents')
+  await page.getByRole('button', { name: 'Chercher' }).click()
+  const ligne = (texte: string) => page.locator('.sillon-absent-l').filter({ has: page.locator('strong', { hasText: new RegExp(`^${texte}$`) }) })
+  for (const texte of ['Trop Lourd', 'Les Absents']) {
+    await expect(ligne(texte).locator('img')).toHaveAttribute('src', /^blob:/)
+    await expect.poll(() => ligne(texte).locator('img').evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBe(250)
+  }
+  await expect(ligne('Les Absents').locator('.sillon-rond img')).toHaveCount(1)
+  for (const texte of ['Sans Pochette', 'Pochette Perdue', 'Déjà Là', 'Sans Visage']) {
+    await expect(ligne(texte).locator('.sillon-flat')).toBeVisible()
+    await expect(ligne(texte).locator('img')).toHaveCount(0)
+  }
+  expect(demandes.filter((u) => u.includes('/additions/images/')).sort()).toEqual([
+    `${SILLON}/additions/images/a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0?size=small`,
+    `${SILLON}/additions/images/b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1?size=small`,
+    `${SILLON}/additions/images/${IMAGE_CASSEE}?size=small`,
+  ])
+  expect(demandes.filter((u) => !u.startsWith(SILLON) && !u.startsWith('blob:') && !u.startsWith(ORIGINE))).toEqual([])
+  await capture(page, 'ajout-images')
+  await page.getByRole('link', { name: 'Mes ajouts' }).click()
+  await expect(page.locator('.sillon-ajout', { hasText: 'En Route' }).locator('img')).toHaveAttribute('src', /^blob:/)
+  await expect(page.locator('.sillon-ajout', { hasText: 'Introuvable' }).locator('.sillon-flat')).toBeVisible()
+  await capture(page, 'mes-ajouts-images')
 })
 
 test('Administration : occupation, relance d’un échec, suppression, synchronisation, analyse, fichiers écartés, découverte', async ({ page }) => {
