@@ -529,7 +529,7 @@ test('Images de la recherche d’ajout : pochette et portrait servis par Sillon,
     `${SILLON}/additions/images/b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1?size=small`,
     `${SILLON}/additions/images/${IMAGE_CASSEE}?size=small`,
   ])
-  expect(demandes.filter((u) => !u.startsWith(SILLON) && !u.startsWith('blob:') && !u.startsWith(ORIGINE))).toEqual([])
+  expect(demandes.filter((u) => !u.startsWith('blob:') && ![SILLON, ORIGINE].includes(new URL(u).origin))).toEqual([])
   await capture(page, 'ajout-images')
   await page.getByRole('link', { name: 'Mes ajouts' }).click()
   await expect(page.locator('.sillon-ajout', { hasText: 'En Route' }).locator('img')).toHaveAttribute('src', /^blob:/)
