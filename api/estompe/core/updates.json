@@ -1,7 +1,7 @@
 {
-  "mandatory": true,
+  "mandatory": false,
   "minVersion": "",
-  "message": "Cette mise à jour améliore le lecteur de films (préchargement, langue et sous-titres par défaut) et rend les partages d'écran plus fluides.",
+  "message": "",
   "platforms": {
     "web": {},
     "android": {},
