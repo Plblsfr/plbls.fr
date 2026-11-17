@@ -641,7 +641,7 @@ paths:
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
       responses:
-        "200": { description: "`{artists: [{mbid, name, disambiguation, type, overview, in_library, in_progress, excluded}], albums: [{mbid, title, type, secondary_types, year, duration, artist: {mbid, name}, in_library, in_progress, excluded, estimated_size}]}` (20 au plus chacun)" }
+        "200": { description: "`{artists: [{mbid, name, disambiguation, type, overview, in_library, in_progress, excluded}], albums: [{mbid, title, type, secondary_types, year, duration, artist: {mbid, name}, in_library, in_progress, excluded, estimated_size}]}` (20 au plus chacun ; `estimated_size` nul si Lidarr n'a ni dossier racine ni profil lisible)" }
         "400": { description: "`invalid` : recherche vide ou trop longue" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
@@ -669,8 +669,8 @@ paths:
         "404": { description: "`not_found` : inconnu de MusicBrainz" }
         "409": { description: "`already_available` (déjà dans la bibliothèque) ou `excluded` (retiré par un administrateur)" }
         "429": { description: "`daily_limit` : `SILLON_AJOUTS_PAR_JOUR` ajouts sur 24 heures glissantes" }
-        "502": { description: "`lidarr_unavailable` : rien n'est enregistré" }
-        "503": { description: "`not_configured` : Lidarr, dossier racine ou profils non configurés" }
+        "502": { description: "`lidarr_unavailable` : rien n'est enregistré ; `lidarr_refused` : Lidarr a refusé l'ajout (validation), l'ajout reste en échec, la raison détaillée est réservée à l'admin" }
+        "503": { description: "`not_configured` : URL ou clé de Lidarr absente ; `lidarr_incomplete` : Lidarr sans dossier racine ou sans profil, rien n'est enregistré" }
         "507": { description: "`disk_full` : le plafond `SILLON_MEDIAS_GO` serait dépassé ; `{used, pending, limit, free, estimated}` ; rien n'est envoyé à Lidarr" }
   /additions/mine:
     get:
@@ -683,7 +683,13 @@ paths:
     get:
       summary: "Occupation du dossier de la musique et plafond"
       responses:
-        "200": { description: "`{used, pending, limit, free, daily_limit, configured}` (octets ; `limit` et `free` nuls sans plafond)" }
+        "200":
+          description: >-
+            `{used, pending, limit, free, daily_limit, configured, settings, settings_error}` (octets ; `limit` et `free` nuls sans plafond ;
+            `configured` : URL et clé de Lidarr présentes). `settings` : réglages qu'un ajout enverrait à Lidarr, `{root_folder,
+            root_folder_source, quality_profile: {name, source}, metadata_profile: {name, source}}`, `source` valant `lidarr` (lu dans Lidarr)
+            ou `override` (variable `SILLON_LIDARR_*`), `name` nul pour un profil surchargé inconnu de Lidarr ; nul sans Lidarr ou en erreur,
+            `settings_error` donnant alors la raison (« Lidarr : aucun dossier racine »…).
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
   /admin/additions:
@@ -707,7 +713,7 @@ paths:
         "403": { $ref: "#/components/responses/403" }
         "404": { description: "`not_found`" }
         "409": { description: "`invalid_state` : l'ajout n'est pas en échec, ou le même titre est déjà en cours" }
-        "502": { description: "`lidarr_unavailable` : l'ajout reste en échec" }
+        "502": { description: "`lidarr_unavailable` : l'ajout reste en échec ; `lidarr_refused` : refus de validation de Lidarr, message détaillé de Lidarr" }
         "507": { description: "`disk_full`" }
   /admin/albums:
     get:

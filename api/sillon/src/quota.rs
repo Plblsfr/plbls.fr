@@ -19,9 +19,9 @@ pub const ETATS_ACTIFS: &str = "('envoye', 'telechargement', 'partiel')";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reglages {
-    pub racine: String,
-    pub profil_qualite: i64,
-    pub profil_metadonnees: i64,
+    pub racine: Option<String>,
+    pub profil_qualite: Option<i64>,
+    pub profil_metadonnees: Option<i64>,
     pub par_jour: u32,
     pub plafond: Option<u64>,
     pub delai: Duration,
@@ -37,16 +37,15 @@ impl Reglages {
             env("SILLON_AJOUTS_DELAI_HEURES"),
             72,
         )?;
+        let profil = |nom: &str| -> Result<Option<i64>, String> {
+            Ok(Some(nombre::<i64>(nom, env(nom), 0)?).filter(|p| *p > 0))
+        };
         Ok(Self {
             racine: env("SILLON_LIDARR_RACINE")
-                .map(|r| r.trim_end_matches('/').to_string())
-                .unwrap_or_default(),
-            profil_qualite: nombre("SILLON_LIDARR_QUALITE", env("SILLON_LIDARR_QUALITE"), 0)?,
-            profil_metadonnees: nombre(
-                "SILLON_LIDARR_METADONNEES",
-                env("SILLON_LIDARR_METADONNEES"),
-                0,
-            )?,
+                .map(|r| r.trim().trim_end_matches('/').to_string())
+                .filter(|r| !r.is_empty()),
+            profil_qualite: profil("SILLON_LIDARR_QUALITE")?,
+            profil_metadonnees: profil("SILLON_LIDARR_METADONNEES")?,
             par_jour: nombre("SILLON_AJOUTS_PAR_JOUR", env("SILLON_AJOUTS_PAR_JOUR"), 10)?,
             plafond: (go > 0).then(|| go.saturating_mul(GO)),
             delai: Duration::from_secs(heures.saturating_mul(3600)),
@@ -62,10 +61,6 @@ impl Reglages {
             )?
             .saturating_mul(GO),
         })
-    }
-
-    pub fn configure(&self) -> bool {
-        !self.racine.is_empty() && self.profil_qualite > 0 && self.profil_metadonnees > 0
     }
 }
 
@@ -270,12 +265,27 @@ mod tests {
             _ => None,
         };
         let r = Reglages::from_env(&env).unwrap();
-        assert_eq!(r.racine, "/music");
-        assert!(r.configure());
+        assert_eq!(
+            (r.racine.as_deref(), r.profil_qualite, r.profil_metadonnees),
+            (Some("/music"), Some(2), Some(3))
+        );
         assert_eq!((r.par_jour, r.plafond), (4, Some(500 * GO)));
         assert_eq!(r.delai, Duration::from_secs(3600));
         let defaut = Reglages::from_env(&|_| None).unwrap();
-        assert!(!defaut.configure());
+        assert_eq!(
+            (
+                defaut.racine,
+                defaut.profil_qualite,
+                defaut.profil_metadonnees
+            ),
+            (None, None, None)
+        );
+        let zero = Reglages::from_env(&|k| (k == "SILLON_LIDARR_QUALITE").then(|| "0".into()));
+        assert_eq!(zero.unwrap().profil_qualite, None);
+        assert!(
+            Reglages::from_env(&|k| (k == "SILLON_LIDARR_METADONNEES").then(|| "x".into()))
+                .is_err()
+        );
         assert_eq!((defaut.par_jour, defaut.plafond), (10, None));
         assert_eq!(
             (defaut.decouverte_par_jour, defaut.decouverte_budget),
