@@ -21,6 +21,8 @@ pub struct Inner {
     relance: std::sync::atomic::AtomicBool,
     lecture: crate::lecture::Lecture,
     analyse: crate::analyse::Analyse,
+    listenbrainz: crate::listenbrainz::Etat,
+    decouverte: crate::decouverte::Etat,
 }
 
 #[derive(Clone)]
@@ -48,6 +50,8 @@ impl AppState {
             relance: std::sync::atomic::AtomicBool::new(false),
             lecture,
             analyse: crate::analyse::Analyse::default(),
+            listenbrainz: crate::listenbrainz::Etat::default(),
+            decouverte: crate::decouverte::Etat::default(),
         }))
     }
 
@@ -97,6 +101,14 @@ impl AppState {
 
     pub fn analyse(&self) -> &crate::analyse::Analyse {
         &self.0.analyse
+    }
+
+    pub fn listenbrainz(&self) -> &crate::listenbrainz::Etat {
+        &self.0.listenbrainz
+    }
+
+    pub fn decouverte(&self) -> &crate::decouverte::Etat {
+        &self.0.decouverte
     }
 
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {

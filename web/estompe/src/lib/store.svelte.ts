@@ -2,7 +2,7 @@ import { api, ApiError, API_URL, entracteApi, entracteOn, setUnauthorizedHandler
 import type { EntracteMe } from '../sections/entracte/entracte'
 import { entracte } from '../sections/entracte/entracte.svelte'
 import { sillonApi, sillonOn, type SillonMe } from '../sections/sillon/sillon'
-import { lecteur } from '../sections/sillon/sillon.svelte'
+import { aimes, lecteur } from '../sections/sillon/sillon.svelte'
 import { Realtime, wsUrl, type RealtimeEvent } from './realtime'
 import { platform } from './platform'
 import { prefs } from './prefs.svelte'
@@ -125,7 +125,7 @@ export class AppStore {
     if (!sillonOn()) { this.sillonMe = null; return false }
     try { this.sillonMe = await sillonApi.me() } catch { this.sillonMe = null }
     this.musique = !!this.sillonMe?.permissions.access
-    if (this.musique) void lecteur.chargerPreferences()
+    if (this.musique) { void lecteur.chargerPreferences(); void lecteur.chargerFile(); void aimes.charger() }
     return this.musique
   }
 

@@ -89,6 +89,10 @@ pub enum Refus {
         limite: u32,
     },
     Exclu,
+    BudgetDecouverte {
+        utilise: i64,
+        budget: i64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -154,7 +158,7 @@ pub fn est_studio(a: &Value) -> bool {
         && secondaires(a).is_empty()
 }
 
-fn duree_album(a: &Value) -> f64 {
+pub(crate) fn duree_album(a: &Value) -> f64 {
     let ms = a["duration"].as_i64().filter(|d| *d > 0).or_else(|| {
         a["releases"]
             .as_array()
@@ -177,7 +181,7 @@ pub fn mbid_valide(m: &str) -> Option<String> {
     Uuid::parse_str(m.trim()).ok().map(|u| u.to_string())
 }
 
-fn client(state: &AppState) -> Option<lidarr::Client<'_>> {
+pub(crate) fn client(state: &AppState) -> Option<lidarr::Client<'_>> {
     state
         .config()
         .lidarr
@@ -185,7 +189,11 @@ fn client(state: &AppState) -> Option<lidarr::Client<'_>> {
         .map(|l| lidarr::Client::new(l, state.http()))
 }
 
-async fn chercher(c: &lidarr::Client<'_>, chemin: &str, terme: &str) -> Result<Vec<Value>, String> {
+pub(crate) async fn chercher(
+    c: &lidarr::Client<'_>,
+    chemin: &str,
+    terme: &str,
+) -> Result<Vec<Value>, String> {
     match c
         .envoyer(c.requete(Method::GET, chemin).query(&[("term", terme)]))
         .await?
@@ -342,16 +350,35 @@ async fn reserver(
         .bind(VERROU)
         .execute(&mut *tx)
         .await?;
-    let n: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM ajouts WHERE sub = $1 AND origine = $2 AND cree_le > now() - interval '1 day'",
-    )
-    .bind(&d.personne.sub)
-    .bind(d.origine.code())
-    .fetch_one(&mut *tx)
-    .await?;
-    let limite = state.config().ajouts.par_jour;
+    let reglages = &state.config().ajouts;
+    let (n, limite) = match d.origine {
+        Origine::Manuel => (
+            sqlx::query_scalar(
+                "SELECT count(*) FROM ajouts WHERE sub = $1 AND origine = 'manuel' AND promu_le IS NULL
+                   AND cree_le > now() - interval '1 day'",
+            )
+            .bind(&d.personne.sub)
+            .fetch_one(&mut *tx)
+            .await?,
+            reglages.par_jour,
+        ),
+        Origine::Decouverte => (
+            quota::decouvertes_du_jour(&mut tx, &d.personne.sub).await?,
+            reglages.decouverte_par_jour,
+        ),
+    };
     if n >= i64::from(limite) {
         return Ok(Err(Resultat::Refuse(Refus::LimiteJournaliere { limite })));
+    }
+    if d.origine == Origine::Decouverte {
+        let utilise = quota::budget_decouverte(&mut tx).await?;
+        let budget = i64::try_from(reglages.decouverte_budget).unwrap_or(i64::MAX);
+        if utilise.saturating_add(c.estimation) > budget {
+            return Ok(Err(Resultat::Refuse(Refus::BudgetDecouverte {
+                utilise,
+                budget,
+            })));
+        }
     }
     let occupation = quota::occupation_sur(state, &mut tx).await?;
     if occupation.depasse(c.estimation) {
@@ -912,6 +939,11 @@ pub async fn reponse_resultat(
             StatusCode::TOO_MANY_REQUESTS,
             "daily_limit",
             &format!("limite de {limite} ajouts par jour atteinte"),
+        ),
+        Resultat::Refuse(Refus::BudgetDecouverte { .. }) => erreur(
+            StatusCode::INSUFFICIENT_STORAGE,
+            "discovery_budget",
+            "budget de découverte atteint",
         ),
         Resultat::Refuse(Refus::DisquePlein {
             occupation,
