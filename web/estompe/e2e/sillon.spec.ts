@@ -51,7 +51,7 @@ function serveurSillon() {
   const etat = {
     playlists: [] as Liste[],
     likes: { tracks: [] as string[], albums: [] as string[], artists: [] as string[] },
-    file: { revision: 0, source: null as null | { type: string; id: string | null; name: string }, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', seed: null, updated_at: null, items: [] as Element[] },
+    file: { revision: 0, source: null as null | { type: string; id: string | null; name: string }, index: 0, position: 0, shuffle: false, repeat: 'off', suggestions: 'off', endless: true, seed: null, updated_at: null, items: [] as Element[] },
     ecoutes: [] as Record<string, unknown>[],
     ecartees: [] as string[],
     ajouts: [
@@ -485,7 +485,8 @@ test('C4 : sans sillon:add ni sillon:admin, ni recherche d’absents, ni ajout, 
   await page.goto('/#/musique/admin')
   await expect(page.getByRole('heading', { name: 'Administration' })).toHaveCount(0)
   await page.goto('/#/musique/queue')
-  await expect(page.getByRole('switch')).toHaveCount(0)
+  await expect(page.getByRole('switch', { name: /Lecture sans fin/ })).toBeChecked()
+  await expect(page.getByRole('switch', { name: /Découverte/ })).toHaveCount(0)
 })
 
 test('C5 : ajout refusé pour disque plein, avec l’occupation ; « Mes ajouts » et leur état', async ({ page }) => {

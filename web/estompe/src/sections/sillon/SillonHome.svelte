@@ -4,12 +4,14 @@
   import { clock } from '../../blocks/musique/music'
   import SillonAlbums from './SillonAlbums.svelte'
   import SillonCover from './SillonCover.svelte'
+  import { notify } from '../../lib/ui'
   import { echec, lecteur } from './sillon.svelte'
   import { sillonApi, type Album } from './sillon'
 
   let albums = $state<Album[]>([])
   let suite = $state<string | null>(null)
   let loading = $state(true)
+  let tirage = $state(false)
 
   const rp = $derived(lecteur.aReprendre ? lecteur.piste : null)
 
@@ -22,11 +24,21 @@
     } catch (e) { echec(e, 'La bibliothèque est indisponible') } finally { loading = false }
   }
 
+  async function toutMelanger() {
+    tirage = true
+    try {
+      if (!(await lecteur.melangerTout())) notify.fail('La bibliothèque est vide pour l’instant.')
+    } catch (e) { echec(e, 'La lecture aléatoire n’a pas pu démarrer') } finally { tirage = false }
+  }
+
   $effect(() => { void charger(null) })
 </script>
 
 <div class="film-page">
-  <div class="film-filters"><h2 class="v-titre film-filters-title">Accueil</h2></div>
+  <div class="film-filters">
+    <h2 class="v-titre film-filters-title">Accueil</h2>
+    <button class="plbls-button" disabled={tirage} onclick={() => void toutMelanger()} title="Lance toute la bibliothèque en aléatoire, selon tes goûts, sans fin"><Icon name="shuffle" size={18} /> Tout mélanger</button>
+  </div>
 
   {#if rp}
     <section class="film-section">

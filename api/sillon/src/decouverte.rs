@@ -684,6 +684,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lecture_sans_fin_lance_la_decouverte_sans_aleatoire_ni_suggestions() {
+        let Some(t) = banc(|_| {}).await else { return };
+        let e = &t.b.e;
+        let album = t.b.album("Lemonade").await["id"].clone();
+        let lancer = |sans_fin: bool, repetition: &'static str| {
+            let album = album.clone();
+            async move {
+                let revision = e.get("bruno", "/queue").await.json()["revision"].clone();
+                let corps = json!({"revision": revision, "source": {"type": "album", "id": album},
+                    "shuffle": false, "suggestions": "off", "endless": sans_fin, "repeat": repetition});
+                let r = e.appel(Some("bruno"), "PUT", "/queue", Some(corps)).await;
+                assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+            }
+        };
+        let avant = e.state.decouverte().terminees();
+        lancer(false, "off").await;
+        lancer(true, "all").await;
+        assert!(e.state.decouverte().personnes().is_empty());
+        assert_eq!(e.state.decouverte().terminees(), avant);
+        assert_eq!(t.ecritures(), [], "sans suite à trouver : aucune recherche");
+        lancer(true, "off").await;
+        attendre(
+            || e.state.decouverte().terminees() > avant,
+            "fin de la recherche de découvertes",
+        )
+        .await;
+        let ecritures = t.ecritures();
+        assert_eq!(
+            ecritures.last().map(|x| (x.1.as_str(), &x.2["name"])),
+            Some(("/api/v1/command", &json!("AlbumSearch"))),
+            "{ecritures:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn ecoute_en_aleatoire_envoie_a_lidarr_l_album_court_d_un_titre_absent_puis_le_propose() {
         let Some(t) = banc(|_| {}).await else { return };
         let f = t.ecouter("bruno").await;
