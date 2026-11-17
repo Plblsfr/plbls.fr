@@ -7,6 +7,8 @@ interface RuntimeConfig {
   /** API d'Entracte (films et séries) ; vide = pas de section Entracte ni de salon cinéma. */
   entracteUrl?: string
   sillonUrl?: string
+  /** API de Régie (administration des médias) ; vide = pas de section Régie. */
+  regieUrl?: string
 }
 
 const rc: RuntimeConfig = (typeof window !== 'undefined' && (window as unknown as { __ESTOMPE__?: RuntimeConfig }).__ESTOMPE__) || {}
@@ -18,4 +20,5 @@ export const config = {
   keycloakIssuer: strip(rc.keycloakIssuer || import.meta.env.VITE_KEYCLOAK_ISSUER || ''),
   entracteUrl: strip(rc.entracteUrl || import.meta.env.VITE_ENTRACTE_URL || ''),
   sillonUrl: strip(rc.sillonUrl || import.meta.env.VITE_SILLON_URL || ''),
+  regieUrl: strip(rc.regieUrl || import.meta.env.VITE_REGIE_URL || ''),
 }

@@ -1,0 +1,97 @@
+openapi: 3.1.0
+info:
+  title: Régie
+  version: 0.1.0
+  description: |
+    Administration des médias de plbls.fr : état de Radarr, Sonarr, Lidarr, Prowlarr et qBittorrent.
+    Ce document suit le code : chaque route de `api/regie/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
+
+    Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
+    vérifié par `GET /auth/me` du gateway. Droits : permission aegis `regie:admin`, fermée par défaut.
+    Requêtes modifiantes avec cookie : `Origin` dans `REGIE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
+    Erreurs : `{"error": "<code>", "message": "…"}`. Aucune réponse ne contient d'URL ni de clé d'un service.
+servers:
+  - url: https://regie-api.plbls.fr
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Secure-plbls_sid
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    "401":
+      description: "`unauthorized` : connexion requise"
+    "403":
+      description: "`forbidden` : permission manquante (le message la nomme)"
+    "502":
+      description: "`gateway_unavailable` : service de connexion injoignable ; `not_configured` : service non configuré ; `upstream` : service injoignable ou en erreur"
+    "503":
+      description: "`aegis_unavailable` : service de droits injoignable"
+security:
+  - session: []
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: "Santé du processus"
+      security: []
+      responses:
+        "200": { description: "`{status, version}`" }
+  /me:
+    get:
+      summary: "Identité et permissions (aucune permission exigée)"
+      description: "aegis injoignable : `admin` faux."
+      responses:
+        "200": { description: "`{sub, name, email, permissions: {admin}}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "502": { $ref: "#/components/responses/502" }
+  /admin/status:
+    get:
+      summary: "État des services, indexeurs, dossiers et téléchargements bloqués (`regie:admin`)"
+      description: |
+        Les cinq services sont interrogés en parallèle ; un service injoignable ou non configuré n'empêche pas la réponse.
+        - `services` : `{key, name, configured, reachable, version, error, alerts: [{level, source, message}]}` pour `radarr`,
+          `sonarr`, `lidarr`, `prowlarr`, `qbittorrent` (ce dernier ajoute `transfer: {download_speed, upload_speed, connection}`, en octets par seconde).
+          `level` : `notice`, `warning` ou `error`. `error` : première lecture en échec.
+        - `indexers` (Prowlarr) : `{id, name, enabled, protocol, privacy, failing, disabled_until, last_failure}`.
+        - `disks` (dossiers racine de Radarr, Sonarr, Lidarr) : `{service, path, free, accessible}`, `free` en octets.
+        - `queue` (éléments en avertissement ou en erreur des files de Radarr, Sonarr, Lidarr) : `{service, id, title, level, state, messages}`.
+      responses:
+        "200": { description: "`{services, indexers, disks, queue}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/indexers/{id}/test:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      summary: "Tester un indexeur de Prowlarr (`regie:admin`)"
+      responses:
+        "200": { description: "`{ok, message}` : `message` porte la raison de Prowlarr quand `ok` est faux" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : indexeur inconnu" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/queue/{service}/{id}:
+    parameters:
+      - { name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    delete:
+      summary: "Retirer un élément de la file d'un service, et du client de téléchargement (`regie:admin`)"
+      parameters:
+        - name: retry
+          in: query
+          schema: { type: boolean }
+          description: "`true` : la release est mise en liste de blocage et le service en cherche une autre"
+      responses:
+        "204": { description: "retiré" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : service ou élément inconnu" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }

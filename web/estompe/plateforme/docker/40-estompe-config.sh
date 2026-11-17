@@ -7,10 +7,11 @@
 #   KEYCLOAK_ISSUER   (facultatif) émetteur Keycloak, utile seulement à l'app Windows
 #   ENTRACTE_PUBLIC_URL (facultatif) URL publique de l'API d'Entracte, ex. https://entracte-api.plbls.fr ; vide = pas de section Entracte
 #   SILLON_PUBLIC_URL (facultatif) URL publique de l'API de Sillon, ex. https://sillon-api.plbls.fr ; vide = pas de section Sillon
+#   REGIE_PUBLIC_URL (facultatif) URL publique de l'API de Régie, ex. https://regie-api.plbls.fr ; vide = pas de section Régie
 set -eu
 
 if [ -r /etc/plbls.env ]; then
-  for cle in API_URL GATEWAY_URL VOICE_URL KEYCLOAK_ISSUER ENTRACTE_PUBLIC_URL SILLON_PUBLIC_URL; do
+  for cle in API_URL GATEWAY_URL VOICE_URL KEYCLOAK_ISSUER ENTRACTE_PUBLIC_URL SILLON_PUBLIC_URL REGIE_PUBLIC_URL; do
     if [ -z "$(printenv "$cle" || true)" ]; then
       valeur=$(sed -n "s/^$cle=//p" /etc/plbls.env | tail -n 1)
       export "$cle=$valeur"
@@ -24,9 +25,10 @@ VOICE_URL="${VOICE_URL:-}"
 KEYCLOAK_ISSUER="${KEYCLOAK_ISSUER:-}"
 ENTRACTE_PUBLIC_URL="${ENTRACTE_PUBLIC_URL:-}"
 SILLON_PUBLIC_URL="${SILLON_PUBLIC_URL:-}"
+REGIE_PUBLIC_URL="${REGIE_PUBLIC_URL:-}"
 
 # Les valeurs finissent dans du JavaScript et dans un en-tête HTTP : on refuse tout caractère inattendu.
-for v in "$API_URL" "$GATEWAY_URL" "$VOICE_URL" "$KEYCLOAK_ISSUER" "$ENTRACTE_PUBLIC_URL" "$SILLON_PUBLIC_URL"; do
+for v in "$API_URL" "$GATEWAY_URL" "$VOICE_URL" "$KEYCLOAK_ISSUER" "$ENTRACTE_PUBLIC_URL" "$SILLON_PUBLIC_URL" "$REGIE_PUBLIC_URL"; do
   case "$v" in
     *[!A-Za-z0-9:/._-]*) echo "valeur de configuration invalide : $v" >&2; exit 1 ;;
   esac
@@ -37,10 +39,10 @@ API_WS=$(printf '%s' "$API_URL" | sed 's#^http#ws#')
 VOICE_HTTP=$(printf '%s' "$VOICE_URL" | sed 's#^ws#http#')
 
 cat > /usr/share/nginx/html/config.js <<JS
-globalThis.__ESTOMPE__ = { apiUrl: "$API_URL", gatewayUrl: "$GATEWAY_URL", keycloakIssuer: "$KEYCLOAK_ISSUER", entracteUrl: "$ENTRACTE_PUBLIC_URL", sillonUrl: "$SILLON_PUBLIC_URL" }
+globalThis.__ESTOMPE__ = { apiUrl: "$API_URL", gatewayUrl: "$GATEWAY_URL", keycloakIssuer: "$KEYCLOAK_ISSUER", entracteUrl: "$ENTRACTE_PUBLIC_URL", sillonUrl: "$SILLON_PUBLIC_URL", regieUrl: "$REGIE_PUBLIC_URL" }
 JS
 
-CSP="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: $API_URL $ENTRACTE_PUBLIC_URL $SILLON_PUBLIC_URL https://*.giphy.com https://img.youtube.com; font-src 'self'; media-src 'self' blob: $API_URL $ENTRACTE_PUBLIC_URL $SILLON_PUBLIC_URL; connect-src 'self' $API_URL $API_WS $VOICE_URL $VOICE_HTTP $ENTRACTE_PUBLIC_URL $SILLON_PUBLIC_URL $GATEWAY_URL; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com https://player.twitch.tv https://clips.twitch.tv https://player.vimeo.com https://www.dailymotion.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self' $GATEWAY_URL"
+CSP="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: $API_URL $ENTRACTE_PUBLIC_URL $SILLON_PUBLIC_URL https://*.giphy.com https://img.youtube.com; font-src 'self'; media-src 'self' blob: $API_URL $ENTRACTE_PUBLIC_URL $SILLON_PUBLIC_URL; connect-src 'self' $API_URL $API_WS $VOICE_URL $VOICE_HTTP $ENTRACTE_PUBLIC_URL $SILLON_PUBLIC_URL $REGIE_PUBLIC_URL $GATEWAY_URL; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com https://player.twitch.tv https://clips.twitch.tv https://player.vimeo.com https://www.dailymotion.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self' $GATEWAY_URL"
 
 cat > /etc/nginx/estompe-headers.inc <<HDR
 add_header Content-Security-Policy "$CSP" always;

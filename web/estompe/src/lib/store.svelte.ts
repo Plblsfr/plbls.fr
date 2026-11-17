@@ -3,6 +3,7 @@ import type { EntracteMe } from '../sections/entracte/entracte'
 import { entracte } from '../sections/entracte/entracte.svelte'
 import { sillonApi, sillonOn, type SillonMe } from '../sections/sillon/sillon'
 import { aimes, lecteur } from '../sections/sillon/sillon.svelte'
+import { regieApi, regieOn } from '../sections/regie/regie'
 import { Realtime, wsUrl, type RealtimeEvent } from './realtime'
 import { platform } from './platform'
 import { prefs } from './prefs.svelte'
@@ -65,6 +66,8 @@ export class AppStore {
   entracteMe = $state.raw<EntracteMe | null>(null)
   sillonMe = $state.raw<SillonMe | null>(null)
   musique = $state(false)
+  /** Administration des médias ouverte (`regie:admin` annoncé par Régie). */
+  regie = $state(false)
   servers = $state<Server[]>([])
   details = $state<Record<string, ServerDetail>>({})
   dms = $state<DM[]>([])
@@ -129,8 +132,13 @@ export class AppStore {
     return this.musique
   }
 
+  private async loadRegie() {
+    if (!regieOn()) { this.regie = false; return }
+    try { this.regie = (await regieApi.me()).permissions.admin } catch { this.regie = false }
+  }
+
   private async loadSections(): Promise<boolean> {
-    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon()])
+    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon(), this.loadRegie()])
     return films || musique
   }
 

@@ -1,0 +1,109 @@
+import { expect, test, type Page, type Route } from '@playwright/test'
+
+const ORIGINE = 'http://localhost:4176'
+const ESTOMPE = 'http://estompe.test'
+const REGIE = 'http://regie.test'
+
+const cors = { 'access-control-allow-origin': ORIGINE, 'access-control-allow-credentials': 'true' }
+const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: cors })
+const preflight = (route: Route) => route.fulfill({ status: 204, headers: { ...cors, 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } })
+
+const service = (key: string, name: string, plus: Record<string, unknown> = {}) => ({ key, name, configured: true, reachable: true, version: '1.2.3', error: null, alerts: [], ...plus })
+
+function etatInitial() {
+  return {
+    services: [
+      service('radarr', 'Radarr', { alerts: [{ level: 'warning', source: 'IndexerStatusCheck', message: 'Indexeurs indisponibles : Alpha' }] }),
+      service('sonarr', 'Sonarr', { reachable: false, version: null, error: 'injoignable (connexion refusée)' }),
+      service('lidarr', 'Lidarr', { configured: false, reachable: false, version: null }),
+      service('prowlarr', 'Prowlarr'),
+      service('qbittorrent', 'qBittorrent', { version: '5.1.0', transfer: { download_speed: 3 * 1024 * 1024, upload_speed: 512 * 1024, connection: 'connected' } }),
+    ],
+    indexers: [
+      { id: 2, name: 'Bêta', enabled: true, protocol: 'torrent', privacy: 'public', failing: false, disabled_until: null, last_failure: null },
+      { id: 1, name: 'Alpha', enabled: true, protocol: 'torrent', privacy: 'private', failing: true, disabled_until: '2026-11-17T12:00:00Z', last_failure: '2026-11-17T10:00:00Z' },
+    ],
+    disks: [{ service: 'radarr', path: '/srv/medias/films', free: 250 * 1024 ** 3, accessible: true }, { service: 'sonarr', path: '/srv/medias/series', free: null, accessible: false }],
+    queue: [{ service: 'radarr', id: 7, title: 'Le.Film.du.soir.2021.1080p', level: 'warning', state: 'importBlocked', messages: ['Qualité inférieure au fichier présent'] }],
+  }
+}
+
+async function simuler(page: Page, admin: boolean) {
+  const etat = etatInitial()
+  const appels: string[] = []
+  await page.route(`${ESTOMPE}/**`, (route) => {
+    const url = new URL(route.request().url())
+    if (route.request().method() === 'OPTIONS') return preflight(route)
+    switch (url.pathname) {
+      case '/me': return json(route, { activated: true, allowed: true, admin: false, rights: ['access'], id: 'me', pseudo: 'moi', sub: 'kc-moi', blocks: [] })
+      case '/unread': return json(route, { channels: [], dms: [], counts: {} })
+      case '/me/notify-settings': return json(route, { levels: {}, types: { dm: true, mention: true, channel: true, voice: true }, preview: true, sound: true })
+      case '/avatars': case '/statuses': return json(route, {})
+      case '/ws-ticket': return json(route, { ticket: 't' })
+      default: return json(route, [])
+    }
+  })
+  await page.route(`${REGIE}/**`, (route) => {
+    const url = new URL(route.request().url())
+    const methode = route.request().method()
+    if (methode === 'OPTIONS') return preflight(route)
+    if (url.pathname !== '/me' && url.pathname !== '/admin/status') appels.push(`${methode} ${url.pathname}${url.search}`)
+    if (url.pathname === '/me') return json(route, { sub: 'kc-moi', name: 'moi', email: '', permissions: { admin } })
+    if (!admin) return json(route, { error: 'forbidden', message: 'permission regie:admin requise' }, 403)
+    if (url.pathname === '/admin/status') return json(route, etat)
+    if (methode === 'POST' && url.pathname === '/admin/indexers/1/test') return json(route, { ok: false, message: 'Connexion refusée par le site' })
+    if (methode === 'POST' && url.pathname === '/admin/indexers/2/test') return json(route, { ok: true, message: null })
+    if (methode === 'DELETE' && url.pathname === '/admin/queue/radarr/7') { etat.queue = []; return route.fulfill({ status: 204, headers: cors }) }
+    return json(route, { error: 'not_found', message: 'introuvable' }, 404)
+  })
+  return { appels }
+}
+
+test('Sans regie:admin : aucune entrée Régie, et #/regie ramène à l’accueil', async ({ page }) => {
+  await simuler(page, false)
+  await page.goto('/')
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Régie/ })).toHaveCount(0)
+  await page.goto('/#/regie')
+  await expect(page.getByRole('heading', { name: 'Régie', level: 1 })).toHaveCount(0)
+  await expect(page).not.toHaveURL(/#\/regie/)
+})
+
+test('Avec regie:admin : santé des services, indexeurs, disques et téléchargements bloqués', async ({ page }) => {
+  const s = await simuler(page, true)
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Régie, administration des médias' }).click()
+  await expect(page.getByRole('heading', { name: 'Régie', level: 1 })).toBeVisible()
+  await expect(page.getByText('5 à traiter')).toBeVisible()
+
+  const services = page.locator('section', { has: page.getByRole('heading', { name: 'Services' }) }).getByRole('listitem')
+  await expect(services).toHaveCount(5)
+  await expect(services.nth(0)).toContainText('Radarr')
+  await expect(services.nth(0)).toContainText('Indexeurs indisponibles : Alpha')
+  await expect(services.nth(0)).toContainText('Avertissement')
+  await expect(services.nth(1)).toContainText('Injoignable')
+  await expect(services.nth(2)).toContainText('Non configuré')
+  await expect(services.nth(3)).toContainText('OK')
+  await expect(services.nth(4)).toContainText('Réception 3 Mo/s · envoi 512 Ko/s')
+
+  const indexeurs = page.locator('section', { has: page.getByRole('heading', { name: 'Indexeurs' }) }).getByRole('listitem')
+  await expect(indexeurs.nth(0)).toContainText('Alpha')
+  await expect(indexeurs.nth(0)).toContainText('En panne')
+  await expect(indexeurs.nth(1)).toContainText('Bêta')
+  await indexeurs.nth(0).getByRole('button', { name: 'Tester' }).click()
+  await expect(page.getByText('« Alpha » : Connexion refusée par le site')).toBeVisible()
+  await indexeurs.nth(1).getByRole('button', { name: 'Tester' }).click()
+  await expect(page.getByText('« Bêta » répond.')).toBeVisible()
+
+  const disques = page.locator('section', { has: page.getByRole('heading', { name: 'Disques' }) }).getByRole('listitem')
+  await expect(disques.nth(0)).toContainText('250 Go libres')
+  await expect(disques.nth(1)).toContainText('Inaccessible')
+
+  const bloques = page.locator('section', { has: page.getByRole('heading', { name: 'Téléchargements bloqués' }) })
+  await expect(bloques.getByRole('listitem')).toContainText('Qualité inférieure au fichier présent')
+  await bloques.getByRole('button', { name: 'Autre version' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Chercher une autre version' }).click()
+  await expect(bloques.getByText('Aucun téléchargement bloqué')).toBeVisible()
+  await expect(page.getByText('4 à traiter')).toBeVisible()
+  expect(s.appels).toEqual(['POST /admin/indexers/1/test', 'POST /admin/indexers/2/test', 'DELETE /admin/queue/radarr/7?retry=true'])
+})

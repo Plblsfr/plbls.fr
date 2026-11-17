@@ -64,6 +64,9 @@ test-entracte:
 test-sillon:
     cargo test --locked -p sillon
 
+test-regie:
+    cargo test --locked -p regie
+
 # Reconstruit packages/ui/dist (non versionné)
 build-ui:
     npm ci && npm run build --workspace packages/ui
@@ -120,3 +123,10 @@ sillon-dev-run:
 
 sillon-image:
     docker build -f api/sillon/Dockerfile -t sillon:local .
+
+# Régie : backend sur 127.0.0.1:8094, demande le gateway et aegis (AEGIS_URL=http://127.0.0.1:8091)
+regie-dev-run:
+    set -a && . deploy/dev.env && set +a && AEGIS_URL="${AEGIS_URL:-http://127.0.0.1:8091}" cargo run -p regie
+
+regie-image:
+    docker build -f api/regie/Dockerfile -t regie:local .

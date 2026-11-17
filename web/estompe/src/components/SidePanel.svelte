@@ -48,6 +48,7 @@
   import { channelCreate, openNewChannel } from '../lib/channel-create.svelte'
   import FilmsNav from '../sections/entracte/FilmsNav.svelte'
   import SillonNav from '../sections/sillon/SillonNav.svelte'
+  import RegieNav from '../sections/regie/RegieNav.svelte'
   import SillonMini from '../sections/sillon/SillonMini.svelte'
   import { lecteur } from '../sections/sillon/sillon.svelte'
   import { videos } from '../blocks/videos/videos.svelte'
@@ -141,6 +142,8 @@
     <FilmsNav />
   {:else if route.name === 'musique' && app.musique}
     <SillonNav />
+  {:else if route.name === 'regie' && app.regie}
+    <RegieNav />
   {:else if space?.visible()}
     <space.nav />
   {:else if detail}
