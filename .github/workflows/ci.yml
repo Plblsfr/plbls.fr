@@ -93,12 +93,13 @@ jobs:
       - name: Audit des dépendances d'Estompe
         if: contains(needs.changements.outputs.espaces, 'web/estompe')
         run: npm audit --omit=dev --audit-level=high --workspace web/estompe
-      - name: Sections de l'app selon les permissions (e2e Playwright, API d'Estompe, d'Entracte et de Sillon simulées)
+      - name: Sections de l'app selon les permissions (e2e Playwright, API d'Estompe, d'Entracte, de Sillon et de Régie simulées)
         if: contains(needs.changements.outputs.espaces, 'web/estompe')
         run: |
           npm exec --workspace web/estompe -- playwright install --with-deps chromium
           npm run e2e:entracte --workspace web/estompe
           npm run e2e:sillon --workspace web/estompe
+          npm run e2e:regie --workspace web/estompe
       - name: Types, tests et build des projets touchés
         if: needs.changements.outputs.espaces != ''
         env:
@@ -169,7 +170,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.regie_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -205,7 +206,7 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
       - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP)
-        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true'
+        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.regie_server == 'true'
         run: cargo test --locked -p commun
       - name: Tests d'aegis (PostgreSQL 17, Redis)
         if: needs.changements.outputs.aegis_server == 'true'
@@ -231,6 +232,9 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked -p sillon
+      - name: Tests de Régie (services simulés)
+        if: needs.changements.outputs.regie_server == 'true'
+        run: cargo test --locked -p regie
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -386,6 +390,31 @@ jobs:
       - if: always()
         run: docker rm -f sillon-pr-api-${{ github.run_id }} sillon-pr-pg-${{ github.run_id }}
 
+  regie-image:
+    needs: changements
+    if: needs.changements.outputs.image_regie == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: api/regie/Dockerfile
+          push: false
+          load: true
+          tags: regie:pr-${{ github.run_id }}
+          cache-from: type=gha,scope=regie
+      - name: L'image démarre et répond sur /healthz
+        run: |
+          docker run -d --name regie-pr-api-${{ github.run_id }} -p 127.0.0.1:18094:8080 --env-file deploy/regie/.env.example regie:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until curl -fsS http://127.0.0.1:18094/healthz; do sleep 1; done' \
+            || { docker logs regie-pr-api-${{ github.run_id }}; exit 1; }
+      - if: always()
+        run: docker rm -f regie-pr-api-${{ github.run_id }}
+
   image-aegis:
     needs: changements
     if: needs.changements.outputs.image_aegis == 'true'
@@ -430,7 +459,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, regie-image, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

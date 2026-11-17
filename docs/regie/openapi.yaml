@@ -1,0 +1,396 @@
+openapi: 3.1.0
+info:
+  title: Régie
+  version: 0.1.0
+  description: |
+    Administration des médias de plbls.fr : état de Radarr, Sonarr, Lidarr, Prowlarr et qBittorrent.
+    Ce document suit le code : chaque route de `api/regie/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
+
+    Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
+    vérifié par `GET /auth/me` du gateway. Droits : permission aegis `regie:admin`, fermée par défaut.
+    Requêtes modifiantes avec cookie : `Origin` dans `REGIE_ALLOWED_ORIGINS`, sinon 403 `bad_origin`.
+    Erreurs : `{"error": "<code>", "message": "…"}`. Aucune réponse ne contient d'URL ni de clé d'un service.
+servers:
+  - url: https://regie-api.plbls.fr
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: __Secure-plbls_sid
+    bearer:
+      type: http
+      scheme: bearer
+  responses:
+    "401":
+      description: "`unauthorized` : connexion requise"
+    "403":
+      description: "`forbidden` : permission manquante (le message la nomme)"
+    "502":
+      description: "`gateway_unavailable` : service de connexion injoignable ; `not_configured` : service non configuré ; `upstream` : service injoignable ou en erreur"
+    "503":
+      description: "`aegis_unavailable` : service de droits injoignable"
+security:
+  - session: []
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      summary: "Santé du processus"
+      security: []
+      responses:
+        "200": { description: "`{status, version}`" }
+  /me:
+    get:
+      summary: "Identité et permissions (aucune permission exigée)"
+      description: "aegis injoignable : `admin` faux."
+      responses:
+        "200": { description: "`{sub, name, email, permissions: {admin}}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "502": { $ref: "#/components/responses/502" }
+  /admin/status:
+    get:
+      summary: "État des services, indexeurs, dossiers et téléchargements bloqués (`regie:admin`)"
+      description: |
+        Les cinq services sont interrogés en parallèle ; un service injoignable ou non configuré n'empêche pas la réponse.
+        - `services` : `{key, name, configured, reachable, version, error, alerts: [{level, source, message}]}` pour `radarr`,
+          `sonarr`, `lidarr`, `prowlarr`, `qbittorrent` (ce dernier ajoute `transfer: {download_speed, upload_speed, connection}`, en octets par seconde).
+          `level` : `notice`, `warning` ou `error`. `error` : première lecture en échec.
+        - `indexers` (Prowlarr) : `{id, name, enabled, protocol, privacy, failing, disabled_until, last_failure}`.
+        - `disks` (dossiers racine de Radarr, Sonarr, Lidarr) : `{service, path, free, accessible}`, `free` en octets.
+        - `queue` (éléments en avertissement ou en erreur des files de Radarr, Sonarr, Lidarr) : `{service, id, title, level, state, messages}`.
+      responses:
+        "200": { description: "`{services, indexers, disks, queue}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/indexers/{id}/test:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      summary: "Tester un indexeur de Prowlarr (`regie:admin`)"
+      responses:
+        "200": { description: "`{ok, message}` : `message` porte la raison de Prowlarr quand `ok` est faux" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : indexeur inconnu" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/queue/{service}/{id}:
+    parameters:
+      - { name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    delete:
+      summary: "Retirer un élément de la file d'un service, et du client de téléchargement (`regie:admin`)"
+      parameters:
+        - name: retry
+          in: query
+          schema: { type: boolean }
+          description: "`true` : la release est mise en liste de blocage et le service en cherche une autre"
+      responses:
+        "204": { description: "retiré" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : service ou élément inconnu" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads:
+    get:
+      summary: "Téléchargements de qBittorrent, suivis en direct (`regie:admin`)"
+      description: |
+        Sans `since` : l'instantané courant. Avec `since=<version>` : la réponse attend qu'il change (20 s au plus), puis le rend ;
+        l'app enchaîne les appels avec la dernière `version` reçue. qBittorrent est relu toutes les `REGIE_SUIVI_MS` tant qu'un appel attend.
+        - `torrents` (plus récents d'abord) : `{hash, name, state, progress, size, download_speed, upload_speed, eta, ratio, category, tags,
+          added_at, seeds, peers, download_limit, upload_limit, title}` ; `state` est celui de qBittorrent ; `title` : `{service, title, detail}`
+          quand le torrent est dans la file de Radarr, Sonarr ou Lidarr, sinon `null`.
+        - `categories`, `tags` : ceux de qBittorrent.
+        - `transfer` : `{download_speed, upload_speed, download_limit, upload_limit, alternative, free_space, connection}`.
+        - `error` : raison quand qBittorrent ne répond pas (le dernier instantané reste servi).
+      parameters:
+        - { name: since, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: "`{version, torrents, categories, tags, transfer, error}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/pause:
+    post:
+      summary: "Suspendre des torrents (`regie:admin`)"
+      description: "Corps : `{hashes}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/resume:
+    post:
+      summary: "Reprendre des torrents (`regie:admin`)"
+      description: "Corps : `{hashes}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/recheck:
+    post:
+      summary: "Revérifier les fichiers de torrents (`regie:admin`)"
+      description: "Corps : `{hashes}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/delete:
+    post:
+      summary: "Supprimer des torrents, avec ou sans leurs fichiers (`regie:admin`)"
+      description: "Corps : `{hashes, delete_files}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/category:
+    post:
+      summary: "Changer la catégorie de torrents (catégorie existante, vide pour la retirer) (`regie:admin`)"
+      description: "Corps : `{hashes, category}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/tags:
+    post:
+      summary: "Ajouter et retirer des tags (`regie:admin`)"
+      description: "Corps : `{hashes, add, remove}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/limits:
+    post:
+      summary: "Limiter le débit de torrents, en octets par seconde (0 = sans limite) (`regie:admin`)"
+      description: "Corps : `{hashes, download, upload}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/transfer:
+    put:
+      summary: "Limites globales de débit et mode alternatif (`regie:admin`)"
+      description: "Corps : `{download, upload, alternative}`, débits en octets par seconde (0 = sans limite)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/{hash}:
+    parameters:
+      - { name: hash, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Fichiers d'un torrent et titre auquel il est rattaché (`regie:admin`)"
+      description: "`title` vient de la file, sinon de l'historique de Radarr, Sonarr ou Lidarr."
+      responses:
+        "200": { description: "`{hash, files: [{index, name, size, progress, priority}], title}`" }
+        "404": { description: "`not_found` : torrent inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/{hash}/files:
+    parameters:
+      - { name: hash, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Priorité de fichiers d'un torrent (`regie:admin`)"
+      description: "Corps : `{ids, priority}` ; `priority` : 0 (ignoré), 1 (normale), 6 (haute), 7 (maximale)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid`" }
+        "404": { description: "`not_found` : torrent inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits:
+    get:
+      summary: "Dépôts, plus récents d'abord (`regie:admin`)"
+      description: |
+        Un dépôt : `{id, hash, name, state, created_at, tracker, private, size, received, files: [{index, path, size, received, valid}], imported, error}`.
+        `state` : `upload` (fichiers attendus), `checking` (vérification par qBittorrent), `seeding` (vérifié, en partage),
+        `mismatch` (un fichier ne correspond pas : `valid` donne la part valide de chacun, de 0 à 1).
+        `hash` : empreinte v1 du torrent. `tracker` : nom d'hôte seul. `imported` : services qui ont reçu une demande d'import.
+      responses:
+        "200": { description: "`{items, used, limit}` : tailles annoncées cumulées et plafond `REGIE_DEPOTS_GO`, en octets" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Créer un dépôt à partir d'un fichier .torrent (`regie:admin`)"
+      description: |
+        Corps : le fichier .torrent brut (10 Mo au plus). Un torrent déjà déposé (même empreinte) rend le dépôt existant (200), pour reprendre un envoi.
+        Refusés : torrent illisible, sans empreintes v1, nom ou chemin de fichier dangereux, plus de 5000 fichiers.
+      requestBody:
+        content:
+          application/x-bittorrent: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: "dépôt existant" }
+        "201": { description: "dépôt créé" }
+        "400": { description: "`invalid` : torrent refusé (le message dit pourquoi)" }
+        "409": { description: "`storage_full` : plafond du dossier des dépôts dépassé" }
+        "413": { description: "fichier .torrent trop gros" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
+    get:
+      summary: "Un dépôt (`regie:admin`)"
+      parameters:
+        - name: wait
+          in: query
+          schema: { type: string }
+          description: "état connu de l'app : la réponse attend que l'état en diffère (20 s au plus)"
+      responses:
+        "200": { description: "le dépôt" }
+        "404": { description: "`not_found`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    delete:
+      summary: "Supprimer un dépôt et ses fichiers ; le torrent est retiré de qBittorrent (`regie:admin`)"
+      description: "Les fichiers importés dans une bibliothèque par lien physique y restent."
+      responses:
+        "204": { description: "supprimé" }
+        "404": { description: "`not_found`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}/files/{index}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
+      - { name: index, in: path, required: true, schema: { type: integer } }
+    put:
+      summary: "Envoyer un morceau d'un fichier du dépôt (`regie:admin`)"
+      description: |
+        Corps : les octets du morceau (32 Mo au plus), écrits à `offset`, qui doit être la taille déjà reçue. Sinon 409 `bad_offset` avec
+        `received`, d'où reprendre. `reset=true` avec `offset=0` remplace le fichier depuis le début.
+        Accepté dans les états `upload` et `mismatch`.
+      parameters:
+        - { name: offset, in: query, required: true, schema: { type: integer } }
+        - { name: reset, in: query, schema: { type: boolean } }
+      requestBody:
+        content:
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: "`{received}`" }
+        "400": { description: "`invalid` : `offset` absent ou morceau au-delà de la taille annoncée" }
+        "404": { description: "`not_found` : dépôt ou fichier inconnu" }
+        "409": { description: "`bad_offset` (avec `received`) ou `bad_state`" }
+        "413": { description: "morceau trop gros" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}/seed:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
+    post:
+      summary: "Vérifier le dépôt et le mettre en partage (`regie:admin`)"
+      description: |
+        Tous les fichiers doivent être reçus en entier. Le torrent est ajouté à qBittorrent à l'arrêt, sur le dossier du dépôt, et vérifié.
+        À 100 %, il démarre (`seeding`) ; sinon il reste à l'arrêt (`mismatch`). Depuis `mismatch`, relance la vérification.
+      responses:
+        "200": { description: "le dépôt, état `checking`" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`incomplete` : fichiers manquants ; `bad_state` : déjà en vérification ou en partage" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}/import:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
+    get:
+      summary: "Ce que Radarr, Sonarr ou Lidarr reconnaît dans le dépôt (`regie:admin`)"
+      parameters:
+        - { name: service, in: query, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+      responses:
+        "200": { description: "`{service, items: [{path, size, title, recognized, reasons}]}` ; `title` : `{service, title, detail}` ou `null`" }
+        "400": { description: "`invalid` : service inconnu" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`bad_state` : dépôt pas encore vérifié" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Importer les fichiers reconnus dans la bibliothèque, par lien physique (`regie:admin`)"
+      description: |
+        Corps : `{service}` ; pour `radarr`, `movie_id` rattache tous les fichiers du dépôt au film choisi (`GET /admin/library/radarr`).
+        L'import est une commande du service (`ManualImport`, mode copie) : il se termine en tâche de fond chez lui.
+      responses:
+        "200": { description: "`{service, files}` : nombre de fichiers confiés au service" }
+        "400": { description: "`invalid`" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`bad_state` ; `nothing_to_import` : aucun fichier reconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/library/{service}:
+    parameters:
+      - { name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+    get:
+      summary: "Chercher un film, une série ou un album dans une bibliothèque (`regie:admin`)"
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "mots cherchés dans le titre (et l'artiste) ; vide : aucun résultat" }
+      responses:
+        "200": { description: "`{items: [{id, title, detail, year}]}`, 30 au plus" }
+        "404": { description: "`not_found` : service inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/library/{service}/{id}/sheet:
+    parameters:
+      - { name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+      - { name: id, in: path, required: true, schema: { type: integer }, description: "identifiant du film, de la série ou de l'album (`GET /admin/library/{service}`)" }
+    get:
+      summary: "Fiche technique d'un titre et de ses fichiers (`regie:admin`)"
+      description: |
+        Ce que le service sait du titre et de ses fichiers, sans lire le disque :
+        `{service, id, title, original_title, artist, year, runtime, genres, ids: {tmdb, imdb, tvdb, musicbrainz}, files}`.
+        Un fichier : `{name, group, size, quality, release_group, scene_name, edition, languages, video: {codec, resolution, bit_depth,
+        dynamic_range, fps, bitrate, scan}, audio: {codec, channels, languages, bitrate, streams, sample_rate, bits}, subtitles, duration}`.
+        `name` est le nom du fichier seul, jamais son chemin ; `group` : la saison d'un épisode. Débits en bits par seconde.
+      responses:
+        "200": { description: "la fiche" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : service ou titre inconnu" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }

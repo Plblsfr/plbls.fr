@@ -5,7 +5,7 @@ name: livraison
 on:
   push:
     branches: [main]
-    tags: ["aegis-v*", "entracte-v*", "sillon-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+    tags: ["aegis-v*", "entracte-v*", "sillon-v*", "regie-v*", "security-v*", "ui-v*", "estompe-api-v*"]
   workflow_dispatch:
 
 permissions:
@@ -66,6 +66,20 @@ jobs:
       context: .
       dockerfile: api/sillon/Dockerfile
       dir: api/sillon
+    secrets: inherit
+
+  image-regie:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_regie == 'true') || startsWith(github.ref, 'refs/tags/regie-v')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: regie
+      name: regie
+      context: .
+      dockerfile: api/regie/Dockerfile
+      dir: api/regie
     secrets: inherit
 
   image-security:

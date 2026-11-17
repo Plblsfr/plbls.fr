@@ -69,6 +69,17 @@ services:
     expose: ["8080"]
     networks: [default, postgres-net, medias]
 
+  regie-api:
+    image: ghcr.io/plblsfr/regie:${REGIE_TAG:-latest}
+    restart: unless-stopped
+    <<: [*durci, *lecture-seule]
+    user: "65532:${REGIE_GID:-65532}"
+    env_file: .env
+    volumes:
+      - ${REGIE_DEPOTS:-/srv/medias/depots}:${REGIE_DEPOTS:-/srv/medias/depots}
+    expose: ["8080"]
+    networks: [default, medias]
+
   estompe-web:
     image: ghcr.io/plblsfr/estompe-web:${ESTOMPE_WEB_TAG:-latest}
     restart: unless-stopped
@@ -80,6 +91,7 @@ services:
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-}
       ENTRACTE_PUBLIC_URL: ${ENTRACTE_PUBLIC_URL:-}
       SILLON_PUBLIC_URL: ${SILLON_PUBLIC_URL:-}
+      REGIE_PUBLIC_URL: ${REGIE_PUBLIC_URL:-}
     expose: ["8080"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]

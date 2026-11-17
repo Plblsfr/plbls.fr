@@ -6,6 +6,7 @@ members = [
   "api/aegis",
   "api/entracte",
   "api/sillon",
+  "api/regie",
   "api/estompe/estompe-api",
   "api/estompe/core",
   "api/estompe/block",

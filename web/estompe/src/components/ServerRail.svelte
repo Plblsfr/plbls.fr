@@ -83,6 +83,9 @@
     {#if app.musique}
       <a class="rail-tool" class:active={route.name === 'musique'} href={hrefs.musique()} title="Sillon · musique" aria-label="Sillon, musique" aria-current={route.name === 'musique' ? 'page' : undefined}><Icon name="note" size={22} /></a>
     {/if}
+    {#if app.regie}
+      <a class="rail-tool" class:active={route.name === 'regie'} href={hrefs.regie()} title="Régie · administration des médias" aria-label="Régie, administration des médias" aria-current={route.name === 'regie' ? 'page' : undefined}><Icon name="curseurs" size={22} /></a>
+    {/if}
     {#each platform.spaces.filter((s) => s.visible()) as s (s.id)}
       <a class="rail-tool" class:active={route.name === 'space' && route.space === s.id} href={hrefs.space(s.id)} title={s.title} aria-label={s.title} aria-current={route.name === 'space' && route.space === s.id ? 'page' : undefined}><Icon name={s.icon} size={22} /></a>
     {/each}

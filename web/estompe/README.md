@@ -40,6 +40,11 @@ système de Chromium doivent être présentes).
   d'Entracte (`entracteUrl` : `ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps) ; sans elle, ni section Entracte ni
   salon cinéma. La bibliothèque, la fiche et le lecteur (`Film*.svelte`, `films.ts`) servent aussi au salon cinéma.
   Sans messagerie, la phase `sections` (`views/SectionsShell.svelte`) affiche Entracte, Sillon ou les deux, sans WebSocket.
+- `src/sections/regie` : section Régie (administration des médias, API à part, [`docs/regie`](../../docs/regie/README.md)), affichée dans la
+  messagerie seulement, selon `GET /me` de Régie (`regie:admin`) ; `regieUrl` : `REGIE_PUBLIC_URL` de l'image, `VITE_REGIE_URL` au build des
+  apps ; sans elle, pas de section. `regie.ts` : client de l'API et calculs purs (état d'un service, tri des indexeurs, tailles et débits, états et filtre des torrents) ;
+  `regie.svelte.ts` : `Suivi`, qui enchaîne les lectures de `GET /admin/downloads?since=` tant que la page des téléchargements est affichée, et `envoyerFichier`, l'envoi d'un fichier de dépôt par morceaux avec reprise ;
+  `matchFiles` (`regie.ts`) associe les fichiers choisis sur l'appareil à ceux du torrent, `sheetText` rédige la fiche technique à copier.
 - `src/sections/sillon` : section Sillon (musique, API à part, [`docs/sillon`](../../docs/sillon/README.md)), affichée selon `GET /me` de
   Sillon (`sillon:access`) comme Entracte ; `sillonUrl` : `SILLON_PUBLIC_URL` de l'image, `VITE_SILLON_URL` au build des apps ; sans elle,
   pas de section. `sillon.ts` : client de l'API et calculs purs (formats annoncés d'après `canPlayType`, gain, délai de l'encodeur) ;
@@ -62,8 +67,8 @@ système de Chromium doivent être présentes).
   (`FilmPlayer`) ou un salon vocal rejoint (`voice.join`) l'annonce, et Sillon se met en pause.
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
-  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
-  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, gateway) : un fichier vidéo ou un flux HLS
+  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
+  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, Régie, gateway) : un fichier vidéo ou un flux HLS
   hébergé ailleurs ne se lit pas dans « Regarder ensemble » ni dans le salon Vidéos. Les apps Windows et Android ont la même règle
   (`tauri.conf.json`) et n'ouvrent dans le navigateur système que les liens `https:`, `mailto:` et `tel:`. Les en-têtes de sécurité
   (`estompe-headers.inc`) s'appliquent aussi à `/updates/` et `/healthz` ; HSTS relève du proxy TLS, cette image ne le pose pas.
@@ -77,14 +82,15 @@ puis `PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3111/ npm run e2e`.
 
 `npm run e2e:entracte` (`playwright.entracte.config.ts`, `e2e/entracte.spec.ts`) construit le front avec des API fictives et les simule
 dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les deux). `npm run e2e:sillon` (`playwright.sillon.config.ts`,
-`e2e/sillon.spec.ts`) fait de même pour Sillon, avec des pistes WAV générées dans le test (le Chromium de Playwright ne lit ni AAC ni MP3 de façon fiable). `CHROMIUM_PATH` désigne un Chromium déjà installé
+`e2e/sillon.spec.ts`) fait de même pour Sillon, avec des pistes WAV générées dans le test (le Chromium de Playwright ne lit ni AAC ni MP3 de façon fiable).
+`npm run e2e:regie` (`playwright.regie.config.ts`, `e2e/regie.spec.ts`) vérifie la section Régie avec et sans `regie:admin`. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
 
 ## Application Windows
 
 Nécessite Rust et, sous Windows, WebView2 (présent sur Windows 11). Configuration figée à la compilation
-(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL` et `SILLON_PUBLIC_URL`
-(vide = pas de section Entracte ou Sillon). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL` ou `VITE_SILLON_URL` de l'environnement l'emporte.
+(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL` et `REGIE_PUBLIC_URL`
+(vide = pas de section Entracte, Sillon ou Régie). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL`, `VITE_SILLON_URL` ou `VITE_REGIE_URL` de l'environnement l'emporte.
 
 ```sh
 cd ../../apps/estompe/windows && PATH=../../../node_modules/.bin:$PATH tauri build   # installeur NSIS dans apps/estompe/windows/src-tauri/target/release/bundle/nsis (le CLI Tauri est installé par `npm ci` à la racine du dépôt)

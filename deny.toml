@@ -7,6 +7,9 @@ ignore = [
   # astral-tokio-tar : abandonné (publié le 3 nov. 2026), aucune version corrigée. Simple avis « non maintenu », pas de faille.
   # Tiré uniquement par testcontainers (bases PostgreSQL des tests). À retirer quand testcontainers change de dépendance.
   { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar non maintenu, amené par testcontainers (tests seulement)" },
+  # chrono : déclaré non maintenu (toutes versions, aucune version corrigée). Simple avis « non maintenu », pas de faille.
+  # Dépendance directe d'aegis, d'entracte, de sillon et d'estompe-core, et de sqlx. À retirer quand chrono est remplacé (jiff ou time).
+  { id = "RUSTSEC-2026-0543", reason = "chrono non maintenu, sans version corrigée ; dépendance directe et de sqlx" },
 ]
 
 [licenses]
