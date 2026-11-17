@@ -95,3 +95,138 @@ paths:
         "404": { description: "`not_found` : service ou élément inconnu" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }
+  /admin/downloads:
+    get:
+      summary: "Téléchargements de qBittorrent, suivis en direct (`regie:admin`)"
+      description: |
+        Sans `since` : l'instantané courant. Avec `since=<version>` : la réponse attend qu'il change (20 s au plus), puis le rend ;
+        l'app enchaîne les appels avec la dernière `version` reçue. qBittorrent est relu toutes les `REGIE_SUIVI_MS` tant qu'un appel attend.
+        - `torrents` (plus récents d'abord) : `{hash, name, state, progress, size, download_speed, upload_speed, eta, ratio, category, tags,
+          added_at, seeds, peers, download_limit, upload_limit, title}` ; `state` est celui de qBittorrent ; `title` : `{service, title, detail}`
+          quand le torrent est dans la file de Radarr, Sonarr ou Lidarr, sinon `null`.
+        - `categories`, `tags` : ceux de qBittorrent.
+        - `transfer` : `{download_speed, upload_speed, download_limit, upload_limit, alternative, free_space, connection}`.
+        - `error` : raison quand qBittorrent ne répond pas (le dernier instantané reste servi).
+      parameters:
+        - { name: since, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: "`{version, torrents, categories, tags, transfer, error}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/pause:
+    post:
+      summary: "Suspendre des torrents (`regie:admin`)"
+      description: "Corps : `{hashes}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/resume:
+    post:
+      summary: "Reprendre des torrents (`regie:admin`)"
+      description: "Corps : `{hashes}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/recheck:
+    post:
+      summary: "Revérifier les fichiers de torrents (`regie:admin`)"
+      description: "Corps : `{hashes}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/delete:
+    post:
+      summary: "Supprimer des torrents, avec ou sans leurs fichiers (`regie:admin`)"
+      description: "Corps : `{hashes, delete_files}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/category:
+    post:
+      summary: "Changer la catégorie de torrents (catégorie existante, vide pour la retirer) (`regie:admin`)"
+      description: "Corps : `{hashes, category}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/tags:
+    post:
+      summary: "Ajouter et retirer des tags (`regie:admin`)"
+      description: "Corps : `{hashes, add, remove}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/limits:
+    post:
+      summary: "Limiter le débit de torrents, en octets par seconde (0 = sans limite) (`regie:admin`)"
+      description: "Corps : `{hashes, download, upload}`. `hashes` : 1 à 200 identifiants de torrent (40 ou 64 chiffres hexadécimaux)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid` : corps refusé, rien n'est envoyé à qBittorrent" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/transfer:
+    put:
+      summary: "Limites globales de débit et mode alternatif (`regie:admin`)"
+      description: "Corps : `{download, upload, alternative}`, débits en octets par seconde (0 = sans limite)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/{hash}:
+    parameters:
+      - { name: hash, in: path, required: true, schema: { type: string } }
+    get:
+      summary: "Fichiers d'un torrent et titre auquel il est rattaché (`regie:admin`)"
+      description: "`title` vient de la file, sinon de l'historique de Radarr, Sonarr ou Lidarr."
+      responses:
+        "200": { description: "`{hash, files: [{index, name, size, progress, priority}], title}`" }
+        "404": { description: "`not_found` : torrent inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/downloads/{hash}/files:
+    parameters:
+      - { name: hash, in: path, required: true, schema: { type: string } }
+    post:
+      summary: "Priorité de fichiers d'un torrent (`regie:admin`)"
+      description: "Corps : `{ids, priority}` ; `priority` : 0 (ignoré), 1 (normale), 6 (haute), 7 (maximale)."
+      responses:
+        "204": { description: "fait" }
+        "400": { description: "`invalid`" }
+        "404": { description: "`not_found` : torrent inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }

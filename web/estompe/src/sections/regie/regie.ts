@@ -85,11 +85,122 @@ export function problems(s: RegieStatus): number {
     + s.queue.length
 }
 
+export interface TorrentTitle { service: ServiceKey; title: string; detail: string | null }
+export interface Torrent {
+  hash: string
+  name: string
+  state: string
+  progress: number
+  size: number
+  download_speed: number
+  upload_speed: number
+  eta: number
+  ratio: number
+  category: string
+  tags: string[]
+  added_at: number
+  seeds: number
+  peers: number
+  download_limit: number
+  upload_limit: number
+  title: TorrentTitle | null
+}
+export interface GlobalTransfer { download_speed: number; upload_speed: number; download_limit: number; upload_limit: number; alternative: boolean; free_space: number | null; connection: string }
+export interface Downloads { version: number; torrents?: Torrent[]; categories?: string[]; tags?: string[]; transfer?: GlobalTransfer; error: string | null }
+export interface TorrentFile { index: number; name: string; size: number; progress: number; priority: number }
+export interface TorrentDetail { hash: string; files: TorrentFile[]; title: TorrentTitle | null }
+
+export type TorrentGroup = 'downloading' | 'seeding' | 'stopped' | 'checking' | 'error'
+export const GROUPS: { id: TorrentGroup; label: string }[] = [
+  { id: 'downloading', label: 'En cours' },
+  { id: 'seeding', label: 'En partage' },
+  { id: 'stopped', label: 'Suspendus' },
+  { id: 'checking', label: 'Vérification' },
+  { id: 'error', label: 'En erreur' },
+]
+
+/** État de qBittorrent (4 et 5 : `paused*` ou `stopped*`) ramené à un groupe, un libellé et un ton. */
+export function torrentState(state: string): { group: TorrentGroup; label: string; tone: Tone } {
+  switch (state) {
+    case 'error': return { group: 'error', label: 'En erreur', tone: 'dgr' }
+    case 'missingFiles': return { group: 'error', label: 'Fichiers manquants', tone: 'dgr' }
+    case 'pausedDL': case 'stoppedDL': return { group: 'stopped', label: 'Suspendu', tone: '' }
+    case 'pausedUP': case 'stoppedUP': return { group: 'stopped', label: 'Terminé, suspendu', tone: '' }
+    case 'checkingDL': case 'checkingUP': case 'checkingResumeData': return { group: 'checking', label: 'Vérification', tone: 'att' }
+    case 'moving': return { group: 'checking', label: 'Déplacement', tone: 'att' }
+    case 'allocating': return { group: 'checking', label: 'Allocation', tone: 'att' }
+    case 'uploading': case 'forcedUP': return { group: 'seeding', label: 'Envoi', tone: 'ok' }
+    case 'stalledUP': case 'queuedUP': return { group: 'seeding', label: 'En partage', tone: 'ok' }
+    case 'metaDL': case 'forcedMetaDL': return { group: 'downloading', label: 'Métadonnées', tone: 'att' }
+    case 'stalledDL': return { group: 'downloading', label: 'En attente de sources', tone: 'att' }
+    case 'queuedDL': return { group: 'downloading', label: 'En file', tone: '' }
+    case 'downloading': case 'forcedDL': return { group: 'downloading', label: 'Réception', tone: 'ok' }
+    default: return { group: 'downloading', label: state || 'Inconnu', tone: '' }
+  }
+}
+export const isStopped = (t: Torrent) => torrentState(t.state).group === 'stopped'
+
+export function torrentLabel(t: Torrent): { title: string; sub: string } {
+  if (!t.title) return { title: t.name, sub: '' }
+  return { title: [t.title.title, t.title.detail].filter(Boolean).join(' · '), sub: `${serviceName(t.title.service)} · ${t.name}` }
+}
+
+/** Filtre par groupe (vide = tous) et par texte, sur le nom du torrent, le titre rattaché, la catégorie et les tags. */
+export function filterTorrents(items: Torrent[], group: TorrentGroup | '', query: string): Torrent[] {
+  const mots = query.toLocaleLowerCase('fr').split(/\s+/).filter(Boolean)
+  return items.filter((t) => {
+    if (group && torrentState(t.state).group !== group) return false
+    if (!mots.length) return true
+    const texte = [t.name, t.title?.title, t.title?.detail, t.category, ...t.tags].filter(Boolean).join(' ').toLocaleLowerCase('fr')
+    return mots.every((m) => texte.includes(m))
+  })
+}
+
+export function groupCounts(items: Torrent[]): Record<TorrentGroup, number> {
+  const n: Record<TorrentGroup, number> = { downloading: 0, seeding: 0, stopped: 0, checking: 0, error: 0 }
+  for (const t of items) n[torrentState(t.state).group]++
+  return n
+}
+
+const ETA_INFINI = 8_640_000
+export function eta(secondes: number): string {
+  if (!Number.isFinite(secondes) || secondes <= 0 || secondes >= ETA_INFINI) return ''
+  if (secondes < 60) return '< 1 min'
+  const m = Math.round(secondes / 60)
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} h ${String(m % 60).padStart(2, '0')}`
+  return `${Math.floor(h / 24)} j ${h % 24} h`
+}
+
+export const percent = (p: number) => `${(Math.floor(Math.min(Math.max(p, 0), 1) * 1000) / 10).toLocaleString('fr-FR')} %`
+export const PRIORITIES: { value: number; label: string }[] = [{ value: 0, label: 'Ignoré' }, { value: 1, label: 'Normale' }, { value: 6, label: 'Haute' }, { value: 7, label: 'Maximale' }]
+/** Limite saisie en Ko/s (vide ou 0 = sans limite) rendue en octets par seconde ; `null` si la saisie n'est pas un nombre positif. */
+export function limitBytes(saisie: string): number | null {
+  const t = saisie.trim().replace(',', '.')
+  if (!t) return 0
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 && n <= 9_000_000 ? Math.round(n * 1024) : null
+}
+export const limitInput = (octets: number) => (octets > 0 ? String(Math.round(octets / 1024)) : '')
+
 const get = <T>(p: string) => requestAt<T>(REGIE_URL, 'GET', p)
+const post = (p: string, b: unknown) => requestAt<void>(REGIE_URL, 'POST', p, b)
 
 export const regieApi = {
   me: () => get<RegieMe>('/me'),
   status: () => get<RegieStatus>('/admin/status'),
   testIndexer: (id: number) => requestAt<IndexerTest>(REGIE_URL, 'POST', `/admin/indexers/${id}/test`),
+  downloads: (since?: number) => get<Downloads>(`/admin/downloads${since ? `?since=${since}` : ''}`),
+  pause: (hashes: string[]) => post('/admin/downloads/pause', { hashes }),
+  resume: (hashes: string[]) => post('/admin/downloads/resume', { hashes }),
+  recheck: (hashes: string[]) => post('/admin/downloads/recheck', { hashes }),
+  remove: (hashes: string[], delete_files: boolean) => post('/admin/downloads/delete', { hashes, delete_files }),
+  setCategory: (hashes: string[], category: string) => post('/admin/downloads/category', { hashes, category }),
+  setTags: (hashes: string[], add: string[], remove: string[]) => post('/admin/downloads/tags', { hashes, add, remove }),
+  setLimits: (hashes: string[], download: number, upload: number) => post('/admin/downloads/limits', { hashes, download, upload }),
+  setTransfer: (download: number, upload: number, alternative: boolean) => requestAt<void>(REGIE_URL, 'PUT', '/admin/transfer', { download, upload, alternative }),
+  torrent: (hash: string) => get<TorrentDetail>(`/admin/downloads/${hash}`),
+  setPriority: (hash: string, ids: number[], priority: number) => post(`/admin/downloads/${hash}/files`, { ids, priority }),
   removeFromQueue: (service: ServiceKey, id: number, retry: boolean) => requestAt<void>(REGIE_URL, 'DELETE', `/admin/queue/${service}/${id}${retry ? '?retry=true' : ''}`),
 }

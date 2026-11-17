@@ -15,6 +15,7 @@ pub struct Inner {
     identites: Resolveur,
     aegis: Option<Aegis>,
     qbittorrent: Session,
+    suivi: crate::suivi::Suivi,
 }
 
 #[derive(Clone)]
@@ -37,6 +38,7 @@ impl AppState {
             http,
             aegis,
             qbittorrent: Session::default(),
+            suivi: crate::suivi::Suivi::default(),
         }))
     }
 
@@ -58,6 +60,10 @@ impl AppState {
 
     pub fn session_qbittorrent(&self) -> &Session {
         &self.0.qbittorrent
+    }
+
+    pub fn suivi(&self) -> &crate::suivi::Suivi {
+        &self.0.suivi
     }
 
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {

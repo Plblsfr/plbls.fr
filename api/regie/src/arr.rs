@@ -49,6 +49,46 @@ impl Service {
             Service::Lidarr | Service::Prowlarr => "includeUnknownArtistItems",
         }
     }
+
+    fn titres(self) -> &'static str {
+        match self {
+            Service::Radarr => "includeMovie=true",
+            Service::Sonarr => "includeSeries=true&includeEpisode=true",
+            Service::Lidarr | Service::Prowlarr => "includeArtist=true&includeAlbum=true",
+        }
+    }
+}
+
+pub fn titre_de(service: Service, v: &Value) -> Option<Value> {
+    let (titre, detail) = match service {
+        Service::Radarr => {
+            let film = &v["movie"];
+            let titre = texte(film, "title")?;
+            let titre = match film["year"].as_i64().filter(|a| *a > 0) {
+                Some(a) => format!("{titre} ({a})"),
+                None => titre,
+            };
+            (titre, None)
+        }
+        Service::Sonarr => {
+            let e = &v["episode"];
+            let numero = e["seasonNumber"]
+                .as_i64()
+                .zip(e["episodeNumber"].as_i64())
+                .map(|(s, n)| format!("S{s:02}E{n:02}"));
+            let detail: Vec<String> = numero.into_iter().chain(texte(e, "title")).collect();
+            (
+                texte(&v["series"], "title")?,
+                (!detail.is_empty()).then(|| detail.join(" · ")),
+            )
+        }
+        Service::Lidarr => (
+            texte(&v["artist"], "artistName")?,
+            texte(&v["album"], "title"),
+        ),
+        Service::Prowlarr => return None,
+    };
+    Some(json!({ "service": service.cle(), "title": titre, "detail": detail }))
 }
 
 pub struct Client<'a> {
@@ -187,17 +227,51 @@ impl<'a> Client<'a> {
             .collect())
     }
 
-    pub async fn bloques(&self) -> Result<Vec<Value>, String> {
+    async fn file(&self) -> Result<Vec<Value>, String> {
+        let mut v = self
+            .get(&format!(
+                "/queue?page=1&pageSize=500&{}=true&{}",
+                self.service.inconnus(),
+                self.service.titres()
+            ))
+            .await?;
+        match v["records"].take() {
+            Value::Array(a) => Ok(a),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    pub async fn rattachements(&self) -> Result<Vec<(String, Value)>, String> {
+        Ok(self
+            .file()
+            .await?
+            .iter()
+            .filter_map(|e| {
+                let hash = texte(e, "downloadId")?.to_ascii_lowercase();
+                Some((hash, titre_de(self.service, e)?))
+            })
+            .collect())
+    }
+
+    pub async fn titre_par_historique(&self, hash: &str) -> Result<Option<Value>, String> {
         let v = self
             .get(&format!(
-                "/queue?page=1&pageSize=500&{}=true",
-                self.service.inconnus()
+                "/history?page=1&pageSize=1&downloadId={}&{}",
+                hash.to_ascii_uppercase(),
+                self.service.titres()
             ))
             .await?;
         Ok(v["records"]
             .as_array()
-            .into_iter()
-            .flatten()
+            .and_then(|r| r.first())
+            .and_then(|e| titre_de(self.service, e)))
+    }
+
+    pub async fn bloques(&self) -> Result<Vec<Value>, String> {
+        Ok(self
+            .file()
+            .await?
+            .iter()
             .filter_map(|e| {
                 let niveau = bloque(e)?;
                 Some(json!({
@@ -309,6 +383,30 @@ mod tests {
         assert_eq!(bloque(&suivi), Some("error"));
         let message = json!({"status": "queued", "errorMessage": "Indisponible"});
         assert_eq!(bloque(&message), Some("warning"));
+    }
+
+    #[test]
+    fn titre_d_un_element_selon_le_service() {
+        let film = json!({"movie": {"title": "Le Film", "year": 2021}});
+        assert_eq!(
+            titre_de(Service::Radarr, &film),
+            Some(json!({"service": "radarr", "title": "Le Film (2021)", "detail": null}))
+        );
+        let episode = json!({"series": {"title": "La Série"}, "episode": {"seasonNumber": 1, "episodeNumber": 12, "title": "Pilote"}});
+        assert_eq!(
+            titre_de(Service::Sonarr, &episode),
+            Some(json!({"service": "sonarr", "title": "La Série", "detail": "S01E12 · Pilote"}))
+        );
+        let album = json!({"artist": {"artistName": "Le Groupe"}, "album": {"title": "L'Album"}});
+        assert_eq!(
+            titre_de(Service::Lidarr, &album),
+            Some(json!({"service": "lidarr", "title": "Le Groupe", "detail": "L'Album"}))
+        );
+        assert_eq!(
+            titre_de(Service::Radarr, &json!({"title": "inconnu"})),
+            None
+        );
+        assert_eq!(titre_de(Service::Prowlarr, &film), None);
     }
 
     #[test]

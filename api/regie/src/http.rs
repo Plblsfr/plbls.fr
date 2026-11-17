@@ -40,6 +40,10 @@ pub fn sans_contenu() -> Response {
     StatusCode::NO_CONTENT.into_response()
 }
 
+pub fn invalide(message: &str) -> Response {
+    erreur(StatusCode::BAD_REQUEST, "invalid", message)
+}
+
 pub fn indisponible(code: &str, message: &str) -> Response {
     erreur(StatusCode::BAD_GATEWAY, code, message)
 }

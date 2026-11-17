@@ -1,6 +1,11 @@
 use axum::http::StatusCode;
 use serde_json::{Value, json};
 
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
 use crate::{
     config::{Arr, Qbittorrent},
     garde::Garde,
@@ -67,7 +72,7 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             }
         }
     }
-    assert_eq!(protegees, 3);
+    assert_eq!(protegees, 14);
 }
 
 #[tokio::test]
@@ -145,10 +150,16 @@ fn radarr(r: &Requete) -> (u16, Value) {
             200,
             json!({"records": [
                 {"id": 7, "title": "Film.2024.1080p", "status": "completed", "trackedDownloadStatus": "warning",
+                 "downloadId": "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1", "movie": {"title": "Le Film", "year": 2024},
                  "trackedDownloadState": "importBlocked", "statusMessages": [{"title": "Film.mkv", "messages": ["Qualité inférieure"]}]},
                 {"id": 8, "title": "Sain", "status": "downloading", "trackedDownloadStatus": "ok"}
             ]}),
         ),
+        ("GET", "/api/v3/history") if r.query.contains("downloadId=B2B2") => (
+            200,
+            json!({"records": [{"movie": {"title": "Ancien Film", "year": 1999}}]}),
+        ),
+        ("GET", "/api/v3/history") => (200, json!({"records": []})),
         ("DELETE", "/api/v3/queue/7") => (200, json!({})),
         ("DELETE", _) => (404, json!({})),
         _ => (500, json!({})),
@@ -393,4 +404,365 @@ async fn retrait_d_un_element_de_la_file() {
         supprimer("/admin/queue/sonarr/7").await.json()["error"],
         "not_configured"
     );
+}
+
+const H1: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+const H2: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+
+struct FauxQbit {
+    faux: Faux,
+    progression: Arc<Mutex<f64>>,
+}
+
+impl FauxQbit {
+    fn ecritures(&self) -> Vec<(String, String)> {
+        self.faux
+            .requetes()
+            .iter()
+            .filter(|r| r.methode == "POST" && r.chemin != "/api/v2/auth/login")
+            .map(|r| (r.chemin.replace("/api/v2", ""), r.texte()))
+            .collect()
+    }
+}
+
+async fn qbit_complet() -> FauxQbit {
+    let progression = Arc::new(Mutex::new(0.25));
+    let lue = progression.clone();
+    let faux = faux_avec_entetes(move |r| {
+        let json = |v: Value| (200, vec![], v.to_string().into_bytes());
+        match (r.methode.as_str(), r.chemin.as_str()) {
+            ("POST", "/api/v2/auth/login") => (
+                200,
+                vec![("set-cookie", "SID=abc; HttpOnly".into())],
+                b"Ok.".to_vec(),
+            ),
+            _ if r.entete("cookie") != "SID=abc" => (403, vec![], vec![]),
+            ("GET", "/api/v2/sync/maindata") => json(json!({
+                "torrents": {
+                    H1: {"name": "Film.2024.1080p", "state": "downloading", "progress": *lue.lock().unwrap(), "size": 4000,
+                         "dlspeed": 1024, "added_on": 20, "category": "radarr", "tags": "vf"},
+                    H2: {"name": "Ancien.Film.1999", "state": "stalledUP", "progress": 1.0, "size": 700, "added_on": 10, "ratio": 2.5}
+                },
+                "categories": {"radarr": {}, "sonarr": {}},
+                "tags": ["vf"],
+                "server_state": {"dl_info_speed": 1024, "use_alt_speed_limits": false, "free_space_on_disk": 9000}
+            })),
+            ("GET", "/api/v2/torrents/files") if r.query == format!("hash={H2}") => json(json!([
+                {"index": 0, "name": "Ancien.Film.1999/film.mkv", "size": 690, "progress": 1.0, "priority": 1},
+                {"index": 1, "name": "Ancien.Film.1999/sample.mkv", "size": 10, "progress": 0.0, "priority": 0}
+            ])),
+            ("GET", "/api/v2/torrents/files") => (404, vec![], vec![]),
+            ("GET", "/api/v2/transfer/speedLimitsMode") => (200, vec![], b"0".to_vec()),
+            ("POST", "/api/v2/torrents/stop" | "/api/v2/torrents/start") => (404, vec![], vec![]),
+            ("POST", "/api/v2/torrents/filePrio") if !r.texte().contains(H2) => (404, vec![], vec![]),
+            ("POST", _) => (200, vec![], vec![]),
+            _ => (404, vec![], vec![]),
+        }
+    })
+    .await;
+    FauxQbit { faux, progression }
+}
+
+fn avec_qbit(c: &mut crate::config::Config, f: &FauxQbit) {
+    c.periode_suivi = Duration::from_millis(20);
+    c.qbittorrent = Some(Qbittorrent {
+        url: f.faux.url.clone(),
+        utilisateur: "admin".into(),
+        mot_de_passe: "secret".into(),
+    });
+}
+
+#[tokio::test]
+async fn telechargements_rattaches_et_suivis_en_direct() {
+    let (q, f_radarr) = (qbit_complet().await, faux_json(radarr).await);
+    let e = env_avec(|c| {
+        avec_qbit(c, &q);
+        c.radarr = arr(&f_radarr);
+    })
+    .await;
+    let r = e.get("admin", "/admin/downloads").await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let v = r.json();
+    let version = v["version"].as_u64().unwrap();
+    assert!(version >= 1);
+    assert_eq!(v["error"], Value::Null);
+    let t = v["torrents"].as_array().unwrap();
+    assert_eq!((&t[0]["hash"], &t[1]["hash"]), (&json!(H1), &json!(H2)));
+    assert_eq!(
+        t[0]["title"],
+        json!({"service": "radarr", "title": "Le Film (2024)", "detail": null})
+    );
+    assert_eq!(t[1]["title"], Value::Null);
+    assert_eq!(
+        (&t[0]["progress"], &t[0]["tags"]),
+        (&json!(0.25), &json!(["vf"]))
+    );
+    assert_eq!(v["categories"], json!(["radarr", "sonarr"]));
+    assert_eq!(v["transfer"]["free_space"], 9000);
+    let attente = {
+        let app = e.app.clone();
+        let chemin = format!("/admin/downloads?since={version}");
+        tokio::spawn(async move { appel_sur(&app, Some("admin"), "GET", &chemin, &[]).await })
+    };
+    *q.progression.lock().unwrap() = 0.5;
+    let v = attente.await.unwrap().json();
+    assert!(v["version"].as_u64().unwrap() > version);
+    assert_eq!(v["torrents"][0]["progress"], 0.5);
+    let sans = env().await;
+    assert_eq!(
+        sans.get("admin", "/admin/downloads").await.json()["error"],
+        "not_configured"
+    );
+}
+
+#[tokio::test]
+async fn qbittorrent_injoignable_annonce_dans_le_suivi() {
+    let e = env_avec(|c| {
+        c.periode_suivi = Duration::from_millis(20);
+        c.qbittorrent = Some(Qbittorrent {
+            url: "http://127.0.0.1:1".into(),
+            utilisateur: String::new(),
+            mot_de_passe: String::new(),
+        });
+    })
+    .await;
+    let v = e.get("admin", "/admin/downloads").await.json();
+    let erreur = v["error"].as_str().unwrap();
+    assert!(erreur.starts_with("injoignable"), "{erreur}");
+    assert!(!erreur.contains("127.0.0.1"), "{erreur}");
+}
+
+#[tokio::test]
+async fn actions_sur_les_telechargements() {
+    let q = qbit_complet().await;
+    let e = env_avec(|c| avec_qbit(c, &q)).await;
+    let envoyer = |methode: &'static str, chemin: &'static str, corps: Value| {
+        let app = e.app.clone();
+        async move {
+            let req = axum::http::Request::builder()
+                .method(methode)
+                .uri(chemin)
+                .header("authorization", "Bearer admin")
+                .body(axum::body::Body::from(corps.to_string()))
+                .unwrap();
+            tower::ServiceExt::oneshot(app, req).await.unwrap().status()
+        }
+    };
+    let deux = json!([H1, H2.to_ascii_uppercase()]);
+    let cible = format!("{H1}|{H2}");
+    let ok = StatusCode::NO_CONTENT;
+    assert_eq!(
+        envoyer("POST", "/admin/downloads/pause", json!({"hashes": deux})).await,
+        ok
+    );
+    assert_eq!(
+        envoyer("POST", "/admin/downloads/resume", json!({"hashes": [H1]})).await,
+        ok
+    );
+    assert_eq!(
+        envoyer("POST", "/admin/downloads/recheck", json!({"hashes": [H1]})).await,
+        ok
+    );
+    assert_eq!(
+        envoyer(
+            "POST",
+            "/admin/downloads/delete",
+            json!({"hashes": [H2], "delete_files": true})
+        )
+        .await,
+        ok
+    );
+    assert_eq!(
+        envoyer(
+            "POST",
+            "/admin/downloads/category",
+            json!({"hashes": [H1], "category": "sonarr"})
+        )
+        .await,
+        ok
+    );
+    assert_eq!(
+        envoyer(
+            "POST",
+            "/admin/downloads/tags",
+            json!({"hashes": [H1], "add": ["4k", "hdr"], "remove": ["vf"]})
+        )
+        .await,
+        ok
+    );
+    assert_eq!(
+        envoyer(
+            "POST",
+            "/admin/downloads/limits",
+            json!({"hashes": [H1], "download": 1000, "upload": 0})
+        )
+        .await,
+        ok
+    );
+    assert_eq!(
+        envoyer(
+            "PUT",
+            "/admin/transfer",
+            json!({"download": 5000, "upload": 100, "alternative": true})
+        )
+        .await,
+        ok
+    );
+    let attendu: Vec<(String, String)> = [
+        (
+            "/torrents/stop",
+            format!("hashes={}", cible.replace('|', "%7C")),
+        ),
+        (
+            "/torrents/pause",
+            format!("hashes={}", cible.replace('|', "%7C")),
+        ),
+        ("/torrents/start", format!("hashes={H1}")),
+        ("/torrents/resume", format!("hashes={H1}")),
+        ("/torrents/recheck", format!("hashes={H1}")),
+        ("/torrents/delete", format!("hashes={H2}&deleteFiles=true")),
+        (
+            "/torrents/setCategory",
+            format!("hashes={H1}&category=sonarr"),
+        ),
+        ("/torrents/removeTags", format!("hashes={H1}&tags=vf")),
+        ("/torrents/addTags", format!("hashes={H1}&tags=4k%2Chdr")),
+        (
+            "/torrents/setDownloadLimit",
+            format!("hashes={H1}&limit=1000"),
+        ),
+        ("/torrents/setUploadLimit", format!("hashes={H1}&limit=0")),
+        ("/transfer/setDownloadLimit", "limit=5000".to_string()),
+        ("/transfer/setUploadLimit", "limit=100".to_string()),
+        ("/transfer/toggleSpeedLimitsMode", String::new()),
+    ]
+    .into_iter()
+    .map(|(c, t)| (c.to_string(), t))
+    .collect();
+    assert_eq!(q.ecritures(), attendu);
+    let refuses = [
+        ("POST", "/admin/downloads/pause", json!({"hashes": []})),
+        ("POST", "/admin/downloads/pause", json!({"hashes": ["all"]})),
+        ("POST", "/admin/downloads/pause", json!({"hashes": [H1, 3]})),
+        ("POST", "/admin/downloads/delete", json!({"hashes": [H1]})),
+        (
+            "POST",
+            "/admin/downloads/category",
+            json!({"hashes": [H1], "category": "ailleurs"}),
+        ),
+        ("POST", "/admin/downloads/tags", json!({"hashes": [H1]})),
+        (
+            "POST",
+            "/admin/downloads/tags",
+            json!({"hashes": [H1], "add": ["a,b"]}),
+        ),
+        (
+            "POST",
+            "/admin/downloads/limits",
+            json!({"hashes": [H1], "download": -1, "upload": 0}),
+        ),
+        (
+            "PUT",
+            "/admin/transfer",
+            json!({"download": 0, "upload": 0}),
+        ),
+        ("PUT", "/admin/transfer", json!([])),
+    ];
+    for (m, chemin, corps) in refuses {
+        assert_eq!(
+            envoyer(m, chemin, corps.clone()).await,
+            StatusCode::BAD_REQUEST,
+            "{m} {chemin} {corps}"
+        );
+    }
+    assert_eq!(q.ecritures().len(), attendu.len(), "un refus n'écrit rien");
+    assert_eq!(
+        envoyer(
+            "PUT",
+            "/admin/transfer",
+            json!({"download": 0, "upload": 0, "alternative": false})
+        )
+        .await,
+        ok
+    );
+    assert_eq!(
+        q.ecritures().len(),
+        attendu.len() + 2,
+        "mode déjà en place : pas de bascule"
+    );
+}
+
+#[tokio::test]
+async fn detail_et_priorites_des_fichiers() {
+    let (q, f_radarr) = (qbit_complet().await, faux_json(radarr).await);
+    let e = env_avec(|c| {
+        avec_qbit(c, &q);
+        c.radarr = arr(&f_radarr);
+    })
+    .await;
+    let r = e
+        .get(
+            "admin",
+            &format!("/admin/downloads/{}", H2.to_ascii_uppercase()),
+        )
+        .await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let v = r.json();
+    assert_eq!(v["hash"], H2);
+    assert_eq!(
+        v["title"],
+        json!({"service": "radarr", "title": "Ancien Film (1999)", "detail": null})
+    );
+    assert_eq!(
+        v["files"][1],
+        json!({"index": 1, "name": "Ancien.Film.1999/sample.mkv", "size": 10, "progress": 0.0, "priority": 0})
+    );
+    assert_eq!(
+        e.get("admin", &format!("/admin/downloads/{H1}"))
+            .await
+            .statut,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        e.get("admin", "/admin/downloads/..%2Fapp").await.statut,
+        StatusCode::NOT_FOUND
+    );
+    let prioriser = |hash: &'static str, corps: Value| {
+        let app = e.app.clone();
+        async move {
+            let req = axum::http::Request::builder()
+                .method("POST")
+                .uri(format!("/admin/downloads/{hash}/files"))
+                .header("authorization", "Bearer admin")
+                .body(axum::body::Body::from(corps.to_string()))
+                .unwrap();
+            tower::ServiceExt::oneshot(app, req).await.unwrap().status()
+        }
+    };
+    assert_eq!(
+        prioriser(H2, json!({"ids": [0, 1], "priority": 7})).await,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        q.ecritures().last().unwrap(),
+        &(
+            "/torrents/filePrio".to_string(),
+            format!("hash={H2}&id=0%7C1&priority=7")
+        )
+    );
+    assert_eq!(
+        prioriser(H1, json!({"ids": [0], "priority": 1})).await,
+        StatusCode::NOT_FOUND
+    );
+    for corps in [
+        json!({"ids": [], "priority": 1}),
+        json!({"ids": [0], "priority": 3}),
+        json!({"ids": [-1], "priority": 1}),
+    ] {
+        assert_eq!(
+            prioriser(H2, corps.clone()).await,
+            StatusCode::BAD_REQUEST,
+            "{corps}"
+        );
+    }
 }

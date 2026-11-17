@@ -1,7 +1,7 @@
 # Régie
 
 Administration des médias de plbls.fr, à part d'Entracte et de Sillon : un seul endroit pour suivre Radarr, Sonarr, Lidarr, Prowlarr et
-qBittorrent, sans ouvrir leurs interfaces. Ce document décrit ce qui existe aujourd'hui : le socle du service et l'écran de santé.
+qBittorrent, sans ouvrir leurs interfaces. Ce document décrit ce qui existe aujourd'hui : le socle du service, l'écran de santé et les téléchargements.
 
 | Où | Quoi |
 |---|---|
@@ -16,7 +16,7 @@ Déclarée à aegis par manifeste (application `regie`, renvoyé toutes les 10 m
 
 | Permission | Ouvre |
 |---|---|
-| `regie:admin` | état des services, test d'un indexeur, retrait ou relance d'un téléchargement bloqué |
+| `regie:admin` | état des services, test d'un indexeur, retrait ou relance d'un téléchargement bloqué, suivi et pilotage des téléchargements de qBittorrent |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/regie/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -44,13 +44,32 @@ annoncé comme tel, sans bloquer les autres.
 Régie n'expose que ces routes : pas de proxy vers les services, pas d'accès à leurs réglages. Aucune réponse ne contient d'URL ni de clé
 d'un service ; une erreur de connexion est rendue sans l'adresse.
 
+## Téléchargements
+
+`GET /admin/downloads` rend les torrents de qBittorrent (`/api/v2/sync/maindata`), ses catégories, ses tags et ses débits.
+
+- **En direct** : avec `?since=<version>`, la réponse attend le prochain changement (20 s au plus) ; l'app enchaîne les appels, sans
+  intervalle de son côté. Régie relit qBittorrent toutes les `REGIE_SUIVI_MS` (1,5 s) tant qu'un appel attend, et s'arrête sinon.
+  Une seule relecture sert tous les écrans ouverts. qBittorrent injoignable : le dernier instantané reste servi, avec `error`.
+- **Rattachement aux titres** : un torrent présent dans la file de Radarr, Sonarr ou Lidarr (même identifiant de téléchargement) porte
+  son film, son épisode ou son album ; les files sont relues toutes les 10 s. Un torrent terminé n'y est plus : la fiche d'un torrent
+  (`GET /admin/downloads/{hash}`) cherche alors son titre dans l'historique des trois services. Les autres gardent le nom du torrent.
+- **Actions** : suspendre, reprendre (routes `stop`/`start` de qBittorrent 5, `pause`/`resume` de la version 4 en repli), revérifier,
+  supprimer avec ou sans les fichiers, changer la catégorie (parmi celles de qBittorrent), ajouter ou retirer des tags, limiter le débit
+  d'un torrent, limites globales et mode alternatif (`PUT /admin/transfer`), priorité des fichiers d'un torrent.
+  Chaque corps est validé avant tout appel à qBittorrent (identifiants de torrent, bornes, catégorie connue).
+
+Ne sont pas exposés : les préférences de qBittorrent (dont le programme lancé en fin de téléchargement), le changement d'emplacement
+d'un torrent, la création de catégories, l'ajout d'un torrent par lien.
+
 Clients : `X-Api-Key` pour Radarr et Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`). qBittorrent : connexion par
 `POST /api/v2/auth/login`, cookie de session gardé en mémoire et renouvelé sur un 401 ou un 403.
 
 ## Section de l'app
 
 Entrée « Régie » du rail de la messagerie, visible seulement avec `regie:admin` (`GET /me` de Régie, `REGIE_PUBLIC_URL`) ; `#/regie`
-ramène à l'accueil sinon. La page relit l'état à l'ouverture, au bouton « Actualiser » et après chaque action.
+ramène à l'accueil sinon. La page « Santé » relit l'état à l'ouverture, au bouton « Actualiser » et après chaque action ; « Téléchargements » (`#/regie/downloads`) suit
+qBittorrent en direct tant qu'elle est affichée (`Suivi`, `regie.svelte.ts`).
 
 ## Actions manuelles
 

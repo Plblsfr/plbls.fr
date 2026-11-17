@@ -3,14 +3,14 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, delete, get, post},
+    routing::{MethodRouter, delete, get, post, put},
 };
 
 use crate::{
     droits::Droit,
     etat::AppState,
     garde::{self, Garde},
-    interne, sante,
+    interne, sante, telechargements,
 };
 
 pub struct Route {
@@ -70,6 +70,72 @@ pub fn table() -> Vec<Entree> {
             "/admin/queue/{service}/{id}",
             Garde::Droit(Droit::Admin),
             delete(sante::retirer),
+        ),
+        entree(
+            Method::GET,
+            "/admin/downloads",
+            Garde::Droit(Droit::Admin),
+            get(telechargements::lister),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/pause",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::suspendre),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/resume",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::reprendre),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/recheck",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::reverifier),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/delete",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::supprimer),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/category",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::categoriser),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/tags",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::etiqueter),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/limits",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::limiter),
+        ),
+        entree(
+            Method::PUT,
+            "/admin/transfer",
+            Garde::Droit(Droit::Admin),
+            put(telechargements::limiter_tout),
+        ),
+        entree(
+            Method::GET,
+            "/admin/downloads/{hash}",
+            Garde::Droit(Droit::Admin),
+            get(telechargements::detail),
+        ),
+        entree(
+            Method::POST,
+            "/admin/downloads/{hash}/files",
+            Garde::Droit(Droit::Admin),
+            post(telechargements::prioriser),
         ),
     ]
 }

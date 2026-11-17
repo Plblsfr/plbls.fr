@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use commun::config::nettoie;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -24,6 +26,7 @@ pub struct Config {
     pub lidarr: Option<Arr>,
     pub prowlarr: Option<Arr>,
     pub qbittorrent: Option<Qbittorrent>,
+    pub periode_suivi: Duration,
 }
 
 fn sans_slash(url: String) -> String {
@@ -49,8 +52,17 @@ impl Config {
                 .parse()
                 .map_err(|_| format!("REGIE_PORT invalide : {v}"))?,
         };
+        let suivi_ms: u64 = match env("REGIE_SUIVI_MS") {
+            None => 1500,
+            Some(v) => v
+                .parse()
+                .ok()
+                .filter(|n| *n >= 500)
+                .ok_or_else(|| format!("REGIE_SUIVI_MS invalide (500 au moins) : {v}"))?,
+        };
         Ok(Self {
             port,
+            periode_suivi: Duration::from_millis(suivi_ms),
             gateway_url: sans_slash(env("GATEWAY_INTERNE_URL").unwrap_or(gateway_public)),
             aegis: env("AEGIS_URL")
                 .map(sans_slash)
@@ -95,6 +107,7 @@ mod tests {
         assert!(c.aegis.is_none() && c.origines.is_empty());
         assert!(c.radarr.is_none() && c.sonarr.is_none() && c.lidarr.is_none());
         assert!(c.prowlarr.is_none() && c.qbittorrent.is_none());
+        assert_eq!(c.periode_suivi, Duration::from_millis(1500));
     }
 
     #[test]
@@ -147,10 +160,10 @@ mod tests {
 
     #[test]
     fn erreurs() {
-        assert!(
-            charge(&[("REGIE_PORT", "x")])
-                .unwrap_err()
-                .contains("REGIE_PORT")
-        );
+        for faux in [("REGIE_PORT", "x"), ("REGIE_SUIVI_MS", "100")] {
+            assert!(charge(&[faux]).unwrap_err().contains(faux.0), "{faux:?}");
+        }
+        let c = charge(&[("REGIE_SUIVI_MS", "3000")]).unwrap();
+        assert_eq!(c.periode_suivi, Duration::from_millis(3000));
     }
 }

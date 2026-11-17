@@ -11,6 +11,8 @@ pub mod interne;
 pub mod qbittorrent;
 pub mod routes;
 pub mod sante;
+pub mod suivi;
+pub mod telechargements;
 
 #[cfg(test)]
 mod tests_api;

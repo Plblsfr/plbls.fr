@@ -28,9 +28,34 @@ function etatInitial() {
   }
 }
 
+const H1 = 'a1'.repeat(20)
+const H2 = 'b2'.repeat(20)
+const torrent = (plus: Record<string, unknown>) => ({ state: 'downloading', progress: 0, size: 0, download_speed: 0, upload_speed: 0, eta: 8640000, ratio: 0, category: '', tags: [] as string[], added_at: 0, seeds: 0, peers: 0, download_limit: 0, upload_limit: 0, title: null, ...plus })
+
+function telechargements() {
+  return {
+    version: 1,
+    error: null,
+    categories: ['radarr', 'sonarr'],
+    tags: ['vf'],
+    transfer: { download_speed: 3 * 1024 * 1024, upload_speed: 512 * 1024, download_limit: 0, upload_limit: 0, alternative: false, free_space: 250 * 1024 ** 3, connection: 'connected' },
+    torrents: [
+      torrent({ hash: H1, name: 'Le.Film.du.soir.2021.1080p', progress: 0.42, size: 4 * 1024 ** 3, download_speed: 3 * 1024 * 1024, eta: 780, category: 'radarr', tags: ['vf'], seeds: 12, title: { service: 'radarr', title: 'Le Film du soir (2021)', detail: null } }),
+      torrent({ hash: H2, name: 'Ancien.Film.1999', state: 'stalledUP', progress: 1, size: 700 * 1024 ** 2, ratio: 2.5 }),
+    ],
+  }
+}
+
 async function simuler(page: Page, admin: boolean) {
   const etat = etatInitial()
   const appels: string[] = []
+  const dl = telechargements()
+  const fichiers = [
+    { index: 0, name: 'Ancien.Film.1999/film.mkv', size: 690 * 1024 ** 2, progress: 1, priority: 1 },
+    { index: 1, name: 'Ancien.Film.1999/sample.mkv', size: 10 * 1024 ** 2, progress: 0, priority: 0 },
+  ]
+  const attente: Route[] = []
+  const publier = () => { dl.version++; for (const r of attente.splice(0)) void json(r, dl) }
   await page.route(`${ESTOMPE}/**`, (route) => {
     const url = new URL(route.request().url())
     if (route.request().method() === 'OPTIONS') return preflight(route)
@@ -47,10 +72,26 @@ async function simuler(page: Page, admin: boolean) {
     const url = new URL(route.request().url())
     const methode = route.request().method()
     if (methode === 'OPTIONS') return preflight(route)
-    if (url.pathname !== '/me' && url.pathname !== '/admin/status') appels.push(`${methode} ${url.pathname}${url.search}`)
+    if (!['/me', '/admin/status', '/admin/downloads'].includes(url.pathname)) appels.push(`${methode} ${url.pathname}${url.search}`)
     if (url.pathname === '/me') return json(route, { sub: 'kc-moi', name: 'moi', email: '', permissions: { admin } })
     if (!admin) return json(route, { error: 'forbidden', message: 'permission regie:admin requise' }, 403)
     if (url.pathname === '/admin/status') return json(route, etat)
+    if (url.pathname === '/admin/downloads') {
+      if (url.searchParams.get('since') === String(dl.version)) { attente.push(route); return }
+      return json(route, dl)
+    }
+    if (methode === 'POST' && url.pathname.startsWith('/admin/downloads/')) {
+      const corps = route.request().postDataJSON() as { hashes?: string[]; delete_files?: boolean; ids?: number[]; priority?: number }
+      appels[appels.length - 1] += ` ${JSON.stringify(corps)}`
+      const cible = dl.torrents.find((t) => corps.hashes?.includes(t.hash))
+      if (url.pathname.endsWith('/pause') && cible) cible.state = 'stoppedDL'
+      if (url.pathname.endsWith('/resume') && cible) cible.state = 'downloading'
+      if (url.pathname.endsWith('/delete')) dl.torrents = dl.torrents.filter((t) => !corps.hashes?.includes(t.hash))
+      if (url.pathname.endsWith('/files')) fichiers[1].priority = corps.priority ?? 1
+      publier()
+      return route.fulfill({ status: 204, headers: cors })
+    }
+    if (url.pathname === `/admin/downloads/${H2}`) return json(route, { hash: H2, files: fichiers, title: { service: 'radarr', title: 'Ancien Film (1999)', detail: null } })
     if (methode === 'POST' && url.pathname === '/admin/indexers/1/test') return json(route, { ok: false, message: 'Connexion refusée par le site' })
     if (methode === 'POST' && url.pathname === '/admin/indexers/2/test') return json(route, { ok: true, message: null })
     if (methode === 'DELETE' && url.pathname === '/admin/queue/radarr/7') { etat.queue = []; return route.fulfill({ status: 204, headers: cors }) }
@@ -106,4 +147,45 @@ test('Avec regie:admin : santé des services, indexeurs, disques et télécharge
   await expect(bloques.getByText('Aucun téléchargement bloqué')).toBeVisible()
   await expect(page.getByText('4 à traiter')).toBeVisible()
   expect(s.appels).toEqual(['POST /admin/indexers/1/test', 'POST /admin/indexers/2/test', 'DELETE /admin/queue/radarr/7?retry=true'])
+})
+
+test('Téléchargements : suivi en direct, pause, priorité d’un fichier, suppression', async ({ page }) => {
+  const s = await simuler(page, true)
+  await page.goto('/#/regie/downloads')
+  await expect(page.getByRole('heading', { name: 'Téléchargements' })).toBeVisible()
+  const lignes = page.locator('.rg-torrent')
+  await expect(lignes).toHaveCount(2)
+  await expect(lignes.nth(0)).toContainText('Le Film du soir (2021)')
+  await expect(lignes.nth(0)).toContainText('Radarr · Le.Film.du.soir.2021.1080p')
+  await expect(lignes.nth(0)).toContainText('42 % de 4 Go · 3 Mo/s · reste 13 min')
+  await expect(lignes.nth(1)).toContainText('100 % de 700 Mo · ratio 2,5')
+  await expect(page.getByText('250 Go libres')).toBeVisible()
+
+  await page.getByRole('button', { name: /En partage/ }).click()
+  await expect(lignes).toHaveCount(1)
+  await page.getByRole('button', { name: /Tous/ }).click()
+
+  await page.getByRole('button', { name: 'Suspendre Le Film du soir (2021)' }).click()
+  await expect(page.getByRole('button', { name: 'Reprendre Le Film du soir (2021)' })).toBeVisible()
+  await expect(lignes.nth(0)).toContainText('Suspendu')
+
+  await page.getByRole('button', { name: 'Détails de Ancien.Film.1999' }).click()
+  const fiche = page.getByRole('dialog')
+  await expect(fiche).toContainText('Ancien Film (1999)')
+  await expect(fiche).toContainText('Ancien.Film.1999/sample.mkv')
+  await fiche.getByLabel('Priorité de Ancien.Film.1999/sample.mkv').selectOption('7')
+  await expect(fiche.getByLabel('Priorité de Ancien.Film.1999/sample.mkv')).toHaveValue('7')
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: 'Actions sur Ancien.Film.1999' }).click()
+  await page.getByRole('menuitem', { name: 'Supprimer avec les fichiers' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Supprimer avec les fichiers' }).click()
+  await expect(lignes).toHaveCount(1)
+  expect(s.appels).toEqual([
+    `POST /admin/downloads/pause {"hashes":["${H1}"]}`,
+    `GET /admin/downloads/${H2}`,
+    `POST /admin/downloads/${H2}/files {"ids":[1],"priority":7}`,
+    `GET /admin/downloads/${H2}`,
+    `POST /admin/downloads/delete {"hashes":["${H2}"],"delete_files":true}`,
+  ])
 })

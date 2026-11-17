@@ -24,7 +24,7 @@ fn config_de(state: &AppState, service: Service) -> Option<&Arr> {
     }
 }
 
-fn client(state: &AppState, service: Service) -> Option<Client<'_>> {
+pub fn client(state: &AppState, service: Service) -> Option<Client<'_>> {
     config_de(state, service).map(|arr| Client::new(service, arr, state.http()))
 }
 
