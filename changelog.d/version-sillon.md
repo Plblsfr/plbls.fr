@@ -1,0 +1,1 @@
+- [x] Sillon 0.2.0. Version du composant `sillon` portée de 0.1.1 à 0.2.0 pour livrer « Tout mélanger » et la lecture sans fin (tag `sillon-v0.2.0`). Non fait : rien d'autre que le numéro de version. Non vérifié : construction de l'image Docker (faite par le tag).
