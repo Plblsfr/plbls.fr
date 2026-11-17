@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.104.0",
+    "date": "2026-11-17",
+    "new": [
+      "Sillon : le nouveau bouton Tout mélanger lance toute votre bibliothèque en aléatoire, en tenant compte de vos goûts.",
+      "Sillon : la musique ne s'arrête plus, Sillon ajoute à la file des titres proches de ce qui joue, marqués Suggestion (réglage Lecture sans fin dans la file)."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.99.0",
     "date": "2026-11-16",
     "new": [
