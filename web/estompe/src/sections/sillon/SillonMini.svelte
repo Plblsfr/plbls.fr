@@ -32,8 +32,8 @@
       <span class="sillon-barre" aria-hidden="true"><span style="width:{pct}%"></span></span>
     {:else}
       <MiniProgress pos={lecteur.position} total={lecteur.duree} onseek={(s) => lecteur.deplacer(s)} />
-      <div class="lect-l">
-        <span class="grow v-mono lect-file">{lecteur.suivante ? `À suivre : ${lecteur.suivante.title}` : 'Fin de la file'}</span>
+      <span class="v-mono lect-file">{lecteur.suivante ? `À suivre : ${lecteur.suivante.title}` : 'Fin de la file'}</span>
+      <div class="lect-l lect-actions">
         <span class="lect-like"><SillonLike kind="tracks" id={p.id} titre={p.title} /></span>
         <button class="ib lect-ib" class:on={lecteur.aleatoire} aria-pressed={lecteur.aleatoire} onclick={() => void lecteur.basculerAleatoire().catch((e) => notify.error(e, 'La file n’a pas pu être modifiée'))} aria-label="Aléatoire" title="Aléatoire"><Icon name="shuffle" size={16} /></button>
         <button class="ib lect-ib lect-repete" class:on={lecteur.repetition !== 'off'} aria-pressed={lecteur.repetition !== 'off'} onclick={() => void lecteur.changerRepetition().catch((e) => notify.error(e, 'La file n’a pas pu être modifiée'))} aria-label={`Répétition : ${repetition}`} title={repetition}><Icon name="repeat" size={16} />{#if lecteur.repetition === 'one'}<span class="lect-un" aria-hidden="true">1</span>{/if}</button>
@@ -58,6 +58,7 @@
   .lect-ib.on { color: var(--rose-fonce); }
   .lect-like :global(.v-ib) { color: inherit; }
   .lect-like :global(.v-ib[aria-pressed='true']) { color: var(--rose-fonce); }
+  .lect-actions { justify-content: space-between; }
   .lect-repete { position: relative; }
   .lect-un { position: absolute; top: 3px; right: 2px; min-width: 12px; height: 12px; border-radius: 6px; background: var(--rose-fonce); color: var(--papier); font-size: 9px; font-weight: 700; line-height: 12px; text-align: center; }
   .lect-err { margin: 0; font-size: 12px; color: var(--danger); }

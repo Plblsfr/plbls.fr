@@ -146,6 +146,7 @@
   .sillon-file-ligne.cur { padding: 8px 10px; background: var(--rose-doux); }
   .sillon-file-ligne.marque { background: color-mix(in srgb, var(--rose) 28%, transparent); box-shadow: inset 3px 0 0 var(--rose-fonce); }
   .sillon-file-ligne.marque.decouverte { background: var(--info-fond); box-shadow: inset 3px 0 0 var(--info); }
+  .sillon-file-ligne .v-tag.info, .sillon-file-ligne.cur .v-tag.info { background: var(--info); color: var(--papier); }
   .sillon-file-ligne.tire { opacity: 0.45; }
   .sillon-file-ligne.survol { box-shadow: inset 0 2px 0 var(--rose-fonce); }
   .sillon-poignee { display: inline-grid; place-items: center; flex: none; width: 20px; color: var(--gris); cursor: grab; }
@@ -158,6 +159,7 @@
   .sillon-file-actions { display: flex; flex-wrap: wrap; gap: 6px; }
   @media (max-width: 720px) {
     .sillon-file-duree { display: none; }
+    .sillon-file-jouer { flex-basis: 180px; }
     .sillon-file-actions { order: 3; width: 100%; padding-left: 28px; }
   }
 </style>
