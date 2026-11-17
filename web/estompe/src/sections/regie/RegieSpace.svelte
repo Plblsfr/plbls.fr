@@ -2,6 +2,7 @@
   import Icon from '../../components/Icon.svelte'
   import RegieHealth from './RegieHealth.svelte'
   import RegieDownloads from './RegieDownloads.svelte'
+  import RegieDeposits from './RegieDeposits.svelte'
 
   let { section, onmenu }: { section?: string; onmenu: () => void } = $props()
 </script>
@@ -12,6 +13,8 @@
 </header>
 {#if section === 'downloads'}
   <RegieDownloads />
+{:else if section === 'deposits'}
+  <RegieDeposits />
 {:else}
   <RegieHealth />
 {/if}

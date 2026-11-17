@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
@@ -7,6 +8,7 @@ use axum::{
 };
 
 use crate::{
+    depots,
     droits::Droit,
     etat::AppState,
     garde::{self, Garde},
@@ -136,6 +138,60 @@ pub fn table() -> Vec<Entree> {
             "/admin/downloads/{hash}/files",
             Garde::Droit(Droit::Admin),
             post(telechargements::prioriser),
+        ),
+        entree(
+            Method::GET,
+            "/admin/deposits",
+            Garde::Droit(Droit::Admin),
+            get(depots::lister),
+        ),
+        entree(
+            Method::POST,
+            "/admin/deposits",
+            Garde::Droit(Droit::Admin),
+            post(depots::creer).layer(DefaultBodyLimit::max(depots::TORRENT_MAX)),
+        ),
+        entree(
+            Method::GET,
+            "/admin/deposits/{id}",
+            Garde::Droit(Droit::Admin),
+            get(depots::lire),
+        ),
+        entree(
+            Method::DELETE,
+            "/admin/deposits/{id}",
+            Garde::Droit(Droit::Admin),
+            delete(depots::supprimer),
+        ),
+        entree(
+            Method::PUT,
+            "/admin/deposits/{id}/files/{index}",
+            Garde::Droit(Droit::Admin),
+            put(depots::recevoir).layer(DefaultBodyLimit::max(depots::MORCEAU_MAX)),
+        ),
+        entree(
+            Method::POST,
+            "/admin/deposits/{id}/seed",
+            Garde::Droit(Droit::Admin),
+            post(depots::partager),
+        ),
+        entree(
+            Method::GET,
+            "/admin/deposits/{id}/import",
+            Garde::Droit(Droit::Admin),
+            get(depots::proposer_import),
+        ),
+        entree(
+            Method::POST,
+            "/admin/deposits/{id}/import",
+            Garde::Droit(Droit::Admin),
+            post(depots::importer),
+        ),
+        entree(
+            Method::GET,
+            "/admin/library/{service}",
+            Garde::Droit(Droit::Admin),
+            get(depots::bibliotheque),
         ),
     ]
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { eta, filterTorrents, groupCounts, limitBytes, limitInput, percent, torrentLabel, torrentState, bytes, indexerState, problems, serviceState, sortIndexers, speed, type Downloads, type Indexer, type RegieStatus, type Service, type Torrent } from './regie'
-import { Suivi } from './regie.svelte'
+import { depositComplete, depositState, invalidFiles, matchFiles, eta, filterTorrents, groupCounts, limitBytes, limitInput, percent, torrentLabel, torrentState, bytes, indexerState, problems, serviceState, sortIndexers, speed, type Deposit, type DepositFile, type Downloads, type Indexer, type RegieStatus, type Service, type Torrent } from './regie'
+import { Suivi, envoyerFichier } from './regie.svelte'
 import { ApiError } from '../../lib/api'
 
 const service = (s: Partial<Service>): Service => ({ key: 'radarr', name: 'Radarr', configured: true, reachable: true, version: '5.0.0', error: null, alerts: [], ...s })
@@ -119,5 +119,57 @@ describe('régie', () => {
     suivi.start()
     await vi.waitFor(() => expect(suivi.failed).toBe('permission regie:admin requise'))
     expect(appels).toBe(1)
+  })
+
+  const attendu = (index: number, path: string, size: number, plus: Partial<DepositFile> = {}): DepositFile => ({ index, path, size, received: 0, valid: null, ...plus })
+  const depot = (d: Partial<Deposit>): Deposit => ({ id: 'a'.repeat(40), name: 'Film.2024', state: 'upload', created_at: 0, tracker: null, private: true, size: 8, received: 0, files: [attendu(0, 'Film.2024/film.mkv', 5), attendu(1, 'Film.2024/Subs/fr.srt', 3)], imported: [], error: null, ...d })
+
+  it('associe les fichiers choisis à ceux du torrent par la taille, puis par le chemin', () => {
+    const fichiers = [attendu(0, 'Serie/S01/E01.mkv', 100), attendu(1, 'Serie/S01/E02.mkv', 100), attendu(2, 'Serie/S01/info.nfo', 7), attendu(3, 'Serie/S01/autre.txt', 9)]
+    const liens = matchFiles(fichiers, [
+      { name: 'E02.mkv', size: 100, path: 'Mes séries/S01/E02.mkv' },
+      { name: 'renomme.nfo', size: 7 },
+      { name: 'E01.mkv', size: 100, path: 'Mes séries/S01/E01.mkv' },
+      { name: 'autre.txt', size: 8 },
+    ])
+    expect([...liens]).toEqual([[0, 2], [1, 0], [2, 1]])
+    expect(matchFiles(fichiers.slice(0, 2), [{ name: 'x.mkv', size: 100 }]).size).toBe(0)
+    expect(matchFiles([attendu(0, 'seul.mkv', 4)], [{ name: 'Autre nom.mkv', size: 4 }]).get(0)).toBe(0)
+  })
+
+  it('résume l’état d’un dépôt', () => {
+    expect(depositState(depot({})).label).toBe('Fichiers attendus')
+    const recu = depot({ received: 8, files: [attendu(0, 'a', 5, { received: 5 }), attendu(1, 'b', 3, { received: 3 })] })
+    expect(depositState(recu)).toEqual({ label: 'Prêt à vérifier', tone: 'info' })
+    expect(depositComplete(recu)).toBe(true)
+    expect(depositComplete(depot({}))).toBe(false)
+    const ko = depot({ state: 'mismatch', files: [attendu(0, 'a', 5, { received: 5, valid: 1 }), attendu(1, 'b', 3, { received: 3, valid: 0.4 })] })
+    expect(depositState(ko).tone).toBe('dgr')
+    expect(invalidFiles(ko).map((f) => f.index)).toEqual([1])
+    expect(depositState(depot({ state: 'seeding' })).label).toBe('En partage')
+  })
+
+  it('envoie un fichier par morceaux, reprend à la position du serveur et retente une coupure', async () => {
+    const fichier = new Blob(['0123456789'])
+    const appels: [number, number, boolean][] = []
+    const suivis: number[] = []
+    let coupe = true
+    await envoyerFichier(fichier, 2, async (offset, morceau, reset) => {
+      appels.push([offset, morceau.size, reset])
+      if (offset === 2) throw new ApiError(409, 'bad_offset', 'position inattendue', { received: 4 })
+      if (offset === 8 && coupe) { coupe = false; throw new TypeError('réseau') }
+      return { received: offset + morceau.size }
+    }, (r) => suivis.push(r), { taille: 4, pause: async () => {} })
+    expect(appels).toEqual([[2, 4, false], [4, 4, false], [8, 2, false], [8, 2, false]])
+    expect(suivis).toEqual([4, 8, 8, 10])
+    expect(appels.every(([, taille]) => taille <= 4)).toBe(true)
+  })
+
+  it('remplace un fichier depuis le début et s’arrête sur un refus', async () => {
+    const appels: [number, boolean][] = []
+    await envoyerFichier(new Blob(['abcdef']), 6, async (offset, morceau, reset) => { appels.push([offset, reset]); return { received: offset + morceau.size } }, () => {}, { taille: 4, remplacer: true })
+    expect(appels).toEqual([[0, true], [4, false]])
+    await expect(envoyerFichier(new Blob(['abc']), 0, async () => { throw new ApiError(409, 'bad_state', 'ce dépôt n’accepte plus de fichier') }, () => {})).rejects.toThrow('n’accepte plus')
+    await expect(envoyerFichier(new Blob(['abc']), 0, async () => ({ received: 3 }), () => {}, { arret: () => true })).rejects.toMatchObject({ code: 'cancelled' })
   })
 })

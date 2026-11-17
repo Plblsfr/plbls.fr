@@ -184,6 +184,77 @@ export function limitBytes(saisie: string): number | null {
 }
 export const limitInput = (octets: number) => (octets > 0 ? String(Math.round(octets / 1024)) : '')
 
+export type DepositState = 'upload' | 'checking' | 'seeding' | 'mismatch'
+export interface DepositFile { index: number; path: string; size: number; received: number; valid: number | null }
+export interface Deposit {
+  id: string
+  name: string
+  state: DepositState
+  created_at: number
+  tracker: string | null
+  private: boolean
+  size: number
+  received: number
+  files: DepositFile[]
+  imported: ServiceKey[]
+  error: string | null
+}
+export interface Deposits { items: Deposit[]; used: number; limit: number }
+export interface ImportItem { path: string; size: number | null; title: TorrentTitle | null; recognized: boolean; reasons: string[] }
+export interface ImportProposal { service: ServiceKey; items: ImportItem[] }
+export interface LibraryTitle { id: number; title: string; detail: string | null; year: number | null }
+export type LibraryKey = 'radarr' | 'sonarr' | 'lidarr'
+export const LIBRARIES: { key: LibraryKey; label: string }[] = [{ key: 'radarr', label: 'Film' }, { key: 'sonarr', label: 'Série' }, { key: 'lidarr', label: 'Musique' }]
+
+export function depositState(d: Deposit): { label: string; tone: Tone } {
+  switch (d.state) {
+    case 'checking': return { label: 'Vérification', tone: 'att' }
+    case 'seeding': return { label: 'En partage', tone: 'ok' }
+    case 'mismatch': return { label: 'Fichiers non conformes', tone: 'dgr' }
+    default: return d.received >= d.size ? { label: 'Prêt à vérifier', tone: 'info' as Tone } : { label: 'Fichiers attendus', tone: '' }
+  }
+}
+export const depositComplete = (d: Deposit) => d.files.every((f) => f.received >= f.size)
+/** Fichiers à renvoyer après une vérification : ceux que qBittorrent n'a pas trouvés entièrement valides. */
+export const invalidFiles = (d: Deposit) => d.files.filter((f) => f.valid !== null && f.valid < 1)
+
+export interface LocalFile { name: string; size: number; path?: string }
+const fin = (chemin: string) => chemin.split('/').pop() ?? chemin
+/**
+ * Associe les fichiers choisis sur l'appareil à ceux du torrent : même taille obligatoire, puis le chemin relatif le plus long en commun,
+ * le même nom, et à défaut une taille que seul un fichier de chaque côté porte. Rend, pour chaque index du torrent, la position du fichier local.
+ */
+export function matchFiles(attendus: DepositFile[], locaux: LocalFile[]): Map<number, number> {
+  const pris = new Set<number>()
+  const liens = new Map<number, number>()
+  const communs = (a: string, b: string) => {
+    const [x, y] = [a.split('/').reverse(), b.split('/').reverse()]
+    let n = 0
+    while (n < x.length && n < y.length && x[n] === y[n]) n++
+    return n
+  }
+  for (const f of attendus) {
+    let meilleur = -1
+    let score = 0
+    locaux.forEach((l, i) => {
+      if (pris.has(i) || l.size !== f.size) return
+      const s = communs(f.path, l.path || l.name)
+      if (s > score) { score = s; meilleur = i }
+    })
+    if (meilleur >= 0) { liens.set(f.index, meilleur); pris.add(meilleur) }
+  }
+  for (const f of attendus) {
+    if (liens.has(f.index)) continue
+    const memes = locaux.map((l, i) => ({ l, i })).filter(({ l, i }) => !pris.has(i) && l.size === f.size)
+    const rivaux = attendus.filter((a) => !liens.has(a.index) && a.size === f.size)
+    if (memes.length === 1 && rivaux.length === 1) { liens.set(f.index, memes[0].i); pris.add(memes[0].i) }
+  }
+  return liens
+}
+export const fileName = fin
+
+export const CHUNK = 16 * 1024 * 1024
+
 const get = <T>(p: string) => requestAt<T>(REGIE_URL, 'GET', p)
 const post = (p: string, b: unknown) => requestAt<void>(REGIE_URL, 'POST', p, b)
 
@@ -202,5 +273,14 @@ export const regieApi = {
   setTransfer: (download: number, upload: number, alternative: boolean) => requestAt<void>(REGIE_URL, 'PUT', '/admin/transfer', { download, upload, alternative }),
   torrent: (hash: string) => get<TorrentDetail>(`/admin/downloads/${hash}`),
   setPriority: (hash: string, ids: number[], priority: number) => post(`/admin/downloads/${hash}/files`, { ids, priority }),
+  deposits: () => get<Deposits>('/admin/deposits'),
+  createDeposit: (torrent: Blob) => requestAt<Deposit>(REGIE_URL, 'POST', '/admin/deposits', torrent.slice(0, torrent.size, 'application/x-bittorrent')),
+  deposit: (id: string, wait?: DepositState) => get<Deposit>(`/admin/deposits/${id}${wait ? `?wait=${wait}` : ''}`),
+  removeDeposit: (id: string) => requestAt<void>(REGIE_URL, 'DELETE', `/admin/deposits/${id}`),
+  sendChunk: (id: string, index: number, offset: number, chunk: Blob, reset = false) => requestAt<{ received: number }>(REGIE_URL, 'PUT', `/admin/deposits/${id}/files/${index}?offset=${offset}${reset ? '&reset=true' : ''}`, chunk),
+  seed: (id: string) => requestAt<Deposit>(REGIE_URL, 'POST', `/admin/deposits/${id}/seed`),
+  importProposal: (id: string, service: LibraryKey) => get<ImportProposal>(`/admin/deposits/${id}/import?service=${service}`),
+  importDeposit: (id: string, service: LibraryKey, movie_id?: number) => requestAt<{ service: ServiceKey; files: number }>(REGIE_URL, 'POST', `/admin/deposits/${id}/import`, movie_id ? { service, movie_id } : { service }),
+  library: (service: LibraryKey, q: string) => get<{ items: LibraryTitle[] }>(`/admin/library/${service}?q=${encodeURIComponent(q)}`),
   removeFromQueue: (service: ServiceKey, id: number, retry: boolean) => requestAt<void>(REGIE_URL, 'DELETE', `/admin/queue/${service}/${id}${retry ? '?retry=true' : ''}`),
 }

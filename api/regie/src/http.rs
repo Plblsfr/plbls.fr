@@ -44,6 +44,10 @@ pub fn invalide(message: &str) -> Response {
     erreur(StatusCode::BAD_REQUEST, "invalid", message)
 }
 
+pub fn conflit(code: &str, message: &str) -> Response {
+    erreur(StatusCode::CONFLICT, code, message)
+}
+
 pub fn indisponible(code: &str, message: &str) -> Response {
     erreur(StatusCode::BAD_GATEWAY, code, message)
 }

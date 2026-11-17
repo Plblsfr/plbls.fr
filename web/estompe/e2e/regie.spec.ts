@@ -72,10 +72,11 @@ async function simuler(page: Page, admin: boolean) {
     const url = new URL(route.request().url())
     const methode = route.request().method()
     if (methode === 'OPTIONS') return preflight(route)
-    if (!['/me', '/admin/status', '/admin/downloads'].includes(url.pathname)) appels.push(`${methode} ${url.pathname}${url.search}`)
+    if (!['/me', '/admin/status', '/admin/downloads'].includes(url.pathname) && !url.pathname.startsWith('/admin/deposits')) appels.push(`${methode} ${url.pathname}${url.search}`)
     if (url.pathname === '/me') return json(route, { sub: 'kc-moi', name: 'moi', email: '', permissions: { admin } })
     if (!admin) return json(route, { error: 'forbidden', message: 'permission regie:admin requise' }, 403)
     if (url.pathname === '/admin/status') return json(route, etat)
+    if (url.pathname.startsWith('/admin/deposits') || url.pathname.startsWith('/admin/library')) return depots(route, url, methode)
     if (url.pathname === '/admin/downloads') {
       if (url.searchParams.get('since') === String(dl.version)) { attente.push(route); return }
       return json(route, dl)
@@ -97,7 +98,49 @@ async function simuler(page: Page, admin: boolean) {
     if (methode === 'DELETE' && url.pathname === '/admin/queue/radarr/7') { etat.queue = []; return route.fulfill({ status: 204, headers: cors }) }
     return json(route, { error: 'not_found', message: 'introuvable' }, 404)
   })
-  return { appels }
+  const DEPOT = 'c3'.repeat(20)
+  const depot = { id: DEPOT, name: 'Film.2024', state: 'upload', created_at: 1_794_000_000, tracker: 'tracker.exemple.fr', private: true, size: 8, received: 0, imported: [] as string[], error: null as string | null,
+    files: [{ index: 0, path: 'Film.2024/film.mkv', size: 5, received: 0, valid: null as number | null }, { index: 1, path: 'Film.2024/Subs/fr.srt', size: 3, received: 0, valid: null as number | null }] }
+  const etatDepots = { cree: false, verifications: 0, attente: [] as Route[], recus: [] as string[] }
+  const finir = (state: string, valides: (number | null)[]) => {
+    depot.state = state
+    depot.files.forEach((f, i) => (f.valid = valides[i]))
+    for (const r of etatDepots.attente.splice(0)) void json(r, depot)
+  }
+  function depots(route: Route, url: URL, methode: string) {
+    const chemin = url.pathname
+    if (chemin === '/admin/deposits' && methode === 'GET') return json(route, { items: etatDepots.cree ? [depot] : [], used: etatDepots.cree ? 8 : 0, limit: 200 * 1024 ** 3 })
+    if (chemin === '/admin/deposits' && methode === 'POST') { etatDepots.cree = true; return json(route, depot, 201) }
+    if (chemin === `/admin/deposits/${DEPOT}` && methode === 'GET') {
+      if (url.searchParams.get('wait') === depot.state) { etatDepots.attente.push(route); return }
+      return json(route, depot)
+    }
+    if (chemin === `/admin/deposits/${DEPOT}` && methode === 'DELETE') { etatDepots.cree = false; return route.fulfill({ status: 204, headers: cors }) }
+    const fichier = chemin.match(/\/files\/(\d)$/)
+    if (fichier && methode === 'PUT') {
+      const f = depot.files[Number(fichier[1])]
+      const corps = route.request().postDataBuffer() ?? Buffer.alloc(0)
+      etatDepots.recus.push(`${f.path}@${url.searchParams.get('offset')}${url.searchParams.get('reset') ? '!' : ''}=${corps.toString()}`)
+      f.received = Number(url.searchParams.get('offset')) + corps.length
+      if (url.searchParams.get('reset')) f.valid = null
+      depot.received = depot.files.reduce((n, x) => n + x.received, 0)
+      return json(route, { received: f.received })
+    }
+    if (chemin.endsWith('/seed')) { etatDepots.verifications++; depot.state = 'checking'; return json(route, depot) }
+    if (chemin.endsWith('/import') && methode === 'GET') {
+      return json(route, { service: url.searchParams.get('service'), items: url.searchParams.get('service') === 'radarr'
+        ? [{ path: 'Film.2024/film.mkv', size: 5, title: { service: 'radarr', title: 'Le Film (2024)', detail: null }, recognized: true, reasons: [] }, { path: 'Film.2024/Subs/fr.srt', size: 3, title: null, recognized: false, reasons: ['Unknown Movie'] }]
+        : [] })
+    }
+    if (chemin.endsWith('/import') && methode === 'POST') {
+      const corps = route.request().postDataJSON() as { service: string; movie_id?: number }
+      depot.imported = [corps.service]
+      return json(route, { service: corps.service, files: corps.movie_id ? 2 : 1 })
+    }
+    if (chemin === '/admin/library/radarr') return json(route, { items: [{ id: 5, title: 'Le Film du dimanche', detail: null, year: 1987 }] })
+    return json(route, { error: 'not_found', message: 'introuvable' }, 404)
+  }
+  return { appels, etatDepots, finir }
 }
 
 test('Sans regie:admin : aucune entrée Régie, et #/regie ramène à l’accueil', async ({ page }) => {
@@ -188,4 +231,59 @@ test('Téléchargements : suivi en direct, pause, priorité d’un fichier, supp
     `GET /admin/downloads/${H2}`,
     `POST /admin/downloads/delete {"hashes":["${H2}"],"delete_files":true}`,
   ])
+})
+
+test('Dépôts : .torrent, fichiers, vérification, remplacement d’un fichier non conforme, import', async ({ page }) => {
+  const s = await simuler(page, true)
+  await page.goto('/#/regie/deposits')
+  await expect(page.getByText('Aucun dépôt.')).toBeVisible()
+  await page.getByLabel('Fichier .torrent').setInputFiles({ name: 'film.torrent', mimeType: 'application/x-bittorrent', buffer: Buffer.from('d4:infoe') })
+  const carte = page.locator('.rg-depot')
+  await expect(carte).toContainText('Film.2024')
+  await expect(carte).toContainText('tracker.exemple.fr')
+  await expect(carte).toContainText('Fichiers attendus')
+
+  await page.getByLabel('Fichiers du dépôt').setInputFiles([
+    { name: 'sous-titres.srt', mimeType: 'text/plain', buffer: Buffer.from('srt') },
+    { name: 'film.mkv', mimeType: 'video/x-matroska', buffer: Buffer.from('film.') },
+    { name: 'intrus.txt', mimeType: 'text/plain', buffer: Buffer.from('pas attendu') },
+  ])
+  await expect(carte).toContainText('Prêt à vérifier')
+  expect(s.etatDepots.recus).toEqual(['Film.2024/film.mkv@0=film.', 'Film.2024/Subs/fr.srt@0=srt'])
+
+  await carte.getByRole('button', { name: 'Vérifier et partager' }).click()
+  await expect(carte).toContainText('qBittorrent vérifie les fichiers')
+  await expect.poll(() => s.etatDepots.attente.length).toBe(1)
+  s.finir('mismatch', [1, 0.4])
+  await expect(carte).toContainText('Fichiers non conformes')
+  await expect(carte).toContainText('40 % conforme')
+  await expect(carte.getByRole('button', { name: 'Revérifier' })).toBeDisabled()
+
+  const choix = page.waitForEvent('filechooser')
+  await carte.getByRole('button', { name: 'Remplacer fr.srt' }).click()
+  await (await choix).setFiles({ name: 'bon.srt', mimeType: 'text/plain', buffer: Buffer.from('SRT') })
+  await expect(carte.getByRole('button', { name: 'Revérifier' })).toBeEnabled()
+  expect(s.etatDepots.recus.at(-1)).toBe('Film.2024/Subs/fr.srt@0!=SRT')
+  await carte.getByRole('button', { name: 'Revérifier' }).click()
+  await expect.poll(() => s.etatDepots.attente.length).toBe(1)
+  s.finir('seeding', [null, null])
+  await expect(carte).toContainText('En partage')
+  await expect(page.getByText('« Film.2024 » est vérifié et en partage.')).toBeVisible()
+  expect(s.etatDepots.verifications).toBe(2)
+
+  await carte.getByRole('button', { name: 'Importer dans la bibliothèque' }).click()
+  const fiche = page.getByRole('dialog')
+  await expect(fiche).toContainText('→ Le Film (2024)')
+  await expect(fiche).toContainText('Non reconnu : Unknown Movie')
+  await expect(fiche.getByRole('button', { name: 'Importer 1 fichier' })).toBeEnabled()
+  await fiche.getByLabel('Chercher un film de la bibliothèque').fill('dimanche')
+  await fiche.getByRole('button', { name: 'Chercher' }).click()
+  await fiche.getByRole('button', { name: 'Le Film du dimanche (1987)' }).click()
+  await fiche.getByRole('button', { name: 'Importer 2 fichiers' }).click()
+  await expect(page.getByText('2 fichiers confiés à Radarr, qui termine l’import.')).toBeVisible()
+  await expect(carte).toContainText('importé dans Radarr')
+
+  await carte.getByRole('button', { name: 'Supprimer' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Supprimer' }).click()
+  await expect(page.getByText('Aucun dépôt.')).toBeVisible()
 })

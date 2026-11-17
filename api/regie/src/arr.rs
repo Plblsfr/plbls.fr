@@ -302,6 +302,63 @@ impl<'a> Client<'a> {
         }
     }
 
+    pub async fn import_manuel(&self, dossier: &str) -> Result<Vec<Value>, String> {
+        let r = self
+            .requete(reqwest::Method::GET, "/manualimport")
+            .query(&[("folder", dossier), ("filterExistingFiles", "false")]);
+        match self.envoyer(r).await? {
+            (200..=299, Value::Array(a)) => Ok(a),
+            (200..=299, _) => Err("/manualimport : liste attendue".into()),
+            (401 | 403, _) => Err("clé d'API refusée".into()),
+            (s, _) => Err(format!("HTTP {s}")),
+        }
+    }
+
+    pub async fn importer(&self, fichiers: Vec<Value>) -> Result<(), String> {
+        let mut commande =
+            json!({ "name": "ManualImport", "importMode": "copy", "files": fichiers });
+        if self.service == Service::Lidarr {
+            commande["replaceExistingFiles"] = json!(false);
+        }
+        let r = self
+            .requete(reqwest::Method::POST, "/command")
+            .json(&commande);
+        match self.envoyer(r).await? {
+            (200..=299, _) => Ok(()),
+            (401 | 403, _) => Err("clé d'API refusée".into()),
+            (s, _) => Err(format!("HTTP {s}")),
+        }
+    }
+
+    pub async fn bibliotheque(&self) -> Result<Vec<Value>, String> {
+        let chemin = match self.service {
+            Service::Radarr => "/movie",
+            Service::Sonarr => "/series",
+            Service::Lidarr => "/album",
+            Service::Prowlarr => return Ok(Vec::new()),
+        };
+        Ok(self
+            .liste(chemin)
+            .await?
+            .iter()
+            .filter_map(|t| {
+                let titre = texte(t, "title")?;
+                let annee = t["year"].as_i64().filter(|a| *a > 0).or_else(|| {
+                    t["releaseDate"]
+                        .as_str()
+                        .and_then(|d| d.get(..4))
+                        .and_then(|a| a.parse().ok())
+                });
+                Some(json!({
+                    "id": t["id"].as_i64()?,
+                    "title": titre,
+                    "detail": texte(&t["artist"], "artistName"),
+                    "year": annee,
+                }))
+            })
+            .collect())
+    }
+
     pub async fn indexeurs(&self) -> Result<Vec<Value>, String> {
         let etats = self.liste("/indexerstatus").await?;
         Ok(self

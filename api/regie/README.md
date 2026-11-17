@@ -1,7 +1,7 @@
 # regie
 
 API de Régie, administration des médias hors d'Estompe : documentation fonctionnelle dans [`docs/regie`](../../docs/regie/README.md),
-routes dans [`openapi.yaml`](../../docs/regie/openapi.yaml). Pas de base de données.
+routes dans [`openapi.yaml`](../../docs/regie/openapi.yaml). Pas de base de données : l'état des dépôts est sur le disque.
 
 | Module | Rôle |
 |---|---|
@@ -11,10 +11,12 @@ routes dans [`openapi.yaml`](../../docs/regie/openapi.yaml). Pas de base de donn
 | `etat.rs` | état partagé (configuration, client HTTP, aegis, session qBittorrent, suivi des téléchargements) et envoi périodique du manifeste |
 | `interne.rs` | santé, `GET /me` |
 | `http.rs` | réponses JSON et erreurs `{error, message}` |
-| `arr.rs` | client de Radarr, Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`) : version, alertes, dossiers racine, éléments bloqués de la file, retrait, titres de la file et de l'historique (`titre_de`), indexeurs et test d'un indexeur |
-| `qbittorrent.rs` | client de l'API web de qBittorrent : connexion, cookie de session réutilisé, version, débits, instantané des torrents (`instantane`), actions |
+| `arr.rs` | client de Radarr, Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`) : version, alertes, dossiers racine, éléments bloqués de la file, retrait, titres de la file et de l'historique (`titre_de`), import manuel (`import_manuel`, `importer`), liste d'une bibliothèque, indexeurs et test d'un indexeur |
+| `qbittorrent.rs` | client de l'API web de qBittorrent : connexion, cookie de session réutilisé, version, débits, instantané des torrents (`instantane`), actions, ajout d'un torrent (corps `multipart` écrit à la main) |
 | `suivi.rs` | relecture périodique de qBittorrent tant qu'un lecteur attend (`assurer`), instantané versionné diffusé par un canal `watch`, rattachement des torrents aux titres |
 | `telechargements.rs` | `GET /admin/downloads` (attente du prochain changement), actions sur les torrents, limites globales, fiche et priorités des fichiers ; validation des corps |
+| `bencode.rs` | lecture d'un fichier `.torrent` (`Torrent::lire`) : nom, fichiers, empreinte v1, refus des chemins dangereux |
+| `depots.rs` | dépôts : dossier par torrent (`depot.json`, `source.torrent`, `contenu/`), réception par morceaux, ajout à qBittorrent et surveillance de la vérification (`surveiller`), import manuel dans Radarr, Sonarr ou Lidarr, recherche dans une bibliothèque |
 | `sante.rs` | `GET /admin/status` (relevé des cinq services en parallèle), test d'un indexeur, retrait d'un élément de la file |
 
 ## Développement

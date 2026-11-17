@@ -73,7 +73,10 @@ services:
     image: ghcr.io/plblsfr/regie:${REGIE_TAG:-latest}
     restart: unless-stopped
     <<: [*durci, *lecture-seule]
+    user: "65532:${REGIE_GID:-65532}"
     env_file: .env
+    volumes:
+      - ${REGIE_DEPOTS:-/srv/medias/depots}:${REGIE_DEPOTS:-/srv/medias/depots}
     expose: ["8080"]
     networks: [default, medias]
 

@@ -72,7 +72,7 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             }
         }
     }
-    assert_eq!(protegees, 14);
+    assert_eq!(protegees, 23);
 }
 
 #[tokio::test]
@@ -160,6 +160,34 @@ fn radarr(r: &Requete) -> (u16, Value) {
             json!({"records": [{"movie": {"title": "Ancien Film", "year": 1999}}]}),
         ),
         ("GET", "/api/v3/history") => (200, json!({"records": []})),
+        ("GET", "/api/v3/manualimport") => {
+            let dossier = r
+                .query
+                .split('&')
+                .find_map(|p| p.strip_prefix("folder="))
+                .unwrap_or_default()
+                .replace("%2F", "/");
+            (
+                200,
+                json!([
+                    {"path": format!("{dossier}/Film.2024/film.mkv"), "folderName": "Film.2024", "size": 5,
+                     "movie": {"id": 4, "title": "Le Film", "year": 2024}, "quality": {"quality": {"id": 7}},
+                     "languages": [{"id": 2}], "releaseGroup": "GRP", "rejections": []},
+                    {"path": format!("{dossier}/Film.2024/Subs/fr.srt"), "size": 3,
+                     "rejections": [{"reason": "Unknown Movie", "type": "permanent"}]},
+                    {"path": "/etc/passwd", "movie": {"id": 4, "title": "Ailleurs"}, "rejections": []}
+                ]),
+            )
+        }
+        ("POST", "/api/v3/command") => (201, json!({})),
+        ("GET", "/api/v3/movie") => (
+            200,
+            json!([
+                {"id": 4, "title": "Le Film", "year": 2024},
+                {"id": 5, "title": "Le Film du dimanche", "year": 1987},
+                {"id": 6, "title": "Autre chose", "year": 2001}
+            ]),
+        ),
         ("DELETE", "/api/v3/queue/7") => (200, json!({})),
         ("DELETE", _) => (404, json!({})),
         _ => (500, json!({})),
@@ -765,4 +793,526 @@ async fn detail_et_priorites_des_fichiers() {
             "{corps}"
         );
     }
+}
+
+type EtatTorrent = Arc<Mutex<Option<(&'static str, f64)>>>;
+
+async fn qbit_depots(etat: EtatTorrent) -> Faux {
+    faux_avec_entetes(move |r| {
+        let json = |v: Value| (200, vec![], v.to_string().into_bytes());
+        match (r.methode.as_str(), r.chemin.as_str()) {
+            ("POST", "/api/v2/auth/login") => {
+                (200, vec![("set-cookie", "SID=abc".into())], b"Ok.".to_vec())
+            }
+            ("GET", "/api/v2/torrents/info") => match *etat.lock().unwrap() {
+                Some((e, p)) => json(json!([{"state": e, "progress": p}])),
+                None => json(json!([])),
+            },
+            ("GET", "/api/v2/torrents/files") => json(json!([
+                {"index": 0, "name": "Film.2024/film.mkv", "size": 5, "progress": 1.0, "priority": 1},
+                {"index": 1, "name": "Film.2024/Subs/fr.srt", "size": 3, "progress": 0.0, "priority": 1}
+            ])),
+            ("GET", "/api/v2/sync/maindata") => json(json!({})),
+            ("POST", "/api/v2/torrents/add") => {
+                *etat.lock().unwrap() = Some(("checkingResumeData", 0.0));
+                (200, vec![], b"Ok.".to_vec())
+            }
+            ("POST", "/api/v2/torrents/delete") => {
+                *etat.lock().unwrap() = None;
+                (200, vec![], vec![])
+            }
+            ("POST", "/api/v2/torrents/start") => (404, vec![], vec![]),
+            ("POST", _) => (200, vec![], vec![]),
+            _ => (404, vec![], vec![]),
+        }
+    })
+    .await
+}
+
+async fn brut(
+    app: &axum::Router,
+    methode: &str,
+    chemin: &str,
+    corps: &[u8],
+) -> crate::testutil::Rep {
+    let req = axum::http::Request::builder()
+        .method(methode)
+        .uri(chemin)
+        .header("authorization", "Bearer admin")
+        .body(axum::body::Body::from(corps.to_vec()))
+        .unwrap();
+    let r = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
+    let statut = r.status();
+    let entetes = r.headers().clone();
+    let corps = axum::body::to_bytes(r.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .to_vec();
+    crate::testutil::Rep {
+        statut,
+        entetes,
+        corps,
+    }
+}
+
+fn avec_depots(c: &mut crate::config::Config, dossier: &std::path::Path, q: &Faux) {
+    c.periode_suivi = Duration::from_millis(20);
+    c.qbittorrent = Some(Qbittorrent {
+        url: q.url.clone(),
+        utilisateur: "admin".into(),
+        mot_de_passe: "secret".into(),
+    });
+    c.depots = Some(crate::config::Depots {
+        dossier: dossier.to_path_buf(),
+        vu_par_qbittorrent: "/downloads/depots".into(),
+        vu_par_arr: "/data/depots".into(),
+        plafond: 1 << 20,
+    });
+}
+
+fn ecritures(q: &Faux) -> Vec<String> {
+    q.requetes()
+        .iter()
+        .filter(|r| r.methode == "POST" && r.chemin != "/api/v2/auth/login")
+        .map(|r| r.chemin.replace("/api/v2/torrents/", ""))
+        .collect()
+}
+
+async fn envoyer_fichiers(app: &axum::Router, id: &str) {
+    let fichier = |i: usize, suite: &str| format!("/admin/deposits/{id}/files/{i}{suite}");
+    let r = brut(app, "PUT", &fichier(0, "?offset=0"), b"fil").await;
+    assert_eq!(
+        (r.statut, r.json()),
+        (StatusCode::OK, json!({"received": 3}))
+    );
+    let r = brut(app, "PUT", &fichier(0, "?offset=0"), b"fil").await;
+    assert_eq!(r.statut, StatusCode::CONFLICT);
+    assert_eq!(
+        (&r.json()["error"], &r.json()["received"]),
+        (&json!("bad_offset"), &json!(3))
+    );
+    assert_eq!(
+        brut(app, "PUT", &fichier(0, "?offset=3"), b"m.x")
+            .await
+            .statut,
+        StatusCode::BAD_REQUEST,
+        "au-delà de la taille annoncée"
+    );
+    assert_eq!(
+        brut(app, "PUT", &fichier(0, ""), b"m.").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        brut(app, "PUT", &fichier(2, "?offset=0"), b"x")
+            .await
+            .statut,
+        StatusCode::NOT_FOUND
+    );
+    let r = brut(app, "POST", &format!("/admin/deposits/{id}/seed"), b"").await;
+    assert_eq!(r.json()["error"], "incomplete");
+    assert_eq!(
+        brut(app, "PUT", &fichier(0, "?offset=3"), b"m.")
+            .await
+            .json(),
+        json!({"received": 5})
+    );
+    assert_eq!(
+        brut(app, "PUT", &fichier(1, "?offset=0"), b"srt")
+            .await
+            .json(),
+        json!({"received": 3})
+    );
+}
+
+#[tokio::test]
+async fn depot_verifie_partage_puis_importe() {
+    let dossier = tempfile::tempdir().unwrap();
+    let etat: EtatTorrent = Arc::default();
+    let (q, f_radarr) = (qbit_depots(etat.clone()).await, faux_json(radarr).await);
+    let e = env_avec(|c| {
+        avec_depots(c, dossier.path(), &q);
+        c.radarr = arr(&f_radarr);
+    })
+    .await;
+    let source = crate::bencode::tests::torrent_multi();
+    let r = brut(&e.app, "POST", "/admin/deposits", &source).await;
+    assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+    let v = r.json();
+    let id = v["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        (
+            &v["name"],
+            &v["state"],
+            &v["size"],
+            &v["received"],
+            &v["tracker"],
+            &v["private"]
+        ),
+        (
+            &json!("Film.2024"),
+            &json!("upload"),
+            &json!(8),
+            &json!(0),
+            &json!("tracker.exemple.fr"),
+            &json!(true)
+        )
+    );
+    assert_eq!(
+        v["files"],
+        json!([
+            {"index": 0, "path": "Film.2024/film.mkv", "size": 5, "received": 0, "valid": null},
+            {"index": 1, "path": "Film.2024/Subs/fr.srt", "size": 3, "received": 0, "valid": null}
+        ])
+    );
+    envoyer_fichiers(&e.app, &id).await;
+    let repris = brut(&e.app, "POST", "/admin/deposits", &source).await;
+    assert_eq!(
+        (repris.statut, &repris.json()["received"]),
+        (StatusCode::OK, &json!(8))
+    );
+    let contenu = dossier.path().join(&id).join("contenu/Film.2024");
+    assert_eq!(std::fs::read(contenu.join("film.mkv")).unwrap(), b"film.");
+    assert_eq!(std::fs::read(contenu.join("Subs/fr.srt")).unwrap(), b"srt");
+    let attendu = format!("/admin/deposits/{id}/import?service=radarr");
+    assert_eq!(e.get("admin", &attendu).await.json()["error"], "bad_state");
+
+    let r = brut(&e.app, "POST", &format!("/admin/deposits/{id}/seed"), b"").await;
+    assert_eq!(
+        (r.statut, &r.json()["state"]),
+        (StatusCode::OK, &json!("checking"))
+    );
+    let ajout = q
+        .requetes()
+        .into_iter()
+        .find(|x| x.chemin == "/api/v2/torrents/add")
+        .unwrap();
+    let envoye = ajout.texte();
+    assert!(
+        ajout
+            .entete("content-type")
+            .starts_with("multipart/form-data; boundary=regie-")
+    );
+    assert!(
+        envoye.contains(&format!(
+            "name=\"savepath\"\r\n\r\n/downloads/depots/{id}/contenu\r\n"
+        )),
+        "{envoye}"
+    );
+    assert!(
+        envoye.contains("name=\"stopped\"\r\n\r\ntrue")
+            && envoye.contains("name=\"tags\"\r\n\r\nregie")
+    );
+    assert!(envoye.contains(std::str::from_utf8(&source).unwrap()));
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            (mode(&contenu.join("film.mkv")), mode(&contenu.join("Subs"))),
+            (0o664, 0o775)
+        );
+    }
+    assert_eq!(
+        brut(&e.app, "POST", &format!("/admin/deposits/{id}/seed"), b"")
+            .await
+            .json()["error"],
+        "bad_state"
+    );
+    assert_eq!(
+        brut(
+            &e.app,
+            "PUT",
+            &format!("/admin/deposits/{id}/files/0?offset=0&reset=true"),
+            b"x"
+        )
+        .await
+        .json()["error"],
+        "bad_state"
+    );
+
+    let attente = {
+        let app = e.app.clone();
+        let chemin = format!("/admin/deposits/{id}?wait=checking");
+        tokio::spawn(async move { appel_sur(&app, Some("admin"), "GET", &chemin, &[]).await })
+    };
+    *etat.lock().unwrap() = Some(("stoppedUP", 1.0));
+    let v = attente.await.unwrap().json();
+    assert_eq!(
+        (&v["state"], &v["error"]),
+        (&json!("seeding"), &Value::Null)
+    );
+    assert_eq!(ecritures(&q), ["add", "recheck", "start", "resume"]);
+
+    let v = e.get("admin", &attendu).await.json();
+    assert_eq!(
+        v,
+        json!({"service": "radarr", "items": [
+            {"path": "Film.2024/film.mkv", "size": 5, "title": {"service": "radarr", "title": "Le Film (2024)", "detail": null},
+             "recognized": true, "reasons": []},
+            {"path": "Film.2024/Subs/fr.srt", "size": 3, "title": null, "recognized": false, "reasons": ["Unknown Movie"]}
+        ]})
+    );
+    assert_eq!(
+        f_radarr
+            .requetes()
+            .iter()
+            .find(|x| x.chemin == "/api/v3/manualimport")
+            .unwrap()
+            .query,
+        format!("folder=%2Fdata%2Fdepots%2F{id}%2Fcontenu&filterExistingFiles=false")
+    );
+    let importer = |corps: Value| {
+        let (app, chemin) = (e.app.clone(), format!("/admin/deposits/{id}/import"));
+        async move { brut(&app, "POST", &chemin, corps.to_string().as_bytes()).await }
+    };
+    let r = importer(json!({"service": "radarr"})).await;
+    assert_eq!(
+        (r.statut, r.json()),
+        (StatusCode::OK, json!({"service": "radarr", "files": 1}))
+    );
+    let commande = f_radarr
+        .requetes()
+        .into_iter()
+        .rev()
+        .find(|x| x.chemin == "/api/v3/command")
+        .unwrap()
+        .json();
+    assert_eq!(
+        commande,
+        json!({"name": "ManualImport", "importMode": "copy", "files": [{
+            "path": format!("/data/depots/{id}/contenu/Film.2024/film.mkv"), "folderName": "Film.2024", "movieId": 4,
+            "quality": {"quality": {"id": 7}}, "languages": [{"id": 2}], "releaseGroup": "GRP", "indexerFlags": 0}]})
+    );
+    let r = importer(json!({"service": "radarr", "movie_id": 5})).await;
+    assert_eq!(
+        r.json()["files"],
+        2,
+        "un film choisi à la main prend tous les fichiers du dépôt"
+    );
+    let commande = f_radarr
+        .requetes()
+        .into_iter()
+        .rev()
+        .find(|x| x.chemin == "/api/v3/command")
+        .unwrap()
+        .json();
+    assert!(
+        commande["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["movieId"] == 5)
+    );
+    for refuse in [
+        json!({"service": "prowlarr"}),
+        json!({"service": "radarr", "movie_id": "x"}),
+        json!({}),
+    ] {
+        assert_eq!(
+            importer(refuse.clone()).await.statut,
+            StatusCode::BAD_REQUEST,
+            "{refuse}"
+        );
+    }
+    assert_eq!(
+        importer(json!({"service": "sonarr"})).await.json()["error"],
+        "not_configured"
+    );
+    let v = e
+        .get("admin", &format!("/admin/deposits/{id}"))
+        .await
+        .json();
+    assert_eq!(v["imported"], json!(["radarr"]));
+    let liste = e.get("admin", "/admin/deposits").await.json();
+    assert_eq!(
+        (&liste["items"][0]["id"], &liste["used"], &liste["limit"]),
+        (&json!(id), &json!(8), &json!(1 << 20))
+    );
+
+    let r = e
+        .appel(Some("admin"), "DELETE", &format!("/admin/deposits/{id}"))
+        .await;
+    assert_eq!(r.statut, StatusCode::NO_CONTENT);
+    let suppression = q
+        .requetes()
+        .into_iter()
+        .rev()
+        .find(|x| x.chemin == "/api/v2/torrents/delete")
+        .unwrap();
+    assert_eq!(
+        suppression.texte(),
+        format!("hashes={id}&deleteFiles=false")
+    );
+    assert!(!dossier.path().join(&id).exists());
+    assert_eq!(
+        e.get("admin", &format!("/admin/deposits/{id}"))
+            .await
+            .statut,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn depot_dont_un_fichier_ne_correspond_pas() {
+    let dossier = tempfile::tempdir().unwrap();
+    let etat: EtatTorrent = Arc::default();
+    let q = qbit_depots(etat.clone()).await;
+    let e = env_avec(|c| avec_depots(c, dossier.path(), &q)).await;
+    let v = brut(
+        &e.app,
+        "POST",
+        "/admin/deposits",
+        &crate::bencode::tests::torrent_multi(),
+    )
+    .await
+    .json();
+    let id = v["id"].as_str().unwrap().to_string();
+    envoyer_fichiers(&e.app, &id).await;
+    let partager = || {
+        let (app, chemin) = (e.app.clone(), format!("/admin/deposits/{id}/seed"));
+        async move { brut(&app, "POST", &chemin, b"").await }
+    };
+    let attendre = || {
+        let (app, chemin) = (e.app.clone(), format!("/admin/deposits/{id}?wait=checking"));
+        tokio::spawn(async move { appel_sur(&app, Some("admin"), "GET", &chemin, &[]).await })
+    };
+    assert_eq!(partager().await.statut, StatusCode::OK);
+    let attente = attendre();
+    *etat.lock().unwrap() = Some(("stoppedDL", 0.625));
+    let v = attente.await.unwrap().json();
+    assert_eq!(v["state"], "mismatch");
+    assert_eq!(
+        (&v["files"][0]["valid"], &v["files"][1]["valid"]),
+        (&json!(1.0), &json!(0.0))
+    );
+    assert_eq!(
+        ecritures(&q),
+        ["add", "recheck"],
+        "un dépôt non conforme n'est pas mis en partage"
+    );
+
+    let r = brut(
+        &e.app,
+        "PUT",
+        &format!("/admin/deposits/{id}/files/1?offset=0&reset=true"),
+        b"SRT",
+    )
+    .await;
+    assert_eq!(r.json(), json!({"received": 3}));
+    assert_eq!(
+        std::fs::read(
+            dossier
+                .path()
+                .join(&id)
+                .join("contenu/Film.2024/Subs/fr.srt")
+        )
+        .unwrap(),
+        b"SRT"
+    );
+    let v = e
+        .get("admin", &format!("/admin/deposits/{id}"))
+        .await
+        .json();
+    assert_eq!(
+        (&v["files"][0]["valid"], &v["files"][1]["valid"]),
+        (&json!(1.0), &Value::Null)
+    );
+    *etat.lock().unwrap() = Some(("checkingDL", 0.7));
+    assert_eq!(partager().await.json()["state"], "checking");
+    let attente = attendre();
+    *etat.lock().unwrap() = Some(("stoppedUP", 1.0));
+    assert_eq!(attente.await.unwrap().json()["state"], "seeding");
+    assert_eq!(
+        ecritures(&q),
+        ["add", "recheck", "recheck", "start", "resume"],
+        "le torrent n'est pas ajouté deux fois"
+    );
+}
+
+#[tokio::test]
+async fn depots_refuses() {
+    let dossier = tempfile::tempdir().unwrap();
+    let q = qbit_depots(Arc::default()).await;
+    let e = env_avec(|c| {
+        avec_depots(c, dossier.path(), &q);
+        c.depots.as_mut().unwrap().plafond = 10;
+    })
+    .await;
+    let r = brut(&e.app, "POST", "/admin/deposits", b"pas un torrent").await;
+    assert_eq!(
+        (r.statut, &r.json()["error"]),
+        (StatusCode::BAD_REQUEST, &json!("invalid"))
+    );
+    let simple = crate::bencode::tests::torrent_simple();
+    assert_eq!(
+        brut(&e.app, "POST", "/admin/deposits", &simple)
+            .await
+            .statut,
+        StatusCode::CREATED
+    );
+    let r = brut(
+        &e.app,
+        "POST",
+        "/admin/deposits",
+        &crate::bencode::tests::torrent_multi(),
+    )
+    .await;
+    assert_eq!(
+        (r.statut, &r.json()["error"]),
+        (StatusCode::CONFLICT, &json!("storage_full"))
+    );
+    assert_eq!(std::fs::read_dir(dossier.path()).unwrap().count(), 1);
+    for chemin in [
+        "/admin/deposits/inconnu",
+        "/admin/deposits/..%2F..%2Fetc",
+        &format!("/admin/deposits/{}", "c".repeat(40)),
+    ] {
+        assert_eq!(
+            e.get("admin", chemin).await.statut,
+            StatusCode::NOT_FOUND,
+            "{chemin}"
+        );
+    }
+    let trop = vec![b'x'; crate::depots::TORRENT_MAX + 1];
+    assert_eq!(
+        brut(&e.app, "POST", "/admin/deposits", &trop).await.statut,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    let sans = env().await;
+    assert_eq!(
+        sans.get("admin", "/admin/deposits").await.json()["error"],
+        "not_configured"
+    );
+}
+
+#[tokio::test]
+async fn recherche_dans_une_bibliotheque() {
+    let f = faux_json(radarr).await;
+    let e = env_avec(|c| c.radarr = arr(&f)).await;
+    let v = e
+        .get("admin", "/admin/library/radarr?q=film%20DU")
+        .await
+        .json();
+    assert_eq!(
+        v,
+        json!({"items": [{"id": 5, "title": "Le Film du dimanche", "detail": null, "year": 1987}]})
+    );
+    assert_eq!(
+        e.get("admin", "/admin/library/radarr?q=film").await.json()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        e.get("admin", "/admin/library/radarr").await.json(),
+        json!({"items": []})
+    );
+    assert_eq!(
+        e.get("admin", "/admin/library/prowlarr?q=x").await.statut,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        e.get("admin", "/admin/library/sonarr?q=x").await.json()["error"],
+        "not_configured"
+    );
 }

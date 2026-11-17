@@ -1,7 +1,9 @@
 #![allow(clippy::result_large_err)]
 
 pub mod arr;
+pub mod bencode;
 pub mod config;
+pub mod depots;
 pub mod droits;
 pub mod etat;
 pub mod garde;

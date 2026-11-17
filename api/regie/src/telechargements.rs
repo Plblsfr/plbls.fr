@@ -21,7 +21,7 @@ const TAGS_MAX: usize = 20;
 const DEBIT_MAX: i64 = 10_000_000_000;
 const PRIORITES: [i64; 4] = [0, 1, 6, 7];
 
-fn qbittorrent(state: &AppState) -> Result<Client<'_>, Response> {
+pub(crate) fn qbittorrent(state: &AppState) -> Result<Client<'_>, Response> {
     state
         .config()
         .qbittorrent
@@ -30,11 +30,11 @@ fn qbittorrent(state: &AppState) -> Result<Client<'_>, Response> {
         .ok_or_else(|| indisponible("not_configured", "qBittorrent n'est pas configuré"))
 }
 
-fn amont(e: String) -> Response {
+pub(crate) fn amont(e: String) -> Response {
     indisponible("upstream", &format!("qBittorrent : {e}"))
 }
 
-fn corps(octets: &Bytes) -> Result<Value, Response> {
+pub(crate) fn corps(octets: &Bytes) -> Result<Value, Response> {
     serde_json::from_slice::<Value>(octets)
         .ok()
         .filter(Value::is_object)

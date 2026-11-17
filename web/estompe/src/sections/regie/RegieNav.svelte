@@ -5,6 +5,7 @@
   const LIENS: { id: string | undefined; label: string; icon: IconName }[] = [
     { id: undefined, label: 'Santé', icon: 'chart' },
     { id: 'downloads', label: 'Téléchargements', icon: 'telecharge' },
+    { id: 'deposits', label: 'Dépôts', icon: 'envoie' },
   ]
   const route = $derived(router.current)
   const section = $derived(route.name === 'regie' ? route.section : undefined)

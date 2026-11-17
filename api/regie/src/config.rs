@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use commun::config::nettoie;
 
@@ -15,6 +15,14 @@ pub struct Qbittorrent {
     pub mot_de_passe: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Depots {
+    pub dossier: PathBuf,
+    pub vu_par_qbittorrent: String,
+    pub vu_par_arr: String,
+    pub plafond: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub port: u16,
@@ -27,6 +35,7 @@ pub struct Config {
     pub prowlarr: Option<Arr>,
     pub qbittorrent: Option<Qbittorrent>,
     pub periode_suivi: Duration,
+    pub depots: Option<Depots>,
 }
 
 fn sans_slash(url: String) -> String {
@@ -60,8 +69,31 @@ impl Config {
                 .filter(|n| *n >= 500)
                 .ok_or_else(|| format!("REGIE_SUIVI_MS invalide (500 au moins) : {v}"))?,
         };
+        let plafond_go: u64 = match env("REGIE_DEPOTS_GO") {
+            None => 200,
+            Some(v) => v
+                .parse()
+                .map_err(|_| format!("REGIE_DEPOTS_GO invalide : {v}"))?,
+        };
+        let depots = match env("REGIE_DEPOTS") {
+            None => None,
+            Some(d) if !d.starts_with('/') => {
+                return Err(format!("REGIE_DEPOTS : chemin absolu attendu ({d})"));
+            }
+            Some(d) => {
+                let d = sans_slash(d);
+                Some(Depots {
+                    vu_par_qbittorrent: env("REGIE_DEPOTS_QBITTORRENT")
+                        .map_or_else(|| d.clone(), sans_slash),
+                    vu_par_arr: env("REGIE_DEPOTS_ARR").map_or_else(|| d.clone(), sans_slash),
+                    dossier: PathBuf::from(d),
+                    plafond: plafond_go.saturating_mul(1 << 30),
+                })
+            }
+        };
         Ok(Self {
             port,
+            depots,
             periode_suivi: Duration::from_millis(suivi_ms),
             gateway_url: sans_slash(env("GATEWAY_INTERNE_URL").unwrap_or(gateway_public)),
             aegis: env("AEGIS_URL")
@@ -108,6 +140,7 @@ mod tests {
         assert!(c.radarr.is_none() && c.sonarr.is_none() && c.lidarr.is_none());
         assert!(c.prowlarr.is_none() && c.qbittorrent.is_none());
         assert_eq!(c.periode_suivi, Duration::from_millis(1500));
+        assert!(c.depots.is_none());
     }
 
     #[test]
@@ -160,7 +193,39 @@ mod tests {
 
     #[test]
     fn erreurs() {
-        for faux in [("REGIE_PORT", "x"), ("REGIE_SUIVI_MS", "100")] {
+        let c = charge(&[("REGIE_DEPOTS", "/srv/medias/depots/")]).unwrap();
+        assert_eq!(
+            c.depots,
+            Some(Depots {
+                dossier: "/srv/medias/depots".into(),
+                vu_par_qbittorrent: "/srv/medias/depots".into(),
+                vu_par_arr: "/srv/medias/depots".into(),
+                plafond: 200 << 30,
+            })
+        );
+        let c = charge(&[
+            ("REGIE_DEPOTS", "/depots"),
+            ("REGIE_DEPOTS_QBITTORRENT", "/downloads/depots/"),
+            ("REGIE_DEPOTS_ARR", "/data/depots"),
+            ("REGIE_DEPOTS_GO", "5"),
+        ])
+        .unwrap()
+        .depots
+        .unwrap();
+        assert_eq!(
+            (
+                c.vu_par_qbittorrent.as_str(),
+                c.vu_par_arr.as_str(),
+                c.plafond
+            ),
+            ("/downloads/depots", "/data/depots", 5 << 30)
+        );
+        for faux in [
+            ("REGIE_PORT", "x"),
+            ("REGIE_SUIVI_MS", "100"),
+            ("REGIE_DEPOTS", "relatif"),
+            ("REGIE_DEPOTS_GO", "x"),
+        ] {
             assert!(charge(&[faux]).unwrap_err().contains(faux.0), "{faux:?}");
         }
         let c = charge(&[("REGIE_SUIVI_MS", "3000")]).unwrap();

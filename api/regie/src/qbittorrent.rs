@@ -15,6 +15,31 @@ pub struct Client<'a> {
 
 pub type Champs<'a> = [(&'a str, &'a str)];
 
+enum Envoi<'a> {
+    Lecture(&'a Champs<'a>),
+    Formulaire(&'a Champs<'a>),
+    Brut(String, Vec<u8>),
+}
+
+fn multipart(limite: &str, champs: &Champs<'_>, torrent: &[u8]) -> Vec<u8> {
+    let mut corps = Vec::with_capacity(torrent.len() + 1024);
+    for (nom, valeur) in champs {
+        corps.extend_from_slice(
+            format!(
+                "--{limite}\r\nContent-Disposition: form-data; name=\"{nom}\"\r\n\r\n{valeur}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    corps.extend_from_slice(
+        format!("--{limite}\r\nContent-Disposition: form-data; name=\"torrents\"; filename=\"depot.torrent\"\r\nContent-Type: application/x-bittorrent\r\n\r\n")
+            .as_bytes(),
+    );
+    corps.extend_from_slice(torrent);
+    corps.extend_from_slice(format!("\r\n--{limite}--\r\n").as_bytes());
+    corps
+}
+
 fn erreur(e: reqwest::Error) -> String {
     format!("injoignable ({})", commun::http::cause(&e.without_url()))
 }
@@ -139,16 +164,19 @@ impl<'a> Client<'a> {
 
     async fn appeler(
         &self,
-        ecriture: bool,
+        envoi: &Envoi<'_>,
         chemin: &str,
-        champs: &Champs<'_>,
         cookie: &str,
     ) -> Result<(u16, String), String> {
         let url = format!("{}/api/v2{chemin}", self.cfg.url);
-        let mut r = if ecriture {
-            self.http.post(url).form(champs)
-        } else {
-            self.http.get(url).query(champs)
+        let mut r = match envoi {
+            Envoi::Lecture(champs) => self.http.get(url).query(champs),
+            Envoi::Formulaire(champs) => self.http.post(url).form(champs),
+            Envoi::Brut(genre, corps) => self
+                .http
+                .post(url)
+                .header(header::CONTENT_TYPE, genre.as_str())
+                .body(corps.clone()),
         }
         .header(header::REFERER, &self.cfg.url);
         if !cookie.is_empty() {
@@ -159,22 +187,17 @@ impl<'a> Client<'a> {
         Ok((statut, rep.text().await.map_err(erreur)?))
     }
 
-    async fn executer(
-        &self,
-        ecriture: bool,
-        chemin: &str,
-        champs: &Champs<'_>,
-    ) -> Result<(u16, String), String> {
+    async fn executer(&self, envoi: &Envoi<'_>, chemin: &str) -> Result<(u16, String), String> {
         let mut session = self.session.0.lock().await;
         if let Some(cookie) = session.as_deref() {
-            match self.appeler(ecriture, chemin, champs, cookie).await? {
+            match self.appeler(envoi, chemin, cookie).await? {
                 (401 | 403, _) => {}
                 r => return Ok(r),
             }
         }
         *session = None;
         let cookie = self.connecter().await?;
-        let r = self.appeler(ecriture, chemin, champs, &cookie).await?;
+        let r = self.appeler(envoi, chemin, &cookie).await?;
         if !matches!(r.0, 401 | 403) {
             *session = Some(cookie);
         }
@@ -182,7 +205,7 @@ impl<'a> Client<'a> {
     }
 
     async fn lire(&self, chemin: &str, champs: &Champs<'_>) -> Result<String, String> {
-        match self.executer(false, chemin, champs).await? {
+        match self.executer(&Envoi::Lecture(champs), chemin).await? {
             (200..=299, t) => Ok(t),
             (s, _) => Err(format!("HTTP {s}")),
         }
@@ -194,7 +217,7 @@ impl<'a> Client<'a> {
     }
 
     pub async fn ecrire(&self, chemin: &str, champs: &Champs<'_>) -> Result<u16, String> {
-        match self.executer(true, chemin, champs).await? {
+        match self.executer(&Envoi::Formulaire(champs), chemin).await? {
             (s @ (200..=299 | 404 | 409), _) => Ok(s),
             (s, _) => Err(format!("HTTP {s}")),
         }
@@ -246,6 +269,37 @@ impl<'a> Client<'a> {
         Ok(instantane(
             &self.json("/sync/maindata", &[("rid", "0")]).await?,
         ))
+    }
+
+    pub async fn info(&self, hash: &str) -> Result<Option<Value>, String> {
+        let v = self.json("/torrents/info", &[("hashes", hash)]).await?;
+        Ok(v.as_array().and_then(|l| l.first()).cloned())
+    }
+
+    pub async fn ajouter(&self, hash: &str, torrent: &[u8], dossier: &str) -> Result<(), String> {
+        if dossier.chars().any(|c| c.is_control()) {
+            return Err("dossier refusé".into());
+        }
+        let limite = format!("regie-{hash}-{}", torrent.len());
+        let champs: &Champs<'_> = &[
+            ("savepath", dossier),
+            ("stopped", "true"),
+            ("paused", "true"),
+            ("autoTMM", "false"),
+            ("contentLayout", "Original"),
+            ("skip_checking", "false"),
+            ("tags", "regie"),
+        ];
+        let envoi = Envoi::Brut(
+            format!("multipart/form-data; boundary={limite}"),
+            multipart(&limite, champs, torrent),
+        );
+        match self.executer(&envoi, "/torrents/add").await? {
+            (200..=299, t) if !t.trim().eq_ignore_ascii_case("fails.") => Ok(()),
+            (200..=299 | 409, _) => Err("torrent refusé par qBittorrent".into()),
+            (415, _) => Err("fichier .torrent refusé par qBittorrent".into()),
+            (s, _) => Err(format!("HTTP {s}")),
+        }
     }
 
     pub async fn arreter(&self, hashes: &str) -> Result<(), String> {
@@ -322,7 +376,7 @@ impl<'a> Client<'a> {
 
     pub async fn fichiers(&self, hash: &str) -> Result<Option<Vec<Value>>, String> {
         let v = match self
-            .executer(false, "/torrents/files", &[("hash", hash)])
+            .executer(&Envoi::Lecture(&[("hash", hash)]), "/torrents/files")
             .await?
         {
             (200..=299, t) => {

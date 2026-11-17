@@ -43,7 +43,8 @@ système de Chromium doivent être présentes).
 - `src/sections/regie` : section Régie (administration des médias, API à part, [`docs/regie`](../../docs/regie/README.md)), affichée dans la
   messagerie seulement, selon `GET /me` de Régie (`regie:admin`) ; `regieUrl` : `REGIE_PUBLIC_URL` de l'image, `VITE_REGIE_URL` au build des
   apps ; sans elle, pas de section. `regie.ts` : client de l'API et calculs purs (état d'un service, tri des indexeurs, tailles et débits, états et filtre des torrents) ;
-  `regie.svelte.ts` : `Suivi`, qui enchaîne les lectures de `GET /admin/downloads?since=` tant que la page des téléchargements est affichée.
+  `regie.svelte.ts` : `Suivi`, qui enchaîne les lectures de `GET /admin/downloads?since=` tant que la page des téléchargements est affichée, et `envoyerFichier`, l'envoi d'un fichier de dépôt par morceaux avec reprise ;
+  `matchFiles` (`regie.ts`) associe les fichiers choisis sur l'appareil à ceux du torrent.
 - `src/sections/sillon` : section Sillon (musique, API à part, [`docs/sillon`](../../docs/sillon/README.md)), affichée selon `GET /me` de
   Sillon (`sillon:access`) comme Entracte ; `sillonUrl` : `SILLON_PUBLIC_URL` de l'image, `VITE_SILLON_URL` au build des apps ; sans elle,
   pas de section. `sillon.ts` : client de l'API et calculs purs (formats annoncés d'après `canPlayType`, gain, délai de l'encodeur) ;

@@ -230,3 +230,148 @@ paths:
         "403": { $ref: "#/components/responses/403" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }
+  /admin/deposits:
+    get:
+      summary: "Dépôts, plus récents d'abord (`regie:admin`)"
+      description: |
+        Un dépôt : `{id, name, state, created_at, tracker, private, size, received, files: [{index, path, size, received, valid}], imported, error}`.
+        `state` : `upload` (fichiers attendus), `checking` (vérification par qBittorrent), `seeding` (vérifié, en partage),
+        `mismatch` (un fichier ne correspond pas : `valid` donne la part valide de chacun, de 0 à 1).
+        `tracker` : nom d'hôte seul. `imported` : services qui ont reçu une demande d'import.
+      responses:
+        "200": { description: "`{items, used, limit}` : tailles annoncées cumulées et plafond `REGIE_DEPOTS_GO`, en octets" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Créer un dépôt à partir d'un fichier .torrent (`regie:admin`)"
+      description: |
+        Corps : le fichier .torrent brut (10 Mo au plus). Un torrent déjà déposé rend le dépôt existant (200), pour reprendre un envoi.
+        Refusés : torrent illisible, sans empreintes v1, nom ou chemin de fichier dangereux, plus de 5000 fichiers.
+      requestBody:
+        content:
+          application/x-bittorrent: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: "dépôt existant" }
+        "201": { description: "dépôt créé" }
+        "400": { description: "`invalid` : torrent refusé (le message dit pourquoi)" }
+        "409": { description: "`storage_full` : plafond du dossier des dépôts dépassé" }
+        "413": { description: "fichier .torrent trop gros" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+    get:
+      summary: "Un dépôt (`regie:admin`)"
+      parameters:
+        - name: wait
+          in: query
+          schema: { type: string }
+          description: "état connu de l'app : la réponse attend que l'état en diffère (20 s au plus)"
+      responses:
+        "200": { description: "le dépôt" }
+        "404": { description: "`not_found`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    delete:
+      summary: "Supprimer un dépôt et ses fichiers ; le torrent est retiré de qBittorrent (`regie:admin`)"
+      description: "Les fichiers importés dans une bibliothèque par lien physique y restent."
+      responses:
+        "204": { description: "supprimé" }
+        "404": { description: "`not_found`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}/files/{index}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+      - { name: index, in: path, required: true, schema: { type: integer } }
+    put:
+      summary: "Envoyer un morceau d'un fichier du dépôt (`regie:admin`)"
+      description: |
+        Corps : les octets du morceau (32 Mo au plus), écrits à `offset`, qui doit être la taille déjà reçue. Sinon 409 `bad_offset` avec
+        `received`, d'où reprendre. `reset=true` avec `offset=0` remplace le fichier depuis le début.
+        Accepté dans les états `upload` et `mismatch`.
+      parameters:
+        - { name: offset, in: query, required: true, schema: { type: integer } }
+        - { name: reset, in: query, schema: { type: boolean } }
+      requestBody:
+        content:
+          application/octet-stream: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: "`{received}`" }
+        "400": { description: "`invalid` : `offset` absent ou morceau au-delà de la taille annoncée" }
+        "404": { description: "`not_found` : dépôt ou fichier inconnu" }
+        "409": { description: "`bad_offset` (avec `received`) ou `bad_state`" }
+        "413": { description: "morceau trop gros" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}/seed:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+    post:
+      summary: "Vérifier le dépôt et le mettre en partage (`regie:admin`)"
+      description: |
+        Tous les fichiers doivent être reçus en entier. Le torrent est ajouté à qBittorrent à l'arrêt, sur le dossier du dépôt, et vérifié.
+        À 100 %, il démarre (`seeding`) ; sinon il reste à l'arrêt (`mismatch`). Depuis `mismatch`, relance la vérification.
+      responses:
+        "200": { description: "le dépôt, état `checking`" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`incomplete` : fichiers manquants ; `bad_state` : déjà en vérification ou en partage" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/deposits/{id}/import:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+    get:
+      summary: "Ce que Radarr, Sonarr ou Lidarr reconnaît dans le dépôt (`regie:admin`)"
+      parameters:
+        - { name: service, in: query, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+      responses:
+        "200": { description: "`{service, items: [{path, size, title, recognized, reasons}]}` ; `title` : `{service, title, detail}` ou `null`" }
+        "400": { description: "`invalid` : service inconnu" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`bad_state` : dépôt pas encore vérifié" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Importer les fichiers reconnus dans la bibliothèque, par lien physique (`regie:admin`)"
+      description: |
+        Corps : `{service}` ; pour `radarr`, `movie_id` rattache tous les fichiers du dépôt au film choisi (`GET /admin/library/radarr`).
+        L'import est une commande du service (`ManualImport`, mode copie) : il se termine en tâche de fond chez lui.
+      responses:
+        "200": { description: "`{service, files}` : nombre de fichiers confiés au service" }
+        "400": { description: "`invalid`" }
+        "404": { description: "`not_found`" }
+        "409": { description: "`bad_state` ; `nothing_to_import` : aucun fichier reconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/library/{service}:
+    parameters:
+      - { name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+    get:
+      summary: "Chercher un film, une série ou un album dans une bibliothèque (`regie:admin`)"
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "mots cherchés dans le titre (et l'artiste) ; vide : aucun résultat" }
+      responses:
+        "200": { description: "`{items: [{id, title, detail, year}]}`, 30 au plus" }
+        "404": { description: "`not_found` : service inconnu" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
