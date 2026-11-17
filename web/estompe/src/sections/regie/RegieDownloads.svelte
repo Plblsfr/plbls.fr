@@ -7,7 +7,7 @@
   import RegieLimits from './RegieLimits.svelte'
   import RegieTorrent from './RegieTorrent.svelte'
   import { Suivi } from './regie.svelte'
-  import { GROUPS, bytes, eta, filterTorrents, groupCounts, isStopped, percent, regieApi, speed, torrentLabel, torrentState, type Torrent, type TorrentGroup } from './regie'
+  import { GROUPS, bytes, eta, seedingTime, filterTorrents, groupCounts, isStopped, percent, regieApi, speed, torrentLabel, torrentState, type Torrent, type TorrentGroup } from './regie'
 
   const suivi = new Suivi()
   $effect(() => { suivi.start(); return () => suivi.stop() })
@@ -84,6 +84,7 @@
           {@const etat = torrentState(t.state)}
           {@const nom = torrentLabel(t)}
           {@const reste = eta(t.eta)}
+          {@const partage = seedingTime(t.seeding_time)}
           <li class="rg-item rg-torrent">
             <button class="rg-ouvrir grow" onclick={() => (opened = t.hash)} aria-label="Détails de {nom.title}">
               <strong class="rg-titre">{nom.title}</strong>
@@ -95,6 +96,7 @@
                 {#if t.upload_speed} · envoi {speed(t.upload_speed)}{/if}
                 {#if reste && etat.group === 'downloading'} · reste {reste}{/if}
                 {#if t.progress >= 1} · ratio {t.ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}{/if}
+                {#if partage} · partagé {partage}{/if}
                 {#if etat.group === 'downloading'} · {t.seeds} source{t.seeds > 1 ? 's' : ''}{/if}
               </span>
             </button>

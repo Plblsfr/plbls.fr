@@ -41,7 +41,7 @@ function telechargements() {
     transfer: { download_speed: 3 * 1024 * 1024, upload_speed: 512 * 1024, download_limit: 0, upload_limit: 0, alternative: false, free_space: 250 * 1024 ** 3, connection: 'connected' },
     torrents: [
       torrent({ hash: H1, name: 'Le.Film.du.soir.2021.1080p', progress: 0.42, size: 4 * 1024 ** 3, download_speed: 3 * 1024 * 1024, eta: 780, category: 'radarr', tags: ['vf'], seeds: 12, title: { service: 'radarr', title: 'Le Film du soir (2021)', detail: null } }),
-      torrent({ hash: H2, name: 'Ancien.Film.1999', state: 'stalledUP', progress: 1, size: 700 * 1024 ** 2, ratio: 2.5 }),
+      torrent({ hash: H2, name: 'Ancien.Film.1999', state: 'stalledUP', progress: 1, size: 700 * 1024 ** 2, ratio: 2.5, seeding_time: 187_200, uploaded: 1750 * 1024 ** 2 }),
     ],
   }
 }
@@ -206,7 +206,7 @@ test('Téléchargements : suivi en direct, pause, priorité d’un fichier, supp
   await expect(lignes.nth(0)).toContainText('Le Film du soir (2021)')
   await expect(lignes.nth(0)).toContainText('Radarr · Le.Film.du.soir.2021.1080p')
   await expect(lignes.nth(0)).toContainText('42 % de 4 Go · 3 Mo/s · reste 13 min')
-  await expect(lignes.nth(1)).toContainText('100 % de 700 Mo · ratio 2,5')
+  await expect(lignes.nth(1)).toContainText('100 % de 700 Mo · ratio 2,5 · partagé 2 j 4 h')
   await expect(page.getByText('250 Go libres')).toBeVisible()
 
   await page.getByRole('button', { name: /En partage/ }).click()
@@ -220,6 +220,7 @@ test('Téléchargements : suivi en direct, pause, priorité d’un fichier, supp
   await page.getByRole('button', { name: 'Détails de Ancien.Film.1999' }).click()
   const fiche = page.getByRole('dialog')
   await expect(fiche).toContainText('Ancien Film (1999)')
+  await expect(fiche).toContainText('Partage actif : 2 j 4 h · ratio 2,5 · 1,7 Go envoyés')
   await expect(fiche).toContainText('Ancien.Film.1999/sample.mkv')
   await fiche.getByLabel('Priorité de Ancien.Film.1999/sample.mkv').selectOption('7')
   await expect(fiche.getByLabel('Priorité de Ancien.Film.1999/sample.mkv')).toHaveValue('7')

@@ -103,7 +103,8 @@ paths:
         Sans `since` : l'instantané courant. Avec `since=<version>` : la réponse attend qu'il change (20 s au plus), puis le rend ;
         l'app enchaîne les appels avec la dernière `version` reçue. qBittorrent est relu toutes les `REGIE_SUIVI_MS` tant qu'un appel attend.
         - `torrents` (plus récents d'abord) : `{hash, name, state, progress, size, download_speed, upload_speed, eta, ratio, category, tags,
-          added_at, seeds, peers, download_limit, upload_limit, title}` ; `state` est celui de qBittorrent ; `title` : `{service, title, detail}`
+          added_at, seeds, peers, download_limit, upload_limit, seeding_time, uploaded, title}` ; `seeding_time` : temps de partage
+          actif en secondes, `uploaded` : octets envoyés ; `state` est celui de qBittorrent ; `title` : `{service, title, detail}`
           quand le torrent est dans la file de Radarr, Sonarr ou Lidarr, sinon `null`.
         - `categories`, `tags` : ceux de qBittorrent.
         - `transfer` : `{download_speed, upload_speed, download_limit, upload_limit, alternative, free_space, connection}`.

@@ -125,6 +125,8 @@ fn torrent(t: &Value, hash: &str) -> Value {
         "peers": entier("num_leechs"),
         "download_limit": entier("dl_limit").max(0),
         "upload_limit": entier("up_limit").max(0),
+        "seeding_time": entier("seeding_time").max(0),
+        "uploaded": entier("uploaded").max(0),
     })
 }
 
@@ -525,7 +527,8 @@ mod tests {
         let (a, b) = ("a".repeat(40), "B".repeat(40));
         let v = json!({
             "torrents": {
-                a.clone(): {"name": "Ancien", "state": "stalledUP", "progress": 1.0, "size": 10, "added_on": 1, "tags": "vf, 4k", "dl_limit": -1},
+                a.clone(): {"name": "Ancien", "state": "stalledUP", "progress": 1.0, "size": 10, "added_on": 1, "tags": "vf, 4k", "dl_limit": -1,
+                    "seeding_time": 93600, "uploaded": 2048},
                 b.clone(): {"name": "Récent", "state": "downloading", "progress": 0.5, "dlspeed": 2048, "added_on": 9, "category": "radarr", "tags": ""},
                 "pas-un-hash": {"name": "x"}
             },
@@ -543,6 +546,14 @@ mod tests {
         assert_eq!(t[0]["tags"], json!([]));
         assert_eq!(t[1]["tags"], json!(["vf", "4k"]));
         assert_eq!(t[1]["download_limit"], 0);
+        assert_eq!(
+            (&t[1]["seeding_time"], &t[1]["uploaded"]),
+            (&json!(93600), &json!(2048))
+        );
+        assert_eq!(
+            (&t[0]["seeding_time"], &t[0]["uploaded"]),
+            (&json!(0), &json!(0))
+        );
         assert_eq!(i["categories"], json!(["radarr", "sonarr"]));
         assert_eq!(i["tags"], json!(["4k", "vf"]));
         assert_eq!(

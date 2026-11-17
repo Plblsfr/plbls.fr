@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { sheetGroups, sheetText, type Sheet, depositComplete, depositState, invalidFiles, matchFiles, eta, filterTorrents, groupCounts, limitBytes, limitInput, percent, torrentLabel, torrentState, bytes, indexerState, problems, serviceState, sortIndexers, speed, type Deposit, type DepositFile, type Downloads, type Indexer, type RegieStatus, type Service, type Torrent } from './regie'
+import { seedingTime, sheetGroups, sheetText, type Sheet, depositComplete, depositState, invalidFiles, matchFiles, eta, filterTorrents, groupCounts, limitBytes, limitInput, percent, torrentLabel, torrentState, bytes, indexerState, problems, serviceState, sortIndexers, speed, type Deposit, type DepositFile, type Downloads, type Indexer, type RegieStatus, type Service, type Torrent } from './regie'
 import { Suivi, envoyerFichier } from './regie.svelte'
 import { ApiError } from '../../lib/api'
 
@@ -77,6 +77,11 @@ describe('régie', () => {
     expect(eta(600)).toBe('10 min')
     expect(eta(3900)).toBe('1 h 05')
     expect(eta(90_000)).toBe('1 j 1 h')
+    expect(seedingTime(undefined)).toBe('')
+    expect(seedingTime(59)).toBe('')
+    expect(seedingTime(2700)).toBe('45 min')
+    expect(seedingTime(11_100)).toBe('3 h 05')
+    expect(seedingTime(187_200)).toBe('2 j 4 h')
     expect(percent(0.9999)).toBe('99,9 %')
     expect(percent(1)).toBe('100 %')
     expect(limitBytes('')).toBe(0)

@@ -47,6 +47,7 @@ d'un service ; une erreur de connexion est rendue sans l'adresse.
 ## Téléchargements
 
 `GET /admin/downloads` rend les torrents de qBittorrent (`/api/v2/sync/maindata`), ses catégories, ses tags et ses débits.
+Chaque torrent porte son temps de partage actif (`seeding_time`, tel que qBittorrent le compte) et les octets envoyés, affichés dans la liste et la fiche.
 
 - **En direct** : avec `?since=<version>`, la réponse attend le prochain changement (20 s au plus) ; l'app enchaîne les appels, sans
   intervalle de son côté. Régie relit qBittorrent toutes les `REGIE_SUIVI_MS` (1,5 s) tant qu'un appel attend, et s'arrête sinon.
