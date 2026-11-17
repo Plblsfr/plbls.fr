@@ -255,6 +255,79 @@ export const fileName = fin
 
 export const CHUNK = 16 * 1024 * 1024
 
+export interface SheetVideo { codec: string; resolution: string | null; bit_depth: number | null; dynamic_range: string | null; fps: number | null; bitrate: number | null; scan: string | null }
+export interface SheetAudio { codec: string; channels: number | null; languages: string | null; bitrate: number | null; streams: number | null; sample_rate: number | null; bits: number | null }
+export interface SheetFile {
+  name: string | null
+  group: string | null
+  size: number | null
+  quality: string | null
+  release_group: string | null
+  scene_name: string | null
+  edition: string | null
+  languages: string[]
+  video: SheetVideo | null
+  audio: SheetAudio | null
+  subtitles: string | null
+  duration: string | null
+}
+export interface Sheet {
+  service: LibraryKey
+  id: number
+  title: string | null
+  original_title: string | null
+  artist: string | null
+  year: number | null
+  runtime: number | null
+  genres: string[]
+  ids: { tmdb: number | null; imdb: string | null; tvdb: number | null; musicbrainz: string | null }
+  files: SheetFile[]
+}
+
+const nombre = (n: number, decimales = 0) => n.toLocaleString('fr-FR', { maximumFractionDigits: decimales })
+const debit = (bits: number) => (bits >= 1_000_000 ? `${nombre(bits / 1_000_000, 1)} Mb/s` : `${nombre(bits / 1000)} kb/s`)
+const canaux = (c: number) => (Number.isInteger(c) ? (c === 1 ? 'mono' : c === 2 ? 'stéréo' : `${c} canaux`) : c.toFixed(1))
+
+export const sheetGroups = (s: Sheet) => [...new Set(s.files.map((f) => f.group).filter((g): g is string => !!g))]
+export const sheetTitle = (s: Sheet) => `${s.artist ? `${s.artist} - ` : ''}${s.title ?? 'Sans titre'}${s.year ? ` (${s.year})` : ''}`
+
+function fileLines(f: SheetFile): string[] {
+  const lignes = [f.name ?? 'Fichier sans nom']
+  const general = [f.size ? `Taille : ${bytes(f.size)}` : '', f.quality ? `Qualité : ${f.quality}` : '', f.release_group ? `Groupe : ${f.release_group}` : '', f.edition ? `Édition : ${f.edition}` : ''].filter(Boolean)
+  if (general.length) lignes.push(general.join(' · '))
+  if (f.scene_name && f.scene_name !== f.name) lignes.push(`Nom de release : ${f.scene_name}`)
+  if (f.video) {
+    const v = f.video
+    lignes.push(`Vidéo : ${[v.codec, v.resolution, v.bit_depth ? `${v.bit_depth} bits` : '', v.dynamic_range, v.fps ? `${nombre(v.fps, 3)} i/s` : '', v.bitrate ? debit(v.bitrate) : '', v.scan].filter(Boolean).join(', ')}`)
+  }
+  if (f.audio) {
+    const a = f.audio
+    lignes.push(`Audio : ${[[a.codec, a.channels ? canaux(a.channels) : ''].filter(Boolean).join(' '), a.languages, a.bitrate ? debit(a.bitrate) : '', a.sample_rate ? `${nombre(a.sample_rate / 1000, 1)} kHz` : '', a.bits ? `${a.bits} bits` : '', a.streams && a.streams > 1 ? `${a.streams} pistes` : ''].filter(Boolean).join(', ')}`)
+  }
+  if (f.languages.length) lignes.push(`Langues : ${f.languages.join(', ')}`)
+  if (f.subtitles) lignes.push(`Sous-titres : ${f.subtitles}`)
+  if (f.duration) lignes.push(`Durée : ${f.duration}`)
+  return lignes
+}
+
+/** Fiche en texte brut, à coller dans le formulaire d'un tracker ; `group` limite aux fichiers d'une saison. */
+export function sheetText(s: Sheet, group = ''): string {
+  const entete = [sheetTitle(s)]
+  if (s.original_title && s.original_title !== s.title) entete.push(`Titre original : ${s.original_title}`)
+  const infos = [s.runtime ? `Durée : ${Math.floor(s.runtime / 60)} h ${String(s.runtime % 60).padStart(2, '0')}` : '', s.genres.length ? `Genres : ${s.genres.join(', ')}` : ''].filter(Boolean)
+  if (infos.length) entete.push(infos.join(' · '))
+  if (s.ids.tmdb) entete.push(`TMDB : https://www.themoviedb.org/${s.service === 'sonarr' ? 'tv' : 'movie'}/${s.ids.tmdb}`)
+  if (s.ids.imdb) entete.push(`IMDb : https://www.imdb.com/title/${s.ids.imdb}/`)
+  if (s.ids.tvdb) entete.push(`TVDB : https://thetvdb.com/?tab=series&id=${s.ids.tvdb}`)
+  if (s.ids.musicbrainz) entete.push(`MusicBrainz : https://musicbrainz.org/release-group/${s.ids.musicbrainz}`)
+  const fichiers = s.files.filter((f) => !group || f.group === group)
+  const blocs = [entete.join('\n')]
+  if (group) blocs.push(group)
+  if (!fichiers.length) blocs.push('Aucun fichier.')
+  for (const f of fichiers) blocs.push(fileLines(f).join('\n'))
+  return blocs.join('\n\n')
+}
+
 const get = <T>(p: string) => requestAt<T>(REGIE_URL, 'GET', p)
 const post = (p: string, b: unknown) => requestAt<void>(REGIE_URL, 'POST', p, b)
 
@@ -282,5 +355,6 @@ export const regieApi = {
   importProposal: (id: string, service: LibraryKey) => get<ImportProposal>(`/admin/deposits/${id}/import?service=${service}`),
   importDeposit: (id: string, service: LibraryKey, movie_id?: number) => requestAt<{ service: ServiceKey; files: number }>(REGIE_URL, 'POST', `/admin/deposits/${id}/import`, movie_id ? { service, movie_id } : { service }),
   library: (service: LibraryKey, q: string) => get<{ items: LibraryTitle[] }>(`/admin/library/${service}?q=${encodeURIComponent(q)}`),
+  sheet: (service: LibraryKey, id: number) => get<Sheet>(`/admin/library/${service}/${id}/sheet`),
   removeFromQueue: (service: ServiceKey, id: number, retry: boolean) => requestAt<void>(REGIE_URL, 'DELETE', `/admin/queue/${service}/${id}${retry ? '?retry=true' : ''}`),
 }

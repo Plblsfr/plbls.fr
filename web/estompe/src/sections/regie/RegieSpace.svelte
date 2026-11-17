@@ -3,6 +3,7 @@
   import RegieHealth from './RegieHealth.svelte'
   import RegieDownloads from './RegieDownloads.svelte'
   import RegieDeposits from './RegieDeposits.svelte'
+  import RegieSheet from './RegieSheet.svelte'
 
   let { section, onmenu }: { section?: string; onmenu: () => void } = $props()
 </script>
@@ -15,6 +16,8 @@
   <RegieDownloads />
 {:else if section === 'deposits'}
   <RegieDeposits />
+{:else if section === 'sheet'}
+  <RegieSheet />
 {:else}
   <RegieHealth />
 {/if}

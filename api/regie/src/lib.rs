@@ -6,6 +6,7 @@ pub mod config;
 pub mod depots;
 pub mod droits;
 pub mod etat;
+pub mod fiche;
 pub mod garde;
 pub mod http;
 pub mod identite;

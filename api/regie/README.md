@@ -17,6 +17,7 @@ routes dans [`openapi.yaml`](../../docs/regie/openapi.yaml). Pas de base de donn
 | `telechargements.rs` | `GET /admin/downloads` (attente du prochain changement), actions sur les torrents, limites globales, fiche et priorités des fichiers ; validation des corps |
 | `bencode.rs` | lecture d'un fichier `.torrent` (`Torrent::lire`) : nom, fichiers, empreinte v1, refus des chemins dangereux |
 | `depots.rs` | dépôts : dossier par torrent (`depot.json`, `source.torrent`, `contenu/`), réception par morceaux, ajout à qBittorrent et surveillance de la vérification (`surveiller`), import manuel dans Radarr, Sonarr ou Lidarr, recherche dans une bibliothèque |
+| `fiche.rs` | fiche technique d'un titre (`composer`) à partir du film, de la série ou de l'album et de ses fichiers tels que le service les décrit ; noms de fichiers seuls |
 | `sante.rs` | `GET /admin/status` (relevé des cinq services en parallèle), test d'un indexeur, retrait d'un élément de la file |
 
 ## Développement

@@ -375,3 +375,22 @@ paths:
         "403": { $ref: "#/components/responses/403" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }
+  /admin/library/{service}/{id}/sheet:
+    parameters:
+      - { name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr, lidarr] } }
+      - { name: id, in: path, required: true, schema: { type: integer }, description: "identifiant du film, de la série ou de l'album (`GET /admin/library/{service}`)" }
+    get:
+      summary: "Fiche technique d'un titre et de ses fichiers (`regie:admin`)"
+      description: |
+        Ce que le service sait du titre et de ses fichiers, sans lire le disque :
+        `{service, id, title, original_title, artist, year, runtime, genres, ids: {tmdb, imdb, tvdb, musicbrainz}, files}`.
+        Un fichier : `{name, group, size, quality, release_group, scene_name, edition, languages, video: {codec, resolution, bit_depth,
+        dynamic_range, fps, bitrate, scan}, audio: {codec, channels, languages, bitrate, streams, sample_rate, bits}, subtitles, duration}`.
+        `name` est le nom du fichier seul, jamais son chemin ; `group` : la saison d'un épisode. Débits en bits par seconde.
+      responses:
+        "200": { description: "la fiche" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : service ou titre inconnu" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }

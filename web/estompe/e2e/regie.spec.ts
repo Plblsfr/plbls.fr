@@ -138,6 +138,11 @@ async function simuler(page: Page, admin: boolean) {
       return json(route, { service: corps.service, files: corps.movie_id ? 2 : 1 })
     }
     if (chemin === '/admin/library/radarr') return json(route, { items: [{ id: 5, title: 'Le Film du dimanche', detail: null, year: 1987 }] })
+    if (chemin === '/admin/library/radarr/5/sheet') {
+      return json(route, { service: 'radarr', id: 5, title: 'Le Film du dimanche', original_title: null, artist: null, year: 1987, runtime: 95, genres: ['Comédie'], ids: { tmdb: 42, imdb: null, tvdb: null, musicbrainz: null },
+        files: [{ name: 'Le.Film.du.dimanche.1987.1080p.mkv', group: null, size: 4 * 1024 ** 3, quality: 'Bluray-1080p', release_group: 'GRP', scene_name: null, edition: null, languages: ['French'],
+          video: { codec: 'x264', resolution: '1920x1080', bit_depth: 8, dynamic_range: null, fps: 24, bitrate: 6_000_000, scan: null }, audio: { codec: 'AC3', channels: 2, languages: 'fre', bitrate: 192_000, streams: 1, sample_rate: null, bits: null }, subtitles: 'fre', duration: '1:35:00' }] })
+    }
     return json(route, { error: 'not_found', message: 'introuvable' }, 404)
   }
   return { appels, etatDepots, finir }
@@ -286,4 +291,21 @@ test('Dépôts : .torrent, fichiers, vérification, remplacement d’un fichier 
   await carte.getByRole('button', { name: 'Supprimer' }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Supprimer' }).click()
   await expect(page.getByText('Aucun dépôt.')).toBeVisible()
+})
+
+test('Fiche technique : recherche d’un film et texte à copier', async ({ page }) => {
+  await simuler(page, true)
+  await page.goto('/#/regie/sheet')
+  await page.getByLabel('Chercher dans la bibliothèque').fill('dimanche')
+  await page.getByRole('button', { name: 'Chercher' }).click()
+  await page.getByRole('button', { name: /Le Film du dimanche \(1987\)/ }).click()
+  const fiche = page.getByLabel('Fiche technique')
+  await expect(fiche).toContainText('Le Film du dimanche (1987)')
+  await expect(fiche).toContainText('Durée : 1 h 35 · Genres : Comédie')
+  await expect(fiche).toContainText('TMDB : https://www.themoviedb.org/movie/42')
+  await expect(fiche).toContainText('Vidéo : x264, 1920x1080, 8 bits, 24 i/s, 6 Mb/s')
+  await expect(fiche).toContainText('Audio : AC3 stéréo, fre, 192 kb/s')
+  await expect(page.getByRole('button', { name: 'Copier' })).toBeVisible()
+  await page.getByRole('button', { name: 'Retour aux résultats' }).click()
+  await expect(page.getByRole('button', { name: /Le Film du dimanche/ })).toBeVisible()
 })

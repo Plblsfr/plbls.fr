@@ -72,7 +72,7 @@ async fn chaque_route_protegee_refuse_sans_session_et_sans_permission() {
             }
         }
     }
-    assert_eq!(protegees, 23);
+    assert_eq!(protegees, 24);
 }
 
 #[tokio::test]
@@ -188,6 +188,13 @@ fn radarr(r: &Requete) -> (u16, Value) {
                 {"id": 6, "title": "Autre chose", "year": 2001}
             ]),
         ),
+        ("GET", "/api/v3/movie/4") => (
+            200,
+            json!({"id": 4, "title": "Le Film", "year": 2024, "tmdbId": 603,
+                "movieFile": {"relativePath": "Le.Film.2024.mkv", "path": "/films/Le Film (2024)/Le.Film.2024.mkv", "size": 9,
+                    "mediaInfo": {"videoCodec": "x265", "audioCodec": "EAC3"}}}),
+        ),
+        ("GET", "/api/v3/movie/9") => (404, json!({})),
         ("DELETE", "/api/v3/queue/7") => (200, json!({})),
         ("DELETE", _) => (404, json!({})),
         _ => (500, json!({})),
@@ -1313,6 +1320,46 @@ async fn recherche_dans_une_bibliotheque() {
     );
     assert_eq!(
         e.get("admin", "/admin/library/sonarr?q=x").await.json()["error"],
+        "not_configured"
+    );
+}
+
+#[tokio::test]
+async fn fiche_technique_d_un_titre() {
+    let f = faux_json(radarr).await;
+    let e = env_avec(|c| c.radarr = arr(&f)).await;
+    let r = e.get("admin", "/admin/library/radarr/4/sheet").await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let v = r.json();
+    assert_eq!(
+        (&v["service"], &v["title"], &v["ids"]["tmdb"]),
+        (&json!("radarr"), &json!("Le Film"), &json!(603))
+    );
+    assert_eq!(
+        (
+            &v["files"][0]["name"],
+            &v["files"][0]["video"]["codec"],
+            &v["files"][0]["audio"]["codec"]
+        ),
+        (&json!("Le.Film.2024.mkv"), &json!("x265"), &json!("EAC3"))
+    );
+    assert!(
+        !r.texte().contains("/films"),
+        "aucun chemin dans la réponse"
+    );
+    for chemin in [
+        "/admin/library/radarr/9/sheet",
+        "/admin/library/radarr/0/sheet",
+        "/admin/library/prowlarr/4/sheet",
+    ] {
+        assert_eq!(
+            e.get("admin", chemin).await.statut,
+            StatusCode::NOT_FOUND,
+            "{chemin}"
+        );
+    }
+    assert_eq!(
+        e.get("admin", "/admin/library/sonarr/4/sheet").await.json()["error"],
         "not_configured"
     );
 }

@@ -11,6 +11,7 @@ use crate::{
     depots,
     droits::Droit,
     etat::AppState,
+    fiche,
     garde::{self, Garde},
     interne, sante, telechargements,
 };
@@ -192,6 +193,12 @@ pub fn table() -> Vec<Entree> {
             "/admin/library/{service}",
             Garde::Droit(Droit::Admin),
             get(depots::bibliotheque),
+        ),
+        entree(
+            Method::GET,
+            "/admin/library/{service}/{id}/sheet",
+            Garde::Droit(Droit::Admin),
+            get(fiche::lire),
         ),
     ]
 }

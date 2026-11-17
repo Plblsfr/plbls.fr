@@ -1,7 +1,7 @@
 # Régie
 
 Administration des médias de plbls.fr, à part d'Entracte et de Sillon : un seul endroit pour suivre Radarr, Sonarr, Lidarr, Prowlarr et
-qBittorrent, sans ouvrir leurs interfaces. Ce document décrit ce qui existe aujourd'hui : le socle du service, l'écran de santé, les téléchargements et les dépôts.
+qBittorrent, sans ouvrir leurs interfaces. Ce document décrit ce qui existe aujourd'hui : le socle du service, l'écran de santé, les téléchargements, les dépôts et la fiche technique.
 
 | Où | Quoi |
 |---|---|
@@ -16,7 +16,7 @@ Déclarée à aegis par manifeste (application `regie`, renvoyé toutes les 10 m
 
 | Permission | Ouvre |
 |---|---|
-| `regie:admin` | état des services, test d'un indexeur, retrait ou relance d'un téléchargement bloqué, suivi et pilotage des téléchargements de qBittorrent, dépôts |
+| `regie:admin` | état des services, test d'un indexeur, retrait ou relance d'un téléchargement bloqué, suivi et pilotage des téléchargements de qBittorrent, dépôts, fiche technique |
 
 Chaque route relève de cette permission ou d'une exception motivée (santé, `GET /me`) : la table des routes l'impose
 (`api/regie/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403 sans la permission).
@@ -85,6 +85,15 @@ Mettre en partage un contenu que l'on a soi-même publié : le tracker donne le 
 L'état d'un dépôt (`depot.json`) et son `.torrent` (`source.torrent`) sont dans son dossier : il n'y a pas de base de données.
 Supprimer un dépôt retire le torrent de qBittorrent et efface son dossier ; les fichiers importés par lien physique restent en bibliothèque.
 
+## Fiche technique
+
+Pour préparer une publication sur un tracker : `GET /admin/library/{service}?q=` cherche un film, une série ou un album dans Radarr,
+Sonarr ou Lidarr, et `GET /admin/library/{service}/{id}/sheet` rend sa fiche : titre, année, durée, genres, identifiants (TMDB, IMDb,
+TVDB, MusicBrainz), et pour chaque fichier son nom, sa taille, sa qualité, son groupe, sa vidéo (codec, définition, profondeur, plage
+dynamique, cadence, débit), son audio (codec, canaux, langues, débit), ses sous-titres et sa durée. Tout vient de ce que le service a
+déjà analysé : Régie ne lit aucun fichier de la bibliothèque et ne rend jamais de chemin, seulement des noms de fichiers.
+L'app en fait un texte à copier (`sheetText`), limité à une saison pour une série.
+
 Clients : `X-Api-Key` pour Radarr et Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`). qBittorrent : connexion par
 `POST /api/v2/auth/login`, cookie de session gardé en mémoire et renouvelé sur un 401 ou un 403.
 
@@ -93,7 +102,8 @@ Clients : `X-Api-Key` pour Radarr et Sonarr (`/api/v3`), Lidarr et Prowlarr (`/a
 Entrée « Régie » du rail de la messagerie, visible seulement avec `regie:admin` (`GET /me` de Régie, `REGIE_PUBLIC_URL`) ; `#/regie`
 ramène à l'accueil sinon. La page « Santé » relit l'état à l'ouverture, au bouton « Actualiser » et après chaque action ; « Téléchargements » (`#/regie/downloads`) suit
 qBittorrent en direct tant qu'elle est affichée (`Suivi`, `regie.svelte.ts`) ; « Dépôts » (`#/regie/deposits`) envoie les fichiers par
-morceaux (`envoyerFichier`) tant que la page reste ouverte, sur le web et l'app Windows.
+morceaux (`envoyerFichier`) tant que la page reste ouverte, sur le web et l'app Windows ; « Fiche technique » (`#/regie/sheet`) cherche un
+titre et affiche sa fiche à copier.
 
 ## Actions manuelles
 

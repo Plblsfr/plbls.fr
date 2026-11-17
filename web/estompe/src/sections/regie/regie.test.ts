@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { depositComplete, depositState, invalidFiles, matchFiles, eta, filterTorrents, groupCounts, limitBytes, limitInput, percent, torrentLabel, torrentState, bytes, indexerState, problems, serviceState, sortIndexers, speed, type Deposit, type DepositFile, type Downloads, type Indexer, type RegieStatus, type Service, type Torrent } from './regie'
+import { sheetGroups, sheetText, type Sheet, depositComplete, depositState, invalidFiles, matchFiles, eta, filterTorrents, groupCounts, limitBytes, limitInput, percent, torrentLabel, torrentState, bytes, indexerState, problems, serviceState, sortIndexers, speed, type Deposit, type DepositFile, type Downloads, type Indexer, type RegieStatus, type Service, type Torrent } from './regie'
 import { Suivi, envoyerFichier } from './regie.svelte'
 import { ApiError } from '../../lib/api'
 
@@ -171,5 +171,58 @@ describe('régie', () => {
     expect(appels).toEqual([[0, true], [4, false]])
     await expect(envoyerFichier(new Blob(['abc']), 0, async () => { throw new ApiError(409, 'bad_state', 'ce dépôt n’accepte plus de fichier') }, () => {})).rejects.toThrow('n’accepte plus')
     await expect(envoyerFichier(new Blob(['abc']), 0, async () => ({ received: 3 }), () => {}, { arret: () => true })).rejects.toMatchObject({ code: 'cancelled' })
+  })
+
+  it('rédige la fiche technique d’un film', () => {
+    const fiche: Sheet = {
+      service: 'radarr', id: 4, title: 'Le Film', original_title: 'The Movie', artist: null, year: 2024, runtime: 136, genres: ['Action', 'Science-Fiction'],
+      ids: { tmdb: 603, imdb: 'tt0133093', tvdb: null, musicbrainz: null },
+      files: [{
+        name: 'Le.Film.2024.1080p.BluRay.x264-GRP.mkv', group: null, size: 9 * 1024 ** 3, quality: 'Bluray-1080p', release_group: 'GRP', scene_name: 'Le.Film.2024.1080p.BluRay.x264-GRP', edition: null, languages: ['French', 'English'],
+        video: { codec: 'x264', resolution: '1920x800', bit_depth: 8, dynamic_range: null, fps: 23.976, bitrate: 9_500_000, scan: 'Progressive' },
+        audio: { codec: 'DTS', channels: 5.1, languages: 'fre/eng', bitrate: 1_509_000, streams: 2, sample_rate: null, bits: null },
+        subtitles: 'fre/eng', duration: '2:16:17',
+      }],
+    }
+    expect(sheetText(fiche)).toBe([
+      'Le Film (2024)',
+      'Titre original : The Movie',
+      'Durée : 2 h 16 · Genres : Action, Science-Fiction',
+      'TMDB : https://www.themoviedb.org/movie/603',
+      'IMDb : https://www.imdb.com/title/tt0133093/',
+      '',
+      'Le.Film.2024.1080p.BluRay.x264-GRP.mkv',
+      'Taille : 9 Go · Qualité : Bluray-1080p · Groupe : GRP',
+      'Nom de release : Le.Film.2024.1080p.BluRay.x264-GRP',
+      'Vidéo : x264, 1920x800, 8 bits, 23,976 i/s, 9,5 Mb/s, Progressive',
+      'Audio : DTS 5.1, fre/eng, 1,5 Mb/s, 2 pistes',
+      'Langues : French, English',
+      'Sous-titres : fre/eng',
+      'Durée : 2:16:17',
+    ].join('\n'))
+    expect(sheetGroups(fiche)).toEqual([])
+  })
+
+  it('limite la fiche d’une série à une saison et décrit un album', () => {
+    const vide = { size: null, quality: null, release_group: null, scene_name: null, edition: null, languages: [], video: null, audio: null, subtitles: null, duration: null }
+    const serie: Sheet = {
+      service: 'sonarr', id: 2, title: 'La Série', original_title: null, artist: null, year: 2020, runtime: null, genres: [], ids: { tmdb: 12, imdb: null, tvdb: 77, musicbrainz: null },
+      files: [{ ...vide, name: 'S01E01.mkv', group: 'Saison 1' }, { ...vide, name: 'S02E01.mkv', group: 'Saison 2' }],
+    }
+    expect(sheetGroups(serie)).toEqual(['Saison 1', 'Saison 2'])
+    const texte = sheetText(serie, 'Saison 2')
+    expect(texte).toContain('https://www.themoviedb.org/tv/12')
+    expect(texte).toContain('TVDB : https://thetvdb.com/?tab=series&id=77')
+    expect(texte).toContain('Saison 2\n\nS02E01.mkv')
+    expect(texte).not.toContain('S01E01')
+    const album: Sheet = {
+      service: 'lidarr', id: 3, title: 'L’Album', original_title: null, artist: 'Le Groupe', year: 1999, runtime: null, genres: ['Rock'], ids: { tmdb: null, imdb: null, tvdb: null, musicbrainz: 'mbid-1' },
+      files: [{ ...vide, name: '01 - Titre.flac', group: null, quality: 'FLAC', audio: { codec: 'FLAC', channels: 2, languages: null, bitrate: 1_011_000, streams: null, sample_rate: 44_100, bits: 16 } }],
+    }
+    const t = sheetText(album)
+    expect(t.split('\n')[0]).toBe('Le Groupe - L’Album (1999)')
+    expect(t).toContain('Audio : FLAC stéréo, 1 Mb/s, 44,1 kHz, 16 bits')
+    expect(t).toContain('MusicBrainz : https://musicbrainz.org/release-group/mbid-1')
+    expect(sheetText({ ...album, files: [] })).toContain('Aucun fichier.')
   })
 })

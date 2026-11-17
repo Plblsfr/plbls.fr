@@ -359,6 +359,35 @@ impl<'a> Client<'a> {
             .collect())
     }
 
+    pub async fn titre_et_fichiers(&self, id: i64) -> Result<Option<(Value, Vec<Value>)>, String> {
+        let (titre, fichiers) = match self.service {
+            Service::Radarr => (format!("/movie/{id}"), None),
+            Service::Sonarr => (
+                format!("/series/{id}"),
+                Some(format!("/episodefile?seriesId={id}")),
+            ),
+            Service::Lidarr => (
+                format!("/album/{id}"),
+                Some(format!("/trackfile?albumId={id}")),
+            ),
+            Service::Prowlarr => return Ok(None),
+        };
+        let titre = match self
+            .envoyer(self.requete(reqwest::Method::GET, &titre))
+            .await?
+        {
+            (200..=299, v) if v.is_object() => v,
+            (404, _) => return Ok(None),
+            (401 | 403, _) => return Err("clé d'API refusée".into()),
+            (s, _) => return Err(format!("HTTP {s}")),
+        };
+        let fichiers = match fichiers {
+            Some(chemin) => self.liste(&chemin).await?,
+            None => Vec::new(),
+        };
+        Ok(Some((titre, fichiers)))
+    }
+
     pub async fn indexeurs(&self) -> Result<Vec<Value>, String> {
         let etats = self.liste("/indexerstatus").await?;
         Ok(self

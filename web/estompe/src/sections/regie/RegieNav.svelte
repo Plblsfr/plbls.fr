@@ -6,6 +6,7 @@
     { id: undefined, label: 'Santé', icon: 'chart' },
     { id: 'downloads', label: 'Téléchargements', icon: 'telecharge' },
     { id: 'deposits', label: 'Dépôts', icon: 'envoie' },
+    { id: 'sheet', label: 'Fiche technique', icon: 'info' },
   ]
   const route = $derived(router.current)
   const section = $derived(route.name === 'regie' ? route.section : undefined)
