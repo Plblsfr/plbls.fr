@@ -68,17 +68,17 @@ export interface ServeurFile {
   ecoute(b: EcouteEnvoyee): Promise<unknown>
 }
 
-export type Contexte = { type: 'album' | 'playlist' | 'artist'; id: string } | { type: 'likes' } | { type: 'pistes'; query?: string }
+export type Contexte = { type: 'album' | 'playlist' | 'artist'; id: string } | { type: 'likes' } | { type: 'library' } | { type: 'pistes'; query?: string }
 
 export function sourceDe(c: Contexte): { type: TypeSource; id?: string; query?: string } | undefined {
   if (c.type === 'pistes') return c.query ? { type: 'search', query: c.query } : undefined
-  return c.type === 'likes' ? { type: 'likes' } : { type: c.type, id: c.id }
+  return c.type === 'likes' || c.type === 'library' ? { type: c.type } : { type: c.type, id: c.id }
 }
 
 export function contexteDe(s: FileServeur['source']): Contexte {
   if (!s) return { type: 'pistes' }
   if (s.type === 'search') return { type: 'pistes', query: s.name }
-  if (s.type === 'likes') return { type: 'likes' }
+  if (s.type === 'likes' || s.type === 'library') return { type: s.type }
   return s.id ? { type: s.type, id: s.id } : { type: 'pistes' }
 }
 
@@ -141,6 +141,7 @@ export class Lecteur {
   get element(): ElementFile | null { return this.elements[this.index] ?? null }
   get aleatoire() { return !!this.serveur?.shuffle }
   get suggestions(): Suggestions { return this.serveur?.suggestions ?? 'off' }
+  get sansFin() { return this.serveur?.endless ?? true }
   get repetition(): Repetition { return this.serveur?.repeat ?? 'off' }
   get suivante(): Piste | null { return this.file[this.prochain(true)] ?? null }
   get peutSuivre() { return this.prochain(false) >= 0 }
@@ -161,6 +162,17 @@ export class Lecteur {
     void this.ecrireFile((s, revision) => s.remplacer({ revision, tracks: dispo.map((p) => p.id), index, ...(source ? { source } : {}), ...(melanger ? { shuffle: true } : {}) })).catch(() => {})
   }
 
+  async melangerTout() {
+    if (!this.env.serveur) return 0
+    this.cloturer('skip')
+    this.arreter()
+    this.brancher()
+    await this.ecrireFile((s, revision) => s.remplacer({ revision, source: { type: 'library' } }))
+    if (!this.piste) return 0
+    this.reprendre()
+    return this.file.length
+  }
+
   async chargerFile() {
     const s = this.env.serveur
     if (!s) return
@@ -171,6 +183,7 @@ export class Lecteur {
   }
 
   basculerAleatoire() { return this.ecrireFile((s, revision) => s.modifier({ revision, shuffle: !this.aleatoire })) }
+  reglerSansFin(v: boolean) { return this.ecrireFile((s, revision) => s.modifier({ revision, endless: v })) }
   reglerSuggestions(v: Suggestions) { return this.ecrireFile((s, revision) => s.modifier({ revision, suggestions: v })) }
   changerRepetition() {
     const k = REPETITIONS.findIndex((r) => r.id === this.repetition)

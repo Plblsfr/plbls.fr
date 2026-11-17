@@ -242,7 +242,7 @@ mod tests {
                 Some("alice"),
                 "PUT",
                 "/queue",
-                Some(json!({"revision": 0, "source": {"type": "likes"}})),
+                Some(json!({"revision": 0, "source": {"type": "likes"}, "endless": false})),
             )
             .await
             .json();

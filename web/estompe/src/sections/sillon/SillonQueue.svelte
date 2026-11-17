@@ -76,6 +76,10 @@
         {#each SUGGESTIONS as s (s.id)}<button role="radio" aria-checked={lecteur.suggestions === s.id} onclick={() => changerSuggestions(s.id)}>{s.label}</button>{/each}
       </div>
     </div>
+    <label class="sillon-reglage sillon-interrupteur">
+      <input type="checkbox" role="switch" checked={lecteur.sansFin} onchange={(e) => faire(lecteur.reglerSansFin(e.currentTarget.checked))} />
+      <span><span class="v-lbl">Lecture sans fin</span><span class="v-note">À la fin de la file, la musique continue avec des titres proches.</span></span>
+    </label>
     {#if ajout}
       <label class="sillon-reglage sillon-interrupteur">
         <input type="checkbox" role="switch" checked={lecteur.decouverte} onchange={(e) => changerDecouverte(e.currentTarget.checked)} />
@@ -129,7 +133,7 @@
         {/each}
       </ol>
     {:else}
-      <div class="v-empty"><Icon name="list" size={28} /><p class="v-note">{lecteur.piste ? 'Rien après ce titre.' : 'La file est vide. Lance un album, une playlist ou un titre.'}</p></div>
+      <div class="v-empty"><Icon name="list" size={28} /><p class="v-note">{lecteur.piste ? 'Rien après ce titre.' : 'La file est vide. Lance un album, une playlist, un titre ou « Tout mélanger » depuis l’accueil.'}</p></div>
     {/if}
   </section>
 </div>

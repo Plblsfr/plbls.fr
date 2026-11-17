@@ -19,7 +19,9 @@ use crate::{
 
 pub const FILE_MAX: usize = PISTES_MAX;
 pub const POSITION_MAX: f64 = 86_400.0;
-pub const SOURCES: [&str; 5] = ["album", "playlist", "artist", "likes", "search"];
+pub const SOURCES: [&str; 6] = ["album", "playlist", "artist", "likes", "search", "library"];
+pub const BIBLIOTHEQUE: &str = "library";
+const RECENTES: usize = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Elem {
@@ -46,6 +48,7 @@ pub struct File {
     pub repetition: String,
     pub graine: i64,
     pub suggestions: Suggestions,
+    pub sans_fin: bool,
     pub elements: Vec<Elem>,
     pub modifie_le: Option<DateTime<Utc>>,
 }
@@ -61,6 +64,7 @@ impl Default for File {
             repetition: "off".into(),
             graine: 0,
             suggestions: Suggestions::Off,
+            sans_fin: true,
             elements: Vec::new(),
             modifie_le: None,
         }
@@ -68,6 +72,94 @@ impl Default for File {
 }
 
 impl File {
+    fn bibliotheque(&self) -> bool {
+        self.source
+            .as_ref()
+            .is_some_and(|s| s.genre == BIBLIOTHEQUE)
+    }
+
+    fn suggestions_utiles(&self) -> Suggestions {
+        if self.bibliotheque() {
+            Suggestions::Off
+        } else {
+            self.suggestions
+        }
+    }
+
+    fn places(&self) -> Vec<Place> {
+        self.elements
+            .iter()
+            .map(|e| Place {
+                element: Some(e.id),
+                piste: e.piste,
+                suggeree: e.suggeree,
+            })
+            .collect()
+    }
+
+    fn sans_suite(&mut self) {
+        let garde = self
+            .elements
+            .iter()
+            .rposition(|e| !e.suggeree)
+            .map_or(0, |i| i + 1)
+            .max(self.index + 1);
+        self.elements.truncate(garde);
+    }
+
+    async fn continuer(&mut self, state: &AppState, sub: &str) -> bool {
+        let n = self.elements.len();
+        if !self.sans_fin || self.repetition != "off" || n == 0 {
+            return false;
+        }
+        let index = self.index.min(n - 1);
+        if n - 1 - index >= ordre::SEUIL_SUITE {
+            return false;
+        }
+        let bibliotheque = self.bibliotheque();
+        let mut pistes = if bibliotheque {
+            let graine = self.graine.wrapping_add(i64::try_from(n).unwrap_or(0));
+            let toutes: Vec<Uuid> = self.elements.iter().map(|e| e.piste).collect();
+            let lot = ordre::LOT_BIBLIOTHEQUE;
+            let mut l = ordre::tirer(state, sub, graine, &toutes, lot).await;
+            if l.is_empty() {
+                let recentes = &toutes[index.saturating_sub(RECENTES)..];
+                l = ordre::tirer(state, sub, graine, recentes, lot).await;
+            }
+            l
+        } else {
+            let contexte = Contexte {
+                sub,
+                graine: self.graine,
+                premier: None,
+                elements: &[],
+                suggestions: self.suggestions,
+            };
+            ordre::suite(state, &contexte, &self.places(), ordre::SUITE).await
+        };
+        let trop = (n + pistes.len()).saturating_sub(FILE_MAX).min(index);
+        self.elements.drain(..trop);
+        self.index = index - trop;
+        pistes.truncate(FILE_MAX.saturating_sub(self.elements.len()));
+        if pistes.is_empty() {
+            return false;
+        }
+        let rang = self
+            .elements
+            .iter()
+            .map(|e| e.rang_source)
+            .max()
+            .unwrap_or(-1);
+        self.elements
+            .extend(pistes.into_iter().zip(1..).map(|(piste, i)| Elem {
+                id: Uuid::new_v4(),
+                piste,
+                rang_source: rang.saturating_add(i),
+                suggeree: !bibliotheque,
+            }));
+        true
+    }
+
     fn courant(&self) -> Option<Uuid> {
         self.elements.get(self.index).map(|e| e.id)
     }
@@ -132,7 +224,7 @@ impl File {
                 graine: self.graine,
                 premier: courant,
                 elements: &elements,
-                suggestions: self.suggestions,
+                suggestions: self.suggestions_utiles(),
             },
         )
         .await;
@@ -141,18 +233,14 @@ impl File {
     }
 
     async fn prolonger(&mut self, state: &AppState, sub: &str) -> bool {
-        let Some(rythme) = self.suggestions.rythme().filter(|_| self.aleatoire) else {
+        let Some(rythme) = self
+            .suggestions_utiles()
+            .rythme()
+            .filter(|_| self.aleatoire)
+        else {
             return false;
         };
-        let mut places: Vec<Place> = self
-            .elements
-            .iter()
-            .map(|e| Place {
-                element: Some(e.id),
-                piste: e.piste,
-                suggeree: e.suggeree,
-            })
-            .collect();
+        let mut places = self.places();
         if !ordre::a_prolonger(&places, self.index, rythme) {
             return false;
         }
@@ -219,10 +307,10 @@ pub fn avancer(presentes: &[bool], index: usize, pas: i64, boucle: bool) -> Opti
 async fn charger(c: &mut PgConnection, sub: &str, verrou: bool) -> Result<File, sqlx::Error> {
     let sql = if verrou {
         "SELECT revision, source_type, source_id, source_nom, index_courant, position, aleatoire, repetition, graine,
-                suggestions, modifie_le FROM files WHERE sub = $1 FOR UPDATE"
+                suggestions, modifie_le, sans_fin FROM files WHERE sub = $1 FOR UPDATE"
     } else {
         "SELECT revision, source_type, source_id, source_nom, index_courant, position, aleatoire, repetition, graine,
-                suggestions, modifie_le FROM files WHERE sub = $1"
+                suggestions, modifie_le, sans_fin FROM files WHERE sub = $1"
     };
     let Some(l) = sqlx::query(sql).bind(sub).fetch_optional(&mut *c).await? else {
         return Ok(File::default());
@@ -254,6 +342,7 @@ async fn charger(c: &mut PgConnection, sub: &str, verrou: bool) -> Result<File, 
         repetition: l.get(7),
         graine: l.get(8),
         suggestions: Suggestions::lire(&l.get::<String, _>(9)).unwrap_or(Suggestions::Off),
+        sans_fin: l.get(11),
         elements,
         modifie_le: Some(l.get(10)),
     })
@@ -278,6 +367,7 @@ pub async fn etat_public(pool: &PgPool, sub: &str, f: &File) -> Result<Value, sq
         "shuffle": f.aleatoire,
         "repeat": f.repetition,
         "suggestions": f.suggestions.nom(),
+        "endless": f.sans_fin,
         "seed": f.graine,
         "updated_at": f.modifie_le.as_ref().map(horodatage),
         "items": f.elements.iter().zip(pistes).map(|(e, piste)| json!({
@@ -343,7 +433,7 @@ async fn fermer(state: &AppState, sub: &str, e: Ecriture<'_>) -> Result<Response
     f.revision += 1;
     let modifie_le: DateTime<Utc> = sqlx::query_scalar(
         "UPDATE files SET revision = $2, source_type = $3, source_id = $4, source_nom = $5, index_courant = $6,
-           position = $7, aleatoire = $8, repetition = $9, graine = $10, suggestions = $11, modifie_le = now()
+           position = $7, aleatoire = $8, repetition = $9, graine = $10, suggestions = $11, sans_fin = $12, modifie_le = now()
          WHERE sub = $1 RETURNING modifie_le",
     )
     .bind(sub)
@@ -357,6 +447,7 @@ async fn fermer(state: &AppState, sub: &str, e: Ecriture<'_>) -> Result<Response
     .bind(&f.repetition)
     .bind(f.graine)
     .bind(f.suggestions.nom())
+    .bind(f.sans_fin)
     .fetch_one(&mut *tx)
     .await
     .map_err(bd)?;
@@ -388,8 +479,9 @@ async fn fermer(state: &AppState, sub: &str, e: Ecriture<'_>) -> Result<Response
 }
 
 fn decouvrir(state: &AppState, f: &File) -> Option<Vec<Uuid>> {
-    (f.aleatoire && f.suggestions != Suggestions::Off && state.config().listenbrainz.is_some())
-        .then(|| f.source())
+    let suggestions = f.aleatoire && f.suggestions != Suggestions::Off;
+    let sans_fin = f.sans_fin && f.repetition == "off";
+    ((suggestions || sans_fin) && state.config().listenbrainz.is_some()).then(|| f.source())
 }
 
 fn position(corps: &Map<String, Value>) -> Result<Option<f64>, Response> {
@@ -417,6 +509,9 @@ fn modes(f: &mut File, corps: &Map<String, Value>) -> Result<Option<bool>, Respo
             .and_then(Suggestions::lire)
             .ok_or_else(|| invalide("suggestions : off, light ou frequent"))?;
     }
+    if let Some(sans_fin) = booleen(corps, "endless")? {
+        f.sans_fin = sans_fin;
+    }
     booleen(corps, "shuffle")
 }
 
@@ -439,7 +534,17 @@ pub async fn remplacer(
         }
         Some(_) => return Err(invalide("source : objet attendu")),
     };
+    let graine = ordre::graine();
     let (pistes, source) = match (corps.get("tracks").is_some(), source) {
+        (false, Some((genre, _, _))) if genre == BIBLIOTHEQUE => {
+            let pistes = ordre::tirer(&state, p.sub(), graine, &[], ordre::LOT_BIBLIOTHEQUE).await;
+            let source = Source {
+                genre,
+                id: None,
+                nom: "Bibliothèque".into(),
+            };
+            (pistes, Some(source))
+        }
         (true, s) => {
             let pistes = contenu(state.pool(), p.sub(), &corps).await?;
             let s = match s {
@@ -487,10 +592,13 @@ pub async fn remplacer(
         .collect();
     f.index = index;
     f.position = position;
-    f.aleatoire = aleatoire.unwrap_or(f.aleatoire);
-    if f.aleatoire {
+    f.aleatoire = f.bibliotheque() || aleatoire.unwrap_or(f.aleatoire);
+    if f.bibliotheque() {
+        f.graine = graine;
+    } else if f.aleatoire {
         f.melanger(&state, p.sub()).await;
     }
+    f.continuer(&state, p.sub()).await;
     let source = decouvrir(&state, f);
     let r = fermer(&state, p.sub(), e).await?;
     if let Some(source) = source {
@@ -517,7 +625,7 @@ pub async fn modifier(
     };
     let mut e = ouvrir(&state, p.sub(), &corps).await?;
     let f = &mut e.file;
-    let avant = f.suggestions;
+    let (avant, sans_fin) = (f.suggestions, f.sans_fin);
     let aleatoire = modes(f, &corps)?;
     let mut planifie = false;
     if let Some(i) = index {
@@ -567,6 +675,15 @@ pub async fn modifier(
     }
     if !planifie && (index.is_some() || pas.is_some() || f.suggestions != avant) {
         planifie = f.prolonger(&state, p.sub()).await;
+    }
+    if sans_fin && !f.sans_fin && !f.bibliotheque() {
+        f.sans_suite();
+    }
+    let cles = ["shuffle", "repeat", "suggestions", "endless"];
+    if (index.is_some() || pas.is_some() || cles.iter().any(|m| corps.contains_key(*m)))
+        && f.continuer(&state, p.sub()).await
+    {
+        planifie = true;
     }
     let source = decouvrir(&state, f).filter(|_| planifie);
     let r = fermer(&state, p.sub(), e).await?;
@@ -646,6 +763,8 @@ pub async fn retirer(
     } else {
         f.suivre(courant);
     }
+    f.normaliser();
+    f.continuer(&state, p.sub()).await;
     fermer(&state, p.sub(), e).await
 }
 
@@ -896,7 +1015,7 @@ mod tests_api {
             "PUT",
             "/queue",
             &json!({"revision": 0}),
-            json!({"tracks": p[..5], "index": 1}),
+            json!({"tracks": p[..5], "index": 1, "endless": false}),
         )
         .await;
         let f = ecrire(
@@ -992,5 +1111,172 @@ mod tests_api {
         assert_eq!(r.json()["items"][4]["track"]["available"], false);
         let f = ecrire("PATCH", "/queue", &r.json(), json!({"step": -1})).await;
         assert_eq!(f["index"], 3);
+    }
+
+    async fn ecrire(e: &crate::testutil::Env, methode: &str, mut corps: Value) -> Value {
+        corps["revision"] = e.get("alice", "/queue").await.json()["revision"].clone();
+        let r = e.appel(Some("alice"), methode, "/queue", Some(corps)).await;
+        assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+        r.json()
+    }
+
+    fn suggerees(f: &Value) -> Vec<bool> {
+        f["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["suggested"] == true)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn lecture_sans_fin_prolonge_la_file_pres_de_sa_fin() {
+        let Some(e) = env().await else { return };
+        let p = catalogue(e.state.pool(), 30).await;
+        let f = ecrire(&e, "PUT", json!({"tracks": p[..4]})).await;
+        assert_eq!(f["endless"], true, "active par défaut");
+        assert_eq!(pistes_de(&f), p[..4], "trois titres à venir : rien de plus");
+
+        let f = ecrire(&e, "PATCH", json!({"index": 1})).await;
+        let pistes = pistes_de(&f);
+        assert!(pistes.len() > 4, "{pistes:?}");
+        assert_eq!(pistes[..4], p[..4]);
+        assert_eq!(f["index"], 1);
+        assert!(
+            suggerees(&f)[4..].iter().all(|s| *s),
+            "la suite est marquée"
+        );
+        assert!(suggerees(&f)[..4].iter().all(|s| !*s));
+        let uniques: std::collections::HashSet<&String> = pistes.iter().collect();
+        assert_eq!(uniques.len(), pistes.len(), "aucune piste deux fois");
+        let n = pistes.len();
+        let f = ecrire(&e, "PATCH", json!({"position": 12.0})).await;
+        assert_eq!(pistes_de(&f).len(), n, "la position seule ne prolonge pas");
+
+        let f = ecrire(&e, "PATCH", json!({"endless": false})).await;
+        assert_eq!(f["endless"], false);
+        assert_eq!(
+            pistes_de(&f),
+            p[..4],
+            "coupée : la suite pas encore jouée part"
+        );
+        let f = ecrire(&e, "PATCH", json!({"index": 3})).await;
+        assert_eq!(pistes_de(&f).len(), 4);
+        let f = ecrire(&e, "PATCH", json!({"endless": true})).await;
+        assert!(pistes_de(&f).len() > 4, "réactivée en fin de file");
+        let f = e.get("alice", "/queue").await.json();
+        assert_eq!(f["endless"], true, "réglage gardé avec la file");
+
+        let f = ecrire(&e, "PUT", json!({"tracks": p[..2], "repeat": "all"})).await;
+        assert_eq!(pistes_de(&f), p[..2], "en répétition, la file boucle");
+        let f = ecrire(&e, "PUT", json!({"tracks": p[..1], "repeat": "off"})).await;
+        assert!(pistes_de(&f).len() > 1, "un titre seul lance sa suite");
+        let r = e
+            .appel(
+                Some("alice"),
+                "PATCH",
+                "/queue",
+                Some(json!({"revision": f["revision"], "endless": "oui"})),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn bibliotheque_entiere_en_aleatoire_et_sans_fin() {
+        let Some(e) = env().await else { return };
+        let p = catalogue(e.state.pool(), 30).await;
+        let r = e
+            .appel(
+                Some("alice"),
+                "POST",
+                "/recommendations/dismiss",
+                Some(json!({"track": p[1]})),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::NO_CONTENT);
+        sqlx::query("UPDATE pistes SET present = false WHERE id = $1::uuid")
+            .bind(&p[2])
+            .execute(e.state.pool())
+            .await
+            .unwrap();
+
+        let f = ecrire(&e, "PUT", json!({"source": {"type": "library"}})).await;
+        assert_eq!(
+            f["source"],
+            json!({"type": "library", "id": null, "name": "Bibliothèque"})
+        );
+        assert_eq!(
+            (f["shuffle"].clone(), f["index"].clone()),
+            (json!(true), json!(0))
+        );
+        let pistes = pistes_de(&f);
+        let mut triees = pistes.clone();
+        triees.sort();
+        let mut attendues: Vec<String> = p
+            .iter()
+            .filter(|x| **x != p[1] && **x != p[2])
+            .cloned()
+            .collect();
+        attendues.sort();
+        assert_eq!(
+            triees, attendues,
+            "toute la bibliothèque, sans refus ni absente"
+        );
+        assert_ne!(pistes, attendues, "mélangée");
+        assert!(suggerees(&f).iter().all(|s| !*s));
+        let autre = ecrire(&e, "PUT", json!({"source": {"type": "library"}})).await;
+        assert_ne!(
+            pistes_de(&autre),
+            pistes,
+            "un autre tirage à chaque lancement"
+        );
+
+        let f = ecrire(&e, "PATCH", json!({"index": 26})).await;
+        let suite = pistes_de(&f);
+        assert!(
+            suite.len() > 28,
+            "bibliothèque épuisée : elle repart, {}",
+            suite.len()
+        );
+        assert!(suite.iter().all(|x| *x != p[1] && *x != p[2]));
+        assert!(suggerees(&f).iter().all(|s| !*s));
+        let proches: std::collections::HashSet<&String> =
+            suite[16..38.min(suite.len())].iter().collect();
+        assert_eq!(
+            proches.len(),
+            38.min(suite.len()) - 16,
+            "pas de reprise immédiate"
+        );
+        let f = ecrire(
+            &e,
+            "PATCH",
+            json!({"shuffle": false, "suggestions": "frequent"}),
+        )
+        .await;
+        let f = ecrire(&e, "PATCH", json!({"shuffle": true, "index": f["index"]})).await;
+        assert!(
+            suggerees(&f).iter().all(|s| !*s),
+            "pas de suggestion hors bibliothèque"
+        );
+
+        let r = e
+            .appel(
+                Some("alice"),
+                "POST",
+                "/history",
+                Some(json!({"track": suite[0], "played": 100.0, "ended_by": "end", "source": {"type": "library"}})),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        let r = e
+            .appel(
+                Some("alice"),
+                "PUT",
+                "/queue",
+                Some(json!({"revision": f["revision"], "source": {"type": "library"}, "tracks": [p[0]]})),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::BAD_REQUEST);
     }
 }

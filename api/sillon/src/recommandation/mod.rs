@@ -851,7 +851,7 @@ mod tests {
         assert!(suggerees(&f).is_empty(), "coupées : retirées de la suite");
         let f = file(&e, "alice", json!({"suggestions": "light"})).await;
         assert_eq!(suggerees(&f).len(), 1);
-        let f = file(&e, "alice", json!({"index": 10})).await;
+        let f = file(&e, "alice", json!({"index": 10, "endless": false})).await;
         assert_eq!(f["items"][10]["suggested"], true);
         let f = file(&e, "alice", json!({"shuffle": false})).await;
         assert_eq!(suggerees(&f).len(), 1, "seule la suggestion en cours reste");
