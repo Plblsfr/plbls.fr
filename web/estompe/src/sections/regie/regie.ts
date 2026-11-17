@@ -188,6 +188,7 @@ export type DepositState = 'upload' | 'checking' | 'seeding' | 'mismatch'
 export interface DepositFile { index: number; path: string; size: number; received: number; valid: number | null }
 export interface Deposit {
   id: string
+  hash?: string
   name: string
   state: DepositState
   created_at: number

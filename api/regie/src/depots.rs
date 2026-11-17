@@ -26,7 +26,6 @@ use crate::{
     http::{
         conflit, indisponible, interne, introuvable, invalide, json as reponse, ok, sans_contenu,
     },
-    qbittorrent::hash_valide,
     sante,
     telechargements::{amont, corps, qbittorrent},
 };
@@ -123,7 +122,7 @@ async fn recu(chemin: &Chemin) -> u64 {
 async fn charger(d: &Depots, hash: &str) -> Option<Depot> {
     let racine = dossier(d, hash);
     let source = tokio::fs::read(racine.join("source.torrent")).await.ok()?;
-    let torrent = Torrent::lire(&source).ok().filter(|t| t.hash == hash)?;
+    let torrent = Torrent::lire(&source).ok()?;
     let meta = tokio::fs::read(racine.join("depot.json"))
         .await
         .ok()
@@ -163,6 +162,7 @@ async fn vue(d: &Depots, hash: &str, depot: &Depot) -> Value {
     }
     json!({
         "id": hash,
+        "hash": depot.torrent.hash,
         "name": depot.torrent.nom,
         "state": depot.etat(),
         "created_at": depot.meta["created_at"].as_i64().unwrap_or(0),
@@ -182,7 +182,7 @@ async fn identifiants(d: &Depots) -> Vec<String> {
         return noms;
     };
     while let Ok(Some(e)) = lecture.next_entry().await {
-        if let Some(nom) = e.file_name().to_str().filter(|n| hash_valide(n)) {
+        if let Some(nom) = e.file_name().to_str().filter(|n| id_valide(n)) {
             noms.push(nom.to_string());
         }
     }
@@ -210,22 +210,32 @@ fn maintenant() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-fn identifiant(hash: &str) -> Result<String, Response> {
-    if hash_valide(hash) {
-        Ok(hash.to_ascii_lowercase())
-    } else {
-        Err(introuvable())
-    }
+fn id_valide(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn nouvel_id() -> Option<String> {
+    use ring::rand::SecureRandom;
+    let mut octets = [0u8; 16];
+    ring::rand::SystemRandom::new().fill(&mut octets).ok()?;
+    Some(octets.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 async fn trouver<'a>(
     state: &'a AppState,
-    hash: &str,
+    demande: &str,
 ) -> Result<(&'a Depots, String, Depot), Response> {
     let d = configuration(state)?;
-    let hash = identifiant(hash)?;
-    let depot = charger(d, &hash).await.ok_or_else(introuvable)?;
-    Ok((d, hash, depot))
+    if !id_valide(demande) {
+        return Err(introuvable());
+    }
+    let id = identifiants(d)
+        .await
+        .into_iter()
+        .find(|connu| connu == demande)
+        .ok_or_else(introuvable)?;
+    let depot = charger(d, &id).await.ok_or_else(introuvable)?;
+    Ok((d, id, depot))
 }
 
 pub async fn lister(State(state): State<AppState>) -> Response {
@@ -255,14 +265,15 @@ pub async fn creer(State(state): State<AppState>, octets: Bytes) -> Response {
         Err(e) => return invalide(&e),
     };
     let _verrou = state.depots().ecriture.lock().await;
-    if let Some(existant) = charger(d, &torrent.hash).await {
-        return ok(&vue(d, &torrent.hash, &existant).await);
-    }
     let mut occupe = 0u64;
-    for hash in identifiants(d).await {
-        if let Some(autre) = charger(d, &hash).await {
-            occupe = occupe.saturating_add(autre.torrent.total());
+    for id in identifiants(d).await {
+        let Some(autre) = charger(d, &id).await else {
+            continue;
+        };
+        if autre.torrent.hash == torrent.hash {
+            return ok(&vue(d, &id, &autre).await);
         }
+        occupe = occupe.saturating_add(autre.torrent.total());
     }
     if occupe.saturating_add(torrent.total()) > d.plafond {
         return conflit(
@@ -270,22 +281,24 @@ pub async fn creer(State(state): State<AppState>, octets: Bytes) -> Response {
             "le plafond du dossier des dépôts serait dépassé",
         );
     }
-    let racine = dossier(d, &torrent.hash);
+    let Some(id) = nouvel_id() else {
+        return interne();
+    };
+    let racine = dossier(d, &id);
     let meta = json!({ "state": "upload", "created_at": maintenant(), "imported": [] });
     let ecrit = async {
         tokio::fs::create_dir_all(racine.join("contenu")).await?;
         tokio::fs::write(racine.join("source.torrent"), &octets).await?;
-        enregistrer(&state, d, &torrent.hash, &meta).await
+        enregistrer(&state, d, &id, &meta).await
     };
     if let Err(e) = ecrit.await {
         let _ = tokio::fs::remove_dir_all(&racine).await;
         return es(e);
     }
-    let depot = Depot { torrent, meta };
-    reponse(
-        StatusCode::CREATED,
-        &vue(d, &depot.torrent.hash, &depot).await,
-    )
+    match charger(d, &id).await {
+        Some(depot) => reponse(StatusCode::CREATED, &vue(d, &id, &depot).await),
+        None => interne(),
+    }
 }
 
 pub async fn lire(
@@ -393,13 +406,17 @@ async fn surveiller(state: AppState, hash: String) {
     let Some(d) = state.config().depots.as_ref() else {
         return;
     };
+    let Some(empreinte) = charger(d, &hash).await.map(|depot| depot.torrent.hash) else {
+        state.depots().surveilles.lock().unwrap().remove(&hash);
+        return;
+    };
     let (mut vue_en_verification, mut tours, mut echecs) = (false, 0u32, 0u32);
     loop {
         tokio::time::sleep(state.config().periode_suivi).await;
         let Ok(c) = qbittorrent(&state) else {
             break;
         };
-        let info = match c.info(&hash).await {
+        let info = match c.info(&empreinte).await {
             Ok(Some(i)) => i,
             Ok(None) => {
                 conclure(&state, d, &hash, |m| {
@@ -434,7 +451,7 @@ async fn surveiller(state: AppState, hash: String) {
             continue;
         }
         if progression >= 1.0 {
-            let demarre = c.demarrer(&hash).await;
+            let demarre = c.demarrer(&empreinte).await;
             conclure(&state, d, &hash, |m| {
                 m["state"] = json!("seeding");
                 m["checks"] = Value::Null;
@@ -444,7 +461,7 @@ async fn surveiller(state: AppState, hash: String) {
             })
             .await;
         } else {
-            let valides: Vec<Value> = match c.fichiers(&hash).await {
+            let valides: Vec<Value> = match c.fichiers(&empreinte).await {
                 Ok(Some(f)) => f.iter().map(|x| x["progress"].clone()).collect(),
                 _ => Vec::new(),
             };
@@ -504,7 +521,8 @@ pub async fn partager(State(state): State<AppState>, Path(hash): Path<String>) -
         Ok(Err(e)) => return es(e),
         Err(_) => return interne(),
     }
-    let present = match c.info(&hash).await {
+    let empreinte = depot.torrent.hash.clone();
+    let present = match c.info(&empreinte).await {
         Ok(i) => i.is_some(),
         Err(e) => return amont(e),
     };
@@ -514,11 +532,11 @@ pub async fn partager(State(state): State<AppState>, Path(hash): Path<String>) -
             Err(e) => return es(e),
         };
         let cible = format!("{}/{hash}/contenu", d.vu_par_qbittorrent);
-        if let Err(e) = c.ajouter(&hash, &source, &cible).await {
+        if let Err(e) = c.ajouter(&empreinte, &source, &cible).await {
             return amont(e);
         }
     }
-    if let Err(e) = c.reverifier(&hash).await {
+    if let Err(e) = c.reverifier(&empreinte).await {
         return amont(e);
     }
     let mut meta = depot.meta.clone();
@@ -547,9 +565,9 @@ pub async fn supprimer(State(state): State<AppState>, Path(hash): Path<String>) 
             Ok(c) => c,
             Err(r) => return r,
         };
-        match c.info(&hash).await {
+        match c.info(&depot.torrent.hash).await {
             Ok(Some(_)) => {
-                if let Err(e) = c.supprimer(&hash, false).await {
+                if let Err(e) = c.supprimer(&depot.torrent.hash, false).await {
                     return amont(e);
                 }
             }

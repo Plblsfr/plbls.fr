@@ -946,6 +946,9 @@ async fn depot_verifie_partage_puis_importe() {
     assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
     let v = r.json();
     let id = v["id"].as_str().unwrap().to_string();
+    let empreinte = v["hash"].as_str().unwrap().to_string();
+    assert_eq!((id.len(), empreinte.len()), (32, 40));
+    assert_ne!(id, empreinte[..32]);
     assert_eq!(
         (
             &v["name"],
@@ -974,8 +977,12 @@ async fn depot_verifie_partage_puis_importe() {
     envoyer_fichiers(&e.app, &id).await;
     let repris = brut(&e.app, "POST", "/admin/deposits", &source).await;
     assert_eq!(
-        (repris.statut, &repris.json()["received"]),
-        (StatusCode::OK, &json!(8))
+        (
+            repris.statut,
+            &repris.json()["received"],
+            &repris.json()["id"]
+        ),
+        (StatusCode::OK, &json!(8), &json!(id))
     );
     let contenu = dossier.path().join(&id).join("contenu/Film.2024");
     assert_eq!(std::fs::read(contenu.join("film.mkv")).unwrap(), b"film.");
@@ -1147,7 +1154,7 @@ async fn depot_verifie_partage_puis_importe() {
         .unwrap();
     assert_eq!(
         suppression.texte(),
-        format!("hashes={id}&deleteFiles=false")
+        format!("hashes={empreinte}&deleteFiles=false")
     );
     assert!(!dossier.path().join(&id).exists());
     assert_eq!(
@@ -1271,7 +1278,8 @@ async fn depots_refuses() {
     for chemin in [
         "/admin/deposits/inconnu",
         "/admin/deposits/..%2F..%2Fetc",
-        &format!("/admin/deposits/{}", "c".repeat(40)),
+        &format!("/admin/deposits/{}", "c".repeat(32)),
+        &format!("/admin/deposits/{}", "C".repeat(32)),
     ] {
         assert_eq!(
             e.get("admin", chemin).await.statut,

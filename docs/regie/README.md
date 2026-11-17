@@ -68,10 +68,11 @@ Mettre en partage un contenu que l'on a soi-même publié : le tracker donne le 
 
 1. **Le `.torrent`** (`POST /admin/deposits`, 10 Mo au plus) est lu par Régie : nom, fichiers, tailles, empreinte v1, tracker (nom d'hôte
    seul). Sont refusés un torrent illisible ou sans empreintes v1, un nom ou un chemin dangereux (`..`, `/`, caractère de contrôle),
-   deux fichiers de même chemin, plus de 5000 fichiers. L'identifiant du dépôt est l'empreinte du torrent : redéposer le même `.torrent`
-   rend le dépôt existant. Le total des tailles annoncées ne dépasse pas `REGIE_DEPOTS_GO`.
+   deux fichiers de même chemin, plus de 5000 fichiers. L'identifiant du dépôt est tiré au hasard par Régie (32 chiffres hexadécimaux) et nomme son
+   dossier ; redéposer le même `.torrent` (même empreinte) rend le dépôt existant. Le total des tailles annoncées ne dépasse pas `REGIE_DEPOTS_GO`.
 2. **Les fichiers** arrivent par morceaux (`PUT /admin/deposits/{id}/files/{index}?offset=`, 32 Mo au plus, 16 Mo envoyés par l'app),
-   écrits directement sous le nom que le torrent attend : `<REGIE_DEPOTS>/<id>/contenu/<chemin du torrent>`. Un morceau n'est accepté
+   écrits directement sous le nom que le torrent attend : `<REGIE_DEPOTS>/<id>/contenu/<chemin du torrent>`. Aucun chemin n'est construit depuis une valeur d'une requête : un dépôt
+   demandé par son identifiant est cherché parmi les dossiers existants, et son `.torrent` est relu du disque. Un morceau n'est accepté
    qu'à la position déjà reçue, sinon 409 avec cette position : un envoi coupé reprend où il s'est arrêté, même après fermeture de la page.
    Avant chaque écriture, le dossier réel de la cible (liens symboliques résolus) doit être sous `REGIE_DEPOTS`, et la cible ne doit pas
    être un lien : un lien posé dans le dossier par un autre service ne fait rien écrire ailleurs.

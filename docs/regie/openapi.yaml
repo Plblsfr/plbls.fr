@@ -234,10 +234,10 @@ paths:
     get:
       summary: "Dépôts, plus récents d'abord (`regie:admin`)"
       description: |
-        Un dépôt : `{id, name, state, created_at, tracker, private, size, received, files: [{index, path, size, received, valid}], imported, error}`.
+        Un dépôt : `{id, hash, name, state, created_at, tracker, private, size, received, files: [{index, path, size, received, valid}], imported, error}`.
         `state` : `upload` (fichiers attendus), `checking` (vérification par qBittorrent), `seeding` (vérifié, en partage),
         `mismatch` (un fichier ne correspond pas : `valid` donne la part valide de chacun, de 0 à 1).
-        `tracker` : nom d'hôte seul. `imported` : services qui ont reçu une demande d'import.
+        `hash` : empreinte v1 du torrent. `tracker` : nom d'hôte seul. `imported` : services qui ont reçu une demande d'import.
       responses:
         "200": { description: "`{items, used, limit}` : tailles annoncées cumulées et plafond `REGIE_DEPOTS_GO`, en octets" }
         "401": { $ref: "#/components/responses/401" }
@@ -247,7 +247,7 @@ paths:
     post:
       summary: "Créer un dépôt à partir d'un fichier .torrent (`regie:admin`)"
       description: |
-        Corps : le fichier .torrent brut (10 Mo au plus). Un torrent déjà déposé rend le dépôt existant (200), pour reprendre un envoi.
+        Corps : le fichier .torrent brut (10 Mo au plus). Un torrent déjà déposé (même empreinte) rend le dépôt existant (200), pour reprendre un envoi.
         Refusés : torrent illisible, sans empreintes v1, nom ou chemin de fichier dangereux, plus de 5000 fichiers.
       requestBody:
         content:
@@ -264,7 +264,7 @@ paths:
         "503": { $ref: "#/components/responses/503" }
   /admin/deposits/{id}:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
     get:
       summary: "Un dépôt (`regie:admin`)"
       parameters:
@@ -291,7 +291,7 @@ paths:
         "503": { $ref: "#/components/responses/503" }
   /admin/deposits/{id}/files/{index}:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
       - { name: index, in: path, required: true, schema: { type: integer } }
     put:
       summary: "Envoyer un morceau d'un fichier du dépôt (`regie:admin`)"
@@ -317,7 +317,7 @@ paths:
         "503": { $ref: "#/components/responses/503" }
   /admin/deposits/{id}/seed:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
     post:
       summary: "Vérifier le dépôt et le mettre en partage (`regie:admin`)"
       description: |
@@ -333,7 +333,7 @@ paths:
         "503": { $ref: "#/components/responses/503" }
   /admin/deposits/{id}/import:
     parameters:
-      - { name: id, in: path, required: true, schema: { type: string }, description: "empreinte du torrent (40 chiffres hexadécimaux)" }
+      - { name: id, in: path, required: true, schema: { type: string }, description: "identifiant du dépôt (32 chiffres hexadécimaux, tiré par Régie)" }
     get:
       summary: "Ce que Radarr, Sonarr ou Lidarr reconnaît dans le dépôt (`regie:admin`)"
       parameters:
