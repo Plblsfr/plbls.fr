@@ -89,8 +89,35 @@ fn chemin_de(d: &Depots, hash: &str, f: &Fichier) -> PathBuf {
     p
 }
 
+async fn confiner(d: &Depots, chemin: &Chemin) -> std::io::Result<PathBuf> {
+    let refus = || {
+        std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "chemin hors du dossier des dépôts",
+        )
+    };
+    let (parent, nom) = chemin.parent().zip(chemin.file_name()).ok_or_else(refus)?;
+    tokio::fs::create_dir_all(parent).await?;
+    let racine = tokio::fs::canonicalize(&d.dossier).await?;
+    let reel = tokio::fs::canonicalize(parent).await?;
+    if !reel.starts_with(&racine) || reel == racine {
+        return Err(refus());
+    }
+    let cible = reel.join(nom);
+    match tokio::fs::symlink_metadata(&cible).await {
+        Ok(m) if !m.is_file() => Err(refus()),
+        Ok(_) => Ok(cible),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(cible),
+        Err(e) => Err(e),
+    }
+}
+
 async fn recu(chemin: &Chemin) -> u64 {
-    tokio::fs::metadata(chemin).await.map_or(0, |m| m.len())
+    tokio::fs::symlink_metadata(chemin)
+        .await
+        .ok()
+        .filter(std::fs::Metadata::is_file)
+        .map_or(0, |m| m.len())
 }
 
 async fn charger(d: &Depots, hash: &str) -> Option<Depot> {
@@ -325,14 +352,12 @@ pub async fn recevoir(
         );
     }
     let ecrit = async {
-        if let Some(parent) = chemin.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
+        let cible = confiner(d, &chemin).await?;
         let mut f = tokio::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(&chemin)
+            .open(&cible)
             .await?;
         f.set_len(position).await?;
         f.seek(SeekFrom::Start(position)).await?;

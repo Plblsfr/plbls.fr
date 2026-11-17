@@ -73,6 +73,8 @@ Mettre en partage un contenu que l'on a soi-même publié : le tracker donne le 
 2. **Les fichiers** arrivent par morceaux (`PUT /admin/deposits/{id}/files/{index}?offset=`, 32 Mo au plus, 16 Mo envoyés par l'app),
    écrits directement sous le nom que le torrent attend : `<REGIE_DEPOTS>/<id>/contenu/<chemin du torrent>`. Un morceau n'est accepté
    qu'à la position déjà reçue, sinon 409 avec cette position : un envoi coupé reprend où il s'est arrêté, même après fermeture de la page.
+   Avant chaque écriture, le dossier réel de la cible (liens symboliques résolus) doit être sous `REGIE_DEPOTS`, et la cible ne doit pas
+   être un lien : un lien posé dans le dossier par un autre service ne fait rien écrire ailleurs.
    L'app associe les fichiers choisis à ceux du torrent par la taille, puis par le chemin : leur nom sur l'appareil n'a pas à être le bon.
 3. **La vérification** (`POST /admin/deposits/{id}/seed`) : le torrent est ajouté à qBittorrent à l'arrêt, sur le dossier du dépôt
    (tag `regie`), et revérifié. À 100 %, il démarre (`seeding`). Sinon il reste à l'arrêt (`mismatch`) et chaque fichier porte sa part

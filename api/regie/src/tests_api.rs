@@ -1363,3 +1363,54 @@ async fn fiche_technique_d_un_titre() {
         "not_configured"
     );
 }
+
+#[tokio::test]
+async fn depot_qui_sortirait_du_dossier_par_un_lien_refuse() {
+    let racine = tempfile::tempdir().unwrap();
+    let (dossier, dehors) = (racine.path().join("depots"), racine.path().join("dehors"));
+    std::fs::create_dir_all(&dossier).unwrap();
+    std::fs::create_dir_all(&dehors).unwrap();
+    std::fs::write(dehors.join("fr.srt"), b"abc").unwrap();
+    let q = qbit_depots(Arc::default()).await;
+    let e = env_avec(|c| avec_depots(c, &dossier, &q)).await;
+    let v = brut(
+        &e.app,
+        "POST",
+        "/admin/deposits",
+        &crate::bencode::tests::torrent_multi(),
+    )
+    .await
+    .json();
+    let id = v["id"].as_str().unwrap().to_string();
+    let contenu = dossier.join(&id).join("contenu/Film.2024");
+    std::fs::create_dir_all(&contenu).unwrap();
+    std::os::unix::fs::symlink(&dehors, contenu.join("Subs")).unwrap();
+    std::os::unix::fs::symlink(dehors.join("fr.srt"), contenu.join("film.mkv")).unwrap();
+    for index in [0, 1] {
+        let r = brut(
+            &e.app,
+            "PUT",
+            &format!("/admin/deposits/{id}/files/{index}?offset=0&reset=true"),
+            b"xyz",
+        )
+        .await;
+        assert_eq!(
+            r.statut,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "fichier {index}"
+        );
+    }
+    assert_eq!(
+        std::fs::read(dehors.join("fr.srt")).unwrap(),
+        b"abc",
+        "rien n'est écrit hors du dossier des dépôts"
+    );
+    let v = e
+        .get("admin", &format!("/admin/deposits/{id}"))
+        .await
+        .json();
+    assert_eq!(
+        v["files"][0]["received"], 0,
+        "un lien n'est pas compté comme un fichier reçu"
+    );
+}
