@@ -407,6 +407,9 @@ pub(crate) struct Monde {
     pub(crate) mb_albums: Vec<Value>,
     pub(crate) file: Vec<Value>,
     pub(crate) historique: Vec<Value>,
+    pub(crate) dossiers: Vec<Value>,
+    pub(crate) qualites: Vec<Value>,
+    pub(crate) metas: Vec<Value>,
 }
 
 impl Monde {
@@ -463,6 +466,22 @@ fn monde() -> Monde {
                    "albumType": "Album", "releaseDate": "2013-12-13T00:00:00Z"}),
             json!({"id": LIDARR + 30, "artistId": LIDARR + 3, "foreignAlbumId": "mb-takk", "title": "Takk…",
                    "albumType": "Album", "releaseDate": "2005-09-12T00:00:00Z"}),
+        ],
+        dossiers: vec![
+            json!({"name": "music", "path": "/data/music", "defaultMetadataProfileId": 3,
+            "defaultQualityProfileId": 4, "defaultMonitorOption": "all", "defaultNewItemMonitorOption": "all",
+            "defaultTags": [7], "accessible": true, "freeSpace": 81014300672i64, "totalSpace": 207071854592i64, "id": 2}),
+        ],
+        qualites: vec![
+            json!({"id": 1, "name": "Any", "items": [{"quality": {"name": "MP3-320"}, "allowed": true}]}),
+            json!({"id": 4, "name": "Lossless", "items": [
+                {"quality": {"name": "MP3-320"}, "allowed": true},
+                {"quality": {"name": "FLAC"}, "allowed": true},
+                {"quality": {"name": "FLAC 24bit"}, "allowed": false}]}),
+        ],
+        metas: vec![
+            json!({"id": 1, "name": "Standard"}),
+            json!({"id": 3, "name": "Albums studio"}),
         ],
         ..Monde::default()
     };

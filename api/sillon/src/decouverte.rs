@@ -103,7 +103,7 @@ pub async fn promouvoir(pool: &PgPool) -> Result<u64, sqlx::Error> {
 
 async fn permise(state: &AppState, sub: &str, peut_ajouter: bool) -> Result<bool, sqlx::Error> {
     let cfg = state.config();
-    if !cfg.decouverte.active || !peut_ajouter || cfg.lidarr.is_none() || !cfg.ajouts.configure() {
+    if !cfg.decouverte.active || !peut_ajouter || cfg.lidarr.is_none() {
         return Ok(false);
     }
     let pool = state.pool();
@@ -453,7 +453,7 @@ pub async fn admin(State(state): State<AppState>) -> Result<Response, Response> 
         )
     };
     Ok(ok(&json!({
-        "enabled": cfg.decouverte.active && cfg.listenbrainz.is_some() && cfg.lidarr.is_some() && cfg.ajouts.configure(),
+        "enabled": cfg.decouverte.active && cfg.listenbrainz.is_some() && cfg.lidarr.is_some(),
         "budget": {
             "used": utilise,
             "limit": cfg.ajouts.decouverte_budget,
@@ -541,9 +541,6 @@ mod tests {
         let lb = faux(reponse_lb).await;
         let url = lb.url.clone();
         let b = bibliotheque_avec(move |c| {
-            c.ajouts.racine = "/music".into();
-            c.ajouts.profil_qualite = 1;
-            c.ajouts.profil_metadonnees = 2;
             c.ajouts.decouverte_par_jour = 5;
             c.listenbrainz = Some(reglages(&url, Duration::ZERO));
             regler(c);
@@ -709,6 +706,15 @@ mod tests {
         assert_eq!(e[0].2["foreignArtistId"], DAFT);
         assert_eq!(e[2].2["name"], "AlbumSearch");
         assert_eq!(
+            (
+                &e[0].2["rootFolderPath"],
+                &e[0].2["qualityProfileId"],
+                &e[0].2["metadataProfileId"]
+            ),
+            (&json!("/data/music"), &json!(4), &json!(3)),
+            "réglages annoncés par Lidarr"
+        );
+        assert_eq!(
             t.surveilles(),
             ["Musique Vol. 1"],
             "le plus court des albums studio qui portent le titre"
@@ -805,6 +811,17 @@ mod tests {
             t.lb.appels() <= 3,
             "similaires et populaires gardés en base"
         );
+    }
+
+    #[tokio::test]
+    async fn la_decouverte_estime_et_envoie_avec_le_profil_retenu_dans_lidarr() {
+        let Some(t) = banc(|_| {}).await else { return };
+        t.b.monde.lock().unwrap().dossiers[0]["defaultQualityProfileId"] = json!(1);
+        t.ecouter("bruno").await;
+        let e = t.ecritures();
+        assert_eq!(e[0].1, "/api/v1/artist", "{e:?}");
+        assert_eq!(e[0].2["qualityProfileId"], 1);
+        assert_eq!(t.admin().await["budget"]["used"], 1200 * 320 * 125);
     }
 
     #[tokio::test]

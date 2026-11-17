@@ -109,8 +109,29 @@ pub enum ErreurAjout {
     Introuvable,
     Etat(&'static str),
     NonConfigure,
+    Incomplet(&'static str),
+    Refus(String),
     Lidarr(String),
     Base(sqlx::Error),
+}
+
+impl ErreurAjout {
+    fn de_lidarr(e: String) -> Self {
+        if e.starts_with(lidarr::REFUS) {
+            ErreurAjout::Refus(e)
+        } else {
+            ErreurAjout::Lidarr(e)
+        }
+    }
+}
+
+impl From<lidarr::ErreurReglages> for ErreurAjout {
+    fn from(e: lidarr::ErreurReglages) -> Self {
+        match e {
+            lidarr::ErreurReglages::Incomplet(m) => ErreurAjout::Incomplet(m),
+            lidarr::ErreurReglages::Lidarr(e) => ErreurAjout::Lidarr(e),
+        }
+    }
 }
 
 impl From<sqlx::Error> for ErreurAjout {
@@ -121,7 +142,7 @@ impl From<sqlx::Error> for ErreurAjout {
 
 impl From<String> for ErreurAjout {
     fn from(e: String) -> Self {
-        ErreurAjout::Lidarr(e)
+        ErreurAjout::de_lidarr(e)
     }
 }
 
@@ -260,12 +281,11 @@ async fn actif(pool: &PgPool, genre: Genre, mbid: &str) -> Result<Option<Uuid>, 
     .await
 }
 
-async fn debit(state: &AppState, c: &lidarr::Client<'_>) -> Result<u64, String> {
-    let profils = c.liste("/qualityprofile").await?;
-    Ok(quota::debit_profil(
-        &profils,
-        state.config().ajouts.profil_qualite,
-    ))
+pub(crate) async fn reglages(
+    state: &AppState,
+    c: &lidarr::Client<'_>,
+) -> Result<lidarr::ReglagesAjout, lidarr::ErreurReglages> {
+    c.reglages_ajout(&state.config().ajouts).await
 }
 
 async fn cible(
@@ -274,7 +294,7 @@ async fn cible(
     genre: Genre,
     mbid: &str,
 ) -> Result<Option<Cible>, ErreurAjout> {
-    let debit = debit(state, c).await?;
+    let debit = reglages(state, c).await?.debit;
     let terme = format!("lidarr:{mbid}");
     match genre {
         Genre::Album => {
@@ -419,9 +439,7 @@ pub async fn ajouter(
     d: DemandeAjout,
 ) -> Result<Resultat, ErreurAjout> {
     let mbid = mbid_valide(&d.mbid).ok_or(ErreurAjout::Invalide("mbid invalide"))?;
-    let c = client(state)
-        .filter(|_| state.config().ajouts.configure())
-        .ok_or(ErreurAjout::NonConfigure)?;
+    let c = client(state).ok_or(ErreurAjout::NonConfigure)?;
     let pool = state.pool();
     if est_exclu(pool, &[&mbid]).await? {
         return Ok(Resultat::Refuse(Refus::Exclu));
@@ -448,6 +466,14 @@ pub async fn ajouter(
     };
     match envoyer(state, id).await {
         Ok(_) => Ok(Resultat::Envoye(id)),
+        Err(e) if e.starts_with(lidarr::REFUS) => {
+            sqlx::query("UPDATE ajouts SET etat = 'echec', raison = $2, maj = now() WHERE id = $1")
+                .bind(id)
+                .bind(&e)
+                .execute(pool)
+                .await?;
+            Err(ErreurAjout::Refus(e))
+        }
         Err(e) => {
             sqlx::query("DELETE FROM ajouts WHERE id = $1")
                 .bind(id)
@@ -511,7 +537,7 @@ pub async fn relancer(state: &AppState, id: Uuid) -> Result<Resultat, ErreurAjou
             .bind(&e)
             .execute(state.pool())
             .await?;
-        return Err(ErreurAjout::Lidarr(e));
+        return Err(ErreurAjout::de_lidarr(e));
     }
     Ok(Resultat::Envoye(id))
 }
@@ -522,7 +548,6 @@ fn base(e: sqlx::Error) -> String {
 
 pub async fn envoyer(state: &AppState, id: Uuid) -> Result<bool, String> {
     let c = client(state).ok_or("Lidarr non configuré")?;
-    let r = &state.config().ajouts;
     let l = sqlx::query("SELECT type, mbid, artiste_mbid FROM ajouts WHERE id = $1")
         .bind(id)
         .fetch_one(state.pool())
@@ -548,9 +573,11 @@ pub async fn envoyer(state: &AppState, id: Uuid) -> Result<bool, String> {
             } else {
                 vec![]
             };
-            a["qualityProfileId"] = json!(r.profil_qualite);
-            a["metadataProfileId"] = json!(r.profil_metadonnees);
+            let r = reglages(state, &c).await?;
+            a["qualityProfileId"] = json!(r.qualite.id);
+            a["metadataProfileId"] = json!(r.metadonnees.id);
             a["rootFolderPath"] = json!(r.racine);
+            a["tags"] = json!(r.tags);
             a["monitored"] = json!(true);
             a["monitorNewItems"] = json!("none");
             a["addOptions"] = json!({
@@ -865,7 +892,13 @@ pub fn ajout_public(l: &PgRow, admin: bool) -> Value {
         "artist": {"mbid": l.get::<String, _>("artiste_mbid"), "name": l.get::<String, _>("artiste_nom")},
         "origin": if l.get::<String, _>("origine") == "manuel" { "manual" } else { "discovery" },
         "state": etat_public(&l.get::<String, _>("etat")),
-        "reason": l.get::<Option<String>, _>("raison"),
+        "reason": l.get::<Option<String>, _>("raison").map(|r| {
+            if !admin && r.starts_with(lidarr::REFUS) {
+                lidarr::REFUS.to_string()
+            } else {
+                r
+            }
+        }),
         "estimated_size": l.get::<i64, _>("estimation"),
         "albums": l.get::<Vec<Uuid>, _>("presents"),
         "created_at": horodatage(&l.get("cree_le")),
@@ -890,11 +923,31 @@ pub async fn lire_ajout(state: &AppState, id: Uuid, admin: bool) -> Result<Value
 }
 
 pub fn reponse_erreur(e: ErreurAjout) -> Response {
+    reponse_erreur_pour(e, false)
+}
+
+pub fn reponse_erreur_admin(e: ErreurAjout) -> Response {
+    reponse_erreur_pour(e, true)
+}
+
+fn reponse_erreur_pour(e: ErreurAjout, admin: bool) -> Response {
     match e {
         ErreurAjout::Invalide(m) => invalide(m),
         ErreurAjout::Introuvable => http::introuvable(),
         ErreurAjout::Etat(m) => erreur(StatusCode::CONFLICT, "invalid_state", m),
         ErreurAjout::NonConfigure => non_configure(),
+        ErreurAjout::Incomplet(m) => {
+            tracing::warn!("ajout : Lidarr : {m}");
+            erreur(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "lidarr_incomplete",
+                &format!("Lidarr incomplet : {m}"),
+            )
+        }
+        ErreurAjout::Refus(e) => {
+            tracing::warn!("ajout : {e}");
+            indisponible("lidarr_refused", if admin { &e } else { lidarr::REFUS })
+        }
         ErreurAjout::Lidarr(e) => {
             tracing::warn!("ajout : {e}");
             indisponible("lidarr_unavailable", "Lidarr injoignable ou en erreur")
@@ -1044,11 +1097,7 @@ pub async fn rechercher(
         en_cours_parmi(pool, &mbids).await.map_err(bd)?,
         exclus_parmi(pool, &mbids).await.map_err(bd)?,
     );
-    let debit = if state.config().ajouts.configure() {
-        debit(&state, &c).await.ok()
-    } else {
-        None
-    };
+    let debit = reglages(&state, &c).await.ok().map(|r| r.debit);
     Ok(ok(&json!({
         "artists": artistes.iter().map(|(m, a)| json!({
             "mbid": m,
@@ -1174,13 +1223,9 @@ pub(crate) mod tests {
         let terme = parametre(r, "term");
         let id_final = |c: &str| c.rsplit('/').next().and_then(|i| i.parse::<i64>().ok());
         match (r.methode.as_str(), r.chemin.as_str()) {
-            ("GET", "/api/v1/qualityprofile") => corps(json!([
-                {"id": 1, "name": "Lossless", "items": [
-                    {"quality": {"name": "MP3-320"}, "allowed": true},
-                    {"quality": {"name": "FLAC"}, "allowed": true},
-                    {"quality": {"name": "FLAC 24bit"}, "allowed": false}]},
-                {"id": 2, "name": "MP3", "items": [{"quality": {"name": "MP3-320"}, "allowed": true}]},
-            ])),
+            ("GET", "/api/v1/rootfolder") => corps(json!(m.dossiers)),
+            ("GET", "/api/v1/qualityprofile") => corps(json!(m.qualites)),
+            ("GET", "/api/v1/metadataprofile") => corps(json!(m.metas)),
             ("GET", "/api/v1/artist/lookup") => corps(json!(
                 m.mb_artistes
                     .iter()
@@ -1199,6 +1244,18 @@ pub(crate) mod tests {
             )),
             ("POST", "/api/v1/artist") => {
                 let mut a = r.json();
+                let racine = a["rootFolderPath"].clone();
+                if !m.dossiers.iter().any(|d| d["path"] == racine) {
+                    return Some((
+                        400,
+                        vec![("content-type", "application/json".to_string())],
+                        json!([{"propertyName": "RootFolderPath",
+                            "errorMessage": format!("Root folder '{}' does not exist", racine.as_str().unwrap_or_default()),
+                            "attemptedValue": racine, "severity": "error"}])
+                        .to_string()
+                        .into_bytes(),
+                    ));
+                }
                 let id = suivant(m);
                 a["id"] = json!(id);
                 m.artistes.push(a.clone());
@@ -1261,9 +1318,6 @@ pub(crate) mod tests {
 
     fn regler(b: &mut Bibliotheque, f: impl FnOnce(&mut quota::Reglages)) {
         let mut cfg = b.e.state.config().clone();
-        cfg.ajouts.racine = "/music".into();
-        cfg.ajouts.profil_qualite = 1;
-        cfg.ajouts.profil_metadonnees = 2;
         f(&mut cfg.ajouts);
         b.e.state = AppState::new(cfg, b.e.state.pool().clone());
         b.e.app = routes::routeur(b.e.state.clone());
@@ -1432,13 +1486,14 @@ pub(crate) mod tests {
         assert_eq!(creations.len(), 1);
         let c = creations[0].json();
         assert_eq!(c["foreignArtistId"], DAFT);
-        assert_eq!(c["rootFolderPath"], "/music");
+        assert_eq!(c["rootFolderPath"], "/data/music");
         assert_eq!(
             (
                 c["qualityProfileId"].clone(),
-                c["metadataProfileId"].clone()
+                c["metadataProfileId"].clone(),
+                c["tags"].clone()
             ),
-            (json!(1), json!(2))
+            (json!(4), json!(3), json!([7]))
         );
         assert_eq!(c["monitored"], true);
         assert_eq!(c["addOptions"]["monitor"], "none");
@@ -1882,5 +1937,332 @@ pub(crate) mod tests {
             .statut,
             StatusCode::NOT_FOUND
         );
+    }
+
+    async fn reglages_de(
+        b: &Bibliotheque,
+    ) -> Result<lidarr::ReglagesAjout, lidarr::ErreurReglages> {
+        reglages(&b.e.state, &client(&b.e.state).unwrap()).await
+    }
+
+    fn ecritures(b: &Bibliotheque) -> usize {
+        b.lidarr
+            .requetes()
+            .iter()
+            .filter(|r| r.methode != "GET")
+            .count()
+    }
+
+    #[tokio::test]
+    async fn plusieurs_dossiers_celui_des_artistes_existants_retenu_et_l_inaccessible_ecarte() {
+        let Some(b) = monde_ajouts(|_| {}).await else {
+            return;
+        };
+        {
+            let mut m = b.monde.lock().unwrap();
+            m.dossiers = vec![
+                json!({"path": "/data/a", "defaultQualityProfileId": 4, "defaultMetadataProfileId": 3, "defaultTags": [], "accessible": true}),
+                json!({"path": "/data/b/", "defaultQualityProfileId": 1, "defaultMetadataProfileId": 1, "defaultTags": [9], "accessible": true}),
+                json!({"path": "/data/c", "defaultQualityProfileId": 4, "defaultMetadataProfileId": 3, "defaultTags": [], "accessible": false}),
+            ];
+            for (i, dossier) in ["/data/c", "/data/c", "/data/b/"].iter().enumerate() {
+                m.artistes[i]["rootFolderPath"] = json!(dossier);
+            }
+        }
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        let c = requetes(&b, "POST", "/api/v1/artist")[0].json();
+        assert_eq!(
+            (
+                c["rootFolderPath"].clone(),
+                c["qualityProfileId"].clone(),
+                c["metadataProfileId"].clone(),
+                c["tags"].clone()
+            ),
+            (json!("/data/b/"), json!(1), json!(1), json!([9]))
+        );
+        assert_eq!(r.json()["estimated_size"], 3600 * 320 * 125);
+        {
+            let mut m = b.monde.lock().unwrap();
+            for a in m.artistes.iter_mut() {
+                a.as_object_mut().unwrap().remove("rootFolderPath");
+            }
+        }
+        assert_eq!(
+            reglages_de(&b).await.unwrap().racine,
+            "/data/a",
+            "sans artiste : le premier déclaré"
+        );
+        {
+            let mut m = b.monde.lock().unwrap();
+            m.artistes[0]["rootFolderPath"] = json!("/data/a");
+            m.artistes[1]["rootFolderPath"] = json!("/data/b");
+        }
+        assert_eq!(
+            reglages_de(&b).await.unwrap().racine,
+            "/data/a",
+            "à égalité : le premier déclaré"
+        );
+        {
+            let mut m = b.monde.lock().unwrap();
+            for d in m.dossiers.iter_mut() {
+                d["accessible"] = json!(false);
+            }
+            m.artistes[0]["rootFolderPath"] = json!("/data/c");
+            m.artistes[1]["rootFolderPath"] = json!("/data/c");
+        }
+        assert_eq!(
+            reglages_de(&b).await.unwrap().racine,
+            "/data/c",
+            "aucun accessible : le plus utilisé"
+        );
+        b.monde.lock().unwrap().dossiers.truncate(1);
+        let r = reglages_de(&b).await.unwrap();
+        assert_eq!(
+            (r.racine.as_str(), r.qualite.id, r.metadonnees.id, r.tags),
+            ("/data/a", 4, 3, vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn profil_par_defaut_absent_ou_inconnu_repli_sur_le_plus_utilise_puis_le_premier() {
+        let Some(b) = monde_ajouts(|_| {}).await else {
+            return;
+        };
+        {
+            let mut m = b.monde.lock().unwrap();
+            m.dossiers[0]
+                .as_object_mut()
+                .unwrap()
+                .remove("defaultQualityProfileId");
+            m.dossiers[0]["defaultMetadataProfileId"] = json!(99);
+            for (i, (q, md)) in [(4, 3), (4, 1), (1, 3)].into_iter().enumerate() {
+                m.artistes[i]["qualityProfileId"] = json!(q);
+                m.artistes[i]["metadataProfileId"] = json!(md);
+            }
+        }
+        let r = reglages_de(&b).await.unwrap();
+        assert_eq!(
+            (
+                r.qualite.clone(),
+                r.metadonnees.clone(),
+                r.source_racine.clone(),
+                r.debit
+            ),
+            (
+                lidarr::Profil {
+                    id: 4,
+                    nom: Some("Lossless".into()),
+                    source: lidarr::Source::Lidarr
+                },
+                lidarr::Profil {
+                    id: 3,
+                    nom: Some("Albums studio".into()),
+                    source: lidarr::Source::Lidarr
+                },
+                lidarr::Source::Lidarr,
+                1000
+            )
+        );
+        {
+            let mut m = b.monde.lock().unwrap();
+            for a in m.artistes.iter_mut() {
+                a["qualityProfileId"] = json!(77);
+                a.as_object_mut().unwrap().remove("metadataProfileId");
+            }
+        }
+        let r = reglages_de(&b).await.unwrap();
+        assert_eq!((r.qualite.id, r.metadonnees.id, r.debit), (1, 1, 320));
+        let s = b.get("bruno", "/additions/search?q=discovery").await.json();
+        assert_eq!(s["albums"][0]["estimated_size"], 3600 * 320 * 125);
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        assert_eq!(r.json()["estimated_size"], 3600 * 320 * 125);
+        let c = requetes(&b, "POST", "/api/v1/artist")[0].json();
+        assert_eq!(
+            (
+                c["qualityProfileId"].clone(),
+                c["metadataProfileId"].clone()
+            ),
+            (json!(1), json!(1))
+        );
+    }
+
+    #[tokio::test]
+    async fn surcharge_par_variable_l_emporte_sur_lidarr() {
+        let Some(b) = monde_ajouts(|r| {
+            r.profil_qualite = Some(1);
+            r.profil_metadonnees = Some(1);
+        })
+        .await
+        else {
+            return;
+        };
+        let d = b.get("admin", "/admin/disk").await.json();
+        assert_eq!(
+            d["settings"],
+            json!({
+                "root_folder": "/data/music",
+                "root_folder_source": "lidarr",
+                "quality_profile": {"name": "Any", "source": "override"},
+                "metadata_profile": {"name": "Standard", "source": "override"},
+            })
+        );
+        assert_eq!(d["settings_error"], Value::Null);
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        assert_eq!(r.json()["estimated_size"], 3600 * 320 * 125);
+        let c = requetes(&b, "POST", "/api/v1/artist")[0].json();
+        assert_eq!(
+            (
+                c["rootFolderPath"].clone(),
+                c["qualityProfileId"].clone(),
+                c["metadataProfileId"].clone()
+            ),
+            (json!("/data/music"), json!(1), json!(1))
+        );
+        let mut b = b;
+        b.monde
+            .lock()
+            .unwrap()
+            .dossiers
+            .push(json!({"path": "/data/autre", "accessible": true}));
+        regler(&mut b, |r| r.racine = Some("/data/autre".into()));
+        let r = reglages_de(&b).await.unwrap();
+        assert_eq!(
+            (r.racine.as_str(), r.source_racine, r.tags),
+            ("/data/autre", lidarr::Source::Surcharge, vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn reglages_retenus_visibles_par_l_admin() {
+        let Some(b) = monde_ajouts(|_| {}).await else {
+            return;
+        };
+        let d = b.get("admin", "/admin/disk").await.json();
+        assert_eq!(d["configured"], true);
+        assert_eq!(
+            d["settings"],
+            json!({
+                "root_folder": "/data/music",
+                "root_folder_source": "lidarr",
+                "quality_profile": {"name": "Lossless", "source": "lidarr"},
+                "metadata_profile": {"name": "Albums studio", "source": "lidarr"},
+            })
+        );
+        assert_eq!(
+            b.get("bruno", "/admin/disk").await.statut,
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn lidarr_sans_dossier_racine_ni_profil_erreur_explicite_sans_ecriture() {
+        let Some(b) = monde_ajouts(|_| {}).await else {
+            return;
+        };
+        b.monde.lock().unwrap().dossiers.clear();
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(
+            (
+                r.statut,
+                r.json()["error"].clone(),
+                r.json()["message"].clone()
+            ),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!("lidarr_incomplete"),
+                json!("Lidarr incomplet : aucun dossier racine")
+            )
+        );
+        assert_eq!(ecritures(&b), 0, "rien n'est envoyé à Lidarr");
+        assert!(mon_ajout(&b, "bruno", DISCOVERY).await.is_null());
+        let d = b.get("admin", "/admin/disk").await.json();
+        assert_eq!(
+            (d["settings"].clone(), d["settings_error"].clone()),
+            (Value::Null, json!("Lidarr : aucun dossier racine"))
+        );
+        let s = b.get("bruno", "/additions/search?q=discovery").await;
+        assert_eq!(s.statut, StatusCode::OK);
+        assert_eq!(s.json()["albums"][0]["estimated_size"], Value::Null);
+        {
+            let mut m = b.monde.lock().unwrap();
+            m.dossiers
+                .push(json!({"path": "/data/music", "accessible": true}));
+            m.metas.clear();
+        }
+        let r = ajouter_http(&b, "bruno", "artist", DAFT).await;
+        assert_eq!(
+            (r.statut, r.json()["message"].clone()),
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!("Lidarr incomplet : aucun profil de métadonnées")
+            )
+        );
+        b.monde.lock().unwrap().qualites.clear();
+        assert_eq!(
+            reglages_de(&b).await,
+            Err(lidarr::ErreurReglages::Incomplet("aucun profil de qualité"))
+        );
+        assert_eq!(ecritures(&b), 0);
+    }
+
+    #[tokio::test]
+    async fn refus_de_validation_de_lidarr_remonte_dans_la_raison_cote_admin() {
+        let Some(b) = monde_ajouts(|r| r.racine = Some("/music".into())).await else {
+            return;
+        };
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(
+            (
+                r.statut,
+                r.json()["error"].clone(),
+                r.json()["message"].clone()
+            ),
+            (
+                StatusCode::BAD_GATEWAY,
+                json!("lidarr_refused"),
+                json!("Lidarr a refusé l'ajout")
+            )
+        );
+        b.sans_fuite(&r.texte(), "POST /additions refusé");
+        let mien = b.get("bruno", "/additions/mine").await;
+        let a = &mien.json()["items"][0];
+        assert_eq!(
+            (a["state"].clone(), a["reason"].clone()),
+            (json!("failed"), json!("Lidarr a refusé l'ajout"))
+        );
+        b.sans_fuite(&mien.texte(), "/additions/mine refusé");
+        let l = b.get("admin", "/admin/additions?state=failed").await.json();
+        assert_eq!(
+            l["items"][0]["reason"],
+            "Lidarr a refusé l'ajout : Root folder '/music' does not exist"
+        );
+        assert!(!l.to_string().contains("cle-lidarr"));
+        assert_eq!(quota::occupation(&b.e.state).await.unwrap().en_cours, 0);
+        let id = a["id"].as_str().unwrap();
+        let r =
+            b.e.appel(
+                Some("admin"),
+                "POST",
+                &format!("/admin/additions/{id}/retry"),
+                None,
+            )
+            .await;
+        assert_eq!(
+            (
+                r.statut,
+                r.json()["error"].clone(),
+                r.json()["message"].clone()
+            ),
+            (
+                StatusCode::BAD_GATEWAY,
+                json!("lidarr_refused"),
+                json!("Lidarr a refusé l'ajout : Root folder '/music' does not exist")
+            )
+        );
+        assert_eq!(mon_ajout(&b, "bruno", DISCOVERY).await["state"], "failed");
+        assert!(requetes(&b, "POST", "/api/v1/command").is_empty());
     }
 }

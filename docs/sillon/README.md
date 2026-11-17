@@ -130,16 +130,27 @@ et l'historique, avec `available: false`.
   `/album/lookup`), 20 au plus chacun, marqués « déjà en bibliothèque » (`in_library`), « en cours » (`in_progress`) ou exclus, avec la
   taille estimée de chaque album. Identifiant : MBID MusicBrainz.
 - Ajout (`POST /additions`, `{kind: album|artist, mbid}`), sans validation : envoyé tout de suite à Lidarr. Artiste créé si besoin
-  (`POST /artist` : `SILLON_LIDARR_RACINE`, `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES`, `monitored`, `addOptions.monitor: none`),
-  puis seul l'album demandé est surveillé (`PUT /album/monitor`) et sa recherche lancée (`POST /command` `AlbumSearch`). Ajout d'un artiste :
+  (`POST /artist` : dossier racine, profils, tags, `monitored`, `addOptions.monitor: none`), puis seul l'album demandé est surveillé (`PUT /album/monitor`) et sa recherche lancée (`POST /command` `AlbumSearch`). Ajout d'un artiste :
   ses albums studio seulement (type `Album`, sans type secondaire). Albums pas encore connus de Lidarr juste après la création de l'artiste :
   le suivi les surveille et lance la recherche dès qu'ils apparaissent (`RefreshArtist` demandé si l'artiste existait déjà). Lidarr en erreur
-  pendant l'envoi : 502, rien n'est enregistré. Un même titre déjà en cours renvoie l'ajout existant (`existing: true`) ; un album présent, 409
+  pendant l'envoi : 502 `lidarr_unavailable`, rien n'est enregistré. Un même titre déjà en cours renvoie l'ajout existant (`existing: true`) ; un album présent, 409
   `already_available` ; un album ou un artiste supprimé par un admin, 409 `excluded`.
+- Réglages envoyés à la création d'un artiste, pris dans Lidarr à chaque ajout (comme Entracte avec Radarr et Sonarr) : dossier racine
+  (`GET /rootfolder`) seul déclaré, sinon celui qu'utilisent le plus les artistes déjà présents (`GET /artist`, `rootFolderPath`), à égalité
+  ou sans artiste le premier déclaré, un dossier `accessible: false` écarté s'il en existe un accessible ; profils de qualité et de
+  métadonnées (`GET /qualityprofile`, `GET /metadataprofile`) : ceux par défaut du dossier retenu (`defaultQualityProfileId`,
+  `defaultMetadataProfileId`) s'ils existent, sinon le plus utilisé par les artistes, sinon le premier déclaré ; tags : `defaultTags` du
+  dossier. `defaultMonitorOption` n'est pas repris : Sillon décide de la surveillance. `SILLON_LIDARR_RACINE`, `SILLON_LIDARR_QUALITE` et
+  `SILLON_LIDARR_METADONNEES`, vides par défaut, surchargent chacun le réglage correspondant sans vérification. Lidarr sans dossier racine ou
+  sans profil : 503 `lidarr_incomplete` (« Lidarr incomplet : aucun dossier racine »…), rien n'est enregistré ni envoyé. Réglages retenus et
+  leur origine (`lidarr` ou `override`) : `GET /admin/disk` (`settings`, ou `settings_error`).
+- Refus de validation de Lidarr (HTTP 400, `errorMessage`, par exemple « Root folder '/music' does not exist ») : l'ajout reste en échec,
+  502 `lidarr_refused` ; la raison complète (« Lidarr a refusé l'ajout : … ») est visible de l'admin (`/admin/additions`, relance) et
+  des journaux, l'auteur ne voit que « Lidarr a refusé l'ajout ». L'ajout compte dans la limite du jour.
 - Limite : `SILLON_AJOUTS_PAR_JOUR` ajouts par personne sur 24 heures glissantes (429 `daily_limit`).
 - Plafond : `SILLON_MEDIAS_GO`. Occupation = taille des fichiers du catalogue (relevée à chaque synchronisation) + estimation des ajouts en
   cours (envoyés, en téléchargement, partiels), moins ce qui en est déjà arrivé. Estimation = durée de l'album (ou des albums studio
-  manquants d'un artiste ; une heure si inconnue) × débit de la meilleure qualité permise par le profil de qualité (`GET /qualityprofile` :
+  manquants d'un artiste ; une heure si inconnue) × débit de la meilleure qualité permise par le profil de qualité retenu (`GET /qualityprofile` :
   FLAC 1000 kbit/s, 24 bits 2304, WAV 1411, sinon le nombre du nom, MP3-320 → 320). Un ajout qui ferait dépasser le plafond est refusé (507
   `disk_full` avec `used`, `pending`, `limit`, `free`, `estimated`) et rien n'est envoyé à Lidarr. Limite et plafond sont vérifiés sous un
   verrou PostgreSQL (`pg_advisory_xact_lock`) dans la transaction qui enregistre l'ajout : deux ajouts simultanés ne dépassent pas le plafond à eux deux.
@@ -338,8 +349,8 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
 | `SILLON_CACHE` | `plbls.env` (`/tmp/sillon`) | cache des fichiers transcodés, volume `sillon-cache` du compose |
 | `SILLON_CACHE_GO` | `plbls.env` (10) | plafond du cache en Go |
 | `SILLON_MAX_TRANSCODAGES` | `plbls.env` (2) | encodages simultanés au plus (1 au moins) |
-| `SILLON_LIDARR_RACINE` | `plbls.env` (`/music`) | dossier racine de Lidarr des artistes ajoutés ; vide = pas d'ajout |
-| `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES` | `plbls.env` (1) | identifiants des profils de qualité et de métadonnées (« albums studio ») de Lidarr ; 0 = pas d'ajout |
+| `SILLON_LIDARR_RACINE` | `plbls.env` (vide) | surcharge du dossier racine des artistes ajoutés ; vide = celui que Lidarr annonce |
+| `SILLON_LIDARR_QUALITE`, `SILLON_LIDARR_METADONNEES` | `plbls.env` (vides) | surcharges des identifiants des profils de qualité et de métadonnées ; vides ou 0 = les profils par défaut du dossier racine dans Lidarr |
 | `SILLON_AJOUTS_PAR_JOUR` | `plbls.env` (10) | ajouts par personne sur 24 heures glissantes |
 | `SILLON_MEDIAS_GO` | `plbls.env` (500) | plafond du dossier de la musique, en Gio ; 0 = sans plafond |
 | `SILLON_AJOUTS_DELAI_HEURES` | `plbls.env` (72) | délai sans résultat avant qu'un ajout passe en échec |
@@ -365,8 +376,8 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
   Lidarr joignable depuis la stack (réseau `MEDIAS_NETWORK`). La migration crée l'extension `unaccent` (extension de confiance : le
   propriétaire de la base suffit).
 - Lidarr : connexion « Webhook » vers `https://sillon-api.plbls.fr/webhooks/lidarr`, évènements import, renommage et suppression, jeton en mot de passe.
-- Lidarr : profil de métadonnées « albums studio », profil de qualité et dossier racine, leurs valeurs dans `SILLON_LIDARR_*` ;
-  connexion « Webhook » avec aussi les évènements grab et échecs (téléchargement, import) pour le suivi des ajouts.
+- Lidarr : un dossier racine dont les profils par défaut sont le profil de qualité voulu et un profil de métadonnées « albums studio »
+  (Sillon les lit, rien à recopier dans `SILLON_LIDARR_*`) ; connexion « Webhook » avec aussi les évènements grab et échecs (téléchargement, import) pour le suivi des ajouts.
 - Réseau : sortie HTTPS de `sillon-api` vers `api.listenbrainz.org` et `labs.api.listenbrainz.org` (sinon `SILLON_LISTENBRAINZ_URL=off`).
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_SILLON` comme application `sillon`), puis les permissions aux comptes.
 

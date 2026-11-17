@@ -11,7 +11,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `etat.rs` | état partagé (configuration, base, client HTTP, aegis, verrou de synchronisation) et tâches de fond (manifeste, synchronisation périodique) |
 | `interne.rs` | santé, disponibilité, `GET /me`, `GET /internal/preview` (carte de lien d'Estompe, `Garde::Service` : jeton `SILLON_SERVICE_TOKEN`) |
 | `http.rs` | réponses JSON et erreurs `{error, message}`, comparaison de jetons à temps constant |
-| `lidarr.rs` | client de l'API v1 de Lidarr (`Client` : artistes, albums, pistes, fichiers, images ; `requete`, `envoyer`, `get` pour les autres appels) |
+| `lidarr.rs` | client de l'API v1 de Lidarr (`Client` : artistes, albums, pistes, fichiers, images ; `reglages_ajout` : dossier racine, profils et tags d'un ajout pris dans Lidarr ou surchargés ; `requete`, `envoyer`, `get` pour les autres appels ; refus de validation préfixés par `REFUS`) |
 | `catalogue.rs` | synchronisation (une à la fois, relance), présence des pistes, albums et artistes, accès aux fichiers pour les lots suivants |
 | `filtre.rs`, `ffprobe.rs` | filtre des fichiers (extension, double extension, nom suspect, conteneur, flux audio) et analyse ffprobe |
 | `images.rs` | pochettes et images d'artistes : téléchargées depuis Lidarr, cache en base, trois tailles |
@@ -31,7 +31,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `decouverte.rs` | recherche en tâche de fond d'un titre absent et envoi de son album par `ajouts`, promotion des découvertes likées, `GET /admin/discovery` |
 | `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
 | `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
-| `quota.rs` | réglages de l'ajout (`SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
+| `quota.rs` | réglages de l'ajout (limites, surcharges facultatives `SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
 | `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille (filtre des albums jamais écoutés) |
 | `migrations/` | schéma de la base `sillon` (`0001_sillon.sql` vide ; `0002_catalogue.sql` : catalogue ; `0003_lecture.sql` : mesures de volume, préférences ; `0004_playlists.sql` : playlists, likes, file, historique ; `0005_ajouts.sql` : ajouts et exclusions ; `0006_analyse.sql` : analyses et file de tâches ; `0007_recommandation.sql` : similarités, refus, préférence et colonnes de découverte) |
 

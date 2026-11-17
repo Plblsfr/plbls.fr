@@ -2,9 +2,95 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::config::Lidarr;
+use crate::{config::Lidarr, quota};
 
 pub const TAILLE_IMAGE_MAX: usize = 10 * 1024 * 1024;
+pub const REFUS: &str = "Lidarr a refusé l'ajout";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Source {
+    Lidarr,
+    Surcharge,
+}
+
+impl Source {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Source::Lidarr => "lidarr",
+            Source::Surcharge => "override",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Profil {
+    pub id: i64,
+    pub nom: Option<String>,
+    pub source: Source,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReglagesAjout {
+    pub racine: String,
+    pub source_racine: Source,
+    pub qualite: Profil,
+    pub metadonnees: Profil,
+    pub tags: Vec<i64>,
+    pub debit: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ErreurReglages {
+    Incomplet(&'static str),
+    Lidarr(String),
+}
+
+impl From<String> for ErreurReglages {
+    fn from(e: String) -> Self {
+        ErreurReglages::Lidarr(e)
+    }
+}
+
+impl From<ErreurReglages> for String {
+    fn from(e: ErreurReglages) -> Self {
+        match e {
+            ErreurReglages::Incomplet(m) => format!("Lidarr : {m}"),
+            ErreurReglages::Lidarr(e) => e,
+        }
+    }
+}
+
+fn plus_utilise<T: PartialEq + Clone>(candidats: &[T], valeurs: &[T]) -> Option<T> {
+    let mut meilleur: Option<(&T, usize)> = None;
+    for c in candidats {
+        let n = valeurs.iter().filter(|v| *v == c).count();
+        if n > 0 && meilleur.is_none_or(|(_, m)| n > m) {
+            meilleur = Some((c, n));
+        }
+    }
+    meilleur.map(|(c, _)| c.clone())
+}
+
+fn chemin(v: &Value, cle: &str) -> Option<String> {
+    texte(v, cle)
+        .map(|c| c.trim_end_matches('/').to_string())
+        .filter(|c| !c.is_empty())
+}
+
+fn refus(corps: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(corps).ok()?;
+    let liste = match v {
+        Value::Array(l) => l,
+        v => vec![v],
+    };
+    let mut messages: Vec<String> = liste
+        .iter()
+        .filter_map(|e| texte(e, "errorMessage"))
+        .collect();
+    messages.dedup();
+    let m: String = messages.join(" ; ").chars().take(300).collect();
+    (!m.is_empty()).then(|| format!("{REFUS} : {m}"))
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArtisteLidarr {
@@ -124,9 +210,15 @@ impl<'a> Client<'a> {
                 .await
                 .unwrap_or_default()
                 .chars()
-                .take(200)
+                .take(4000)
                 .collect();
-            tracing::warn!("Lidarr : HTTP {} {}", statut.as_u16(), corps.trim());
+            let extrait: String = corps.chars().take(200).collect();
+            tracing::warn!("Lidarr : HTTP {} {}", statut.as_u16(), extrait.trim());
+            if statut == reqwest::StatusCode::BAD_REQUEST
+                && let Some(m) = refus(&corps)
+            {
+                return Err(m);
+            }
             return Err(format!("Lidarr : HTTP {}", statut.as_u16()));
         }
         let octets = rep.bytes().await.map_err(erreur)?;
@@ -146,6 +238,140 @@ impl<'a> Client<'a> {
             Value::Array(a) => Ok(a),
             _ => Err(format!("Lidarr : {chemin} : liste attendue")),
         }
+    }
+
+    pub async fn reglages_ajout(
+        &self,
+        surcharge: &quota::Reglages,
+    ) -> Result<ReglagesAjout, ErreurReglages> {
+        let dossiers = self.liste("/rootfolder").await?;
+        let declares: Vec<(&Value, String)> = dossiers
+            .iter()
+            .filter_map(|d| Some((d, chemin(d, "path")?)))
+            .collect();
+        let accessibles: Vec<&(&Value, String)> = declares
+            .iter()
+            .filter(|d| d.0["accessible"] != false)
+            .collect();
+        let candidats: Vec<String> = if accessibles.is_empty() {
+            declares.iter().map(|d| d.1.clone()).collect()
+        } else {
+            accessibles.iter().map(|d| d.1.clone()).collect()
+        };
+        let mut artistes: Option<Vec<Value>> = None;
+        let (racine, source_racine) = match &surcharge.racine {
+            Some(r) => (r.clone(), Source::Surcharge),
+            None => {
+                let r = match candidats.as_slice() {
+                    [] => return Err(ErreurReglages::Incomplet("aucun dossier racine")),
+                    [seul] => seul.clone(),
+                    _ => {
+                        let utilises: Vec<String> = self
+                            .artistes_bruts(&mut artistes)
+                            .await?
+                            .iter()
+                            .filter_map(|a| chemin(a, "rootFolderPath"))
+                            .collect();
+                        plus_utilise(&candidats, &utilises).unwrap_or_else(|| candidats[0].clone())
+                    }
+                };
+                (r, Source::Lidarr)
+            }
+        };
+        let dossier = declares
+            .iter()
+            .find(|d| d.1 == racine.trim_end_matches('/'))
+            .map(|d| d.0);
+        let racine = match (&source_racine, dossier.and_then(|d| texte(d, "path"))) {
+            (Source::Lidarr, Some(brut)) => brut,
+            _ => racine,
+        };
+        let tags = dossier
+            .and_then(|d| d["defaultTags"].as_array())
+            .map(|l| l.iter().filter_map(Value::as_i64).collect())
+            .unwrap_or_default();
+        let qualites = self.liste("/qualityprofile").await?;
+        let qualite = self
+            .profil(
+                &qualites,
+                surcharge.profil_qualite,
+                dossier.and_then(|d| entier(d, "defaultQualityProfileId")),
+                "qualityProfileId",
+                &mut artistes,
+            )
+            .await?
+            .ok_or(ErreurReglages::Incomplet("aucun profil de qualité"))?;
+        let metas = self.liste("/metadataprofile").await?;
+        let metadonnees = self
+            .profil(
+                &metas,
+                surcharge.profil_metadonnees,
+                dossier.and_then(|d| entier(d, "defaultMetadataProfileId")),
+                "metadataProfileId",
+                &mut artistes,
+            )
+            .await?
+            .ok_or(ErreurReglages::Incomplet("aucun profil de métadonnées"))?;
+        Ok(ReglagesAjout {
+            debit: quota::debit_profil(&qualites, qualite.id),
+            racine,
+            source_racine,
+            qualite,
+            metadonnees,
+            tags,
+        })
+    }
+
+    async fn artistes_bruts<'c>(
+        &self,
+        cache: &'c mut Option<Vec<Value>>,
+    ) -> Result<&'c [Value], String> {
+        if cache.is_none() {
+            *cache = Some(self.liste("/artist").await?);
+        }
+        Ok(cache.as_deref().unwrap_or_default())
+    }
+
+    async fn profil(
+        &self,
+        profils: &[Value],
+        surcharge: Option<i64>,
+        defaut: Option<i64>,
+        cle: &str,
+        artistes: &mut Option<Vec<Value>>,
+    ) -> Result<Option<Profil>, String> {
+        let ids: Vec<i64> = profils.iter().filter_map(|p| entier(p, "id")).collect();
+        let nom = |id: i64| {
+            profils
+                .iter()
+                .find(|p| entier(p, "id") == Some(id))
+                .and_then(|p| texte(p, "name"))
+        };
+        if let Some(id) = surcharge {
+            return Ok(Some(Profil {
+                id,
+                nom: nom(id),
+                source: Source::Surcharge,
+            }));
+        }
+        let id = match defaut.filter(|d| ids.contains(d)) {
+            Some(d) => Some(d),
+            None if ids.is_empty() => None,
+            None => {
+                let utilises: Vec<i64> = self
+                    .artistes_bruts(artistes)
+                    .await?
+                    .iter()
+                    .filter_map(|a| entier(a, cle))
+                    .collect();
+                plus_utilise(&ids, &utilises).or_else(|| ids.first().copied())
+            }
+        };
+        Ok(id.map(|id| Profil {
+            id,
+            nom: nom(id),
+            source: Source::Lidarr,
+        }))
     }
 
     pub async fn version(&self) -> Result<String, String> {
@@ -357,6 +583,24 @@ mod tests {
         assert_eq!(f.len(), 1);
         assert_eq!(f[&21].taille, 42);
         assert!(s.requetes().iter().all(|r| r.entete("x-api-key") == "cle"));
+    }
+
+    #[test]
+    fn refus_de_validation_et_plus_utilise() {
+        let corps = r#"[{"propertyName":"RootFolderPath","errorMessage":"Root folder '/music' does not exist","attemptedValue":"/music","severity":"error"}]"#;
+        assert_eq!(
+            refus(corps).as_deref(),
+            Some("Lidarr a refusé l'ajout : Root folder '/music' does not exist")
+        );
+        assert_eq!(
+            refus(r#"{"message": "x", "errorMessage": "Profil inconnu"}"#).as_deref(),
+            Some("Lidarr a refusé l'ajout : Profil inconnu")
+        );
+        assert_eq!(refus("panne"), None);
+        assert_eq!(refus("[]"), None);
+        assert_eq!(plus_utilise(&[1, 4], &[4, 4, 1, 9]), Some(4));
+        assert_eq!(plus_utilise(&[1, 4], &[4, 1]), Some(1));
+        assert_eq!(plus_utilise(&[1, 4], &[9]), None);
     }
 
     #[tokio::test]

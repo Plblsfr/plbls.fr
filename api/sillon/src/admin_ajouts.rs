@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 use sqlx::Row;
 
 use crate::{
-    ajouts::{self, COLONNES_AJOUT, ajout_public, etat_interne, non_configure, reponse_erreur},
+    ajouts::{
+        self, COLONNES_AJOUT, ajout_public, etat_interne, non_configure, reponse_erreur_admin,
+    },
     bibliotheque::{COLONNES_ALBUM, album_public, uuid},
     catalogue,
     etat::AppState,
@@ -25,7 +27,23 @@ pub async fn disque(State(state): State<AppState>) -> Result<Response, Response>
     let o = quota::occupation(&state).await.map_err(bd)?;
     let mut v = o.public();
     v["daily_limit"] = json!(state.config().ajouts.par_jour);
-    v["configured"] = json!(state.config().lidarr.is_some() && state.config().ajouts.configure());
+    v["configured"] = json!(state.config().lidarr.is_some());
+    let profil = |p: &lidarr::Profil| json!({"name": p.nom, "source": p.source.code()});
+    (v["settings"], v["settings_error"]) = match ajouts::client(&state) {
+        None => (Value::Null, Value::Null),
+        Some(c) => match ajouts::reglages(&state, &c).await {
+            Ok(r) => (
+                json!({
+                    "root_folder": r.racine,
+                    "root_folder_source": r.source_racine.code(),
+                    "quality_profile": profil(&r.qualite),
+                    "metadata_profile": profil(&r.metadonnees),
+                }),
+                Value::Null,
+            ),
+            Err(e) => (Value::Null, json!(String::from(e))),
+        },
+    };
     Ok(ok(&v))
 }
 
@@ -52,7 +70,9 @@ pub async fn relancer(
     Path(id): Path<String>,
 ) -> Result<Response, Response> {
     let id = uuid(&id)?;
-    let r = ajouts::relancer(&state, id).await.map_err(reponse_erreur)?;
+    let r = ajouts::relancer(&state, id)
+        .await
+        .map_err(reponse_erreur_admin)?;
     ajouts::reponse_resultat(&state, r, true).await
 }
 
