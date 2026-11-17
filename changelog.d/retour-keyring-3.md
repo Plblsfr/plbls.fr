@@ -1,1 +1,0 @@
-- [x] Retour de `keyring` en version 3 dans le code commun des apps Tauri. La montée en version 4 proposée par Dependabot (fusionnée par erreur avec une CI rouge) empêchait de résoudre les dépendances : `keyring` 4 n'a plus la feature `windows-native`. Non fait : la migration vers `keyring` 4. Non vérifié : build des apps Windows et Android.
