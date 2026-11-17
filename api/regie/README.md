@@ -12,7 +12,7 @@ routes dans [`openapi.yaml`](../../docs/regie/openapi.yaml). Pas de base de donn
 | `interne.rs` | santé, `GET /me` |
 | `http.rs` | réponses JSON et erreurs `{error, message}` |
 | `arr.rs` | client de Radarr, Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`) : version, alertes, dossiers racine, éléments bloqués de la file, retrait, titres de la file et de l'historique (`titre_de`), import manuel (`import_manuel`, `importer`), liste d'une bibliothèque, indexeurs et test d'un indexeur |
-| `qbittorrent.rs` | client de l'API web de qBittorrent : connexion, cookie de session réutilisé, version, débits, instantané des torrents (`instantane`), actions, ajout d'un torrent (corps `multipart` écrit à la main) |
+| `qbittorrent.rs` | client de l'API web de qBittorrent : clé d'API en `Bearer`, ou connexion et cookie de session réutilisé ; attente croissante après un refus ; version, débits, instantané des torrents (`instantane`), actions, ajout d'un torrent (corps `multipart` écrit à la main) |
 | `suivi.rs` | relecture périodique de qBittorrent tant qu'un lecteur attend (`assurer`), instantané versionné diffusé par un canal `watch`, rattachement des torrents aux titres |
 | `telechargements.rs` | `GET /admin/downloads` (attente du prochain changement), actions sur les torrents, limites globales, fiche et priorités des fichiers ; validation des corps |
 | `bencode.rs` | lecture d'un fichier `.torrent` (`Torrent::lire`) : nom, fichiers, empreinte v1, refus des chemins dangereux |

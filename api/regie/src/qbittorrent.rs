@@ -1,11 +1,63 @@
+use std::time::{Duration, Instant};
+
 use axum::http::header;
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
 use crate::config::Qbittorrent;
 
+const ATTENTE_APRES_REFUS: Duration = Duration::from_secs(30);
+const ATTENTE_MAX: Duration = Duration::from_secs(900);
+
+struct Refus {
+    jusqu_a: Instant,
+    raison: String,
+    essais: u32,
+}
+
 #[derive(Default)]
-pub struct Session(Mutex<Option<String>>);
+struct Etat {
+    cookie: Option<String>,
+    refus: Option<Refus>,
+}
+
+impl Etat {
+    fn refuser(&mut self, raison: &str) {
+        let essais = self.refus.as_ref().map_or(0, |r| r.essais) + 1;
+        let attente = ATTENTE_APRES_REFUS
+            .saturating_mul(1 << (essais - 1).min(10))
+            .min(ATTENTE_MAX);
+        self.cookie = None;
+        self.refus = Some(Refus {
+            jusqu_a: Instant::now() + attente,
+            raison: raison.to_string(),
+            essais,
+        });
+    }
+
+    fn en_attente(&self) -> Option<String> {
+        let r = self.refus.as_ref()?;
+        let reste = r.jusqu_a.checked_duration_since(Instant::now())?;
+        Some(format!(
+            "{} ; nouvel essai dans {} s",
+            r.raison,
+            reste.as_secs() + 1
+        ))
+    }
+}
+
+#[derive(Default)]
+pub struct Session(Mutex<Etat>);
+
+enum Acces<'a> {
+    Cle(&'a str),
+    Cookie(&'a str),
+}
+
+enum Echec {
+    Refus(&'static str),
+    Autre(String),
+}
 
 pub struct Client<'a> {
     cfg: &'a Qbittorrent,
@@ -127,7 +179,8 @@ impl<'a> Client<'a> {
         Self { cfg, http, session }
     }
 
-    async fn connecter(&self) -> Result<String, String> {
+    async fn connecter(&self) -> Result<String, Echec> {
+        let reseau = |e: reqwest::Error| Echec::Autre(erreur(e));
         let rep = self
             .http
             .post(format!("{}/api/v2/auth/login", self.cfg.url))
@@ -138,7 +191,7 @@ impl<'a> Client<'a> {
             ])
             .send()
             .await
-            .map_err(erreur)?;
+            .map_err(reseau)?;
         let statut = rep.status();
         let cookie = rep
             .headers()
@@ -149,24 +202,25 @@ impl<'a> Client<'a> {
             .map(str::trim)
             .find(|c| c.contains('='))
             .map(String::from);
-        let corps = rep.text().await.map_err(erreur)?;
-        if statut.as_u16() == 403 {
-            return Err("connexion refusée (adresse bannie après trop d'échecs)".into());
+        let corps = rep.text().await.map_err(reseau)?;
+        match statut.as_u16() {
+            403 => Err(Echec::Refus(
+                "connexion refusée (adresse bannie après trop d'échecs)",
+            )),
+            401 => Err(Echec::Refus("identifiants refusés")),
+            200..=299 if corps.trim().eq_ignore_ascii_case("fails.") => {
+                Err(Echec::Refus("identifiants refusés"))
+            }
+            200..=299 => Ok(cookie.unwrap_or_default()),
+            s => Err(Echec::Autre(format!("HTTP {s}"))),
         }
-        if !statut.is_success() {
-            return Err(format!("HTTP {}", statut.as_u16()));
-        }
-        if corps.trim().eq_ignore_ascii_case("fails.") {
-            return Err("identifiants refusés".into());
-        }
-        Ok(cookie.unwrap_or_default())
     }
 
     async fn appeler(
         &self,
         envoi: &Envoi<'_>,
         chemin: &str,
-        cookie: &str,
+        acces: &Acces<'_>,
     ) -> Result<(u16, String), String> {
         let url = format!("{}/api/v2{chemin}", self.cfg.url);
         let mut r = match envoi {
@@ -179,28 +233,57 @@ impl<'a> Client<'a> {
                 .body(corps.clone()),
         }
         .header(header::REFERER, &self.cfg.url);
-        if !cookie.is_empty() {
-            r = r.header(header::COOKIE, cookie);
-        }
+        r = match acces {
+            Acces::Cle(cle) => r.bearer_auth(cle),
+            Acces::Cookie(cookie) if !cookie.is_empty() => r.header(header::COOKIE, *cookie),
+            Acces::Cookie(_) => r,
+        };
         let rep = r.send().await.map_err(erreur)?;
         let statut = rep.status().as_u16();
         Ok((statut, rep.text().await.map_err(erreur)?))
     }
 
     async fn executer(&self, envoi: &Envoi<'_>, chemin: &str) -> Result<(u16, String), String> {
-        let mut session = self.session.0.lock().await;
-        if let Some(cookie) = session.as_deref() {
-            match self.appeler(envoi, chemin, cookie).await? {
+        let mut etat = self.session.0.lock().await;
+        if let Some(cle) = self.cfg.cle.as_deref() {
+            if let Some(message) = etat.en_attente() {
+                return Err(message);
+            }
+            let r = self.appeler(envoi, chemin, &Acces::Cle(cle)).await?;
+            if matches!(r.0, 401 | 403) {
+                let raison = "clé d'API refusée";
+                etat.refuser(raison);
+                return Err(raison.to_string());
+            }
+            etat.refus = None;
+            return Ok(r);
+        }
+        if let Some(cookie) = etat.cookie.as_deref() {
+            match self.appeler(envoi, chemin, &Acces::Cookie(cookie)).await? {
                 (401 | 403, _) => {}
                 r => return Ok(r),
             }
         }
-        *session = None;
-        let cookie = self.connecter().await?;
-        let r = self.appeler(envoi, chemin, &cookie).await?;
-        if !matches!(r.0, 401 | 403) {
-            *session = Some(cookie);
+        etat.cookie = None;
+        if let Some(message) = etat.en_attente() {
+            return Err(message);
         }
+        let cookie = match self.connecter().await {
+            Ok(c) => c,
+            Err(Echec::Autre(e)) => return Err(e),
+            Err(Echec::Refus(raison)) => {
+                etat.refuser(raison);
+                return Err(raison.to_string());
+            }
+        };
+        let r = self.appeler(envoi, chemin, &Acces::Cookie(&cookie)).await?;
+        if matches!(r.0, 401 | 403) {
+            let raison = "session refusée par qBittorrent juste après la connexion";
+            etat.refuser(raison);
+            return Err(raison.to_string());
+        }
+        etat.cookie = Some(cookie);
+        etat.refus = None;
         Ok(r)
     }
 

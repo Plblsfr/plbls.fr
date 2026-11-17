@@ -55,7 +55,8 @@ paths:
         Les cinq services sont interrogés en parallèle ; un service injoignable ou non configuré n'empêche pas la réponse.
         - `services` : `{key, name, configured, reachable, version, error, alerts: [{level, source, message}]}` pour `radarr`,
           `sonarr`, `lidarr`, `prowlarr`, `qbittorrent` (ce dernier ajoute `transfer: {download_speed, upload_speed, connection}`, en octets par seconde).
-          `level` : `notice`, `warning` ou `error`. `error` : première lecture en échec.
+          `level` : `notice`, `warning` ou `error`. `error` : première lecture en échec ; pour qBittorrent, un refus (clé ou identifiants)
+          porte le délai avant le prochain essai.
         - `indexers` (Prowlarr) : `{id, name, enabled, protocol, privacy, failing, disabled_until, last_failure}`.
         - `disks` (dossiers racine de Radarr, Sonarr, Lidarr) : `{service, path, free, accessible}`, `free` en octets.
         - `queue` (éléments en avertissement ou en erreur des files de Radarr, Sonarr, Lidarr) : `{service, id, title, level, state, messages}`.

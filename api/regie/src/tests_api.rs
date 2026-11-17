@@ -276,6 +276,7 @@ async fn etat_agrege_les_services() {
         c.prowlarr = arr(&f_prowlarr);
         c.qbittorrent = Some(Qbittorrent {
             url: f_qbit.url.clone(),
+            cle: None,
             utilisateur: "admin".into(),
             mot_de_passe: "secret".into(),
         });
@@ -343,11 +344,12 @@ async fn etat_agrege_les_services() {
 }
 
 #[tokio::test]
-async fn qbittorrent_identifiants_refuses() {
+async fn qbittorrent_identifiants_refuses_sans_nouvel_essai_immediat() {
     let f = qbittorrent("autre").await;
     let e = env_avec(|c| {
         c.qbittorrent = Some(Qbittorrent {
             url: f.url.clone(),
+            cle: None,
             utilisateur: "admin".into(),
             mot_de_passe: "secret".into(),
         });
@@ -359,6 +361,60 @@ async fn qbittorrent_identifiants_refuses() {
         (&q["reachable"], &q["error"]),
         (&json!(false), &json!("identifiants refusés"))
     );
+    for _ in 0..3 {
+        let v = e.get("admin", "/admin/status").await.json();
+        let erreur = service(&v, "qbittorrent")["error"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            erreur.starts_with("identifiants refusés ; nouvel essai dans "),
+            "{erreur}"
+        );
+    }
+    let connexions = f
+        .requetes()
+        .iter()
+        .filter(|r| r.chemin == "/api/v2/auth/login")
+        .count();
+    assert_eq!(
+        connexions, 1,
+        "un refus n'est pas retenté aussitôt : qBittorrent bannirait Régie"
+    );
+}
+
+#[tokio::test]
+async fn qbittorrent_refus_par_statut() {
+    for (statut, attendu) in [
+        (401, "identifiants refusés"),
+        (
+            403,
+            "connexion refusée (adresse bannie après trop d'échecs)",
+        ),
+    ] {
+        let f = faux_avec_entetes(move |_| (statut, vec![], b"Unauthorized".to_vec())).await;
+        let e = env_avec(|c| {
+            c.qbittorrent = Some(Qbittorrent {
+                url: f.url.clone(),
+                cle: None,
+                utilisateur: "admin".into(),
+                mot_de_passe: "secret".into(),
+            });
+        })
+        .await;
+        let v = e.get("admin", "/admin/status").await.json();
+        assert_eq!(
+            service(&v, "qbittorrent")["error"],
+            attendu,
+            "HTTP {statut}"
+        );
+        e.get("admin", "/admin/status").await;
+        assert_eq!(
+            f.requetes().len(),
+            1,
+            "HTTP {statut} : pas de nouvel essai immédiat"
+        );
+    }
 }
 
 #[tokio::test]
@@ -502,6 +558,7 @@ fn avec_qbit(c: &mut crate::config::Config, f: &FauxQbit) {
     c.periode_suivi = Duration::from_millis(20);
     c.qbittorrent = Some(Qbittorrent {
         url: f.faux.url.clone(),
+        cle: None,
         utilisateur: "admin".into(),
         mot_de_passe: "secret".into(),
     });
@@ -556,6 +613,7 @@ async fn qbittorrent_injoignable_annonce_dans_le_suivi() {
         c.periode_suivi = Duration::from_millis(20);
         c.qbittorrent = Some(Qbittorrent {
             url: "http://127.0.0.1:1".into(),
+            cle: None,
             utilisateur: String::new(),
             mot_de_passe: String::new(),
         });
@@ -866,6 +924,7 @@ fn avec_depots(c: &mut crate::config::Config, dossier: &std::path::Path, q: &Fau
     c.periode_suivi = Duration::from_millis(20);
     c.qbittorrent = Some(Qbittorrent {
         url: q.url.clone(),
+        cle: None,
         utilisateur: "admin".into(),
         mot_de_passe: "secret".into(),
     });
@@ -1420,5 +1479,74 @@ async fn depot_qui_sortirait_du_dossier_par_un_lien_refuse() {
     assert_eq!(
         v["files"][0]["received"], 0,
         "un lien n'est pas compté comme un fichier reçu"
+    );
+}
+
+#[tokio::test]
+async fn qbittorrent_par_cle_d_api_sans_connexion() {
+    let f = faux_avec_entetes(|r| {
+        if r.entete("authorization") != "Bearer qbt_bonne" {
+            return (401, vec![], b"Unauthorized".to_vec());
+        }
+        match r.chemin.as_str() {
+            "/api/v2/app/version" => (200, vec![], b"v5.2.0".to_vec()),
+            "/api/v2/transfer/info" => (
+                200,
+                vec![],
+                json!({"dl_info_speed": 1, "up_info_speed": 2, "connection_status": "connected"})
+                    .to_string()
+                    .into_bytes(),
+            ),
+            _ => (404, vec![], vec![]),
+        }
+    })
+    .await;
+    let avec = |cle: &'static str| {
+        let url = f.url.clone();
+        env_avec(move |c| {
+            c.qbittorrent = Some(Qbittorrent {
+                url,
+                cle: Some(cle.into()),
+                utilisateur: "admin".into(),
+                mot_de_passe: "ignore".into(),
+            });
+        })
+    };
+    let e = avec("qbt_bonne").await;
+    let v = e.get("admin", "/admin/status").await.json();
+    let q = service(&v, "qbittorrent");
+    assert_eq!(
+        (&q["reachable"], &q["version"], &q["error"]),
+        (&json!(true), &json!("5.2.0"), &Value::Null)
+    );
+    assert!(
+        f.requetes()
+            .iter()
+            .all(|r| r.chemin != "/api/v2/auth/login" && r.entete("cookie").is_empty()),
+        "avec une clé, ni connexion ni cookie"
+    );
+    let avant = f.requetes().len();
+    let e = avec("qbt_fausse").await;
+    let v = e.get("admin", "/admin/status").await.json();
+    assert_eq!(service(&v, "qbittorrent")["error"], "clé d'API refusée");
+    let v = e.get("admin", "/admin/status").await.json();
+    let erreur = service(&v, "qbittorrent")["error"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        erreur.starts_with("clé d'API refusée ; nouvel essai dans "),
+        "{erreur}"
+    );
+    assert_eq!(
+        f.requetes().len(),
+        avant + 1,
+        "une clé refusée n'est pas renvoyée aussitôt"
+    );
+    assert!(
+        !e.get("admin", "/admin/status")
+            .await
+            .texte()
+            .contains("qbt_")
     );
 }

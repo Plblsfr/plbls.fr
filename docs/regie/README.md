@@ -97,8 +97,11 @@ dynamique, cadence, débit), son audio (codec, canaux, langues, débit), ses sou
 déjà analysé : Régie ne lit aucun fichier de la bibliothèque et ne rend jamais de chemin, seulement des noms de fichiers.
 L'app en fait un texte à copier (`sheetText`), limité à une saison pour une série.
 
-Clients : `X-Api-Key` pour Radarr et Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`). qBittorrent : connexion par
-`POST /api/v2/auth/login`, cookie de session gardé en mémoire et renouvelé sur un 401 ou un 403.
+Clients : `X-Api-Key` pour Radarr et Sonarr (`/api/v3`), Lidarr et Prowlarr (`/api/v1`). qBittorrent : clé d'API
+`REGIE_QBITTORRENT_CLE` en `Authorization: Bearer` (qBittorrent 5.2 ou plus récent), sans connexion ni cookie. Sans clé, connexion par
+`POST /api/v2/auth/login` avec le compte de l'interface web, cookie de session gardé en mémoire et renouvelé sur un 401 ou un 403.
+Un refus (clé ou identifiants refusés, adresse bannie) n'est pas retenté aussitôt : Régie attend 30 s, puis le double à chaque nouveau
+refus, 15 minutes au plus, et l'écran affiche la raison et le délai. qBittorrent bannit en effet une adresse après quelques échecs.
 
 ## Section de l'app
 
@@ -113,12 +116,13 @@ titre et affiche sa fiche à copier.
 - `plbls.fr-infra` : sous-domaine `regie-api.plbls.fr` et sa route ; Radarr, Sonarr, Lidarr, Prowlarr et qBittorrent joignables depuis
   la stack (réseau `MEDIAS_NETWORK`), aux adresses de `plbls.env` (`REGIE_*_URL`).
 - Vault, `secret/regie` : `AEGIS_TOKEN_REGIE`, `REGIE_RADARR_CLE`, `REGIE_SONARR_CLE`, `REGIE_LIDARR_CLE`, `REGIE_PROWLARR_CLE`,
-  `REGIE_QBITTORRENT_MOT_DE_PASSE`.
+  `REGIE_QBITTORRENT_CLE`.
 - Dépôts : un dossier `REGIE_DEPOTS` sur le même système de fichiers que les bibliothèques, monté en écriture dans `regie-api` et visible
   de qBittorrent et de Radarr, Sonarr, Lidarr (`REGIE_DEPOTS_QBITTORRENT`, `REGIE_DEPOTS_ARR` s'ils le montent sous un autre chemin).
   `REGIE_GID` (onglet Environment) : groupe commun à ces services. Régie écrit sous ce groupe et ouvre ses fichiers au groupe (664, dossiers
   775) : sans cela, Linux refuse le lien physique d'un fichier que le service ne peut pas écrire, et l'import se rabat sur une copie.
-- qBittorrent : compte de l'interface web (`REGIE_QBITTORRENT_UTILISATEUR`), sans contournement d'authentification nécessaire.
+- qBittorrent 5.2 ou plus récent : générer la clé dans Préférences > WebUI > API Key. Version plus ancienne : laisser la clé vide et
+  donner `REGIE_QBITTORRENT_UTILISATEUR` et `REGIE_QBITTORRENT_MOT_DE_PASSE`.
 - aegis : rien à déclarer (il lit `AEGIS_TOKEN_REGIE` comme application `regie`), puis `regie:admin` aux comptes administrateurs.
 - Front : `REGIE_PUBLIC_URL` de `plbls.env`, lu au démarrage d'`estompe-web` et au build des apps natives (`VITE_REGIE_URL` pour les apps).
 
