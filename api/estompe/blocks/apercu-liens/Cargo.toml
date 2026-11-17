@@ -18,14 +18,15 @@ html5gum.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sqlx.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 
 [dev-dependencies]
 estompe-core = { workspace = true, features = ["testutil"] }
 percent-encoding.workspace = true
-sqlx.workspace = true
 testcontainers.workspace = true
 testcontainers-modules.workspace = true
 tower.workspace = true

@@ -65,6 +65,7 @@ Variables communes, de même nom et de même sens partout :
 | `AEGIS_URL`, `AEGIS_ADMIN_ROLE`, `AEGIS_REDIS_PREFIX` | `plbls.env` | aegis et ses clients |
 | `AEGIS_TOKEN_<APPLICATION>` | Vault `secret/<client>` | le client (son jeton) et aegis, qui accepte chaque variable du préfixe comme service `<nom>` en minuscules |
 | `ENTRACTE_INTERNE_URL`, `ENTRACTE_SERVICE_TOKEN` | `plbls.env` / Vault `secret/entracte` | Entracte et le salon cinéma d'Estompe |
+| `SILLON_INTERNE_URL`, `SILLON_SERVICE_TOKEN` | `plbls.env` / Vault `secret/sillon` | Sillon et les cartes de liens Sillon d'Estompe |
 | `VAPID_*`, `FCM_SERVICE_ACCOUNT` | `plbls.env` / Vault `secret/commun` | notifications push d'Estompe et d'Entracte |
 
 - **Secrets** : les exemples ne contiennent que des références `${{vault.plbls.<secret>:<CLE>}}`. Dokploy les résout au déploiement

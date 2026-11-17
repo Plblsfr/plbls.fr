@@ -339,7 +339,7 @@ export const api = {
   fcmSubscribe: (token: string) => send<void>('PUT', '/push/fcm', { token }),
   fcmUnsubscribe: (token: string) => send<void>('DELETE', '/push/fcm', { token }),
   pushUnsubscribe: (endpoint: string) => send<void>('DELETE', '/push/subscription', { endpoint }),
-  linkPreview: (url: string) => get<LinkPreview>(`/link-preview?url=${enc(url)}`),
+  linkPreview: (url: string, message?: string) => get<LinkPreview>(`/link-preview?url=${enc(url)}${message ? `&message=${enc(message)}` : ''}`),
 
   wsTicket: () => post<{ ticket: string }>('/ws-ticket'),
   voiceToken: (cid: string) => post<VoiceToken>(`/voice/${cid}/token`),

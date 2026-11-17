@@ -113,6 +113,32 @@ pub trait Films: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = FilmEtSuite> + Send + 'a>>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MusiqueResolue {
+    pub genre: String,
+    pub id: String,
+    pub titre: String,
+    pub artiste: String,
+    pub album: Option<String>,
+    pub image: Option<(String, String)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefusMusique {
+    Permission,
+    Introuvable,
+    Indisponible,
+}
+
+pub trait Musiques: Send + Sync {
+    fn apercu<'a>(
+        &'a self,
+        sub: &'a str,
+        genre: &'a str,
+        id: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<MusiqueResolue, RefusMusique>> + Send + 'a>>;
+}
+
 pub trait Notifieur: Send + Sync {
     fn publier<'a>(
         &'a self,
@@ -155,6 +181,7 @@ struct Inner {
     vocal: Mutex<Option<Arc<dyn Vocal>>>,
     post_video: Mutex<Option<Arc<dyn PostVideo>>>,
     films: Mutex<Option<Arc<dyn Films>>>,
+    musiques: Mutex<Option<Arc<dyn Musiques>>>,
     notifieur: Mutex<Option<Arc<dyn Notifieur>>>,
     cle_liens: [u8; 32],
     stockage: tokio::sync::Mutex<()>,
@@ -207,6 +234,7 @@ impl AppState {
             vocal: Mutex::default(),
             post_video: Mutex::default(),
             films: Mutex::default(),
+            musiques: Mutex::default(),
             notifieur: Mutex::default(),
             cle_liens: rand::random(),
             stockage: tokio::sync::Mutex::new(()),
@@ -453,6 +481,18 @@ impl AppState {
     pub fn films(&self) -> Option<Arc<dyn Films>> {
         self.0
             .films
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn definir_musiques(&self, musiques: Arc<dyn Musiques>) {
+        *self.0.musiques.lock().unwrap_or_else(|e| e.into_inner()) = Some(musiques);
+    }
+
+    pub fn musiques(&self) -> Option<Arc<dyn Musiques>> {
+        self.0
+            .musiques
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()

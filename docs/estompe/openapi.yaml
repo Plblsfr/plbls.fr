@@ -1726,8 +1726,8 @@ paths:
     get:
       tags: [messages]
       summary: Aperçu d'un lien (titre, description, image) — à afficher comme du texte, jamais comme du HTML
-      description: "Adresses non publiques et ports autres que 80/443 refusés. 20 demandes par minute et par utilisateur. Paramètres de suivi (`si`, `utm_*`…) retirés de l'URL de l'aperçu ; liens YouTube et YouTube Music par oEmbed (backend Go ; dans le backend Rust, fournis par les blocs `videos` et `musique`) ; pages d'erreur, de consentement ou de blocage : `no_preview`. Aperçus mis en cache 10 minutes."
-      parameters: [{name: url, in: query, required: true, schema: {type: string}}, {name: refresh, in: query, schema: {type: string}, description: "non vide : ignore le cache"}]
+      description: "Adresses non publiques et ports autres que 80/443 refusés. 20 demandes par minute et par utilisateur. Paramètres de suivi (`si`, `utm_*`…) retirés de l'URL de l'aperçu ; liens YouTube et YouTube Music par oEmbed (backend Go ; dans le backend Rust, fournis par les blocs `videos` et `musique`) ; pages d'erreur, de consentement ou de blocage : `no_preview`. Aperçus mis en cache 10 minutes. Carte Sillon (si `SILLON_INTERNE_URL` et `SILLON_SERVICE_TOKEN` sont définis) : un lien d'une origine de `ALLOWED_ORIGINS` vers `/#/musique/<album|artist|track|playlist>/<id>` n'est pas récupéré comme une page ; avec `message` (lisible par le lecteur et contenant le lien), Sillon fournit titre, artiste et image si l'auteur du message a `sillon:access` (`sillon` dans la réponse, `listen` : le lecteur l'a aussi). Playlist, message absent, auteur sans accès : `no_preview`."
+      parameters: [{name: url, in: query, required: true, schema: {type: string}}, {name: refresh, in: query, schema: {type: string}, description: "non vide : ignore le cache"}, {name: message, in: query, schema: {type: string}, description: "identifiant du message qui contient le lien ; exigé pour une carte Sillon"}]
       responses:
         "200": {description: ok, content: {application/json: {schema: {$ref: "#/components/schemas/LinkPreview"}}}}
         "400": {description: "`invalid_url` ou `blocked_url`"}
@@ -2328,4 +2328,4 @@ components:
         group: {type: boolean, description: "présent si la personne n'est mentionnée que par @everyone ou @here"}
     LinkPreview:
       type: object
-      properties: {url: {type: string}, title: {type: string}, description: {type: string}, image: {type: string, description: "URI data: (PNG, JPEG, GIF, WebP, 400 Ko max) récupérée par le serveur"}, site_name: {type: string}, video: {type: string, description: "fichier vidéo direct annoncé par la page (https uniquement)"}}
+      properties: {url: {type: string}, title: {type: string}, description: {type: string}, image: {type: string, description: "URI data: (PNG, JPEG, GIF, WebP, 400 Ko max) récupérée par le serveur"}, site_name: {type: string}, video: {type: string, description: "fichier vidéo direct annoncé par la page (https uniquement)"}, sillon: {type: object, description: "carte Sillon : `{type: album|track|artist, id, title, artist, album: uuid|null, cover: {kind: album|artist, id}|null, listen: bool}` ; l'image se demande à Sillon avec la session du lecteur (`/albums/{id}/cover`, `/artists/{id}/image`)"}}

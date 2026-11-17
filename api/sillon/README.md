@@ -9,7 +9,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `routes.rs` | table des routes : chacune a une permission ou une exception motivée ; tests de couverture et de conformité à OpenAPI (dans les deux sens) |
 | `garde.rs`, `identite.rs`, `droits.rs` | gateway (`/auth/me`, cookie ou Bearer), aegis (manifeste, `/v1/effective`), sections de `GET /me`, CORS et CSRF |
 | `etat.rs` | état partagé (configuration, base, client HTTP, aegis, verrou de synchronisation) et tâches de fond (manifeste, synchronisation périodique) |
-| `interne.rs` | santé, disponibilité, `GET /me` |
+| `interne.rs` | santé, disponibilité, `GET /me`, `GET /internal/preview` (carte de lien d'Estompe, `Garde::Service` : jeton `SILLON_SERVICE_TOKEN`) |
 | `http.rs` | réponses JSON et erreurs `{error, message}`, comparaison de jetons à temps constant |
 | `lidarr.rs` | client de l'API v1 de Lidarr (`Client` : artistes, albums, pistes, fichiers, images ; `requete`, `envoyer`, `get` pour les autres appels) |
 | `catalogue.rs` | synchronisation (une à la fois, relance), présence des pistes, albums et artistes, accès aux fichiers pour les lots suivants |

@@ -145,6 +145,8 @@ a.file-chip:focus-visible { outline: none; box-shadow: var(--anneau); }
 .lien-apercu a:hover, a.lien-apercu:hover strong { text-decoration: underline; }
 a.lien-apercu:focus-visible, .lien-apercu a:focus-visible { outline: none; box-shadow: var(--anneau); }
 .lien-apercu > img { flex: none; width: 110px; align-self: stretch; object-fit: cover; }
+.sillon-carte-pochette { flex: none; width: 96px; align-self: stretch; min-height: 96px; }
+.sillon-carte-ecouter { align-self: flex-start; margin-top: 4px; }
 .lien-site { font-family: var(--f-mono); font-size: 11.5px; color: var(--gris); }
 .lien-desc { color: var(--gris); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .yt-info { margin-bottom: 0; border-radius: var(--r) var(--r) 0 0; }
