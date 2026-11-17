@@ -36,7 +36,7 @@
     try { found = (await regieApi.library('radarr', query.trim())).items } catch (err) { notify.error(err, 'La recherche a échoué') }
   }
 
-  async function confirm() {
+  async function lancer() {
     busy = true
     try {
       const r = await regieApi.importDeposit(deposit.id, service, chosen?.id)
@@ -100,7 +100,7 @@
 
     <div class="rg-actions">
       <button class="plbls-button plbls-button--contour" onclick={onclose}>Annuler</button>
-      <button class="plbls-button" disabled={busy || !count} onclick={() => void confirm()}>Importer {count || ''} fichier{count > 1 ? 's' : ''}</button>
+      <button class="plbls-button" disabled={busy || !count} onclick={() => void lancer()}>Importer {count || ''} fichier{count > 1 ? 's' : ''}</button>
     </div>
   </div>
 </Modal>
