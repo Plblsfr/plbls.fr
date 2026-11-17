@@ -23,6 +23,7 @@ pub struct Inner {
     analyse: crate::analyse::Analyse,
     listenbrainz: crate::listenbrainz::Etat,
     decouverte: crate::decouverte::Etat,
+    images: crate::images::Distantes,
 }
 
 #[derive(Clone)]
@@ -40,6 +41,7 @@ impl AppState {
             .as_ref()
             .map(|(url, jeton)| Aegis::new(url, jeton, http.clone()));
         let lecture = crate::lecture::Lecture::nouveau(&cfg);
+        let images = crate::images::Distantes::nouveau(cfg.images_privees);
         Self(Arc::new(Inner {
             identites: Resolveur::new(&cfg.gateway_url, http.clone()),
             cfg,
@@ -52,6 +54,7 @@ impl AppState {
             analyse: crate::analyse::Analyse::default(),
             listenbrainz: crate::listenbrainz::Etat::default(),
             decouverte: crate::decouverte::Etat::default(),
+            images,
         }))
     }
 
@@ -105,6 +108,10 @@ impl AppState {
 
     pub fn listenbrainz(&self) -> &crate::listenbrainz::Etat {
         &self.0.listenbrainz
+    }
+
+    pub fn images(&self) -> &crate::images::Distantes {
+        &self.0.images
     }
 
     pub fn decouverte(&self) -> &crate::decouverte::Etat {

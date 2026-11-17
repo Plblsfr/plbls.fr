@@ -614,6 +614,8 @@ impl Bibliotheque {
             "/music",
             "/autre",
             "MediaCover",
+            "remoteUrl",
+            "exemple.invalid",
             "lastWrite",
             self.lidarr.url.as_str(),
             "cle-lidarr",
