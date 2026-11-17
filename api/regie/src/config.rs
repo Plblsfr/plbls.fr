@@ -11,6 +11,7 @@ pub struct Arr {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Qbittorrent {
     pub url: String,
+    pub cle: Option<String>,
     pub utilisateur: String,
     pub mot_de_passe: String,
 }
@@ -113,6 +114,7 @@ impl Config {
             prowlarr: arr("PROWLARR"),
             qbittorrent: env("REGIE_QBITTORRENT_URL").map(|url| Qbittorrent {
                 url: sans_slash(url),
+                cle: env("REGIE_QBITTORRENT_CLE"),
                 utilisateur: env("REGIE_QBITTORRENT_UTILISATEUR").unwrap_or_default(),
                 mot_de_passe: env("REGIE_QBITTORRENT_MOT_DE_PASSE").unwrap_or_default(),
             }),
@@ -165,6 +167,7 @@ mod tests {
             ("REGIE_LIDARR_CLE", "l"),
             ("REGIE_PROWLARR_CLE", "p"),
             ("REGIE_QBITTORRENT_URL", "http://qbittorrent:8080/"),
+            ("REGIE_QBITTORRENT_CLE", "qbt_abc"),
             ("REGIE_QBITTORRENT_UTILISATEUR", "admin"),
             ("REGIE_QBITTORRENT_MOT_DE_PASSE", "secret"),
         ])
@@ -187,6 +190,7 @@ mod tests {
             c.qbittorrent,
             Some(Qbittorrent {
                 url: "http://qbittorrent:8080".into(),
+                cle: Some("qbt_abc".into()),
                 utilisateur: "admin".into(),
                 mot_de_passe: "secret".into()
             })
