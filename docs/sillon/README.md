@@ -130,7 +130,10 @@ et l'historique, avec `available: false`.
   `/album/lookup`), 20 au plus chacun, marqués « déjà en bibliothèque » (`in_library`), « en cours » (`in_progress`) ou exclus, avec la
   taille estimée de chaque album. Identifiant : MBID MusicBrainz.
 - Ajout (`POST /additions`, `{kind: album|artist, mbid}`), sans validation : envoyé tout de suite à Lidarr. Artiste créé si besoin
-  (`POST /artist` : dossier racine, profils, tags, `monitored`, `addOptions.monitor: none`), puis seul l'album demandé est surveillé (`PUT /album/monitor`) et sa recherche lancée (`POST /command` `AlbumSearch`). Ajout d'un artiste :
+  (`POST /artist` : dossier racine, profils, tags, `monitorNewItems: none`, `addOptions.monitor: none` et `albumsToMonitor` limité à
+  l'album demandé). Lidarr crée un artiste non surveillé quand `addOptions.monitor` vaut `none`, et n'en récupère alors aucune sortie hors
+  recherche explicite : Sillon le passe surveillé (`PUT /artist/editor`, `monitored: true`), comme un artiste déjà présent mais non
+  surveillé (sans toucher à ses autres albums), et le suivi le repasse surveillé tant que l'ajout est en cours. Puis seul l'album demandé est surveillé (`PUT /album/monitor`) et sa recherche lancée (`POST /command` `AlbumSearch`). Ajout d'un artiste :
   ses albums studio seulement (type `Album`, sans type secondaire). Albums pas encore connus de Lidarr juste après la création de l'artiste :
   le suivi les surveille et lance la recherche dès qu'ils apparaissent (`RefreshArtist` demandé si l'artiste existait déjà). Lidarr en erreur
   pendant l'envoi : 502 `lidarr_unavailable`, rien n'est enregistré. Un même titre déjà en cours renvoie l'ajout existant (`existing: true`) ; un album présent, 409

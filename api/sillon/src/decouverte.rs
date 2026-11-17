@@ -698,13 +698,15 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 ("POST", "/api/v1/artist"),
+                ("PUT", "/api/v1/artist/editor"),
                 ("PUT", "/api/v1/album/monitor"),
                 ("POST", "/api/v1/command")
             ],
             "{e:?}"
         );
         assert_eq!(e[0].2["foreignArtistId"], DAFT);
-        assert_eq!(e[2].2["name"], "AlbumSearch");
+        assert_eq!(e[1].2["monitored"], true);
+        assert_eq!(e[3].2["name"], "AlbumSearch");
         assert_eq!(
             (
                 &e[0].2["rootFolderPath"],

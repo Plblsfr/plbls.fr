@@ -557,11 +557,11 @@ pub async fn envoyer(state: &AppState, id: Uuid) -> Result<bool, String> {
     let existant = c
         .liste("/artist")
         .await?
-        .iter()
+        .into_iter()
         .find(|a| a["foreignArtistId"].as_str() == Some(&artiste_mbid))
-        .and_then(|a| a["id"].as_i64());
-    let artiste_id = match existant {
-        Some(id) => id,
+        .and_then(|a| Some((a["id"].as_i64()?, a["monitored"] != false)));
+    let (artiste_id, surveille) = match existant {
+        Some(e) => e,
         None => {
             let mut a = chercher(&c, "/artist/lookup", &format!("lidarr:{artiste_mbid}"))
                 .await?
@@ -585,12 +585,18 @@ pub async fn envoyer(state: &AppState, id: Uuid) -> Result<bool, String> {
                 "albumsToMonitor": a_surveiller,
                 "searchForMissingAlbums": false,
             });
-            c.envoyer(c.requete(Method::POST, "/artist").json(&a))
-                .await?["id"]
-                .as_i64()
-                .ok_or("Lidarr : artiste non créé")?
+            let cree = c
+                .envoyer(c.requete(Method::POST, "/artist").json(&a))
+                .await?;
+            (
+                cree["id"].as_i64().ok_or("Lidarr : artiste non créé")?,
+                cree["monitored"] != false,
+            )
         }
     };
+    if !surveille {
+        surveiller_artistes(&c, &[artiste_id]).await?;
+    }
     let albums = c.liste(&format!("/album?artistId={artiste_id}")).await?;
     let cibles: Vec<&Value> = albums
         .iter()
@@ -646,6 +652,15 @@ pub async fn envoyer(state: &AppState, id: Uuid) -> Result<bool, String> {
     .await
     .map_err(base)?;
     Ok(true)
+}
+
+async fn surveiller_artistes(c: &lidarr::Client<'_>, ids: &[i64]) -> Result<(), String> {
+    c.envoyer(
+        c.requete(Method::PUT, "/artist/editor")
+            .json(&json!({"artistIds": ids, "monitored": true})),
+    )
+    .await
+    .map(|_| ())
 }
 
 #[derive(Debug, Default)]
@@ -793,6 +808,17 @@ async fn suivre_ou_erreur(state: &AppState) -> Result<(), String> {
         .collect();
     artistes.sort_unstable();
     artistes.dedup();
+    let non_surveilles: Vec<i64> = c
+        .liste("/artist")
+        .await?
+        .iter()
+        .filter(|a| a["monitored"] == false)
+        .filter_map(|a| a["id"].as_i64())
+        .filter(|id| artistes.contains(id))
+        .collect();
+    if !non_surveilles.is_empty() {
+        surveiller_artistes(&c, &non_surveilles).await?;
+    }
     let mut depuis: HashMap<i64, DateTime<Utc>> = HashMap::new();
     for l in &actifs {
         for id in l.get::<Vec<i64>, _>("lidarr_albums") {
@@ -1258,6 +1284,9 @@ pub(crate) mod tests {
                 }
                 let id = suivant(m);
                 a["id"] = json!(id);
+                if a["addOptions"]["monitor"] == "none" {
+                    a["monitored"] = json!(false);
+                }
                 m.artistes.push(a.clone());
                 let albums: Vec<Value> = m
                     .mb_albums
@@ -1278,6 +1307,15 @@ pub(crate) mod tests {
                 for al in m.albums.iter_mut() {
                     if v["albumIds"].as_array().unwrap().contains(&al["id"]) {
                         al["monitored"] = v["monitored"].clone();
+                    }
+                }
+                corps(json!([]))
+            }
+            ("PUT", "/api/v1/artist/editor") => {
+                let v = r.json();
+                for a in m.artistes.iter_mut() {
+                    if v["artistIds"].as_array().unwrap().contains(&a["id"]) {
+                        a["monitored"] = v["monitored"].clone();
                     }
                 }
                 corps(json!([]))
@@ -2264,5 +2302,92 @@ pub(crate) mod tests {
         );
         assert_eq!(mon_ajout(&b, "bruno", DISCOVERY).await["state"], "failed");
         assert!(requetes(&b, "POST", "/api/v1/command").is_empty());
+    }
+
+    fn artiste_lidarr(b: &Bibliotheque, mbid: &str) -> Value {
+        b.monde
+            .lock()
+            .unwrap()
+            .artistes
+            .iter()
+            .find(|a| a["foreignArtistId"] == mbid)
+            .cloned()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn l_artiste_cree_finit_surveille_sans_ses_autres_albums_ni_les_futurs() {
+        let Some(b) = monde_ajouts(|_| {}).await else {
+            return;
+        };
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        let c = requetes(&b, "POST", "/api/v1/artist")[0].json();
+        assert_eq!(c["monitorNewItems"], "none");
+        assert_eq!(c["addOptions"]["albumsToMonitor"], json!([DISCOVERY]));
+        let a = artiste_lidarr(&b, DAFT);
+        assert_eq!(a["monitored"], true, "{a}");
+        assert_eq!(surveilles(&b), ["Discovery"]);
+        let editions = requetes(&b, "PUT", "/api/v1/artist/editor");
+        assert_eq!(
+            editions.iter().map(Requete::json).collect::<Vec<_>>(),
+            [json!({"artistIds": [a["id"]], "monitored": true})]
+        );
+        {
+            let mut m = b.monde.lock().unwrap();
+            let a = m
+                .artistes
+                .iter_mut()
+                .find(|a| a["foreignArtistId"] == DAFT)
+                .unwrap();
+            a["monitored"] = json!(false);
+        }
+        suivre(&b.e.state).await;
+        assert_eq!(
+            artiste_lidarr(&b, DAFT)["monitored"],
+            true,
+            "le suivi la repose si Lidarr l'a retirée"
+        );
+        suivre(&b.e.state).await;
+        assert_eq!(requetes(&b, "PUT", "/api/v1/artist/editor").len(), 2);
+        assert_eq!(surveilles(&b), ["Discovery"]);
+    }
+
+    #[tokio::test]
+    async fn l_artiste_existant_non_surveille_passe_surveille_sans_toucher_ses_autres_albums() {
+        let Some(b) = monde_ajouts(|_| {}).await else {
+            return;
+        };
+        let artiste = LIDARR + 50;
+        {
+            let mut m = b.monde.lock().unwrap();
+            m.artistes.push(
+                json!({"id": artiste, "artistName": "Daft Punk", "foreignArtistId": DAFT,
+                "monitored": false, "rootFolderPath": "/data/music"}),
+            );
+            for (id, mbid, titre, surveille) in [
+                (LIDARR + 51, DISCOVERY, "Discovery", false),
+                (LIDARR + 52, HOMEWORK, "Homework", true),
+                (LIDARR + 53, ALIVE, "Alive 2007", false),
+            ] {
+                m.albums.push(
+                    json!({"id": id, "artistId": artiste, "foreignAlbumId": mbid, "title": titre,
+                    "albumType": "Album", "monitored": surveille}),
+                );
+            }
+        }
+        let r = ajouter_http(&b, "bruno", "album", DISCOVERY).await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        assert!(requetes(&b, "POST", "/api/v1/artist").is_empty());
+        assert_eq!(artiste_lidarr(&b, DAFT)["monitored"], true);
+        assert_eq!(surveilles(&b), ["Discovery", "Homework"]);
+        assert_eq!(
+            requetes(&b, "PUT", "/api/v1/artist/editor")[0].json(),
+            json!({"artistIds": [artiste], "monitored": true})
+        );
+        assert_eq!(
+            requetes(&b, "PUT", "/api/v1/album/monitor")[0].json(),
+            json!({"albumIds": [LIDARR + 51], "monitored": true})
+        );
     }
 }
