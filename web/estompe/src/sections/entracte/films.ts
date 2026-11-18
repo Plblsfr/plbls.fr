@@ -20,8 +20,11 @@ export interface FilmPlayback {
   offset?: number
   quality?: Quality
   qualities?: Quality[]
+  intro?: Intro | null
 }
-export interface FilmTracks { audio: FilmTrack[]; subtitles: FilmTrack[]; audioN: number; subN: number | null; qualities?: Quality[]; quality?: Quality }
+export interface Intro { debut: number; fin: number }
+export interface FilmTracks { audio: FilmTrack[]; subtitles: FilmTrack[]; audioN: number; subN: number | null; qualities?: Quality[]; quality?: Quality; intro?: Intro | null }
+export const inIntro = (position: number, intro: Intro | null | undefined): intro is Intro => !!intro && intro.fin > intro.debut && position >= intro.debut && position < intro.fin
 /** Diffusion sur un autre appareil (Chromecast, AirPlay) par le navigateur. */
 export type CastState = 'disconnected' | 'connecting' | 'connected'
 
@@ -155,11 +158,11 @@ export function pickSubtitle(tracks: FilmTrack[], pref: SubtitlePref, audio?: Fi
   return best(tracks, (t) => (trackFamily(t) !== pref ? 0 : 1 + (isForced(t) ? 0 : 2) + (IMPAIRED.test(t.label ?? '') ? 0 : 1)))?.n ?? null
 }
 
-export type Shortcut = 'toggle' | 'back' | 'forward' | 'louder' | 'quieter' | 'mute' | 'fullscreen'
+export type Shortcut = 'toggle' | 'back' | 'forward' | 'louder' | 'quieter' | 'mute' | 'fullscreen' | 'skip'
 export const SEEK_STEP = 10
 export const VOLUME_STEP = 5
 const SHORTCUTS: Record<string, Shortcut> = {
-  ' ': 'toggle', k: 'toggle', ArrowLeft: 'back', j: 'back', ArrowRight: 'forward', l: 'forward', ArrowUp: 'louder', ArrowDown: 'quieter', m: 'mute', f: 'fullscreen',
+  ' ': 'toggle', k: 'toggle', ArrowLeft: 'back', j: 'back', ArrowRight: 'forward', l: 'forward', ArrowUp: 'louder', ArrowDown: 'quieter', m: 'mute', f: 'fullscreen', s: 'skip',
 }
 
 export function shortcut(e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>): Shortcut | null {

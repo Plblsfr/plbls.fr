@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { entracteApi } from '../../lib/api'
 import { platform } from '../../lib/platform'
 import { entracte } from './entracte.svelte'
-import { freeSpace, initialChoice, freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type RequestableSeries, type SearchResult, type SendOptions } from './entracte'
+import { freeSpace, initialChoice, introAnalysed, introLabel, introPending, introTone, freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type IntroSeason, type IntroSeries, type RequestableSeries, type SearchResult, type SendOptions } from './entracte'
 
 const serie = (seasons: Partial<RequestableSeries['seasons'][number]>[]): RequestableSeries => ({
   tmdb_id: 201, title: 'La Série', year: 2019, poster_url: null,
@@ -110,5 +110,25 @@ describe('réglages d’envoi à Radarr ou Sonarr', () => {
     expect(freeSpace(5 * 1024 ** 3)).toBe('5 Go libres')
     expect(freeSpace(1536 * 1024 ** 3)).toBe('1,5 To libres')
     expect(freeSpace(null)).toBe('')
+  })
+})
+
+describe('états de la détection des intros', () => {
+  const saison = (over: Partial<IntroSeason> = {}): IntroSeason => ({ number: 1, episodes: 13, found: 0, state: 'jamais', error: null, updated_at: null, ...over })
+  const uneSerie = (...seasons: IntroSeason[]): IntroSeries => ({ id: 's', title: 'Les Veilleurs', year: 2019, seasons })
+
+  it('nomme chaque état en français', () => {
+    expect((['jamais', 'en_file', 'en_cours', 'rien', 'erreur'] as const).map((state) => introLabel(saison({ state }))))
+      .toEqual(['Jamais analysée', 'En file', 'Analyse en cours', 'Rien trouvé', 'Erreur'])
+    expect(introLabel(saison({ state: 'trouvee', found: 12 }))).toBe('Intro trouvée (12 sur 13)')
+    expect([introTone('trouvee'), introTone('erreur'), introTone('en_file'), introTone('en_cours'), introTone('rien'), introTone('jamais')]).toEqual(['ok', 'dgr', 'info', 'info', '', ''])
+  })
+
+  it('sait si une série attend son analyse ou en a déjà une', () => {
+    expect(introPending(uneSerie(saison(), saison({ state: 'en_file' })))).toBe(true)
+    expect(introPending(uneSerie(saison({ state: 'en_cours' })))).toBe(true)
+    expect(introPending(uneSerie(saison({ state: 'trouvee' }), saison({ state: 'rien' })))).toBe(false)
+    expect(introAnalysed(uneSerie(saison(), saison()))).toBe(false)
+    expect(introAnalysed(uneSerie(saison(), saison({ state: 'erreur' })))).toBe(true)
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, bufferedAhead, clock, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -200,8 +200,16 @@ describe('raccourcis clavier du lecteur', () => {
   const touche = (key: string, over: Partial<KeyboardEvent> = {}) => shortcut({ key, ctrlKey: false, metaKey: false, altKey: false, ...over })
 
   it('associe les touches aux commandes', () => {
-    expect([' ', 'k', 'K', 'ArrowLeft', 'j', 'ArrowRight', 'l', 'ArrowUp', 'ArrowDown', 'm', 'f', 'F'].map((k) => touche(k)))
-      .toEqual(['toggle', 'toggle', 'toggle', 'back', 'back', 'forward', 'forward', 'louder', 'quieter', 'mute', 'fullscreen', 'fullscreen'])
+    expect([' ', 'k', 'K', 'ArrowLeft', 'j', 'ArrowRight', 'l', 'ArrowUp', 'ArrowDown', 'm', 'f', 'F', 's', 'S'].map((k) => touche(k)))
+      .toEqual(['toggle', 'toggle', 'toggle', 'back', 'back', 'forward', 'forward', 'louder', 'quieter', 'mute', 'fullscreen', 'fullscreen', 'skip', 'skip'])
+  })
+
+  it('situe la position par rapport à l’intro', () => {
+    const intro = { debut: 30, fin: 90 }
+    expect([29.9, 30, 60, 89.9, 90, 200].map((t) => inIntro(t, intro))).toEqual([false, true, true, true, false, false])
+    expect(inIntro(40, null)).toBe(false)
+    expect(inIntro(40, undefined)).toBe(false)
+    expect(inIntro(40, { debut: 50, fin: 50 })).toBe(false)
   })
 
   it('laisse passer les autres touches et les combinaisons', () => {

@@ -12,10 +12,10 @@ const detail: FilmDetail = {
   series_id: null, series_title: null, poster: false, backdrop: false, progress: null, audio: [], subtitles: [],
 }
 
-function monter() {
+function monter(position = { t: 0 }) {
   const adapter = {
     sync: 'full', canRate: true, setVolume: vi.fn(), setAudio: vi.fn(), setSubtitle: vi.fn(), load: vi.fn(), play: vi.fn(), pause: vi.fn(),
-    cast: vi.fn().mockResolvedValue(null), seek: vi.fn(), time: () => 0, duration: () => 3000, rate: () => 1, setRate: vi.fn(), state: () => 'paused', destroy: vi.fn(),
+    cast: vi.fn().mockResolvedValue(null), seek: vi.fn((x: number) => { position.t = x }), time: () => position.t, duration: () => 3000, rate: () => 1, setRate: vi.fn(), state: () => 'paused', destroy: vi.fn(),
   } satisfies Adapter
   let handlers: Handlers | undefined
   vi.spyOn(filmsApi, 'item').mockResolvedValue(detail)
@@ -295,5 +295,62 @@ describe('FilmPlayer : autres médias', () => {
     handlers().onState('paused')
     handlers().onState('playing')
     expect(demarre.mock.calls).toEqual([['film'], ['film']])
+  })
+})
+
+describe('FilmPlayer : passer l’intro', () => {
+  afterEach(() => { vi.useRealTimers(); localStorage.clear(); vi.restoreAllMocks() })
+
+  const pistes = (intro: { debut: number; fin: number } | null) => ({ audio: [], subtitles: [], audioN: 0, subN: null, intro })
+  async function ouvert(intro: { debut: number; fin: number } | null, t: number) {
+    vi.useFakeTimers()
+    const position = { t }
+    const m = monter(position)
+    await vi.waitFor(() => expect(m.adapter.load).toHaveBeenCalled())
+    m.handlers().onTracks!(pistes(intro))
+    const avancer = async (x: number) => { position.t = x; await vi.advanceTimersByTimeAsync(600) }
+    await avancer(t)
+    return { ...m, avancer }
+  }
+  const bouton = (vue: ReturnType<typeof monter>['vue']) => vue.queryByRole('button', { name: 'Passer l’intro' })
+
+  it('n’apparaît que dans [debut, fin)', async () => {
+    const { vue, avancer } = await ouvert({ debut: 30, fin: 90 }, 10)
+    expect(bouton(vue)).toBeNull()
+    await avancer(30)
+    expect(bouton(vue)).toBeTruthy()
+    await avancer(89.5)
+    expect(bouton(vue)).toBeTruthy()
+    await avancer(90)
+    expect(bouton(vue)).toBeNull()
+  })
+
+  it('un clic saute à la fin de l’intro et le bouton disparaît', async () => {
+    const { vue, adapter } = await ouvert({ debut: 30, fin: 90 }, 45)
+    await fireEvent.click(bouton(vue)!)
+    expect(adapter.seek).toHaveBeenLastCalledWith(90)
+    await tick()
+    expect(bouton(vue)).toBeNull()
+  })
+
+  it('la touche S saute l’intro, et ne fait rien hors de l’intro', async () => {
+    const { vue, adapter, avancer } = await ouvert({ debut: 30, fin: 90 }, 10)
+    await fireEvent.keyDown(document.body, { key: 's' })
+    expect(adapter.seek).not.toHaveBeenCalled()
+    await avancer(31)
+    expect(bouton(vue)!.getAttribute('aria-keyshortcuts')).toBe('S')
+    await fireEvent.keyDown(document.body, { key: 'S' })
+    expect(adapter.seek).toHaveBeenLastCalledWith(90)
+  })
+
+  it('reste absent sans intro connue, et visible quand les commandes se masquent', async () => {
+    const sans = await ouvert(null, 45)
+    expect(bouton(sans.vue)).toBeNull()
+    sans.vue.unmount()
+    const { vue, handlers } = await ouvert({ debut: 30, fin: 90 }, 45)
+    handlers().onState('playing')
+    await vi.advanceTimersByTimeAsync(IDLE_MS + 600)
+    expect(vue.container.querySelector('.film-player')!.classList.contains('idle')).toBe(true)
+    expect(bouton(vue)).toBeTruthy()
   })
 })
