@@ -1,1 +1,0 @@
-- [x] Régie : temps de partage actif par torrent. La liste des téléchargements affiche, pour chaque torrent terminé, le temps de partage actif compté par qBittorrent (« partagé 2 j 4 h ») ; la fiche d'un torrent ajoute le ratio et le volume envoyé. Non vérifié : contre un vrai qBittorrent (API simulée dans les tests).

@@ -1,5 +1,13 @@
 [
   {
+    "version": "0.106.0",
+    "date": "2026-11-18",
+    "new": [
+      "Entracte : un bouton Passer l'intro saute le générique des séries (ou touche S)."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.104.0",
     "date": "2026-11-17",
     "new": [
