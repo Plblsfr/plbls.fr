@@ -372,7 +372,7 @@ test('C6 et C7 : parcours admin, de la liste à une personne (bandeau, journal),
   await expect(trophees).toContainText('9 trophées, 8 actifs.')
   const ligne = trophees.getByRole('row', { name: /Mélomane/ })
   await expect(ligne).toContainText('10 h · 40 h 30')
-  await ligne.getByRole('switch', { name: 'Mélomane actif' }).uncheck()
+  await trophees.getByRole('row', { name: /Cinéphile/ }).locator('.plbls-toggle').click()
   await expect.poll(() => srv.appels.find((a) => a.methode === 'PATCH')?.corps).toEqual({ active: false })
   await expect(trophees).toContainText('9 trophées, 7 actifs.')
 })

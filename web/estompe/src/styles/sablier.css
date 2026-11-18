@@ -82,7 +82,7 @@
 .sab-alerte > .icon { flex: none; margin-top: 2px; }
 .sab-alerte p { margin: 0; }
 .sab-card--tableau { padding: 8px 12px; max-width: 100%; overflow: hidden; }
-.sab-scroll { max-width: 100%; overflow-x: auto; }
+.sab-scroll { position: relative; max-width: 100%; overflow-x: auto; }
 .sab-scroll:focus-visible { outline: none; box-shadow: var(--anneau-in); border-radius: var(--r-s); }
 .sab-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
 .sab-table thead th { padding: 8px 10px; color: var(--gris); font-size: 12.5px; font-weight: 500; text-align: left; white-space: nowrap; }
