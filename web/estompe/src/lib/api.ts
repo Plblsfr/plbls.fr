@@ -48,7 +48,9 @@ async function headers(json: boolean): Promise<Record<string, string>> {
 const DELAI = 30_000
 const DELAI_ENVOI = 300_000
 
-async function call(base: string, method: string, path: string, body?: unknown): Promise<Response> {
+export interface OptionsAppel { discret?: boolean }
+
+async function call(base: string, method: string, path: string, body?: unknown, options: OptionsAppel = {}): Promise<Response> {
   const brut = body instanceof Blob
   const attempt = async () => {
     const h = await headers(body !== undefined && !brut && !(body instanceof FormData))
@@ -64,7 +66,7 @@ async function call(base: string, method: string, path: string, body?: unknown):
   }
   let res = await attempt()
   // Un 401 isolé peut venir d'un jeton expiré en route ou d'un cookie renouvelé : on réessaie une fois avant de conclure.
-  if (res.status === 401) res = await attempt()
+  if (res.status === 401 && !options.discret) res = await attempt()
   // 429 sur une lecture : une seule relance, après le délai du serveur (jamais pour une action de la personne, qui l'indique et la laisse réessayer)
   if (res.status === 429 && method === 'GET') {
     await new Promise((r) => setTimeout(r, Math.min(Math.max(Number(res.headers.get('Retry-After')) || 1, 1), 30) * 1000))
@@ -82,15 +84,15 @@ async function call(base: string, method: string, path: string, body?: unknown):
       if (e && typeof e === 'object') data = e
     } catch { /* corps non JSON */ }
     debug.log('warn', 'réseau', `${method} ${path.split('?')[0]} ✗ ${code} : ${msg}`)
-    if (res.status === 401) onUnauthorized?.()
+    if (res.status === 401 && !options.discret) onUnauthorized?.()
     if (res.status === 426 && base === API_URL) onUpgradeRequired?.(msg)
     throw new ApiError(res.status, code, msg, data)
   }
   return res
 }
 
-export async function requestAt<T>(base: string, method: string, path: string, body?: unknown): Promise<T> {
-  const res = await call(base, method, path, body)
+export async function requestAt<T>(base: string, method: string, path: string, body?: unknown, options?: OptionsAppel): Promise<T> {
+  const res = await call(base, method, path, body, options)
   if (res.status === 204) return undefined as T
   const ct = res.headers.get('Content-Type') ?? ''
   return (ct.includes('json') ? res.json() : undefined) as Promise<T>

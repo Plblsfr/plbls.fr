@@ -9,6 +9,7 @@ interface RuntimeConfig {
   sillonUrl?: string
   /** API de Régie (administration des médias) ; vide = pas de section Régie. */
   regieUrl?: string
+  sablierUrl?: string
 }
 
 const rc: RuntimeConfig = (typeof window !== 'undefined' && (window as unknown as { __ESTOMPE__?: RuntimeConfig }).__ESTOMPE__) || {}
@@ -21,4 +22,5 @@ export const config = {
   entracteUrl: strip(rc.entracteUrl || import.meta.env.VITE_ENTRACTE_URL || ''),
   sillonUrl: strip(rc.sillonUrl || import.meta.env.VITE_SILLON_URL || ''),
   regieUrl: strip(rc.regieUrl || import.meta.env.VITE_REGIE_URL || ''),
+  sablierUrl: strip(rc.sablierUrl || import.meta.env.VITE_SABLIER_URL || ''),
 }

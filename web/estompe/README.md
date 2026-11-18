@@ -65,10 +65,19 @@ système de Chromium doivent être présentes).
   dans `sillon.svelte.ts`. Le mini-lecteur (`SillonMini`) est dans le dock de la barre latérale et, sous 900 px,
   en bande au bas de la vue : la lecture continue dans la messagerie et dans Entracte. `lib/medias.ts` : un film d'Entracte qui démarre
   (`FilmPlayer`) ou un salon vocal rejoint (`voice.join`) l'annonce, et Sillon se met en pause.
+- `src/sections/sablier` et `src/lib/battement.ts` : temps d'utilisation (Sablier, service de stats à part, `docs/sablier/README.md`).
+  `sablier.ts` : client de l'API (`me`, `battre`) ; `sablierUrl` : `SABLIER_PUBLIC_URL` de l'image, `VITE_SABLIER_URL` au build des apps ; sans elle,
+  aucun battement. Dès qu'une session est ouverte (`sessionOuverte`, quelle que soit la phase : messagerie, sections seules, administration,
+  activation, accès refusé) et quelle que soit la section, `App.svelte` lance `suivreUtilisation` : `POST /heartbeat` aussitôt puis toutes les
+  `heartbeat_seconds` de `GET /me` de Sablier (30 s par défaut), seulement tant que la page est visible (`visibilityState`) **et** a le focus
+  (`document.hasFocus()`). Masquage, perte du focus, `pagehide` ou `freeze` retirent le minuteur aussitôt ; le retour envoie un battement puis
+  reprend le cycle. Le battement porte la plateforme (`platform.id()` : `web`, `pwa`, `windows`, `android`) et la section déduite de la route
+  (`sectionDe` : `messagerie`, `entracte`, `sillon`, `regie`, `sablier`, `admin`, `autre`). Un échec (réseau, 401, 5xx) est ignoré : ces appels
+  passent l'option `discret` de `requestAt`, sans seconde tentative ni perte de session, et le battement suivant part à son heure.
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
-  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
-  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, Régie, gateway) : un fichier vidéo ou un flux HLS
+  (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie, `SABLIER_PUBLIC_URL` pour Sablier) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
+  `connect-src` et `media-src` n'autorisent que ces hôtes (API, WebSocket, LiveKit, Entracte, Sillon, Régie, Sablier, gateway) : un fichier vidéo ou un flux HLS
   hébergé ailleurs ne se lit pas dans « Regarder ensemble » ni dans le salon Vidéos. Les apps Windows et Android ont la même règle
   (`tauri.conf.json`) et n'ouvrent dans le navigateur système que les liens `https:`, `mailto:` et `tel:`. Les en-têtes de sécurité
   (`estompe-headers.inc`) s'appliquent aussi à `/updates/` et `/healthz` ; HSTS relève du proxy TLS, cette image ne le pose pas.
@@ -89,8 +98,8 @@ si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
 ## Application Windows
 
 Nécessite Rust et, sous Windows, WebView2 (présent sur Windows 11). Configuration figée à la compilation
-(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL` et `REGIE_PUBLIC_URL`
-(vide = pas de section Entracte, Sillon ou Régie). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL`, `VITE_SILLON_URL` ou `VITE_REGIE_URL` de l'environnement l'emporte.
+(modes `windows` et `android`), lue dans `plbls.env` à la racine du dépôt : `API_URL`, `GATEWAY_URL`, **`KEYCLOAK_ISSUER`**, `ENTRACTE_PUBLIC_URL`, `SILLON_PUBLIC_URL`, `REGIE_PUBLIC_URL` et `SABLIER_PUBLIC_URL`
+(vide = pas de section Entracte, Sillon ou Régie, pas de battement vers Sablier). Une variable `VITE_API_URL`, `VITE_GATEWAY_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_ENTRACTE_URL`, `VITE_SILLON_URL`, `VITE_REGIE_URL` ou `VITE_SABLIER_URL` de l'environnement l'emporte.
 
 ```sh
 cd ../../apps/estompe/windows && PATH=../../../node_modules/.bin:$PATH tauri build   # installeur NSIS dans apps/estompe/windows/src-tauri/target/release/bundle/nsis (le CLI Tauri est installé par `npm ci` à la racine du dépôt)
