@@ -15,6 +15,8 @@
   import { notify } from '../lib/ui'
   import { isTimedOut, nameColor, rankOf, rolesOf, shownName } from '../lib/roles'
   import { STATUS_LABEL, isBot, formatDuration, formatVoiceTotal, voiceTimes } from '../lib/format'
+  import SablierProfil from '../sections/sablier/SablierProfil.svelte'
+  import { sablierOn } from '../sections/sablier/sablier'
 
   let { userId, serverId, at = null, onclose }: { userId: string; serverId: string; at?: { x: number; y: number } | null; onclose: () => void } = $props()
   let now = $state(Date.now())
@@ -50,6 +52,7 @@
   const activity = $derived(app.activityOf(userId))
   const times = $derived(voiceTimes(app.voiceStats[serverId]?.[userId], app.voiceStatsAt[serverId] ?? 0, app.voiceSinceOf(serverId, userId), now))
   const mine = $derived(userId === app.meId)
+  const statsPubliques = $derived(sablierOn() && app.stats && !isBot(userId))
   const memberRoles = $derived(rolesOf(detail, member))
   const banner = $derived(member?.banner_color || nameColor(detail, member))
   const date = (s?: string) => (s ? new Date(s).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
@@ -149,6 +152,7 @@
           </div>
         </div>
       {/if}
+      {#if statsPubliques}<SablierProfil id={userId} mien={mine} onregler={() => { onclose(); router.go(hrefs.stats('partage')) }} />{/if}
       <div class="pc-actions">
         {#if mine}
           <button class="plbls-button plbls-button--contour" onclick={() => { onclose(); openSettings('account') }}><Icon name="crayon" size={16} />Modifier mon profil</button>

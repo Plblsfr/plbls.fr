@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use commun::emission::Emetteur;
 use sqlx::PgPool;
 use tokio::sync::Mutex as MutexAsync;
 
@@ -11,6 +12,7 @@ use crate::{
     intros::empreinte::{self, Outil},
     materiel::Materiel,
     push::Push,
+    sablier::{self, Lectures},
     sous_titres::{self, Extractions},
     transcodage::Transcodeur,
 };
@@ -30,6 +32,8 @@ pub struct Inner {
     extractions: Extractions,
     reveil_intros: tokio::sync::Notify,
     outil_empreinte: tokio::sync::OnceCell<Option<Outil>>,
+    emetteur: Emetteur,
+    lectures: Lectures,
 }
 
 #[derive(Clone)]
@@ -41,6 +45,10 @@ pub fn client_http() -> reqwest::Client {
 
 impl AppState {
     pub fn new(cfg: Config, pool: PgPool) -> Self {
+        Self::avec_emetteur(cfg, pool, Emetteur::inactif())
+    }
+
+    pub fn avec_emetteur(cfg: Config, pool: PgPool, emetteur: Emetteur) -> Self {
         let http = client_http();
         let aegis = cfg
             .aegis
@@ -66,6 +74,8 @@ impl AppState {
             ),
             reveil_intros: tokio::sync::Notify::new(),
             outil_empreinte: tokio::sync::OnceCell::new(),
+            emetteur,
+            lectures: Lectures::default(),
         }))
     }
 
@@ -125,6 +135,14 @@ impl AppState {
         &self.0.extractions
     }
 
+    pub fn emetteur(&self) -> &Emetteur {
+        &self.0.emetteur
+    }
+
+    pub fn lectures(&self) -> &Lectures {
+        &self.0.lectures
+    }
+
     pub fn reveiller_intros(&self) {
         self.0.reveil_intros.notify_one();
     }
@@ -173,8 +191,22 @@ impl AppState {
             loop {
                 t.tick().await;
                 crate::lecture::menage(&etat).await;
+                etat.lectures().purger(std::time::Instant::now());
             }
         });
+        if self.emetteur().actif() {
+            let etat = self.clone();
+            tokio::spawn(async move {
+                let mut t = tokio::time::interval(sablier::PERIODE_ABANDONS);
+                loop {
+                    t.tick().await;
+                    match sablier::abandons(etat.pool(), sablier::ABANDON_JOURS).await {
+                        Ok(liste) => liste.into_iter().for_each(|e| etat.emetteur().emettre(e)),
+                        Err(e) => tracing::warn!("abandons non relevés : {e}"),
+                    }
+                }
+            });
+        }
         tokio::spawn(crate::intros::travailleur(self.clone()));
         let etat = self.clone();
         let periode = self.config().periode_synchro;

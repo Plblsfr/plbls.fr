@@ -17,9 +17,16 @@ vi.mock('../sections/sillon/sillon', async (orig) => ({
   sillonOn: () => sillonMock.on,
   sillonApi: { me: vi.fn(async () => { if (!sillonMock.me) throw new Error('sans session'); return sillonMock.me }), preferences: vi.fn(async () => ({ quality: 'haute', qualities: [] })) },
 }))
+const sablierMock = vi.hoisted(() => ({ on: false, me: null as null | { sub: string; name: string; email: string; permissions: { access: boolean; admin: boolean }; sections: string[] }, nonVus: 0 }))
+vi.mock('../sections/sablier/sablier', async (orig) => ({
+  ...(await orig<typeof import('../sections/sablier/sablier')>()),
+  sablierOn: () => sablierMock.on,
+  sablierApi: { me: vi.fn(async () => { if (!sablierMock.me) throw new TypeError('Failed to fetch'); return sablierMock.me }), nonVus: vi.fn(async () => ({ trophies: sablierMock.nonVus, recaps: 0 })) },
+}))
 vi.mock('./realtime', () => ({ Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
 import { AppStore } from './store.svelte'
+import { sablier as etatSablier } from '../sections/sablier/sablier.svelte'
 import type { RealtimeEvent } from './realtime'
 import { platform as web } from '@platform'
 import { setPlatform } from './platform'
@@ -134,6 +141,46 @@ describe('sections selon les permissions (Entracte)', () => {
     expect(s.phase).toBe('sections')
     await boot('refus', null)
     expect(s.phase).toBe('login')
+  })
+})
+
+describe('section Stats selon les permissions (Sablier)', () => {
+  const sablierMe = (access: boolean, admin = false) => ({ sub: 'kc-me', name: 'moi', email: '', permissions: { access, admin }, sections: access ? ['stats'] : [] })
+  const estompe = { activated: true, allowed: true, id: 'me', pseudo: 'moi', blocks: ['vocal'] }
+  const boot = async (me: ReturnType<typeof sablierMe> | null, on = true) => {
+    sablierMock.on = on
+    sablierMock.me = me
+    Object.assign(api, { me: vi.fn(async () => estompe) })
+    history.replaceState(null, '', '#/')
+    await s.boot().catch(() => {})
+  }
+  afterEach(() => { sablierMock.on = false; sablierMock.me = null; sablierMock.nonVus = 0; etatSablier.reinitialiser() })
+
+  it('C1 : avec sablier:access la section est annoncée, sans elle non', async () => {
+    await boot(sablierMe(true))
+    expect(s.phase).toBe('ready')
+    expect(s.stats).toBe(true)
+    expect(s.sablierMe?.sub).toBe('kc-me')
+    await boot(sablierMe(false))
+    expect(s.phase).toBe('ready')
+    expect(s.stats).toBe(false)
+  })
+
+  it('C5 : la pastille est lue au démarrage', async () => {
+    sablierMock.nonVus = 2
+    await boot(sablierMe(true))
+    await vi.waitFor(() => expect(etatSablier.pastille).toBe(true))
+  })
+
+  it('C7 : Sablier arrêté ou non configuré, l’app démarre sans la section', async () => {
+    await boot(null)
+    expect(s.phase).toBe('ready')
+    expect(s.stats).toBe(false)
+    expect(s.sablierMe).toBeNull()
+    expect(s.error).toBe('')
+    await boot(sablierMe(true), false)
+    expect(s.phase).toBe('ready')
+    expect(s.stats).toBe(false)
   })
 })
 

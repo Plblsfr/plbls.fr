@@ -64,6 +64,10 @@ test-entracte:
 test-sillon:
     cargo test --locked -p sillon
 
+# Sablier : une base jetable par test (TEST_DATABASE_URL, sinon testcontainers) ; la file d'évènements demande TEST_REDIS_URL
+test-sablier:
+    cargo test --locked -p sablier
+
 test-regie:
     cargo test --locked -p regie
 
@@ -123,6 +127,13 @@ sillon-dev-run:
 
 sillon-image:
     docker build -f api/sillon/Dockerfile -t sillon:local .
+
+# Sablier : backend sur 127.0.0.1:8095, demande dev-up, le gateway et aegis (AEGIS_URL=http://127.0.0.1:8091)
+sablier-dev-run:
+    set -a && . deploy/dev.env && set +a && AEGIS_URL="${AEGIS_URL:-http://127.0.0.1:8091}" cargo run -p sablier
+
+sablier-image:
+    docker build -f api/sablier/Dockerfile -t sablier:local .
 
 # Régie : backend sur 127.0.0.1:8094, demande le gateway et aegis (AEGIS_URL=http://127.0.0.1:8091)
 regie-dev-run:

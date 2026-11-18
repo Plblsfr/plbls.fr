@@ -49,6 +49,7 @@
   import FilmsNav from '../sections/entracte/FilmsNav.svelte'
   import SillonNav from '../sections/sillon/SillonNav.svelte'
   import RegieNav from '../sections/regie/RegieNav.svelte'
+  import SablierNav from '../sections/sablier/SablierNav.svelte'
   import SillonMini from '../sections/sillon/SillonMini.svelte'
   import { lecteur } from '../sections/sillon/sillon.svelte'
   import { videos } from '../blocks/videos/videos.svelte'
@@ -144,6 +145,8 @@
     <SillonNav />
   {:else if route.name === 'regie' && app.regie}
     <RegieNav />
+  {:else if route.name === 'stats' && app.stats}
+    <SablierNav />
   {:else if space?.visible()}
     <space.nav />
   {:else if detail}

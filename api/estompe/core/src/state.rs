@@ -12,6 +12,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use commun::emission::Emetteur;
 use sqlx::PgPool;
 
 use crate::{
@@ -183,6 +184,7 @@ struct Inner {
     films: Mutex<Option<Arc<dyn Films>>>,
     musiques: Mutex<Option<Arc<dyn Musiques>>>,
     notifieur: Mutex<Option<Arc<dyn Notifieur>>>,
+    emetteur: OnceLock<Emetteur>,
     cle_liens: [u8; 32],
     stockage: tokio::sync::Mutex<()>,
     envois_video: AtomicI64,
@@ -236,6 +238,7 @@ impl AppState {
             films: Mutex::default(),
             musiques: Mutex::default(),
             notifieur: Mutex::default(),
+            emetteur: OnceLock::new(),
             cle_liens: rand::random(),
             stockage: tokio::sync::Mutex::new(()),
             envois_video: AtomicI64::new(0),
@@ -422,6 +425,18 @@ impl AppState {
             )
             .await;
         }
+    }
+
+    pub fn definir_emetteur(&self, emetteur: Emetteur) {
+        let _ = self.0.emetteur.set(emetteur);
+    }
+
+    pub fn emetteur(&self) -> Emetteur {
+        self.0
+            .emetteur
+            .get()
+            .cloned()
+            .unwrap_or_else(Emetteur::inactif)
     }
 
     pub fn definir_vocal(&self, vocal: Arc<dyn Vocal>) {

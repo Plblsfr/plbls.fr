@@ -30,6 +30,7 @@ pub mod ratelimit;
 pub mod recherche;
 pub mod relais_aegis;
 pub mod roles;
+pub mod sablier;
 pub mod salons;
 pub mod servers;
 pub mod sniff;

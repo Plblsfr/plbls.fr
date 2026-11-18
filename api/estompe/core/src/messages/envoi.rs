@@ -277,6 +277,18 @@ pub(super) async fn envoyer(
         Ok(r) => r,
         Err(x) => return Ok(echec(x, FICHIERS_INTROUVABLES)),
     };
+    if auteur == u.id {
+        sablier::emettre(
+            state,
+            sablier::envoi(
+                id,
+                &u.sub,
+                conv.server_id.clone(),
+                conv.channel_id.clone(),
+                fichiers.len(),
+            ),
+        );
+    }
     let message = message_complet(pool, id, &auteur).await.map_err(bd)?;
     publier(state, pool, &conv, "message.created", &message).await;
     if conv.kind == "videos" || conv.kind == "music" {

@@ -139,6 +139,15 @@ paths:
         "204": { description: ok }
         "400": { description: position ou durée hors bornes }
         "404": { $ref: "#/components/responses/404" }
+  /titles/{id}/intro-skipped:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: "Signaler qu'on a passé l'intro"
+      description: "Appelé par le lecteur au clic sur « Passer l'intro », sans corps. Sert aux statistiques (évènement `entracte.intro_passee`) ; ne change ni la position ni la progression."
+      responses:
+        "204": { description: ok }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : titre inconnu ou sans intro détectée" }
   /titles/{id}/playback:
     parameters: [{ $ref: "#/components/parameters/id" }]
     post:

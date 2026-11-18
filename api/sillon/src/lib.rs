@@ -26,6 +26,7 @@ pub mod ordre;
 pub mod playlists;
 pub mod preferences;
 pub mod quota;
+pub mod sablier;
 pub mod transcodage;
 pub mod volume;
 

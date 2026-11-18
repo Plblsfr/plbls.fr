@@ -2,7 +2,7 @@
 
 Messagerie écrite et vocale pour un petit groupe d'amis (messages privés, serveurs, salons texte et vocaux).
 
-- `docs/estompe/` (ce dossier) : [`openapi.yaml`](openapi.yaml) (contrat REST), [`realtime.md`](realtime.md) (évènements WebSocket), [`AGENTS.md`](AGENTS.md) (consignes des agents), guides
+- `docs/estompe/` (ce dossier) : [`openapi.yaml`](openapi.yaml) (contrat REST), [`realtime.md`](realtime.md) (évènements WebSocket), [`sablier.md`](sablier.md) (évènements de statistiques émis vers Sablier, import de l'historique), [`AGENTS.md`](AGENTS.md) (consignes des agents), guides
 - `api/estompe/` : API en Rust, voir son [README](../../api/estompe/README.md)
 - `web/estompe/` : interface Svelte 5 commune à toutes les applications, voir son [README](../../web/estompe/README.md) ; `web/estompe/plateforme/` : plateforme web (PWA) et son image nginx
 - `apps/estompe/windows/` : app Windows (Tauri) · `apps/estompe/android/` : app Android (Tauri) · `apps/estompe/crates/core/` : code Rust et TS commun à Windows et Android

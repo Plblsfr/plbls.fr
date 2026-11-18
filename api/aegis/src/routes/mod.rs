@@ -94,6 +94,7 @@ mod tests {
             "PUT /v1/manifest",
             "POST /v1/effective",
             "POST /v1/check",
+            "POST /v1/accounts/lookup",
             "GET /v1/me/effective",
             "GET /v1/admin/catalog",
             "GET /v1/admin/resources/{app}/{type}",

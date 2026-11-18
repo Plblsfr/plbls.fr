@@ -1411,6 +1411,86 @@ async fn progression_reprise_et_historique() {
     sans_fuite(&e, &h.texte(), "/history");
 }
 
+#[tokio::test]
+async fn reponses_identiques_sans_redis_ou_avec_redis_arrete() {
+    let Some(e) = env().await else { return };
+    synchro(&e).await;
+    assert!(!e.state.emetteur().actif());
+    let emetteur = commun::emission::Emetteur::depuis(Some("redis://127.0.0.1:1"), None);
+    assert!(emetteur.actif());
+    let arrete = routes::routeur(AppState::avec_emetteur(
+        e.state.config().clone(),
+        e.state.pool().clone(),
+        emetteur,
+    ));
+    let a = id_de(&e, "Film A").await;
+    let serie = id_de(&e, "La Série").await;
+    let episodes = get(&e, "alice", &format!("/titles/{serie}/seasons/1/episodes"))
+        .await
+        .json();
+    let e1 = episodes["items"][0]["id"].as_str().unwrap().to_string();
+    sqlx::query(
+        "INSERT INTO intros (titre_id, fichier_id, debut, fin)
+         SELECT titre_id, id, 10, 40 FROM fichiers WHERE titre_id = $1::uuid",
+    )
+    .bind(&e1)
+    .execute(e.state.pool())
+    .await
+    .unwrap();
+    let progres = |id: &str, p: f64, d: f64| {
+        (
+            "PUT",
+            format!("/titles/{id}/progress"),
+            Some(json!({"position": p, "duration": d})),
+        )
+    };
+    let appels = [
+        progres(&a, 10.0, 100.0),
+        progres(&a, 20.0, 100.0),
+        progres(&a, 95.0, 100.0),
+        progres(&e1, 39.0, 40.0),
+        progres(&serie, 1.0, 10.0),
+        progres(&a, -1.0, 100.0),
+        ("POST", format!("/titles/{e1}/intro-skipped"), None),
+        ("POST", format!("/titles/{a}/intro-skipped"), None),
+        ("POST", "/titles/inconnu/intro-skipped".to_string(), None),
+    ];
+    let mut passes = Vec::new();
+    for app in [&e.app, &arrete] {
+        let debut = Instant::now();
+        let mut reponses = Vec::new();
+        for _ in 0..20 {
+            for (methode, chemin, corps) in &appels {
+                let b = Request::builder()
+                    .method(*methode)
+                    .uri(chemin)
+                    .header("authorization", "Bearer alice")
+                    .header("content-type", "application/json");
+                let corps = corps
+                    .as_ref()
+                    .map_or_else(Body::empty, |v| Body::from(v.to_string()));
+                let r = requete(app, b.body(corps).unwrap()).await;
+                reponses.push((r.statut, r.texte()));
+            }
+        }
+        passes.push((reponses, debut.elapsed()));
+    }
+    let statuts: Vec<u16> = passes[0].0[..appels.len()]
+        .iter()
+        .map(|r| r.0.as_u16())
+        .collect();
+    assert_eq!(statuts, [204, 204, 204, 204, 404, 400, 204, 404, 404]);
+    assert_eq!(passes[0].0, passes[1].0);
+    assert!(
+        passes[1].1 < passes[0].1 + Duration::from_secs(1),
+        "{:?} sans Redis, {:?} avec Redis arrêté",
+        passes[0].1,
+        passes[1].1
+    );
+    let h = get(&e, "alice", "/history").await.json();
+    assert_eq!(h["total"], 2);
+}
+
 fn cles_navigateur() -> (String, String) {
     use base64::Engine;
     use ring::rand::SystemRandom;

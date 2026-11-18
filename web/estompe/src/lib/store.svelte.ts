@@ -2,6 +2,8 @@ import { api, ApiError, API_URL, entracteApi, entracteOn, setUnauthorizedHandler
 import type { EntracteMe } from '../sections/entracte/entracte'
 import { entracte } from '../sections/entracte/entracte.svelte'
 import { sillonApi, sillonOn, type SillonMe } from '../sections/sillon/sillon'
+import { sablierApi, sablierOn, type SablierMe } from '../sections/sablier/sablier'
+import { sablier } from '../sections/sablier/sablier.svelte'
 import { aimes, lecteur } from '../sections/sillon/sillon.svelte'
 import { regieApi, regieOn } from '../sections/regie/regie'
 import { Realtime, wsUrl, type RealtimeEvent } from './realtime'
@@ -66,6 +68,8 @@ export class AppStore {
   entracteMe = $state.raw<EntracteMe | null>(null)
   sillonMe = $state.raw<SillonMe | null>(null)
   musique = $state(false)
+  sablierMe = $state.raw<SablierMe | null>(null)
+  stats = $state(false)
   /** Administration des médias ouverte (`regie:admin` annoncé par Régie). */
   regie = $state(false)
   servers = $state<Server[]>([])
@@ -132,20 +136,28 @@ export class AppStore {
     return this.musique
   }
 
+  private async loadSablier() {
+    if (!sablierOn()) { this.sablierMe = null; this.stats = false; return }
+    try { this.sablierMe = await sablierApi.me() } catch { this.sablierMe = null }
+    this.stats = !!this.sablierMe?.permissions.access
+    if (this.stats) void sablier.chargerNonVus()
+    else sablier.reinitialiser()
+  }
+
   private async loadRegie() {
     if (!regieOn()) { this.regie = false; return }
     try { this.regie = (await regieApi.me()).permissions.admin } catch { this.regie = false }
   }
 
   private async loadSections(): Promise<boolean> {
-    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon(), this.loadRegie()])
+    const [films, musique] = await Promise.all([this.loadEntracte(), this.loadSillon(), this.loadRegie(), this.loadSablier()])
     return films || musique
   }
 
   private openSectionsOnly() {
     this.movies = !!this.entracteMe?.permissions.access
     this.stopRealtime()
-    const ici = (this.movies && location.hash.startsWith('#/films')) || (this.musique && location.hash.startsWith('#/musique'))
+    const ici = (this.movies && location.hash.startsWith('#/films')) || (this.musique && location.hash.startsWith('#/musique')) || (this.stats && location.hash.startsWith('#/stats'))
     if (!ici) {
       const cible = this.movies ? hrefs.films() : hrefs.musique()
       history.replaceState(null, '', cible)

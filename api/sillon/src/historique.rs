@@ -18,6 +18,7 @@ use crate::{
     garde::Personne,
     http::{bd, horodatage, introuvable, invalide, json, ok},
     playlists::{champ_uuid, objet, pistes_json},
+    sablier::Ecoute,
 };
 
 pub const SEUIL_SECONDES: f64 = 30.0;
@@ -125,9 +126,10 @@ pub async fn enregistrer(
             .unwrap_or(false),
         None => false,
     };
-    sqlx::query(
+    let inseree = sqlx::query(
         "INSERT INTO ecoutes (id, sub, piste_id, debut, duree_ecoutee, duree_piste, fin, compte, source_type, source_id, suggeree)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (id) DO NOTHING",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (id) DO NOTHING
+         RETURNING id, sub, piste_id, debut, duree_ecoutee, compte",
     )
     .bind(id)
     .bind(p.sub())
@@ -140,9 +142,12 @@ pub async fn enregistrer(
     .bind(source_type)
     .bind(source_id)
     .bind(suggeree)
-    .execute(state.pool())
+    .fetch_optional(state.pool())
     .await
     .map_err(bd)?;
+    if let Some(l) = inseree {
+        state.emetteur().emettre(Ecoute::lire(&l).evenement(false));
+    }
     Ok(json(
         StatusCode::CREATED,
         &json!({"id": id, "ended": fin.nom(), "counted": compte, "suggested": suggeree}),
@@ -313,7 +318,13 @@ mod tests_api {
     use axum::http::StatusCode;
     use serde_json::json;
 
-    use crate::{playlists::tests::catalogue, testutil::env};
+    use commun::emission::Emetteur;
+
+    use crate::{
+        etat::AppState,
+        playlists::tests::catalogue,
+        testutil::{appel_sur, env},
+    };
 
     #[tokio::test]
     async fn lecture_de_10_s_en_saut_lecture_complete_en_ecoute_toutes_deux_dans_l_historique() {
@@ -440,5 +451,152 @@ mod tests_api {
                 .statut,
             StatusCode::BAD_REQUEST
         );
+    }
+
+    async fn piste_de_trois_minutes(e: &crate::testutil::Env) -> String {
+        let p = catalogue(e.state.pool(), 1).await;
+        sqlx::query("UPDATE pistes SET duree = 180, lidarr_id = 987654321")
+            .execute(e.state.pool())
+            .await
+            .unwrap();
+        p[0].clone()
+    }
+
+    #[tokio::test]
+    async fn ecoute_emise_avec_ses_secondes_son_decompte_et_l_identifiant_de_l_import() {
+        use commun::evenements::Donnees;
+
+        use crate::sablier::tests::{Flux, rejoues, sans_donnee_interne};
+
+        let Some(e) = env().await else { return };
+        let piste = piste_de_trois_minutes(&e).await;
+        let mut flux = Flux::ouvrir().await;
+        let emetteur = flux
+            .as_ref()
+            .map_or_else(Emetteur::inactif, |f| f.emetteur.clone());
+        let etat =
+            AppState::avec_emetteur(e.state.config().clone(), e.state.pool().clone(), emetteur);
+        let app = crate::routes::routeur(etat);
+        let maintenant = chrono::Utc::now();
+        let mut envoyees = Vec::new();
+        for (ecoute, sortie, il_y_a) in [(20.0, "skip", 600), (120.0, "stop", 300)] {
+            let debut = maintenant - chrono::Duration::seconds(il_y_a);
+            let id = uuid::Uuid::new_v4();
+            for _ in 0..2 {
+                let r = appel_sur(
+                    &app,
+                    Some("alice"),
+                    "POST",
+                    "/history",
+                    Some(json!({"id": id, "track": piste, "played": ecoute, "ended_by": sortie, "started_at": crate::http::horodatage(&debut)})),
+                    &[],
+                )
+                .await;
+                assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+            }
+            envoyees.push((id, debut));
+        }
+        let (bilan, importes) = rejoues(e.state.pool()).await;
+        assert_eq!(
+            (bilan.evenements, bilan.secondes, bilan.comptees),
+            (2, 140, 1)
+        );
+        let attendu = |n: usize, secondes: u32, comptee: bool| {
+            let ev = importes
+                .iter()
+                .find(|ev| ev.id == format!("import:sillon:ecoute:{}", envoyees[n].0))
+                .unwrap()
+                .clone();
+            assert_eq!(ev.sub, "sub-alice");
+            assert_eq!(ev.date.timestamp_millis(), envoyees[n].1.timestamp_millis());
+            assert_eq!(
+                ev.donnees,
+                Donnees::SillonEcoute {
+                    piste: piste.clone(),
+                    secondes,
+                    comptee
+                }
+            );
+            sans_donnee_interne(&ev);
+            commun::evenements::Evenement {
+                importe: false,
+                ..ev
+            }
+        };
+        let reels = [attendu(0, 20, false), attendu(1, 120, true)];
+        let Some(flux) = flux.as_mut() else { return };
+        assert_eq!(flux.attendre(2).await, reels);
+        assert_eq!(
+            crate::sablier::importer(e.state.pool(), &flux.emetteur)
+                .await
+                .unwrap(),
+            bilan
+        );
+        let tous = flux.lus().await;
+        assert_eq!(tous.len(), 4);
+        let ids = |v: &[commun::evenements::Evenement]| -> Vec<String> {
+            v.iter().map(|ev| ev.id.clone()).collect()
+        };
+        let mut rejoues_dans_le_flux = ids(&tous[2..]);
+        rejoues_dans_le_flux.sort();
+        let mut emis = ids(&tous[..2]);
+        emis.sort();
+        assert_eq!(rejoues_dans_le_flux, emis);
+        flux.effacer().await;
+    }
+
+    #[tokio::test]
+    async fn meme_reponse_sans_attente_quand_redis_est_absent_arrete_ou_muet() {
+        let Some(e) = env().await else { return };
+        let piste = piste_de_trois_minutes(&e).await;
+        let muet = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let muet_url = format!("redis://{}", muet.local_addr().unwrap());
+        let id = uuid::Uuid::new_v4();
+        let corps = json!({"id": id, "track": piste, "played": 120.0, "ended_by": "stop"});
+        let mut reponses = Vec::new();
+        for emetteur in [
+            Emetteur::inactif(),
+            Emetteur::depuis_env(|_| None),
+            Emetteur::depuis(Some("redis://127.0.0.1:1"), None),
+            Emetteur::depuis(Some(&muet_url), None),
+        ] {
+            let actif = emetteur.actif();
+            let etat =
+                AppState::avec_emetteur(e.state.config().clone(), e.state.pool().clone(), emetteur);
+            let app = crate::routes::routeur(etat);
+            let debut = std::time::Instant::now();
+            for _ in 0..5 {
+                sqlx::query("DELETE FROM ecoutes")
+                    .execute(e.state.pool())
+                    .await
+                    .unwrap();
+                let r = appel_sur(
+                    &app,
+                    Some("alice"),
+                    "POST",
+                    "/history",
+                    Some(corps.clone()),
+                    &[],
+                )
+                .await;
+                reponses.push((actif, r.statut, r.texte()));
+            }
+            assert!(
+                debut.elapsed() < std::time::Duration::from_millis(1500),
+                "5 écoutes en {:?}",
+                debut.elapsed()
+            );
+        }
+        assert_eq!(reponses.iter().filter(|r| r.0).count(), 10);
+        let attendu =
+            json!({"id": id, "ended": "interrupted", "counted": true, "suggested": false});
+        for (_, statut, texte) in &reponses {
+            assert_eq!(*statut, StatusCode::CREATED);
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(texte).unwrap(),
+                attendu
+            );
+            assert_eq!(texte, &reponses[0].2);
+        }
     }
 }

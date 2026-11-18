@@ -17,6 +17,7 @@
   import FilmsSpace from '../sections/entracte/FilmsSpace.svelte'
   import SillonSpace from '../sections/sillon/SillonSpace.svelte'
   import RegieSpace from '../sections/regie/RegieSpace.svelte'
+  import SablierSpace from '../sections/sablier/SablierSpace.svelte'
   import SillonMini from '../sections/sillon/SillonMini.svelte'
   import { lecteur } from '../sections/sillon/sillon.svelte'
   import CreateJoinModal from '../components/CreateJoinModal.svelte'
@@ -108,6 +109,7 @@
   $effect(() => { if (route.name === 'films' && !app.movies) router.go('#/') })
   $effect(() => { if (route.name === 'musique' && !app.sillonMe) router.go('#/') })
   $effect(() => { if (route.name === 'regie' && !app.regie) router.go('#/') })
+  $effect(() => { if (route.name === 'stats' && !app.stats) router.go('#/') })
   const space = $derived(route.name === 'space' ? platform.spaces.find((s) => s.id === route.space) : undefined)
   $effect(() => { if (route.name === 'space' && !space?.visible()) router.go('#/') })
 
@@ -159,6 +161,8 @@
       <SillonSpace section={route.section} id={route.id} acces={app.musique} onmenu={() => (nav = true)} />
     {:else if route.name === 'regie' && app.regie}
       <RegieSpace section={route.section} onmenu={() => (nav = true)} />
+    {:else if route.name === 'stats' && app.stats}
+      <SablierSpace section={route.section} id={route.id} detail={route.detail} onmenu={() => (nav = true)} />
     {:else if route.name === 'space' && space?.visible()}
       <space.page section={route.section} onmenu={() => (nav = true)} />
     {:else if route.name === 'join'}

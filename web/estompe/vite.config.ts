@@ -14,7 +14,7 @@ const platformOf = (mode: string) => (mode === 'windows' || mode === 'android' ?
 const dir = (p: string) => fileURLToPath(new URL(p, import.meta.url))
 
 const plblsEnv = Object.fromEntries(readFileSync('../../plbls.env', 'utf8').split('\n').map((l) => /^([A-Z0-9_]+)=(.*)$/.exec(l.trim())).filter((m) => m !== null).map((m) => [m[1], m[2]]))
-const VARIABLES_NATIVES = { VITE_API_URL: 'API_URL', VITE_GATEWAY_URL: 'GATEWAY_URL', VITE_KEYCLOAK_ISSUER: 'KEYCLOAK_ISSUER', VITE_ENTRACTE_URL: 'ENTRACTE_PUBLIC_URL', VITE_SILLON_URL: 'SILLON_PUBLIC_URL', VITE_REGIE_URL: 'REGIE_PUBLIC_URL' }
+const VARIABLES_NATIVES = { VITE_API_URL: 'API_URL', VITE_GATEWAY_URL: 'GATEWAY_URL', VITE_KEYCLOAK_ISSUER: 'KEYCLOAK_ISSUER', VITE_ENTRACTE_URL: 'ENTRACTE_PUBLIC_URL', VITE_SILLON_URL: 'SILLON_PUBLIC_URL', VITE_REGIE_URL: 'REGIE_PUBLIC_URL', VITE_SABLIER_URL: 'SABLIER_PUBLIC_URL' }
 const nativeEnv = (mode: string) => {
   if (mode !== 'windows' && mode !== 'android') return {}
   const env = loadEnv(mode, process.cwd(), 'VITE_')

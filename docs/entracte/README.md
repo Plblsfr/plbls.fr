@@ -54,9 +54,61 @@ Position enregistrée par personne et par titre. Au-delà de 90 % de la durée, 
 met à jour. « Reprendre » liste les titres commencés et l'épisode suivant d'une série en cours. L'historique est lié au titre, pas au
 fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la session, jamais un paramètre).
 
+## Statistiques (Sablier)
+
+Entracte émet des évènements vers [Sablier](../sablier/README.md) par la file commune (`commun::emission::Emetteur`, variables
+`SABLIER_REDIS_URL`, `SABLIER_REDIS_PASSWORD`, `SABLIER_FILE_MAX`). L'émission ne bloque jamais une requête : sans `SABLIER_REDIS_URL`, ou
+avec Redis arrêté, Entracte répond de la même façon et les évènements sont perdus. Les évènements ne portent que la personne et les
+identifiants publics d'Entracte (titre, série), jamais de chemin de fichier ni d'identifiant Radarr, Sonarr ou TMDB.
+
+| Évènement | Quand |
+|---|---|
+| `entracte.lecture` `{titre, genre, serie, secondes}` | à chaque rapport de position (`PUT /titles/{id}/progress`, toutes les 15 s en lecture, à la pause et à la fermeture) qui crédite au moins une seconde |
+| `entracte.vu` `{titre, genre, serie}` | quand le titre devient vu pour la personne (première entrée dans son historique) : une seule fois par personne et par titre, même si la lecture continue, reprend ou si le titre est revu |
+| `entracte.serie_terminee` `{serie}` | quand un épisode devient vu et que tous les épisodes connus de la série (présents ou absents) sont alors vus par la personne |
+| `entracte.abandon` `{titre, genre}` | titre commencé, jamais vu, sans rapport de position depuis 30 jours ; daté de la fin de ces 30 jours |
+| `entracte.intro_passee` `{titre}` | clic sur « Passer l'intro » (`POST /titles/{id}/intro-skipped`, titre dont l'intro est connue) |
+
+- **Temps regardé** : mesuré par le serveur, jamais déclaré par le client. Entre deux rapports consécutifs d'une personne sur un titre,
+  Entracte crédite le plus petit du temps d'horloge écoulé et de l'avancée de la position. Position inchangée (pause, mise en mémoire
+  tampon) ou retour en arrière : rien pour cet intervalle, la lecture qui suit est comptée (revoir un passage compte). Saut en avant :
+  seul le temps écoulé compte. Plus de 45 s entre deux rapports : rien. Le premier rapport d'une lecture ne crédite rien : la mesure
+  perd au plus un intervalle de 15 s par lecture et par retour en arrière. Les fractions de seconde sont reportées sur le rapport suivant.
+  Les repères sont en mémoire : un redémarrage d'Entracte perd au plus l'intervalle en cours de chaque lecture.
+- **Abandon** : relevé toutes les heures (et au démarrage), seulement quand l'émission est active. La marque est gardée en base
+  (`progression.abandon_le`) : un seul évènement par personne et par titre, même si la lecture reprend puis s'arrête de nouveau.
+  Au premier démarrage avec l'émission active, les lectures déjà délaissées depuis plus de 30 jours sont relevées, à leur date.
+- **Salon cinéma** : chaque participant envoie ses rapports de position comme en lecture seule ; son temps est donc compté ici une fois,
+  comme toute lecture. Le bouton « Passer l'intro » n'y existe pas.
+
+### Import de l'historique
+
+`entracte importer-sablier` rejoue une fois l'historique d'Entracte (tables `progression` et `vus`) en évènements datés et marqués
+`importe`, à lancer au moment où l'émission est mise en service :
+
+| Historique | Évènements | Date |
+|---|---|---|
+| titre vu | `entracte.lecture` (`secondes` = durée du titre) et `entracte.vu` | date du « vu » |
+| titre commencé, jamais vu | `entracte.lecture` (`secondes` = position atteinte) | dernier rapport de position |
+| série dont tous les épisodes connus sont vus | `entracte.serie_terminee` | dernier épisode vu |
+
+Identifiants déterministes : `import:entracte:lecture:<sub>:<titre>`, `import:entracte:vu:<sub>:<titre>`,
+`import:entracte:serie_terminee:<sub>:<série>`. La commande peut être relancée : Sablier ignore un identifiant déjà reçu. Elle n'émet ni
+abandon ni intro passée, attend l'accusé de Redis pour chaque évènement et s'arrête à la première erreur (`SABLIER_REDIS_URL` absent,
+Redis injoignable) avec un code de sortie 1. Une lecture faite après la mise en service de l'émission est déjà comptée en direct :
+relancer l'import plus tard ne la recompte pas si son titre était déjà dans l'import précédent, mais un titre commencé depuis y
+entrerait une seconde fois.
+
+```
+docker exec <conteneur entracte-api> /app/entracte importer-sablier
+```
+
+En local (variables de `deploy/dev.env` chargées) : `cargo run -p entracte -- importer-sablier`. Code et tests : `api/entracte/src/sablier.rs`.
+
 ## Intros
 
-Le lecteur propose « Passer l'intro » (bouton, ou touche S) tant que la position est dans `[debut, fin)` ; un clic saute à `fin`.
+Le lecteur propose « Passer l'intro » (bouton, ou touche S) tant que la position est dans `[debut, fin)` ; un clic saute à `fin`
+et le signale à Entracte (`POST /titles/{id}/intro-skipped`, échec ignoré) pour les [statistiques](#statistiques-sablier).
 Les bornes viennent d'une comparaison audio entre les épisodes d'une même saison : les fichiers n'ont pas besoin de chapitres.
 Seules les séries sont concernées (ni films, ni génériques de fin, ni saisie manuelle). Dans le salon cinéma d'Estompe, le bouton
 n'est pas proposé : la position y est pilotée par l'hôte.

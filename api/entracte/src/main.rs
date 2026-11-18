@@ -34,6 +34,18 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+    if std::env::args().nth(1).as_deref() == Some(entracte::sablier::COMMANDE) {
+        match entracte::sablier::lancer(|k| env.get(k)).await {
+            Ok(rapport) => {
+                print!("{rapport}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
     if std::env::args().nth(1).as_deref() == Some(entracte::intros::COMMANDE) {
         match entracte::intros::lancer(|k| env.get(k), std::env::args().nth(2)).await {
             Ok(rapport) => {
@@ -61,6 +73,8 @@ async fn main() -> anyhow::Result<()> {
     let listener =
         tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))).await?;
     tracing::info!("entracte sur :{port}");
-    entracte::serve(listener, entracte::AppState::new(cfg, pool), arret()).await?;
+    let emetteur = commun::emission::Emetteur::depuis_env(|k| env.get(k));
+    let etat = entracte::AppState::avec_emetteur(cfg, pool, emetteur);
+    entracte::serve(listener, etat, arret()).await?;
     Ok(())
 }
