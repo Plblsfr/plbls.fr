@@ -89,7 +89,7 @@ test('Estompe et Entracte : la section Entracte remplace l’onglet films', asyn
   await entree.click()
   await expect(page.getByRole('heading', { name: 'Entracte', level: 1 })).toBeVisible()
   await expect(page.locator('.film-card strong', { hasText: 'Le Film du soir' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Rechercher et demander' })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: 'Rechercher un film ou une série' })).toBeVisible()
 })
 
 test('Lecteur : langue, sous-titres et volume retenus, commandes au clavier', async ({ page }) => {

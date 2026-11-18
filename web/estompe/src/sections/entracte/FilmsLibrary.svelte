@@ -11,8 +11,8 @@
   let { section }: { section?: string } = $props()
 
   const PAGE = 40
+  const ACCUEIL = 14
   const YEARS = yearOptions(new Date().getFullYear())
-  let q = $state('')
   let genre = $state('')
   let year = $state('')
   let sort = $state('recent')
@@ -23,20 +23,25 @@
   let turn = 0
 
   const fromList = $derived(section === 'continue' || section === 'seen')
-  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Historique' } as Record<string, string>)[section ?? ''] ?? 'Accueil')
-  const searching = $derived(!!(q.trim() || genre || year))
-  const gridHeading = $derived(searching ? 'Résultats' : section ? '' : 'Ajouts récents')
-  const showResume = $derived(!section && !searching && films.resume.length > 0)
+  const accueil = $derived(!section)
+  const heading = $derived(({ movies: 'Films', series: 'Séries', continue: 'Reprendre', seen: 'Historique' } as Record<string, string>)[section ?? ''] ?? '')
+  const filtering = $derived(!!(genre || year))
+  const gridHeading = $derived(accueil ? (filtering ? genre || 'Résultats' : 'Ajouts récents') : '')
+  const showResume = $derived(accueil && !filtering && films.resume.length > 0)
+  const une = $derived(films.resume[0])
+  const suite = $derived(films.resume.slice(1, 4))
   const fail = (e: unknown) => notify.error(e, 'La bibliothèque est indisponible')
   const meta = (i: FilmItem) => i.kind === 'series' ? 'Série' : [i.year, i.duration ? shortDuration(i.duration) : ''].filter(Boolean).join(' · ')
   const target = (i: FilmItem) => hrefs.films('item', i.id)
   const fromSeries = (i: FilmItem) => i.kind === 'episode' && !!i.series_id
+  const fiche = (i: FilmItem) => hrefs.films('item', fromSeries(i) ? i.series_id! : i.id)
+  const sur = (i: FilmItem) => (i.kind === 'episode' ? ['Série', episodeLabel(i)].filter(Boolean).join(' · ') : 'Film')
+  const reste = (i: FilmItem) => [i.series_title ? i.title : '', i.progress ? remaining(i.progress) : ''].filter(Boolean).join(' · ')
 
   function params(start: number): Record<string, string> {
-    const p: Record<string, string> = { start: String(start), limit: String(PAGE), sort }
+    const p: Record<string, string> = { start: String(start), limit: String(accueil && !filtering ? ACCUEIL : PAGE), sort }
     if (section === 'movies') p.kind = 'movie'
     if (section === 'series') p.kind = 'series'
-    if (q.trim()) p.q = q.trim()
     if (genre) p.genre = genre
     if (year) p.year = year
     return p
@@ -60,44 +65,70 @@
     } catch (e) { if (mine === turn) fail(e) } finally { if (mine === turn) loading = false }
   }
 
-  $effect(() => { section; q; genre; year; sort; void load(0) })
-  $effect(() => { void filmsApi.genres().then((g) => (genres = g.genres)).catch(() => {}); void films.refresh().catch(() => {}) })
+  $effect(() => { section; genre; year; sort; void load(0) })
+  $effect(() => { void filmsApi.genres().then((g) => (genres = g.genres)).catch(() => {}) })
 </script>
 
 <div class="film-page">
-  <div class="film-filters">
-    <h2 class="v-titre film-filters-title">{heading}</h2>
-    {#if !fromList}
-      <span class="film-search"><Icon name="cherche" size={16} /><input class="plbls-input" type="search" aria-label="Rechercher un titre" placeholder="Rechercher un film, une série…" maxlength="100" bind:value={q} /></span>
-      <label class="film-filter"><span class="v-sr">Genre</span>
-        <select class="plbls-select film-select" bind:value={genre}><option value="">Tous les genres</option>{#each genres as g (g)}<option value={g}>{g}</option>{/each}</select>
-      </label>
-      <label class="film-filter"><span class="v-sr">Année</span>
-        <select class="plbls-select film-select" bind:value={year}>{#each YEARS as y (y.value)}<option value={y.value}>{y.value ? y.label : 'Toutes les années'}</option>{/each}</select>
-      </label>
-      <label class="film-filter"><span class="v-sr">Tri</span>
-        <select class="plbls-select film-select" bind:value={sort}><option value="recent">Ajout récent</option><option value="title">Titre</option><option value="year">Année</option></select>
-      </label>
-    {/if}
-  </div>
+  {#if !accueil}
+    <div class="film-filters">
+      <h2 class="v-titre film-filters-title">{heading}</h2>
+      {#if !fromList}
+        <label class="film-filter"><span class="v-sr">Genre</span>
+          <select class="plbls-select film-select" bind:value={genre}><option value="">Tous les genres</option>{#each genres as g (g)}<option value={g}>{g}</option>{/each}</select>
+        </label>
+        <label class="film-filter"><span class="v-sr">Année</span>
+          <select class="plbls-select film-select" bind:value={year}>{#each YEARS as y (y.value)}<option value={y.value}>{y.value ? y.label : 'Toutes les années'}</option>{/each}</select>
+        </label>
+        <label class="film-filter"><span class="v-sr">Tri</span>
+          <select class="plbls-select film-select" bind:value={sort}><option value="recent">Ajout récent</option><option value="title">Titre</option><option value="year">Année</option></select>
+        </label>
+      {/if}
+    </div>
+  {/if}
 
-  {#if showResume}
+  {#if showResume && une}
     <section class="film-section">
-      <div class="film-section-head"><h2 class="v-titre">Reprendre</h2><a class="v-note film-all" href={hrefs.films('continue')}>Tout voir</a></div>
-      <div class="film-resume">
-        {#each films.resume as r (r.id)}
-          <a class="film-resume-card" href={hrefs.films('watch', r.id)}>
-            <span class="film-resume-art"><FilmPoster id={r.id} title={r.series_title ?? r.title} image={r.backdrop} type="fond" width={480} /></span>
-            <span class="film-resume-play" aria-hidden="true"><Icon name="lecture" size={20} /></span>
-            <span class="film-resume-meta"><strong class="truncate">{r.series_title ?? r.title}{episodeLabel(r) ? ` · ${episodeLabel(r)}` : ''}</strong>{#if r.progress}<span class="v-mono">{remaining(r.progress)}</span>{/if}<span class="film-bar"><span style="width:{percent(r.progress)}"></span></span></span>
-          </a>
-        {/each}
+      <div class="film-section-head"><h2 class="v-titre"><span class="film-surligne">Reprendre</span></h2>{#if films.resume.length > 1}<a class="v-note film-all" href={hrefs.films('continue')}>Tout voir · {films.resume.length}</a>{/if}</div>
+      <div class="film-une">
+        <article class="film-une-grand">
+          <span class="film-une-art"><FilmPoster id={une.id} title={une.series_title ?? une.title} image={une.backdrop} type="fond" width={1280} /></span>
+          <p class="film-une-sur">{sur(une)}</p>
+          <div class="film-une-bas">
+            <h3>{une.series_title ?? une.title}</h3>
+            {#if reste(une)}<p class="film-une-reste">{reste(une)}</p>{/if}
+            {#if une.progress}<span class="film-bar"><span style="width:{percent(une.progress)}"></span></span>{/if}
+            <div class="film-une-actions">
+              <a class="plbls-button film-btn-rose" href={hrefs.films('watch', une.id)}><Icon name="lecture" size={18} /> Reprendre</a>
+              <a class="plbls-button film-btn-clair" href={fiche(une)}>Voir la fiche</a>
+            </div>
+          </div>
+        </article>
+        {#if suite.length}
+          <div class="film-une-suite">
+            {#each suite as r (r.id)}
+              <a class="film-reprise" href={hrefs.films('watch', r.id)}>
+                <span class="film-reprise-art"><FilmPoster id={r.id} title={r.series_title ?? r.title} image={r.backdrop} type="fond" width={480} /><span class="film-reprise-play" aria-hidden="true"><Icon name="lecture" size={14} /></span></span>
+                <span class="film-reprise-meta">
+                  <strong class="truncate">{r.series_title ?? r.title}{episodeLabel(r) ? ` · ${episodeLabel(r)}` : ''}</strong>
+                  {#if r.progress}<span class="v-mono v-mute">{remaining(r.progress)}</span>{/if}
+                  <span class="film-bar"><span style="width:{percent(r.progress)}"></span></span>
+                </span>
+              </a>
+            {/each}
+          </div>
+        {/if}
       </div>
     </section>
   {/if}
 
   <section class="film-section">
-    {#if gridHeading}<h2 class="v-titre">{gridHeading}</h2>{/if}
+    {#if gridHeading}
+      <div class="film-section-head"><h2 class="v-titre">{gridHeading}</h2>
+        {#if filtering}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => { genre = ''; year = '' }}>Effacer le filtre</button>
+        {:else}<a class="v-note film-all" href={hrefs.films('movies')}>Tous les films</a><a class="v-note film-all" href={hrefs.films('series')}>Toutes les séries</a>{/if}
+      </div>
+    {/if}
     {#if loading && !items.length}
       <Loader />
     {:else if !items.length}
@@ -118,11 +149,20 @@
           </a>
         {/each}
       </div>
-      {#if !fromList && items.length < total}
+      {#if !fromList && (!accueil || filtering) && items.length < total}
         <button class="plbls-button plbls-button--contour film-more" disabled={loading} onclick={() => void load(items.length)}>Afficher plus</button>
       {/if}
     {/if}
   </section>
+
+  {#if accueil && !filtering && genres.length}
+    <section class="film-section">
+      <h2 class="v-titre">Parcourir par genre</h2>
+      <div class="film-genres">
+        {#each genres as g (g)}<button class="film-genre" onclick={() => (genre = g)}>{g}</button>{/each}
+      </div>
+    </section>
+  {/if}
 </div>
 
 <style>

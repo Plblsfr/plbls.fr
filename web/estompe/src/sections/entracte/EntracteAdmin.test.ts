@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { entracteApi } from '../../lib/api'
 import { confirmation } from '../../lib/confirm.svelte'
 import EntracteAdmin from './EntracteAdmin.svelte'
-import type { IntroAdmin, IntroSeason } from './entracte'
+import type { EntracteRequest, EntracteStatus, IntroAdmin, IntroSeason } from './entracte'
 
 const saison = (over: Partial<IntroSeason> = {}): IntroSeason => ({ number: 1, episodes: 13, found: 0, state: 'jamais', error: null, updated_at: null, ...over })
 const etat = (over: Partial<IntroAdmin> = {}): IntroAdmin => ({
@@ -16,8 +16,15 @@ const etat = (over: Partial<IntroAdmin> = {}): IntroAdmin => ({
   ...over,
 })
 
+const sain: EntracteStatus = {
+  sync: [{ source: 'radarr', succeeded_at: '2026-11-01T10:00:00.000Z', attempted_at: null, error: null }, { source: 'sonarr', succeeded_at: null, attempted_at: null, error: null }],
+  transcoding: { requested: 'auto', active: 'logiciel', message: null, running: 0 },
+  configured: { radarr: true, sonarr: true, tmdb: true, push: true },
+}
+
 async function ouvrir(reponse: IntroAdmin = etat()) {
   vi.spyOn(entracteApi, 'adminRequests').mockResolvedValue({ items: [] })
+  vi.spyOn(entracteApi, 'status').mockResolvedValue(sain)
   const liste = vi.spyOn(entracteApi, 'intros').mockResolvedValue(reponse)
   const vue = render(EntracteAdmin)
   await fireEvent.click(vue.getByRole('button', { name: 'Intros' }))
@@ -94,5 +101,36 @@ describe('EntracteAdmin : intros', () => {
     expect((await vue.findByRole('alert')).textContent).toContain('Chromaprint est indisponible')
     expect(vue.getByText('Aucune série dans la bibliothèque.')).toBeTruthy()
     expect((vue.getByRole('switch', { name: /Détection automatique/ }) as HTMLInputElement).checked).toBe(true)
+  })
+})
+
+describe('EntracteAdmin : état et demandes', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+  const demande = (over: Partial<EntracteRequest>): EntracteRequest => ({ id: 'd1', kind: 'movie', tmdb_id: 1, seasons: null, title: 'Le Règne', year: 2023, poster_url: null, state: 'en_attente', reason: null, created_at: '2026-11-15T10:00:00.000Z', updated_at: '2026-11-15T10:00:00.000Z', requesters: [{ name: 'chloe', joined_at: '' }], ...over })
+
+  it('l’état des services est visible sans changer d’onglet, erreur comprise', async () => {
+    vi.spyOn(entracteApi, 'adminRequests').mockResolvedValue({ items: [] })
+    vi.spyOn(entracteApi, 'status').mockResolvedValue({ ...sain, sync: [sain.sync[0], { source: 'sonarr', succeeded_at: null, attempted_at: null, error: 'connexion refusée' }] })
+    const vue = render(EntracteAdmin)
+    const etatServices = await vue.findByRole('region', { name: 'État des services' })
+    await vi.waitFor(() => expect(etatServices.textContent).toContain('Radarr'))
+    expect(etatServices.textContent).toContain('Joignable')
+    expect(etatServices.textContent).toContain('connexion refusée')
+    expect(etatServices.textContent).toContain('Transcodage')
+    expect(vue.queryByRole('button', { name: 'État' })).toBeNull()
+  })
+
+  it('un envoi en échec remonte au-dessus des demandes avec « Renvoyer », sans doublon dans la liste', async () => {
+    const echec = demande({ id: 'e1', title: 'En panne', state: 'acceptee', sent: false, send_error: 'dossier racine introuvable' })
+    vi.spyOn(entracteApi, 'status').mockResolvedValue(sain)
+    vi.spyOn(entracteApi, 'adminRequests').mockImplementation(async (f) => ({ items: f.state === 'acceptee' ? [echec] : f.state === 'en_attente' ? [demande({})] : [echec, demande({})] }))
+    const vue = render(EntracteAdmin)
+    await vue.findByRole('heading', { name: 'Envoi en échec' })
+    const ligneEchec = vue.getByText('En panne (2023)').closest('li')!
+    expect(ligneEchec.textContent).toContain('dossier racine introuvable')
+    expect([...ligneEchec.querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Refuser', 'Renvoyer'])
+    await fireEvent.click(vue.getByRole('button', { name: 'Toutes' }))
+    await vi.waitFor(() => expect(vue.getAllByText('En panne (2023)')).toHaveLength(1))
+    expect(vue.getByText('Le Règne (2023)')).toBeTruthy()
   })
 })

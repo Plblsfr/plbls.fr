@@ -20,7 +20,7 @@ d'Entracte recopie les progressions et les « déjà vus » du bloc films d'Esto
 - S'arrête sans rien écrire si Jellyfin ou une des bases est injoignable, ou si le catalogue d'Entracte est vide.
 
 Seuls les titres déjà présents dans le catalogue d'Entracte reçoivent l'historique : la synchronisation avec Radarr et Sonarr doit
-être faite avant (Administration › état). Un titre que seul Jellyfin connaissait reste hors d'Entracte et apparaît dans le rapport.
+être faite avant (l’en-tête d’Administration (état des services)). Un titre que seul Jellyfin connaissait reste hors d'Entracte et apparaît dans le rapport.
 
 ## Variables
 

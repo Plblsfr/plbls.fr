@@ -6,12 +6,15 @@
   import { notify } from '../../lib/ui'
   import AcceptModal from './AcceptModal.svelte'
   import { reasonLabel, type FilmReject } from './films'
-  import { introAnalysed, introLabel, introPending, introTone, seasonsLabel, stateLabel, stateTone, type EntracteRequest, type EntracteStatus, type IntroAdmin, type IntroSeries, type RequestState } from './entracte'
+  import EntractePoster from './EntractePoster.svelte'
+  import { films } from './films.svelte'
+  import { failedSends, introAnalysed, introLabel, introPending, introTone, seasonsLabel, sourceLabel, stateLabel, stateTone, type EntracteRequest, type EntracteStatus, type IntroAdmin, type IntroSeries, type RequestState } from './entracte'
 
-  let tab = $state<'requests' | 'rejected' | 'intros' | 'status'>('requests')
+  let tab = $state<'requests' | 'rejected' | 'intros'>('requests')
   let filtre = $state<'' | RequestState>('en_attente')
   let requester = $state('')
   let requests = $state<EntracteRequest[] | null>(null)
+  let failed = $state<EntracteRequest[]>([])
   let rejected = $state<FilmReject[] | null>(null)
   let status = $state<EntracteStatus | null>(null)
   let busy = $state('')
@@ -22,10 +25,22 @@
 
   async function loadRequests() {
     try { requests = (await entracteApi.adminRequests({ state: filtre, requester: requester.trim() })).items } catch (e) { requests = []; notify.error(e, 'Les demandes sont indisponibles') }
+    void loadFailed()
   }
+  async function loadFailed() {
+    try {
+      failed = failedSends((await entracteApi.adminRequests({ state: 'acceptee' })).items)
+      films.pending = (await entracteApi.adminRequests({ state: 'en_attente' })).items.length
+    } catch { failed = [] }
+  }
+  async function loadStatus() {
+    try { status = await entracteApi.status() } catch (e) { notify.error(e, 'État indisponible') }
+  }
+  const FILTRES: ['' | RequestState, string][] = [['en_attente', 'En attente'], ['acceptee', 'Acceptées'], ['refusee', 'Refusées'], ['disponible', 'Disponibles'], ['', 'Toutes']]
+  const visibles = $derived((requests ?? []).filter((r) => !failed.some((f) => f.id === r.id)))
   $effect(() => { if (tab === 'requests') { filtre; requester; void loadRequests() } })
   $effect(() => { if (tab === 'rejected') void filmsApi.rejects().then((r) => (rejected = r.items)).catch((e) => { rejected = []; notify.error(e, 'Liste indisponible') }) })
-  $effect(() => { if (tab === 'status') void entracteApi.status().then((s) => (status = s)).catch((e) => notify.error(e, 'État indisponible')) })
+  $effect(() => { void loadStatus() })
 
   async function loadIntros() {
     try { intros = await entracteApi.intros() } catch (e) { notify.error(e, 'Les intros sont indisponibles') }
@@ -69,39 +84,85 @@
   }
 
   async function sync() {
-    try { await entracteApi.sync(); notify.ok('Synchronisation lancée.') } catch (e) { notify.error(e, 'Synchronisation impossible') }
+    try { await entracteApi.sync(); notify.ok('Synchronisation lancée.'); await loadStatus() } catch (e) { notify.error(e, 'Synchronisation impossible') }
   }
 </script>
 
 <div class="film-page">
   <div class="film-filters">
     <h2 class="v-titre film-filters-title">Administration d’Entracte</h2>
-    <div class="v-seg" role="group" aria-label="Rubrique">
-      <button aria-pressed={tab === 'requests'} onclick={() => (tab = 'requests')}>Demandes</button>
-      <button aria-pressed={tab === 'rejected'} onclick={() => (tab = 'rejected')}>Fichiers écartés</button>
-      <button aria-pressed={tab === 'intros'} onclick={() => (tab = 'intros')}>Intros</button>
-      <button aria-pressed={tab === 'status'} onclick={() => (tab = 'status')}>État</button>
-    </div>
+    <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void sync()}><Icon name="actualise" size={14} /> Synchroniser maintenant</button>
+  </div>
+
+  <section class="adm-etat" aria-label="État des services">
+    {#if !status}
+      <Loader />
+    {:else}
+      {#each status.sync as s (s.source)}
+        <div class="adm-carte" class:erreur={!!s.error}>
+          <span class="v-eyebrow">{sourceLabel(s.source)}</span>
+          <strong>{#if s.error}<Icon name="alerte" size={16} /> En erreur{:else}<span class="adm-point" aria-hidden="true"></span> Joignable{/if}</strong>
+          {#if s.error}<span class="adm-carte-note" role="alert">{s.error}</span><span class="adm-carte-note">Ce qui est déjà synchronisé reste servi.</span>
+          {:else}<span class="v-note">Dernière réussite : {date(s.succeeded_at)}</span>{/if}
+        </div>
+      {/each}
+      <div class="adm-carte" class:erreur={!!status.transcoding.message}>
+        <span class="v-eyebrow">Transcodage</span>
+        <strong>{status.transcoding.active}</strong>
+        <span class="v-note">Demandé : {status.transcoding.requested} · en cours : {status.transcoding.running}</span>
+        {#if status.transcoding.message}<span class="adm-carte-note" role="alert">{status.transcoding.message}</span>{/if}
+      </div>
+    {/if}
+  </section>
+
+  <div class="v-seg adm-onglets" role="group" aria-label="Rubrique">
+    <button aria-pressed={tab === 'requests'} onclick={() => (tab = 'requests')}>Demandes</button>
+    <button aria-pressed={tab === 'rejected'} onclick={() => (tab = 'rejected')}>Fichiers écartés</button>
+    <button aria-pressed={tab === 'intros'} onclick={() => (tab = 'intros')}>Intros</button>
   </div>
 
   {#if tab === 'requests'}
-    <div class="film-filters">
-      <label class="film-filter"><span class="v-sr">État</span>
-        <select class="plbls-select film-select" bind:value={filtre}>
-          <option value="">Tous les états</option>
-          <option value="en_attente">En attente</option><option value="acceptee">Acceptées</option><option value="refusee">Refusées</option><option value="disponible">Disponibles</option>
-        </select>
-      </label>
-      <span class="film-search"><Icon name="perso" size={16} /><input class="plbls-input" type="search" aria-label="Demandeur" placeholder="Demandeur" maxlength="60" bind:value={requester} /></span>
-    </div>
-    {#if !requests}
-      <Loader />
-    {:else if !requests.length}
-      <div class="v-empty"><Icon name="ok" size={28} /><p class="v-note">Aucune demande.</p></div>
-    {:else}
-      <ul class="adm-list">
-        {#each requests as r (r.id)}
-          <li class="adm-item">
+    {#if failed.length}
+      <section class="film-section">
+        <h2 class="v-titre">Envoi en échec</h2>
+        <ul class="adm-list adm-echecs">
+          {#each failed as r (r.id)}
+            <li class="adm-item">
+            <span class="adm-art"><EntractePoster url={r.poster_url} title={r.title} seed={r.id} /></span>
+            <span class="grow adm-body">
+              <strong>{r.title}{r.year ? ` (${r.year})` : ''}</strong>
+              <span class="v-note">{seasonsLabel(r)} · {date(r.created_at)} · {(r.requesters ?? []).map((x) => x.name || 'quelqu’un').join(', ')}</span>
+              {#if r.reason}<span class="v-note">Motif : {r.reason}</span>{/if}
+              {#if r.send_error}<span class="v-note adm-err" role="alert"><Icon name="alerte" size={14} /> Envoi à {r.kind === 'movie' ? 'Radarr' : 'Sonarr'} en échec : {r.send_error}</span>{/if}
+            </span>
+            {#if r.state === 'en_attente' || r.state === 'acceptee'}
+              <button class="plbls-button plbls-button--compact plbls-button--contour plbls-button--danger" disabled={busy === r.id} onclick={() => void refuse(r)}>Refuser</button>
+            {/if}
+            {#if r.state === 'en_attente' || (r.state === 'acceptee' && !r.sent)}
+              <button class="plbls-button plbls-button--compact" disabled={busy === r.id} onclick={() => (accepting = r)}>{r.state === 'acceptee' ? 'Renvoyer' : 'Accepter…'}</button>
+            {/if}
+          </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+    <section class="film-section">
+      <div class="film-filters">
+        <h2 class="v-titre film-filters-title">Demandes</h2>
+        <div class="v-seg adm-filtres" role="group" aria-label="État">
+          {#each FILTRES as [valeur, nom] (valeur)}<button aria-pressed={filtre === valeur} onclick={() => (filtre = valeur)}>{nom}{valeur === 'en_attente' && films.pending ? ` · ${films.pending}` : ''}</button>{/each}
+        </div>
+        <label class="film-search"><Icon name="perso" size={16} /><span class="v-sr">Demandeur</span><input class="plbls-input" type="search" placeholder="Demandeur" maxlength="60" bind:value={requester} /></label>
+      </div>
+      {#if !requests}
+        <Loader />
+      {:else if !visibles.length}
+        <div class="v-empty"><Icon name="ok" size={28} /><p class="v-note">Aucune demande.</p></div>
+      {:else}
+        <ul class="adm-list">
+          {#each visibles as r (r.id)}
+            <li class="adm-item">
+            <span class="adm-art"><EntractePoster url={r.poster_url} title={r.title} seed={r.id} /></span>
             <span class="grow adm-body">
               <strong>{r.title}{r.year ? ` (${r.year})` : ''}</strong>
               <span class="v-note">{seasonsLabel(r)} · {date(r.created_at)} · {(r.requesters ?? []).map((x) => x.name || 'quelqu’un').join(', ')}</span>
@@ -109,16 +170,17 @@
               {#if r.send_error}<span class="v-note adm-err" role="alert"><Icon name="alerte" size={14} /> Envoi à {r.kind === 'movie' ? 'Radarr' : 'Sonarr'} en échec : {r.send_error}</span>{/if}
             </span>
             <span class="v-tag {stateTone(r.state)}">{stateLabel(r.state)}</span>
-            {#if r.state === 'en_attente' || (r.state === 'acceptee' && !r.sent)}
-              <button class="plbls-button plbls-button--compact" disabled={busy === r.id} onclick={() => (accepting = r)}>{r.state === 'acceptee' ? 'Renvoyer' : 'Accepter'}</button>
-            {/if}
             {#if r.state === 'en_attente' || r.state === 'acceptee'}
               <button class="plbls-button plbls-button--compact plbls-button--contour plbls-button--danger" disabled={busy === r.id} onclick={() => void refuse(r)}>Refuser</button>
             {/if}
+            {#if r.state === 'en_attente' || (r.state === 'acceptee' && !r.sent)}
+              <button class="plbls-button plbls-button--compact" disabled={busy === r.id} onclick={() => (accepting = r)}>{r.state === 'acceptee' ? 'Renvoyer' : 'Accepter…'}</button>
+            {/if}
           </li>
-        {/each}
-      </ul>
-    {/if}
+          {/each}
+        </ul>
+      {/if}
+    </section>
   {:else if tab === 'rejected'}
     {#if !rejected}
       <Loader />
@@ -165,34 +227,25 @@
         </ul>
       {/if}
     {/if}
-  {:else}
-    {#if !status}
-      <Loader />
-    {:else}
-      <section class="film-section">
-        <div class="film-section-head"><h2 class="v-titre">Synchronisations</h2><button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void sync()}><Icon name="actualise" size={14} /> Synchroniser</button></div>
-        <ul class="adm-list">
-          {#each status.sync as s (s.source)}
-            <li class="adm-item">
-              <span class="grow adm-body"><strong>{s.source === 'tmdb' ? 'TMDB' : s.source === 'radarr' ? 'Radarr' : s.source === 'sonarr' ? 'Sonarr' : s.source}</strong><span class="v-note">Dernière réussite : {date(s.succeeded_at)}</span>{#if s.error}<span class="v-note adm-err" role="alert"><Icon name="alerte" size={14} /> {s.error}</span>{/if}</span>
-              <span class="v-tag {s.error ? 'dgr' : 'ok'}">{s.error ? 'En erreur' : 'OK'}</span>
-            </li>
-          {/each}
-        </ul>
-      </section>
-      <section class="film-section">
-        <h2 class="v-titre">Transcodage</h2>
-        <p class="v-note">Mode demandé : {status.transcoding.requested} · mode actif : {status.transcoding.active} · transcodages en cours : {status.transcoding.running}</p>
-        {#if status.transcoding.message}<p class="v-note adm-err" role="alert"><Icon name="alerte" size={14} /> {status.transcoding.message}</p>{/if}
-      </section>
-    {/if}
   {/if}
 </div>
 {#if accepting}<AcceptModal request={accepting} onclose={() => (accepting = null)} ondone={accepted} />{/if}
 
 <style>
   .adm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--espace-2); }
-  .adm-item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--espace-2); padding: var(--espace-2) var(--espace-3); border-radius: var(--r); background: var(--surface); box-shadow: var(--o1); }
+  .adm-item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--espace-2) var(--espace-3); padding: var(--espace-3) var(--espace-4) var(--espace-3) var(--espace-3); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--o1); }
+  .adm-echecs .adm-item { box-shadow: inset 0 0 0 1.5px var(--danger); }
+  .adm-art { flex: none; width: 48px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: var(--r-s); }
+  .adm-art :global(.film-art-title), .adm-art :global(.film-disc) { display: none; }
+  .adm-etat { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--espace-3); }
+  .adm-carte { display: flex; flex-direction: column; gap: var(--espace-1); min-width: 0; padding: var(--espace-3) var(--espace-4); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--o1); }
+  .adm-carte strong { display: flex; align-items: center; gap: var(--espace-2); font-size: 17px; }
+  .adm-carte.erreur { background: var(--danger-fond); box-shadow: inset 0 0 0 1.5px var(--danger); }
+  .adm-carte.erreur strong { color: var(--danger); }
+  .adm-carte-note { font-size: 13px; overflow-wrap: anywhere; }
+  .adm-point { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); }
+  .adm-onglets { align-self: flex-start; }
+  .adm-filtres { flex-wrap: wrap; border-radius: var(--r-l); }
   .adm-body { display: flex; flex-direction: column; min-width: 0; }
   .adm-intro .adm-body { flex-basis: 260px; gap: 2px; }
   .adm-season { display: flex; flex-wrap: wrap; align-items: center; gap: var(--espace-2); }
