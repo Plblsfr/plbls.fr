@@ -4,7 +4,7 @@
   import Loader from '../../components/Loader.svelte'
   import Modal from '../../components/Modal.svelte'
   import { notify } from '../../lib/ui'
-  import { PRIORITIES, bytes, limitBytes, limitInput, percent, regieApi, serviceName, torrentLabel, type Torrent, type TorrentDetail } from './regie'
+  import { PRIORITIES, seedingTime, bytes, limitBytes, limitInput, percent, regieApi, serviceName, torrentLabel, type Torrent, type TorrentDetail } from './regie'
 
   let { torrent, categories, onclose }: { torrent: Torrent; categories: string[]; onclose: () => void } = $props()
 
@@ -47,6 +47,9 @@
 <Modal title={nom.title} wide {onclose}>
   <div class="rg-detail">
     {#if nom.sub}<p class="v-note rg-wrap">{nom.sub}</p>{/if}
+    {#if torrent.progress >= 1 || torrent.seeding_time}
+      <p class="v-note">Partage actif : {seedingTime(torrent.seeding_time) || 'moins d’une minute'} · ratio {torrent.ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}{torrent.uploaded ? ` · ${bytes(torrent.uploaded)} envoyés` : ''}</p>
+    {/if}
 
     <div class="rg-ligne">
       <label class="plbls-field rg-champ"><span>Catégorie</span>

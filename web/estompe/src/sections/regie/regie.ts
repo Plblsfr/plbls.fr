@@ -103,6 +103,8 @@ export interface Torrent {
   peers: number
   download_limit: number
   upload_limit: number
+  seeding_time?: number
+  uploaded?: number
   title: TorrentTitle | null
 }
 export interface GlobalTransfer { download_speed: number; upload_speed: number; download_limit: number; upload_limit: number; alternative: boolean; free_space: number | null; connection: string }
@@ -167,6 +169,16 @@ export function eta(secondes: number): string {
   if (!Number.isFinite(secondes) || secondes <= 0 || secondes >= ETA_INFINI) return ''
   if (secondes < 60) return '< 1 min'
   const m = Math.round(secondes / 60)
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} h ${String(m % 60).padStart(2, '0')}`
+  return `${Math.floor(h / 24)} j ${h % 24} h`
+}
+
+/** Durée de partage actif : « 45 min », « 3 h 05 », « 2 j 4 h » ; vide si nulle ou inconnue. */
+export function seedingTime(secondes: number | undefined): string {
+  if (!secondes || !Number.isFinite(secondes) || secondes < 60) return ''
+  const m = Math.floor(secondes / 60)
   if (m < 60) return `${m} min`
   const h = Math.floor(m / 60)
   if (h < 24) return `${h} h ${String(m % 60).padStart(2, '0')}`
