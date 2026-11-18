@@ -64,6 +64,9 @@ auteur `manifeste:<app>`) ; ensuite le manifeste ne touche plus aux règles.
    `GATEWAY__INTERNAL__LIST_ALL=true` côté security) ; un compte absent devient « supprimé de Keycloak » ;
 3. la recherche de l'administration, qui interroge Keycloak en direct quand l'annuaire ne trouve rien.
 
+Une application le lit par `POST /v1/accounts/lookup` (jeton de service) : nom et présence dans Keycloak des `sub` demandés,
+sans e-mail et sans rien inscrire.
+
 L'API d'administration rend les comptes avec leur e-mail partout (journal compris) ; le `sub` reste visible en second.
 
 ## Cache et propagation

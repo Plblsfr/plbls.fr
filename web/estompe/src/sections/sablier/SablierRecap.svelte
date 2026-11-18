@@ -3,7 +3,7 @@
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
   import { app } from '../../lib/store.svelte'
-  import { messageOf } from '../../lib/ui'
+  import { ApiError } from '../../lib/api'
   import { ecransDuRecap, titreRecap, type Ecran } from './recap'
   import type { Recap } from './sablier'
   import SablierMedaille from './SablierMedaille.svelte'
@@ -26,7 +26,7 @@
 
   async function charger() {
     erreur = ''
-    try { recap = await sablier.lireRecap(id) } catch (e) { erreur = messageOf(e, 'Ce récap ne s’ouvre pas pour le moment.') }
+    try { recap = await sablier.lireRecap(id) } catch (e) { erreur = e instanceof ApiError && e.status === 404 ? 'Ce récap n’existe pas ou n’est pas le tien.' : 'Les stats sont injoignables pour le moment.' }
   }
   onMount(() => {
     const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null

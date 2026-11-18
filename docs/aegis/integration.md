@@ -33,6 +33,9 @@ Authorization: Bearer <jeton>
    Contrôle ponctuel : `POST /v1/check {"sub", "permission", "resource"?}` → `{"allowed": bool}`. Pour l'utilisateur connecté
    via la passerelle : `GET /v1/me/effective?app=estompe`. Erreur réseau : **refuser**.
 
+   Annuaire : `POST /v1/accounts/lookup {"subs": [...]}` (1 à 500 `sub`) → `{"accounts": [{"sub", "display_name", "in_keycloak"}]}`,
+   comptes connus seulement, sans e-mail. Lecture seule : un `sub` inconnu n'est pas inscrit.
+
 4. **Invalidation** : s'abonner à `<prefix>:invalidation` sur le Redis partagé (`<prefix>` = `AEGIS_REDIS_PREFIX`, `aegis` par défaut) et vider son cache à chaque
    message (`compte` : ce `sub` ; `tout` : tout le cache). Un utilisateur Redis en lecture seule de ce canal suffit :
    `ACL SETUSER estompe on >… resetchannels &aegis:invalidation -@all +subscribe +ping`.
@@ -94,7 +97,8 @@ et lit les droits comme Entracte. Sans aegis, sa permission est refusée. Voir [
 `AEGIS_URL` et `AEGIS_TOKEN_SABLIER` (application `sablier` chez aegis) : Sablier envoie son manifeste (`sablier:access`,
 `sablier:admin`, fermées par défaut) et lit les droits comme Entracte. Il demande aussi par `POST /v1/check` si le compte a
 `entracte:access` et `sillon:access` (statistiques de ces services à proposer), que `POST /v1/effective` ne rend pas à un autre jeton
-que celui de leur application. Sans aegis, toutes ses permissions sont refusées. Voir [docs/sablier](../sablier/README.md).
+que celui de leur application. Pour son administration, il lit par `POST /v1/accounts/lookup` le nom des
+personnes et celles qui n'ont plus de compte. Sans aegis, toutes ses permissions sont refusées. Voir [docs/sablier](../sablier/README.md).
 
 ## Mise en service
 

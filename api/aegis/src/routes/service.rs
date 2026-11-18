@@ -27,6 +27,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(manifeste))
         .routes(routes!(effectifs))
         .routes(routes!(verifier))
+        .routes(routes!(comptes))
         .routes(routes!(mes_droits))
 }
 
@@ -343,6 +344,55 @@ async fn verifier(
     Ok(Json(Verdict {
         allowed: e.autorise(&d.permission, d.resource.as_deref()),
     }))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DemandeComptes {
+    pub subs: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CompteConnu {
+    pub sub: String,
+    pub display_name: Option<String>,
+    pub in_keycloak: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ComptesConnus {
+    pub accounts: Vec<CompteConnu>,
+}
+
+pub const COMPTES_MAX: usize = 500;
+
+#[utoipa::path(post, path = "/v1/accounts/lookup", tag = "service", request_body = DemandeComptes,
+    summary = "Lesquels de ces comptes sont dans l'annuaire ?",
+    description = "Lecture seule : ne rend que les comptes connus de l'annuaire, avec leur nom et leur présence dans Keycloak, \
+sans e-mail, et n'en inscrit aucun. De 1 à 500 `sub` par appel.",
+    security(("serviceToken" = [])),
+    responses((status = 200, body = ComptesConnus), (status = 400, body = ErrorBody), (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
+async fn comptes(
+    State(state): State<AppState>,
+    caller: Caller,
+    Json(d): Json<DemandeComptes>,
+) -> ApiResult<Json<ComptesConnus>> {
+    caller.service()?;
+    if d.subs.is_empty() || d.subs.len() > COMPTES_MAX {
+        return Err(ApiError::BadRequest(format!(
+            "de 1 à {COMPTES_MAX} comptes par appel"
+        )));
+    }
+    let mut accounts: Vec<CompteConnu> = annuaire::par_sub(&state.db, &d.subs)
+        .await?
+        .into_values()
+        .map(|c| CompteConnu {
+            sub: c.sub,
+            display_name: c.display_name,
+            in_keycloak: c.in_keycloak,
+        })
+        .collect();
+    accounts.sort_by(|a, b| a.sub.cmp(&b.sub));
+    Ok(Json(ComptesConnus { accounts }))
 }
 
 #[derive(Deserialize, IntoParams)]

@@ -361,8 +361,7 @@ Un `sub` inconnu répond comme une personne sans activité.
   un compte supprimé après avoir utilisé l'app reste connu, avec un `last_seen` qui ne bouge plus. L'écran doit prévenir que la liste
   des personnes sans compte est approximative.
 
-`POST /v1/accounts/lookup` n'existe pas encore dans aegis : tant qu'elle n'y est pas, `directory` vaut toujours `local`. Les autres
-routes de service d'aegis ne conviennent pas (`/v1/effective` répond pour n'importe quel `sub` et l'inscrit dans l'annuaire,
+Les autres routes de service d'aegis ne conviennent pas (`/v1/effective` répond pour n'importe quel `sub` et l'inscrit dans l'annuaire,
 `/v1/check` aussi sans l'inscrire ; `/v1/admin/accounts` demande une session d'administrateur d'aegis). `last_seen` vient toujours
 de la table locale. L'effacement est le même pour toutes les personnes listées.
 

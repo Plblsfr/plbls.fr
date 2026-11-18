@@ -1,4 +1,4 @@
-import { messageOf } from '../../lib/ui'
+import { ApiError } from '../../lib/api'
 import { jourLocal } from './formats'
 import { borner, precedente, suivante } from './periodes'
 import { sablierApi, type ChoixPartage, type ClientSablier, type Domaine, type NonVus, type Partage, type Periode, type Recap, type RecapResume, type Series, type Stats, type TropheeDebloque, type Trophees } from './sablier'
@@ -8,6 +8,7 @@ export interface Ailleurs { periode: Periode; date: string }
 
 const DOMAINES: Domaine[] = ['usage', 'entracte', 'sillon', 'messaging']
 const INJOIGNABLE = 'Les stats sont injoignables pour le moment.'
+const messageDe = (e: unknown): string => (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.message ? e.message : INJOIGNABLE)
 
 export class EtatSablier {
   nonVus = $state.raw<NonVus>({ trophies: 0, recaps: 0 })
@@ -95,7 +96,7 @@ export class EtatSablier {
       void this.chercherAilleurs(tour, stats, periode, date)
     } catch (e) {
       if (tour !== this.tour) return
-      this.erreur = messageOf(e, INJOIGNABLE)
+      this.erreur = messageDe(e)
     }
   }
 
@@ -111,7 +112,7 @@ export class EtatSablier {
     try {
       await this.chargerJeu()
     } catch (e) {
-      this.erreur = messageOf(e, INJOIGNABLE)
+      this.erreur = messageDe(e)
       return
     }
     await this.chargerStats()
@@ -162,7 +163,7 @@ export class EtatSablier {
 
   async chargerRecaps() {
     this.erreurRecaps = ''
-    try { this.recaps = await this.api.recaps() } catch (e) { this.erreurRecaps = messageOf(e, INJOIGNABLE) }
+    try { this.recaps = await this.api.recaps() } catch (e) { this.erreurRecaps = messageDe(e) }
   }
 
   async lireRecap(id: number): Promise<Recap> {
@@ -175,7 +176,7 @@ export class EtatSablier {
 
   async chargerPartage() {
     this.erreurPartage = ''
-    try { this.partage = await this.api.partage() } catch (e) { this.erreurPartage = messageOf(e, INJOIGNABLE) }
+    try { this.partage = await this.api.partage() } catch (e) { this.erreurPartage = messageDe(e) }
   }
 
   async partager(choix: ChoixPartage) {

@@ -340,6 +340,71 @@ async fn manifeste_ouvre_les_permissions_par_defaut_et_marque_les_obsoletes() {
 }
 
 #[tokio::test]
+async fn recherche_de_comptes_par_un_service_en_lecture_seule() {
+    let Some(b) = banc().await else { return };
+    sqlx::query(
+        "INSERT INTO accounts (sub, email, display_name, in_keycloak) VALUES
+         ('gina', 'gina@plbls.fr', 'Gina', true), ('hugo', 'hugo@plbls.fr', 'Hugo', false)",
+    )
+    .execute(&b.state.db)
+    .await
+    .unwrap();
+    let chercher = |subs: Value| {
+        b.appel(
+            Qui::Service("jeton-estompe"),
+            "POST",
+            "/v1/accounts/lookup",
+            Some(json!({ "subs": subs })),
+        )
+    };
+    let (s, v) = chercher(json!(["hugo", "inconnue", "gina"])).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(
+        v,
+        json!({"accounts": [
+            {"sub": "gina", "display_name": "Gina", "in_keycloak": true},
+            {"sub": "hugo", "display_name": "Hugo", "in_keycloak": false},
+        ]})
+    );
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM accounts WHERE sub = 'inconnue'")
+        .fetch_one(&b.state.db)
+        .await
+        .unwrap();
+    assert_eq!(n, 0);
+    let vus: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM accounts WHERE sub IN ('gina', 'hugo') AND last_seen_at IS NOT NULL",
+    )
+    .fetch_one(&b.state.db)
+    .await
+    .unwrap();
+    assert_eq!(vus, 0);
+    let (s, _) = chercher(json!([])).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let trop: Vec<String> = (0..501).map(|i| format!("s{i}")).collect();
+    let (s, _) = chercher(json!(trop)).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let corps = Some(json!({"subs": ["gina"]}));
+    let (s, _) = b
+        .appel(
+            Qui::Service("faux"),
+            "POST",
+            "/v1/accounts/lookup",
+            corps.clone(),
+        )
+        .await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _) = b
+        .appel(
+            Qui::User(&b.admin, "user", ""),
+            "POST",
+            "/v1/accounts/lookup",
+            corps,
+        )
+        .await;
+    assert_eq!(s, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn administration_reservee() {
     let Some(b) = banc().await else { return };
     let (s, _) = b
