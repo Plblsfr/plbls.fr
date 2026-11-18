@@ -39,7 +39,7 @@ pub(super) async fn reaction(
         ));
     }
     let id = id_message(param(&p.0, "id"))?;
-    let (conv, _) = conv_du_message(&state, id, &u.id).await?;
+    let (conv, auteur) = conv_du_message(&state, id, &u.id).await?;
     if ajout && !conv.peut(roles::ADD_REACTIONS) {
         return Ok(write_err(
             StatusCode::FORBIDDEN,
@@ -59,6 +59,7 @@ pub(super) async fn reaction(
             }
             Err(e) => return Err(bd(e)),
         }
+        sablier::reaction_ajoutee(&state, pool, id, emoji, &u.sub, &auteur).await;
     } else {
         sqlx::query("DELETE FROM reactions WHERE message_id=$1 AND user_id=$2::uuid AND emoji=$3")
             .bind(id)

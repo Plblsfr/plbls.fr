@@ -3,7 +3,7 @@ info:
   title: Sablier
   version: 0.1.0
   description: |
-    Service de statistiques de plbls.fr : temps d'utilisation de l'app et, par lots, statistiques d'Entracte, de Sillon et de la messagerie.
+    Service de statistiques de plbls.fr : temps d'utilisation de l'app, statistiques d'Entracte, de Sillon et de la messagerie.
     Ce document suit le code : chaque route de `api/sablier/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
 
     Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
@@ -108,6 +108,67 @@ paths:
         - { $ref: "#/components/parameters/date" }
       responses:
         "200": { description: "`{period, from, to, seconds, by_day: [{day, seconds}], by_section: [{section, seconds}], by_platform: [{platform, seconds}], longest_day: {day, seconds}|null, active_days, first_day: date|null}`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /entracte:
+    get:
+      summary: "Ses statistiques Entracte sur une période (`sablier:access`, et `entracte:access` pour avoir des valeurs)"
+      description: |
+        Sans `entracte:access`, la réponse est `200 {"access": false}` et ne porte aucune statistique : le front affiche une carte
+        « pas d'accès », ce n'est pas une erreur. Avec l'accès, `access` vaut `true` et toutes les statistiques sont présentes (0 ou
+        `null` sans activité). Durées en secondes. `seconds` : temps regardé (historique importé compris), sans le temps en salon
+        cinéma ; `movies_watched`, `episodes_watched`, `series_completed` : historique importé compris. `longest_session` (durée de la
+        plus longue session commencée dans la période), `most_episodes_in_a_row` (plus grand nombre d'épisodes vus dans une même
+        session), `abandoned` et `intros_skipped` ne comptent que l'activité réelle, jamais l'historique importé. `biggest_day` : jour
+        de la période au plus grand temps regardé. `cinema_seconds` et `cinema_sessions` : temps en salon cinéma à plusieurs et nombre
+        de séances à plusieurs. Pour `all`, `from` et `to` comme `GET /usage`.
+      parameters:
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "`{access: false}` ou `{access: true, period, from, to, seconds, movies_watched, episodes_watched, series_completed, longest_session, biggest_day: {day, seconds}|null, most_episodes_in_a_row, abandoned, intros_skipped, cinema_seconds, cinema_sessions}`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /sillon:
+    get:
+      summary: "Ses statistiques Sillon sur une période (`sablier:access`, et `sillon:access` pour avoir des valeurs)"
+      description: |
+        Sans `sillon:access`, la réponse est `200 {"access": false}` et ne porte aucune statistique. Avec l'accès : `seconds`, temps
+        d'écoute (toutes les secondes écoutées) ; `tracks_played`, écoutes comptées par Sillon (30 s ou la moitié de la piste) ;
+        `distinct_tracks`, pistes différentes parmi les écoutes comptées de la période. Pour `all`, `from` et `to` comme `GET /usage`.
+      parameters:
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "`{access: false}` ou `{access: true, period, from, to, seconds, tracks_played, distinct_tracks}`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /messaging:
+    get:
+      summary: "Ses statistiques de messagerie et de vocal sur une période (`sablier:access`)"
+      description: |
+        `total` : messages envoyés ; `private` : ceux des conversations privées, en un seul total ; `by_channel` : ceux des salons, par
+        nombre décroissant ; `top_channel` : le premier de `by_channel` ; `busiest_day` : jour au plus grand nombre de messages.
+        `reactions_given`, `reactions_received`, `top_emoji` (parmi les réactions données), `files` (fichiers et images envoyés).
+        `voice_seconds` : temps en vocal à plusieurs ; `longest_call` : durée du plus long appel terminé dans la période ;
+        `top_voice_channel` : salon vocal au plus grand temps ; `screen_share_seconds`. Durées en secondes.
+        Un salon est donné par ses identifiants (`server`, `null` hors serveur, et `channel`), jamais par son nom : Sablier ne connaît
+        pas les noms. Le front lit le nom dans ce que la personne peut voir au moment de l'affichage et affiche « salon supprimé »
+        pour un salon supprimé ou devenu inaccessible, dont les compteurs restent servis. Pour `all`, `from` et `to` comme `GET /usage`.
+      parameters:
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "`{period, from, to, total, private, by_channel: [{server: string|null, channel, messages}], top_channel: {server, channel, messages}|null, busiest_day: {day, messages}|null, reactions_given, reactions_received, top_emoji: {emoji, count}|null, files, voice_seconds, longest_call, top_voice_channel: {server: string|null, channel, seconds}|null, screen_share_seconds}`" }
         "400": { description: "`invalid` : période ou date illisible" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }

@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Instant};
 
 use axum::{
     body::Body,
     extract::{Path, Query, State},
     response::Response,
 };
+use commun::evenements::{Donnees, Evenement};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -14,6 +15,7 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{self, bd, introuvable, invalide, objet, ok},
+    sablier::{self, Lectures},
 };
 
 pub const SEUIL_VU: f64 = 0.9;
@@ -55,16 +57,51 @@ pub async fn enregistrer(
     .bind(termine)
     .execute(pool)
     .await?;
-    if termine {
-        sqlx::query(
-            "INSERT INTO vus (sub, titre_id) VALUES ($1, $2) ON CONFLICT (sub, titre_id) DO UPDATE SET vu_le = now()",
-        )
-        .bind(sub)
-        .bind(titre)
-        .execute(pool)
-        .await?;
+    if !termine {
+        return Ok(false);
     }
-    Ok(termine)
+    sqlx::query_scalar(
+        "INSERT INTO vus (sub, titre_id) VALUES ($1, $2) ON CONFLICT (sub, titre_id) DO UPDATE SET vu_le = now()
+         RETURNING xmax = 0",
+    )
+    .bind(sub)
+    .bind(titre)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn rapporter(
+    pool: &PgPool,
+    lectures: &Lectures,
+    sub: &str,
+    id: Uuid,
+    position: f64,
+    duree: f64,
+    maintenant: Instant,
+) -> Result<Option<Vec<Evenement>>, sqlx::Error> {
+    let Some(titre) = sablier::titre(pool, id).await? else {
+        return Ok(None);
+    };
+    let vu = enregistrer(pool, sub, id, position, duree).await?;
+    let mut evenements = Vec::new();
+    let secondes = lectures.crediter(sub, id, position, maintenant);
+    if secondes > 0 {
+        evenements.push(Evenement::nouveau(sub, titre.lecture(secondes)));
+    }
+    if vu {
+        evenements.push(Evenement::nouveau(sub, titre.vu()));
+        if let Some(serie) = titre.serie
+            && sablier::serie_terminee(pool, sub, serie).await?
+        {
+            evenements.push(Evenement::nouveau(
+                sub,
+                Donnees::EntracteSerieTerminee {
+                    serie: serie.to_string(),
+                },
+            ));
+        }
+    }
+    Ok(Some(evenements))
 }
 
 pub async fn progression(
@@ -80,17 +117,20 @@ pub async fn progression(
         corps.get("duration").and_then(Value::as_f64),
     )
     .map_err(invalide)?;
-    let genre: Option<String> = sqlx::query_scalar("SELECT genre FROM titres WHERE id = $1")
-        .bind(id)
-        .fetch_optional(state.pool())
-        .await
-        .map_err(bd)?;
-    if genre.is_none_or(|g| g == "serie") {
-        return Err(introuvable());
-    }
-    enregistrer(state.pool(), p.sub(), id, position, duree)
-        .await
-        .map_err(bd)?;
+    rapporter(
+        state.pool(),
+        state.lectures(),
+        p.sub(),
+        id,
+        position,
+        duree,
+        Instant::now(),
+    )
+    .await
+    .map_err(bd)?
+    .ok_or_else(introuvable)?
+    .into_iter()
+    .for_each(|e| state.emetteur().emettre(e));
     Ok(http::sans_contenu())
 }
 

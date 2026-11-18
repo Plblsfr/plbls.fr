@@ -8,7 +8,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `config.rs` | variables `SILLON_*` et communes (valeurs dans [`plbls.env`](../../plbls.env), secrets dans [`deploy/sillon/.env.example`](../../deploy/sillon/.env.example)) |
 | `routes.rs` | table des routes : chacune a une permission ou une exception motivée ; tests de couverture et de conformité à OpenAPI (dans les deux sens) |
 | `garde.rs`, `identite.rs`, `droits.rs` | gateway (`/auth/me`, cookie ou Bearer), aegis (manifeste, `/v1/effective`), sections de `GET /me`, CORS et CSRF |
-| `etat.rs` | état partagé (configuration, base, client HTTP, aegis, verrou de synchronisation) et tâches de fond (manifeste, synchronisation périodique) |
+| `etat.rs` | état partagé (configuration, base, client HTTP, aegis, verrou de synchronisation, émetteur d'évènements `AppState::avec_emetteur`) et tâches de fond (manifeste, synchronisation périodique) |
 | `interne.rs` | santé, disponibilité, `GET /me`, `GET /internal/preview` (carte de lien d'Estompe, `Garde::Service` : jeton `SILLON_SERVICE_TOKEN`) |
 | `http.rs` | réponses JSON et erreurs `{error, message}`, comparaison de jetons à temps constant |
 | `lidarr.rs` | client de l'API v1 de Lidarr (`Client` : artistes, albums, pistes, fichiers, images ; `reglages_ajout` : dossier racine, profils et tags d'un ajout pris dans Lidarr ou surchargés ; `requete`, `envoyer`, `get` pour les autres appels ; refus de validation préfixés par `REFUS`) |
@@ -30,6 +30,7 @@ routes dans [`openapi.yaml`](../../docs/sillon/openapi.yaml).
 | `listenbrainz.rs` | artistes similaires et enregistrements populaires par MBID, gardés en base, débit limité, pause après erreur |
 | `decouverte.rs` | recherche en tâche de fond d'un titre absent et envoi de son album par `ajouts`, promotion des découvertes likées, `GET /admin/discovery` |
 | `historique.rs` | écoutes (fin, écoute qui compte, source, suggérée), écoutes récentes, plus écoutés par période |
+| `sablier.rs` | évènement `sillon.ecoute` d'une ligne de `ecoutes` (`Ecoute::lire`, `Ecoute::evenement`), émis par `historique.rs` ; commande `sillon importer-sablier` (`rejouer`, `importer`, `lancer`, `Bilan`) |
 | `ajouts.rs` | ajout autonome (`sillon:add`) : recherche d'absents, ajout d'un album ou d'un artiste, envoi à Lidarr, suivi (file, historique, webhooks), « Mes ajouts » |
 | `quota.rs` | réglages de l'ajout (limites, surcharges facultatives `SILLON_LIDARR_RACINE`…), occupation du disque, estimation des tailles par le profil de qualité |
 | `admin_ajouts.rs` | administration des ajouts : occupation, ajouts de tous, relance, suppression par Lidarr avec exclusion, albums par taille (filtre des albums jamais écoutés) |
@@ -141,6 +142,8 @@ Les tests de lecture (`lecture.rs`, module `tests`) réutilisent `bibliotheque_a
 plafond d'encodages et l'échec d'encodage, un faux ffmpeg (script qui attend un fichier témoin ou échoue pour `libopus`, et passe la
 main au vrai ffmpeg sinon).
 Sans `TEST_DATABASE_URL`, les tests passent par testcontainers (ignorés sans Docker).
+Évènements de Sablier : `sablier::tests` (`Flux` : stream de test sur `TEST_REDIS_URL`, tests ignorés avec un message sans cette
+variable ; `rejoues()` : évènements de l'import sans Redis).
 - `AppState::analyse().voisins() -> Arc<Voisins>` : vecteurs normalisés des pistes présentes et analysées (instantané, remplacé à chaque
   rechargement). `voisins(piste, n) -> Option<Vec<(Uuid, f32)>>` (les plus proches d'abord, sans la piste), `distance(a, b) -> Option<f32>`,
   `vecteur(piste) -> Option<&[f32]>`, `barycentre(&[Uuid]) -> Option<Vec<f32>>` (pistes non analysées ignorées),

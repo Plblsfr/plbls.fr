@@ -3442,6 +3442,7 @@ dependencies = [
  "futures-util",
  "hmac",
  "image",
+ "redis",
  "reqwest",
  "serde",
  "serde_json",

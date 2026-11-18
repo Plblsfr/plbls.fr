@@ -1,4 +1,5 @@
 use axum::{Router, http::Method, http::StatusCode, routing::get};
+use commun::evenements::{Donnees, Genre};
 use serde_json::json;
 
 use crate::{
@@ -158,6 +159,81 @@ async fn me_sans_permission_sablier_dit_si_la_section_est_a_afficher() {
     let r = e.get("panne", "/me").await;
     assert_eq!(r.statut, StatusCode::BAD_GATEWAY);
     assert_eq!(r.json()["error"], "gateway_unavailable");
+}
+
+#[tokio::test]
+async fn stats_entracte_et_sillon_reservees_a_qui_a_l_acces_au_service() {
+    let Some(e) = env().await else { return };
+    let ecoute = Donnees::SillonEcoute {
+        piste: "p1".into(),
+        secondes: 120,
+        comptee: true,
+    };
+    let lecture = Donnees::EntracteLecture {
+        titre: "f1".into(),
+        genre: Genre::Film,
+        serie: None,
+        secondes: 600,
+    };
+    let cinema = Donnees::EstompeCinemaTemps { secondes: 900 };
+    for sub in ["sub-alice", "sub-bruno", "sub-diane"] {
+        for (i, donnees) in [&ecoute, &lecture, &cinema].into_iter().enumerate() {
+            e.recevoir(
+                &format!("{sub}-{i}"),
+                sub,
+                "2026-03-10T10:00:00Z",
+                false,
+                donnees.clone(),
+            )
+            .await;
+        }
+    }
+    let requete = "period=day&date=2026-03-10";
+    let sans_acces = json!({"access": false});
+    for (qui, entracte, sillon) in [
+        ("alice", false, false),
+        ("bruno", false, true),
+        ("diane", true, false),
+        ("admin", false, false),
+    ] {
+        let r = e.get(qui, &format!("/entracte?{requete}")).await;
+        assert_eq!(r.statut, StatusCode::OK, "{qui}");
+        if entracte {
+            assert_eq!(
+                (
+                    r.json()["access"].clone(),
+                    r.json()["seconds"].clone(),
+                    r.json()["cinema_seconds"].clone()
+                ),
+                (json!(true), json!(600), json!(900)),
+                "{qui}"
+            );
+        } else {
+            assert_eq!(r.json(), sans_acces, "{qui}");
+        }
+        let r = e.get(qui, &format!("/sillon?{requete}")).await;
+        assert_eq!(r.statut, StatusCode::OK, "{qui}");
+        if sillon {
+            assert_eq!(
+                (r.json()["access"].clone(), r.json()["seconds"].clone()),
+                (json!(true), json!(120)),
+                "{qui}"
+            );
+        } else {
+            assert_eq!(r.json(), sans_acces, "{qui}");
+        }
+    }
+    for chemin in ["/entracte", "/sillon", "/messaging"] {
+        let r = e.get("personne", chemin).await;
+        assert_eq!(r.statut, StatusCode::FORBIDDEN, "{chemin}");
+        assert_eq!(r.json()["error"], "forbidden", "{chemin}");
+        assert!(!r.texte().contains("seconds"), "{chemin}");
+    }
+    assert_eq!(e.get("alice", "/messaging").await.statut, StatusCode::OK);
+    assert_eq!(
+        e.get("alice", "/entracte?period=siecle").await.json(),
+        sans_acces
+    );
 }
 
 #[tokio::test]
@@ -364,7 +440,7 @@ async fn sante_disponibilite_et_migrations() {
             .unwrap();
     let attendues: Vec<i64> = crate::MIGRATIONS.iter().map(|m| m.version).collect();
     assert_eq!(versions, attendues);
-    assert_eq!(attendues, [1]);
+    assert_eq!(attendues, [1, 2]);
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;

@@ -8,6 +8,7 @@ use axum::{
 
 use crate::{
     battement,
+    domaines::{entracte, messagerie, sillon},
     droits::Droit,
     etat::AppState,
     garde::{self, Garde},
@@ -73,6 +74,24 @@ pub fn table() -> Vec<Entree> {
             "/usage",
             Garde::Droit(Droit::Acces),
             get(utilisation::lire),
+        ),
+        entree(
+            Method::GET,
+            "/entracte",
+            Garde::Droit(Droit::Acces),
+            get(entracte::voir),
+        ),
+        entree(
+            Method::GET,
+            "/sillon",
+            Garde::Droit(Droit::Acces),
+            get(sillon::voir),
+        ),
+        entree(
+            Method::GET,
+            "/messaging",
+            Garde::Droit(Droit::Acces),
+            get(messagerie::voir),
         ),
     ]
 }

@@ -2,7 +2,8 @@
 
 Service de statistiques de plbls.fr, à part d'Estompe, d'Entracte et de Sillon : il reçoit leurs évènements par une file, compte le temps
 d'utilisation de l'app et garde des agrégats par jour. Les statistiques viennent par lots ; ce document décrit ce qui existe aujourd'hui :
-le socle du service, la file d'évènements (format, émission, consommation, stockage, purge) et le temps d'utilisation.
+le socle du service, la file d'évènements (format, émission, consommation, stockage, purge), le temps d'utilisation et les statistiques
+d'Entracte, de Sillon et de la messagerie.
 
 | Où | Quoi |
 |---|---|
@@ -17,7 +18,7 @@ Déclarées à aegis par manifeste (application `sablier`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `sablier:access` | ses statistiques (temps d'utilisation) |
+| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie) |
 | `sablier:admin` | administration de Sablier (aucune route aujourd'hui) |
 
 Chaque route relève d'une permission ou d'une exception motivée (santé, disponibilité, `GET /me`, `POST /heartbeat`) : la table des
@@ -95,17 +96,36 @@ démarre sans consommer ; Redis en panne : nouvel essai toutes les 5 s, battemen
 | `evenements` | évènements bruts : `id`, `sub`, `source`, `type`, `date`, `importe`, `donnees` (JSON), `recu_le` |
 | `agregats_jour` | une valeur par `(sub, jour, stat, cle)` ; tous les domaines y écrivent |
 | `battements` | dernier battement compté de chaque personne |
+| `sessions_entracte` | session Entracte en cours de chaque personne : jour et instant de début, dernier évènement, secondes et épisodes cumulés |
 
 Le jour d'un instant est celui du fuseau `SABLIER_FUSEAU` (`Europe/Paris` par défaut, vérifié au démarrage auprès de PostgreSQL), y
 compris les jours de changement d'heure, qui durent 23 ou 25 heures. Les évènements bruts sont purgés une fois par jour (et au démarrage)
 quand leur date et leur réception ont toutes deux plus de `SABLIER_CONSERVATION_MOIS` mois (13 par défaut) : un historique importé reste
 donc reconnu, et non recompté, pendant cette durée après son import. Les agrégats ne sont jamais purgés.
 
-Statistiques d'aujourd'hui :
+Statistiques (noms figés : les trophées et les récapitulatifs s'appuient dessus ; constantes dans `agregats.rs` et dans chaque module
+de `domaines/`). Une statistique est une somme du jour, sauf « maximum » : plus grande valeur du jour.
 
 | `stat` | `cle` | Valeur |
 |---|---|---|
 | `utilisation.secondes` | `<plateforme>\|<section>` | secondes d'utilisation du jour |
+| `entracte.secondes` | | secondes regardées (`entracte.lecture`, import compris) |
+| `entracte.films_vus`, `entracte.episodes_vus` | | titres vus (`entracte.vu`, import compris) |
+| `entracte.series_terminees` | | séries terminées (import compris) |
+| `entracte.session_max` | | maximum : durée de la plus longue session commencée ce jour |
+| `entracte.enchaines_max` | | maximum : épisodes vus dans une même session commencée ce jour |
+| `entracte.abandons`, `entracte.intros_passees` | | titres abandonnés, intros passées (hors import) |
+| `entracte.cinema_secondes`, `entracte.cinema_seances` | | temps en salon cinéma à plusieurs, séances à plusieurs (`estompe.cinema.*`) |
+| `sillon.secondes` | | secondes écoutées, écoutes comptées ou non |
+| `sillon.ecoutes` | | écoutes comptées |
+| `sillon.pistes` | piste | écoutes comptées de la piste |
+| `messagerie.messages` | `<serveur>/<salon>` ou `prive` | messages envoyés |
+| `messagerie.reactions_donnees` | emoji | réactions données |
+| `messagerie.reactions_recues` | | réactions reçues |
+| `messagerie.fichiers` | | fichiers et images envoyés |
+| `messagerie.vocal_secondes` | `<serveur>/<salon>` (serveur vide hors serveur) | secondes en vocal à plusieurs |
+| `messagerie.appel_max` | | maximum : durée du plus long appel terminé ce jour |
+| `messagerie.partage_secondes` | | secondes de partage d'écran |
 
 ## Temps d'utilisation
 
@@ -121,6 +141,54 @@ personne) et ne comptent pas double. Le temps va au jour du battement, à sa pla
 `GET /usage?period=day|week|month|year|all&date=AAAA-MM-JJ` (`sablier:access`) rend le temps de la personne sur la période qui contient
 `date` (aujourd'hui par défaut ; semaine du lundi au dimanche) : total, par jour, par section, par plateforme, journée la plus longue,
 nombre de jours actifs et premier jour d'activité.
+
+## Statistiques par domaine
+
+`GET /entracte`, `GET /sillon` et `GET /messaging` (`sablier:access`) prennent les mêmes `period` et `date` que `GET /usage` et rendent
+toutes les statistiques du domaine pour la personne connectée, à 0 ou `null` sans activité : le front choisit ce qu'il affiche. La
+personne lue est toujours celle de la session.
+
+**Accès par domaine.** Les statistiques d'Entracte ne sont servies qu'avec `entracte:access`, celles de Sillon qu'avec `sillon:access`
+(les mêmes droits que `permissions.entracte` et `permissions.sillon` de `GET /me`). Sans ce droit, la route répond `200` avec
+`{"access": false}` et rien d'autre : ce n'est pas une erreur, le front affiche une carte « pas d'accès ». Avec le droit, la réponse
+porte `"access": true`. Les évènements sont comptés pour tout le monde, avec ou sans ces droits.
+
+**Import.** Un évènement importé (`importe = true`) est daté de l'historique et compte pour le temps regardé, les films et épisodes vus,
+les séries terminées, les écoutes et la messagerie. Son identifiant est déterministe : rejoué, il est ignoré, les totaux ne changent
+pas. Il ne compte jamais pour les façons de regarder (sessions, épisodes enchaînés, abandons, intros passées).
+
+### Entracte
+
+Temps regardé (somme des `secondes` des `entracte.lecture`), films vus, épisodes vus, séries terminées, plus grosse journée (jour de la
+période au plus grand temps regardé), plus longue session, épisodes enchaînés, titres abandonnés, intros passées, temps en salon cinéma
+et séances à plusieurs. Le temps en salon cinéma (`estompe.cinema.temps`) n'est pas ajouté au temps regardé.
+
+- **Session** : suite d'évènements `entracte.lecture` réels d'une personne dont les dates se suivent à 30 minutes au plus. Sa durée est
+  la somme de leurs `secondes`. Un `entracte.lecture` daté de plus de 30 minutes après le précédent ouvre une nouvelle session.
+- **Épisodes enchaînés** : nombre d'`entracte.vu` réels d'un épisode datés dans la session en cours (30 minutes de marge avant son début
+  et après son dernier évènement). Un épisode marqué vu hors de toute session compte dans les épisodes vus, pas dans les enchaînements.
+- Une session appartient au jour où elle commence, même si elle passe minuit : sa durée et ses épisodes enchaînés vont à ce jour. Sur
+  une période, « plus longue session » et « épisodes enchaînés » sont les maximums des jours.
+- Seule la session en cours de chaque personne est gardée (`sessions_entracte`). Un évènement en retard qui tombe dans la session en
+  cours s'y ajoute ; un `entracte.lecture` plus ancien que la session en cours compte comme une session à lui seul, sans la modifier.
+
+### Sillon
+
+Temps d'écoute (toutes les `secondes` des `sillon.ecoute`), titres écoutés (écoutes `comptee`, selon la règle de Sillon : 30 s ou la
+moitié de la piste) et titres différents (pistes distinctes parmi les écoutes comptées de la période). Une même piste écoutée trois
+fois compte trois titres écoutés et un titre différent.
+
+### Messagerie et vocal
+
+Messages envoyés (total, conversations privées, par salon), salon le plus fréquenté, journée la plus bavarde, réactions données et
+reçues, emoji le plus utilisé parmi les réactions données, fichiers et images envoyés, temps en vocal, plus long appel, salon vocal
+préféré, temps en partage d'écran.
+
+- Un message dans un salon compte pour ce salon et pour le total. Les messages privés ne comptent que dans un total unique (`private`,
+  clé `prive`) et dans le total général, sans détail par conversation.
+- **Noms des salons** : Sablier ne connaît que des identifiants. La réponse donne `server` et `channel` ; le front lit le nom au moment
+  de l'affichage dans ce que la personne peut voir. Un salon supprimé ou devenu inaccessible s'affiche « salon supprimé » et garde ses
+  compteurs : Sablier ne purge rien quand un salon disparaît.
 
 ## Configuration
 
