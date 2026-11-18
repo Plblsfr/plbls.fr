@@ -49,22 +49,65 @@ mod tests {
         let Some(e) = env().await else { return };
         let pool = e.state.pool();
         let maintenant = instant("2026-11-18T12:00:00Z");
-        brut(pool, "vieux", "2025-10-18T11:59:59Z", "2025-10-18T11:59:59Z").await;
-        brut(pool, "limite", "2025-10-18T12:00:00Z", "2025-10-18T12:00:00Z").await;
-        brut(pool, "recent", "2026-11-17T00:00:00Z", "2026-11-17T00:00:00Z").await;
-        brut(pool, "import", "2020-01-01T00:00:00Z", "2026-11-01T00:00:00Z").await;
-        brut(pool, "tres-vieux", "2020-01-01T00:00:00Z", "2020-01-01T00:00:01Z").await;
+        brut(
+            pool,
+            "vieux",
+            "2025-10-18T11:59:59Z",
+            "2025-10-18T11:59:59Z",
+        )
+        .await;
+        brut(
+            pool,
+            "limite",
+            "2025-10-18T12:00:00Z",
+            "2025-10-18T12:00:00Z",
+        )
+        .await;
+        brut(
+            pool,
+            "recent",
+            "2026-11-17T00:00:00Z",
+            "2026-11-17T00:00:00Z",
+        )
+        .await;
+        brut(
+            pool,
+            "import",
+            "2020-01-01T00:00:00Z",
+            "2026-11-01T00:00:00Z",
+        )
+        .await;
+        brut(
+            pool,
+            "tres-vieux",
+            "2020-01-01T00:00:00Z",
+            "2020-01-01T00:00:01Z",
+        )
+        .await;
         let vieux_jour = jour("2020-01-01");
-        agregats::ajouter(pool, "sub-alice", vieux_jour, agregats::UTILISATION, "web|sillon", 600)
-            .await
-            .unwrap();
+        agregats::ajouter(
+            pool,
+            "sub-alice",
+            vieux_jour,
+            agregats::UTILISATION,
+            "web|sillon",
+            600,
+        )
+        .await
+        .unwrap();
         assert_eq!(purger(pool, 13, maintenant).await.unwrap(), 2);
         assert_eq!(restants(pool).await, ["import", "limite", "recent"]);
         assert_eq!(purger(pool, 13, maintenant).await.unwrap(), 0);
         assert_eq!(
-            agregats::somme(pool, "sub-alice", agregats::UTILISATION, vieux_jour, vieux_jour)
-                .await
-                .unwrap(),
+            agregats::somme(
+                pool,
+                "sub-alice",
+                agregats::UTILISATION,
+                vieux_jour,
+                vieux_jour
+            )
+            .await
+            .unwrap(),
             600
         );
         assert_eq!(purger(pool, 1, maintenant).await.unwrap(), 1);

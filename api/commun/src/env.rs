@@ -161,7 +161,10 @@ pub fn url_file(get: impl Fn(&str) -> Option<String>) -> String {
     match autorite.rsplit_once('@') {
         Some((identifiants, _)) if identifiants.contains(':') => url,
         Some((utilisateur, hote)) => {
-            format!("{schema}://{utilisateur}:{}@{hote}{reste}", encode(&mot_de_passe))
+            format!(
+                "{schema}://{utilisateur}:{}@{hote}{reste}",
+                encode(&mot_de_passe)
+            )
         }
         None => format!("{schema}://:{}@{autorite}{reste}", encode(&mot_de_passe)),
     }
@@ -267,7 +270,10 @@ mod tests {
         let get = lecteur(&[("SABLIER_REDIS_URL", " redis://127.0.0.1:6379 ")]);
         assert_eq!(url_file(&get), "redis://127.0.0.1:6379");
         assert_eq!(url_file(lecteur(&[("SABLIER_REDIS_PASSWORD", "p")])), "");
-        assert_eq!(url_file(lecteur(&[("REDIS_URL", "redis://redis:6379")])), "");
+        assert_eq!(
+            url_file(lecteur(&[("REDIS_URL", "redis://redis:6379")])),
+            ""
+        );
     }
 
     #[test]

@@ -170,7 +170,7 @@ jobs:
 
   rust-test:
     needs: changements
-    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.regie_server == 'true'
+    if: needs.changements.outputs.estompe_api == 'true' || needs.changements.outputs.catalogue_permissions == 'true' || needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.sablier_server == 'true' || needs.changements.outputs.regie_server == 'true'
     runs-on: ubuntu-latest
     # le job tourne sur le runner (pas dans un conteneur) : les services ne sont joignables que par leur port publié
     services:
@@ -205,8 +205,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked $(scripts/estompe/paquets-cargo.sh)
-      - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP)
-        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.regie_server == 'true'
+      - name: Tests de la crate commun (identité signée, jetons de service, clients HTTP, file d'évènements avec Redis)
+        if: needs.changements.outputs.aegis_server == 'true' || needs.changements.outputs.security_server == 'true' || needs.changements.outputs.entracte_server == 'true' || needs.changements.outputs.sillon_server == 'true' || needs.changements.outputs.sablier_server == 'true' || needs.changements.outputs.regie_server == 'true'
+        env:
+          TEST_REDIS_URL: redis://localhost:6379
         run: cargo test --locked -p commun
       - name: Tests d'aegis (PostgreSQL 17, Redis)
         if: needs.changements.outputs.aegis_server == 'true'
@@ -232,6 +234,12 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
         run: cargo test --locked -p sillon
+      - name: Tests de Sablier (PostgreSQL 17, Redis)
+        if: needs.changements.outputs.sablier_server == 'true'
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          TEST_REDIS_URL: redis://localhost:6379
+        run: cargo test --locked -p sablier
       - name: Tests de Régie (services simulés)
         if: needs.changements.outputs.regie_server == 'true'
         run: cargo test --locked -p regie
@@ -390,6 +398,37 @@ jobs:
       - if: always()
         run: docker rm -f sillon-pr-api-${{ github.run_id }} sillon-pr-pg-${{ github.run_id }}
 
+  sablier-image:
+    needs: changements
+    if: needs.changements.outputs.image_sablier == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: api/sablier/Dockerfile
+          push: false
+          load: true
+          tags: sablier:pr-${{ github.run_id }}
+          cache-from: type=gha,scope=sablier
+      - name: L'image démarre, applique ses migrations et répond sur /readyz
+        run: |
+          docker run -d --name sablier-pr-pg-${{ github.run_id }} -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=sablier postgres:17-alpine
+          timeout 60 sh -c 'until docker exec sablier-pr-pg-${{ github.run_id }} pg_isready -U postgres -h 127.0.0.1; do sleep 1; done'
+          docker run -d --name sablier-pr-api-${{ github.run_id }} --network container:sablier-pr-pg-${{ github.run_id }} --env-file deploy/sablier/.env.example \
+            -e DATABASE_URL='postgres://127.0.0.1:5432?sslmode=disable' -e DATABASE_USER=postgres -e DATABASE_PASSWORD=postgres \
+            sablier:pr-${{ github.run_id }}
+          timeout 60 sh -c 'until docker run --rm --network container:sablier-pr-pg-${{ github.run_id }} postgres:17-alpine wget -qO- http://127.0.0.1:8080/readyz; do sleep 1; done' \
+            || { docker logs sablier-pr-api-${{ github.run_id }}; exit 1; }
+          docker exec sablier-pr-pg-${{ github.run_id }} psql -U postgres -d sablier -Atc 'SELECT version FROM _sqlx_migrations WHERE success' | grep -qx 1 \
+            || { docker logs sablier-pr-api-${{ github.run_id }}; exit 1; }
+      - if: always()
+        run: docker rm -f sablier-pr-api-${{ github.run_id }} sablier-pr-pg-${{ github.run_id }}
+
   regie-image:
     needs: changements
     if: needs.changements.outputs.image_regie == 'true'
@@ -459,7 +498,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, regie-image, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

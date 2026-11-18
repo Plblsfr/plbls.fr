@@ -4,7 +4,7 @@
 
 | Objet | Rôle | Exemple |
 | --- | --- | --- |
-| **Application** | Service qui déclare ses permissions par manifeste. Clé `[a-z][a-z0-9-]{0,39}` | `estompe`, `entracte`, `sillon`, `regie`, `aegis` |
+| **Application** | Service qui déclare ses permissions par manifeste. Clé `[a-z][a-z0-9-]{0,39}` | `estompe`, `entracte`, `sillon`, `regie`, `sablier`, `aegis` |
 | **Type de ressource** | Objet d'une application sur lequel une permission peut être restreinte, avec l'URL interne qui en liste les instances | `estompe:server` |
 | **Permission** | Fonctionnalité ou action. Nom complet `application:clé`, catégorie, libellé, type de ressource éventuel, ouverture par défaut | `estompe:vocal.screen` |
 | **Règle** | Une permission accordée (`allow`) ou refusée (`deny`) à un sujet, partout (`*`) ou sur une ressource, avec expiration et note facultatives | refus de `estompe:gifs.use` à alice |

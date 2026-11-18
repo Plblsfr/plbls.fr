@@ -73,9 +73,11 @@ type Lecture = Option<Vec<(String, Vec<Entree>)>>;
 fn charge(champs: Option<Vec<Vec<u8>>>) -> Option<String> {
     let champs = champs?;
     champs
-        .chunks_exact(2)
-        .find(|paire| paire[0] == CHAMP.as_bytes())
-        .map(|paire| String::from_utf8_lossy(&paire[1]).into_owned())
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .find(|[nom, _]| nom == CHAMP.as_bytes())
+        .map(|[_, valeur]| String::from_utf8_lossy(valeur).into_owned())
 }
 
 async fn connecter(url: &str) -> Result<MultiplexedConnection, String> {
@@ -90,14 +92,14 @@ async fn connecter(url: &str) -> Result<MultiplexedConnection, String> {
 }
 
 async fn creer_groupe(c: &mut MultiplexedConnection, r: &Reglages) -> Result<(), String> {
-    let creation = redis::cmd("XGROUP")
+    let mut commande = redis::cmd("XGROUP");
+    commande
         .arg("CREATE")
         .arg(&r.flux)
         .arg(&r.groupe)
         .arg("0")
-        .arg("MKSTREAM")
-        .query_async::<String>(c);
-    match tokio::time::timeout(DELAI, creation).await {
+        .arg("MKSTREAM");
+    match tokio::time::timeout(DELAI, commande.query_async::<String>(c)).await {
         Err(_) => Err("XGROUP CREATE : délai dépassé".into()),
         Ok(Ok(_)) => Ok(()),
         Ok(Err(e)) if e.code() == Some("BUSYGROUP") => Ok(()),
@@ -118,19 +120,18 @@ async fn lire(
         .arg("COUNT")
         .arg(LOT);
     if !en_attente {
-        commande.arg("BLOCK").arg(ATTENTE_BLOCAGE.as_millis() as u64);
+        commande
+            .arg("BLOCK")
+            .arg(ATTENTE_BLOCAGE.as_millis() as u64);
     }
     commande
         .arg("STREAMS")
         .arg(&r.flux)
         .arg(if en_attente { "0" } else { ">" });
-    let reponse = tokio::time::timeout(
-        ATTENTE_BLOCAGE + DELAI,
-        commande.query_async::<Lecture>(c),
-    )
-    .await
-    .map_err(|_| "XREADGROUP : délai dépassé".to_string())?
-    .map_err(|e| format!("XREADGROUP : {e}"))?;
+    let reponse = tokio::time::timeout(ATTENTE_BLOCAGE + DELAI, commande.query_async::<Lecture>(c))
+        .await
+        .map_err(|_| "XREADGROUP : délai dépassé".to_string())?
+        .map_err(|e| format!("XREADGROUP : {e}"))?;
     Ok(reponse
         .unwrap_or_default()
         .into_iter()
@@ -139,12 +140,9 @@ async fn lire(
 }
 
 async fn accuser(c: &mut MultiplexedConnection, r: &Reglages, id: &str) -> Result<(), String> {
-    let accuse = redis::cmd("XACK")
-        .arg(&r.flux)
-        .arg(&r.groupe)
-        .arg(id)
-        .query_async::<i64>(c);
-    tokio::time::timeout(DELAI, accuse)
+    let mut commande = redis::cmd("XACK");
+    commande.arg(&r.flux).arg(&r.groupe).arg(id);
+    tokio::time::timeout(DELAI, commande.query_async::<i64>(c))
         .await
         .map_err(|_| "XACK : délai dépassé".to_string())?
         .map_err(|e| format!("XACK : {e}"))?;
@@ -156,7 +154,7 @@ async fn session(
     fuseau: &str,
     r: &Reglages,
     connectee: &mut bool,
-) -> Result<(), String> {
+) -> Result<std::convert::Infallible, String> {
     let mut c = connecter(&r.url).await?;
     creer_groupe(&mut c, r).await?;
     *connectee = true;
@@ -187,11 +185,14 @@ pub async fn consommer(pool: PgPool, fuseau: String, r: Reglages) {
     loop {
         let mut connectee = false;
         let Err(e) = session(&pool, &fuseau, &r, &mut connectee).await;
-        if connectee && en_panne {
+        if connectee {
             en_panne = false;
         }
         if !en_panne {
-            tracing::warn!("file d'évènements : consommation interrompue, nouvel essai toutes les {} s ({e})", PAUSE_APRES_PANNE.as_secs());
+            tracing::warn!(
+                "file d'évènements : consommation interrompue, nouvel essai toutes les {} s ({e})",
+                PAUSE_APRES_PANNE.as_secs()
+            );
             en_panne = true;
         }
         tokio::time::sleep(PAUSE_APRES_PANNE).await;
@@ -274,16 +275,16 @@ mod tests {
                 serde_json::json!({"piste": "p1", "secondes": 180, "comptee": true}),
             )]
         );
-        let simultanes: Vec<_> = (0..8)
-            .map(|_| {
-                let (pool, json) = (pool.clone(), ecoute("sub-bruno").json());
-                (0..2).map(move |_| {
-                    let (pool, json) = (pool.clone(), json.clone());
-                    tokio::spawn(async move { traiter(&pool, FUSEAU, &json).await.unwrap() })
-                })
-            })
-            .flatten()
-            .collect();
+        let mut simultanes = Vec::new();
+        for _ in 0..8 {
+            let json = ecoute("sub-bruno").json();
+            for _ in 0..2 {
+                let (pool, json) = (pool.clone(), json.clone());
+                simultanes.push(tokio::spawn(async move {
+                    traiter(&pool, FUSEAU, &json).await.unwrap()
+                }));
+            }
+        }
         let mut appliques = 0;
         for t in simultanes {
             if t.await.unwrap() == Issue::Applique {
@@ -300,10 +301,21 @@ mod tests {
         let pool = e.state.pool();
         let bon = ecoute("sub-alice");
         let inconnu = bon.json().replace("sillon.ecoute", "sillon.inconnu");
-        let incoherent = bon.json().replace("\"source\":\"sillon\"", "\"source\":\"estompe\"");
-        for mauvais in ["", "pas du json", "{}", inconnu.as_str(), incoherent.as_str()] {
+        let incoherent = bon
+            .json()
+            .replace("\"source\":\"sillon\"", "\"source\":\"estompe\"");
+        for mauvais in [
+            "",
+            "pas du json",
+            "{}",
+            inconnu.as_str(),
+            incoherent.as_str(),
+        ] {
             assert!(
-                matches!(traiter(pool, FUSEAU, mauvais).await.unwrap(), Issue::Ecarte(_)),
+                matches!(
+                    traiter(pool, FUSEAU, mauvais).await.unwrap(),
+                    Issue::Ecarte(_)
+                ),
                 "{mauvais}"
             );
         }
@@ -381,7 +393,10 @@ mod tests {
         async fn tout_accuse(&mut self) {
             let limite = tokio::time::Instant::now() + Duration::from_secs(20);
             while self.non_accuses().await != 0 {
-                assert!(tokio::time::Instant::now() < limite, "délai dépassé : accusés");
+                assert!(
+                    tokio::time::Instant::now() < limite,
+                    "délai dépassé : accusés"
+                );
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
         }
@@ -461,7 +476,8 @@ mod tests {
         let (e1, e2) = (ecoute("a"), ecoute("b"));
         b.publier(&[&e1, &e1]).await;
         b.brut("pas du json").await;
-        b.brut(&e2.json().replace("sillon.ecoute", "sillon.inconnu")).await;
+        b.brut(&e2.json().replace("sillon.ecoute", "sillon.inconnu"))
+            .await;
         let _: String = redis::cmd("XADD")
             .arg(&b.r.flux)
             .arg("*")
@@ -508,7 +524,11 @@ mod tests {
         cfg.redis_url = Some("redis://127.0.0.1:6379".into());
         let reglages = Reglages::de(&cfg).unwrap();
         assert_eq!(
-            (reglages.flux.as_str(), reglages.groupe.as_str(), reglages.consommateur.as_str()),
+            (
+                reglages.flux.as_str(),
+                reglages.groupe.as_str(),
+                reglages.consommateur.as_str()
+            ),
             ("sablier:evenements", "sablier", "sablier-api")
         );
     }

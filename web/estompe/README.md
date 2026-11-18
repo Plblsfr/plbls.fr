@@ -65,7 +65,7 @@ système de Chromium doivent être présentes).
   dans `sillon.svelte.ts`. Le mini-lecteur (`SillonMini`) est dans le dock de la barre latérale et, sous 900 px,
   en bande au bas de la vue : la lecture continue dans la messagerie et dans Entracte. `lib/medias.ts` : un film d'Entracte qui démarre
   (`FilmPlayer`) ou un salon vocal rejoint (`voice.join`) l'annonce, et Sillon se met en pause.
-- `src/sections/sablier` et `src/lib/battement.ts` : temps d'utilisation (Sablier, service de stats à part, `docs/sablier/README.md`).
+- `src/sections/sablier` et `src/lib/battement.ts` : temps d'utilisation (Sablier, service de stats à part, [`docs/sablier`](../../docs/sablier/README.md)).
   `sablier.ts` : client de l'API (`me`, `battre`) ; `sablierUrl` : `SABLIER_PUBLIC_URL` de l'image, `VITE_SABLIER_URL` au build des apps ; sans elle,
   aucun battement. Dès qu'une session est ouverte (`sessionOuverte`, quelle que soit la phase : messagerie, sections seules, administration,
   activation, accès refusé) et quelle que soit la section, `App.svelte` lance `suivreUtilisation` : `POST /heartbeat` aussitôt puis toutes les

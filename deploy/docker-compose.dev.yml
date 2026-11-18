@@ -57,3 +57,4 @@ configs:
       CREATE DATABASE entracte;
       CREATE DATABASE estompe;
       CREATE DATABASE sillon;
+      CREATE DATABASE sablier;

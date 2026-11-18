@@ -414,14 +414,24 @@ mod tests {
             Evenement::lire(&b.to_string())
         };
         assert!(avec("type", json!("sillon.inconnu")).is_err());
-        assert!(avec("source", json!("entracte")).unwrap_err().contains("incohérente"));
+        assert!(
+            avec("source", json!("entracte"))
+                .unwrap_err()
+                .contains("incohérente")
+        );
         assert!(avec("source", json!("autre")).is_err());
         assert!(avec("id", json!("")).is_err());
         assert!(avec("id", json!("x".repeat(ID_MAX))).is_ok());
         assert!(avec("id", json!("x".repeat(ID_MAX + 1))).is_err());
         assert!(avec("sub", json!(" ")).is_err());
         assert!(avec("date", json!("hier")).is_err());
-        assert!(avec("donnees", json!({"piste": "p", "secondes": -1, "comptee": true})).is_err());
+        assert!(
+            avec(
+                "donnees",
+                json!({"piste": "p", "secondes": -1, "comptee": true})
+            )
+            .is_err()
+        );
         assert!(avec("donnees", json!({"piste": "p"})).is_err());
         assert!(Evenement::lire("pas du json").is_err());
         assert!(Evenement::lire("[]").is_err());

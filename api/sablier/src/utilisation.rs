@@ -124,31 +124,72 @@ mod tests {
                 "first_day": "2024-01-01",
             })
         );
-        let r = e.get("alice", "/usage?period=day&date=2026-03-03").await.json();
+        let r = e
+            .get("alice", "/usage?period=day&date=2026-03-03")
+            .await
+            .json();
         assert_eq!(
-            (r["seconds"].clone(), r["longest_day"].clone(), r["active_days"].clone()),
+            (
+                r["seconds"].clone(),
+                r["longest_day"].clone(),
+                r["active_days"].clone()
+            ),
             (json!(0), Value::Null, json!(0))
         );
         assert_eq!(r["by_day"], json!([]));
-        let r = e.get("alice", "/usage?period=month&date=2026-03-31").await.json();
-        assert_eq!((r["from"].clone(), r["to"].clone()), (json!("2026-03-01"), json!("2026-03-31")));
-        assert_eq!((r["seconds"].clone(), r["active_days"].clone()), (json!(2160), json!(3)));
-        let r = e.get("alice", "/usage?period=year&date=2026-07-01").await.json();
-        assert_eq!((r["from"].clone(), r["to"].clone()), (json!("2026-01-01"), json!("2026-12-31")));
+        let r = e
+            .get("alice", "/usage?period=month&date=2026-03-31")
+            .await
+            .json();
+        assert_eq!(
+            (r["from"].clone(), r["to"].clone()),
+            (json!("2026-03-01"), json!("2026-03-31"))
+        );
+        assert_eq!(
+            (r["seconds"].clone(), r["active_days"].clone()),
+            (json!(2160), json!(3))
+        );
+        let r = e
+            .get("alice", "/usage?period=year&date=2026-07-01")
+            .await
+            .json();
+        assert_eq!(
+            (r["from"].clone(), r["to"].clone()),
+            (json!("2026-01-01"), json!("2026-12-31"))
+        );
         assert_eq!(r["seconds"], 2160);
-        let r = e.get("alice", "/usage?period=all&date=2026-12-31").await.json();
-        assert_eq!((r["from"].clone(), r["to"].clone()), (json!("2024-01-01"), json!("2026-12-31")));
-        assert_eq!((r["seconds"].clone(), r["active_days"].clone()), (json!(2190), json!(4)));
+        let r = e
+            .get("alice", "/usage?period=all&date=2026-12-31")
+            .await
+            .json();
+        assert_eq!(
+            (r["from"].clone(), r["to"].clone()),
+            (json!("2024-01-01"), json!("2026-12-31"))
+        );
+        assert_eq!(
+            (r["seconds"].clone(), r["active_days"].clone()),
+            (json!(2190), json!(4))
+        );
         let r = e.get("alice", "/usage").await.json();
         assert_eq!(r["period"], "month");
         let r = e.get("bruno", "/usage?period=all").await.json();
-        assert_eq!((r["seconds"].clone(), r["first_day"].clone()), (json!(0), Value::Null));
+        assert_eq!(
+            (r["seconds"].clone(), r["first_day"].clone()),
+            (json!(0), Value::Null)
+        );
         assert_eq!(r["from"], r["to"]);
-        for faux in ["/usage?period=decade", "/usage?date=hier", "/usage?period=week&date=2026-13-01"] {
+        for faux in [
+            "/usage?period=decade",
+            "/usage?date=hier",
+            "/usage?period=week&date=2026-13-01",
+        ] {
             let r = e.get("alice", faux).await;
             assert_eq!(r.statut, StatusCode::BAD_REQUEST, "{faux}");
             assert_eq!(r.json()["error"], "invalid");
         }
-        assert_eq!(e.get("personne", "/usage").await.statut, StatusCode::FORBIDDEN);
+        assert_eq!(
+            e.get("personne", "/usage").await.statut,
+            StatusCode::FORBIDDEN
+        );
     }
 }

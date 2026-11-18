@@ -255,7 +255,12 @@ pub async fn faux_aegis(droits: DroitsFaux) -> Faux {
             return (200, vec![], b"{}".to_vec());
         }
         let sub = r.json()["sub"].as_str().unwrap_or_default().to_string();
-        let accordees = droits.lock().unwrap().get(&sub).cloned().unwrap_or_default();
+        let accordees = droits
+            .lock()
+            .unwrap()
+            .get(&sub)
+            .cloned()
+            .unwrap_or_default();
         let corps = if r.chemin == "/v1/check" {
             let demandee = r.json()["permission"]
                 .as_str()

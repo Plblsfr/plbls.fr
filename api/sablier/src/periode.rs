@@ -138,15 +138,42 @@ mod tests {
 
     #[test]
     fn bornes_de_chaque_periode() {
-        assert_eq!(bornes(Periode::Jour, "2026-03-29"), paire("2026-03-29", "2026-03-29"));
-        assert_eq!(bornes(Periode::Semaine, "2026-03-29"), paire("2026-03-23", "2026-03-29"));
-        assert_eq!(bornes(Periode::Semaine, "2026-03-30"), paire("2026-03-30", "2026-04-05"));
-        assert_eq!(bornes(Periode::Semaine, "2026-01-01"), paire("2025-12-29", "2026-01-04"));
-        assert_eq!(bornes(Periode::Mois, "2026-02-14"), paire("2026-02-01", "2026-02-28"));
-        assert_eq!(bornes(Periode::Mois, "2028-02-29"), paire("2028-02-01", "2028-02-29"));
-        assert_eq!(bornes(Periode::Mois, "2026-12-31"), paire("2026-12-01", "2026-12-31"));
-        assert_eq!(bornes(Periode::Annee, "2026-06-15"), paire("2026-01-01", "2026-12-31"));
-        assert_eq!(bornes(Periode::Tout, "2026-06-15"), paire("0001-01-01", "9999-12-31"));
+        assert_eq!(
+            bornes(Periode::Jour, "2026-03-29"),
+            paire("2026-03-29", "2026-03-29")
+        );
+        assert_eq!(
+            bornes(Periode::Semaine, "2026-03-29"),
+            paire("2026-03-23", "2026-03-29")
+        );
+        assert_eq!(
+            bornes(Periode::Semaine, "2026-03-30"),
+            paire("2026-03-30", "2026-04-05")
+        );
+        assert_eq!(
+            bornes(Periode::Semaine, "2026-01-01"),
+            paire("2025-12-29", "2026-01-04")
+        );
+        assert_eq!(
+            bornes(Periode::Mois, "2026-02-14"),
+            paire("2026-02-01", "2026-02-28")
+        );
+        assert_eq!(
+            bornes(Periode::Mois, "2028-02-29"),
+            paire("2028-02-01", "2028-02-29")
+        );
+        assert_eq!(
+            bornes(Periode::Mois, "2026-12-31"),
+            paire("2026-12-01", "2026-12-31")
+        );
+        assert_eq!(
+            bornes(Periode::Annee, "2026-06-15"),
+            paire("2026-01-01", "2026-12-31")
+        );
+        assert_eq!(
+            bornes(Periode::Tout, "2026-06-15"),
+            paire("0001-01-01", "9999-12-31")
+        );
     }
 
     #[test]

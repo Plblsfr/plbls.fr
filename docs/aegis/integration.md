@@ -2,7 +2,7 @@
 
 ## Brancher une application
 
-1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`, `AEGIS_TOKEN_SILLON`, `AEGIS_TOKEN_REGIE`),
+1. **Jeton** : une variable `AEGIS_TOKEN_<APPLICATION>` par application (`AEGIS_TOKEN_ESTOMPE`, `AEGIS_TOKEN_PLI`, `AEGIS_TOKEN_ENTRACTE`, `AEGIS_TOKEN_SILLON`, `AEGIS_TOKEN_REGIE`, `AEGIS_TOKEN_SABLIER`),
    déclarée dans le `.env.example` de l'application et lue aussi par aegis, qui en tire le nom de l'application (suffixe en minuscules,
    `_` devenant `-`) ; un jeton par application, comparé en temps constant, révocable séparément. Le jeton ne lit que les droits de son application (plus `aegis:admin`) et ne déclare que son application.
 2. **Manifeste** au démarrage puis toutes les 10 minutes :
@@ -89,9 +89,16 @@ Voir [docs/sillon](../sillon/README.md).
 `AEGIS_URL` et `AEGIS_TOKEN_REGIE` (application `regie` chez aegis) : Régie envoie son manifeste (`regie:admin`, fermée par défaut)
 et lit les droits comme Entracte. Sans aegis, sa permission est refusée. Voir [docs/regie](../regie/README.md).
 
+## Sablier
+
+`AEGIS_URL` et `AEGIS_TOKEN_SABLIER` (application `sablier` chez aegis) : Sablier envoie son manifeste (`sablier:access`,
+`sablier:admin`, fermées par défaut) et lit les droits comme Entracte. Il demande aussi par `POST /v1/check` si le compte a
+`entracte:access` et `sillon:access` (statistiques de ces services à proposer), que `POST /v1/effective` ne rend pas à un autre jeton
+que celui de leur application. Sans aegis, toutes ses permissions sont refusées. Voir [docs/sablier](../sablier/README.md).
+
 ## Mise en service
 
-1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe, d'Entracte, de Sillon et de Régie.
+1. Déployer aegis (base, Redis, route de la passerelle), avec les jetons d'Estompe, d'Entracte, de Sillon, de Régie et de Sablier.
 2. Donner le rôle Keycloak `aegis-admin` (et `user`) aux administrateurs.
 3. Démarrer Estompe pour qu'il envoie son manifeste, puis configurer dans Administration › accès : un rôle `Membre` avec
-   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access` et `sillon:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.
+   `estompe:access` (ou l'ajouter à « Tout le monde »), `entracte:access`, `sillon:access` et `sablier:access` aux bons comptes, les permissions `estompe:admin.*` aux administrateurs.

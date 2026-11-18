@@ -213,8 +213,14 @@ mod tests {
             par_jour(pool, "a", "s", j1, j3).await.unwrap(),
             [(j2, 35), (j3, 30)]
         );
-        assert_eq!(max_jour(pool, "a", "s", j1, j3).await.unwrap(), Some((j2, 35)));
-        assert_eq!(max_jour(pool, "a", "s", j3, j3).await.unwrap(), Some((j3, 30)));
+        assert_eq!(
+            max_jour(pool, "a", "s", j1, j3).await.unwrap(),
+            Some((j2, 35))
+        );
+        assert_eq!(
+            max_jour(pool, "a", "s", j3, j3).await.unwrap(),
+            Some((j3, 30))
+        );
         assert_eq!(jours_actifs(pool, "a", "s", j1, j3).await.unwrap(), 2);
         assert_eq!(jours_actifs(pool, "a", "s", j1, j1).await.unwrap(), 0);
         assert_eq!(premier_jour(pool, "a").await.unwrap(), Some(j2));

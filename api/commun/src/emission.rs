@@ -240,7 +240,9 @@ mod tests {
     #[test]
     fn emettre_hors_de_tokio_ne_panique_pas() {
         assert!(mille_appels(&Emetteur::inactif()) < Duration::from_millis(500));
-        assert!(mille_appels(&Emetteur::depuis(Some(PORT_FERME), None)) < Duration::from_millis(500));
+        assert!(
+            mille_appels(&Emetteur::depuis(Some(PORT_FERME), None)) < Duration::from_millis(500)
+        );
     }
 
     #[tokio::test]
@@ -309,7 +311,10 @@ mod tests {
     async fn attendre_dernier(c: &mut MultiplexedConnection, cle: &str, attendu: &Evenement) {
         let limite = Instant::now() + Duration::from_secs(20);
         while dernier(c, cle).await.as_ref() != Some(attendu) {
-            assert!(Instant::now() < limite, "délai dépassé : évènement dans le flux");
+            assert!(
+                Instant::now() < limite,
+                "délai dépassé : évènement dans le flux"
+            );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     }
@@ -348,7 +353,10 @@ mod tests {
         }
         attendre_dernier(&mut c, &cle, &fin).await;
         let n = longueur(&mut c, &cle).await;
-        assert!((100..=400).contains(&n), "{n} entrées pour un plafond de 100");
+        assert!(
+            (100..=400).contains(&n),
+            "{n} entrées pour un plafond de 100"
+        );
         effacer(&mut c, &cle).await;
     }
 }

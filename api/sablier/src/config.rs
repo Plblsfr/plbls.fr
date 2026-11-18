@@ -110,7 +110,10 @@ mod tests {
         assert!(c.origines.is_empty());
         assert!(c.redis_url.is_none());
         assert_eq!(c.flux, "sablier:evenements");
-        assert_eq!((c.groupe.as_str(), c.consommateur.as_str()), ("sablier", "sablier-api"));
+        assert_eq!(
+            (c.groupe.as_str(), c.consommateur.as_str()),
+            ("sablier", "sablier-api")
+        );
         assert_eq!(c.fuseau, "Europe/Paris");
         assert_eq!(c.conservation_mois, 13);
         assert_eq!(c.battement, Duration::from_secs(30));
@@ -139,7 +142,10 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(c.port, 9000);
-        assert_eq!(c.database_url, "postgres://plbls@postgres-main:5432/sablier");
+        assert_eq!(
+            c.database_url,
+            "postgres://plbls@postgres-main:5432/sablier"
+        );
         assert_eq!(c.gateway_url, "http://auth-gateway:8080");
         assert_eq!(c.aegis, Some(("http://aegis:8080".into(), "tok".into())));
         assert_eq!(c.origines, vec!["https://a.fr", "https://tauri.localhost"]);

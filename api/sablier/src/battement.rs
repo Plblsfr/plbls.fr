@@ -208,7 +208,11 @@ mod tests {
     async fn dix_minutes_de_battements_reguliers_donnent_dix_minutes() {
         let Some(e) = env().await else { return };
         let debut = instant("2026-06-10T10:00:00Z");
-        for (pas, sub) in [(30_000, "regulier"), (29_600, "en-avance"), (30_250, "en-retard")] {
+        for (pas, sub) in [
+            (30_000, "regulier"),
+            (29_600, "en-avance"),
+            (30_250, "en-retard"),
+        ] {
             let n = 600_000 / pas;
             for i in 0..=n {
                 bat(&e, sub, WEB, debut + TimeDelta::milliseconds(i * pas)).await;
@@ -309,10 +313,25 @@ mod tests {
         let Some(e) = env().await else { return };
         for (sub, debut, avant, apres) in [
             ("hiver", "2026-01-15T22:55:00Z", "2026-01-15", "2026-01-16"),
-            ("veille-ete", "2026-03-28T22:55:00Z", "2026-03-28", "2026-03-29"),
+            (
+                "veille-ete",
+                "2026-03-28T22:55:00Z",
+                "2026-03-28",
+                "2026-03-29",
+            ),
             ("ete", "2026-03-29T21:55:00Z", "2026-03-29", "2026-03-30"),
-            ("veille-hiver", "2026-10-24T21:55:00Z", "2026-10-24", "2026-10-25"),
-            ("retour-hiver", "2026-10-25T22:55:00Z", "2026-10-25", "2026-10-26"),
+            (
+                "veille-hiver",
+                "2026-10-24T21:55:00Z",
+                "2026-10-24",
+                "2026-10-25",
+            ),
+            (
+                "retour-hiver",
+                "2026-10-25T22:55:00Z",
+                "2026-10-25",
+                "2026-10-26",
+            ),
         ] {
             let debut = instant(debut);
             for i in 0..=20 {
