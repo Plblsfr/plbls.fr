@@ -42,7 +42,7 @@ Un évènement (`commun::evenements::Evenement`) est un objet JSON :
 
 | Champ | Contenu |
 |---|---|
-| `id` | identifiant unique, 1 à 200 caractères : UUID v4 pour un évènement réel, identifiant déterministe pour un import (ex. `import:sillon:ecoute:<id>`) |
+| `id` | identifiant unique, 1 à 200 caractères : unique et stable par fait : déterministe dès qu'une ligne d'origine existe (ex. `import:sillon:ecoute:<id>`, le même pour l'évènement réel et pour l'import de cette ligne), UUID v4 seulement sans ligne d'origine |
 | `sub` | la personne |
 | `source` | `entracte`, `sillon` ou `estompe` ; doit correspondre au type |
 | `date` | date de l'évènement (RFC 3339) |
@@ -78,14 +78,16 @@ Les identifiants des données sont des identifiants publics opaques (chaînes), 
 - `emettre(evenement)` ne bloque jamais et ne renvoie rien : l'évènement entre dans un tampon borné (10 000), vidé vers Redis par une
   tâche de fond (connexion à la demande, 2 s au plus par opération). Tampon plein, Redis injoignable ou en erreur : l'évènement est
   abandonné. Une seule ligne de journal par panne, une au retour ; pendant une panne, un essai toutes les 5 s au plus.
-- `publier(&evenement)` attend le résultat et renvoie l'erreur : pour les commandes d'import.
+- `publier(&evenement)` attend le résultat et renvoie l'erreur : pour les commandes d'import. Un import de plus de `SABLIER_FILE_MAX`
+  évènements exige que Sablier consomme pendant l'import : sinon le plafond du flux en rogne le début, perdu sans erreur.
 
 ### Consommation
 
 Sablier lit le flux par le groupe de consommateurs `sablier` (consommateur `sablier-api`, une seule instance), créé au besoin depuis le
 début du flux. Au démarrage il reprend d'abord les entrées lues mais non accusées, puis attend les nouvelles. Chaque entrée est traitée
 en une transaction (évènement brut inséré, agrégats du type mis à jour) puis accusée (`XACK`) : une entrée dont l'écriture échoue reste
-à reprendre. Un identifiant déjà reçu est ignoré (ni second brut, ni second comptage). Une entrée mal formée, d'un type inconnu ou dont
+à reprendre. Un identifiant déjà reçu est ignoré (ni second brut, ni second comptage), quel que soit `importe` : un fait reçu en réel puis
+repris par un import n'est compté qu'une fois, avec la valeur d'`importe` du premier reçu. Une entrée mal formée, d'un type inconnu ou dont
 la source ne correspond pas au type est journalisée, accusée et écartée, sans arrêter la lecture. Sans `SABLIER_REDIS_URL`, Sablier
 démarre sans consommer ; Redis en panne : nouvel essai toutes les 5 s, battements et lectures continuent.
 
@@ -123,7 +125,7 @@ de `domaines/`). Une statistique est une somme du jour, sauf « maximum » : plu
 | `messagerie.reactions_donnees` | emoji | réactions données |
 | `messagerie.reactions_recues` | | réactions reçues |
 | `messagerie.fichiers` | | fichiers et images envoyés |
-| `messagerie.vocal_secondes` | `<serveur>/<salon>` (serveur vide hors serveur) | secondes en vocal à plusieurs |
+| `messagerie.vocal_secondes` | `<serveur>/<salon>` ou `prive` | secondes en vocal à plusieurs |
 | `messagerie.appel_max` | | maximum : durée du plus long appel terminé ce jour |
 | `messagerie.partage_secondes` | | secondes de partage d'écran |
 
@@ -154,8 +156,8 @@ personne lue est toujours celle de la session.
 porte `"access": true`. Les évènements sont comptés pour tout le monde, avec ou sans ces droits.
 
 **Import.** Un évènement importé (`importe = true`) est daté de l'historique et compte pour le temps regardé, les films et épisodes vus,
-les séries terminées, les écoutes et la messagerie. Son identifiant est déterministe : rejoué, il est ignoré, les totaux ne changent
-pas. Il ne compte jamais pour les façons de regarder (sessions, épisodes enchaînés, abandons, intros passées).
+les séries terminées, les écoutes et la messagerie. Son identifiant est déterministe : rejoué, ou déjà reçu en réel sous le même identifiant, il est ignoré, les
+totaux ne changent pas. Il ne compte jamais pour les façons de regarder (sessions, épisodes enchaînés, abandons, intros passées).
 
 ### Entracte
 
@@ -186,6 +188,9 @@ préféré, temps en partage d'écran.
 
 - Un message dans un salon compte pour ce salon et pour le total. Les messages privés ne comptent que dans un total unique (`private`,
   clé `prive`) et dans le total général, sans détail par conversation.
+- Le vocal privé (sans serveur) suit la même règle : rangé sous la clé `prive`, servi en `private_voice_seconds`, compris dans
+  `voice_seconds`, jamais dans `top_voice_channel`. Aucun agrégat ne porte l'identifiant d'une conversation privée ; un message ou un
+  vocal sans serveur est toujours compté comme privé.
 - **Noms des salons** : Sablier ne connaît que des identifiants. La réponse donne `server` et `channel` ; le front lit le nom au moment
   de l'affichage dans ce que la personne peut voir. Un salon supprimé ou devenu inaccessible s'affiche « salon supprimé » et garde ses
   compteurs : Sablier ne purge rien quand un salon disparaît.

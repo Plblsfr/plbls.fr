@@ -198,6 +198,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn meme_identifiant_en_reel_puis_importe_compte_une_fois() {
+        let Some(e) = env().await else { return };
+        let (id, date) = ("import:sillon:ecoute:42", "2026-03-10T10:00:00Z");
+        assert_eq!(
+            e.recevoir(id, SUB, date, false, ecoute("p1", 200, true))
+                .await,
+            Issue::Applique
+        );
+        assert_eq!(
+            e.recevoir(id, SUB, date, true, ecoute("p1", 200, true))
+                .await,
+            Issue::Doublon
+        );
+        assert_eq!(
+            totaux(&lue(&e, "period=day&date=2026-03-10").await),
+            (200, 1, 1)
+        );
+        let importes: Vec<bool> = sqlx::query_scalar("SELECT importe FROM evenements")
+            .fetch_all(e.state.pool())
+            .await
+            .unwrap();
+        assert_eq!(importes, [false]);
+    }
+
+    #[tokio::test]
     async fn import_rejoue_deux_fois_memes_totaux() {
         let Some(e) = env().await else { return };
         let historique = [

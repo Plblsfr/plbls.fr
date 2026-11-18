@@ -25,16 +25,24 @@ pub const PARTAGE_SECONDES: &str = "messagerie.partage_secondes";
 
 pub const PRIVE: &str = "prive";
 
-fn cle_salon(serveur: Option<&str>, salon: &str) -> String {
-    format!("{}/{salon}", serveur.unwrap_or_default())
+fn cle_salon(serveur: Option<&str>, salon: Option<&str>, prive: bool) -> String {
+    match (serveur, salon) {
+        (Some(serveur), Some(salon)) if !prive => format!("{serveur}/{salon}"),
+        _ => PRIVE.to_string(),
+    }
 }
 
-fn salon_de(cle: &str) -> (Option<String>, String) {
+fn salon_de(cle: &str) -> (String, String) {
     let (serveur, salon) = cle.split_once('/').unwrap_or(("", cle));
-    (
-        (!serveur.is_empty()).then(|| serveur.to_string()),
-        salon.to_string(),
-    )
+    (serveur.to_string(), salon.to_string())
+}
+
+fn total_prive(par_cle: &[(String, i64)]) -> i64 {
+    par_cle
+        .iter()
+        .filter(|(cle, _)| cle == PRIVE)
+        .map(|(_, n)| n)
+        .sum()
 }
 
 pub async fn appliquer(
@@ -49,10 +57,7 @@ pub async fn appliquer(
             salon,
             prive,
         } => {
-            let cle = match salon {
-                Some(salon) if !prive => cle_salon(serveur.as_deref(), salon),
-                _ => PRIVE.to_string(),
-            };
+            let cle = cle_salon(serveur.as_deref(), salon.as_deref(), *prive);
             agregats::ajouter(tx, sub, jour, MESSAGES, &cle, 1).await
         }
         Donnees::EstompeFichier { nombre, .. } => {
@@ -70,7 +75,7 @@ pub async fn appliquer(
             salon,
             secondes,
         } => {
-            let cle = cle_salon(serveur.as_deref(), salon);
+            let cle = cle_salon(serveur.as_deref(), Some(salon), false);
             agregats::ajouter(tx, sub, jour, VOCAL_SECONDES, &cle, i64::from(*secondes)).await
         }
         Donnees::EstompeVocalAppel { secondes, .. } => {
@@ -85,14 +90,14 @@ pub async fn appliquer(
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SalonMessages {
-    pub server: Option<String>,
+    pub server: String,
     pub channel: String,
     pub messages: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SalonVocal {
-    pub server: Option<String>,
+    pub server: String,
     pub channel: String,
     pub seconds: i64,
 }
@@ -123,6 +128,7 @@ pub struct Stats {
     pub top_emoji: Option<Emoji>,
     pub files: i64,
     pub voice_seconds: i64,
+    pub private_voice_seconds: i64,
     pub longest_call: i64,
     pub top_voice_channel: Option<SalonVocal>,
     pub screen_share_seconds: i64,
@@ -149,11 +155,7 @@ pub async fn lire(pool: &PgPool, sub: &str, plage: &Plage) -> Result<Stats, sqlx
     Ok(Stats {
         intervalle,
         total: messages.iter().map(|(_, n)| n).sum(),
-        private: messages
-            .iter()
-            .filter(|(cle, _)| cle == PRIVE)
-            .map(|(_, n)| n)
-            .sum(),
+        private: total_prive(&messages),
         top_channel: by_channel.first().cloned(),
         by_channel,
         busiest_day: agregats::max_jour(pool, sub, MESSAGES, du, au)
@@ -167,15 +169,19 @@ pub async fn lire(pool: &PgPool, sub: &str, plage: &Plage) -> Result<Stats, sqlx
         }),
         files: agregats::somme(pool, sub, FICHIERS, du, au).await?,
         voice_seconds: vocal.iter().map(|(_, n)| n).sum(),
+        private_voice_seconds: total_prive(&vocal),
         longest_call: agregats::plus_grande(pool, sub, APPEL_MAX, du, au).await?,
-        top_voice_channel: vocal.first().map(|(cle, seconds)| {
-            let (server, channel) = salon_de(cle);
-            SalonVocal {
-                server,
-                channel,
-                seconds: *seconds,
-            }
-        }),
+        top_voice_channel: vocal
+            .iter()
+            .find(|(cle, _)| cle != PRIVE)
+            .map(|(cle, seconds)| {
+                let (server, channel) = salon_de(cle);
+                SalonVocal {
+                    server,
+                    channel,
+                    seconds: *seconds,
+                }
+            }),
         screen_share_seconds: agregats::somme(pool, sub, PARTAGE_SECONDES, du, au).await?,
     })
 }
@@ -272,6 +278,7 @@ mod tests {
                 "top_emoji": null,
                 "files": 0,
                 "voice_seconds": 0,
+                "private_voice_seconds": 0,
                 "longest_call": 0,
                 "top_voice_channel": null,
                 "screen_share_seconds": 0,
@@ -394,6 +401,7 @@ mod tests {
                 "top_emoji": {"emoji": "🎉", "count": 2},
                 "files": 4,
                 "voice_seconds": 1200,
+                "private_voice_seconds": 100,
                 "longest_call": 600,
                 "top_voice_channel": {"server": "srv", "channel": "voix", "seconds": 600},
                 "screen_share_seconds": 300,
@@ -434,13 +442,72 @@ mod tests {
         let Some(e) = env().await else { return };
         recevoir_tout(
             &e,
-            vec![("2026-03-13T21:00:00Z", vocal(None, "conv1", 100))],
+            vec![
+                ("2026-03-13T21:00:00Z", vocal(None, "conv1", 100)),
+                ("2026-03-13T21:10:00Z", vocal(None, "conv2", 900)),
+                (
+                    "2026-03-13T21:20:00Z",
+                    Donnees::EstompeVocalAppel {
+                        serveur: None,
+                        salon: "conv2".into(),
+                        secondes: 900,
+                    },
+                ),
+                (
+                    "2026-03-13T21:30:00Z",
+                    Donnees::EstompeMessage {
+                        serveur: None,
+                        salon: Some("conv3".into()),
+                        prive: false,
+                    },
+                ),
+            ],
         )
         .await;
+        let r = lue(&e, MARS).await;
         assert_eq!(
-            lue(&e, MARS).await["top_voice_channel"],
-            json!({"server": null, "channel": "conv1", "seconds": 100})
+            (
+                r["voice_seconds"].clone(),
+                r["private_voice_seconds"].clone(),
+                r["top_voice_channel"].clone(),
+                r["longest_call"].clone(),
+                r["private"].clone(),
+                r["by_channel"].clone(),
+            ),
+            (
+                json!(1000),
+                json!(1000),
+                Value::Null,
+                json!(900),
+                json!(1),
+                json!([])
+            )
         );
+        assert!(!r.to_string().contains("conv"));
+        recevoir_tout(
+            &e,
+            vec![("2026-03-14T21:00:00Z", vocal(Some("srv"), "voix", 50))],
+        )
+        .await;
+        let r = lue(&e, MARS).await;
+        assert_eq!(
+            (
+                r["voice_seconds"].clone(),
+                r["private_voice_seconds"].clone(),
+                r["top_voice_channel"].clone(),
+            ),
+            (
+                json!(1050),
+                json!(1000),
+                json!({"server": "srv", "channel": "voix", "seconds": 50})
+            )
+        );
+        let cles: Vec<String> =
+            sqlx::query_scalar("SELECT DISTINCT cle FROM agregats_jour WHERE cle LIKE '%conv%'")
+                .fetch_all(e.state.pool())
+                .await
+                .unwrap();
+        assert!(cles.is_empty(), "{cles:?}");
     }
 
     #[tokio::test]

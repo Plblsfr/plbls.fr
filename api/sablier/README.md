@@ -56,7 +56,8 @@ Image : `docker build -f api/sablier/Dockerfile .` (contexte : racine du dépôt
 
 ## Tests
 
-`TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres TEST_REDIS_URL=redis://localhost:6379 just test-sablier` : une
+`TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres TEST_REDIS_URL=redis://localhost:6379 just test-sablier`
+(`TEST_DATABASE_URL` se termine par le nom d'une base existante, `/postgres` : les bases de test sont créées à côté) : une
 base jetable par test, migrations appliquées, faux gateway et faux aegis (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`,
 `alice`, `bruno` (avec `sillon:access`), `diane` (avec `entracte:access`), `admin` ; `Env::recevoir` : un évènement par `file::traiter` ;
 `attendre` : attente d'une condition). Sans `TEST_DATABASE_URL`, les tests passent par testcontainers

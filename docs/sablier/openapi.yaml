@@ -159,16 +159,16 @@ paths:
         `total` : messages envoyés ; `private` : ceux des conversations privées, en un seul total ; `by_channel` : ceux des salons, par
         nombre décroissant ; `top_channel` : le premier de `by_channel` ; `busiest_day` : jour au plus grand nombre de messages.
         `reactions_given`, `reactions_received`, `top_emoji` (parmi les réactions données), `files` (fichiers et images envoyés).
-        `voice_seconds` : temps en vocal à plusieurs ; `longest_call` : durée du plus long appel terminé dans la période ;
-        `top_voice_channel` : salon vocal au plus grand temps ; `screen_share_seconds`. Durées en secondes.
-        Un salon est donné par ses identifiants (`server`, `null` hors serveur, et `channel`), jamais par son nom : Sablier ne connaît
-        pas les noms. Le front lit le nom dans ce que la personne peut voir au moment de l'affichage et affiche « salon supprimé »
+        `voice_seconds` : temps en vocal à plusieurs, dont `private_voice_seconds` en conversation privée ; `longest_call` : durée du plus long appel terminé dans la période ;
+        `top_voice_channel` : salon vocal de serveur au plus grand temps ; `screen_share_seconds`. Durées en secondes.
+        Un salon est donné par ses identifiants (`server` et `channel`), jamais par son nom : Sablier ne connaît pas les noms.
+        Seuls les salons de serveur sont détaillés : messages et vocal privés ne donnent que des totaux, sans identifiant de conversation. Le front lit le nom dans ce que la personne peut voir au moment de l'affichage et affiche « salon supprimé »
         pour un salon supprimé ou devenu inaccessible, dont les compteurs restent servis. Pour `all`, `from` et `to` comme `GET /usage`.
       parameters:
         - { $ref: "#/components/parameters/period" }
         - { $ref: "#/components/parameters/date" }
       responses:
-        "200": { description: "`{period, from, to, total, private, by_channel: [{server: string|null, channel, messages}], top_channel: {server, channel, messages}|null, busiest_day: {day, messages}|null, reactions_given, reactions_received, top_emoji: {emoji, count}|null, files, voice_seconds, longest_call, top_voice_channel: {server: string|null, channel, seconds}|null, screen_share_seconds}`" }
+        "200": { description: "`{period, from, to, total, private, by_channel: [{server, channel, messages}], top_channel: {server, channel, messages}|null, busiest_day: {day, messages}|null, reactions_given, reactions_received, top_emoji: {emoji, count}|null, files, voice_seconds, private_voice_seconds, longest_call, top_voice_channel: {server, channel, seconds}|null, screen_share_seconds}`" }
         "400": { description: "`invalid` : période ou date illisible" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
