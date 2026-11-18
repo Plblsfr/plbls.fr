@@ -76,6 +76,7 @@
 .sab-reg .plbls-toggle { flex: none; }
 .sab-reg--fixe { cursor: default; }
 .sab-reg--souple { flex-wrap: wrap; }
+.sab-reg--souple > .sab-grow { flex-basis: 220px; }
 .sab-reg--trait:first-of-type { border-top: 1px solid var(--trait); }
 .sab-erreur { color: var(--danger); }
 .sab-alerte { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border-radius: var(--r-l); background: var(--rose); color: var(--encre); font-size: 14.5px; }

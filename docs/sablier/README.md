@@ -472,3 +472,9 @@ La section « Stats » de l'app d'Estompe (`web/estompe/src/sections/sablier`, r
 pastille (`GET /unseen`, `POST /seen`), partage (`GET`/`PUT /sharing`) et bloc du profil (`GET /profiles/{user}`) : voir
 [`web/estompe/README.md`](../../web/estompe/README.md), « Section Stats ». Le front rédige tous les textes à partir des totaux et des
 `highlights`, et lit le nom des salons dans ce que la personne peut voir.
+
+« Partage et données » porte aussi l'export (`GET /export`, enregistré en fichier), l'effacement (`DELETE /data`, après avoir écrit
+EFFACER) et le journal « qui a consulté mes stats » (`GET /views`). L'administration (`#/stats/admin`) lit `/admin/people`, les stats
+d'une personne par `/admin/people/{sub}/…` avec un bandeau qui rappelle que la consultation est journalisée, `/admin/totals`,
+`/admin/audit` et la configuration des trophées (`/admin/trophies`, `/admin/catalogue`) ; l'effacement des données d'une personne
+demande la même confirmation.

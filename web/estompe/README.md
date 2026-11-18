@@ -16,7 +16,7 @@ npm run build
 npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et Rust requis)
 npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
-npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, Sablier arrêté : API simulées
+npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, export, effacement, administration, Sablier arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -76,24 +76,40 @@ système de Chromium doivent être présentes).
   reprend le cycle. Le battement porte la plateforme (`platform.id()` : `web`, `pwa`, `windows`, `android`) et la section déduite de la route
   (`sectionDe` : `messagerie`, `entracte`, `sillon`, `regie`, `sablier`, `admin`, `autre`). Un échec (réseau, 401, 5xx) est ignoré : ces appels
   passent l'option `discret` de `requestAt`, sans seconde tentative ni perte de session, et le battement suivant part à son heure.
-  **Section Stats** (`#/stats[/<sous-section>[/<id>]]`, route `stats`) : affichée selon `GET /me` de Sablier (`permissions.access`, lu au démarrage
+  **Section Stats** (`#/stats[/<sous-section>[/<id>[/<détail>]]]`, route `stats`) : affichée selon `GET /me` de Sablier (`permissions.access`, lu au démarrage
   par `app.loadSablier` : `app.sablierMe`, `app.stats`) ; `/me` en échec ou Sablier absent : pas de section, rien d'autre ne change. Entrée dans le
   rail (`ServerRail`) et dans `SectionsShell`, navigation `SablierNav`, coque `SablierSpace` :
   - `#/stats` : `SablierJeu`, jeu et trophées. `SablierPeriode` (semaine, mois, année, tout, périodes précédentes), `SablierSeries`,
     `SablierTrophees`, une `SablierCarte` par domaine, `SablierAnnonce` (trophée débloqué ou récap disponible à l'ouverture, dans `Modal`).
   - `#/stats/recaps` : `SablierRecaps`, liste des récaps ; `#/stats/recaps/<id>` : `SablierRecap`, le récap en histoire, plein écran
     (flèches, Début, Fin, Échap ; moitiés gauche et droite ; balayage).
-  - `#/stats/partage` : `SablierPartage`, réglage de partage stat par stat et trophée par trophée (`PUT /sharing` à chaque bascule).
-  - `#/stats/admin` : `SablierAdmin`, seulement avec `permissions.admin`.
+  - `#/stats/partage` : `SablierPartage`, réglage de partage stat par stat et trophée par trophée (`PUT /sharing` à chaque bascule), puis
+    `SablierDonnees` : export (`GET /export` lu en blob par `fichierAt` de `lib/api.ts`, enregistré sous le nom de `Content-Disposition`
+    par un lien `download`, comme les autres exports de l'app), effacement (`DELETE /data`, après la confirmation partagée `ConfirmModal`
+    où il faut écrire EFFACER ; l'état de la section est ensuite remis à zéro et la section rouverte), journal « qui a consulté mes
+    stats » (`GET /views`, absent s'il est vide).
+  - `#/stats/admin[/<onglet>[/<id>]]` : `SablierAdmin`, seulement avec `permissions.admin` (sinon la route rend le jeu et les trophées).
+    Onglets `personnes` (`SablierAdminPersonnes` : liste, recherche locale, personnes sans compte, avertissement quand l'annuaire est
+    `local`), `personnes/<sub>` (`SablierPersonne` : les mêmes cartes, séries, trophées et récaps que la section, lus par les routes
+    `/admin/people/{sub}/…` ; bandeau « consultation notée au journal », absent pour ses propres stats ; salon que l'admin ne voit pas :
+    « salon supprimé ou inaccessible »), `totaux` (`SablierAdminTotaux`), `journal` (`SablierAdminJournal`, pages « Plus anciens »),
+    `trophees` (`SablierAdminTrophees` : liste, activation), `trophees/nouveau` et `trophees/<id>` (`SablierTropheeEdition`). L'effacement
+    des données d'une personne passe par la même confirmation EFFACER (`effacement.ts`).
   - Profil : `SablierProfil` dans `ProfileModal`, si Sablier est configuré et que le lecteur a `sablier:access` ; il rend ce que
-    `GET /profiles/{sub}` sert et rien si c'est vide ou en échec. Le `sub` est celui du lecteur pour son propre profil, sinon le champ
-    `sub` du membre quand l'API d'Estompe le donne : sans lui, pas de bloc sur le profil d'une autre personne.
+    `GET /profiles/{user}` sert pour l'identifiant Estompe de la personne (le sien compris, donc aussi depuis un message privé), et rien
+    si c'est vide ou en échec. Le front ne connaît le `sub` d'aucune autre personne.
   - Logique pure, testée à part : `formats.ts` (durées, nombres, jours), `periodes.ts` (bornes et navigation : ni avant `first_day`, ni après
     la période en cours), `stats.ts` (ce qu'une carte affiche : une stat nulle n'a pas de ligne, `{access: false}` donne la carte courte au
     cadenas, un domaine vide une carte qui renvoie vers une période plus large qui a des données ; noms des salons lus dans `app.details`,
     « salon supprimé » sinon ; séries ; trophées), `recap.ts` (écrans du récap rédigés depuis les totaux et `highlights`, écran sans rien à
-    dire sauté ; rangement de la liste). `essais.ts` : jeux d'essai des tests.
-  - `sablier.svelte.ts` : état (`sablier`, classe `EtatSablier`, client et horloge injectables). `ouvrir` charge trophées, séries, stats
+    dire sauté ; rangement de la liste), `admin.ts` (noms et filtres des listes, lignes du tableau des trophées, formulaire d'un trophée :
+    `versRequete` valide comme le serveur et rend le corps du `POST`, ou les seuls champs changés pour le `PATCH` ; durées saisies en
+    heures et envoyées en secondes). `essais.ts` : jeux d'essai des tests.
+  - `sablier.ts` : `sablierApi` (routes de la personne), `adminApi` (routes `sablier:admin`), `lecturesDe(sub)` (les lectures d'une
+    personne par les routes d'administration, de même forme que celles de `sablierApi`).
+  - `sablier.svelte.ts` : `NavigationPeriode` (période, date, bornes ; sert aussi aux totaux) et l'état (`sablier`, classe `EtatSablier`,
+    client et horloge injectables ; troisième argument `consultation` pour la vue d'administration : ni annonce, ni `/unseen`, ni
+    `POST /seen`). `admin.svelte.ts` : liste des personnes de l'administration (`admin`). `ouvrir` charge trophées, séries, stats
     et non vus ; `choisir`, `reculer`, `avancer`, `aller` rechargent les quatre domaines ; `tropheeVu` et `lireRecap` envoient `POST /seen`
     puis relisent `/unseen` (pastille du rail et de la navigation : `sablier.pastille`, `sablier.nonVus`) ; `chargerRecaps`,
     `chargerPartage`, `partager`. Sablier injoignable : `erreur` et l'écran `SablierErreur` avec « Réessayer », le reste de l'app continue.
@@ -119,7 +135,8 @@ dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les d
 `e2e/sillon.spec.ts`) fait de même pour Sillon, avec des pistes WAV générées dans le test (le Chromium de Playwright ne lit ni AAC ni MP3 de façon fiable).
 `npm run e2e:regie` (`playwright.regie.config.ts`, `e2e/regie.spec.ts`) vérifie la section Régie avec et sans `regie:admin`. `npm run e2e:sablier`
 (`playwright.sablier.config.ts`, `e2e/sablier.spec.ts`, faux Sablier et fausse API d'Estompe dans `e2e/faux-sablier.ts`, horloge du navigateur
-fixée) vérifie la section Stats : permissions, périodes, récap au clavier et au toucher, pastille, partage et profil, Sablier arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
+fixée) vérifie la section Stats : permissions, périodes, récap au clavier et au toucher, pastille, partage et profil, export (fichier
+téléchargé comparé à celui du serveur), effacement, parcours d'administration, Sablier arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
 
 ## Application Windows
