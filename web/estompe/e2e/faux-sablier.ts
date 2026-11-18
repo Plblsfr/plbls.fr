@@ -18,6 +18,7 @@ export interface Profil {
   arrete?: boolean
   aucuneActivite?: boolean
   sectionEntracte?: boolean
+  annuaireLocal?: boolean
 }
 
 type Corps = Record<string, unknown>
@@ -94,6 +95,25 @@ const EN_COURS = [
   { id: 2, key: 'encore_un_episode', name: 'Encore un épisode', description: 'Des épisodes vus, un par un.', icon: 'tele', tier: 2, tiers: 4, value: 284, next_threshold: 1000, unit: 'count' },
   { id: 26, key: 'appel_fleuve', name: 'Appel fleuve', description: 'Un appel de trois heures.', icon: 'inconnue-du-front', tier: 0, tiers: 1, value: 2 * H + 2100, next_threshold: 3 * H, unit: 'seconds' },
 ]
+export const CATALOGUE = {
+  stats: [
+    { key: 'usage.active_seconds', label: 'temps actif', domain: 'usage', unit: 'seconds', shareable: true, tiers: true },
+    { key: 'usage.active_days', label: 'jours actifs', domain: 'usage', unit: 'days', shareable: true, tiers: true },
+    { key: 'usage.first_day', label: 'premier jour d’activité', domain: 'usage', unit: 'date', shareable: true, tiers: false },
+    { key: 'entracte.movies_watched', label: 'films vus', domain: 'entracte', unit: 'count', shareable: true, tiers: true },
+    { key: 'entracte.episodes_watched', label: 'épisodes vus', domain: 'entracte', unit: 'count', shareable: true, tiers: true },
+    { key: 'sillon.seconds', label: 'temps d’écoute', domain: 'sillon', unit: 'seconds', shareable: true, tiers: true },
+    { key: 'messaging.messages', label: 'messages envoyés', domain: 'messaging', unit: 'count', shareable: true, tiers: true },
+    { key: 'streak.global', label: 'série de jours, toutes activités', domain: 'usage', unit: 'days', shareable: true, tiers: true },
+  ],
+  exploits: [
+    { key: 'episodes_enchaines', label: 'épisodes enchaînés', condition: 'épisodes vus dans une même session', domain: 'entracte', unit: 'count', default_parameter: 5 },
+    { key: 'long_appel', label: 'long appel', condition: 'secondes d’un appel', domain: 'messaging', unit: 'seconds', default_parameter: 10_800 },
+    { key: 'meme_emoji', label: 'même emoji', condition: 'un même emoji donné en réaction', domain: 'messaging', unit: 'count', default_parameter: 500 },
+    { key: 'mois_parfait', label: 'mois parfait', condition: 'du temps actif tous les jours d’un mois', domain: 'usage', unit: 'count', default_parameter: null },
+  ],
+  periods: ['day', 'week', 'month', 'all'],
+}
 const STATS_PARTAGEABLES = [
   { key: 'usage.active_seconds', label: 'Temps actif', domain: 'usage', unit: 'seconds', mois: 31 * H + 1200, total: 412 * H },
   { key: 'streak.global', label: 'Série de jours', domain: 'usage', unit: 'days', mois: 12, total: 41 },
@@ -113,11 +133,44 @@ export function serveurSablier() {
       { id: 5, kind: 'year', period: '2025', created_at: '2026-01-01T03:00:00Z', seen: true },
     ],
     partages: new Set<string>(),
+    efface: false,
+    effaces: new Set<string>(),
+    vues: [
+      { date: '2026-11-12T20:14:00Z', admin_name: 'Sacha', action: 'consultation' },
+      { date: '2026-09-03T08:02:00Z', admin_name: 'Sacha', action: 'consultation' },
+    ],
+    personnes: [
+      { sub: 'kc-camille', name: 'Camille', known: true, last_seen: '2026-11-18T08:00:00Z', first_day: '2024-03-03', last_day: '2026-11-18', active_seconds_total: 412 * H },
+      { sub: 'kc-moi', name: 'moi', known: true, last_seen: '2026-11-18T09:00:00Z', first_day: PREMIER_JOUR, last_day: '2026-11-17', active_seconds_total: 52 * H },
+      { sub: 'kc-noe', name: 'Noé', known: true, last_seen: '2026-11-17T09:00:00Z', first_day: '2025-01-10', last_day: '2026-11-12', active_seconds_total: 31 * H },
+      { sub: '7f3a9d2e-0000-4000-8000-0000000000c2', name: null, known: false, last_seen: null, first_day: '2024-03-03', last_day: '2026-06-12', active_seconds_total: 80 * H },
+    ],
+    journal: Array.from({ length: 58 }, (_, i) => ({ id: 58 - i, date: new Date(Date.parse('2026-11-18T15:40:00Z') - i * 26 * 3_600_000).toISOString(), action: i === 3 ? 'effacement' : 'consultation', admin_sub: i % 5 === 4 ? 'kc-ines' : 'kc-sacha', admin_name: i % 5 === 4 ? 'Inès' : 'Sacha', target_sub: i % 7 === 6 ? '7f3a9d2e-0000-4000-8000-0000000000c2' : i % 2 ? 'kc-noe' : 'kc-camille', target_name: i % 7 === 6 ? null : i % 2 ? 'Noé' : 'Camille' })),
+    tropheesAdmin: [
+      { id: 1, key: 'cinephile', name: 'Cinéphile', description: 'Des films vus jusqu’au bout.', icon: 'film', hidden: false, active: true, kind: 'tiers', stat: 'entracte.movies_watched', period: 'all', thresholds: [10, 50, 150, 400], exploit: null, parameter: null, order: 1, unlocked_by: 6 },
+      { id: 6, key: 'platine', name: 'Platine', description: 'Du temps passé à écouter.', icon: 'casque', hidden: false, active: true, kind: 'tiers', stat: 'sillon.seconds', period: 'all', thresholds: [86_400, 360_000, 1_800_000, 7_200_000], exploit: null, parameter: null, order: 6, unlocked_by: 4 },
+      { id: 15, key: 'habitue', name: 'Habitué', description: 'Des jours actifs dans un même mois.', icon: 'calendar', hidden: false, active: true, kind: 'tiers', stat: 'usage.active_days', period: 'month', thresholds: [10, 20, 28], exploit: null, parameter: null, order: 15, unlocked_by: 9 },
+      { id: 17, key: 'sur_la_lancee', name: 'Sur la lancée', description: 'Des jours d’affilée, toutes activités confondues.', icon: 'etincelle', hidden: false, active: true, kind: 'tiers', stat: 'streak.global', period: 'all', thresholds: [3, 7, 30, 100, 365], exploit: null, parameter: null, order: 17, unlocked_by: 11 },
+      { id: 22, key: 'marathon', name: 'Marathon', description: 'Cinq épisodes d’affilée.', icon: 'suivant', hidden: false, active: true, kind: 'exploit', stat: null, period: null, thresholds: [], exploit: 'episodes_enchaines', parameter: 5, order: 22, unlocked_by: 3 },
+      { id: 26, key: 'appel_fleuve', name: 'Appel fleuve', description: 'Un appel de trois heures.', icon: 'mic', hidden: false, active: false, kind: 'exploit', stat: null, period: null, thresholds: [], exploit: 'long_appel', parameter: 10_800, order: 26, unlocked_by: 0 },
+      { id: 28, key: 'signature', name: 'Signature', description: 'Le même emoji, encore et encore.', icon: 'sourire', hidden: true, active: true, kind: 'exploit', stat: null, period: null, thresholds: [], exploit: 'meme_emoji', parameter: 500, order: 28, unlocked_by: 1 },
+      { id: 32, key: 'mois_parfait', name: 'Mois parfait', description: 'Actif tous les jours d’un mois.', icon: 'calendar', hidden: true, active: true, kind: 'exploit', stat: null, period: null, thresholds: [], exploit: 'mois_parfait', parameter: null, order: 32, unlocked_by: 0 },
+    ] as Corps[],
     appels: [] as { methode: string; chemin: string; corps: Corps }[],
     lectures: [] as string[],
   }
 }
 export type Sablier = ReturnType<typeof serveurSablier>
+
+export const exportDe = (srv: Sablier) => ({
+  exported_at: '2026-11-18T09:00:00Z', sub: 'kc-moi', name: 'moi', last_seen: '2026-11-18T09:00:00Z', last_heartbeat: '2026-11-18T08:59:30Z', pending_evaluation: null, entracte_session: null,
+  aggregates: [{ day: '2026-11-17', stat: 'messagerie.messages', key: 'prive', value: 12 }],
+  trophies: srv.trophees.map((t) => ({ key: t.key, name: t.name, tier: t.tier, unlocked_at: t.unlocked_at })),
+  recaps: srv.recaps.map((r) => ({ id: r.id, kind: r.kind, period: r.period })),
+  sharing: { stats: [...srv.partages], trophies: srv.trophees.filter((t) => t.shared).map((t) => t.key) },
+  views: srv.vues,
+  events: [{ id: 'e1', source: 'estompe', type: 'estompe.message', date: '2026-11-17T10:00:00Z', imported: false, data: { serveur: null, salon: null, prive: true } }],
+})
 
 function recap(id: number, srv: Sablier, p: Profil) {
   const r = srv.recaps.find((x) => x.id === id)
@@ -198,12 +251,28 @@ export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSabli
     if (url.pathname === '/me') return json(route, { sub: 'kc-moi', name: 'moi', email: '', permissions: { access: acces, admin: !!p.admin, entracte: p.entracte !== false, sillon: p.sillon !== false }, sections: acces ? ['stats', ...(p.admin ? ['admin'] : [])] : [], heartbeat_seconds: 30 })
     if (url.pathname === '/heartbeat') return vide(route)
     if (!acces) return json(route, { error: 'forbidden', message: 'permission sablier:access requise' }, 403)
+    const admin = url.pathname.startsWith('/admin/')
+    if (admin && !p.admin) return json(route, { error: 'forbidden', message: 'permission sablier:admin requise' }, 403)
+    const visee = /^\/admin\/people\/([^/]+)(\/.+)$/.exec(url.pathname)
+    const cible = visee ? decodeURIComponent(visee[1]) : null
+    const chemin = visee ? visee[2] : url.pathname
+    if (cible && chemin === '/data') {
+      if (corps.confirm !== 'EFFACER') return json(route, { error: 'invalid', message: 'confirm : EFFACER attendu' }, 400)
+      srv.effaces.add(cible)
+      srv.personnes = srv.personnes.filter((x) => x.sub !== cible || x.known).map((x) => (x.sub === cible ? { ...x, first_day: null, last_day: null, active_seconds_total: 0 } : x))
+      srv.journal.unshift({ id: srv.journal.length + 1, date: '2026-11-18T09:00:00Z', action: 'effacement', admin_sub: 'kc-moi', admin_name: 'moi', target_sub: cible, target_name: srv.personnes.find((x) => x.sub === cible)?.name ?? null })
+      return vide(route)
+    }
+    if (cible && cible !== 'kc-moi' && srv.journal[0]?.target_sub !== cible) srv.journal.unshift({ id: srv.journal.length + 1, date: '2026-11-18T09:00:00Z', action: 'consultation', admin_sub: 'kc-moi', admin_name: 'moi', target_sub: cible, target_name: srv.personnes.find((x) => x.sub === cible)?.name ?? null })
+    const rien = cible ? srv.effaces.has(cible) : !!p.aucuneActivite || srv.efface
+    const entracteOuvert = !!cible || p.entracte !== false
+    const sillonOuvert = !!cible || p.sillon !== false
     const periode = url.searchParams.get('period') ?? 'month'
     const date = url.searchParams.get('date') ?? AUJOURDHUI
     const [from, to] = plage(periode, date)
     const cle = periode === 'all' ? 'all' : periode === 'year' ? `year:${from.slice(0, 4)}` : periode === 'month' ? `month:${from.slice(0, 7)}` : `week:${from}`
-    const j = jeu(p.aucuneActivite ? 'rien' : cle, periode, from, to)
-    const debloques = p.aucuneActivite ? [] : srv.trophees.filter((t) => (p.entracte !== false || !['encore_un_episode', 'marathon'].includes(t.key)))
+    const j = jeu(rien ? 'rien' : cle, periode, from, to)
+    const debloques = rien ? [] : srv.trophees.filter((t) => (entracteOuvert || !['encore_un_episode', 'marathon'].includes(t.key)))
     const profil = (id: string) => {
       if (id === 'u-camille') return { month: [{ key: 'messaging.messages', label: 'Messages envoyés', domain: 'messaging', unit: 'count', value: 77 }], total: [{ key: 'messaging.messages', label: 'Messages envoyés', domain: 'messaging', unit: 'count', value: 5120 }], trophies: [{ name: 'Pipelette', description: 'Des messages envoyés.', icon: 'bulle', tier: 3, unlocked_at: '2026-08-02' }] }
       const stats = STATS_PARTAGEABLES.filter((s) => srv.partages.has(s.key))
@@ -217,35 +286,72 @@ export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSabli
       stats: STATS_PARTAGEABLES.filter((s) => (s.domain !== 'entracte' || p.entracte !== false) && (s.domain !== 'sillon' || p.sillon !== false)).map((s) => ({ key: s.key, label: s.label, domain: s.domain, shared: srv.partages.has(s.key) })),
       trophies: debloques.map((t) => ({ id: t.id, name: t.name, icon: t.icon, shared: t.shared })),
     })
-    const unRecap = /^\/recaps\/(\d+)$/.exec(url.pathname)
+    const unRecap = /^\/recaps\/(\d+)$/.exec(chemin)
     if (unRecap) {
       const r = recap(Number(unRecap[1]), srv, p)
-      if (r) srv.lectures.push(unRecap[1])
-      return r ? json(route, r) : json(route, { error: 'not_found', message: 'récap introuvable' }, 404)
+      if (r && !cible) srv.lectures.push(unRecap[1])
+      return r && !rien ? json(route, r) : json(route, { error: 'not_found', message: 'récap introuvable' }, 404)
     }
     const unProfil = /^\/profiles\/([^/]+)$/.exec(url.pathname)
     if (unProfil) return json(route, profil(decodeURIComponent(unProfil[1])))
-    switch (url.pathname) {
-      case '/usage': return json(route, p.aucuneActivite ? usageVide(periode, from, to, null) : j.usage)
-      case '/entracte': return json(route, p.entracte === false ? { access: false } : j.entracte)
-      case '/sillon': return json(route, p.sillon === false ? { access: false } : j.sillon)
+    const unTrophee = /^\/admin\/trophies\/(\d+)$/.exec(url.pathname)
+    if (unTrophee && m === 'PATCH') {
+      const t = srv.tropheesAdmin.find((x) => x.id === Number(unTrophee[1]))
+      if (!t) return json(route, { error: 'not_found', message: 'trophée introuvable' }, 404)
+      Object.assign(t, corps)
+      return json(route, t)
+    }
+    switch (chemin) {
+      case '/usage': return json(route, rien ? usageVide(periode, from, to, null) : j.usage)
+      case '/entracte': return json(route, !entracteOuvert ? { access: false } : j.entracte)
+      case '/sillon': return json(route, !sillonOuvert ? { access: false } : j.sillon)
       case '/messaging': return json(route, j.messaging)
-      case '/trophies': return json(route, { unlocked: debloques, in_progress: p.aucuneActivite ? EN_COURS.filter((t) => t.tier === 0) : EN_COURS.filter((t) => p.sillon !== false || t.key !== 'platine'), hidden_remaining: 4 })
-      case '/streaks': return json(route, p.aucuneActivite ? { global: { current: 0, best: 0 }, entracte: null, sillon: null, messaging: { current: 0, best: 0 } } : { global: { current: 12, best: 41 }, entracte: p.entracte === false ? null : { current: 0, best: 9 }, sillon: p.sillon === false ? null : { current: 12, best: 28 }, messaging: { current: 5, best: 41 } })
-      case '/unseen': return json(route, { trophies: debloques.filter((t) => !t.seen).length, recaps: p.aucuneActivite ? 0 : srv.recaps.filter((r) => !r.seen).length })
+      case '/trophies': return json(route, { unlocked: debloques, in_progress: rien ? EN_COURS.filter((t) => t.tier === 0) : EN_COURS.filter((t) => sillonOuvert || t.key !== 'platine'), hidden_remaining: 4 })
+      case '/streaks': return json(route, rien ? { global: { current: 0, best: 0 }, entracte: null, sillon: null, messaging: { current: 0, best: 0 } } : { global: { current: 12, best: 41 }, entracte: !entracteOuvert ? null : { current: 0, best: 9 }, sillon: !sillonOuvert ? null : { current: 12, best: 28 }, messaging: { current: 5, best: 41 } })
+      case '/unseen': return json(route, { trophies: debloques.filter((t) => !t.seen).length, recaps: rien ? 0 : srv.recaps.filter((r) => !r.seen).length })
       case '/seen': {
         const marquer = <T extends { id: number; seen: boolean }>(liste: T[], ids: unknown) => { for (const x of liste) if (ids === 'all' || (Array.isArray(ids) && ids.includes(x.id))) x.seen = true }
         marquer(srv.trophees, corps.trophies)
         marquer(srv.recaps, corps.recaps)
         return vide(route)
       }
-      case '/recaps': return json(route, p.aucuneActivite ? [] : srv.recaps)
+      case '/recaps': return json(route, rien ? [] : srv.recaps)
       case '/sharing':
         if (m === 'PUT') {
           for (const [k, v] of Object.entries((corps.stats ?? {}) as Record<string, boolean>)) { if (v) srv.partages.add(k); else srv.partages.delete(k) }
           for (const [k, v] of Object.entries((corps.trophies ?? {}) as Record<string, boolean>)) { const t = srv.trophees.find((x) => String(x.id) === k); if (t) t.shared = v }
         }
         return json(route, reglages())
+      case '/views': return json(route, srv.vues)
+      case '/export':
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(exportDe(srv)), headers: { ...cors, 'content-disposition': 'attachment; filename="sablier-export-2026-11-18.json"', 'access-control-expose-headers': 'Content-Disposition' } })
+      case '/data':
+        if (m !== 'DELETE' || corps.confirm !== 'EFFACER') return json(route, { error: 'invalid', message: 'confirm : EFFACER attendu' }, 400)
+        srv.efface = true
+        srv.partages.clear()
+        return vide(route)
+      case '/admin/people': return json(route, { directory: p.annuaireLocal ? 'local' : 'aegis', people: srv.personnes })
+      case '/admin/totals': {
+        const total = { active_people: 14, usage_seconds: 388 * H, watched_seconds: 211 * H, listened_seconds: 164 * H, messages: 6420 }
+        const jours = periode === 'month' || periode === 'week' ? j.usage.by_day.map((d: { day: string; seconds: number }) => ({ day: d.day, active_people: 5, usage_seconds: d.seconds * 12, watched_seconds: d.seconds * 6, listened_seconds: d.seconds * 5, messages: 300 })) : []
+        return json(route, { period: periode, from, to, ...(cle === 'month:2026-11' || periode === 'all' || periode === 'year' ? total : { active_people: 0, usage_seconds: 0, watched_seconds: 0, listened_seconds: 0, messages: 0 }), by_day: jours })
+      }
+      case '/admin/audit': {
+        const avant = Number(url.searchParams.get('before')) || Infinity
+        const limite = Number(url.searchParams.get('limit')) || 50
+        const suite = srv.journal.filter((e) => e.id < avant)
+        const page = suite.slice(0, limite)
+        return json(route, { directory: p.annuaireLocal ? 'local' : 'aegis', entries: page, next_before: suite.length > limite ? page[page.length - 1].id : null })
+      }
+      case '/admin/catalogue': return json(route, CATALOGUE)
+      case '/admin/trophies':
+        if (m === 'POST') {
+          if (srv.tropheesAdmin.some((t) => t.key === corps.key)) return json(route, { error: 'conflict', message: 'key déjà utilisée' }, 409)
+          const t = { id: 100 + srv.tropheesAdmin.length, hidden: false, active: true, stat: null, period: null, thresholds: [], exploit: null, parameter: null, order: 99, unlocked_by: 0, ...corps }
+          srv.tropheesAdmin.push(t)
+          return json(route, t, 201)
+        }
+        return json(route, srv.tropheesAdmin)
       default: return json(route, { error: 'not_found', message: 'introuvable' }, 404)
     }
   })
