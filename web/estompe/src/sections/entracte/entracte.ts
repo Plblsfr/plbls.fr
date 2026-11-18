@@ -90,6 +90,25 @@ export interface EntracteStatus {
   configured: { radarr: boolean; sonarr: boolean; tmdb: boolean; push: boolean }
 }
 
+export type IntroMode = 'manuel' | 'automatique'
+export type IntroState = 'jamais' | 'en_file' | 'en_cours' | 'trouvee' | 'rien' | 'erreur'
+export interface IntroSeason { number: number; episodes: number; found: number; state: IntroState; error: string | null; updated_at: string | null }
+export interface IntroSeries { id: string; title: string; year: number | null; seasons: IntroSeason[] }
+export interface IntroAdmin { mode: IntroMode; available: boolean; items: IntroSeries[] }
+
+const INTRO_LABEL: Record<IntroState, string> = {
+  jamais: 'Jamais analysée',
+  en_file: 'En file',
+  en_cours: 'Analyse en cours',
+  trouvee: 'Intro trouvée',
+  rien: 'Rien trouvé',
+  erreur: 'Erreur',
+}
+export const introLabel = (s: IntroSeason) => (s.state === 'trouvee' ? `Intro trouvée (${s.found} sur ${s.episodes})` : (INTRO_LABEL[s.state] ?? s.state))
+export const introTone = (s: IntroState) => (s === 'trouvee' ? 'ok' : s === 'erreur' ? 'dgr' : s === 'en_file' || s === 'en_cours' ? 'info' : '')
+export const introPending = (s: IntroSeries) => s.seasons.some((x) => x.state === 'en_file' || x.state === 'en_cours')
+export const introAnalysed = (s: IntroSeries) => s.seasons.some((x) => x.state !== 'jamais')
+
 export interface EntracteNotification { id: number; kind: string; request_id: string | null; title: string; body: string; created_at: string }
 
 export const TMDB_ATTRIBUTION = 'Métadonnées et affiches fournies par TMDB. Entracte utilise l’API de TMDB sans être approuvé ni certifié par TMDB.'

@@ -258,7 +258,11 @@ impl Synchro<'_> {
             }
         };
         let taille = i64::try_from(meta.len()).unwrap_or(i64::MAX);
-        let modifie: Option<DateTime<Utc>> = meta.modified().ok().map(DateTime::<Utc>::from);
+        let modifie: Option<DateTime<Utc>> = meta
+            .modified()
+            .ok()
+            .map(DateTime::<Utc>::from)
+            .and_then(|d| DateTime::from_timestamp_micros(d.timestamp_micros()));
         let connu = sqlx::query("SELECT taille, modifie_le FROM fichiers WHERE chemin = $1")
             .bind(&local)
             .fetch_optional(self.pool())
@@ -369,6 +373,7 @@ pub async fn enregistrer_fichier(
     modifie: Option<DateTime<Utc>>,
     analyse: &Analyse,
 ) -> Result<(), sqlx::Error> {
+    crate::intros::oublier_si_change(pool, chemin, taille, modifie).await?;
     sqlx::query(
         "INSERT INTO fichiers (titre_id, chemin, taille, modifie_le, infos) VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (chemin) DO UPDATE SET titre_id = EXCLUDED.titre_id, taille = EXCLUDED.taille,
@@ -465,4 +470,5 @@ async fn passe(state: &AppState) {
         noter(state.pool(), "tmdb", s.tmdb_en_erreur.as_deref()).await;
     }
     crate::demandes::marquer_disponibles(state).await;
+    crate::intros::apres_synchro(state).await;
 }

@@ -311,7 +311,7 @@ const film: Factory = async (el, h) => {
         t.src = filmsApi.base + s.url
       }
       showSubtitle()
-      h.onTracks?.({ audio: p.audio, subtitles: p.subtitles, audioN: audio, subN: sub, qualities: p.qualities, quality: p.quality ?? quality })
+      h.onTracks?.({ audio: p.audio, subtitles: p.subtitles, audioN: audio, subN: sub, qualities: p.qualities, quality: p.quality ?? quality, intro: p.intro ?? null })
       adapter.load(filmsApi.base + p.url, Math.max(0, start - offset), play)
     } catch (e) {
       if (!gone) h.onError(e instanceof ApiError ? e.message : 'La lecture n’a pas pu démarrer.')

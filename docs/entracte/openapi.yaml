@@ -147,7 +147,8 @@ paths:
         Corps : `{quality: original|1080p|720p|480p, audio: n, start: secondes, support: {containers, video, audio}}`.
         Lecture directe si le fichier est lisible tel quel par le client (qualité originale, conteneur et codecs annoncés,
         première piste audio), sinon HLS transcodé par ffmpeg (un transcodage par spectateur ; rouvrir le même titre remplace
-        l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, forced, url}]}`.
+        l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, forced, url}], intro}`.
+        `intro` : `{debut, fin}` en secondes du titre quand l'intro de l'épisode a été détectée (voir `/admin/intros`), sinon `null` (toujours `null` pour un film).
         En HLS, la position réelle vaut `offset` + le temps du lecteur ; `offset` est au plus `start` (image clé qui précède, quand la vidéo est recopiée) et le lecteur avance jusqu'à `start`.
       responses:
         "200": { description: flux ouvert }
@@ -316,6 +317,39 @@ paths:
       responses:
         "202": { description: lancée }
         "403": { $ref: "#/components/responses/403" }
+  /admin/intros:
+    get:
+      summary: "Détection des intros : mode et état de chaque saison"
+      description: "`mode` : `manuel` (défaut) ou `automatique`. `available` : faux si ni le muxer chromaprint de ffmpeg ni fpcalc ne sont utilisables. État d'une saison : `jamais`, `en_file`, `en_cours`, `trouvee`, `rien` ou `erreur` (`error` : message sans chemin de fichier). `found` : épisodes dont l'intro est connue."
+      responses:
+        "200": { description: "`{mode, available, items: [{id, title, year, seasons: [{number, episodes, found, state, error, updated_at}]}]}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/intros/mode:
+    put:
+      summary: "Choisir le mode de détection des intros (`{mode: manuel|automatique}`)"
+      description: "`automatique` : les saisons jamais analysées sont mises en file tout de suite, puis après chaque synchronisation du catalogue. `manuel` : rien ne démarre seul."
+      responses:
+        "200": { description: "`{mode}`" }
+        "400": { description: mode inconnu }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/intros/titles/{id}/analyze:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    post:
+      summary: "Mettre en file l'analyse (ou la réanalyse) des intros d'une série"
+      description: "Corps facultatif : `{season: n}` pour une seule saison. Les saisons déjà en file ou en cours ne sont pas comptées."
+      responses:
+        "202": { description: "`{queued}` : nombre de saisons mises en file" }
+        "400": { description: saison invalide }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { $ref: "#/components/responses/404" }
+  /admin/intros/titles/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    delete:
+      summary: "Effacer les intros, les empreintes et l'état d'analyse d'une série"
+      responses:
+        "204": { description: effacé }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { $ref: "#/components/responses/404" }
   /push/key:
     get:
       summary: "Clé publique VAPID"
