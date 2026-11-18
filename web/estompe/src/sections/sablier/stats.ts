@@ -40,11 +40,13 @@ export interface Carte {
 const carte = (domaine: Domaine, etat: Carte['etat']): Carte => ({ domaine, etat, tuiles: [], parts: [], lignes: [], etiquettes: [] })
 const garder = <T extends { n: number }>(liste: T[]): T[] => liste.filter((x) => x.n > 0)
 
+const JOURS_MIN_BARRES = 5
+
 export function barresParJour(usage: Usage, aujourdhui: string): Barre[] {
   if (usage.period !== 'week' && usage.period !== 'month') return []
   const fin = usage.to > aujourdhui ? aujourdhui : usage.to
   const jours = joursEntre(usage.from, fin)
-  if (jours < 2) return []
+  if (jours < JOURS_MIN_BARRES) return []
   const parJour = new Map(usage.by_day.map((j) => [j.day, j.seconds]))
   const max = Math.max(1, ...usage.by_day.map((j) => j.seconds))
   return Array.from({ length: jours }, (_, i) => {

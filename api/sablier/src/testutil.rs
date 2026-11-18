@@ -257,10 +257,31 @@ pub async fn faux_gateway() -> Faux {
     .await
 }
 
-pub async fn faux_aegis(droits: DroitsFaux) -> Faux {
+pub type AnnuaireFaux = Arc<Mutex<Option<HashMap<String, crate::droits::Compte>>>>;
+
+pub async fn faux_aegis(droits: DroitsFaux, annuaire: AnnuaireFaux) -> Faux {
     faux_avec_entetes(move |r| {
         if r.chemin == "/v1/manifest" {
             return (200, vec![], b"{}".to_vec());
+        }
+        if r.chemin == "/v1/accounts/lookup" {
+            let Some(comptes) = annuaire.lock().unwrap().clone() else {
+                return (404, vec![], vec![]);
+            };
+            let demandes: Vec<String> =
+                serde_json::from_value(r.json()["subs"].clone()).unwrap_or_default();
+            let connus: Vec<Value> = demandes
+                .iter()
+                .filter_map(|sub| comptes.get(sub).map(|c| (sub, c)))
+                .map(
+                    |(sub, c)| json!({"sub": sub, "display_name": c.nom, "in_keycloak": c.present}),
+                )
+                .collect();
+            return (
+                200,
+                vec![("content-type", "application/json".to_string())],
+                json!({ "accounts": connus }).to_string().into_bytes(),
+            );
         }
         let sub = r.json()["sub"].as_str().unwrap_or_default().to_string();
         let accordees = droits
@@ -297,6 +318,7 @@ pub struct Env {
     pub app: Router,
     pub state: AppState,
     pub droits: DroitsFaux,
+    pub annuaire: AnnuaireFaux,
     pub gateway: Faux,
     pub aegis: Faux,
 }
@@ -305,7 +327,8 @@ pub async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
     let (base, url) = postgres().await?;
     let droits = droits_par_defaut();
     let gateway = faux_gateway().await;
-    let aegis = faux_aegis(droits.clone()).await;
+    let annuaire = AnnuaireFaux::default();
+    let aegis = faux_aegis(droits.clone(), annuaire.clone()).await;
     let mut cfg = Config::pour_tests(&url);
     cfg.gateway_url = gateway.url.clone();
     cfg.aegis = Some((aegis.url.clone(), "jeton-aegis".into()));
@@ -323,6 +346,7 @@ pub async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
         app: routes::routeur(state.clone()),
         state,
         droits,
+        annuaire,
         gateway,
         aegis,
     })

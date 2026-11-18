@@ -25,7 +25,7 @@ routes dans [`openapi.yaml`](../../docs/sablier/openapi.yaml).
 | `partage.rs` | réglages de partage (`GET`/`PUT /sharing`), profil public (`GET /profiles/{sub}`) et demande de visibilité à Estompe |
 | `effacement.rs` | `tables_personnelles()` : toutes les tables indexées par `sub` ; `effacer` (une transaction), `DELETE /data` |
 | `export.rs` | `GET /export` : en-tête chargé d'un bloc (`tete`), évènements bruts envoyés par pages (`flux`), `sections()` : la section de chaque table personnelle |
-| `personnes.rs` | annuaire tenu par Sablier (`noter` : nom et dernier passage, une écriture par heure au plus), alimenté par `GET /me` et le battement |
+| `personnes.rs` | annuaire tenu par Sablier (`noter` : nom et dernier passage, une écriture par heure au plus), alimenté par `GET /me` et le battement ; `annuaire` : comptes d'aegis (`Aegis::comptes`, `POST /v1/accounts/lookup`) ou `None` pour le repli local |
 | `journal.rs` | table `consultations` : `inscrire` et `consulter` (regroupement de 10 minutes, horloge en paramètre), `GET /views`, `GET /admin/audit` |
 | `admin.rs` | routes `sablier:admin` hors trophées : vue d'une personne (`/admin/people/{sub}/…`), liste des personnes, totaux, effacement |
 | `purge.rs` | purge des évènements bruts (`purger`) |
@@ -73,8 +73,10 @@ Le format des évènements et leur émission sont dans [`api/commun`](../commun/
 - `journal::consulter(pool, &Identite de l'admin, cible, maintenant) -> bool` (ligne ajoutée ou regroupée) ;
   `journal::inscrire(&mut tx, admin, cible, Action, maintenant)` dans une transaction ; `journal::vues(pool, cible, limite)`.
 - `personnes::noter(pool, &Identite, maintenant) -> bool` (écrit ou non).
-- `admin::TOUT` : les `Droits` pleins passés aux fonctions de lecture pour la vue d'administration ; `admin::personnes(pool,
-  sans_compte)`, `admin::totaux(pool, &Plage)`.
+- `admin::TOUT` : les `Droits` pleins passés aux fonctions de lecture pour la vue d'administration ; `admin::personnes(&AppState,
+  sans_compte) -> (annuaire utilisé, fiches)`, `admin::totaux(pool, &Plage)`.
+- `personnes::annuaire(&AppState, subs) -> Option<HashMap<sub, Compte { nom, present }>>` (`None` : repli sur la table locale),
+  `personnes::source(&annuaire)` (`aegis` ou `local`).
 
 ## Ajouter une route
 
@@ -91,7 +93,8 @@ Image : `docker build -f api/sablier/Dockerfile .` (contexte : racine du dépôt
 
 `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres TEST_REDIS_URL=redis://localhost:6379 just test-sablier`
 (`TEST_DATABASE_URL` se termine par le nom d'une base existante, `/postgres` : les bases de test sont créées à côté) : une
-base jetable par test, migrations appliquées, faux gateway et faux aegis (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`,
+base jetable par test, migrations appliquées, faux gateway et faux aegis (`Env::annuaire` : `None`, le faux aegis répond 404 à
+`/v1/accounts/lookup` et Sablier se replie sur `personnes` ; `Some(comptes)` : il sert ces comptes) (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`,
 `alice`, `bruno` (avec `sillon:access`), `diane` (avec `entracte:access`), `admin` ; `Env::recevoir` : un évènement par `file::traiter` ;
 `Env::remplir` : des lignes dans chaque table personnelle pour une personne, `Env::lignes_de` : leur nombre par table, `Env::lectures` :
 la réponse de chaque route de lecture `sablier:access` ;

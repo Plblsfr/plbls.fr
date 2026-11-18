@@ -50,7 +50,7 @@
         <SablierMedaille icone={trophee.icon} taille="xl" pose />
         <h3 class="sab-h1"><span class="sab-hl sab-hl--pose">{trophee.name}</span></h3>
         {#if !estExploit(trophee)}<div class="sab-pal" role="img" aria-label={textePalier(trophee)}>{#each { length: trophee.tiers } as _, i (i)}<i class:on={i < trophee.tier}></i>{/each}</div>{/if}
-        <p>{trophee.description}{#if trophee.progress} Prochain palier à {valeur(trophee.progress.next_threshold, trophee.progress.unit)}.{/if}</p>
+        <p>{trophee.description}{trophee.progress ? ` Prochain palier à ${valeur(trophee.progress.next_threshold, trophee.progress.unit)}.` : ''}</p>
         <p class="sab-note">Débloqué le {jourLong(trophee.unlocked_at)}. {trophee.shared ? 'Affiché sur ton profil.' : 'Privé tant que tu ne l’affiches pas sur ton profil.'}</p>
         <div class="sab-annonce-actions">
           {#if !trophee.shared}<button class="plbls-button plbls-button--contour" type="button" disabled={envoi} onclick={afficher}>L’afficher sur mon profil</button>{/if}

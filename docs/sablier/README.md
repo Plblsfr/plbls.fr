@@ -109,7 +109,7 @@ démarre sans consommer ; Redis en panne : nouvel essai toutes les 5 s, battemen
 | `a_evaluer` | personnes dont les trophées sont à réévaluer |
 | `recaps` | récaps figés : personne, genre (`mois`, `annee`), période (`2026-10`, `2026`), contenu JSON, `vu_le` |
 | `partages_stats`, `partages_trophees` | ce que chaque personne a rendu public (une ligne = partagé) |
-| `personnes` | annuaire tenu par Sablier : nom et dernier passage de chaque personne vue connectée (`nom`, `vu_le`) |
+| `personnes` | annuaire tenu par Sablier, utilisé en repli de celui d'aegis : nom et dernier passage de chaque personne vue connectée (`nom`, `vu_le`) |
 | `consultations` | journal des consultations et des effacements faits par les admins : `admin_sub`, `admin_nom`, `cible_sub`, `action`, `date` |
 
 Toute table qui porte des données d'une personne a une colonne `sub` et figure dans `effacement::tables_personnelles()` (vérifié par un
@@ -346,19 +346,25 @@ par les mêmes fonctions de lecture. Trois différences :
 
 Un `sub` inconnu répond comme une personne sans activité.
 
-**Personnes.** `GET /admin/people` liste les personnes qui ont des agrégats : `sub`, `name`, `known`, `last_seen`, premier et dernier
-jour d'activité, temps d'utilisation cumulé ; triée par nom, les personnes sans nom à la fin. `GET /admin/people?orphans=true` ne rend
-que les **personnes sans compte** (`known: false`). Cette liste n'est pas journalisée.
+**Personnes.** `GET /admin/people` rend `{directory, people}` : les personnes qui ont des agrégats, avec `sub`, `name`, `known`,
+`last_seen`, premier et dernier jour d'activité, temps d'utilisation cumulé ; triées par nom, les personnes sans nom à la fin.
+`GET /admin/people?orphans=true` ne rend que les **personnes sans compte** (`known: false`). Cette liste n'est pas journalisée.
 
-**Annuaire.** Sablier ne lit pas l'annuaire d'aegis : aegis n'offre aucune route de service pour lister des comptes ou dire si un `sub`
-existe (`/v1/admin/accounts` demande une session d'administrateur d'aegis ; `/v1/effective` et `/v1/check` répondent pour n'importe
-quel `sub`, et `/v1/effective` l'inscrit dans l'annuaire). Sablier tient donc son propre annuaire, `personnes` : à chaque `GET /me` et
-à chaque battement, il note le nom de la session et l'instant, une écriture par heure et par personne au plus. `known` veut dire
-« Sablier a déjà vu cette personne connectée », pas « le compte existe encore » :
+**Annuaire.** `name` et `known` (et `target_name` dans `GET /admin/audit`) viennent de l'un de deux annuaires, nommé par `directory` :
 
-- une personne dont les stats ne viennent que d'évènements ou d'un import, sans jamais s'être connectée à l'app, est « sans compte » ;
-- un compte supprimé après avoir utilisé l'app reste `known`, avec un `last_seen` qui ne bouge plus : c'est à cette date que l'admin
-  le reconnaît. L'effacement est le même dans les deux listes.
+- `aegis` : Sablier demande les `sub` à aegis par `POST /v1/accounts/lookup` avec son jeton de service (`{"subs": […]}`, 500 par
+  appel, réponse `{"accounts": [{sub, display_name, in_keycloak}]}`, comptes connus seulement). `known` vaut vrai si le compte est
+  dans la réponse avec `in_keycloak` vrai : un compte absent, ou supprimé de Keycloak, est « sans compte ».
+- `local` : aegis n'est pas configuré, ne répond pas, ou ne sert pas cette route (toute réponse autre qu'un succès). Sablier se replie
+  sur sa table `personnes` : à chaque `GET /me` et à chaque battement, il note le nom de la session et l'instant, une écriture par heure
+  et par personne au plus. `known` veut alors dire « Sablier a déjà vu cette personne connectée », pas « le compte existe encore » :
+  un compte supprimé après avoir utilisé l'app reste connu, avec un `last_seen` qui ne bouge plus. L'écran doit prévenir que la liste
+  des personnes sans compte est approximative.
+
+`POST /v1/accounts/lookup` n'existe pas encore dans aegis : tant qu'elle n'y est pas, `directory` vaut toujours `local`. Les autres
+routes de service d'aegis ne conviennent pas (`/v1/effective` répond pour n'importe quel `sub` et l'inscrit dans l'annuaire,
+`/v1/check` aussi sans l'inscrire ; `/v1/admin/accounts` demande une session d'administrateur d'aegis). `last_seen` vient toujours
+de la table locale. L'effacement est le même pour toutes les personnes listées.
 
 **Totaux.** `GET /admin/totals?period=&date=` rend pour la période les personnes actives (personnes distinctes avec du temps
 d'utilisation ou une action ; les réactions reçues ne comptent pas), le temps d'utilisation, le temps regardé (`entracte.secondes`),
@@ -380,7 +386,8 @@ moment de la consultation), la personne consultée, la date. La ligne est écrit
 - Un admin qui consulte ses propres stats, par ses routes ou par `/admin/people/<son sub>/…`, n'est pas journalisé.
 - Un effacement fait par un admin ajoute toujours une ligne, d'action `effacement`, dans la transaction de l'effacement.
 - `GET /admin/audit?before=<id>&limit=` (`sablier:admin`) rend le journal complet, du plus récent au plus ancien, par pages (50 par
-  défaut, 200 au plus ; `next_before` donne la suite), avec le nom connu de chaque personne consultée.
+  défaut, 200 au plus ; `next_before` donne la suite), avec le nom connu de chaque personne consultée (annuaire d'aegis, ou local en
+  repli : champ `directory`).
 - `GET /views` (`sablier:access`) rend à chacun « qui a consulté mes stats » : date, nom de l'admin et action, 500 lignes au plus,
   sans le `sub` de l'admin.
 

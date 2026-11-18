@@ -18,7 +18,7 @@ use crate::{
     http::{bd, introuvable, invalide, ok, sans_contenu},
     journal::{self, Action},
     periode::{Demande, Plage},
-    recaps, series, trophees, utilisation,
+    personnes, recaps, series, trophees, utilisation,
 };
 
 pub const TOUT: Droits = Droits {
@@ -145,21 +145,39 @@ pub struct Fiche {
     pub active_seconds_total: i64,
 }
 
-pub async fn personnes(pool: &PgPool, sans_compte: bool) -> Result<Vec<Fiche>, sqlx::Error> {
-    sqlx::query_as(
+pub async fn personnes(
+    state: &AppState,
+    sans_compte: bool,
+) -> Result<(&'static str, Vec<Fiche>), sqlx::Error> {
+    let mut fiches: Vec<Fiche> = sqlx::query_as(
         "SELECT a.sub, NULLIF(p.nom, '') AS name, p.sub IS NOT NULL AS known, p.vu_le AS last_seen,
             MIN(a.jour) FILTER (WHERE a.valeur > 0) AS first_day,
             MAX(a.jour) FILTER (WHERE a.valeur > 0) AS last_day,
             COALESCE(SUM(a.valeur) FILTER (WHERE a.stat = $1), 0)::bigint AS active_seconds_total
         FROM agregats_jour a LEFT JOIN personnes p ON p.sub = a.sub
-        GROUP BY a.sub, p.sub, p.nom, p.vu_le
-        HAVING NOT $2 OR p.sub IS NULL
-        ORDER BY lower(NULLIF(p.nom, '')) NULLS LAST, a.sub",
+        GROUP BY a.sub, p.sub, p.nom, p.vu_le",
     )
     .bind(UTILISATION)
-    .bind(sans_compte)
-    .fetch_all(pool)
-    .await
+    .fetch_all(state.pool())
+    .await?;
+    let subs: Vec<String> = fiches.iter().map(|f| f.sub.clone()).collect();
+    let annuaire = personnes::annuaire(state, &subs).await;
+    if let Some(comptes) = &annuaire {
+        for f in &mut fiches {
+            let compte = comptes.get(&f.sub);
+            f.name = compte.and_then(|c| c.nom.clone());
+            f.known = compte.is_some_and(|c| c.present);
+        }
+    }
+    fiches.retain(|f| !sans_compte || !f.known);
+    fiches.sort_by_cached_key(|f| {
+        (
+            f.name.is_none(),
+            f.name.as_deref().map(str::to_lowercase),
+            f.sub.clone(),
+        )
+    });
+    Ok((personnes::source(&annuaire), fiches))
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -176,9 +194,8 @@ pub async fn voir_personnes(
         Some("true") => true,
         Some(_) => return Err(invalide("orphans : true ou false")),
     };
-    Ok(ok(&personnes(state.pool(), sans_compte)
-        .await
-        .map_err(bd)?))
+    let (source, fiches) = personnes(&state, sans_compte).await.map_err(bd)?;
+    Ok(ok(&json!({ "directory": source, "people": fiches })))
 }
 
 type Totaux = (Option<NaiveDate>, i64, i64, i64, i64, i64);
@@ -272,9 +289,12 @@ pub async fn effacer(
 mod tests {
     use axum::http::StatusCode;
 
+    use std::collections::HashMap;
+
     use super::*;
     use crate::{
         agregats,
+        droits::Compte,
         effacement::CONFIRMATION,
         routes,
         testutil::{env, jour},
@@ -525,9 +545,47 @@ mod tests {
         });
         let r = e.get("admin", "/admin/people").await;
         assert_eq!(r.statut, StatusCode::OK);
-        assert_eq!(r.json(), json!([fiche("alice"), fiche("bruno"), fantome]));
+        let liste = |source: &str, gens: Value| json!({"directory": source, "people": gens});
+        let complete = liste("local", json!([fiche("alice"), fiche("bruno"), fantome]));
+        assert_eq!(r.json(), complete);
         let sans_compte = e.get("admin", "/admin/people?orphans=true").await.json();
-        assert_eq!(sans_compte, json!([fantome]));
+        assert_eq!(sans_compte, liste("local", json!([fantome])));
+        let depuis_aegis = |sub: &str, nom: Option<&str>, present: bool| {
+            let nom = nom.map(str::to_string);
+            (sub.to_string(), Compte { nom, present })
+        };
+        *e.annuaire.lock().unwrap() = Some(HashMap::from([
+            depuis_aegis("sub-alice", Some("Alice A."), true),
+            depuis_aegis("sub-bruno", Some("Bruno B."), false),
+        ]));
+        let avec = |mut fiche: Value, nom: Value, connu: bool| {
+            fiche["name"] = nom;
+            fiche["known"] = json!(connu);
+            fiche
+        };
+        let alice = avec(fiche("alice"), json!("Alice A."), true);
+        let bruno = avec(fiche("bruno"), json!("Bruno B."), false);
+        assert_eq!(
+            e.get("admin", "/admin/people").await.json(),
+            liste("aegis", json!([alice, bruno, fantome]))
+        );
+        assert_eq!(
+            e.get("admin", "/admin/people?orphans=true").await.json(),
+            liste("aegis", json!([bruno, fantome]))
+        );
+        let recherche = e
+            .aegis
+            .requetes()
+            .into_iter()
+            .rfind(|r| r.chemin == "/v1/accounts/lookup")
+            .unwrap();
+        assert_eq!(recherche.entete("authorization"), "Bearer jeton-aegis");
+        let mut demandes: Vec<String> =
+            serde_json::from_value(recherche.json()["subs"].clone()).unwrap();
+        demandes.sort();
+        assert_eq!(demandes, ["sub-alice", "sub-bruno", "sub-fantome"]);
+        *e.annuaire.lock().unwrap() = None;
+        assert_eq!(e.get("admin", "/admin/people").await.json(), complete);
         assert_eq!(
             e.get("admin", "/admin/people?orphans=false").await.json(),
             r.json()
@@ -563,11 +621,11 @@ mod tests {
         assert_eq!(r.statut, StatusCode::NO_CONTENT);
         assert_eq!(
             e.get("admin", "/admin/people?orphans=true").await.json(),
-            json!([])
+            liste("local", json!([]))
         );
         assert_eq!(
             e.get("admin", "/admin/people").await.json(),
-            json!([fiche("bruno")])
+            liste("local", json!([fiche("bruno")]))
         );
         let r = effacer("sub-admin", confirmation).await;
         assert_eq!(r.statut, StatusCode::NO_CONTENT);
@@ -587,5 +645,29 @@ mod tests {
             lignes,
             [("sub-fantome", "effacement"), ("sub-alice", "effacement")]
         );
+    }
+
+    #[tokio::test]
+    async fn personnes_lues_dans_l_annuaire_local_sans_aegis() {
+        for injoignable in [true, false] {
+            let regler = move |c: &mut crate::Config| {
+                if injoignable {
+                    c.aegis = Some(("http://127.0.0.1:9".into(), "jeton".into()));
+                } else {
+                    c.aegis = None;
+                }
+            };
+            let Some(e) = crate::testutil::env_avec(regler).await else {
+                return;
+            };
+            e.remplir("alice").await;
+            let (source, fiches) = personnes(&e.state, false).await.unwrap();
+            assert_eq!(source, "local", "injoignable : {injoignable}");
+            let vues: Vec<(&str, Option<&str>, bool)> = fiches
+                .iter()
+                .map(|f| (f.sub.as_str(), f.name.as_deref(), f.known))
+                .collect();
+            assert_eq!(vues, [("sub-alice", Some("alice"), true)]);
+        }
     }
 }

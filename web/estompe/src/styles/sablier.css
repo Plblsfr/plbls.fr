@@ -7,6 +7,7 @@
 .sab-grow { flex: 1; min-width: 0; }
 .sab-page p, .sab-page h1, .sab-page h2, .sab-page h3, .sab-page ul { margin: 0; }
 .sab-page ul { padding: 0; list-style: none; }
+.sab-page a.plbls-button { text-decoration: none; }
 
 .sab-h1 { font-family: var(--f-titre); font-size: 40px; font-weight: 700; line-height: 1.05; letter-spacing: -0.03em; margin: 0; }
 .sab-h2 { font-family: var(--f-titre); font-size: 23px; font-weight: 700; line-height: 1.15; letter-spacing: -0.03em; margin: 0; }

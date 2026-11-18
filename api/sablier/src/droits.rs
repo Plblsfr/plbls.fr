@@ -14,6 +14,13 @@ pub const ENTRACTE: &str = "entracte:access";
 pub const SILLON: &str = "sillon:access";
 const TTL_MAX: Duration = Duration::from_secs(30);
 const CACHE_MAX: usize = 2000;
+pub const COMPTES_MAX: usize = 500;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Compte {
+    pub nom: Option<String>,
+    pub present: bool,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Droit {
@@ -173,6 +180,38 @@ impl Aegis {
             sillon,
             ..Droits::default()
         })
+    }
+
+    pub async fn comptes(&self, subs: &[String]) -> Result<HashMap<String, Compte>, Injoignable> {
+        let mut comptes = HashMap::new();
+        for lot in subs.chunks(COMPTES_MAX) {
+            let r = self
+                .http
+                .post(format!("{}/v1/accounts/lookup", self.url))
+                .bearer_auth(&self.jeton)
+                .json(&json!({ "subs": lot }))
+                .send()
+                .await
+                .map_err(|_| Injoignable)?;
+            if !r.status().is_success() {
+                tracing::warn!("aegis : /v1/accounts/lookup → HTTP {}", r.status().as_u16());
+                return Err(Injoignable);
+            }
+            let v: Value = r.json().await.map_err(|_| Injoignable)?;
+            for c in v["accounts"].as_array().ok_or(Injoignable)? {
+                let Some(sub) = c["sub"].as_str() else {
+                    continue;
+                };
+                let nom = c["display_name"]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_string);
+                let present = c["in_keycloak"] == json!(true);
+                comptes.insert(sub.to_string(), Compte { nom, present });
+            }
+        }
+        Ok(comptes)
     }
 
     pub async fn droits(&self, id: &Identite) -> Result<Droits, Injoignable> {

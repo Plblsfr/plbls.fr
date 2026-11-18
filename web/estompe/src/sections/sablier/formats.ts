@@ -45,7 +45,7 @@ export const jourEtMois = (jour: string) => {
   return `${quantieme(d.getUTCDate())} ${MOIS[d.getUTCMonth()]}`
 }
 
-const ESPACE = ' '
+const ESPACE = '\u00a0'
 
 export const nombre = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ESPACE)
 
@@ -76,11 +76,7 @@ export function valeur(v: number, unite: Unite): string {
 }
 
 export function avancement(v: number, seuil: number, unite: Unite): string {
-  if (unite === 'seconds') {
-    const enHeures = seuil >= 3600
-    const diviseur = enHeures ? 3600 : 60
-    return `${nombre(Math.floor(v / diviseur))} / ${nombre(Math.round(seuil / diviseur))} ${enHeures ? 'h' : 'min'}`
-  }
+  if (unite === 'seconds') return `${duree(v)} / ${duree(seuil)}`
   if (unite === 'days') return `${nombre(v)} / ${nombre(seuil)} jours`
   return `${nombre(v)} / ${nombre(seuil)}`
 }

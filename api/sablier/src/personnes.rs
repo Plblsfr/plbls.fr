@@ -1,7 +1,22 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use sqlx::PgPool;
 
-use crate::identite::Identite;
+use std::collections::HashMap;
+
+use crate::{droits::Compte, etat::AppState, identite::Identite};
+
+pub const AEGIS: &str = "aegis";
+pub const LOCAL: &str = "local";
+
+pub type Annuaire = Option<HashMap<String, Compte>>;
+
+pub async fn annuaire(state: &AppState, subs: &[String]) -> Annuaire {
+    state.aegis()?.comptes(subs).await.ok()
+}
+
+pub fn source(annuaire: &Annuaire) -> &'static str {
+    if annuaire.is_some() { AEGIS } else { LOCAL }
+}
 
 pub const ECART_ECRITURE: TimeDelta = TimeDelta::hours(1);
 

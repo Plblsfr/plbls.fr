@@ -12,6 +12,7 @@ use crate::{
     garde::Personne,
     http::{bd, invalide, ok},
     identite::Identite,
+    personnes,
 };
 
 pub const REGROUPEMENT: TimeDelta = TimeDelta::minutes(10);
@@ -162,7 +163,15 @@ pub async fn voir_journal(
     if suite {
         lignes.pop();
     }
+    let cibles: Vec<String> = lignes.iter().map(|l| l.target_sub.clone()).collect();
+    let annuaire = personnes::annuaire(&state, &cibles).await;
+    if let Some(comptes) = &annuaire {
+        for l in &mut lignes {
+            l.target_name = comptes.get(&l.target_sub).and_then(|c| c.nom.clone());
+        }
+    }
     Ok(ok(&json!({
+        "directory": personnes::source(&annuaire),
         "next_before": lignes.last().filter(|_| suite).map(|l| l.id),
         "entries": lignes,
     })))
@@ -353,6 +362,7 @@ mod tests {
         assert_eq!(
             r.json(),
             json!({
+                "directory": "local",
                 "next_before": null,
                 "entries": [
                     entree(3, "2026-03-10T12:00:00Z", "sub-alice", json!("alice")),
@@ -374,6 +384,23 @@ mod tests {
                 "sub-alice",
                 json!("alice")
             )])
+        );
+        let alice = crate::droits::Compte {
+            nom: Some("Alice A.".into()),
+            present: true,
+        };
+        *e.annuaire.lock().unwrap() = Some(std::collections::HashMap::from([(
+            "sub-alice".to_string(),
+            alice,
+        )]));
+        let r = e.get("admin", "/admin/audit?limit=2").await.json();
+        assert_eq!(r["directory"], "aegis");
+        assert_eq!(
+            (
+                r["entries"][0]["target_name"].clone(),
+                r["entries"][1]["target_name"].clone()
+            ),
+            (json!("Alice A."), Value::Null)
         );
         for faux in ["?limit=0", "?limit=x", "?before=-1", "?before=abc"] {
             let r = e.get("admin", &format!("/admin/audit{faux}")).await;
