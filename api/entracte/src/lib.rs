@@ -16,6 +16,7 @@ pub mod identite;
 pub mod images;
 pub mod import_estompe;
 pub mod interne;
+pub mod intros;
 pub mod lecture;
 pub mod materiel;
 pub mod progression;

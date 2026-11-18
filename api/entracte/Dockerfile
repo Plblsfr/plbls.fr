@@ -1,5 +1,6 @@
 # Contexte de build = racine du dépôt (docker build -f api/entracte/Dockerfile .), fichiers envoyés : ../../.dockerignore.
-# Rust : version de ../../rust-toolchain.toml. L'image d'exécution porte ffmpeg et ffprobe (analyse, transcodage HLS, sous-titres)
+# Rust : version de ../../rust-toolchain.toml. L'image d'exécution porte ffmpeg et ffprobe (analyse, transcodage HLS, sous-titres),
+# fpcalc (libchromaprint-tools : empreintes audio des intros si le ffmpeg de l'image n'a pas le muxer chromaprint)
 # et les pilotes VAAPI libres (Intel, AMD) ; NVENC demande en plus le runtime NVIDIA de Docker (docs/entracte/transcodage.md).
 FROM rust:1.99.0-slim-trixie AS chef
 RUN cargo install cargo-chef --locked --version 0.1.78
@@ -17,7 +18,7 @@ RUN cargo build --release --locked -p entracte
 
 FROM debian:trixie-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg mesa-va-drivers intel-media-va-driver ca-certificates \
+  && apt-get install -y --no-install-recommends ffmpeg libchromaprint-tools mesa-va-drivers intel-media-va-driver ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --system --uid 65532 --no-create-home entracte \
   && mkdir -p /tmp/entracte && chown entracte /tmp/entracte

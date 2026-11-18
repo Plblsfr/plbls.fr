@@ -34,6 +34,18 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+    if std::env::args().nth(1).as_deref() == Some(entracte::intros::COMMANDE) {
+        match entracte::intros::lancer(|k| env.get(k), std::env::args().nth(2)).await {
+            Ok(rapport) => {
+                print!("{rapport}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
     let cfg = match entracte::Config::from_env(|k| env.get(k)) {
         Ok(c) => c,
         Err(e) => {

@@ -8,6 +8,7 @@ use crate::{
     droits::{Aegis, Droits, Injoignable},
     flux::Flux,
     identite::{Identite, Resolveur},
+    intros::empreinte::{self, Outil},
     materiel::Materiel,
     push::Push,
     sous_titres::{self, Extractions},
@@ -27,6 +28,8 @@ pub struct Inner {
     relance: std::sync::atomic::AtomicBool,
     push: Push,
     extractions: Extractions,
+    reveil_intros: tokio::sync::Notify,
+    outil_empreinte: tokio::sync::OnceCell<Option<Outil>>,
 }
 
 #[derive(Clone)]
@@ -61,6 +64,8 @@ impl AppState {
                 sous_titres::EXTRACTIONS_MAX,
                 sous_titres::DUREE_ECHEC,
             ),
+            reveil_intros: tokio::sync::Notify::new(),
+            outil_empreinte: tokio::sync::OnceCell::new(),
         }))
     }
 
@@ -120,6 +125,22 @@ impl AppState {
         &self.0.extractions
     }
 
+    pub fn reveiller_intros(&self) {
+        self.0.reveil_intros.notify_one();
+    }
+
+    pub async fn attendre_intros(&self) {
+        self.0.reveil_intros.notified().await;
+    }
+
+    pub async fn outil_empreinte(&self) -> Option<Outil> {
+        *self
+            .0
+            .outil_empreinte
+            .get_or_init(|| empreinte::outil(&self.0.cfg.ffmpeg, &self.0.cfg.intro.fpcalc))
+            .await
+    }
+
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {
         match &self.0.aegis {
             Some(a) => a.droits(id).await,
@@ -154,6 +175,7 @@ impl AppState {
                 crate::lecture::menage(&etat).await;
             }
         });
+        tokio::spawn(crate::intros::travailleur(self.clone()));
         let etat = self.clone();
         let periode = self.config().periode_synchro;
         if !periode.is_zero() {
