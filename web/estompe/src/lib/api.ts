@@ -2,7 +2,7 @@ import { config } from './config'
 import { debug } from './debuglog.svelte'
 import type { DrawOp, DrawView } from '../blocks/draw2gether/draw'
 import type { FilmDetail, FilmItem, FilmPlayback, FilmReject, PlaybackRequest } from '../sections/entracte/films'
-import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, RequestKind, RequestableSeries, SearchResult, SendChoice, SendOptions } from '../sections/entracte/entracte'
+import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, IntroAdmin, IntroMode, RequestKind, RequestableSeries, SearchResult, SendChoice, SendOptions } from '../sections/entracte/entracte'
 import type {
   AdminLive, AdminOverview, AdminBadge, Badge, BadgeInput, AdminUser, AdminStats, AdminLogEntry, AdminError,
   Person,
@@ -412,6 +412,10 @@ export const entracteApi = {
   refuse: (id: string, reason: string) => esend<EntracteRequest>('POST', `/admin/requests/${enc(id)}/refuse`, { reason }),
   status: () => eget<EntracteStatus>('/admin/status'),
   sync: () => esend<void>('POST', '/admin/sync'),
+  intros: () => eget<IntroAdmin>('/admin/intros'),
+  introMode: (mode: IntroMode) => esend<{ mode: IntroMode }>('PUT', '/admin/intros/mode', { mode }),
+  introAnalyze: (id: string) => esend<{ queued: number }>('POST', `/admin/intros/titles/${enc(id)}/analyze`, {}),
+  introClear: (id: string) => esend<void>('DELETE', `/admin/intros/titles/${enc(id)}`),
   pushKey: () => eget<{ key: string }>('/push/key'),
   pushSubscribe: (sub: PushSubscriptionJSON) => esend<void>('PUT', '/push/subscription', sub),
   pushUnsubscribe: (endpoint: string) => esend<void>('DELETE', '/push/subscription', { endpoint }),

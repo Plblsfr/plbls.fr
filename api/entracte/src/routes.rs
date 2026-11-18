@@ -11,7 +11,7 @@ use crate::{
     droits::Droit::{Acces, Admin, Demande},
     etat::AppState,
     garde::{self, Garde},
-    interne, lecture, progression, push,
+    interne, intros, lecture, progression, push,
 };
 
 pub struct Route {
@@ -223,6 +223,30 @@ pub fn table() -> Vec<(Route, MethodRouter<AppState>)> {
             "/admin/sync",
             Garde::Droit(Admin),
             post(bibliotheque::lancer_synchro),
+        ),
+        r(
+            Method::GET,
+            "/admin/intros",
+            Garde::Droit(Admin),
+            get(intros::liste),
+        ),
+        r(
+            Method::PUT,
+            "/admin/intros/mode",
+            Garde::Droit(Admin),
+            put(intros::changer_mode),
+        ),
+        r(
+            Method::POST,
+            "/admin/intros/titles/{id}/analyze",
+            Garde::Droit(Admin),
+            post(intros::analyser),
+        ),
+        r(
+            Method::DELETE,
+            "/admin/intros/titles/{id}",
+            Garde::Droit(Admin),
+            delete(intros::effacer),
         ),
         r(
             Method::GET,

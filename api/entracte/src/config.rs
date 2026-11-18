@@ -48,6 +48,98 @@ impl ModeMateriel {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Intro {
+    pub analyse: u32,
+    pub min: f64,
+    pub max: f64,
+    pub bits: u32,
+    pub trou: f64,
+    pub consensus: f64,
+    pub tolerance: f64,
+    pub nice: u8,
+    pub fpcalc: String,
+}
+
+impl Intro {
+    pub fn from_env(env: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
+        let lu = |k: &str| env(k).map(|v| nettoie(&v)).filter(|v| !v.is_empty());
+        let i = Intro {
+            analyse: nombre(
+                "ENTRACTE_INTRO_ANALYSE_SECONDES",
+                lu("ENTRACTE_INTRO_ANALYSE_SECONDES"),
+                600,
+            )?,
+            min: nombre(
+                "ENTRACTE_INTRO_MIN_SECONDES",
+                lu("ENTRACTE_INTRO_MIN_SECONDES"),
+                15.0,
+            )?,
+            max: nombre(
+                "ENTRACTE_INTRO_MAX_SECONDES",
+                lu("ENTRACTE_INTRO_MAX_SECONDES"),
+                120.0,
+            )?,
+            bits: nombre("ENTRACTE_INTRO_BITS", lu("ENTRACTE_INTRO_BITS"), 8)?,
+            trou: nombre(
+                "ENTRACTE_INTRO_TROU_SECONDES",
+                lu("ENTRACTE_INTRO_TROU_SECONDES"),
+                3.0,
+            )?,
+            consensus: nombre(
+                "ENTRACTE_INTRO_CONSENSUS",
+                lu("ENTRACTE_INTRO_CONSENSUS"),
+                0.6,
+            )?,
+            tolerance: nombre(
+                "ENTRACTE_INTRO_TOLERANCE_SECONDES",
+                lu("ENTRACTE_INTRO_TOLERANCE_SECONDES"),
+                5.0,
+            )?,
+            nice: nombre("ENTRACTE_INTRO_NICE", lu("ENTRACTE_INTRO_NICE"), 19)?,
+            fpcalc: lu("ENTRACTE_FPCALC").unwrap_or_else(|| "fpcalc".into()),
+        };
+        let fini = |v: f64| v.is_finite();
+        if !(fini(i.min) && fini(i.max) && i.min > 0.0 && i.max > i.min) {
+            return Err(
+                "ENTRACTE_INTRO_MIN_SECONDES et ENTRACTE_INTRO_MAX_SECONDES : 0 < min < max".into(),
+            );
+        }
+        if f64::from(i.analyse) < i.max {
+            return Err(
+                "ENTRACTE_INTRO_ANALYSE_SECONDES : au moins ENTRACTE_INTRO_MAX_SECONDES".into(),
+            );
+        }
+        if i.bits > 32 {
+            return Err("ENTRACTE_INTRO_BITS : de 0 à 32".into());
+        }
+        if !(fini(i.consensus) && i.consensus > 0.0 && i.consensus <= 1.0) {
+            return Err("ENTRACTE_INTRO_CONSENSUS : entre 0 (exclu) et 1".into());
+        }
+        if !(fini(i.trou) && fini(i.tolerance) && i.trou >= 0.0 && i.tolerance >= 0.0) {
+            return Err(
+                "ENTRACTE_INTRO_TROU_SECONDES et ENTRACTE_INTRO_TOLERANCE_SECONDES : positifs"
+                    .into(),
+            );
+        }
+        if i.nice > 19 {
+            return Err("ENTRACTE_INTRO_NICE : de 0 à 19".into());
+        }
+        Ok(i)
+    }
+
+    pub fn reglages(&self) -> crate::intros::comparaison::Reglages {
+        crate::intros::comparaison::Reglages {
+            min: self.min,
+            max: self.max,
+            bits: self.bits,
+            trou: self.trou,
+            consensus: self.consensus,
+            tolerance: self.tolerance,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub port: u16,
@@ -81,6 +173,7 @@ pub struct Config {
     pub vapid_privee: String,
     pub vapid_sujet: String,
     pub fcm: String,
+    pub intro: Intro,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -249,6 +342,7 @@ impl Config {
             vapid_privee: env("VAPID_PRIVATE_KEY").unwrap_or_default(),
             vapid_sujet: env("VAPID_SUBJECT").unwrap_or_default(),
             fcm: env("FCM_SERVICE_ACCOUNT").unwrap_or_default(),
+            intro: Intro::from_env(&brut)?,
         })
     }
 
@@ -287,6 +381,20 @@ mod tests {
         assert_eq!((c.max_flux, c.max_transcodages), (2, 2));
         assert_eq!(c.periode_synchro, Duration::from_secs(900));
         assert_eq!(c.langue, "fr-FR");
+        assert_eq!(
+            c.intro,
+            Intro {
+                analyse: 600,
+                min: 15.0,
+                max: 120.0,
+                bits: 8,
+                trou: 3.0,
+                consensus: 0.6,
+                tolerance: 5.0,
+                nice: 19,
+                fpcalc: "fpcalc".into(),
+            }
+        );
     }
 
     #[test]
@@ -368,5 +476,20 @@ mod tests {
         assert!(charge(&[base, ("ENTRACTE_TRANSCODE_MODE", "amd")]).is_err());
         assert!(charge(&[base, ("ENTRACTE_CHEMINS", "/a")]).is_err());
         assert!(charge(&[base, ("ENTRACTE_MAX_FLUX", "x")]).is_err());
+        assert!(charge(&[base, ("ENTRACTE_INTRO_MIN_SECONDES", "200")]).is_err());
+        assert!(charge(&[base, ("ENTRACTE_INTRO_CONSENSUS", "1.5")]).is_err());
+        assert!(charge(&[base, ("ENTRACTE_INTRO_BITS", "33")]).is_err());
+        assert!(charge(&[base, ("ENTRACTE_INTRO_ANALYSE_SECONDES", "60")]).is_err());
+        let c = charge(&[
+            base,
+            ("ENTRACTE_INTRO_MIN_SECONDES", "20"),
+            ("ENTRACTE_INTRO_CONSENSUS", "0.75"),
+            ("ENTRACTE_INTRO_NICE", "0"),
+        ])
+        .unwrap();
+        assert_eq!(
+            (c.intro.min, c.intro.consensus, c.intro.nice),
+            (20.0, 0.75, 0)
+        );
     }
 }

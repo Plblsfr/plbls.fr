@@ -22,7 +22,7 @@ Déclarées à aegis par manifeste (application `entracte`), toutes fermées par
 |---|---|
 | `entracte:access` | bibliothèque, lecture, reprise, historique, recherche, notifications |
 | `entracte:request` | demander un titre absent, « Mes demandes » |
-| `entracte:admin` | liste et traitement des demandes, fichiers écartés, état des synchronisations |
+| `entracte:admin` | liste et traitement des demandes, fichiers écartés, état des synchronisations, détection des intros |
 
 Chaque route relève d'une permission ou d'une exception motivée (santé, `GET /me`, flux signés, webhooks, appel interne d'Estompe) :
 la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt toutes les routes (401 sans session, 403 sans la permission).
@@ -53,6 +53,37 @@ Attribution : l'app affiche « Données et images fournies par TMDB » (conditio
 Position enregistrée par personne et par titre. Au-delà de 90 % de la durée, le titre est vu : une entrée datée par titre, que revoir le titre
 met à jour. « Reprendre » liste les titres commencés et l'épisode suivant d'une série en cours. L'historique est lié au titre, pas au
 fichier. Chacun ne lit et n'écrit que les siens (la personne est celle de la session, jamais un paramètre).
+
+## Intros
+
+Le lecteur propose « Passer l'intro » (bouton, ou touche S) tant que la position est dans `[debut, fin)` ; un clic saute à `fin`.
+Les bornes viennent d'une comparaison audio entre les épisodes d'une même saison : les fichiers n'ont pas besoin de chapitres.
+Seules les séries sont concernées (ni films, ni génériques de fin, ni saisie manuelle). Dans le salon cinéma d'Estompe, le bouton
+n'est pas proposé : la position y est pilotée par l'hôte.
+
+- **Mode** (Administration › Intros, gardé en base, `manuel` par défaut). `manuel` : rien ne démarre seul, l'administrateur lance
+  « Analyser » série par série, puis « Réanalyser » ou « Effacer ». `automatique` : après chaque synchronisation du catalogue (et au
+  moment où le mode est activé), les saisons jamais analysées sont mises en file.
+- **Empreinte** : pour chaque épisode, les 10 premières minutes de la première piste audio (mono, 11 025 Hz, un seul fil, `nice`),
+  passées à Chromaprint par le muxer `chromaprint` de ffmpeg, à défaut par `fpcalc` (les deux sont dans l'image). L'empreinte est
+  gardée en base et recalculée seulement si la taille ou la date du fichier change.
+- **Comparaison** : les épisodes sont comparés deux à deux, à tous les décalages ; deux points se ressemblent s'ils diffèrent d'au
+  plus `ENTRACTE_INTRO_BITS` bits (distance de Hamming) ; on garde la plus longue suite contiguë de 15 à 120 s, les trous d'au plus
+  3 s étant tolérés. Une suite trop uniforme (silence) est ignorée.
+- **Consensus** : pour un épisode, l'intro est retenue si au moins 60 % de ses paires donnent les mêmes bornes (à 5 s près, médiane
+  du groupe) ; un segment commun à deux épisodes seulement est rejeté dès que la saison en compte trois. Avec deux épisodes, leur
+  unique paire suffit.
+- **File** : un seul travailleur, une saison à la fois ; une analyse interrompue par un redémarrage reprend. États d'une saison :
+  jamais analysée, en file, en cours, intro trouvée, rien trouvé, erreur (message sans chemin de fichier). Moins de deux épisodes ou
+  aucun consensus donne « rien trouvé ». Une saison « rien trouvé » ou « erreur » n'est pas réanalysée seule : elle le sera si un de
+  ses fichiers change (épisode ajouté, retiré ou remplacé), ce qui la ramène à « jamais analysée », ou sur « Réanalyser ».
+- **Fichier remplacé** : ses bornes et son empreinte sont effacées à la synchronisation qui le constate ; les autres épisodes gardent
+  les leurs jusqu'à la nouvelle analyse.
+- **Réglages** : `ENTRACTE_INTRO_*` de [`plbls.env`](../../plbls.env) (durée analysée, durées minimale et maximale, bits, trou,
+  consensus, tolérance, priorité `nice`, chemin de `fpcalc`).
+- **Valider sur le serveur** : `entracte analyser-intro <dossier d'une saison>` calcule les empreintes des vidéos du dossier, les
+  compare et affiche les bornes par épisode, sans base de données ni écriture. Dans le conteneur :
+  `docker exec <conteneur entracte-api> /app/entracte analyser-intro "/srv/medias/<série>/<saison>"`.
 
 ## Demandes
 

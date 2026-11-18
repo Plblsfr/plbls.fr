@@ -278,6 +278,9 @@ pub async fn ouvrir(
     } else {
         format!("{base}/direct")
     };
+    let intro = crate::intros::intro_de(state.pool(), fichier)
+        .await
+        .map_err(bd)?;
     let pistes = bibliotheque::pistes(&analyse);
     let sous_titres: Vec<Value> = pistes["subtitles"]
         .as_array()
@@ -301,6 +304,7 @@ pub async fn ouvrir(
         "audio": pistes["audio"],
         "audio_n": audio,
         "subtitles": sous_titres,
+        "intro": crate::intros::en_json(intro),
     })))
 }
 

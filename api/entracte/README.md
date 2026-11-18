@@ -12,6 +12,7 @@ routes dans [`openapi.yaml`](../../docs/entracte/openapi.yaml).
 | `bibliotheque.rs` | bibliothèque, fiches, saisons, épisodes, administration du catalogue |
 | `lecture.rs`, `flux.rs`, `transcodage.rs`, `materiel.rs`, `sous_titres.rs` | flux signés, lecture directe, HLS, accélération, WebVTT |
 | `progression.rs` | progression, reprise, historique |
+| `intros/` | détection des intros : empreinte Chromaprint (`empreinte.rs`), comparaison et consensus (`comparaison.rs`), file, administration et sous-commande `analyser-intro` (`mod.rs`) |
 | `demandes.rs` | recherche, demandes, administration, envoi à Radarr/Sonarr |
 | `push/` | Web Push (VAPID), FCM, notifications |
 | `interne.rs` | santé, `GET /me`, titre pour le salon cinéma d'Estompe |
@@ -20,7 +21,7 @@ routes dans [`openapi.yaml`](../../docs/entracte/openapi.yaml).
 ## Lancer
 
 `just entracte-dev-run` (après `just dev-up`, avec le gateway et aegis), ou `cargo run -p entracte` avec les variables exportées.
-ffmpeg et ffprobe doivent être dans le `PATH`. Image : `docker build -f api/entracte/Dockerfile .` (contexte : racine du dépôt).
+ffmpeg et ffprobe doivent être dans le `PATH` ; la détection des intros demande un ffmpeg avec le muxer `chromaprint`, ou `fpcalc`. Image : `docker build -f api/entracte/Dockerfile .` (contexte : racine du dépôt).
 
 ## Tests
 

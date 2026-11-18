@@ -347,6 +347,29 @@ describe('lecteur de film', () => {
     vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
   })
 
+  it('transmet l’intro du flux sans déplacer la lecture de lui-même', async () => {
+    vi.mocked(filmsApi.playback).mockResolvedValue({ ...stream, intro: { debut: 30, fin: 90 } } as FilmPlayback)
+    const h = handlers()
+    const el = document.createElement('div')
+    const a = await providers.film(el, h)
+    a.load('e1', 45, true)
+    await vi.waitFor(() => expect(h.onTracks).toHaveBeenCalledWith(expect.objectContaining({ intro: { debut: 30, fin: 90 } })))
+    const video = el.querySelector('video')!
+    video.dispatchEvent(new Event('loadedmetadata'))
+    video.dispatchEvent(new Event('timeupdate'))
+    expect(a.time()).toBeLessThan(90)
+    expect(video.currentTime).toBeLessThan(90)
+    a.destroy()
+  })
+
+  it('annonce une intro absente par null', async () => {
+    const h = handlers()
+    const a = await providers.film(document.createElement('div'), h)
+    a.load('e1', 0, true)
+    await vi.waitFor(() => expect(h.onTracks).toHaveBeenCalledWith(expect.objectContaining({ intro: null })))
+    a.destroy()
+  })
+
   it('demande un flux signé, annonce les pistes et ferme le flux en quittant', async () => {
     const h = handlers()
     const el = document.createElement('div')

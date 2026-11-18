@@ -8,7 +8,7 @@
   import Icon from '../../components/Icon.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import { providers, type Adapter, type PState } from '../../blocks/regarder-ensemble/providers'
-  import { AUDIO_PREFS, BUFFER_PREFS, bufferedAhead, clock, IDLE_MS, fullTitle, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type BufferPref, type CastState, type FilmDetail, type FilmTracks, type Range, type SubtitlePref } from './films'
+  import { AUDIO_PREFS, BUFFER_PREFS, bufferedAhead, clock, IDLE_MS, fullTitle, inIntro, pickAudio, pickSubtitle, playPrefs, QUALITY_LABEL, resumeAt, savePlayPrefs, seekTrack, SEEK_STEP, shortcut, SUBTITLE_PREFS, trackName, VOLUME_STEP, type AudioPref, type BufferPref, type CastState, type FilmDetail, type FilmTracks, type Range, type SubtitlePref } from './films'
 
   let { id }: { id: string } = $props()
 
@@ -42,6 +42,9 @@
   const pct = (v: number, max: number) => `${max ? Math.min(100, (v / max) * 100) : 0}%`
   const toggle = () => (playing ? player?.pause() : player?.play())
   const seek = (s: number) => { player?.seek(Math.max(0, duration ? Math.min(s, duration) : s)); position = s }
+  const intro = $derived(tracks?.intro ?? null)
+  const skippable = $derived(!error && inIntro(position, intro))
+  const skip = () => { if (intro && skippable) seek(intro.fin) }
   const fullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root?.requestFullscreen().catch(() => {}) }
 
   const wake = () => {
@@ -93,10 +96,12 @@
     quieter: () => nudge(-VOLUME_STEP),
     mute: () => toggleMute(),
     fullscreen: () => fullscreen(),
+    skip: () => skip(),
   }
   const key = (e: KeyboardEvent) => {
     const action = shortcut(e)
     if (!action || e.defaultPrevented || !player || picker) return
+    if (action === 'skip' && !skippable) return
     if (document.querySelector('plbls-modal, [aria-modal="true"], [role="menu"]')) return
     const t = e.target instanceof HTMLElement ? e.target : null
     if (t?.isContentEditable || t?.matches('textarea, select, input:not([type="range"])')) return
@@ -149,6 +154,9 @@
     {/if}
     {#if cast === 'connected' && !error}
       <div class="watch-msg film-cast" role="status"><Icon name="diffuser" size={18} /> Diffusion sur un autre appareil</div>
+    {/if}
+    {#if skippable && !panel}
+      <button class="plbls-button film-skip" onclick={skip} title="S" aria-keyshortcuts="S"><Icon name="suivant" size={16} /> Passer l’intro</button>
     {/if}
     {#if panel && tracks}
       <section class="film-tracks-panel" aria-label="Pistes">

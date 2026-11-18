@@ -2052,3 +2052,420 @@ async fn webhook_declenche_la_synchronisation() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
+
+fn melodie(base: u32, pas: u32, rythme: &str, haut: u32, cycle: u32, duree: u32) -> String {
+    format!(
+        "aevalsrc='0.5*sin(2*PI*t*({base}+{pas}*floor(mod(t*{rythme}\\,7))))+0.3*sin(2*PI*t*({haut}+90*floor(mod(t*3.3\\,{cycle}))))':d={duree}:s=22050"
+    )
+}
+
+fn episodes_avec_intro() -> &'static [std::path::PathBuf; 4] {
+    static FICHIERS: OnceLock<(tempfile::TempDir, [std::path::PathBuf; 4])> = OnceLock::new();
+    &FICHIERS
+        .get_or_init(|| {
+            let d = tempfile::tempdir().unwrap();
+            let fichiers = [
+                (3, 6, 210, 410),
+                (8, 4, 250, 470),
+                (1, 9, 290, 530),
+                (5, 3, 230, 590),
+            ]
+            .map(|(avant, apres, a, b)| {
+                let dest = d.path().join(format!("{avant}-{apres}.mkv"));
+                let duree = avant + 12 + apres;
+                generer(
+                    &dest,
+                    &[
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        &melodie(a, 70, "5", 500, 4, avant),
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        &melodie(330, 110, "4", 660, 5, 12),
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        &melodie(b, 130, "2.5", 900, 6, apres),
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        &format!("color=c=black:s=160x90:r=2:d={duree}"),
+                        "-filter_complex",
+                        "[0:a][1:a][2:a]concat=n=3:v=0:a=1[a]",
+                        "-map",
+                        "3:v",
+                        "-map",
+                        "[a]",
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "ultrafast",
+                        "-c:a",
+                        "aac",
+                        "-shortest",
+                    ],
+                );
+                dest
+            });
+            (d, fichiers)
+        })
+        .1
+}
+
+const DEBUTS_INTRO: [f64; 4] = [3.0, 8.0, 1.0, 5.0];
+
+fn saison_avec_intro(e: &Env, saison: i64) {
+    let dossier = medias().join("series/La Serie");
+    for (n, source) in episodes_avec_intro().iter().take(3).enumerate() {
+        std::fs::copy(source, dossier.join(format!("S0{saison}E0{}.mkv", n + 1))).unwrap();
+    }
+    let mut m = e.monde.lock().unwrap();
+    m.episodes
+        .extend((1..=3).map(|episode| (saison, episode, true)));
+}
+
+async fn env_intros() -> Option<Env> {
+    env_avec(|c| c.intro.min = 5.0).await
+}
+
+async fn intros_admin(e: &Env) -> Value {
+    let r = get(e, "admin", "/admin/intros").await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    sans_fuite(e, &r.texte(), "/admin/intros");
+    r.json()
+}
+
+fn saison_de(liste: &Value, numero: i64) -> Value {
+    liste["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|s| s["seasons"].as_array().unwrap().clone())
+        .find(|s| s["number"] == numero)
+        .unwrap_or_else(|| panic!("saison {numero} absente de {liste}"))
+}
+
+async fn serie_et_episodes(e: &Env, saison: i64) -> (String, Vec<String>) {
+    let serie = id_de(e, "La Série").await;
+    let l = get(
+        e,
+        "alice",
+        &format!("/titles/{serie}/seasons/{saison}/episodes"),
+    )
+    .await
+    .json();
+    let episodes = l["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_str().unwrap().to_string())
+        .collect();
+    (serie, episodes)
+}
+
+async fn intro_lue(e: &Env, titre: &str) -> Value {
+    let support = json!({"containers": ["mkv", "mp4"], "video": ["h264"], "audio": ["aac"]});
+    let r = ouvrir(e, "alice", titre, json!({ "support": support })).await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let v = r.json();
+    assert!(v.as_object().unwrap().contains_key("intro"), "{v}");
+    let flux = v["stream_id"].as_str().unwrap();
+    let f = appel(
+        e,
+        Some("alice"),
+        "DELETE",
+        &format!("/streams/{flux}"),
+        None,
+    )
+    .await;
+    assert_eq!(f.statut, StatusCode::NO_CONTENT);
+    v["intro"].clone()
+}
+
+fn intro_plausible(intro: &Value, episode: usize) {
+    let (debut, fin) = (
+        intro["debut"].as_f64().unwrap_or(-100.0),
+        intro["fin"].as_f64().unwrap_or(-100.0),
+    );
+    let attendu = DEBUTS_INTRO[episode];
+    assert!(
+        (debut - attendu).abs() <= 3.5 && (fin - attendu - 12.0).abs() <= 3.5 && fin - debut >= 5.0,
+        "épisode {} : {intro}, attendu {attendu} à {}",
+        episode + 1,
+        attendu + 12.0
+    );
+}
+
+async fn compte(e: &Env, requete: &'static str) -> i64 {
+    sqlx::query_scalar(requete)
+        .fetch_one(e.state.pool())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn intros_en_mode_manuel_file_et_administration() {
+    let Some(e) = env_intros().await else { return };
+    saison_avec_intro(&e, 3);
+    synchro(&e).await;
+    let (serie, episodes) = serie_et_episodes(&e, 3).await;
+    assert_eq!(episodes.len(), 3);
+
+    let l = intros_admin(&e).await;
+    assert_eq!(
+        (&l["mode"], &l["available"]),
+        (&json!("manuel"), &json!(true))
+    );
+    assert_eq!(l["items"].as_array().unwrap().len(), 1);
+    assert_eq!(l["items"][0]["id"], json!(serie));
+    assert_eq!(l["items"][0]["title"], "La Série");
+    for n in [1, 3] {
+        let s = saison_de(&l, n);
+        assert_eq!((&s["state"], &s["found"]), (&json!("jamais"), &json!(0)));
+    }
+    assert_eq!(saison_de(&l, 3)["episodes"], 3);
+    crate::intros::traiter_file(&e.state).await;
+    synchro(&e).await;
+    assert_eq!(compte(&e, "SELECT count(*) FROM intros_saisons").await, 0);
+    assert_eq!(compte(&e, "SELECT count(*) FROM empreintes").await, 0);
+    assert_eq!(intro_lue(&e, &episodes[0]).await, Value::Null);
+
+    for (corps, attendu) in [
+        (json!({ "mode": "parfois" }), StatusCode::BAD_REQUEST),
+        (json!({}), StatusCode::BAD_REQUEST),
+        (json!({ "mode": "manuel" }), StatusCode::OK),
+    ] {
+        let r = appel(&e, Some("admin"), "PUT", "/admin/intros/mode", Some(corps)).await;
+        assert_eq!(r.statut, attendu, "{}", r.texte());
+    }
+    let film = id_de(&e, "Film A").await;
+    let inconnu = "00000000-0000-0000-0000-000000000001";
+    for id in [film.as_str(), inconnu] {
+        let chemin = format!("/admin/intros/titles/{id}/analyze");
+        let r = appel(&e, Some("admin"), "POST", &chemin, Some(json!({}))).await;
+        assert_eq!(r.statut, StatusCode::NOT_FOUND, "{chemin}");
+        let chemin = format!("/admin/intros/titles/{id}");
+        let r = appel(&e, Some("admin"), "DELETE", &chemin, None).await;
+        assert_eq!(r.statut, StatusCode::NOT_FOUND, "{chemin}");
+    }
+    let analyser = format!("/admin/intros/titles/{serie}/analyze");
+    let r = appel(
+        &e,
+        Some("admin"),
+        "POST",
+        &analyser,
+        Some(json!({ "season": 0 })),
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::BAD_REQUEST);
+    let r = appel(&e, Some("alice"), "POST", &analyser, Some(json!({}))).await;
+    assert_eq!(r.statut, StatusCode::FORBIDDEN);
+
+    let r = appel(&e, Some("admin"), "POST", &analyser, Some(json!({}))).await;
+    assert_eq!(r.statut, StatusCode::ACCEPTED, "{}", r.texte());
+    assert_eq!(r.json()["queued"], 2);
+    let l = intros_admin(&e).await;
+    assert_eq!(saison_de(&l, 1)["state"], "en_file");
+    assert_eq!(saison_de(&l, 3)["state"], "en_file");
+    let r = appel(&e, Some("admin"), "POST", &analyser, Some(json!({}))).await;
+    assert_eq!(r.json()["queued"], 0, "déjà en file");
+
+    sqlx::query("UPDATE intros_saisons SET etat = 'en_cours' WHERE saison = 3")
+        .execute(e.state.pool())
+        .await
+        .unwrap();
+    assert_eq!(saison_de(&intros_admin(&e).await, 3)["state"], "en_cours");
+    assert_eq!(crate::intros::reprendre(e.state.pool()).await.unwrap(), 1);
+    assert_eq!(saison_de(&intros_admin(&e).await, 3)["state"], "en_file");
+
+    crate::intros::traiter_file(&e.state).await;
+    let l = intros_admin(&e).await;
+    let s3 = saison_de(&l, 3);
+    assert_eq!(
+        (&s3["state"], &s3["found"]),
+        (&json!("trouvee"), &json!(3)),
+        "{l}"
+    );
+    assert!(s3["error"].is_null() && s3["updated_at"].is_string());
+    let s1 = saison_de(&l, 1);
+    assert_eq!(
+        (&s1["state"], &s1["found"]),
+        (&json!("rien"), &json!(0)),
+        "{l}"
+    );
+    for (n, id) in episodes.iter().enumerate() {
+        intro_plausible(&intro_lue(&e, id).await, n);
+    }
+    assert_eq!(intro_lue(&e, &film).await, Value::Null);
+    let (_, premiere) = serie_et_episodes(&e, 1).await;
+    assert_eq!(intro_lue(&e, &premiere[0]).await, Value::Null);
+
+    crate::intros::traiter_file(&e.state).await;
+    synchro(&e).await;
+    assert_eq!(saison_de(&intros_admin(&e).await, 1)["state"], "rien");
+    let empreintes: Vec<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT cree_le FROM empreintes ORDER BY fichier_id")
+            .fetch_all(e.state.pool())
+            .await
+            .unwrap();
+    assert!(empreintes.len() >= 3);
+    let r = appel(
+        &e,
+        Some("admin"),
+        "POST",
+        &analyser,
+        Some(json!({ "season": 3 })),
+    )
+    .await;
+    assert_eq!(r.json()["queued"], 1, "réanalyse d'une saison");
+    assert_eq!(saison_de(&intros_admin(&e).await, 3)["state"], "en_file");
+    crate::intros::traiter_file(&e.state).await;
+    assert_eq!(saison_de(&intros_admin(&e).await, 3)["state"], "trouvee");
+    let apres: Vec<chrono::DateTime<chrono::Utc>> =
+        sqlx::query_scalar("SELECT cree_le FROM empreintes ORDER BY fichier_id")
+            .fetch_all(e.state.pool())
+            .await
+            .unwrap();
+    assert_eq!(empreintes, apres, "empreintes gardées en base");
+
+    let r = appel(
+        &e,
+        Some("admin"),
+        "DELETE",
+        &format!("/admin/intros/titles/{serie}"),
+        None,
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::NO_CONTENT);
+    let l = intros_admin(&e).await;
+    let s3 = saison_de(&l, 3);
+    assert_eq!((&s3["state"], &s3["found"]), (&json!("jamais"), &json!(0)));
+    assert_eq!(compte(&e, "SELECT count(*) FROM empreintes").await, 0);
+    assert_eq!(compte(&e, "SELECT count(*) FROM intros").await, 0);
+    assert_eq!(intro_lue(&e, &episodes[0]).await, Value::Null);
+}
+
+#[tokio::test]
+async fn intros_en_erreur_sans_chemin_ni_boucle() {
+    let Some(e) = env_avec(|c| {
+        c.intro.min = 5.0;
+        c.ffmpeg = "/nexiste/pas/ffmpeg".into();
+        c.intro.fpcalc = "/nexiste/pas/fpcalc".into();
+    })
+    .await
+    else {
+        return;
+    };
+    let r = appel(
+        &e,
+        Some("admin"),
+        "PUT",
+        "/admin/intros/mode",
+        Some(json!({ "mode": "automatique" })),
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::OK);
+    synchro(&e).await;
+    let l = intros_admin(&e).await;
+    assert_eq!(
+        (&l["mode"], &l["available"]),
+        (&json!("automatique"), &json!(false))
+    );
+    assert_eq!(saison_de(&l, 1)["state"], "en_file");
+    crate::intros::traiter_file(&e.state).await;
+    let s = saison_de(&intros_admin(&e).await, 1);
+    assert_eq!(s["state"], "erreur");
+    assert!(s["error"].as_str().unwrap().contains("Chromaprint"), "{s}");
+    synchro(&e).await;
+    crate::intros::traiter_file(&e.state).await;
+    let apres = saison_de(&intros_admin(&e).await, 1);
+    assert_eq!(
+        apres, s,
+        "une saison en erreur n'est pas réanalysée en boucle"
+    );
+}
+
+async fn etat_de_saison(e: &Env, saison: i32) -> Option<String> {
+    sqlx::query_scalar("SELECT etat FROM intros_saisons WHERE saison = $1")
+        .bind(saison)
+        .fetch_optional(e.state.pool())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn intros_en_mode_automatique_et_fichier_remplace() {
+    let Some(e) = env_intros().await else { return };
+    saison_avec_intro(&e, 4);
+    let r = appel(
+        &e,
+        Some("admin"),
+        "PUT",
+        "/admin/intros/mode",
+        Some(json!({ "mode": "automatique" })),
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::OK);
+    assert_eq!(compte(&e, "SELECT count(*) FROM intros_saisons").await, 0);
+    let travailleur = tokio::spawn(crate::intros::travailleur(e.state.clone()));
+    synchro(&e).await;
+    let limite = Instant::now() + Duration::from_secs(60);
+    while compte(
+        &e,
+        "SELECT count(*) FROM intros_saisons WHERE etat IN ('en_file', 'en_cours')",
+    )
+    .await
+        > 0
+        || etat_de_saison(&e, 4).await.is_none()
+    {
+        assert!(Instant::now() < limite, "saison jamais analysée seule");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    travailleur.abort();
+    assert_eq!(etat_de_saison(&e, 4).await.as_deref(), Some("trouvee"));
+    assert_eq!(etat_de_saison(&e, 1).await.as_deref(), Some("rien"));
+    let (_, episodes) = serie_et_episodes(&e, 4).await;
+    for (n, id) in episodes.iter().enumerate() {
+        intro_plausible(&intro_lue(&e, id).await, n);
+    }
+
+    let photo = || async {
+        let saisons: Vec<(i32, String, chrono::DateTime<chrono::Utc>)> =
+            sqlx::query_as("SELECT saison, etat, maj FROM intros_saisons ORDER BY saison")
+                .fetch_all(e.state.pool())
+                .await
+                .unwrap();
+        let empreintes: Vec<chrono::DateTime<chrono::Utc>> =
+            sqlx::query_scalar("SELECT cree_le FROM empreintes ORDER BY fichier_id")
+                .fetch_all(e.state.pool())
+                .await
+                .unwrap();
+        (saisons, empreintes)
+    };
+    let avant = photo().await;
+    synchro(&e).await;
+    crate::intros::traiter_file(&e.state).await;
+    assert_eq!(photo().await, avant, "saison inchangée non retraitée");
+
+    let remplace = medias().join("series/La Serie/S04E01.mkv");
+    std::fs::copy(&episodes_avec_intro()[3], &remplace).unwrap();
+    synchro(&e).await;
+    assert_eq!(etat_de_saison(&e, 4).await.as_deref(), Some("en_file"));
+    assert_eq!(etat_de_saison(&e, 1).await.as_deref(), Some("rien"));
+    assert_eq!(
+        intro_lue(&e, &episodes[0]).await,
+        Value::Null,
+        "bornes invalidées"
+    );
+    intro_plausible(&intro_lue(&e, &episodes[1]).await, 1);
+    assert_eq!(
+        compte(&e, "SELECT count(*) FROM empreintes e JOIN fichiers f ON f.id = e.fichier_id WHERE f.chemin LIKE '%S04%'").await,
+        2
+    );
+    crate::intros::traiter_file(&e.state).await;
+    assert_eq!(etat_de_saison(&e, 4).await.as_deref(), Some("trouvee"));
+    intro_plausible(&intro_lue(&e, &episodes[0]).await, 3);
+    intro_plausible(&intro_lue(&e, &episodes[2]).await, 2);
+}
