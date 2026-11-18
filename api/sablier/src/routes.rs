@@ -3,16 +3,18 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, get, patch, post, put},
+    routing::{MethodRouter, delete, get, patch, post, put},
 };
 
 use crate::{
-    battement,
+    admin, battement,
     domaines::{entracte, messagerie, sillon},
     droits::Droit,
+    effacement,
     etat::AppState,
+    export,
     garde::{self, Garde},
-    interne, partage, recaps, series, trophees, utilisation,
+    interne, journal, partage, recaps, series, trophees, utilisation,
 };
 
 pub struct Route {
@@ -149,6 +151,24 @@ pub fn table() -> Vec<Entree> {
         ),
         entree(
             Method::GET,
+            "/views",
+            Garde::Droit(Droit::Acces),
+            get(journal::voir_vues),
+        ),
+        entree(
+            Method::GET,
+            "/export",
+            Garde::Droit(Droit::Acces),
+            get(export::exporter),
+        ),
+        entree(
+            Method::DELETE,
+            "/data",
+            Garde::Droit(Droit::Acces),
+            delete(effacement::effacer_les_siennes),
+        ),
+        entree(
+            Method::GET,
             "/admin/trophies",
             Garde::Droit(Droit::Admin),
             get(trophees::admin_lister),
@@ -170,6 +190,78 @@ pub fn table() -> Vec<Entree> {
             "/admin/catalogue",
             Garde::Droit(Droit::Admin),
             get(trophees::admin_catalogue),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_personnes),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/usage",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_utilisation),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/entracte",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_entracte),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/sillon",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_sillon),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/messaging",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_messagerie),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/trophies",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_trophees),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/streaks",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_series),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/recaps",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_recaps),
+        ),
+        entree(
+            Method::GET,
+            "/admin/people/{sub}/recaps/{id}",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_recap),
+        ),
+        entree(
+            Method::DELETE,
+            "/admin/people/{sub}/data",
+            Garde::Droit(Droit::Admin),
+            delete(admin::effacer),
+        ),
+        entree(
+            Method::GET,
+            "/admin/totals",
+            Garde::Droit(Droit::Admin),
+            get(admin::voir_totaux),
+        ),
+        entree(
+            Method::GET,
+            "/admin/audit",
+            Garde::Droit(Droit::Admin),
+            get(journal::voir_journal),
         ),
     ]
 }
@@ -300,5 +392,42 @@ mod tests {
         let (manquantes, en_trop) = ecarts(&code, &documentees(OPENAPI));
         assert_eq!(manquantes, ["POST /me"]);
         assert!(en_trop.is_empty());
+    }
+
+    #[test]
+    fn c1_la_personne_visee_n_est_un_parametre_que_sur_les_routes_d_administration() {
+        const PROFIL_PUBLIC: &str = "/profiles/{sub}";
+        let mut visant_une_personne = 0;
+        let mut profil_public = false;
+        for (route, _) in table() {
+            let admin = route.garde == Garde::Droit(Droit::Admin);
+            assert_eq!(
+                route.chemin.starts_with("/admin/"),
+                admin,
+                "{} {}",
+                route.methode,
+                route.chemin
+            );
+            if !route.chemin.contains("{sub}") {
+                continue;
+            }
+            if route.chemin == PROFIL_PUBLIC {
+                assert_eq!(
+                    (route.methode.clone(), route.garde),
+                    (Method::GET, Garde::Droit(Droit::Acces))
+                );
+                profil_public = true;
+                continue;
+            }
+            assert!(
+                admin && route.chemin.starts_with("/admin/people/{sub}/"),
+                "{} {} vise une personne sans sablier:admin",
+                route.methode,
+                route.chemin
+            );
+            visant_une_personne += 1;
+        }
+        assert!(profil_public);
+        assert_eq!(visant_une_personne, 9);
     }
 }

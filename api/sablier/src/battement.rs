@@ -10,7 +10,7 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{bd, invalide, sans_contenu},
-    trophees,
+    personnes, trophees,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -162,16 +162,20 @@ pub async fn battre(
         )
     })?;
     let c = state.config();
+    let maintenant = Utc::now();
     enregistrer(
         state.pool(),
         &c.fuseau,
         c.battement,
         p.sub(),
         battement,
-        Utc::now(),
+        maintenant,
     )
     .await
     .map_err(bd)?;
+    personnes::noter(state.pool(), &p.identite, maintenant)
+        .await
+        .map_err(bd)?;
     Ok(sans_contenu())
 }
 

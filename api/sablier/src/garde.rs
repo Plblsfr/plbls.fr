@@ -135,6 +135,10 @@ fn avec_cors(mut r: Response, origine: &HeaderValue) -> Response {
         header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
         HeaderValue::from_static("true"),
     );
+    h.insert(
+        header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        HeaderValue::from_static("Content-Disposition"),
+    );
     h.append(header::VARY, HeaderValue::from_static("Origin"));
     r
 }

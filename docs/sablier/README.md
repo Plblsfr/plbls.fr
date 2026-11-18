@@ -3,7 +3,8 @@
 Service de statistiques de plbls.fr, à part d'Estompe, d'Entracte et de Sillon : il reçoit leurs évènements par une file, compte le temps
 d'utilisation de l'app et garde des agrégats par jour. Les statistiques viennent par lots ; ce document décrit ce qui existe aujourd'hui :
 le socle du service, la file d'évènements (format, émission, consommation, stockage, purge), le temps d'utilisation, les statistiques
-d'Entracte, de Sillon et de la messagerie, les trophées, les séries de jours, les récaps et le partage sur le profil.
+d'Entracte, de Sillon et de la messagerie, les trophées, les séries de jours, les récaps, le partage sur le profil, l'administration
+(vue par personne, totaux, journal des consultations), l'export et l'effacement.
 
 | Où | Quoi |
 |---|---|
@@ -18,8 +19,12 @@ Déclarées à aegis par manifeste (application `sablier`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses séries, ses récaps, ses réglages de partage, et les stats et trophées publics d'une autre personne (`GET /profiles/{sub}`) |
-| `sablier:admin` | configuration des trophées (`/admin/trophies`, `/admin/catalogue`) |
+| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses séries, ses récaps, ses réglages de partage, la liste des admins qui ont consulté ses stats (`GET /views`), l'export (`GET /export`) et l'effacement (`DELETE /data`) de ses données, et les stats et trophées publics d'une autre personne (`GET /profiles/{sub}`) |
+| `sablier:admin` | configuration des trophées (`/admin/trophies`, `/admin/catalogue`), statistiques, trophées et récaps de n'importe qui (`/admin/people/{sub}/…`), totaux globaux (`/admin/totals`), journal des consultations (`/admin/audit`), effacement des données d'une personne |
+
+La personne visée n'est un paramètre que sur les routes `sablier:admin` (`/admin/people/{sub}/…`) : les routes `sablier:access` lisent
+toujours la personne de la session. Seule exception, `GET /profiles/{sub}`, qui ne sert que ce que la cible a rendu public. Un test
+sur la table des routes le vérifie (`routes::tests::c1_…`).
 
 Chaque route relève d'une permission ou d'une exception motivée (santé, disponibilité, `GET /me`, `POST /heartbeat`) : la table des
 routes l'impose (`api/sablier/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403
@@ -104,9 +109,12 @@ démarre sans consommer ; Redis en panne : nouvel essai toutes les 5 s, battemen
 | `a_evaluer` | personnes dont les trophées sont à réévaluer |
 | `recaps` | récaps figés : personne, genre (`mois`, `annee`), période (`2026-10`, `2026`), contenu JSON, `vu_le` |
 | `partages_stats`, `partages_trophees` | ce que chaque personne a rendu public (une ligne = partagé) |
+| `personnes` | annuaire tenu par Sablier : nom et dernier passage de chaque personne vue connectée (`nom`, `vu_le`) |
+| `consultations` | journal des consultations et des effacements faits par les admins : `admin_sub`, `admin_nom`, `cible_sub`, `action`, `date` |
 
 Toute table qui porte des données d'une personne a une colonne `sub` et figure dans `effacement::tables_personnelles()` (vérifié par un
-test sur le schéma) : effacer ou exporter une personne se fait table par table, par `WHERE sub = …`.
+test sur le schéma) : effacer ou exporter une personne se fait table par table, par `WHERE sub = …`. `consultations` est la seule
+exception voulue : le journal survit à l'effacement, ses colonnes s'appellent donc `admin_sub` et `cible_sub`, pas `sub`.
 
 Le jour d'un instant est celui du fuseau `SABLIER_FUSEAU` (`Europe/Paris` par défaut, vérifié au démarrage auprès de PostgreSQL), y
 compris les jours de changement d'heure, qui durent 23 ou 25 heures. Les évènements bruts sont purgés une fois par jour (et au démarrage)
@@ -321,6 +329,93 @@ partagés. Trois contrôles s'appliquent :
    renseignées : la route répond comme s'il n'y avait rien de public (`200`, listes vides), jamais les données.
 
 Lire son propre profil ne demande pas l'appel à Estompe et rend ce que les autres verraient.
+
+## Administration
+
+Routes `sablier:admin`. La configuration des trophées est décrite plus haut ; le reste :
+
+**Vue d'une personne.** `GET /admin/people/{sub}/usage`, `/entracte`, `/sillon`, `/messaging` (mêmes `period` et `date`), `/trophies`,
+`/streaks`, `/recaps` et `/recaps/{id}` rendent pour n'importe quel `sub` ce que la personne lit elle-même par les routes du même nom,
+par les mêmes fonctions de lecture. Trois différences :
+
+- l'admin voit tout : les statistiques, les trophées et les séries d'Entracte et de Sillon sont toujours servis, sans regarder
+  `entracte:access` ni `sillon:access` (ceux de l'admin comme ceux de la personne) ;
+- ces routes ne modifient rien d'autre que le journal : rien n'est marqué vu, et les déblocages ne sont pas recalculés avant la
+  réponse (la tâche de fond s'en charge, 10 secondes au plus) ;
+- un trophée caché non débloqué reste seulement compté (`hidden_remaining`) ; le catalogue complet est dans `GET /admin/trophies`.
+
+Un `sub` inconnu répond comme une personne sans activité.
+
+**Personnes.** `GET /admin/people` liste les personnes qui ont des agrégats : `sub`, `name`, `known`, `last_seen`, premier et dernier
+jour d'activité, temps d'utilisation cumulé ; triée par nom, les personnes sans nom à la fin. `GET /admin/people?orphans=true` ne rend
+que les **personnes sans compte** (`known: false`). Cette liste n'est pas journalisée.
+
+**Annuaire.** Sablier ne lit pas l'annuaire d'aegis : aegis n'offre aucune route de service pour lister des comptes ou dire si un `sub`
+existe (`/v1/admin/accounts` demande une session d'administrateur d'aegis ; `/v1/effective` et `/v1/check` répondent pour n'importe
+quel `sub`, et `/v1/effective` l'inscrit dans l'annuaire). Sablier tient donc son propre annuaire, `personnes` : à chaque `GET /me` et
+à chaque battement, il note le nom de la session et l'instant, une écriture par heure et par personne au plus. `known` veut dire
+« Sablier a déjà vu cette personne connectée », pas « le compte existe encore » :
+
+- une personne dont les stats ne viennent que d'évènements ou d'un import, sans jamais s'être connectée à l'app, est « sans compte » ;
+- un compte supprimé après avoir utilisé l'app reste `known`, avec un `last_seen` qui ne bouge plus : c'est à cette date que l'admin
+  le reconnaît. L'effacement est le même dans les deux listes.
+
+**Totaux.** `GET /admin/totals?period=&date=` rend pour la période les personnes actives (personnes distinctes avec du temps
+d'utilisation ou une action ; les réactions reçues ne comptent pas), le temps d'utilisation, le temps regardé (`entracte.secondes`),
+le temps d'écoute (`sillon.secondes`) et les messages, au total et par jour. Aucune personne n'est visée : pas de ligne au journal.
+
+**Effacement.** `DELETE /admin/people/{sub}/data` a le même effet que l'effacement fait par la personne (voir plus bas), pour
+n'importe quel `sub`, avec ou sans compte.
+
+## Journal des consultations
+
+Chaque lecture d'une route `/admin/people/{sub}/…` par un admin ajoute une ligne à `consultations` : l'admin (`sub` et nom, figé au
+moment de la consultation), la personne consultée, la date. La ligne est écrite avant la lecture : si le journal ne peut pas être
+écrit, la route répond 500 et ne sert rien.
+
+- **Regroupement.** L'écran d'une personne charge une dizaine de routes d'un coup : pas de nouvelle ligne tant que le même admin a
+  une ligne `consultation` pour la même personne depuis moins de 10 minutes (`journal::REGROUPEMENT`). Un verrou par couple admin et
+  personne garantit une seule ligne même quand les requêtes arrivent ensemble. Le journal dit donc « cet admin a consulté cette
+  personne à cette heure », pas quelle statistique.
+- Un admin qui consulte ses propres stats, par ses routes ou par `/admin/people/<son sub>/…`, n'est pas journalisé.
+- Un effacement fait par un admin ajoute toujours une ligne, d'action `effacement`, dans la transaction de l'effacement.
+- `GET /admin/audit?before=<id>&limit=` (`sablier:admin`) rend le journal complet, du plus récent au plus ancien, par pages (50 par
+  défaut, 200 au plus ; `next_before` donne la suite), avec le nom connu de chaque personne consultée.
+- `GET /views` (`sablier:access`) rend à chacun « qui a consulté mes stats » : date, nom de l'admin et action, 500 lignes au plus,
+  sans le `sub` de l'admin.
+
+Le journal n'est pas une donnée de la personne consultée : il n'est ni purgé ni effacé avec elle.
+
+## Export
+
+`GET /export` (`sablier:access`) rend un fichier JSON (`Content-Disposition: attachment; filename="sablier-export-AAAA-MM-JJ.json"`)
+avec tout ce que Sablier garde de la personne de la session : agrégats par jour (`aggregates`, sous leurs noms de stockage), trophées
+débloqués (`trophies`, un par palier), récaps figés (`recaps`), réglages de partage (`sharing`), évènements bruts encore conservés
+(`events`), consultations par les admins (`views`) et état de la collecte (`name`, `last_seen`, `last_heartbeat`, `entracte_session`,
+`pending_evaluation`). Chaque table de `tables_personnelles()` a sa section (`export::sections()`, vérifié par un test), et l'export ne
+contient aucune donnée d'une autre personne.
+
+Les évènements bruts sont lus par pages de 1 000 (`export::PAGE`) et envoyés au fil de la lecture : leur nombre ne pèse pas sur la
+mémoire. Le reste (agrégats compris) est chargé d'un bloc. Une panne de base pendant l'envoi coupe la réponse, que le front doit alors
+refuser (JSON incomplet).
+
+## Effacement
+
+`DELETE /data` (`sablier:access`) avec le corps `{"confirm": "EFFACER"}` supprime définitivement, en une transaction
+(`effacement::effacer`), toutes les lignes de la personne dans les tables de `tables_personnelles()` : évènements bruts, agrégats,
+trophées débloqués, récaps, réglages de partage, session Entracte en cours, dernier battement, ligne d'annuaire. Toute autre valeur de
+`confirm` : 400, rien n'est effacé. `DELETE /admin/people/{sub}/data` (`sablier:admin`, même corps) fait la même chose pour une autre
+personne.
+
+- Après l'effacement, toutes les routes de lecture répondent comme pour une personne sans activité, et le profil ne montre plus rien.
+- La collecte reprend à zéro : le battement suivant ne compte rien (il sert de point de départ), un évènement arrivé ensuite est
+  compté normalement, le premier jour d'activité est celui de la reprise.
+- L'historique d'Entracte, de Sillon et les messages ne sont pas touchés. Le journal des consultations est conservé.
+- **Import après effacement.** La déduplication repose sur les évènements bruts, qui sont supprimés : un import d'historique rejoué
+  après l'effacement est compté de nouveau pour cette personne et lui rend ses anciennes statistiques. Ne pas relancer d'import
+  d'Entracte, de Sillon ou d'Estompe après un effacement sans le vouloir.
+- Un évènement ou une évaluation des trophées en cours de traitement au moment exact de l'effacement peut laisser une ligne ; un
+  second effacement la supprime.
 
 ## Configuration
 

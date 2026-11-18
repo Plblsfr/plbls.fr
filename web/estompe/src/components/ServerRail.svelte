@@ -10,6 +10,7 @@
   import { adjacent, moveServer, orderServers } from '../lib/serverorder'
   import Icon from './Icon.svelte'
   import ServerIcon from './ServerIcon.svelte'
+  import { sablier } from '../sections/sablier/sablier.svelte'
 
   let { onadd }: { onadd: () => void } = $props()
 
@@ -83,6 +84,9 @@
     {#if app.musique}
       <a class="rail-tool" class:active={route.name === 'musique'} href={hrefs.musique()} title="Sillon · musique" aria-label="Sillon, musique" aria-current={route.name === 'musique' ? 'page' : undefined}><Icon name="note" size={22} /></a>
     {/if}
+    {#if app.stats}
+      <a class="rail-tool rail-stats" class:active={route.name === 'stats'} href={hrefs.stats()} title="Stats" aria-label={sablier.pastille ? 'Stats, du nouveau' : 'Stats'} aria-current={route.name === 'stats' ? 'page' : undefined}><Icon name="sablier" size={22} />{#if sablier.pastille}<span class="sab-pip sab-pip--coin"></span>{/if}</a>
+    {/if}
     {#if app.regie}
       <a class="rail-tool" class:active={route.name === 'regie'} href={hrefs.regie()} title="Régie · administration des médias" aria-label="Régie, administration des médias" aria-current={route.name === 'regie' ? 'page' : undefined}><Icon name="curseurs" size={22} /></a>
     {/if}
@@ -120,5 +124,6 @@
   .rail-tool { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: var(--r-s); background: transparent; color: var(--gris); text-decoration: none; cursor: pointer; transition: background var(--d) var(--sortie), color var(--d) var(--sortie); }
   .rail-tool:hover { background: var(--papier-2); color: var(--encre); }
   .rail-tool.active { background: var(--rose); color: var(--encre); }
+  .rail-stats { position: relative; }
   @keyframes v-trace { from { transform: scaleX(0); } }
 </style>

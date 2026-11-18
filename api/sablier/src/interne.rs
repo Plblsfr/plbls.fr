@@ -4,18 +4,22 @@ use serde_json::json;
 use crate::{
     etat::AppState,
     garde::Personne,
-    http::{erreur, ok},
+    http::{bd, erreur, ok},
+    personnes,
 };
 
-pub async fn moi(State(state): State<AppState>, p: Personne) -> Response {
-    ok(&json!({
+pub async fn moi(State(state): State<AppState>, p: Personne) -> Result<Response, Response> {
+    personnes::noter(state.pool(), &p.identite, chrono::Utc::now())
+        .await
+        .map_err(bd)?;
+    Ok(ok(&json!({
         "sub": p.identite.sub,
         "name": p.identite.nom,
         "email": p.identite.email,
         "permissions": p.droits,
         "sections": p.droits.sections(),
         "heartbeat_seconds": state.config().battement.as_secs(),
-    }))
+    })))
 }
 
 pub async fn sante() -> Response {

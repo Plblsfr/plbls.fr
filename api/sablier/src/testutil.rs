@@ -427,6 +427,110 @@ impl Env {
     }
 }
 
+impl Env {
+    pub async fn remplir(&self, qui: &str) {
+        let sub = format!("sub-{qui}");
+        let pool = self.state.pool();
+        let fuseau = &self.state.config().fuseau;
+        let evenements = [
+            Donnees::EstompeMessage {
+                serveur: Some(format!("serveur-{sub}")),
+                salon: Some(format!("salon-{sub}")),
+                prive: false,
+            },
+            Donnees::SillonEcoute {
+                piste: format!("piste-{sub}"),
+                secondes: 120,
+                comptee: true,
+            },
+            Donnees::EntracteLecture {
+                titre: format!("titre-{sub}"),
+                genre: commun::evenements::Genre::Film,
+                serie: None,
+                secondes: 600,
+            },
+        ];
+        for (i, donnees) in evenements.into_iter().enumerate() {
+            let id = format!("{sub}-evt-{i}");
+            let issue = self
+                .recevoir(&id, &sub, "2026-03-10T10:00:00Z", false, donnees)
+                .await;
+            assert_eq!(issue, Issue::Applique);
+        }
+        let identite = crate::identite::Identite {
+            sub: sub.clone(),
+            nom: qui.to_string(),
+            email: format!("{qui}@x.fr"),
+        };
+        for date in ["2026-03-10T10:00:00Z", "2026-03-10T10:00:20Z"] {
+            let battement = crate::battement::Battement {
+                platform: crate::battement::Plateforme::Web,
+                section: crate::battement::Section::Sablier,
+            };
+            let intervalle = Duration::from_secs(30);
+            crate::battement::enregistrer(pool, fuseau, intervalle, &sub, battement, instant(date))
+                .await
+                .unwrap();
+            crate::personnes::noter(pool, &identite, instant(date))
+                .await
+                .unwrap();
+        }
+        let aujourd_hui = self.state.aujourd_hui().await.unwrap();
+        crate::trophees::evaluer(pool, &sub, aujourd_hui)
+            .await
+            .unwrap();
+        for sql in [
+            "INSERT INTO recaps (sub, genre, periode, contenu) VALUES ($1, 'mois', '2026-02',
+                jsonb_build_object('kind', 'month', 'period', '2026-02', 'marque', 'recap-' || $1))",
+            "INSERT INTO partages_stats (sub, stat) VALUES ($1, 'messaging.messages')",
+            "INSERT INTO partages_trophees (sub, trophee)
+                SELECT $1, id FROM trophees WHERE cle = 'premier_jour'",
+        ] {
+            sqlx::query(sql).bind(&sub).execute(pool).await.unwrap();
+        }
+    }
+
+    pub async fn lignes_de(&self, sub: &str) -> Vec<(&'static str, i64)> {
+        let mut lignes = Vec::new();
+        for table in crate::effacement::tables_personnelles() {
+            let n: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                "SELECT COUNT(*) FROM {table} WHERE sub = $1"
+            )))
+            .bind(sub)
+            .fetch_one(self.state.pool())
+            .await
+            .unwrap();
+            lignes.push((*table, n));
+        }
+        lignes
+    }
+
+    pub async fn lectures(&self, qui: &str) -> Vec<(String, StatusCode, Value)> {
+        let mut lectures = Vec::new();
+        for (route, _) in routes::table() {
+            let lecture = route.methode == "GET"
+                && route.garde == crate::garde::Garde::Droit(crate::droits::Droit::Acces)
+                && route.chemin != "/views";
+            if !lecture {
+                continue;
+            }
+            let chemin = route
+                .chemin
+                .replace("{sub}", &format!("sub-{qui}"))
+                .replace("{id}", "1");
+            let r = self.get(qui, &format!("{chemin}?period=all")).await;
+            let mut corps = r.json();
+            if chemin == "/export" {
+                let export = corps.as_object_mut().expect("export");
+                export.remove("exported_at");
+                export.remove("views");
+            }
+            lectures.push((chemin, r.statut, corps));
+        }
+        lectures
+    }
+}
+
 pub async fn attendre<F: Future<Output = bool>>(mut condition: impl FnMut() -> F, quoi: &str) {
     let limite = Instant::now() + Duration::from_secs(20);
     while !condition().await {

@@ -23,9 +23,13 @@ routes dans [`openapi.yaml`](../../docs/sablier/openapi.yaml).
 | `trophees.rs` | table `trophees`, évaluation et déblocages, personnes à réévaluer, `GET /trophies`, `GET /unseen`, `POST /seen`, routes d'administration |
 | `recaps.rs` | création des récaps du mois et de l'année (`creer_les_recaps`), `GET /recaps`, `GET /recaps/{id}` |
 | `partage.rs` | réglages de partage (`GET`/`PUT /sharing`), profil public (`GET /profiles/{sub}`) et demande de visibilité à Estompe |
-| `effacement.rs` | `tables_personnelles()` : toutes les tables indexées par `sub` |
+| `effacement.rs` | `tables_personnelles()` : toutes les tables indexées par `sub` ; `effacer` (une transaction), `DELETE /data` |
+| `export.rs` | `GET /export` : en-tête chargé d'un bloc (`tete`), évènements bruts envoyés par pages (`flux`), `sections()` : la section de chaque table personnelle |
+| `personnes.rs` | annuaire tenu par Sablier (`noter` : nom et dernier passage, une écriture par heure au plus), alimenté par `GET /me` et le battement |
+| `journal.rs` | table `consultations` : `inscrire` et `consulter` (regroupement de 10 minutes, horloge en paramètre), `GET /views`, `GET /admin/audit` |
+| `admin.rs` | routes `sablier:admin` hors trophées : vue d'une personne (`/admin/people/{sub}/…`), liste des personnes, totaux, effacement |
 | `purge.rs` | purge des évènements bruts (`purger`) |
-| `migrations/` | schéma de la base `sablier` (`0001_sablier.sql` : `evenements`, `agregats_jour`, `battements` ; `0002_sessions_entracte.sql` : session Entracte en cours ; `0003_trophees_recaps_partage.sql` : trophées et jeu de départ, déblocages, récaps, partage) |
+| `migrations/` | schéma de la base `sablier` (`0001_sablier.sql` : `evenements`, `agregats_jour`, `battements` ; `0002_sessions_entracte.sql` : session Entracte en cours ; `0003_trophees_recaps_partage.sql` : trophées et jeu de départ, déblocages, récaps, partage ; `0004_personnes_consultations.sql` : annuaire et journal des consultations) |
 
 Le format des évènements et leur émission sont dans [`api/commun`](../commun/src/evenements.rs) (`evenements.rs`, `emission.rs`).
 
@@ -62,7 +66,15 @@ Le format des évènements et leur émission sont dans [`api/commun`](../commun/
   aujourd_hui) -> Profil` (ce que la cible a rendu public), `partage::profil_visible(&AppState, lecteur, cible) -> bool`.
 - `catalogue::STATS`, `catalogue::trouver(cle)`, `catalogue::valeur(pool, sub, &Stat, du, au)` ; `exploits::EXPLOITS`.
 - `effacement::tables_personnelles()` : les tables à vider (`DELETE … WHERE sub = $1`) ou à exporter pour une personne. Une nouvelle
-  table avec une colonne `sub` doit y être ajoutée : `effacement::tests` compare la liste au schéma.
+  table avec une colonne `sub` doit y être ajoutée, avec sa section dans `export::sections()` : `effacement::tests` compare la liste
+  au schéma, `export::tests` compare les sections à la liste. `consultations` n'en fait pas partie (colonnes `admin_sub`, `cible_sub`).
+- `effacement::effacer(pool, sub) -> u64` (lignes supprimées) et `effacement::effacer_dans(&mut tx, sub)` pour l'inclure dans une
+  transaction ; `effacement::confirmer(octets)` : le corps `{"confirm": "EFFACER"}`.
+- `journal::consulter(pool, &Identite de l'admin, cible, maintenant) -> bool` (ligne ajoutée ou regroupée) ;
+  `journal::inscrire(&mut tx, admin, cible, Action, maintenant)` dans une transaction ; `journal::vues(pool, cible, limite)`.
+- `personnes::noter(pool, &Identite, maintenant) -> bool` (écrit ou non).
+- `admin::TOUT` : les `Droits` pleins passés aux fonctions de lecture pour la vue d'administration ; `admin::personnes(pool,
+  sans_compte)`, `admin::totaux(pool, &Plage)`.
 
 ## Ajouter une route
 
@@ -81,6 +93,8 @@ Image : `docker build -f api/sablier/Dockerfile .` (contexte : racine du dépôt
 (`TEST_DATABASE_URL` se termine par le nom d'une base existante, `/postgres` : les bases de test sont créées à côté) : une
 base jetable par test, migrations appliquées, faux gateway et faux aegis (`testutil.rs` : `env()`, `env_avec()`, personnes `personne`,
 `alice`, `bruno` (avec `sillon:access`), `diane` (avec `entracte:access`), `admin` ; `Env::recevoir` : un évènement par `file::traiter` ;
+`Env::remplir` : des lignes dans chaque table personnelle pour une personne, `Env::lignes_de` : leur nombre par table, `Env::lectures` :
+la réponse de chaque route de lecture `sablier:access` ;
 `attendre` : attente d'une condition). Sans `TEST_DATABASE_URL`, les tests passent par testcontainers
 (ignorés sans Docker). Les tests de la consommation (`file.rs`) demandent `TEST_REDIS_URL` (ignorés sinon, avec un message) et utilisent
 un flux et un groupe propres à chaque test ; la déduplication et le rejet des entrées mal formées sont aussi vérifiés sans Redis.

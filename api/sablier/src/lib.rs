@@ -1,5 +1,6 @@
 #![allow(clippy::result_large_err)]
 
+pub mod admin;
 pub mod agregats;
 pub mod battement;
 pub mod catalogue;
@@ -9,13 +10,16 @@ pub mod droits;
 pub mod effacement;
 pub mod etat;
 pub mod exploits;
+pub mod export;
 pub mod file;
 pub mod garde;
 pub mod http;
 pub mod identite;
 pub mod interne;
+pub mod journal;
 pub mod partage;
 pub mod periode;
+pub mod personnes;
 pub mod purge;
 pub mod recaps;
 pub mod routes;

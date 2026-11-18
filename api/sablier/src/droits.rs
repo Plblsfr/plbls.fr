@@ -50,7 +50,7 @@ impl Droit {
             ),
             Droit::Admin => (
                 "Administrer Sablier",
-                "Configurer les trophées : créer, modifier, activer, désactiver",
+                "Configurer les trophées, voir les statistiques de chaque personne et les totaux, lire le journal des consultations, effacer les données d'une personne",
             ),
         }
     }

@@ -377,6 +377,10 @@ async fn origine_et_cors() {
         "https://estompe.plbls.fr"
     );
     assert_eq!(r.entetes["access-control-allow-credentials"], "true");
+    assert_eq!(
+        r.entetes["access-control-expose-headers"],
+        "Content-Disposition"
+    );
     let r = e
         .appel_avec(
             None,
@@ -440,7 +444,7 @@ async fn sante_disponibilite_et_migrations() {
             .unwrap();
     let attendues: Vec<i64> = crate::MIGRATIONS.iter().map(|m| m.version).collect();
     assert_eq!(versions, attendues);
-    assert_eq!(attendues, [1, 2, 3]);
+    assert_eq!(attendues, [1, 2, 3, 4]);
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;

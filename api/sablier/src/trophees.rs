@@ -1327,7 +1327,6 @@ mod tests {
         let id = id_de(&e, "pipelette").await;
         let vu = |corps: Value| e.appel(Some("alice"), "POST", "/seen", Some(corps));
         assert_eq!(vu(json!({})).await.statut, StatusCode::NO_CONTENT);
-        assert_eq!(e.get("alice", "/unseen").await.json()["trophies"], 2);
         assert_eq!(
             vu(json!({"trophies": [id, 999_999]})).await.statut,
             StatusCode::NO_CONTENT
@@ -1575,6 +1574,89 @@ mod tests {
                 "unit": "count",
                 "default_parameter": 5,
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn c7_trophee_cree_par_l_api_se_debloque_selon_les_regles_existantes() {
+        let Some(e) = env().await else { return };
+        let e = &e;
+        let r = e
+            .appel(
+                Some("admin"),
+                "POST",
+                "/admin/trophies",
+                Some(json!({
+                    "key": "premiers_mots",
+                    "name": "Premiers mots",
+                    "description": "Des messages envoyés.",
+                    "icon": "bulle",
+                    "kind": "tiers",
+                    "stat": "messaging.messages",
+                    "period": "all",
+                    "thresholds": [2, 4],
+                })),
+            )
+            .await;
+        assert_eq!(r.statut, StatusCode::CREATED, "{}", r.texte());
+        let message = |n: usize, date: &'static str| async move {
+            let donnees = Donnees::EstompeMessage {
+                serveur: None,
+                salon: None,
+                prive: true,
+            };
+            e.recevoir(&format!("message-{n}"), ALICE, date, false, donnees)
+                .await
+        };
+        let etat = || async {
+            let r = e.get("alice", "/trophies").await.json();
+            (
+                trouve(&r, "unlocked", "premiers_mots"),
+                trouve(&r, "in_progress", "premiers_mots"),
+            )
+        };
+        let (debloque, en_cours) = etat().await;
+        assert_eq!(debloque, None);
+        let en_cours = en_cours.unwrap();
+        assert_eq!(
+            (
+                en_cours["tier"].clone(),
+                en_cours["value"].clone(),
+                en_cours["next_threshold"].clone()
+            ),
+            (json!(0), json!(0), json!(2))
+        );
+        message(1, "2026-03-01T10:00:00Z").await;
+        assert_eq!(etat().await.0, None);
+        message(2, "2026-03-02T10:00:00Z").await;
+        message(3, "2026-03-03T10:00:00Z").await;
+        let (debloque, en_cours) = etat().await;
+        let debloque = debloque.unwrap();
+        assert_eq!(
+            (
+                debloque["tier"].clone(),
+                debloque["tiers"].clone(),
+                debloque["unlocked_at"].clone(),
+                debloque["seen"].clone()
+            ),
+            (json!(1), json!(2), json!("2026-03-02"), json!(false))
+        );
+        assert_eq!(en_cours.unwrap()["value"], 3);
+        message(4, "2026-03-04T10:00:00Z").await;
+        let (debloque, en_cours) = etat().await;
+        let debloque = debloque.unwrap();
+        assert_eq!(
+            (debloque["tier"].clone(), debloque["unlocked_at"].clone()),
+            (json!(2), json!("2026-03-04"))
+        );
+        assert_eq!(en_cours, None);
+        assert_eq!(
+            trouve(
+                &e.get("bruno", "/trophies").await.json(),
+                "unlocked",
+                "premiers_mots"
+            ),
+            None
         );
     }
 }

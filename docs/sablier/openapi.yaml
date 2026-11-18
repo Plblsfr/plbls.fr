@@ -4,7 +4,8 @@ info:
   version: 0.1.0
   description: |
     Service de statistiques de plbls.fr : temps d'utilisation de l'app, statistiques d'Entracte, de Sillon et de la messagerie,
-    trophées, séries de jours, récaps et partage sur le profil.
+    trophées, séries de jours, récaps, partage sur le profil, export et effacement de ses données, administration
+    (vue par personne, totaux, journal des consultations).
     Ce document suit le code : chaque route de `api/sablier/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
 
     Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
@@ -33,6 +34,12 @@ components:
       in: query
       description: "Un jour quelconque de la période ; par défaut aujourd'hui dans le fuseau `SABLIER_FUSEAU`"
       schema: { type: string, format: date }
+    sub:
+      name: sub
+      in: path
+      required: true
+      description: "La personne visée ; paramètre réservé aux routes `sablier:admin` (et à `GET /profiles/{sub}`, qui ne sert que du public)"
+      schema: { type: string }
   responses:
     "401":
       description: "`unauthorized` : connexion requise"
@@ -312,11 +319,67 @@ paths:
         ouvrir le profil de la cible ; sans réponse positive (refus, Estompe injoignable ou non configuré), la réponse est celle d'un
         profil sans rien de public. Lire son propre profil ne demande pas cet appel.
       parameters:
-        - { name: sub, in: path, required: true, schema: { type: string } }
+        - { $ref: "#/components/parameters/sub" }
       responses:
         "200": { description: "`{month: [{key, label, domain, unit, value}], total: [{key, label, domain, unit, value}], first_day?: date, trophies: [{name, description, icon, tier, unlocked_at}]}` ; listes vides sans rien de public" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /views:
+    get:
+      summary: "Qui a consulté ses stats : date et nom de l'admin (`sablier:access`)"
+      description: |
+        Une ligne par consultation de ses stats par un admin (`/admin/people/{sub}/…`), de la plus récente à la plus ancienne, 500
+        au plus. Les consultations d'un même admin sont regroupées : pas de nouvelle ligne dans les 10 minutes qui suivent la
+        précédente. `admin_name` est le nom de l'admin au moment de la consultation ; son `sub` n'est pas servi. `action` :
+        `consultation`, ou `effacement` quand un admin a effacé les données de la personne. Ce journal survit à l'effacement.
+      responses:
+        "200": { description: "`[{date, admin_name, action}]`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /export:
+    get:
+      summary: "Export de toutes ses données, en un fichier JSON (`sablier:access`)"
+      description: |
+        Réponse `Content-Disposition: attachment; filename="sablier-export-AAAA-MM-JJ.json"` (en-tête lisible par le front :
+        `Access-Control-Expose-Headers`). Contient tout ce que Sablier garde de la personne, et rien d'une autre : `aggregates`
+        (agrégats par jour, noms de stats internes), `trophies` (un par palier débloqué), `recaps` (contenus figés, forme de
+        `GET /recaps/{id}`), `sharing` (clés des stats et des trophées partagés), `events` (évènements bruts encore conservés, du plus
+        ancien au plus récent), `views` (forme de `GET /views`, sans limite), et l'état de la collecte : `name` et `last_seen` (nom et
+        dernier passage notés par Sablier), `last_heartbeat`, `entracte_session` (session Entracte en cours), `pending_evaluation`
+        (trophées à réévaluer depuis). Les évènements sont lus par pages de 1 000 et envoyés au fil de la lecture ; le reste est
+        chargé en mémoire. Une panne pendant l'envoi coupe la réponse : le fichier reçu n'est alors pas du JSON valide.
+      responses:
+        "200": { description: "`{exported_at, sub, name: string|null, last_seen: date-time|null, last_heartbeat: date-time|null, pending_evaluation: date-time|null, entracte_session: {day, started_at, last_at, seconds, episodes}|null, aggregates: [{day, stat, key, value}], trophies: [{key, name, tier, unlocked_at}], recaps: [{id, kind, period, …}], sharing: {stats: [string], trophies: [string]}, views: [{date, admin_name, action}], events: [{id, source, type, date, imported, data}]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /data:
+    delete:
+      summary: "Effacer définitivement toutes ses données (`sablier:access`)"
+      description: |
+        Supprime en une transaction les évènements bruts, les agrégats, les trophées débloqués, les récaps, les réglages de partage et
+        l'état de la collecte de la personne. Irréversible ; la collecte reprend à zéro. Le journal des consultations est conservé.
+        L'historique d'Entracte, de Sillon et les messages ne sont pas touchés.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm]
+              properties:
+                confirm: { type: string, enum: [EFFACER], description: "le mot `EFFACER`, tapé par la personne" }
+      responses:
+        "204": { description: "données effacées (ou déjà absentes)" }
+        "400": { description: "`invalid` : `confirm` absent ou différent de `EFFACER` ; rien n'est effacé" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { description: "`forbidden`, ou `bad_origin` : requête avec cookie depuis une origine non autorisée" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }
   /admin/trophies:
@@ -396,6 +459,198 @@ paths:
         `exploits` : registre fermé des conditions codées, avec leur paramètre par défaut (`null` : pas de paramètre).
       responses:
         "200": { description: "`{stats: [{key, label, domain, unit, shareable, tiers}], exploits: [{key, label, condition, domain, unit, default_parameter}], periods: [day, week, month, all]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people:
+    get:
+      summary: "Personnes qui ont des statistiques, avec ou sans compte connu (`sablier:admin`)"
+      description: |
+        Une ligne par personne ayant des agrégats, triée par nom puis par `sub`, les personnes sans nom à la fin. `known` : Sablier
+        a déjà vu cette personne connectée (`name` et `last_seen` viennent de sa dernière session, notés une fois par heure au plus) ;
+        `known: false` : des statistiques existent mais Sablier n'a jamais vu de session pour ce `sub` (« personne sans compte »).
+        `orphans=true` ne rend que ces personnes. `first_day`, `last_day` : premier et dernier jour d'activité ;
+        `active_seconds_total` : temps d'utilisation cumulé. Lecture non journalisée.
+      parameters:
+        - { name: orphans, in: query, schema: { type: boolean, default: false }, description: "seulement les personnes sans compte connu" }
+      responses:
+        "200": { description: "`[{sub, name: string|null, known, last_seen: date-time|null, first_day: date|null, last_day: date|null, active_seconds_total}]`" }
+        "400": { description: "`invalid` : `orphans` illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/usage:
+    get:
+      summary: "Temps d'utilisation d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /usage` pour la personne visée. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "même forme que `GET /usage`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/entracte:
+    get:
+      summary: "Statistiques Entracte d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /entracte` pour la personne visée, sans filtre par `entracte:access`. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "même forme que `GET /entracte`, toujours avec `access: true`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/sillon:
+    get:
+      summary: "Statistiques Sillon d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /sillon` pour la personne visée, sans filtre par `sillon:access`. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "même forme que `GET /sillon`, toujours avec `access: true`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/messaging:
+    get:
+      summary: "Statistiques de messagerie et de vocal d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /messaging` pour la personne visée. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "même forme que `GET /messaging`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/trophies:
+    get:
+      summary: "Trophées d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /trophies` pour la personne visée, tous domaines compris ; les trophées cachés non débloqués restent seulement comptés ; les déblocages ne sont pas recalculés et rien n'est marqué vu. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+      responses:
+        "200": { description: "même forme que `GET /trophies`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/streaks:
+    get:
+      summary: "Séries de jours d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /streaks` pour la personne visée. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+      responses:
+        "200": { description: "même forme que `GET /streaks`, `entracte` et `sillon` toujours présents" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/recaps:
+    get:
+      summary: "Liste des récaps d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /recaps` pour la personne visée ; rien n'est marqué vu. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+      responses:
+        "200": { description: "même forme que `GET /recaps`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/recaps/{id}:
+    get:
+      summary: "Contenu figé d'un récap d'une personne (`sablier:admin`)"
+      description: "Réponse de `GET /recaps/{id}` pour la personne visée. Consultation journalisée."
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "même forme que `GET /recaps/{id}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : récap inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/people/{sub}/data:
+    delete:
+      summary: "Effacer définitivement toutes les données d'une personne (`sablier:admin`)"
+      description: |
+        Même effet que `DELETE /data` fait par la personne, pour n'importe quel `sub`, avec ou sans compte connu. Une ligne
+        `effacement` est ajoutée au journal (sauf si l'admin efface ses propres données), dans la même transaction. Les évènements
+        bruts étant supprimés, un import d'historique rejoué ensuite serait compté de nouveau pour cette personne.
+      parameters:
+        - { $ref: "#/components/parameters/sub" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirm]
+              properties:
+                confirm: { type: string, enum: [EFFACER], description: "le mot `EFFACER`, tapé par la personne" }
+      responses:
+        "204": { description: "données effacées (ou déjà absentes)" }
+        "400": { description: "`invalid` : `confirm` absent ou différent de `EFFACER` ; rien n'est effacé" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { description: "`forbidden`, ou `bad_origin` : requête avec cookie depuis une origine non autorisée" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/totals:
+    get:
+      summary: "Totaux de tout le monde sur une période (`sablier:admin`)"
+      description: |
+        `active_people` : personnes distinctes avec du temps d'utilisation ou une action sur la période (les réactions reçues ne
+        comptent pas) ; `usage_seconds` : temps d'utilisation ; `watched_seconds` : temps regardé dans Entracte ; `listened_seconds` :
+        temps d'écoute dans Sillon ; `messages` : messages envoyés. `by_day` : les mêmes totaux pour chaque jour de la période qui a
+        des agrégats. Pour `all`, `from` est le premier jour d'activité connu, toutes personnes confondues. Aucune personne n'est
+        visée : lecture non journalisée.
+      parameters:
+        - { $ref: "#/components/parameters/period" }
+        - { $ref: "#/components/parameters/date" }
+      responses:
+        "200": { description: "`{period, from, to, active_people, usage_seconds, watched_seconds, listened_seconds, messages, by_day: [{day, active_people, usage_seconds, watched_seconds, listened_seconds, messages}]}`" }
+        "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/audit:
+    get:
+      summary: "Journal complet des consultations et des effacements faits par les admins (`sablier:admin`)"
+      description: |
+        Du plus récent au plus ancien. Une ligne `consultation` par lecture d'une route `/admin/people/{sub}/…` d'une autre personne
+        que soi, regroupées : pas de nouvelle ligne tant que le même admin a consulté la même personne depuis moins de 10 minutes.
+        Une ligne `effacement` par effacement fait par un admin. `admin_name` est figé au moment de l'action ; `target_name` est le
+        nom connu aujourd'hui (`null` pour une personne jamais vue connectée ou effacée depuis). Pagination : `next_before` est
+        l'identifiant à passer en `before` pour la page suivante, `null` à la fin.
+      parameters:
+        - { name: before, in: query, schema: { type: integer }, description: "ne rendre que les lignes d'identifiant inférieur" }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200": { description: "`{entries: [{id, date, action, admin_sub, admin_name, target_sub, target_name: string|null}], next_before: integer|null}`" }
+        "400": { description: "`invalid` : `before` ou `limit` illisible" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
         "502": { $ref: "#/components/responses/502" }
