@@ -1,6 +1,7 @@
 use axum::response::Response;
 use chrono::{Datelike, Days, NaiveDate};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 
 use crate::{
     agregats,
@@ -79,6 +80,31 @@ pub struct Plage {
     pub date: NaiveDate,
     pub du: NaiveDate,
     pub au: NaiveDate,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct Intervalle {
+    pub period: &'static str,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+}
+
+impl Plage {
+    pub fn intervalle(&self, premier: Option<NaiveDate>) -> Intervalle {
+        let (from, to) = match self.periode {
+            Periode::Tout => (premier.unwrap_or(self.date), self.date),
+            _ => (self.du, self.au),
+        };
+        Intervalle {
+            period: self.periode.nom(),
+            from,
+            to,
+        }
+    }
+
+    pub async fn intervalle_de(&self, pool: &PgPool, sub: &str) -> Result<Intervalle, sqlx::Error> {
+        Ok(self.intervalle(agregats::premier_jour(pool, sub).await?))
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -209,5 +235,20 @@ mod tests {
         for faux in ["29/03/2026", "2026-02-30", "demain", "0000-01-01"] {
             assert!(d(None, Some(faux)).unwrap_err().contains("date"), "{faux}");
         }
+        let i = d(Some("week"), Some("2026-03-29"))
+            .unwrap()
+            .intervalle(Some(j("2020-01-01")));
+        assert_eq!(
+            (i.period, i.from, i.to),
+            ("week", j("2026-03-23"), j("2026-03-29"))
+        );
+        let tout = d(Some("all"), None).unwrap();
+        let i = tout.intervalle(Some(j("2020-01-01")));
+        assert_eq!(
+            (i.period, i.from, i.to),
+            ("all", j("2020-01-01"), aujourd_hui)
+        );
+        let i = tout.intervalle(None);
+        assert_eq!((i.from, i.to), (aujourd_hui, aujourd_hui));
     }
 }

@@ -12,7 +12,7 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{bd, ok},
-    periode::{Demande, Periode},
+    periode::Demande,
 };
 
 fn repartition(par_cle: &[(String, i64)], champ: &str, partie: fn(&str) -> &str) -> Vec<Value> {
@@ -36,10 +36,8 @@ pub async fn lire(
     let plage = demande.plage(&state).await?;
     let (pool, sub) = (state.pool(), p.sub());
     let premier = agregats::premier_jour(pool, sub).await.map_err(bd)?;
-    let (du, au) = match plage.periode {
-        Periode::Tout => (premier.unwrap_or(plage.date), plage.date),
-        _ => (plage.du, plage.au),
-    };
+    let intervalle = plage.intervalle(premier);
+    let (du, au) = (intervalle.from, intervalle.to);
     let secondes = agregats::somme(pool, sub, UTILISATION, du, au)
         .await
         .map_err(bd)?;
@@ -56,7 +54,7 @@ pub async fn lire(
         .await
         .map_err(bd)?;
     Ok(ok(&json!({
-        "period": plage.periode.nom(),
+        "period": intervalle.period,
         "from": du,
         "to": au,
         "seconds": secondes,

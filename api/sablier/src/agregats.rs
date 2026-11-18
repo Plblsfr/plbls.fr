@@ -152,6 +152,44 @@ pub async fn max_jour(
     .await
 }
 
+pub async fn plus_grande(
+    pool: &PgPool,
+    sub: &str,
+    stat: &str,
+    du: NaiveDate,
+    au: NaiveDate,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT COALESCE(MAX(valeur), 0)::bigint FROM agregats_jour
+        WHERE sub = $1 AND stat = $2 AND jour BETWEEN $3 AND $4",
+    )
+    .bind(sub)
+    .bind(stat)
+    .bind(du)
+    .bind(au)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn cles_distinctes(
+    pool: &PgPool,
+    sub: &str,
+    stat: &str,
+    du: NaiveDate,
+    au: NaiveDate,
+) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT cle) FROM agregats_jour
+        WHERE sub = $1 AND stat = $2 AND jour BETWEEN $3 AND $4 AND valeur > 0",
+    )
+    .bind(sub)
+    .bind(stat)
+    .bind(du)
+    .bind(au)
+    .fetch_one(pool)
+    .await
+}
+
 pub async fn jours_actifs(
     pool: &PgPool,
     sub: &str,
@@ -200,10 +238,17 @@ mod tests {
         maximum(&mut *tx, "a", j2, "m", "", 4).await.unwrap();
         maximum(&mut *tx, "a", j2, "m", "", 9).await.unwrap();
         maximum(&mut *tx, "a", j2, "m", "", 6).await.unwrap();
+        maximum(&mut *tx, "a", j3, "m", "", 7).await.unwrap();
         tx.commit().await.unwrap();
         assert_eq!(somme(pool, "a", "s", j1, j3).await.unwrap(), 65);
         assert_eq!(somme(pool, "a", "s", j1, j2).await.unwrap(), 35);
-        assert_eq!(somme(pool, "a", "m", j1, j3).await.unwrap(), 9);
+        assert_eq!(somme(pool, "a", "m", j1, j2).await.unwrap(), 9);
+        assert_eq!(plus_grande(pool, "a", "m", j1, j3).await.unwrap(), 9);
+        assert_eq!(plus_grande(pool, "a", "m", j3, j3).await.unwrap(), 7);
+        assert_eq!(plus_grande(pool, "a", "m", j1, j1).await.unwrap(), 0);
+        assert_eq!(cles_distinctes(pool, "a", "s", j1, j3).await.unwrap(), 2);
+        assert_eq!(cles_distinctes(pool, "a", "s", j3, j3).await.unwrap(), 1);
+        assert_eq!(cles_distinctes(pool, "c", "s", j1, j3).await.unwrap(), 0);
         assert_eq!(somme(pool, "c", "s", j1, j3).await.unwrap(), 0);
         assert_eq!(
             par_cle(pool, "a", "s", j1, j3).await.unwrap(),

@@ -213,6 +213,7 @@ pub fn droits_par_defaut() -> DroitsFaux {
         ("sub-personne".to_string(), vec![]),
         ("sub-alice".to_string(), vec!["access"]),
         ("sub-bruno".to_string(), vec!["access", "sillon:access"]),
+        ("sub-diane".to_string(), vec!["access", "entracte:access"]),
         ("sub-admin".to_string(), vec!["access", "admin"]),
     ])))
 }
@@ -401,6 +402,21 @@ impl Env {
 
     pub async fn get(&self, qui: &str, chemin: &str) -> Rep {
         self.appel(Some(qui), "GET", chemin, None).await
+    }
+
+    pub async fn recevoir(
+        &self,
+        id: &str,
+        sub: &str,
+        date: &str,
+        importe: bool,
+        donnees: Donnees,
+    ) -> Issue {
+        let mut e = Evenement::importe(id, sub, instant(date), donnees);
+        e.importe = importe;
+        file::traiter(self.state.pool(), &self.state.config().fuseau, &e.json())
+            .await
+            .unwrap()
     }
 }
 
