@@ -98,15 +98,14 @@ pub async fn reaction_ajoutee(
     if !state.emetteur().actif() {
         return;
     }
-    let cible: Option<String> = sqlx::query_scalar(
-        "SELECT keycloak_sub FROM users WHERE id=$1::uuid AND id <> $2::uuid",
-    )
-    .bind(auteur)
-    .bind(SYSTEME)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let cible: Option<String> =
+        sqlx::query_scalar("SELECT keycloak_sub FROM users WHERE id=$1::uuid AND id <> $2::uuid")
+            .bind(auteur)
+            .bind(SYSTEME)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
     emettre(state, reactions(message, emoji, reacteur, cible.as_deref()));
 }
 
@@ -197,7 +196,8 @@ pub async fn importer(
         .await
         .map_err(bd)?;
         for (id, reacteur, emoji, micros, auteur) in lignes {
-            let evenements = historique(reactions(id, &emoji, &reacteur, auteur.as_deref()), micros);
+            let evenements =
+                historique(reactions(id, &emoji, &reacteur, auteur.as_deref()), micros);
             bilan.reactions_donnees += 1;
             bilan.reactions_recues += evenements.len() - 1;
             for e in evenements {
@@ -249,6 +249,12 @@ mod tests {
             cles,
             ["date", "donnees", "id", "importe", "source", "sub", "type"]
         );
+        for cle in v["donnees"].as_object().unwrap().keys() {
+            assert!(
+                ["serveur", "salon", "prive", "nombre", "sens", "emoji"].contains(&cle.as_str()),
+                "{texte}"
+            );
+        }
     }
 
     #[test]
@@ -276,9 +282,18 @@ mod tests {
         );
         let r = reactions(8, "👍", "sub-bob", Some("sub-alice"));
         assert_eq!(r.len(), 2);
-        assert_eq!((r[0].sub.as_str(), r[1].sub.as_str()), ("sub-bob", "sub-alice"));
-        assert_eq!(r[0].donnees.contenu(), json!({ "sens": "donnee", "emoji": "👍" }));
-        assert_eq!(r[1].donnees.contenu(), json!({ "sens": "recue", "emoji": "👍" }));
+        assert_eq!(
+            (r[0].sub.as_str(), r[1].sub.as_str()),
+            ("sub-bob", "sub-alice")
+        );
+        assert_eq!(
+            r[0].donnees.contenu(),
+            json!({ "sens": "donnee", "emoji": "👍" })
+        );
+        assert_eq!(
+            r[1].donnees.contenu(),
+            json!({ "sens": "recue", "emoji": "👍" })
+        );
         assert!(r[0].id.ends_with(":donnee") && r[1].id.ends_with(":recue"));
         assert_eq!(r[0].id, reactions(8, "👍", "sub-bob", None)[0].id);
         assert_ne!(r[0].id, reactions(8, "🎉", "sub-bob", None)[0].id);
@@ -342,14 +357,22 @@ mod tests {
         assert_eq!(s, 201, "{sondage}");
         let id = |m: &Value| m["id"].as_str().unwrap().to_string();
         let pouce = "%F0%9F%91%8D";
-        for (qui, m) in [("bob", &m1), ("alice", &m1), ("alice", &m3), ("bob", &sondage), ("alice", &supprime)] {
+        for (qui, m) in [
+            ("bob", &m1),
+            ("alice", &m1),
+            ("alice", &m3),
+            ("bob", &sondage),
+            ("alice", &supprime),
+        ] {
             let chemin = format!("/messages/{}/reactions/{pouce}", id(m));
             assert_eq!(c.api(qui, "PUT", &chemin, Value::Null).await.0, 204);
         }
         let chemin = format!("/messages/{}", id(&supprime));
         assert_eq!(c.api("bob", "DELETE", &chemin, Value::Null).await.0, 204);
-        c.sql("UPDATE messages SET created_at = '2024-02-29T23:30:00Z'").await;
-        c.sql("UPDATE reactions SET created_at = '2023-07-01T10:00:00Z'").await;
+        c.sql("UPDATE messages SET created_at = '2024-02-29T23:30:00Z'")
+            .await;
+        c.sql("UPDATE reactions SET created_at = '2023-07-01T10:00:00Z'")
+            .await;
 
         let (bilan, premier) = collecte(c.pool()).await;
         assert_eq!(
@@ -389,7 +412,6 @@ mod tests {
             prive.donnees.contenu(),
             json!({ "serveur": null, "salon": null, "prive": true })
         );
-        let longueur = texte.chars().count().to_string();
         for e in &premier {
             assert!(e.importe && e.verifier().is_ok(), "{}", e.json());
             let attendue = if matches!(e.donnees, Donnees::EstompeReaction { .. }) {
@@ -398,11 +420,12 @@ mod tests {
                 2024
             };
             assert_eq!(e.date.year(), attendue, "{}", e.json());
-            sans(
-                e,
-                &[texte, "confidence", "question", &dm, &c.alice, &c.bob, &longueur],
-            );
-            let autre = if e.sub == "sub-alice" { "sub-bob" } else { "sub-alice" };
+            sans(e, &[texte, "confidence", "question", &dm, &c.alice, &c.bob]);
+            let autre = if e.sub == "sub-alice" {
+                "sub-bob"
+            } else {
+                "sub-alice"
+            };
             sans(e, &[autre]);
         }
         let reel = envoi(
@@ -412,7 +435,10 @@ mod tests {
             Some(c.salon.clone()),
             0,
         );
-        assert_eq!((reel[0].id.as_str(), reel[0].importe), (salon.id.as_str(), false));
+        assert_eq!(
+            (reel[0].id.as_str(), reel[0].importe),
+            (salon.id.as_str(), false)
+        );
         let recues: Vec<&Evenement> = premier
             .iter()
             .filter(|e| e.id.ends_with(":recue"))
@@ -426,18 +452,29 @@ mod tests {
     #[tokio::test]
     async fn envoi_identique_sans_redis() {
         let mut durees = Vec::new();
-        for emetteur in [Emetteur::inactif(), Emetteur::depuis(Some(PORT_FERME), None)] {
+        for emetteur in [
+            Emetteur::inactif(),
+            Emetteur::depuis(Some(PORT_FERME), None),
+        ] {
             let Some(c) = cadre().await else { return };
             let actif = emetteur.actif();
             c.e.state.definir_emetteur(emetteur);
             assert_eq!(c.e.state.emetteur().actif(), actif);
             let debut = Instant::now();
             let m = c.poster("alice", "bonjour").await;
-            let chemin = format!("/messages/{}/reactions/%F0%9F%91%8D", m["id"].as_str().unwrap());
+            let chemin = format!(
+                "/messages/{}/reactions/%F0%9F%91%8D",
+                m["id"].as_str().unwrap()
+            );
             assert_eq!(c.api("bob", "PUT", &chemin, Value::Null).await.0, 204);
             let dm = c.ouvrir_dm("alice", "bob").await;
             let (s, v) = c
-                .api("alice", "POST", &format!("/dms/{dm}/messages"), json!({ "content": "x" }))
+                .api(
+                    "alice",
+                    "POST",
+                    &format!("/dms/{dm}/messages"),
+                    json!({ "content": "x" }),
+                )
                 .await;
             assert_eq!(s, 201, "{v}");
             durees.push(debut.elapsed());

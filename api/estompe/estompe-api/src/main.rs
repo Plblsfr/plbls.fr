@@ -133,6 +133,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
+    if std::env::args().nth(1).as_deref() == Some(estompe_core::sablier::COMMANDE) {
+        match estompe_core::sablier::lancer(|k| env.get(k)).await {
+            Ok(bilan) => {
+                print!("{bilan}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
     tracing_subscriber::fmt()
         .event_format(journal_json::FormatJson)
         .with_env_filter(
@@ -152,6 +164,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(adresse).await?;
     tracing::info!(%adresse, "estompe-api à l'écoute");
     let state = AppState::new(config.clone(), estompe_block::actifs(&block_list(), &set));
+    state.definir_emetteur(estompe_core::sablier::Emetteur::depuis_env(|k| env.get(k)));
     if set.has("notifications")
         && let Err(e) = estompe_block_notifications::installer(&state)
     {

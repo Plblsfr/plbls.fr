@@ -11,8 +11,8 @@ use std::{
 };
 
 use axum::{
-    body::{Body, to_bytes},
     Extension,
+    body::{Body, to_bytes},
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},

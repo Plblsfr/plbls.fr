@@ -326,10 +326,7 @@ mod tests {
             [vocal("alice", total - 2), vocal("bob", total - 2)]
         );
         assert!(c.battre(fin + TRANCHE).is_empty());
-        assert_eq!(
-            c.partir("voc", "bob", fin + TRANCHE),
-            [appel("bob", total)]
-        );
+        assert_eq!(c.partir("voc", "bob", fin + TRANCHE), [appel("bob", total)]);
     }
 
     #[test]
