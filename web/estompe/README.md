@@ -16,6 +16,7 @@ npm run build
 npm run e2e          # bout en bout : vrai navigateur + vrai backend (Docker et Rust requis)
 npm run e2e:entracte # sections selon les permissions (Entracte seul, Estompe seul, les deux) : API simulées, sans Docker
 npm run e2e:sillon   # section Sillon : permissions, lecture, playlists, file, reprise, ajout, administration, URL à froid : API simulées
+npm run e2e:sablier  # section Stats : permissions, périodes, récap, pastille, partage et profil, Sablier arrêté : API simulées
 ```
 
 `npm run e2e` compile le backend, lance PostgreSQL dans Docker, un faux auth-gateway qui sert aussi de faux aegis
@@ -39,7 +40,8 @@ système de Chromium doivent être présentes).
   `SectionsShell`, ni WebSocket ni route de la messagerie), les deux affichent l'onglet Entracte dans la messagerie. `filmsApi` lit l'API
   d'Entracte (`entracteUrl` : `ENTRACTE_PUBLIC_URL` de l'image, `VITE_ENTRACTE_URL` au build des apps) ; sans elle, ni section Entracte ni
   salon cinéma. La bibliothèque, la fiche et le lecteur (`Film*.svelte`, `films.ts`) servent aussi au salon cinéma.
-  Sans messagerie, la phase `sections` (`views/SectionsShell.svelte`) affiche Entracte, Sillon ou les deux, sans WebSocket.
+  Sans messagerie, la phase `sections` (`views/SectionsShell.svelte`) affiche Entracte, Sillon ou les deux, sans WebSocket ; la section Stats s'y ajoute
+  avec `sablier:access`, mais ne suffit pas à ouvrir cette phase.
 - `src/sections/regie` : section Régie (administration des médias, API à part, [`docs/regie`](../../docs/regie/README.md)), affichée dans la
   messagerie seulement, selon `GET /me` de Régie (`regie:admin`) ; `regieUrl` : `REGIE_PUBLIC_URL` de l'image, `VITE_REGIE_URL` au build des
   apps ; sans elle, pas de section. `regie.ts` : client de l'API et calculs purs (état d'un service, tri des indexeurs, tailles et débits, états et filtre des torrents) ;
@@ -74,6 +76,29 @@ système de Chromium doivent être présentes).
   reprend le cycle. Le battement porte la plateforme (`platform.id()` : `web`, `pwa`, `windows`, `android`) et la section déduite de la route
   (`sectionDe` : `messagerie`, `entracte`, `sillon`, `regie`, `sablier`, `admin`, `autre`). Un échec (réseau, 401, 5xx) est ignoré : ces appels
   passent l'option `discret` de `requestAt`, sans seconde tentative ni perte de session, et le battement suivant part à son heure.
+  **Section Stats** (`#/stats[/<sous-section>[/<id>]]`, route `stats`) : affichée selon `GET /me` de Sablier (`permissions.access`, lu au démarrage
+  par `app.loadSablier` : `app.sablierMe`, `app.stats`) ; `/me` en échec ou Sablier absent : pas de section, rien d'autre ne change. Entrée dans le
+  rail (`ServerRail`) et dans `SectionsShell`, navigation `SablierNav`, coque `SablierSpace` :
+  - `#/stats` : `SablierJeu`, jeu et trophées. `SablierPeriode` (semaine, mois, année, tout, périodes précédentes), `SablierSeries`,
+    `SablierTrophees`, une `SablierCarte` par domaine, `SablierAnnonce` (trophée débloqué ou récap disponible à l'ouverture, dans `Modal`).
+  - `#/stats/recaps` : `SablierRecaps`, liste des récaps ; `#/stats/recaps/<id>` : `SablierRecap`, le récap en histoire, plein écran
+    (flèches, Début, Fin, Échap ; moitiés gauche et droite ; balayage).
+  - `#/stats/partage` : `SablierPartage`, réglage de partage stat par stat et trophée par trophée (`PUT /sharing` à chaque bascule).
+  - `#/stats/admin` : `SablierAdmin`, seulement avec `permissions.admin`.
+  - Profil : `SablierProfil` dans `ProfileModal`, si Sablier est configuré et que le lecteur a `sablier:access` ; il rend ce que
+    `GET /profiles/{sub}` sert et rien si c'est vide ou en échec. Le `sub` est celui du lecteur pour son propre profil, sinon le champ
+    `sub` du membre quand l'API d'Estompe le donne : sans lui, pas de bloc sur le profil d'une autre personne.
+  - Logique pure, testée à part : `formats.ts` (durées, nombres, jours), `periodes.ts` (bornes et navigation : ni avant `first_day`, ni après
+    la période en cours), `stats.ts` (ce qu'une carte affiche : une stat nulle n'a pas de ligne, `{access: false}` donne la carte courte au
+    cadenas, un domaine vide une carte qui renvoie vers une période plus large qui a des données ; noms des salons lus dans `app.details`,
+    « salon supprimé » sinon ; séries ; trophées), `recap.ts` (écrans du récap rédigés depuis les totaux et `highlights`, écran sans rien à
+    dire sauté ; rangement de la liste). `essais.ts` : jeux d'essai des tests.
+  - `sablier.svelte.ts` : état (`sablier`, classe `EtatSablier`, client et horloge injectables). `ouvrir` charge trophées, séries, stats
+    et non vus ; `choisir`, `reculer`, `avancer`, `aller` rechargent les quatre domaines ; `tropheeVu` et `lireRecap` envoient `POST /seen`
+    puis relisent `/unseen` (pastille du rail et de la navigation : `sablier.pastille`, `sablier.nonVus`) ; `chargerRecaps`,
+    `chargerPartage`, `partager`. Sablier injoignable : `erreur` et l'écran `SablierErreur` avec « Réessayer », le reste de l'app continue.
+  - Styles : `src/styles/sablier.css` (classes `sab-*`, jetons de l'app, requêtes de conteneur). Icônes des trophées : noms d'`Icon.svelte`,
+    `trophee` en repli pour un nom inconnu (`SablierMedaille`).
 - `plateforme/` : plateforme web (son `src/` et l'image nginx). Hors de `web/estompe/` : `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri, chacune avec son `src-tauri`), `apps/estompe/crates/core` (commandes Rust communes aux deux), `.version` à la racine (version de chaque élément : api, web, windows, android).
 - `plateforme/docker` : image nginx. Une même image sert tous les environnements : `API_URL`, `GATEWAY_URL`, `VOICE_URL`
   (et `KEYCLOAK_ISSUER` pour l'app Windows, `ENTRACTE_PUBLIC_URL` pour Entracte, `SILLON_PUBLIC_URL` pour Sillon, `REGIE_PUBLIC_URL` pour Régie, `SABLIER_PUBLIC_URL` pour Sablier) sont lus au démarrage du conteneur et génèrent `config.js` et la CSP.
@@ -92,7 +117,9 @@ puis `PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3111/ npm run e2e`.
 `npm run e2e:entracte` (`playwright.entracte.config.ts`, `e2e/entracte.spec.ts`) construit le front avec des API fictives et les simule
 dans la page : il vérifie les trois profils (Entracte seul, Estompe seul, les deux). `npm run e2e:sillon` (`playwright.sillon.config.ts`,
 `e2e/sillon.spec.ts`) fait de même pour Sillon, avec des pistes WAV générées dans le test (le Chromium de Playwright ne lit ni AAC ni MP3 de façon fiable).
-`npm run e2e:regie` (`playwright.regie.config.ts`, `e2e/regie.spec.ts`) vérifie la section Régie avec et sans `regie:admin`. `CHROMIUM_PATH` désigne un Chromium déjà installé
+`npm run e2e:regie` (`playwright.regie.config.ts`, `e2e/regie.spec.ts`) vérifie la section Régie avec et sans `regie:admin`. `npm run e2e:sablier`
+(`playwright.sablier.config.ts`, `e2e/sablier.spec.ts`, faux Sablier et fausse API d'Estompe dans `e2e/faux-sablier.ts`, horloge du navigateur
+fixée) vérifie la section Stats : permissions, périodes, récap au clavier et au toucher, pastille, partage et profil, Sablier arrêté, axe. `CHROMIUM_PATH` désigne un Chromium déjà installé
 si la version de Playwright n'a pas le sien. La CI le lance dans le job `front`.
 
 ## Application Windows

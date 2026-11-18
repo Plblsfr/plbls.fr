@@ -30,7 +30,7 @@ describe('SablierJeu', () => {
     expect(await vue.findByRole('heading', { level: 1, name: 'Ton mois de novembre' })).toBeInTheDocument()
     const tro = within(vue.getByRole('region', { name: 'Trophées' }))
     expect(tro.getByText('Débloqués en novembre')).toBeInTheDocument()
-    expect(tro.getByText('Encore un épisode', { selector: '[data-trophee="encore_un_episode"] .sab-h3' })).toBeInTheDocument()
+    expect(tro.getAllByText('Encore un épisode')).toHaveLength(2)
     expect(tro.getByRole('progressbar', { name: 'Cinéphile, palier 2' })).toHaveAttribute('aria-valuenow', '76')
     expect(tro.getByText('4 trophées cachés')).toBeInTheDocument()
     expect(tro.getByText('Caché, trouvé')).toBeInTheDocument()

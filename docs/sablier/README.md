@@ -461,3 +461,11 @@ Valeurs non secrètes dans [`plbls.env`](../../plbls.env), secrets dans Vault ([
 
 `just dev-up` puis `just sablier-dev-run` (127.0.0.1:8095, avec le gateway et aegis). Tests : `just test-sablier`, voir
 [`api/sablier`](../../api/sablier/README.md).
+
+## Section web
+
+La section « Stats » de l'app d'Estompe (`web/estompe/src/sections/sablier`, route `#/stats`) lit ces routes : elle s'affiche avec
+`sablier:access` d'après `GET /me`, et l'entrée « Administration » avec `sablier:admin`. Jeu et trophées, périodes, récap en histoire,
+pastille (`GET /unseen`, `POST /seen`), partage (`GET`/`PUT /sharing`) et bloc du profil (`GET /profiles/{sub}`) : voir
+[`web/estompe/README.md`](../../web/estompe/README.md), « Section Stats ». Le front rédige tous les textes à partir des totaux et des
+`highlights`, et lit le nom des salons dans ce que la personne peut voir.
