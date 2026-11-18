@@ -1,5 +1,15 @@
 [
   {
+    "version": "0.107.0",
+    "date": "2026-11-18",
+    "new": [
+      "Nouvelle section Stats : trophées, séries de jours et récap du mois et de l'année.",
+      "Entracte : l'accueil est refait, avec une seule recherche et vos demandes à portée de main.",
+      "Refonte de la gestion des accès pour les administrateurs."
+    ],
+    "fixes": []
+  },
+  {
     "version": "0.106.0",
     "date": "2026-11-18",
     "new": [
