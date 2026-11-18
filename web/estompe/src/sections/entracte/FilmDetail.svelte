@@ -1,12 +1,13 @@
 <script lang="ts">
   import { ApiError, filmsApi } from '../../lib/api'
-  import { hrefs } from '../../lib/route.svelte'
+  import { hrefs, router } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import Icon from '../../components/Icon.svelte'
   import Loader from '../../components/Loader.svelte'
   import WatchPicker from '../../blocks/regarder-ensemble/WatchPicker.svelte'
   import FilmPoster from './FilmPoster.svelte'
+  import { films } from './films.svelte'
   import { percent, pickEpisode, remaining, resumeAt, shortDuration, trackName, type FilmDetail, type FilmItem } from './films'
 
   let { id }: { id: string } = $props()
@@ -24,6 +25,13 @@
   const started = $derived(!!play && resumeAt(play) > 0)
   const prog = $derived(play?.progress && !play.progress.seen ? play.progress : null)
   const short = (e: FilmItem) => (e.season != null && e.episode != null ? `S${e.season}E${e.episode}` : '')
+  const vus = $derived(episodes.filter((e) => e.progress?.seen).length)
+  const retour = $derived(item?.kind === 'series' ? { href: hrefs.films('series'), label: 'Séries' } : item?.kind === 'movie' ? { href: hrefs.films('movies'), label: 'Films' } : { href: hrefs.films(), label: 'Bibliothèque' })
+  function demander() {
+    if (!item) return
+    films.query = item.title
+    router.go(hrefs.films('search'))
+  }
   const facts = $derived(item ? [item.kind === 'series' ? 'Série' : '', item.kind === 'series' && seasons.length ? `${seasons.length} saison${seasons.length > 1 ? 's' : ''}` : '', item.year, item.duration ? shortDuration(item.duration) : '', ...item.genres.slice(0, 3)].filter(Boolean).join(' · ') : '')
 
   $effect(() => {
@@ -52,7 +60,7 @@
   <div class="film-page film-page--flush">
     <div class="film-hero">
       <span class="film-hero-art"><FilmPoster id={item.id} {title} image={item.backdrop} type="fond" width={1280} /></span>
-      <a class="film-back plbls-button plbls-button--compact plbls-button--contour" href={hrefs.films()}><Icon name="gauche" size={14} /> Bibliothèque</a>
+      <a class="film-back plbls-button plbls-button--compact film-btn-clair" href={retour.href}><Icon name="gauche" size={14} /> {retour.label}</a>
       <div class="film-hero-body">
         {#if item.kind !== 'series' || item.poster}<span class="film-card-art film-body-poster"><FilmPoster id={item.id} {title} image={item.poster} width={480} /></span>{/if}
         <div class="film-info">
@@ -62,10 +70,10 @@
           {#if play}
             {@const verb = `${started ? 'Reprendre' : 'Regarder'} seul`}
             <div class="film-actions">
-              <a class="plbls-button" href={hrefs.films('watch', play.id)} aria-label={item.kind === 'series' && play.season != null && play.episode != null ? `${verb}, saison ${play.season} épisode ${play.episode}` : undefined}><Icon name="lecture" size={18} /> {verb}{item.kind === 'series' && short(play) ? ` · ${short(play)}` : ''}</a>
-              {#if cinema}<button class="plbls-button v-rose" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>{/if}
+              <a class="plbls-button film-btn-rose" href={hrefs.films('watch', play.id)} aria-label={item.kind === 'series' && play.season != null && play.episode != null ? `${verb}, saison ${play.season} épisode ${play.episode}` : undefined}><Icon name="lecture" size={18} /> {verb}{item.kind === 'series' && short(play) ? ` · ${short(play)}` : ''}</a>
+              {#if cinema}<button class="plbls-button film-btn-clair" onclick={() => (picker = true)}><Icon name="film" size={18} /> Regarder au cinéma</button>{/if}
               {#if prog}
-                <span class="film-progress"><span class="v-mono v-mute">{remaining(prog)}</span><span class="film-bar"><span style="width:{percent(prog)}"></span></span></span>
+                <span class="film-progress"><span class="v-mono">{remaining(prog)}</span><span class="film-bar"><span style="width:{percent(prog)}"></span></span></span>
               {:else if item.progress?.seen}
                 <span class="v-tag ok film-seen"><Icon name="ok" size={14} /> Vu</span>
               {/if}
@@ -92,6 +100,8 @@
               {#each seasons as s, i (s.season.id)}<button aria-pressed={i === shown} onclick={() => (shown = i)}>{s.season.title}</button>{/each}
             </div>
           {/if}
+          <span class="v-mono v-mute film-eps-vus">{vus} vu{vus > 1 ? 's' : ''} sur {episodes.length}</span>
+          {#if app.entracteMe?.permissions.request}<button class="film-lien film-eps-demande" onclick={demander}>Il manque une saison ? La demander</button>{/if}
         </div>
         <ol class="film-episodes">
           {#each episodes as e (e.id)}

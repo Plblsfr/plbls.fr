@@ -86,7 +86,7 @@ flux, que son jeton signé suffit à ouvrir. La lecture, la pause et la position
 
 `ENTRACTE_TRANSCODE_MODE` : `cpu` (défaut, libx264), `vaapi` (Intel ou AMD), `qsv` (Intel Quick Sync), `nvenc` (NVIDIA).
 Au démarrage, Entracte vérifie le mode demandé : périphérique présent (`ENTRACTE_TRANSCODE_DEVICE`, `/dev/dri/renderD128`), encodeur dans
-ffmpeg, puis un court essai d'encodage. S'il échoue, il le dit dans ses journaux et dans Administration › état, et transcode sur le CPU.
+ffmpeg, puis un court essai d'encodage. S'il échoue, il le dit dans ses journaux et dans l’en-tête d’Administration (état des services), et transcode sur le CPU.
 Un transcodage matériel qui échoue au démarrage (source que le matériel ne décode pas) est relancé sur le CPU pour ce flux seulement, et signalé ; les suivants restent sur le matériel.
 
 | Mode | Décodage, mise à l'échelle, encodage |
@@ -105,6 +105,6 @@ Les lignes de commande de chaque mode sont couvertes par les tests de `api/entra
    L'image porte les pilotes libres (`mesa-va-drivers`, `intel-media-va-driver`).
 3. NVIDIA (`nvenc`) : NVIDIA Container Toolkit sur l'hôte, puis `deploy.resources.reservations.devices` (`driver: nvidia`,
    `capabilities: [gpu, video]`) sur le service.
-4. Régler `ENTRACTE_TRANSCODE_MODE`, redéployer, vérifier Administration › état (« mode actif ») et `nvidia-smi` / `intel_gpu_top`
+4. Régler `ENTRACTE_TRANSCODE_MODE`, redéployer, vérifier l’en-tête d’Administration (état des services) (« mode actif ») et `nvidia-smi` / `intel_gpu_top`
    pendant une lecture.
 5. Mesurer la charge avec plusieurs lectures simultanées en 1080p, puis fixer `ENTRACTE_MAX_TRANSCODAGES`.

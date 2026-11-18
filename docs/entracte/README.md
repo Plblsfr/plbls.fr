@@ -42,7 +42,7 @@ la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt 
 - Métadonnées et affiches TMDB gardées en base : un titre dont le fichier disparaît passe « absent » sans perdre son titre, son affiche ni
   son historique. Les images sont servies par Entracte depuis son cache, jamais par une URL tierce.
 - Radarr, Sonarr ou TMDB injoignable, ou dossier des médias inaccessible (aucun fichier lisible) : rien n'est retiré, la bibliothèque déjà synchronisée reste servie et l'erreur s'affiche dans
-  Administration › état (`GET /admin/status`).
+  l’en-tête d’Administration (état des services) (`GET /admin/status`).
 - Identifiants publics propres à Entracte (UUID) : aucune réponse ne contient de chemin de fichier, d'identifiant Radarr/Sonarr ni d'URL TMDB.
   L'identifiant TMDB d'un titre, lui, est public (recherche et demandes).
 

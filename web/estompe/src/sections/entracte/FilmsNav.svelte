@@ -4,22 +4,13 @@
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import { entracte } from './entracte.svelte'
-  import { TMDB_ATTRIBUTION } from './entracte'
-  import Icon, { type IconName } from '../../components/Icon.svelte'
+  import { rubriqueActive, rubriques, TMDB_ATTRIBUTION } from './entracte'
+  import Icon from '../../components/Icon.svelte'
 
   const route = $derived(router.current)
   const section = $derived(route.name === 'films' ? route.section : undefined)
   const droits = $derived(app.entracteMe?.permissions)
-  const links: { id: string | undefined; label: string; icon: IconName; count: number }[] = $derived([
-    { id: undefined, label: 'Accueil', icon: 'maison', count: 0 },
-    { id: 'movies', label: 'Films', icon: 'film', count: films.movies },
-    { id: 'series', label: 'Séries', icon: 'tele', count: films.series },
-    { id: 'continue', label: 'Reprendre', icon: 'replay', count: films.resume.length },
-    { id: 'seen', label: 'Historique', icon: 'ok', count: films.seen },
-    { id: 'search', label: 'Rechercher et demander', icon: 'cherche', count: 0 },
-    ...(droits?.request ? [{ id: 'requests', label: 'Mes demandes', icon: 'bulle' as IconName, count: 0 }] : []),
-    ...(droits?.admin ? [{ id: 'admin', label: 'Administration', icon: 'bouclier' as IconName, count: 0 }] : []),
-  ])
+  const links = $derived(rubriques(droits, films))
   const notifier = async () => {
     if (await entracte.enablePush().catch(() => false)) notify.ok('Tu seras prévenu de l’avancée de tes demandes.')
     else notify.fail('Les notifications ne sont pas disponibles sur cet appareil ou ont été refusées.')
@@ -30,10 +21,13 @@
 <div class="side-list">
   <p class="v-note film-sub">Films et séries</p>
   {#each links as l (l.label)}
-    <a class="nav-item" class:active={section === l.id} href={hrefs.films(l.id)} aria-current={section === l.id ? 'page' : undefined}>
+    {@const actif = rubriqueActive(l.id, section)}
+    {#if l.id === 'admin'}<hr class="film-nav-sep" />{/if}
+    <a class="nav-item" class:active={actif} href={hrefs.films(l.id)} aria-current={actif ? 'page' : undefined}>
       <Icon name={l.icon} size={18} />
       <span class="grow truncate">{l.label}</span>
-      {#if l.count}<span class="v-mono v-mute">{l.count}</span>{/if}
+      {#if l.alerte}<span class="film-nav-alerte" aria-label={`${l.count} en attente`}>{l.count}</span>
+      {:else if l.count}<span class="v-mono v-mute">{l.count}</span>{/if}
     </a>
   {/each}
   {#if droits?.request && entracte.push === 'off'}
@@ -47,4 +41,6 @@
   .film-sub { margin: 0 0 var(--espace-2) var(--espace-2); }
   .film-notif { margin: var(--espace-3) var(--espace-2) 0; }
   .film-tmdb { margin: var(--espace-4) var(--espace-2) 0; font-size: 0.75rem; }
+  .film-nav-sep { height: 1px; margin: var(--espace-2); border: 0; background: var(--trait-fort); }
+  .film-nav-alerte { min-width: 20px; padding: 1px 6px; border-radius: var(--r-p); background: var(--rose-texte); color: var(--surface); font-size: 12px; font-weight: 600; text-align: center; }
 </style>

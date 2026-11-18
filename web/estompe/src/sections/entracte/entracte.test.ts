@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { entracteApi } from '../../lib/api'
 import { platform } from '../../lib/platform'
 import { entracte } from './entracte.svelte'
-import { freeSpace, initialChoice, introAnalysed, introLabel, introPending, introTone, freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type IntroSeason, type IntroSeries, type RequestableSeries, type SearchResult, type SendOptions } from './entracte'
+import { failedSends, rubriqueActive, rubriques, requestSteps, sourceLabel, freeSpace, initialChoice, introAnalysed, introLabel, introPending, introTone, freshNotifications, requestBody, requestableSeasons, seasonsLabel, sections, splitSearch, stateLabel, stateTone, type IntroSeason, type IntroSeries, type RequestableSeries, type SearchResult, type SendOptions } from './entracte'
 
 const serie = (seasons: Partial<RequestableSeries['seasons'][number]>[]): RequestableSeries => ({
   tmdb_id: 201, title: 'La Série', year: 2019, poster_url: null,
@@ -130,5 +130,47 @@ describe('états de la détection des intros', () => {
     expect(introPending(uneSerie(saison({ state: 'trouvee' }), saison({ state: 'rien' })))).toBe(false)
     expect(introAnalysed(uneSerie(saison(), saison()))).toBe(false)
     expect(introAnalysed(uneSerie(saison(), saison({ state: 'erreur' })))).toBe(true)
+  })
+})
+
+describe('rubriques', () => {
+  const n = { movies: 12, series: 3, pending: 2 }
+  it('quatre rubriques sans permission, « Mes demandes » et « Administration » selon les droits', () => {
+    expect(rubriques(undefined, n).map((r) => r.label)).toEqual(['Accueil', 'Films', 'Séries', 'Historique'])
+    expect(rubriques({ access: true, request: true, admin: false }, n).map((r) => r.id)).toEqual([undefined, 'movies', 'series', 'seen', 'requests'])
+    const admin = rubriques({ access: true, request: false, admin: true }, n).at(-1)!
+    expect(admin).toMatchObject({ id: 'admin', count: 2, alerte: true })
+    expect(rubriques({ access: true, request: false, admin: true }, { ...n, pending: 0 }).at(-1)!.alerte).toBe(false)
+  })
+  it('la recherche éclaire « Mes demandes », « Reprendre » éclaire l’accueil', () => {
+    expect(rubriqueActive('requests', 'search')).toBe(true)
+    expect(rubriqueActive('requests', 'requests')).toBe(true)
+    expect(rubriqueActive(undefined, undefined)).toBe(true)
+    expect(rubriqueActive(undefined, 'continue')).toBe(true)
+    expect(rubriqueActive(undefined, 'movies')).toBe(false)
+    expect(rubriqueActive('movies', 'movies')).toBe(true)
+  })
+})
+
+describe('suivi des demandes', () => {
+  it('jauge en trois étapes selon l’état', () => {
+    expect(requestSteps('en_attente')).toEqual(['fait', 'vide', 'vide'])
+    expect(requestSteps('acceptee')).toEqual(['fait', 'fait', 'vide'])
+    expect(requestSteps('disponible')).toEqual(['ok', 'ok', 'ok'])
+    expect(requestSteps('refusee')).toEqual(['refus', 'vide', 'vide'])
+  })
+  it('envois en échec : acceptées, non envoyées, avec une erreur', () => {
+    const base = { kind: 'movie' as const, tmdb_id: 1, seasons: null, title: 'T', year: null, poster_url: null, reason: null, created_at: '', updated_at: '' }
+    const items = [
+      { ...base, id: 'a', state: 'acceptee' as const, sent: false, send_error: 'dossier introuvable' },
+      { ...base, id: 'b', state: 'acceptee' as const, sent: true, send_error: null },
+      { ...base, id: 'c', state: 'en_attente' as const, send_error: 'x' },
+    ]
+    expect(failedSends(items).map((r) => r.id)).toEqual(['a'])
+  })
+  it('nom des sources de synchronisation', () => {
+    expect(sourceLabel('tmdb')).toBe('TMDB')
+    expect(sourceLabel('radarr')).toBe('Radarr')
+    expect(sourceLabel('autre')).toBe('autre')
   })
 })

@@ -128,6 +128,44 @@ export function seasonsLabel(r: Pick<EntracteRequest, 'kind' | 'seasons'>): stri
   return r.seasons.length === 1 ? `Saison ${r.seasons[0]}` : `Saisons ${r.seasons.join(', ')}`
 }
 
+export type RubriqueIcon = 'maison' | 'film' | 'tele' | 'ok' | 'bulle' | 'bouclier'
+export interface Rubrique { id: string | undefined; label: string; icon: RubriqueIcon; count: number; alerte: boolean }
+
+/** Rubriques d'Entracte selon les permissions : « Reprendre » vit dans l'accueil, la recherche dans l'en-tête. */
+export function rubriques(droits: EntracteMe['permissions'] | undefined, n: { movies: number; series: number; pending: number }): Rubrique[] {
+  const liste: Rubrique[] = [
+    { id: undefined, label: 'Accueil', icon: 'maison', count: 0, alerte: false },
+    { id: 'movies', label: 'Films', icon: 'film', count: n.movies, alerte: false },
+    { id: 'series', label: 'Séries', icon: 'tele', count: n.series, alerte: false },
+    { id: 'seen', label: 'Historique', icon: 'ok', count: 0, alerte: false },
+  ]
+  if (droits?.request) liste.push({ id: 'requests', label: 'Mes demandes', icon: 'bulle', count: 0, alerte: false })
+  if (droits?.admin) liste.push({ id: 'admin', label: 'Administration', icon: 'bouclier', count: n.pending, alerte: n.pending > 0 })
+  return liste
+}
+
+/** La recherche appartient à « Mes demandes », « Reprendre » à l'accueil. */
+export function rubriqueActive(id: string | undefined, section: string | undefined): boolean {
+  if (id === 'requests') return section === 'requests' || section === 'search'
+  if (id === undefined) return !section || section === 'continue'
+  return section === id
+}
+
+export type RequestStep = 'fait' | 'ok' | 'refus' | 'vide'
+/** Jauge d'une demande : demandée, acceptée, disponible. */
+export function requestSteps(state: RequestState): [RequestStep, RequestStep, RequestStep] {
+  if (state === 'disponible') return ['ok', 'ok', 'ok']
+  if (state === 'refusee') return ['refus', 'vide', 'vide']
+  if (state === 'acceptee') return ['fait', 'fait', 'vide']
+  return ['fait', 'vide', 'vide']
+}
+
+/** Demandes acceptées dont l'envoi à Radarr ou Sonarr a échoué : elles attendent un renvoi. */
+export const failedSends = (items: EntracteRequest[]) => items.filter((r) => r.state === 'acceptee' && !r.sent && !!r.send_error)
+
+const SOURCES: Record<string, string> = { tmdb: 'TMDB', radarr: 'Radarr', sonarr: 'Sonarr' }
+export const sourceLabel = (source: string) => SOURCES[source] ?? source
+
 /** Présents d'abord (dans l'ordre de la bibliothèque), puis absents, que l'on peut demander. */
 export function splitSearch(items: SearchResult[]): { present: SearchResult[]; absent: SearchResult[] } {
   return { present: items.filter((i) => i.present), absent: items.filter((i) => !i.present) }
