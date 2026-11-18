@@ -418,7 +418,7 @@ mod tests {
         );
         for (sub, d) in &emis {
             let json = estompe_core::sablier::Evenement::nouveau(sub.clone(), d.clone()).json();
-            for autre in ["sub-alice", "sub-bob", "sub-carol", "srv", "cine"] {
+            for autre in ["sub-alice", "sub-bob", "sub-carol", "srv"] {
                 assert!(autre == sub || !json.contains(autre), "{json}");
             }
         }

@@ -11,7 +11,8 @@ routes dans [`openapi.yaml`](../../docs/entracte/openapi.yaml).
 | `catalogue.rs`, `arr.rs`, `tmdb.rs`, `ffprobe.rs`, `filtre.rs`, `images.rs` | synchronisation Radarr/Sonarr, métadonnées, analyse, filtre, cache d'images |
 | `bibliotheque.rs` | bibliothèque, fiches, saisons, épisodes, administration du catalogue |
 | `lecture.rs`, `flux.rs`, `transcodage.rs`, `materiel.rs`, `sous_titres.rs` | flux signés, lecture directe, HLS, accélération, WebVTT |
-| `progression.rs` | progression, reprise, historique |
+| `progression.rs` | progression, reprise, historique, évènements d'un rapport de position |
+| `sablier.rs` | évènements émis vers [Sablier](../../docs/sablier/README.md) (file commune, `SABLIER_REDIS_URL`, `SABLIER_REDIS_PASSWORD`, `SABLIER_FILE_MAX`) : temps regardé, abandons, intro passée, sous-commande `importer-sablier` ([détail](../../docs/entracte/README.md#statistiques-sablier)) |
 | `intros/` | détection des intros : empreinte Chromaprint (`empreinte.rs`), comparaison et consensus (`comparaison.rs`), file, administration et sous-commande `analyser-intro` (`mod.rs`) |
 | `demandes.rs` | recherche, demandes, administration, envoi à Radarr/Sonarr |
 | `push/` | Web Push (VAPID), FCM, notifications |
