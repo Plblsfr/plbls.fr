@@ -41,8 +41,8 @@ describe('partage sur le profil', () => {
     for (const r of reglages) expect(r).not.toBeChecked()
     expect(vue.getByText('0 affiché sur 1 débloqué. Un nouveau trophée est privé.')).toBeInTheDocument()
     expect(vue.getByText('Vu seulement par qui a aussi accès à Entracte.')).toBeInTheDocument()
-    const profil = render(SablierProfil, { sub: 'kc-moi' })
-    await waitFor(() => expect(lireProfil).toHaveBeenCalledWith('kc-moi'))
+    const profil = render(SablierProfil, { id: 'u-moi' })
+    await waitFor(() => expect(lireProfil).toHaveBeenCalledWith('u-moi'))
     await waitFor(() => expect(lireProfil.mock.results[0].type).toBe('return'))
     expect(bloc(profil)).toBeNull()
   })
@@ -55,9 +55,9 @@ describe('partage sur le profil', () => {
     await waitFor(() => expect(partager).toHaveBeenCalledWith({ stats: { 'messaging.messages': true } }))
     await waitFor(() => expect(sablier.partage?.stats.find((s) => s.key === 'messaging.messages')?.shared).toBe(true))
 
-    const autre = render(SablierProfil, { sub: 'kc-moi' })
+    const autre = render(SablierProfil, { id: 'u-moi' })
     await waitFor(() => expect(bloc(autre)).not.toBeNull())
-    expect(lireProfil).toHaveBeenCalledWith('kc-moi')
+    expect(lireProfil).toHaveBeenCalledWith('u-moi')
     expect(bloc(autre)!.textContent).toContain('Messages envoyés')
     expect(bloc(autre)!.textContent).toContain('642')
     expect(bloc(autre)!.textContent).not.toContain('Temps actif')
@@ -68,7 +68,7 @@ describe('partage sur le profil', () => {
 
     await fireEvent.click(vue.getByRole('switch', { name: 'Messages envoyés' }))
     await waitFor(() => expect(partager).toHaveBeenLastCalledWith({ stats: { 'messaging.messages': false } }))
-    const apres = render(SablierProfil, { sub: 'kc-moi' })
+    const apres = render(SablierProfil, { id: 'u-moi' })
     await waitFor(() => expect(lireProfil.mock.results.at(-1)?.type).toBe('return'))
     await waitFor(() => expect(lireProfil).toHaveBeenCalledTimes(2))
     expect(bloc(apres)).toBeNull()
@@ -80,7 +80,7 @@ describe('partage sur le profil', () => {
     await fireEvent.click(await vue.findByRole('switch', { name: 'Encore un épisode' }))
     await waitFor(() => expect(partager).toHaveBeenCalledWith({ trophies: { 2: true } }))
     expect(await vue.findByText('1 affiché sur 1 débloqué. Un nouveau trophée est privé.')).toBeInTheDocument()
-    const profil = render(SablierProfil, { sub: 'kc-moi', mien: true, onregler: () => {} })
+    const profil = render(SablierProfil, { id: 'u-moi', mien: true, onregler: () => {} })
     await waitFor(() => expect(bloc(profil)).not.toBeNull())
     expect(bloc(profil)!.textContent).toContain('Encore un épisode')
     expect(bloc(profil)!.textContent).toContain('Palier 2 · 14 nov. 2026')
@@ -99,7 +99,7 @@ describe('partage sur le profil', () => {
 
   it('le bloc du profil reste absent si Sablier échoue', async () => {
     const lire = vi.spyOn(sablierApi, 'profil').mockRejectedValue(new TypeError('Failed to fetch'))
-    const profil = render(SablierProfil, { sub: 'kc-autre' })
+    const profil = render(SablierProfil, { id: 'u-autre' })
     await waitFor(() => expect(lire.mock.results[0]?.type).toBe('return'))
     await expect(lire.mock.results[0].value).rejects.toBeInstanceOf(TypeError)
     expect(bloc(profil)).toBeNull()
@@ -107,7 +107,7 @@ describe('partage sur le profil', () => {
 
   it('profil d’une autre personne : stats et trophées servis, libellés du domaine', async () => {
     vi.spyOn(sablierApi, 'profil').mockResolvedValue({ month: [], total: [{ key: 'entracte.movies_watched', label: 'Films vus', domain: 'entracte', unit: 'count', value: 38 }], first_day: '2024-03-03', trophies: [{ name: 'Signature', description: '', icon: 'icone-inconnue', tier: 1, unlocked_at: '2026-10-02' }] })
-    const profil = render(SablierProfil, { sub: 'kc-camille' })
+    const profil = render(SablierProfil, { id: 'u-camille' })
     await waitFor(() => expect(bloc(profil)).not.toBeNull())
     expect(bloc(profil)!.textContent).toContain('Films vus · Entracte')
     expect(bloc(profil)!.textContent).toContain('Depuis le 3 mars 2024.')

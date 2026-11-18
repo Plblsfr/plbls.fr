@@ -80,3 +80,20 @@ export function avancement(v: number, seuil: number, unite: Unite): string {
   if (unite === 'days') return `${nombre(v)} / ${nombre(seuil)} jours`
   return `${nombre(v)} / ${nombre(seuil)}`
 }
+
+export function dateHeure(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${jourMoyen(jourLocal(d))} à ${deux(d.getHours())}:${deux(d.getMinutes())}`
+}
+
+export function ilYA(jour: string | null, aujourdhui: string): string {
+  if (!jour) return 'jamais'
+  const ecart = joursEntre(jour, aujourdhui) - 1
+  if (ecart <= 0) return 'aujourd’hui'
+  if (ecart === 1) return 'hier'
+  if (ecart < 30) return `il y a ${ecart} jours`
+  if (ecart < 365) return `il y a ${Math.floor(ecart / 30)} mois`
+  const ans = Math.floor(ecart / 365)
+  return `il y a ${ans} ${ans >= 2 ? 'ans' : 'an'}`
+}

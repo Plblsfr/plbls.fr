@@ -5,13 +5,14 @@ import type { Domaine, Entracte, Messagerie, Periode, Salon, SansAcces, Serie, S
 export type NomSalon = (serveur: string, salon: string) => string | null
 
 export const SALON_SUPPRIME = 'salon supprimé'
-export const salonTexte = (s: Salon, nom: NomSalon): string => {
+export const SALON_INACCESSIBLE = 'salon supprimé ou inaccessible'
+export const salonTexte = (s: Salon, nom: NomSalon, absent = SALON_SUPPRIME): string => {
   const n = nom(s.server, s.channel)
-  return n ? `# ${n}` : SALON_SUPPRIME
+  return n ? `# ${n}` : absent
 }
-export const salonVocal = (s: Salon, nom: NomSalon): string => {
+export const salonVocal = (s: Salon, nom: NomSalon, absent = SALON_SUPPRIME): string => {
   const n = nom(s.server, s.channel)
-  return n ? `salon « ${n} »` : SALON_SUPPRIME
+  return n ? `salon « ${n} »` : absent
 }
 
 export const NOM_DOMAINE: Record<Domaine, string> = { usage: 'Utilisation', entracte: 'Entracte', sillon: 'Sillon', messaging: 'Messagerie et vocal' }
@@ -42,7 +43,7 @@ const garder = <T extends { n: number }>(liste: T[]): T[] => liste.filter((x) =>
 
 const JOURS_MIN_BARRES = 5
 
-export function barresParJour(usage: Usage, aujourdhui: string): Barre[] {
+export function barresParJour(usage: Pick<Usage, 'period' | 'from' | 'to' | 'by_day'>, aujourdhui: string): Barre[] {
   if (usage.period !== 'week' && usage.period !== 'month') return []
   const fin = usage.to > aujourdhui ? aujourdhui : usage.to
   const jours = joursEntre(usage.from, fin)
@@ -110,12 +111,12 @@ export function carteSillon(s: Sillon | SansAcces): Carte {
 
 const SALONS_DETAILLES = 3
 
-export function partsMessages(m: Messagerie, nom: NomSalon): Part[] {
+export function partsMessages(m: Messagerie, nom: NomSalon, absent = SALON_SUPPRIME): Part[] {
   const salons = m.by_channel.filter((s) => s.messages > 0)
   const tete = salons.slice(0, SALONS_DETAILLES)
   const autres = salons.slice(SALONS_DETAILLES).reduce((n, s) => n + s.messages, 0)
   const lignes = [
-    ...tete.map((s) => ({ label: salonTexte(s, nom), n: s.messages })),
+    ...tete.map((s) => ({ label: salonTexte(s, nom, absent), n: s.messages })),
     { label: 'Privés', n: m.private },
     { label: 'Autres salons', n: autres },
   ].filter((l) => l.n > 0)
@@ -124,14 +125,14 @@ export function partsMessages(m: Messagerie, nom: NomSalon): Part[] {
   return lignes.map((l) => ({ label: l.label, part: Math.max(2, Math.round((l.n / max) * 100)), valeur: nombre(l.n) }))
 }
 
-export function carteMessagerie(m: Messagerie, nom: NomSalon): Carte {
+export function carteMessagerie(m: Messagerie, nom: NomSalon, absent = SALON_SUPPRIME): Carte {
   const rien = m.total <= 0 && m.voice_seconds <= 0 && m.reactions_given <= 0 && m.reactions_received <= 0 && m.files <= 0 && m.screen_share_seconds <= 0
   if (rien) return carte('messaging', 'vide')
   const c = carte('messaging', 'pleine')
   if (m.total > 0) c.chiffre = { valeur: nombre(m.total), unite: m.total >= 2 ? 'messages envoyés' : 'message envoyé' }
   else if (m.voice_seconds > 0) c.chiffre = { valeur: duree(m.voice_seconds), unite: 'en vocal' }
-  c.parts = partsMessages(m, nom)
-  if (!c.parts.length && m.top_channel && m.top_channel.messages > 0 && m.top_channel.messages < m.total) c.lignes.push({ label: 'Salon le plus fréquenté', valeur: `${salonTexte(m.top_channel, nom)} · ${nombre(m.top_channel.messages)}` })
+  c.parts = partsMessages(m, nom, absent)
+  if (!c.parts.length && m.top_channel && m.top_channel.messages > 0 && m.top_channel.messages < m.total) c.lignes.push({ label: 'Salon le plus fréquenté', valeur: `${salonTexte(m.top_channel, nom, absent)} · ${nombre(m.top_channel.messages)}` })
   if (m.busiest_day && m.busiest_day.messages > 0 && m.busiest_day.messages < m.total) c.lignes.push({ label: 'Journée la plus bavarde', valeur: `${jourCourt(m.busiest_day.day)} · ${pluriel(m.busiest_day.messages, 'message', 'messages')}` })
   if (m.reactions_given > 0 || m.reactions_received > 0) {
     const morceaux = [m.reactions_given > 0 ? `${nombre(m.reactions_given)} ${m.reactions_given >= 2 ? 'données' : 'donnée'}` : '', m.reactions_received > 0 ? `${nombre(m.reactions_received)} ${m.reactions_received >= 2 ? 'reçues' : 'reçue'}` : ''].filter(Boolean)
@@ -139,15 +140,15 @@ export function carteMessagerie(m: Messagerie, nom: NomSalon): Carte {
   }
   if (m.top_emoji && m.top_emoji.count >= 2) c.lignes.push({ label: 'Emoji le plus utilisé', valeur: `${m.top_emoji.emoji} · ${nombre(m.top_emoji.count)} fois` })
   if (m.files > 0) c.lignes.push({ label: m.files >= 2 ? 'Fichiers et images envoyés' : 'Fichier ou image envoyé', valeur: nombre(m.files) })
-  if (m.voice_seconds > 0 && m.total > 0) c.lignes.push({ label: 'En vocal', valeur: m.top_voice_channel ? `${duree(m.voice_seconds)} · ${salonVocal(m.top_voice_channel, nom)}` : duree(m.voice_seconds) })
-  else if (m.voice_seconds > 0 && m.top_voice_channel) c.lignes.push({ label: 'Salon vocal préféré', valeur: salonVocal(m.top_voice_channel, nom) })
+  if (m.voice_seconds > 0 && m.total > 0) c.lignes.push({ label: 'En vocal', valeur: m.top_voice_channel ? `${duree(m.voice_seconds)} · ${salonVocal(m.top_voice_channel, nom, absent)}` : duree(m.voice_seconds) })
+  else if (m.voice_seconds > 0 && m.top_voice_channel) c.lignes.push({ label: 'Salon vocal préféré', valeur: salonVocal(m.top_voice_channel, nom, absent) })
   if (m.longest_call > 0) c.lignes.push({ label: 'Plus long appel', valeur: duree(m.longest_call) })
   if (m.screen_share_seconds > 0) c.lignes.push({ label: 'Partage d’écran', valeur: duree(m.screen_share_seconds) })
   return c
 }
 
-export function cartes(stats: Stats, nom: NomSalon, aujourdhui: string): Carte[] {
-  const liste = [carteUsage(stats.usage, aujourdhui), carteEntracte(stats.entracte), carteSillon(stats.sillon), carteMessagerie(stats.messaging, nom)]
+export function cartes(stats: Stats, nom: NomSalon, aujourdhui: string, absent = SALON_SUPPRIME): Carte[] {
+  const liste = [carteUsage(stats.usage, aujourdhui), carteEntracte(stats.entracte), carteSillon(stats.sillon), carteMessagerie(stats.messaging, nom, absent)]
   const rang = { pleine: 0, vide: 1, 'sans-acces': 2 }
   return liste.map((c, i) => ({ c, i })).sort((a, b) => rang[a.c.etat] - rang[b.c.etat] || a.i - b.i).map((x) => x.c)
 }

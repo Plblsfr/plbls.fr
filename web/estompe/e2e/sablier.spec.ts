@@ -181,7 +181,7 @@ test('C6 : rien de public par défaut ; une stat partagée paraît sur le profil
   await page.getByRole('button', { name: 'Voir mon profil' }).click()
   const profil = page.getByRole('dialog', { name: 'Profil de moi' })
   await expect(profil).toBeVisible()
-  await expect.poll(() => srv.appels.filter((a) => a.chemin === '/profiles/kc-moi').length).toBe(1)
+  await expect.poll(() => srv.appels.filter((a) => a.chemin === '/profiles/me').length).toBe(1)
   await expect(page.locator('[data-bloc="stats-profil"]')).toHaveCount(0)
   await fermerProfil(page)
 
@@ -201,7 +201,7 @@ test('C6 : rien de public par défaut ; une stat partagée paraît sur le profil
   await expect.poll(() => srv.appels.filter((a) => a.methode === 'PUT').at(-1)?.corps).toEqual({ stats: { 'messaging.messages': false } })
   await page.getByRole('button', { name: 'Voir mon profil' }).click()
   await expect(profil).toBeVisible()
-  await expect.poll(() => srv.appels.filter((a) => a.chemin === '/profiles/kc-moi').length).toBe(3)
+  await expect.poll(() => srv.appels.filter((a) => a.chemin === '/profiles/me').length).toBe(3)
   await expect(bloc).toHaveCount(0)
   await fermerProfil(page)
 
@@ -216,7 +216,7 @@ test('C6 : rien de public par défaut ; une stat partagée paraît sur le profil
   await expect(camille.locator('[data-bloc="stats-profil"]')).toContainText('77')
   await expect(camille.locator('[data-bloc="stats-profil"]')).toContainText('Pipelette')
   await expect(camille.getByRole('button', { name: 'Régler ce que j’affiche' })).toHaveCount(0)
-  expect(srv.appels.some((a) => a.chemin === '/profiles/kc-camille')).toBe(true)
+  expect(srv.appels.some((a) => a.chemin === '/profiles/u-camille')).toBe(true)
 })
 
 test('C7 : Sablier arrêté, l’app démarre, la messagerie et Entracte s’ouvrent, sans section Stats', async ({ page }) => {

@@ -169,7 +169,7 @@ export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSabli
         return json(route, {
           server: { id: SERVEUR, name: 'Le Salon', owner_id: 'me', icon_version: 0 },
           channels: [{ id: SALONS.general, name: 'général', kind: 'text', position: 0 }, { id: SALONS.cinema, name: 'cinéma', kind: 'text', position: 1 }, { id: SALONS.canape, name: 'Canapé', kind: 'voice', position: 2 }],
-          members: [{ id: 'me', pseudo: 'moi', sub: 'kc-moi', online: true }, { id: 'u-camille', pseudo: 'Camille', sub: 'kc-camille', online: true }],
+          members: [{ id: 'me', pseudo: 'moi', online: true }, { id: 'u-camille', pseudo: 'Camille', online: true }],
           roles: [], permissions: [],
         })
       case `/channels/${SALONS.general}/messages`: return json(route, { messages: [], has_more: false })
@@ -204,8 +204,8 @@ export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSabli
     const cle = periode === 'all' ? 'all' : periode === 'year' ? `year:${from.slice(0, 4)}` : periode === 'month' ? `month:${from.slice(0, 7)}` : `week:${from}`
     const j = jeu(p.aucuneActivite ? 'rien' : cle, periode, from, to)
     const debloques = p.aucuneActivite ? [] : srv.trophees.filter((t) => (p.entracte !== false || !['encore_un_episode', 'marathon'].includes(t.key)))
-    const profil = (sub: string) => {
-      if (sub === 'kc-camille') return { month: [{ key: 'messaging.messages', label: 'Messages envoyés', domain: 'messaging', unit: 'count', value: 77 }], total: [{ key: 'messaging.messages', label: 'Messages envoyés', domain: 'messaging', unit: 'count', value: 5120 }], trophies: [{ name: 'Pipelette', description: 'Des messages envoyés.', icon: 'bulle', tier: 3, unlocked_at: '2026-08-02' }] }
+    const profil = (id: string) => {
+      if (id === 'u-camille') return { month: [{ key: 'messaging.messages', label: 'Messages envoyés', domain: 'messaging', unit: 'count', value: 77 }], total: [{ key: 'messaging.messages', label: 'Messages envoyés', domain: 'messaging', unit: 'count', value: 5120 }], trophies: [{ name: 'Pipelette', description: 'Des messages envoyés.', icon: 'bulle', tier: 3, unlocked_at: '2026-08-02' }] }
       const stats = STATS_PARTAGEABLES.filter((s) => srv.partages.has(s.key))
       return {
         month: stats.map((s) => ({ key: s.key, label: s.label, domain: s.domain, unit: s.unit, value: s.mois })),

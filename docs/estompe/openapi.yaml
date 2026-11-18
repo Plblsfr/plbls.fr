@@ -917,12 +917,13 @@ paths:
   /internal/profile-visible:
     get:
       tags: [interne]
-      summary: "Dit à Sablier si `viewer` peut ouvrir le profil de `target` (`sub` des deux) : `{visible}`. Jeton `SABLIER_ESTOMPE_TOKEN`, réseau interne ; 404 sans ce jeton"
+      summary: "Dit à Sablier si `viewer` (`sub`) peut ouvrir le profil de la cible, désignée par `target_user` (identifiant Estompe) ou `target` (`sub`) : `{visible, sub}`, `sub` de la cible seulement si visible. Jeton `SABLIER_ESTOMPE_TOKEN`, réseau interne ; 404 sans ce jeton"
       parameters:
-        - {name: viewer, in: query, required: true, schema: {type: string}}
-        - {name: target, in: query, required: true, schema: {type: string}}
+        - {name: viewer, in: query, required: true, description: "`sub` de la personne qui regarde", schema: {type: string}}
+        - {name: target_user, in: query, description: "identifiant Estompe de la cible ; exactement l'un de `target_user` ou `target`", schema: {type: string, format: uuid}}
+        - {name: target, in: query, description: "`sub` de la cible ; exactement l'un de `target_user` ou `target`", schema: {type: string}}
       responses:
-        "200": {description: "ok — {visible}", content: {application/json: {schema: {type: object, required: [visible], properties: {visible: {type: boolean}}}}}}
+        "200": {description: "ok — {visible, sub} ; `sub` de la cible seulement quand `visible` est vrai", content: {application/json: {schema: {type: object, required: [visible], properties: {visible: {type: boolean}, sub: {type: string}}}}}}
         "400": {description: bad_request}
         "401": {description: unauthorized}
         "404": {description: not_found}

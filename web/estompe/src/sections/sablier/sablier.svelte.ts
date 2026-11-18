@@ -1,4 +1,4 @@
-import { ApiError } from '../../lib/api'
+import { messageDe } from './admin.svelte'
 import { jourLocal } from './formats'
 import { borner, precedente, suivante } from './periodes'
 import { sablierApi, type ChoixPartage, type ClientSablier, type Domaine, type NonVus, type Partage, type Periode, type Recap, type RecapResume, type Series, type Stats, type TropheeDebloque, type Trophees } from './sablier'
@@ -7,18 +7,54 @@ import { estVide, PLUS_LARGE } from './stats'
 export interface Ailleurs { periode: Periode; date: string }
 
 const DOMAINES: Domaine[] = ['usage', 'entracte', 'sillon', 'messaging']
-const INJOIGNABLE = 'Les stats sont injoignables pour le moment.'
-const messageDe = (e: unknown): string => (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.message ? e.message : INJOIGNABLE)
 
-export class EtatSablier {
-  nonVus = $state.raw<NonVus>({ trophies: 0, recaps: 0 })
+export class NavigationPeriode {
   periode = $state<Periode>('month')
   date = $state('')
+  premierJour = $state<string | null>(null)
+
+  constructor(protected jour: () => string = jourLocal, private surChangement: () => void = () => {}) {
+    this.date = this.jour()
+  }
+
+  get aujourdhui() { return this.jour() }
+
+  protected changer() { this.surChangement() }
+
+  choisir(periode: Periode) {
+    if (periode === this.periode) return
+    this.periode = periode
+    this.date = borner(this.date, this.premierJour, this.jour())
+    this.changer()
+  }
+
+  aller(periode: Periode, date: string) {
+    this.periode = periode
+    this.date = borner(date, this.premierJour, this.jour())
+    this.changer()
+  }
+
+  reculer() {
+    const date = precedente(this.periode, this.date, this.premierJour)
+    if (date === this.date) return
+    this.date = date
+    this.changer()
+  }
+
+  avancer() {
+    const date = suivante(this.periode, this.date, this.jour())
+    if (date === this.date) return
+    this.date = date
+    this.changer()
+  }
+}
+
+export class EtatSablier extends NavigationPeriode {
+  nonVus = $state.raw<NonVus>({ trophies: 0, recaps: 0 })
   stats = $state.raw<Stats | null>(null)
   ailleurs = $state.raw<Partial<Record<Domaine, Ailleurs | null>>>({})
   trophees = $state.raw<Trophees | null>(null)
   series = $state.raw<Series | null>(null)
-  premierJour = $state<string | null>(null)
   charge = $state(false)
   erreur = $state('')
   annonces = $state.raw<TropheeDebloque[]>([])
@@ -30,11 +66,12 @@ export class EtatSablier {
   private tour = 0
   private recapPropose = false
 
-  constructor(private api: ClientSablier = sablierApi, private jour: () => string = jourLocal) {
-    this.date = this.jour()
+  constructor(private api: ClientSablier = sablierApi, jour: () => string = jourLocal, private consultation = false) {
+    super(jour)
   }
 
-  get aujourdhui() { return this.jour() }
+  protected changer() { void this.chargerStats() }
+
   get pastille() { return this.nonVus.trophies + this.nonVus.recaps > 0 }
 
   reinitialiser() {
@@ -59,6 +96,7 @@ export class EtatSablier {
   }
 
   async chargerNonVus() {
+    if (this.consultation) return
     try { this.nonVus = await this.api.nonVus() } catch { return }
   }
 
@@ -104,7 +142,7 @@ export class EtatSablier {
     const [trophees, series] = await Promise.all([this.api.trophees(), this.api.series()])
     this.trophees = trophees
     this.series = series
-    this.annonces = trophees.unlocked.filter((t) => !t.seen)
+    this.annonces = this.consultation ? [] : trophees.unlocked.filter((t) => !t.seen)
   }
 
   async ouvrir() {
@@ -125,34 +163,8 @@ export class EtatSablier {
     }
   }
 
-  choisir(periode: Periode) {
-    if (periode === this.periode) return
-    this.periode = periode
-    this.date = borner(this.date, this.premierJour, this.jour())
-    void this.chargerStats()
-  }
-
-  aller(periode: Periode, date: string) {
-    this.periode = periode
-    this.date = borner(date, this.premierJour, this.jour())
-    void this.chargerStats()
-  }
-
-  reculer() {
-    const date = precedente(this.periode, this.date, this.premierJour)
-    if (date === this.date) return
-    this.date = date
-    void this.chargerStats()
-  }
-
-  avancer() {
-    const date = suivante(this.periode, this.date, this.jour())
-    if (date === this.date) return
-    this.date = date
-    void this.chargerStats()
-  }
-
   async tropheeVu(id: number) {
+    if (this.consultation) return
     this.annonces = this.annonces.filter((t) => t.id !== id)
     if (this.trophees) this.trophees = { ...this.trophees, unlocked: this.trophees.unlocked.map((t) => (t.id === id ? { ...t, seen: true } : t)) }
     try { await this.api.marquerVus({ trophies: [id] }) } catch { return }
@@ -168,6 +180,7 @@ export class EtatSablier {
 
   async lireRecap(id: number): Promise<Recap> {
     const recap = await this.api.recap(id)
+    if (this.consultation) return recap
     this.recapAnnonce = null
     if (this.recaps) this.recaps = this.recaps.map((r) => (r.id === id ? { ...r, seen: true } : r))
     void this.api.marquerVus({ recaps: [id] }).then(() => this.chargerNonVus(), () => {})

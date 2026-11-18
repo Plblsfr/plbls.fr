@@ -162,7 +162,7 @@
     {:else if route.name === 'regie' && app.regie}
       <RegieSpace section={route.section} onmenu={() => (nav = true)} />
     {:else if route.name === 'stats' && app.stats}
-      <SablierSpace section={route.section} id={route.id} onmenu={() => (nav = true)} />
+      <SablierSpace section={route.section} id={route.id} detail={route.detail} onmenu={() => (nav = true)} />
     {:else if route.name === 'space' && space?.visible()}
       <space.page section={route.section} onmenu={() => (nav = true)} />
     {:else if route.name === 'join'}

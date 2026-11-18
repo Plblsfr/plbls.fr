@@ -7,10 +7,10 @@
   import { ecransDuRecap, titreRecap, type Ecran } from './recap'
   import type { Recap } from './sablier'
   import SablierMedaille from './SablierMedaille.svelte'
-  import { sablier } from './sablier.svelte'
+  import { sablier, type EtatSablier } from './sablier.svelte'
   import type { NomSalon } from './stats'
 
-  let { id, onclose }: { id: number; onclose: () => void } = $props()
+  let { id, onclose, etat = sablier, absent }: { id: number; onclose: () => void; etat?: EtatSablier; absent?: string } = $props()
   const BALAYAGE = 48
   let recap = $state.raw<Recap | null>(null)
   let erreur = $state('')
@@ -26,7 +26,7 @@
 
   async function charger() {
     erreur = ''
-    try { recap = await sablier.lireRecap(id) } catch (e) { erreur = e instanceof ApiError && e.status === 404 ? 'Ce récap n’existe pas ou n’est pas le tien.' : 'Les stats sont injoignables pour le moment.' }
+    try { recap = await etat.lireRecap(id) } catch (e) { erreur = e instanceof ApiError && e.status === 404 ? 'Ce récap n’existe pas ou n’est pas le tien.' : 'Les stats sont injoignables pour le moment.' }
   }
   onMount(() => {
     const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null

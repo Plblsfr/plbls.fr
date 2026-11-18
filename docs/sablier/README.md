@@ -19,12 +19,12 @@ Déclarées à aegis par manifeste (application `sablier`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses séries, ses récaps, ses réglages de partage, la liste des admins qui ont consulté ses stats (`GET /views`), l'export (`GET /export`) et l'effacement (`DELETE /data`) de ses données, et les stats et trophées publics d'une autre personne (`GET /profiles/{sub}`) |
+| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses séries, ses récaps, ses réglages de partage, la liste des admins qui ont consulté ses stats (`GET /views`), l'export (`GET /export`) et l'effacement (`DELETE /data`) de ses données, et les stats et trophées publics d'une autre personne (`GET /profiles/{user}`) |
 | `sablier:admin` | configuration des trophées (`/admin/trophies`, `/admin/catalogue`), statistiques, trophées et récaps de n'importe qui (`/admin/people/{sub}/…`), totaux globaux (`/admin/totals`), journal des consultations (`/admin/audit`), effacement des données d'une personne |
 
 La personne visée n'est un paramètre que sur les routes `sablier:admin` (`/admin/people/{sub}/…`) : les routes `sablier:access` lisent
-toujours la personne de la session. Seule exception, `GET /profiles/{sub}`, qui ne sert que ce que la cible a rendu public. Un test
-sur la table des routes le vérifie (`routes::tests::c1_…`).
+toujours la personne de la session. Seule exception, `GET /profiles/{user}` (identifiant Estompe de la personne, pas son `sub`), qui
+ne sert que ce que la cible a rendu public. Un test sur la table des routes le vérifie (`routes::tests::c1_…`).
 
 Chaque route relève d'une permission ou d'une exception motivée (santé, disponibilité, `GET /me`, `POST /heartbeat`) : la table des
 routes l'impose (`api/sablier/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403
@@ -317,18 +317,21 @@ Tout est privé par défaut. `GET /sharing` rend les réglages de la personne, s
 domaines auxquels elle a accès) et trophée par trophée (trophées débloqués et actifs) ; `PUT /sharing` les modifie (envoi partiel ; une
 stat non partageable ou un trophée non débloqué est refusé, et rien n'est modifié).
 
-`GET /profiles/{sub}` est la seule route `sablier:access` qui vise une autre personne. Elle ne sert que ce que la cible a partagé :
+`GET /profiles/{user}` est la seule route `sablier:access` qui vise une autre personne. `{user}` est l'identifiant de la personne dans
+Estompe (uuid), le seul que le front connaisse ; une autre forme : `400 invalid`. Elle ne sert que ce que la cible a partagé :
 ses stats sur le mois en cours et au total (valeurs nulles omises), son premier jour si `usage.first_day` est partagée, ses trophées
 partagés. Trois contrôles s'appliquent :
 
 1. une stat ou un trophée non partagé n'est jamais servi ;
 2. une stat ou un trophée d'Entracte ou de Sillon n'est servi que si le **lecteur** a `entracte:access` ou `sillon:access` ;
 3. le lecteur doit pouvoir ouvrir le profil de la cible dans Estompe : Sablier le demande de serveur à serveur par
-   `GET {SABLIER_ESTOMPE_URL}/internal/profile-visible?viewer=<sub>&target=<sub>` avec `Authorization: Bearer <SABLIER_ESTOMPE_TOKEN>`,
-   réponse attendue `200 {"visible": true}` (3 secondes au plus). Toute autre réponse, Estompe injoignable ou variables non
-   renseignées : la route répond comme s'il n'y avait rien de public (`200`, listes vides), jamais les données.
+   `GET {SABLIER_ESTOMPE_URL}/internal/profile-visible?viewer=<sub du lecteur>&target_user=<user>` avec
+   `Authorization: Bearer <SABLIER_ESTOMPE_TOKEN>`, réponse attendue `200 {"visible": true, "sub": "<sub de la cible>"}` (3 secondes
+   au plus). Toute autre réponse (`visible` faux, `sub` absent), Estompe injoignable ou variables non renseignées : la route répond
+   comme s'il n'y avait rien de public (`200`, listes vides), jamais les données.
 
-Lire son propre profil ne demande pas l'appel à Estompe et rend ce que les autres verraient.
+C'est Estompe qui résout l'identifiant en `sub` : Sablier lit ensuite le public de ce `sub`, qui n'apparaît jamais dans la réponse.
+Lire son propre profil passe par le même appel et rend ce que les autres verraient.
 
 ## Administration
 
@@ -435,7 +438,7 @@ Valeurs non secrètes dans [`plbls.env`](../../plbls.env), secrets dans Vault ([
 | `SABLIER_CONSERVATION_MOIS` | conservation des évènements bruts (13) |
 | `SABLIER_BATTEMENT_SECONDES` | intervalle et plafond d'un battement (30, entre 5 et 3600) |
 | `SABLIER_RECAP_JOURS_MIN`, `SABLIER_RECAP_JOURS_MIN_ANNEE` | jours avec une action réelle en dessous desquels il n'y a pas de récap du mois (3) ou de l'année (10) |
-| `SABLIER_ESTOMPE_URL`, `SABLIER_ESTOMPE_TOKEN` | adresse interne de l'API d'Estompe et jeton de service pour la visibilité des profils ; sans les deux, `GET /profiles/{sub}` ne sert que son propre profil |
+| `SABLIER_ESTOMPE_URL`, `SABLIER_ESTOMPE_TOKEN` | adresse interne de l'API d'Estompe et jeton de service pour la visibilité des profils ; sans les deux, `GET /profiles/{user}` ne sert rien (listes vides) |
 | `SABLIER_REDIS_URL`, `SABLIER_REDIS_PASSWORD`, `SABLIER_FILE_MAX` | file d'évènements, communes à Sablier et aux services qui émettent |
 | `AEGIS_TOKEN_SABLIER` | jeton de l'application `sablier` chez aegis (Vault `secret/sablier`) |
 | `SABLIER_PUBLIC_URL` | adresse publique de l'API, lue par le front d'Estompe |
@@ -466,6 +469,6 @@ Valeurs non secrètes dans [`plbls.env`](../../plbls.env), secrets dans Vault ([
 
 La section « Stats » de l'app d'Estompe (`web/estompe/src/sections/sablier`, route `#/stats`) lit ces routes : elle s'affiche avec
 `sablier:access` d'après `GET /me`, et l'entrée « Administration » avec `sablier:admin`. Jeu et trophées, périodes, récap en histoire,
-pastille (`GET /unseen`, `POST /seen`), partage (`GET`/`PUT /sharing`) et bloc du profil (`GET /profiles/{sub}`) : voir
+pastille (`GET /unseen`, `POST /seen`), partage (`GET`/`PUT /sharing`) et bloc du profil (`GET /profiles/{user}`) : voir
 [`web/estompe/README.md`](../../web/estompe/README.md), « Section Stats ». Le front rédige tous les textes à partir des totaux et des
 `highlights`, et lit le nom des salons dans ce que la personne peut voir.

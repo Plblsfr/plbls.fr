@@ -52,10 +52,10 @@ describe('routes lues par la section', () => {
     await sablierApi.recaps()
     await sablierApi.recap(12)
     await sablierApi.partage()
-    await sablierApi.profil('kc/autre')
+    await sablierApi.profil('u/autre')
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
       '/usage?period=week&date=2026-11-18', '/entracte?period=month&date=2026-11-18', '/sillon?period=year&date=2026-11-18', '/messaging?period=all&date=2026-11-18',
-      '/trophies', '/streaks', '/unseen', '/recaps', '/recaps/12', '/sharing', '/profiles/kc%2Fautre',
+      '/trophies', '/streaks', '/unseen', '/recaps', '/recaps/12', '/sharing', '/profiles/u%2Fautre',
     ])
   })
 

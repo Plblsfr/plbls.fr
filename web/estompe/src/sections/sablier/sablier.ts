@@ -1,4 +1,4 @@
-import { requestAt } from '../../lib/api'
+import { fichierAt, requestAt } from '../../lib/api'
 import { config } from '../../lib/config'
 
 export const SABLIER_URL = config.sablierUrl
@@ -149,25 +149,107 @@ export interface ChoixPartage { stats?: Record<string, boolean>; trophies?: Reco
 export interface ValeurPublique { key: string; label: string; domain: Domaine; unit: Unite; value: number }
 export interface Profil { month: ValeurPublique[]; total: ValeurPublique[]; first_day?: string; trophies: TropheePublic[] }
 
-const appel = <T>(methode: string, chemin: string, corps?: unknown) => requestAt<T>(SABLIER_URL, methode, chemin, corps, { discret: true })
-const lire = <T>(chemin: string, periode: Periode, date: string) => appel<T>('GET', `${chemin}?period=${periode}&date=${encodeURIComponent(date)}`)
+export interface Vue { date: string; admin_name: string; action: 'consultation' | 'effacement' }
+
+export type Annuaire = 'aegis' | 'local'
+export interface Personne { sub: string; name: string | null; known: boolean; last_seen: string | null; first_day: string | null; last_day: string | null; active_seconds_total: number }
+export interface Personnes { directory: Annuaire; people: Personne[] }
+
+export interface TotauxJour { day: string; active_people: number; usage_seconds: number; watched_seconds: number; listened_seconds: number; messages: number }
+export interface Totaux extends Plage { active_people: number; usage_seconds: number; watched_seconds: number; listened_seconds: number; messages: number; by_day: TotauxJour[] }
+
+export interface EntreeJournal { id: number; date: string; action: 'consultation' | 'effacement'; admin_sub: string; admin_name: string; target_sub: string; target_name: string | null }
+export interface Journal { directory: Annuaire; entries: EntreeJournal[]; next_before: number | null }
+
+export type GenreTrophee = 'tiers' | 'exploit'
+export type GrainTrophee = 'day' | 'week' | 'month' | 'all'
+export interface TropheeAdmin {
+  id: number
+  key: string
+  name: string
+  description: string
+  icon: string
+  hidden: boolean
+  active: boolean
+  kind: GenreTrophee
+  stat: string | null
+  period: GrainTrophee | null
+  thresholds: number[]
+  exploit: string | null
+  parameter: number | null
+  order: number
+  unlocked_by: number
+}
+export interface SaisieTrophee {
+  key?: string
+  name?: string
+  description?: string
+  icon?: string
+  hidden?: boolean
+  active?: boolean
+  kind?: GenreTrophee
+  stat?: string
+  period?: GrainTrophee
+  thresholds?: number[]
+  exploit?: string
+  parameter?: number
+}
+export interface StatCatalogue { key: string; label: string; domain: Domaine; unit: Unite; shareable: boolean; tiers: boolean }
+export interface ExploitCatalogue { key: string; label: string; condition: string; domain: Domaine; unit: Unite; default_parameter: number | null }
+export interface Catalogue { stats: StatCatalogue[]; exploits: ExploitCatalogue[]; periods: GrainTrophee[] }
+
+export const MOT_EFFACER = 'EFFACER'
+
+const options = { discret: true }
+const appel = <T>(methode: string, chemin: string, corps?: unknown) => requestAt<T>(SABLIER_URL, methode, chemin, corps, options)
+const enc = encodeURIComponent
+const lire = <T>(chemin: string, periode: Periode, date: string) => appel<T>('GET', `${chemin}?period=${periode}&date=${enc(date)}`)
+
+const lectures = (prefixe: string) => ({
+  usage: (periode: Periode, date: string) => lire<Usage>(`${prefixe}/usage`, periode, date),
+  entracte: (periode: Periode, date: string) => lire<Entracte | SansAcces>(`${prefixe}/entracte`, periode, date),
+  sillon: (periode: Periode, date: string) => lire<Sillon | SansAcces>(`${prefixe}/sillon`, periode, date),
+  messagerie: (periode: Periode, date: string) => lire<Messagerie>(`${prefixe}/messaging`, periode, date),
+  trophees: () => appel<Trophees>('GET', `${prefixe}/trophies`),
+  series: () => appel<Series>('GET', `${prefixe}/streaks`),
+  recaps: () => appel<RecapResume[]>('GET', `${prefixe}/recaps`),
+  recap: (id: number) => appel<Recap>('GET', `${prefixe}/recaps/${id}`),
+})
+
+export type LecturesSablier = ReturnType<typeof lectures>
+export const lecturesDe = (sub: string): LecturesSablier => lectures(`/admin/people/${enc(sub)}`)
 
 export const sablierApi = {
   me: () => appel<SablierMe>('GET', '/me'),
   battre: (platform: Plateforme, section: Section) => appel<void>('POST', '/heartbeat', { platform, section }),
-  usage: (periode: Periode, date: string) => lire<Usage>('/usage', periode, date),
-  entracte: (periode: Periode, date: string) => lire<Entracte | SansAcces>('/entracte', periode, date),
-  sillon: (periode: Periode, date: string) => lire<Sillon | SansAcces>('/sillon', periode, date),
-  messagerie: (periode: Periode, date: string) => lire<Messagerie>('/messaging', periode, date),
-  trophees: () => appel<Trophees>('GET', '/trophies'),
-  series: () => appel<Series>('GET', '/streaks'),
+  ...lectures(''),
   nonVus: () => appel<NonVus>('GET', '/unseen'),
   marquerVus: (vus: Vus) => appel<void>('POST', '/seen', vus),
-  recaps: () => appel<RecapResume[]>('GET', '/recaps'),
-  recap: (id: number) => appel<Recap>('GET', `/recaps/${id}`),
   partage: () => appel<Partage>('GET', '/sharing'),
   partager: (choix: ChoixPartage) => appel<Partage>('PUT', '/sharing', choix),
-  profil: (sub: string) => appel<Profil>('GET', `/profiles/${encodeURIComponent(sub)}`),
+  profil: (id: string) => appel<Profil>('GET', `/profiles/${enc(id)}`),
+  vues: () => appel<Vue[]>('GET', '/views'),
+  exporter: () => fichierAt(SABLIER_URL, '/export', 'sablier-export.json', options),
+  effacer: () => appel<void>('DELETE', '/data', { confirm: MOT_EFFACER }),
 }
 
 export type ClientSablier = typeof sablierApi
+
+export const adminApi = {
+  personnes: () => appel<Personnes>('GET', '/admin/people'),
+  effacer: (sub: string) => appel<void>('DELETE', `/admin/people/${enc(sub)}/data`, { confirm: MOT_EFFACER }),
+  totaux: (periode: Periode, date: string) => lire<Totaux>('/admin/totals', periode, date),
+  journal: (avant?: number | null, limite = 50) => appel<Journal>('GET', `/admin/audit?limit=${limite}${avant ? `&before=${avant}` : ''}`),
+  trophees: () => appel<TropheeAdmin[]>('GET', '/admin/trophies'),
+  creer: (t: SaisieTrophee) => appel<TropheeAdmin>('POST', '/admin/trophies', t),
+  modifier: (id: number, t: SaisieTrophee) => appel<TropheeAdmin>('PATCH', `/admin/trophies/${id}`, t),
+  catalogue: () => appel<Catalogue>('GET', '/admin/catalogue'),
+}
+
+export function enregistrer(blob: Blob, nom: string) {
+  const lien = document.createElement('a')
+  lien.href = URL.createObjectURL(blob)
+  lien.download = nom
+  lien.click()
+  URL.revokeObjectURL(lien.href)
+}

@@ -69,6 +69,9 @@ export function fauxClient(over: Partial<ClientSablier> = {}): ClientSablier {
     partage: async () => partage(),
     partager: async () => partage(),
     profil: async () => profilVide(),
+    vues: async () => [],
+    exporter: async () => ({ blob: new Blob(['{}'], { type: 'application/json' }), nom: 'sablier-export-2026-11-18.json' }),
+    effacer: async () => {},
     ...over,
   }
 }

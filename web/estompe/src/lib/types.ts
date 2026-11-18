@@ -56,7 +56,7 @@ export interface Channel { id: string; name: string; kind: ChannelKind; position
 export interface NewChannel { name: string; kind: ChannelKind; topic?: string; slowmode?: number; user_limit?: number; after?: string; private?: boolean; roles?: string[]; members?: string[] }
 /** `roles` : identifiants des rôles du membre, du plus élevé au plus bas, sans « @tout le monde ». */
 /** `nickname` : pseudo de serveur (vide sans) ; `timeout_until` : fin de l'exclusion temporaire en cours ; `joined_at` / `created_at` : arrivée sur le serveur / sur Estompe ; `banner_color` : « #rrggbb » choisi pour la bannière du profil. */
-export interface Member extends Person { sub?: string; online: boolean; roles?: string[]; nickname?: string; timeout_until?: string | null; joined_at?: string; created_at?: string; banner_color?: string }
+export interface Member extends Person { online: boolean; roles?: string[]; nickname?: string; timeout_until?: string | null; joined_at?: string; created_at?: string; banner_color?: string }
 export interface ServerDetail { server: Server; channels: Channel[]; members: Member[]; roles?: Role[]; permissions?: PermKey[] }
 export interface ServerInvite { code: string; created_at: string; created_by?: string; uses?: number; max_uses?: number | null; expires_at?: string | null }
 /** Dernier message vu par une personne dans une conversation (`last_id` : id du message). */

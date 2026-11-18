@@ -811,7 +811,7 @@ mod tests {
     use crate::{
         agregats,
         domaines::{entracte, messagerie},
-        testutil::{Env, attendre, env, jour},
+        testutil::{Env, attendre, env, id_estompe, jour},
     };
 
     const ALICE: &str = "sub-alice";
@@ -1171,7 +1171,8 @@ mod tests {
             (r["active"].clone(), r["unlocked_by"].clone()),
             (json!(false), json!(1))
         );
-        for chemin in ["/trophies", "/sharing", "/profiles/sub-alice", "/unseen"] {
+        let profil = format!("/profiles/{}", id_estompe("alice"));
+        for chemin in ["/trophies", "/sharing", &profil, "/unseen"] {
             let r = e.get("alice", chemin).await;
             assert_eq!(r.statut, StatusCode::OK, "{chemin}");
             assert!(!r.texte().contains("ipelette"), "{chemin} : {}", r.texte());
@@ -1201,7 +1202,7 @@ mod tests {
         assert_eq!(revenu["progress"]["value"], 650);
         revenu["progress"]["value"] = json!(500);
         assert_eq!(revenu, attendu);
-        let r = e.get("alice", "/profiles/sub-alice").await.json();
+        let r = e.get("alice", &profil).await.json();
         assert_eq!(
             r["trophies"],
             json!([{
@@ -1259,13 +1260,14 @@ mod tests {
             )
             .collect();
         assert_eq!(interdits.len(), 5 * 3 + 5 + 6);
+        let profil = format!("/profiles/{}", id_estompe("diane"));
         let chemins = [
             "/trophies",
             "/unseen",
             "/sharing",
             "/streaks",
             "/recaps",
-            "/profiles/sub-diane",
+            &profil,
             "/usage",
             "/messaging",
         ];

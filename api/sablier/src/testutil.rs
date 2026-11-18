@@ -313,6 +313,32 @@ pub async fn faux_aegis(droits: DroitsFaux, annuaire: AnnuaireFaux) -> Faux {
     .await
 }
 
+pub fn id_estompe(nom: &str) -> String {
+    let n = nom
+        .bytes()
+        .fold(0u64, |n, o| n.wrapping_mul(131) + u64::from(o));
+    format!("00000000-0000-4000-8000-{:012x}", n & 0xffff_ffff_ffff)
+}
+
+pub async fn faux_estompe() -> Faux {
+    faux(|r| {
+        let soi = r
+            .query
+            .strip_prefix("viewer=")
+            .and_then(|q| q.split_once("&target_user="))
+            .filter(|(sub, id)| {
+                sub.strip_prefix("sub-")
+                    .is_some_and(|nom| id_estompe(nom) == *id)
+            });
+        let corps = match soi {
+            Some((sub, _)) => json!({"visible": true, "sub": sub}),
+            None => json!({"visible": false}),
+        };
+        (200, corps.to_string().into_bytes())
+    })
+    .await
+}
+
 pub struct Env {
     pub _base: BasePostgres,
     pub app: Router,
@@ -321,6 +347,7 @@ pub struct Env {
     pub annuaire: AnnuaireFaux,
     pub gateway: Faux,
     pub aegis: Faux,
+    pub estompe: Faux,
 }
 
 pub async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
@@ -329,10 +356,12 @@ pub async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
     let gateway = faux_gateway().await;
     let annuaire = AnnuaireFaux::default();
     let aegis = faux_aegis(droits.clone(), annuaire.clone()).await;
+    let estompe = faux_estompe().await;
     let mut cfg = Config::pour_tests(&url);
     cfg.gateway_url = gateway.url.clone();
     cfg.aegis = Some((aegis.url.clone(), "jeton-aegis".into()));
     cfg.origines = vec!["https://estompe.plbls.fr".into()];
+    cfg.estompe = Some((estompe.url.clone(), "jeton-estompe".into()));
     regler(&mut cfg);
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -349,6 +378,7 @@ pub async fn env_avec(regler: impl FnOnce(&mut Config)) -> Option<Env> {
         annuaire,
         gateway,
         aegis,
+        estompe,
     })
 }
 
@@ -541,6 +571,7 @@ impl Env {
             let chemin = route
                 .chemin
                 .replace("{sub}", &format!("sub-{qui}"))
+                .replace("{user}", &id_estompe(qui))
                 .replace("{id}", "1");
             let r = self.get(qui, &format!("{chemin}?period=all")).await;
             let mut corps = r.json();

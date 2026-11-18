@@ -9,7 +9,7 @@
   import SablierRecaps from './SablierRecaps.svelte'
   import { sablier } from './sablier.svelte'
 
-  let { section, id, onmenu }: { section?: string; id?: string; onmenu: () => void } = $props()
+  let { section, id, detail, onmenu }: { section?: string; id?: string; detail?: string; onmenu: () => void } = $props()
   const recap = $derived(section === 'recaps' && id && /^\d+$/.test(id) ? Number(id) : null)
   const nouveau = $derived(sablier.nonVus.recaps > 0 && section !== 'recaps')
 </script>
@@ -24,7 +24,7 @@
 {:else if section === 'partage'}
   <SablierPartage />
 {:else if section === 'admin' && app.sablierMe?.permissions.admin}
-  <SablierAdmin />
+  <SablierAdmin onglet={id} {detail} />
 {:else}
   <SablierJeu />
 {/if}

@@ -22,7 +22,7 @@ routes dans [`openapi.yaml`](../../docs/sablier/openapi.yaml).
 | `exploits.rs` | registre fermé des exploits codés : chacun dit s'il est atteint et depuis quel jour |
 | `trophees.rs` | table `trophees`, évaluation et déblocages, personnes à réévaluer, `GET /trophies`, `GET /unseen`, `POST /seen`, routes d'administration |
 | `recaps.rs` | création des récaps du mois et de l'année (`creer_les_recaps`), `GET /recaps`, `GET /recaps/{id}` |
-| `partage.rs` | réglages de partage (`GET`/`PUT /sharing`), profil public (`GET /profiles/{sub}`) et demande de visibilité à Estompe |
+| `partage.rs` | réglages de partage (`GET`/`PUT /sharing`), profil public (`GET /profiles/{user}`, identifiant Estompe) et demande de visibilité à Estompe |
 | `effacement.rs` | `tables_personnelles()` : toutes les tables indexées par `sub` ; `effacer` (une transaction), `DELETE /data` |
 | `export.rs` | `GET /export` : en-tête chargé d'un bloc (`tete`), évènements bruts envoyés par pages (`flux`), `sections()` : la section de chaque table personnelle |
 | `personnes.rs` | annuaire tenu par Sablier (`noter` : nom et dernier passage, une écriture par heure au plus), alimenté par `GET /me` et le battement ; `annuaire` : comptes d'aegis (`Aegis::comptes`, `POST /v1/accounts/lookup`) ou `None` pour le repli local |
@@ -63,7 +63,8 @@ Le format des évènements et leur émission sont dans [`api/commun`](../commun/
 - `recaps::lister(pool, sub) -> Vec<Resume>`, `recaps::lire(pool, sub, id) -> Option<Value>`,
   `recaps::creer_les_recaps(&AppState, aujourd_hui) -> u64` (idempotent).
 - `partage::lire(pool, sub, &Droits) -> Reglages` (corps de `GET /sharing`), `partage::profil(pool, cible, &Droits du lecteur,
-  aujourd_hui) -> Profil` (ce que la cible a rendu public), `partage::profil_visible(&AppState, lecteur, cible) -> bool`.
+  aujourd_hui) -> Profil` (ce que la cible a rendu public), `partage::profil_visible(&AppState, sub du lecteur, identifiant
+  Estompe de la cible) -> Option<String>` (le `sub` de la cible quand Estompe dit le profil visible).
 - `catalogue::STATS`, `catalogue::trouver(cle)`, `catalogue::valeur(pool, sub, &Stat, du, au)` ; `exploits::EXPLOITS`.
 - `effacement::tables_personnelles()` : les tables à vider (`DELETE … WHERE sub = $1`) ou à exporter pour une personne. Une nouvelle
   table avec une colonne `sub` doit y être ajoutée, avec sa section dans `export::sections()` : `effacement::tests` compare la liste
@@ -102,5 +103,6 @@ la réponse de chaque route de lecture `sablier:access` ;
 (ignorés sans Docker). Les tests de la consommation (`file.rs`) demandent `TEST_REDIS_URL` (ignorés sinon, avec un message) et utilisent
 un flux et un groupe propres à chaque test ; la déduplication et le rejet des entrées mal formées sont aussi vérifiés sans Redis.
 Les tests du battement passent l'heure en paramètre (changements d'heure du 29 mars et du 25 octobre 2026, minuit à Paris).
-Les tests des trophées, des séries et des récaps passent le jour courant en paramètre ; ceux du profil public simulent Estompe par un
-faux serveur HTTP (`partage::tests::faux_estompe`).
+Les tests des trophées, des séries et des récaps passent le jour courant en paramètre ; l'environnement de test simule Estompe par un
+faux serveur HTTP (`testutil::faux_estompe` : chacun n'y voit que son propre profil, identifiant `testutil::id_estompe(nom)`) ; les
+tests du profil public le remplacent par le leur (`partage::tests::faux_estompe`).

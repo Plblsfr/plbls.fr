@@ -6,6 +6,7 @@
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
   import type { Domaine, StatPartagee } from './sablier'
+  import SablierDonnees from './SablierDonnees.svelte'
   import SablierErreur from './SablierErreur.svelte'
   import SablierMedaille from './SablierMedaille.svelte'
   import { sablier } from './sablier.svelte'
@@ -96,6 +97,7 @@
           {/if}
         {/if}
       </section>
+      <SablierDonnees />
     {/if}
   </div>
 </div>

@@ -235,35 +235,49 @@ pub async fn profil(
     })
 }
 
-pub async fn profil_visible(state: &AppState, lecteur: &str, cible: &str) -> bool {
-    let Some((url, jeton)) = &state.config().estompe else {
-        return false;
-    };
+pub async fn profil_visible(state: &AppState, lecteur: &str, cible: &str) -> Option<String> {
+    let (url, jeton) = state.config().estompe.as_ref()?;
     let reponse = state
         .http()
         .get(format!("{url}/internal/profile-visible"))
-        .query(&[("viewer", lecteur), ("target", cible)])
+        .query(&[("viewer", lecteur), ("target_user", cible)])
         .bearer_auth(jeton)
         .timeout(DELAI_ESTOMPE)
         .send()
-        .await;
-    match reponse {
-        Ok(r) if r.status().is_success() => r
-            .json::<Value>()
-            .await
-            .is_ok_and(|v| v["visible"] == json!(true)),
-        _ => false,
+        .await
+        .ok()?;
+    if !reponse.status().is_success() {
+        return None;
     }
+    let v = reponse.json::<Value>().await.ok()?;
+    if v["visible"] != json!(true) {
+        return None;
+    }
+    v["sub"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn uuid_valide(s: &str) -> bool {
+    s.len() == 36
+        && s.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_hexdigit(),
+        })
 }
 
 pub async fn voir_profil(
     State(state): State<AppState>,
     p: Personne,
-    Path(cible): Path<String>,
+    Path(utilisateur): Path<String>,
 ) -> Result<Response, Response> {
-    if cible != p.sub() && !profil_visible(&state, p.sub(), &cible).await {
-        return Ok(ok(&Profil::default()));
+    if !uuid_valide(&utilisateur) {
+        return Err(invalide("user : identifiant Estompe (uuid) attendu"));
     }
+    let Some(cible) = profil_visible(&state, p.sub(), &utilisateur).await else {
+        return Ok(ok(&Profil::default()));
+    };
     let aujourd_hui = state.aujourd_hui().await.map_err(bd)?;
     Ok(ok(&profil(state.pool(), &cible, &p.droits, aujourd_hui)
         .await
@@ -282,11 +296,15 @@ mod tests {
     };
 
     const DIANE: &str = "sub-diane";
-    const PROFIL: &str = "/profiles/sub-diane";
+    const ID_DIANE: &str = "0d1a2e00-0000-4000-8000-00000000d1a2";
+    const ID_FRED: &str = "0f2ed000-0000-4000-8000-0000000f2ed0";
+    const ID_INCONNU: &str = "00000000-0000-4000-8000-000000000000";
+    const PROFIL: &str = "/profiles/0d1a2e00-0000-4000-8000-00000000d1a2";
 
     async fn faux_estompe() -> Faux {
         faux(|r| {
             let lecteur = |sub: &str| r.query.contains(&format!("viewer={sub}&"));
+            let cible = |id: &str| r.query.ends_with(&format!("&target_user={id}"));
             let autorise = r.chemin == "/internal/profile-visible"
                 && r.entete("authorization") == "Bearer jeton-estompe";
             if !autorise || lecteur("sub-admin") {
@@ -295,14 +313,16 @@ mod tests {
             if lecteur("sub-personne") {
                 return (200, b"oui".to_vec());
             }
-            let visible = if lecteur("sub-bruno") {
-                json!(false)
+            let reponse = if cible(ID_FRED) {
+                json!({ "visible": true })
+            } else if !cible(ID_DIANE) || lecteur("sub-bruno") {
+                json!({ "visible": false, "sub": DIANE })
             } else if lecteur("sub-chloe") {
-                json!("true")
+                json!({ "visible": "true", "sub": DIANE })
             } else {
-                json!(true)
+                json!({ "visible": true, "sub": DIANE })
             };
-            (200, json!({ "visible": visible }).to_string().into_bytes())
+            (200, reponse.to_string().into_bytes())
         })
         .await
     }
@@ -415,16 +435,42 @@ mod tests {
             assert_eq!(e.get(qui, PROFIL).await.json(), vide(), "{motif}");
         }
         let appels = estompe.appels();
-        assert_eq!(e.get("diane", PROFIL).await.json(), avec_entracte);
-        assert_eq!(estompe.appels(), appels);
+        let r = e.get("diane", PROFIL).await;
+        assert_eq!(r.json(), avec_entracte);
+        assert!(!r.texte().contains(DIANE), "{}", r.texte());
+        assert_eq!(estompe.appels(), appels + 1);
         let requetes = estompe.requetes();
         assert!(requetes.iter().all(|r| {
             r.methode == "GET"
                 && r.chemin == "/internal/profile-visible"
                 && r.entete("authorization") == "Bearer jeton-estompe"
-                && r.query.ends_with("&target=sub-diane")
+                && r.query.ends_with(&format!("&target_user={ID_DIANE}"))
         }));
-        assert_eq!(requetes[0].query, "viewer=sub-alice&target=sub-diane");
+        assert_eq!(
+            requetes[0].query,
+            format!("viewer=sub-alice&target_user={ID_DIANE}")
+        );
+        assert_eq!(
+            requetes[appels].query,
+            format!("viewer=sub-diane&target_user={ID_DIANE}")
+        );
+        let appels = estompe.appels();
+        for (chemin, motif) in [
+            (format!("/profiles/{ID_FRED}"), "visible sans sub"),
+            (format!("/profiles/{ID_INCONNU}"), "identifiant inconnu"),
+        ] {
+            assert_eq!(e.get("emma", &chemin).await.json(), vide(), "{motif}");
+        }
+        assert_eq!(estompe.appels(), appels + 2);
+        for chemin in ["/profiles/sub-diane", "/profiles/0d1a2e00"] {
+            let r = e.get("emma", chemin).await;
+            assert_eq!(
+                (r.statut, r.json()["error"].as_str()),
+                (StatusCode::BAD_REQUEST, Some("invalid")),
+                "{chemin}"
+            );
+        }
+        assert_eq!(estompe.appels(), appels + 2);
         partager(
             &e,
             json!({"stats": {"messaging.messages": false}, "trophies": {pipelette.to_string(): false}}),
@@ -438,13 +484,12 @@ mod tests {
             e.get("emma", PROFIL).await.json()["month"],
             json!([regarde(7200)])
         );
-        assert_eq!(e.get("emma", "/profiles/sub-inconnu").await.json(), vide());
     }
 
     #[tokio::test]
-    async fn sans_estompe_configure_ou_joignable_le_profil_d_un_autre_est_vide() {
+    async fn sans_estompe_configure_ou_joignable_le_profil_est_vide() {
         for regler in [
-            |_: &mut crate::Config| {},
+            |c: &mut crate::Config| c.estompe = None,
             |c: &mut crate::Config| c.estompe = Some(("http://127.0.0.1:9".into(), "jeton".into())),
         ] {
             let Some(e) = env_avec(regler).await else {
@@ -452,11 +497,9 @@ mod tests {
             };
             activite_de_diane(&e).await;
             partager(&e, json!({"stats": {"messaging.messages": true}})).await;
-            assert_eq!(e.get("alice", PROFIL).await.json(), vide());
-            assert_eq!(
-                e.get("diane", PROFIL).await.json()["total"][0]["value"],
-                640
-            );
+            for qui in ["alice", "diane"] {
+                assert_eq!(e.get(qui, PROFIL).await.json(), vide(), "{qui}");
+            }
         }
     }
 

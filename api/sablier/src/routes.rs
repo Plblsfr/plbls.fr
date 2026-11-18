@@ -145,7 +145,7 @@ pub fn table() -> Vec<Entree> {
         ),
         entree(
             Method::GET,
-            "/profiles/{sub}",
+            "/profiles/{user}",
             Garde::Droit(Droit::Acces),
             get(partage::voir_profil),
         ),
@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn c1_la_personne_visee_n_est_un_parametre_que_sur_les_routes_d_administration() {
-        const PROFIL_PUBLIC: &str = "/profiles/{sub}";
+        const PROFIL_PUBLIC: &str = "/profiles/{user}";
         let mut visant_une_personne = 0;
         let mut profil_public = false;
         for (route, _) in table() {
@@ -408,15 +408,21 @@ mod tests {
                 route.methode,
                 route.chemin
             );
-            if !route.chemin.contains("{sub}") {
-                continue;
-            }
             if route.chemin == PROFIL_PUBLIC {
                 assert_eq!(
                     (route.methode.clone(), route.garde),
                     (Method::GET, Garde::Droit(Droit::Acces))
                 );
                 profil_public = true;
+                continue;
+            }
+            assert!(
+                !route.chemin.contains("{user}"),
+                "{} {} vise une personne par son identifiant Estompe",
+                route.methode,
+                route.chemin
+            );
+            if !route.chemin.contains("{sub}") {
                 continue;
             }
             assert!(

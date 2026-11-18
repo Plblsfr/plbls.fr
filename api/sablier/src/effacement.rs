@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(apres, vierge);
         let profil = apres
             .iter()
-            .find(|(chemin, _, _)| chemin == "/profiles/sub-alice")
+            .find(|(chemin, _, _)| chemin.starts_with("/profiles/"))
             .unwrap();
         assert_eq!(profil.2, json!({"month": [], "total": [], "trophies": []}));
         assert_eq!(e.lignes_de("sub-bruno").await, lignes_de_bruno);

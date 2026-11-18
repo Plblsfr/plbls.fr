@@ -45,7 +45,7 @@
   <button class="scrim" aria-label="Fermer le menu" onclick={() => (nav = false)}></button>
   <main class="main" id="main" tabindex="-1">
     {#if stats}
-      <SablierSpace section={route.name === 'stats' ? route.section : undefined} id={route.name === 'stats' ? route.id : undefined} onmenu={() => (nav = true)} />
+      <SablierSpace section={route.name === 'stats' ? route.section : undefined} id={route.name === 'stats' ? route.id : undefined} detail={route.name === 'stats' ? route.detail : undefined} onmenu={() => (nav = true)} />
     {:else if musique}
       <SillonSpace section={route.name === 'musique' ? route.section : undefined} id={route.name === 'musique' ? route.id : undefined} onmenu={() => (nav = true)} />
     {:else if films}

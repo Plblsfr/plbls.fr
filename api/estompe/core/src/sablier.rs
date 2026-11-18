@@ -20,6 +20,7 @@ use utoipa_axum::router::OpenApiRouter;
 use crate::{
     http::{internal, write_err, write_json},
     messages::SYSTEME,
+    servers::uuid_valide,
     state::AppState,
     users,
 };
@@ -246,10 +247,13 @@ pub fn router() -> OpenApiRouter<AppState> {
     let routeur = OpenApiRouter::new().route(CHEMIN_PROFIL, get(profil_visible));
     let op = crate::openapi::operation(
         "interne",
-        "Dit à Sablier si `viewer` peut ouvrir le profil de `target` (`sub` des deux) : `{visible}`. Jeton `SABLIER_ESTOMPE_TOKEN`, réseau interne ; 404 sans ce jeton",
+        "Dit à Sablier si `viewer` (`sub`) peut ouvrir le profil de la cible, désignée par `target_user` (identifiant Estompe) ou `target` (`sub`) : `{visible, sub}`, `sub` de la cible seulement si visible. Jeton `SABLIER_ESTOMPE_TOKEN`, réseau interne ; 404 sans ce jeton",
         &[
             ("200", "ok"),
-            ("400", "`viewer` ou `target` manquant"),
+            (
+                "400",
+                "`viewer` manquant, `target` et `target_user` absents ou donnés ensemble, `target_user` qui n'est pas un uuid",
+            ),
             ("401", "jeton de Sablier attendu"),
             ("404", "jeton non configuré"),
         ],
@@ -262,6 +266,7 @@ pub fn router() -> OpenApiRouter<AppState> {
 struct Regard {
     viewer: Option<String>,
     target: Option<String>,
+    target_user: Option<String>,
 }
 
 pub async fn profil_ouvert(pool: &PgPool, viewer: &str, target: &str) -> Result<bool, sqlx::Error> {
@@ -275,6 +280,33 @@ pub async fn profil_ouvert(pool: &PgPool, viewer: &str, target: &str) -> Result<
         return Ok(false);
     };
     Ok(users::co_members(pool, &v.id).await?.contains(&t.id))
+}
+
+enum Cible {
+    Sub(String),
+    Utilisateur(String),
+}
+
+async fn sub_visible(
+    pool: &PgPool,
+    viewer: &str,
+    cible: Cible,
+) -> Result<Option<String>, sqlx::Error> {
+    let target = match cible {
+        Cible::Sub(s) => Some(s),
+        Cible::Utilisateur(id) => {
+            sqlx::query_scalar("SELECT keycloak_sub FROM users WHERE id=$1::uuid")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?
+        }
+    };
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    Ok(profil_ouvert(pool, viewer, &target)
+        .await?
+        .then_some(target))
 }
 
 async fn profil_visible(
@@ -299,19 +331,27 @@ async fn profil_visible(
         );
     }
     let sub = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
-    let (Some(viewer), Some(target)) = (sub(r.viewer), sub(r.target)) else {
+    let (Some(viewer), Some(cible)) = (
+        sub(r.viewer),
+        match (sub(r.target), sub(r.target_user)) {
+            (Some(s), None) => Some(Cible::Sub(s)),
+            (None, Some(id)) if uuid_valide(&id) => Some(Cible::Utilisateur(id)),
+            _ => None,
+        },
+    ) else {
         return write_err(
             StatusCode::BAD_REQUEST,
             "bad_request",
-            "viewer et target sont obligatoires",
+            "viewer et un seul de target ou target_user (uuid) sont obligatoires",
         );
     };
     let pool = match state.pool() {
         Ok(p) => p,
         Err(e) => return e.into_response(),
     };
-    match profil_ouvert(pool, &viewer, &target).await {
-        Ok(visible) => write_json(StatusCode::OK, &json!({ "visible": visible })),
+    match sub_visible(pool, &viewer, cible).await {
+        Ok(Some(sub)) => write_json(StatusCode::OK, &json!({ "visible": true, "sub": sub })),
+        Ok(None) => write_json(StatusCode::OK, &json!({ "visible": false })),
         Err(_) => internal(),
     }
 }
@@ -591,8 +631,9 @@ mod tests {
         let Some(e) = env_avec_blocs(droits, vec![], &variables).await else {
             return;
         };
+        let mut ids = std::collections::HashMap::new();
         for nom in ["alice", "bob", "carol", "dave"] {
-            membre(&e, nom).await;
+            ids.insert(nom, membre(&e, nom).await);
         }
         let sid = serveur(&e, "Chat", "alice").await;
         let code = invitation_de(&e, "alice", &sid, "").await;
@@ -625,6 +666,14 @@ mod tests {
             "?viewer=sub-alice",
             "?target=sub-bob",
             "?viewer=&target=sub-bob",
+            "?viewer=sub-alice&target_user=",
+            "?viewer=sub-alice&target_user=sub-bob",
+            "?viewer=sub-alice&target_user=pas-un-uuid",
+            &format!(
+                "?viewer=sub-alice&target=sub-bob&target_user={}",
+                ids["bob"]
+            ),
+            &format!("?target_user={}", ids["bob"]),
         ] {
             let chemin = format!("/internal/profile-visible{requete}");
             let (s, _) = appel(&e, "jeton-sablier", "GET", &chemin, None).await;
@@ -643,11 +692,23 @@ mod tests {
         ] {
             let chemin =
                 format!("/internal/profile-visible?viewer=sub-{viewer}&target=sub-{target}");
+            let reponse = if attendu {
+                json!({ "visible": true, "sub": format!("sub-{target}") })
+            } else {
+                json!({ "visible": false })
+            };
+            let (s, v) = appel(&e, "jeton-sablier", "GET", &chemin, None).await;
+            assert_eq!((s, &v), (StatusCode::OK, &reponse), "{viewer} → {target}");
+            let inconnu = "00000000-0000-4000-8000-000000000000".to_string();
+            let chemin = format!(
+                "/internal/profile-visible?viewer=sub-{viewer}&target_user={}",
+                ids.get(target).unwrap_or(&inconnu)
+            );
             let (s, v) = appel(&e, "jeton-sablier", "GET", &chemin, None).await;
             assert_eq!(
                 (s, &v),
-                (StatusCode::OK, &json!({ "visible": attendu })),
-                "{viewer} → {target}"
+                (StatusCode::OK, &reponse),
+                "{viewer} → identifiant de {target}"
             );
         }
         let quitter = format!("/servers/{sid}/leave");
@@ -655,7 +716,13 @@ mod tests {
             appel(&e, "bob", "POST", &quitter, None).await.0,
             StatusCode::NO_CONTENT
         );
-        let (_, v) = appel(&e, "jeton-sablier", "GET", chemin, None).await;
-        assert_eq!(v, json!({ "visible": false }));
+        let par_identifiant = format!(
+            "/internal/profile-visible?viewer=sub-alice&target_user={}",
+            ids["bob"]
+        );
+        for chemin in [chemin, par_identifiant.as_str()] {
+            let (_, v) = appel(&e, "jeton-sablier", "GET", chemin, None).await;
+            assert_eq!(v, json!({ "visible": false }));
+        }
     }
 }

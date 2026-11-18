@@ -98,6 +98,17 @@ export async function requestAt<T>(base: string, method: string, path: string, b
   return (ct.includes('json') ? res.json() : undefined) as Promise<T>
 }
 
+export function nomDeFichier(disposition: string | null, defaut: string): string {
+  const etendu = /filename\*=UTF-8''([^;]+)/i.exec(disposition ?? '')
+  if (etendu) { try { return decodeURIComponent(etendu[1]) } catch { return defaut } }
+  return /filename="?([^";]+)"?/i.exec(disposition ?? '')?.[1] ?? defaut
+}
+
+export async function fichierAt(base: string, path: string, defaut: string, options?: OptionsAppel): Promise<{ blob: Blob; nom: string }> {
+  const res = await call(base, 'GET', path, undefined, options)
+  return { blob: await res.blob(), nom: nomDeFichier(res.headers.get('Content-Disposition'), defaut) }
+}
+
 const request = <T>(method: string, path: string, body?: unknown) => requestAt<T>(API_URL, method, path, body)
 
 /** Envoie une image en corps brut (PUT), avec son type. */

@@ -1,4 +1,4 @@
-/** Routeur minimal sur le hash : #/ · #/s/<serveur>/<salon>[/<message>] · #/dm/<id>[/<message>] · #/join/<code> · #/admin/<section> · #/films · #/musique · #/regie/<section> · #/stats[/<sous-section>[/<id>]] · #/<espace de la plateforme>/<section>  */
+/** Routeur minimal sur le hash : #/ · #/s/<serveur>/<salon>[/<message>] · #/dm/<id>[/<message>] · #/join/<code> · #/admin/<section> · #/films · #/musique · #/regie/<section> · #/stats[/<sous-section>[/<id>[/<détail>]]] · #/<espace de la plateforme>/<section>  */
 import { platform, platformReady } from './platform'
 
 
@@ -11,7 +11,7 @@ export type Route =
   | { name: 'films'; section?: string; id?: string }
   | { name: 'musique'; section?: string; id?: string }
   | { name: 'regie'; section?: string }
-  | { name: 'stats'; section?: string; id?: string }
+  | { name: 'stats'; section?: string; id?: string; detail?: string }
   | { name: 'space'; space: string; section?: string }
 
 export function parseHash(hash: string): Route {
@@ -23,7 +23,7 @@ export function parseHash(hash: string): Route {
   if (parts[0] === 'films') return { name: 'films', section: parts[1], id: parts[2] }
   if (parts[0] === 'musique') return { name: 'musique', section: parts[1], id: parts[2] }
   if (parts[0] === 'regie') return { name: 'regie', section: parts[1] }
-  if (parts[0] === 'stats') return { name: 'stats', section: parts[1], id: parts[2] }
+  if (parts[0] === 'stats') return { name: 'stats', section: parts[1], id: parts[2], detail: parts[3] }
   if (parts[0] && platformReady() && platform.spaces.some((s) => s.id === parts[0])) return { name: 'space', space: parts[0], section: parts[1] }
   return { name: 'home' }
 }
@@ -36,7 +36,7 @@ export const hrefs = {
   films: (section?: string, id?: string) => `#/films${section ? '/' + section : ''}${id ? '/' + encodeURIComponent(id) : ''}`,
   musique: (section?: string, id?: string) => `#/musique${section ? '/' + section : ''}${id ? '/' + encodeURIComponent(id) : ''}`,
   regie: (section?: string) => `#/regie${section ? '/' + section : ''}`,
-  stats: (section?: string, id?: string | number) => `#/stats${section ? '/' + section : ''}${id !== undefined && id !== '' ? '/' + encodeURIComponent(id) : ''}`,
+  stats: (section?: string, id?: string | number, detail?: string | number) => `#/stats${section ? '/' + section : ''}${id !== undefined && id !== '' ? '/' + encodeURIComponent(id) : ''}${detail !== undefined && detail !== '' ? '/' + encodeURIComponent(detail) : ''}`,
   space: (space: string, section?: string) => `#/${space}${section ? '/' + section : ''}`,
   join: (code: string) => `#/join/${encodeURIComponent(code)}`,
 }

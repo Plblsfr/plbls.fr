@@ -38,7 +38,7 @@ components:
       name: sub
       in: path
       required: true
-      description: "La personne visée ; paramètre réservé aux routes `sablier:admin` (et à `GET /profiles/{sub}`, qui ne sert que du public)"
+      description: "La personne visée ; paramètre réservé aux routes `sablier:admin`"
       schema: { type: string }
   responses:
     "401":
@@ -308,7 +308,7 @@ paths:
         "403": { description: "`forbidden`, ou `bad_origin` : requête avec cookie depuis une origine non autorisée" }
         "502": { $ref: "#/components/responses/502" }
         "503": { $ref: "#/components/responses/503" }
-  /profiles/{sub}:
+  /profiles/{user}:
     get:
       summary: "Stats et trophées publics d'une personne, pour son profil (`sablier:access`)"
       description: |
@@ -317,11 +317,17 @@ paths:
         `usage.first_day` est partagée. Une stat ou un trophée d'Entracte ou de Sillon n'est servi que si le lecteur a
         `entracte:access` ou `sillon:access`. Avant de répondre, Sablier demande à Estompe, de serveur à serveur, si le lecteur peut
         ouvrir le profil de la cible ; sans réponse positive (refus, Estompe injoignable ou non configuré), la réponse est celle d'un
-        profil sans rien de public. Lire son propre profil ne demande pas cet appel.
+        profil sans rien de public. C'est Estompe qui résout l'identifiant, y compris pour son propre profil ; le `sub` de la
+        cible n'est jamais servi.
       parameters:
-        - { $ref: "#/components/parameters/sub" }
+        - name: user
+          in: path
+          required: true
+          description: "Identifiant Estompe de la personne (uuid), pas son `sub`"
+          schema: { type: string, format: uuid }
       responses:
         "200": { description: "`{month: [{key, label, domain, unit, value}], total: [{key, label, domain, unit, value}], first_day?: date, trophies: [{name, description, icon, tier, unlocked_at}]}` ; listes vides sans rien de public" }
+        "400": { description: "`invalid` : `user` n'est pas un uuid" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
         "502": { $ref: "#/components/responses/502" }

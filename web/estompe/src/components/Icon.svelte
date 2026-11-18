@@ -154,6 +154,7 @@
   export type IconName = keyof typeof v3 | keyof typeof propres | keyof typeof alias
 
   const traces: Record<string, string> = { ...v3, ...propres }
+  export const NOMS_ICONES = Object.keys(traces).sort() as IconName[]
   const pleins = new Set<string>(['plus3', 'lecture', 'pause', 'coeurplein'])
   const epais = new Set<string>(['envoi', 'ok'])
 

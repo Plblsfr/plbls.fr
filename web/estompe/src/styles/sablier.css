@@ -73,6 +73,29 @@
 .sab-reg { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 8px 0; border-top: 1px solid var(--trait); font-size: 14.5px; cursor: pointer; }
 .sab-reg:first-of-type { border-top: 0; }
 .sab-reg .plbls-toggle { flex: none; }
+.sab-reg--fixe { cursor: default; }
+.sab-reg--souple { flex-wrap: wrap; }
+.sab-reg--trait:first-of-type { border-top: 1px solid var(--trait); }
+.sab-erreur { color: var(--danger); }
+.sab-alerte { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border-radius: var(--r-l); background: var(--rose); color: var(--encre); font-size: 14.5px; }
+.sab-alerte > .icon { flex: none; margin-top: 2px; }
+.sab-alerte p { margin: 0; }
+.sab-card--tableau { padding: 8px 12px; }
+.sab-scroll { overflow-x: auto; }
+.sab-scroll:focus-visible { outline: none; box-shadow: var(--anneau-in); border-radius: var(--r-s); }
+.sab-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.sab-table thead th { padding: 8px 10px; color: var(--gris); font-size: 12.5px; font-weight: 500; text-align: left; white-space: nowrap; }
+.sab-table tbody th, .sab-table td { padding: 12px 10px; border-top: 1px solid var(--trait); vertical-align: middle; white-space: nowrap; text-align: left; }
+.sab-table tbody th { font-weight: 600; }
+.sab-table-action { text-align: right !important; }
+.sab-ligne--fixe { flex-wrap: nowrap; }
+.sab-ligne--fin { justify-content: flex-end; }
+.sab-etiquette--marge { margin-left: 8px; }
+.sab-onglets--liens > a { height: 36px; padding: 0 18px; font-size: 14px; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.sab-onglets--liens > a[aria-current='page'] { background: var(--surface); color: var(--encre); box-shadow: var(--o1); }
+.sab-icone { width: 44px; height: 44px; border-radius: 50%; background: var(--papier-2); color: var(--encre); }
+.sab-fieldset { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.sab-page .plbls-field { min-width: 0; }
 .sab-vide { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 24px; border-radius: var(--r-xl); background: var(--papier-2); color: var(--gris); text-align: center; }
 .sab-vide .sab-h2 { color: var(--encre); }
 .sab-vide p { max-width: 440px; }
@@ -118,7 +141,7 @@
 .sab-profil .sab-tile b { font-size: 22px; }
 
 @media (pointer: coarse) {
-  .sab-onglets > button { height: 44px; padding: 0 14px; }
+  .sab-onglets > button, .sab-onglets--liens > a { height: 44px; padding: 0 14px; }
 }
 
 @container sab (max-width: 760px) {

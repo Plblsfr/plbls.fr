@@ -4,12 +4,12 @@
   import { sablierApi, type Profil, type ValeurPublique } from './sablier'
   import SablierMedaille from './SablierMedaille.svelte'
 
-  let { sub, mien = false, onregler }: { sub: string; mien?: boolean; onregler?: () => void } = $props()
+  let { id, mien = false, onregler }: { id: string; mien?: boolean; onregler?: () => void } = $props()
   let profil = $state.raw<Profil | null>(null)
   let choix = $state<'mois' | 'total'>('mois')
 
   $effect(() => {
-    const cible = sub
+    const cible = id
     profil = null
     let actif = true
     sablierApi.profil(cible).then((p) => { if (actif) profil = p }, () => {})

@@ -99,14 +99,19 @@ Les évènements de vocal, de partage d'écran et de cinéma ont un identifiant 
 ## Visibilité d'un profil pour Sablier
 
 Avant de servir les statistiques qu'une personne partage sur son profil, Sablier demande à Estompe si celle qui regarde peut ouvrir ce
-profil : `GET /internal/profile-visible?viewer=<sub>&target=<sub>` avec `Authorization: Bearer <SABLIER_ESTOMPE_TOKEN>`, de serveur à
-serveur sur le réseau de la stack. Réponse : `200 {"visible": true|false}`.
+profil : `GET /internal/profile-visible?viewer=<sub>&target_user=<identifiant Estompe>` avec
+`Authorization: Bearer <SABLIER_ESTOMPE_TOKEN>`, de serveur à serveur sur le réseau de la stack. Réponse :
+`200 {"visible": true, "sub": "<sub de la cible>"}` ou `200 {"visible": false}`.
+
+- La cible est désignée par `target_user` (son identifiant Estompe, `users.id`) ou par `target` (son `sub`), exactement l'un des deux.
+  Le front ne connaît que l'identifiant Estompe des autres personnes : Estompe le résout et ne rend le `sub` qu'à Sablier, et
+  seulement quand le profil est visible.
 
 - `visible` suit la règle des personnes côtoyées, celle des badges du profil, de l'avatar et du statut (`users::co_members`) : vrai pour
   soi-même, pour une personne qui partage un serveur, et pour une personne avec qui une conversation privée existe ; faux sinon, et pour
-  un `sub` inconnu d'Estompe. Estompe n'a pas de blocage entre personnes.
-- Sans `SABLIER_ESTOMPE_TOKEN` dans la configuration : 404. Jeton absent ou faux : 401 (comparaison en temps constant). `viewer` ou
-  `target` manquant ou vide : 400.
+  un `sub` ou un identifiant inconnu d'Estompe. Estompe n'a pas de blocage entre personnes.
+- Sans `SABLIER_ESTOMPE_TOKEN` dans la configuration : 404. Jeton absent ou faux : 401 (comparaison en temps constant). `viewer`
+  manquant ou vide, `target` et `target_user` absents ou donnés ensemble, `target_user` qui n'est pas un uuid : 400.
 - La route ne relève d'aucune permission (`HORS_PERMISSION` du catalogue) : elle n'a pas de session, seul le jeton l'ouvre.
 
 ## Variables
