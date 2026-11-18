@@ -80,9 +80,16 @@ export const versIso = (local: string) => (local ? new Date(local).toISOString()
 
 export const ETATS: Record<Etat, { label: string; ton: string }> = {
   autorise: { label: 'Autorisé', ton: 'ok' },
-  partiel: { label: 'Partiel', ton: 'info' },
+  partiel: { label: 'Partiel', ton: 'att' },
   refuse: { label: 'Refusé', ton: 'dgr' },
   non_defini: { label: 'Non défini', ton: '' },
+}
+
+export const ICONES_ETAT: Record<Etat, 'ok' | 'x' | 'minus' | 'filtre'> = {
+  autorise: 'ok',
+  partiel: 'filtre',
+  refuse: 'x',
+  non_defini: 'minus',
 }
 
 export const origine = (s: Source): string => {
@@ -105,6 +112,62 @@ export const ACTIONS: Record<string, string> = {
 
 export const tonAction = (a: string) =>
   a.endsWith('.deny') || a.endsWith('.delete') || a.endsWith('.remove') || a.endsWith('.purge') || a === 'expire' ? 'dgr' : a.endsWith('.update') ? 'info' : 'ok'
+
+export type FiltreEffectifs = 'distingue' | 'autorise' | 'refuse' | 'tout'
+
+export const seDistingue = (e: Explication) => e.rules.some((r) => r.source.kind !== 'tout_le_monde')
+
+export const FILTRES_EFFECTIFS: Record<FiltreEffectifs, { label: string; garde: (e: Explication) => boolean }> = {
+  distingue: { label: 'Ce qui le distingue', garde: seDistingue },
+  autorise: { label: 'Autorisées', garde: (e) => e.state === 'autorise' || e.state === 'partiel' },
+  refuse: { label: 'Refusées', garde: (e) => e.state === 'refuse' },
+  tout: { label: 'Toutes', garde: () => true },
+}
+
+export const compterEffectifs = (perms: Explication[]): Record<FiltreEffectifs, number> => ({
+  distingue: perms.filter(FILTRES_EFFECTIFS.distingue.garde).length,
+  autorise: perms.filter(FILTRES_EFFECTIFS.autorise.garde).length,
+  refuse: perms.filter(FILTRES_EFFECTIFS.refuse.garde).length,
+  tout: perms.length,
+})
+
+export const resumeEffectif = (e: Explication): string => {
+  if (e.rules.length === 0) return 'aucune règle : refusé'
+  const refus = e.rules.filter((r) => r.effect === 'deny')
+  const decisives = e.state === 'refuse' ? refus : e.rules.filter((r) => r.effect === 'allow')
+  const noms = [...new Set((decisives.length ? decisives : e.rules).map((r) => origine(r.source)))]
+  const verbe = e.state === 'refuse' ? 'refusé par' : 'accordé par'
+  const reste = e.state === 'partiel' && refus.length ? ` · refus de ${[...new Set(refus.map((r) => origine(r.source)))].join(', ')}` : ''
+  return `${verbe} ${noms.join(', ')}${reste}`
+}
+
+const cleRegle = (r: RegleSaisie) => `${r.permission}|${r.resource}`
+
+export function permissionsModifiees(avant: RegleSaisie[], apres: RegleSaisie[]): string[] {
+  const a = new Map(avant.map((r) => [cleRegle(r), r.effect]))
+  const b = new Map(apres.map((r) => [cleRegle(r), r.effect]))
+  const touchees = new Set<string>()
+  for (const r of avant) if (b.get(cleRegle(r)) !== r.effect) touchees.add(r.permission)
+  for (const r of apres) if (a.get(cleRegle(r)) !== r.effect) touchees.add(r.permission)
+  return [...touchees]
+}
+
+export function resumeModifications(libelles: string[], autres = 0): string {
+  const n = libelles.length + autres
+  if (n === 0) return ''
+  const montres = libelles.slice(0, 3).join(', ')
+  const reste = libelles.length - Math.min(3, libelles.length)
+  return `${n} modification${n > 1 ? 's' : ''} non enregistrée${n > 1 ? 's' : ''}${montres ? ` · ${montres}` : ''}${reste > 0 ? ` et ${reste} autre${reste > 1 ? 's' : ''}` : ''}`
+}
+
+export const initiales = (c: Pick<Compte, 'email' | 'display_name' | 'sub'>): string => {
+  const mots = (c.display_name || (c.email ?? c.sub).split('@')[0]).split(/[\s._-]+/).filter(Boolean)
+  return ((mots[0]?.[0] ?? '?') + (mots[1]?.[0] ?? '')).toUpperCase()
+}
+
+export const teinte = (cle: string): number => ([...cle].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7) % 6) + 1
+
+export const jour = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
 
 export const libellesPermissions = (c: Catalogue | null): Map<string, PermissionVue> =>
   new Map((c?.apps ?? []).flatMap((a) => a.permissions.map((p) => [p.name, p] as const)))

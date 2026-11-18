@@ -21,7 +21,7 @@
 </script>
 
 <div class="perm acc">
-  <div class="v-tabs" role="tablist" aria-label="Gestion des accès" tabindex="-1" onkeydown={clavier}>
+  <div class="v-seg acc-onglets" role="tablist" aria-label="Gestion des accès" tabindex="-1" onkeydown={clavier}>
     {#each ordre as o (o)}
       <button role="tab" id="acc-onglet-{o}" aria-selected={onglet === o} aria-controls="acc-panneau" tabindex={onglet === o ? 0 : -1} onclick={() => (onglet = o)}>{ONGLETS[o]}</button>
     {/each}
