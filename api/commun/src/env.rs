@@ -143,6 +143,30 @@ pub fn url_redis(get: impl Fn(&str) -> Option<String>) -> Result<String, String>
     ))
 }
 
+pub fn url_file(get: impl Fn(&str) -> Option<String>) -> String {
+    let lu = |k: &str| {
+        get(k)
+            .map(|v| crate::config::nettoie(&v))
+            .unwrap_or_default()
+    };
+    let url = lu("SABLIER_REDIS_URL");
+    let mot_de_passe = lu("SABLIER_REDIS_PASSWORD");
+    if url.is_empty() || mot_de_passe.is_empty() {
+        return url;
+    }
+    let Some((schema, autorite, _)) = decoupe(&url) else {
+        return url;
+    };
+    let reste = &url[schema.len() + 3 + autorite.len()..];
+    match autorite.rsplit_once('@') {
+        Some((identifiants, _)) if identifiants.contains(':') => url,
+        Some((utilisateur, hote)) => {
+            format!("{schema}://{utilisateur}:{}@{hote}{reste}", encode(&mot_de_passe))
+        }
+        None => format!("{schema}://:{}@{autorite}{reste}", encode(&mot_de_passe)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +245,29 @@ mod tests {
         let get = lecteur(&[("REDIS_URL", "redis://127.0.0.1:6379")]);
         assert_eq!(url_redis(&get).unwrap(), "redis://127.0.0.1:6379");
         assert_eq!(url_redis(lecteur(&[("REDIS_PASSWORD", "x")])).unwrap(), "");
+    }
+
+    #[test]
+    fn file_avec_utilisateur_et_mot_de_passe() {
+        let get = lecteur(&[
+            ("SABLIER_REDIS_URL", "redis://sablier@redis:6379/0"),
+            ("SABLIER_REDIS_PASSWORD", "s3c r"),
+        ]);
+        assert_eq!(url_file(&get), "redis://sablier:s3c%20r@redis:6379/0");
+        let get = lecteur(&[
+            ("SABLIER_REDIS_URL", "redis://redis:6379"),
+            ("SABLIER_REDIS_PASSWORD", "p"),
+        ]);
+        assert_eq!(url_file(&get), "redis://:p@redis:6379");
+        let get = lecteur(&[
+            ("SABLIER_REDIS_URL", "redis://sablier:deja@redis:6379"),
+            ("SABLIER_REDIS_PASSWORD", "p"),
+        ]);
+        assert_eq!(url_file(&get), "redis://sablier:deja@redis:6379");
+        let get = lecteur(&[("SABLIER_REDIS_URL", " redis://127.0.0.1:6379 ")]);
+        assert_eq!(url_file(&get), "redis://127.0.0.1:6379");
+        assert_eq!(url_file(lecteur(&[("SABLIER_REDIS_PASSWORD", "p")])), "");
+        assert_eq!(url_file(lecteur(&[("REDIS_URL", "redis://redis:6379")])), "");
     }
 
     #[test]
