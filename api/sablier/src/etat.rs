@@ -62,6 +62,10 @@ impl AppState {
         self.0.aegis.as_ref()
     }
 
+    pub async fn aujourd_hui(&self) -> Result<chrono::NaiveDate, sqlx::Error> {
+        crate::agregats::jour_de(self.pool(), &self.config().fuseau, chrono::Utc::now()).await
+    }
+
     pub async fn droits_de(&self, id: &Identite) -> Result<Droits, Injoignable> {
         match &self.0.aegis {
             Some(a) => a.droits(id).await,

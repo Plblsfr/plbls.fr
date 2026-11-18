@@ -914,6 +914,18 @@ paths:
         "200": {description: ok}
         "401": {description: unauthorized}
         "404": {description: not_found}
+  /internal/profile-visible:
+    get:
+      tags: [interne]
+      summary: "Dit à Sablier si `viewer` peut ouvrir le profil de `target` (`sub` des deux) : `{visible}`. Jeton `SABLIER_ESTOMPE_TOKEN`, réseau interne ; 404 sans ce jeton"
+      parameters:
+        - {name: viewer, in: query, required: true, schema: {type: string}}
+        - {name: target, in: query, required: true, schema: {type: string}}
+      responses:
+        "200": {description: "ok — {visible}", content: {application/json: {schema: {type: object, required: [visible], properties: {visible: {type: boolean}}}}}}
+        "400": {description: bad_request}
+        "401": {description: unauthorized}
+        "404": {description: not_found}
   /admin/overview:
     get:
       tags: [administration]

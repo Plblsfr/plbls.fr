@@ -137,11 +137,8 @@ impl Demande {
     }
 
     pub async fn plage(&self, state: &AppState) -> Result<Plage, Response> {
-        let aujourd_hui =
-            agregats::jour_de(state.pool(), &state.config().fuseau, chrono::Utc::now())
-                .await
-                .map_err(bd)?;
-        self.lire(aujourd_hui).map_err(invalide)
+        self.lire(state.aujourd_hui().await.map_err(bd)?)
+            .map_err(invalide)
     }
 }
 

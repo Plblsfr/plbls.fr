@@ -1,14 +1,28 @@
 use std::fmt;
 
+use axum::{
+    extract::{Query, State},
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::get,
+};
 use chrono::{DateTime, Utc};
 pub use commun::{
     emission::Emetteur,
     evenements::{Donnees, Evenement, Sens},
 };
+use serde::Deserialize;
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use utoipa_axum::router::OpenApiRouter;
 
-use crate::{messages::SYSTEME, state::AppState};
+use crate::{
+    http::{internal, write_err, write_json},
+    messages::SYSTEME,
+    state::AppState,
+    users,
+};
 
 pub const COMMANDE: &str = "importer-sablier";
 const LOT: i64 = 1000;
@@ -224,6 +238,82 @@ pub async fn lancer(get: impl Fn(&str) -> Option<String>) -> Result<Bilan, Strin
         .await
         .map_err(|e| format!("base : {e}"))?;
     importer(&pool, async |e| emetteur.publier(e).await).await
+}
+
+const CHEMIN_PROFIL: &str = "/internal/profile-visible";
+
+pub fn router() -> OpenApiRouter<AppState> {
+    let routeur = OpenApiRouter::new().route(CHEMIN_PROFIL, get(profil_visible));
+    let op = crate::openapi::operation(
+        "interne",
+        "Dit à Sablier si `viewer` peut ouvrir le profil de `target` (`sub` des deux) : `{visible}`. Jeton `SABLIER_ESTOMPE_TOKEN`, réseau interne ; 404 sans ce jeton",
+        &[
+            ("200", "ok"),
+            ("400", "`viewer` ou `target` manquant"),
+            ("401", "jeton de Sablier attendu"),
+            ("404", "jeton non configuré"),
+        ],
+        CHEMIN_PROFIL,
+    );
+    crate::openapi::documenter(routeur, CHEMIN_PROFIL, utoipa::openapi::HttpMethod::Get, op)
+}
+
+#[derive(Deserialize)]
+struct Regard {
+    viewer: Option<String>,
+    target: Option<String>,
+}
+
+pub async fn profil_ouvert(pool: &PgPool, viewer: &str, target: &str) -> Result<bool, sqlx::Error> {
+    if viewer == target {
+        return Ok(true);
+    }
+    let (Some(v), Some(t)) = (
+        users::user_by_sub(pool, viewer).await?,
+        users::user_by_sub(pool, target).await?,
+    ) else {
+        return Ok(false);
+    };
+    Ok(users::co_members(pool, &v.id).await?.contains(&t.id))
+}
+
+async fn profil_visible(
+    State(state): State<AppState>,
+    Query(r): Query<Regard>,
+    h: HeaderMap,
+) -> Response {
+    let attendu = &state.config().sablier_token;
+    if attendu.is_empty() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let donne = h
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or_default();
+    if !crate::api::jetons_egaux(attendu, donne) {
+        return write_err(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "jeton de Sablier attendu",
+        );
+    }
+    let sub = |v: Option<String>| v.filter(|s| !s.trim().is_empty());
+    let (Some(viewer), Some(target)) = (sub(r.viewer), sub(r.target)) else {
+        return write_err(
+            StatusCode::BAD_REQUEST,
+            "bad_request",
+            "viewer et target sont obligatoires",
+        );
+    };
+    let pool = match state.pool() {
+        Ok(p) => p,
+        Err(e) => return e.into_response(),
+    };
+    match profil_ouvert(pool, &viewer, &target).await {
+        Ok(visible) => write_json(StatusCode::OK, &json!({ "visible": visible })),
+        Err(_) => internal(),
+    }
 }
 
 #[cfg(test)]
@@ -485,5 +575,87 @@ mod tests {
         for d in &durees {
             assert!(*d < Duration::from_secs(2), "{durees:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn profil_visible_pour_sablier() {
+        use crate::servers::tests::{appel, env_avec_blocs, invitation_de, membre, serveur};
+
+        let Some(c) = cadre().await else { return };
+        let chemin = "/internal/profile-visible?viewer=sub-alice&target=sub-bob";
+        let (s, _) = appel(&c.e, "jeton-sablier", "GET", chemin, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+
+        let droits = |r: &crate::testutil::Requete| crate::testutil::reponse_droits(r, |_, _| true);
+        let variables = [("SABLIER_ESTOMPE_TOKEN", "jeton-sablier")];
+        let Some(e) = env_avec_blocs(droits, vec![], &variables).await else {
+            return;
+        };
+        for nom in ["alice", "bob", "carol", "dave"] {
+            membre(&e, nom).await;
+        }
+        let sid = serveur(&e, "Chat", "alice").await;
+        let code = invitation_de(&e, "alice", &sid, "").await;
+        let rejoindre = format!("/server-invites/{code}/join");
+        assert_eq!(
+            appel(&e, "bob", "POST", &rejoindre, None).await.0,
+            StatusCode::OK
+        );
+        let corps = json!({ "pseudo": "alice" }).to_string();
+        assert_eq!(
+            appel(&e, "dave", "POST", "/dms", Some(&corps)).await.0,
+            StatusCode::OK
+        );
+        for jeton in ["", "faux", "jeton-sablier-de-trop", "alice"] {
+            let (s, v) = appel(&e, jeton, "GET", chemin, None).await;
+            assert_eq!(
+                (s, v["error"].as_str()),
+                (StatusCode::UNAUTHORIZED, Some("unauthorized"))
+            );
+        }
+        let sans_entete = axum::http::Request::get(chemin)
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let rep = tower::ServiceExt::oneshot(e.app.clone(), sans_entete)
+            .await
+            .unwrap();
+        assert_eq!(rep.status(), StatusCode::UNAUTHORIZED);
+        for requete in [
+            "",
+            "?viewer=sub-alice",
+            "?target=sub-bob",
+            "?viewer=&target=sub-bob",
+        ] {
+            let chemin = format!("/internal/profile-visible{requete}");
+            let (s, _) = appel(&e, "jeton-sablier", "GET", &chemin, None).await;
+            assert_eq!(s, StatusCode::BAD_REQUEST, "{requete}");
+        }
+        for (viewer, target, attendu) in [
+            ("alice", "alice", true),
+            ("alice", "bob", true),
+            ("bob", "alice", true),
+            ("dave", "alice", true),
+            ("carol", "alice", false),
+            ("alice", "carol", false),
+            ("bob", "dave", false),
+            ("alice", "inconnu", false),
+            ("inconnu", "alice", false),
+        ] {
+            let chemin =
+                format!("/internal/profile-visible?viewer=sub-{viewer}&target=sub-{target}");
+            let (s, v) = appel(&e, "jeton-sablier", "GET", &chemin, None).await;
+            assert_eq!(
+                (s, &v),
+                (StatusCode::OK, &json!({ "visible": attendu })),
+                "{viewer} → {target}"
+            );
+        }
+        let quitter = format!("/servers/{sid}/leave");
+        assert_eq!(
+            appel(&e, "bob", "POST", &quitter, None).await.0,
+            StatusCode::NO_CONTENT
+        );
+        let (_, v) = appel(&e, "jeton-sablier", "GET", chemin, None).await;
+        assert_eq!(v, json!({ "visible": false }));
     }
 }

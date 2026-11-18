@@ -209,6 +209,26 @@ pub async fn jours_actifs(
     .await
 }
 
+pub async fn cles_par_jour(
+    pool: &PgPool,
+    sub: &str,
+    stat: &str,
+    du: NaiveDate,
+    au: NaiveDate,
+) -> Result<Vec<(NaiveDate, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT jour, cle FROM agregats_jour
+        WHERE sub = $1 AND stat = $2 AND jour BETWEEN $3 AND $4 AND valeur > 0
+        ORDER BY jour, cle",
+    )
+    .bind(sub)
+    .bind(stat)
+    .bind(du)
+    .bind(au)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn premier_jour(pool: &PgPool, sub: &str) -> Result<Option<NaiveDate>, sqlx::Error> {
     sqlx::query_scalar("SELECT MIN(jour) FROM agregats_jour WHERE sub = $1 AND valeur > 0")
         .bind(sub)

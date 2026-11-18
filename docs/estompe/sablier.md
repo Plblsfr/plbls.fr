@@ -96,6 +96,19 @@ démarrer.
 
 Les évènements de vocal, de partage d'écran et de cinéma ont un identifiant aléatoire (UUID v4).
 
+## Visibilité d'un profil pour Sablier
+
+Avant de servir les statistiques qu'une personne partage sur son profil, Sablier demande à Estompe si celle qui regarde peut ouvrir ce
+profil : `GET /internal/profile-visible?viewer=<sub>&target=<sub>` avec `Authorization: Bearer <SABLIER_ESTOMPE_TOKEN>`, de serveur à
+serveur sur le réseau de la stack. Réponse : `200 {"visible": true|false}`.
+
+- `visible` suit la règle des personnes côtoyées, celle des badges du profil, de l'avatar et du statut (`users::co_members`) : vrai pour
+  soi-même, pour une personne qui partage un serveur, et pour une personne avec qui une conversation privée existe ; faux sinon, et pour
+  un `sub` inconnu d'Estompe. Estompe n'a pas de blocage entre personnes.
+- Sans `SABLIER_ESTOMPE_TOKEN` dans la configuration : 404. Jeton absent ou faux : 401 (comparaison en temps constant). `viewer` ou
+  `target` manquant ou vide : 400.
+- La route ne relève d'aucune permission (`HORS_PERMISSION` du catalogue) : elle n'a pas de session, seul le jeton l'ouvre.
+
 ## Variables
 
 | Variable | Rôle |
@@ -103,6 +116,8 @@ Les évènements de vocal, de partage d'écran et de cinéma ont un identifiant 
 | `SABLIER_REDIS_URL` | adresse de la file ; vide : aucun évènement émis |
 | `SABLIER_REDIS_PASSWORD` | mot de passe, ajouté à l'adresse si elle n'en porte pas |
 | `SABLIER_FILE_MAX` | plafond du flux (500 000 par défaut) |
+| `SABLIER_ESTOMPE_TOKEN` | jeton attendu par `GET /internal/profile-visible` ; vide : route coupée (404) |
 
-Elles sont communes à la stack ([`plbls.env`](../../plbls.env), [`deploy/.env.example`](../../deploy/.env.example)) : `estompe-api`
-charge tout le `.env` et rejoint déjà le réseau `redis`.
+Les trois premières sont communes à la stack ([`plbls.env`](../../plbls.env), [`deploy/.env.example`](../../deploy/.env.example)) ;
+le jeton est un secret de Sablier ([`deploy/sablier/.env.example`](../../deploy/sablier/.env.example)), et Sablier joint Estompe par
+`SABLIER_ESTOMPE_URL` (`plbls.env`). `estompe-api` charge tout le `.env` et partage ses réseaux avec `sablier-api`.

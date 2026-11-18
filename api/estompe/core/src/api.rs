@@ -34,6 +34,7 @@ pub fn router() -> OpenApiRouter<AppState> {
         .merge(crate::administration::router())
         .merge(crate::relais_aegis::router())
         .merge(crate::aegis::router())
+        .merge(crate::sablier::router())
 }
 
 pub fn routes() -> Router<AppState> {

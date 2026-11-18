@@ -72,6 +72,7 @@ Variables communes, de même nom et de même sens partout :
 | `AEGIS_TOKEN_<APPLICATION>` | Vault `secret/<client>` | le client (son jeton) et aegis, qui accepte chaque variable du préfixe comme service `<nom>` en minuscules |
 | `ENTRACTE_INTERNE_URL`, `ENTRACTE_SERVICE_TOKEN` | `plbls.env` / Vault `secret/entracte` | Entracte et le salon cinéma d'Estompe |
 | `SILLON_INTERNE_URL`, `SILLON_SERVICE_TOKEN` | `plbls.env` / Vault `secret/sillon` | Sillon et les cartes de liens Sillon d'Estompe |
+| `SABLIER_ESTOMPE_URL`, `SABLIER_ESTOMPE_TOKEN` | `plbls.env` / Vault `secret/sablier` | Sablier (appel) et Estompe (jeton attendu par `GET /internal/profile-visible`) : visibilité d'un profil avant de servir des statistiques partagées |
 | `VAPID_*`, `FCM_SERVICE_ACCOUNT` | `plbls.env` / Vault `secret/commun` | notifications push d'Estompe et d'Entracte |
 
 - **Secrets** : les exemples ne contiennent que des références `${{vault.plbls.<secret>:<CLE>}}`. Dokploy les résout au déploiement

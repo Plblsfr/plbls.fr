@@ -1022,7 +1022,7 @@ async fn temps_a_plusieurs_suivi_depuis_les_webhooks() {
     let suivre = |partage: Option<(&'static str, bool)>| {
         let (presences, pool, bob) = (presences.clone(), e.pool().clone(), bob.clone());
         async move {
-            presences
+            let mut emis = presences
                 .suivre(&pool, partage.map(|(_, actif)| (bob.as_str(), actif)))
                 .await
                 .unwrap()
@@ -1031,7 +1031,9 @@ async fn temps_a_plusieurs_suivi_depuis_les_webhooks() {
                     assert!(!ev.importe && ev.verifier().is_ok());
                     (ev.sub, ev.donnees)
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            emis.sort_by(|a, b| a.0.cmp(&b.0));
+            emis
         }
     };
     let temps = |sub: &str, secondes: u32| {
@@ -1087,7 +1089,6 @@ async fn temps_a_plusieurs_suivi_depuis_les_webhooks() {
         suivre(None).await,
         [
             temps("sub-alice", 30),
-            temps("sub-bob", 30),
             (
                 "sub-alice".to_string(),
                 Donnees::EstompeVocalAppel {
@@ -1096,6 +1097,7 @@ async fn temps_a_plusieurs_suivi_depuis_les_webhooks() {
                     secondes: 120,
                 },
             ),
+            temps("sub-bob", 30),
         ]
     );
     avancer(3600);

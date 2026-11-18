@@ -2,7 +2,7 @@ use axum::{
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use serde::Serialize;
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 
 pub fn json<T: Serialize + ?Sized>(statut: StatusCode, corps: &T) -> Response {
@@ -47,4 +47,8 @@ pub fn invalide(message: &str) -> Response {
 pub fn bd(e: sqlx::Error) -> Response {
     tracing::warn!("base : {e}");
     interne()
+}
+
+pub fn corps<T: DeserializeOwned>(octets: &[u8], message: &str) -> Result<T, Response> {
+    serde_json::from_slice(octets).map_err(|_| invalide(message))
 }
