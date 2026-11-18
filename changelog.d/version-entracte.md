@@ -1,0 +1,1 @@
+- [x] Entracte 0.4.0. Version du composant `entracte` portée de 0.3.0 à 0.4.0 pour livrer « Passer l'intro » et l'onglet Intros de l'administration (tag `entracte-v0.4.0`). Non fait : rien d'autre que le numéro de version. Non vérifié : construction de l'image Docker (faite par le tag).
