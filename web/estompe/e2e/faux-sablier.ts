@@ -263,7 +263,7 @@ export async function simuler(page: Page, p: Profil, srv: Sablier = serveurSabli
       srv.journal.unshift({ id: srv.journal.length + 1, date: '2026-11-18T09:00:00Z', action: 'effacement', admin_sub: 'kc-moi', admin_name: 'moi', target_sub: cible, target_name: srv.personnes.find((x) => x.sub === cible)?.name ?? null })
       return vide(route)
     }
-    if (cible && cible !== 'kc-moi' && srv.journal[0]?.target_sub !== cible) srv.journal.unshift({ id: srv.journal.length + 1, date: '2026-11-18T09:00:00Z', action: 'consultation', admin_sub: 'kc-moi', admin_name: 'moi', target_sub: cible, target_name: srv.personnes.find((x) => x.sub === cible)?.name ?? null })
+    if (cible && cible !== 'kc-moi' && !(srv.journal[0]?.target_sub === cible && srv.journal[0]?.admin_sub === 'kc-moi')) srv.journal.unshift({ id: srv.journal.length + 1, date: '2026-11-18T09:00:00Z', action: 'consultation', admin_sub: 'kc-moi', admin_name: 'moi', target_sub: cible, target_name: srv.personnes.find((x) => x.sub === cible)?.name ?? null })
     const rien = cible ? srv.effaces.has(cible) : !!p.aucuneActivite || srv.efface
     const entracteOuvert = !!cible || p.entracte !== false
     const sillonOuvert = !!cible || p.sillon !== false

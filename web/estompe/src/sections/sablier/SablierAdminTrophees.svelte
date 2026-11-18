@@ -55,7 +55,7 @@
             {@const l = ligneTrophee(t, catalogue)}
             <tr data-trophee={t.key}>
               <th scope="row"><span class="sab-ligne sab-ligne--fixe"><Icon name={icone(t.icon)} size={18} />{t.name}{#if t.hidden}<span class="sab-etiquette sab-etiquette--rose">caché</span>{/if}</span></th>
-              <td>{l.type}{#if l.code} <span class="sab-etiquette">codé</span>{/if}</td>
+              <td>{l.type}{#if l.code}<span class="sab-etiquette sab-etiquette--marge">codé</span>{/if}</td>
               <td>{l.stat}</td>
               <td>{l.periode}</td>
               <td>{l.seuils}</td>

@@ -58,7 +58,7 @@
                 <td>{ilYA(p.last_day, aujourdhui)}</td>
                 <td>{p.active_seconds_total > 0 ? duree(p.active_seconds_total) : '—'}</td>
                 <td>{p.first_day ? jourLong(p.first_day) : '—'}</td>
-                <td class="sab-table-action"><a class="plbls-button plbls-button--contour plbls-button--compact" href={hrefs.stats('admin', 'personnes', p.sub)} aria-label="Voir les stats de {nomPersonne(p)}">Voir ses stats</a></td>
+                <td class="sab-table-action"><a class="plbls-button plbls-button--contour plbls-button--compact" href={hrefs.stats('admin', 'personnes', p.sub)} aria-label="Voir ses stats, {nomPersonne(p)}">Voir ses stats</a></td>
               </tr>
             {/each}
           </tbody>
@@ -79,8 +79,8 @@
           {#each orphelins as p (p.sub)}
             <li class="sab-reg sab-reg--fixe sab-reg--souple">
               <span class="sab-col sab-grow" style:gap="0"><b>{nomPersonne(p)}</b><span class="sab-note">{p.first_day && p.last_day ? `Stats du ${jourLong(p.first_day)} au ${jourLong(p.last_day)} · dernière activité ${ilYA(p.last_day, aujourdhui)}` : 'Aucune journée d’activité'}</span></span>
-              <a class="plbls-button plbls-button--contour plbls-button--compact" href={hrefs.stats('admin', 'personnes', p.sub)} aria-label="Voir les stats de {nomPersonne(p)}">Voir ses stats</a>
-              <button class="plbls-button plbls-button--danger plbls-button--compact" type="button" disabled={enCours === p.sub} onclick={() => void effacer(p)} aria-label="Effacer les données de {nomPersonne(p)}">Effacer ses données…</button>
+              <a class="plbls-button plbls-button--contour plbls-button--compact" href={hrefs.stats('admin', 'personnes', p.sub)} aria-label="Voir ses stats, {nomPersonne(p)}">Voir ses stats</a>
+              <button class="plbls-button plbls-button--danger plbls-button--compact" type="button" disabled={enCours === p.sub} onclick={() => void effacer(p)} aria-label="Effacer ses données…, {nomPersonne(p)}">Effacer ses données…</button>
             </li>
           {/each}
         </ul>

@@ -1,6 +1,6 @@
 .sab { container-type: inline-size; container-name: sab; }
-.sab-page { display: flex; flex-direction: column; gap: 36px; width: 100%; max-width: 1008px; margin: 0 auto; padding: 12px 16px 40px; }
-.sab-sec { display: flex; flex-direction: column; gap: var(--espace-4); }
+.sab-page { display: flex; flex-direction: column; gap: 36px; width: 100%; min-width: 0; max-width: 1008px; margin: 0 auto; padding: 12px 16px 40px; }
+.sab-sec { display: flex; flex-direction: column; gap: var(--espace-4); min-width: 0; }
 .sab-tete { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
 .sab-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
 .sab-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -8,6 +8,7 @@
 .sab-page p, .sab-page h1, .sab-page h2, .sab-page h3, .sab-page ul { margin: 0; }
 .sab-page ul { padding: 0; list-style: none; }
 .sab-page a.plbls-button { text-decoration: none; }
+.sab-page ul.sab-card { padding: 20px 22px; }
 
 .sab-h1 { font-family: var(--f-titre); font-size: 40px; font-weight: 700; line-height: 1.05; letter-spacing: -0.03em; margin: 0; }
 .sab-h2 { font-family: var(--f-titre); font-size: 23px; font-weight: 700; line-height: 1.15; letter-spacing: -0.03em; margin: 0; }
@@ -37,7 +38,7 @@
 .sab-kvs { display: flex; flex-direction: column; margin: 0; }
 .sab-kvs dt, .sab-kvs dd { margin: 0; }
 
-.sab-onglets { max-width: 100%; overflow-x: auto; flex: none; }
+.sab-onglets { max-width: 100%; overflow-x: auto; flex: none; align-self: flex-start; }
 .sab-onglets > button { height: 36px; padding: 0 18px; font-size: 14px; font-weight: 500; white-space: nowrap; }
 .sab-periode { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; }
 .sab-periode > span { min-width: 132px; text-align: center; }
@@ -80,8 +81,8 @@
 .sab-alerte { display: flex; align-items: flex-start; gap: 12px; padding: 14px 18px; border-radius: var(--r-l); background: var(--rose); color: var(--encre); font-size: 14.5px; }
 .sab-alerte > .icon { flex: none; margin-top: 2px; }
 .sab-alerte p { margin: 0; }
-.sab-card--tableau { padding: 8px 12px; }
-.sab-scroll { overflow-x: auto; }
+.sab-card--tableau { padding: 8px 12px; max-width: 100%; overflow: hidden; }
+.sab-scroll { max-width: 100%; overflow-x: auto; }
 .sab-scroll:focus-visible { outline: none; box-shadow: var(--anneau-in); border-radius: var(--r-s); }
 .sab-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
 .sab-table thead th { padding: 8px 10px; color: var(--gris); font-size: 12.5px; font-weight: 500; text-align: left; white-space: nowrap; }

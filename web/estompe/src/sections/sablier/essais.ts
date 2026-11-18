@@ -1,4 +1,4 @@
-import type { ClientSablier, Entracte, Messagerie, Partage, Profil, Recap, RecapResume, Series, Sillon, Stats, Trophees, Usage } from './sablier'
+import type { Catalogue, ClientSablier, Entracte, Journal, Personnes, TropheeAdmin, Messagerie, Partage, Profil, Recap, RecapResume, Series, Sillon, Stats, Trophees, Usage } from './sablier'
 
 export const AUJOURDHUI = '2026-11-18'
 export const SERVEUR = 's1'
@@ -75,3 +75,40 @@ export function fauxClient(over: Partial<ClientSablier> = {}): ClientSablier {
     ...over,
   }
 }
+
+export const personnes = (): Personnes => ({
+  directory: 'aegis',
+  people: [
+    { sub: 'kc-camille', name: 'Camille', known: true, last_seen: '2026-11-18T08:00:00Z', first_day: '2024-03-03', last_day: '2026-11-18', active_seconds_total: 1_483_200 },
+    { sub: 'kc-moi', name: 'moi', known: true, last_seen: '2026-11-18T09:00:00Z', first_day: '2026-09-03', last_day: '2026-11-17', active_seconds_total: 187_200 },
+    { sub: '7f3a9d2e-0000-4000-8000-0000000000c2', name: null, known: false, last_seen: null, first_day: '2024-03-03', last_day: '2026-06-12', active_seconds_total: 288_000 },
+  ],
+})
+export const journal = (): Journal => ({
+  directory: 'aegis',
+  entries: [
+    { id: 3, date: '2026-11-18T15:40:00Z', action: 'consultation', admin_sub: 'kc-sacha', admin_name: 'Sacha', target_sub: 'kc-camille', target_name: 'Camille' },
+    { id: 2, date: '2026-10-30T08:31:00Z', action: 'effacement', admin_sub: 'kc-ines', admin_name: 'Inès', target_sub: '7f3a9d2e-0000-4000-8000-0000000000c2', target_name: null },
+    { id: 1, date: '2026-09-03T08:02:00Z', action: 'consultation', admin_sub: 'kc-sacha', admin_name: 'Sacha', target_sub: 'kc-camille', target_name: 'Camille' },
+  ],
+  next_before: null,
+})
+export const catalogue = (): Catalogue => ({
+  stats: [
+    { key: 'usage.active_seconds', label: 'temps actif', domain: 'usage', unit: 'seconds', shareable: true, tiers: true },
+    { key: 'usage.first_day', label: 'premier jour d’activité', domain: 'usage', unit: 'date', shareable: true, tiers: false },
+    { key: 'sillon.seconds', label: 'temps d’écoute', domain: 'sillon', unit: 'seconds', shareable: true, tiers: true },
+    { key: 'messaging.messages', label: 'messages envoyés', domain: 'messaging', unit: 'count', shareable: true, tiers: true },
+    { key: 'streak.global', label: 'série de jours', domain: 'usage', unit: 'days', shareable: true, tiers: true },
+  ],
+  exploits: [
+    { key: 'long_appel', label: 'long appel', condition: 'secondes d’un appel', domain: 'messaging', unit: 'seconds', default_parameter: 10_800 },
+    { key: 'mois_parfait', label: 'mois parfait', condition: 'du temps actif tous les jours d’un mois', domain: 'usage', unit: 'count', default_parameter: null },
+  ],
+  periods: ['day', 'week', 'month', 'all'],
+})
+export const tropheesAdmin = (): TropheeAdmin[] => [
+  { id: 6, key: 'platine', name: 'Platine', description: 'Du temps passé à écouter.', icon: 'casque', hidden: false, active: true, kind: 'tiers', stat: 'sillon.seconds', period: 'all', thresholds: [86_400, 360_000, 1_800_000, 7_200_000], exploit: null, parameter: null, order: 6, unlocked_by: 4 },
+  { id: 26, key: 'appel_fleuve', name: 'Appel fleuve', description: 'Un appel de trois heures.', icon: 'mic', hidden: true, active: false, kind: 'exploit', stat: null, period: null, thresholds: [], exploit: 'long_appel', parameter: 10_800, order: 26, unlocked_by: 0 },
+  { id: 17, key: 'sur_la_lancee', name: 'Sur la lancée', description: 'Des jours d’affilée.', icon: 'etincelle', hidden: false, active: true, kind: 'tiers', stat: 'streak.global', period: 'all', thresholds: [3, 7], exploit: null, parameter: null, order: 17, unlocked_by: 11 },
+]

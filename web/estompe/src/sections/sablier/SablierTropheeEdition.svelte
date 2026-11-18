@@ -124,7 +124,7 @@
             <div class="plbls-field">
               <label class="plbls-field__label" for="sab-t-stat">Stat du catalogue</label>
               <select id="sab-t-stat" class="plbls-select" value={f.stat} onchange={(e) => { if (f) f = choisirStat($state.snapshot(f), catalogue, e.currentTarget.value) }}>
-                {#each (catalogue?.stats ?? []).filter((s) => s.tiers) as s (s.key)}<option value={s.key}>{NOM_DOMAINE_COURT[s.domain]} · {s.label}</option>{/each}
+                {#each (catalogue?.stats ?? []).filter((s) => s.tiers) as s (s.key)}<option value={s.key}>{NOM_DOMAINE_COURT[s.domain]} · {s.label.toLowerCase()}</option>{/each}
               </select>
               {#if erreurs.stat}<p class="plbls-field__message">{erreurs.stat}</p>{/if}
             </div>
@@ -158,9 +158,9 @@
             <div class="plbls-field">
               <label class="plbls-field__label" for="sab-t-exploit">Exploit codé</label>
               <select id="sab-t-exploit" class="plbls-select" value={f.exploit} onchange={(e) => { if (f) f = choisirExploit($state.snapshot(f), catalogue, e.currentTarget.value) }}>
-                {#each catalogue?.exploits ?? [] as x (x.key)}<option value={x.key}>{NOM_DOMAINE_COURT[x.domain]} · {x.label}</option>{/each}
+                {#each catalogue?.exploits ?? [] as x (x.key)}<option value={x.key}>{NOM_DOMAINE_COURT[x.domain]} · {x.label.toLowerCase()}</option>{/each}
               </select>
-              {#if exploit}<p class="plbls-field__aide">{exploit.condition}</p>{/if}
+              {#if exploit}<p class="plbls-field__aide">Condition : {exploit.condition}.</p>{/if}
               {#if erreurs.exploit}<p class="plbls-field__message">{erreurs.exploit}</p>{/if}
             </div>
             {#if exploit && exploit.default_parameter !== null}

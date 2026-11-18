@@ -1,4 +1,4 @@
-import { duree, nombre } from './formats'
+import { duree, majuscule, nombre } from './formats'
 import type { Catalogue, EntreeJournal, ExploitCatalogue, GenreTrophee, GrainTrophee, Personne, SaisieTrophee, StatCatalogue, TropheeAdmin, Unite } from './sablier'
 
 export const ONGLETS = [
@@ -66,11 +66,11 @@ export interface LigneTrophee { type: string; code: boolean; stat: string; perio
 export function ligneTrophee(t: TropheeAdmin, c: Catalogue | null): LigneTrophee {
   if (t.kind === 'exploit') {
     const e = exploitDe(c, t.exploit)
-    return { type: 'Exploit', code: true, stat: e?.label ?? t.exploit ?? '', periode: '—', seuils: t.parameter !== null ? texteSeuil(t.parameter, e?.unit ?? 'count') : '—' }
+    return { type: 'Exploit', code: true, stat: majuscule(e?.label ?? t.exploit ?? ''), periode: '—', seuils: t.parameter !== null ? texteSeuil(t.parameter, e?.unit ?? 'count') : '—' }
   }
   const s = statDe(c, t.stat)
   return {
-    type: estSerie(t.stat) ? 'Série de jours' : 'Paliers', code: false, stat: s?.label ?? t.stat ?? '',
+    type: estSerie(t.stat) ? 'Série de jours' : 'Paliers', code: false, stat: majuscule(s?.label ?? t.stat ?? ''),
     periode: estSerie(t.stat) || !t.period ? '—' : GRAIN_COURT[t.period],
     seuils: t.thresholds.map((v) => texteSeuil(v, s?.unit ?? 'count')).join(' · '),
   }

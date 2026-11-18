@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setUnauthorizedHandler } from '../../lib/api'
 import { AUJOURDHUI, fauxClient, recaps, statsPleines, statsVides, trophees } from './essais'
-import { sablierApi, type Periode } from './sablier'
+import { adminApi, lecturesDe, sablierApi, type Periode } from './sablier'
 import { EtatSablier } from './sablier.svelte'
 
 const json = (status: number, body?: unknown) =>
@@ -69,7 +69,65 @@ describe('routes lues par la section', () => {
   })
 })
 
+describe('données, journal et administration', () => {
+  const appels = () => fetchMock.mock.calls.map((c) => `${c[1].method} ${c[0]}${c[1].body ? ` ${c[1].body}` : ''}`)
+
+  it('C4 et C6 : les effacements envoient le mot EFFACER, pour soi et pour une personne', async () => {
+    fetchMock.mockImplementation(async () => json(204))
+    await sablierApi.effacer()
+    await adminApi.effacer('kc/camille')
+    expect(appels()).toEqual(['DELETE /data {"confirm":"EFFACER"}', 'DELETE /admin/people/kc%2Fcamille/data {"confirm":"EFFACER"}'])
+  })
+
+  it('lit le journal de ses consultations et rend l’export en fichier nommé', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, [{ date: '2026-11-12T20:14:00Z', admin_name: 'Sacha', action: 'consultation' }]))
+    expect((await sablierApi.vues())[0].admin_name).toBe('Sacha')
+    fetchMock.mockResolvedValueOnce(new Response('{"sub":"kc-moi"}', { status: 200, headers: { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="sablier-export-2026-11-18.json"' } }))
+    const f = await sablierApi.exporter()
+    expect(f.nom).toBe('sablier-export-2026-11-18.json')
+    expect(await f.blob.text()).toBe('{"sub":"kc-moi"}')
+    expect(appels()).toEqual(['GET /views', 'GET /export'])
+  })
+
+  it('vise les routes d’administration', async () => {
+    fetchMock.mockImplementation(async () => json(200, {}))
+    await adminApi.personnes()
+    await adminApi.totaux('month', '2026-11-18')
+    await adminApi.journal()
+    await adminApi.journal(42)
+    await adminApi.trophees()
+    await adminApi.catalogue()
+    await adminApi.creer({ key: 'k', name: 'N', description: 'D', icon: 'film', kind: 'exploit', exploit: 'long_appel' })
+    await adminApi.modifier(6, { active: false })
+    const admin = lecturesDe('kc camille')
+    await admin.usage('week', '2026-11-18')
+    await admin.trophees()
+    await admin.recap(12)
+    expect(appels()).toEqual([
+      'GET /admin/people', 'GET /admin/totals?period=month&date=2026-11-18', 'GET /admin/audit?limit=50', 'GET /admin/audit?limit=50&before=42', 'GET /admin/trophies', 'GET /admin/catalogue',
+      'POST /admin/trophies {"key":"k","name":"N","description":"D","icon":"film","kind":"exploit","exploit":"long_appel"}', 'PATCH /admin/trophies/6 {"active":false}',
+      'GET /admin/people/kc%20camille/usage?period=week&date=2026-11-18', 'GET /admin/people/kc%20camille/trophies', 'GET /admin/people/kc%20camille/recaps/12',
+    ])
+  })
+})
+
 describe('état de la section', () => {
+  it('en consultation par un admin : ni annonce, ni non vus, ni marquage', async () => {
+    const marquer = vi.fn(async () => {})
+    const nonVus = vi.fn(async () => ({ trophies: 3, recaps: 2 }))
+    const etat = new EtatSablier(fauxClient({ marquerVus: marquer, nonVus }), () => AUJOURDHUI, true)
+    await etat.ouvrir()
+    expect(etat.charge).toBe(true)
+    expect(etat.trophees?.unlocked.some((t) => !t.seen)).toBe(true)
+    expect(etat.annonces).toEqual([])
+    expect(etat.recapAnnonce).toBeNull()
+    expect(etat.pastille).toBe(false)
+    await etat.lireRecap(12)
+    await etat.tropheeVu(2)
+    expect(marquer).not.toHaveBeenCalled()
+    expect(nonVus).not.toHaveBeenCalled()
+  })
+
   const appels = () => {
     const lus: string[] = []
     const noter = <T>(nom: string, rendre: (p: Periode, d: string) => T) => async (p: Periode, d: string) => { lus.push(`${nom} ${p} ${d}`); return rendre(p, d) }

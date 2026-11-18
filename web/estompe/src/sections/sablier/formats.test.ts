@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ajouterJours, avancement, deMois, duree, dureeRonde, jourCourt, jourLong, joursEntre, nombre, part, pluriel, valeur } from './formats'
+import { ajouterJours, avancement, dateHeure, deMois, duree, ilYA, dureeRonde, jourCourt, jourLong, joursEntre, nombre, part, pluriel, valeur } from './formats'
 
 describe('formats de Sablier', () => {
   it('écrit les durées en heures et minutes', () => {
@@ -41,5 +41,16 @@ describe('formats de Sablier', () => {
     expect(joursEntre('2026-11-01', '2026-11-18')).toBe(18)
     expect(deMois('2026-10-01')).toBe('d’octobre')
     expect(deMois('2026-11-01')).toBe('de novembre')
+  })
+
+  it('écrit une date avec son heure locale et une ancienneté', () => {
+    expect(dateHeure(new Date(2026, 10, 12, 21, 14).toISOString())).toBe('12 nov. 2026 à 21:14')
+    expect(dateHeure('pas une date')).toBe('')
+    expect(ilYA('2026-11-18', '2026-11-18')).toBe('aujourd’hui')
+    expect(ilYA('2026-11-17', '2026-11-18')).toBe('hier')
+    expect(ilYA('2026-11-12', '2026-11-18')).toBe('il y a 6 jours')
+    expect(ilYA('2026-06-12', '2026-11-18')).toBe('il y a 5 mois')
+    expect(ilYA('2024-03-03', '2026-11-18')).toBe('il y a 2 ans')
+    expect(ilYA(null, '2026-11-18')).toBe('jamais')
   })
 })
