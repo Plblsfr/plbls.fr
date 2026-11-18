@@ -366,7 +366,9 @@ pub async fn valeur(
         Calcul::PlusGrande(s) => agregats::plus_grande(pool, sub, s, du, au).await,
         Calcul::ClesDistinctes(s) => agregats::cles_distinctes(pool, sub, s, du, au).await,
         Calcul::JoursActifs(s) => agregats::jours_actifs(pool, sub, s, du, au).await,
-        Calcul::Serie(s) => Ok(series::calculer(&series::jours(pool, sub, s, du, au).await?, au).best),
+        Calcul::Serie(s) => {
+            Ok(series::calculer(&series::jours(pool, sub, s, du, au).await?, au).best)
+        }
         Calcul::PremierJour => Ok(0),
     }
 }
@@ -617,7 +619,7 @@ mod tests {
         );
         assert_eq!(r.valeur, 0);
         let r = parcourir(
-            &jours,
+            &jours[..4],
             Forme::Suite,
             Periode::Mois,
             &[2, 3],

@@ -4,7 +4,7 @@ use commun::{emission::CHAMP, evenements::Evenement};
 use redis::aio::MultiplexedConnection;
 use sqlx::PgPool;
 
-use crate::{agregats, config::Config, domaines};
+use crate::{agregats, config::Config, domaines, trophees};
 
 const LOT: usize = 100;
 const ATTENTE_BLOCAGE: Duration = Duration::from_secs(5);
@@ -63,6 +63,7 @@ pub async fn traiter(pool: &PgPool, fuseau: &str, json: &str) -> Result<Issue, s
     }
     let jour = agregats::jour_de(&mut *tx, fuseau, e.date).await?;
     domaines::appliquer(&mut tx, &e, jour).await?;
+    trophees::marquer(&mut *tx, &e.sub).await?;
     tx.commit().await?;
     Ok(Issue::Applique)
 }

@@ -10,6 +10,8 @@ use crate::{
 
 pub const PERIODE_MANIFESTE: Duration = Duration::from_secs(600);
 pub const PERIODE_PURGE: Duration = Duration::from_secs(24 * 3600);
+pub const PERIODE_EVALUATION: Duration = Duration::from_secs(10);
+pub const PERIODE_RECAPS: Duration = Duration::from_secs(3600);
 
 pub struct Inner {
     cfg: Config,
@@ -98,6 +100,36 @@ impl AppState {
                     Ok(0) => {}
                     Ok(n) => tracing::info!("purge : {n} évènements bruts de plus de {mois} mois"),
                     Err(e) => tracing::warn!("purge : {e}"),
+                }
+            }
+        });
+        let etat = self.clone();
+        tokio::spawn(async move {
+            let mut t = tokio::time::interval(PERIODE_EVALUATION);
+            t.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                t.tick().await;
+                let passe = async {
+                    crate::trophees::evaluer_les_marques(etat.pool(), etat.aujourd_hui().await?)
+                        .await
+                };
+                if let Err(e) = passe.await {
+                    tracing::warn!("trophées : {e}");
+                }
+            }
+        });
+        let etat = self.clone();
+        tokio::spawn(async move {
+            let mut t = tokio::time::interval(PERIODE_RECAPS);
+            loop {
+                t.tick().await;
+                let passe = async {
+                    crate::recaps::creer_les_recaps(&etat, etat.aujourd_hui().await?).await
+                };
+                match passe.await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!("récaps : {n} créés"),
+                    Err(e) => tracing::warn!("récaps : {e}"),
                 }
             }
         });

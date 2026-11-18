@@ -8,7 +8,7 @@ routes dans [`openapi.yaml`](../../docs/sablier/openapi.yaml).
 | `config.rs` | variables `SABLIER_*` et communes (valeurs dans [`plbls.env`](../../plbls.env), secrets dans [`deploy/sablier/.env.example`](../../deploy/sablier/.env.example)) |
 | `routes.rs` | table des routes : chacune a une permission ou une exception motivée ; tests de couverture et de conformité à OpenAPI (dans les deux sens) |
 | `garde.rs`, `identite.rs`, `droits.rs` | gateway (`/auth/me`, cookie ou Bearer), aegis (manifeste, `/v1/effective`, `/v1/check` pour `entracte:access` et `sillon:access`), sections de `GET /me`, CORS et CSRF |
-| `etat.rs` | état partagé (configuration, base, client HTTP, aegis) et tâches de fond (manifeste, purge quotidienne, consommation de la file) |
+| `etat.rs` | état partagé (configuration, base, client HTTP, aegis) et tâches de fond (manifeste, purge quotidienne, évaluation des trophées, création des récaps, consommation de la file) |
 | `interne.rs` | santé, disponibilité, `GET /me` |
 | `http.rs` | réponses JSON et erreurs `{error, message}` |
 | `file.rs` | consommation du Redis Stream (`consommer` : groupe, reprise des entrées non accusées, accusé après écriture) et traitement d'un évènement (`traiter`) |
@@ -16,9 +16,16 @@ routes dans [`openapi.yaml`](../../docs/sablier/openapi.yaml).
 | `agregats.rs` | table `agregats_jour` : écritures (`ajouter`, `maximum`), lectures génériques, jour d'un instant dans le fuseau |
 | `periode.rs` | périodes de lecture (`day`, `week`, `month`, `year`, `all`), paramètres `period` et `date`, bornes, intervalle rendu (`period`, `from`, `to`) |
 | `battement.rs` | `POST /heartbeat` : plateformes et sections acceptées, temps crédité (`enregistrer`, horloge en paramètre) |
-| `utilisation.rs` | `GET /usage` |
+| `utilisation.rs` | `GET /usage` (`lire`, `voir`) |
+| `catalogue.rs` | catalogue fermé des stats (clé publique, libellé, domaine, unité, calcul, partageable), valeur sur une plage, progression vers des seuils avec la date où chacun est atteint |
+| `series.rs` | séries de jours (jours comptés, série en cours et record), `GET /streaks` |
+| `exploits.rs` | registre fermé des exploits codés : chacun dit s'il est atteint et depuis quel jour |
+| `trophees.rs` | table `trophees`, évaluation et déblocages, personnes à réévaluer, `GET /trophies`, `GET /unseen`, `POST /seen`, routes d'administration |
+| `recaps.rs` | création des récaps du mois et de l'année (`creer_les_recaps`), `GET /recaps`, `GET /recaps/{id}` |
+| `partage.rs` | réglages de partage (`GET`/`PUT /sharing`), profil public (`GET /profiles/{sub}`) et demande de visibilité à Estompe |
+| `effacement.rs` | `tables_personnelles()` : toutes les tables indexées par `sub` |
 | `purge.rs` | purge des évènements bruts (`purger`) |
-| `migrations/` | schéma de la base `sablier` (`0001_sablier.sql` : `evenements`, `agregats_jour`, `battements` ; `0002_sessions_entracte.sql` : session Entracte en cours) |
+| `migrations/` | schéma de la base `sablier` (`0001_sablier.sql` : `evenements`, `agregats_jour`, `battements` ; `0002_sessions_entracte.sql` : session Entracte en cours ; `0003_trophees_recaps_partage.sql` : trophées et jeu de départ, déblocages, récaps, partage) |
 
 Le format des évènements et leur émission sont dans [`api/commun`](../commun/src/evenements.rs) (`evenements.rs`, `emission.rs`).
 
@@ -42,6 +49,20 @@ Le format des évènements et leur émission sont dans [`api/commun`](../commun/
 - Noms des statistiques : constantes de chaque module de domaine (`entracte::SECONDES`, `sillon::PISTES`, `messagerie::MESSAGES`…),
   listées dans [`docs/sablier`](../../docs/sablier/README.md).
 - `file::traiter(pool, fuseau, json) -> Issue` (`Applique`, `Doublon`, `Ecarte(motif)`) : chemin complet d'un évènement, sans Redis.
+- `utilisation::lire(pool, sub, &Plage) -> Value` : le corps de `GET /usage` pour une personne.
+- `AppState::aujourd_hui()` : le jour courant dans le fuseau. Les fonctions de lecture ci-dessous le prennent en paramètre (injecté
+  dans les tests) et ne contrôlent pas l'accès : l'appelant choisit le `sub` et les `Droits` qui filtrent Entracte et Sillon.
+- `trophees::lire(pool, sub, &Droits, aujourd_hui) -> Trophees` (corps de `GET /trophies`), `trophees::etats(pool, sub, &Droits)`
+  (un `Etat` par trophée actif et accessible : paliers débloqués, dates, vu, partagé), `trophees::evaluer(pool, sub, aujourd_hui)`
+  (insère les déblocages manquants, idempotent), `trophees::marquer(exécuteur, sub)` (à réévaluer), `trophees::charger(pool, actifs)`.
+- `series::lire(pool, sub, &Droits, aujourd_hui) -> Series` (corps de `GET /streaks`), `series::etat(pool, sub, Serie, aujourd_hui)`.
+- `recaps::lister(pool, sub) -> Vec<Resume>`, `recaps::lire(pool, sub, id) -> Option<Value>`,
+  `recaps::creer_les_recaps(&AppState, aujourd_hui) -> u64` (idempotent).
+- `partage::lire(pool, sub, &Droits) -> Reglages` (corps de `GET /sharing`), `partage::profil(pool, cible, &Droits du lecteur,
+  aujourd_hui) -> Profil` (ce que la cible a rendu public), `partage::profil_visible(&AppState, lecteur, cible) -> bool`.
+- `catalogue::STATS`, `catalogue::trouver(cle)`, `catalogue::valeur(pool, sub, &Stat, du, au)` ; `exploits::EXPLOITS`.
+- `effacement::tables_personnelles()` : les tables à vider (`DELETE … WHERE sub = $1`) ou à exporter pour une personne. Une nouvelle
+  table avec une colonne `sub` doit y être ajoutée : `effacement::tests` compare la liste au schéma.
 
 ## Ajouter une route
 
@@ -64,3 +85,5 @@ base jetable par test, migrations appliquées, faux gateway et faux aegis (`test
 (ignorés sans Docker). Les tests de la consommation (`file.rs`) demandent `TEST_REDIS_URL` (ignorés sinon, avec un message) et utilisent
 un flux et un groupe propres à chaque test ; la déduplication et le rejet des entrées mal formées sont aussi vérifiés sans Redis.
 Les tests du battement passent l'heure en paramètre (changements d'heure du 29 mars et du 25 octobre 2026, minuit à Paris).
+Les tests des trophées, des séries et des récaps passent le jour courant en paramètre ; ceux du profil public simulent Estompe par un
+faux serveur HTTP (`partage::tests::faux_estompe`).

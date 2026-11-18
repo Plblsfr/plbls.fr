@@ -5,6 +5,7 @@ use axum::{
     response::Response,
 };
 use serde_json::{Value, json};
+use sqlx::PgPool;
 
 use crate::{
     agregats::{self, UTILISATION},
@@ -12,7 +13,7 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{bd, ok},
-    periode::Demande,
+    periode::{Demande, Plage},
 };
 
 fn repartition(par_cle: &[(String, i64)], champ: &str, partie: fn(&str) -> &str) -> Vec<Value> {
@@ -28,32 +29,16 @@ fn repartition(par_cle: &[(String, i64)], champ: &str, partie: fn(&str) -> &str)
         .collect()
 }
 
-pub async fn lire(
-    State(state): State<AppState>,
-    p: Personne,
-    Query(demande): Query<Demande>,
-) -> Result<Response, Response> {
-    let plage = demande.plage(&state).await?;
-    let (pool, sub) = (state.pool(), p.sub());
-    let premier = agregats::premier_jour(pool, sub).await.map_err(bd)?;
+pub async fn lire(pool: &PgPool, sub: &str, plage: &Plage) -> Result<Value, sqlx::Error> {
+    let premier = agregats::premier_jour(pool, sub).await?;
     let intervalle = plage.intervalle(premier);
     let (du, au) = (intervalle.from, intervalle.to);
-    let secondes = agregats::somme(pool, sub, UTILISATION, du, au)
-        .await
-        .map_err(bd)?;
-    let par_jour = agregats::par_jour(pool, sub, UTILISATION, du, au)
-        .await
-        .map_err(bd)?;
-    let par_cle = agregats::par_cle(pool, sub, UTILISATION, du, au)
-        .await
-        .map_err(bd)?;
-    let plus_longue = agregats::max_jour(pool, sub, UTILISATION, du, au)
-        .await
-        .map_err(bd)?;
-    let actifs = agregats::jours_actifs(pool, sub, UTILISATION, du, au)
-        .await
-        .map_err(bd)?;
-    Ok(ok(&json!({
+    let secondes = agregats::somme(pool, sub, UTILISATION, du, au).await?;
+    let par_jour = agregats::par_jour(pool, sub, UTILISATION, du, au).await?;
+    let par_cle = agregats::par_cle(pool, sub, UTILISATION, du, au).await?;
+    let plus_longue = agregats::max_jour(pool, sub, UTILISATION, du, au).await?;
+    let actifs = agregats::jours_actifs(pool, sub, UTILISATION, du, au).await?;
+    Ok(json!({
         "period": intervalle.period,
         "from": du,
         "to": au,
@@ -67,7 +52,18 @@ pub async fn lire(
         "longest_day": plus_longue.map(|(jour, s)| json!({ "day": jour, "seconds": s })),
         "active_days": actifs,
         "first_day": premier,
-    })))
+    }))
+}
+
+pub async fn voir(
+    State(state): State<AppState>,
+    p: Personne,
+    Query(demande): Query<Demande>,
+) -> Result<Response, Response> {
+    let plage = demande.plage(&state).await?;
+    Ok(ok(&lire(state.pool(), p.sub(), &plage)
+        .await
+        .map_err(bd)?))
 }
 
 #[cfg(test)]

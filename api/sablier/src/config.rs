@@ -19,6 +19,9 @@ pub struct Config {
     pub fuseau: String,
     pub conservation_mois: u32,
     pub battement: Duration,
+    pub estompe: Option<(String, String)>,
+    pub recap_jours_min: u32,
+    pub recap_jours_min_annee: u32,
 }
 
 fn nombre<T: std::str::FromStr>(nom: &str, valeur: Option<String>, defaut: T) -> Result<T, String> {
@@ -54,6 +57,18 @@ impl Config {
         if !(5..=3600).contains(&battement) {
             return Err("SABLIER_BATTEMENT_SECONDES : entre 5 et 3600".into());
         }
+        let recap_jours_min: u32 =
+            nombre("SABLIER_RECAP_JOURS_MIN", env("SABLIER_RECAP_JOURS_MIN"), 3)?;
+        let recap_jours_min_annee: u32 = nombre(
+            "SABLIER_RECAP_JOURS_MIN_ANNEE",
+            env("SABLIER_RECAP_JOURS_MIN_ANNEE"),
+            10,
+        )?;
+        if recap_jours_min == 0 || recap_jours_min_annee == 0 {
+            return Err(
+                "SABLIER_RECAP_JOURS_MIN, SABLIER_RECAP_JOURS_MIN_ANNEE : 1 au moins".into(),
+            );
+        }
         Ok(Self {
             port: nombre("SABLIER_PORT", env("SABLIER_PORT"), 8080)?,
             database_url,
@@ -74,6 +89,11 @@ impl Config {
             fuseau: env("SABLIER_FUSEAU").unwrap_or_else(|| "Europe/Paris".into()),
             conservation_mois,
             battement: Duration::from_secs(u64::from(battement)),
+            estompe: env("SABLIER_ESTOMPE_URL")
+                .map(sans_slash)
+                .zip(env("SABLIER_ESTOMPE_TOKEN")),
+            recap_jours_min,
+            recap_jours_min_annee,
         })
     }
 
@@ -117,6 +137,8 @@ mod tests {
         assert_eq!(c.fuseau, "Europe/Paris");
         assert_eq!(c.conservation_mois, 13);
         assert_eq!(c.battement, Duration::from_secs(30));
+        assert!(c.estompe.is_none());
+        assert_eq!((c.recap_jours_min, c.recap_jours_min_annee), (3, 10));
     }
 
     #[test]
@@ -139,6 +161,10 @@ mod tests {
             ("SABLIER_FUSEAU", "Europe/Lisbon"),
             ("SABLIER_CONSERVATION_MOIS", "6"),
             ("SABLIER_BATTEMENT_SECONDES", "60"),
+            ("SABLIER_ESTOMPE_URL", "http://estompe-api:8080/"),
+            ("SABLIER_ESTOMPE_TOKEN", "jeton"),
+            ("SABLIER_RECAP_JOURS_MIN", "5"),
+            ("SABLIER_RECAP_JOURS_MIN_ANNEE", "20"),
         ])
         .unwrap();
         assert_eq!(c.port, 9000);
@@ -156,6 +182,11 @@ mod tests {
         assert_eq!(c.fuseau, "Europe/Lisbon");
         assert_eq!(c.conservation_mois, 6);
         assert_eq!(c.battement, Duration::from_secs(60));
+        assert_eq!(
+            c.estompe,
+            Some(("http://estompe-api:8080".into(), "jeton".into()))
+        );
+        assert_eq!((c.recap_jours_min, c.recap_jours_min_annee), (5, 20));
     }
 
     #[test]
@@ -169,6 +200,16 @@ mod tests {
     }
 
     #[test]
+    fn estompe_sans_jeton_ignore() {
+        let c = charge(&[
+            ("DATABASE_URL", "postgres://x"),
+            ("SABLIER_ESTOMPE_URL", "http://estompe-api:8080"),
+        ])
+        .unwrap();
+        assert!(c.estompe.is_none());
+    }
+
+    #[test]
     fn erreurs() {
         let base = ("DATABASE_URL", "postgres://x");
         for faux in [
@@ -178,6 +219,8 @@ mod tests {
             ("SABLIER_BATTEMENT_SECONDES", "0"),
             ("SABLIER_BATTEMENT_SECONDES", "x"),
             ("SABLIER_BATTEMENT_SECONDES", "86400"),
+            ("SABLIER_RECAP_JOURS_MIN", "0"),
+            ("SABLIER_RECAP_JOURS_MIN_ANNEE", "x"),
         ] {
             assert!(
                 charge(&[base, faux]).unwrap_err().contains(faux.0),

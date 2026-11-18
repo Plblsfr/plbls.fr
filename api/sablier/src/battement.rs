@@ -10,6 +10,7 @@ use crate::{
     etat::AppState,
     garde::Personne,
     http::{bd, invalide, sans_contenu},
+    trophees,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -145,6 +146,7 @@ pub async fn enregistrer(
         secondes,
     )
     .await?;
+    trophees::marquer(&mut *tx, sub).await?;
     tx.commit().await?;
     Ok(secondes)
 }

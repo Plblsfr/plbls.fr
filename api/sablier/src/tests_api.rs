@@ -440,7 +440,7 @@ async fn sante_disponibilite_et_migrations() {
             .unwrap();
     let attendues: Vec<i64> = crate::MIGRATIONS.iter().map(|m| m.version).collect();
     assert_eq!(versions, attendues);
-    assert_eq!(attendues, [1, 2]);
+    assert_eq!(attendues, [1, 2, 3]);
     crate::MIGRATIONS.run(e.state.pool()).await.unwrap();
     e.state.pool().close().await;
     let r = e.appel(None, "GET", "/readyz", None).await;

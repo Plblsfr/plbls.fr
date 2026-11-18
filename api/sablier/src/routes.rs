@@ -3,7 +3,7 @@ use axum::{
     http::Method,
     middleware::{from_fn_with_state, map_response},
     response::Response,
-    routing::{MethodRouter, get, post},
+    routing::{MethodRouter, get, patch, post, put},
 };
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
     droits::Droit,
     etat::AppState,
     garde::{self, Garde},
-    interne, utilisation,
+    interne, partage, recaps, series, trophees, utilisation,
 };
 
 pub struct Route {
@@ -73,7 +73,7 @@ pub fn table() -> Vec<Entree> {
             Method::GET,
             "/usage",
             Garde::Droit(Droit::Acces),
-            get(utilisation::lire),
+            get(utilisation::voir),
         ),
         entree(
             Method::GET,
@@ -92,6 +92,84 @@ pub fn table() -> Vec<Entree> {
             "/messaging",
             Garde::Droit(Droit::Acces),
             get(messagerie::voir),
+        ),
+        entree(
+            Method::GET,
+            "/trophies",
+            Garde::Droit(Droit::Acces),
+            get(trophees::voir),
+        ),
+        entree(
+            Method::GET,
+            "/streaks",
+            Garde::Droit(Droit::Acces),
+            get(series::voir),
+        ),
+        entree(
+            Method::GET,
+            "/unseen",
+            Garde::Droit(Droit::Acces),
+            get(trophees::voir_non_vus),
+        ),
+        entree(
+            Method::POST,
+            "/seen",
+            Garde::Droit(Droit::Acces),
+            post(trophees::marquer_vus),
+        ),
+        entree(
+            Method::GET,
+            "/recaps",
+            Garde::Droit(Droit::Acces),
+            get(recaps::voir_liste),
+        ),
+        entree(
+            Method::GET,
+            "/recaps/{id}",
+            Garde::Droit(Droit::Acces),
+            get(recaps::voir),
+        ),
+        entree(
+            Method::GET,
+            "/sharing",
+            Garde::Droit(Droit::Acces),
+            get(partage::voir),
+        ),
+        entree(
+            Method::PUT,
+            "/sharing",
+            Garde::Droit(Droit::Acces),
+            put(partage::modifier),
+        ),
+        entree(
+            Method::GET,
+            "/profiles/{sub}",
+            Garde::Droit(Droit::Acces),
+            get(partage::voir_profil),
+        ),
+        entree(
+            Method::GET,
+            "/admin/trophies",
+            Garde::Droit(Droit::Admin),
+            get(trophees::admin_lister),
+        ),
+        entree(
+            Method::POST,
+            "/admin/trophies",
+            Garde::Droit(Droit::Admin),
+            post(trophees::admin_creer),
+        ),
+        entree(
+            Method::PATCH,
+            "/admin/trophies/{id}",
+            Garde::Droit(Droit::Admin),
+            patch(trophees::admin_modifier),
+        ),
+        entree(
+            Method::GET,
+            "/admin/catalogue",
+            Garde::Droit(Droit::Admin),
+            get(trophees::admin_catalogue),
         ),
     ]
 }

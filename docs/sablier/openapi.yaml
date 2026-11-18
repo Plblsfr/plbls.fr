@@ -3,7 +3,8 @@ info:
   title: Sablier
   version: 0.1.0
   description: |
-    Service de statistiques de plbls.fr : temps d'utilisation de l'app, statistiques d'Entracte, de Sillon et de la messagerie.
+    Service de statistiques de plbls.fr : temps d'utilisation de l'app, statistiques d'Entracte, de Sillon et de la messagerie,
+    trophées, séries de jours, récaps et partage sur le profil.
     Ce document suit le code : chaque route de `api/sablier/src/routes.rs` y figure, et rien d'autre (vérifié par un test).
 
     Authentification : cookie de session du gateway (`__Secure-plbls_sid`) ou `Authorization: Bearer` (apps natives),
@@ -170,6 +171,231 @@ paths:
       responses:
         "200": { description: "`{period, from, to, total, private, by_channel: [{server, channel, messages}], top_channel: {server, channel, messages}|null, busiest_day: {day, messages}|null, reactions_given, reactions_received, top_emoji: {emoji, count}|null, files, voice_seconds, private_voice_seconds, longest_call, top_voice_channel: {server, channel, seconds}|null, screen_share_seconds}`" }
         "400": { description: "`invalid` : période ou date illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /trophies:
+    get:
+      summary: "Ses trophées débloqués, en cours, et le nombre de trophées cachés restants (`sablier:access`)"
+      description: |
+        Seuls les trophées actifs sont servis, et seulement ceux dont le domaine est accessible (un trophée sur une stat d'Entracte
+        demande `entracte:access`, de Sillon `sillon:access`). `unlocked` : palier atteint (`tier` sur `tiers`), date du dernier palier
+        (`unlocked_at`, jour où le seuil a été atteint d'après les agrégats), `seen`, `shared`, et `progress` s'il reste un palier.
+        `in_progress` : progression vers le palier suivant (`tier` : palier déjà atteint, 0 si aucun) ; un trophée à plusieurs paliers
+        partiellement atteint figure dans les deux listes. `value` porte sur la période du trophée (cumul, mois en cours…) ; pour une
+        série de jours, c'est la série en cours. `unit` : `count`, `seconds` ou `days`. Un trophée caché non débloqué ne figure dans
+        aucune liste : il n'est compté que dans `hidden_remaining`. Les déblocages de la personne sont mis à jour avant la réponse.
+      responses:
+        "200": { description: "`{unlocked: [{id, key, name, description, icon, hidden, tier, tiers, unlocked_at, seen, shared, progress?: {value, next_threshold, unit}}], in_progress: [{id, key, name, description, icon, tier, tiers, value, next_threshold, unit}], hidden_remaining}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /streaks:
+    get:
+      summary: "Ses séries de jours, en cours et record, globale et par domaine (`sablier:access`)"
+      description: |
+        Une journée (fuseau `SABLIER_FUSEAU`) compte s'il y a une action réelle : lecture Entracte, écoute Sillon comptée, message ou
+        vocal ; le temps d'utilisation seul ne compte pas. `current` : jours d'affilée jusqu'à aujourd'hui ou hier (la série n'est pas
+        cassée tant que la journée en cours n'est pas finie) ; `best` : record. `entracte` et `sillon` valent `null` sans
+        `entracte:access` ou `sillon:access`.
+      responses:
+        "200": { description: "`{global: {current, best}, entracte: {current, best}|null, sillon: {current, best}|null, messaging: {current, best}}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /unseen:
+    get:
+      summary: "Nombre de trophées et de récaps pas encore vus, pour la pastille (`sablier:access`)"
+      description: "`trophies` : trophées servis par `GET /trophies` dont un palier n'a pas été vu ; `recaps` : récaps non vus."
+      responses:
+        "200": { description: "`{trophies, recaps}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /seen:
+    post:
+      summary: "Marquer des trophées et des récaps comme vus (`sablier:access`)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                trophies:
+                  description: "identifiants de trophées, ou `all`"
+                  oneOf: [{ type: array, items: { type: integer } }, { type: string, enum: [all] }]
+                recaps:
+                  description: "identifiants de récaps, ou `all`"
+                  oneOf: [{ type: array, items: { type: integer } }, { type: string, enum: [all] }]
+      responses:
+        "204": { description: "marqués ; un identifiant inconnu ou d'une autre personne est ignoré" }
+        "400": { description: "`invalid` : corps illisible" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /recaps:
+    get:
+      summary: "Liste de ses récaps, du plus récent au plus ancien (`sablier:access`)"
+      description: "`kind` : `month` ou `year` ; `period` : `AAAA-MM` ou `AAAA`. Une période trop pauvre en activité n'a pas de récap."
+      responses:
+        "200": { description: "`[{id, kind, period, created_at, seen}]`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /recaps/{id}:
+    get:
+      summary: "Contenu figé d'un de ses récaps (`sablier:access`)"
+      description: |
+        Le contenu est celui enregistré à la création : il ne change plus. `usage`, `entracte`, `sillon` et `messaging` ont la forme de
+        `GET /usage`, `GET /entracte`, `GET /sillon` et `GET /messaging` sur la période ; `entracte` et `sillon` sont absents si la
+        personne n'avait pas l'accès au service à la création. `highlights` : records non nuls, sans texte, `kind` parmi `longest_day`,
+        `biggest_day`, `longest_session`, `episodes_in_a_row`, `busiest_day`, `top_channel`, `top_emoji`, `longest_call`,
+        `top_voice_channel`, avec `value` et selon le cas `day`, `server` et `channel`, ou `emoji`. `trophies` : paliers débloqués
+        pendant la période. `streak` : plus longue série de jours de la période, par domaine accessible.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "`{id, kind, period, from, to, usage: {…}, entracte?: {…}, sillon?: {…}, messaging: {…}, highlights: [{kind, value, …}], trophies: [{name, description, icon, tier, unlocked_at}], streak: {global, entracte?, sillon?, messaging}}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "404": { description: "`not_found` : récap inconnu ou d'une autre personne" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /sharing:
+    get:
+      summary: "Ses réglages de partage, stat par stat et trophée par trophée (`sablier:access`)"
+      description: |
+        Tout est privé par défaut. `stats` : stats partageables du catalogue, pour les domaines accessibles à la personne ; `trophies` :
+        ses trophées débloqués et actifs.
+      responses:
+        "200": { description: "`{stats: [{key, label, domain, shared}], trophies: [{id, name, icon, shared}]}`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    put:
+      summary: "Modifier ses réglages de partage (`sablier:access`)"
+      description: "Modification partielle : seules les clés envoyées changent. On ne partage qu'un trophée qu'on a débloqué."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                stats: { type: object, additionalProperties: { type: boolean }, description: "clé de stat → partagée" }
+                trophies: { type: object, additionalProperties: { type: boolean }, description: "identifiant de trophée → partagé" }
+      responses:
+        "200": { description: "réglages à jour, même forme que `GET /sharing`" }
+        "400": { description: "`invalid` : corps illisible, stat inconnue ou non partageable, trophée non débloqué ; rien n'est modifié" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { description: "`forbidden`, ou `bad_origin` : requête avec cookie depuis une origine non autorisée" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /profiles/{sub}:
+    get:
+      summary: "Stats et trophées publics d'une personne, pour son profil (`sablier:access`)"
+      description: |
+        Seule route `sablier:access` qui vise une autre personne ; elle ne sert que ce que cette personne a partagé. `month` : mois en
+        cours ; `total` : depuis le premier jour ; les stats de valeur nulle sont omises. `first_day` : seulement si
+        `usage.first_day` est partagée. Une stat ou un trophée d'Entracte ou de Sillon n'est servi que si le lecteur a
+        `entracte:access` ou `sillon:access`. Avant de répondre, Sablier demande à Estompe, de serveur à serveur, si le lecteur peut
+        ouvrir le profil de la cible ; sans réponse positive (refus, Estompe injoignable ou non configuré), la réponse est celle d'un
+        profil sans rien de public. Lire son propre profil ne demande pas cet appel.
+      parameters:
+        - { name: sub, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "`{month: [{key, label, domain, unit, value}], total: [{key, label, domain, unit, value}], first_day?: date, trophies: [{name, description, icon, tier, unlocked_at}]}` ; listes vides sans rien de public" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/trophies:
+    get:
+      summary: "Tous les trophées, cachés et inactifs compris (`sablier:admin`)"
+      description: "`kind` : `tiers` (stat, période, seuils) ou `exploit` (exploit codé, paramètre) ; `unlocked_by` : nombre de personnes l'ayant débloqué."
+      responses:
+        "200": { description: "`[{id, key, name, description, icon, hidden, active, kind, stat, period, thresholds, exploit, parameter, order, unlocked_by}]`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+    post:
+      summary: "Créer un trophée (`sablier:admin`)"
+      description: |
+        Le trophée est actif sauf `active: false`. Actif, il est aussitôt recalculé sur l'historique de tout le monde, dans la requête :
+        il est débloqué, à la date où le seuil a été atteint, pour les personnes qui l'atteignent déjà.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [key, name, description, icon, kind]
+              properties:
+                key: { type: string, pattern: "^[a-z0-9_-]{1,60}$", description: "clé stable, unique" }
+                name: { type: string, minLength: 1, maxLength: 60 }
+                description: { type: string, minLength: 1, maxLength: 200 }
+                icon: { type: string, pattern: "^[a-z0-9-]{1,40}$", description: "nom d'icône du front" }
+                hidden: { type: boolean, default: false }
+                active: { type: boolean, default: true }
+                kind: { type: string, enum: [tiers, exploit] }
+                stat: { type: string, description: "`tiers` : clé d'une stat à paliers de `GET /admin/catalogue`" }
+                period: { type: string, enum: [day, week, month, all], description: "`tiers` : grain sur lequel le seuil doit être atteint" }
+                thresholds: { type: array, minItems: 1, maxItems: 6, items: { type: integer, minimum: 1 }, description: "`tiers` : seuils strictement croissants" }
+                exploit: { type: string, description: "`exploit` : clé d'un exploit de `GET /admin/catalogue`" }
+                parameter: { type: integer, minimum: 1, description: "`exploit` : paramètre, par défaut celui de l'exploit ; refusé pour un exploit sans paramètre" }
+                order: { type: integer, description: "rang d'affichage ; par défaut à la suite" }
+      responses:
+        "201": { description: "trophée créé, même forme que dans `GET /admin/trophies`" }
+        "400": { description: "`invalid` : champ manquant, hors limites, stat hors catalogue, exploit hors registre" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { description: "`forbidden`, ou `bad_origin` : requête avec cookie depuis une origine non autorisée" }
+        "409": { description: "`conflict` : `key` déjà utilisée" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/trophies/{id}:
+    patch:
+      summary: "Modifier, activer ou désactiver un trophée (`sablier:admin`)"
+      description: |
+        Mêmes champs que la création, tous facultatifs ; `key` et `kind` ne se modifient pas. Un trophée débloqué le reste : un seuil
+        relevé ne retire rien, un seuil abaissé débloque aussitôt les personnes dont l'historique l'atteint, un trophée désactivé n'est
+        plus servi et revient avec ses déblocages à la réactivation. Actif après la modification, il est recalculé sur l'historique de
+        tout le monde, dans la requête. Il n'y a pas de suppression.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, description: "champs de `POST /admin/trophies` à modifier" }
+      responses:
+        "200": { description: "trophée modifié, même forme que dans `GET /admin/trophies`" }
+        "400": { description: "`invalid`" }
+        "401": { $ref: "#/components/responses/401" }
+        "403": { description: "`forbidden`, ou `bad_origin` : requête avec cookie depuis une origine non autorisée" }
+        "404": { description: "`not_found`" }
+        "502": { $ref: "#/components/responses/502" }
+        "503": { $ref: "#/components/responses/503" }
+  /admin/catalogue:
+    get:
+      summary: "Stats, exploits codés et périodes utilisables par un trophée (`sablier:admin`)"
+      description: |
+        `stats` : catalogue fermé ; `tiers` dit si la stat peut porter un trophée à paliers, `shareable` si elle peut paraître sur un
+        profil ; `domain` : `usage`, `entracte`, `sillon`, `messaging` ; `unit` : `count`, `seconds`, `days`, `date`.
+        `exploits` : registre fermé des conditions codées, avec leur paramètre par défaut (`null` : pas de paramètre).
+      responses:
+        "200": { description: "`{stats: [{key, label, domain, unit, shareable, tiers}], exploits: [{key, label, condition, domain, unit, default_parameter}], periods: [day, week, month, all]}`" }
         "401": { $ref: "#/components/responses/401" }
         "403": { $ref: "#/components/responses/403" }
         "502": { $ref: "#/components/responses/502" }

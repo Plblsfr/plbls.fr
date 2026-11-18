@@ -2,18 +2,25 @@
 
 pub mod agregats;
 pub mod battement;
+pub mod catalogue;
 pub mod config;
 pub mod domaines;
 pub mod droits;
+pub mod effacement;
 pub mod etat;
+pub mod exploits;
 pub mod file;
 pub mod garde;
 pub mod http;
 pub mod identite;
 pub mod interne;
+pub mod partage;
 pub mod periode;
 pub mod purge;
+pub mod recaps;
 pub mod routes;
+pub mod series;
+pub mod trophees;
 pub mod utilisation;
 
 #[cfg(test)]

@@ -2,8 +2,8 @@
 
 Service de statistiques de plbls.fr, à part d'Estompe, d'Entracte et de Sillon : il reçoit leurs évènements par une file, compte le temps
 d'utilisation de l'app et garde des agrégats par jour. Les statistiques viennent par lots ; ce document décrit ce qui existe aujourd'hui :
-le socle du service, la file d'évènements (format, émission, consommation, stockage, purge), le temps d'utilisation et les statistiques
-d'Entracte, de Sillon et de la messagerie.
+le socle du service, la file d'évènements (format, émission, consommation, stockage, purge), le temps d'utilisation, les statistiques
+d'Entracte, de Sillon et de la messagerie, les trophées, les séries de jours, les récaps et le partage sur le profil.
 
 | Où | Quoi |
 |---|---|
@@ -18,8 +18,8 @@ Déclarées à aegis par manifeste (application `sablier`, renvoyé toutes les 1
 
 | Permission | Ouvre |
 |---|---|
-| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie) |
-| `sablier:admin` | administration de Sablier (aucune route aujourd'hui) |
+| `sablier:access` | ses statistiques (temps d'utilisation, Entracte, Sillon, messagerie), ses trophées, ses séries, ses récaps, ses réglages de partage, et les stats et trophées publics d'une autre personne (`GET /profiles/{sub}`) |
+| `sablier:admin` | configuration des trophées (`/admin/trophies`, `/admin/catalogue`) |
 
 Chaque route relève d'une permission ou d'une exception motivée (santé, disponibilité, `GET /me`, `POST /heartbeat`) : la table des
 routes l'impose (`api/sablier/src/routes.rs`) et un test parcourt toutes les routes (401 sans session ou avec une session invalide, 403
@@ -99,6 +99,14 @@ démarre sans consommer ; Redis en panne : nouvel essai toutes les 5 s, battemen
 | `agregats_jour` | une valeur par `(sub, jour, stat, cle)` ; tous les domaines y écrivent |
 | `battements` | dernier battement compté de chaque personne |
 | `sessions_entracte` | session Entracte en cours de chaque personne : jour et instant de début, dernier évènement, secondes et épisodes cumulés |
+| `trophees` | catalogue des trophées : clé stable, nom, description, icône, caché, actif, genre (`paliers` ou `exploit`), stat, période et seuils, ou exploit et paramètre, ordre |
+| `deblocages` | un palier débloqué par personne et par trophée : date (jour où le seuil a été atteint), `vu_le` |
+| `a_evaluer` | personnes dont les trophées sont à réévaluer |
+| `recaps` | récaps figés : personne, genre (`mois`, `annee`), période (`2026-10`, `2026`), contenu JSON, `vu_le` |
+| `partages_stats`, `partages_trophees` | ce que chaque personne a rendu public (une ligne = partagé) |
+
+Toute table qui porte des données d'une personne a une colonne `sub` et figure dans `effacement::tables_personnelles()` (vérifié par un
+test sur le schéma) : effacer ou exporter une personne se fait table par table, par `WHERE sub = …`.
 
 Le jour d'un instant est celui du fuseau `SABLIER_FUSEAU` (`Europe/Paris` par défaut, vérifié au démarrage auprès de PostgreSQL), y
 compris les jours de changement d'heure, qui durent 23 ou 25 heures. Les évènements bruts sont purgés une fois par jour (et au démarrage)
@@ -195,6 +203,125 @@ préféré, temps en partage d'écran.
   de l'affichage dans ce que la personne peut voir. Un salon supprimé ou devenu inaccessible s'affiche « salon supprimé » et garde ses
   compteurs : Sablier ne purge rien quand un salon disparaît.
 
+## Trophées
+
+Le catalogue des trophées est en base (`trophees`), configurable par les routes `sablier:admin`. Le jeu de départ (32 trophées) est
+inséré par la migration `0003`. Un trophée est de l'un de deux genres :
+
+- **paliers** (`kind: tiers`) : une stat du catalogue, une période (`day`, `week`, `month`, `all`) et 1 à 6 seuils strictement
+  croissants. Sur `all`, le seuil porte sur le cumul depuis le premier jour ; sur `day`, `week` ou `month`, le palier se débloque dès
+  qu'une période de ce grain atteint le seuil (« Habitué » : 10 jours actifs dans un même mois). Un trophée de série de jours est un
+  trophée à paliers dont la stat est une série (`streak.*`) : le seuil porte sur le nombre de jours d'affilée.
+- **exploit** (`kind: exploit`) : une condition codée du registre (`exploits.rs`), que l'admin nomme, active et, si elle en prend un,
+  règle par un paramètre. Un exploit n'a qu'un palier.
+
+Un trophée peut être **caché** : tant qu'il n'est pas débloqué, il n'apparaît dans aucune réponse hors administration, ni par son nom
+ni par sa condition ; il n'est que compté (`hidden_remaining`).
+
+**Catalogue de stats** (`catalogue.rs`, liste fermée, servie par `GET /admin/catalogue`). Durées en secondes. « Partageable » : peut
+paraître sur le profil ; les records datés, les titres abandonnés et les intros passées ne le peuvent pas.
+
+| Clé | Stat | Calcul sur une plage | Partageable |
+|---|---|---|---|
+| `usage.active_seconds` | temps actif | somme d'`utilisation.secondes` | oui |
+| `usage.longest_day` | journée la plus longue | plus grande somme d'un jour | non |
+| `usage.active_days` | jours actifs | jours avec du temps actif | oui |
+| `usage.first_day` | premier jour d'activité (date ; pas de palier) | premier jour d'un agrégat | oui |
+| `entracte.seconds`, `entracte.movies_watched`, `entracte.episodes_watched`, `entracte.series_completed` | temps regardé, films vus, épisodes vus, séries terminées | sommes | oui |
+| `entracte.longest_session`, `entracte.biggest_day` | plus longue session, plus grosse journée | maximum | non |
+| `entracte.episodes_in_a_row` | épisodes enchaînés | maximum | oui |
+| `entracte.abandoned`, `entracte.intros_skipped` | titres abandonnés, intros passées | sommes | non |
+| `entracte.cinema_seconds`, `entracte.cinema_sessions` | temps en salon cinéma, séances à plusieurs | sommes | oui |
+| `sillon.seconds`, `sillon.tracks_played` | temps d'écoute, titres écoutés | sommes | oui |
+| `sillon.distinct_tracks` | titres différents | pistes distinctes | oui |
+| `messaging.messages`, `messaging.reactions_given`, `messaging.reactions_received`, `messaging.files`, `messaging.voice_seconds`, `messaging.screen_share_seconds` | messages envoyés, réactions données et reçues, fichiers envoyés, temps en vocal, temps en partage d'écran | sommes | oui |
+| `messaging.busiest_day`, `messaging.longest_call` | journée la plus bavarde, plus long appel | maximum | non |
+| `streak.global`, `streak.entracte`, `streak.sillon`, `streak.messaging` | séries de jours | plus longue suite de jours d'affilée | oui |
+
+**Exploits codés** (clé : condition, paramètre par défaut) : `premier_jour` (le premier jour d'activité existe ; daté de ce jour),
+`episodes_enchaines` (épisodes vus dans une même session, 5), `longue_session` (secondes d'une session Entracte, 14 400),
+`journee_entracte` (secondes regardées sur une journée, 28 800), `journee_bavarde` (messages sur une journée, 200), `long_appel`
+(secondes d'un appel, 10 800), `longue_journee` (secondes de temps actif sur une journée, 21 600), `meme_emoji` (un même emoji donné
+en réaction, 500 fois), `salon_habite` (messages dans un même salon, privés exclus, 1 000), `mois_parfait` (du temps actif tous les
+jours d'un mois ; daté du dernier jour du mois).
+
+**Déblocage.** Sablier calcule les déblocages sur les agrégats (`trophees::evaluer`, idempotent) et les enregistre dans `deblocages`,
+un par palier. La date d'un déblocage est le jour où le seuil a été atteint d'après les agrégats (cumul des jours dans l'ordre), pas le
+jour du calcul : un trophée débloqué par un historique importé porte la date de l'historique. Un palier débloqué garde sa date, même
+si des évènements plus anciens arrivent ensuite.
+
+L'évaluation ne ralentit pas la consommation : chaque évènement traité et chaque battement compté marque la personne dans `a_evaluer`
+(dans la même transaction) ; une tâche de fond évalue les personnes marquées toutes les 10 secondes, et `GET /trophies` et
+`GET /unseen` évaluent d'abord la personne lue si elle est marquée.
+
+**Règles de modification.** L'évaluation n'enlève jamais un déblocage.
+
+- Un seuil relevé ne retire rien : la personne garde son palier.
+- Un trophée créé, modifié ou réactivé est recalculé sur l'historique de tout le monde dans la requête d'administration : un nouveau
+  trophée ou un seuil abaissé se débloque aussitôt pour les personnes qui l'atteignent déjà, à la date où elles l'ont atteint. Le
+  recalcul parcourt toutes les personnes ayant des agrégats ; s'il échoue, la tâche de fond le termine.
+- Un trophée désactivé n'est plus évalué ni servi ; ses déblocages restent en base et reviennent, avec leur date, leur état « vu » et
+  leur partage, quand il est réactivé. Il n'y a pas de suppression.
+- La clé (`key`) et le genre (`kind`) d'un trophée ne se modifient pas.
+
+**Lecture.** `GET /trophies` rend les trophées débloqués (palier, date du dernier palier, vu, partagé), les trophées en cours
+(progression vers le palier suivant ; pour une série, la série en cours) et le nombre de trophées cachés restants. Un trophée dont la
+stat ou l'exploit relève d'Entracte ou de Sillon n'est servi (et compté) qu'avec `entracte:access` ou `sillon:access`, comme les
+statistiques du domaine. `GET /unseen` donne le nombre de trophées et de récaps pas encore vus, `POST /seen` les marque vus.
+
+**Icônes.** `icon` est un nom d'icône du front d'Estompe (`web/estompe/src/components/Icon.svelte`) ; le serveur n'en vérifie que la
+forme (`[a-z0-9-]{1,40}`).
+
+## Séries de jours
+
+Une journée (fuseau `SABLIER_FUSEAU`) compte s'il y a au moins une action réelle : `entracte.secondes` pour Entracte, `sillon.ecoutes`
+(écoutes comptées) pour Sillon, `messagerie.messages` ou `messagerie.vocal_secondes` pour la messagerie ; la série globale compte une
+journée dès qu'un des trois domaines la compte. Le temps d'utilisation seul ne compte jamais.
+
+`GET /streaks` rend pour la série globale et pour chaque domaine la série en cours et le record. La série en cours est le nombre de
+jours d'affilée jusqu'à aujourd'hui, ou jusqu'à hier : elle n'est cassée que lorsqu'une journée entière s'est écoulée sans action.
+`entracte` et `sillon` valent `null` sans l'accès au service.
+
+## Récaps
+
+Une tâche de fond (au démarrage, puis toutes les heures) crée le récap du mois précédent et celui de l'année précédente pour chaque
+personne qui a assez d'activité sur la période et pas encore de récap : le récap du mois apparaît donc le 1er du mois suivant, celui de
+l'année le 1er janvier. Au premier lancement, seuls le mois précédent et l'année précédente sont créés, pas tout l'historique.
+
+- **Figé.** Le contenu est calculé une fois et enregistré tel quel (`recaps.contenu`) : des évènements en retard, un import ou une
+  modification des trophées ne le changent plus.
+- **Seuil.** Pas de récap sous `SABLIER_RECAP_JOURS_MIN` jours avec une action réelle sur le mois (3 par défaut), ou
+  `SABLIER_RECAP_JOURS_MIN_ANNEE` sur l'année (10). Une seule requête par passe cherche les personnes à servir : une période sous le
+  seuil ne coûte rien de plus. Tant que le mois suivant (ou l'année suivante) n'est pas fini, une personne qui passe le seuil grâce à
+  des évènements arrivés en retard reçoit son récap à la passe suivante.
+- **Domaines.** Le récap contient les totaux d'utilisation et de messagerie, et ceux d'Entracte et de Sillon seulement si la personne
+  a `entracte:access` et `sillon:access` au moment de la création (demandés à aegis par `POST /v1/check` avec son seul `sub`). aegis
+  injoignable ou non configuré : la création est reportée à la passe suivante plutôt que de figer un récap amputé.
+- **Contenu.** Totaux (formes de `GET /usage`, `/entracte`, `/sillon`, `/messaging` sur la période), faits marquants (`highlights` :
+  records non nuls sous forme `{kind, value, …}`, sans texte, le front rédige), trophées débloqués pendant la période et plus longue
+  série de jours de la période.
+
+`GET /recaps` liste ses récaps, `GET /recaps/{id}` rend le contenu figé d'un des siens.
+
+## Partage et profil
+
+Tout est privé par défaut. `GET /sharing` rend les réglages de la personne, stat par stat (stats partageables du catalogue, pour les
+domaines auxquels elle a accès) et trophée par trophée (trophées débloqués et actifs) ; `PUT /sharing` les modifie (envoi partiel ; une
+stat non partageable ou un trophée non débloqué est refusé, et rien n'est modifié).
+
+`GET /profiles/{sub}` est la seule route `sablier:access` qui vise une autre personne. Elle ne sert que ce que la cible a partagé :
+ses stats sur le mois en cours et au total (valeurs nulles omises), son premier jour si `usage.first_day` est partagée, ses trophées
+partagés. Trois contrôles s'appliquent :
+
+1. une stat ou un trophée non partagé n'est jamais servi ;
+2. une stat ou un trophée d'Entracte ou de Sillon n'est servi que si le **lecteur** a `entracte:access` ou `sillon:access` ;
+3. le lecteur doit pouvoir ouvrir le profil de la cible dans Estompe : Sablier le demande de serveur à serveur par
+   `GET {SABLIER_ESTOMPE_URL}/internal/profile-visible?viewer=<sub>&target=<sub>` avec `Authorization: Bearer <SABLIER_ESTOMPE_TOKEN>`,
+   réponse attendue `200 {"visible": true}` (3 secondes au plus). Toute autre réponse, Estompe injoignable ou variables non
+   renseignées : la route répond comme s'il n'y avait rien de public (`200`, listes vides), jamais les données.
+
+Lire son propre profil ne demande pas l'appel à Estompe et rend ce que les autres verraient.
+
 ## Configuration
 
 Valeurs non secrètes dans [`plbls.env`](../../plbls.env), secrets dans Vault ([`deploy/README.md`](../../deploy/README.md)).
@@ -206,6 +333,8 @@ Valeurs non secrètes dans [`plbls.env`](../../plbls.env), secrets dans Vault ([
 | `SABLIER_FUSEAU` | fuseau des journées (`Europe/Paris`) |
 | `SABLIER_CONSERVATION_MOIS` | conservation des évènements bruts (13) |
 | `SABLIER_BATTEMENT_SECONDES` | intervalle et plafond d'un battement (30, entre 5 et 3600) |
+| `SABLIER_RECAP_JOURS_MIN`, `SABLIER_RECAP_JOURS_MIN_ANNEE` | jours avec une action réelle en dessous desquels il n'y a pas de récap du mois (3) ou de l'année (10) |
+| `SABLIER_ESTOMPE_URL`, `SABLIER_ESTOMPE_TOKEN` | adresse interne de l'API d'Estompe et jeton de service pour la visibilité des profils ; sans les deux, `GET /profiles/{sub}` ne sert que son propre profil |
 | `SABLIER_REDIS_URL`, `SABLIER_REDIS_PASSWORD`, `SABLIER_FILE_MAX` | file d'évènements, communes à Sablier et aux services qui émettent |
 | `AEGIS_TOKEN_SABLIER` | jeton de l'application `sablier` chez aegis (Vault `secret/sablier`) |
 | `SABLIER_PUBLIC_URL` | adresse publique de l'API, lue par le front d'Estompe |
@@ -223,7 +352,9 @@ Valeurs non secrètes dans [`plbls.env`](../../plbls.env), secrets dans Vault ([
    `XREADGROUP`, `XACK`, `XGROUP CREATE` et de connexion) ; rien à faire à la main, le redéploiement de la stack le crée.
 4. aegis : `AEGIS_TOKEN_SABLIER` dans son environnement (même onglet) ; l'application `sablier` y apparaît au premier manifeste. Donner
    `sablier:access` aux comptes voulus.
-5. Reverse proxy : domaine Dokploy `sablier-api.plbls.fr` vers `sablier-api` port 8080 (`SABLIER_PUBLIC_URL`).
+5. Profil public : `SABLIER_ESTOMPE_URL` (adresse interne de l'API d'Estompe) et `SABLIER_ESTOMPE_TOKEN` (secret partagé avec Estompe,
+   qui l'attend sur `GET /internal/profile-visible`).
+6. Reverse proxy : domaine Dokploy `sablier-api.plbls.fr` vers `sablier-api` port 8080 (`SABLIER_PUBLIC_URL`).
 
 ## Développement
 

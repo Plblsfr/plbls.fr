@@ -46,11 +46,11 @@ impl Droit {
         match self {
             Droit::Acces => (
                 "Accès à Sablier",
-                "Voir ses statistiques : temps d'utilisation, répartition par section et par plateforme",
+                "Voir ses statistiques, ses trophées, ses séries de jours et ses récaps, et choisir ce qui paraît sur son profil",
             ),
             Droit::Admin => (
                 "Administrer Sablier",
-                "Voir l'état de la collecte et lancer les imports d'historique",
+                "Configurer les trophées : créer, modifier, activer, désactiver",
             ),
         }
     }
@@ -144,25 +144,35 @@ impl Aegis {
         commun::aegis::envoyer_manifeste(&self.http, &self.url, &self.jeton, &manifeste()).await
     }
 
-    async fn verifier(&self, sub: &str, permission: &str) -> bool {
+    async fn demander(&self, sub: &str, permission: &str) -> Result<bool, Injoignable> {
         let r = self
             .http
             .post(format!("{}/v1/check", self.url))
             .bearer_auth(&self.jeton)
             .json(&json!({ "sub": sub, "permission": permission }))
             .send()
-            .await;
-        match r {
-            Ok(r) if r.status().is_success() => r
-                .json::<Value>()
-                .await
-                .is_ok_and(|v| v["allowed"] == json!(true)),
-            Ok(r) => {
-                tracing::warn!("aegis : /v1/check → HTTP {}", r.status().as_u16());
-                false
-            }
-            Err(_) => false,
+            .await
+            .map_err(|_| Injoignable)?;
+        if !r.status().is_success() {
+            tracing::warn!("aegis : /v1/check → HTTP {}", r.status().as_u16());
+            return Err(Injoignable);
         }
+        let v: Value = r.json().await.map_err(|_| Injoignable)?;
+        Ok(v["allowed"] == json!(true))
+    }
+
+    async fn verifier(&self, sub: &str, permission: &str) -> bool {
+        self.demander(sub, permission).await.unwrap_or(false)
+    }
+
+    pub async fn acces_services(&self, sub: &str) -> Result<Droits, Injoignable> {
+        let (entracte, sillon) =
+            tokio::try_join!(self.demander(sub, ENTRACTE), self.demander(sub, SILLON))?;
+        Ok(Droits {
+            entracte,
+            sillon,
+            ..Droits::default()
+        })
     }
 
     pub async fn droits(&self, id: &Identite) -> Result<Droits, Injoignable> {
