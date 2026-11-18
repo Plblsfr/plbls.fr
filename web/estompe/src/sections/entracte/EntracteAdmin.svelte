@@ -148,7 +148,7 @@
       {:else}
         <ul class="adm-list">
           {#each intros.items as s (s.id)}
-            <li class="adm-item">
+            <li class="adm-item adm-intro">
               <span class="grow adm-body">
                 <strong>{s.title}{s.year ? ` (${s.year})` : ''}</strong>
                 {#each s.seasons as x (x.number)}
@@ -194,6 +194,7 @@
   .adm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--espace-2); }
   .adm-item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--espace-2); padding: var(--espace-2) var(--espace-3); border-radius: var(--r); background: var(--surface); box-shadow: var(--o1); }
   .adm-body { display: flex; flex-direction: column; min-width: 0; }
+  .adm-intro .adm-body { flex-basis: 260px; gap: 2px; }
   .adm-season { display: flex; flex-wrap: wrap; align-items: center; gap: var(--espace-2); }
   .adm-switch { display: flex; align-items: center; gap: 10px; max-width: 560px; cursor: pointer; }
   .adm-switch input { flex: none; width: 18px; height: 18px; accent-color: var(--rose-fonce); }
