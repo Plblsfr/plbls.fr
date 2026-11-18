@@ -119,6 +119,7 @@ Une permission dont le bloc est désactivé n'est pas déclarée.
 | `POST /activate` | activation du compte : vérifie estompe:access elle-même |
 | `POST /voice/webhook` | webhook LiveKit signé, sans compte |
 | `GET /internal/aegis/resources/{type}` | route interne appelée par aegis avec son jeton |
+| `GET /internal/profile-visible` | route interne appelée par Sablier avec son jeton |
 | `* /admin/acces/**` | administration des accès : jugée par aegis (aegis:admin ou rôle Keycloak) |
 
 ## Droits de serveur non plafonnés

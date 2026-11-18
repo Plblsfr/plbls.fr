@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/svelte'
 import { tick } from 'svelte'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as api from '../../lib/api'
 import { filmsApi } from '../../lib/api'
 import { providers, type Adapter, type Handlers } from '../../blocks/regarder-ensemble/providers'
 import { IDLE_MS, type FilmDetail } from './films'
@@ -304,13 +305,14 @@ describe('FilmPlayer : passer l’intro', () => {
   const pistes = (intro: { debut: number; fin: number } | null) => ({ audio: [], subtitles: [], audioN: 0, subN: null, intro })
   async function ouvert(intro: { debut: number; fin: number } | null, t: number) {
     vi.useFakeTimers()
+    const signale = vi.spyOn(api, 'requestAt').mockRejectedValue(new Error('hors ligne'))
     const position = { t }
     const m = monter(position)
     await vi.waitFor(() => expect(m.adapter.load).toHaveBeenCalled())
     m.handlers().onTracks!(pistes(intro))
     const avancer = async (x: number) => { position.t = x; await vi.advanceTimersByTimeAsync(600) }
     await avancer(t)
-    return { ...m, avancer }
+    return { ...m, avancer, signale }
   }
   const bouton = (vue: ReturnType<typeof monter>['vue']) => vue.queryByRole('button', { name: 'Passer l’intro' })
 
@@ -325,22 +327,27 @@ describe('FilmPlayer : passer l’intro', () => {
     expect(bouton(vue)).toBeNull()
   })
 
-  it('un clic saute à la fin de l’intro et le bouton disparaît', async () => {
-    const { vue, adapter } = await ouvert({ debut: 30, fin: 90 }, 45)
+  it('un clic saute à la fin de l’intro, le signale à Entracte et le bouton disparaît', async () => {
+    const { vue, adapter, signale } = await ouvert({ debut: 30, fin: 90 }, 45)
     await fireEvent.click(bouton(vue)!)
     expect(adapter.seek).toHaveBeenLastCalledWith(90)
+    expect(signale.mock.calls).toEqual([[filmsApi.base, 'POST', '/titles/f/intro-skipped']])
     await tick()
     expect(bouton(vue)).toBeNull()
+    await fireEvent.keyDown(document.body, { key: 's' })
+    expect(signale).toHaveBeenCalledTimes(1)
   })
 
   it('la touche S saute l’intro, et ne fait rien hors de l’intro', async () => {
-    const { vue, adapter, avancer } = await ouvert({ debut: 30, fin: 90 }, 10)
+    const { vue, adapter, avancer, signale } = await ouvert({ debut: 30, fin: 90 }, 10)
     await fireEvent.keyDown(document.body, { key: 's' })
     expect(adapter.seek).not.toHaveBeenCalled()
+    expect(signale).not.toHaveBeenCalled()
     await avancer(31)
     expect(bouton(vue)!.getAttribute('aria-keyshortcuts')).toBe('S')
     await fireEvent.keyDown(document.body, { key: 'S' })
     expect(adapter.seek).toHaveBeenLastCalledWith(90)
+    expect(signale).toHaveBeenCalledTimes(1)
   })
 
   it('reste absent sans intro connue, et visible quand les commandes se masquent', async () => {

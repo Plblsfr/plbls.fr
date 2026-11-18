@@ -30,6 +30,7 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+redis.workspace = true
 serde_norway.workspace = true
 tempfile.workspace = true
 testcontainers.workspace = true

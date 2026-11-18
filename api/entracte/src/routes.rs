@@ -11,7 +11,7 @@ use crate::{
     droits::Droit::{Acces, Admin, Demande},
     etat::AppState,
     garde::{self, Garde},
-    interne, intros, lecture, progression, push,
+    interne, intros, lecture, progression, push, sablier,
 };
 
 pub struct Route {
@@ -103,6 +103,12 @@ pub fn table() -> Vec<(Route, MethodRouter<AppState>)> {
             "/titles/{id}/progress",
             Garde::Droit(Acces),
             put(progression::progression),
+        ),
+        r(
+            Method::POST,
+            "/titles/{id}/intro-skipped",
+            Garde::Droit(Acces),
+            post(sablier::intro_passee),
         ),
         r(
             Method::POST,

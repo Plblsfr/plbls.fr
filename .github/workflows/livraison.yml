@@ -5,7 +5,7 @@ name: livraison
 on:
   push:
     branches: [main]
-    tags: ["aegis-v*", "entracte-v*", "sillon-v*", "regie-v*", "security-v*", "ui-v*", "estompe-api-v*"]
+    tags: ["aegis-v*", "entracte-v*", "sillon-v*", "sablier-v*", "regie-v*", "security-v*", "ui-v*", "estompe-api-v*"]
   workflow_dispatch:
 
 permissions:
@@ -66,6 +66,20 @@ jobs:
       context: .
       dockerfile: api/sillon/Dockerfile
       dir: api/sillon
+    secrets: inherit
+
+  image-sablier:
+    needs: changements
+    if: (github.ref == 'refs/heads/main' && needs.changements.outputs.image_sablier == 'true') || startsWith(github.ref, 'refs/tags/sablier-v')
+    permissions:
+      contents: write
+    uses: ./.github/workflows/_image.yml
+    with:
+      component: sablier
+      name: sablier
+      context: .
+      dockerfile: api/sablier/Dockerfile
+      dir: api/sablier
     secrets: inherit
 
   image-regie:

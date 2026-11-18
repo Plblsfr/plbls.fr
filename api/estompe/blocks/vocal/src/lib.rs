@@ -2,9 +2,16 @@
 
 mod livekit;
 
-use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+use std::{
+    collections::HashMap,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 
 use axum::{
+    Extension,
     body::{Body, to_bytes},
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, header},
@@ -18,8 +25,9 @@ use estompe_core::{
     messages::{Conv, EvenementMessage, SYSTEME},
     openapi,
     roles::{self, Access, Perm},
+    sablier::{self, Evenement},
     servers::{self, pool, uuid_valide},
-    state::{AppState, ParticipantsVocal, Vocal, VocalInjoignable},
+    state::{AppState, Horloge, ParticipantsVocal, Vocal, VocalInjoignable},
 };
 use livekit::{Erreur, Lk, Mod, Participant, capacite, salle, salon_de};
 use serde_json::{Map, Value, json};
@@ -37,6 +45,8 @@ mod outils;
 use outils::*;
 mod salons;
 use salons::*;
+mod temps;
+use temps::{Compteur, Present, TRANCHE};
 mod webhook;
 use webhook::*;
 
@@ -90,8 +100,85 @@ impl Vocal for Accroche {
     }
 }
 
+struct Suivi {
+    compteur: tokio::sync::Mutex<Compteur>,
+    horloge: Horloge,
+}
+
+#[derive(Clone)]
+pub struct Presences(Arc<Suivi>);
+
+impl Presences {
+    pub fn nouvelles(horloge: Horloge) -> Self {
+        Presences(Arc::new(Suivi {
+            compteur: tokio::sync::Mutex::default(),
+            horloge,
+        }))
+    }
+
+    pub fn partagees() -> Self {
+        static PARTAGEES: OnceLock<Presences> = OnceLock::new();
+        PARTAGEES
+            .get_or_init(|| Presences::nouvelles(Arc::new(Instant::now)))
+            .clone()
+    }
+
+    pub async fn suivre(
+        &self,
+        pool: &PgPool,
+        partage: Option<(&str, bool)>,
+    ) -> Result<Vec<Evenement>, sqlx::Error> {
+        let mut compteur = self.0.compteur.lock().await;
+        let presents: Vec<Present> = sqlx::query_as::<_, (String, String, String, String, String)>(
+            "SELECT v.channel_id::text, c.server_id::text, c.kind, v.user_id::text, u.keycloak_sub
+             FROM voice_sessions v JOIN channels c ON c.id = v.channel_id JOIN users u ON u.id = v.user_id",
+        )
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|(salon, serveur, kind, id, sub)| Present {
+            salon,
+            serveur,
+            cinema: kind == "cinema",
+            id,
+            sub,
+        })
+        .collect();
+        let t = (self.0.horloge)();
+        let mut sorties = compteur.observer(&presents, t);
+        if let Some((id, actif)) = partage {
+            sorties.extend(compteur.partager(id, actif, t));
+        }
+        sorties.extend(compteur.battre(t));
+        Ok(sorties
+            .into_iter()
+            .map(|(sub, donnees)| Evenement::nouveau(sub, donnees))
+            .collect())
+    }
+
+    async fn emettre(&self, state: &AppState, pool: &PgPool, partage: Option<(&str, bool)>) {
+        match self.suivre(pool, partage).await {
+            Ok(evenements) => sablier::emettre(state, evenements),
+            Err(e) => tracing::warn!("vocal : temps de présence : {e}"),
+        }
+    }
+}
+
 pub fn brancher(state: &AppState) {
     state.definir_vocal(Arc::new(Accroche(state.clone())));
+    if state.emetteur().actif() {
+        let etat = state.clone();
+        tokio::spawn(async move {
+            let presences = Presences::partagees();
+            let mut tic = tokio::time::interval(TRANCHE);
+            loop {
+                tic.tick().await;
+                if let Ok(pool) = etat.pool() {
+                    presences.emettre(&etat, pool, None).await;
+                }
+            }
+        });
+    }
     state.sur_droits_modifies(|s, serveur, membre| async move {
         synchroniser(&s, &serveur, &membre).await;
     });
@@ -113,6 +200,10 @@ fn operation(resume: &str, reponses: &[(&str, &str)], chemin: &str) -> Operation
 }
 
 pub fn routes() -> OpenApiRouter<AppState> {
+    routes_avec(Presences::nouvelles(Arc::new(Instant::now)))
+}
+
+pub fn routes_avec(presences: Presences) -> OpenApiRouter<AppState> {
     let mut webhook_op = operation(
         "Webhook LiveKit (signé), relayé en évènement `voice.state`",
         &[("204", "ok"), ("401", "bad_signature")],
@@ -230,13 +321,16 @@ pub fn routes() -> OpenApiRouter<AppState> {
             ),
         ),
     ];
-    documentees.into_iter().fold(r, |r, (chemin, methode, op)| {
-        openapi::documenter(r, chemin, methode, op)
-    })
+    documentees
+        .into_iter()
+        .fold(r, |r, (chemin, methode, op)| {
+            openapi::documenter(r, chemin, methode, op)
+        })
+        .layer(Extension(presences))
 }
 
 pub fn mount(router: OpenApiRouter<AppState>) -> OpenApiRouter<AppState> {
-    router.merge(routes())
+    router.merge(routes_avec(Presences::partagees()))
 }
 
 #[cfg(test)]

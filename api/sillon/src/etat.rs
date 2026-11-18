@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use commun::emission::Emetteur;
 use sqlx::PgPool;
 use tokio::sync::Mutex as MutexAsync;
 
@@ -24,6 +25,7 @@ pub struct Inner {
     listenbrainz: crate::listenbrainz::Etat,
     decouverte: crate::decouverte::Etat,
     images: crate::images::Distantes,
+    emetteur: Emetteur,
 }
 
 #[derive(Clone)]
@@ -35,6 +37,10 @@ pub fn client_http() -> reqwest::Client {
 
 impl AppState {
     pub fn new(cfg: Config, pool: PgPool) -> Self {
+        Self::avec_emetteur(cfg, pool, Emetteur::inactif())
+    }
+
+    pub fn avec_emetteur(cfg: Config, pool: PgPool, emetteur: Emetteur) -> Self {
         let http = client_http();
         let aegis = cfg
             .aegis
@@ -55,6 +61,7 @@ impl AppState {
             listenbrainz: crate::listenbrainz::Etat::default(),
             decouverte: crate::decouverte::Etat::default(),
             images,
+            emetteur,
         }))
     }
 
@@ -112,6 +119,10 @@ impl AppState {
 
     pub fn images(&self) -> &crate::images::Distantes {
         &self.0.images
+    }
+
+    pub fn emetteur(&self) -> &Emetteur {
+        &self.0.emetteur
     }
 
     pub fn decouverte(&self) -> &crate::decouverte::Etat {

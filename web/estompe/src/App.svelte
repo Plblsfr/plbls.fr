@@ -4,7 +4,8 @@
   import { loadDrafts } from './lib/drafts.svelte'
   import { app } from './lib/store.svelte'
   import { prefs } from './lib/prefs.svelte'
-  import { hrefs } from './lib/route.svelte'
+  import { hrefs, router } from './lib/route.svelte'
+  import { sectionOuverte, sessionOuverte, suivreUtilisation } from './lib/battement'
   import { platform } from './lib/platform'
   import LoginView from './views/LoginView.svelte'
   import ActivateView from './views/ActivateView.svelte'
@@ -21,6 +22,10 @@
   void loadDrafts()
   platform.notifications.listenActions?.((conv) => app.readConv(conv))
 
+  const connecte = $derived(sessionOuverte(app.phase))
+  $effect(() => {
+    if (connecte) return suivreUtilisation(() => sectionOuverte(app.phase, router.current.name))
+  })
   $effect(() => {
     document.documentElement.dataset.density = prefs.density
   })

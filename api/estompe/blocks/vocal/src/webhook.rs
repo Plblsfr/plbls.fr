@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) async fn webhook(
     State(state): State<AppState>,
+    Extension(presences): Extension<Presences>,
     entetes: HeaderMap,
     body: Body,
 ) -> Response {
@@ -46,6 +47,7 @@ pub(super) async fn webhook(
             if let Err(e) = r {
                 return bd(e);
             }
+            presences.emettre(&state, pool, None).await;
             if arrive {
                 prevenir(&state, &sid, cid, &ev.identite, &ev.nom, "a rejoint").await;
             }
@@ -91,6 +93,12 @@ pub(super) async fn webhook(
             }),
         )
         .await;
+        if src == "screen" && uuid_valide(&ev.identite) {
+            let actif = ev.event == "track_published";
+            presences
+                .emettre(&state, pool, Some((&ev.identite, actif)))
+                .await;
+        }
         if ev.event == "track_published" && uuid_valide(&ev.identite) {
             let action = if src == "camera" {
                 "a allumé sa caméra"

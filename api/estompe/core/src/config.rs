@@ -47,6 +47,7 @@ pub struct Config {
     pub entracte_token: String,
     pub sillon_url: String,
     pub sillon_token: String,
+    pub sablier_token: String,
     pub livekit: Livekit,
 }
 
@@ -147,6 +148,7 @@ impl Config {
             entracte_token: get("ENTRACTE_SERVICE_TOKEN"),
             sillon_url: get("SILLON_INTERNE_URL").trim_end_matches('/').to_string(),
             sillon_token: get("SILLON_SERVICE_TOKEN"),
+            sablier_token: get("SABLIER_ESTOMPE_TOKEN"),
             livekit: Livekit {
                 url: get("LIVEKIT_URL"),
                 api_url: env("LIVEKIT_API_URL", "http://livekit:7880"),

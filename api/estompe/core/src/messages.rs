@@ -22,6 +22,7 @@ use crate::{
     http::{decode, write_err, write_json},
     openapi,
     roles::{self, Perm},
+    sablier,
     servers::{
         Params, bd, horodatage, mauvais, non_trouve, param, pool, rfc3339, sans_contenu,
         uuid_valide,

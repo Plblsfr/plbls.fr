@@ -27,7 +27,24 @@ services:
     image: redis:8-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD est obligatoire}"]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD est obligatoire}"
+      - --user
+      - sablier
+      - "on"
+      - ">${SABLIER_REDIS_PASSWORD:?SABLIER_REDIS_PASSWORD est obligatoire}"
+      - "~sablier:*"
+      - resetchannels
+      - "-@all"
+      - "+@connection"
+      - "+xadd"
+      - "+xreadgroup"
+      - "+xack"
+      - "+xgroup|create"
     volumes: [redis-data:/data]
     expose: ["6379"]
     networks: [redis]
@@ -56,7 +73,7 @@ services:
       - ${ENTRACTE_MEDIAS:-/srv/medias}:${ENTRACTE_MEDIAS:-/srv/medias}:ro
       - entracte-transcodage:/tmp/entracte
     expose: ["8080"]
-    networks: [default, postgres-net, medias]
+    networks: [default, postgres-net, medias, redis]
 
   sillon-api:
     image: ghcr.io/plblsfr/sillon:${SILLON_TAG:-latest}
@@ -67,7 +84,15 @@ services:
       - ${SILLON_MEDIAS:-/srv/musique}:${SILLON_MEDIAS:-/srv/musique}:ro
       - sillon-cache:/tmp/sillon
     expose: ["8080"]
-    networks: [default, postgres-net, medias]
+    networks: [default, postgres-net, medias, redis]
+
+  sablier-api:
+    image: ghcr.io/plblsfr/sablier:${SABLIER_TAG:-latest}
+    restart: unless-stopped
+    <<: [*durci, *lecture-seule]
+    env_file: .env
+    expose: ["8080"]
+    networks: [default, postgres-net, redis]
 
   regie-api:
     image: ghcr.io/plblsfr/regie:${REGIE_TAG:-latest}
@@ -92,6 +117,7 @@ services:
       ENTRACTE_PUBLIC_URL: ${ENTRACTE_PUBLIC_URL:-}
       SILLON_PUBLIC_URL: ${SILLON_PUBLIC_URL:-}
       REGIE_PUBLIC_URL: ${REGIE_PUBLIC_URL:-}
+      SABLIER_PUBLIC_URL: ${SABLIER_PUBLIC_URL:-}
     expose: ["8080"]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]

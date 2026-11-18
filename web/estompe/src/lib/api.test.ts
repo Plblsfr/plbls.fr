@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, ApiError, setClientPlatform, setTokenProvider, setUnauthorizedHandler, setUpgradeHandler } from './api'
+import { api, ApiError, fichierAt, nomDeFichier, setClientPlatform, setTokenProvider, setUnauthorizedHandler, setUpgradeHandler } from './api'
 
 const json = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: body === undefined ? {} : { 'Content-Type': 'application/json' } })
@@ -7,6 +7,28 @@ const json = (status: number, body?: unknown) =>
 let fetchMock: ReturnType<typeof vi.fn>
 beforeEach(() => { fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock) })
 afterEach(() => { vi.unstubAllGlobals(); setTokenProvider(null); setUnauthorizedHandler(null); setUpgradeHandler(null); setClientPlatform('') })
+
+describe('fichier', () => {
+  it('lit le nom annoncé par Content-Disposition, sinon le nom par défaut', () => {
+    expect(nomDeFichier('attachment; filename="sablier-export-2026-11-18.json"', 'x.json')).toBe('sablier-export-2026-11-18.json')
+    expect(nomDeFichier("attachment; filename*=UTF-8''r%C3%A9cap.json", 'x.json')).toBe('récap.json')
+    expect(nomDeFichier(null, 'x.json')).toBe('x.json')
+  })
+
+  it('rend le corps en blob avec son nom, session comprise, sans déconnecter en mode discret', async () => {
+    const perdue = vi.fn()
+    setUnauthorizedHandler(perdue)
+    fetchMock.mockResolvedValueOnce(new Response('{"a":1}', { status: 200, headers: { 'Content-Type': 'application/json', 'Content-Disposition': 'attachment; filename="e.json"' } }))
+    const f = await fichierAt('http://s', '/export', 'defaut.json', { discret: true })
+    expect(f.nom).toBe('e.json')
+    expect(await f.blob.text()).toBe('{"a":1}')
+    expect(fetchMock.mock.calls[0][0]).toBe('http://s/export')
+    expect(fetchMock.mock.calls[0][1].credentials).toBe('include')
+    fetchMock.mockResolvedValue(json(401, { error: 'unauthorized' }))
+    await expect(fichierAt('http://s', '/export', 'defaut.json', { discret: true })).rejects.toBeInstanceOf(ApiError)
+    expect(perdue).not.toHaveBeenCalled()
+  })
+})
 
 describe('api', () => {
   it('envoie les cookies et du JSON', async () => {

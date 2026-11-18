@@ -994,3 +994,117 @@ async fn accroches_du_coeur() {
     e.state.acces_retire(&bob).await;
     assert_eq!(e.sim.lock().unwrap().retires.len(), 6);
 }
+
+#[tokio::test]
+async fn temps_a_plusieurs_suivi_depuis_les_webhooks() {
+    use crate::{Presences, routes_avec};
+    use estompe_core::sablier::Donnees;
+    use std::time::{Duration, Instant};
+
+    let Some(e) = env().await else { return };
+    let heure = Arc::new(Mutex::new(Instant::now()));
+    let h = heure.clone();
+    let presences = Presences::nouvelles(Arc::new(move || *h.lock().unwrap()));
+    let e = Env {
+        app: Router::from(routes_avec(presences.clone())).with_state(e.state.clone()),
+        ..e
+    };
+    let avancer = |s: u64| *heure.lock().unwrap() += Duration::from_secs(s);
+    let (alice, bob) = (e.id("alice"), e.id("bob"));
+    let envoyer = |ev: &'static str, id: String, piste: &'static str| {
+        let corps = format!(
+            r#"{{"event":"{ev}","room":{{"name":"channel:{}"}},"participant":{{"identity":"{id}","name":"x"}}{piste}}}"#,
+            e.vocal
+        );
+        let e = &e;
+        async move { e.webhook(&e.signe(&corps), &corps).await }
+    };
+    let suivre = |partage: Option<(&'static str, bool)>| {
+        let (presences, pool, bob) = (presences.clone(), e.pool().clone(), bob.clone());
+        async move {
+            let mut emis = presences
+                .suivre(&pool, partage.map(|(_, actif)| (bob.as_str(), actif)))
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|ev| {
+                    assert!(!ev.importe && ev.verifier().is_ok());
+                    (ev.sub, ev.donnees)
+                })
+                .collect::<Vec<_>>();
+            emis.sort_by(|a, b| a.0.cmp(&b.0));
+            emis
+        }
+    };
+    let temps = |sub: &str, secondes: u32| {
+        (
+            sub.to_string(),
+            Donnees::EstompeVocalTemps {
+                serveur: Some(e.serveur.clone()),
+                salon: e.vocal.clone(),
+                secondes,
+            },
+        )
+    };
+
+    assert_eq!(
+        envoyer("participant_joined", bob.clone(), "").await,
+        StatusCode::NO_CONTENT
+    );
+    avancer(3600);
+    assert!(suivre(None).await.is_empty());
+    assert_eq!(
+        envoyer("participant_joined", alice.clone(), "").await,
+        StatusCode::NO_CONTENT
+    );
+    e.sql(
+        "INSERT INTO voice_mod (channel_id, user_id, mic_off, sound_off) VALUES ($1::uuid,$2::uuid,true,false)",
+        &[&e.vocal, &bob],
+    )
+    .await;
+    avancer(90);
+    assert_eq!(
+        suivre(None).await,
+        [temps("sub-alice", 90), temps("sub-bob", 90)]
+    );
+    let piste = r#","track":{"source":"SCREEN_SHARE"}"#;
+    assert_eq!(
+        envoyer("track_published", format!("{bob}#screen"), piste).await,
+        StatusCode::NO_CONTENT
+    );
+    avancer(30);
+    assert_eq!(
+        suivre(Some(("bob", false))).await,
+        [(
+            "sub-bob".to_string(),
+            Donnees::EstompePartageEcran { secondes: 30 }
+        )]
+    );
+    e.sql(
+        "DELETE FROM voice_sessions WHERE user_id=$1::uuid",
+        &[&alice],
+    )
+    .await;
+    assert_eq!(
+        suivre(None).await,
+        [
+            temps("sub-alice", 30),
+            (
+                "sub-alice".to_string(),
+                Donnees::EstompeVocalAppel {
+                    serveur: Some(e.serveur.clone()),
+                    salon: e.vocal.clone(),
+                    secondes: 120,
+                },
+            ),
+            temps("sub-bob", 30),
+        ]
+    );
+    avancer(3600);
+    assert!(suivre(None).await.is_empty());
+    assert_eq!(
+        envoyer("participant_left", bob.clone(), "").await,
+        StatusCode::NO_CONTENT
+    );
+    assert!(suivre(None).await.is_empty());
+}

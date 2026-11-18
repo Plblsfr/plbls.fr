@@ -1,6 +1,8 @@
 pub mod aegis;
 pub mod config;
+pub mod emission;
 pub mod env;
+pub mod evenements;
 pub mod http;
 pub mod identite;
 pub mod services;

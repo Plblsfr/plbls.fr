@@ -294,6 +294,10 @@ pub static HORS_PERMISSION: &[(&str, &str)] = &[
         "route interne appelée par aegis avec son jeton",
     ),
     (
+        "GET /internal/profile-visible",
+        "route interne appelée par Sablier avec son jeton",
+    ),
+    (
         "* /admin/acces/**",
         "administration des accès : jugée par aegis (aegis:admin ou rôle Keycloak)",
     ),

@@ -22,6 +22,18 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let env = commun::env::Env::charger();
+    if std::env::args().nth(1).as_deref() == Some(sillon::sablier::COMMANDE) {
+        match sillon::sablier::lancer(|k| env.get(k)).await {
+            Ok(bilan) => {
+                print!("{bilan}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
     let cfg = match sillon::Config::from_env(|k| env.get(k)) {
         Ok(c) => c,
         Err(e) => {
@@ -37,6 +49,8 @@ async fn main() -> anyhow::Result<()> {
     let listener =
         tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))).await?;
     tracing::info!("sillon sur :{port}");
-    sillon::serve(listener, sillon::AppState::new(cfg, pool), arret()).await?;
+    let emetteur = commun::emission::Emetteur::depuis_env(|k| env.get(k));
+    let etat = sillon::AppState::avec_emetteur(cfg, pool, emetteur);
+    sillon::serve(listener, etat, arret()).await?;
     Ok(())
 }

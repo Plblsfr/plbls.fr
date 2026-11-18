@@ -124,6 +124,42 @@ et l'historique, avec `available: false`.
   Une écoute compte (`counted`) au-delà de 30 s ou de la moitié de la piste ; seules celles-là entrent dans les pistes et artistes les
   plus écoutés (`/history/top/tracks`, `/history/top/artists`, période `week`, `month`, `year` ou `all`). Écoutes récentes paginées par curseur.
 
+### Évènements pour Sablier
+
+Chaque écoute enregistrée par `POST /history` émet un évènement `sillon.ecoute` vers [Sablier](../sablier/README.md#évènements), par
+`commun::emission::Emetteur` (`AppState::emetteur()`) : l'appel ne bloque jamais et la réponse est la même, dans le même délai, quand
+Redis est absent, arrêté ou muet (l'évènement est alors abandonné, l'import ci-dessous le rattrape).
+
+| Champ | Contenu |
+|---|---|
+| `id` | `import:sillon:ecoute:<id de l'écoute>` (identifiant de la ligne de `ecoutes`, celui que rend `POST /history`) |
+| `sub` | la personne |
+| `date` | début de l'écoute (`started_at`) |
+| `importe` | faux en temps réel, vrai pour l'import |
+| `donnees.piste` | identifiant public de la piste (celui de l'API) |
+| `donnees.secondes` | secondes réellement écoutées, arrondies à la seconde |
+| `donnees.comptee` | `counted` de l'écoute |
+
+Rien d'autre n'est émis : ni chemin de fichier, ni identifiant Lidarr. Une écoute renvoyée avec le même `id` (déjà enregistrée) n'émet rien.
+
+**Import de l'historique** : `sillon importer-sablier` rejoue toute la table `ecoutes` en évènements `importe: true`, datés du début de
+l'écoute, avec `Emetteur::publier` (chaque publication est attendue). L'évènement d'une écoute porte le même identifiant en temps réel
+et à l'import : relancer la commande, ou la lancer après la mise en service de l'émission, ne compte rien deux fois (Sablier ignore un
+identifiant déjà reçu). Sans `SABLIER_REDIS_URL`, ou dès qu'une publication échoue, la commande s'arrête avec l'erreur sur la sortie
+d'erreur et le code 1 ; elle peut être relancée. Elle lit `DATABASE_URL` (et `DATABASE_USER`, `DATABASE_PASSWORD`), `SABLIER_REDIS_URL`,
+`SABLIER_REDIS_PASSWORD` et `SABLIER_FILE_MAX`, et affiche son bilan :
+
+```
+Import de l'historique de Sillon : 1203 évènements publiés.
+Secondes écoutées : 123456.
+Écoutes comptées : 987.
+```
+
+À comparer à l'historique : `SELECT count(*), sum(round(duree_ecoutee::numeric)), count(*) FILTER (WHERE compte) FROM ecoutes;`.
+En production : `docker exec <conteneur sillon-api> /app/sillon importer-sablier`, Sablier en marche (le flux est plafonné à
+`SABLIER_FILE_MAX` entrées : un historique plus long que ce plafond demande que Sablier consomme pendant l'import). En local (variables
+de `deploy/dev.env` chargées) : `cargo run -p sillon -- importer-sablier`.
+
 ## Ajout de musique
 
 - Recherche (`GET /additions/search?q=`, `sillon:add`) : artistes et albums par la recherche de Lidarr (MusicBrainz, `/artist/lookup`,
@@ -397,6 +433,7 @@ Pochette : Estompe ne la télécharge ni ne la relaie. La carte ne porte que l'i
 | `SILLON_DECOUVERTE_PAR_JOUR` | `plbls.env` (2) | albums découverts par personne sur 24 heures glissantes |
 | `SILLON_DECOUVERTE_ESSAI_JOURS` | `plbls.env` (30) | délai sans écoute complète avant de proposer une découverte à la suppression |
 | `SILLON_PUBLIC_URL` | `plbls.env` (`https://sillon-api.plbls.fr`) | URL publique de l'API pour le front (`estompe-web` au démarrage : `config.js` et CSP ; apps au build, `VITE_SILLON_URL` l'emporte) ; vide = pas de section |
+| `SABLIER_REDIS_URL`, `SABLIER_REDIS_PASSWORD`, `SABLIER_FILE_MAX` | communes ([`deploy/README.md`](../../deploy/README.md)) | file d'évènements de Sablier (écoutes) ; sans adresse, aucun évènement émis |
 | `DATABASE_URL`, `DATABASE_USER`, `DATABASE_PASSWORD`, `GATEWAY_URL`, `GATEWAY_INTERNE_URL`, `AEGIS_URL` | communes ([`deploy/README.md`](../../deploy/README.md)) | base `sillon` sur le serveur commun, gateway, aegis |
 
 ## Actions manuelles

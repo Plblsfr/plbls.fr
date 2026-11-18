@@ -22,6 +22,7 @@ pub mod materiel;
 pub mod progression;
 pub mod push;
 pub mod routes;
+pub mod sablier;
 pub mod sous_titres;
 pub mod tmdb;
 pub mod transcodage;

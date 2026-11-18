@@ -113,6 +113,10 @@
     coeur: '<path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 3.9 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.1 0 5.3 2.9 4.2 6.2C19.5 15.4 12 20 12 20z"/>',
     coeurplein: '<path d="M12 20s-7.5-4.6-9.2-9.3C1.7 7.4 3.9 4.5 7 4.5c2 0 3.6 1.2 5 3 1.4-1.8 3-3 5-3 3.1 0 5.3 2.9 4.2 6.2C19.5 15.4 12 20 12 20z"/>',
     poignee: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/>',
+    sablier: '<path d="M7 4h10M7 20h10M8 4c0 4 4 5 4 8s-4 4-4 8M16 4c0 4-4 5-4 8s4 4 4 8"/>',
+    flamme: '<path d="M12 3c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 .5 2 1.5 2.5 2 2.5C11 9 10.5 6 12 3z"/>',
+    histoire: '<path d="M8 4h8v16H8zM4 7v10M20 7v10"/>',
+    interro: '<path d="M9 9a3 3 0 1 1 4.5 2.6c-1 .6-1.5 1.2-1.5 2.4M12 18v.5"/>',
   } as const
 
   const alias = {
@@ -150,6 +154,7 @@
   export type IconName = keyof typeof v3 | keyof typeof propres | keyof typeof alias
 
   const traces: Record<string, string> = { ...v3, ...propres }
+  export const NOMS_ICONES = Object.keys(traces).sort() as IconName[]
   const pleins = new Set<string>(['plus3', 'lecture', 'pause', 'coeurplein'])
   const epais = new Set<string>(['envoi', 'ok'])
 

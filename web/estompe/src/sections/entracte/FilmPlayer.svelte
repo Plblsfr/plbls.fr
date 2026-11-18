@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { filmsApi } from '../../lib/api'
+  import { filmsApi, requestAt } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
   import { notify } from '../../lib/ui'
@@ -44,7 +44,11 @@
   const seek = (s: number) => { player?.seek(Math.max(0, duration ? Math.min(s, duration) : s)); position = s }
   const intro = $derived(tracks?.intro ?? null)
   const skippable = $derived(!error && inIntro(position, intro))
-  const skip = () => { if (intro && skippable) seek(intro.fin) }
+  const skip = () => {
+    if (!intro || !skippable) return
+    seek(intro.fin)
+    void requestAt<void>(filmsApi.base, 'POST', `/titles/${encodeURIComponent(id)}/intro-skipped`).catch(() => {})
+  }
   const fullscreen = () => { if (document.fullscreenElement) void document.exitFullscreen(); else void root?.requestFullscreen().catch(() => {}) }
 
   const wake = () => {
