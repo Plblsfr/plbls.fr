@@ -6,12 +6,12 @@ use serde_json::Value;
 
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
 use crate::store::CleConversation;
-use crate::temps_reel::evenements::StatutPresence;
+use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
-    Attachment, GetMeReponse, GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse,
-    Mention, MessagePage, Name50, NotifySettings, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostNotificationsReadRequete,
-    PutMeStatusRequete, Server, DM,
+    Attachment, GetChannelsCidReadsReponseElement, GetMeReponse, GetServersIdReponse,
+    GetServersIdVoiceReponse, GetUnreadReponse, Mention, MessagePage, Name50, NotifySettings,
+    Person, PostActivateRequete, PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete,
+    PostNotificationsReadRequete, PutMeStatusRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -227,6 +227,42 @@ impl Client {
             page.parametres()
         ))
         .await
+    }
+
+    pub async fn messages_de(
+        &self,
+        conversation: &CleConversation,
+        page: &Page,
+    ) -> Result<MessagePage, ErreurApi> {
+        match conversation {
+            CleConversation::Salon(id) => self.messages_du_salon(id, page).await,
+            CleConversation::Prive(id) => self.messages_prives(id, page).await,
+        }
+    }
+
+    pub async fn lectures(
+        &self,
+        conversation: &CleConversation,
+    ) -> Result<Vec<Lecture>, ErreurApi> {
+        let chemin = match conversation {
+            CleConversation::Salon(id) => format!("/channels/{id}/reads"),
+            CleConversation::Prive(id) => format!("/dms/{id}/reads"),
+        };
+        let liste: Vec<GetChannelsCidReadsReponseElement> = self.get(&chemin).await?;
+        Ok(liste
+            .into_iter()
+            .map(|l| Lecture {
+                channel_id: conversation.salon().map(str::to_string),
+                dm_id: match conversation {
+                    CleConversation::Prive(id) => Some(id.clone()),
+                    CleConversation::Salon(_) => None,
+                },
+                user_id: l.user_id.unwrap_or_default(),
+                pseudo: l.pseudo.unwrap_or_default(),
+                last_id: l.last_id.unwrap_or_default(),
+                read_at: l.read_at.unwrap_or_default(),
+            })
+            .collect())
     }
 
     pub async fn reagir(&self, message: &str, emoji: &str) -> Result<(), ErreurApi> {
@@ -585,6 +621,56 @@ mod tests {
                 ligne("/channels/c1/messages?limit=30&before=42", "GET"),
                 ligne("/dms/d1/messages?limit=50", "GET"),
                 ligne("/dms/d1/messages?limit=50&after=7", "GET"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn lit_les_pages_et_les_accuses_de_lecture_d_une_conversation() {
+        let serveur = ServeurFactice::demarrer([Reponse::json(
+            200,
+            json!({"messages": [], "has_more": false}),
+        )])
+        .await;
+        serveur.router(
+            "GET",
+            "/dms/d1/reads",
+            Reponse::json(
+                200,
+                json!([{"user_id": "bob", "pseudo": "bob", "last_id": "7", "read_at": "x"}]),
+            ),
+        );
+        let client = serveur.client();
+        let page = Page {
+            apres: Some("4".to_string()),
+            ..Page::default()
+        };
+        client
+            .messages_de(&CleConversation::Salon("c1".into()), &page)
+            .await
+            .unwrap();
+        client
+            .messages_de(&CleConversation::Prive("d1".into()), &Page::default())
+            .await
+            .unwrap();
+        let lectures = client
+            .lectures(&CleConversation::Prive("d1".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                lectures[0].dm_id.as_deref(),
+                lectures[0].user_id.as_str(),
+                lectures[0].last_id.as_str()
+            ),
+            (Some("d1"), "bob", "7")
+        );
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/channels/c1/messages?limit=50&after=4", "GET"),
+                ligne("/dms/d1/messages?limit=50", "GET"),
+                ligne("/dms/d1/reads", "GET"),
             ]
         );
     }

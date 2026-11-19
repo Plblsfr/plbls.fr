@@ -226,7 +226,8 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
             | Changement::Avatar { .. }
             | Changement::ConversationCourante
             | Changement::Notification(_)
-            | Changement::Avis(_) => {}
+            | Changement::Avis(_)
+            | Changement::Messages(_) => {}
         }
     }
     c

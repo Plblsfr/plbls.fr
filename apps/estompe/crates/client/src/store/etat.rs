@@ -158,6 +158,7 @@ pub struct Etat {
     pub avatars_serveur: BTreeMap<String, BTreeMap<String, i64>>,
     pub courante: Option<CleConversation>,
     pub focus: bool,
+    pub en_bas: bool,
     pub activite_locale: String,
     pub ordre_serveurs: Vec<String>,
 }
@@ -180,6 +181,7 @@ impl Default for Etat {
             avatars_serveur: BTreeMap::new(),
             courante: None,
             focus: true,
+            en_bas: true,
             activite_locale: String::new(),
             ordre_serveurs: Vec::new(),
         }

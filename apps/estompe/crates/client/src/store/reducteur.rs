@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use super::etat::{id_de, salon_depuis, trier_salons, CleConversation, Etat, ParticipantVocal};
+use super::messages::ChangementMessages;
 use crate::temps_reel::evenements::{
     Evenement, GenreDepart, MentionRecue, NotificationServeur, SourcePartage, StatutPresence,
 };
@@ -75,6 +76,7 @@ pub enum Changement {
     },
     Notification(Box<NotificationServeur>),
     Avis(Avis),
+    Messages(ChangementMessages),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -624,6 +626,7 @@ pub fn ouvrir_conversation(etat: &mut Etat, conversation: Option<CleConversation
     let mut a = Application::default();
     if etat.courante != conversation {
         etat.courante = conversation.clone();
+        etat.en_bas = true;
         a.changer(Changement::ConversationCourante);
     }
     if let Some(cle) = conversation {
@@ -645,10 +648,31 @@ pub fn lire_conversation(etat: &mut Etat, conversation: &CleConversation) -> App
 pub fn definir_focus(etat: &mut Etat, focus: bool) -> Application {
     let mut a = Application::default();
     etat.focus = focus;
-    if let Some(cle) = etat.courante.clone().filter(|_| focus) {
-        marquer_lu(&cle, &mut a);
+    if focus {
+        lecture_effective(etat, &mut a);
     }
     a
+}
+
+pub fn definir_bas_de_liste(etat: &mut Etat, en_bas: bool) -> Application {
+    let mut a = Application::default();
+    let avant = etat.en_bas;
+    etat.en_bas = en_bas;
+    if en_bas && !avant {
+        lecture_effective(etat, &mut a);
+    }
+    a
+}
+
+pub fn decision_lecture(etat: &Etat) -> Option<CleConversation> {
+    etat.courante.clone().filter(|_| etat.focus && etat.en_bas)
+}
+
+fn lecture_effective(etat: &mut Etat, a: &mut Application) {
+    if let Some(cle) = decision_lecture(etat) {
+        lire_mentions_et_non_lus(etat, &cle, a);
+        marquer_lu(&cle, a);
+    }
 }
 
 fn marquer_lu(conversation: &CleConversation, a: &mut Application) {
@@ -710,14 +734,14 @@ fn message_cree(etat: &mut Etat, m: &Message, a: &mut Application) {
     if auteur == etat.moi() {
         return;
     }
-    if etat.courante.as_ref() != Some(&cle) {
+    if decision_lecture(etat).as_ref() == Some(&cle) {
+        marquer_lu(&cle, a);
+    } else {
         *etat.non_lus.entry(cle.clone()).or_insert(0) += 1;
         a.changer(Changement::NonLus {
             serveur: etat.serveur_de(&cle),
             conversation: cle,
         });
-    } else if etat.focus {
-        marquer_lu(&cle, a);
     }
 }
 
@@ -861,7 +885,36 @@ mod tests {
         s.courante = Some(cle("c:c1"));
         s.focus = false;
         let a = ev(&mut s, "message.created", message("1", "c1", "bob"));
-        assert_eq!((a.changements, a.effets), (vec![], vec![]));
+        assert!(a.effets.is_empty());
+        assert_eq!(s.non_lus_de(&cle("c:c1")), 1);
+    }
+
+    #[test]
+    fn un_message_recu_fenetre_inactive_reste_non_lu_jusqu_au_retour_en_bas_de_liste() {
+        let mut s = etat_de_depart();
+        ouvrir_conversation(&mut s, Some(cle("c:c1")));
+        definir_focus(&mut s, false);
+        let a = ev(&mut s, "message.created", message("1", "c1", "bob"));
+        assert!(a.effets.is_empty());
+        assert_eq!(s.non_lus_de(&cle("c:c1")), 1);
+        assert_eq!(decision_lecture(&s), None);
+        definir_bas_de_liste(&mut s, false);
+        assert!(definir_focus(&mut s, true).effets.is_empty());
+        assert_eq!(s.non_lus_de(&cle("c:c1")), 1);
+        let a = ev(&mut s, "message.created", message("2", "c1", "bob"));
+        assert!(a.effets.is_empty());
+        assert_eq!(s.non_lus_de(&cle("c:c1")), 2);
+        let a = definir_bas_de_liste(&mut s, true);
+        assert_eq!(a.effets, [Effet::MarquerLu(cle("c:c1"))]);
+        assert!(a.changements.contains(&Changement::NonLus {
+            conversation: cle("c:c1"),
+            serveur: Some("s1".into())
+        }));
+        assert_eq!(s.non_lus_de(&cle("c:c1")), 0);
+        assert_eq!(decision_lecture(&s), Some(cle("c:c1")));
+        assert!(definir_bas_de_liste(&mut s, true).effets.is_empty());
+        ouvrir_conversation(&mut s, None);
+        assert_eq!(decision_lecture(&s), None);
     }
 
     #[test]
