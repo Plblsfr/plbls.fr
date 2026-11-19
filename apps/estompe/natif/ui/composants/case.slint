@@ -1,0 +1,88 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone } from "icone.slint";
+import { Anneau } from "focus.slint";
+
+export component Case {
+    in property <string> texte;
+    in property <bool> actif: true;
+    in property <int> calque: 0;
+    in-out property <bool> cochee;
+    out property <bool> a-le-focus: portee.has-focus;
+    callback bascule(bool);
+    property <bool> utilisable: actif && calque >= Calques.ouverts;
+    min-height: 28px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    opacity: actif ? 1 : 0.5;
+    accessible-role: checkbox;
+    accessible-label: texte;
+    accessible-checkable: true;
+    accessible-checked: cochee;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        root.basculer();
+    }
+    forward-focus: portee;
+    function basculer() {
+        if (root.utilisable) {
+            root.cochee = !root.cochee;
+            root.bascule(root.cochee);
+        }
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) {
+                root.basculer();
+                return accept;
+            }
+            return reject;
+        }
+        TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.basculer();
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e2;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            boite := Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: Rayon.xs;
+                border-width: root.cochee ? 0 : 1.5px;
+                border-color: Theme.trait-fort;
+                background: root.cochee ? Theme.encre : Theme.surface;
+                animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+                Anneau {
+                    width: parent.width + 8px;
+                    height: parent.height + 8px;
+                    actif: portee.has-focus && portee.clavier;
+                    rayon: Rayon.xs;
+                }
+                if root.cochee: Icone {
+                    nom: "ok";
+                    taille: 14px;
+                    couleur: Theme.papier;
+                }
+            }
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: Theme.encre;
+            font-family: Typo.texte;
+            font-size: Typo.corps;
+            vertical-alignment: center;
+        }
+    }
+}

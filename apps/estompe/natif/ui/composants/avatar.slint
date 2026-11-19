@@ -1,0 +1,40 @@
+import { Theme, Typo } from "../jetons.slint";
+
+export component Avatar {
+    in property <string> nom;
+    in property <image> portrait;
+    in property <length> taille: 36px;
+    in property <int> teinte: 1;
+    in property <bool> parle: false;
+    property <int> t: Math.mod(Math.max(teinte, 1) - 1, 6) + 1;
+    property <color> fond: t == 1 ? Theme.av-1 : t == 2 ? Theme.av-2 : t == 3 ? Theme.av-3 : t == 4 ? Theme.av-4 : t == 5 ? Theme.av-5 : Theme.av-6;
+    property <color> encre: t == 1 ? Theme.av-1-t : t == 2 ? Theme.av-2-t : t == 3 ? Theme.av-3-t : t == 4 ? Theme.av-4-t : t == 5 ? Theme.av-5-t : Theme.av-6-t;
+    property <bool> a-portrait: portrait.width > 0;
+    in property <string> initiales;
+    width: taille;
+    height: taille;
+    accessible-role: image;
+    accessible-label: nom;
+    Rectangle {
+        border-radius: root.taille * 0.3;
+        background: root.fond;
+        border-width: root.parle ? 2px : 0;
+        border-color: Theme.voix;
+        clip: true;
+        if root.a-portrait: Image {
+            width: 100%;
+            height: 100%;
+            source: root.portrait;
+            image-fit: cover;
+        }
+        if !root.a-portrait: Text {
+            text: root.initiales;
+            color: root.encre;
+            font-family: Typo.titre;
+            font-size: root.taille * 0.38;
+            font-weight: Typo.demi-gras;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

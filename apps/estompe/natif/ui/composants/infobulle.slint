@@ -1,0 +1,31 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+
+export component Infobulle {
+    in property <string> texte;
+    in property <bool> forcee: false;
+    out property <bool> visible-maintenant: forcee || zone.has-hover;
+    @children
+    zone := TouchArea {
+        mouse-cursor: default;
+    }
+    bulle := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: -self.height - 6px;
+        width: libelle.preferred-width + 2 * Espace.e2;
+        height: libelle.preferred-height + 2 * Espace.e1;
+        border-radius: Rayon.xs;
+        background: Theme.dock-fond;
+        opacity: root.visible-maintenant && root.texte != "" ? 1 : 0;
+        animate opacity { duration: Mouvement.d; easing: Courbes.sortie; }
+        accessible-role: none;
+        libelle := Text {
+            text: root.texte;
+            color: Theme.dock-texte;
+            font-family: Typo.texte;
+            font-size: Typo.minuscule;
+            font-weight: Typo.moyen;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

@@ -1,0 +1,35 @@
+import { Theme, Mouvement } from "../jetons.slint";
+
+export component Chargement {
+    in property <length> taille: 24px;
+    in property <brush> couleur: Theme.rose-fonce;
+    in property <string> description: "Chargement";
+    property <angle> tour: Mouvement.reduit ? 0deg : 360deg * Math.mod(animation-tick() / 900ms, 1);
+    width: taille;
+    height: taille;
+    accessible-role: progress-indicator;
+    accessible-label: description;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0z";
+        stroke: Theme.trait;
+        stroke-width: 2.4 * root.taille / 24;
+    }
+    Rectangle {
+        transform-rotation: root.tour;
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        Path {
+            width: 100%;
+            height: 100%;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M12 3a9 9 0 0 1 9 9";
+            stroke: root.couleur;
+            stroke-width: 2.4 * root.taille / 24;
+            stroke-line-cap: round;
+        }
+    }
+}

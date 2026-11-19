@@ -1,0 +1,219 @@
+import { Theme, Typo, Rayon, Espace } from "jetons.slint";
+import { Icones } from "genere/icones.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement } from "composants.slint";
+
+component Section {
+    in property <string> titre;
+    VerticalLayout {
+        spacing: Espace.e3;
+        Text {
+            text: root.titre;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: Typo.minuscule;
+            font-weight: Typo.moyen;
+        }
+        @children
+    }
+}
+
+component Pastille {
+    in property <string> nom;
+    in property <color> couleur;
+    VerticalLayout {
+        spacing: Espace.e1;
+        Rectangle {
+            width: 56px;
+            height: 32px;
+            border-radius: Rayon.xs;
+            border-width: 1px;
+            border-color: Theme.trait;
+            background: root.couleur;
+        }
+        Text {
+            text: root.nom;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: 10px;
+        }
+    }
+}
+
+export component Demonstration {
+    in property <bool> infobulle-forcee: false;
+    in-out property <string> saisie: "Bonjour";
+    in-out property <bool> case-cochee: true;
+    in-out property <bool> interrupteur-allume: true;
+    out property <int> clics;
+    callback ouvrir-modal();
+    public function focus-initial() {
+        premier.prendre-focus();
+    }
+    Defilement {
+        width: 100%;
+        height: 100%;
+        hauteur-contenu: colonne.preferred-height;
+        colonne := VerticalLayout {
+            padding: Espace.e6;
+            spacing: Espace.e6;
+            alignment: start;
+            Text {
+                text: "Composants";
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: Typo.titre-ecran;
+                font-weight: Typo.gras;
+            }
+            Section {
+                titre: "COULEURS";
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    alignment: start;
+                    Pastille { nom: "papier"; couleur: Theme.papier; }
+                    Pastille { nom: "papier-2"; couleur: Theme.papier-2; }
+                    Pastille { nom: "surface"; couleur: Theme.surface; }
+                    Pastille { nom: "encre"; couleur: Theme.encre; }
+                    Pastille { nom: "gris"; couleur: Theme.gris; }
+                    Pastille { nom: "trait"; couleur: Theme.trait; }
+                    Pastille { nom: "rose"; couleur: Theme.rose; }
+                    Pastille { nom: "rose-fonce"; couleur: Theme.rose-fonce; }
+                    Pastille { nom: "ok"; couleur: Theme.ok; }
+                    Pastille { nom: "attention"; couleur: Theme.attention; }
+                    Pastille { nom: "danger"; couleur: Theme.danger; }
+                    Pastille { nom: "info"; couleur: Theme.info; }
+                }
+            }
+            Section {
+                titre: "TYPOGRAPHIE";
+                Text {
+                    text: "Bricolage Grotesque, titres";
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: Typo.titre-section;
+                    font-weight: Typo.demi-gras;
+                }
+                Text {
+                    text: "Instrument Sans, texte courant à 15 px : le papier, l'encre, le coup de surligneur.";
+                    color: Theme.encre;
+                    font-family: Typo.texte;
+                    font-size: Typo.corps;
+                }
+                Text {
+                    text: "JetBrains Mono 12:34 Ctrl+K";
+                    color: Theme.rose-texte;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                }
+            }
+            Section {
+                titre: "BOUTONS";
+                HorizontalLayout {
+                    spacing: Espace.e3;
+                    alignment: start;
+                    premier := Bouton {
+                        texte: "Primaire";
+                        variante: VarianteBouton.primaire;
+                        clique => {
+                            root.clics += 1;
+                        }
+                    }
+                    Bouton {
+                        texte: "Secondaire";
+                        icone: "plus";
+                        clique => {
+                            root.clics += 1;
+                        }
+                    }
+                    Bouton {
+                        texte: "Fantôme";
+                        variante: VarianteBouton.fantome;
+                    }
+                    Bouton {
+                        texte: "Supprimer";
+                        icone: "corbeille";
+                        variante: VarianteBouton.danger;
+                    }
+                    Bouton {
+                        texte: "Inactif";
+                        actif: false;
+                    }
+                    Infobulle {
+                        texte: "Réglages";
+                        forcee: root.infobulle-forcee;
+                        Bouton {
+                            icone: "reglages";
+                            description: "Réglages";
+                        }
+                    }
+                    Bouton {
+                        texte: "Ouvrir un modal";
+                        clique => {
+                            root.ouvrir-modal();
+                        }
+                    }
+                }
+            }
+            Section {
+                titre: "SAISIE";
+                HorizontalLayout {
+                    spacing: Espace.e4;
+                    alignment: start;
+                    Champ {
+                        width: 240px;
+                        etiquette: "Pseudo";
+                        indice: "Votre pseudo";
+                        valeur <=> root.saisie;
+                    }
+                    Champ {
+                        width: 240px;
+                        etiquette: "Adresse du serveur";
+                        indice: "https://…";
+                        erreur: "Adresse invalide";
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: Espace.e2;
+                        Case {
+                            texte: "Réduire les animations";
+                            cochee <=> root.case-cochee;
+                        }
+                        Interrupteur {
+                            texte: "Mode compact";
+                            allume <=> root.interrupteur-allume;
+                        }
+                    }
+                }
+            }
+            Section {
+                titre: "AVATARS ET CHARGEMENT";
+                HorizontalLayout {
+                    spacing: Espace.e3;
+                    alignment: start;
+                    Avatar { nom: "Ada Lovelace"; initiales: "AL"; teinte: 1; }
+                    Avatar { nom: "Blaise Pascal"; initiales: "BP"; teinte: 2; }
+                    Avatar { nom: "Camille"; initiales: "C"; teinte: 3; parle: true; }
+                    Avatar { nom: "Denis"; initiales: "D"; teinte: 4; taille: 28px; }
+                    Avatar { nom: "Émilie"; initiales: "É"; teinte: 5; taille: 56px; }
+                    Avatar { nom: "Fatou"; initiales: "F"; teinte: 6; }
+                    VerticalLayout {
+                        alignment: center;
+                        Chargement { }
+                    }
+                }
+            }
+            Section {
+                titre: "ICÔNES";
+                Rectangle {
+                    property <int> colonnes: Math.max(1, Math.floor(self.width / 34px));
+                    height: Math.ceil(Icones.noms.length / self.colonnes) * 34px;
+                    for nom[i] in Icones.noms: Icone {
+                        x: Math.mod(i, parent.colonnes) * 34px;
+                        y: Math.floor(i / parent.colonnes) * 34px;
+                        nom: nom;
+                        taille: 22px;
+                    }
+                }
+            }
+        }
+    }
+}

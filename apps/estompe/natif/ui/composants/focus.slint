@@ -1,0 +1,11 @@
+import { Theme, Rayon } from "../jetons.slint";
+
+export component Anneau inherits Rectangle {
+    in property <bool> actif;
+    in property <length> rayon: Rayon.s;
+    x: -4px;
+    y: -4px;
+    border-radius: rayon + 4px;
+    border-width: 2px;
+    border-color: actif ? Theme.encre : transparent;
+}
