@@ -12,6 +12,7 @@ use slint::ComponentHandle;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
+use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
 use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
@@ -39,6 +40,7 @@ pub enum EchecOuverture {
 pub trait Fabrique: Send + Sync + 'static {
     fn ouvrir(&self, ordre_serveurs: Vec<String>) -> Futur<Result<Ouverture, EchecOuverture>>;
     fn sections(&self) -> Futur<Vec<Section>>;
+    fn profils(&self) -> Arc<Profils>;
 }
 
 pub struct FabriqueReelle {
@@ -46,6 +48,7 @@ pub struct FabriqueReelle {
     pub jeton: Arc<dyn Fn() -> Option<String> + Send + Sync>,
     pub adresses_sections: Vec<(Section, String)>,
     pub journal: Option<Arc<Journal>>,
+    pub profils: Arc<Profils>,
 }
 
 fn noter(journal: &Option<Arc<Journal>>, niveau: Niveau, message: &str) {
@@ -116,6 +119,10 @@ impl Fabrique for FabriqueReelle {
             .await
         })
     }
+
+    fn profils(&self) -> Arc<Profils> {
+        self.profils.clone()
+    }
 }
 
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
@@ -171,6 +178,7 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     installer_modeles(f);
     let g = f.global::<DonneesCoquille>();
     g.set_panneau_replie(memoire.lire(|p| p.panneau_replie));
+    g.set_marge_ouverte(memoire.lire(|p| p.marge_ouverte));
     macro_rules! rappel {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
             let emplacement = emplacement.clone();
@@ -193,19 +201,32 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .deplacer_serveur(&de, &vers));
     rappel!(on_serveur_voisin, |p, f, suivant| p
         .serveur_voisin(&f, suivant));
+    rappel!(on_membres_defiles, |p, f, defilement, vue| p
+        .membres_defiles(&f, defilement, vue));
+    rappel!(on_filtrer_membres, |p, f, filtre| p
+        .filtrer_membres(&f, &filtre));
+    rappel!(on_ouvrir_membre, |p, f, utilisateur| p
+        .ouvrir_membre(&f, &utilisateur));
+    rappel!(on_fermer_carte, |p, f| p.fermer_carte(&f));
     let faible = f.as_weak();
-    let memoire = memoire.clone();
+    let memoire_panneau = memoire.clone();
     g.on_panneau_bascule(move |replie| {
         if let Some(f) = faible.upgrade() {
             f.global::<DonneesCoquille>().set_panneau_replie(replie);
         }
-        memoire.modifier(|p| p.panneau_replie = replie);
+        memoire_panneau.modifier(|p| p.panneau_replie = replie);
     });
     let faible = f.as_weak();
+    let memoire_marge = memoire.clone();
+    let emplacement = emplacement.clone();
     g.on_marge_bascule(move |ouverte| {
         if let Some(f) = faible.upgrade() {
             f.global::<DonneesCoquille>().set_marge_ouverte(ouverte);
+            if let Some(pont) = pont_courant(&emplacement) {
+                pont.marge_basculee(&f);
+            }
         }
+        memoire_marge.modifier(|p| p.marge_ouverte = ouverte);
     });
 }
 
@@ -354,6 +375,7 @@ async fn session(
         Some(contexte.memoire.clone()),
         contexte.horloge.clone(),
         Navigation::nouvelle(route),
+        contexte.fabrique.profils(),
     );
     let installe = {
         let mut emplacement = contexte

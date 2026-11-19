@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use estompe_client::auth::{ErreurAuth, Parcours};
@@ -22,6 +22,35 @@ pub fn attendre(mut condition: impl FnMut() -> bool, quoi: &str) {
         );
         std::thread::sleep(Duration::from_millis(2));
     }
+}
+
+pub fn sur_l_interface<R: Send + 'static>(
+    faible: &slint::Weak<estompe_natif::Principale>,
+    action: impl FnOnce(&estompe_natif::Principale) -> R + Send + 'static,
+) -> R {
+    let (envoi, reception) = mpsc::channel();
+    faible
+        .upgrade_in_event_loop(move |f| {
+            let _ = envoi.send(action(&f));
+        })
+        .expect("boucle d'évènements");
+    reception
+        .recv_timeout(DELAI)
+        .expect("réponse de l'interface")
+}
+
+pub fn attendre_l_interface(
+    faible: &slint::Weak<estompe_natif::Principale>,
+    condition: impl Fn(&estompe_natif::Principale) -> bool + Send + Sync + Clone + 'static,
+    quoi: &str,
+) {
+    attendre(
+        || {
+            let condition = condition.clone();
+            sur_l_interface(faible, move |f| condition(f))
+        },
+        quoi,
+    );
 }
 
 #[derive(Default)]
@@ -160,14 +189,18 @@ pub fn services(
 }
 
 pub mod coquille {
+    use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    use estompe_client::http::Client;
+    use estompe_client::appels::Badge;
+    use estompe_client::http::{Client, ErreurApi};
     use estompe_client::sections::Section;
     use estompe_client::store::{CleConversation, Etat, ParticipantVocal, Store};
     use estompe_client::temps_reel::{decoder, EtatReseau, FluxTempsReel, Signal, Trame};
-    use estompe_natif::coquille::{EchecOuverture, Fabrique, Ouverture};
+    use estompe_natif::coquille::{
+        CleAvatar, EchecOuverture, Fabrique, Ouverture, Profils, SourceProfils,
+    };
     use estompe_natif::entree::Futur;
     use serde_json::{json, Value};
     use tokio::sync::{mpsc, watch};
@@ -281,6 +314,124 @@ pub mod coquille {
         etat
     }
 
+    pub fn png(couleur: [u8; 3]) -> Vec<u8> {
+        let image = image::RgbaImage::from_fn(48, 48, |x, y| {
+            if (x / 12 + y / 12) % 2 == 0 {
+                image::Rgba([couleur[0], couleur[1], couleur[2], 255])
+            } else {
+                image::Rgba([255, 255, 255, 255])
+            }
+        });
+        let mut octets = std::io::Cursor::new(Vec::new());
+        image
+            .write_to(&mut octets, image::ImageFormat::Png)
+            .unwrap();
+        octets.into_inner()
+    }
+
+    #[derive(Default)]
+    pub struct SourceFactice {
+        pub avatars: Mutex<Vec<CleAvatar>>,
+        pub badges: Mutex<Vec<String>>,
+        pub badges_par_utilisateur: Mutex<BTreeMap<String, Vec<Badge>>>,
+    }
+
+    impl SourceFactice {
+        pub fn requetes_avatars(&self) -> Vec<CleAvatar> {
+            self.avatars.lock().unwrap().clone()
+        }
+
+        pub fn requetes_badges(&self) -> Vec<String> {
+            self.badges.lock().unwrap().clone()
+        }
+    }
+
+    impl SourceProfils for SourceFactice {
+        fn avatar(&self, cle: &CleAvatar) -> Futur<Result<Vec<u8>, ErreurApi>> {
+            self.avatars.lock().unwrap().push(cle.clone());
+            Box::pin(async { Ok(png([208, 104, 138])) })
+        }
+
+        fn badges(&self, utilisateur: &str) -> Futur<Result<Vec<Badge>, ErreurApi>> {
+            self.badges.lock().unwrap().push(utilisateur.to_string());
+            let badges = self
+                .badges_par_utilisateur
+                .lock()
+                .unwrap()
+                .get(utilisateur)
+                .cloned()
+                .unwrap_or_default();
+            Box::pin(async move { Ok(badges) })
+        }
+    }
+
+    pub fn badge(nom: &str, couleur: &str) -> Badge {
+        Badge {
+            id: nom.to_lowercase(),
+            name: nom.to_string(),
+            icon: "🏅".into(),
+            color: couleur.to_string(),
+            ..Badge::default()
+        }
+    }
+
+    pub fn etat_avec_membres() -> Etat {
+        let mut etat = etat();
+        let detail = etat.details.get_mut("s1").unwrap();
+        if let Some(serveur) = detail.server.as_mut() {
+            serveur.owner_id = Some("u1".into());
+        }
+        detail.roles = Some(depuis(json!([
+            {"id": "r0", "name": "everyone", "is_default": true, "position": 0, "hoist": false, "color": "", "icon": ""},
+            {"id": "rm", "name": "Modération", "position": 5, "hoist": true, "color": "#2f5d8a", "icon": ""},
+            {"id": "ra", "name": "Artistes", "position": 2, "hoist": false, "color": "#b0413e", "icon": ""}
+        ])));
+        detail.members = Some(depuis(json!([
+            {"id": "u1", "pseudo": "bob", "roles": ["rm"], "joined_at": "2025-06-01T12:00:00Z", "created_at": "2025-05-20T12:00:00Z"},
+            {"id": "eve", "pseudo": "Ève", "roles": ["rm"]},
+            {"id": "carol", "pseudo": "carol", "nickname": "Caro", "roles": ["ra"], "joined_at": "2026-03-04T12:00:00Z", "created_at": "2025-01-02T12:00:00Z", "banner_color": "#f2a65a"},
+            {"id": "dave", "pseudo": "dave", "roles": []},
+            {"id": "elise", "pseudo": "Élise", "roles": []},
+            {"id": "00000000-0000-0000-0000-000000000001", "pseudo": "Estompe", "roles": []},
+            {"id": "ines", "pseudo": "Inès", "roles": ["ra"]},
+            {"id": "frank", "pseudo": "frank", "roles": [], "timeout_until": "2099-01-01T00:00:00Z"},
+            {"id": "gaelle", "pseudo": "Gaëlle", "roles": []},
+            {"id": "hugo", "pseudo": "hugo", "roles": []}
+        ])));
+        for present in [
+            "eve",
+            "dave",
+            "ines",
+            "00000000-0000-0000-0000-000000000001",
+        ] {
+            etat.en_ligne.insert(present.into());
+        }
+        etat.statuts.insert("carol".into(), depuis(json!("dnd")));
+        etat.statuts.insert("dave".into(), depuis(json!("idle")));
+        etat.activites.insert("carol".into(), "Tetris".into());
+        etat.activites.insert("eve".into(), "Hades II".into());
+        for (utilisateur, version) in [("eve", 2), ("carol", 1), ("gaelle", 4)] {
+            etat.avatars.insert(utilisateur.into(), version);
+        }
+        etat
+    }
+
+    pub fn etat_nombreux(nombre: usize) -> Etat {
+        let mut etat = etat();
+        let membres: Vec<serde_json::Value> = (0..nombre)
+            .map(|i| json!({"id": format!("m{i:05}"), "pseudo": format!("membre {i:05}"), "roles": []}))
+            .collect();
+        etat.details.get_mut("s1").unwrap().members = Some(depuis(json!(membres)));
+        for i in 0..nombre {
+            let id = format!("m{i:05}");
+            if i % 3 == 0 {
+                etat.en_ligne.insert(id.clone());
+            }
+            etat.avatars.insert(id, 1);
+        }
+        etat
+    }
+
     pub fn store(etat: Etat) -> Store {
         let store = Store::nouveau(Client::nouveau("http://127.0.0.1:9").unwrap(), &[]);
         store.installer(etat);
@@ -294,10 +445,13 @@ pub mod coquille {
         pub signaux: Mutex<Option<mpsc::UnboundedSender<Signal>>>,
         pub store: Mutex<Option<Store>>,
         pub reseau: watch::Sender<EtatReseau>,
+        pub source: Arc<SourceFactice>,
+        pub profils: Arc<Profils>,
     }
 
     impl FausseFabrique {
         pub fn nouvelle(etat: Etat, sections: Vec<Section>) -> Arc<Self> {
+            let source = Arc::new(SourceFactice::default());
             Arc::new(Self {
                 etat,
                 sections,
@@ -305,6 +459,8 @@ pub mod coquille {
                 signaux: Mutex::new(None),
                 store: Mutex::new(None),
                 reseau: watch::channel(EtatReseau::Reconnexion).0,
+                profils: Profils::nouveaux(source.clone(), None),
+                source,
             })
         }
 
@@ -346,6 +502,10 @@ pub mod coquille {
         fn sections(&self) -> Futur<Vec<Section>> {
             let sections = self.sections.clone();
             Box::pin(async move { sections })
+        }
+
+        fn profils(&self) -> Arc<Profils> {
+            self.profils.clone()
         }
     }
 }

@@ -1,3 +1,7 @@
+import { EtatPresence } from "../composants/avatar.slint";
+
+export { EtatPresence }
+
 export enum GenreVue { accueil, salon, vocal, esquisse, prive, section }
 
 export enum EtatBandeau { aucun, reconnexion, hors-ligne }
@@ -89,6 +93,71 @@ export struct Accueil {
     sans-serveur: bool,
 }
 
+export struct LigneBadge {
+    nom: string,
+    couleur: color,
+}
+
+export struct LigneMembre {
+    cle: string,
+    en-tete: bool,
+    titre: string,
+    couleur-titre: color,
+    a-couleur-titre: bool,
+    utilisateur: string,
+    nom: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+    portrait: image,
+    presence: EtatPresence,
+    libelle-presence: string,
+    activite: string,
+    couleur: color,
+    a-couleur: bool,
+    createur: bool,
+    bot: bool,
+    exclu: bool,
+    badge-1: LigneBadge,
+    badge-2: LigneBadge,
+    nombre-badges: int,
+}
+
+export struct EnTeteMarge {
+    titre: string,
+    filtrable: bool,
+    vide: bool,
+}
+
+export struct RoleProfil {
+    nom: string,
+    couleur: color,
+    a-couleur: bool,
+}
+
+export struct CarteProfil {
+    utilisateur: string,
+    nom: string,
+    pseudo-origine: string,
+    initiales: string,
+    teinte: int,
+    portrait: image,
+    couleur: color,
+    a-couleur: bool,
+    banniere: color,
+    presence: EtatPresence,
+    statut: string,
+    exclu-jusqu-au: string,
+    rang: string,
+    roles: [RoleProfil],
+    badges: [LigneBadge],
+    serveur: string,
+    arrivee: string,
+    creation: string,
+    bot: bool,
+    moi: bool,
+}
+
 export global DonneesCoquille {
     in property <[LigneServeur]> serveurs;
     in property <[LigneSalon]> salons;
@@ -107,6 +176,12 @@ export global DonneesCoquille {
     in property <bool> marge-disponible: false;
     in-out property <bool> marge-ouverte: false;
     in property <length> largeur-marge: 320px;
+    in property <[LigneMembre]> membres;
+    in property <EnTeteMarge> marge;
+    in-out property <length> defilement-membres: 0;
+    in-out property <string> filtre-membres;
+    in property <bool> carte-ouverte: false;
+    in property <CarteProfil> carte;
     callback ouvrir-accueil();
     callback ouvrir-serveur(string);
     callback ouvrir-salon(string);
@@ -117,4 +192,8 @@ export global DonneesCoquille {
     callback serveur-voisin(bool);
     callback panneau-bascule(bool);
     callback marge-bascule(bool);
+    callback membres-defiles(length, length);
+    callback filtrer-membres(string);
+    callback ouvrir-membre(string);
+    callback fermer-carte();
 }

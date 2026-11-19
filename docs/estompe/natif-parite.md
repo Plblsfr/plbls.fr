@@ -81,7 +81,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
 | `components/Icon.svelte` | 0 | [#288](https://github.com/Plblsfr/plbls.fr/issues/288) | fait | jeu d'icônes généré depuis `Icon.svelte` (`scripts/estompe/natif-da.mjs`) |
-| `components/Avatar.svelte` | 0 | [#288](https://github.com/Plblsfr/plbls.fr/issues/288) | fait | initiales, image, halo du locuteur ; la pastille de présence arrive avec #297 |
+| `components/Avatar.svelte` | 0 | [#288](https://github.com/Plblsfr/plbls.fr/issues/288) | fait | initiales, image (recadrée en carré, coins arrondis dans l'image), halo du locuteur, pastille de présence par formes (#297, `apps/estompe/natif/ui/composants/avatar.slint`) |
 | `components/Loader.svelte` | 0 | [#288](https://github.com/Plblsfr/plbls.fr/issues/288) | fait | indicateur de chargement |
 | `components/Modal.svelte` | 0 | [#288](https://github.com/Plblsfr/plbls.fr/issues/288) | fait | fermeture par Échap, la croix ou le fond ; le focus reste dans le modal |
 | `components/ConfirmModal.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | confirmation, avec saisie ou case à cocher ; hors de la liste de #288, se construit sur le modal natif |
@@ -94,9 +94,9 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `components/ServerRail.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | accueil, serveurs dans l'ordre retenu (glisser, Ctrl+Alt+↑/↓), trait de non-lus, pastille de mentions, entrées des sections (`apps/estompe/natif/ui/coquille/rail.slint`) ; « + » ne fait que rejoindre ; restent la recherche, l'administration (lot 8) et l'indicateur du vocal (lot 4) |
 | `components/ServerIcon.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | fait | image du serveur téléchargée par le client (`apps/estompe/natif/src/coquille/pont.rs`), sinon initiales ; rail et en-tête du panneau |
 | `components/SidePanel.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | salons texte, esquisses et vocaux (« bientôt ») avec non-lus et mentions, messages privés avec présence, barre de l'utilisateur avec déconnexion (`apps/estompe/natif/ui/coquille/panneau.slint`) ; restent les menus contextuels, la création de salon, les participants vocaux, les séances à venir, les brouillons et le menu de statut ; commandes du vocal au lot 4 |
-| `components/Marge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | panneau de droite redimensionnable : membres, épinglés ; emplacement prêt dans la coquille (`apps/estompe/natif/ui/coquille/marge.slint`) |
-| `components/MembersPanel.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | membres, présence, activité |
-| `components/RoleBadge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | étiquette « Bot » ou « Créateur » |
+| `components/Marge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | onglet « Membres » sur un serveur, bouton de l'en-tête, Ctrl+. et bouton « Fermer la marge », ouverture retenue dans les préférences (`apps/estompe/natif/ui/coquille/membres.slint`) ; pas encore : onglet « Épinglés » (lot 2), redimensionnement, marge superposée sous 1200 px |
+| `components/MembersPanel.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | liste virtualisée groupée par rôle affiché puis en ligne / hors ligne, compteur, filtre au-delà de 8 membres, couleur du rôle, exclusion, « Bot » et « Créateur », badges, jeu en cours, carte de profil au clic ; pas encore : menu contextuel (message privé, copie, rôles, modération), temps passé en vocal, « Écoute » (musique), repli de la liste |
+| `components/RoleBadge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | fait | étiquette « Bot » ou « Créateur » (`apps/estompe/natif/ui/composants/badge-role.slint`) |
 | `components/ForcedUpdate.svelte` | 1 | [#298](https://github.com/Plblsfr/plbls.fr/issues/298) | en cours | écran bloquant sur refus 426 (`apps/estompe/natif/ui/entree/mise-a-jour.slint`), lien vers la page du serveur ; ni téléchargement ni installation dans l'app tant que l'installeur natif n'existe pas |
 
 ### Messagerie, lecture
@@ -148,7 +148,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 |---|---|---|---|---|
 | `components/SettingsModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | réglages : compte, apparence, vocal, caméra, raccourcis, pages de la plateforme |
 | `components/SettingsDebug.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | journal de débogage ; le journal lui-même vient de #291 |
-| `components/ProfileModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | carte de profil |
+| `components/ProfileModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | carte en lecture depuis la liste des membres (#297) : bannière, avatar et présence, pseudo de serveur et d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée ; boutons « Envoyer un message » et « Modifier mon profil » marqués « bientôt » ; pas encore : modification des rôles, bannière, modération, historique, temps en vocal, statistiques de Sablier |
 | `components/ServerSettingsModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | réglages d'un serveur |
 | `components/RolesSettings.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent |  |
 | `components/ChannelPerms.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | permissions d'un salon |
@@ -187,10 +187,10 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `blocks/activite-statut/` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | statut et activité affichés ; détection du jeu en cours au lot 7 |
+| `blocks/activite-statut/` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | statut (en ligne, absent, ne pas déranger, hors ligne) et jeu en cours affichés dans la liste des membres et la carte ; détection et partage du jeu en cours au lot 7, « Écoute » avec la musique |
 | `blocks/apercu-liens/` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent |  |
-| `blocks/avatars/` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | images de profil ; les initiales viennent de #288 |
-| `blocks/badges/` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | affichage aux lots 1 et 2, administration au lot 8 |
+| `blocks/avatars/` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | avatars globaux et propres au serveur, demandés quand leur ligne devient visible, caches mémoire et disque bornés (`apps/estompe/natif/src/coquille/avatars.rs`), icônes des serveurs (#296) ; pas encore : images des badges, choix et recadrage de son avatar (lot 8) |
+| `blocks/badges/` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | affichage dans les membres et la carte de profil (#297) ; messages au lot 2, administration au lot 8 |
 | `blocks/draw2gether/` | 11 | [#283](https://github.com/Plblsfr/plbls.fr/issues/283) | absent |  |
 | `blocks/emojis/` | 3 | [#275](https://github.com/Plblsfr/plbls.fr/issues/275) | absent | lecture au lot 2 (#302), sélecteur au lot 3 |
 | `blocks/gifs/` | 3 | [#275](https://github.com/Plblsfr/plbls.fr/issues/275) | absent | lecture au lot 2 (#303), sélecteur au lot 3 |
@@ -207,9 +207,9 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
 | `blocks/apercu-liens/LinkCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent | aperçu d'un lien, carte Sillon |
-| `blocks/badges/BadgeIcon.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent |  |
-| `blocks/badges/BadgeInline.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | badges à côté d'un pseudo (membres, messages) |
-| `blocks/badges/BadgeRow.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | badges de la carte de profil |
+| `blocks/badges/BadgeIcon.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | médaille de la couleur du badge, nom en libellé accessible ; l'image (SVG, WebP, PNG, JPEG) et l'emoji du badge ne sont pas encore affichés |
+| `blocks/badges/BadgeInline.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | deux badges puis « +N » à côté du pseudo dans la liste des membres ; dans les messages au lot 2 |
+| `blocks/badges/BadgeRow.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | rangée de badges de la carte de profil (#297), sans l'infobulle du nom et de la description |
 | `blocks/badges/BadgeAdmin.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent |  |
 | `blocks/draw2gether/Draw2Gether.svelte` | 11 | [#283](https://github.com/Plblsfr/plbls.fr/issues/283) | absent |  |
 | `blocks/draw2gether/DrawCanvas.svelte` | 11 | [#283](https://github.com/Plblsfr/plbls.fr/issues/283) | absent |  |

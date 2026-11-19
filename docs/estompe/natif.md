@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) et la coquille (rail des serveurs, salons, messages privés, accueil, navigation) ; le contenu des salons arrive avec les lots suivants.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation) et la marge « Membres » (liste des membres, présence, activité, carte de profil) ; le contenu des salons arrive avec les lots suivants.
 
 ## Architecture
 
@@ -37,8 +37,8 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
   l'un ou de l'autre : `just estompe-natif-generer`. La CI échoue si les fichiers versionnés ne correspondent plus (`--check`).
 - `ui/jetons.slint` : typographie, rayons, espacements et durées de [la direction artistique](direction-artistique.md) ; les trois polices
   variables (`polices/`, licence OFL) sont embarquées dans le binaire.
-- `ui/composants/` : bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar, indicateur de chargement, zone défilante,
-  compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), élément de liste, état vide, coins arrondis d'une image.
+- `ui/composants/` : bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
+  liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image.
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
 - L'écran « À propos » affiche la version et l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`).
 
@@ -109,7 +109,7 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 | Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Rejoindre un serveur », entrées des sections ouvertes |
 | Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés, ou section ; barre du compte avec « Se déconnecter » ; repliable |
 | Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper, vocaux en cours) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
-| Marge | `marge.slint` | `EmplacementMarge`, vide : point d'insertion de la marge « Membres » |
+| Marge | `marge.slint`, `membres.slint`, `carte-profil.slint` | `EmplacementMarge` ; sur un serveur, la marge « Membres » (voir [Membres](#membres)) et la carte de profil |
 
 - Données : global `DonneesCoquille` (`ui/coquille/donnees.slint`) : modèles des lignes (`serveurs`, `salons`, `prives`, `sections`, `rattrapage`,
   `vocaux`), en-tête du panneau, vue, accueil, bandeau, et les rappels de navigation (`ouvrir-serveur`, `ouvrir-salon`, `deplacer-serveur`…).
@@ -129,17 +129,44 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
   (vide : section coupée) ; sans variable, celles de production pour le serveur de production (Régie n'en a pas). Leur contenu arrive au lot 10.
 - Salons vocaux, cinéma, vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon texte ou un message privé montre son nom et l'état vide « Les messages arrivent avec le lot 2 ».
 
-### Brancher la marge de droite
+### Membres
 
-L'emplacement est prêt ; le panneau des membres s'y ajoute sans toucher à la mise en page :
+Sur un serveur, `DonneesCoquille.marge-disponible` passe à vrai : le bouton « Membres » de l'en-tête et Ctrl+. ouvrent ou ferment la marge, le
+bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préférences (`marge_ouverte`, ouverte par défaut comme le front). Hors d'un serveur, il n'y a pas de marge.
 
-1. Interface : un composant (par exemple `ui/coquille/membres.slint`) placé comme enfant de `Coquille` dans `ui/app.slint` (`Coquille { MargeMembres { } }`) :
-   il est rendu dans `EmplacementMarge`, à droite du contenu, sur `DonneesCoquille.largeur-marge` (320 px par défaut).
-2. Passer `DonneesCoquille.marge-disponible` à vrai : le bouton « Membres » apparaît dans l'en-tête du contenu et Ctrl+. bascule `marge-ouverte`
-   (rappel `marge-bascule`, branché dans `cycle.rs`).
-3. Données : un modèle de plus dans `DonneesCoquille`, sa projection pure dans `projection.rs` (depuis `Etat::membres(serveur)` et `presence_de`),
-   et sa cible dans `modeles.rs` : `Changement::MembreAjoute`, `MembreRetire`, `Membre` et `Presence`, aujourd'hui ignorés par `cibles`.
-4. Une capture (clair et sombre) avec la marge ouverte.
+- Interface : `MargeMembres` (`ui/coquille/membres.slint`), enfant de `Coquille` dans `ui/app.slint`, instancié seulement quand la marge est ouverte.
+  En tête, l'onglet « Membres », le compteur `MEMBRES · en ligne/total` et, au-delà de 8 membres, le filtre (pseudo et pseudo de serveur, sans casse ni accents).
+- Liste : groupes des rôles affichés séparément (`hoist`, du plus haut au plus bas, comme `grouper_membres`), puis « EN LIGNE » et « HORS LIGNE » pour les autres ;
+  dans chaque groupe, en ligne d'abord puis par pseudo. Une ligne : avatar avec pastille de présence, pseudo de serveur à la couleur du rôle (atténué hors ligne),
+  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours. Un clic ouvre la carte de profil.
+- Présence par formes, lisible sans couleur (`Pastille`, `ui/composants/avatar.slint`) : disque plein (en ligne), demi-lune (absent), disque barré (ne pas déranger), anneau (hors ligne).
+- Virtualisation : la liste est une `ListeVirtuelle`, réimplémentation de `ListView` aux couleurs de la DA (le compilateur Slint ne virtualise que les enfants d'un
+  composant nommé `ListView`) ; toutes les lignes font 44 px, seules les lignes visibles sont instanciées (16 pour 5 000 membres dans une fenêtre de 900 px).
+  La liste signale son défilement et sa hauteur (`membres-defiles`) ; `fenetre_des_membres` (`src/coquille/membres.rs`) en déduit les lignes visibles, plus 5 lignes au-dessus et au-dessous.
+- Projection pure : `lignes_membres` (état du store, serveur, filtre → lignes, en-têtes de groupe compris), `donnees_marge`, `donnees_carte`. Les `Changement`
+  `MembreAjoute`, `MembreRetire`, `Membre`, `Roles`, `Presence` et `Avatar` du serveur courant visent la liste (`Cibles::membres`) ; `synchroniser` n'en touche
+  que les lignes qui diffèrent : un changement de statut remplace une ligne, un passage en ligne retire et insère la seule ligne du membre et met à jour les deux compteurs.
+- Carte de profil (`ui/coquille/carte-profil.slint`), en lecture : bannière (`banner_color`, sinon couleur du rôle), avatar et présence, pseudo de serveur et
+  d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. « Envoyer un message » et
+  « Modifier mon profil » sont marqués « bientôt » ; modification, modération et historique ne sont pas dans l'app native.
+
+#### Avatars et badges
+
+`Profils` (`src/coquille/avatars.rs`) télécharge par le client HTTP (`GET /users/{id}/avatar`, `GET /servers/{id}/users/{uid}/avatar` quand le serveur a une photo
+propre au membre, PNG ou JPEG ; `GET /users/{id}/badges`). Un avatar et des badges ne sont demandés que pour les lignes de la fenêtre, une fois que la liste a donné sa hauteur ;
+un avatar en échec n'est pas redemandé pendant la session.
+
+| Cache | Clé | Borne |
+|---|---|---|
+| disque, `<cache>/avatars/` (`CacheDisque`, crate client) | `u.<utilisateur>.v<version>` ou `s.<serveur>.u.<utilisateur>.v<version>` | 64 Mo (`BORNE_DISQUE`), éviction du moins récemment lu |
+| mémoire, avatars décodés | utilisateur, version, serveur éventuel | 256 images de 96 × 96 au plus (`CAPACITE_AVATARS`), LRU |
+| mémoire, badges | utilisateur | 1 024 listes (`CAPACITE_BADGES`), LRU |
+| modèle de la liste | — | seules les lignes de la fenêtre portent leur image ; elle est retirée quand la ligne en sort |
+
+- Le cache disque garde les octets reçus ; l'ordre des lectures est la date de modification des fichiers, relue au redémarrage. Écriture dans un fichier
+  temporaire renommé ; un fichier temporaire restant est supprimé à l'ouverture, un fichier qui ne se décode pas est supprimé et redemandé, un nom de fichier invalide est ignoré.
+- Une image est recadrée en carré, réduite à 96 px et arrondie dans ses pixels (`arrondir`) : les deux moteurs de rendu l'affichent de la même façon.
+- Sans image, les initiales restent affichées. Les images et emojis des badges ne sont pas encore chargés : une médaille de la couleur du badge les remplace.
 
 ## Portabilité
 
@@ -161,13 +188,13 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | | Windows | Linux |
 |---|---|---|
 | Données (`preferences.json`) | `%APPDATA%\fr.plbls.estompe.natif` | `$XDG_DATA_HOME/fr.plbls.estompe.natif` (défaut `~/.local/share`) |
-| Cache | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
+| Cache (avatars dans `avatars/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre, adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre, adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -193,7 +220,8 @@ référence et l'image des différences sont dans `target/tmp/captures/`, publi�
 - Le moteur Skia n'est pas utilisé ici : son rendu du texte dépend des bibliothèques du système, et les mêmes écrans diffèrent d'environ 1 % de
   pixels entre deux machines. Écarts du moteur logiciel avec ce que l'app affiche (Skia) : pas d'ombre portée sous les modals et les cartes, un point tracé par
   un segment de longueur nulle n'est pas dessiné (icônes `poignee` et `list`), anticrénelage du texte légèrement différent. Il ne découpe pas une image
-  par le `border-radius` de son parent : les images arrondies (icônes des serveurs) sont recouvertes par `Coins`, dans les deux moteurs.
+  par le `border-radius` de son parent : les icônes des serveurs sont recouvertes par `Coins`, dans les deux moteurs, et les avatars arrondis dans leurs pixels ;
+  un rayon propre à un coin (`border-top-left-radius`) n'est pas dessiné.
 
 ## Tests d'interaction
 
@@ -201,6 +229,9 @@ Backend de test de Slint, un par fichier de `tests/` : `clavier.rs` et `connexio
 `connexion.rs` et `coquille.rs` avec la boucle (`init_integration_test_with_mock_time`, un seul `#[test]` par fichier) : un fil pilote clique par `ElementHandle` et attend
 chaque état. `coquille.rs` branche la coquille sur une fausse fabrique (store réel rempli par `Store::installer`, `FluxTempsReel::factice`) :
 un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans action, puis navigation, préférences, bandeau du réseau, section et fin de session. `ElementHandle` exige les informations de débogage de l'interface, que `build.rs` n'ajoute qu'au profil de débogage.
+`membres.rs` (même backend) ouvre un serveur de 5 000 membres sur une fausse source de profils qui compte les requêtes : seules les lignes de la fenêtre
+  sont instanciées et demandent leur avatar, un défilement ne demande que les nouvelles, un retour en arrière aucune ; un statut ou un passage en ligne reçus en temps réel
+  ne remplacent ou ne déplacent que la ligne du membre. Sans rendu, le test fait tourner lui-même les gestionnaires `changed` (`update_timers_and_animations`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 
 ## CI

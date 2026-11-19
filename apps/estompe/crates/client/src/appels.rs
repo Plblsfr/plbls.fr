@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use bytes::Bytes;
 use reqwest::Method;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
@@ -15,6 +16,18 @@ use crate::types::{
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Badge {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub color: String,
+    pub description: String,
+    pub icon_version: i64,
+    pub sort_order: i64,
+}
 
 pub fn code_d_invitation(saisie: &str) -> String {
     let saisie = saisie.trim();
@@ -285,6 +298,11 @@ impl Client {
     ) -> Result<Bytes, ErreurApi> {
         let prefixe = serveur.map(|s| format!("/servers/{s}")).unwrap_or_default();
         self.octets(&format!("{prefixe}/users/{utilisateur}/avatar"))
+            .await
+    }
+
+    pub async fn badges_de(&self, utilisateur: &str) -> Result<Vec<Badge>, ErreurApi> {
+        self.get(&format!("/users/{}/badges", encoder_composant(utilisateur)))
             .await
     }
 
@@ -602,6 +620,28 @@ mod tests {
                 ligne("/admin/badges/b1/users/x", "DELETE")
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn lit_les_badges_d_un_utilisateur_avec_les_champs_absents_par_defaut() {
+        let serveur = ServeurFactice::demarrer([Reponse::json(
+            200,
+            json!([{"id": "b1", "name": "Fondateur", "icon": "🏅", "color": "#d0688a", "icon_version": 0}, {"id": "b2"}]),
+        )])
+        .await;
+        let badges = serveur.client().badges_de("u/1").await.unwrap();
+        assert_eq!(lignes(&serveur), [ligne("/users/u%2F1/badges", "GET")]);
+        assert_eq!(
+            badges[0],
+            Badge {
+                id: "b1".into(),
+                name: "Fondateur".into(),
+                icon: "🏅".into(),
+                color: "#d0688a".into(),
+                ..Badge::default()
+            }
+        );
+        assert_eq!(badges[1].name, "");
     }
 
     #[tokio::test]

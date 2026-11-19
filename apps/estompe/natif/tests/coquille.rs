@@ -2,11 +2,11 @@ mod commun;
 
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::atomic::Ordering;
-use std::sync::{mpsc, Arc};
+use std::sync::Arc;
 
 use chrono::NaiveDate;
 use commun::coquille::{evenement, message, FausseFabrique};
-use commun::{attendre, FausseApi, FausseAuth, FauxNavigateur};
+use commun::{attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur};
 use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::preferences::Preferences;
 use estompe_client::sections::Section;
@@ -21,35 +21,6 @@ use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
 use slint::platform::PointerEventButton;
 use slint::{ComponentHandle, Model};
-
-fn sur_l_interface<R: Send + 'static>(
-    faible: &slint::Weak<Principale>,
-    action: impl FnOnce(&Principale) -> R + Send + 'static,
-) -> R {
-    let (envoi, reception) = mpsc::channel();
-    faible
-        .upgrade_in_event_loop(move |f| {
-            let _ = envoi.send(action(&f));
-        })
-        .expect("boucle d'évènements");
-    reception
-        .recv_timeout(commun::DELAI)
-        .expect("réponse de l'interface")
-}
-
-fn attendre_l_interface(
-    faible: &slint::Weak<Principale>,
-    condition: impl Fn(&Principale) -> bool + Send + Sync + Clone + 'static,
-    quoi: &str,
-) {
-    attendre(
-        || {
-            let condition = condition.clone();
-            sur_l_interface(faible, move |f| condition(f))
-        },
-        quoi,
-    );
-}
 
 fn cliquer(faible: &slint::Weak<Principale>, libelle: &'static str) {
     sur_l_interface(faible, move |f| {

@@ -228,5 +228,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   les modifier à la main. Un changement visuel voulu régénère les captures de référence (`just estompe-natif-captures`). Le backend de test de Slint
   ne s'installe qu'une fois par processus : un fichier de `tests/` par backend (rendu logiciel pour les captures, sans rendu pour le clavier).
   Une tabulation qui arrive sur un champ sélectionne tout son texte. Lancer l'app sous Linux demande `libxkbcommon-x11-0`.
+  Slint ne virtualise un `for` que dans un composant nommé `ListView` (`ui/composants/liste-virtuelle.slint`, exporté en `ListeVirtuelle`) ; avec le temps simulé du backend de test,
+  les gestionnaires `changed` ne tournent que si le test appelle `slint::platform::update_timers_and_animations()`.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.

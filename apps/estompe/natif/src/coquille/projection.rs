@@ -102,7 +102,7 @@ pub struct DonneesAccueil {
 const JOURS: [&str; 7] = [
     "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
 ];
-const MOIS: [&str; 12] = [
+pub const MOIS: [&str; 12] = [
     "janvier",
     "février",
     "mars",
