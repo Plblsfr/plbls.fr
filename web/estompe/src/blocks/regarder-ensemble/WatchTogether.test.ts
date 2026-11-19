@@ -27,24 +27,52 @@ describe('salon cinéma : recharger le lecteur', () => {
     expect(adapters[1].destroy).toHaveBeenCalled()
   })
 
-  it('une intro connue ne fait ni bouton ni saut local : la position reste celle de la séance', async () => {
+  const seance = (extra: Record<string, unknown> = {}) => {
+    app.cinema.c1 = { state: { rev: 3, provider: 'film', video: 'f1', playing: true, pos: 45, rate: 1, at: new Date().toISOString(), host: 'u', host_only: false, by_id: 'u', by: 'u', act: 'play', queue: [], ready: {}, repeat: '', history: [], ...extra }, offset: 0 }
+    const seek = vi.fn()
+    const load = vi.fn()
+    const pret: { annoncer?: Handlers['onTracks']; observer?: Handlers['onState'] } = {}
+    vi.spyOn(providers, 'film').mockImplementation(async (_el, h) => {
+      pret.annoncer = h.onTracks
+      pret.observer = h.onState
+      return { sync: 'full', canRate: true, load, play: vi.fn(), pause: vi.fn(), seek, time: () => 45, duration: () => 3000, rate: () => 1, setRate: vi.fn(), state: () => 'playing', destroy: vi.fn() } satisfies Adapter
+    })
+    return { seek, load, pret }
+  }
+
+  it('« Passer l’intro » déplace la séance de tous à la fin de l’intro, au bouton comme à la touche S', async () => {
     vi.spyOn(api, 'watchReady').mockResolvedValue(undefined as never)
     const action = vi.spyOn(api, 'watchAction').mockResolvedValue(undefined as never)
-    app.cinema.c1 = { state: { rev: 3, provider: 'film', video: 'f1', playing: true, pos: 45, rate: 1, at: new Date().toISOString(), host: 'u', host_only: false, by_id: 'u', by: 'u', act: 'play', queue: [], ready: {}, repeat: '', history: [] }, offset: 0 }
-    const seek = vi.fn()
-    let annoncer: Handlers['onTracks']
-    vi.spyOn(providers, 'film').mockImplementation(async (_el, h) => {
-      annoncer = h.onTracks
-      return { sync: 'full', canRate: true, load: vi.fn(), play: vi.fn(), pause: vi.fn(), seek, time: () => 45, duration: () => 3000, rate: () => 1, setRate: vi.fn(), state: () => 'playing', destroy: vi.fn() } satisfies Adapter
-    })
+    const requete = vi.fn(async (..._a: unknown[]) => new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', requete)
+    const { seek, load, pret } = seance()
     const vue = render(WatchTogether, { channelId: 'c1', people: [], kind: 'cinema' })
-    await vi.waitFor(() => expect(annoncer).toBeTruthy())
-    annoncer!({ audio: [], subtitles: [], audioN: 0, subN: null, intro: { debut: 30, fin: 90 } })
-    await tick()
+    await vi.waitFor(() => expect(load).toHaveBeenCalled())
     expect(vue.queryByRole('button', { name: /Passer l’intro/ })).toBeNull()
-    expect(vue.container.textContent).not.toContain('Passer l’intro')
+    pret.annoncer!({ audio: [], subtitles: [], audioN: 0, subN: null, intro: { debut: 30, fin: 90 } })
+    pret.observer!('playing')
+    await fireEvent.click(await vue.findByRole('button', { name: /Passer l’intro/ }))
+    expect(seek.mock.calls).toEqual([[90]])
+    await vue.findByRole('button', { name: /Passer l’intro/ })
     await fireEvent.keyDown(document.body, { key: 's' })
-    await fireEvent.keyDown(window, { key: 'S' })
+    expect(seek.mock.calls).toEqual([[90], [90]])
+    await vi.waitFor(() => expect(action).toHaveBeenCalledWith('c1', 'seek', expect.objectContaining({ position: 90, video: 'f1' }), 'cinema'))
+    expect(requete.mock.calls.some(([url]) => String(url).endsWith('/titles/f1/intro-skipped'))).toBe(true)
+    vue.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it('sans le droit de piloter, une intro connue ne fait ni bouton ni saut', async () => {
+    vi.spyOn(api, 'watchReady').mockResolvedValue(undefined as never)
+    const action = vi.spyOn(api, 'watchAction').mockResolvedValue(undefined as never)
+    const { seek, load, pret } = seance({ host: 'autre', host_only: true })
+    const vue = render(WatchTogether, { channelId: 'c1', people: [], kind: 'cinema' })
+    await vi.waitFor(() => expect(load).toHaveBeenCalled())
+    pret.annoncer!({ audio: [], subtitles: [], audioN: 0, subN: null, intro: { debut: 30, fin: 90 } })
+    pret.observer!('playing')
+    await vi.waitFor(() => expect(vue.getByText('0:45 / 50:00')).toBeTruthy())
+    expect(vue.queryByRole('button', { name: /Passer l’intro/ })).toBeNull()
+    await fireEvent.keyDown(document.body, { key: 's' })
     await tick()
     expect(seek.mock.calls.filter(([s]) => s === 90)).toEqual([])
     expect(action.mock.calls.filter(([, a]) => a === 'seek')).toEqual([])

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { api } from '../../lib/api'
+  import { api, filmsApi, requestAt } from '../../lib/api'
   import { app } from '../../lib/store.svelte'
   import { platform } from '../../lib/platform'
   import { notify } from '../../lib/ui'
@@ -10,7 +10,7 @@
   import Avatar from '../../components/Avatar.svelte'
   import Icon from '../../components/Icon.svelte'
   import { PROVIDER_LABEL } from './providers'
-  import { BUFFER_PREFS, playPrefs, QUALITY_LABEL, seekTrack, trackName, type BufferPref, type Quality } from '../../sections/entracte/films'
+  import { BUFFER_PREFS, inIntro, playPrefs, QUALITY_LABEL, seekTrack, shortcut, trackName, type BufferPref, type Quality } from '../../sections/entracte/films'
   import { hrefs } from '../../lib/route.svelte'
   import type { SessionKind } from '../../lib/types'
 
@@ -53,6 +53,23 @@
   const pct = (v: number, max: number) => `${max ? Math.min(100, (v / max) * 100) : 0}%`
   const stop = () => void api.watchAction(channelId, 'ended', { rev: s!.rev }, kind).catch(fail)
   const toggle = () => player?.command({ action: s!.playing ? 'pause' : 'play', position: player.position })
+  const intro = $derived(s?.provider === 'film' ? (player?.tracks?.intro ?? null) : null)
+  const skippable = $derived(!!player && canDrive && !player.error && !player.loading && inIntro(player.position, intro))
+  const skip = () => {
+    if (!s || !intro || !skippable) return
+    const titre = s.video
+    player?.command({ action: 'seek', position: intro.fin })
+    void requestAt<void>(filmsApi.base, 'POST', `/titles/${encodeURIComponent(titre)}/intro-skipped`).catch(() => {})
+  }
+  const key = (e: KeyboardEvent) => {
+    if (shortcut(e) !== 'skip' || e.defaultPrevented || !skippable) return
+    if (document.querySelector('plbls-modal, [aria-modal="true"], [role="menu"]')) return
+    const t = e.target instanceof HTMLElement ? e.target : null
+    if (t?.isContentEditable || t?.matches('textarea, select, input:not([type="range"])')) return
+    e.preventDefault()
+    skip()
+    wake()
+  }
 
   async function add(e: Event) {
     e.preventDefault()
@@ -67,6 +84,7 @@
   }
 </script>
 
+<svelte:window onkeydown={key} />
 {#if s}
   {@const live = s.provider === 'twitch_live' || s.provider === 'twitch_clip'}
   {@const queued = s.queue.length}
@@ -113,6 +131,9 @@
           {:else if player?.loading && !live}
             <span class="plbls-spinner film-wait" role="status" aria-label="Chargement"></span>
           {/if}
+        {/if}
+        {#if skippable}
+          <button class="plbls-button watch-skip" onclick={skip} title="S" aria-keyshortcuts="S"><Icon name="suivant" size={16} /> Passer l’intro</button>
         {/if}
         {#if player && !live}
           <div class="watch-bar" role="group" aria-label="Lecture">

@@ -97,6 +97,8 @@ html[data-theater] .stage:has(.watch-top) .stage-strip, html[data-theater] .stag
 .watch-bar, .watch-top, .watch-big { transition: opacity 0.3s ease; }
 .watch-player.idle { cursor: none; }
 .watch-player.idle :is(.watch-bar, .watch-top, .watch-big) { opacity: 0; pointer-events: none; }
+.watch-skip { position: absolute; z-index: 3; right: 14px; bottom: 72px; min-height: 44px; transition: bottom 0.3s ease; }
+.watch-player.idle .watch-skip { bottom: 20px; }
 html[data-theater] .watch-side, html[data-theater] .watch-head, html[data-theater] .watch-title { display: none; }
 html[data-theater] .watch, html[data-theater] .watch-main { flex: 1 1 100%; height: 100%; }
 html[data-theater] .watch-player { aspect-ratio: auto; height: 100%; border-radius: var(--r-xl); }
@@ -107,6 +109,7 @@ html[data-theater] .watch-bar-title { display: flex; flex-direction: column; min
 html[data-theater] .watch-bar-title strong { font-family: var(--f-titre); font-size: 18px; letter-spacing: -0.03em; }
 html[data-theater] .watch-big { width: 96px; height: 96px; }
 html[data-theater] .watch-msg { inset: auto 0 150px; }
+html[data-theater] .watch-player:not(.idle) .watch-skip { right: 30px; bottom: 150px; }
 html[data-theater] .watch-voice { display: block; margin-left: auto; }
 html[data-theater] .watch-voice .vctl { gap: 8px; }
 html[data-theater] .watch-voice .vbtn, html[data-theater] .watch-voice .vsplit { background: rgb(255 255 255 / 10%); color: #f1ece6; }

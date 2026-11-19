@@ -79,7 +79,7 @@ identifiants publics d'Entracte (titre, série), jamais de chemin de fichier ni 
   (`progression.abandon_le`) : un seul évènement par personne et par titre, même si la lecture reprend puis s'arrête de nouveau.
   Au premier démarrage avec l'émission active, les lectures déjà délaissées depuis plus de 30 jours sont relevées, à leur date.
 - **Salon cinéma** : chaque participant envoie ses rapports de position comme en lecture seule ; son temps est donc compté ici une fois,
-  comme toute lecture. Le bouton « Passer l'intro » n'y existe pas.
+  comme toute lecture. Une intro passée y est comptée pour la personne qui a cliqué, pas pour les autres participants.
 
 ### Import de l'historique
 
@@ -111,7 +111,7 @@ Le lecteur propose « Passer l'intro » (bouton, ou touche S) tant que la positi
 et le signale à Entracte (`POST /titles/{id}/intro-skipped`, échec ignoré) pour les [statistiques](#statistiques-sablier).
 Les bornes viennent d'une comparaison audio entre les épisodes d'une même saison : les fichiers n'ont pas besoin de chapitres.
 Seules les séries sont concernées (ni films, ni génériques de fin, ni saisie manuelle). Dans le salon cinéma d'Estompe, le bouton
-n'est pas proposé : la position y est pilotée par l'hôte.
+(ou la touche S) est proposé à qui peut piloter la lecture et déplace la séance de tous les participants à `fin`.
 
 - **Mode** (Administration › Intros, gardé en base, `manuel` par défaut). `manuel` : rien ne démarre seul, l'administrateur lance
   « Analyser » série par série, puis « Réanalyser » ou « Effacer ». `automatique` : après chaque synchronisation du catalogue (et au
