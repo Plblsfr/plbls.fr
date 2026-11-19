@@ -1,21 +1,29 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, TimeZone};
+use estompe_client::appels::Badge;
 use estompe_client::ordre_serveurs::Sens;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
+use estompe_client::store::Presence;
 use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::temps_reel::EtatReseau;
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 
-use super::modeles::{cibles, remplacer_ligne, synchroniser, Cibles, Ensemble};
+use super::avatars::{decoder_image, CleAvatar, Profils};
+use super::membres::{
+    analyser_couleur, donnees_carte, donnees_marge, fenetre_des_membres, libelle_presence,
+    lignes_membres, DonneesCarte, DonneesMarge, DonneesMembre, Fenetre,
+};
+use super::modeles::{cibles, remplacer_ligne, synchroniser, Cibles, Ensemble, Operation};
 use super::navigation::Navigation;
 use super::projection::*;
 use crate::session::Memoire;
 use crate::{
-    Accueil, DonneesCoquille, EnTetePanneau, LignePrive, LigneRattrapage, LigneSalon, LigneSection,
-    LigneServeur, LigneVocal, Principale, VueContenu,
+    Accueil, CarteProfil, DonneesCoquille, EnTeteMarge, EnTetePanneau, EtatPresence, LigneBadge,
+    LigneMembre, LignePrive, LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal,
+    Principale, RoleProfil, VueContenu,
 };
 
 pub type Horloge = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
@@ -28,18 +36,177 @@ pub fn horloge_locale() -> Horloge {
 }
 
 pub fn decoder_icone(octets: &[u8]) -> Option<Icone> {
-    let image = image::load_from_memory(octets).ok()?;
-    let image = if image.width() > COTE_ICONE || image.height() > COTE_ICONE {
-        image.thumbnail(COTE_ICONE, COTE_ICONE)
-    } else {
-        image
-    };
-    let rgba = image.into_rgba8();
-    Some(SharedPixelBuffer::clone_from_slice(
-        rgba.as_raw(),
-        rgba.width(),
-        rgba.height(),
-    ))
+    decoder_image(octets, COTE_ICONE)
+}
+
+const VUE_PAR_DEFAUT: f32 = 800.0;
+
+struct EtatMembres {
+    serveur: Option<String>,
+    filtre: String,
+    ombre: Vec<DonneesMembre>,
+    index: HashMap<String, usize>,
+    defilement: f32,
+    vue: Option<f32>,
+    fenetre: Fenetre,
+    avec_portrait: HashSet<String>,
+    demandes_avatars: HashSet<CleAvatar>,
+    echecs_avatars: HashSet<CleAvatar>,
+    demandes_badges: HashSet<String>,
+    operations: Vec<(Operation, String)>,
+    marge: Option<DonneesMarge>,
+    carte: Option<String>,
+    ombre_carte: Option<DonneesCarte>,
+}
+
+impl Default for EtatMembres {
+    fn default() -> Self {
+        Self {
+            serveur: None,
+            filtre: String::new(),
+            ombre: Vec::new(),
+            index: HashMap::new(),
+            defilement: 0.0,
+            vue: None,
+            fenetre: Fenetre {
+                debut: 0,
+                fin: 0,
+                haut: 0.0,
+                bas: 0.0,
+            },
+            avec_portrait: HashSet::new(),
+            demandes_avatars: HashSet::new(),
+            echecs_avatars: HashSet::new(),
+            demandes_badges: HashSet::new(),
+            operations: Vec::new(),
+            marge: None,
+            carte: None,
+            ombre_carte: None,
+        }
+    }
+}
+
+fn couleur_slint(couleur: Option<&str>) -> Option<slint::Color> {
+    couleur
+        .and_then(analyser_couleur)
+        .map(|(r, v, b)| slint::Color::from_rgb_u8(r, v, b))
+}
+
+fn presence_slint(presence: Presence) -> EtatPresence {
+    match presence {
+        Presence::EnLigne => EtatPresence::EnLigne,
+        Presence::Absent => EtatPresence::Absent,
+        Presence::NePasDeranger => EtatPresence::NePasDeranger,
+        Presence::HorsLigne => EtatPresence::HorsLigne,
+    }
+}
+
+fn badge_slint(badge: &Badge) -> LigneBadge {
+    LigneBadge {
+        nom: badge.name.as_str().into(),
+        couleur: couleur_slint(Some(&badge.color))
+            .unwrap_or_else(|| slint::Color::from_rgb_u8(0xd0, 0x68, 0x8a)),
+    }
+}
+
+fn ligne_membre_slint(
+    d: &DonneesMembre,
+    portrait: Option<Icone>,
+    badges: Option<&[Badge]>,
+) -> LigneMembre {
+    let badges = badges.unwrap_or_default();
+    let couleur_titre = couleur_slint(d.couleur_titre.as_deref());
+    let couleur = couleur_slint(d.couleur.as_deref());
+    LigneMembre {
+        cle: d.cle.as_str().into(),
+        en_tete: d.en_tete,
+        titre: d.titre.as_str().into(),
+        a_couleur_titre: couleur_titre.is_some(),
+        couleur_titre: couleur_titre.unwrap_or_default(),
+        utilisateur: d.utilisateur.as_str().into(),
+        nom: d.nom.as_str().into(),
+        pseudo: d.pseudo.as_str().into(),
+        initiales: d.initiales.as_str().into(),
+        teinte: d.teinte,
+        portrait: portrait.map(Image::from_rgba8).unwrap_or_default(),
+        presence: if d.en_tete {
+            EtatPresence::Aucune
+        } else {
+            presence_slint(d.presence)
+        },
+        libelle_presence: libelle_presence(d.presence).into(),
+        activite: d.activite.as_str().into(),
+        a_couleur: couleur.is_some(),
+        couleur: couleur.unwrap_or_default(),
+        createur: d.createur,
+        bot: d.bot,
+        exclu: d.exclu,
+        badge_1: badges.first().map(badge_slint).unwrap_or_default(),
+        badge_2: badges.get(1).map(badge_slint).unwrap_or_default(),
+        nombre_badges: badges.len().min(i32::MAX as usize) as i32,
+    }
+}
+
+fn carte_slint(d: &DonneesCarte, portrait: Option<Icone>, badges: Option<&[Badge]>) -> CarteProfil {
+    let couleur = couleur_slint(d.couleur.as_deref());
+    let roles: Vec<RoleProfil> = d
+        .roles
+        .iter()
+        .map(|r| {
+            let couleur = couleur_slint(r.couleur.as_deref());
+            RoleProfil {
+                nom: r.nom.as_str().into(),
+                a_couleur: couleur.is_some(),
+                couleur: couleur.unwrap_or_default(),
+            }
+        })
+        .collect();
+    let badges: Vec<LigneBadge> = badges.unwrap_or_default().iter().map(badge_slint).collect();
+    CarteProfil {
+        utilisateur: d.utilisateur.as_str().into(),
+        nom: d.nom.as_str().into(),
+        pseudo_origine: d.pseudo_origine.as_str().into(),
+        initiales: d.initiales.as_str().into(),
+        teinte: d.teinte,
+        portrait: portrait.map(Image::from_rgba8).unwrap_or_default(),
+        a_couleur: couleur.is_some(),
+        couleur: couleur.unwrap_or_default(),
+        banniere: couleur_slint(d.banniere.as_deref())
+            .unwrap_or_else(|| slint::Color::from_rgb_u8(0xf6, 0xc6, 0xd6)),
+        presence: presence_slint(d.presence),
+        statut: d.statut.as_str().into(),
+        exclu_jusqu_au: d.exclu_jusqu_au.as_str().into(),
+        rang: d.rang.into(),
+        roles: ModelRc::new(VecModel::from(roles)),
+        badges: ModelRc::new(VecModel::from(badges)),
+        serveur: d.serveur.as_str().into(),
+        arrivee: d.arrivee.as_str().into(),
+        creation: d.creation.as_str().into(),
+        bot: d.bot,
+        moi: d.moi,
+    }
+}
+
+fn cles_des_operations(
+    anciennes: Vec<String>,
+    nouvelles: &[DonneesMembre],
+    operations: &[Operation],
+) -> Vec<(Operation, String)> {
+    let mut cles = anciennes;
+    operations
+        .iter()
+        .map(|operation| {
+            let cle = match *operation {
+                Operation::Retirer(i) => cles.remove(i),
+                Operation::Inserer(i) => {
+                    cles.insert(i, nouvelles[i].cle.clone());
+                    nouvelles[i].cle.clone()
+                }
+                Operation::Remplacer(i) => nouvelles[i].cle.clone(),
+            };
+            (*operation, cle)
+        })
+        .collect()
 }
 
 #[derive(Default)]
@@ -64,6 +231,7 @@ struct Interne {
     deja_connecte: bool,
     icones: BTreeMap<String, (i64, Icone)>,
     demandes: BTreeSet<(String, i64)>,
+    membres: EtatMembres,
 }
 
 #[derive(Clone)]
@@ -74,6 +242,7 @@ pub struct Pont {
     runtime: tokio::runtime::Handle,
     memoire: Option<Memoire>,
     horloge: Horloge,
+    profils: Arc<Profils>,
 }
 
 fn vec_de<S: Clone + 'static>(modele: &ModelRc<S>) -> &VecModel<S> {
@@ -91,6 +260,7 @@ pub fn installer_modeles(f: &Principale) {
     g.set_sections(ModelRc::new(VecModel::<LigneSection>::default()));
     g.set_rattrapage(ModelRc::new(VecModel::<LigneRattrapage>::default()));
     g.set_vocaux(ModelRc::new(VecModel::<LigneVocal>::default()));
+    g.set_membres(ModelRc::new(VecModel::<LigneMembre>::default()));
 }
 
 pub fn vider_modeles(f: &Principale) {
@@ -101,6 +271,12 @@ pub fn vider_modeles(f: &Principale) {
     vec_de(&g.get_sections()).set_vec(Vec::new());
     vec_de(&g.get_rattrapage()).set_vec(Vec::new());
     vec_de(&g.get_vocaux()).set_vec(Vec::new());
+    vec_de(&g.get_membres()).set_vec(Vec::new());
+    g.set_marge(EnTeteMarge::default());
+    g.set_marge_disponible(false);
+    g.set_carte_ouverte(false);
+    g.set_filtre_membres("".into());
+    g.set_defilement_membres(0.0);
     g.set_panneau(EnTetePanneau::default());
     g.set_vue(VueContenu::default());
     g.set_accueil(Accueil::default());
@@ -238,6 +414,7 @@ fn tout() -> Cibles {
         vue: true,
         compte: true,
         corriger: true,
+        membres: true,
     }
 }
 
@@ -249,6 +426,7 @@ impl Pont {
         memoire: Option<Memoire>,
         horloge: Horloge,
         navigation: Navigation,
+        profils: Arc<Profils>,
     ) -> Self {
         Self {
             interne: Arc::new(Mutex::new(Interne {
@@ -259,12 +437,14 @@ impl Pont {
                 deja_connecte: false,
                 icones: BTreeMap::new(),
                 demandes: BTreeSet::new(),
+                membres: EtatMembres::default(),
             })),
             store,
             fenetre,
             runtime,
             memoire,
             horloge,
+            profils,
         }
     }
 
@@ -434,6 +614,9 @@ impl Pont {
         drop(guard);
         for (serveur, version) in a_demander {
             self.telecharger_icone(serveur, version);
+        }
+        if c.membres {
+            self.projeter_membres(f);
         }
     }
 
@@ -614,6 +797,344 @@ impl Pont {
             },
             false,
         );
+    }
+
+    pub fn profils(&self) -> &Arc<Profils> {
+        &self.profils
+    }
+
+    pub fn operations_membres(&self) -> Vec<(Operation, String)> {
+        self.verrou().membres.operations.clone()
+    }
+
+    pub fn fenetre_membres(&self) -> Fenetre {
+        self.verrou().membres.fenetre
+    }
+
+    fn maintenant_ms(&self) -> i64 {
+        let maintenant = (self.horloge)();
+        chrono::Local
+            .from_local_datetime(&maintenant)
+            .earliest()
+            .map(|d| d.timestamp_millis())
+            .unwrap_or_else(|| maintenant.and_utc().timestamp_millis())
+    }
+
+    fn projeter_membres(&self, f: &Principale) {
+        let g = f.global::<DonneesCoquille>();
+        let route = self.route();
+        let maintenant = self.maintenant_ms();
+        let mut guard = self.verrou();
+        let m = &mut guard.membres;
+        let serveur = self.store.lire(|etat| {
+            serveur_courant(&route)
+                .filter(|s| etat.serveur(s).is_some())
+                .map(str::to_string)
+        });
+        let disponible = serveur.is_some();
+        if g.get_marge_disponible() != disponible {
+            g.set_marge_disponible(disponible);
+        }
+        if m.serveur != serveur {
+            m.serveur = serveur.clone();
+            m.filtre.clear();
+            m.defilement = 0.0;
+            m.carte = None;
+            m.ombre_carte = None;
+            g.set_filtre_membres("".into());
+            g.set_defilement_membres(0.0);
+            g.set_carte_ouverte(false);
+        }
+        let (lignes, marge) = self.store.lire(|etat| match serveur.as_deref() {
+            Some(serveur) => {
+                let lignes = lignes_membres(etat, serveur, &m.filtre, maintenant);
+                let marge = donnees_marge(etat, serveur, &lignes);
+                (lignes, marge)
+            }
+            None => (Vec::new(), DonneesMarge::default()),
+        });
+        if m.marge.as_ref() != Some(&marge) {
+            g.set_marge(EnTeteMarge {
+                titre: marge.titre.as_str().into(),
+                filtrable: marge.filtrable,
+                vide: marge.vide && serveur.is_some(),
+            });
+            m.marge = Some(marge);
+        }
+        let modele_rc = g.get_membres();
+        let modele = vec_de(&modele_rc);
+        let profils = &self.profils;
+        let EtatMembres {
+            ombre,
+            index,
+            avec_portrait,
+            operations,
+            ..
+        } = m;
+        let anciennes: Vec<String> = ombre.iter().map(|d| d.cle.clone()).collect();
+        let faites = synchroniser(
+            modele,
+            ombre,
+            lignes,
+            |d| d.cle.clone(),
+            |d| {
+                let portrait = if avec_portrait.contains(&d.cle) {
+                    d.avatar.as_ref().and_then(|c| profils.avatar(c))
+                } else {
+                    None
+                };
+                ligne_membre_slint(d, portrait, profils.badges(&d.utilisateur).as_deref())
+            },
+        );
+        if faites.iter().any(|o| !matches!(o, Operation::Remplacer(_)))
+            || index.len() != ombre.len()
+        {
+            *index = ombre
+                .iter()
+                .enumerate()
+                .map(|(i, d)| (d.cle.clone(), i))
+                .collect();
+        }
+        for operation in &faites {
+            if let Operation::Inserer(i) | Operation::Remplacer(i) = *operation {
+                let porte = modele
+                    .row_data(i)
+                    .is_some_and(|l| l.portrait.size().width > 0);
+                if porte {
+                    avec_portrait.insert(ombre[i].cle.clone());
+                } else {
+                    avec_portrait.remove(&ombre[i].cle);
+                }
+            }
+        }
+        if !faites.is_empty() {
+            *operations = cles_des_operations(anciennes, ombre, &faites);
+        }
+        drop(guard);
+        self.rafraichir_fenetre(f);
+        self.projeter_carte(f);
+    }
+
+    fn rafraichir_fenetre(&self, f: &Principale) {
+        let g = f.global::<DonneesCoquille>();
+        let ouverte = g.get_marge_disponible() && g.get_marge_ouverte();
+        let modele_rc = g.get_membres();
+        let modele = vec_de(&modele_rc);
+        let mut guard = self.verrou();
+        let m = &mut guard.membres;
+        let fenetre =
+            fenetre_des_membres(m.ombre.len(), m.defilement, m.vue.unwrap_or(VUE_PAR_DEFAUT));
+        m.fenetre = fenetre;
+        let peut_demander = m.vue.is_some();
+        let dedans = |i: usize| i >= fenetre.debut && i < fenetre.fin;
+        let a_vider: Vec<String> = m
+            .avec_portrait
+            .iter()
+            .filter(|cle| m.index.get(*cle).is_none_or(|&i| !dedans(i)))
+            .cloned()
+            .collect();
+        for cle in a_vider {
+            m.avec_portrait.remove(&cle);
+            if let Some(d) = m
+                .index
+                .get(&cle)
+                .and_then(|&i| m.ombre.get(i).map(|d| (i, d)))
+            {
+                let (i, d) = d;
+                modele.set_row_data(
+                    i,
+                    ligne_membre_slint(d, None, self.profils.badges(&d.utilisateur).as_deref()),
+                );
+            }
+        }
+        if !ouverte {
+            return;
+        }
+        let mut avatars = Vec::new();
+        let mut badges = Vec::new();
+        for i in fenetre.debut..fenetre.fin.min(m.ombre.len()) {
+            let d = &m.ombre[i];
+            if d.en_tete {
+                continue;
+            }
+            if let Some(cle) = &d.avatar {
+                if !m.avec_portrait.contains(&d.cle) {
+                    match self.profils.avatar(cle) {
+                        Some(image) => {
+                            modele.set_row_data(
+                                i,
+                                ligne_membre_slint(
+                                    d,
+                                    Some(image),
+                                    self.profils.badges(&d.utilisateur).as_deref(),
+                                ),
+                            );
+                            m.avec_portrait.insert(d.cle.clone());
+                        }
+                        None => {
+                            if peut_demander
+                                && !m.echecs_avatars.contains(cle)
+                                && m.demandes_avatars.insert(cle.clone())
+                            {
+                                avatars.push(cle.clone());
+                            }
+                        }
+                    }
+                }
+            }
+            if peut_demander
+                && self.profils.badges(&d.utilisateur).is_none()
+                && m.demandes_badges.insert(d.utilisateur.clone())
+            {
+                badges.push(d.utilisateur.clone());
+            }
+        }
+        drop(guard);
+        for cle in avatars {
+            self.telecharger_avatar(cle);
+        }
+        for utilisateur in badges {
+            self.telecharger_badges(utilisateur);
+        }
+    }
+
+    fn telecharger_avatar(&self, cle: CleAvatar) {
+        let pont = self.clone();
+        self.runtime.spawn(async move {
+            let recu = pont.profils.charger_avatar(cle.clone()).await.is_some();
+            let p = pont.clone();
+            let _ = pont
+                .fenetre
+                .upgrade_in_event_loop(move |f| p.avatar_recu(&f, cle, recu));
+        });
+    }
+
+    fn avatar_recu(&self, f: &Principale, cle: CleAvatar, recu: bool) {
+        {
+            let mut guard = self.verrou();
+            let m = &mut guard.membres;
+            m.demandes_avatars.remove(&cle);
+            if !recu {
+                m.echecs_avatars.insert(cle);
+            }
+        }
+        self.rafraichir_fenetre(f);
+        self.projeter_carte(f);
+    }
+
+    fn telecharger_badges(&self, utilisateur: String) {
+        let pont = self.clone();
+        self.runtime.spawn(async move {
+            pont.profils.charger_badges(utilisateur.clone()).await;
+            let p = pont.clone();
+            let _ = pont
+                .fenetre
+                .upgrade_in_event_loop(move |f| p.badges_recus(&f, &utilisateur));
+        });
+    }
+
+    fn badges_recus(&self, f: &Principale, utilisateur: &str) {
+        {
+            let g = f.global::<DonneesCoquille>();
+            let mut guard = self.verrou();
+            let m = &mut guard.membres;
+            m.demandes_badges.remove(utilisateur);
+            let cle = format!("m:{utilisateur}");
+            if let Some(&i) = m.index.get(&cle) {
+                if let Some(d) = m.ombre.get(i) {
+                    let portrait = if m.avec_portrait.contains(&cle) {
+                        d.avatar.as_ref().and_then(|c| self.profils.avatar(c))
+                    } else {
+                        None
+                    };
+                    vec_de(&g.get_membres()).set_row_data(
+                        i,
+                        ligne_membre_slint(
+                            d,
+                            portrait,
+                            self.profils.badges(utilisateur).as_deref(),
+                        ),
+                    );
+                }
+            }
+        }
+        self.projeter_carte(f);
+    }
+
+    pub fn membres_defiles(&self, f: &Principale, defilement: f32, vue: f32) {
+        {
+            let mut guard = self.verrou();
+            let m = &mut guard.membres;
+            m.defilement = defilement.max(0.0);
+            if vue > 0.0 {
+                m.vue = Some(vue);
+            }
+        }
+        self.rafraichir_fenetre(f);
+    }
+
+    pub fn marge_basculee(&self, f: &Principale) {
+        self.rafraichir_fenetre(f);
+    }
+
+    pub fn filtrer_membres(&self, f: &Principale, filtre: &str) {
+        self.verrou().membres.filtre = filtre.to_string();
+        self.projeter_membres(f);
+    }
+
+    pub fn ouvrir_membre(&self, f: &Principale, utilisateur: &str) {
+        self.verrou().membres.carte = Some(utilisateur.to_string());
+        self.projeter_carte(f);
+    }
+
+    pub fn fermer_carte(&self, f: &Principale) {
+        {
+            let mut guard = self.verrou();
+            guard.membres.carte = None;
+            guard.membres.ombre_carte = None;
+        }
+        f.global::<DonneesCoquille>().set_carte_ouverte(false);
+    }
+
+    fn projeter_carte(&self, f: &Principale) {
+        let g = f.global::<DonneesCoquille>();
+        let maintenant = self.maintenant_ms();
+        let mut guard = self.verrou();
+        let m = &mut guard.membres;
+        let (Some(utilisateur), Some(serveur)) = (m.carte.clone(), m.serveur.clone()) else {
+            return;
+        };
+        let Some(donnees) = self
+            .store
+            .lire(|etat| donnees_carte(etat, &serveur, &utilisateur, maintenant))
+        else {
+            m.carte = None;
+            m.ombre_carte = None;
+            drop(guard);
+            g.set_carte_ouverte(false);
+            return;
+        };
+        let portrait = donnees.avatar.as_ref().and_then(|c| self.profils.avatar(c));
+        let badges = self.profils.badges(&utilisateur);
+        let mut avatar = None;
+        if let (None, Some(cle)) = (&portrait, &donnees.avatar) {
+            if !m.echecs_avatars.contains(cle) && m.demandes_avatars.insert(cle.clone()) {
+                avatar = Some(cle.clone());
+            }
+        }
+        let demander_badges = badges.is_none() && m.demandes_badges.insert(utilisateur.clone());
+        g.set_carte(carte_slint(&donnees, portrait, badges.as_deref()));
+        m.ombre_carte = Some(donnees);
+        drop(guard);
+        if !g.get_carte_ouverte() {
+            g.set_carte_ouverte(true);
+        }
+        if let Some(cle) = avatar {
+            self.telecharger_avatar(cle);
+        }
+        if demander_badges {
+            self.telecharger_badges(utilisateur);
+        }
     }
 
     pub fn nombre_de_lignes(f: &Principale) -> (usize, usize, usize) {

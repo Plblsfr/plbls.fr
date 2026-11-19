@@ -1,0 +1,22 @@
+import { Theme, Typo, Rayon } from "../jetons.slint";
+
+export enum GenreBadgeRole { createur, bot }
+
+export component BadgeRole inherits Rectangle {
+    in property <GenreBadgeRole> genre: GenreBadgeRole.createur;
+    height: 18px;
+    width: libelle.preferred-width + 12px;
+    border-radius: Rayon.xs;
+    background: genre == GenreBadgeRole.bot ? Theme.encre : Theme.rose;
+    accessible-role: text;
+    accessible-label: genre == GenreBadgeRole.bot ? "Compte automatique" : "Créateur du serveur";
+    libelle := Text {
+        text: root.genre == GenreBadgeRole.bot ? "Bot" : "Créateur";
+        color: root.genre == GenreBadgeRole.bot ? Theme.papier : Theme.encre;
+        font-family: Typo.texte;
+        font-size: 10.5px;
+        font-weight: Typo.gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

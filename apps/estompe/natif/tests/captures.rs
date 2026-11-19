@@ -6,7 +6,7 @@ use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::temps_reel::EtatReseau;
 use estompe_natif::coquille::pont::vider_modeles;
-use estompe_natif::coquille::{Icone, Navigation, Pont};
+use estompe_natif::coquille::{avatars, CleAvatar, Icone, Navigation, Pont, Profils};
 use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
 use estompe_natif::{creer_fenetre, DonneesCoquille, ModeTheme, Mouvement, Principale, Theme};
@@ -73,6 +73,12 @@ const ECRANS: &[Ecran] = ecrans![
     "coquille-prive-sombre", Sombre, coquille_prive;
     "coquille-vide-clair", Clair, coquille_vide;
     "coquille-chargement-clair", Clair, connecte;
+    "membres-clair", Clair, membres;
+    "membres-sombre", Sombre, membres;
+    "membres-filtre-clair", Clair, membres_filtre;
+    "carte-profil-clair", Clair, carte_profil;
+    "carte-profil-sombre", Sombre, carte_profil;
+    "carte-profil-moi-clair", Clair, carte_profil_moi;
 ];
 
 fn bob() -> Compte {
@@ -254,6 +260,20 @@ fn salon(serveur: &str, salon: Option<&str>) -> Route {
 }
 
 fn coquille(f: &Principale, etat: estompe_client::store::Etat, route: Route) -> Pont {
+    coquille_avec(
+        f,
+        etat,
+        route,
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+    )
+}
+
+fn coquille_avec(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    route: Route,
+    profils: Arc<Profils>,
+) -> Pont {
     connecte(f);
     let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()
@@ -266,6 +286,7 @@ fn coquille(f: &Principale, etat: estompe_client::store::Etat, route: Route) -> 
         None,
         Arc::new(move || matin),
         Navigation::nouvelle(route),
+        profils,
     );
     pont.installer_icone(f, "s3", 2, icone_du_club());
     pont.definir_reseau(f, EtatReseau::Connecte);
@@ -327,6 +348,82 @@ fn coquille_vide(f: &Principale) {
     pont.definir_sections(f, Vec::new());
 }
 
+fn portrait(fond: [u8; 3], motif: [u8; 3]) -> Icone {
+    let mut tampon = Icone::new(96, 96);
+    for (i, pixel) in tampon.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((i % 96) as f32 - 47.5, (i / 96) as f32 - 47.5);
+        let tete = (x * x + (y + 10.0) * (y + 10.0)).sqrt() < 20.0;
+        let buste = y > 18.0 && (x * x + (y - 52.0) * (y - 52.0)).sqrt() < 40.0;
+        let [r, v, b] = if tete || buste { motif } else { fond };
+        *pixel = slint::Rgba8Pixel::new(r, v, b, 255);
+    }
+    tampon
+}
+
+fn profils_des_membres() -> Arc<Profils> {
+    let profils = Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None);
+    for (utilisateur, version, fond, motif) in [
+        ("eve", 2, [47, 93, 138], [246, 198, 214]),
+        ("carol", 1, [242, 166, 90], [90, 50, 30]),
+        ("gaelle", 4, [120, 160, 110], [250, 240, 220]),
+    ] {
+        profils.installer_avatar(
+            CleAvatar {
+                utilisateur: utilisateur.into(),
+                version,
+                serveur: None,
+            },
+            avatars::arrondir(portrait(fond, motif)),
+        );
+    }
+    let badge = commun::coquille::badge;
+    profils.installer_badges("elise", vec![badge("Fondatrice", "#d0688a")]);
+    profils.installer_badges(
+        "ines",
+        vec![
+            badge("Mélomane", "#2f5d8a"),
+            badge("Cinéphile", "#b0413e"),
+            badge("Bêta", "#3d8c5a"),
+        ],
+    );
+    profils.installer_badges(
+        "carol",
+        vec![badge("Artiste", "#b0413e"), badge("Bêta", "#3d8c5a")],
+    );
+    profils
+}
+
+fn membres_ouverts(f: &Principale) -> Pont {
+    f.global::<DonneesCoquille>().set_marge_ouverte(true);
+    coquille_avec(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+    )
+}
+
+fn membres(f: &Principale) {
+    membres_ouverts(f);
+}
+
+fn membres_filtre(f: &Principale) {
+    let pont = membres_ouverts(f);
+    f.global::<DonneesCoquille>()
+        .set_filtre_membres("car".into());
+    pont.filtrer_membres(f, "car");
+}
+
+fn carte_profil(f: &Principale) {
+    let pont = membres_ouverts(f);
+    pont.ouvrir_membre(f, "carol");
+}
+
+fn carte_profil_moi(f: &Principale) {
+    let pont = membres_ouverts(f);
+    pont.ouvrir_membre(f, "u1");
+}
+
 fn remettre_a_zero(f: &Principale) {
     f.set_demonstration(false);
     f.set_infobulle_forcee(false);
@@ -334,6 +431,7 @@ fn remettre_a_zero(f: &Principale) {
     f.set_a_propos_ouvert(false);
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
+    f.global::<DonneesCoquille>().set_marge_ouverte(false);
     connecte(f);
     f.set_activation_pseudo("".into());
     f.set_invitation_saisie("".into());

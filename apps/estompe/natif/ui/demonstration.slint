@@ -1,6 +1,6 @@
 import { Theme, Typo, Rayon, Espace } from "jetons.slint";
 import { Icones } from "genere/icones.slint";
-import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement, Compteur, Etiquette, ElementListe, Vide } from "composants.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement, Compteur, Etiquette, ElementListe, Vide, EtatPresence } from "composants.slint";
 
 component Section {
     in property <string> titre;
@@ -189,12 +189,12 @@ export component Demonstration {
                 HorizontalLayout {
                     spacing: Espace.e3;
                     alignment: start;
-                    Avatar { nom: "Ada Lovelace"; initiales: "AL"; teinte: 1; }
-                    Avatar { nom: "Blaise Pascal"; initiales: "BP"; teinte: 2; }
+                    Avatar { nom: "Ada Lovelace"; initiales: "AL"; teinte: 1; presence: EtatPresence.en-ligne; fond: Theme.papier; }
+                    Avatar { nom: "Blaise Pascal"; initiales: "BP"; teinte: 2; presence: EtatPresence.absent; fond: Theme.papier; }
                     Avatar { nom: "Camille"; initiales: "C"; teinte: 3; parle: true; }
                     Avatar { nom: "Denis"; initiales: "D"; teinte: 4; taille: 28px; }
-                    Avatar { nom: "Émilie"; initiales: "É"; teinte: 5; taille: 56px; }
-                    Avatar { nom: "Fatou"; initiales: "F"; teinte: 6; }
+                    Avatar { nom: "Émilie"; initiales: "É"; teinte: 5; taille: 56px; presence: EtatPresence.ne-pas-deranger; fond: Theme.papier; }
+                    Avatar { nom: "Fatou"; initiales: "F"; teinte: 6; presence: EtatPresence.hors-ligne; fond: Theme.papier; }
                     VerticalLayout {
                         alignment: center;
                         Chargement { }

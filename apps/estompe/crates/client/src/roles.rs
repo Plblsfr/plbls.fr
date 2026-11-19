@@ -228,7 +228,10 @@ pub struct GroupeMembres<'a> {
     pub membres: Vec<&'a Membre>,
 }
 
-pub fn grouper_membres<'a>(detail: &'a Detail, membres: &'a [Membre]) -> Vec<GroupeMembres<'a>> {
+pub fn grouper_membres<'a>(
+    detail: &'a Detail,
+    membres: impl IntoIterator<Item = &'a Membre>,
+) -> Vec<GroupeMembres<'a>> {
     let mut affiches: Vec<&Role> = detail
         .roles
         .as_deref()

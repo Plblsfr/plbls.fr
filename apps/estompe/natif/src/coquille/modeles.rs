@@ -1,4 +1,5 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
+use std::hash::Hash;
 
 use estompe_client::route::Route;
 use estompe_client::store::{Changement, CleConversation};
@@ -13,7 +14,7 @@ pub enum Operation {
     Remplacer(usize),
 }
 
-pub fn plan<T: PartialEq, K: PartialEq>(
+pub fn plan<T: PartialEq, K: Eq + Hash>(
     anciens: &[T],
     nouveaux: &[T],
     cle: impl Fn(&T) -> K,
@@ -21,37 +22,54 @@ pub fn plan<T: PartialEq, K: PartialEq>(
     let mut operations = Vec::new();
     let mut courants: Vec<&T> = anciens.iter().collect();
     let cles_nouvelles: Vec<K> = nouveaux.iter().map(&cle).collect();
+    let positions: HashMap<&K, usize> = cles_nouvelles
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (k, i))
+        .collect();
     let mut i = courants.len();
     while i > 0 {
         i -= 1;
-        if !cles_nouvelles.contains(&cle(courants[i])) {
+        if !positions.contains_key(&cle(courants[i])) {
             courants.remove(i);
             operations.push(Operation::Retirer(i));
         }
     }
-    for (i, nouveau) in nouveaux.iter().enumerate() {
+    let mut i = 0;
+    while i < nouveaux.len() {
         let k = &cles_nouvelles[i];
         match courants.get(i) {
             Some(present) if cle(present) == *k => {
-                if *present != nouveau {
+                if *present != &nouveaux[i] {
                     operations.push(Operation::Remplacer(i));
                 }
-                courants[i] = nouveau;
+                courants[i] = &nouveaux[i];
+            }
+            Some(present)
+                if positions.get(&cle(present)).is_some_and(|&p| p > i)
+                    && courants
+                        .get(i + 1)
+                        .is_some_and(|suivant| cle(suivant) == *k) =>
+            {
+                courants.remove(i);
+                operations.push(Operation::Retirer(i));
+                continue;
             }
             _ => {
                 if let Some(j) = (i + 1..courants.len()).find(|&j| cle(courants[j]) == *k) {
                     courants.remove(j);
                     operations.push(Operation::Retirer(j));
                 }
-                courants.insert(i, nouveau);
+                courants.insert(i, &nouveaux[i]);
                 operations.push(Operation::Inserer(i));
             }
         }
+        i += 1;
     }
     operations
 }
 
-pub fn synchroniser<T: PartialEq + Clone, K: PartialEq, S: Clone + 'static>(
+pub fn synchroniser<T: PartialEq + Clone, K: Eq + Hash, S: Clone + 'static>(
     modele: &VecModel<S>,
     ombre: &mut Vec<T>,
     nouveaux: Vec<T>,
@@ -126,6 +144,7 @@ pub struct Cibles {
     pub vue: bool,
     pub compte: bool,
     pub corriger: bool,
+    pub membres: bool,
 }
 
 pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
@@ -150,6 +169,7 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
                     c.salons.tous();
                     c.panneau = true;
                     c.vue = true;
+                    c.membres = true;
                 }
             }
             Changement::Serveur { serveur } => {
@@ -158,6 +178,7 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
                 if est_courant(serveur) {
                     c.panneau = true;
                     c.vue = true;
+                    c.membres = true;
                 }
             }
             Changement::SalonAjoute { serveur, .. }
@@ -212,19 +233,27 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
                 c.corriger = true;
                 c.vue = matches!(route, Route::MessagePrive { .. });
             }
-            Changement::Presence { .. } => c.prives.tous(),
+            Changement::Presence { .. } => {
+                c.prives.tous();
+                c.membres |= courant.is_some();
+            }
+            Changement::Roles { serveur }
+            | Changement::MembreAjoute { serveur, .. }
+            | Changement::MembreRetire { serveur, .. }
+            | Changement::Membre { serveur, .. } => c.membres |= est_courant(serveur),
+            Changement::Avatar { serveur, .. } => {
+                c.membres |= match serveur {
+                    Some(serveur) => est_courant(serveur),
+                    None => courant.is_some(),
+                }
+            }
             Changement::Vocal { salon } => {
                 c.accueil = true;
                 if courant.is_some() {
                     c.salons.ajouter(salon);
                 }
             }
-            Changement::Roles { .. }
-            | Changement::MembreAjoute { .. }
-            | Changement::MembreRetire { .. }
-            | Changement::Membre { .. }
-            | Changement::Avatar { .. }
-            | Changement::ConversationCourante
+            Changement::ConversationCourante
             | Changement::Notification(_)
             | Changement::Avis(_)
             | Changement::Messages(_) => {}
@@ -394,13 +423,87 @@ mod tests {
             &salon("s1"),
         );
         assert_eq!((renomme.salons, renomme.vue), (ensemble(&["c1"]), true));
-        let rien = cibles(
-            &[Changement::Membre {
+        let rien = cibles(&[Changement::ConversationCourante], &salon("s1"));
+        assert_eq!(rien, Cibles::default());
+    }
+
+    #[test]
+    fn les_membres_ne_visent_que_la_liste_du_serveur_courant() {
+        let membres = Cibles {
+            membres: true,
+            ..Cibles::default()
+        };
+        for changement in [
+            Changement::Membre {
                 serveur: "s1".into(),
                 utilisateur: "u".into(),
+            },
+            Changement::MembreAjoute {
+                serveur: "s1".into(),
+                utilisateur: "u".into(),
+            },
+            Changement::MembreRetire {
+                serveur: "s1".into(),
+                utilisateur: "u".into(),
+            },
+            Changement::Roles {
+                serveur: "s1".into(),
+            },
+            Changement::Avatar {
+                utilisateur: "u".into(),
+                serveur: Some("s1".into()),
+            },
+            Changement::Avatar {
+                utilisateur: "u".into(),
+                serveur: None,
+            },
+        ] {
+            assert_eq!(
+                cibles(std::slice::from_ref(&changement), &salon("s1")),
+                membres,
+                "{changement:?}"
+            );
+            assert_eq!(
+                cibles(std::slice::from_ref(&changement), &salon("s2")).membres,
+                matches!(changement, Changement::Avatar { serveur: None, .. }),
+                "{changement:?}"
+            );
+            assert!(!cibles(&[changement], &Route::Accueil).membres);
+        }
+        let presence = cibles(
+            &[Changement::Presence {
+                utilisateur: "u".into(),
             }],
-            &salon("s1"),
+            &salon("s2"),
         );
-        assert_eq!(rien, Cibles::default());
+        assert_eq!((presence.membres, presence.prives), (true, Ensemble::Tous));
+    }
+
+    #[test]
+    fn un_membre_qui_change_de_groupe_ne_deplace_que_sa_ligne() {
+        let avant = lignes(&[("h1", 3), ("a", 0), ("b", 0), ("c", 0), ("h2", 1), ("d", 0)]);
+        let descend = lignes(&[("h1", 2), ("b", 0), ("c", 0), ("h2", 2), ("a", 1), ("d", 0)]);
+        let (operations, resultat) = appliquer(&avant, &descend);
+        assert_eq!(resultat, descend);
+        assert_eq!(
+            operations,
+            vec![Remplacer(0), Retirer(1), Remplacer(3), Inserer(4)]
+        );
+        let (operations, resultat) = appliquer(&descend, &avant);
+        assert_eq!(resultat, avant);
+        assert_eq!(
+            operations,
+            vec![Remplacer(0), Retirer(4), Inserer(1), Remplacer(4)]
+        );
+        let grand: Vec<(String, i32)> = (0..5000).map(|i| (format!("m{i}"), 0)).collect();
+        let mut deplace = grand.clone();
+        let parti = deplace.remove(10);
+        deplace.insert(4000, parti);
+        assert_eq!(
+            plan(&grand, &deplace, |l| l.0.clone()),
+            vec![Retirer(10), Inserer(4000)]
+        );
+        let remonte = plan(&deplace, &grand, |l| l.0.clone());
+        assert_eq!(remonte, vec![Retirer(4000), Inserer(10)]);
     }
 }

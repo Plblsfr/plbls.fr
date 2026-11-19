@@ -61,6 +61,17 @@ pub fn demarrer(
             production,
         ),
         journal: Some(session.journal.clone()),
+        profils: coquille::Profils::nouveaux(
+            std::sync::Arc::new(reels.client.clone()),
+            estompe_client::cache::CacheDisque::ouvrir(
+                session
+                    .dossiers
+                    .cache
+                    .join(coquille::avatars::DOSSIER_AVATARS),
+                coquille::avatars::BORNE_DISQUE,
+            )
+            .ok(),
+        ),
     };
     let coquille = coquille::Coquille::brancher(
         fenetre,
