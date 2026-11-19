@@ -1,6 +1,7 @@
 /** Ce que chaque plateforme (web, windows, android) fournit au frontend : le frontend n'en teste aucune, il appelle `platform`. */
 import type { Component } from 'svelte'
 import type { IconName } from '../components/Icon.svelte'
+import type { NetworkDriver } from './reseau'
 import type { Available, Remote } from './updater.svelte'
 
 export interface UpdateDriver {
@@ -144,6 +145,8 @@ export interface Platform {
   voiceOverlay?: { available(): boolean; hidden(): boolean; toggle(): void }
   /** Vocal en cours : la plateforme le garde actif en arrière-plan (`channelId` null : plus de vocal). */
   voiceCall?: { update(s: { channelId: string | null; muted: boolean; deafened: boolean }): void }
+  /** Type de connexion (Wi-Fi ou données mobiles), si la plateforme sait le dire. */
+  network?: NetworkDriver
   /** Application au premier plan (jeu en cours), si la plateforme sait la détecter. */
   foregroundApp?(): Promise<string | null>
 }

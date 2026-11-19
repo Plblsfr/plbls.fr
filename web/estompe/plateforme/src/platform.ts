@@ -1,5 +1,6 @@
 /** Navigateur et PWA : tout ce que le frontend utilise de la plateforme, sans code natif. */
 import type { Platform } from '../../src/lib/platform'
+import { reseauDuNavigateur } from '../../src/lib/reseau'
 import { isStandalone } from './browser'
 import Downloads from './Downloads.svelte'
 import { notifications } from './notifications'
@@ -37,6 +38,7 @@ export const platform: Platform = {
   restoresLastView: isStandalone,
   openFromNotification: () => false,
   cancelNotification() {},
+  network: reseauDuNavigateur,
   reportShortcut: true,
   micHelp: ' Autorisez-le dans les réglages du navigateur ou du système (sur Mac : Réglages Système › Confidentialité et sécurité › Microphone).',
   label: () => (isStandalone() ? 'PWA' : 'navigateur'),

@@ -7,10 +7,18 @@ la qualité voulue, la piste audio et la position de départ.
 
 - **Lecture directe** si le fichier est lisible tel quel : qualité « Originale », conteneur et codecs annoncés par le client, première
   piste audio. Le fichier est servi avec les requêtes `Range`.
-- **HLS** sinon : ffmpeg écrit une playlist et des segments MPEG-TS de 4 s dans un dossier temporaire propre au flux. Vidéo H.264, audio AAC
-  stéréo 160 kb/s. En « Originale » d'une source H.264, la vidéo est recopiée sans réencodage (seul l'audio est converti).
+- **HLS** sinon : ffmpeg écrit une playlist et des segments de 4 s dans un dossier temporaire propre au transcodage. Audio AAC stéréo
+  160 kb/s ; vidéo réencodée en H.264 (segments MPEG-TS), ou recopiée sans réencodage en « Originale » quand l'appareil sait la décoder
+  (seul l'audio est converti) : source H.264 en MPEG-TS, source HEVC en fMP4 (`init.mp4` puis `segNNNNN.m4s`).
 
-Départ en cours de titre (`start`) : une vidéo réencodée commence exactement à la position demandée. Une vidéo recopiée ne peut commencer
+Recopie d'une source HEVC : l'appareil doit annoncer `hevc` pour une source 8 bits et `hevc10` pour une source 10 bits (HDR compris, dont
+le rendu sur un écran SDR est laissé au navigateur) ; toute autre profondeur est réencodée. La profondeur est lue par ffprobe à l'analyse
+du fichier ; pour un fichier analysé avant, elle est relue à la première lecture puis gardée. Si l'appareil ne décode finalement pas la vidéo
+recopiée (erreur de décodage, ou flux sans image), le lecteur rouvre seul un flux réencodé à la même position et n'annonce plus ce codec
+(`entracte.refus`, retenu sur l'appareil) ; une erreur de réseau ne retire aucun codec.
+
+Départ en cours de titre (`start`) : une vidéo réencodée sur le CPU commence au multiple de 4 s qui précède la position demandée (voir
+« Segments d'un réencodage »), une vidéo réencodée par le matériel exactement à la position demandée. Une vidéo recopiée ne peut commencer
 que sur une image clé : Entracte cherche avec ffprobe celle qui précède la position, lance ffmpeg dessus (en visant une demi-seconde après
 elle, loin de toute autre image clé, parce que ffmpeg ajuste lui-même la position qu'on lui donne) et renvoie cette image clé dans `offset`.
 Le lecteur avance alors dans le flux jusqu'à `start` : l'image et le temps affiché sont ceux demandés. Une position à moins d'une seconde
@@ -28,6 +36,39 @@ Sous-titres texte (SRT, WebVTT, ASS, SSA), intégrés au fichier ou à côté (`
 Une piste n'est extraite qu'une fois à la fois : les requêtes simultanées sur la même piste attendent le même ffmpeg, deux extractions
 au plus tournent en même temps sur le serveur, et un échec est renvoyé tel quel pendant 60 s sans relancer ffmpeg.
 
+## Segments d'un réencodage
+
+Un réencodage sur le CPU découpe le titre sur une grille fixe : le segment `segNNNNN.ts` couvre toujours les secondes `4 × N` à
+`4 × N + 4` du titre, quel que soit le point de départ du transcodage (`-ss` sur un multiple de 4 s, image clé forcée toutes les 4 s et aucune
+autre, horodatages du titre gardés par `-copyts`, numérotation par `-start_number`). Deux transcodages du même fichier, à la même qualité et
+avec la même piste audio produisent donc les mêmes segments.
+
+- La liste HLS est complète dès l'ouverture (`VOD`, de la position demandée à la fin du titre, durées de 4 s) : le lecteur se déplace
+  vers l'avant sans rouvrir de flux. Le dernier segment annoncé s'arrête une demi-seconde avant la durée du fichier, pour ne jamais
+  annoncer un segment que ffmpeg n'écrira pas.
+- Un segment demandé qui n'est pas encore écrit est attendu (30 s au plus) s'il est à moins de 8 s de ce que le transcodage a déjà produit.
+  Plus loin, ou avant son point de départ, le transcodage du flux est déplacé : il rejoint un transcodage identique qui couvre ce segment,
+  sinon ffmpeg est relancé à cette position (`503 serveur_charge` si `ENTRACTE_MAX_TRANSCODAGES` est atteint, le transcodage en cours reste
+  alors en place).
+- Une demande de préchargement (`?avance=1`, envoyée par le lecteur pour ce qu'il charge en avance) ne déplace jamais un transcodage : elle
+  reçoit `404` et le lecteur réessaie plus tard. Seule la lecture décide où ffmpeg travaille.
+- La recopie et les modes matériels gardent une liste écrite par ffmpeg au fil du transcodage, dont les segments dépendent du point de départ.
+
+## Transcodage partagé
+
+Un transcodage n'appartient pas à un flux : les flux qui demandent le même fichier, la même qualité et la même piste audio lisent les
+segments du même ffmpeg quand la position demandée est couverte par un transcodage en cours (entre son point de départ et 8 s après ce
+qu'il a déjà produit) ou terminé. Au salon cinéma, les spectateurs aux mêmes réglages ne coûtent donc qu'un transcodage ; une autre qualité
+ou une autre piste en lance un autre. Rouvrir sa propre lecture à une position couverte garde le transcodage en cours.
+
+- Chaque flux garde son jeton, lié à sa personne et vérifié à chaque requête : seul le dossier de segments est commun.
+- ffmpeg est arrêté et ses fichiers supprimés quand son dernier flux est fermé ou expire.
+- `ENTRACTE_MAX_TRANSCODAGES` compte les ffmpeg, pas les flux ; la limite de lectures par personne ne change pas.
+- La réponse de lecture porte `cache` : deux flux de même valeur ont les mêmes noms de segments pour le même contenu (fichier, qualité,
+  piste audio, et point de départ quand le découpage en dépend).
+- Journaux : au démarrage et à l'arrêt de chaque transcodage, le codec de la source, recopie ou réencodage (et son mode), le palier,
+  la durée produite, la vitesse (× temps réel) et le nombre de lecteurs au plus.
+
 ## Préchargement
 
 Le lecteur charge la suite du titre en avance et le montre : sur la barre de position, la partie déjà chargée par l'appareil est plus claire
@@ -41,11 +82,20 @@ que le reste (plages `buffered` de la vidéo et segments gardés en mémoire, ra
   ce tampon (de l'ordre de 150 Mo) : aller plus loin passe par le réglage ci-dessous.
 - Réglage « Préchargement » (panneau « Audio et sous-titres » du lecteur, liste de la barre au salon cinéma), retenu sur l'appareil avec
   les autres préférences de lecture : « Normal » (le tampon ci-dessus), « Long » (15 min d'avance, 2 Go au plus) ou « Tout le film »
-  (jusqu'à la fin, 16 Go au plus). Hors « Normal », le lecteur télécharge lui-même les segments HLS en avance, un à la fois, et les
-  garde en mémoire (`Blob`, `web/estompe/src/blocks/regarder-ensemble/avance.ts`) ; hls.js les y prend au lieu de les redemander, un saut
-  dans la partie chargée est donc immédiat. Quand la limite est atteinte, ce qui est à plus de 30 s derrière la position est libéré.
-  Changer le réglage, la piste audio ou la qualité rouvre un flux : ce qui était chargé est perdu.
-  ffmpeg transcode plus vite que la lecture : le lecteur suit la playlist à mesure qu'elle s'allonge.
+  (jusqu'à la fin, 16 Go au plus). Hors « Normal », le lecteur télécharge lui-même les segments HLS en avance
+  (`web/estompe/src/blocks/regarder-ensemble/avance.ts`) : le premier seul, puis trois à la fois, le plus proche de la position d'abord ;
+  après un échec il revient à un seul, et s'arrête au bout de trois échecs de suite. hls.js prend les segments chargés au lieu de les
+  redemander, un saut dans la partie chargée est donc immédiat. Changer le réglage ne rouvre pas le flux.
+- Les segments chargés en avance sont gardés sur le disque de l'appareil (OPFS, dossier `entracte-avance/<cache>`, `depot.ts`), ou en mémoire
+  si l'appareil n'a pas ce stockage ou refuse l'écriture. Un segment est reconnu par la clé `cache` du flux et son nom : un flux rouvert
+  avec la même qualité et la même piste audio (saut hors de la partie chargée puis retour, rechargement de la page) reprend ce qui est
+  déjà là sans le redemander. Changer de qualité ou de piste audio repart de zéro. Les segments d'un titre sont supprimés à sa fermeture ;
+  ceux d'une séance interrompue le sont à l'ouverture d'un lecteur, 24 h après leur dernière utilisation. Quand la limite du réglage est
+  atteinte, les segments qui ne sont plus dans la liste du flux puis ce qui est à plus de 30 s derrière la position sont libérés.
+  Pour une vidéo recopiée, la clé dépend du point de départ : ce qui est chargé n'est repris que si le flux rouvert rejoint le même transcodage.
+- « Wi-Fi seulement » : hors Wi-Fi, le lecteur se comporte comme en « Normal », et reprend seul au retour du Wi-Fi. L'option n'est affichée
+  que si la plateforme sait dire le type de connexion (`platform.network`, lu dans `navigator.connection.type` : app Android et Chrome sur
+  Android) ; ailleurs elle est absente et le réglage choisi s'applique.
 
 ## Attente commune au salon cinéma
 
@@ -59,10 +109,10 @@ a quitté le salon. Une lecture ou une pause demandée par l'hôte annule l'atte
 Le jeton d'un flux (dans l'URL) est signé (HMAC, `ENTRACTE_STREAM_SECRET`), lié à la personne et vérifié à chaque requête contre ses
 droits ; une requête qui porte la session d'une autre personne est refusée. Aucune URL ne contient de chemin de fichier.
 
-- `ENTRACTE_MAX_FLUX` lectures par personne, `ENTRACTE_MAX_TRANSCODAGES` transcodages au total, dossier temporaire limité à
+- `ENTRACTE_MAX_FLUX` lectures par personne, `ENTRACTE_MAX_TRANSCODAGES` transcodages (ffmpeg) au total, dossier temporaire limité à
   `ENTRACTE_TRANSCODE_MAX_GO` : au-delà, `503 serveur_charge`. Fermer un flux (`DELETE /streams/{id}`) libère sa place.
 - La taille du dossier temporaire est revérifiée toutes les 10 s : tant qu'elle dépasse `ENTRACTE_TRANSCODE_MAX_GO`, le transcodage
-  démarré le plus tôt est arrêté, ses fichiers supprimés et son flux fermé (le lecteur reçoit `401` et doit rouvrir une lecture).
+  démarré le plus tôt est arrêté, ses fichiers supprimés et ses flux fermés (chaque lecteur reçoit `401` et doit rouvrir une lecture).
 - Un flux sans requête depuis `ENTRACTE_INACTIVITE_SECONDES` (300) est fermé : ffmpeg est arrêté et ses fichiers supprimés.
   Le dossier temporaire est vidé au démarrage.
 
