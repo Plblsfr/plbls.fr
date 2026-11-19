@@ -1,0 +1,120 @@
+export enum GenreVue { accueil, salon, vocal, esquisse, prive, section }
+
+export enum EtatBandeau { aucun, reconnexion, hors-ligne }
+
+export enum GenrePanneau { accueil, serveur, section }
+
+export struct LigneServeur {
+    id: string,
+    nom: string,
+    initiales: string,
+    image: image,
+    a-image: bool,
+    actif: bool,
+    non-lus: int,
+    mentions: int,
+}
+
+export struct LigneSalon {
+    id: string,
+    nom: string,
+    icone: string,
+    titre-groupe: string,
+    actif: bool,
+    non-lus: int,
+    mentions: int,
+    bientot: bool,
+    occupants: int,
+}
+
+export struct LignePrive {
+    id: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+    actif: bool,
+    non-lus: int,
+    mentions: int,
+    en-ligne: bool,
+}
+
+export struct LigneSection {
+    id: string,
+    nom: string,
+    icone: string,
+    actif: bool,
+}
+
+export struct LigneRattrapage {
+    cle: string,
+    titre: string,
+    detail: string,
+    icone: string,
+    nombre: int,
+    mention: bool,
+}
+
+export struct LigneVocal {
+    cle: string,
+    nom: string,
+    lieu: string,
+    icone: string,
+    occupants: int,
+}
+
+export struct EnTetePanneau {
+    genre: GenrePanneau,
+    titre: string,
+    initiales: string,
+    image: image,
+    a-image: bool,
+}
+
+export struct VueContenu {
+    genre: GenreVue,
+    titre: string,
+    sujet: string,
+    icone: string,
+    message: string,
+    detail: string,
+}
+
+export struct Accueil {
+    actif: bool,
+    non-lus: int,
+    mentions: int,
+    date: string,
+    salut: string,
+    resume: string,
+    sans-serveur: bool,
+}
+
+export global DonneesCoquille {
+    in property <[LigneServeur]> serveurs;
+    in property <[LigneSalon]> salons;
+    in property <[LignePrive]> prives;
+    in property <[LigneSection]> sections;
+    in property <[LigneRattrapage]> rattrapage;
+    in property <[LigneVocal]> vocaux;
+    in property <EnTetePanneau> panneau;
+    in property <VueContenu> vue;
+    in property <Accueil> accueil;
+    in property <bool> pret: false;
+    in property <EtatBandeau> bandeau: EtatBandeau.aucun;
+    in property <string> pseudo;
+    in property <string> initiales;
+    in-out property <bool> panneau-replie: false;
+    in property <bool> marge-disponible: false;
+    in-out property <bool> marge-ouverte: false;
+    in property <length> largeur-marge: 320px;
+    callback ouvrir-accueil();
+    callback ouvrir-serveur(string);
+    callback ouvrir-salon(string);
+    callback ouvrir-prive(string);
+    callback ouvrir-section(string);
+    callback ouvrir-conversation(string);
+    callback deplacer-serveur(string, string);
+    callback serveur-voisin(bool);
+    callback panneau-bascule(bool);
+    callback marge-bascule(bool);
+}

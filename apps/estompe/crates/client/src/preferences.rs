@@ -6,6 +6,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::derniere_vue::DerniereVue;
+
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
 
@@ -45,6 +47,8 @@ pub struct Preferences {
     pub ordre_serveurs: Vec<String>,
     pub fenetre: Option<Fenetre>,
     pub adresse_serveur: Option<String>,
+    pub derniere_vue: Option<DerniereVue>,
+    pub panneau_replie: bool,
 }
 
 impl Default for Preferences {
@@ -59,6 +63,8 @@ impl Default for Preferences {
             ordre_serveurs: Vec::new(),
             fenetre: None,
             adresse_serveur: None,
+            derniere_vue: None,
+            panneau_replie: false,
         }
     }
 }
@@ -112,6 +118,9 @@ impl Preferences {
                 .filter(|f: &Fenetre| f.largeur > 0 && f.hauteur > 0),
             adresse_serveur: champ(&objet, "adresse_serveur", d.adresse_serveur)
                 .filter(|a: &String| !a.trim().is_empty()),
+            derniere_vue: champ(&objet, "derniere_vue", d.derniere_vue)
+                .filter(|v: &DerniereVue| !v.compte.is_empty() && !v.adresse.is_empty()),
+            panneau_replie: champ(&objet, "panneau_replie", d.panneau_replie),
         })
     }
 
@@ -255,6 +264,8 @@ mod tests {
                 hauteur: 720,
             }),
             adresse_serveur: Some("http://localhost:8080".to_string()),
+            derniere_vue: Some(DerniereVue::enregistrer("u1", "#/s/s1/c9")),
+            panneau_replie: true,
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -318,5 +329,30 @@ mod tests {
         assert_eq!(valeur["densite"], "confortable");
         assert_eq!(valeur["fenetre"], Value::Null);
         assert_eq!(valeur["adresse_serveur"], Value::Null);
+        assert_eq!(valeur["derniere_vue"], Value::Null);
+        assert_eq!(valeur["panneau_replie"], false);
+    }
+
+    #[test]
+    fn la_derniere_vue_incomplete_est_ecartee() {
+        let lu = Preferences::depuis_json(
+            r##"{"derniere_vue": {"compte": "u1", "adresse": "#/dm/d1"}, "panneau_replie": true}"##,
+        )
+        .unwrap();
+        assert_eq!(
+            (lu.derniere_vue, lu.panneau_replie),
+            (Some(DerniereVue::enregistrer("u1", "#/dm/d1")), true)
+        );
+        for incomplete in [
+            r#"{"derniere_vue": {"compte": "", "adresse": "x"}}"#,
+            r#"{"derniere_vue": {"compte": "u1"}}"#,
+            r##"{"derniere_vue": "#/s/s1"}"##,
+        ] {
+            assert_eq!(
+                Preferences::depuis_json(incomplete).unwrap().derniere_vue,
+                None,
+                "{incomplete}"
+            );
+        }
     }
 }

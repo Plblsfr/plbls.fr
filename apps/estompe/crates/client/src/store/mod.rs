@@ -123,6 +123,10 @@ impl Store {
         abonnes.retain(|abonne| abonne.send(changements.clone()).is_ok());
     }
 
+    pub fn installer(&self, nouveau: Etat) {
+        self.remplacer(|_| nouveau);
+    }
+
     pub async fn charger(&self) -> Result<(), ErreurStore> {
         let chargement = charger(self.client()).await?;
         self.remplacer(|etat| etat_depuis(chargement, etat));
@@ -475,6 +479,27 @@ mod tests {
         assert!(!recus
             .iter()
             .any(|c| matches!(c, Changement::SalonAjoute { .. })));
+    }
+
+    #[tokio::test]
+    async fn installer_un_etat_ne_publie_que_ses_differences() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        let mut abonne = store.abonner();
+        let mut etat = store.instantane();
+        etat.non_lus.insert(cle("c:c3"), 4);
+        store.installer(etat.clone());
+        assert_eq!(store.instantane(), etat);
+        assert_eq!(
+            abonne.try_recv().unwrap(),
+            [Changement::NonLus {
+                conversation: cle("c:c3"),
+                serveur: Some("s1".into())
+            }]
+        );
+        store.installer(etat);
+        assert!(abonne.try_recv().is_err());
     }
 
     #[tokio::test]

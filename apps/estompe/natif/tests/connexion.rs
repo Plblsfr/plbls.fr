@@ -6,7 +6,9 @@ use std::sync::{mpsc, Arc};
 
 use commun::{attendre, FausseApi, FausseAuth, FauxNavigateur};
 use estompe_client::auth::{ErreurAuth, Parcours};
+use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
+use estompe_natif::session::Memoire;
 use estompe_natif::{creer_fenetre, ecrans, Page, Principale};
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use slint::platform::PointerEventButton;
@@ -98,7 +100,11 @@ fn scenario(faible: slint::Weak<Principale>, auth: Arc<FausseAuth>, api: Arc<Fau
     auth.terminer(Ok(()));
     attendre_l_interface(
         &faible,
-        |f| f.get_page() == Page::Coquille && f.get_pseudo() == "bob",
+        |f| {
+            f.get_page() == Page::Coquille
+                && f.get_pseudo() == "bob"
+                && f.global::<estompe_natif::DonneesCoquille>().get_pret()
+        },
         "arrivée sur la coquille",
     );
     assert_eq!(api.appels.load(Ordering::SeqCst), 1, "un seul /me");
@@ -143,6 +149,14 @@ fn c2_connexion_annulation_erreur_puis_arrivee_sur_la_coquille() {
         ecrans::publieur(&fenetre),
     )
     .unwrap();
+    let dossier = tempfile::tempdir().unwrap();
+    let coquille = Coquille::brancher(
+        &fenetre,
+        &entree,
+        commun::coquille::FausseFabrique::nouvelle(commun::coquille::etat(), Vec::new()),
+        Memoire::nouvelle(Default::default(), dossier.path().to_path_buf(), None),
+        estompe_natif::coquille::horloge_locale(),
+    );
     fenetre.show().unwrap();
 
     let faible = fenetre.as_weak();
@@ -153,6 +167,7 @@ fn c2_connexion_annulation_erreur_puis_arrivee_sur_la_coquille() {
     });
     slint::run_event_loop_until_quit().unwrap();
     let resultat = pilote.join().unwrap();
+    drop(coquille);
     drop(entree);
     if let Err(panique) = resultat {
         resume_unwind(panique);

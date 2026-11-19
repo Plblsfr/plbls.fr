@@ -1,10 +1,19 @@
+mod commun;
+
+use chrono::NaiveDate;
 use estompe_client::auth::ErreurAuth;
+use estompe_client::route::Route;
+use estompe_client::sections::Section;
+use estompe_client::temps_reel::EtatReseau;
+use estompe_natif::coquille::pont::vider_modeles;
+use estompe_natif::coquille::{Icone, Navigation, Pont};
 use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
-use estompe_natif::{creer_fenetre, ModeTheme, Mouvement, Principale, Theme};
+use estompe_natif::{creer_fenetre, DonneesCoquille, ModeTheme, Mouvement, Principale, Theme};
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::ComponentHandle;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 const LARGEUR: u32 = 1180;
@@ -53,8 +62,17 @@ const ECRANS: &[Ecran] = ecrans![
     "injoignable-clair", Clair, injoignable;
     "mise-a-jour-clair", Clair, mise_a_jour;
     "mise-a-jour-sombre", Sombre, mise_a_jour;
-    "coquille-clair", Clair, coquille;
-    "coquille-serveur-rejoint-sombre", Sombre, coquille_serveur_rejoint;
+    "coquille-clair", Clair, coquille_salon;
+    "coquille-sombre", Sombre, coquille_salon;
+    "coquille-panneau-replie-clair", Clair, coquille_panneau_replie;
+    "coquille-hors-ligne-clair", Clair, coquille_hors_ligne;
+    "coquille-reconnexion-sombre", Sombre, coquille_reconnexion;
+    "coquille-accueil-clair", Clair, coquille_accueil;
+    "coquille-accueil-sombre", Sombre, coquille_accueil;
+    "coquille-vocal-clair", Clair, coquille_vocal;
+    "coquille-prive-sombre", Sombre, coquille_prive;
+    "coquille-vide-clair", Clair, coquille_vide;
+    "coquille-chargement-clair", Clair, connecte;
 ];
 
 fn bob() -> Compte {
@@ -75,6 +93,7 @@ fn modal(f: &Principale) {
 }
 
 fn a_propos(f: &Principale) {
+    coquille_accueil(f);
     f.set_a_propos_ouvert(true);
 }
 
@@ -188,7 +207,7 @@ fn mise_a_jour(f: &Principale) {
     );
 }
 
-fn coquille(f: &Principale) {
+fn connecte(f: &Principale) {
     afficher(
         f,
         &Etat::Connecte {
@@ -198,17 +217,114 @@ fn coquille(f: &Principale) {
     );
 }
 
-fn coquille_serveur_rejoint(f: &Principale) {
-    afficher(
+fn runtime() -> tokio::runtime::Handle {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME
+        .get_or_init(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .expect("runtime des captures")
+        })
+        .handle()
+        .clone()
+}
+
+fn icone_du_club() -> Icone {
+    let mut tampon = Icone::new(64, 64);
+    for (i, pixel) in tampon.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((i % 64) as f32 - 31.5, (i / 64) as f32 - 31.5);
+        let rayon = (x * x + y * y).sqrt();
+        *pixel = if rayon < 14.0 {
+            slint::Rgba8Pixel::new(246, 198, 214, 255)
+        } else if (x + y).abs() < 6.0 {
+            slint::Rgba8Pixel::new(208, 104, 138, 255)
+        } else {
+            slint::Rgba8Pixel::new(47, 93, 138, 255)
+        };
+    }
+    tampon
+}
+
+fn salon(serveur: &str, salon: Option<&str>) -> Route {
+    Route::Salon {
+        serveur: serveur.into(),
+        salon: salon.map(String::from),
+        message: None,
+    }
+}
+
+fn coquille(f: &Principale, etat: estompe_client::store::Etat, route: Route) -> Pont {
+    connecte(f);
+    let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
+        .unwrap()
+        .and_hms_opt(9, 30, 0)
+        .unwrap();
+    let pont = Pont::nouveau(
+        commun::coquille::store(etat),
+        f.as_weak(),
+        runtime(),
+        None,
+        Arc::new(move || matin),
+        Navigation::nouvelle(route),
+    );
+    pont.installer_icone(f, "s3", 2, icone_du_club());
+    pont.definir_reseau(f, EtatReseau::Connecte);
+    pont.definir_sections(
         f,
-        &Etat::Connecte {
-            compte: bob(),
-            serveur: Some(entree::ServeurRejoint {
-                id: "s1".into(),
-                nom: "Les amis".into(),
-            }),
+        vec![Section::Entracte, Section::Sillon, Section::Sablier],
+    );
+    pont.demarrer(f);
+    pont
+}
+
+fn coquille_salon(f: &Principale) {
+    coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+}
+
+fn coquille_panneau_replie(f: &Principale) {
+    coquille_salon(f);
+    f.global::<DonneesCoquille>().set_panneau_replie(true);
+}
+
+fn coquille_hors_ligne(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s2", None));
+    pont.definir_reseau(f, EtatReseau::HorsLigne);
+}
+
+fn coquille_reconnexion(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c3")));
+    pont.definir_reseau(f, EtatReseau::Reconnexion);
+}
+
+fn coquille_accueil(f: &Principale) {
+    coquille(f, commun::coquille::etat(), Route::Accueil);
+}
+
+fn coquille_vocal(f: &Principale) {
+    coquille(f, commun::coquille::etat(), salon("s1", Some("v1")));
+}
+
+fn coquille_prive(f: &Principale) {
+    coquille(
+        f,
+        commun::coquille::etat(),
+        Route::MessagePrive {
+            id: "d1".into(),
+            message: None,
         },
     );
+}
+
+fn coquille_vide(f: &Principale) {
+    let mut etat = commun::coquille::etat();
+    etat.serveurs.clear();
+    etat.details.clear();
+    etat.messages_prives.clear();
+    etat.mentions.clear();
+    etat.non_lus.clear();
+    etat.vocal.clear();
+    let pont = coquille(f, etat, Route::Accueil);
+    pont.definir_sections(f, Vec::new());
 }
 
 fn remettre_a_zero(f: &Principale) {
@@ -216,7 +332,9 @@ fn remettre_a_zero(f: &Principale) {
     f.set_infobulle_forcee(false);
     f.set_modal_demo_ouvert(false);
     f.set_a_propos_ouvert(false);
-    coquille(f);
+    vider_modeles(f);
+    f.global::<DonneesCoquille>().set_panneau_replie(false);
+    connecte(f);
     f.set_activation_pseudo("".into());
     f.set_invitation_saisie("".into());
 }

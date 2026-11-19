@@ -66,13 +66,13 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `App.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | aiguillage entre connexion, refus, activation, sections et coquille ; thème, densité, pastille de mentions |
+| `App.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | aiguillage entre connexion, refus, activation et coquille, retour à la connexion à la session perdue (`apps/estompe/natif/src/coquille/cycle.rs`) ; restent la coquille limitée aux sections, la densité et la pastille de mentions de l'app |
 | `views/LoginView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | écran de connexion, attente du navigateur annulable, erreurs (`apps/estompe/natif/ui/entree/connexion.slint`) ; sans liens de téléchargement des apps |
 | `views/DeniedView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | compte sans la permission d'utiliser Estompe (`apps/estompe/natif/ui/entree/acces.slint`) |
 | `views/ActivateView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | choix du pseudo à l'activation, vérifié avant l'envoi (`apps/estompe/natif/ui/entree/acces.slint`) |
 | `views/JoinView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | invitation saisie ou passée au lancement (`--invitation`) ; les liens `estompe://` ouverts par le système restent à faire |
-| `views/Shell.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | coquille : rail, panneau latéral, zone principale, modals |
-| `views/HomeView.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | accueil : à rattraper, vocaux en cours, contacts en ligne |
+| `views/Shell.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | rail, panneau repliable, zone principale avec bandeau « Reconnexion en cours… », dernière vue rouverte, emplacement de la marge (`apps/estompe/natif/ui/coquille/coquille.slint`) ; restent les modals (création, réglages, recherche Ctrl K, profil), le Dock et la barre d'onglets sous 900 px |
+| `views/HomeView.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | salut, date, résumé, à rattraper, vocaux en cours marqués « bientôt », pour commencer (`apps/estompe/natif/ui/coquille/accueil.slint`) ; restent « Tout marquer lu », les contacts en ligne, la palette et rejoindre un vocal (lot 4) |
 | `views/SectionsShell.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | coquille d'un compte limité aux sections |
 | `views/AdminView.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | coquille d'un compte limité à l'administration |
 
@@ -91,10 +91,10 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `components/ServerRail.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | rail des serveurs, ordre, non-lus |
-| `components/ServerIcon.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent |  |
-| `components/SidePanel.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | salons, messages privés, barre du vocal et de l'utilisateur ; commandes du vocal au lot 4 |
-| `components/Marge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | panneau de droite redimensionnable : membres, épinglés |
+| `components/ServerRail.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | accueil, serveurs dans l'ordre retenu (glisser, Ctrl+Alt+↑/↓), trait de non-lus, pastille de mentions, entrées des sections (`apps/estompe/natif/ui/coquille/rail.slint`) ; « + » ne fait que rejoindre ; restent la recherche, l'administration (lot 8) et l'indicateur du vocal (lot 4) |
+| `components/ServerIcon.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | fait | image du serveur téléchargée par le client (`apps/estompe/natif/src/coquille/pont.rs`), sinon initiales ; rail et en-tête du panneau |
+| `components/SidePanel.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | salons texte, esquisses et vocaux (« bientôt ») avec non-lus et mentions, messages privés avec présence, barre de l'utilisateur avec déconnexion (`apps/estompe/natif/ui/coquille/panneau.slint`) ; restent les menus contextuels, la création de salon, les participants vocaux, les séances à venir, les brouillons et le menu de statut ; commandes du vocal au lot 4 |
+| `components/Marge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | panneau de droite redimensionnable : membres, épinglés ; emplacement prêt dans la coquille (`apps/estompe/natif/ui/coquille/marge.slint`) |
 | `components/MembersPanel.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | membres, présence, activité |
 | `components/RoleBadge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | étiquette « Bot » ou « Créateur » |
 | `components/ForcedUpdate.svelte` | 1 | [#298](https://github.com/Plblsfr/plbls.fr/issues/298) | en cours | écran bloquant sur refus 426 (`apps/estompe/natif/ui/entree/mise-a-jour.slint`), lien vers la page du serveur ; ni téléchargement ni installation dans l'app tant que l'installeur natif n'existe pas |

@@ -1,0 +1,98 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Vide } from "../composants.slint";
+import { DonneesCoquille, GenreVue } from "donnees.slint";
+import { Bandeau } from "bandeau.slint";
+import { VueAccueil } from "accueil.slint";
+
+export component Contenu inherits Rectangle {
+    callback rejoindre();
+    background: Theme.papier;
+    VerticalLayout {
+        Bandeau {
+            etat: DonneesCoquille.bandeau;
+        }
+        Rectangle {
+            height: 60px;
+            HorizontalLayout {
+                padding-left: DonneesCoquille.panneau-replie ? Espace.e3 : Espace.e6;
+                padding-right: Espace.e3;
+                spacing: 10px;
+                if DonneesCoquille.panneau-replie: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "panneau";
+                        description: "Déplier le panneau";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesCoquille.panneau-bascule(false);
+                        }
+                    }
+                }
+                if DonneesCoquille.vue.icone != "": VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: DonneesCoquille.vue.icone;
+                        taille: 18px;
+                        couleur: Theme.gris;
+                    }
+                }
+                titre := Text {
+                    text: DonneesCoquille.vue.titre;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 18px;
+                    font-weight: Typo.gras;
+                    letter-spacing: -0.5px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: text;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: DonneesCoquille.vue.sujet;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                if DonneesCoquille.marge-disponible: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "gens";
+                        description: "Membres";
+                        variante: DonneesCoquille.marge-ouverte ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                        clique => {
+                            DonneesCoquille.marge-bascule(!DonneesCoquille.marge-ouverte);
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.trait;
+            }
+        }
+        if DonneesCoquille.vue.genre == GenreVue.accueil: VueAccueil {
+            vertical-stretch: 1;
+            rejoindre => {
+                root.rejoindre();
+            }
+        }
+        if DonneesCoquille.vue.genre != GenreVue.accueil: VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            padding: Espace.e8;
+            HorizontalLayout {
+                alignment: center;
+                Vide {
+                    preferred-width: 520px;
+                    max-width: 520px;
+                    icone: DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive ? "bulle" : DonneesCoquille.vue.icone;
+                    titre: DonneesCoquille.vue.message;
+                    texte: DonneesCoquille.vue.detail;
+                }
+            }
+        }
+    }
+}

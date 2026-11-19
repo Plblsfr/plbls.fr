@@ -12,6 +12,7 @@ pub mod derniere_vue;
 pub mod ordre_serveurs;
 pub mod roles;
 pub mod route;
+pub mod sections;
 pub mod store;
 pub mod temps_reel;
 pub mod version;

@@ -54,15 +54,10 @@ pub fn afficher(f: &Principale, etat: &Etat) {
     };
     f.set_mise_a_jour_message(message.into());
     f.set_mise_a_jour_version_minimale(minimale.into());
-    let (pseudo, serveur) = match etat {
-        Etat::Connecte { compte, serveur } => (
-            compte.pseudo.as_str(),
-            serveur.as_ref().map_or("", |s| s.nom.as_str()),
-        ),
-        _ => ("", ""),
-    };
-    f.set_pseudo(pseudo.into());
-    f.set_serveur_rejoint(serveur.into());
+    f.set_pseudo(match etat {
+        Etat::Connecte { compte, .. } => compte.pseudo.as_str().into(),
+        _ => "".into(),
+    });
     if quittee {
         if page != Page::Activation {
             f.set_activation_pseudo("".into());

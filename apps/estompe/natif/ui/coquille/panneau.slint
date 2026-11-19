@@ -1,0 +1,265 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Avatar, ElementListe, Compteur, Defilement, Coins } from "../composants.slint";
+import { DonneesCoquille, GenrePanneau, GenreVue, EtatBandeau } from "donnees.slint";
+
+component TitreGroupe {
+    in property <string> texte;
+    min-height: 34px;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-bottom: 6px;
+        Text {
+            text: root.texte;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: 10.5px;
+            font-weight: Typo.moyen;
+            letter-spacing: 0.8px;
+            vertical-alignment: bottom;
+            overflow: elide;
+        }
+    }
+}
+
+component BarreMoi inherits Rectangle {
+    callback se-deconnecter();
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    HorizontalLayout {
+        padding: Espace.e2;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: DonneesCoquille.pseudo;
+                initiales: DonneesCoquille.initiales;
+                taille: 32px;
+                teinte: 1;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: DonneesCoquille.pseudo;
+                color: Theme.encre;
+                font-family: Typo.texte;
+                font-size: 14px;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            Text {
+                text: DonneesCoquille.bandeau == EtatBandeau.hors-ligne ? "Hors ligne" : "En ligne";
+                color: Theme.gris;
+                font-family: Typo.texte;
+                font-size: Typo.minuscule;
+                overflow: elide;
+            }
+        }
+        Bouton {
+            icone: "sortie";
+            description: "Se déconnecter";
+            variante: VarianteBouton.fantome;
+            clique => {
+                root.se-deconnecter();
+            }
+        }
+    }
+}
+
+export component Panneau inherits Rectangle {
+    callback se-deconnecter();
+    width: 272px;
+    background: Theme.papier-2;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.trait;
+    }
+    VerticalLayout {
+        Rectangle {
+            height: 60px;
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: Espace.e2;
+                spacing: Espace.e2;
+                if DonneesCoquille.panneau.genre == GenrePanneau.serveur: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: Rayon.s;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.trait;
+                        clip: true;
+                        if DonneesCoquille.panneau.a-image: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: DonneesCoquille.panneau.image;
+                            image-fit: cover;
+                        }
+                        if DonneesCoquille.panneau.a-image: Coins {
+                            width: 100%;
+                            height: 100%;
+                            rayon: Rayon.s;
+                            couleur: Theme.papier-2;
+                        }
+                        if !DonneesCoquille.panneau.a-image: Text {
+                            text: DonneesCoquille.panneau.initiales;
+                            color: Theme.encre;
+                            font-family: Typo.titre;
+                            font-size: 11px;
+                            font-weight: 800;
+                        }
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: DonneesCoquille.panneau.titre;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 17px;
+                    font-weight: Typo.gras;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "panneau";
+                        description: "Replier le panneau";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesCoquille.panneau-bascule(true);
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.trait;
+            }
+        }
+        Defilement {
+            vertical-stretch: 1;
+            hauteur-contenu: liste.preferred-height;
+            liste := VerticalLayout {
+                alignment: start;
+                padding-top: Espace.e2;
+                padding-bottom: Espace.e2;
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 1px;
+                if DonneesCoquille.panneau.genre == GenrePanneau.accueil: ElementListe {
+                    texte: "Accueil";
+                    icone: "maison";
+                    actif: DonneesCoquille.vue.genre == GenreVue.accueil;
+                    clique => {
+                        DonneesCoquille.ouvrir-accueil();
+                    }
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.accueil: TitreGroupe {
+                    min-height: 38px;
+                    texte: "CONVERSATIONS";
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.accueil: VerticalLayout {
+                    spacing: 1px;
+                    for prive in DonneesCoquille.prives: ElementListe {
+                        texte: prive.pseudo;
+                        actif: prive.actif;
+                        non-lus: prive.non-lus;
+                        mentions: prive.mentions;
+                        description: prive.en-ligne ? "en ligne" : "hors ligne";
+                        clique => {
+                            DonneesCoquille.ouvrir-prive(prive.id);
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 26px;
+                                height: 26px;
+                                Avatar {
+                                    nom: prive.pseudo;
+                                    initiales: prive.initiales;
+                                    teinte: prive.teinte;
+                                    taille: 26px;
+                                }
+                                if prive.en-ligne: Rectangle {
+                                    x: parent.width - 8px;
+                                    y: parent.height - 8px;
+                                    width: 10px;
+                                    height: 10px;
+                                    border-radius: 5px;
+                                    background: Theme.ok;
+                                    border-width: 2px;
+                                    border-color: Theme.papier-2;
+                                }
+                            }
+                        }
+                    }
+                    if DonneesCoquille.prives.length == 0: HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        Text {
+                            text: "Aucune conversation pour l'instant.";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.serveur: VerticalLayout {
+                    spacing: 1px;
+                    for salon in DonneesCoquille.salons: VerticalLayout {
+                        spacing: 1px;
+                        if salon.titre-groupe != "": TitreGroupe {
+                            texte: salon.titre-groupe;
+                        }
+                        ElementListe {
+                            texte: salon.nom;
+                            icone: salon.icone;
+                            actif: salon.actif;
+                            non-lus: salon.non-lus;
+                            mentions: salon.mentions;
+                            non-lu: salon.occupants > 0;
+                            etiquette: salon.bientot ? "bientôt" : "";
+                            description: salon.bientot ? "bientôt dans l'app native" : "";
+                            clique => {
+                                DonneesCoquille.ouvrir-salon(salon.id);
+                            }
+                        }
+                    }
+                    if DonneesCoquille.salons.length == 0: HorizontalLayout {
+                        padding-left: 10px;
+                        Text {
+                            text: "Aucun salon visible.";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                        }
+                    }
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.section: HorizontalLayout {
+                    padding: 10px;
+                    Text {
+                        text: "Cette section arrive bientôt dans l'app native.";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            padding: Espace.e2;
+            BarreMoi {
+                se-deconnecter => {
+                    root.se-deconnecter();
+                }
+            }
+        }
+    }
+}

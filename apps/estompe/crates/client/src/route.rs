@@ -38,6 +38,23 @@ pub enum Route {
     },
 }
 
+impl Route {
+    pub fn nom(&self) -> &'static str {
+        match self {
+            Self::Accueil => "home",
+            Self::Salon { .. } => "channel",
+            Self::MessagePrive { .. } => "dm",
+            Self::Invitation { .. } => "join",
+            Self::Admin { .. } => "admin",
+            Self::Films { .. } => "films",
+            Self::Musique { .. } => "musique",
+            Self::Regie { .. } => "regie",
+            Self::Stats { .. } => "stats",
+            Self::Espace { .. } => "space",
+        }
+    }
+}
+
 fn valeur_hexadecimale(octet: u8) -> Option<u8> {
     match octet {
         b'0'..=b'9' => Some(octet - b'0'),
@@ -190,6 +207,7 @@ pub fn lien_invitation(code: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::temps_reel::battement::{section_de, Section};
 
     fn s(texte: &str) -> Option<String> {
         Some(texte.to_string())
@@ -232,6 +250,30 @@ mod tests {
             lien_stats(Some("admin"), Some("personnes"), Some("kc/a")),
             "#/stats/admin/personnes/kc%2Fa"
         );
+    }
+
+    #[test]
+    fn le_battement_range_la_route_dans_la_section_sablier() {
+        assert_eq!(
+            section_de(analyser_hash("#/stats/recaps", &[]).nom()),
+            Section::Sablier
+        );
+        for (adresse, section) in [
+            ("#/", Section::Messagerie),
+            ("#/s/a/b", Section::Messagerie),
+            ("#/dm/x", Section::Messagerie),
+            ("#/films", Section::Entracte),
+            ("#/musique/albums", Section::Sillon),
+            ("#/regie", Section::Regie),
+            ("#/admin", Section::Admin),
+            ("#/join/abc", Section::Autre),
+        ] {
+            assert_eq!(
+                section_de(analyser_hash(adresse, &[]).nom()),
+                section,
+                "{adresse}"
+            );
+        }
     }
 
     #[test]

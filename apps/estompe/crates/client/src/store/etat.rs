@@ -305,7 +305,7 @@ impl Etat {
             .unwrap_or_default()
     }
 
-    fn mentions_comptees(&self) -> impl Iterator<Item = &Mention> {
+    pub fn mentions_comptees(&self) -> impl Iterator<Item = &Mention> {
         let ignores = self
             .reglages_notification
             .ignore_group

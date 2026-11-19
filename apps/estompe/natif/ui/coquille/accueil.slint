@@ -1,0 +1,313 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Compteur, Etiquette, Vide, Defilement } from "../composants.slint";
+import { DonneesCoquille, LigneRattrapage, LigneVocal } from "donnees.slint";
+
+component Carte inherits Rectangle {
+    in property <string> titre;
+    in property <string> note;
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    VerticalLayout {
+        padding: 18px;
+        spacing: Espace.e3;
+        alignment: start;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Text {
+                horizontal-stretch: 1;
+                text: root.titre;
+                color: Theme.encre;
+                font-family: Typo.texte;
+                font-size: Typo.corps;
+                font-weight: Typo.gras;
+                vertical-alignment: center;
+            }
+            if root.note != "": Text {
+                text: root.note;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+            }
+        }
+        @children
+    }
+}
+
+component LigneAccueil {
+    in property <LigneRattrapage> ligne;
+    callback clique();
+    min-height: 52px;
+    accessible-role: button;
+    accessible-label: ligne.titre;
+    accessible-description: ligne.detail;
+    accessible-action-default => {
+        root.clique();
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.ligne.mention ? (zone.has-hover ? Theme.rose : Theme.rose-doux) : zone.has-hover ? Theme.papier-2 : transparent;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 8px;
+                background: root.ligne.mention ? Theme.surface : Theme.papier-2;
+                Icone {
+                    nom: root.ligne.icone;
+                    taille: 16px;
+                    couleur: root.ligne.mention ? Theme.rose-texte : Theme.gris;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.ligne.titre;
+                color: Theme.encre;
+                font-size: 14px;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            Text {
+                text: root.ligne.detail;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Compteur {
+                nombre: root.ligne.nombre;
+                mention: root.ligne.mention;
+            }
+        }
+    }
+}
+
+component VocalAccueil {
+    in property <LigneVocal> ligne;
+    min-height: 52px;
+    HorizontalLayout {
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: Rayon.m;
+                background: Theme.rose;
+                Icone {
+                    nom: root.ligne.icone;
+                    taille: 20px;
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.ligne.nom;
+                color: Theme.encre;
+                font-size: 14px;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            Text {
+                text: root.ligne.lieu;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Etiquette {
+                texte: "bientôt";
+            }
+        }
+    }
+}
+
+component Rattrapage inherits Carte {
+    titre: "À rattraper";
+    VerticalLayout {
+        spacing: 2px;
+        for ligne in DonneesCoquille.rattrapage: LigneAccueil {
+            ligne: ligne;
+            clique => {
+                DonneesCoquille.ouvrir-conversation(ligne.cle);
+            }
+        }
+    }
+}
+
+component EnCeMoment inherits Carte {
+    titre: "En ce moment";
+    VerticalLayout {
+        spacing: Espace.e2;
+        for ligne in DonneesCoquille.vocaux: VocalAccueil {
+            ligne: ligne;
+        }
+    }
+}
+
+export component VueAccueil {
+    callback rejoindre();
+    property <bool> cartes: DonneesCoquille.rattrapage.length > 0 || DonneesCoquille.vocaux.length > 0;
+    property <bool> large: self.width >= 820px;
+    Defilement {
+        hauteur-contenu: colonne.preferred-height;
+        colonne := VerticalLayout {
+            alignment: start;
+            padding-top: Espace.e8;
+            padding-bottom: Espace.e12;
+            padding-left: 40px;
+            padding-right: 40px;
+            spacing: 28px;
+            VerticalLayout {
+                spacing: 6px;
+                Text {
+                    text: DonneesCoquille.accueil.date;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 11px;
+                    font-weight: Typo.moyen;
+                    letter-spacing: 0.9px;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    Text {
+                        text: DonneesCoquille.accueil.salut + ", ";
+                        color: Theme.encre;
+                        font-family: Typo.titre;
+                        font-size: 40px;
+                        font-weight: Typo.gras;
+                        letter-spacing: -1.2px;
+                    }
+                    Rectangle {
+                        width: pseudo.preferred-width + 12px;
+                        Rectangle {
+                            y: parent.height * 0.12;
+                            height: parent.height * 0.76;
+                            border-radius: 3px;
+                            background: Theme.rose;
+                        }
+                        pseudo := Text {
+                            text: DonneesCoquille.pseudo;
+                            color: Theme.encre;
+                            font-family: Typo.titre;
+                            font-size: 40px;
+                            font-weight: Typo.gras;
+                            letter-spacing: -1.2px;
+                        }
+                    }
+                    Text {
+                        text: ".";
+                        color: Theme.encre;
+                        font-family: Typo.titre;
+                        font-size: 40px;
+                        font-weight: Typo.gras;
+                    }
+                }
+                if DonneesCoquille.accueil.resume != "": Text {
+                    text: DonneesCoquille.accueil.resume;
+                    color: Theme.gris;
+                    font-size: Typo.corps;
+                    wrap: word-wrap;
+                }
+            }
+            if DonneesCoquille.accueil.sans-serveur: Rectangle {
+                border-radius: Rayon.xl;
+                border-width: 1.5px;
+                border-color: Theme.trait-fort;
+                HorizontalLayout {
+                    padding-top: Espace.e5;
+                    padding-bottom: Espace.e5;
+                    padding-left: Espace.e6;
+                    padding-right: Espace.e6;
+                    spacing: Espace.e5;
+                    VerticalLayout {
+                        alignment: center;
+                        Icone {
+                            nom: "calque";
+                            taille: 32px;
+                            couleur: Theme.rose-texte;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        Text {
+                            text: "Pour commencer";
+                            color: Theme.encre;
+                            font-weight: Typo.gras;
+                        }
+                        Text {
+                            text: "Tu n'es dans aucun serveur. Rejoins celui d'un ami avec son lien ou son code d'invitation.";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                            wrap: word-wrap;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Bouton {
+                            texte: "Rejoindre un serveur";
+                            icone: "lien";
+                            variante: VarianteBouton.primaire;
+                            clique => {
+                                root.rejoindre();
+                            }
+                        }
+                    }
+                }
+            }
+            if root.cartes && root.large: HorizontalLayout {
+                spacing: Espace.e5;
+                alignment: stretch;
+                if DonneesCoquille.rattrapage.length > 0: VerticalLayout {
+                    horizontal-stretch: 1;
+                    preferred-width: 0px;
+                    alignment: start;
+                    Rattrapage { }
+                }
+                if DonneesCoquille.vocaux.length > 0: VerticalLayout {
+                    horizontal-stretch: 1;
+                    preferred-width: 0px;
+                    alignment: start;
+                    EnCeMoment { }
+                }
+            }
+            if root.cartes && !root.large: VerticalLayout {
+                spacing: Espace.e5;
+                if DonneesCoquille.rattrapage.length > 0: Rattrapage { }
+                if DonneesCoquille.vocaux.length > 0: EnCeMoment { }
+            }
+            if !DonneesCoquille.accueil.sans-serveur: Vide {
+                icone: "bulle";
+                titre: "Choisis une conversation";
+                texte: "Sélectionne un serveur à gauche, ou ouvre un message privé.";
+            }
+        }
+    }
+}

@@ -2,13 +2,14 @@ import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Calques } from "jeton
 import { Icone, Bouton, VarianteBouton, Modal } from "composants.slint";
 import { APropos } from "a-propos.slint";
 import { Demonstration } from "demonstration.slint";
-import { Coquille } from "coquille.slint";
+import { Coquille } from "coquille/coquille.slint";
+import { DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil } from "coquille/donnees.slint";
 import { Attente } from "entree/commun.slint";
 import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
 import { MiseAJour } from "entree/mise-a-jour.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -30,7 +31,6 @@ export component Principale inherits Window {
     in property <string> mise-a-jour-message;
     in property <string> mise-a-jour-version-minimale;
     in property <string> pseudo;
-    in property <string> serveur-rejoint;
     in-out property <bool> a-propos-ouvert: false;
     in-out property <bool> modal-demo-ouvert: false;
     in property <bool> infobulle-forcee: false;
@@ -206,8 +206,6 @@ export component Principale inherits Window {
                     }
                 }
                 if root.page == Page.coquille: Coquille {
-                    pseudo: root.pseudo;
-                    serveur-rejoint: root.serveur-rejoint;
                     ouvrir-invitation => {
                         root.ouvrir-invitation();
                     }

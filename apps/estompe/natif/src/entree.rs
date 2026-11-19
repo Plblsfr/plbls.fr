@@ -105,8 +105,10 @@ pub fn client_de_l_app(
     emetteur: &Emetteur,
 ) -> Result<Client, ErreurApi> {
     let signal = emetteur.clone();
+    let perte = emetteur.clone();
     Ok(Client::avec_reglages(adresse, reglages)?
         .avec_plateforme(PLATEFORME, crate::VERSION)
+        .a_la_perte_de_session(move || perte.envoyer(Evenement::SessionPerdue))
         .a_la_mise_a_jour_requise(move |message| {
             signal.envoyer(Evenement::MiseAJourSignalee {
                 message: message.to_string(),
@@ -172,6 +174,8 @@ pub enum Evenement {
     Rejoindre(String),
     RetourAccueil,
     Telecharger,
+    SessionPerdue,
+    AccesPerdu,
     MiseAJourSignalee {
         message: String,
         version_minimale: String,
@@ -492,6 +496,15 @@ impl Machine {
                     en_cours: false, ..
                 },
             ) => self.entrer(None),
+            (Evenement::SessionPerdue, Etat::Connecte { .. } | Etat::Invitation { .. }) => {
+                self.compte = None;
+                self.etat = Etat::Erreur(message_de_connexion(&ErreurAuth::SessionExpiree));
+                None
+            }
+            (Evenement::AccesPerdu, Etat::Connecte { .. } | Etat::Invitation { .. }) => {
+                self.compte = None;
+                self.verifier()
+            }
             _ => None,
         }
     }
@@ -824,6 +837,32 @@ mod tests {
                 serveur: None
             }
         );
+    }
+
+    #[test]
+    fn la_session_perdue_ramene_a_la_connexion_et_l_acces_retire_a_la_verification() {
+        let mut m = connectee(None);
+        m.traiter(Evenement::CompteVerifie(Ok(moi(true, true))));
+        assert!(matches!(m.etat(), Etat::Connecte { .. }));
+        assert_eq!(m.traiter(Evenement::SessionPerdue), None);
+        assert_eq!(
+            *m.etat(),
+            Etat::Erreur(message_de_connexion(&ErreurAuth::SessionExpiree))
+        );
+        assert_eq!(m.traiter(Evenement::SessionPerdue), None);
+        assert_eq!(m.traiter(Evenement::AccesPerdu), None);
+        assert!(matches!(m.etat(), Etat::Erreur(_)));
+
+        let mut m = connectee(None);
+        m.traiter(Evenement::CompteVerifie(Ok(moi(true, true))));
+        m.traiter(Evenement::OuvrirInvitation);
+        assert_eq!(
+            m.traiter(Evenement::AccesPerdu),
+            Some(Effet::VerifierCompte)
+        );
+        assert_eq!(*m.etat(), Etat::Verification);
+        m.traiter(Evenement::CompteVerifie(Ok(moi(false, true))));
+        assert_eq!(*m.etat(), Etat::Refuse);
     }
 
     #[test]
