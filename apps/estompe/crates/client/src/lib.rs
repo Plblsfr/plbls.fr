@@ -12,5 +12,6 @@ pub mod derniere_vue;
 pub mod ordre_serveurs;
 pub mod roles;
 pub mod route;
+pub mod temps_reel;
 pub mod version;
 pub use genere::types;
