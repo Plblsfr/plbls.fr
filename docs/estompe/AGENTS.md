@@ -226,7 +226,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Plein écran dans l'app Android** : le `WebChromeClient` de wry (`RustWebChromeClient`) annule tout passage en plein écran (`onShowCustomView` rend la main aussitôt) et wry l'installe après `onWebViewCreate`. `FullscreenChrome` (`Fullscreen.kt`) l'enveloppe au tour suivant de la boucle principale : il affiche la vue plein écran, masque les barres système et délègue au client de wry les méthodes que celui-ci redéfinit. À chaque montée de wry, vérifier que cette liste de méthodes déléguées est toujours complète.
 - **App native** (`docs/estompe/natif.md`) : `ui/genere/*.slint` et `crates/client/src/genere/types.rs` sont générés (`just estompe-natif-generer`), ne pas
   les modifier à la main. Un changement visuel voulu régénère les captures de référence (`just estompe-natif-captures`). Le backend de test de Slint
-  ne s'installe qu'une fois par processus : un fichier de `tests/` par backend (rendu Skia pour les captures, sans rendu pour le clavier).
+  ne s'installe qu'une fois par processus : un fichier de `tests/` par backend (rendu logiciel pour les captures, sans rendu pour le clavier).
   Une tabulation qui arrive sur un champ sélectionne tout son texte. Lancer l'app sous Linux demande `libxkbcommon-x11-0`.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.

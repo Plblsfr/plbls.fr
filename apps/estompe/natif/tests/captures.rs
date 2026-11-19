@@ -131,7 +131,7 @@ fn les_ecrans_correspondent_a_leurs_references() {
     slint::platform::set_platform(Box::new(TestingBackend::new(TestingBackendOptions {
         mock_time: true,
         threading: false,
-        renderer_name: Some("skia".into()),
+        renderer_name: Some("software".into()),
     })))
     .expect("backend de test");
     let f = creer_fenetre().expect("fenêtre");
