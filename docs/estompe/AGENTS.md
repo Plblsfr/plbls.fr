@@ -218,5 +218,6 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   passage placé avant un autre du même clip prend une entrée de plus (`planifier`), sinon ses images s'accumulent en mémoire. `drawbox` ne rend pas un pixel
   opaque sur un fond transparent sans `replace=1`. Une sortie au rapport imposé se calcule en multiples pairs du rapport, pas en arrondissant largeur et hauteur.
   Dans la vue, seule la vidéo du segment lu est « active » : les évènements des autres vidéos (pause au changement de clip) sont ignorés.
+- **Plein écran dans l'app Android** : le `WebChromeClient` de wry (`RustWebChromeClient`) annule tout passage en plein écran (`onShowCustomView` rend la main aussitôt) et wry l'installe après `onWebViewCreate`. `FullscreenChrome` (`Fullscreen.kt`) l'enveloppe au tour suivant de la boucle principale : il affiche la vue plein écran, masque les barres système et délègue au client de wry les méthodes que celui-ci redéfinit. À chaque montée de wry, vérifier que cette liste de méthodes déléguées est toujours complète.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.
