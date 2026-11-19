@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.109.0",
+    "date": "2026-11-19",
+    "new": [
+      "Entracte : l'administration pilote Radarr et Sonarr (suivi des demandes, recherche de versions, file de téléchargement)."
+    ],
+    "fixes": [
+      "Entracte : le bouton Passer l'intro fonctionne au salon cinéma.",
+      "Android : le plein écran des vidéos fonctionne."
+    ]
+  },
+  {
     "version": "0.108.0",
     "date": "2026-11-19",
     "new": [
