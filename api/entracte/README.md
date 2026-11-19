@@ -15,6 +15,7 @@ routes dans [`openapi.yaml`](../../docs/entracte/openapi.yaml).
 | `sablier.rs` | évènements émis vers [Sablier](../../docs/sablier/README.md) (file commune, `SABLIER_REDIS_URL`, `SABLIER_REDIS_PASSWORD`, `SABLIER_FILE_MAX`) : temps regardé, abandons, intro passée, sous-commande `importer-sablier` ([détail](../../docs/entracte/README.md#statistiques-sablier)) |
 | `intros/` | détection des intros : empreinte Chromaprint (`empreinte.rs`), comparaison et consensus (`comparaison.rs`), file, administration et sous-commande `analyser-intro` (`mod.rs`) |
 | `demandes.rs` | recherche, demandes, administration, envoi à Radarr/Sonarr |
+| `gestion.rs`, `arr_gestion.rs` | pilotage de Radarr et Sonarr par l'administrateur (`/admin/arr/…`) : recherche automatique et interactive, file, import manuel, manquants, historique, liste noire, titres |
 | `push/` | Web Push (VAPID), FCM, notifications |
 | `interne.rs` | santé, `GET /me`, titre pour le salon cinéma d'Estompe |
 | `import_estompe.rs` | sous-commande `importer-estompe` : historique du bloc films d'Estompe ([procédure](../../docs/entracte/import-estompe.md)) |

@@ -11,7 +11,7 @@ use crate::{
     droits::Droit::{Acces, Admin, Demande},
     etat::AppState,
     garde::{self, Garde},
-    interne, intros, lecture, progression, push, sablier,
+    gestion, interne, intros, lecture, progression, push, sablier,
 };
 
 pub struct Route {
@@ -253,6 +253,108 @@ pub fn table() -> Vec<(Route, MethodRouter<AppState>)> {
             "/admin/intros/titles/{id}",
             Garde::Droit(Admin),
             delete(intros::effacer),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/titles",
+            Garde::Droit(Admin),
+            get(gestion::titres),
+        ),
+        r(
+            Method::POST,
+            "/admin/arr/{service}/titles",
+            Garde::Droit(Admin),
+            post(gestion::ajouter),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/{service}/titles/{id}",
+            Garde::Droit(Admin),
+            get(gestion::fiche),
+        ),
+        r(
+            Method::PUT,
+            "/admin/arr/{service}/titles/{id}",
+            Garde::Droit(Admin),
+            put(gestion::modifier),
+        ),
+        r(
+            Method::DELETE,
+            "/admin/arr/{service}/titles/{id}",
+            Garde::Droit(Admin),
+            delete(gestion::supprimer),
+        ),
+        r(
+            Method::PUT,
+            "/admin/arr/{service}/episodes/monitor",
+            Garde::Droit(Admin),
+            put(gestion::surveiller_episodes),
+        ),
+        r(
+            Method::POST,
+            "/admin/arr/{service}/search",
+            Garde::Droit(Admin),
+            post(gestion::rechercher),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/{service}/releases",
+            Garde::Droit(Admin),
+            get(gestion::releases),
+        ),
+        r(
+            Method::POST,
+            "/admin/arr/{service}/releases",
+            Garde::Droit(Admin),
+            post(gestion::recuperer),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/queue",
+            Garde::Droit(Admin),
+            get(gestion::file),
+        ),
+        r(
+            Method::DELETE,
+            "/admin/arr/{service}/queue/{id}",
+            Garde::Droit(Admin),
+            delete(gestion::retirer),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/{service}/queue/{id}/import",
+            Garde::Droit(Admin),
+            get(gestion::import_possible),
+        ),
+        r(
+            Method::POST,
+            "/admin/arr/{service}/queue/{id}/import",
+            Garde::Droit(Admin),
+            post(gestion::importer),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/missing",
+            Garde::Droit(Admin),
+            get(gestion::manquants),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/history",
+            Garde::Droit(Admin),
+            get(gestion::historique),
+        ),
+        r(
+            Method::GET,
+            "/admin/arr/blocklist",
+            Garde::Droit(Admin),
+            get(gestion::liste_noire),
+        ),
+        r(
+            Method::DELETE,
+            "/admin/arr/{service}/blocklist/{id}",
+            Garde::Droit(Admin),
+            delete(gestion::retirer_de_la_liste_noire),
         ),
         r(
             Method::GET,
