@@ -1587,7 +1587,8 @@ paths:
     get:
       tags: [messages]
       summary: Historique d'une conversation privée
-      parameters: [{$ref: "#/components/parameters/Before"}, {$ref: "#/components/parameters/Limit"}]
+      description: "`after=<id>` : les messages qui suivent ce message, comme pour un salon."
+      parameters: [{$ref: "#/components/parameters/Before"}, {name: after, in: query, schema: {type: string}}, {$ref: "#/components/parameters/Limit"}]
       responses: {"200": {$ref: "#/components/responses/MessagePage"}, "404": {$ref: "#/components/responses/NotFound"}}
     post:
       tags: [messages]
@@ -2327,6 +2328,18 @@ components:
           description: Message cité (début de 120 caractères) ; null si le message d'origine a été supprimé
           properties: {id: {type: string}, author: {$ref: "#/components/schemas/Person"}, content: {type: string}}
         pinned_at: {type: string, format: date-time, nullable: true}
+        poll:
+          type: object
+          nullable: true
+          description: Sondage du message ; `options[].me` est calculé pour la personne qui lit (sauf dans les évènements temps réel, calculés pour l'auteur)
+          properties:
+            multiple: {type: boolean}
+            closes_at: {type: string, format: date-time, nullable: true}
+            created_by: {$ref: "#/components/schemas/Person"}
+            options:
+              type: array
+              items: {type: object, properties: {id: {type: string}, label: {type: string}, votes: {type: integer}, me: {type: boolean}}}
+        system: {type: boolean, description: Message système (nouvelles du compte Estompe)}
     DM:
       type: object
       properties:
