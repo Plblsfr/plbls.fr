@@ -6,7 +6,7 @@ import { sablierApi, sablierOn, type SablierMe } from '../sections/sablier/sabli
 import { sablier } from '../sections/sablier/sablier.svelte'
 import { aimes, lecteur } from '../sections/sillon/sillon.svelte'
 import { regieApi, regieOn } from '../sections/regie/regie'
-import { Realtime, wsUrl, type RealtimeEvent } from './realtime'
+import { Realtime, coupureDifferee, wsUrl, type RealtimeEvent } from './realtime'
 import { platform } from './platform'
 import { prefs } from './prefs.svelte'
 import { avatars, serverIcons } from '../blocks/avatars/avatars.svelte'
@@ -98,6 +98,9 @@ export class AppStore {
   localActivity = $state('')
   notifySettings = $state<NotifySettings>(defaultNotifySettings())
   connection = $state<'connecting' | 'open' | 'closed'>('closed')
+  /** Vrai quand le temps réel est coupé depuis plus de quelques secondes : affiche le bandeau « Reconnexion en cours… ». */
+  coupure = $state(false)
+  private signalerCoupure = coupureDifferee((v) => (this.coupure = v))
   /** Personnes en train d'écrire, par conversation (id → pseudo) ; entrées retirées au bout de 5 s. */
   typing = $state<Record<ConvKey, Record<string, string>>>({})
   /** Accusés de lecture : dernier message vu par personne (id → lecture), par conversation. */
@@ -288,7 +291,7 @@ export class AppStore {
       getTicket: async () => (await api.wsTicket()).ticket,
       url: `${wsUrl(API_URL)}?platform=${platform.id()}&v=${encodeURIComponent(__APP_VERSION__)}`,
       onEvent: (e) => this.handleEvent(e),
-      onStatus: (s) => (this.connection = s),
+      onStatus: (s) => { this.connection = s; this.signalerCoupure(s) },
       onReconnected: () => void this.resync(),
       onSessionExpired: () => void this.recheckSession(),
       onAccessRevoked: () => { this.phase = 'denied'; this.stopRealtime(); void voice.leave() },
@@ -323,6 +326,7 @@ export class AppStore {
   stopRealtime() {
     this.rt?.stop()
     this.rt = null
+    this.signalerCoupure(null)
   }
 
   /** Après une coupure, des évènements ont pu être manqués : on recharge l'état et les conversations ouvertes. */

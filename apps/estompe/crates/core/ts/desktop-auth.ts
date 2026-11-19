@@ -53,7 +53,7 @@ export const localSecretStore = (key: string, ls: Pick<Storage, 'getItem' | 'set
 
 interface TokenResponse { access_token: string; refresh_token?: string; expires_in: number }
 
-const LEEWAY_MS = 30_000
+const LEEWAY_MS = 90_000
 
 /**
  * Détient le jeton d'accès en mémoire (jamais écrit sur disque) et le renouvelle avec le refresh token, qui tourne
