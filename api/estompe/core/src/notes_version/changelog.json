@@ -1,5 +1,16 @@
 [
   {
+    "version": "0.108.0",
+    "date": "2026-11-19",
+    "new": [
+      "Entracte : les films se chargent plus vite et à plusieurs sans ralentir le serveur, et les films HEVC passent sans conversion quand votre appareil les lit.",
+      "Entracte : l'option Wi-Fi seulement limite le préchargement en données mobiles."
+    ],
+    "fixes": [
+      "Le bandeau Reconnexion en cours n'apparaît plus sans raison."
+    ]
+  },
+  {
     "version": "0.107.0",
     "date": "2026-11-18",
     "new": [
