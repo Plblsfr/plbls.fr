@@ -3,6 +3,7 @@
   import { filmsApi, requestAt } from '../../lib/api'
   import { hrefs } from '../../lib/route.svelte'
   import { app } from '../../lib/store.svelte'
+  import { platform } from '../../lib/platform'
   import { notify } from '../../lib/ui'
   import { medias } from '../../lib/medias'
   import Icon from '../../components/Icon.svelte'
@@ -28,6 +29,8 @@
   let audioPref = $state<AudioPref>(saved.audio)
   let subtitlePref = $state<SubtitlePref>(saved.subtitles)
   let bufferPref = $state<BufferPref>(saved.buffer)
+  let wifiOnly = $state(saved.wifiOnly)
+  const reseauConnu = (platform.network?.kind() ?? 'unknown') !== 'unknown'
   let tracks = $state<FilmTracks | null>(null)
   let panel = $state(false)
   let picker = $state(false)
@@ -90,6 +93,11 @@
     bufferPref = pref
     savePlayPrefs(store(), { buffer: pref })
     player?.setBuffer?.(pref)
+  }
+  const preferWifi = (on: boolean) => {
+    wifiOnly = on
+    savePlayPrefs(store(), { wifiOnly: on })
+    player?.setWifiOnly?.(on)
   }
 
   const ACTIONS = {
@@ -198,7 +206,10 @@
             {#each BUFFER_PREFS as [v, nom] (v)}<option value={v}>{nom}</option>{/each}
           </select>
         </div>
-        <p class="film-pref-note">Garde la suite du film en mémoire sur cet appareil. Sans effet quand le fichier est lu tel quel : le navigateur décide alors seul.</p>
+        {#if reseauConnu}
+          <label class="film-pref-check"><input type="checkbox" checked={wifiOnly} onchange={(e) => preferWifi(e.currentTarget.checked)} /> Préchargement long en Wi-Fi seulement</label>
+        {/if}
+        <p class="film-pref-note">Garde la suite du film sur cet appareil jusqu'à la fermeture du titre. Sans effet quand le fichier est lu tel quel : le navigateur décide alors seul.</p>
       </section>
     {/if}
   </div>

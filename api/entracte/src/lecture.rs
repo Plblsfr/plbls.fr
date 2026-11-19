@@ -7,7 +7,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, RawQuery, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -21,13 +21,16 @@ use crate::{
     config::ModeMateriel,
     droits::Droit,
     etat::AppState,
+    ffprobe::Video,
     ffprobe::{self, Analyse},
     flux::{Acces, Limites, Mode, Ouverture, Refus, maintenant_unix},
     garde::Personne,
     http::{self, bd, erreur, introuvable, invalide, objet, ok},
     identite::{Identite, justificatif},
     sous_titres::{self, Echec},
-    transcodage::{self, Etat, PLAYLIST, Parametres},
+    transcodage::{
+        self, Abonnement, Couverture, Etat, PAS_GRILLE, PLAYLIST, Parametres, depart_de_grille,
+    },
 };
 
 const ATTENTE_PLAYLIST: Duration = Duration::from_secs(40);
@@ -93,6 +96,36 @@ pub fn lisible_tel_quel(a: &Analyse, s: &Support, audio: usize, palier: &str) ->
     palier == "original" && conteneur_ok && s.video.contains(&v.codec) && audio_ok
 }
 
+pub fn recopiable(v: &Video, s: &Support) -> bool {
+    let annonce = |nom: &str| s.video.iter().any(|c| c == nom);
+    match (v.codec.as_str(), v.bits) {
+        ("h264", _) => annonce("h264"),
+        ("hevc", Some(8)) => annonce("hevc"),
+        ("hevc", Some(10)) => annonce("hevc10"),
+        _ => false,
+    }
+}
+
+async fn completer_bits(state: &AppState, fichier: Uuid, chemin: &str, video: &mut Video) {
+    let Ok(a) = ffprobe::analyser(&state.config().ffprobe, CheminFs::new(chemin)).await else {
+        return;
+    };
+    let Some(bits) = a.video.and_then(|v| v.bits) else {
+        return;
+    };
+    video.bits = Some(bits);
+    let ecrit = sqlx::query(
+        "UPDATE fichiers SET infos = jsonb_set(infos, '{video,bits}', to_jsonb($2::int)) WHERE id = $1",
+    )
+    .bind(fichier)
+    .bind(i32::from(bits))
+    .execute(state.pool())
+    .await;
+    if let Err(e) = ecrit {
+        tracing::warn!("profondeur de couleur non enregistrée : {e}");
+    }
+}
+
 fn hauteur_palier(a: &Analyse, palier: &str) -> Result<Option<i64>, ()> {
     if palier == "original" {
         return Ok(None);
@@ -145,7 +178,6 @@ fn limites(state: &AppState) -> Limites {
     let c = state.config();
     Limites {
         flux: c.max_flux,
-        transcodages: c.max_transcodages,
         inactivite: c.inactivite,
     }
 }
@@ -156,6 +188,16 @@ fn charge() -> Response {
         "serveur_charge",
         "le serveur est trop chargé, réessayez plus tard",
     )
+}
+
+fn refus_de_transcodage(e: transcodage::Refus) -> Response {
+    match e {
+        transcodage::Refus::Charge => charge(),
+        transcodage::Refus::Erreur(e) => {
+            tracing::error!("transcodage : {e}");
+            http::indisponible("transcode_failed", "transcodage impossible")
+        }
+    }
 }
 
 pub async fn arreter_flux(state: &AppState, ids: &[String]) {
@@ -196,7 +238,7 @@ pub async fn ouvrir(
     let (fichier, chemin, analyse) = bibliotheque::fichier_de(&state, id)
         .await?
         .ok_or_else(introuvable)?;
-    let video = analyse.video.clone().ok_or_else(introuvable)?;
+    let mut video = analyse.video.clone().ok_or_else(introuvable)?;
     if audio > 0 && audio >= analyse.audio.len() {
         return Err(invalide("piste audio invalide"));
     }
@@ -233,49 +275,93 @@ pub async fn ouvrir(
                 "trop de lectures en cours sur ce compte",
             ));
         }
-        Err(Refus::ServeurCharge) => return Err(charge()),
     };
-    arreter_flux(&state, &morts).await;
     let base = format!("/stream/{signe}");
     let mut decalage = 0.0;
+    let mut copie = false;
+    let mut cache = Value::Null;
     let url = if mode == Mode::Hls {
-        let copie_video =
-            hauteur.is_none() && video.codec == "h264" && support.video.iter().any(|c| c == "h264");
-        let mut depart = debut;
-        decalage = debut;
-        if copie_video && debut > 0.0 {
-            let source = std::path::Path::new(&chemin);
-            let ffprobe = &state.config().ffprobe;
-            match ffprobe::depart_de_copie(ffprobe, source, video.index, debut).await {
-                Some(d) => (decalage, depart) = (d.image_cle, d.viser),
-                None => tracing::warn!("image clé avant {debut} s introuvable, reprise approchée"),
-            }
+        if hauteur.is_none()
+            && video.codec == "hevc"
+            && video.bits.is_none()
+            && support.video.iter().any(|c| c.starts_with("hevc"))
+        {
+            completer_bits(&state, fichier, &chemin, &mut video).await;
         }
-        let params = Parametres {
+        let copie_video = hauteur.is_none() && recopiable(&video, &support);
+        let mut params = Parametres {
             source: PathBuf::from(&chemin),
             index_video: video.index,
             index_audio: analyse.audio.get(audio).map(|a| a.index),
             hauteur,
             copie_video,
-            debut: depart,
-            avance: (debut - decalage).max(0.0),
+            codec_video: video.codec.clone(),
+            debut,
+            origine: debut,
             mode: state.materiel().mode(),
             peripherique: state.config().peripherique.clone(),
         };
-        if let Err(e) = state
-            .transcodeur()
-            .demarrer(&state.config().ffmpeg, &flux_id, &params)
-            .await
-        {
-            tracing::error!("transcodage : {e}");
-            state.flux().fermer(&flux_id, p.sub());
-            return Err(http::indisponible(
-                "transcode_failed",
-                "transcodage impossible",
-            ));
+        let grille = params.sur_grille();
+        let abonnement = |decalage: f64| Abonnement {
+            avance: (debut - decalage).max(0.0),
+            premier: (decalage / PAS_GRILLE).round() as i64,
+            duree: analyse.duree,
+        };
+        let mut rejoint = false;
+        if let Some((rang, origine)) = state.transcodeur().partageable(&params, debut).await {
+            let depart = if grille {
+                depart_de_grille(debut)
+            } else {
+                origine
+            };
+            if state
+                .transcodeur()
+                .rejoindre(&flux_id, rang, abonnement(depart))
+                .await
+            {
+                rejoint = true;
+                decalage = depart;
+            }
+        }
+        arreter_flux(&state, &morts).await;
+        if !rejoint {
+            decalage = debut;
+            if copie_video && debut > 0.0 {
+                let source = std::path::Path::new(&chemin);
+                let ffprobe = &state.config().ffprobe;
+                match ffprobe::depart_de_copie(ffprobe, source, video.index, debut).await {
+                    Some(d) => (decalage, params.debut) = (d.image_cle, d.viser),
+                    None => {
+                        tracing::warn!("image clé avant {debut} s introuvable, reprise approchée")
+                    }
+                }
+            } else if grille {
+                decalage = depart_de_grille(debut);
+                params.debut = decalage;
+            }
+            params.origine = decalage;
+            let demarrage = state
+                .transcodeur()
+                .demarrer(
+                    &state.config().ffmpeg,
+                    &flux_id,
+                    &params,
+                    abonnement(decalage),
+                    state.config().max_transcodages,
+                )
+                .await;
+            if let Err(e) = demarrage {
+                state.flux().fermer(&flux_id, p.sub());
+                return Err(refus_de_transcodage(e));
+            }
+        }
+        copie = copie_video;
+        if let Some(reel) = state.transcodeur().parametres(&flux_id) {
+            cache = json!(format!("{fichier}-{palier}-{audio}-{}", reel.serie()));
         }
         format!("{base}/hls.m3u8")
     } else {
+        arreter_flux(&state, &morts).await;
         format!("{base}/direct")
     };
     let intro = crate::intros::intro_de(state.pool(), fichier)
@@ -305,6 +391,8 @@ pub async fn ouvrir(
         "audio_n": audio,
         "subtitles": sous_titres,
         "intro": crate::intros::en_json(intro),
+        "video": {"codec": video.codec, "copy": copie},
+        "cache": cache,
     })))
 }
 
@@ -456,8 +544,11 @@ async fn relancer_sur_cpu(state: &AppState, flux: &str) -> bool {
     let Some(mut p) = state.transcodeur().parametres(flux) else {
         return false;
     };
-    if p.mode == ModeMateriel::Cpu || p.copie_video {
+    if p.copie_video {
         return false;
+    }
+    if p.mode == ModeMateriel::Cpu {
+        return state.transcodeur().etat(flux) == Etat::EnCours;
     }
     state
         .materiel()
@@ -465,8 +556,7 @@ async fn relancer_sur_cpu(state: &AppState, flux: &str) -> bool {
     p.mode = ModeMateriel::Cpu;
     state
         .transcodeur()
-        .demarrer(&state.config().ffmpeg, flux, &p)
-        .await
+        .relancer(&state.config().ffmpeg, flux, &p)
         .is_ok()
 }
 
@@ -474,6 +564,12 @@ pub fn playlist_propre(brut: &str) -> String {
     let mut sortie = String::new();
     for ligne in brut.lines() {
         let l = ligne.trim_end_matches('\r');
+        if l.starts_with("#EXT-X-MAP") {
+            sortie.push_str("#EXT-X-MAP:URI=\"");
+            sortie.push_str(transcodage::INIT);
+            sortie.push_str("\"\n");
+            continue;
+        }
         if l.starts_with('#') {
             if l.starts_with("#EXT") {
                 sortie.push_str(l);
@@ -522,10 +618,18 @@ pub async fn hls(
     let _garde = state.flux().lecture(&a.flux);
     let limite = Instant::now() + ATTENTE_PLAYLIST;
     let patience = Instant::now() + ATTENTE_AVANCE;
-    let avance = state
+    let abonnement = state.transcodeur().abonnement(&a.flux).unwrap_or_default();
+    let liste = state
         .transcodeur()
         .parametres(&a.flux)
-        .map_or(0.0, |p| p.avance);
+        .filter(Parametres::sur_grille)
+        .and(abonnement.duree)
+        .map(|duree| transcodage::playlist_de_grille(abonnement.premier, duree));
+    let avance = if liste.is_some() {
+        0.0
+    } else {
+        abonnement.avance
+    };
     let mut relance = false;
     loop {
         if let Some(d) = state.transcodeur().dossier(&a.flux)
@@ -539,7 +643,7 @@ pub async fn hls(
                 },
             )
         {
-            let mut r = Response::new(Body::from(playlist_propre(&texte)));
+            let mut r = Response::new(Body::from(liste.unwrap_or_else(|| playlist_propre(&texte))));
             entetes_de_flux(&mut r, "application/vnd.apple.mpegurl");
             return Ok(r);
         }
@@ -563,20 +667,66 @@ pub async fn hls(
     }
 }
 
+async fn placer(state: &AppState, flux: &str, nom: &str, avance: bool) -> Result<(), Response> {
+    let t = state.transcodeur();
+    let Some(indice) = transcodage::indice_de_segment(nom) else {
+        return Ok(());
+    };
+    let Some(p) = t.parametres(flux).filter(Parametres::sur_grille) else {
+        return Ok(());
+    };
+    let _saut = t.sauts().lock().await;
+    let Some(p) = t.parametres(flux).filter(|q| q.meme_sortie(&p)) else {
+        return Err(introuvable());
+    };
+    if let Some(d) = t.dossier(flux)
+        && tokio::fs::try_exists(d.join(nom)).await.unwrap_or(false)
+    {
+        return Ok(());
+    }
+    let position = indice as f64 * PAS_GRILLE;
+    let abonnement = t.abonnement(flux).unwrap_or_default();
+    match t.couverture(&p, position).await {
+        Couverture::Par(rang, _) if t.rang(flux) == Some(rang) => Ok(()),
+        Couverture::ApresLaFin => Err(introuvable()),
+        _ if avance => Err(introuvable()),
+        Couverture::Par(rang, _) => {
+            if t.rejoindre(flux, rang, abonnement).await {
+                Ok(())
+            } else {
+                Err(introuvable())
+            }
+        }
+        Couverture::Aucune => {
+            let mut ici = p.clone();
+            ici.debut = position;
+            ici.origine = position;
+            let c = state.config();
+            t.demarrer(&c.ffmpeg, flux, &ici, abonnement, c.max_transcodages)
+                .await
+                .map(|_| ())
+                .map_err(refus_de_transcodage)
+        }
+    }
+}
+
 pub async fn segment(
     State(state): State<AppState>,
     Path((jeton, nom)): Path<(String, String)>,
+    RawQuery(requete): RawQuery,
     entetes: HeaderMap,
 ) -> Result<Response, Response> {
-    if !transcodage::segment_valide(&nom) {
-        return Err(introuvable());
-    }
+    let mime = transcodage::type_de_segment(&nom).ok_or_else(introuvable)?;
     let a = acces(&state, &jeton, &entetes).await?;
     if a.ouverture.mode != Mode::Hls {
         return Err(jeton_refuse());
     }
     let _garde = state.flux().lecture(&a.flux);
+    let avance = requete
+        .as_deref()
+        .is_some_and(|q| q.split('&').any(|c| c == "avance=1"));
     let limite = Instant::now() + ATTENTE_SEGMENT;
+    let mut place = None;
     loop {
         let dossier = state
             .transcodeur()
@@ -584,8 +734,17 @@ pub async fn segment(
             .ok_or_else(introuvable)?;
         if let Ok(octets) = tokio::fs::read(dossier.join(&nom)).await {
             let mut r = Response::new(Body::from(octets));
-            entetes_de_flux(&mut r, "video/mp2t");
+            entetes_de_flux(&mut r, mime);
             return Ok(r);
+        }
+        match place {
+            None => {
+                placer(&state, &a.flux, &nom, avance).await?;
+                place = Some(state.transcodeur().rang(&a.flux));
+                continue;
+            }
+            Some(rang) if rang != state.transcodeur().rang(&a.flux) => return Err(introuvable()),
+            Some(_) => {}
         }
         if state.transcodeur().etat(&a.flux) != Etat::EnCours || Instant::now() > limite {
             return Err(introuvable());
@@ -742,6 +901,7 @@ mod tests {
                 codec: video.into(),
                 largeur: hauteur * 16 / 9,
                 hauteur,
+                bits: Some(8),
             }),
             audio: audios
                 .iter()
@@ -862,6 +1022,51 @@ mod tests {
         assert_eq!(
             p,
             "#EXTM3U\n#EXTINF:4.0,\nseg00000.ts\n#EXTINF:4.0,\nseg00001.ts\n"
+        );
+    }
+
+    #[test]
+    fn recopie_selon_le_codec_et_la_profondeur() {
+        let video = |codec: &str, bits| Video {
+            index: 0,
+            codec: codec.into(),
+            largeur: 1920,
+            hauteur: 1080,
+            bits,
+        };
+        let appareil = |v: &[&str]| Support {
+            conteneurs: vec![],
+            video: v.iter().map(|c| c.to_string()).collect(),
+            audio: vec![],
+        };
+        assert!(recopiable(&video("h264", None), &appareil(&["h264"])));
+        assert!(!recopiable(&video("h264", Some(8)), &appareil(&["hevc"])));
+        assert!(recopiable(&video("hevc", Some(8)), &appareil(&["hevc"])));
+        assert!(!recopiable(&video("hevc", Some(10)), &appareil(&["hevc"])));
+        assert!(recopiable(
+            &video("hevc", Some(10)),
+            &appareil(&["hevc", "hevc10"])
+        ));
+        assert!(!recopiable(&video("hevc", Some(8)), &appareil(&["hevc10"])));
+        assert!(!recopiable(
+            &video("hevc", None),
+            &appareil(&["hevc", "hevc10"])
+        ));
+        assert!(!recopiable(
+            &video("hevc", Some(12)),
+            &appareil(&["hevc", "hevc10"])
+        ));
+        assert!(!recopiable(&video("av1", Some(8)), &appareil(&["av1"])));
+    }
+
+    #[test]
+    fn playlist_fmp4_sans_chemin_du_serveur() {
+        let propre = playlist_propre(
+            "#EXTM3U\n#EXT-X-MAP:URI=\"/tmp/entracte/t3/init.mp4\"\n#EXTINF:4.0,\n/tmp/entracte/t3/seg00000.m4s\n#EXTINF:4.0,\n../secret.m4s\n",
+        );
+        assert_eq!(
+            propre,
+            "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.0,\nseg00000.m4s\n#EXTINF:4.0,\n"
         );
     }
 }

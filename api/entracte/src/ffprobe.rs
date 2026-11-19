@@ -11,6 +11,28 @@ pub struct Video {
     pub codec: String,
     pub largeur: i64,
     pub hauteur: i64,
+    #[serde(default)]
+    pub bits: Option<u8>,
+}
+
+pub fn bits_de(flux: &Value) -> Option<u8> {
+    if let Some(b) = flux["bits_per_raw_sample"]
+        .as_str()
+        .and_then(|b| b.parse::<u8>().ok())
+        .filter(|b| *b > 0)
+    {
+        return Some(b);
+    }
+    let format = flux["pix_fmt"].as_str()?;
+    let suffixe = format
+        .trim_end_matches("le")
+        .trim_end_matches("be")
+        .rsplit('p')
+        .next()?;
+    match suffixe.parse::<u8>() {
+        Ok(b) if (9..=16).contains(&b) => Some(b),
+        _ => Some(8),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -60,6 +82,7 @@ impl Analyse {
                 codec: s["codec_name"].as_str().unwrap_or_default().to_string(),
                 largeur: s["width"].as_i64().unwrap_or(0),
                 hauteur: s["height"].as_i64().unwrap_or(0),
+                bits: bits_de(s),
             });
         Analyse {
             conteneur: v["format"]["format_name"]
@@ -287,6 +310,28 @@ mod tests {
         assert_eq!(a.audio[1].canaux, 2);
         assert_eq!(a.sous_titres.len(), 1);
         assert!(a.sous_titres[0].force);
+    }
+
+    #[test]
+    fn profondeur_de_couleur() {
+        for (flux, attendu) in [
+            (json!({"pix_fmt": "yuv420p"}), Some(8)),
+            (json!({"pix_fmt": "yuv420p10le"}), Some(10)),
+            (json!({"pix_fmt": "p010le"}), Some(10)),
+            (json!({"pix_fmt": "yuv444p12be"}), Some(12)),
+            (json!({"pix_fmt": "nv12"}), Some(8)),
+            (
+                json!({"pix_fmt": "yuv420p", "bits_per_raw_sample": "10"}),
+                Some(10),
+            ),
+            (
+                json!({"pix_fmt": "yuv420p10le", "bits_per_raw_sample": "0"}),
+                Some(10),
+            ),
+            (json!({}), None),
+        ] {
+            assert_eq!(bits_de(&flux), attendu, "{flux}");
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, effectiveBuffer, refuseCodec, refusedCodecs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeLabel, fullTitle, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -124,18 +124,37 @@ const memoire = (depart: Record<string, string> = {}) => {
 
 describe('préférences de lecture', () => {
   it('part des valeurs par défaut et ignore un contenu invalide', () => {
-    const defauts = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal' }
+    const defauts = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal', wifiOnly: false }
     expect(playPrefs(null)).toEqual(defauts)
     expect(playPrefs(memoire({ 'entracte.lecture': 'pas du json' }))).toEqual(defauts)
-    expect(playPrefs(memoire({ 'entracte.lecture': '{"audio":"klingon","subtitles":7,"volume":"fort","muted":"oui","buffer":"infini"}' }))).toEqual(defauts)
+    expect(playPrefs(memoire({ 'entracte.lecture': '{"audio":"klingon","subtitles":7,"volume":"fort","muted":"oui","buffer":"infini","wifiOnly":"oui"}' }))).toEqual(defauts)
     expect(playPrefs(memoire({ 'entracte.lecture': '{"volume":250}' })).volume).toBe(100)
   })
 
   it('garde le volume et les choix d’une lecture à l’autre', () => {
     const m = memoire()
     savePlayPrefs(m, { volume: 35, muted: true })
-    savePlayPrefs(m, { audio: 'vff', subtitles: 'forced', buffer: 'all' })
-    expect(playPrefs(m)).toEqual({ audio: 'vff', subtitles: 'forced', volume: 35, muted: true, buffer: 'all' })
+    savePlayPrefs(m, { audio: 'vff', subtitles: 'forced', buffer: 'all', wifiOnly: true })
+    expect(playPrefs(m)).toEqual({ audio: 'vff', subtitles: 'forced', volume: 35, muted: true, buffer: 'all', wifiOnly: true })
+  })
+
+  it('ramène le préchargement au réglage normal en données mobiles quand il est réservé au Wi-Fi', () => {
+    expect(effectiveBuffer({ buffer: 'all', wifiOnly: true }, 'cellular')).toBe('normal')
+    expect(effectiveBuffer({ buffer: 'all', wifiOnly: true }, 'wifi')).toBe('all')
+    expect(effectiveBuffer({ buffer: 'long', wifiOnly: true }, 'unknown')).toBe('long')
+    expect(effectiveBuffer({ buffer: 'long', wifiOnly: false }, 'cellular')).toBe('long')
+  })
+
+  it('n’annonce plus un codec que l’appareil n’a pas su lire', () => {
+    const m = memoire()
+    expect(refusedCodecs(m)).toEqual([])
+    expect(refusedCodecs(memoire({ 'entracte.refus': '{"hevc":1}' }))).toEqual([])
+    expect(support(() => 'probably').video).toEqual(['h264', 'hevc', 'hevc10', 'vp9', 'av1'])
+    refuseCodec(m, 'hevc')
+    refuseCodec(m, 'hevc')
+    expect(refusedCodecs(m)).toEqual(['hevc'])
+    expect(support(() => 'probably', refusedCodecs(m)).video).toEqual(['h264', 'vp9', 'av1'])
+    expect(support(() => 'probably', refusedCodecs(m)).audio).toContain('aac')
   })
 })
 

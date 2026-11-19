@@ -21,13 +21,11 @@ pub enum Mode {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refus {
     TropDeFlux,
-    ServeurCharge,
 }
 
 #[derive(Clone, Copy)]
 pub struct Limites {
     pub flux: usize,
-    pub transcodages: usize,
     pub inactivite: Duration,
 }
 
@@ -133,13 +131,6 @@ impl Flux {
             .count();
         if du_meme >= limites.flux {
             return Err(Refus::TropDeFlux);
-        }
-        let hls_restants = m
-            .iter()
-            .filter(|(id, s)| s.ouverture.mode == Mode::Hls && !remplaces.contains(id))
-            .count();
-        if ouverture.mode == Mode::Hls && hls_restants >= limites.transcodages {
-            return Err(Refus::ServeurCharge);
         }
         for id in &remplaces {
             m.remove(id);
@@ -249,7 +240,6 @@ mod tests {
     const INACTIVITE: Duration = Duration::from_secs(60);
     const LARGES: Limites = Limites {
         flux: 100,
-        transcodages: 100,
         inactivite: INACTIVITE,
     };
 
@@ -326,7 +316,6 @@ mod tests {
         let (f, t) = (Flux::default(), Instant::now());
         let lim = Limites {
             flux: 2,
-            transcodages: 1,
             inactivite: INACTIVITE,
         };
         let ouvre =
@@ -337,10 +326,7 @@ mod tests {
             ouvre("alice", Mode::Direct, 3).unwrap_err(),
             Refus::TropDeFlux
         );
-        assert_eq!(
-            ouvre("bob", Mode::Hls, 1).unwrap_err(),
-            Refus::ServeurCharge
-        );
+        ouvre("bob", Mode::Hls, 1).unwrap();
         let (_, _, remplaces) = ouvre("alice", Mode::Hls, 1).unwrap();
         assert_eq!(remplaces, vec![premier.clone()]);
         assert!(!f.existe(&premier));

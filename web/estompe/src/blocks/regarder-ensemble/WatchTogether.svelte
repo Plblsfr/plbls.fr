@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../../lib/api'
   import { app } from '../../lib/store.svelte'
+  import { platform } from '../../lib/platform'
   import { notify } from '../../lib/ui'
   import { WatchPlayer, watchView } from './watch.svelte'
   import { lastAction, waitingText } from './watch'
@@ -32,7 +33,10 @@
   const wake = () => { idle = false; clearTimeout(idleTimer); idleTimer = setTimeout(() => (idle = !!s?.playing && !host?.closest('.watch-player')?.matches(':focus-within')), 2500) }
   let vol = $state(100)
   let muted = $state(false)
-  let buffer = $state<BufferPref>(playPrefs((() => { try { return localStorage } catch { return null } })()).buffer)
+  const lecture = playPrefs((() => { try { return localStorage } catch { return null } })())
+  let buffer = $state<BufferPref>(lecture.buffer)
+  let wifiOnly = $state(lecture.wifiOnly)
+  const reseauConnu = (platform.network?.kind() ?? 'unknown') !== 'unknown'
   const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
   const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
 
@@ -141,6 +145,9 @@
               <select class="watch-rate" value={buffer} onchange={(e) => { buffer = e.currentTarget.value as BufferPref; player?.setBuffer(buffer) }} aria-label="Préchargement" title="Préchargement sur cet appareil">
                 {#each BUFFER_PREFS as [v, nom] (v)}<option value={v}>Préchargement : {nom}</option>{/each}
               </select>
+              {#if reseauConnu}
+                <label class="watch-check" title="Hors Wi-Fi, le préchargement reste au réglage normal"><input type="checkbox" checked={wifiOnly} onchange={(e) => { wifiOnly = e.currentTarget.checked; player?.setWifiOnly(wifiOnly) }} /> Wi-Fi seulement</label>
+              {/if}
             {/if}
             <select class="watch-rate" disabled={!canDrive} value={s.rate} onchange={(e) => player?.command({ action: 'rate', rate: Number(e.currentTarget.value) })} aria-label="Vitesse">
               {#each RATES as r (r)}<option value={r}>×{r}</option>{/each}

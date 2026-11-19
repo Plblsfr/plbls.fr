@@ -1044,6 +1044,7 @@ async fn lecture_directe_hls_jetons_et_limites() {
         .statut,
         StatusCode::NOT_FOUND
     );
+    let dossier = e.state.transcodeur().dossier(&flux_a).unwrap();
     assert_eq!(
         appel(
             &e,
@@ -1056,7 +1057,6 @@ async fn lecture_directe_hls_jetons_et_limites() {
         .statut,
         StatusCode::NO_CONTENT
     );
-    let dossier = e.state.config().dossier_transcodage.join(&flux_a);
     attendre(
         || {
             !Path::new(&format!("/proc/{pid}")).exists()
@@ -1078,7 +1078,7 @@ async fn lecture_directe_hls_jetons_et_limites() {
     assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
     let flux_b = r.json()["stream_id"].as_str().unwrap().to_string();
     assert!(e.state.transcodeur().pid(&flux_b).is_some());
-    let dossier_b = e.state.config().dossier_transcodage.join(&flux_b);
+    let dossier_b = e.state.transcodeur().dossier(&flux_b).unwrap();
     let etat = e.state.clone();
     let limite = Instant::now() + Duration::from_secs(20);
     while etat.transcodeur().nombre() > 0 {
@@ -1126,7 +1126,7 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
         &e,
         "alice",
         &a,
-        json!({"support": navigateur(), "start": 3.0, "quality": "480p"}),
+        json!({"support": navigateur(), "start": 6.0, "quality": "480p"}),
     )
     .await;
     assert_eq!(r2.statut, StatusCode::OK, "{}", r2.texte());
@@ -1136,27 +1136,46 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
             r2["mode"].clone(),
             r2["start"].clone(),
             r2["offset"].clone(),
-            r2["quality"].clone()
+            r2["quality"].clone(),
+            r2["video"].clone()
         ),
-        (json!("hls"), json!(3.0), json!(3.0), json!("480p"))
+        (
+            json!("hls"),
+            json!(6.0),
+            json!(4.0),
+            json!("480p"),
+            json!({"codec": "h264", "copy": false})
+        ),
+        "un réencodage part du multiple de 4 s qui précède la position demandée"
     );
     assert_eq!(
         appel(&e, None, "GET", &ancien, None).await.statut,
         StatusCode::UNAUTHORIZED,
         "l'ancien flux est remplacé"
     );
-    assert_eq!(
-        appel(&e, None, "GET", r2["url"].as_str().unwrap(), None)
-            .await
-            .statut,
-        StatusCode::OK
+    let playlist = appel(&e, None, "GET", r2["url"].as_str().unwrap(), None).await;
+    assert_eq!(playlist.statut, StatusCode::OK);
+    assert!(
+        playlist.texte().contains("seg00001.ts") && !playlist.texte().contains("seg00000.ts"),
+        "les segments d'un réencodage sont numérotés depuis le début du titre : {}",
+        playlist.texte()
     );
     let p = e
         .state
         .transcodeur()
         .parametres(r2["stream_id"].as_str().unwrap())
         .unwrap();
-    assert_eq!((p.debut, p.hauteur, p.copie_video), (3.0, Some(480), false));
+    assert_eq!(
+        (p.debut, p.origine, p.hauteur, p.copie_video),
+        (4.0, 4.0, Some(480), false)
+    );
+    assert_eq!(
+        e.state
+            .transcodeur()
+            .abonnement(r2["stream_id"].as_str().unwrap())
+            .map(|a| (a.avance, a.premier)),
+        Some((2.0, 1))
+    );
     assert_eq!(
         ouvrir(&e, "alice", &a, json!({"quality": "1080p"}))
             .await
@@ -1180,6 +1199,8 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
         .transcodeur()
         .parametres(r3["stream_id"].as_str().unwrap())
         .unwrap();
+    assert_eq!(r3["video"], json!({"codec": "h264", "copy": true}));
+    assert_ne!(r2["cache"], r3["cache"]);
     assert_eq!(
         (r3["mode"].clone(), p.copie_video, p.debut),
         (json!("hls"), true, 0.0),
@@ -1198,6 +1219,337 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
 }
 
 #[tokio::test]
+async fn un_transcodage_partage_entre_les_spectateurs_d_un_titre() {
+    let Some(e) = env_avec(|c| c.max_transcodages = 1).await else {
+        return;
+    };
+    synchro(&e).await;
+    let a = id_de(&e, "Film A").await;
+    let demande = |debut: f64| json!({"quality": "480p", "start": debut});
+    let alice = ouvrir(&e, "alice", &a, demande(0.0)).await;
+    assert_eq!(alice.statut, StatusCode::OK, "{}", alice.texte());
+    let alice = alice.json();
+    let bob = ouvrir(&e, "bob", &a, demande(1.5)).await;
+    assert_eq!(bob.statut, StatusCode::OK, "{}", bob.texte());
+    let bob = bob.json();
+    let (flux_a, flux_b) = (
+        alice["stream_id"].as_str().unwrap().to_string(),
+        bob["stream_id"].as_str().unwrap().to_string(),
+    );
+    let t = e.state.transcodeur();
+    assert_ne!(flux_a, flux_b);
+    assert_eq!((t.nombre(), t.lecteurs(&flux_b)), (1, 2));
+    assert_eq!(t.dossier(&flux_a), t.dossier(&flux_b));
+    assert_eq!(
+        (bob["start"].clone(), bob["offset"].clone()),
+        (json!(1.5), json!(0.0))
+    );
+    assert_eq!(alice["cache"], bob["cache"]);
+    assert!(alice["cache"].as_str().unwrap().ends_with("-480p-0-g"));
+    assert_ne!(alice["url"], bob["url"]);
+
+    let autre = ouvrir(&e, "admin", &a, json!({"quality": "original"})).await;
+    assert_eq!(
+        (autre.statut, autre.json()["error"].clone()),
+        (StatusCode::SERVICE_UNAVAILABLE, json!("serveur_charge")),
+        "une autre qualité demande un transcodage de plus"
+    );
+    e.droits.lock().unwrap().remove("sub-carole");
+    assert_eq!(
+        ouvrir(&e, "carole", &a, demande(0.0)).await.statut,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!((t.nombre(), t.lecteurs(&flux_a)), (1, 2));
+
+    let dossier = t.dossier(&flux_a).unwrap();
+    assert_eq!(
+        appel(
+            &e,
+            Some("alice"),
+            "DELETE",
+            &format!("/streams/{flux_a}"),
+            None
+        )
+        .await
+        .statut,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        (t.nombre(), t.lecteurs(&flux_b), t.dossier(&flux_b)),
+        (1, 1, Some(dossier.clone()))
+    );
+    assert_eq!(
+        appel(&e, None, "GET", alice["url"].as_str().unwrap(), None)
+            .await
+            .statut,
+        StatusCode::UNAUTHORIZED
+    );
+    let playlist = appel(&e, None, "GET", bob["url"].as_str().unwrap(), None).await;
+    assert_eq!(playlist.statut, StatusCode::OK, "{}", playlist.texte());
+    assert!(playlist.texte().contains("seg00000.ts"));
+    let reprise = ouvrir(&e, "bob", &a, demande(2.0)).await.json();
+    let flux_b2 = reprise["stream_id"].as_str().unwrap().to_string();
+    assert_ne!(flux_b2, flux_b);
+    assert_eq!(
+        (t.nombre(), t.dossier(&flux_b2), t.lecteurs(&flux_b2)),
+        (1, Some(dossier.clone()), 1),
+        "rouvrir sa lecture garde le transcodage en cours"
+    );
+    assert_eq!(
+        appel(
+            &e,
+            Some("bob"),
+            "DELETE",
+            &format!("/streams/{flux_b2}"),
+            None
+        )
+        .await
+        .statut,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(t.nombre(), 0);
+    assert!(!dossier.exists());
+}
+
+fn ffmpeg_d_un_segment(dossier: &Path) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let chemin = dossier.join("ffmpeg-un-segment");
+    std::fs::write(
+        &chemin,
+        "#!/bin/sh\nn=0\nprecedent=\nfor a in \"$@\"; do\n  [ \"$precedent\" = \"-start_number\" ] && n=$a\n  precedent=$a\ndone\nprintf x > \"$(dirname \"$precedent\")/$(printf 'seg%05d.ts' \"$n\")\"\nexec sleep 60\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    chemin.to_string_lossy().to_string()
+}
+
+#[tokio::test]
+async fn segment_hors_du_transcodage_en_cours_le_deplace() {
+    let outils = tempfile::tempdir().unwrap();
+    let faux = ffmpeg_d_un_segment(outils.path());
+    let Some(e) = env_avec(|c| {
+        c.ffmpeg = faux;
+        c.max_transcodages = 2;
+    })
+    .await
+    else {
+        return;
+    };
+    synchro(&e).await;
+    let a = id_de(&e, "Film A").await;
+    let t = e.state.transcodeur();
+    let ouvre = |qui: &'static str| {
+        let (e, a) = (&e, &a);
+        async move {
+            let r = ouvrir(e, qui, a, json!({"quality": "480p"})).await;
+            assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+            let r = r.json();
+            (
+                r["stream_id"].as_str().unwrap().to_string(),
+                r["url"]
+                    .as_str()
+                    .unwrap()
+                    .trim_end_matches("hls.m3u8")
+                    .to_string(),
+            )
+        }
+    };
+    let segment = |base: &str, nom: &str| {
+        let (e, chemin) = (&e, format!("{base}{nom}"));
+        async move { appel(e, None, "GET", &chemin, None).await.statut }
+    };
+    let (alice, base_alice) = ouvre("alice").await;
+    let (bob, base_bob) = ouvre("bob").await;
+    assert_eq!((t.nombre(), t.lecteurs(&alice)), (1, 2));
+    let depart = t.rang(&alice);
+    assert_eq!(segment(&base_alice, "seg00000.ts").await, StatusCode::OK);
+
+    assert_eq!(
+        segment(&base_alice, "seg00010.ts?avance=1").await,
+        StatusCode::NOT_FOUND,
+        "un préchargement ne déplace pas le transcodage"
+    );
+    assert_eq!((t.nombre(), t.rang(&alice)), (1, depart));
+
+    assert_eq!(segment(&base_alice, "seg00010.ts").await, StatusCode::OK);
+    assert_eq!(
+        (t.nombre(), t.lecteurs(&alice), t.lecteurs(&bob)),
+        (2, 1, 1),
+        "la lecture hors du transcodage en cours en lance un à sa position"
+    );
+    let p = t.parametres(&alice).unwrap();
+    assert_eq!((p.debut, p.origine, p.hauteur), (40.0, 40.0, Some(480)));
+    assert_eq!(t.rang(&bob), depart);
+
+    assert_eq!(segment(&base_bob, "seg00010.ts").await, StatusCode::OK);
+    assert_eq!(
+        (t.nombre(), t.lecteurs(&alice), t.rang(&bob)),
+        (1, 2, t.rang(&alice)),
+        "un segment déjà produit par un autre transcodage identique est partagé"
+    );
+
+    let (carole, base_carole) = ouvre("carole").await;
+    assert_eq!((t.nombre(), t.lecteurs(&carole)), (2, 1));
+    assert_eq!(segment(&base_carole, "seg00020.ts").await, StatusCode::OK);
+    assert_eq!(
+        (t.nombre(), t.parametres(&carole).unwrap().origine),
+        (2, 80.0),
+        "une personne seule sur son transcodage le déplace sans dépasser la limite"
+    );
+    let partage = t.rang(&alice);
+    assert_eq!(
+        segment(&base_alice, "seg00030.ts").await,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        (t.nombre(), t.rang(&alice), t.lecteurs(&bob)),
+        (2, partage, 2),
+        "un déplacement refusé laisse le transcodage partagé en place"
+    );
+}
+
+fn film_hevc(nom: &str, format: &str) -> bool {
+    static PRETS: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+    let mut prets = PRETS.get_or_init(Mutex::default).lock().unwrap();
+    *prets.entry(nom.to_string()).or_insert_with(|| {
+        let dest = medias().join(format!("films/{nom}/{nom}.mkv"));
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
+            .args([
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=320x180:rate=24:duration=8",
+            ])
+            .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=8"])
+            .args([
+                "-c:v",
+                "libx265",
+                "-preset",
+                "ultrafast",
+                "-pix_fmt",
+                format,
+            ])
+            .args(["-x265-params", "keyint=48:min-keyint=48:log-level=error"])
+            .args(["-c:a", "ac3", "-shortest"])
+            .arg(&dest)
+            .status()
+            .is_ok_and(|s| s.success())
+    })
+}
+
+#[tokio::test]
+async fn video_hevc_recopiee_selon_ce_que_l_appareil_decode() {
+    let Some(e) = env().await else { return };
+    if !film_hevc("Film H", "yuv420p") || !film_hevc("Film H10", "yuv420p10le") {
+        eprintln!("ignoré : encodeur libx265 absent");
+        return;
+    }
+    {
+        let mut monde = e.monde.lock().unwrap();
+        for (n, nom) in [(104, "Film H"), (105, "Film H10")] {
+            monde.films.push(film_radarr(
+                n,
+                nom,
+                Some(&format!("/movies/{nom}/{nom}.mkv")),
+            ));
+        }
+    }
+    synchro(&e).await;
+    let h = id_de(&e, "Film H").await;
+    let h10 = id_de(&e, "Film H10").await;
+    let appareil = |video: &[&str]| json!({"support": {"containers": ["mp4"], "video": video, "audio": ["aac"]}});
+    let t = e.state.transcodeur();
+
+    let r = ouvrir(&e, "alice", &h, appareil(&["h264", "hevc"])).await;
+    assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+    let r = r.json();
+    assert_eq!(
+        (r["mode"].clone(), r["video"].clone()),
+        (json!("hls"), json!({"codec": "hevc", "copy": true}))
+    );
+    let p = t.parametres(r["stream_id"].as_str().unwrap()).unwrap();
+    assert!(p.copie_video && p.fmp4());
+    let playlist = appel(&e, None, "GET", r["url"].as_str().unwrap(), None).await;
+    assert_eq!(playlist.statut, StatusCode::OK, "{}", playlist.texte());
+    assert!(
+        playlist.texte().contains("#EXT-X-MAP:URI=\"init.mp4\"")
+            && playlist.texte().contains("seg00000.m4s"),
+        "{}",
+        playlist.texte()
+    );
+    sans_fuite(&e, &playlist.texte(), "playlist fMP4");
+    let base = r["url"].as_str().unwrap().trim_end_matches("hls.m3u8");
+    for nom in ["init.mp4", "seg00000.m4s"] {
+        let s = appel(&e, None, "GET", &format!("{base}{nom}"), None).await;
+        assert_eq!(
+            (s.statut, s.entetes["content-type"].to_str().unwrap()),
+            (StatusCode::OK, "video/mp4"),
+            "{nom}"
+        );
+        assert!(s.corps.len() > 100, "{nom}");
+    }
+
+    let r = ouvrir(&e, "alice", &h, appareil(&["h264"])).await.json();
+    assert_eq!(r["video"], json!({"codec": "hevc", "copy": false}));
+    let playlist = appel(&e, None, "GET", r["url"].as_str().unwrap(), None).await;
+    assert!(
+        playlist.texte().contains("seg00000.ts") && !playlist.texte().contains("EXT-X-MAP"),
+        "{}",
+        playlist.texte()
+    );
+
+    let r = ouvrir(&e, "alice", &h10, appareil(&["h264", "hevc"]))
+        .await
+        .json();
+    assert_eq!(
+        r["video"],
+        json!({"codec": "hevc", "copy": false}),
+        "une source 10 bits n'est recopiée que si l'appareil annonce ce profil"
+    );
+    let r = ouvrir(&e, "alice", &h10, appareil(&["h264", "hevc", "hevc10"]))
+        .await
+        .json();
+    assert_eq!(r["video"], json!({"codec": "hevc", "copy": true}));
+    let r = ouvrir(
+        &e,
+        "alice",
+        &h10,
+        json!({"support": {"video": ["hevc10"]}, "quality": "480p"}),
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::BAD_REQUEST, "{}", r.texte());
+
+    sqlx::query(
+        "UPDATE fichiers SET infos = infos #- '{video,bits}' WHERE chemin LIKE '%Film H.mkv'",
+    )
+    .execute(e.state.pool())
+    .await
+    .unwrap();
+    let mut reprise = appareil(&["hevc"]);
+    reprise["start"] = json!(5.5);
+    let r = ouvrir(&e, "alice", &h, reprise).await.json();
+    assert_eq!(r["video"], json!({"codec": "hevc", "copy": true}));
+    let decalage = r["offset"].as_f64().unwrap();
+    assert!(
+        r["start"] == json!(5.5) && (4.0..4.1).contains(&decalage),
+        "une recopie reprend sur l'image clé qui précède la position demandée : {r}"
+    );
+    let bits: Option<i32> = sqlx::query_scalar(
+        "SELECT (infos #>> '{video,bits}')::int FROM fichiers WHERE chemin LIKE '%Film H.mkv'",
+    )
+    .fetch_one(e.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        bits,
+        Some(8),
+        "la profondeur de couleur manquante est relue puis gardée"
+    );
+}
+
+#[tokio::test]
 async fn plafond_disque_depasse_pendant_le_transcodage() {
     let Some(e) = env_avec(|c| c.transcodage_max_octets = 1).await else {
         return;
@@ -1208,7 +1560,7 @@ async fn plafond_disque_depasse_pendant_le_transcodage() {
     assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
     let h = r.json();
     let flux = h["stream_id"].as_str().unwrap().to_string();
-    let dossier = e.state.config().dossier_transcodage.join(&flux);
+    let dossier = e.state.transcodeur().dossier(&flux).unwrap();
     attendre(
         || dossier.join("seg00000.ts").exists(),
         "premier segment écrit",

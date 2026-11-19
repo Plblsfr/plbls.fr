@@ -3,12 +3,13 @@ import { filmsApi } from '../../lib/api'
 import { castRefusal, type FilmPlayback } from '../../sections/entracte/films'
 import { providers, type PState } from './providers'
 
-const hlsjs = vi.hoisted(() => ({ loadSource: vi.fn(), attachMedia: vi.fn() }))
+const hlsjs = vi.hoisted(() => ({ loadSource: vi.fn(), attachMedia: vi.fn(), on: {} as Record<string, (e: string, d: unknown) => void> }))
 vi.mock('hls.js', () => ({
   default: class {
     static isSupported = () => true
-    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed' }
-    on() {}
+    static Events = { ERROR: 'hlsError', MANIFEST_PARSED: 'hlsManifestParsed', LEVEL_UPDATED: 'hlsLevelUpdated' }
+    static DefaultConfig = { loader: class {} }
+    on(e: string, f: (e: string, d: unknown) => void) { hlsjs.on[e] = f }
     loadSource(u: string) { hlsjs.loadSource(u) }
     attachMedia(v: HTMLMediaElement) { hlsjs.attachMedia(v) }
     destroy() {}
@@ -106,6 +107,72 @@ describe('lecteur de films : repli sur le flux transcodé', () => {
     expect(hlsjs.attachMedia).toHaveBeenCalledWith(video)
     expect(video.getAttribute('src') ?? '').not.toContain('.m3u8')
     a.destroy()
+  })
+
+  const copie = (n: number, copy: boolean): FilmPlayback => ({ ...flux(n, 'hls'), video: { codec: 'hevc', copy } })
+  const annonces = (appel: unknown[]) => (appel[1] as { support: { video: string[] } }).support.video
+
+  it('rouvre seul un flux réencodé quand la vidéo recopiée n’est pas décodée, et ne redemande plus ce codec', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
+    let n = 0
+    const playback = vi.spyOn(filmsApi, 'playback').mockImplementation(async () => copie(++n, n === 1))
+    const erreurs: string[] = []
+    const el = document.createElement('div')
+    const a = await providers.film(el, { onState: () => {}, onError: (m) => erreurs.push(m) })
+    a.load('f', 120, true)
+    await vi.waitFor(() => expect(hlsjs.loadSource).toHaveBeenCalledTimes(1))
+    expect(annonces(playback.mock.calls[0])).toEqual(expect.arrayContaining(['hevc', 'hevc10']))
+    hlsjs.on.hlsError('hlsError', { fatal: true, type: 'mediaError', details: 'bufferAddCodecError' })
+    await vi.waitFor(() => expect(playback).toHaveBeenCalledTimes(2))
+    expect(playback.mock.calls[1][1]).toEqual(expect.objectContaining({ start: 120, quality: 'original' }))
+    expect(annonces(playback.mock.calls[1])).toEqual(['h264', 'vp9', 'av1'])
+    expect(JSON.parse(localStorage.getItem('entracte.refus')!)).toEqual(['hevc'])
+    expect(erreurs).toEqual([])
+    a.destroy()
+
+    const b = await providers.film(document.createElement('div'), { onState: () => {}, onError: () => {} })
+    b.load('g', 0, true)
+    await vi.waitFor(() => expect(playback).toHaveBeenCalledTimes(3))
+    expect(annonces(playback.mock.calls[2])).not.toContain('hevc')
+    b.destroy()
+    localStorage.clear()
+  })
+
+  it('ne refuse pas le codec pour une erreur de réseau ni pour une vidéo réencodée', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
+    const playback = vi.spyOn(filmsApi, 'playback')
+    for (const [copy, type] of [[true, 'networkError'], [false, 'mediaError']] as const) {
+      playback.mockReset()
+      playback.mockResolvedValue(copie(1, copy))
+      hlsjs.loadSource.mockClear()
+      const erreurs: string[] = []
+      const a = await providers.film(document.createElement('div'), { onState: () => {}, onError: (m) => erreurs.push(m) })
+      a.load('f', 0, true)
+      await vi.waitFor(() => expect(hlsjs.loadSource).toHaveBeenCalledTimes(1))
+      hlsjs.on.hlsError('hlsError', { fatal: true, type, details: 'x' })
+      await vi.waitFor(() => expect(playback).toHaveBeenCalledTimes(2))
+      expect(localStorage.getItem('entracte.refus')).toBeNull()
+      expect(annonces(playback.mock.calls[1])).toContain('hevc')
+      expect(erreurs).toEqual([])
+      a.destroy()
+    }
+  })
+
+  it('rouvre un flux réencodé quand la vidéo recopiée arrive sans image', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockReturnValue('probably')
+    let n = 0
+    const playback = vi.spyOn(filmsApi, 'playback').mockImplementation(async () => copie(++n, n === 1))
+    const el = document.createElement('div')
+    const a = await providers.film(el, { onState: () => {}, onError: () => {} })
+    a.load('f', 0, true)
+    await vi.waitFor(() => expect(hlsjs.loadSource).toHaveBeenCalledTimes(1))
+    const video = el.querySelector('video')!
+    largeur(video, 0)
+    video.dispatchEvent(new Event('loadedmetadata'))
+    await vi.waitFor(() => expect(playback).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(localStorage.getItem('entracte.refus')!)).toEqual(['hevc'])
+    a.destroy()
+    localStorage.clear()
   })
 })
 

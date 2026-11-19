@@ -1,18 +1,21 @@
 import { filmsApi, ApiError } from '../../lib/api'
+import { platform } from '../../lib/platform'
 import { debug } from '../../lib/debuglog.svelte'
-import { absolute, castRefusal, mergeRanges, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, bufferedAhead, savedQuality, savePlayPrefs, saveQuality, support, type BufferPref, type CastState, type FilmPlayback, type FilmTracks, type Quality, type Range } from '../../sections/entracte/films'
+import { absolute, castRefusal, mergeRanges, shiftCues, needsReopen, pickAudio, pickSubtitle, playPrefs, saveDue, bufferedAhead, savedQuality, savePlayPrefs, saveQuality, support, effectiveBuffer, refuseCodec, refusedCodecs, type BufferPref, type CastState, type FilmPlayback, type FilmTracks, type Quality, type Range } from '../../sections/entracte/films'
 import { playerError } from './watch'
 
 import type Hls from 'hls.js'
 import type { FragmentLoaderContext, HlsConfig, Loader } from 'hls.js'
 import { Avance, BUDGETS, cachedLoader, type Budget } from './avance'
+import { ouvrirDepot, purgerRestes, racineDuNavigateur, type Depot } from './depot'
 
 /** État d'un lecteur, commun à toutes les sources. */
 export type PState = 'unstarted' | 'playing' | 'paused' | 'buffering' | 'ended' | 'cued'
 
 export interface Handlers {
   onState(s: PState): void
-  onError(msg: string): void
+  /** `media` : l'appareil n'a pas su décoder le flux (et non une erreur de réseau ou d'accès). */
+  onError(msg: string, media?: boolean): void
   /** Le navigateur ou la webview a refusé la lecture automatique. */
   onBlocked?(): void
   onTracks?(t: FilmTracks): void
@@ -36,6 +39,8 @@ export interface Adapter {
   /** Palier de qualité (Entracte) : rouvre le flux à la même position. */
   setQuality?(q: Quality): void
   setBuffer?(b: BufferPref): void
+  /** Préchargement long réservé au Wi-Fi (absent : le lecteur ne précharge pas lui-même). */
+  setWifiOnly?(on: boolean): void
   /** Ouvre le choix de l'appareil du navigateur ; renvoie le message à afficher si la diffusion n'a pas pu être proposée. */
   cast?(): Promise<string | null>
   load(ref: string, start: number, play: boolean): void
@@ -162,7 +167,9 @@ const isHls = (u: string) => /\.m3u8(\?|#|$)/i.test(u)
 const HLS_MIME = 'application/vnd.apple.mpegurl'
 const AVANCE_PRETE = 5
 
-function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false, hlsConfig: Partial<HlsConfig> = {}, budget: () => Budget | null = () => null): { adapter: Adapter; video: HTMLVideoElement } {
+interface Prechargement { budget: () => Budget | null; depot: () => Depot | undefined }
+
+function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls: () => boolean = () => false, hlsConfig: Partial<HlsConfig> = {}, prechargement?: Prechargement): { adapter: Adapter; video: HTMLVideoElement; wake: () => void } {
   const v = document.createElement('video')
   v.playsInline = true
   v.preload = 'auto'
@@ -182,7 +189,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
   for (const ev of ['playing', 'canplay', 'pause', 'ended', 'seeked']) v.addEventListener(ev, () => { if (ev !== 'pause' || !v.seeking) { buffering = false; emit() } })
   v.addEventListener('error', () => {
     debug.log('warn', 'lecteur', `erreur vidéo ${v.error?.code ?? '?'} : ${v.error?.message || 'sans détail'}`)
-    h.onError('Cette vidéo ne peut pas être lue (format ou accès refusé par le site qui l\'héberge).')
+    h.onError('Cette vidéo ne peut pas être lue (format ou accès refusé par le site qui l\'héberge).', v.error?.code === 3 || v.error?.code === 4)
   })
   const detach = () => { hls?.destroy(); hls = null; avance?.destroy(); avance = null }
   const ranges = () => { const r: Range[] = []; for (let i = 0; i < v.buffered.length; i++) r.push([v.buffered.start(i), v.buffered.end(i)]); return r }
@@ -208,8 +215,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
             if (v.canPlayType(HLS_MIME)) return native()
             return h.onError("Ce flux HLS n'est pas pris en charge par cet appareil.")
           }
-          const b = budget()
-          const av = b ? new Avance(b, () => v.currentTime) : null
+          const av = prechargement ? new Avance(prechargement.budget, () => v.currentTime, undefined, { depot: prechargement.depot() }) : null
           const l = new Hls({ enableWorker: false, ...hlsConfig, ...(av ? { fLoader: cachedLoader(Hls.DefaultConfig.loader as new (c: HlsConfig) => Loader<FragmentLoaderContext>, av) } : {}) })
           hls = l
           avance = av
@@ -217,7 +223,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
           l.on(Hls.Events.ERROR, (_, d) => {
             if (!d.fatal) return
             debug.log('warn', 'lecteur', `HLS ${d.type} : ${d.details}${d.response ? ` (HTTP ${d.response.code})` : ''}`)
-            h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).')
+            h.onError('Le flux vidéo ne peut pas être lu (réseau ou accès refusé).', d.type === 'mediaError')
           })
           l.on(Hls.Events.MANIFEST_PARSED, go)
           l.loadSource(ref)
@@ -234,7 +240,7 @@ function htmlVideo(el: HTMLElement, h: Handlers, crossOrigin = false, nativeHls:
     state,
     destroy: () => { detach(); v.pause(); v.removeAttribute('src'); v.load(); v.remove() },
   }
-  return { adapter, video: v }
+  return { adapter, video: v, wake: () => avance?.wake() }
 }
 
 const file: Factory = async (el, h) => htmlVideo(el, h).adapter
@@ -260,7 +266,11 @@ const film: Factory = async (el, h) => {
   let tele = false
   let audioPending = false
   let subPending = false
+  let depot: Depot | undefined
+  let depotKey: string | null = null
   const store = () => { try { return localStorage } catch { return null } }
+  const racine = racineDuNavigateur()
+  void racine.then((r) => purgerRestes(r))
 
   const close = () => { if (stream) void filmsApi.close(stream.stream_id).catch(() => {}); stream = null }
   const total = () => stream?.duration || (Number.isFinite(video.duration) ? video.duration + offset : 0)
@@ -284,7 +294,7 @@ const film: Factory = async (el, h) => {
     }
     const ask = (q: Quality) => filmsApi.playback(ref, {
       direct: !forceHls,
-      audio, quality: q, start, support: support((t) => video.canPlayType(t)),
+      audio, quality: q, start, support: support((t) => video.canPlayType(t), refusedCodecs(store())),
     })
     try {
       let p: FilmPlayback
@@ -294,6 +304,18 @@ const film: Factory = async (el, h) => {
         p = await ask(quality)
       }
       if (gone || turn !== opening) { void filmsApi.close(p.stream_id).catch(() => {}); return }
+      if (p.mode === 'hls' && !tele) {
+        const key = p.cache ?? null
+        if (!depot || key === null || key !== depotKey) {
+          const old = depot
+          depot = undefined
+          void old?.close(true)
+          const opened = await ouvrirDepot(key, await racine)
+          if (gone || turn !== opening) { void opened.close(false); void filmsApi.close(p.stream_id).catch(() => {}); return }
+          depot = opened
+          depotKey = key
+        }
+      }
       stream = p
       debug.log('info', 'lecteur', `flux ${p.mode}, qualité ${p.quality ?? quality}`)
       if (p.mode === 'direct' && play) guet = setTimeout(() => { if (stream === p && video.readyState < 2) repli(`aucune image après ${ATTENTE_DIRECT_MS / 1000} s en lecture directe`) }, ATTENTE_DIRECT_MS)
@@ -317,20 +339,31 @@ const film: Factory = async (el, h) => {
       if (!gone) h.onError(e instanceof ApiError ? e.message : 'La lecture n’a pas pu démarrer.')
     }
   }
-  const repli = (m: string) => {
+  const repli = (m: string, media = false) => {
     clearTimeout(guet)
     if (gone) return
+    const copied = stream?.mode === 'hls' && stream.video?.copy ? stream.video.codec : null
+    if (ref && media && copied && copied !== 'h264' && !refusedCodecs(store()).includes(copied)) {
+      refuseCodec(store(), copied)
+      debug.log('info', 'lecteur', `vidéo ${copied} recopiée illisible sur cet appareil : repli sur le flux réencodé`)
+      void open(position, true)
+      return
+    }
     if (!ref || retried) { h.onError(m); return }
     retried = true
     forceHls = true
     debug.log('info', 'lecteur', 'repli sur le flux transcodé (HLS)')
     void open(position, true)
   }
-  const { adapter, video } = htmlVideo(el, {
+  const { adapter, video, wake } = htmlVideo(el, {
     ...h,
     onState: (s) => { if (s === 'playing') { retried = false; clearTimeout(guet) } h.onState(s) },
     onError: repli,
-  }, true, () => tele, TAMPON_FILM, () => BUDGETS[playPrefs(store()).buffer])
+  }, true, () => tele, TAMPON_FILM, {
+    budget: () => BUDGETS[effectiveBuffer(playPrefs(store()), platform.network?.kind() ?? 'unknown')],
+    depot: () => depot,
+  })
+  const unwatch = platform.network?.watch(wake)
   const remote = video.remote as RemotePlayback | undefined
   const ask = async (): Promise<string | null> => {
     try { await remote!.prompt(); return null } catch (e) {
@@ -381,6 +414,9 @@ const film: Factory = async (el, h) => {
     if (stream?.mode === 'direct' && video.videoWidth === 0) {
       debug.log('warn', 'lecteur', 'lecture directe sans piste vidéo décodable')
       repli('Cette vidéo ne peut pas être lue sur cet appareil.')
+    } else if (stream?.mode === 'hls' && stream.video?.copy && video.videoWidth === 0) {
+      debug.log('warn', 'lecteur', 'vidéo recopiée sans image décodable')
+      repli('Cette vidéo ne peut pas être lue sur cet appareil.', true)
     }
   })
   video.addEventListener('timeupdate', () => {
@@ -418,9 +454,10 @@ const film: Factory = async (el, h) => {
     setAudio: (n) => { audio = n; audioPending = false; void open(now(), !video.paused) },
     setSubtitle: (n) => { sub = n; subPending = false; showSubtitle() },
     setQuality: (q) => { quality = q; saveQuality(store(), q); void open(now(), !video.paused) },
-    setBuffer: (b) => { savePlayPrefs(store(), { buffer: b }); if (stream?.mode === 'hls' && !tele) void open(now(), !video.paused) },
+    setBuffer: (b) => { savePlayPrefs(store(), { buffer: b }); wake() },
+    setWifiOnly: (on) => { savePlayPrefs(store(), { wifiOnly: on }); wake() },
     ...(remote ? { cast } : {}),
-    destroy: () => { gone = true; clearTimeout(guet); window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy() },
+    destroy: () => { gone = true; clearTimeout(guet); unwatch?.(); window.removeEventListener('pagehide', leave); save(); close(); adapter.destroy(); void depot?.close(true); depot = undefined },
   }
 }
 
