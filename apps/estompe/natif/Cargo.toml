@@ -1,0 +1,59 @@
+[workspace]
+members = [".", "../crates/client", "../crates/plateforme"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+publish = false
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[workspace.dependencies]
+estompe-client = { path = "../crates/client" }
+estompe-plateforme = { path = "../crates/plateforme" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[package]
+name = "estompe-natif"
+version = "0.1.0"
+description = "Estompe natif (beta) : app de bureau sans webview"
+edition.workspace = true
+publish.workspace = true
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[lib]
+name = "estompe_natif"
+
+[[bin]]
+name = "estompe-natif"
+path = "src/main.rs"
+
+[dependencies]
+estompe-client.workspace = true
+estompe-plateforme.workspace = true
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia", "accessibility"] }
+
+[dev-dependencies]
+tempfile = "3"
+i-slint-backend-testing = { version = "=1.18.1", features = ["renderer-skia"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 16

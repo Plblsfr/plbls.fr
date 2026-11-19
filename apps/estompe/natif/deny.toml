@@ -1,0 +1,34 @@
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
+[advisories]
+version = 2
+ignore = [
+  # Avis « non maintenu », sans faille connue ni version corrigée, amenés par Slint 1.18.1 (figé) ou par keyring.
+  { id = "RUSTSEC-2026-0543", reason = "chrono non maintenu, amené par i-slint-core" },
+  { id = "RUSTSEC-2026-0441", reason = "pin-utils non maintenu, amené par le moteur Skia de Slint (spin_on)" },
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser non maintenu, amené par winit (décorations Wayland)" },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant non maintenu en crate séparée, amené par zbus (Slint et keyring)" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive non maintenu en crate séparée, amené par zbus (Slint et keyring)" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names 3 non maintenu, amené par keyring (Secret Service sous Linux)" },
+]
+
+[licenses]
+version = 2
+allow = ["MIT", "MIT-0", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "CDLA-Permissive-2.0", "BSL-1.0", "LicenseRef-Slint-Royalty-free-2.0"]
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  { crate = "tauri", reason = "l'app native n'embarque aucune webview" },
+  { crate = "wry", reason = "l'app native n'embarque aucune webview" },
+  { crate = "webview2-com", reason = "l'app native n'embarque aucune webview" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

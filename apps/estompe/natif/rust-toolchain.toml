@@ -1,0 +1,3 @@
+# App native : hors du workspace Cargo racine, sur la stable installée par sa CI (Linux et Windows MSVC).
+[toolchain]
+channel = "stable"

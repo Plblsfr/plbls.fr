@@ -1,0 +1,59 @@
+import { AboutSlint } from "std-widgets.slint";
+import { Theme, Typo, Espace } from "jetons.slint";
+
+export component APropos {
+    in property <string> version;
+    VerticalLayout {
+        spacing: Espace.e3;
+        alignment: start;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            alignment: start;
+            Image {
+                width: 56px;
+                height: 56px;
+                source: @image-url("../icones/estompe.png");
+                accessible-role: none;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: "Estompe natif (beta)";
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: Typo.titre-section;
+                    font-weight: Typo.demi-gras;
+                }
+                Text {
+                    text: "Version " + root.version;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                }
+            }
+        }
+        Text {
+            text: "Messagerie écrite et vocale, sans webview. Cette version est en beta tant qu'elle ne couvre pas toute l'app de bureau actuelle.";
+            color: Theme.encre-2;
+            font-family: Typo.texte;
+            font-size: Typo.corps;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Polices Bricolage Grotesque, Instrument Sans et JetBrains Mono, sous licence SIL Open Font License 1.1.";
+            color: Theme.gris;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            height: 128px;
+            border-radius: 10px;
+            background: Theme.sombre ? #f7f3ee : transparent;
+            AboutSlint {
+                height: 108px;
+            }
+        }
+    }
+}
