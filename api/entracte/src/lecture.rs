@@ -7,7 +7,7 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, RawQuery, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -28,7 +28,9 @@ use crate::{
     http::{self, bd, erreur, introuvable, invalide, objet, ok},
     identite::{Identite, justificatif},
     sous_titres::{self, Echec},
-    transcodage::{self, Etat, PLAYLIST, Parametres, depart_de_grille},
+    transcodage::{
+        self, Abonnement, Couverture, Etat, PAS_GRILLE, PLAYLIST, Parametres, depart_de_grille,
+    },
 };
 
 const ATTENTE_PLAYLIST: Duration = Duration::from_secs(40);
@@ -188,6 +190,16 @@ fn charge() -> Response {
     )
 }
 
+fn refus_de_transcodage(e: transcodage::Refus) -> Response {
+    match e {
+        transcodage::Refus::Charge => charge(),
+        transcodage::Refus::Erreur(e) => {
+            tracing::error!("transcodage : {e}");
+            http::indisponible("transcode_failed", "transcodage impossible")
+        }
+    }
+}
+
 pub async fn arreter_flux(state: &AppState, ids: &[String]) {
     for id in ids {
         state.transcodeur().arreter(id).await;
@@ -289,15 +301,27 @@ pub async fn ouvrir(
             mode: state.materiel().mode(),
             peripherique: state.config().peripherique.clone(),
         };
+        let grille = params.sur_grille();
+        let abonnement = |decalage: f64| Abonnement {
+            avance: (debut - decalage).max(0.0),
+            premier: (decalage / PAS_GRILLE).round() as i64,
+            duree: analyse.duree,
+        };
         let mut rejoint = false;
-        if let Some((rang, origine)) = state.transcodeur().partageable(&params, debut).await
-            && state
+        if let Some((rang, origine)) = state.transcodeur().partageable(&params, debut).await {
+            let depart = if grille {
+                depart_de_grille(debut)
+            } else {
+                origine
+            };
+            if state
                 .transcodeur()
-                .rejoindre(&flux_id, rang, (debut - origine).max(0.0))
+                .rejoindre(&flux_id, rang, abonnement(depart))
                 .await
-        {
-            rejoint = true;
-            decalage = origine;
+            {
+                rejoint = true;
+                decalage = depart;
+            }
         }
         arreter_flux(&state, &morts).await;
         if !rejoint {
@@ -311,7 +335,7 @@ pub async fn ouvrir(
                         tracing::warn!("image clé avant {debut} s introuvable, reprise approchée")
                     }
                 }
-            } else if params.sur_grille() {
+            } else if grille {
                 decalage = depart_de_grille(debut);
                 params.debut = decalage;
             }
@@ -322,19 +346,13 @@ pub async fn ouvrir(
                     &state.config().ffmpeg,
                     &flux_id,
                     &params,
-                    (debut - decalage).max(0.0),
+                    abonnement(decalage),
                     state.config().max_transcodages,
                 )
                 .await;
             if let Err(e) = demarrage {
                 state.flux().fermer(&flux_id, p.sub());
-                return Err(match e {
-                    transcodage::Refus::Charge => charge(),
-                    transcodage::Refus::Erreur(e) => {
-                        tracing::error!("transcodage : {e}");
-                        http::indisponible("transcode_failed", "transcodage impossible")
-                    }
-                });
+                return Err(refus_de_transcodage(e));
             }
         }
         copie = copie_video;
@@ -600,7 +618,18 @@ pub async fn hls(
     let _garde = state.flux().lecture(&a.flux);
     let limite = Instant::now() + ATTENTE_PLAYLIST;
     let patience = Instant::now() + ATTENTE_AVANCE;
-    let avance = state.transcodeur().avance(&a.flux);
+    let abonnement = state.transcodeur().abonnement(&a.flux).unwrap_or_default();
+    let liste = state
+        .transcodeur()
+        .parametres(&a.flux)
+        .filter(Parametres::sur_grille)
+        .and(abonnement.duree)
+        .map(|duree| transcodage::playlist_de_grille(abonnement.premier, duree));
+    let avance = if liste.is_some() {
+        0.0
+    } else {
+        abonnement.avance
+    };
     let mut relance = false;
     loop {
         if let Some(d) = state.transcodeur().dossier(&a.flux)
@@ -614,7 +643,7 @@ pub async fn hls(
                 },
             )
         {
-            let mut r = Response::new(Body::from(playlist_propre(&texte)));
+            let mut r = Response::new(Body::from(liste.unwrap_or_else(|| playlist_propre(&texte))));
             entetes_de_flux(&mut r, "application/vnd.apple.mpegurl");
             return Ok(r);
         }
@@ -638,9 +667,53 @@ pub async fn hls(
     }
 }
 
+async fn placer(state: &AppState, flux: &str, nom: &str, avance: bool) -> Result<(), Response> {
+    let t = state.transcodeur();
+    let Some(indice) = transcodage::indice_de_segment(nom) else {
+        return Ok(());
+    };
+    let Some(p) = t.parametres(flux).filter(Parametres::sur_grille) else {
+        return Ok(());
+    };
+    let _saut = t.sauts().lock().await;
+    let Some(p) = t.parametres(flux).filter(|q| q.meme_sortie(&p)) else {
+        return Err(introuvable());
+    };
+    if let Some(d) = t.dossier(flux)
+        && tokio::fs::try_exists(d.join(nom)).await.unwrap_or(false)
+    {
+        return Ok(());
+    }
+    let position = indice as f64 * PAS_GRILLE;
+    let abonnement = t.abonnement(flux).unwrap_or_default();
+    match t.couverture(&p, position).await {
+        Couverture::Par(rang, _) if t.rang(flux) == Some(rang) => Ok(()),
+        Couverture::ApresLaFin => Err(introuvable()),
+        _ if avance => Err(introuvable()),
+        Couverture::Par(rang, _) => {
+            if t.rejoindre(flux, rang, abonnement).await {
+                Ok(())
+            } else {
+                Err(introuvable())
+            }
+        }
+        Couverture::Aucune => {
+            let mut ici = p.clone();
+            ici.debut = position;
+            ici.origine = position;
+            let c = state.config();
+            t.demarrer(&c.ffmpeg, flux, &ici, abonnement, c.max_transcodages)
+                .await
+                .map(|_| ())
+                .map_err(refus_de_transcodage)
+        }
+    }
+}
+
 pub async fn segment(
     State(state): State<AppState>,
     Path((jeton, nom)): Path<(String, String)>,
+    RawQuery(requete): RawQuery,
     entetes: HeaderMap,
 ) -> Result<Response, Response> {
     let mime = transcodage::type_de_segment(&nom).ok_or_else(introuvable)?;
@@ -649,7 +722,11 @@ pub async fn segment(
         return Err(jeton_refuse());
     }
     let _garde = state.flux().lecture(&a.flux);
+    let avance = requete
+        .as_deref()
+        .is_some_and(|q| q.split('&').any(|c| c == "avance=1"));
     let limite = Instant::now() + ATTENTE_SEGMENT;
+    let mut place = None;
     loop {
         let dossier = state
             .transcodeur()
@@ -659,6 +736,15 @@ pub async fn segment(
             let mut r = Response::new(Body::from(octets));
             entetes_de_flux(&mut r, mime);
             return Ok(r);
+        }
+        match place {
+            None => {
+                placer(&state, &a.flux, &nom, avance).await?;
+                place = Some(state.transcodeur().rang(&a.flux));
+                continue;
+            }
+            Some(rang) if rang != state.transcodeur().rang(&a.flux) => return Err(introuvable()),
+            Some(_) => {}
         }
         if state.transcodeur().etat(&a.flux) != Etat::EnCours || Instant::now() > limite {
             return Err(introuvable());

@@ -15,7 +15,8 @@ pub const PLAYLIST: &str = "index.m3u8";
 pub const INIT: &str = "init.mp4";
 pub const PAS_GRILLE: f64 = 4.0;
 const DECALAGE_HORODATAGE: &str = "10";
-const MARGE_PARTAGE: f64 = 4.0;
+const MARGE_PARTAGE: f64 = 8.0;
+const MARGE_FIN: f64 = 0.5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parametres {
@@ -273,6 +274,28 @@ pub fn segment_valide(nom: &str) -> bool {
     type_de_segment(nom).is_some()
 }
 
+pub fn indice_de_segment(nom: &str) -> Option<i64> {
+    type_de_segment(nom)?;
+    nom.get(3..8)?.parse().ok()
+}
+
+pub fn playlist_de_grille(premier: i64, duree: f64) -> String {
+    let dernier = (((duree - MARGE_FIN) / PAS_GRILLE).floor() as i64).max(premier);
+    let mut texte = format!(
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:5\n#EXT-X-MEDIA-SEQUENCE:{premier}\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n"
+    );
+    for n in premier..=dernier {
+        let longueur = if n == dernier {
+            (duree - n as f64 * PAS_GRILLE).clamp(0.1, PAS_GRILLE)
+        } else {
+            PAS_GRILLE
+        };
+        texte.push_str(&format!("#EXTINF:{longueur:.6},\nseg{n:05}.ts\n"));
+    }
+    texte.push_str("#EXT-X-ENDLIST\n");
+    texte
+}
+
 pub fn duree_playlist(texte: &str) -> (f64, bool) {
     let duree = texte
         .lines()
@@ -291,9 +314,23 @@ struct Tache {
     sommet: usize,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Abonnement {
+    pub avance: f64,
+    pub premier: i64,
+    pub duree: Option<f64>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Couverture {
+    Par(u64, f64),
+    Aucune,
+    ApresLaFin,
+}
+
 struct Abonne {
     tache: u64,
-    avance: f64,
+    abonnement: Abonnement,
 }
 
 #[derive(Default)]
@@ -318,7 +355,7 @@ impl Registre {
         self.taches.remove(&rang).map(|t| (rang, t))
     }
 
-    fn attacher(&mut self, flux: &str, rang: u64, avance: f64) -> bool {
+    fn attacher(&mut self, flux: &str, rang: u64, abonnement: Abonnement) -> bool {
         let Some(t) = self.taches.get_mut(&rang) else {
             return false;
         };
@@ -328,7 +365,7 @@ impl Registre {
             flux.to_string(),
             Abonne {
                 tache: rang,
-                avance,
+                abonnement,
             },
         );
         true
@@ -339,6 +376,7 @@ pub struct Transcodeur {
     racine: PathBuf,
     registre: Mutex<Registre>,
     rangs: AtomicU64,
+    sauts: tokio::sync::Mutex<()>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -387,6 +425,7 @@ impl Transcodeur {
             racine,
             registre: Mutex::default(),
             rangs: AtomicU64::new(0),
+            sauts: tokio::sync::Mutex::default(),
         }
     }
 
@@ -424,7 +463,11 @@ impl Transcodeur {
         let _ = tokio::fs::remove_dir_all(&t.dossier).await;
     }
 
-    pub async fn partageable(&self, p: &Parametres, position: f64) -> Option<(u64, f64)> {
+    pub fn sauts(&self) -> &tokio::sync::Mutex<()> {
+        &self.sauts
+    }
+
+    pub async fn couverture(&self, p: &Parametres, position: f64) -> Couverture {
         let mut candidats: Vec<(u64, PathBuf, f64, bool)> = {
             let mut r = self.verrou();
             r.taches
@@ -438,24 +481,39 @@ impl Transcodeur {
                     };
                     Some((*rang, t.dossier.clone(), t.parametres.origine, fini))
                 })
-                .filter(|(_, _, origine, _)| *origine <= position + 0.001)
                 .collect()
         };
         candidats.sort_by(|a, b| b.2.total_cmp(&a.2));
+        let mut apres_la_fin = false;
         for (rang, dossier, origine, fini) in candidats {
             let (duree, _) = tokio::fs::read_to_string(dossier.join(PLAYLIST))
                 .await
                 .map(|texte| duree_playlist(&texte))
                 .unwrap_or_default();
             let couvert = origine + duree;
-            if (fini && position < couvert) || (!fini && position <= couvert + MARGE_PARTAGE) {
-                return Some((rang, origine));
+            if fini && position >= couvert {
+                apres_la_fin = true;
+                continue;
+            }
+            if origine <= position + 0.001 && (fini || position <= couvert + MARGE_PARTAGE) {
+                return Couverture::Par(rang, origine);
             }
         }
-        None
+        if apres_la_fin {
+            Couverture::ApresLaFin
+        } else {
+            Couverture::Aucune
+        }
     }
 
-    pub async fn rejoindre(&self, flux: &str, rang: u64, avance: f64) -> bool {
+    pub async fn partageable(&self, p: &Parametres, position: f64) -> Option<(u64, f64)> {
+        match self.couverture(p, position).await {
+            Couverture::Par(rang, origine) => Some((rang, origine)),
+            _ => None,
+        }
+    }
+
+    pub async fn rejoindre(&self, flux: &str, rang: u64, abonnement: Abonnement) -> bool {
         let (orpheline, ok) = {
             let mut r = self.verrou();
             if !r.taches.contains_key(&rang) {
@@ -464,11 +522,11 @@ impl Transcodeur {
             if let Some(a) = r.flux.get_mut(flux)
                 && a.tache == rang
             {
-                a.avance = avance;
+                a.abonnement = abonnement;
                 return true;
             }
             let orpheline = r.detacher(flux);
-            let ok = r.attacher(flux, rang, avance);
+            let ok = r.attacher(flux, rang, abonnement);
             if ok && let Some(t) = r.taches.get(&rang) {
                 tracing::info!("transcodage t{rang} partagé : {} lecteur(s)", t.lecteurs);
             }
@@ -485,21 +543,22 @@ impl Transcodeur {
         ffmpeg: &str,
         flux: &str,
         p: &Parametres,
-        avance: f64,
+        abonnement: Abonnement,
         max: usize,
     ) -> Result<PathBuf, Refus> {
-        self.arreter(flux).await;
         let rang = self.rangs.fetch_add(1, Ordering::SeqCst);
         let dossier = self.racine.join(format!("t{rang}"));
         tokio::fs::create_dir_all(&dossier)
             .await
             .map_err(|e| Refus::Erreur(format!("dossier temporaire : {e}")))?;
-        let resultat = {
+        let (resultat, orpheline) = {
             let mut r = self.verrou();
-            if r.taches.len() >= max {
-                Err(Refus::Charge)
+            let liberee = usize::from(r.tache(flux).is_some_and(|t| t.lecteurs == 1));
+            if r.taches.len() - liberee >= max {
+                (Err(Refus::Charge), None)
             } else {
-                lancer(ffmpeg, p, &dossier)
+                let orpheline = r.detacher(flux);
+                let resultat = lancer(ffmpeg, p, &dossier)
                     .map(|processus| {
                         r.taches.insert(
                             rang,
@@ -512,11 +571,15 @@ impl Transcodeur {
                                 sommet: 0,
                             },
                         );
-                        r.attacher(flux, rang, avance);
+                        r.attacher(flux, rang, abonnement);
                     })
-                    .map_err(Refus::Erreur)
+                    .map_err(Refus::Erreur);
+                (resultat, orpheline)
             }
         };
+        if let Some((r, t)) = orpheline {
+            self.finir(r, t).await;
+        }
         match resultat {
             Ok(()) => {
                 tracing::info!(
@@ -571,8 +634,12 @@ impl Transcodeur {
         self.verrou().tache(flux).map(|t| t.parametres.clone())
     }
 
-    pub fn avance(&self, flux: &str) -> f64 {
-        self.verrou().flux.get(flux).map_or(0.0, |a| a.avance)
+    pub fn abonnement(&self, flux: &str) -> Option<Abonnement> {
+        self.verrou().flux.get(flux).map(|a| a.abonnement)
+    }
+
+    pub fn rang(&self, flux: &str) -> Option<u64> {
+        self.verrou().flux.get(flux).map(|a| a.tache)
     }
 
     pub fn lecteurs(&self, flux: &str) -> usize {
@@ -652,6 +719,13 @@ mod tests {
             origine: 124.0,
             mode,
             peripherique: "/dev/dri/renderD128".into(),
+        }
+    }
+
+    fn abo(avance: f64) -> Abonnement {
+        Abonnement {
+            avance,
+            ..Abonnement::default()
         }
     }
 
@@ -779,6 +853,23 @@ mod tests {
     }
 
     #[test]
+    fn liste_complete_d_un_reencodage() {
+        assert_eq!(
+            playlist_de_grille(1, 10.2),
+            "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:5\n#EXT-X-MEDIA-SEQUENCE:1\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n#EXTINF:4.000000,\nseg00001.ts\n#EXTINF:2.200000,\nseg00002.ts\n#EXT-X-ENDLIST\n"
+        );
+        let segments =
+            |premier, duree| playlist_de_grille(premier, duree).matches("EXTINF").count();
+        assert_eq!(segments(0, 8.0), 2);
+        assert_eq!(segments(0, 8.3), 2);
+        assert_eq!(segments(0, 8.6), 3);
+        assert_eq!(segments(5, 8.0), 1);
+        assert_eq!(indice_de_segment("seg00012.ts"), Some(12));
+        assert_eq!(indice_de_segment("init.mp4"), None);
+        assert_eq!(indice_de_segment("seg0001x.ts"), None);
+    }
+
+    #[test]
     fn grille_de_depart() {
         assert_eq!(depart_de_grille(0.0), 0.0);
         assert_eq!(depart_de_grille(3.99), 0.0);
@@ -802,14 +893,14 @@ mod tests {
         let t = Transcodeur::nouveau(racine.path().to_path_buf());
         t.preparer().await;
         let p = params(ModeMateriel::Cpu, Some(720));
-        let dossier = t.demarrer(&ffmpeg, "a", &p, 1.5, 1).await.unwrap();
+        let dossier = t.demarrer(&ffmpeg, "a", &p, abo(1.5), 1).await.unwrap();
         let (rang, origine) = t.partageable(&p, 125.5).await.unwrap();
         assert_eq!(origine, 124.0);
-        assert!(t.rejoindre("b", rang, 1.5).await);
+        assert!(t.rejoindre("b", rang, abo(1.5)).await);
         assert_eq!((t.nombre(), t.lecteurs("a"), t.lecteurs("b")), (1, 2, 2));
         assert_eq!(t.pid("a"), t.pid("b"));
         assert_eq!(t.dossier("b"), Some(dossier.clone()));
-        assert_eq!(t.avance("b"), 1.5);
+        assert_eq!(t.abonnement("b"), Some(abo(1.5)));
 
         let mut autre_palier = p.clone();
         autre_palier.hauteur = Some(480);
@@ -818,12 +909,12 @@ mod tests {
         for autre in [&autre_palier, &autre_piste] {
             assert_eq!(t.partageable(autre, 125.5).await, None);
             assert_eq!(
-                t.demarrer(&ffmpeg, "c", autre, 0.0, 1).await,
+                t.demarrer(&ffmpeg, "c", autre, abo(0.0), 1).await,
                 Err(Refus::Charge)
             );
         }
         let autre = t
-            .demarrer(&ffmpeg, "c", &autre_palier, 0.0, 2)
+            .demarrer(&ffmpeg, "c", &autre_palier, abo(0.0), 2)
             .await
             .unwrap();
         assert_eq!((t.nombre(), t.lecteurs("c")), (2, 1));
@@ -839,7 +930,7 @@ mod tests {
         t.arreter("b").await;
         assert_eq!(t.nombre(), 0);
         assert!(!dossier.exists());
-        assert!(!t.rejoindre("d", rang, 0.0).await);
+        assert!(!t.rejoindre("d", rang, abo(0.0)).await);
     }
 
     #[tokio::test]
@@ -850,26 +941,29 @@ mod tests {
         let t = Transcodeur::nouveau(racine.path().to_path_buf());
         t.preparer().await;
         let p = params(ModeMateriel::Cpu, Some(720));
-        let dossier = t.demarrer(&ffmpeg, "a", &p, 0.0, 4).await.unwrap();
+        let dossier = t.demarrer(&ffmpeg, "a", &p, abo(0.0), 4).await.unwrap();
         assert!(t.partageable(&p, 123.0).await.is_none());
         assert!(t.partageable(&p, 124.0).await.is_some());
-        assert!(t.partageable(&p, 128.0).await.is_some());
-        assert!(t.partageable(&p, 129.0).await.is_none());
+        assert!(t.partageable(&p, 132.0).await.is_some());
+        assert!(t.partageable(&p, 133.0).await.is_none());
         std::fs::write(
             dossier.join(PLAYLIST),
             "#EXTM3U\n#EXTINF:4.004,\nseg00031.ts\n#EXTINF:96.0,\nseg00032.ts\n",
         )
         .unwrap();
-        assert!(t.partageable(&p, 228.0).await.is_some());
-        assert!(t.partageable(&p, 229.0).await.is_none());
+        assert!(t.partageable(&p, 232.0).await.is_some());
+        assert!(t.partageable(&p, 233.0).await.is_none());
+        assert_eq!(t.couverture(&p, 233.0).await, Couverture::Aucune);
 
         let mut plus_loin = p.clone();
         plus_loin.debut = 200.0;
         plus_loin.origine = 200.0;
-        t.demarrer(&ffmpeg, "b", &plus_loin, 0.0, 4).await.unwrap();
+        t.demarrer(&ffmpeg, "b", &plus_loin, abo(0.0), 4)
+            .await
+            .unwrap();
         let (rang, origine) = t.partageable(&p, 201.0).await.unwrap();
         assert_eq!(origine, 200.0);
-        assert!(t.rejoindre("a", rang, 1.0).await);
+        assert!(t.rejoindre("a", rang, abo(1.0)).await);
         assert_eq!((t.nombre(), t.lecteurs("a")), (1, 2));
         assert!(!dossier.exists());
 
@@ -882,7 +976,7 @@ mod tests {
                     q.hauteur = Some(480);
                     q
                 },
-                0.0,
+                abo(0.0),
                 4,
             )
             .await
@@ -900,7 +994,8 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert!(t.partageable(&q, 133.0).await.is_some());
-        assert!(t.partageable(&q, 134.0).await.is_none());
+        assert_eq!(t.couverture(&q, 134.0).await, Couverture::ApresLaFin);
+        assert_eq!(t.couverture(&q, 100.0).await, Couverture::Aucune);
 
         let echec = t
             .demarrer(
@@ -911,7 +1006,7 @@ mod tests {
                     q.hauteur = Some(1080);
                     q
                 },
-                0.0,
+                abo(0.0),
                 4,
             )
             .await
@@ -932,9 +1027,9 @@ mod tests {
         let t = Transcodeur::nouveau(racine.path().to_path_buf());
         t.preparer().await;
         let p = params(ModeMateriel::Cpu, None);
-        let a = t.demarrer("false", "a", &p, 0.0, 9).await.unwrap();
-        let b = t.demarrer("false", "b", &p, 0.0, 9).await.unwrap();
-        assert!(t.rejoindre("b2", 1, 0.0).await);
+        let a = t.demarrer("false", "a", &p, abo(0.0), 9).await.unwrap();
+        let b = t.demarrer("false", "b", &p, abo(0.0), 9).await.unwrap();
+        assert!(t.rejoindre("b2", 1, abo(0.0)).await);
         std::fs::write(a.join("seg00000.ts"), [0u8; 600]).unwrap();
         assert!(t.plafonner(1000).await.is_empty());
         assert_eq!(t.nombre(), 2);
@@ -945,7 +1040,7 @@ mod tests {
         assert_eq!(restants, vec!["b".to_string(), "b2".to_string()]);
         assert!(!a.exists() && b.exists());
         assert_eq!(t.taille().await, 600);
-        let a = t.demarrer("false", "a", &p, 0.0, 9).await.unwrap();
+        let a = t.demarrer("false", "a", &p, abo(0.0), 9).await.unwrap();
         std::fs::write(a.join("seg00000.ts"), [0u8; 600]).unwrap();
         assert_eq!(
             t.plafonner(1000).await,

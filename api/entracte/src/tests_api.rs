@@ -1172,8 +1172,9 @@ async fn changer_de_palier_ou_de_piste_reprend_a_la_meme_position() {
     assert_eq!(
         e.state
             .transcodeur()
-            .avance(r2["stream_id"].as_str().unwrap()),
-        2.0
+            .abonnement(r2["stream_id"].as_str().unwrap())
+            .map(|a| (a.avance, a.premier)),
+        Some((2.0, 1))
     );
     assert_eq!(
         ouvrir(&e, "alice", &a, json!({"quality": "1080p"}))
@@ -1308,6 +1309,103 @@ async fn un_transcodage_partage_entre_les_spectateurs_d_un_titre() {
     );
     assert_eq!(t.nombre(), 0);
     assert!(!dossier.exists());
+}
+
+fn ffmpeg_d_un_segment(dossier: &Path) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let chemin = dossier.join("ffmpeg-un-segment");
+    std::fs::write(
+        &chemin,
+        "#!/bin/sh\nn=0\nprecedent=\nfor a in \"$@\"; do\n  [ \"$precedent\" = \"-start_number\" ] && n=$a\n  precedent=$a\ndone\nprintf x > \"$(dirname \"$precedent\")/$(printf 'seg%05d.ts' \"$n\")\"\nexec sleep 60\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&chemin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    chemin.to_string_lossy().to_string()
+}
+
+#[tokio::test]
+async fn segment_hors_du_transcodage_en_cours_le_deplace() {
+    let outils = tempfile::tempdir().unwrap();
+    let faux = ffmpeg_d_un_segment(outils.path());
+    let Some(e) = env_avec(|c| {
+        c.ffmpeg = faux;
+        c.max_transcodages = 2;
+    })
+    .await
+    else {
+        return;
+    };
+    synchro(&e).await;
+    let a = id_de(&e, "Film A").await;
+    let t = e.state.transcodeur();
+    let ouvre = |qui: &'static str| {
+        let (e, a) = (&e, &a);
+        async move {
+            let r = ouvrir(e, qui, a, json!({"quality": "480p"})).await;
+            assert_eq!(r.statut, StatusCode::OK, "{}", r.texte());
+            let r = r.json();
+            (
+                r["stream_id"].as_str().unwrap().to_string(),
+                r["url"]
+                    .as_str()
+                    .unwrap()
+                    .trim_end_matches("hls.m3u8")
+                    .to_string(),
+            )
+        }
+    };
+    let segment = |base: &str, nom: &str| {
+        let (e, chemin) = (&e, format!("{base}{nom}"));
+        async move { appel(e, None, "GET", &chemin, None).await.statut }
+    };
+    let (alice, base_alice) = ouvre("alice").await;
+    let (bob, base_bob) = ouvre("bob").await;
+    assert_eq!((t.nombre(), t.lecteurs(&alice)), (1, 2));
+    let depart = t.rang(&alice);
+    assert_eq!(segment(&base_alice, "seg00000.ts").await, StatusCode::OK);
+
+    assert_eq!(
+        segment(&base_alice, "seg00010.ts?avance=1").await,
+        StatusCode::NOT_FOUND,
+        "un préchargement ne déplace pas le transcodage"
+    );
+    assert_eq!((t.nombre(), t.rang(&alice)), (1, depart));
+
+    assert_eq!(segment(&base_alice, "seg00010.ts").await, StatusCode::OK);
+    assert_eq!(
+        (t.nombre(), t.lecteurs(&alice), t.lecteurs(&bob)),
+        (2, 1, 1),
+        "la lecture hors du transcodage en cours en lance un à sa position"
+    );
+    let p = t.parametres(&alice).unwrap();
+    assert_eq!((p.debut, p.origine, p.hauteur), (40.0, 40.0, Some(480)));
+    assert_eq!(t.rang(&bob), depart);
+
+    assert_eq!(segment(&base_bob, "seg00010.ts").await, StatusCode::OK);
+    assert_eq!(
+        (t.nombre(), t.lecteurs(&alice), t.rang(&bob)),
+        (1, 2, t.rang(&alice)),
+        "un segment déjà produit par un autre transcodage identique est partagé"
+    );
+
+    let (carole, base_carole) = ouvre("carole").await;
+    assert_eq!((t.nombre(), t.lecteurs(&carole)), (2, 1));
+    assert_eq!(segment(&base_carole, "seg00020.ts").await, StatusCode::OK);
+    assert_eq!(
+        (t.nombre(), t.parametres(&carole).unwrap().origine),
+        (2, 80.0),
+        "une personne seule sur son transcodage le déplace sans dépasser la limite"
+    );
+    let partage = t.rang(&alice);
+    assert_eq!(
+        segment(&base_alice, "seg00030.ts").await,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        (t.nombre(), t.rang(&alice), t.lecteurs(&bob)),
+        (2, partage, 2),
+        "un déplacement refusé laisse le transcodage partagé en place"
+    );
 }
 
 fn film_hevc(nom: &str, format: &str) -> bool {
