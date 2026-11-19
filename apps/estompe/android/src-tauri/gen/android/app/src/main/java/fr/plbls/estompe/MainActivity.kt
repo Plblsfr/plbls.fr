@@ -282,6 +282,11 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
     webView.addJavascriptInterface(native, "EstompeNative")
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.GET_WEB_CHROME_CLIENT)) {
+      Handler(Looper.getMainLooper()).post {
+        WebViewCompat.getWebChromeClient(webView)?.let { webView.setWebChromeClient(FullscreenChrome(this, it)) }
+      }
+    }
     if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
       WebViewCompat.addWebMessageListener(webView, "EstompeSession", setOf(ORIGINE)) { view, message, _, isMainFrame, reply ->
         val data = message.data
