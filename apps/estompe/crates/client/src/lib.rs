@@ -21,6 +21,8 @@ pub mod emoji;
 pub mod fichiers;
 pub mod format;
 pub mod lru;
+pub mod markdown;
+pub mod mention;
 pub mod sondage;
 pub mod virtualisation;
 pub use genere::types;
