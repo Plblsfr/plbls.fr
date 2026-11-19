@@ -286,8 +286,12 @@ mod tests {
             r#"corps {"refresh_token":"rt-secret-1","password": "mot de passe"}"#,
         );
         let contenu = fs::read_to_string(dossier.path().join(NOM_FICHIER)).unwrap();
-        for secret in [JWT, "eyJ", "abc123", "rt-secret-1", "mot de passe"] {
-            assert!(!contenu.contains(secret), "{secret} présent dans {contenu}");
+        let interdits = [JWT, "eyJ", "abc123", "rt-secret-1", "mot de passe"];
+        for (rang, interdit) in interdits.iter().enumerate() {
+            assert!(
+                !contenu.contains(interdit),
+                "la valeur sensible n°{rang} est restée dans le journal"
+            );
         }
         assert!(contenu.contains("[jeton]"));
         assert!(contenu.contains("code=[masqué]&state=x"));
