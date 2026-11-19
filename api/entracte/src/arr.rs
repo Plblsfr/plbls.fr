@@ -39,6 +39,7 @@ pub struct Reglages {
     pub racine: Option<String>,
     pub profil: Option<i64>,
     pub tags: Option<Vec<i64>>,
+    pub sans_recherche: bool,
 }
 
 struct Envoi {
@@ -95,13 +96,17 @@ impl<'a> Client<'a> {
         Self { arr, http }
     }
 
-    fn requete(&self, methode: reqwest::Method, chemin: &str) -> reqwest::RequestBuilder {
+    pub(crate) fn requete(
+        &self,
+        methode: reqwest::Method,
+        chemin: &str,
+    ) -> reqwest::RequestBuilder {
         self.http
             .request(methode, format!("{}/api/v3{chemin}", self.arr.url))
             .header("X-Api-Key", &self.arr.cle)
     }
 
-    async fn envoyer(&self, r: reqwest::RequestBuilder) -> Result<Value, String> {
+    pub(crate) async fn envoyer(&self, r: reqwest::RequestBuilder) -> Result<Value, String> {
         let rep = r.send().await.map_err(erreur)?;
         let statut = rep.status();
         if !statut.is_success() {
@@ -122,12 +127,12 @@ impl<'a> Client<'a> {
         serde_json::from_slice(&octets).map_err(|e| format!("réponse illisible : {e}"))
     }
 
-    async fn get(&self, chemin: &str) -> Result<Value, String> {
+    pub(crate) async fn get(&self, chemin: &str) -> Result<Value, String> {
         self.envoyer(self.requete(reqwest::Method::GET, chemin))
             .await
     }
 
-    async fn liste(&self, chemin: &str) -> Result<Vec<Value>, String> {
+    pub(crate) async fn liste(&self, chemin: &str) -> Result<Vec<Value>, String> {
         match self.get(chemin).await? {
             Value::Array(a) => Ok(a),
             _ => Err(format!("{chemin} : liste attendue")),
@@ -308,7 +313,7 @@ impl<'a> Client<'a> {
         })
     }
 
-    async fn commande(&self, corps: Value) -> Result<(), String> {
+    pub(crate) async fn commande(&self, corps: Value) -> Result<(), String> {
         self.envoyer(self.requete(reqwest::Method::POST, "/command").json(&corps))
             .await
             .map(|_| ())
@@ -328,6 +333,9 @@ impl<'a> Client<'a> {
                     .json(&m),
             )
             .await?;
+            if choix.sans_recherche {
+                return Ok(());
+            }
             return self
                 .commande(json!({ "name": "MoviesSearch", "movieIds": [f.id] }))
                 .await;
@@ -344,7 +352,7 @@ impl<'a> Client<'a> {
         m["tags"] = json!(e.tags);
         m["monitored"] = json!(true);
         m["minimumAvailability"] = json!(e.disponibilite);
-        m["addOptions"] = json!({ "searchForMovie": true });
+        m["addOptions"] = json!({ "searchForMovie": !choix.sans_recherche });
         self.envoyer(self.requete(reqwest::Method::POST, "/movie").json(&m))
             .await
             .map(|_| ())
@@ -379,6 +387,9 @@ impl<'a> Client<'a> {
                     .json(&v),
             )
             .await?;
+            if choix.sans_recherche {
+                return Ok(());
+            }
             return match saisons {
                 None => {
                     self.commande(json!({ "name": "SeriesSearch", "seriesId": s.id }))
@@ -421,7 +432,7 @@ impl<'a> Client<'a> {
                 saison["monitored"] = json!(surveillee(n));
             }
         }
-        v["addOptions"] = json!({ "searchForMissingEpisodes": true });
+        v["addOptions"] = json!({ "searchForMissingEpisodes": !choix.sans_recherche });
         self.envoyer(self.requete(reqwest::Method::POST, "/series").json(&v))
             .await
             .map(|_| ())
@@ -596,6 +607,7 @@ mod tests {
             racine: Some("/films".into()),
             profil: Some(1),
             tags: Some(vec![]),
+            sans_recherche: false,
         };
         client.ajouter_film(103, &choix).await.unwrap();
         let ajout = &ajouts(&s)[0];
@@ -617,6 +629,7 @@ mod tests {
                 racine: racine.map(String::from),
                 profil,
                 tags,
+                sans_recherche: false,
             };
             assert_eq!(
                 client.ajouter_film(103, &refuse).await,

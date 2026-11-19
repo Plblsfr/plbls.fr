@@ -22,7 +22,7 @@ Déclarées à aegis par manifeste (application `entracte`), toutes fermées par
 |---|---|
 | `entracte:access` | bibliothèque, lecture, reprise, historique, recherche, notifications |
 | `entracte:request` | demander un titre absent, « Mes demandes » |
-| `entracte:admin` | liste et traitement des demandes, fichiers écartés, état des synchronisations, détection des intros |
+| `entracte:admin` | liste et traitement des demandes, pilotage de Radarr et Sonarr (recherche, releases, file, titres), fichiers écartés, état des synchronisations, détection des intros |
 
 Chaque route relève d'une permission ou d'une exception motivée (santé, `GET /me`, flux signés, webhooks, appel interne d'Estompe) :
 la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt toutes les routes (401 sans session, 403 sans la permission).
@@ -44,7 +44,8 @@ la table des routes l'impose (`api/entracte/src/routes.rs`) et un test parcourt 
 - Radarr, Sonarr ou TMDB injoignable, ou dossier des médias inaccessible (aucun fichier lisible) : rien n'est retiré, la bibliothèque déjà synchronisée reste servie et l'erreur s'affiche dans
   l’en-tête d’Administration (état des services) (`GET /admin/status`).
 - Identifiants publics propres à Entracte (UUID) : aucune réponse ne contient de chemin de fichier, d'identifiant Radarr/Sonarr ni d'URL TMDB.
-  L'identifiant TMDB d'un titre, lui, est public (recherche et demandes).
+  L'identifiant TMDB d'un titre, lui, est public (recherche et demandes). Seules les routes `/admin/arr/…`, réservées à l'administrateur,
+  portent les identifiants et les dossiers racines de Radarr/Sonarr (voir « Pilotage de Radarr et Sonarr »).
 
 Attribution : l'app affiche « Données et images fournies par TMDB » (conditions d'utilisation de l'API TMDB).
 
@@ -159,6 +160,33 @@ n'est pas proposé : la position y est pilotée par l'hôte.
 - « Disponible » : quand la synchronisation voit arriver le fichier (film), ou tous les épisodes annoncés par TMDB des saisons demandées.
   Une série demandée entière se ferme quand toutes les saisons dont TMDB annonce des épisodes sont complètes ; une saison annoncée plus
   tard sans épisode ne la bloque pas, une saison en cours de diffusion la garde ouverte jusqu'à son dernier épisode annoncé.
+
+## Pilotage de Radarr et Sonarr
+
+L'administration d'Entracte (`entracte:admin`, routes `/admin/arr/…`) fait le travail quotidien de Radarr et Sonarr ; leurs propres
+interfaces ne servent plus qu'aux réglages (indexeurs, profils de qualité, clients de téléchargement, dossiers racines, listes d'import).
+
+- **Suivi d'une demande** : une demande acceptée affiche l'avancement de ce que la file télécharge pour elle (même titre, et pour une
+  demande de saisons, épisodes de ces saisons seulement), « bloqué » avec le motif, ou « sans téléchargement » quand le titre est
+  surveillé, sans fichier et absent de la file. La file est relue toutes les 15 secondes tant que l'onglet est affiché.
+- **Recherche automatique** (`POST /admin/arr/{service}/search`) : un film, une série, une saison, des épisodes ou tous les manquants ;
+  le service choisit et récupère lui-même.
+- **Recherche interactive** (`GET` puis `POST /admin/arr/{service}/releases`) : le service interroge tous ses indexeurs (de dix secondes
+  à plus d'une minute, délai de 150 s côté Entracte et de 180 s dans l'app) et rend les releases avec qualité, langues, taille, sources,
+  score et motifs de rejet ; l'administrateur en envoie une au client de téléchargement. Une release rejetée se force après
+  confirmation. Le service ne garde une recherche qu'un temps : une release ancienne se récupère après une nouvelle recherche.
+- **Téléchargements** : file complète des deux services, « Autre version » (retrait, liste noire et nouvelle recherche), « Retirer »
+  (sans rien bloquer), import manuel d'un téléchargement bloqué (seuls les fichiers que le service liste pour ce téléchargement et
+  rattache à un titre), historique des récupérations, liste noire.
+- **Manquants** : titres surveillés, sortis, sans fichier (200 au plus par service, le total réel est affiché).
+- **Catalogue et fiche** : tous les titres de Radarr et Sonarr ; par titre, surveillance, profil de qualité, nouvelles saisons,
+  surveillance par saison et par épisode, historique, suppression (fichiers et exclusion des listes d'import au choix : les demandes
+  en cours pour ce titre sont refusées avec le motif saisi et leurs demandeurs prévenus). Ajout d'un titre sans demande, avec
+  l'emplacement, le profil, les tags et les saisons surveillées.
+- Un service injoignable n'empêche pas l'autre de répondre : il est signalé dans la vue. Sans `ENTRACTE_RADARR_*` ni
+  `ENTRACTE_SONARR_*`, ces rubriques ne s'affichent pas.
+- Non couvert : changer le dossier d'un titre (déplacement de fichiers), renommer des fichiers, les réglages de Radarr/Sonarr,
+  l'état des indexeurs et le client de téléchargement lui-même (voir [Régie](../regie/README.md)).
 
 ## Notifications
 

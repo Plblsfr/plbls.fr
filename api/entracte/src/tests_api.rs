@@ -275,7 +275,19 @@ fn reponse_radarr(r: &Requete, m: &Mutex<Monde>) -> (u16, Vec<u8>) {
             Some(f) => corps(f.clone()),
             None => (404, vec![]),
         },
-        ("PUT", _) | ("POST", "/api/v3/command") => (200, b"{}".to_vec()),
+        ("GET", "/api/v3/release") => corps(json!([
+            {"guid": "g-rejetee", "indexerId": 4, "title": "Film.A.2160p", "approved": false, "rejections": ["Hors profil"], "customFormatScore": 90},
+            {"guid": "g-acceptee", "indexerId": 4, "title": "Film.A.1080p", "approved": true, "seeders": 12, "size": 4000,
+             "quality": {"quality": {"name": "Bluray-1080p"}}}])),
+        ("GET", "/api/v3/queue") => corps(json!({"records": [
+            {"id": 55, "movieId": RADARR_ID + 101, "title": "Film.A.1080p", "size": 100.0, "sizeleft": 25.0, "status": "downloading",
+             "downloadId": "HASH", "movie": {"id": RADARR_ID + 101, "tmdbId": 101, "title": "Film A", "year": 2020}}]})),
+        ("GET", "/api/v3/wanted/missing") => corps(json!({"totalRecords": 4, "records": [
+            {"id": RADARR_ID + 103, "tmdbId": 103, "title": "Film C", "year": 2022, "qualityProfileId": 7}]})),
+        ("GET", "/api/v3/history") | ("GET", "/api/v3/blocklist") => corps(json!({"records": []})),
+        ("PUT", _) | ("DELETE", _) | ("POST", "/api/v3/command" | "/api/v3/release") => {
+            (200, b"{}".to_vec())
+        }
         _ => (404, vec![]),
     }
 }
@@ -578,6 +590,7 @@ fn exemple(chemin: &str) -> String {
         .replace("{n}", "1")
         .replace("{tmdb_id}", "201")
         .replace("{nom}", "a.jpg")
+        .replace("{service}", "radarr")
         .replace("{jeton}", "x.1.y")
         .replace("{segment}", "seg00000.ts")
 }
@@ -2900,4 +2913,236 @@ async fn intros_en_mode_automatique_et_fichier_remplace() {
     assert_eq!(etat_de_saison(&e, 4).await.as_deref(), Some("trouvee"));
     intro_plausible(&intro_lue(&e, &episodes[0]).await, 3);
     intro_plausible(&intro_lue(&e, &episodes[2]).await, 2);
+}
+
+#[tokio::test]
+async fn admin_pilote_radarr_et_sonarr() {
+    let Some(e) = env().await else { return };
+    assert_eq!(
+        get(&e, "admin", "/admin/arr/lidarr/titles/4").await.statut,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        get(&e, "admin", "/admin/arr/radarr/titles/zero")
+            .await
+            .statut,
+        StatusCode::BAD_REQUEST
+    );
+    let titres = get(&e, "admin", "/admin/arr/titles").await.json();
+    let liste = titres["items"].as_array().unwrap();
+    assert_eq!(liste.len(), 3, "{titres}");
+    assert_eq!(
+        (
+            liste[0]["service"].clone(),
+            liste[0]["id"].clone(),
+            liste[0]["tmdb_id"].clone()
+        ),
+        (json!("radarr"), json!(RADARR_ID + 101), json!(101))
+    );
+    assert_eq!(
+        (
+            liste[2]["service"].clone(),
+            liste[2]["seasons"][1]["monitored"].clone()
+        ),
+        (json!("sonarr"), json!(false))
+    );
+
+    assert_eq!(
+        get(&e, "admin", "/admin/arr/radarr/releases").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+    let releases = get(
+        &e,
+        "admin",
+        &format!("/admin/arr/radarr/releases?title={}", RADARR_ID + 101),
+    )
+    .await;
+    assert_eq!(releases.statut, StatusCode::OK, "{}", releases.texte());
+    let releases = releases.json();
+    assert_eq!(
+        (
+            releases["items"][0]["guid"].clone(),
+            releases["items"][0]["quality"].clone(),
+            releases["items"][1]["approved"].clone(),
+            releases["items"][1]["rejections"].clone()
+        ),
+        (
+            json!("g-acceptee"),
+            json!("Bluray-1080p"),
+            json!(false),
+            json!(["Hors profil"])
+        )
+    );
+    for (corps, attendu) in [
+        (json!({"guid": "g-acceptee"}), StatusCode::BAD_REQUEST),
+        (
+            json!({"guid": "g-acceptee", "indexer_id": 4}),
+            StatusCode::NO_CONTENT,
+        ),
+    ] {
+        let r = appel(
+            &e,
+            Some("admin"),
+            "POST",
+            "/admin/arr/radarr/releases",
+            Some(corps),
+        )
+        .await;
+        assert_eq!(r.statut, attendu, "{}", r.texte());
+    }
+    let envoi = e
+        .radarr
+        .requetes()
+        .into_iter()
+        .find(|r| r.methode == "POST" && r.chemin == "/api/v3/release")
+        .unwrap();
+    assert_eq!(envoi.json(), json!({"guid": "g-acceptee", "indexerId": 4}));
+
+    for (service, corps, attendu) in [
+        (
+            "sonarr",
+            json!({"title": SONARR_ID, "season": 2}),
+            StatusCode::NO_CONTENT,
+        ),
+        (
+            "sonarr",
+            json!({"episodes": [41, 42]}),
+            StatusCode::NO_CONTENT,
+        ),
+        (
+            "radarr",
+            json!({"title": 4, "season": 1}),
+            StatusCode::BAD_REQUEST,
+        ),
+        ("radarr", json!({}), StatusCode::BAD_REQUEST),
+    ] {
+        let r = appel(
+            &e,
+            Some("admin"),
+            "POST",
+            &format!("/admin/arr/{service}/search"),
+            Some(corps),
+        )
+        .await;
+        assert_eq!(r.statut, attendu, "{service} {}", r.texte());
+    }
+    let commandes: Vec<Value> = e
+        .sonarr
+        .requetes()
+        .iter()
+        .filter(|r| r.chemin == "/api/v3/command")
+        .map(|r| r.json())
+        .collect();
+    assert_eq!(
+        commandes,
+        vec![
+            json!({"name": "SeasonSearch", "seriesId": SONARR_ID, "seasonNumber": 2}),
+            json!({"name": "EpisodeSearch", "episodeIds": [41, 42]}),
+        ]
+    );
+
+    let file = get(&e, "admin", "/admin/arr/queue").await.json();
+    assert_eq!(
+        (
+            file["items"][0]["id"].clone(),
+            file["items"][0]["progress"].clone(),
+            file["items"][0]["state"].clone(),
+            file["items"][0]["tmdb_id"].clone(),
+            file["errors"][0]["service"].clone()
+        ),
+        (
+            json!(55),
+            json!(75.0),
+            json!("downloading"),
+            json!(101),
+            json!("sonarr")
+        )
+    );
+    assert!(!file.to_string().contains(e.radarr.url.as_str()));
+    let r = appel(
+        &e,
+        Some("admin"),
+        "DELETE",
+        "/admin/arr/radarr/queue/55?blocklist=true&search=true",
+        None,
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::NO_CONTENT);
+    let retrait = e
+        .radarr
+        .requetes()
+        .into_iter()
+        .find(|r| r.methode == "DELETE")
+        .unwrap();
+    assert_eq!(
+        (retrait.chemin.as_str(), retrait.query.as_str()),
+        (
+            "/api/v3/queue/55",
+            "removeFromClient=true&blocklist=true&skipRedownload=false"
+        )
+    );
+
+    let manquants = get(&e, "admin", "/admin/arr/missing").await.json();
+    assert_eq!(
+        (
+            manquants["items"][0]["tmdb_id"].clone(),
+            manquants["totals"]["radarr"].clone()
+        ),
+        (json!(103), json!(4))
+    );
+    assert_eq!(
+        get(&e, "admin", "/admin/arr/history?title=4").await.statut,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        get(&e, "admin", "/admin/arr/history?service=radarr")
+            .await
+            .json()["items"],
+        json!([])
+    );
+
+    e.monde
+        .lock()
+        .unwrap()
+        .films
+        .push(film_radarr(103, "Film C", None));
+    let demande = appel(
+        &e,
+        Some("bob"),
+        "POST",
+        "/requests",
+        Some(json!({"kind": "movie", "tmdb_id": 103})),
+    )
+    .await;
+    assert_eq!(demande.statut, StatusCode::CREATED, "{}", demande.texte());
+    let r = appel(
+        &e,
+        Some("admin"),
+        "DELETE",
+        &format!(
+            "/admin/arr/radarr/titles/{}?files=true&reason=Doublon",
+            RADARR_ID + 103
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(r.statut, StatusCode::NO_CONTENT, "{}", r.texte());
+    let suppression = e
+        .radarr
+        .requetes()
+        .into_iter()
+        .find(|r| r.methode == "DELETE" && r.chemin.starts_with("/api/v3/movie/"))
+        .unwrap();
+    assert_eq!(
+        suppression.query,
+        "deleteFiles=true&addImportExclusion=false"
+    );
+    let mienne = get(&e, "bob", "/requests/mine").await.json();
+    assert_eq!(
+        (
+            mienne["items"][0]["state"].clone(),
+            mienne["items"][0]["reason"].clone()
+        ),
+        (json!("refusee"), json!("Doublon"))
+    );
 }

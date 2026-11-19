@@ -2,6 +2,7 @@ import { config } from './config'
 import { debug } from './debuglog.svelte'
 import type { DrawOp, DrawView } from '../blocks/draw2gether/draw'
 import type { FilmDetail, FilmItem, FilmPlayback, FilmReject, PlaybackRequest } from '../sections/entracte/films'
+import { releaseQuery, type ArrBlocked, type ArrError, type ArrHistory, type ArrImportFile, type ArrMissing, type ArrQueueItem, type ArrRelease, type ArrService, type ArrSheet, type ArrTitle, type ReleaseTarget } from '../sections/entracte/arr'
 import type { EntracteMe, EntracteNotification, EntracteRequest, EntracteStatus, IntroAdmin, IntroMode, RequestKind, RequestableSeries, SearchResult, SendChoice, SendOptions } from '../sections/entracte/entracte'
 import type {
   AdminLive, AdminOverview, AdminBadge, Badge, BadgeInput, AdminUser, AdminStats, AdminLogEntry, AdminError,
@@ -47,14 +48,15 @@ async function headers(json: boolean): Promise<Record<string, string>> {
 
 const DELAI = 30_000
 const DELAI_ENVOI = 300_000
+const DELAI_RECHERCHE = 180_000
 
-export interface OptionsAppel { discret?: boolean }
+export interface OptionsAppel { discret?: boolean; delai?: number }
 
 async function call(base: string, method: string, path: string, body?: unknown, options: OptionsAppel = {}): Promise<Response> {
   const brut = body instanceof Blob
   const attempt = async () => {
     const h = await headers(body !== undefined && !brut && !(body instanceof FormData))
-    const init: RequestInit = { method, credentials: 'include', headers: h, signal: AbortSignal.timeout(brut || body instanceof FormData ? DELAI_ENVOI : DELAI) }
+    const init: RequestInit = { method, credentials: 'include', headers: h, signal: AbortSignal.timeout(options.delai ?? (brut || body instanceof FormData ? DELAI_ENVOI : DELAI)) }
     if (brut) { h['Content-Type'] = body.type; init.body = body }
     else if (body instanceof FormData) init.body = body
     else if (body !== undefined) init.body = JSON.stringify(body)
@@ -429,6 +431,23 @@ export const entracteApi = {
   introMode: (mode: IntroMode) => esend<{ mode: IntroMode }>('PUT', '/admin/intros/mode', { mode }),
   introAnalyze: (id: string) => esend<{ queued: number }>('POST', `/admin/intros/titles/${enc(id)}/analyze`, {}),
   introClear: (id: string) => esend<void>('DELETE', `/admin/intros/titles/${enc(id)}`),
+  arrTitles: () => eget<{ items: ArrTitle[]; errors: ArrError[]; services: Record<ArrService, boolean> }>('/admin/arr/titles'),
+  arrAdd: (service: ArrService, b: { tmdb_id: number; folder?: string; profile?: number; tags?: number[]; seasons?: number[]; search?: boolean }) => esend<void>('POST', `/admin/arr/${service}/titles`, b),
+  arrSheet: (service: ArrService, id: number) => eget<ArrSheet>(`/admin/arr/${service}/titles/${id}`),
+  arrUpdate: (service: ArrService, id: number, b: { monitored?: boolean; profile?: number; monitor_new?: boolean; seasons?: { number: number; monitored: boolean }[] }) => esend<ArrSheet>('PUT', `/admin/arr/${service}/titles/${id}`, b),
+  arrDelete: (service: ArrService, id: number, o: { files: boolean; exclude: boolean; reason: string }) => esend<void>('DELETE', `/admin/arr/${service}/titles/${id}?${new URLSearchParams({ files: String(o.files), exclude: String(o.exclude), reason: o.reason })}`),
+  arrMonitorEpisodes: (episodes: number[], monitored: boolean) => esend<void>('PUT', '/admin/arr/sonarr/episodes/monitor', { episodes, monitored }),
+  arrSearch: (service: ArrService, b: { title?: number; season?: number; episodes?: number[]; missing?: boolean }) => esend<void>('POST', `/admin/arr/${service}/search`, b),
+  arrReleases: (t: ReleaseTarget) => requestAt<{ items: ArrRelease[] }>(ENTRACTE_URL, 'GET', `/admin/arr/${t.service}/releases?${releaseQuery(t)}`, undefined, { delai: DELAI_RECHERCHE }),
+  arrGrab: (service: ArrService, r: Pick<ArrRelease, 'guid' | 'indexer_id'>) => requestAt<void>(ENTRACTE_URL, 'POST', `/admin/arr/${service}/releases`, { guid: r.guid, indexer_id: r.indexer_id }, { delai: DELAI_RECHERCHE }),
+  arrQueue: () => eget<{ items: ArrQueueItem[]; errors: ArrError[] }>('/admin/arr/queue'),
+  arrRemove: (service: ArrService, id: number, o: { blocklist: boolean; search: boolean }) => esend<void>('DELETE', `/admin/arr/${service}/queue/${id}?blocklist=${o.blocklist}&search=${o.search}`),
+  arrImportable: (service: ArrService, id: number) => eget<{ items: ArrImportFile[] }>(`/admin/arr/${service}/queue/${id}/import`),
+  arrImport: (service: ArrService, id: number, files: string[]) => esend<{ files: number }>('POST', `/admin/arr/${service}/queue/${id}/import`, { files }),
+  arrMissing: () => eget<{ items: ArrMissing[]; totals: Partial<Record<ArrService, number>>; errors: ArrError[] }>('/admin/arr/missing'),
+  arrHistory: (f: { service?: ArrService; title?: number } = {}) => eget<{ items: ArrHistory[]; errors: ArrError[] }>(`/admin/arr/history?${new URLSearchParams(Object.entries(f).map(([k, v]) => [k, String(v)]))}`),
+  arrBlocklist: () => eget<{ items: ArrBlocked[]; errors: ArrError[] }>('/admin/arr/blocklist'),
+  arrUnblock: (service: ArrService, id: number) => esend<void>('DELETE', `/admin/arr/${service}/blocklist/${id}`),
   pushKey: () => eget<{ key: string }>('/push/key'),
   pushSubscribe: (sub: PushSubscriptionJSON) => esend<void>('PUT', '/push/subscription', sub),
   pushUnsubscribe: (endpoint: string) => esend<void>('DELETE', '/push/subscription', { endpoint }),
