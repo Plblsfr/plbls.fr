@@ -141,6 +141,7 @@ export class WatchPlayer {
   /** Palier propre à ce participant (Entracte) : seule la position de la séance est partagée. */
   setQuality(q: Quality) { this.p?.setQuality?.(q) }
   setBuffer(b: BufferPref) { this.p?.setBuffer?.(b) }
+  setWifiOnly(on: boolean) { this.p?.setWifiOnly?.(on) }
 
   /** Un morceau de Music2gether que le lecteur refuse (intégration désactivée, région, âge) est passé : le premier client à le signaler avance la file. */
   private skipUnplayable(): boolean {

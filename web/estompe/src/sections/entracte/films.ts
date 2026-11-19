@@ -1,3 +1,4 @@
+import type { Reseau } from '../../lib/reseau'
 export interface FilmProgress { position: number; duration: number; seen: boolean }
 export interface FilmItem {
   id: string; kind: 'movie' | 'series' | 'season' | 'episode' | 'other'; title: string; year: number | null; overview: string | null
@@ -21,6 +22,10 @@ export interface FilmPlayback {
   quality?: Quality
   qualities?: Quality[]
   intro?: Intro | null
+  /** Entracte : codec de la source et vidéo recopiée sans réencodage. */
+  video?: { codec: string; copy: boolean }
+  /** Entracte : deux flux de même clé ont les mêmes segments (même fichier, qualité, piste audio, découpage). */
+  cache?: string | null
 }
 export interface Intro { debut: number; fin: number }
 export interface FilmTracks { audio: FilmTrack[]; subtitles: FilmTrack[]; audioN: number; subN: number | null; qualities?: Quality[]; quality?: Quality; intro?: Intro | null }
@@ -53,6 +58,7 @@ const PROBES: { kind: keyof Support; name: string; mime: string }[] = [
   { kind: 'containers', name: 'mkv', mime: 'video/x-matroska' },
   { kind: 'video', name: 'h264', mime: 'video/mp4; codecs="avc1.42E01E"' },
   { kind: 'video', name: 'hevc', mime: 'video/mp4; codecs="hvc1.1.6.L93.B0"' },
+  { kind: 'video', name: 'hevc10', mime: 'video/mp4; codecs="hvc1.2.4.L153.B0"' },
   { kind: 'video', name: 'vp9', mime: 'video/webm; codecs="vp9"' },
   { kind: 'video', name: 'av1', mime: 'video/mp4; codecs="av01.0.05M.08"' },
   { kind: 'audio', name: 'aac', mime: 'audio/mp4; codecs="mp4a.40.2"' },
@@ -64,10 +70,27 @@ const PROBES: { kind: keyof Support; name: string; mime: string }[] = [
 ]
 
 /** Ce que le lecteur sait lire tel quel (canPlayType), pour qu'Entracte choisisse entre lecture directe et HLS. */
-export function support(canPlay: (mime: string) => string): Support {
+export function support(canPlay: (mime: string) => string, refused: string[] = []): Support {
   const s: Support = { containers: [], video: [], audio: [] }
-  for (const p of PROBES) if (canPlay(p.mime) !== '') s[p.kind].push(p.name)
+  for (const p of PROBES) {
+    if (p.kind === 'video' && refused.some((r) => p.name.startsWith(r))) continue
+    if (canPlay(p.mime) !== '') s[p.kind].push(p.name)
+  }
   return s
+}
+
+const REFUSED_KEY = 'entracte.refus'
+
+/** Codecs vidéo que cet appareil annonce mais n'a pas su lire : plus jamais demandés tels quels. */
+export function refusedCodecs(store: Pick<Storage, 'getItem'> | null): string[] {
+  try {
+    const v: unknown = JSON.parse(store?.getItem(REFUSED_KEY) ?? '[]')
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch { return [] }
+}
+
+export function refuseCodec(store: Pick<Storage, 'getItem' | 'setItem'> | null, codec: string) {
+  try { store?.setItem(REFUSED_KEY, JSON.stringify([...new Set([...refusedCodecs(store), codec])])) } catch { return }
 }
 
 export const QUALITY_LABEL: Record<Quality, string> = { original: 'Originale', '1080p': '1080p', '720p': '720p', '480p': '480p' }
@@ -89,12 +112,12 @@ export function saveQuality(store: Pick<Storage, 'setItem'> | null, q: Quality) 
 export type AudioPref = 'auto' | 'vf' | 'vff' | 'vfq' | 'en'
 export type SubtitlePref = 'none' | 'forced' | 'fr' | 'en'
 export type BufferPref = 'normal' | 'long' | 'all'
-export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean; buffer: BufferPref }
+export interface PlayPrefs { audio: AudioPref; subtitles: SubtitlePref; volume: number; muted: boolean; buffer: BufferPref; wifiOnly: boolean }
 export const BUFFER_PREFS: [BufferPref, string][] = [['normal', 'Normal (1 à 3 min)'], ['long', 'Long (15 min)'], ['all', 'Tout le film']]
 export const AUDIO_PREFS: [AudioPref, string][] = [['auto', 'Piste du fichier'], ['vf', 'Français (VF)'], ['vff', 'Français de France (VFF)'], ['vfq', 'Français du Québec (VFQ)'], ['en', 'Anglais']]
 export const SUBTITLE_PREFS: [SubtitlePref, string][] = [['none', 'Aucun'], ['forced', 'Forcés seulement'], ['fr', 'Français'], ['en', 'Anglais']]
 const PLAY_KEY = 'entracte.lecture'
-const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal' }
+const PLAY_DEFAULTS: PlayPrefs = { audio: 'auto', subtitles: 'none', volume: 100, muted: false, buffer: 'normal', wifiOnly: false }
 
 export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
   let p: Partial<PlayPrefs> = {}
@@ -105,7 +128,13 @@ export function playPrefs(store: Pick<Storage, 'getItem'> | null): PlayPrefs {
     subtitles: SUBTITLE_PREFS.some(([id]) => id === p.subtitles) ? p.subtitles! : PLAY_DEFAULTS.subtitles,
     volume, muted: p.muted === true,
     buffer: BUFFER_PREFS.some(([id]) => id === p.buffer) ? p.buffer! : PLAY_DEFAULTS.buffer,
+    wifiOnly: p.wifiOnly === true,
   }
+}
+
+/** Réglage appliqué : « Wi-Fi seulement » ramène au réglage normal en données mobiles. */
+export function effectiveBuffer(p: Pick<PlayPrefs, 'buffer' | 'wifiOnly'>, reseau: Reseau): BufferPref {
+  return p.wifiOnly && reseau === 'cellular' ? 'normal' : p.buffer
 }
 
 export function savePlayPrefs(store: Pick<Storage, 'getItem' | 'setItem'> | null, patch: Partial<PlayPrefs>) {

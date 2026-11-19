@@ -7,6 +7,8 @@ import { providers, type Adapter, type Handlers } from '../../blocks/regarder-en
 import { IDLE_MS, type FilmDetail } from './films'
 import FilmPlayer from './FilmPlayer.svelte'
 import { medias } from '../../lib/medias'
+import { setPlatform } from '../../lib/platform'
+import { platform as web } from '@platform'
 
 const detail: FilmDetail = {
   id: 'f', kind: 'movie', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: null, episode: null,
@@ -134,6 +136,40 @@ describe('FilmPlayer : pistes par défaut', () => {
     await fireEvent.change(vue.getByLabelText('Audio'), { target: { value: 'vff' } })
     expect(adapter.setSubtitle).toHaveBeenLastCalledWith(1)
     expect(adapter.setAudio).toHaveBeenCalledWith(1)
+  })
+})
+
+describe('FilmPlayer : préchargement réservé au Wi-Fi', () => {
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); setPlatform(web) })
+
+  const ouvrir = async (kind?: 'wifi' | 'cellular' | 'unknown') => {
+    setPlatform({ ...web, network: kind ? { kind: () => kind, watch: () => () => {} } : undefined })
+    const m = monter()
+    const setWifiOnly = vi.fn()
+    Object.assign(m.adapter, { setWifiOnly })
+    await pret(m.adapter)
+    m.handlers().onTracks?.({ audio: [{ n: 0, language: 'fre', label: null }], subtitles: [], audioN: 0, subN: null })
+    await tick()
+    await fireEvent.click(m.vue.getByText('Audio et sous-titres'))
+    return { ...m, setWifiOnly }
+  }
+
+  it('n’affiche pas l’option quand l’appareil ne sait pas dire s’il est en Wi-Fi', async () => {
+    for (const kind of [undefined, 'unknown'] as const) {
+      const { vue } = await ouvrir(kind)
+      expect(vue.getByLabelText('Préchargement')).toBeTruthy()
+      expect(vue.queryByLabelText(/Wi-Fi seulement/)).toBeNull()
+      vue.unmount()
+    }
+  })
+
+  it('affiche l’option quand le type de connexion est connu, l’applique et la retient', async () => {
+    const { vue, setWifiOnly } = await ouvrir('cellular')
+    const option = vue.getByLabelText(/Wi-Fi seulement/) as HTMLInputElement
+    expect(option.checked).toBe(false)
+    await fireEvent.click(option)
+    expect(setWifiOnly).toHaveBeenCalledWith(true)
+    expect(JSON.parse(localStorage.getItem('entracte.lecture')!).wifiOnly).toBe(true)
   })
 })
 
