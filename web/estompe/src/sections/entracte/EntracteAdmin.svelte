@@ -5,12 +5,18 @@
   import { confirmer, saisir } from '../../lib/confirm.svelte'
   import { notify } from '../../lib/ui'
   import AcceptModal from './AcceptModal.svelte'
+  import ArrCatalog from './ArrCatalog.svelte'
+  import ArrDownloads from './ArrDownloads.svelte'
+  import ArrMissing from './ArrMissing.svelte'
+  import ArrReleases from './ArrReleases.svelte'
+  import ArrSheet from './ArrSheet.svelte'
+  import { titleLabel, titleOf, trackRequest, type ArrError, type ArrQueueItem, type ArrService, type ArrTitle, type ReleaseTarget } from './arr'
   import { reasonLabel, type FilmReject } from './films'
   import EntractePoster from './EntractePoster.svelte'
   import { films } from './films.svelte'
   import { failedSends, introAnalysed, introLabel, introPending, introTone, seasonsLabel, sourceLabel, stateLabel, stateTone, type EntracteRequest, type EntracteStatus, type IntroAdmin, type IntroSeries, type RequestState } from './entracte'
 
-  let tab = $state<'requests' | 'rejected' | 'intros'>('requests')
+  let tab = $state<'requests' | 'downloads' | 'missing' | 'catalog' | 'rejected' | 'intros'>('requests')
   let filtre = $state<'' | RequestState>('en_attente')
   let requester = $state('')
   let requests = $state<EntracteRequest[] | null>(null)
@@ -20,6 +26,56 @@
   let busy = $state('')
   let intros = $state<IntroAdmin | null>(null)
   let accepting = $state<EntracteRequest | null>(null)
+  let titles = $state<ArrTitle[] | null>(null)
+  let titleErrors = $state<ArrError[]>([])
+  let queue = $state<ArrQueueItem[] | null>(null)
+  let queueErrors = $state<ArrError[]>([])
+  let sheet = $state<{ service: ArrService; id: number } | null>(null)
+  let releases = $state<ReleaseTarget | null>(null)
+
+  const RAFRAICHIR = 15_000
+  const arrOn = $derived(!!status && (status.configured.radarr || status.configured.sonarr))
+  const SUIVI = { downloading: ['Téléchargement', 'info'], missing: ['Sans téléchargement', 'att'], blocked: ['Bloqué', 'dgr'] } as const
+
+  async function loadTitles() {
+    try {
+      const r = await entracteApi.arrTitles()
+      titles = r.items
+      titleErrors = r.errors
+    } catch { titles = [] }
+  }
+  async function loadQueue() {
+    try {
+      const r = await entracteApi.arrQueue()
+      queue = r.items
+      queueErrors = r.errors
+    } catch { queue = [] }
+  }
+  const reloadArr = () => { void loadTitles(); void loadQueue() }
+  $effect(() => { if (arrOn) reloadArr() })
+  $effect(() => {
+    if (!arrOn || sheet || releases || (tab !== 'requests' && tab !== 'downloads')) return
+    const minuteur = setInterval(() => { if (!document.hidden) void loadQueue() }, RAFRAICHIR)
+    return () => clearInterval(minuteur)
+  })
+
+  const openSheet = (service: ArrService, id: number) => { sheet = { service, id } }
+  const openReleases = (t: ReleaseTarget) => { releases = t }
+
+  async function searchRequest(r: EntracteRequest, t: ArrTitle) {
+    busy = r.id
+    try {
+      if (r.kind === 'series' && r.seasons?.length) for (const season of r.seasons) await entracteApi.arrSearch(t.service, { title: t.id, season })
+      else await entracteApi.arrSearch(t.service, { title: t.id })
+      notify.ok(`Recherche relancée pour « ${r.title} ».`)
+    } catch (e) { notify.error(e, 'La recherche n’a pas pu être lancée') } finally { busy = '' }
+  }
+
+  function chooseRelease(r: EntracteRequest, t: ArrTitle) {
+    if (t.service === 'radarr') openReleases({ service: 'radarr', title: t.id, label: titleLabel(t) })
+    else if (r.seasons?.length === 1) openReleases({ service: 'sonarr', title: t.id, season: r.seasons[0], label: `${titleLabel(t)} · Saison ${r.seasons[0]}` })
+    else openSheet(t.service, t.id)
+  }
 
   const date = (s: string | null) => (s ? new Date(s).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : 'jamais')
 
@@ -88,9 +144,15 @@
   }
 </script>
 
+{#if releases}
+  <ArrReleases target={releases} onclose={() => (releases = null)} ondone={() => void loadQueue()} />
+{:else if sheet}
+  <ArrSheet service={sheet.service} id={sheet.id} queue={queue ?? []} onclose={() => (sheet = null)} onreleases={openReleases} onchanged={reloadArr} />
+{:else}
 <div class="film-page">
   <div class="film-filters">
     <h2 class="v-titre film-filters-title">Administration d’Entracte</h2>
+    {#if arrOn}<button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (tab = 'catalog')}><Icon name="plus" size={14} /> Ajouter un titre</button>{/if}
     <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => void sync()}><Icon name="actualise" size={14} /> Synchroniser maintenant</button>
   </div>
 
@@ -117,6 +179,11 @@
 
   <div class="v-seg adm-onglets" role="group" aria-label="Rubrique">
     <button aria-pressed={tab === 'requests'} onclick={() => (tab = 'requests')}>Demandes</button>
+    {#if arrOn}
+      <button aria-pressed={tab === 'downloads'} onclick={() => (tab = 'downloads')}>Téléchargements{queue?.length ? ` · ${queue.length}` : ''}</button>
+      <button aria-pressed={tab === 'missing'} onclick={() => (tab = 'missing')}>Manquants</button>
+      <button aria-pressed={tab === 'catalog'} onclick={() => (tab = 'catalog')}>Catalogue</button>
+    {/if}
     <button aria-pressed={tab === 'rejected'} onclick={() => (tab = 'rejected')}>Fichiers écartés</button>
     <button aria-pressed={tab === 'intros'} onclick={() => (tab = 'intros')}>Intros</button>
   </div>
@@ -161,6 +228,8 @@
       {:else}
         <ul class="adm-list">
           {#each visibles as r (r.id)}
+            {@const suivi = trackRequest(r, titles ?? [], queue ?? [])}
+            {@const titre = titleOf(r, titles ?? [])}
             <li class="adm-item">
             <span class="adm-art"><EntractePoster url={r.poster_url} title={r.title} seed={r.id} /></span>
             <span class="grow adm-body">
@@ -168,19 +237,39 @@
               <span class="v-note">{seasonsLabel(r)} · {date(r.created_at)} · {(r.requesters ?? []).map((x) => x.name || 'quelqu’un').join(', ')}</span>
               {#if r.reason}<span class="v-note">Motif : {r.reason}</span>{/if}
               {#if r.send_error}<span class="v-note adm-err" role="alert"><Icon name="alerte" size={14} /> Envoi à {r.kind === 'movie' ? 'Radarr' : 'Sonarr'} en échec : {r.send_error}</span>{/if}
+              {#if suivi.kind === 'downloading'}
+                <span class="adm-suivi"><span class="adm-jauge" role="progressbar" aria-label={`Téléchargement de ${r.title}`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={suivi.progress}><span style:width="{suivi.progress}%"></span></span><span class="adm-mono">{suivi.progress} %</span><span class="v-note">{suivi.note}</span></span>
+              {:else if suivi.kind === 'missing'}
+                <span class="v-note adm-att"><Icon name="cherche" size={14} /> {suivi.note}</span>
+              {:else if suivi.kind === 'blocked'}
+                <span class="v-note adm-err" role="alert"><Icon name="alerte" size={14} /> {suivi.note}</span>
+              {/if}
             </span>
-            <span class="v-tag {stateTone(r.state)}">{stateLabel(r.state)}</span>
+            {#if suivi.kind === 'none'}<span class="v-tag {stateTone(r.state)}">{stateLabel(r.state)}</span>{:else}<span class="v-tag {SUIVI[suivi.kind][1]}">{SUIVI[suivi.kind][0]}</span>{/if}
             {#if r.state === 'en_attente' || r.state === 'acceptee'}
               <button class="plbls-button plbls-button--compact plbls-button--contour plbls-button--danger" disabled={busy === r.id} onclick={() => void refuse(r)}>Refuser</button>
             {/if}
             {#if r.state === 'en_attente' || (r.state === 'acceptee' && !r.sent)}
               <button class="plbls-button plbls-button--compact" disabled={busy === r.id} onclick={() => (accepting = r)}>{r.state === 'acceptee' ? 'Renvoyer' : 'Accepter…'}</button>
             {/if}
+            {#if suivi.kind === 'missing' && titre}
+              <button class="plbls-button plbls-button--compact plbls-button--contour" disabled={busy === r.id} onclick={() => void searchRequest(r, titre)}>Relancer la recherche</button>
+              <button class="plbls-button plbls-button--compact" onclick={() => chooseRelease(r, titre)}>Choisir une release…</button>
+            {:else if suivi.kind === 'blocked'}
+              <button class="plbls-button plbls-button--compact plbls-button--contour" onclick={() => (tab = 'downloads')}>Voir la file</button>
+            {/if}
+            {#if titre && r.state !== 'refusee'}<button class="plbls-button plbls-button--compact plbls-button--contour" aria-label={`Gérer ${r.title}`} onclick={() => openSheet(titre.service, titre.id)}>Gérer</button>{/if}
           </li>
           {/each}
         </ul>
       {/if}
     </section>
+  {:else if tab === 'downloads'}
+    <ArrDownloads {queue} errors={queueErrors} onreload={reloadArr} onsheet={openSheet} />
+  {:else if tab === 'missing'}
+    <ArrMissing onsheet={openSheet} onreleases={openReleases} />
+  {:else if tab === 'catalog'}
+    <ArrCatalog {titles} errors={titleErrors} queue={queue ?? []} onsheet={openSheet} onreload={reloadArr} />
   {:else if tab === 'rejected'}
     {#if !rejected}
       <Loader />
@@ -229,28 +318,6 @@
     {/if}
   {/if}
 </div>
-{#if accepting}<AcceptModal request={accepting} onclose={() => (accepting = null)} ondone={accepted} />{/if}
+{/if}
+{#if accepting}<AcceptModal request={accepting} onclose={() => (accepting = null)} ondone={(r) => { accepted(r); reloadArr() }} />{/if}
 
-<style>
-  .adm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--espace-2); }
-  .adm-item { display: flex; align-items: center; flex-wrap: wrap; gap: var(--espace-2) var(--espace-3); padding: var(--espace-3) var(--espace-4) var(--espace-3) var(--espace-3); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--o1); }
-  .adm-echecs .adm-item { box-shadow: inset 0 0 0 1.5px var(--danger); }
-  .adm-art { flex: none; width: 48px; aspect-ratio: 2 / 3; overflow: hidden; border-radius: var(--r-s); }
-  .adm-art :global(.film-art-title), .adm-art :global(.film-disc) { display: none; }
-  .adm-etat { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--espace-3); }
-  .adm-carte { display: flex; flex-direction: column; gap: var(--espace-1); min-width: 0; padding: var(--espace-3) var(--espace-4); border-radius: var(--r-l); background: var(--surface); box-shadow: var(--o1); }
-  .adm-carte strong { display: flex; align-items: center; gap: var(--espace-2); font-size: 17px; }
-  .adm-carte.erreur { background: var(--danger-fond); box-shadow: inset 0 0 0 1.5px var(--danger); }
-  .adm-carte.erreur strong { color: var(--danger); }
-  .adm-carte-note { font-size: 13px; overflow-wrap: anywhere; }
-  .adm-point { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); }
-  .adm-onglets { align-self: flex-start; }
-  .adm-filtres { flex-wrap: wrap; border-radius: var(--r-l); }
-  .adm-body { display: flex; flex-direction: column; min-width: 0; }
-  .adm-intro .adm-body { flex-basis: 260px; gap: 2px; }
-  .adm-season { display: flex; flex-wrap: wrap; align-items: center; gap: var(--espace-2); }
-  .adm-switch { display: flex; align-items: center; gap: 10px; max-width: 560px; cursor: pointer; }
-  .adm-switch input { flex: none; width: 18px; height: 18px; accent-color: var(--rose-fonce); }
-  .adm-switch > span { display: grid; gap: 2px; flex: 1; min-width: 0; }
-  .adm-err { display: inline-flex; align-items: center; gap: 4px; color: var(--danger, inherit); }
-</style>

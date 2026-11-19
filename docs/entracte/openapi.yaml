@@ -366,6 +366,184 @@ paths:
         "204": { description: effacé }
         "403": { $ref: "#/components/responses/403" }
         "404": { $ref: "#/components/responses/404" }
+  /admin/arr/titles:
+    get:
+      summary: "Titres gérés par Radarr et Sonarr (`entracte:admin`)"
+      description: >-
+        Les routes `/admin/arr/…` pilotent Radarr et Sonarr pour l'administrateur : elles portent leurs identifiants (`id`,
+        `title_id`), leurs dossiers racines et les noms de release, jamais leur adresse ni leur clé. Un service en erreur
+        n'empêche pas l'autre de répondre : il est listé dans `errors`.
+        Film : `{service, id, tmdb_id, title, year, monitored, profile, folder, status, has_file, available, size, file: {quality, size}}`.
+        Série : `{service, id, tmdb_id, title, year, monitored, profile, folder, status, episodes, episode_files, size, monitor_new,
+        seasons: [{number, monitored, episodes, episode_files, size}]}`.
+      responses:
+        "200": { description: "`{items, errors: [{service, message}], services: {radarr, sonarr}}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/arr/{service}/titles:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }]
+    post:
+      summary: "Ajouter un titre à Radarr ou Sonarr sans passer par une demande"
+      description: >-
+        Corps `{tmdb_id, folder, profile, tags: [id], seasons: [n], search}`. `folder`, `profile` et `tags` comme pour
+        `POST /admin/requests/{id}/accept`. `seasons` (Sonarr) : saisons surveillées, absent pour toutes. `search: false`
+        ajoute sans lancer de recherche. Un titre déjà présent est remis sous surveillance.
+      responses:
+        "204": { description: ajouté }
+        "400": { description: "corps mal formé, réglage ou titre inconnu du service" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/{service}/titles/{id}:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }, { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    get:
+      summary: "Fiche de gestion d'un titre"
+      description: >-
+        Le titre de `GET /admin/arr/titles`, plus `profiles: [{id, name}]` et, pour une série,
+        `episode_list: [{id, season, number, title, monitored, has_file, air_date, quality, size}]`.
+      responses:
+        "200": { description: fiche }
+        "404": { description: titre inconnu du service }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+    put:
+      summary: "Modifier la surveillance ou le profil d'un titre"
+      description: >-
+        Corps `{monitored, profile, monitor_new, seasons: [{number, monitored}]}`, au moins un champ. `monitor_new` et
+        `seasons` ne valent que pour Sonarr. Répond la fiche à jour.
+      responses:
+        "200": { description: fiche }
+        "400": { description: "corps mal formé, vide, ou profil inconnu" }
+        "404": { description: titre inconnu du service }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+    delete:
+      summary: "Retirer un titre de Radarr ou Sonarr"
+      description: >-
+        `files=true` supprime aussi les fichiers, `exclude=true` empêche une liste d'import de le rajouter. Les demandes en
+        cours pour ce titre passent à `refusee` avec `reason` (500 caractères au plus, « Titre retiré du catalogue » par
+        défaut) et leurs demandeurs sont prévenus.
+      responses:
+        "204": { description: retiré }
+        "404": { description: titre inconnu du service }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/{service}/episodes/monitor:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }]
+    put:
+      summary: "Surveiller ou non des épisodes (Sonarr), `{episodes: [id], monitored}`"
+      responses:
+        "204": { description: enregistré }
+        "400": { description: "corps mal formé, ou service `radarr`" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/{service}/search:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }]
+    post:
+      summary: "Lancer une recherche automatique"
+      description: >-
+        Corps, au choix : `{title}` (film ou série entière), `{title, season}` (Sonarr), `{episodes: [id]}` (Sonarr),
+        `{missing: true}` (tous les titres surveillés sans fichier). Le service choisit et récupère lui-même la release.
+      responses:
+        "204": { description: recherche lancée }
+        "400": { description: cible mal formée ou invalide pour ce service }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/{service}/releases:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }]
+    get:
+      summary: "Recherche interactive : releases trouvées par les indexeurs"
+      description: >-
+        `title=<id>` (Radarr), `title=<id>&season=<n>` ou `episode=<id>` (Sonarr). Le service interroge tous ses indexeurs :
+        la réponse peut prendre plus d'une minute. Releases acceptées d'abord, puis par score et par sources :
+        `{guid, indexer_id, title, indexer, protocol, quality, languages, formats, score, size, seeders, leechers, age,
+        approved, rejections, full_season}` (`age` en jours).
+      responses:
+        "200": { description: "`{items: [Release]}`" }
+        "400": { description: cible manquante ou invalide pour ce service }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+    post:
+      summary: "Envoyer une release au client de téléchargement, `{guid, indexer_id}`"
+      description: "La release doit venir d'un `GET` récent : le service ne la garde qu'un temps. Une release rejetée est récupérée quand même."
+      responses:
+        "204": { description: envoyée }
+        "400": { description: corps mal formé }
+        "404": { description: release oubliée du service, relancer la recherche }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/queue:
+    get:
+      summary: "File de téléchargement de Radarr et Sonarr"
+      description: >-
+        `{service, id, title_id, tmdb_id, title, year, episode: {id, season, number, title}, release, quality, indexer, client,
+        protocol, size, left, progress, state, messages, eta, importable}`. `state` : `downloading`, `queued`, `paused`,
+        `importing` ou `blocked` (`messages` dit pourquoi). `progress` de 0 à 100.
+      responses:
+        "200": { description: "`{items, errors: [{service, message}]}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/arr/{service}/queue/{id}:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }, { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    delete:
+      summary: "Retirer un téléchargement de la file et du client"
+      description: "`blocklist=true` met la release sur la liste noire, `search=true` relance aussitôt une recherche."
+      responses:
+        "204": { description: retiré }
+        "404": { description: élément absent de la file }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/{service}/queue/{id}/import:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }, { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    get:
+      summary: "Fichiers d'un téléchargement que le service peut importer à la main"
+      responses:
+        "200": { description: "`{items: [{name, size, quality, languages, title, episodes: [{id, season, number, title}], rejections}]}`" }
+        "404": { description: élément absent de la file }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+    post:
+      summary: "Importer à la main des fichiers du téléchargement, `{files: [name]}`"
+      description: "Seuls les fichiers listés par le `GET` et rattachés par le service à un film ou à des épisodes sont importés."
+      responses:
+        "200": { description: "`{files}` : nombre de fichiers envoyés à l'import" }
+        "400": { description: corps mal formé }
+        "404": { description: élément absent de la file }
+        "409": { description: "`nothing_to_import`" }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
+  /admin/arr/missing:
+    get:
+      summary: "Titres surveillés, sortis, sans fichier (200 au plus par service)"
+      description: >-
+        Film : `{service, title_id, tmdb_id, title, year, profile, last_search}`. Épisode : `{service, title_id, tmdb_id, title,
+        year, episode: {id, season, number, title}, air_date, last_search}`. `totals` donne le nombre réel par service.
+      responses:
+        "200": { description: "`{items, totals: {radarr, sonarr}, errors}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/arr/history:
+    get:
+      summary: "Historique des récupérations"
+      description: >-
+        Sans paramètre : les 50 derniers évènements de chaque service. `service` limite à un service, `title=<id>` (avec
+        `service`) à un titre. `{service, title_id, tmdb_id, title, year, episode, event, release, quality, date, indexer,
+        reason}`, `event` : `grabbed`, `imported`, `failed`, `deleted`, `renamed`, `ignored` ou `other`.
+      responses:
+        "200": { description: "`{items, errors}`" }
+        "400": { description: paramètre invalide }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/arr/blocklist:
+    get:
+      summary: "Liste noire des releases de Radarr et Sonarr"
+      responses:
+        "200": { description: "`{items: [{service, id, title_id, tmdb_id, title, year, release, quality, date, indexer, reason}], errors}`" }
+        "403": { $ref: "#/components/responses/403" }
+  /admin/arr/{service}/blocklist/{id}:
+    parameters: [{ name: service, in: path, required: true, schema: { type: string, enum: [radarr, sonarr] } }, { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }]
+    delete:
+      summary: "Sortir une release de la liste noire"
+      responses:
+        "204": { description: retirée }
+        "404": { description: entrée inconnue }
+        "403": { $ref: "#/components/responses/403" }
+        "502": { description: "`arr_unavailable` : Radarr ou Sonarr non configuré, injoignable ou en erreur" }
   /push/key:
     get:
       summary: "Clé publique VAPID"

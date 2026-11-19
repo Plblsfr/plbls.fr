@@ -523,7 +523,7 @@ pub async fn liste_admin(
     })))
 }
 
-fn reglages(corps: &serde_json::Map<String, Value>) -> Result<arr::Reglages, Response> {
+pub(crate) fn reglages(corps: &serde_json::Map<String, Value>) -> Result<arr::Reglages, Response> {
     let racine = match corps.get("folder") {
         None | Some(Value::Null) => None,
         Some(Value::String(r)) if !r.is_empty() && r.chars().count() <= 500 => Some(r.clone()),
@@ -551,6 +551,7 @@ fn reglages(corps: &serde_json::Map<String, Value>) -> Result<arr::Reglages, Res
         racine,
         profil,
         tags,
+        sans_recherche: corps.get("search") == Some(&Value::Bool(false)),
     })
 }
 

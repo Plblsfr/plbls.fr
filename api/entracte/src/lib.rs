@@ -1,6 +1,7 @@
 #![allow(clippy::result_large_err)]
 
 pub mod arr;
+pub mod arr_gestion;
 pub mod bibliotheque;
 pub mod catalogue;
 pub mod config;
@@ -11,6 +12,7 @@ pub mod ffprobe;
 pub mod filtre;
 pub mod flux;
 pub mod garde;
+pub mod gestion;
 pub mod http;
 pub mod identite;
 pub mod images;
