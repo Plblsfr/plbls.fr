@@ -1,1 +1,0 @@
-- [x] Plein écran dans l'app Android. Le bouton plein écran du lecteur de films (et des autres lecteurs et du vocal) fonctionne dans l'app Android : la vue passe en plein écran, les barres système sont masquées, le bouton retour en sort. Non vérifié : compilation Kotlin et comportement sur un appareil réel (SDK Android indisponible dans l'environnement de travail).
