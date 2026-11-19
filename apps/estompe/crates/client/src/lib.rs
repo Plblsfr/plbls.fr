@@ -1,4 +1,5 @@
 pub mod appels;
+pub mod auth;
 pub mod config;
 mod genere;
 pub mod http;
