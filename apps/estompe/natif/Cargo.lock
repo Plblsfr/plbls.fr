@@ -1337,9 +1337,11 @@ dependencies = [
  "estompe-plateforme",
  "i-slint-backend-testing",
  "image",
+ "serde_json",
  "slint",
  "slint-build",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

@@ -67,10 +67,10 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
 | `App.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | aiguillage entre connexion, refus, activation, sections et coquille ; thème, densité, pastille de mentions |
-| `views/LoginView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | absent | écran de connexion |
-| `views/DeniedView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | absent | compte sans la permission d'utiliser Estompe |
-| `views/ActivateView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | absent | choix du pseudo à l'activation |
-| `views/JoinView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | absent | lien d'invitation |
+| `views/LoginView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | écran de connexion, attente du navigateur annulable, erreurs (`apps/estompe/natif/ui/entree/connexion.slint`) ; sans liens de téléchargement des apps |
+| `views/DeniedView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | compte sans la permission d'utiliser Estompe (`apps/estompe/natif/ui/entree/acces.slint`) |
+| `views/ActivateView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | choix du pseudo à l'activation, vérifié avant l'envoi (`apps/estompe/natif/ui/entree/acces.slint`) |
+| `views/JoinView.svelte` | 1 | [#293](https://github.com/Plblsfr/plbls.fr/issues/293) | fait | invitation saisie ou passée au lancement (`--invitation`) ; les liens `estompe://` ouverts par le système restent à faire |
 | `views/Shell.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | coquille : rail, panneau latéral, zone principale, modals |
 | `views/HomeView.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | absent | accueil : à rattraper, vocaux en cours, contacts en ligne |
 | `views/SectionsShell.svelte` | 10 | [#282](https://github.com/Plblsfr/plbls.fr/issues/282) | absent | coquille d'un compte limité aux sections |
@@ -97,7 +97,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `components/Marge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | panneau de droite redimensionnable : membres, épinglés |
 | `components/MembersPanel.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | membres, présence, activité |
 | `components/RoleBadge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | absent | étiquette « Bot » ou « Créateur » |
-| `components/ForcedUpdate.svelte` | 1 | [#298](https://github.com/Plblsfr/plbls.fr/issues/298) | absent | écran bloquant de mise à jour forcée |
+| `components/ForcedUpdate.svelte` | 1 | [#298](https://github.com/Plblsfr/plbls.fr/issues/298) | en cours | écran bloquant sur refus 426 (`apps/estompe/natif/ui/entree/mise-a-jour.slint`), lien vers la page du serveur ; ni téléchargement ni installation dans l'app tant que l'installeur natif n'existe pas |
 
 ### Messagerie, lecture
 

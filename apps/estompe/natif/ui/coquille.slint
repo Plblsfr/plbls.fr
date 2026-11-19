@@ -1,0 +1,54 @@
+import { Theme, Typo, Espace } from "jetons.slint";
+import { Icone, Bouton, VarianteBouton } from "composants.slint";
+
+export component Coquille inherits Rectangle {
+    in property <string> pseudo;
+    in property <string> serveur-rejoint;
+    callback ouvrir-invitation();
+    callback se-deconnecter();
+    VerticalLayout {
+        alignment: center;
+        spacing: Espace.e3;
+        HorizontalLayout {
+            alignment: center;
+            Icone {
+                nom: "bulle";
+                taille: 40px;
+                couleur: Theme.rose-fonce;
+            }
+        }
+        Text {
+            text: "Rien à afficher pour l'instant";
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: Typo.titre-section;
+            font-weight: Typo.demi-gras;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.serveur-rejoint != "" ? "Tu as rejoint « " + root.serveur-rejoint + " »." : "Connecté en tant que " + root.pseudo + ". La messagerie arrive avec les lots suivants.";
+            color: Theme.gris;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Rejoindre un serveur";
+                icone: "lien";
+                clique => {
+                    root.ouvrir-invitation();
+                }
+            }
+            Bouton {
+                texte: "Se déconnecter";
+                icone: "sortie";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    root.se-deconnecter();
+                }
+            }
+        }
+    }
+}

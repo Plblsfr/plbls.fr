@@ -1,0 +1,272 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Chargement } from "../composants.slint";
+import { Alerte, Note, AGauche } from "commun.slint";
+
+component Atout inherits Rectangle {
+    in property <string> icone;
+    in property <string> titre;
+    in property <string> texte;
+    horizontal-stretch: 1;
+    preferred-width: 160px;
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    VerticalLayout {
+        alignment: start;
+        padding: Espace.e4;
+        spacing: 6px;
+        AGauche {
+            Icone {
+                nom: root.icone;
+                taille: 22px;
+                couleur: Theme.rose-texte;
+            }
+        }
+        Text {
+            text: root.titre;
+            color: Theme.encre;
+            font-weight: Typo.gras;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.texte;
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component Accroche inherits VerticalLayout {
+    spacing: Espace.e6;
+    VerticalLayout {
+        spacing: -4px;
+        Text {
+            text: "Écrire, parler,";
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: 64px;
+            font-weight: Typo.gras;
+            letter-spacing: -2.4px;
+            accessible-role: none;
+        }
+        AGauche {
+            spacing: 0;
+            Text {
+                text: "regarder";
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 64px;
+                font-weight: Typo.gras;
+                letter-spacing: -2.4px;
+                accessible-role: none;
+            }
+            Rectangle {
+                width: 10px;
+            }
+            Rectangle {
+                width: surligne.preferred-width + 16px;
+                Rectangle {
+                    y: parent.height * 0.18;
+                    height: parent.height * 0.68;
+                    border-radius: 3px;
+                    background: Theme.rose;
+                }
+                surligne := Text {
+                    x: 8px;
+                    text: "ensemble";
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 64px;
+                    font-weight: Typo.gras;
+                    letter-spacing: -2.4px;
+                    accessible-role: none;
+                }
+            }
+            Text {
+                text: ".";
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 64px;
+                font-weight: Typo.gras;
+                accessible-role: none;
+            }
+        }
+    }
+    Text {
+        text: "Messagerie écrite et vocale pour un petit groupe d'amis.";
+        color: Theme.encre-2;
+        font-size: 19px;
+        wrap: word-wrap;
+    }
+}
+
+export component Connexion inherits Rectangle {
+    in property <bool> en-attente: false;
+    in property <string> erreur;
+    callback se-connecter();
+    callback creer-compte();
+    callback annuler();
+    public function focus-initial() {
+        bouton-connexion.prendre-focus();
+    }
+    property <bool> large: true;
+    changed width => {
+        root.large = self.width >= 900px;
+    }
+    background: Theme.papier;
+    accessible-role: none;
+    HorizontalLayout {
+        if root.large: Rectangle {
+            preferred-width: 560px;
+            horizontal-stretch: 1;
+            background: Theme.papier-2;
+            accessible-role: none;
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                background: Theme.trait;
+            }
+            VerticalLayout {
+                padding: 56px;
+                spacing: 40px;
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+                Accroche {
+                    vertical-stretch: 0;
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+                HorizontalLayout {
+                    vertical-stretch: 0;
+                    spacing: Espace.e3;
+                    Atout {
+                        icone: "bulle";
+                        titre: "Salons et MP";
+                        texte: "Sondages, fichiers, messages vocaux";
+                    }
+                    Atout {
+                        icone: "vol";
+                        titre: "Vocal";
+                        texte: "Caméra et partage d'écran";
+                    }
+                    Atout {
+                        icone: "film";
+                        titre: "Ensemble";
+                        texte: "Vidéos, musique, dessin";
+                    }
+                }
+            }
+        }
+        Rectangle {
+            preferred-width: 440px;
+            horizontal-stretch: 1;
+            accessible-role: none;
+            VerticalLayout {
+                alignment: center;
+                padding-top: 56px;
+                padding-bottom: 56px;
+                padding-left: Espace.e8;
+                padding-right: Espace.e8;
+                HorizontalLayout {
+                    alignment: center;
+                    VerticalLayout {
+                        width: 400px;
+                        spacing: Espace.e6;
+                        VerticalLayout {
+                            spacing: Espace.e2;
+                            Text {
+                                text: "Bon retour.";
+                                color: Theme.encre;
+                                font-family: Typo.titre;
+                                font-size: Typo.titre-ecran;
+                                font-weight: Typo.gras;
+                                letter-spacing: -1px;
+                                accessible-role: text;
+                            }
+                            Text {
+                                text: "Ta connexion passe par le compte plbls.fr.";
+                                color: Theme.gris;
+                                wrap: word-wrap;
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 10px;
+                            bouton-connexion := Bouton {
+                                texte: "Se connecter";
+                                variante: VarianteBouton.primaire;
+                                en-cours: root.en-attente;
+                                clique => {
+                                    root.se-connecter();
+                                }
+                            }
+                            Bouton {
+                                texte: "Créer un compte";
+                                actif: !root.en-attente;
+                                clique => {
+                                    root.creer-compte();
+                                }
+                            }
+                        }
+                        if root.en-attente: Rectangle {
+                            border-radius: Rayon.m;
+                            background: Theme.papier-2;
+                            accessible-role: none;
+                            HorizontalLayout {
+                                padding: 14px;
+                                spacing: Espace.e3;
+                                VerticalLayout {
+                                    alignment: start;
+                                    padding-top: 2px;
+                                    Chargement {
+                                        taille: 18px;
+                                        description: "En attente du navigateur";
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: Espace.e1;
+                                    Text {
+                                        text: "En attente du navigateur";
+                                        color: Theme.encre;
+                                        font-size: Typo.compact;
+                                        font-weight: Typo.gras;
+                                    }
+                                    Text {
+                                        text: "Termine la connexion dans ton navigateur, puis reviens ici.";
+                                        color: Theme.gris;
+                                        font-size: Typo.petit;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                                VerticalLayout {
+                                    alignment: center;
+                                    Bouton {
+                                        texte: "Annuler";
+                                        variante: VarianteBouton.fantome;
+                                        clique => {
+                                            root.annuler();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if root.erreur != "" && !root.en-attente: Alerte {
+                            texte: root.erreur;
+                        }
+                        Rectangle {
+                            height: 1px;
+                            background: Theme.trait;
+                        }
+                        Note {
+                            text: "L'accès à Estompe est accordé par l'administrateur.";
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,8 +1,11 @@
+use crate::entree::{self, AuthReelle, Emetteur, Services};
 use crate::{ModeTheme, Mouvement, Principale, Theme};
+use estompe_client::auth::{Authentification, ConfigAuth};
 use estompe_client::config::{self, AdresseServeur};
+use estompe_client::http::{Client, Reglages};
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::preferences::{self, EtatFichier, Fenetre, Preferences};
-use estompe_plateforme::Dossiers;
+use estompe_plateforme::{CoffreSysteme, Dossiers, NavigateurSysteme, OuvertureUrl, IDENTIFIANT};
 use slint::ComponentHandle;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,6 +14,12 @@ use std::sync::Arc;
 pub const LARGEUR_MIN: u32 = 720;
 pub const HAUTEUR_MIN: u32 = 480;
 const COTE_MAX: u32 = 16_384;
+
+pub struct ServicesReels {
+    pub client: Client,
+    pub auth: Arc<Authentification>,
+    pub services: Services,
+}
 
 pub struct Session {
     pub dossiers: Dossiers,
@@ -54,6 +63,36 @@ impl Session {
             preferences: RefCell::new(chargement.preferences),
             journal,
             adresse,
+        })
+    }
+
+    pub fn services(&self, emetteur: &Emetteur) -> Result<ServicesReels, String> {
+        let navigateur: Arc<dyn OuvertureUrl + Send + Sync> = Arc::new(NavigateurSysteme);
+        let auth = Authentification::nouvelle(
+            ConfigAuth::depuis_environnement(),
+            Arc::new(CoffreSysteme::new(IDENTIFIANT)),
+        )
+        .map_err(|e| e.to_string())?
+        .avec_journal(self.journal.clone());
+        let auth = Arc::new(auth);
+        let client = entree::client_de_l_app(&self.adresse.url, Reglages::default(), emetteur)
+            .map_err(|e| e.to_string())?
+            .avec_jeton(auth.fournisseur_jeton())
+            .avec_journal(self.journal.clone());
+        let services = Services {
+            auth: Arc::new(AuthReelle {
+                auth: auth.clone(),
+                navigateur: navigateur.clone(),
+            }),
+            api: Arc::new(client.clone()),
+            navigateur,
+            lien_telechargement: entree::lien_telechargement(&self.adresse.url),
+            journal: Some(self.journal.clone()),
+        };
+        Ok(ServicesReels {
+            client,
+            auth,
+            services,
         })
     }
 

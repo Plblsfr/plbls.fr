@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn pour_applique_les_surcharges() {
         let p = parse(
-            br#"{"mandatory":true,"minVersion":"0.5.0","message":"commun","platforms":{"android":{"minVersion":"1.0.0","message":"faille corrigee"},"web":{"mandatory":false}}}"#,
+            br#"{"mandatory":true,"minVersion":"0.5.0","message":"commun","platforms":{"android":{"minVersion":"1.0.0","message":"faille corrigee"},"web":{"mandatory":false},"natif":{"minVersion":"0.2.0"}}}"#,
         );
         let commun = p.pour("windows");
         assert!(commun.mandatory);
@@ -129,6 +129,8 @@ mod tests {
         assert_eq!(android.min_version, "1.0.0");
         assert_eq!(android.message, "faille corrigee");
         assert!(!p.pour("web").mandatory);
+        assert_eq!(p.pour("natif").min_version, "0.2.0");
+        assert_eq!(p.pour("natif").message, "commun");
         assert_eq!(p.pour("pwa"), p.pour("web"));
         assert_eq!(p.pour("inconnue"), commun);
         assert_eq!(p.pour(""), commun);
@@ -146,7 +148,8 @@ mod tests {
 
     #[test]
     fn la_politique_embarquee_est_coherente() {
-        for plateforme in ["web", "android", "windows"] {
+        for plateforme in ["web", "android", "windows", "natif"] {
+            assert!(charger().platforms.contains_key(plateforme), "{plateforme}");
             let r = charger().pour(plateforme);
             assert!(!r.mandatory || !r.message.is_empty(), "{plateforme}");
             assert!(

@@ -2,13 +2,13 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-Le socle est en place : une fenêtre, l'écran « À propos », la page de démonstration des composants. Aucune fonction d'Estompe n'y est encore.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) et une coquille provisoire, vide, où l'on arrive une fois connecté.
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
-| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`) |
+| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur |
 
@@ -63,6 +63,41 @@ Même direction artistique, pas au pixel :
 - anticrénelage et crénage du texte sont ceux de Skia, pas ceux du navigateur ;
 - la position de la fenêtre est retenue telle quelle : si l'écran où elle se trouvait n'existe plus, elle peut s'ouvrir hors de l'écran.
 
+## Écrans d'entrée et authentification
+
+`src/entree.rs` décide de l'écran affiché, sans interface : une machine d'états (`Machine::traiter(Evenement) -> Option<Effet>`, testée seule)
+et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil, sur un fil dédié (`estompe-entree`).
+
+| État (`Etat`) | Écran (`Page` de `ui/app.slint`) |
+|---|---|
+| `Demarrage` : reprise de la session depuis le coffre | `demarrage` |
+| `Deconnecte`, `AttenteNavigateur`, `Erreur(message)` (délai dépassé, navigateur indisponible, refus, réseau, session expirée) | `connexion` |
+| `Verification` : `GET /me` | `verification` |
+| `Refuse` (`allowed: false`), `AActiver` (`activated: false`, `POST /activate`) | `refuse`, `activation` |
+| `Invitation` (`POST /server-invites/{code}/join`) | `invitation` |
+| `Injoignable(message)` : `/me` ou la reprise ont échoué sans refus | `injoignable` |
+| `Connecte { compte, serveur }` | `coquille` |
+| `MiseAJourRequise { message, version_minimale }` | `mise-a-jour` |
+
+- L'authentification et l'API sont injectées (traits `Authentifieur` et `ApiEntree`) : `AuthReelle` (crate client, `Authentification`) et
+  `Client` en production, des faux dans `tests/commun/`. `src/ecrans.rs` traduit un `Etat` en propriétés de la fenêtre (`afficher`) et les
+  rappels de la fenêtre en `Evenement` (`brancher`) ; l'état revient à l'interface par `upgrade_in_event_loop`.
+- `lib.rs` (`demarrer`) assemble le tout et rend `Application { entree, client, auth }` : la coquille et le store se branchent sur ce client
+  (jeton, plateforme et version déjà posés), sur `entree.runtime()` pour leurs tâches et sur `entree.emetteur()` pour revenir à l'entrée (déconnexion, mise à jour).
+- Connexion : PKCE dans le navigateur du système et redirection sur `127.0.0.1` (crate client, `auth`), délai de 5 minutes, annulable depuis
+  l'écran ; le refresh token est dans le coffre de secrets et la session reprend au lancement. Émetteur Keycloak : `https://auth.plbls.fr/realms/default`,
+  ou `ESTOMPE_KEYCLOAK_ISSUER` pour un Keycloak de test (une adresse invalide est ignorée).
+- Invitation : `estompe-natif --invitation <lien ou code>` la rejoint dès le compte vérifié ; depuis la coquille, « Rejoindre un serveur » ouvre
+  la saisie. Le code est pris à la fin d'un lien (`ABCDE-23456`). Les liens `estompe://` ouverts par le système ne sont pas encore pris en charge.
+
+### Mise à jour forcée
+
+Le client déclare `X-Estompe-Platform: natif` et `X-Estompe-Version: <version du paquet>` ; l'API applique `platforms.natif` de
+`api/estompe/core/updates.json`. Un refus 426 (`upgrade_required`), à n'importe quel appel, mène à l'écran bloquant « Mise à jour requise »
+(message du serveur, version installée et minimale) : la machine n'émet plus aucune requête, seul le bouton de téléchargement agit. Il ouvre
+dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`) : l'installeur natif n'existe pas encore, ni le
+téléchargement dans l'app.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -108,11 +143,19 @@ compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0
 référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
+  Les écrans d'entrée sont préparés par `ecrans::afficher` avec un `Etat` fixe.
 - Régénérer après un changement voulu : `just estompe-natif-captures`, relire les images, les versionner dans la même PR.
 - Les captures ne sont comparées que sous Linux (`ESTOMPE_CAPTURES=ignorer` sur le runner Windows).
 - Le moteur Skia n'est pas utilisé ici : son rendu du texte dépend des bibliothèques du système, et les mêmes écrans diffèrent d'environ 1 % de
-  pixels entre deux machines. Écarts du moteur logiciel avec ce que l'app affiche (Skia) : pas d'ombre portée sous les modals, un point tracé par
+  pixels entre deux machines. Écarts du moteur logiciel avec ce que l'app affiche (Skia) : pas d'ombre portée sous les modals et les cartes, un point tracé par
   un segment de longueur nulle n'est pas dessiné (icônes `poignee` et `list`), anticrénelage du texte légèrement différent.
+
+## Tests d'interaction
+
+Backend de test de Slint, un par fichier de `tests/` : `clavier.rs` et `connexion_clavier.rs` sans boucle d'évènements (`init_no_event_loop`),
+`connexion.rs` avec la boucle (`init_integration_test_with_mock_time`, un seul `#[test]`) : un fil pilote clique par `ElementHandle` et attend
+chaque état. `ElementHandle` exige les informations de débogage de l'interface, que `build.rs` n'ajoute qu'au profil de débogage.
+`mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 
 ## CI
 
