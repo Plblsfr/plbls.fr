@@ -37,7 +37,8 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 | `sillon_server` | `api/sillon/**`, `api/commun/**`, `docs/sillon/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Sillon, avec PostgreSQL ; commun) |
 | `sablier_server` | `api/sablier/**`, `api/commun/**`, `docs/sablier/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Sablier, avec PostgreSQL et Redis ; commun) |
 | `regie_server` | `api/regie/**`, `api/commun/**`, `docs/regie/openapi.yaml` (vérifié par un test), fichiers Cargo racine | `rust-test` (Régie, services simulés ; commun) |
-| `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates`) | `estompe-tauri` |
+| `estompe_tauri` | `apps/estompe/**` (`windows`, `android`, `crates/core`), sans l'app native ni ses crates | `estompe-tauri` |
+| `estompe_natif` | `apps/estompe/natif/**`, `apps/estompe/crates/{client,plateforme}/**`, `scripts/estompe/natif-*`, `scripts/estompe/gen-types-client.mjs`, et les sources de ses fichiers générés (`docs/estompe/openapi.yaml`, `v3-jetons.css`, `Icon.svelte`) | `estompe-natif-linux`, `estompe-natif-windows` |
 | `estompe` | `{api,web,apps,docs,deploy,scripts}/estompe/**`, `.version`, `CHANGELOG.md`, `changelog.d/**`, `agents/**` | `changelog` |
 | `lint` | JS, TS, Svelte, CSS, JSON, shell, Python, Markdown, configs des linters, `scripts/**` | `front` (`just lint`, dont les liens Markdown internes) |
 | `npm`, `front_*` | fichiers npm racine, `scripts/*` ; chaque projet npm (`web/estompe` compte aussi le TS des apps natives et `scripts/estompe/*.mjs`) | `front` : check, test, build des projets touchés (tous si les fichiers npm racine changent) |
@@ -62,6 +63,12 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   Les services tournent à côté du runner : joignables par `localhost` et leur port publié. Une base par test sur un seul serveur.
 - `estompe-tauri` : tests des apps Tauri (GTK/WebKit), dont ceux des features `overlay-natif` et `instant-replay` (logique sans GPU ; l'éditeur de clips y exporte un clip de synthèse avec le ffmpeg installé par apt), `cargo check` de l'app Android,
   ffmpeg épinglé, puis `cargo check` de l'app Windows pour la cible `x86_64-pc-windows-gnu` avec `instant-replay` (seul contrôle du code Windows du moteur : il n'est jamais exécuté en CI).
+- `estompe-natif-linux` : app native ([natif.md](natif.md)). Lance `scripts/estompe/natif-check.sh` dans une session D-Bus avec un trousseau
+  GNOME déverrouillé (le coffre de secrets est testé pour de vrai) : portabilité, fichiers générés à jour, `cargo fmt --check`,
+  `clippy -D warnings`, `cargo deny check`, absence de `tauri`, `wry` et `webview2-com`, tests (dont les captures de rendu), build. Puis il lance
+  l'app sous Xvfb (`--essai-de-lancement`). En cas d'échec, l'artefact `estompe-natif-captures` contient captures, références et différences.
+- `estompe-natif-windows` : runner Windows, cible `x86_64-pc-windows-msvc` : build et tests (coffre de secrets : Credential Manager), sans
+  comparaison des captures.
 - `estompe-api-image` : construit l'image de l'API sans la publier (cache `:buildcache` du registre en lecture), la démarre à côté d'un
   PostgreSQL et attend `GET /readyz` (60 s au plus). Conteneurs et tag portent l'identifiant du run.
 - `entracte-image` : construit l'image d'Entracte sans la publier (cache GitHub Actions), la démarre avec `deploy/entracte/.env.example`

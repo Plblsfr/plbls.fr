@@ -10,6 +10,7 @@ on:
       estompe_api: { value: "${{ jobs.changements.outputs.estompe_api }}" }
       catalogue_permissions: { value: "${{ jobs.changements.outputs.catalogue_permissions }}" }
       estompe_tauri: { value: "${{ jobs.changements.outputs.estompe_tauri }}" }
+      estompe_natif: { value: "${{ jobs.changements.outputs.estompe_natif }}" }
       estompe_ci_image: { value: "${{ jobs.changements.outputs.estompe_ci_image }}" }
       aegis_server: { value: "${{ jobs.changements.outputs.aegis_server }}" }
       security_server: { value: "${{ jobs.changements.outputs.security_server }}" }
@@ -41,6 +42,7 @@ jobs:
       estompe_api: ${{ steps.c.outputs.estompe_api }}
       catalogue_permissions: ${{ steps.c.outputs.catalogue_permissions }}
       estompe_tauri: ${{ steps.c.outputs.estompe_tauri }}
+      estompe_natif: ${{ steps.c.outputs.estompe_natif }}
       estompe_ci_image: ${{ steps.c.outputs.estompe_ci_image }}
       aegis_server: ${{ steps.c.outputs.aegis_server }}
       security_server: ${{ steps.c.outputs.security_server }}
@@ -83,7 +85,10 @@ jobs:
           c estompe_api 'api/estompe/**' '!**/*.md' deploy/estompe/.env.example docs/estompe/openapi.yaml \
             scripts/estompe/paquets-cargo.sh "${cargo[@]}" .dockerignore plbls.env
           c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
-          c estompe_tauri 'apps/estompe/**' '!**/*.md'
+          natif=('apps/estompe/natif/**' 'apps/estompe/crates/client/**' 'apps/estompe/crates/plateforme/**')
+          c estompe_tauri 'apps/estompe/**' '!**/*.md' "${natif[@]/#/!}"
+          c estompe_natif "${natif[@]}" '!**/*.md' 'scripts/estompe/natif-*' scripts/estompe/gen-types-client.mjs docs/estompe/openapi.yaml \
+            web/estompe/src/styles/v3-jetons.css web/estompe/src/components/Icon.svelte
           c estompe_ci_image 'deploy/estompe/ci/**'
           c aegis_server 'api/aegis/**' 'api/commun/**' "${cargo[@]}"
           c security_server 'api/security/**' 'api/commun/**' '!**/*.md' "${cargo[@]}"

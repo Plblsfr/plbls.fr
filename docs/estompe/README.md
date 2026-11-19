@@ -7,6 +7,7 @@ Messagerie écrite et vocale pour un petit groupe d'amis (messages privés, serv
 - `web/estompe/` : interface Svelte 5 commune à toutes les applications, voir son [README](../../web/estompe/README.md) ; `web/estompe/plateforme/` : plateforme web (PWA) et son image nginx
 - `apps/estompe/windows/` : app Windows (Tauri) · `apps/estompe/android/` : app Android (Tauri) · `apps/estompe/crates/core/` : code Rust et TS commun à Windows et Android
 - Guides de l'app Windows : [`instant-replay.md`](instant-replay.md) (tampon de jeu en mémoire, clips, galerie), [`editeur-clips.md`](editeur-clips.md) (montage de clips : assembler, rogner, couper, vitesse, recadrage, texte, volumes, export), [`overlay-natif.md`](overlay-natif.md) (overlay sans webview)
+- App native en Slint, sans webview (beta) : [`natif.md`](natif.md) (construire, lancer, architecture, captures de rendu), [`natif-parite.md`](natif-parite.md) (ce qui lui manque encore)
 - `deploy/estompe/` : stack Dokploy (images construites par la CI GitHub Actions) et image de job `ci/`
 - `scripts/estompe/` : `check.sh` (contrôles avant de livrer), `paquets-cargo.sh`, `bump-version.mjs` et `version.mjs` (versions), `update-policy.mjs`, `gen-emojis.mjs`
 - À la racine du dépôt : `agents/skills/` (skills des agents : `/estompe-grill-me`, `-plan`, `-implement`, `-code-review`, `-pr`, `-release`, lus via `.claude/skills`),
