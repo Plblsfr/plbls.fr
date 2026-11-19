@@ -155,10 +155,12 @@ paths:
       description: |
         Corps : `{quality: original|1080p|720p|480p, audio: n, start: secondes, support: {containers, video, audio}}`.
         Lecture directe si le fichier est lisible tel quel par le client (qualité originale, conteneur et codecs annoncés,
-        première piste audio), sinon HLS transcodé par ffmpeg (un transcodage par spectateur ; rouvrir le même titre remplace
-        l'ancien flux). Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, forced, url}], intro}`.
+        première piste audio), sinon HLS transcodé par ffmpeg (un transcodage partagé par les flux de même fichier, qualité et piste
+        audio ; rouvrir le même titre remplace l'ancien flux). `support.video` : `h264`, `hevc` (8 bits), `hevc10` (10 bits), `vp9`, `av1`.
+        Réponse : `{stream_id, mode: direct|hls, url, start, offset, duration, quality, qualities, audio, audio_n, subtitles: [{n, label, language, forced, url}], intro, video: {codec, copy}, cache}`.
+        `video.copy` : la vidéo est recopiée sans réencodage. `cache` (HLS, sinon `null`) : deux flux de même valeur ont les mêmes segments sous les mêmes noms.
         `intro` : `{debut, fin}` en secondes du titre quand l'intro de l'épisode a été détectée (voir `/admin/intros`), sinon `null` (toujours `null` pour un film).
-        En HLS, la position réelle vaut `offset` + le temps du lecteur ; `offset` est au plus `start` (image clé qui précède, quand la vidéo est recopiée) et le lecteur avance jusqu'à `start`.
+        En HLS, la position réelle vaut `offset` + le temps du lecteur ; `offset` est au plus `start` (image clé qui précède quand la vidéo est recopiée, multiple de 4 s qui précède quand elle est réencodée sur le CPU) et le lecteur avance jusqu'à `start`.
       responses:
         "200": { description: flux ouvert }
         "400": { description: piste, qualité ou position invalide }
@@ -218,14 +220,19 @@ paths:
   /stream/{jeton}/{segment}:
     parameters:
       - { $ref: "#/components/parameters/jeton" }
-      - { name: segment, in: path, required: true, schema: { type: string, pattern: "^seg[0-9]{5}\\.ts$" } }
+      - { name: segment, in: path, required: true, schema: { type: string, pattern: "^(seg[0-9]{5}\\.(ts|m4s)|init\\.mp4)$" } }
+      - { name: avance, in: query, schema: { type: string, enum: ["1"] }, description: "préchargement : ne déplace pas le transcodage, `404` si le segment n'est pas à portée" }
     get:
       summary: "Segment HLS"
+      description: |
+        Segment MPEG-TS, ou fMP4 (`init.mp4`, `segNNNNN.m4s`) quand une vidéo HEVC est recopiée. Pour un réencodage sur le CPU, un segment
+        hors de ce que le transcodage en cours a produit le déplace à cette position (voir `docs/entracte/transcodage.md`).
       security: []
       responses:
-        "200": { description: MPEG-TS }
+        "200": { description: "MPEG-TS (`video/mp2t`) ou fMP4 (`video/mp4`)" }
         "401": { $ref: "#/components/responses/stream401" }
         "404": { $ref: "#/components/responses/404" }
+        "503": { description: "`serveur_charge` : déplacer le transcodage dépasserait `ENTRACTE_MAX_TRANSCODAGES`" }
   /search:
     get:
       summary: "Recherche unique (`q`) dans la bibliothèque et dans TMDB"
