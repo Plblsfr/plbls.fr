@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use reqwest::StatusCode;
@@ -104,6 +104,7 @@ impl Requete {
 #[derive(Default)]
 struct Etat {
     file: VecDeque<Comportement>,
+    routes: HashMap<(String, String), Reponse>,
     requetes: Vec<Requete>,
 }
 
@@ -135,6 +136,14 @@ impl ServeurFactice {
 
     pub fn programmer<C: Into<Comportement>>(&self, reponses: impl IntoIterator<Item = C>) {
         self.etat.lock().unwrap().file = reponses.into_iter().map(Into::into).collect();
+    }
+
+    pub fn router(&self, methode: &str, chemin: &str, reponse: Reponse) {
+        self.etat
+            .lock()
+            .unwrap()
+            .routes
+            .insert((methode.to_string(), chemin.to_string()), reponse);
     }
 
     pub fn adresse(&self) -> &str {
@@ -224,8 +233,15 @@ async fn servir(mut flux: TcpStream, etat: Arc<Mutex<Etat>>) {
     };
     let comportement = {
         let mut etat = etat.lock().unwrap();
+        let route = etat
+            .routes
+            .get(&(requete.methode.clone(), requete.chemin.clone()))
+            .cloned()
+            .map(Comportement::Repondre);
         etat.requetes.push(requete);
-        if etat.file.len() > 1 {
+        if route.is_some() {
+            route
+        } else if etat.file.len() > 1 {
             etat.file.pop_front()
         } else {
             etat.file.front().cloned()

@@ -145,6 +145,12 @@ impl FluxTempsReel {
     pub fn essayer(&mut self) -> Option<Signal> {
         self.0.try_recv().ok()
     }
+
+    #[cfg(test)]
+    pub(crate) fn factice() -> (mpsc::UnboundedSender<Signal>, Self) {
+        let (entree, sortie) = mpsc::unbounded_channel();
+        (entree, Self(sortie))
+    }
 }
 
 enum Commande {

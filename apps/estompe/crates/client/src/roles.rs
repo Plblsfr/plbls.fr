@@ -208,6 +208,20 @@ pub fn nom_affiche<'a>(pseudo: &'a str, pseudo_de_serveur: Option<&'a str>) -> &
         .unwrap_or(pseudo)
 }
 
+pub fn membre_exclu(membre: Option<&Membre>, maintenant_ms: i64) -> bool {
+    est_exclu(
+        membre.and_then(|m| m.timeout_until.as_deref()),
+        maintenant_ms,
+    )
+}
+
+pub fn nom_du_membre(membre: &Membre) -> &str {
+    nom_affiche(
+        membre.pseudo.as_deref().unwrap_or_default(),
+        membre.nickname.as_deref(),
+    )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupeMembres<'a> {
     pub role: Option<&'a Role>,
@@ -341,6 +355,7 @@ mod tests {
             pseudo: Some(id.into()),
             online: Some(false),
             roles: Some(roles.iter().map(|r| r.to_string()).collect()),
+            ..Membre::default()
         }
     }
 
@@ -485,6 +500,20 @@ mod tests {
         assert!(est_exclu(Some("2026-10-26T12:00:01Z"), maintenant));
         assert!(!est_exclu(Some("2026-10-26T12:00:00Z"), maintenant));
         assert!(!est_exclu(None, maintenant));
+        let exclu = |fin: Option<&str>| Membre {
+            timeout_until: fin.map(str::to_string),
+            ..Membre::default()
+        };
+        assert!(membre_exclu(
+            Some(&exclu(Some("2026-10-26T12:00:01Z"))),
+            maintenant
+        ));
+        assert!(!membre_exclu(
+            Some(&exclu(Some("2026-10-26T12:00:00Z"))),
+            maintenant
+        ));
+        assert!(!membre_exclu(Some(&exclu(None)), maintenant));
+        assert!(!membre_exclu(None, maintenant));
     }
 
     #[test]
@@ -506,5 +535,13 @@ mod tests {
         assert_eq!(nom_affiche("bob", Some("Bobby")), "Bobby");
         assert_eq!(nom_affiche("bob", Some("")), "bob");
         assert_eq!(nom_affiche("bob", None), "bob");
+        let membre = |pseudo_de_serveur: Option<&str>| Membre {
+            pseudo: Some("bob".into()),
+            nickname: pseudo_de_serveur.map(str::to_string),
+            ..Membre::default()
+        };
+        assert_eq!(nom_du_membre(&membre(Some("Bobby"))), "Bobby");
+        assert_eq!(nom_du_membre(&membre(Some(""))), "bob");
+        assert_eq!(nom_du_membre(&membre(None)), "bob");
     }
 }

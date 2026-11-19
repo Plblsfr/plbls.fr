@@ -1,14 +1,39 @@
+use std::collections::BTreeMap;
+
 use bytes::Bytes;
 use reqwest::Method;
 use serde_json::Value;
 
-use crate::http::{encoder_composant, Client, Corps, ErreurApi, Partie};
+use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
+use crate::store::CleConversation;
+use crate::temps_reel::evenements::StatutPresence;
 use crate::types::{
-    Attachment, GetMeReponse, MessagePage, Name50, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, Server,
+    Attachment, GetMeReponse, GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse,
+    Mention, MessagePage, Name50, NotifySettings, Person, PostActivateRequete,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostNotificationsReadRequete,
+    PutMeStatusRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
+
+pub fn code_d_invitation(saisie: &str) -> String {
+    let saisie = saisie.trim();
+    let fin: Vec<char> = saisie.chars().rev().take(11).collect();
+    let forme = fin.len() == 11
+        && fin.iter().enumerate().all(|(i, c)| {
+            if i == 5 {
+                *c == '-'
+            } else {
+                c.is_ascii_alphanumeric()
+            }
+        });
+    let code = if forme {
+        fin.into_iter().rev().collect::<String>()
+    } else {
+        saisie.to_string()
+    };
+    code.to_uppercase()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Page {
@@ -73,8 +98,92 @@ impl Client {
         .await
     }
 
+    pub async fn rejoindre_serveur(&self, code: &str) -> Result<Server, ErreurApi> {
+        self.requete(
+            Method::POST,
+            &format!("/server-invites/{}/join", encoder_composant(code)),
+            &Corps::Aucun,
+            OptionsAppel::default(),
+        )
+        .await?
+        .ok_or_else(|| ErreurApi::ReponseInvalide("réponse sans corps JSON".to_string()))
+    }
+
     pub async fn serveurs(&self) -> Result<Vec<Server>, ErreurApi> {
         self.get("/servers").await
+    }
+
+    pub async fn serveur(&self, serveur: &str) -> Result<GetServersIdReponse, ErreurApi> {
+        self.get(&format!("/servers/{serveur}")).await
+    }
+
+    pub async fn conversations_privees(&self) -> Result<Vec<DM>, ErreurApi> {
+        self.get("/dms").await
+    }
+
+    pub async fn notifications(&self) -> Result<Vec<Mention>, ErreurApi> {
+        self.get("/notifications").await
+    }
+
+    pub async fn lire_notifications(&self, messages: &[String]) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PostNotificationsReadRequete {
+            message_ids: Some(messages.to_vec()),
+        })?;
+        self.envoyer(Method::POST, "/notifications/read", &corps)
+            .await
+    }
+
+    pub async fn non_lus(&self) -> Result<GetUnreadReponse, ErreurApi> {
+        self.get("/unread").await
+    }
+
+    pub async fn marquer_lu(&self, conversation: &CleConversation) -> Result<(), ErreurApi> {
+        let chemin = match conversation {
+            CleConversation::Salon(id) => format!("/channels/{id}/read"),
+            CleConversation::Prive(id) => format!("/dms/{id}/read"),
+        };
+        self.envoyer(Method::POST, &chemin, &Corps::Aucun).await
+    }
+
+    pub async fn statuts(&self) -> Result<BTreeMap<String, StatutPresence>, ErreurApi> {
+        self.get("/statuses").await
+    }
+
+    pub async fn definir_statut(&self, statut: StatutPresence) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutMeStatusRequete {
+            status: Some(statut),
+        })?;
+        self.envoyer(Method::PUT, "/me/status", &corps).await
+    }
+
+    pub async fn reglages_notification(&self) -> Result<NotifySettings, ErreurApi> {
+        self.get("/me/notify-settings").await
+    }
+
+    pub async fn enregistrer_reglages_notification(
+        &self,
+        reglages: &NotifySettings,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(Method::PUT, "/me/notify-settings", &Corps::json(reglages)?)
+            .await
+    }
+
+    pub async fn versions_avatars(&self) -> Result<BTreeMap<String, i64>, ErreurApi> {
+        self.get("/avatars").await
+    }
+
+    pub async fn versions_avatars_du_serveur(
+        &self,
+        serveur: &str,
+    ) -> Result<BTreeMap<String, i64>, ErreurApi> {
+        self.get(&format!("/servers/{serveur}/avatars")).await
+    }
+
+    pub async fn vocal_du_serveur(
+        &self,
+        serveur: &str,
+    ) -> Result<GetServersIdVoiceReponse, ErreurApi> {
+        self.get(&format!("/servers/{serveur}/voice")).await
     }
 
     pub async fn creer_serveur(&self, nom: &str) -> Result<Server, ErreurApi> {
@@ -345,6 +454,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn extrait_le_code_d_un_lien_ou_d_une_saisie() {
+        for (saisie, attendu) in [
+            ("abcde-23456", "ABCDE-23456"),
+            ("  https://chat.plbls.fr/#/join/abcde-23456 ", "ABCDE-23456"),
+            ("estompe://join/Q2W3E-R4T5Y", "Q2W3E-R4T5Y"),
+            ("xabcde-23456", "ABCDE-23456"),
+            ("court", "COURT"),
+            ("abcde_23456", "ABCDE_23456"),
+            ("", ""),
+        ] {
+            assert_eq!(code_d_invitation(saisie), attendu, "{saisie:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn rejoint_un_serveur_par_son_code_sans_corps() {
+        let serveur =
+            ServeurFactice::demarrer([Reponse::json(200, json!({"id": "s1", "name": "Amis"}))])
+                .await;
+        let rejoint = serveur.client().rejoindre_serveur("AB/12").await.unwrap();
+        assert_eq!(rejoint.name.as_deref(), Some("Amis"));
+        let requete = &serveur.requetes()[0];
+        assert_eq!(requete.ligne(), ("/server-invites/AB%2F12/join", "POST"));
+        assert!(requete.corps.is_empty());
+        assert_eq!(requete.entete("content-type"), None);
+    }
+
     #[tokio::test]
     async fn gere_les_204_sans_corps_et_les_chemins_encodes() {
         let serveur = ServeurFactice::demarrer([Reponse::vide(204)]).await;
@@ -599,6 +736,56 @@ mod tests {
                 "/servers/s1/users/u1/avatar",
                 "/me/camera-background",
                 "/servers/s1/icon",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn construit_les_routes_du_store() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(204)]).await;
+        let client = serveur.client();
+        client
+            .marquer_lu(&CleConversation::Salon("c1".into()))
+            .await
+            .unwrap();
+        client
+            .marquer_lu(&CleConversation::Prive("d1".into()))
+            .await
+            .unwrap();
+        client.lire_notifications(&["7".to_string()]).await.unwrap();
+        client.definir_statut(StatutPresence::Dnd).await.unwrap();
+        client
+            .enregistrer_reglages_notification(&NotifySettings {
+                sound: Some(false),
+                ..NotifySettings::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/channels/c1/read", "POST"),
+                ligne("/dms/d1/read", "POST"),
+                ligne("/notifications/read", "POST"),
+                ligne("/me/status", "PUT"),
+                ligne("/me/notify-settings", "PUT"),
+            ]
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(requetes[2].json(), json!({"message_ids": ["7"]}));
+        assert_eq!(requetes[3].json(), json!({"status": "dnd"}));
+        assert_eq!(requetes[4].json(), json!({"sound": false}));
+        serveur.programmer([Reponse::json(
+            200,
+            json!({"u1": "idle", "u2": "dnd", "u3": "invisible"}),
+        )]);
+        let statuts = client.statuts().await.unwrap();
+        assert_eq!(
+            statuts.values().copied().collect::<Vec<_>>(),
+            [
+                StatutPresence::Idle,
+                StatutPresence::Dnd,
+                StatutPresence::Inconnu
             ]
         );
     }
