@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Realtime, wsUrl } from './realtime'
+import { Realtime, coupureDifferee, wsUrl } from './realtime'
 
 class FakeWS {
   static all: FakeWS[] = []
@@ -28,6 +28,9 @@ function make(extra: Partial<ConstructorParameters<typeof Realtime>[0]> = {}) {
   return { rt, events, status }
 }
 const flush = () => vi.advanceTimersByTimeAsync(0)
+async function vivant(ws: FakeWS, ms: number) {
+  for (let t = 0; t < ms; t += 10_000) { await vi.advanceTimersByTimeAsync(10_000); ws.recv({ type: 'pong' }) }
+}
 
 beforeEach(() => { vi.useFakeTimers(); FakeWS.all = []; vi.spyOn(Math, 'random').mockReturnValue(1) })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
@@ -153,6 +156,45 @@ describe('Realtime', () => {
     rt.stop()
   })
 
+  it('renouvelle la session sur la connexion ouverte sans la fermer', async () => {
+    const { rt, events, status } = make()
+    rt.start(); await flush()
+    const ws = FakeWS.all[0]
+    ws.open()
+    await vivant(ws, 60_000)
+    expect(ws.sent).toContain('{"type":"renew","data":{"ticket":"t2"}}')
+    ws.recv({ type: 'renewed' })
+    await vivant(ws, 60_000)
+    expect(ws.sent).toContain('{"type":"renew","data":{"ticket":"t3"}}')
+    expect(events).toEqual([])
+    expect(FakeWS.all).toHaveLength(1)
+    expect(status).toEqual(['connecting', 'open'])
+    rt.stop()
+  })
+
+  it("n'envoie pas de renouvellement si le ticket échoue ou si la connexion a été fermée entre-temps", async () => {
+    let n = 0
+    let libere: (t: string) => void = () => {}
+    const { rt } = make({
+      getTicket: () => {
+        n++
+        if (n === 2) return Promise.reject(new Error('réseau'))
+        if (n === 3) return new Promise<string>((r) => { libere = r })
+        return Promise.resolve(`t${n}`)
+      },
+    })
+    rt.start(); await flush()
+    const ws = FakeWS.all[0]
+    ws.open()
+    await vivant(ws, 120_000)
+    expect(n).toBe(3)
+    ws.drop()
+    libere('tardif')
+    await flush()
+    expect(ws.sent.filter((m) => m.includes('renew'))).toEqual([])
+    rt.stop()
+  })
+
   it('stop() ferme et empêche toute reconnexion', async () => {
     const { rt, status } = make()
     rt.start(); await flush()
@@ -161,6 +203,36 @@ describe('Realtime', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     expect(FakeWS.all).toHaveLength(1)
     expect(status.at(-1)).toBe('closed')
+  })
+})
+
+describe('coupureDifferee', () => {
+  it("n'affiche le bandeau qu'après une coupure durable, et le masque à la reconnexion", async () => {
+    const vus: boolean[] = []
+    const signaler = coupureDifferee((v) => vus.push(v), 3_000)
+    signaler('closed')
+    signaler('connecting')
+    await vi.advanceTimersByTimeAsync(2_999)
+    signaler('open')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(vus).toEqual([])
+    signaler('closed')
+    await vi.advanceTimersByTimeAsync(2_000)
+    signaler('connecting')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(vus).toEqual([true])
+    signaler('closed')
+    signaler('open')
+    expect(vus).toEqual([true, false])
+  })
+
+  it("arrêt volontaire : bandeau masqué et minuteur annulé", async () => {
+    const vus: boolean[] = []
+    const signaler = coupureDifferee((v) => vus.push(v), 3_000)
+    signaler('closed')
+    signaler(null)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(vus).toEqual([])
   })
 })
 

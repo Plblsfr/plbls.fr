@@ -23,7 +23,7 @@ vi.mock('../sections/sablier/sablier', async (orig) => ({
   sablierOn: () => sablierMock.on,
   sablierApi: { me: vi.fn(async () => { if (!sablierMock.me) throw new TypeError('Failed to fetch'); return sablierMock.me }), nonVus: vi.fn(async () => ({ trophies: sablierMock.nonVus, recaps: 0 })) },
 }))
-vi.mock('./realtime', () => ({ Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
+vi.mock('./realtime', async (original) => ({ ...(await original<typeof import('./realtime')>()), Realtime: class { start() {} stop() {} }, wsUrl: () => '' }))
 
 import { AppStore } from './store.svelte'
 import { sablier as etatSablier } from '../sections/sablier/sablier.svelte'

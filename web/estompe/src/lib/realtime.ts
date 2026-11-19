@@ -53,6 +53,7 @@ export interface RealtimeEvents {
   'voice.share': Salon & { user_id: string; source: 'screen' | 'camera'; on: boolean }
   'voice.mod': Salon & { user_id: string; mic_off: boolean; sound_off: boolean }
   pong: Record<string, never>
+  renewed: Record<string, never>
 }
 
 export type RealtimeEvent = { [K in keyof RealtimeEvents]: { type: K; data: RealtimeEvents[K] } }[keyof RealtimeEvents]
@@ -77,8 +78,10 @@ export interface RealtimeOptions {
 const PING_EVERY = 10_000
 const DEAD_AFTER = 25_000
 const MAX_WAIT = 5_000
+const RENEW_EVERY = 60_000
+const BANDEAU_APRES = 3_000
 
-/** Client WebSocket : ticket, reconnexion (immédiate au premier essai, puis attente croissante plafonnée), reprise sur évènement réseau, ping applicatif, détection de connexion morte. */
+/** Client WebSocket : ticket, reconnexion (immédiate au premier essai, puis attente croissante plafonnée), reprise sur évènement réseau, ping applicatif, détection de connexion morte, renouvellement de la session sans fermer la connexion. */
 export class Realtime {
   private ws: WebSocket | null = null
   private stopped = true
@@ -86,6 +89,7 @@ export class Realtime {
   private everOpen = false
   private timers: ReturnType<typeof setTimeout>[] = []
   private ping: ReturnType<typeof setInterval> | null = null
+  private renew: ReturnType<typeof setInterval> | null = null
   private lastSeen = 0
   private lostAt = 0
   private pending = false
@@ -130,6 +134,19 @@ export class Realtime {
     this.timers = []
     if (this.ping) clearInterval(this.ping)
     this.ping = null
+    if (this.renew) clearInterval(this.renew)
+    this.renew = null
+  }
+
+  /** Le serveur revalide le justificatif présenté à l'ouverture : on lui en transmet un frais (nouveau ticket) avant qu'il n'expire. */
+  private async renouveler(ws: WebSocket) {
+    let ticket: string
+    try {
+      ticket = await this.o.getTicket()
+    } catch {
+      return
+    }
+    if (this.ws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'renew', data: { ticket } }))
   }
 
   private async connect() {
@@ -162,12 +179,13 @@ export class Realtime {
         if (Date.now() - this.lastSeen > DEAD_AFTER) { ws.close(); return }
         if (ws.readyState === 1) ws.send('{"type":"ping"}')
       }, PING_EVERY)
+      this.renew = setInterval(() => void this.renouveler(ws), RENEW_EVERY)
     }
     ws.onmessage = (m) => {
       this.lastSeen = Date.now()
       try {
         const ev = JSON.parse(m.data as string) as RealtimeEvent
-        if (ev.type !== 'pong') this.o.onEvent(ev)
+        if (ev.type !== 'pong' && ev.type !== 'renewed') this.o.onEvent(ev)
       } catch { /* trame illisible : ignorée */ }
     }
     ws.onclose = (ev) => {
@@ -190,6 +208,25 @@ export class Realtime {
     const base = this.attempt++ === 0 ? 0 : Math.min(MAX_WAIT, 1000 * 2 ** (this.attempt - 2))
     const delay = base / 2 + Math.random() * (base / 2)
     this.timers.push(setTimeout(() => void this.connect(), delay))
+  }
+}
+
+/**
+ * Bandeau de coupure : une reconnexion rapide (veille, réseau, renouvellement de session) ne doit pas le faire clignoter.
+ * Renvoie la fonction à appeler à chaque changement d'état (`null` : arrêt volontaire, bandeau masqué).
+ */
+export function coupureDifferee(onChange: (coupe: boolean) => void, delai = BANDEAU_APRES) {
+  let minuteur: ReturnType<typeof setTimeout> | null = null
+  let coupe = false
+  const poser = (v: boolean) => { if (v !== coupe) { coupe = v; onChange(v) } }
+  return (s: RealtimeStatus | null) => {
+    if (s === 'open' || s === null) {
+      if (minuteur) clearTimeout(minuteur)
+      minuteur = null
+      poser(false)
+      return
+    }
+    if (!minuteur && !coupe) minuteur = setTimeout(() => { minuteur = null; poser(true) }, delai)
   }
 }
 

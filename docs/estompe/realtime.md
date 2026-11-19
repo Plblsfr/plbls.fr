@@ -8,7 +8,11 @@ WebSocket ne sert qu'à recevoir, plus un ping applicatif.
 1. `POST /ws-ticket` (authentifié comme le reste de l'API : cookie ou Bearer) → `{"ticket": "..."}`.
    Un navigateur ne peut pas mettre d'en-tête sur un WebSocket, d'où le ticket : à usage unique, valable 30 s.
 2. Ouvrir `wss://<hôte>/ws?ticket=<ticket>` (facultatif : `&platform=web|pwa|windows|android&v=<version>`, affichés dans le tableau de bord d'administration et journalisés ; une version sous le minimum de la plateforme est refusée par 426 `upgrade_required`). L'en-tête `Origin`, s'il est présent, doit être autorisé.
-3. Le service revalide la session auprès du gateway toutes les 2 minutes. Si elle a expiré, il ferme avec le code **4401** :
+3. Le service revalide la session auprès du gateway toutes les 2 minutes, avec le justificatif (cookie ou Bearer) qui a obtenu le ticket.
+   Un Bearer ne dure que quelques minutes : pour garder la connexion ouverte, le client envoie régulièrement (l'app web : toutes les minutes)
+   un nouveau ticket, `{"type":"renew","data":{"ticket":"..."}}` ; si le ticket est valide et appartient au même compte, son justificatif
+   remplace l'ancien et le serveur répond `{"type":"renewed"}` (sinon il ne répond rien et garde l'ancien).
+   Si la session a expiré, il ferme avec le code **4401** :
    le client doit se reconnecter (nouveau ticket, après avoir rafraîchi sa session).
    Il vérifie aussi la permission `estompe:access` : si elle est retirée (ou si le service de permission reste injoignable
    plus de 10 minutes), il expulse l'utilisateur du vocal et ferme avec le code **4403** : le client ne se reconnecte pas
@@ -74,6 +78,7 @@ Chaque trame texte est un JSON `{"type": "...", "data": ...}`. Pour garder la co
 | `draw.ops` | membres qui voient le salon | `{server_id, channel_id, seq, ops[]}` — opérations de dessin vectorielles `{op: stroke, id, tool, color, size, pts}`, `{op: undo}` ou `{op: clear}`, numérotées par `seq` (un par opération, `state.draw_seq` à jour). Les évènements peuvent arriver dans le désordre : le client applique par `seq` croissant et, s'il manque un numéro, relit `drawing` avec `GET /voice/{salon}/draw` |
 | `videos.changed` | membres qui voient le salon | `{server_id, channel_id}` — le contenu d'un salon « Vidéos » ou « Musique » a changé (carte publiée ou enrichie, vue par le groupe, liste, séance planifiée, répondue, annulée ou lancée, EST-149) ; le client qui l'a ouvert recharge `GET /channels/{salon}/videos`. Réactions, réponses et suppressions de messages passent par leurs évènements habituels (le compte de la carte suit `reaction.updated`) |
 | `pong` | l'utilisateur | réponse à `ping` |
+| `renewed` | l'utilisateur | réponse à `renew` : le nouveau justificatif est retenu |
 
 **Réactions et `me`** : dans `message.created`/`message.updated`, le champ `reactions[].me` est calculé pour l'auteur du message, pas pour le destinataire. Le client garde ses propres réactions (mises à jour par `reaction.updated`) et ne reprend du message reçu que le contenu, les pièces jointes, les mentions et `edited_at`.
 

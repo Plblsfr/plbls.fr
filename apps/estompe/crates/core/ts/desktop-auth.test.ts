@@ -48,7 +48,9 @@ describe('TokenManager', () => {
     const tm = new TokenManager({ issuer: ISS, clientId: 'c', store, fetch: f as any, now: () => t })
     expect(await tm.getAccessToken()).toBe('A2')
     expect(store.value).toBe('R2')
-    t += 280_000 // 20 s avant l'expiration : sous la marge de 30 s
+    t += 200_000
+    expect(await tm.getAccessToken()).toBe('A2')
+    t += 15_000
     f.mockImplementation(async () => ok({ access_token: 'A3', refresh_token: 'R3', expires_in: 300 }))
     expect(await tm.getAccessToken()).toBe('A3')
     expect(store.value).toBe('R3')

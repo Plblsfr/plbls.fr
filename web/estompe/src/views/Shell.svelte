@@ -146,7 +146,7 @@
   <button class="scrim" aria-label="Fermer le menu" onclick={() => (nav = false)}></button>
 
   <main class="main" id="main" tabindex="-1">
-    {#if app.connection === 'closed' || app.connection === 'connecting'}
+    {#if app.coupure}
       <div class="conn-banner" role="status">Reconnexion en cours…</div>
     {/if}
     {#if modal === 'settings'}

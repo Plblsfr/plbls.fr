@@ -26,7 +26,7 @@ système de Chromium doivent être présentes).
 
 ## Structure
 
-- `src/lib` : `api` (REST), `realtime` (WebSocket : ticket, reconnexion, ping), `store.svelte.ts` (état et évènements),
+- `src/lib` : `api` (REST), `realtime` (WebSocket : ticket, reconnexion, ping, renouvellement de session, bandeau de coupure différé), `store.svelte.ts` (état et évènements),
   `markdown` (rendu + DOMPurify), `route.svelte.ts` (routeur sur le hash), `voice.svelte.ts` (LiveKit, chargé à la demande),
   `config.ts` (config d'exécution).
 - `src/lib/platform.ts` : interface `Platform` (connexion, mises à jour, notifications, partage natif, raccourci global, espaces, emplacements d'interface…) et objet `platform` que tout le frontend appelle. Le frontend ne teste jamais la plateforme (`isDesktop`, agent, `__TAURI_INTERNALS__`) : chaque plateforme fournit son code. Chaque plateforme (`plateforme/` pour le web, `apps/estompe/windows/` et `apps/estompe/android/` à la racine du dépôt) a un `src/platform.ts` qui exporte son `platform` ; le mode de build choisit lequel (`@platform`, alias Vite) : `vite build` (web), `--mode windows`, `--mode android` (URL de production lues dans `plbls.env` à la racine du dépôt). `src/platform-init.ts`, premier import de `main.ts`, l'installe. Le code partagé par les deux apps Tauri (OAuth PKCE, `native_fetch`, journal debug) est dans `apps/estompe/crates/core/ts/`.

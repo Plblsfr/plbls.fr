@@ -13,6 +13,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::Serialize;
 use serde_json::{Value, json};
+use tokio::sync::watch;
 use tokio::time::{Instant, MissedTickBehavior, interval_at, timeout, timeout_at};
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -185,10 +186,21 @@ fn fermeture(code: u16, raison: &str) -> Message {
     }))
 }
 
-fn est_ping(octets: &[u8]) -> bool {
-    serde_json::from_slice::<Value>(octets)
-        .ok()
-        .is_some_and(|v| v["type"] == "ping")
+enum Requete {
+    Ping,
+    Renouveler(String),
+    Autre,
+}
+
+fn requete(octets: &[u8]) -> Requete {
+    let Ok(v) = serde_json::from_slice::<Value>(octets) else {
+        return Requete::Autre;
+    };
+    match (v["type"].as_str(), v["data"]["ticket"].as_str()) {
+        (Some("ping"), _) => Requete::Ping,
+        (Some("renew"), Some(t)) => Requete::Renouveler(t.to_string()),
+        _ => Requete::Autre,
+    }
 }
 
 async fn connexion(
@@ -225,8 +237,10 @@ async fn connexion(
 
     let durees = state.durees_ws();
     let (mut envoi, mut reception) = socket.split();
+    let (maj_cred, cred) = watch::channel(cred);
     let mut lecture = tokio::spawn({
         let conn = conn.clone();
+        let state = state.clone();
         async move {
             let mut echeance = Instant::now() + durees.idle;
             loop {
@@ -235,19 +249,23 @@ async fn connexion(
                     Ok(Some(Err(_))) => return (TROP_GRAND, "message trop grand"),
                     _ => return (FERMETURE_NORMALE, ""),
                 };
-                match message {
-                    Message::Text(t) => {
-                        if est_ping(t.as_bytes()) {
-                            conn.enqueue(enveloppe("pong", &Value::Null));
-                        }
-                    }
-                    Message::Binary(b) => {
-                        if est_ping(&b) {
-                            conn.enqueue(enveloppe("pong", &Value::Null));
-                        }
-                    }
+                let octets = match &message {
+                    Message::Text(t) => t.as_bytes(),
+                    Message::Binary(b) => b,
                     Message::Close(_) => return (FERMETURE_NORMALE, ""),
                     Message::Ping(_) | Message::Pong(_) => continue,
+                };
+                match requete(octets) {
+                    Requete::Ping => conn.enqueue(enveloppe("pong", &Value::Null)),
+                    Requete::Renouveler(ticket) => {
+                        if let Some((id, nouveau)) = state.hub().redeem_ticket(&ticket)
+                            && id == conn.user_id
+                        {
+                            maj_cred.send_replace(nouveau);
+                            conn.enqueue(enveloppe("renewed", &Value::Null));
+                        }
+                    }
+                    Requete::Autre => {}
                 }
                 echeance = Instant::now() + durees.idle;
             }
@@ -267,7 +285,8 @@ async fn connexion(
                 }
             }
             _ = tick.tick() => {
-                match state.identity().revalidate(Some(&cred)).await {
+                let courante = cred.borrow().clone();
+                match state.identity().revalidate(Some(&courante)).await {
                     Err(Erreur::Invalid) => break Some((SESSION_EXPIREE, "session expirée")),
                     Ok(Identity { sub: s, .. }) => sub = s,
                     Err(Erreur::Unavailable) => {}
@@ -363,7 +382,7 @@ mod tests {
         refuses: Arc<Mutex<HashSet<String>>>,
         permission_hs: Arc<AtomicBool>,
         serveur: JoinHandle<()>,
-        _gateway: Faux,
+        gateway: Faux,
         permission: Faux,
         _pg: BasePostgres,
     }
@@ -390,10 +409,11 @@ mod tests {
             let revoques = revoques.clone();
             move |r| {
                 let auth = r.entete("authorization");
-                let nom = auth.strip_prefix("Bearer ").unwrap_or_default();
-                if nom.is_empty() || revoques.lock().unwrap().contains(nom) {
+                let jeton = auth.strip_prefix("Bearer ").unwrap_or_default();
+                if jeton.is_empty() || revoques.lock().unwrap().contains(jeton) {
                     return (401, vec![]);
                 }
+                let nom = jeton.split('~').next().unwrap_or_default();
                 let corps = json!({ "id": format!("sub-{nom}"), "name": nom, "email": "" });
                 (200, corps.to_string().into_bytes())
             }
@@ -442,7 +462,7 @@ mod tests {
             refuses,
             permission_hs,
             serveur,
-            _gateway: gateway,
+            gateway,
             permission,
             _pg: pg,
         })
@@ -861,6 +881,63 @@ mod tests {
         };
         e.utilisateur("alice").await;
         let mut w = e.connect_ready("alice").await;
+        e.revoques.lock().unwrap().insert("alice".into());
+        assert_eq!(
+            fermeture(&mut w).await,
+            Some((4401, "session expirée".to_string()))
+        );
+    }
+
+    async fn renouveler(w: &mut Client, ticket: &str) {
+        let trame = json!({ "type": "renew", "data": { "ticket": ticket } });
+        w.send(Message::Text(trame.to_string().into()))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn session_renouvelee_sans_fermer_la_connexion() {
+        let Some(e) = env(durees_rapides(Duration::from_secs(600))).await else {
+            return;
+        };
+        let a = e.utilisateur("alice").await;
+        let mut w = e.connect_ready("alice").await;
+        let ticket = e.ticket_valide("alice~2").await;
+        renouveler(&mut w, &ticket).await;
+        assert_eq!(attendre(&mut w, "renewed").await, Value::Null);
+        e.revoques.lock().unwrap().insert("alice".into());
+        let avant = e.gateway.appels();
+        jusqua(|| e.gateway.appels() >= avant + 3).await;
+        assert!(e.state.hub().online(&a));
+        w.send(Message::Text(r#"{"type":"ping"}"#.into()))
+            .await
+            .unwrap();
+        attendre(&mut w, "pong").await;
+        e.revoques.lock().unwrap().insert("alice~2".into());
+        assert_eq!(
+            fermeture(&mut w).await,
+            Some((4401, "session expirée".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn renouvellement_refuse_pour_un_autre_compte_ou_un_ticket_invalide() {
+        let Some(e) = env(durees_rapides(Duration::from_secs(600))).await else {
+            return;
+        };
+        e.utilisateur("alice").await;
+        e.utilisateur("bob").await;
+        let mut w = e.connect_ready("alice").await;
+        let ticket_bob = e.ticket_valide("bob").await;
+        renouveler(&mut w, &ticket_bob).await;
+        renouveler(&mut w, "faux").await;
+        w.send(Message::Text(r#"{"type":"renew"}"#.into()))
+            .await
+            .unwrap();
+        w.send(Message::Text(r#"{"type":"ping"}"#.into()))
+            .await
+            .unwrap();
+        assert_eq!(suivant(&mut w).await.0, "pong");
         e.revoques.lock().unwrap().insert("alice".into());
         assert_eq!(
             fermeture(&mut w).await,
