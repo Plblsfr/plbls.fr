@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -9,25 +10,43 @@ use estompe_client::markdown::{analyser, texte_brut};
 use estompe_client::mention::Mentionnables;
 use estompe_client::store::messages::{auteur, ChangementMessages, Conversation};
 use estompe_client::store::{Changement, CleConversation, Store};
-use estompe_plateforme::{Indisponible, OuvertureUrl};
-use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
+use estompe_client::types::LinkPreview;
+use estompe_plateforme::{Fichiers, Indisponible, OuvertureUrl, PressePapiers};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 
+use super::annexes::{carte_affichee, chemin_libre, taille_de_vignette, CarteAffichee};
 use super::defilement::{Alignement, Defilement};
+use super::emoji;
 use super::lignes::{
     donnees_message, lignes_de_conversation, mentionnables, premier_non_lu, utilisateur_mentionne,
-    ContexteLignes, DonneesAnnexes, DonneesLigne, DonneesMessage, GenreLigne,
+    ContexteLignes, DonneesAnnexes, DonneesLigne, DonneesMessage, DonneesPiece, GenreLigne,
+    GenrePiece,
 };
-use super::rendu::{analyser_cible, blocs_affiches, BlocAffiche, Cible, GenreBlocAffiche, Palette};
+use super::medias::{CleImage, Decodee, Format, Medias, Progres, Source, SourceMedias};
+use super::rendu::{
+    analyser_cible, blocs_affiches, BlocAffiche, Cible, GenreBlocAffiche, GenreSegmentAffiche,
+    Palette,
+};
 use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
+use crate::entree::Futur;
 use crate::{
-    AnnexesMessage, BlocTexte, DonneesMessagerie, EtatConversation, GenreBloc, GenreLigneMessage,
-    LigneMessage, Principale, ReactionMessage, ReponseMessage, Theme,
+    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EtatConversation,
+    EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe,
+    GenreSegment, LigneMessage, OptionSondage, PieceJointe, Principale, ReactionMessage,
+    ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
 };
 
 pub type Fuseau = Arc<dyn Fn(i64) -> i32 + Send + Sync>;
 pub type Navigateur = Arc<dyn OuvertureUrl + Send + Sync>;
+pub type HorlogeMs = Arc<dyn Fn() -> i64 + Send + Sync>;
+pub type SystemeFichiers = Arc<dyn Fichiers + Send + Sync>;
+pub type Presse = Arc<dyn PressePapiers + Send + Sync>;
+pub type DossierParDefaut = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
+
+pub const ZOOM_MAX: f32 = 8.0;
+pub const PAS_DE_PROGRESSION: u8 = 1;
 
 pub const CAPACITE_RENDUS: usize = 512;
 pub const DUREE_MISE_EN_EVIDENCE: Duration = Duration::from_millis(1500);
@@ -42,6 +61,8 @@ const HAUTEUR_LIGNE_TEXTE: f64 = 23.0;
 const GOUTTIERE: f64 = 96.0;
 
 thread_local! {
+    static ANIMATION: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    static REVEIL_SONDAGE: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
     static MINUTERIE: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
     static PLANIFIE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PROPRIETAIRE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
@@ -80,12 +101,88 @@ pub struct Rendus {
     pub texte_brut: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Telechargement {
+    #[default]
+    Aucun,
+    EnCours,
+    Termine,
+    Echec,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EtatPiece {
+    pub telechargement: Telechargement,
+    pub progression: u8,
+    pub chemin: Option<PathBuf>,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PieceAffichee {
+    donnees: DonneesPiece,
+    largeur: u32,
+    hauteur: u32,
+    chargee: bool,
+    echec: bool,
+    index_image: i32,
+    etat: EtatPiece,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EmojiAffiche {
+    nom: String,
+    image: Option<CleImage>,
+    chargee: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MediasLigne {
+    pieces: Vec<PieceAffichee>,
+    carte: CarteAffichee,
+    carte_chargee: bool,
+    emojis: Vec<EmojiAffiche>,
+}
+
+impl Default for MediasLigne {
+    fn default() -> Self {
+        Self {
+            pieces: Vec::new(),
+            carte: CarteAffichee::Aucune,
+            carte_chargee: false,
+            emojis: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum Emplacement {
+    Piece(usize),
+    Emoji(String),
+}
+
+#[derive(Debug, Clone)]
+struct EtatAnimation {
+    image: CleImage,
+    indice: usize,
+    restant: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct EtatVisionneuse {
+    message: String,
+    index: usize,
+    zoom: f32,
+    note: String,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct LigneFenetre {
     donnees: DonneesLigne,
     rendus: Option<Arc<Rendus>>,
     portrait: bool,
     badges: Vec<Badge>,
+    medias: MediasLigne,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -106,6 +203,8 @@ pub struct Statistiques {
     pub projections: usize,
     pub conversions: usize,
     pub rendus_calcules: usize,
+    pub reveils_animation: usize,
+    pub images_animees: usize,
 }
 
 struct Interne {
@@ -144,6 +243,16 @@ struct Interne {
     operations: Vec<(Operation, String)>,
     proprietes: Proprietes,
     statistiques: Statistiques,
+    pieces: HashMap<String, EtatPiece>,
+    demandes_images: HashSet<CleImage>,
+    demandes_apercus: HashSet<String>,
+    emojis_demandes: bool,
+    animations: HashMap<(String, Emplacement), EtatAnimation>,
+    visionneuse: Option<EtatVisionneuse>,
+    apercus: bool,
+    dossier: Option<PathBuf>,
+    reveil_sondage: Option<i64>,
+    minuterie_active: bool,
 }
 
 impl Interne {
@@ -186,6 +295,16 @@ impl Interne {
             operations: Vec::new(),
             proprietes: Proprietes::default(),
             statistiques: Statistiques::default(),
+            pieces: HashMap::new(),
+            demandes_images: HashSet::new(),
+            demandes_apercus: HashSet::new(),
+            emojis_demandes: false,
+            animations: HashMap::new(),
+            visionneuse: None,
+            apercus: true,
+            dossier: None,
+            reveil_sondage: None,
+            minuterie_active: false,
         }
     }
 
@@ -198,7 +317,14 @@ impl Interne {
         let statistiques = std::mem::take(&mut self.statistiques);
         let rendus = std::mem::replace(&mut self.rendus, Lru::nouveau(0));
         let echecs = std::mem::take(&mut self.echecs_avatars);
+        let pieces = std::mem::take(&mut self.pieces);
+        let (emojis_demandes, apercus, dossier) =
+            (self.emojis_demandes, self.apercus, self.dossier.take());
         *self = Self::nouveau();
+        self.pieces = pieces;
+        self.emojis_demandes = emojis_demandes;
+        self.apercus = apercus;
+        self.dossier = dossier;
         self.palette = palette;
         self.focus = focus;
         self.generation = generation;
@@ -236,8 +362,20 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
     if m.reponse.is_some() {
         h += 24.0;
     }
-    if !m.annexes.est_vide() {
-        h += 22.0;
+    if let Some(sondage) = &m.annexes.sondage {
+        h += 110.0 + 46.0 * sondage.options.len() as f64;
+    }
+    if m.annexes.images().next().is_some() {
+        h += 196.0;
+    }
+    if m.annexes.pieces.iter().any(|p| p.genre != GenrePiece::Image) {
+        h += 44.0;
+    }
+    if m.annexes.lien.is_some() {
+        h += 90.0;
+    }
+    if !m.annexes.reactions.is_empty() {
+        h += 34.0;
     }
     h.max(if m.suite { 26.0 } else { 58.0 })
 }
@@ -294,7 +432,76 @@ fn hauteur_pseudo(cle: &str) -> f64 {
     }
 }
 
-fn bloc_slint(bloc: &BlocAffiche) -> BlocTexte {
+struct Images<'a> {
+    medias: &'a Medias,
+    emojis: &'a [EmojiAffiche],
+    animations: &'a HashMap<(String, Emplacement), EtatAnimation>,
+    cle_ligne: &'a str,
+}
+
+impl Images<'_> {
+    fn decodee(&self, cle: &CleImage, emplacement: Emplacement) -> Option<slint::Image> {
+        let image = self.medias.image(cle)?;
+        let indice = self
+            .animations
+            .get(&(self.cle_ligne.to_string(), emplacement))
+            .map_or(0, |a| a.indice);
+        Some(image_de(&image, indice))
+    }
+
+    fn emoji_serveur(&self, nom: &str) -> slint::Image {
+        self.emojis
+            .iter()
+            .find(|e| e.nom == nom)
+            .and_then(|e| e.image.as_ref())
+            .and_then(|cle| self.decodee(cle, Emplacement::Emoji(nom.to_string())))
+            .unwrap_or_default()
+    }
+}
+
+fn image_de(image: &Decodee, indice: usize) -> slint::Image {
+    match image {
+        Decodee::Fixe(i) => Image::from_rgba8(i.clone()),
+        Decodee::Animee(a) => Image::from_rgba8(a.images[indice % a.images.len()].0.clone()),
+    }
+}
+
+fn bloc_slint(bloc: &BlocAffiche, images: Option<&Images>) -> BlocTexte {
+    let segments: Vec<SegmentTexte> = bloc
+        .segments
+        .iter()
+        .map(|s| {
+            let (genre, image) = match s.genre {
+                GenreSegmentAffiche::Texte => (GenreSegment::Texte, Image::default()),
+                GenreSegmentAffiche::Code => (GenreSegment::Code, Image::default()),
+                GenreSegmentAffiche::Masque => (GenreSegment::Masque, Image::default()),
+                GenreSegmentAffiche::Emoji => (
+                    GenreSegment::Emoji,
+                    emoji::image(&s.texte).unwrap_or_default(),
+                ),
+                GenreSegmentAffiche::EmojiServeur => (
+                    GenreSegment::Emoji,
+                    images
+                        .map(|i| i.emoji_serveur(&s.cible))
+                        .unwrap_or_default(),
+                ),
+            };
+            SegmentTexte {
+                genre,
+                texte: if s.balisage.is_empty() {
+                    slint::StyledText::default()
+                } else {
+                    slint::StyledText::from_markdown(&s.balisage)
+                        .unwrap_or_else(|_| slint::StyledText::from_plain_text(&s.texte))
+                },
+                brut: s.texte.as_str().into(),
+                image,
+                espace: s.espace,
+                joint: s.joint,
+                cible: s.cible.as_str().into(),
+            }
+        })
+        .collect();
     BlocTexte {
         genre: match bloc.genre {
             GenreBlocAffiche::Paragraphe => GenreBloc::Paragraphe,
@@ -308,29 +515,178 @@ fn bloc_slint(bloc: &BlocAffiche) -> BlocTexte {
         citation: i32::from(bloc.citation),
         retrait: i32::from(bloc.retrait),
         puce: bloc.puce.as_str().into(),
+        en_segments: bloc.en_segments(),
+        segments: ModelRc::new(VecModel::from(segments)),
+        grand: bloc.grand,
+        espace_avant: bloc.espace_avant,
     }
 }
 
-fn annexes_slint(a: &DonneesAnnexes) -> AnnexesMessage {
+fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
+    let image = if p.chargee {
+        images
+            .decodee(&cle_vignette(&p.donnees.id), Emplacement::Piece(i))
+            .unwrap_or_default()
+    } else {
+        Image::default()
+    };
+    PieceJointe {
+        id: p.donnees.id.as_str().into(),
+        genre: match p.donnees.genre {
+            GenrePiece::Image => GenrePieceJointe::Image,
+            GenrePiece::Fichier => GenrePieceJointe::Fichier,
+            GenrePiece::Media => GenrePieceJointe::Media,
+            GenrePiece::Expiree => GenrePieceJointe::Expiree,
+        },
+        nom: p.donnees.nom.as_str().into(),
+        taille: p.donnees.taille.as_str().into(),
+        largeur: p.largeur as f32,
+        hauteur: p.hauteur as f32,
+        image,
+        chargee: p.chargee,
+        echec: p.echec,
+        anime: p.donnees.anime,
+        vocal: p.donnees.vocal,
+        index_image: p.index_image,
+        telechargement: match p.etat.telechargement {
+            Telechargement::Aucun => EtatTelechargement::Aucun,
+            Telechargement::EnCours => EtatTelechargement::EnCours,
+            Telechargement::Termine => EtatTelechargement::Termine,
+            Telechargement::Echec => EtatTelechargement::Echec,
+        },
+        progression: f32::from(p.etat.progression) / 100.0,
+        note: p.etat.note.as_str().into(),
+    }
+}
+
+fn carte_slint(m: &MediasLigne, medias: &Medias) -> CarteLien {
+    let image = if m.carte_chargee {
+        m.carte
+            .image()
+            .and_then(|cle| medias.image(&cle))
+            .map(|i| image_de(&i, 0))
+    } else {
+        None
+    };
+    let avec_image = image.is_some();
+    let image = image.unwrap_or_default();
+    match &m.carte {
+        CarteAffichee::Aucune => CarteLien::default(),
+        CarteAffichee::Lien {
+            url,
+            titre,
+            description,
+            site,
+            ..
+        } => CarteLien {
+            genre: GenreCarte::Lien,
+            url: url.as_str().into(),
+            titre: titre.as_str().into(),
+            description: description.as_str().into(),
+            site: site.as_str().into(),
+            image,
+            avec_image,
+        },
+        CarteAffichee::Youtube {
+            url, titre, site, ..
+        } => CarteLien {
+            genre: GenreCarte::Youtube,
+            url: url.as_str().into(),
+            titre: titre.as_str().into(),
+            description: SharedString::default(),
+            site: site.as_str().into(),
+            image,
+            avec_image,
+        },
+        CarteAffichee::Sillon {
+            titre,
+            site,
+            artiste,
+        } => CarteLien {
+            genre: GenreCarte::Sillon,
+            url: SharedString::default(),
+            titre: titre.as_str().into(),
+            description: artiste.as_str().into(),
+            site: site.as_str().into(),
+            image,
+            avec_image: false,
+        },
+    }
+}
+
+fn annexes_slint(a: &DonneesAnnexes, m: &MediasLigne, images: &Images) -> AnnexesMessage {
     let reactions: Vec<ReactionMessage> = a
         .reactions
         .iter()
         .map(|r| ReactionMessage {
             emoji: r.emoji.as_str().into(),
+            image: emoji::image(&r.emoji).unwrap_or_default(),
             nombre: r.nombre.clamp(0, i64::from(i32::MAX)) as i32,
             moi: r.moi,
+            titre: r.titre.as_str().into(),
+            infobulle: infobulle_de_reaction(&r.titre, &r.emoji).into(),
         })
         .collect();
+    let pieces: Vec<PieceJointe> = m
+        .pieces
+        .iter()
+        .enumerate()
+        .map(|(i, p)| piece_slint(p, images, i))
+        .collect();
+    let sondage = a
+        .sondage
+        .as_ref()
+        .map(|s| SondageMessage {
+            present: true,
+            auteur: s.auteur.as_str().into(),
+            auteur_bot: s.auteur_bot,
+            clos: s.clos,
+            options: ModelRc::new(VecModel::from(
+                s.options
+                    .iter()
+                    .map(|o| OptionSondage {
+                        libelle: o.libelle.as_str().into(),
+                        pourcentage: o.pourcentage.clamp(0, 100) as i32,
+                        votes: o.votes.clamp(0, i64::from(i32::MAX)) as i32,
+                        moi: o.moi,
+                        gagnant: o.gagnant,
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+            pied: s.pied.as_str().into(),
+        })
+        .unwrap_or_default();
     AnnexesMessage {
-        pieces_jointes: a.pieces_jointes.min(i32::MAX as usize) as i32,
-        sondage: a.sondage,
+        images: a.images().count().min(i32::MAX as usize) as i32,
+        pieces_jointes: ModelRc::new(VecModel::from(pieces)),
+        sondage,
         reactions: ModelRc::new(VecModel::from(reactions)),
-        lien: a.lien.as_deref().unwrap_or_default().into(),
+        carte: carte_slint(m, images.medias),
         resume: a.resume().into(),
     }
 }
 
-fn ligne_slint(l: &LigneFenetre, profils: &Profils) -> LigneMessage {
+pub fn infobulle_de_reaction(titre: &str, emoji: &str) -> String {
+    titre
+        .strip_suffix(emoji)
+        .and_then(|t| t.strip_suffix(" avec "))
+        .unwrap_or(titre)
+        .to_string()
+}
+
+fn cle_vignette(id: &str) -> CleImage {
+    CleImage {
+        source: Source::Fichier(id.to_string()),
+        format: Format::Vignette,
+    }
+}
+
+fn ligne_slint(
+    l: &LigneFenetre,
+    profils: &Profils,
+    medias: &Medias,
+    animations: &HashMap<(String, Emplacement), EtatAnimation>,
+) -> LigneMessage {
     let d = &l.donnees;
     if let Some(genre) = genre_pseudo(&d.cle) {
         return LigneMessage {
@@ -350,6 +706,12 @@ fn ligne_slint(l: &LigneFenetre, profils: &Profils) -> LigneMessage {
             ..LigneMessage::default()
         };
     };
+    let images = Images {
+        medias,
+        emojis: &l.medias.emojis,
+        animations,
+        cle_ligne: &d.cle,
+    };
     let couleur = couleur_slint(m.couleur.as_deref());
     let portrait = if l.portrait {
         m.avatar
@@ -363,7 +725,7 @@ fn ligne_slint(l: &LigneFenetre, profils: &Profils) -> LigneMessage {
     let blocs: Vec<BlocTexte> = l
         .rendus
         .as_ref()
-        .map(|r| r.blocs.iter().map(bloc_slint).collect())
+        .map(|r| r.blocs.iter().map(|b| bloc_slint(b, Some(&images))).collect())
         .unwrap_or_default();
     LigneMessage {
         cle: d.cle.as_str().into(),
@@ -408,7 +770,7 @@ fn ligne_slint(l: &LigneFenetre, profils: &Profils) -> LigneMessage {
             .map(|r| r.texte_brut.as_str())
             .unwrap_or_default()
             .into(),
-        annexes: annexes_slint(&m.annexes),
+        annexes: annexes_slint(&m.annexes, &l.medias, &images),
         etat_envoi: SharedString::default(),
     }
 }
@@ -445,6 +807,48 @@ pub struct PontMessagerie {
     profils: Arc<Profils>,
     fuseau: Arc<Mutex<Fuseau>>,
     navigateur: Arc<Mutex<Navigateur>>,
+    medias: Arc<Mutex<Arc<Medias>>>,
+    horloge: Arc<Mutex<HorlogeMs>>,
+    fichiers: Arc<Mutex<SystemeFichiers>>,
+    presse_papiers: Arc<Mutex<Presse>>,
+    dossier_par_defaut: Arc<Mutex<DossierParDefaut>>,
+}
+
+struct SourceIndisponible;
+
+impl SourceMedias for SourceIndisponible {
+    fn octets(&self, _: &Source) -> Futur<Result<Vec<u8>, estompe_client::http::ErreurApi>> {
+        Box::pin(async { Err(estompe_client::http::ErreurApi::DelaiDepasse) })
+    }
+    fn emojis(
+        &self,
+    ) -> Futur<Result<Vec<estompe_client::appels::EmojiPersonnalise>, estompe_client::http::ErreurApi>>
+    {
+        Box::pin(async { Err(estompe_client::http::ErreurApi::DelaiDepasse) })
+    }
+    fn apercu(
+        &self,
+        _: &str,
+        _: Option<&str>,
+    ) -> Futur<Result<Option<LinkPreview>, estompe_client::http::ErreurApi>> {
+        Box::pin(async { Err(estompe_client::http::ErreurApi::DelaiDepasse) })
+    }
+    fn telecharger(
+        &self,
+        _: &str,
+        _: PathBuf,
+        _: Progres,
+    ) -> Futur<Result<u64, estompe_client::http::ErreurApi>> {
+        Box::pin(async { Err(estompe_client::http::ErreurApi::DelaiDepasse) })
+    }
+}
+
+fn verrou_de<T: Clone>(m: &Mutex<T>) -> T {
+    m.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn maintenant_ms() -> HorlogeMs {
+    Arc::new(|| chrono::Utc::now().timestamp_millis())
 }
 
 impl PontMessagerie {
@@ -463,7 +867,61 @@ impl PontMessagerie {
             profils,
             fuseau: Arc::new(Mutex::new(fuseau_local())),
             navigateur: Arc::new(Mutex::new(Arc::new(Indisponible))),
+            medias: Arc::new(Mutex::new(Medias::nouveaux(
+                Arc::new(SourceIndisponible),
+                None,
+            ))),
+            horloge: Arc::new(Mutex::new(maintenant_ms())),
+            fichiers: Arc::new(Mutex::new(Arc::new(Indisponible))),
+            presse_papiers: Arc::new(Mutex::new(Arc::new(Indisponible))),
+            dossier_par_defaut: Arc::new(Mutex::new(Arc::new(
+                estompe_plateforme::dossier_telechargements,
+            ))),
         }
+    }
+
+    pub fn definir_medias(&self, medias: Arc<Medias>) {
+        *self.medias.lock().unwrap_or_else(|e| e.into_inner()) = medias;
+    }
+
+    pub fn medias(&self) -> Arc<Medias> {
+        verrou_de(&self.medias)
+    }
+
+    pub fn definir_horloge(&self, horloge: HorlogeMs) {
+        *self.horloge.lock().unwrap_or_else(|e| e.into_inner()) = horloge;
+    }
+
+    pub fn definir_fichiers(&self, fichiers: SystemeFichiers) {
+        *self.fichiers.lock().unwrap_or_else(|e| e.into_inner()) = fichiers;
+    }
+
+    pub fn definir_presse_papiers(&self, presse: Presse) {
+        *self.presse_papiers.lock().unwrap_or_else(|e| e.into_inner()) = presse;
+    }
+
+    pub fn definir_dossier_par_defaut(&self, dossier: DossierParDefaut) {
+        *self.dossier_par_defaut.lock().unwrap_or_else(|e| e.into_inner()) = dossier;
+    }
+
+    pub fn definir_apercus(&self, apercus: bool) {
+        self.verrou().apercus = apercus;
+    }
+
+    fn maintenant(&self) -> i64 {
+        verrou_de(&self.horloge)()
+    }
+
+    pub fn etat_piece(&self, id: &str) -> EtatPiece {
+        self.verrou().pieces.get(id).cloned().unwrap_or_default()
+    }
+
+    pub fn animations_actives(&self) -> usize {
+        self.verrou().animations.len()
+    }
+
+    pub fn minuterie_d_animation(&self) -> bool {
+        self.verrou().minuterie_active
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
@@ -564,7 +1022,11 @@ impl PontMessagerie {
         let g = f.global::<DonneesMessagerie>();
         vec_de(&g.get_lignes()).set_vec(Vec::new());
         g.set_defilement(0.0);
+        g.set_visionneuse(Visionneuse::default());
         PROPRIETAIRE.with(|p| p.set(self.identifiant));
+        ANIMATION.with(|a| *a.borrow_mut() = None);
+        self.medias().noter_fil_interface();
+        self.charger_emojis(false);
         self.reprojeter(f);
     }
 
@@ -644,6 +1106,7 @@ impl PontMessagerie {
                     reprojeter = true;
                 }
                 Changement::Avatar { .. } => reprojeter = true,
+                Changement::Emojis { .. } => self.charger_emojis(true),
                 _ => {}
             }
         }
@@ -802,7 +1265,9 @@ impl PontMessagerie {
         let nouveau = i.nouveau_depuis.clone();
         let evidence = i.mis_en_evidence.clone();
         let supprimes = i.supprimes.clone();
+        let apercus = i.apercus;
         drop(i);
+        let maintenant = self.maintenant();
         self.store.lire(|etat| {
             lignes_de_conversation(
                 &c.messages,
@@ -813,6 +1278,8 @@ impl PontMessagerie {
                     mis_en_evidence: evidence.as_deref(),
                     supprimes: &supprimes,
                     decalage_minutes: decalage,
+                    maintenant_ms: maintenant,
+                    apercus,
                 },
             )
         })
@@ -833,7 +1300,7 @@ impl PontMessagerie {
                 .clone();
             fuseau(chrono::Utc::now().timestamp_millis())
         };
-        let (serveur, evidence, supprimes, indice, suite) = {
+        let (serveur, evidence, supprimes, indice, suite, apercus) = {
             let i = self.verrou();
             let Some(&n) = i.index.get(id) else {
                 return;
@@ -845,8 +1312,10 @@ impl PontMessagerie {
                 i.supprimes.clone(),
                 n,
                 suite,
+                i.apercus,
             )
         };
+        let maintenant = self.maintenant();
         let donnees = self.store.lire(|etat| {
             donnees_message(
                 &message,
@@ -858,6 +1327,8 @@ impl PontMessagerie {
                     mis_en_evidence: evidence.as_deref(),
                     supprimes: &supprimes,
                     decalage_minutes: decalage,
+                    maintenant_ms: maintenant,
+                    apercus,
                 },
             )
         });
@@ -876,8 +1347,15 @@ impl PontMessagerie {
             return m;
         }
         let cle = self.conversation();
+        let noms: Vec<String> = self
+            .medias()
+            .emojis()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
         let m = Arc::new(match &cle {
-            Some(cle) => self.store.lire(|etat| mentionnables(etat, cle)),
+            Some(cle) => self.store.lire(|etat| mentionnables(etat, cle, &noms)),
             None => Mentionnables::default(),
         });
         self.verrou().mentionnables = Some(m.clone());
@@ -932,7 +1410,17 @@ impl PontMessagerie {
         let mut nouvelles: Vec<LigneFenetre> = Vec::with_capacity(lignes_fenetre.len());
         let mut avatars = Vec::new();
         let mut badges = Vec::new();
+        let mut demandes = Demandes::default();
+        let medias = self.medias();
+        let serveur = self.verrou().serveur.clone();
         for donnees in lignes_fenetre {
+            let medias_ligne = match &donnees.message {
+                Some(m) => {
+                    let rendus = self.rendus_de(m);
+                    self.medias_de_ligne(&medias, m, &rendus, serveur.as_deref(), &mut demandes)
+                }
+                None => MediasLigne::default(),
+            };
             let (rendus, portrait, badges_ligne) = match &donnees.message {
                 Some(m) => {
                     let rendus = self.rendus_de(m);
@@ -972,6 +1460,7 @@ impl PontMessagerie {
                 rendus,
                 portrait,
                 badges: badges_ligne,
+                medias: medias_ligne,
             });
         }
         let modele_rc = g.get_lignes();
@@ -983,13 +1472,20 @@ impl PontMessagerie {
             .iter()
             .map(|l| l.donnees.cle.clone())
             .collect();
-        let faites = synchroniser(
-            modele,
-            &mut i.ombre_fenetre,
-            nouvelles,
-            |l| l.donnees.cle.clone(),
-            |l| ligne_slint(l, &profils),
-        );
+        let faites = {
+            let Interne {
+                ombre_fenetre,
+                animations,
+                ..
+            } = &mut *i;
+            synchroniser(
+                modele,
+                ombre_fenetre,
+                nouvelles,
+                |l| l.donnees.cle.clone(),
+                |l| ligne_slint(l, &profils, &medias, animations),
+            )
+        };
         if !faites.is_empty() {
             i.statistiques.conversions += faites
                 .iter()
@@ -1106,6 +1602,18 @@ impl PontMessagerie {
         for utilisateur in badges {
             self.telecharger_badges(utilisateur);
         }
+        for image in demandes.images {
+            self.charger_image(image);
+        }
+        for (lien, message) in demandes.apercus {
+            self.charger_apercu(lien, message);
+        }
+        if demandes.emojis {
+            self.charger_emojis(false);
+        }
+        self.suivre_animations(f);
+        self.planifier_sondages();
+        self.rafraichir_visionneuse(f);
     }
 
     fn charger_page(&self, cle: CleConversation, haut: bool) {
@@ -1178,9 +1686,10 @@ impl PontMessagerie {
         });
     }
 
-    pub fn defilee(&self, _f: &Principale, position: f32, vue: f32, largeur: f32) {
-        {
+    pub fn defilee(&self, f: &Principale, position: f32, vue: f32, largeur: f32) {
+        let remesurer = {
             let mut i = self.verrou();
+            let largeur_avant = i.defilement.largeur();
             let echo = (position + i.proprietes.defilement).abs() < 0.5;
             let position = f64::from(position);
             if !echo && (position - i.defilement.position()).abs() >= 0.5 {
@@ -1191,6 +1700,11 @@ impl PontMessagerie {
                 i.defilement
                     .redimensionner(f64::from(largeur), f64::from(vue));
             }
+            (i.defilement.largeur() - largeur_avant).abs() >= 0.5
+        };
+        if remesurer {
+            let g = f.global::<DonneesMessagerie>();
+            g.set_mesure(g.get_mesure().wrapping_add(1));
         }
         self.planifier();
     }
@@ -1350,6 +1864,693 @@ impl PontMessagerie {
             self.rafraichir(f);
         }
     }
+
+    fn medias_de_ligne(
+        &self,
+        medias: &Medias,
+        m: &DonneesMessage,
+        rendus: &Rendus,
+        serveur: Option<&str>,
+        d: &mut Demandes,
+    ) -> MediasLigne {
+        let mut i = self.verrou();
+        let mut index_image = 0;
+        let mut pieces = Vec::with_capacity(m.annexes.pieces.len());
+        for p in &m.annexes.pieces {
+            let mut affichee = PieceAffichee {
+                donnees: p.clone(),
+                largeur: 0,
+                hauteur: 0,
+                chargee: false,
+                echec: false,
+                index_image: -1,
+                etat: i.pieces.get(&p.id).cloned().unwrap_or_default(),
+            };
+            if p.genre == GenrePiece::Image {
+                let cle = cle_vignette(&p.id);
+                affichee.index_image = index_image;
+                index_image += 1;
+                match medias.image(&cle) {
+                    Some(image) => {
+                        (affichee.largeur, affichee.hauteur) = image.dimensions();
+                        affichee.chargee = true;
+                    }
+                    None => {
+                        affichee.echec = medias.en_echec(&cle);
+                        (affichee.largeur, affichee.hauteur) =
+                            taille_de_vignette(medias.dimensions(&cle.source));
+                        if !affichee.echec && i.demandes_images.insert(cle.clone()) {
+                            d.images.push(cle);
+                        }
+                    }
+                }
+            }
+            pieces.push(affichee);
+        }
+        let mut emojis: Vec<EmojiAffiche> = Vec::new();
+        for segment in rendus.blocs.iter().flat_map(|b| &b.segments) {
+            if segment.genre != GenreSegmentAffiche::EmojiServeur
+                || emojis.iter().any(|e| e.nom == segment.cible)
+            {
+                continue;
+            }
+            let image = medias
+                .emoji(&segment.cible, serveur)
+                .map(|e| CleImage {
+                    source: Source::Emoji(e.id),
+                    format: Format::Emoji,
+                });
+            let chargee = image.as_ref().is_some_and(|c| medias.image(c).is_some());
+            if let Some(c) = &image {
+                if !chargee && !medias.en_echec(c) && i.demandes_images.insert(c.clone()) {
+                    d.images.push(c.clone());
+                }
+            }
+            emojis.push(EmojiAffiche {
+                nom: segment.cible.clone(),
+                image,
+                chargee,
+            });
+        }
+        if medias.emojis().is_none() && !i.emojis_demandes {
+            d.emojis = true;
+        }
+        let carte = match &m.annexes.lien {
+            Some(lien) => match medias.apercu(lien, Some(&m.id)) {
+                Some(apercu) => carte_affichee(lien, apercu.as_ref()),
+                None => {
+                    if i
+                        .demandes_apercus
+                        .insert(estompe_client::apercu_liens::cle_de_cache(Some(&m.id), lien))
+                    {
+                        d.apercus.push((lien.clone(), m.id.clone()));
+                    }
+                    carte_affichee(lien, None)
+                }
+            },
+            None => CarteAffichee::Aucune,
+        };
+        let carte_chargee = match carte.image() {
+            Some(cle) => {
+                let chargee = medias.image(&cle).is_some();
+                if !chargee && !medias.en_echec(&cle) && i.demandes_images.insert(cle.clone()) {
+                    d.images.push(cle);
+                }
+                chargee
+            }
+            None => false,
+        };
+        MediasLigne {
+            pieces,
+            carte,
+            carte_chargee,
+            emojis,
+        }
+    }
+
+    fn charger_image(&self, cle: CleImage) {
+        let pont = self.clone();
+        let medias = self.medias();
+        self.runtime.spawn(async move {
+            medias.charger_image(cle.clone()).await;
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                p.verrou().demandes_images.remove(&cle);
+                p.rafraichir(&f);
+            });
+        });
+    }
+
+    fn charger_apercu(&self, lien: String, message: String) {
+        let pont = self.clone();
+        let medias = self.medias();
+        self.runtime.spawn(async move {
+            medias.charger_apercu(&lien, Some(&message)).await;
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                p.verrou()
+                    .demandes_apercus
+                    .remove(&estompe_client::apercu_liens::cle_de_cache(Some(&message), &lien));
+                p.rafraichir(&f);
+            });
+        });
+    }
+
+    fn charger_emojis(&self, force: bool) {
+        {
+            let mut i = self.verrou();
+            if i.emojis_demandes && !force {
+                return;
+            }
+            i.emojis_demandes = true;
+        }
+        let pont = self.clone();
+        let medias = self.medias();
+        self.runtime.spawn(async move {
+            if !medias.charger_emojis().await {
+                return;
+            }
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                {
+                    let mut i = p.verrou();
+                    i.mentionnables = None;
+                    i.generation += 1;
+                }
+                p.reprojeter(&f);
+            });
+        });
+    }
+
+    fn suivre_animations(&self, f: &Principale) {
+        let _ = f;
+        let medias = self.medias();
+        let prochain = {
+            let mut garde = self.verrou();
+            let i = &mut *garde;
+            let mut actives = HashMap::new();
+            for l in &i.ombre_fenetre {
+                if !i.defilement.visible(&l.donnees.cle) {
+                    continue;
+                }
+                let mut cibles: Vec<(Emplacement, CleImage)> = l
+                    .medias
+                    .pieces
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.chargee && p.donnees.anime)
+                    .map(|(n, p)| (Emplacement::Piece(n), cle_vignette(&p.donnees.id)))
+                    .collect();
+                cibles.extend(l.medias.emojis.iter().filter(|e| e.chargee).filter_map(|e| {
+                    e.image
+                        .clone()
+                        .map(|c| (Emplacement::Emoji(e.nom.clone()), c))
+                }));
+                for (emplacement, cle) in cibles {
+                    let Some(Decodee::Animee(a)) = medias.image(&cle) else {
+                        continue;
+                    };
+                    let k = (l.donnees.cle.clone(), emplacement);
+                    let etat = i.animations.get(&k).cloned().unwrap_or(EtatAnimation {
+                        image: cle,
+                        indice: 0,
+                        restant: a.images[0].1,
+                    });
+                    actives.insert(k, etat);
+                }
+            }
+            i.animations = actives;
+            i.animations.values().map(|a| a.restant).min()
+        };
+        match prochain {
+            Some(d) if !self.minuterie_d_animation() => self.armer_animation(d),
+            Some(_) => {}
+            None => self.arreter_animation(),
+        }
+    }
+
+    fn arreter_animation(&self) {
+        self.verrou().minuterie_active = false;
+        ANIMATION.with(|a| {
+            if let Some(t) = a.borrow().as_ref() {
+                t.stop();
+            }
+        });
+    }
+
+    fn armer_animation(&self, d: Duration) {
+        self.verrou().minuterie_active = true;
+        let pont = self.clone();
+        ANIMATION.with(|a| {
+            let mut a = a.borrow_mut();
+            let minuterie = a.get_or_insert_with(slint::Timer::default);
+            minuterie.start(slint::TimerMode::SingleShot, d, move || {
+                if let Some(f) = pont.fenetre.upgrade() {
+                    pont.avancer_animations(&f, d);
+                }
+            });
+        });
+    }
+
+    fn avancer_animations(&self, f: &Principale, ecoule: Duration) {
+        let medias = self.medias();
+        let mut changements: Vec<(usize, Emplacement, slint::Image)> = Vec::new();
+        let prochain = {
+            let mut garde = self.verrou();
+            let i = &mut *garde;
+            i.statistiques.reveils_animation += 1;
+            for ((cle_ligne, emplacement), etat) in i.animations.iter_mut() {
+                let Some(Decodee::Animee(a)) = medias.image(&etat.image) else {
+                    continue;
+                };
+                let mut reste = ecoule;
+                let mut change = false;
+                while reste >= etat.restant {
+                    reste -= etat.restant;
+                    etat.indice = (etat.indice + 1) % a.images.len();
+                    etat.restant = a.images[etat.indice].1;
+                    change = true;
+                }
+                etat.restant -= reste;
+                if change {
+                    if let Some(rang) = i
+                        .ombre_fenetre
+                        .iter()
+                        .position(|l| l.donnees.cle == *cle_ligne)
+                    {
+                        changements.push((
+                            rang,
+                            emplacement.clone(),
+                            Image::from_rgba8(a.images[etat.indice].0.clone()),
+                        ));
+                    }
+                }
+            }
+            i.statistiques.images_animees += changements.len();
+            i.animations.values().map(|a| a.restant).min()
+        };
+        let modele = f.global::<DonneesMessagerie>().get_lignes();
+        for (rang, emplacement, image) in changements {
+            remplacer_image(&modele, rang, &emplacement, image);
+        }
+        match prochain {
+            Some(d) => self.armer_animation(d),
+            None => self.arreter_animation(),
+        }
+    }
+
+    fn planifier_sondages(&self) {
+        let maintenant = self.maintenant();
+        let prochain = {
+            let mut i = self.verrou();
+            let prochain = i
+                .ombre_fenetre
+                .iter()
+                .filter_map(|l| l.donnees.message.as_ref()?.annexes.sondage.as_ref()?.fin_ms)
+                .filter(|fin| *fin > maintenant)
+                .min();
+            if i.reveil_sondage == prochain {
+                return;
+            }
+            i.reveil_sondage = prochain;
+            prochain
+        };
+        let Some(fin) = prochain else {
+            REVEIL_SONDAGE.with(|r| *r.borrow_mut() = None);
+            return;
+        };
+        let delai = (fin - maintenant + 50).min(i64::from(i32::MAX));
+        let pont = self.clone();
+        let minuterie = slint::Timer::default();
+        minuterie.start(
+            slint::TimerMode::SingleShot,
+            Duration::from_millis(delai.max(0) as u64),
+            move || {
+                if let Some(f) = pont.fenetre.upgrade() {
+                    pont.verrou().reveil_sondage = None;
+                    pont.reprojeter(&f);
+                }
+            },
+        );
+        REVEIL_SONDAGE.with(|r| *r.borrow_mut() = Some(minuterie));
+    }
+
+    fn images_du_message(&self, message: &str) -> Vec<DonneesPiece> {
+        let i = self.verrou();
+        i.index
+            .get(message)
+            .and_then(|&n| i.lignes.get(n))
+            .and_then(|l| l.message.as_ref())
+            .map(|m| m.annexes.images().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    fn piece_du_message(&self, message: &str, piece: &str) -> Option<DonneesPiece> {
+        let i = self.verrou();
+        i.index
+            .get(message)
+            .and_then(|&n| i.lignes.get(n))
+            .and_then(|l| l.message.as_ref())
+            .and_then(|m| m.annexes.pieces.iter().find(|p| p.id == piece).cloned())
+    }
+
+    pub fn image_cliquee(&self, f: &Principale, message: &str, index: i32) {
+        self.verrou().visionneuse = Some(EtatVisionneuse {
+            message: message.to_string(),
+            index: index.max(0) as usize,
+            zoom: 1.0,
+            note: String::new(),
+        });
+        self.rafraichir_visionneuse(f);
+    }
+
+    pub fn visionneuse_voisine(&self, f: &Principale, sens: i32) {
+        let Some(message) = self.verrou().visionneuse.as_ref().map(|v| v.message.clone()) else {
+            return;
+        };
+        let total = self.images_du_message(&message).len();
+        if let Some(v) = self.verrou().visionneuse.as_mut() {
+            let index = (v.index as i64 + i64::from(sens)).clamp(0, total.max(1) as i64 - 1);
+            if index as usize != v.index {
+                v.index = index as usize;
+                v.zoom = 1.0;
+                v.note.clear();
+            }
+        }
+        self.rafraichir_visionneuse(f);
+    }
+
+    pub fn visionneuse_zoom(&self, f: &Principale, facteur: f32) {
+        if let Some(v) = self.verrou().visionneuse.as_mut() {
+            v.zoom = if facteur <= 0.0 {
+                1.0
+            } else {
+                (v.zoom * facteur).clamp(1.0, ZOOM_MAX)
+            };
+        }
+        self.rafraichir_visionneuse(f);
+    }
+
+    pub fn fermer_visionneuse(&self, f: &Principale) {
+        self.verrou().visionneuse = None;
+        self.rafraichir_visionneuse(f);
+    }
+
+    fn piece_visionnee(&self) -> Option<(EtatVisionneuse, DonneesPiece, usize)> {
+        let v = self.verrou().visionneuse.clone()?;
+        let images = self.images_du_message(&v.message);
+        let total = images.len();
+        let piece = images.into_iter().nth(v.index)?;
+        Some((v, piece, total))
+    }
+
+    fn noter_visionneuse(&self, note: &str) {
+        if let Some(v) = self.verrou().visionneuse.as_mut() {
+            v.note = note.to_string();
+        }
+    }
+
+    pub fn visionneuse_copier(&self) {
+        let Some((v, piece, _)) = self.piece_visionnee() else {
+            return;
+        };
+        let presse = verrou_de(&self.presse_papiers);
+        if !presse.disponible() {
+            return;
+        }
+        let pont = self.clone();
+        let medias = self.medias();
+        self.runtime.spawn(async move {
+            let note = match medias.octets_de(&Source::Fichier(piece.id.clone())).await {
+                Some(octets) => {
+                    let copie = tokio::task::spawn_blocking(move || {
+                        let image = super::medias::decoder_original(&octets)?;
+                        presse
+                            .copier_image(&estompe_plateforme::Image {
+                                largeur: image.width(),
+                                hauteur: image.height(),
+                                rgba: image.into_raw(),
+                            })
+                            .map_err(|e| e.to_string())
+                    })
+                    .await;
+                    match copie {
+                        Ok(Ok(())) => "Image copiée".to_string(),
+                        _ => "Copie impossible".to_string(),
+                    }
+                }
+                None => "Image indisponible".to_string(),
+            };
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                if p.verrou().visionneuse.as_ref().map(|e| &e.message) == Some(&v.message) {
+                    p.noter_visionneuse(&note);
+                    p.rafraichir_visionneuse(&f);
+                }
+            });
+        });
+    }
+
+    pub fn visionneuse_enregistrer(&self, f: &Principale) {
+        if let Some((v, piece, _)) = self.piece_visionnee() {
+            self.telecharger_piece(f, &v.message, &piece.id);
+        }
+    }
+
+    fn rafraichir_visionneuse(&self, f: &Principale) {
+        let g = f.global::<DonneesMessagerie>();
+        let Some((v, piece, total)) = self.piece_visionnee() else {
+            let fermee = Visionneuse::default();
+            if g.get_visionneuse() != fermee {
+                g.set_visionneuse(fermee);
+            }
+            return;
+        };
+        let medias = self.medias();
+        let cle = CleImage {
+            source: Source::Fichier(piece.id.clone()),
+            format: Format::Visionneuse,
+        };
+        let image = medias.image(&cle);
+        let echec = image.is_none() && medias.en_echec(&cle);
+        if image.is_none() && !echec && self.verrou().demandes_images.insert(cle.clone()) {
+            self.charger_image(cle);
+        }
+        let (largeur, hauteur) = match &image {
+            Some(i) => i.dimensions(),
+            None => medias
+                .dimensions(&Source::Fichier(piece.id.clone()))
+                .map(|(l, h)| super::medias::ajuster(l, h, Format::Visionneuse.boite()))
+                .unwrap_or((0, 0)),
+        };
+        let etat = self.etat_piece(&piece.id);
+        let note = if !v.note.is_empty() {
+            v.note.clone()
+        } else {
+            etat.note.clone()
+        };
+        let nouvelle = Visionneuse {
+            ouverte: true,
+            message: v.message.as_str().into(),
+            index: v.index.min(i32::MAX as usize) as i32,
+            total: total.min(i32::MAX as usize) as i32,
+            nom: piece.nom.as_str().into(),
+            chargee: image.is_some(),
+            image: image.map(|i| image_de(&i, 0)).unwrap_or_default(),
+            largeur: largeur as f32,
+            hauteur: hauteur as f32,
+            echec,
+            zoom: v.zoom,
+            copie_possible: verrou_de(&self.presse_papiers).disponible(),
+            note: note.as_str().into(),
+        };
+        if g.get_visionneuse() != nouvelle {
+            g.set_visionneuse(nouvelle);
+        }
+    }
+
+    fn noter_piece(&self, id: &str, modifier: impl FnOnce(&mut EtatPiece)) {
+        let mut i = self.verrou();
+        modifier(i.pieces.entry(id.to_string()).or_default());
+    }
+
+    fn rafraichir_plus_tard(&self) {
+        let p = self.clone();
+        let _ = self
+            .fenetre
+            .upgrade_in_event_loop(move |f| p.rafraichir(&f));
+    }
+
+    pub fn telecharger_piece(&self, f: &Principale, message: &str, id: &str) {
+        let Some(piece) = self.piece_du_message(message, id) else {
+            return;
+        };
+        if self.etat_piece(id).telechargement == Telechargement::EnCours {
+            return;
+        }
+        let fichiers = verrou_de(&self.fichiers);
+        let defaut = verrou_de(&self.dossier_par_defaut);
+        let dernier = self.verrou().dossier.clone();
+        let source = self.medias().source().clone();
+        let pont = self.clone();
+        let runtime = self.runtime.clone();
+        let _ = f;
+        let lancer = move || {
+            let par_defaut = defaut();
+            let choisi = if fichiers.disponible() {
+                match fichiers.choisir_dossier(dernier.as_deref().or(par_defaut.as_deref())) {
+                    Ok(Some(dossier)) => Some(dossier),
+                    Ok(None) => return,
+                    Err(_) => par_defaut,
+                }
+            } else {
+                par_defaut
+            };
+            let Some(dossier) = choisi else {
+                pont.noter_piece(&piece.id, |e| {
+                    e.telechargement = Telechargement::Echec;
+                    e.note = "Aucun dossier de téléchargement".into();
+                });
+                pont.rafraichir_plus_tard();
+                return;
+            };
+            if std::fs::create_dir_all(&dossier).is_err() {
+                pont.noter_piece(&piece.id, |e| {
+                    e.telechargement = Telechargement::Echec;
+                    e.note = format!("Dossier inaccessible : {}", dossier.display());
+                });
+                pont.rafraichir_plus_tard();
+                return;
+            }
+            pont.verrou().dossier = Some(dossier.clone());
+            let destination = chemin_libre(&dossier, &piece.nom);
+            pont.noter_piece(&piece.id, |e| {
+                *e = EtatPiece {
+                    telechargement: Telechargement::EnCours,
+                    ..EtatPiece::default()
+                };
+            });
+            pont.rafraichir_plus_tard();
+            let suivi = pont.clone();
+            let id = piece.id.clone();
+            let progres: Progres = Box::new(move |recus, total| {
+                let Some(total) = total.filter(|t| *t > 0) else {
+                    return;
+                };
+                let pourcentage = (recus.saturating_mul(100) / total).min(100) as u8;
+                let change = {
+                    let mut i = suivi.verrou();
+                    let e = i.pieces.entry(id.clone()).or_default();
+                    let change = pourcentage >= e.progression.saturating_add(PAS_DE_PROGRESSION);
+                    if change {
+                        e.progression = pourcentage;
+                    }
+                    change
+                };
+                if change {
+                    suivi.rafraichir_plus_tard();
+                }
+            });
+            let fin = pont.clone();
+            runtime.spawn(async move {
+                let resultat = source
+                    .telecharger(&piece.id, destination.clone(), progres)
+                    .await;
+                fin.noter_piece(&piece.id, |e| match resultat {
+                    Ok(_) => {
+                        *e = EtatPiece {
+                            telechargement: Telechargement::Termine,
+                            progression: 100,
+                            note: format!(
+                                "Enregistré dans {}",
+                                destination.parent().unwrap_or(&dossier).display()
+                            ),
+                            chemin: Some(destination.clone()),
+                        }
+                    }
+                    Err(erreur) => {
+                        *e = EtatPiece {
+                            telechargement: Telechargement::Echec,
+                            note: format!("Échec du téléchargement : {erreur}"),
+                            ..EtatPiece::default()
+                        }
+                    }
+                });
+                fin.rafraichir_plus_tard();
+            });
+        };
+        let _ = std::thread::Builder::new()
+            .name("estompe-enregistrer".into())
+            .spawn(lancer);
+    }
+
+    pub fn noter_telechargement(
+        &self,
+        id: &str,
+        telechargement: Telechargement,
+        progression: u8,
+        note: &str,
+    ) {
+        self.noter_piece(id, |e| {
+            e.telechargement = telechargement;
+            e.progression = progression.min(100);
+            e.note = note.to_string();
+        });
+    }
+
+    pub fn rafraichir_maintenant(&self, f: &Principale) {
+        self.rafraichir(f);
+    }
+
+    pub fn ouvrir_fichier(&self, f: &Principale, id: &str) {
+        let Some(chemin) = self.etat_piece(id).chemin else {
+            return;
+        };
+        if let Err(erreur) = verrou_de(&self.fichiers).ouvrir(&chemin) {
+            self.noter_piece(id, |e| e.note = format!("Ouverture impossible : {erreur}"));
+            self.rafraichir(f);
+        }
+    }
+
+    pub fn carte_cliquee(&self, url: &str) {
+        if let Some(url) = estompe_client::markdown::lien_ouvrable(url) {
+            let _ = verrou_de(&self.navigateur).ouvrir(&url);
+        }
+    }
+}
+
+fn remplacer_image(
+    modele: &ModelRc<LigneMessage>,
+    rang: usize,
+    emplacement: &Emplacement,
+    image: slint::Image,
+) {
+    let Some(ligne) = modele.row_data(rang) else {
+        return;
+    };
+    match emplacement {
+        Emplacement::Piece(n) => {
+            let pieces = ligne.annexes.pieces_jointes;
+            if let Some(vm) = pieces.as_any().downcast_ref::<VecModel<PieceJointe>>() {
+                if let Some(mut piece) = vm.row_data(*n) {
+                    piece.image = image;
+                    vm.set_row_data(*n, piece);
+                }
+            }
+        }
+        Emplacement::Emoji(nom) => {
+            let Some(blocs) = ligne.blocs.as_any().downcast_ref::<VecModel<BlocTexte>>() else {
+                return;
+            };
+            for b in 0..blocs.row_count() {
+                let Some(bloc) = blocs.row_data(b) else {
+                    continue;
+                };
+                let Some(segments) = bloc
+                    .segments
+                    .as_any()
+                    .downcast_ref::<VecModel<SegmentTexte>>()
+                else {
+                    continue;
+                };
+                for n in 0..segments.row_count() {
+                    if let Some(mut segment) = segments.row_data(n) {
+                        if segment.cible.as_str() == nom && segment.genre == GenreSegment::Emoji {
+                            segment.image = image.clone();
+                            segments.set_row_data(n, segment);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct Demandes {
+    images: Vec<CleImage>,
+    apercus: Vec<(String, String)>,
+    emojis: bool,
 }
 
 #[cfg(test)]
@@ -1396,6 +2597,15 @@ mod tests {
         assert!(long > 5.0 * court, "{long} {court}");
         assert!(etroit > long);
         assert_eq!(estimer_hauteur(&pseudo_ligne("x"), 800.0), 40.0);
+    }
+
+    #[test]
+    fn l_infobulle_d_une_reaction_ne_dessine_pas_l_emoji_en_texte() {
+        assert_eq!(
+            infobulle_de_reaction("Toi et bob ont réagi avec 👍", "👍"),
+            "Toi et bob ont réagi"
+        );
+        assert_eq!(infobulle_de_reaction("bizarre", "👍"), "bizarre");
     }
 
     #[test]

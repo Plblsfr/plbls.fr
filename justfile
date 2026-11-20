@@ -79,6 +79,14 @@ estompe-natif-generer:
     node scripts/estompe/natif-da.mjs
     node scripts/estompe/gen-types-client.mjs
 
+# Régénère le paquet d'emoji Twemoji embarqué (apps/estompe/natif/emoji/twemoji.bin) ; DOSSIER garde les SVG téléchargés
+estompe-natif-emoji DOSSIER="":
+    node scripts/estompe/natif-emoji.mjs {{ if DOSSIER != "" { "--cache " + DOSSIER } else { "" } }}
+
+# Parcours long du test de volume de la messagerie (50 000 messages, 2 minutes simulées)
+estompe-natif-volume:
+    cd apps/estompe/natif && ESTOMPE_VOLUME=long cargo test --locked --test messagerie_volume -- --nocapture
+
 # Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
 estompe-natif-captures:
     cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures

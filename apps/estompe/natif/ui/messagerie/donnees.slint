@@ -1,22 +1,93 @@
-import { BlocTexte, GenreBloc } from "../composants/texte-riche.slint";
+import { BlocTexte, GenreBloc, SegmentTexte, GenreSegment } from "../composants/texte-riche.slint";
 import { LigneBadge } from "../coquille/donnees.slint";
 
-export { BlocTexte, GenreBloc }
+export { BlocTexte, GenreBloc, SegmentTexte, GenreSegment }
 
 export enum GenreLigneMessage { debut, chargement, jour, nouveau, message }
 
 export struct ReactionMessage {
     emoji: string,
+    image: image,
     nombre: int,
     moi: bool,
+    titre: string,
+    infobulle: string,
+}
+
+export enum GenrePieceJointe { image, fichier, media, expiree }
+
+export enum EtatTelechargement { aucun, en-cours, termine, echec }
+
+export struct PieceJointe {
+    id: string,
+    genre: GenrePieceJointe,
+    nom: string,
+    taille: string,
+    largeur: length,
+    hauteur: length,
+    image: image,
+    chargee: bool,
+    echec: bool,
+    anime: bool,
+    vocal: bool,
+    index-image: int,
+    telechargement: EtatTelechargement,
+    progression: float,
+    note: string,
+}
+
+export struct OptionSondage {
+    libelle: string,
+    pourcentage: int,
+    votes: int,
+    moi: bool,
+    gagnant: bool,
+}
+
+export struct SondageMessage {
+    present: bool,
+    auteur: string,
+    auteur-bot: bool,
+    clos: bool,
+    options: [OptionSondage],
+    pied: string,
+}
+
+export enum GenreCarte { aucune, lien, youtube, sillon }
+
+export struct CarteLien {
+    genre: GenreCarte,
+    url: string,
+    titre: string,
+    description: string,
+    site: string,
+    image: image,
+    avec-image: bool,
 }
 
 export struct AnnexesMessage {
-    pieces-jointes: int,
-    sondage: bool,
+    pieces-jointes: [PieceJointe],
+    images: int,
+    sondage: SondageMessage,
     reactions: [ReactionMessage],
-    lien: string,
+    carte: CarteLien,
     resume: string,
+}
+
+export struct Visionneuse {
+    ouverte: bool,
+    message: string,
+    index: int,
+    total: int,
+    nom: string,
+    image: image,
+    largeur: length,
+    hauteur: length,
+    chargee: bool,
+    echec: bool,
+    zoom: float,
+    copie-possible: bool,
+    note: string,
 }
 
 export struct ReponseMessage {
@@ -73,6 +144,8 @@ export global DonneesMessagerie {
     in property <string> saisie;
     in property <bool> lecture-seule: false;
     in property <string> lecture-seule-texte;
+    in property <Visionneuse> visionneuse;
+    in property <int> mesure: 0;
     callback defilee(length, length, length);
     callback ligne-mesuree(string, length);
     callback lien-clique(string, string);
@@ -81,4 +154,13 @@ export global DonneesMessagerie {
     callback aller-en-bas();
     callback reessayer();
     callback theme-change(bool);
+    callback image-cliquee(string, int);
+    callback telecharger(string, string);
+    callback ouvrir-fichier(string, string);
+    callback carte-cliquee(string, string);
+    callback visionneuse-voisine(int);
+    callback visionneuse-zoom(float);
+    callback visionneuse-copier();
+    callback visionneuse-enregistrer();
+    callback fermer-visionneuse();
 }

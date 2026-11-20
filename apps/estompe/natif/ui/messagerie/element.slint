@@ -1,41 +1,8 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Icone, Avatar, BadgeRole, GenreBadgeRole, Chargement, Separateur, TexteRiche } from "../composants.slint";
 import { Medaille } from "../coquille/membres.slint";
-import { DonneesMessagerie, LigneMessage, GenreLigneMessage, AnnexesMessage, ReponseMessage } from "donnees.slint";
-
-export component AnnexesMessageVue {
-    in property <AnnexesMessage> annexes;
-    accessible-role: text;
-    accessible-label: annexes.resume;
-    HorizontalLayout {
-        spacing: 6px;
-        padding-top: 2px;
-        if root.annexes.pieces-jointes > 0: VerticalLayout {
-            alignment: center;
-            Icone {
-                nom: "trombone";
-                taille: 14px;
-                couleur: Theme.gris;
-            }
-        }
-        if root.annexes.sondage && root.annexes.pieces-jointes == 0: VerticalLayout {
-            alignment: center;
-            Icone {
-                nom: "sondage";
-                taille: 14px;
-                couleur: Theme.gris;
-            }
-        }
-        Text {
-            horizontal-stretch: 1;
-            text: root.annexes.resume;
-            color: Theme.gris;
-            font-size: Typo.petit;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-    }
-}
+import { DonneesMessagerie, LigneMessage, GenreLigneMessage, AnnexesMessage, ReponseMessage, GenreCarte } from "donnees.slint";
+import { AnnexesMessageVue, SondageVue } from "annexes.slint";
 
 component EnTeteReponse {
     in property <ReponseMessage> reponse;
@@ -320,7 +287,20 @@ component CorpsMessage inherits Rectangle {
                             horizontal-stretch: 1;
                         }
                     }
-                    if root.ligne.blocs.length > 0: TexteRiche {
+                    if root.ligne.annexes.sondage.present: HorizontalLayout {
+                        SondageVue {
+                            horizontal-stretch: 1;
+                            preferred-width: 460px;
+                            sondage: root.ligne.annexes.sondage;
+                            question: root.ligne.blocs;
+                            heure: root.ligne.heure;
+                            message: root.ligne.id;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 0;
+                        }
+                    }
+                    if root.ligne.blocs.length > 0 && !root.ligne.annexes.sondage.present: TexteRiche {
                         blocs: root.ligne.blocs;
                         taille: root.ligne.systeme ? 14px : Typo.corps;
                         encre: root.ligne.systeme ? Theme.gris : Theme.encre-2;
@@ -328,8 +308,9 @@ component CorpsMessage inherits Rectangle {
                             DonneesMessagerie.lien-clique(root.ligne.id, cible);
                         }
                     }
-                    if root.ligne.annexes.resume != "": AnnexesMessageVue {
+                    if root.ligne.annexes.pieces-jointes.length > 0 || root.ligne.annexes.reactions.length > 0 || root.ligne.annexes.carte.genre != GenreCarte.aucune: AnnexesMessageVue {
                         annexes: root.ligne.annexes;
+                        message: root.ligne.id;
                     }
                     if root.ligne.etat-envoi != "": Text {
                         text: root.ligne.etat-envoi;
@@ -352,7 +333,11 @@ component CorpsMessage inherits Rectangle {
 export component LigneMessageVue inherits VerticalLayout {
     in property <LigneMessage> ligne;
     callback copier(string);
+    property <int> mesure: DonneesMessagerie.mesure;
     init => {
+        DonneesMessagerie.ligne-mesuree(self.ligne.cle, self.height);
+    }
+    changed mesure => {
         DonneesMessagerie.ligne-mesuree(self.ligne.cle, self.height);
     }
     changed height => {

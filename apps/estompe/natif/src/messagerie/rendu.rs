@@ -3,6 +3,8 @@ use std::collections::BTreeSet;
 use estompe_client::markdown::{lien_ouvrable, Bloc, Contenu, Rendu, Segment, Styles};
 use estompe_client::mention::GenreMention;
 
+use super::emoji::{self, Morceau, EMOJI_GRANDS_MAX};
+
 pub const PREFIXE_LIEN: &str = "u:";
 pub const PREFIXE_MENTION: &str = "m:";
 pub const PREFIXE_MASQUE: &str = "s:";
@@ -18,6 +20,45 @@ pub enum GenreBlocAffiche {
     Code,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GenreSegmentAffiche {
+    Texte,
+    Code,
+    Emoji,
+    EmojiServeur,
+    Masque,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SegmentAffiche {
+    pub genre: GenreSegmentAffiche,
+    pub balisage: String,
+    pub texte: String,
+    pub cible: String,
+    pub espace: bool,
+    pub joint: bool,
+}
+
+impl SegmentAffiche {
+    fn nouveau(genre: GenreSegmentAffiche, texte: &str) -> Self {
+        Self {
+            genre,
+            balisage: String::new(),
+            texte: texte.to_string(),
+            cible: String::new(),
+            espace: false,
+            joint: false,
+        }
+    }
+
+    pub fn est_emoji(&self) -> bool {
+        matches!(
+            self.genre,
+            GenreSegmentAffiche::Emoji | GenreSegmentAffiche::EmojiServeur
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BlocAffiche {
     pub genre: GenreBlocAffiche,
@@ -27,6 +68,15 @@ pub struct BlocAffiche {
     pub citation: u8,
     pub retrait: u8,
     pub puce: String,
+    pub segments: Vec<SegmentAffiche>,
+    pub grand: bool,
+    pub espace_avant: bool,
+}
+
+impl BlocAffiche {
+    pub fn en_segments(&self) -> bool {
+        !self.segments.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -244,86 +294,271 @@ pub fn balisage(segments: &[Segment], reveles: &BTreeSet<u32>, palette: &Palette
         .join("\\\n")
 }
 
+fn masque_cache(segment: &Segment, reveles: &BTreeSet<u32>) -> Option<u32> {
+    segment.masque.filter(|m| !reveles.contains(m))
+}
+
+pub fn besoin_de_segments(segments: &[Segment], reveles: &BTreeSet<u32>) -> bool {
+    segments.iter().any(|s| {
+        masque_cache(s, reveles).is_some()
+            || match &s.contenu {
+                Contenu::Emoji(_) => true,
+                Contenu::Texte(t) => s.styles.code || emoji::contient_un_emoji(t),
+                Contenu::Mention { .. } | Contenu::SautDeLigne => false,
+            }
+    })
+}
+
+#[derive(Default)]
+struct Flux {
+    lignes: Vec<Vec<SegmentAffiche>>,
+}
+
+impl Flux {
+    fn ligne(&mut self) -> &mut Vec<SegmentAffiche> {
+        if self.lignes.is_empty() {
+            self.lignes.push(Vec::new());
+        }
+        let n = self.lignes.len() - 1;
+        &mut self.lignes[n]
+    }
+
+    fn pousser(&mut self, segment: SegmentAffiche) {
+        self.ligne().push(segment);
+    }
+
+    fn espace(&mut self) {
+        if let Some(dernier) = self.ligne().last_mut() {
+            dernier.espace = true;
+        }
+    }
+
+    fn saut(&mut self) {
+        self.ligne();
+        self.lignes.push(Vec::new());
+    }
+
+    fn mots(&mut self, texte: &str, mut creer: impl FnMut(&str) -> SegmentAffiche) {
+        let mut reste = texte;
+        while !reste.is_empty() {
+            let blanc = reste.len() - reste.trim_start().len();
+            if blanc > 0 {
+                self.espace();
+                reste = &reste[blanc..];
+                continue;
+            }
+            let fin = reste.find(char::is_whitespace).unwrap_or(reste.len());
+            self.pousser(creer(&reste[..fin]));
+            reste = &reste[fin..];
+        }
+    }
+}
+
+fn mot_balise(mot: &str, segment: &Segment) -> String {
+    let mut corps = styler(echapper(mot), segment.styles);
+    if let Some(url) = segment.lien.as_deref().and_then(lien_ouvrable) {
+        corps = lien(corps, &format!("{PREFIXE_LIEN}{url}"));
+    }
+    corps
+}
+
+pub fn segments_affiches(
+    segments: &[Segment],
+    reveles: &BTreeSet<u32>,
+    palette: &Palette,
+) -> Vec<Vec<SegmentAffiche>> {
+    let mut flux = Flux::default();
+    for segment in segments {
+        if segment.contenu == Contenu::SautDeLigne {
+            flux.saut();
+            continue;
+        }
+        if let Some(masque) = masque_cache(segment, reveles) {
+            let cible = format!("{PREFIXE_MASQUE}{masque}");
+            flux.mots(&texte_du_segment(segment), |mot| SegmentAffiche {
+                cible: cible.clone(),
+                ..SegmentAffiche::nouveau(GenreSegmentAffiche::Masque, mot)
+            });
+            continue;
+        }
+        match &segment.contenu {
+            Contenu::Emoji(nom) => flux.pousser(SegmentAffiche {
+                cible: nom.clone(),
+                ..SegmentAffiche::nouveau(GenreSegmentAffiche::EmojiServeur, &format!(":{nom}:"))
+            }),
+            Contenu::Mention { .. } => flux.pousser(SegmentAffiche {
+                balisage: balisage_du_segment(segment, reveles, palette),
+                ..SegmentAffiche::nouveau(GenreSegmentAffiche::Texte, &texte_du_segment(segment))
+            }),
+            Contenu::Texte(t) if segment.styles.code => {
+                if t.starts_with(char::is_whitespace) {
+                    flux.espace();
+                }
+                let code = t.trim();
+                if !code.is_empty() {
+                    flux.pousser(SegmentAffiche::nouveau(GenreSegmentAffiche::Code, code));
+                }
+                if t.ends_with(char::is_whitespace) {
+                    flux.espace();
+                }
+            }
+            Contenu::Texte(t) => {
+                for morceau in emoji::decouper(t) {
+                    match morceau {
+                        Morceau::Emoji(e) => {
+                            flux.pousser(SegmentAffiche::nouveau(GenreSegmentAffiche::Emoji, e))
+                        }
+                        Morceau::Texte(x) => flux.mots(x, |mot| SegmentAffiche {
+                            balisage: mot_balise(mot, segment),
+                            ..SegmentAffiche::nouveau(GenreSegmentAffiche::Texte, mot)
+                        }),
+                    }
+                }
+            }
+            Contenu::SautDeLigne => {}
+        }
+    }
+    for ligne in &mut flux.lignes {
+        for i in 1..ligne.len() {
+            let (avant, apres) = ligne.split_at_mut(i);
+            let (precedent, courant) = (&mut avant[i - 1], &apres[0]);
+            precedent.joint = precedent.espace
+                && precedent.genre == GenreSegmentAffiche::Masque
+                && courant.genre == GenreSegmentAffiche::Masque
+                && precedent.cible == courant.cible;
+        }
+    }
+    flux.lignes
+}
+
 #[derive(Clone, Copy)]
 struct Position {
     citation: u8,
     retrait: u8,
 }
 
-fn aplatir(
-    blocs: &[Bloc],
-    position: Position,
-    puce: &mut Option<String>,
-    reveles: &BTreeSet<u32>,
-    palette: &Palette,
-    sortie: &mut Vec<BlocAffiche>,
-) {
-    for bloc in blocs {
-        let mut pousser = |genre, balisage: String, code: String, niveau: u8| {
-            sortie.push(BlocAffiche {
-                genre,
-                balisage,
-                code,
-                niveau,
-                citation: position.citation,
-                retrait: position.retrait,
-                puce: puce.take().unwrap_or_default(),
-            })
-        };
-        match bloc {
-            Bloc::Paragraphe(segments) => pousser(
-                GenreBlocAffiche::Paragraphe,
-                balisage(segments, reveles, palette),
-                String::new(),
-                0,
-            ),
-            Bloc::Titre { niveau, segments } => pousser(
-                GenreBlocAffiche::Titre,
-                balisage(segments, reveles, palette),
-                String::new(),
-                (*niveau).clamp(1, 3),
-            ),
-            Bloc::Code { texte, .. } => {
-                pousser(GenreBlocAffiche::Code, String::new(), texte.clone(), 0)
+struct Aplatissement<'a> {
+    reveles: &'a BTreeSet<u32>,
+    palette: &'a Palette,
+    sortie: Vec<BlocAffiche>,
+}
+
+impl Aplatissement<'_> {
+    fn pousser(
+        &mut self,
+        position: Position,
+        puce: &mut Option<String>,
+        genre: GenreBlocAffiche,
+        niveau: u8,
+    ) -> &mut BlocAffiche {
+        self.sortie.push(BlocAffiche {
+            genre,
+            balisage: String::new(),
+            code: String::new(),
+            niveau,
+            citation: position.citation,
+            retrait: position.retrait,
+            puce: puce.take().unwrap_or_default(),
+            segments: Vec::new(),
+            grand: false,
+            espace_avant: true,
+        });
+        let n = self.sortie.len() - 1;
+        &mut self.sortie[n]
+    }
+
+    fn texte(
+        &mut self,
+        position: Position,
+        puce: &mut Option<String>,
+        genre: GenreBlocAffiche,
+        segments: &[Segment],
+        niveau: u8,
+    ) {
+        if !besoin_de_segments(segments, self.reveles) {
+            let balise = balisage(segments, self.reveles, self.palette);
+            self.pousser(position, puce, genre, niveau).balisage = balise;
+            return;
+        }
+        let lignes = segments_affiches(segments, self.reveles, self.palette);
+        for (i, ligne) in lignes.into_iter().enumerate() {
+            let bloc = self.pousser(position, puce, genre, niveau);
+            bloc.espace_avant = i == 0;
+            if ligne.is_empty() {
+                bloc.balisage = SEPARATEUR_INVISIBLE.to_string();
+            } else {
+                bloc.segments = ligne;
             }
-            Bloc::Citation(interieur) => aplatir(
-                interieur,
-                Position {
-                    citation: position.citation.saturating_add(1),
-                    ..position
-                },
-                puce,
-                reveles,
-                palette,
-                sortie,
-            ),
-            Bloc::Liste { ordonnee, elements } => {
-                for (i, element) in elements.iter().enumerate() {
-                    let mut marque = Some(if *ordonnee {
-                        format!("{}.", i + 1)
-                    } else {
-                        "•".to_string()
-                    });
-                    let interieure = Position {
-                        retrait: position.retrait.saturating_add(1),
+        }
+    }
+
+    fn aplatir(&mut self, blocs: &[Bloc], position: Position, puce: &mut Option<String>) {
+        for bloc in blocs {
+            match bloc {
+                Bloc::Paragraphe(segments) => {
+                    self.texte(position, puce, GenreBlocAffiche::Paragraphe, segments, 0)
+                }
+                Bloc::Titre { niveau, segments } => self.texte(
+                    position,
+                    puce,
+                    GenreBlocAffiche::Titre,
+                    segments,
+                    (*niveau).clamp(1, 3),
+                ),
+                Bloc::Code { texte, .. } => {
+                    self.pousser(position, puce, GenreBlocAffiche::Code, 0).code = texte.clone()
+                }
+                Bloc::Citation(interieur) => self.aplatir(
+                    interieur,
+                    Position {
+                        citation: position.citation.saturating_add(1),
                         ..position
-                    };
-                    if element.is_empty() {
-                        aplatir(
-                            &[Bloc::Paragraphe(Vec::new())],
-                            interieure,
-                            &mut marque,
-                            reveles,
-                            palette,
-                            sortie,
-                        );
-                    } else {
-                        aplatir(element, interieure, &mut marque, reveles, palette, sortie);
+                    },
+                    puce,
+                ),
+                Bloc::Liste { ordonnee, elements } => {
+                    for (i, element) in elements.iter().enumerate() {
+                        let mut marque = Some(if *ordonnee {
+                            format!("{}.", i + 1)
+                        } else {
+                            "•".to_string()
+                        });
+                        let interieure = Position {
+                            retrait: position.retrait.saturating_add(1),
+                            ..position
+                        };
+                        if element.is_empty() {
+                            self.aplatir(&[Bloc::Paragraphe(Vec::new())], interieure, &mut marque);
+                        } else {
+                            self.aplatir(element, interieure, &mut marque);
+                        }
                     }
                 }
             }
         }
     }
+}
+
+pub fn seulement_des_emoji(blocs: &[BlocAffiche]) -> bool {
+    let mut nombre = 0;
+    for bloc in blocs {
+        if bloc.genre == GenreBlocAffiche::Code {
+            return false;
+        }
+        if !bloc.en_segments() {
+            if bloc.balisage.trim_matches(SEPARATEUR_INVISIBLE).trim().is_empty() {
+                continue;
+            }
+            return false;
+        }
+        for segment in &bloc.segments {
+            if !segment.est_emoji() {
+                return false;
+            }
+            nombre += 1;
+        }
+    }
+    (1..=EMOJI_GRANDS_MAX).contains(&nombre)
 }
 
 pub fn blocs_affiches(
@@ -332,21 +567,40 @@ pub fn blocs_affiches(
     palette: &Palette,
     modifie: bool,
 ) -> Vec<BlocAffiche> {
-    let mut sortie = Vec::new();
-    aplatir(
+    let mut a = Aplatissement {
+        reveles,
+        palette,
+        sortie: Vec::new(),
+    };
+    a.aplatir(
         &rendu.blocs,
         Position {
             citation: 0,
             retrait: 0,
         },
         &mut None,
-        reveles,
-        palette,
-        &mut sortie,
     );
+    let mut sortie = a.sortie;
+    if let Some(premier) = sortie.first_mut() {
+        premier.espace_avant = false;
+    }
+    if seulement_des_emoji(&sortie) {
+        for bloc in &mut sortie {
+            bloc.grand = true;
+        }
+    }
     if modifie {
         let marque = couleur(echapper("(modifié)"), &palette.discret);
         match sortie.last_mut() {
+            Some(dernier) if dernier.genre == GenreBlocAffiche::Paragraphe && dernier.en_segments() => {
+                if let Some(precedent) = dernier.segments.last_mut() {
+                    precedent.espace = true;
+                }
+                dernier.segments.push(SegmentAffiche {
+                    balisage: marque,
+                    ..SegmentAffiche::nouveau(GenreSegmentAffiche::Texte, "(modifié)")
+                });
+            }
             Some(dernier) if dernier.genre == GenreBlocAffiche::Paragraphe => {
                 dernier.balisage = format!("{} {marque}", dernier.balisage);
             }
@@ -358,6 +612,9 @@ pub fn blocs_affiches(
                 citation: 0,
                 retrait: 0,
                 puce: String::new(),
+                segments: Vec::new(),
+                grand: false,
+                espace_avant: true,
             }),
         }
     }
@@ -412,7 +669,6 @@ mod tests {
             ("**gras**", "Strong"),
             ("*italique*", "Emphasis"),
             ("~~barré~~", "Strikethrough"),
-            ("`code`", "Code"),
             ("[site](https://plbls.fr)", "Link"),
             ("**gras *et italique***", "Emphasis"),
             ("a **\"cité\"**, b", "Strong"),
@@ -480,22 +736,113 @@ mod tests {
     }
 
     #[test]
-    fn un_passage_masque_est_cache_jusqu_au_clic() {
+    fn un_passage_masque_est_un_pave_cliquable_jusqu_au_clic() {
         let contexte = Mentionnables::default();
-        let rendu = analyser("avant ||secret|| après", &contexte);
+        let rendu = analyser("avant ||secret bien gardé|| après", &contexte);
         let cache = blocs_affiches(&rendu, &BTreeSet::new(), &Palette::default(), false);
-        let texte = texte_de(&styled(&cache[0].balisage));
-        assert!(
-            !texte.contains("secret") && texte.contains("s:1"),
-            "{texte}"
+        assert!(cache[0].balisage.is_empty());
+        let masques: Vec<(&str, &str, bool, bool)> = cache[0]
+            .segments
+            .iter()
+            .filter(|s| s.genre == GenreSegmentAffiche::Masque)
+            .map(|s| (s.texte.as_str(), s.cible.as_str(), s.espace, s.joint))
+            .collect();
+        assert_eq!(
+            masques,
+            [
+                ("secret", "s:1", true, true),
+                ("bien", "s:1", true, true),
+                ("gardé", "s:1", true, false)
+            ]
         );
         let revele = blocs_affiches(&rendu, &BTreeSet::from([1]), &Palette::default(), false);
+        assert!(!revele[0].en_segments());
         let texte = texte_de(&styled(&revele[0].balisage));
         assert!(
             texte.contains("secret") && !texte.contains("s:1"),
             "{texte}"
         );
         assert_eq!(analyser_cible("s:1"), Some(Cible::Masque(1)));
+    }
+
+    #[test]
+    fn le_code_en_ligne_passe_par_des_segments_a_chasse_fixe() {
+        let blocs = rendre("lance `cargo test --locked` puis **relis**");
+        assert_eq!(blocs.len(), 1);
+        let resume: Vec<(GenreSegmentAffiche, &str, bool)> = blocs[0]
+            .segments
+            .iter()
+            .map(|s| (s.genre, s.texte.as_str(), s.espace))
+            .collect();
+        assert_eq!(
+            resume,
+            [
+                (GenreSegmentAffiche::Texte, "lance", true),
+                (GenreSegmentAffiche::Code, "cargo test --locked", true),
+                (GenreSegmentAffiche::Texte, "puis", true),
+                (GenreSegmentAffiche::Texte, "relis", false),
+            ]
+        );
+        assert!(texte_de(&styled(&blocs[0].segments[3].balisage)).contains("Strong"));
+        for segment in &blocs[0].segments {
+            styled(&segment.balisage);
+        }
+    }
+
+    #[test]
+    fn les_emoji_deviennent_des_segments_et_un_message_d_emoji_s_affiche_en_grand() {
+        let contexte = Mentionnables::nouveau(
+            Vec::<String>::new(),
+            Vec::<String>::new(),
+            Vec::<String>::new(),
+            ["chat"],
+        );
+        let blocs = |texte: &str| {
+            blocs_affiches(
+                &analyser(texte, &contexte),
+                &BTreeSet::new(),
+                &Palette::default(),
+                false,
+            )
+        };
+        let phrase = blocs("Bravo 🎉 [site](https://plbls.fr)👍🏽 :chat: :inconnu:");
+        let genres: Vec<(GenreSegmentAffiche, &str)> = phrase[0]
+            .segments
+            .iter()
+            .map(|s| (s.genre, s.texte.as_str()))
+            .collect();
+        assert_eq!(
+            genres,
+            [
+                (GenreSegmentAffiche::Texte, "Bravo"),
+                (GenreSegmentAffiche::Emoji, "🎉"),
+                (GenreSegmentAffiche::Texte, "site"),
+                (GenreSegmentAffiche::Emoji, "👍🏽"),
+                (GenreSegmentAffiche::EmojiServeur, ":chat:"),
+                (GenreSegmentAffiche::Texte, ":inconnu:"),
+            ]
+        );
+        assert!(phrase[0].segments[2].balisage.contains("u:https://plbls.fr"));
+        assert!(!phrase[0].grand);
+        let seuls = blocs("🇫🇷 👩🏾‍💻\n:chat:");
+        assert_eq!(seuls.len(), 2);
+        assert!(seuls.iter().all(|b| b.grand));
+        assert!(!seuls[1].espace_avant && !seuls[0].espace_avant);
+        let deux = blocs("a\n\n😀");
+        assert!(!deux[0].espace_avant && deux[1].espace_avant);
+        assert!(!blocs(&"😀".repeat(EMOJI_GRANDS_MAX + 1))[0].grand);
+        assert!(blocs(&"😀".repeat(EMOJI_GRANDS_MAX))[0].grand);
+        assert!(!blocs("😀 a")[0].grand);
+        assert!(!blocs("> 😀\n```\nx\n```")[0].grand);
+        assert!(!blocs("bonjour")[0].en_segments());
+        let modifie = blocs_affiches(
+            &analyser("😀", &contexte),
+            &BTreeSet::new(),
+            &Palette::default(),
+            true,
+        );
+        assert!(modifie[0].grand);
+        assert_eq!(modifie[0].segments.last().unwrap().texte, "(modifié)");
     }
 
     #[test]

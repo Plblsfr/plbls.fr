@@ -46,6 +46,44 @@ impl Dossiers {
     }
 }
 
+pub const DOSSIER_TELECHARGEMENTS_ESSAI: &str = "telechargements";
+
+pub fn dossier_telechargements() -> Option<PathBuf> {
+    if let Some(racine) = std::env::var_os(VARIABLE_DOSSIER).filter(|v| !v.is_empty()) {
+        return Some(Path::new(&racine).join(DOSSIER_TELECHARGEMENTS_ESSAI));
+    }
+    telechargements_de_l_os()
+}
+
+#[cfg(windows)]
+fn telechargements_de_l_os() -> Option<PathBuf> {
+    Some(variable("USERPROFILE")?.join("Downloads"))
+}
+
+#[cfg(not(windows))]
+fn telechargements_de_l_os() -> Option<PathBuf> {
+    let maison = variable("HOME")?;
+    let configuration = variable("XDG_CONFIG_HOME").unwrap_or_else(|| maison.join(".config"));
+    let declare = std::fs::read_to_string(configuration.join("user-dirs.dirs"))
+        .ok()
+        .and_then(|texte| dossier_declare(&texte, &maison));
+    Some(declare.unwrap_or_else(|| maison.join("Downloads")))
+}
+
+pub fn dossier_declare(texte: &str, maison: &Path) -> Option<PathBuf> {
+    let valeur = texte
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("XDG_DOWNLOAD_DIR="))
+        .next()?
+        .trim()
+        .trim_matches('"');
+    let chemin = match valeur.strip_prefix("$HOME") {
+        Some(reste) => maison.join(reste.trim_start_matches('/')),
+        None => PathBuf::from(valeur),
+    };
+    (chemin.is_absolute() && chemin != maison).then_some(chemin)
+}
+
 fn variable(nom: &str) -> Option<PathBuf> {
     std::env::var_os(nom)
         .map(PathBuf::from)
@@ -103,6 +141,22 @@ mod tests {
         assert_ne!(d.donnees, d.journaux);
         assert_ne!(d.cache, d.journaux);
         assert!(d.cache.starts_with(&d.donnees) && d.journaux.starts_with(&d.donnees));
+    }
+
+    #[test]
+    fn le_dossier_des_telechargements_suit_user_dirs() {
+        let maison = Path::new("/home/u");
+        assert_eq!(
+            dossier_declare("# x\nXDG_DOWNLOAD_DIR=\"$HOME/Téléchargements\"\n", maison),
+            Some(PathBuf::from("/home/u/Téléchargements"))
+        );
+        assert_eq!(
+            dossier_declare("XDG_DOWNLOAD_DIR=\"/data/dl\"", maison),
+            Some(PathBuf::from("/data/dl"))
+        );
+        assert_eq!(dossier_declare("XDG_DOWNLOAD_DIR=\"$HOME/\"", maison), None);
+        assert_eq!(dossier_declare("XDG_DOWNLOAD_DIR=\"relatif\"", maison), None);
+        assert_eq!(dossier_declare("XDG_MUSIC_DIR=\"$HOME/M\"", maison), None);
     }
 
     #[test]

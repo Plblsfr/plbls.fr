@@ -29,6 +29,18 @@ pub trait OuvertureUrl {
     fn ouvrir(&self, url: &str) -> Resultat<()>;
 }
 
+pub trait Fichiers {
+    fn disponible(&self) -> bool;
+    fn choisir_dossier(&self, depart: Option<&std::path::Path>)
+        -> Resultat<Option<std::path::PathBuf>>;
+    fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
+}
+
+pub trait PressePapiers {
+    fn disponible(&self) -> bool;
+    fn copier_image(&self, image: &Image) -> Resultat<()>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeSource {
     Ecran,

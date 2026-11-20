@@ -10,7 +10,9 @@ workspace = "../../natif"
 workspace = true
 
 [dependencies]
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 keyring = { version = "3", default-features = false, features = ["windows-native", "async-secret-service", "async-io", "crypto-rust"] }
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal"] }
 webbrowser = "1"
 
 [dev-dependencies]

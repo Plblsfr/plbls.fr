@@ -21,22 +21,44 @@ use i_slint_backend_testing::ElementHandle;
 use slint::{ComponentHandle, Model};
 
 const NOMBRE: u64 = 50_000;
-const PAS: f32 = 1400.0;
-const DUREE_SIMULEE: Duration = Duration::from_secs(120);
+const VARIABLE: &str = "ESTOMPE_VOLUME";
 const INTERVALLE: Duration = Duration::from_secs(1);
 const BORNE_INSTANCES: usize = 80;
 const CROISSANCE_MAX: u64 = 48 * 1024 * 1024;
 
+struct Parcours {
+    pas: f32,
+    duree: Duration,
+}
+
+fn parcours() -> Parcours {
+    if std::env::var(VARIABLE).is_ok_and(|v| v == "long") {
+        Parcours {
+            pas: 1400.0,
+            duree: Duration::from_secs(120),
+        }
+    } else {
+        Parcours {
+            pas: 3000.0,
+            duree: Duration::from_secs(16),
+        }
+    }
+}
+
+fn instancier(f: &Principale) {
+    let _ = ElementHandle::find_by_element_type_name(f, "LigneMessageVue").next();
+}
+
 fn pomper(faible: &slint::Weak<Principale>) {
     sur_l_interface(faible, |f| {
-        ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count();
+        instancier(f);
         slint::platform::update_timers_and_animations();
     });
 }
 
-fn instances(faible: &slint::Weak<Principale>) -> usize {
+fn lignes_du_modele(faible: &slint::Weak<Principale>) -> usize {
     sur_l_interface(faible, |f| {
-        ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count()
+        f.global::<DonneesMessagerie>().get_lignes().row_count()
     })
 }
 
@@ -46,8 +68,9 @@ fn stabiliser(faible: &slint::Weak<Principale>, pont: &Pont) {
     attendre(
         || {
             let n = sur_l_interface(faible, |f| {
+                instancier(f);
                 slint::platform::update_timers_and_animations();
-                ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count()
+                f.global::<DonneesMessagerie>().get_lignes().row_count()
             });
             let m = pont.messagerie();
             let courant = (
@@ -137,7 +160,8 @@ fn scenario(
     let store = fabrique.store();
     let c1 = CleConversation::Salon("c1".into());
     let messages = || store.conversation(&c1).map_or(0, |c| c.messages.len());
-    let etapes = (DUREE_SIMULEE.as_millis() / INTERVALLE.as_millis()) as usize;
+    let Parcours { pas, duree: simulee } = parcours();
+    let etapes = (simulee.as_millis() / INTERVALLE.as_millis()) as usize;
     let mut base = None;
     let mut max_instances = 0;
     let mut max_modele = 0;
@@ -147,14 +171,22 @@ fn scenario(
     let mut pages = 0;
     for etape in 0..etapes {
         let debut = Instant::now();
-        defiler_de(&faible, PAS);
+        defiler_de(&faible, pas);
         i_slint_backend_testing::mock_elapsed_time(INTERVALLE);
         stabiliser(&faible, &pont);
         duree += debut.elapsed();
-        let n = instances(&faible);
-        let modele = sur_l_interface(&faible, |f| {
-            f.global::<DonneesMessagerie>().get_lignes().row_count()
-        });
+        let (n, modele) = if etape % 4 == 0 {
+            let (n, modele) = sur_l_interface(&faible, |f| {
+                (
+                    ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count(),
+                    f.global::<DonneesMessagerie>().get_lignes().row_count(),
+                )
+            });
+            (n, modele)
+        } else {
+            let modele = lignes_du_modele(&faible);
+            (modele, modele)
+        };
         max_instances = max_instances.max(n);
         max_modele = max_modele.max(modele);
         max_messages = max_messages.max(messages());
@@ -171,8 +203,8 @@ fn scenario(
         .and_then(|c| c.premier_id().map(str::to_string))
         .unwrap_or_default();
     println!(
-        "299 C2 : {etapes} pas de {PAS} px ({} s simulées), {pages_totales} pages anciennes chargées ({} après le premier quart), premier message chargé n°{premier}",
-        DUREE_SIMULEE.as_secs(),
+        "299 C2 : {etapes} pas de {pas} px ({} s simulées), {pages_totales} pages anciennes chargées ({} après le premier quart), premier message chargé n°{premier}",
+        simulee.as_secs(),
         pages_totales - pages
     );
     println!(

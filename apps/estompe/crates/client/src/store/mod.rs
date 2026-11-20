@@ -501,6 +501,43 @@ mod tests {
             .any(|c| matches!(c, Changement::SalonAjoute { .. })));
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn l_indicateur_de_saisie_expire_au_bout_de_sa_duree_en_temps_simule() {
+        let store = Store::nouveau(Client::nouveau("http://127.0.0.1:9").unwrap(), &[]);
+        store.installer(Etat {
+            compte: serde_json::from_value(json!({"id": "me", "pseudo": "moi"})).unwrap(),
+            ..Etat::default()
+        });
+        let mut abonne = store.abonner();
+        let (signaux, flux) = FluxTempsReel::factice();
+        let suivi = store.brancher(flux);
+        let c1 = cle("c:c1");
+        let saisie = crate::temps_reel::decoder(
+            &json!({"type": "typing", "data": {"channel_id": "c1", "user_id": "bob", "pseudo": "bob"}})
+                .to_string(),
+        );
+        let crate::temps_reel::Trame::Evenement(e) = saisie else {
+            panic!("trame de saisie");
+        };
+        let depart = tokio::time::Instant::now();
+        signaux.send(Signal::Evenement(e)).unwrap();
+        let attendu = vec![Changement::Messages(
+            crate::store::messages::ChangementMessages::Saisie {
+                conversation: c1.clone(),
+            },
+        )];
+        assert_eq!(abonne.recv().await.unwrap(), attendu);
+        assert_eq!(store.saisies(&c1), ["bob"]);
+        tokio::time::advance(messages::DUREE_SAISIE / 2).await;
+        tokio::task::yield_now().await;
+        assert_eq!(store.saisies(&c1), ["bob"], "pas encore expirée");
+        assert_eq!(abonne.recv().await.unwrap(), attendu);
+        assert!(store.saisies(&c1).is_empty());
+        assert_eq!(depart.elapsed(), messages::DUREE_SAISIE);
+        drop(signaux);
+        assert_eq!(suivi.await.unwrap(), FinFlux::Termine);
+    }
+
     #[tokio::test]
     async fn installer_un_etat_ne_publie_que_ses_differences() {
         let serveur = monde(monde_a()).await;

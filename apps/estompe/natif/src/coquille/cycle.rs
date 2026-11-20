@@ -17,7 +17,8 @@ use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
 use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
-use crate::messagerie::pont::Navigateur;
+use crate::messagerie::medias::Medias;
+use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::session::Memoire;
 use crate::{DonneesCoquille, DonneesMessagerie, Principale};
 
@@ -43,8 +44,17 @@ pub trait Fabrique: Send + Sync + 'static {
     fn ouvrir(&self, ordre_serveurs: Vec<String>) -> Futur<Result<Ouverture, EchecOuverture>>;
     fn sections(&self) -> Futur<Vec<Section>>;
     fn profils(&self) -> Arc<Profils>;
+    fn medias(&self) -> Option<Arc<Medias>> {
+        None
+    }
     fn navigateur(&self) -> Navigateur {
         Arc::new(estompe_plateforme::NavigateurSysteme)
+    }
+    fn fichiers(&self) -> SystemeFichiers {
+        Arc::new(estompe_plateforme::FichiersSysteme)
+    }
+    fn presse_papiers(&self) -> Presse {
+        Arc::new(estompe_plateforme::PressePapiersSysteme)
     }
 }
 
@@ -54,6 +64,7 @@ pub struct FabriqueReelle {
     pub adresses_sections: Vec<(Section, String)>,
     pub journal: Option<Arc<Journal>>,
     pub profils: Arc<Profils>,
+    pub medias: Arc<Medias>,
     pub navigateur: Navigateur,
 }
 
@@ -128,6 +139,10 @@ impl Fabrique for FabriqueReelle {
 
     fn profils(&self) -> Arc<Profils> {
         self.profils.clone()
+    }
+
+    fn medias(&self) -> Option<Arc<Medias>> {
+        Some(self.medias.clone())
     }
 
     fn navigateur(&self) -> Navigateur {
@@ -244,6 +259,33 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_theme_change, |p, f, _sombre| p
         .messagerie()
         .theme_change(&f));
+    rappel_messagerie!(on_image_cliquee, |p, f, message, index| p
+        .messagerie()
+        .image_cliquee(&f, &message, index));
+    rappel_messagerie!(on_telecharger, |p, f, message, piece| p
+        .messagerie()
+        .telecharger_piece(&f, &message, &piece));
+    rappel_messagerie!(on_ouvrir_fichier, |p, f, _message, piece| p
+        .messagerie()
+        .ouvrir_fichier(&f, &piece));
+    rappel_messagerie!(on_carte_cliquee, |p, _f, _message, url| p
+        .messagerie()
+        .carte_cliquee(&url));
+    rappel_messagerie!(on_visionneuse_voisine, |p, f, sens| p
+        .messagerie()
+        .visionneuse_voisine(&f, sens));
+    rappel_messagerie!(on_visionneuse_zoom, |p, f, facteur| p
+        .messagerie()
+        .visionneuse_zoom(&f, facteur));
+    rappel_messagerie!(on_visionneuse_copier, |p, _f| p
+        .messagerie()
+        .visionneuse_copier());
+    rappel_messagerie!(on_visionneuse_enregistrer, |p, f| p
+        .messagerie()
+        .visionneuse_enregistrer(&f));
+    rappel_messagerie!(on_fermer_visionneuse, |p, f| p
+        .messagerie()
+        .fermer_visionneuse(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -461,6 +503,15 @@ async fn session(
     );
     pont.messagerie()
         .definir_navigateur(contexte.fabrique.navigateur());
+    if let Some(medias) = contexte.fabrique.medias() {
+        pont.messagerie().definir_medias(medias);
+    }
+    pont.messagerie()
+        .definir_fichiers(contexte.fabrique.fichiers());
+    pont.messagerie()
+        .definir_presse_papiers(contexte.fabrique.presse_papiers());
+    pont.messagerie()
+        .definir_apercus(contexte.memoire.lire(|p| p.apercus));
     if !contexte.focus.load(Ordering::SeqCst) {
         pont.messagerie().fenetre_active(false);
     }

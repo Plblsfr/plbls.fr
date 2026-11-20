@@ -15,6 +15,7 @@ use estompe_client::preferences::Preferences;
 use estompe_client::store::CleConversation;
 use estompe_natif::coquille::modeles::Operation;
 use estompe_natif::coquille::{Coquille, Pont};
+use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
@@ -362,6 +363,282 @@ fn scenario(
         "lu sur un autre appareil",
     );
     println!("305 C3 : pastille de c4 retirée après read.updated");
+
+    pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
+}
+
+fn png_gris(cote: u32) -> Vec<u8> {
+    let image = image::GrayImage::from_pixel(cote, cote, image::Luma([150]));
+    let mut octets = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut octets, image::ImageFormat::Png)
+        .unwrap();
+    octets.into_inner()
+}
+
+fn gif_anime(images: usize) -> Vec<u8> {
+    let mut octets = Vec::new();
+    {
+        let mut encodeur = image::codecs::gif::GifEncoder::new(&mut octets);
+        for i in 0..images {
+            let couleur = image::Rgba([(i * 50) as u8, 120, 200, 255]);
+            encodeur
+                .encode_frame(image::Frame::from_parts(
+                    image::RgbaImage::from_pixel(60, 40, couleur),
+                    0,
+                    0,
+                    image::Delay::from_numer_denom_ms(100, 1),
+                ))
+                .unwrap();
+        }
+    }
+    octets
+}
+
+fn avancer(faible: &slint::Weak<Principale>, duree: std::time::Duration) {
+    sur_l_interface(faible, move |_| {
+        i_slint_backend_testing::mock_elapsed_time(duree);
+        slint::platform::update_timers_and_animations();
+    });
+}
+
+fn sondage_de(f: &Principale, id: &str) -> Option<Vec<(i32, i32)>> {
+    lignes(f).into_iter().find(|l| l.id == id).map(|l| {
+        l.annexes
+            .sondage
+            .options
+            .iter()
+            .map(|o| (o.votes, o.pourcentage))
+            .collect()
+    })
+}
+
+fn pieces_jointes_sondage_et_telechargement(
+    faible: &slint::Weak<Principale>,
+    fabrique: &FausseFabrique,
+    pont: &Pont,
+    serveur: &ServeurMessages,
+) {
+    serveur.servir_fichier("/files/geante", "image/png", png_gris(8000));
+    serveur.servir_fichier("/files/anim", "image/gif", gif_anime(4));
+    let hostile = b"contenu du fichier hostile".to_vec();
+    serveur.servir_fichier("/files/f1", "text/plain", hostile.clone());
+    let mut m = message("303", "c1", "carol");
+    m["content"] = json!("Les pièces jointes :");
+    m["attachments"] = json!([
+        {"id": "geante", "name": "geante.png", "mime": "image/png", "size": 2_000_000},
+        {"id": "anim", "name": "anim.gif", "mime": "image/gif", "size": 2_000},
+        {"id": "f1", "name": "..\\..\\CON.txt", "mime": "text/plain", "size": hostile.len()}
+    ]);
+    let medias = fabrique.medias.clone();
+    let debut = std::time::Instant::now();
+    fabrique.envoyer(evenement("message.created", m));
+    let mut attente_max = std::time::Duration::ZERO;
+    attendre(
+        || {
+            let ping = std::time::Instant::now();
+            let chargee = sur_l_interface(faible, |f| {
+                slint::platform::update_timers_and_animations();
+                lignes(f).iter().any(|l| {
+                    l.id == "303"
+                        && l.annexes
+                            .pieces_jointes
+                            .iter()
+                            .any(|p| p.id == "geante" && p.chargee)
+                })
+            });
+            attente_max = attente_max.max(ping.elapsed());
+            chargee
+        },
+        "image de 8000 × 8000 affichée",
+    );
+    let duree = debut.elapsed();
+    let stats = medias.statistiques();
+    let taille = sur_l_interface(faible, |f| {
+        lignes(f)
+            .into_iter()
+            .find(|l| l.id == "303")
+            .and_then(|l| l.annexes.pieces_jointes.iter().find(|p| p.id == "geante"))
+            .map(|p| (p.largeur, p.hauteur))
+    });
+    println!(
+        "303 C2 : 8000 × 8000 affichée en {:.0} ms ; plus longue réponse du fil d'interface {:.1} ms ; {} décodages dont {} hors du fil d'interface ; vignette {taille:?} ; mémoire {} o / plafond {} o",
+        duree.as_secs_f64() * 1000.0,
+        attente_max.as_secs_f64() * 1000.0,
+        stats.decodages,
+        stats.decodages_hors_interface,
+        medias.octets_en_memoire(),
+        medias.plafond()
+    );
+    assert_eq!(stats.decodages, stats.decodages_hors_interface);
+    assert!(medias.octets_en_memoire() <= medias.plafond());
+    assert_eq!(taille, Some((300.0, 300.0)));
+    assert!(
+        attente_max < std::time::Duration::from_millis(500),
+        "interface figée {attente_max:?}"
+    );
+
+    attendre(
+        || {
+            pomper(faible);
+            pont.messagerie().animations_actives() == 1
+        },
+        "GIF animé à l'écran",
+    );
+    let depart = pont.messagerie().statistiques();
+    for _ in 0..20 {
+        avancer(faible, std::time::Duration::from_millis(100));
+    }
+    let anime = pont.messagerie().statistiques();
+    let images_a_l_ecran = anime.images_animees - depart.images_animees;
+    let reveils_a_l_ecran = anime.reveils_animation - depart.reveils_animation;
+    assert!(images_a_l_ecran >= 15, "{images_a_l_ecran} images en 2 s");
+    assert!(pont.messagerie().minuterie_d_animation());
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().set_defilement(-1500.0);
+    });
+    attendre(
+        || {
+            pomper(faible);
+            pont.messagerie().animations_actives() == 0
+        },
+        "GIF sorti de l'écran",
+    );
+    let hors = pont.messagerie().statistiques();
+    for _ in 0..100 {
+        avancer(faible, std::time::Duration::from_millis(100));
+    }
+    let apres = pont.messagerie().statistiques();
+    println!(
+        "303 C3 : à l'écran {reveils_a_l_ecran} réveils et {images_a_l_ecran} images en 2 s simulées ; hors de l'écran {} réveil et {} image en 10 s simulées, minuterie {}",
+        apres.reveils_animation - hors.reveils_animation,
+        apres.images_animees - hors.images_animees,
+        if pont.messagerie().minuterie_d_animation() { "active" } else { "arrêtée" }
+    );
+    assert_eq!(apres.reveils_animation, hors.reveils_animation);
+    assert_eq!(apres.images_animees, hors.images_animees);
+    assert!(!pont.messagerie().minuterie_d_animation());
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas()
+    });
+    stabiliser(faible, pont);
+
+    let dossier = tempfile::tempdir().unwrap();
+    *fabrique.fichiers.dossier.lock().unwrap() = Some(dossier.path().to_path_buf());
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>()
+            .invoke_telecharger("303".into(), "f1".into())
+    });
+    attendre(
+        || {
+            pomper(faible);
+            pont.messagerie().etat_piece("f1").telechargement == Telechargement::Termine
+        },
+        "fichier téléchargé",
+    );
+    let enregistres: Vec<String> = std::fs::read_dir(dossier.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    let chemin = pont.messagerie().etat_piece("f1").chemin.unwrap();
+    println!("303 C5 : « ..\\\\..\\\\CON.txt » enregistré sous {enregistres:?}");
+    assert_eq!(enregistres, ["_CON.txt"]);
+    assert_eq!(chemin, dossier.path().join("_CON.txt"));
+    assert_eq!(std::fs::read(&chemin).unwrap(), hostile);
+    assert!(serveur.nombre_de("GET /files/f1?download=1") == 1);
+    attendre_l_interface(
+        faible,
+        |f| {
+            lignes(f).iter().any(|l| {
+                l.annexes.pieces_jointes.iter().any(|p| {
+                    p.id == "f1" && p.telechargement == estompe_natif::EtatTelechargement::Termine
+                })
+            })
+        },
+        "puce du fichier terminée",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>()
+            .invoke_ouvrir_fichier("303".into(), "f1".into())
+    });
+    assert_eq!(*fabrique.fichiers.ouverts.lock().unwrap(), [chemin]);
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>()
+            .invoke_image_cliquee("303".into(), 1)
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            let v = f.global::<DonneesMessagerie>().get_visionneuse();
+            v.ouverte && v.chargee && v.nom == "anim.gif" && v.total == 2
+        },
+        "visionneuse ouverte sur la deuxième image",
+    );
+    sur_l_interface(faible, |f| {
+        let g = f.global::<DonneesMessagerie>();
+        g.invoke_visionneuse_voisine(-1);
+        g.invoke_visionneuse_zoom(2.0);
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            let v = f.global::<DonneesMessagerie>().get_visionneuse();
+            v.index == 0 && v.nom == "geante.png" && v.zoom == 2.0 && v.chargee && v.largeur == 2048.0
+        },
+        "image précédente zoomée",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_fermer_visionneuse()
+    });
+    assert!(!sur_l_interface(faible, |f| f
+        .global::<DonneesMessagerie>()
+        .get_visionneuse()
+        .ouverte));
+
+    let mut s = message("304", "c1", "ines");
+    s["content"] = json!("On mange où ?");
+    s["poll"] = json!({"multiple": false, "closes_at": null, "created_by": {"id": "ines", "pseudo": "Inès"},
+        "options": [{"id": "o1", "label": "Pizza", "votes": 1}, {"id": "o2", "label": "Sushi", "votes": 1}]});
+    fabrique.envoyer(evenement("message.created", s));
+    attendre_l_interface(
+        faible,
+        |f| sondage_de(f, "304") == Some(vec![(1, 50), (1, 50)]),
+        "sondage affiché",
+    );
+    stabiliser(faible, pont);
+    fabrique.envoyer(evenement(
+        "poll.voted",
+        json!({"message_id": "304", "user_id": "dave", "options": ["o1"], "counts": {"o1": 3, "o2": 1}}),
+    ));
+    attendre_l_interface(
+        faible,
+        |f| sondage_de(f, "304") == Some(vec![(3, 75), (1, 25)]),
+        "résultat du sondage mis à jour en temps réel",
+    );
+    let operations = pont.messagerie().operations();
+    println!("304 C3 : vote reçu, résultats 75 % / 25 %, opérations {operations:?}");
+    assert_eq!(operations.len(), 1, "{operations:?}");
+    assert!(matches!(operations[0], (Operation::Remplacer(_), ref c) if c == "304"));
+    fabrique.envoyer(evenement(
+        "reaction.updated",
+        json!({"message_id": "304", "emoji": "🍕", "user_id": "dave", "pseudo": "dave", "added": true}),
+    ));
+    attendre_l_interface(
+        faible,
+        |f| {
+            lignes(f).iter().any(|l| {
+                l.id == "304"
+                    && l.annexes
+                        .reactions
+                        .iter()
+                        .any(|r| r.emoji == "🍕" && r.nombre == 1 && r.image.size().width > 0)
+            })
+        },
+        "réaction reçue en temps réel",
+    );
+    println!("302 : réaction 🍕 reçue en temps réel, dessinée en image");
+
 }
 
 #[test]

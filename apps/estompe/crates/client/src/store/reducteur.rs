@@ -77,6 +77,9 @@ pub enum Changement {
     Notification(Box<NotificationServeur>),
     Avis(Avis),
     Messages(ChangementMessages),
+    Emojis {
+        serveur: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -587,9 +590,11 @@ pub fn appliquer_avec_effets(etat: &mut Etat, evenement: &Evenement) -> Applicat
                 }
             }
         }
+        Evenement::EmojisModifies(e) => a.changer(Changement::Emojis {
+            serveur: e.server_id.clone(),
+        }),
         Evenement::Pret(_)
         | Evenement::Saisie(_)
-        | Evenement::EmojisModifies(_)
         | Evenement::MessageModifie(_)
         | Evenement::SondageVote(_)
         | Evenement::SondageClos(_)
@@ -1735,6 +1740,20 @@ mod tests {
     }
 
     #[test]
+    fn une_liste_d_emojis_modifiee_est_signalee_sans_changer_l_etat() {
+        let mut s = etat_de_depart();
+        let avant = s.clone();
+        let a = ev(&mut s, "emoji.updated", json!({"server_id": "s1"}));
+        assert_eq!(
+            a.changements,
+            [Changement::Emojis {
+                serveur: "s1".into()
+            }]
+        );
+        assert_eq!(s, avant);
+    }
+
+    #[test]
     fn ignore_sans_paniquer_les_evenements_hors_du_store() {
         let mut s = etat_de_depart();
         let avant = s.clone();
@@ -1753,7 +1772,6 @@ mod tests {
                 json!({"message_id": "1", "user_id": "bob", "options": [], "counts": {}}),
             ),
             ("poll.closed", json!({"message_id": "1", "closes_at": "x"})),
-            ("emoji.updated", json!({"server_id": "s1"})),
             (
                 "voice.moved",
                 json!({"server_id": "s1", "from": "v1", "to": "v2", "by": "m", "to_name": "x"}),

@@ -105,6 +105,14 @@ impl Defilement {
         Some((0..i).map(|j| self.hauteur(j)).sum())
     }
 
+    pub fn visible(&self, cle: &str) -> bool {
+        let Some(i) = self.indice(cle) else {
+            return false;
+        };
+        let y = self.y_de(cle).unwrap_or_default();
+        y + self.hauteur(i) > self.position && y < self.position + self.vue
+    }
+
     pub fn position_max(&self) -> f64 {
         (self.hauteur_totale() - self.vue).max(0.0)
     }
@@ -284,6 +292,17 @@ mod tests {
         d.redimensionner(800.0, 600.0);
         d.remplacer_lignes(lignes(0, nombre, 50.0));
         d
+    }
+
+    #[test]
+    fn seules_les_lignes_a_l_ecran_sont_visibles() {
+        let mut d = avec(100);
+        d.defiler(1000.0);
+        assert!(!d.visible("l00019"));
+        assert!(d.visible("l00020"));
+        assert!(d.visible("l00031"));
+        assert!(!d.visible("l00032"));
+        assert!(!d.visible("absente"));
     }
 
     #[test]

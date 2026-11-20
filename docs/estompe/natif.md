@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, temps réel, marquage comme lu) ; l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) ; l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -36,7 +36,9 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
   `web/estompe/src/styles/v3-jetons.css` (thèmes « Papier » et « Fusain ») et `web/estompe/src/components/Icon.svelte`. Après un changement de
   l'un ou de l'autre : `just estompe-natif-generer`. La CI échoue si les fichiers versionnés ne correspondent plus (`--check`).
 - `ui/jetons.slint` : typographie, rayons, espacements et durées de [la direction artistique](direction-artistique.md) ; les trois polices
-  variables (`polices/`, licence OFL) sont embarquées dans le binaire.
+  variables (`polices/`, licence OFL) sont embarquées dans le binaire. Tout texte de l'app utilise l'une d'elles (le code en ligne compris, en
+  JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
+- `emoji/twemoji.bin` : les emoji en couleur (voir [Emoji](#emoji)), licences `emoji/CC-BY-4.0-twemoji.txt` et `emoji/MIT-emoji-data.txt`, citées dans « À propos ».
 - `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image.
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
@@ -180,8 +182,11 @@ mentions, regroupement et séparateurs (`format::lignes_de_messages`).
 | `src/messagerie/lignes.rs` | projection pure : conversation du store → lignes (séparateurs de jour, « Nouveaux messages », message avec auteur, couleur du rôle, avatar, heure, réponse citée, modifié, épinglé, système, bot, mention, mise en évidence, annexes) ; premier non-lu, mentionnables d'une conversation |
 | `src/messagerie/rendu.rs` | markdown aplati pour Slint : chaque `Bloc` devient un `BlocAffiche` (paragraphe, titre, code ; profondeur de citation, retrait et puce de liste), les segments d'un paragraphe un balisage `StyledText` ; cibles des liens (`u:`, `m:`, `s:`) |
 | `src/messagerie/defilement.rs` | virtualisation : hauteurs mesurées ou estimées, ancre, collage en bas, saut à une ligne |
-| `src/messagerie/pont.rs` (`PontMessagerie`) | applique les `Changement::Messages` aux modèles, cache borné des rendus (512, LRU), chargement des pages, avatars et badges des auteurs, marquage comme lu, saisie en cours |
-| `ui/messagerie/vue.slint`, `element.slint`, `donnees.slint` | liste, élément de message, global `DonneesMessagerie` |
+| `src/messagerie/pont.rs` (`PontMessagerie`) | applique les `Changement::Messages` aux modèles, cache borné des rendus (512, LRU), chargement des pages, avatars et badges des auteurs, images, aperçus et emoji de serveur des lignes de la fenêtre, animations, visionneuse, téléchargements, marquage comme lu, saisie en cours |
+| `src/messagerie/emoji.rs` | paquet d'emoji embarqué, découpe du texte en texte et emoji (séquences composées comprises), images des emoji |
+| `src/messagerie/medias.rs` (`Medias`) | téléchargement, décodage hors du fil d'interface et caches des images (pièces jointes, emoji de serveur, images d'aperçu), liste des emoji de serveur, aperçus de liens |
+| `src/messagerie/annexes.rs` | projections pures : carte d'aperçu d'un lien, taille d'une vignette avant chargement, chemin sûr d'un fichier enregistré |
+| `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage et réactions, visionneuse, global `DonneesMessagerie` |
 
 ### Virtualisation
 
@@ -192,8 +197,8 @@ L'app virtualise donc elle-même, avec `virtualisation::fenetre_de_hauteurs` de 
 
 - le modèle `DonneesMessagerie.lignes` ne contient que les lignes de la fenêtre (l'écran et 600 px au-dessus et au-dessous) ; deux espaces
   (`haut`, `bas`) remplacent les autres dans un `Flickable` ;
-- chaque ligne signale sa hauteur (`init` et `changed height` → `ligne-mesuree`) ; avant la mesure, une estimation tirée du texte et de la largeur ;
-  un changement de largeur oublie les mesures ;
+- chaque ligne signale sa hauteur (`init` et `changed height` → `ligne-mesuree`) ; avant la mesure, une estimation tirée du texte, des annexes et de la largeur ;
+  un changement de largeur oublie les mesures et incrémente `DonneesMessagerie.mesure`, qui fait signaler à nouveau leur hauteur aux lignes instanciées ;
 - une ancre (ligne sous le haut de l'écran et décalage) est rétablie après chaque changement : ajout en tête, mesure d'une ligne au-dessus,
   retrait par la borne du store. Collée en bas, la liste suit les nouveaux messages ; en lecture de l'historique, un message reçu ne la déplace pas
   et le bouton « N nouveaux messages » apparaît ;
@@ -208,18 +213,21 @@ une suppression la retire. La conversation entière est reprojetée côté Rust 
 
 ### Rendu du markdown, sélection et copie
 
-Un paragraphe est un `StyledText` (Slint 1.18) : gras, italique, barré, code en ligne, liens. Le balisage est produit depuis le `Rendu` de la crate
+Un paragraphe est un `StyledText` (Slint 1.18) : gras, italique, barré, liens. Un paragraphe qui contient un emoji, un emoji de serveur, du code
+en ligne ou un passage masqué devient une suite de segments dans un `FlexboxLayout` qui passe à la ligne (`TexteEnSegments`, `ui/composants/texte-riche.slint`) :
+un `StyledText` par mot (styles et liens gardés), une image par emoji, une capsule en JetBrains Mono par code en ligne (`StyledText` dessinerait le
+code dans la police à chasse fixe du système), un pavé d'encre cliquable par mot masqué (comme `.spoiler` du front). Le balisage est produit depuis le `Rendu` de la crate
 client, texte échappé et délimiteurs entourés d'une espace sans chasse pour que les bords d'un style (espace, ponctuation) ne le cassent pas.
 Titres, blocs de code, citations (barres) et listes (puces, retraits) sont des éléments Slint autour. Les mentions de personne sont des liens
-(`m:` → carte de profil), celles de rôle ou de groupe sont colorées ; un passage masqué est un pavé cliquable (`s:` → révélé pour ce message) ;
+(`m:` → carte de profil), celles de rôle ou de groupe sont colorées ; un passage masqué est un pavé d'encre cliquable (`s:` → révélé pour ce message) ;
 un lien (`u:`) n'est ouvert par `OuvertureUrl` que si `lien_ouvrable` l'accepte, au clic comme à l'analyse.
 
 Sélection : ni `Text` ni `StyledText` ne permettent de sélectionner du texte en 1.18 (seul `TextInput`, d'un seul style, le fait). La copie se fait
 donc par message entier : bouton « Copier le message » au survol, ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
 au presse-papiers par un `TextInput` caché (`select-all()`, `copy()`).
 
-Écarts : la police de texte embarquée n'a pas d'italique (l'italique n'est pas distinguable) ; le code en ligne utilise la police à chasse fixe générique
-du système ; un lien est toujours souligné ; les emojis personnalisés restent `:nom:`.
+Écarts : la police de texte embarquée n'a pas d'italique (l'italique n'est pas distinguable) ; un lien est toujours souligné ; dans un paragraphe
+en segments, un mot plus long que la ligne est coupé dans son segment au lieu de passer à la ligne entier, et un bloc de code en ligne ne se coupe pas.
 
 ### Élément de message et emplacements à venir
 
@@ -227,15 +235,81 @@ du système ; un lien est toujours souligné ; les emojis personnalisés restent
 `sauter_a`, chargement autour du message si besoin, puis mise en évidence 1,5 s), en-tête (pseudo à la couleur du rôle, « Bot », deux badges,
 épingle, heure), corps (`TexteRiche`, 15 px), annexes, état d'envoi.
 
-- Annexes : la structure `AnnexesMessage` (`pieces-jointes`, `sondage`, `reactions: [ReactionMessage]`, `lien`, `resume`) est remplie par
-  `annexes()` (`lignes.rs`, `DonneesAnnexes`) et convertie par `annexes_slint()` (`pont.rs`). `AnnexesMessageVue` n'affiche pour l'instant que
-  `resume` (« 2 pièces jointes · 👍 3 ») ; pièces jointes, sondages, réactions et aperçus de liens y remplaceront cette ligne.
+- Annexes : `annexes()` (`lignes.rs`, `DonneesAnnexes` : pièces, sondage, réactions, premier lien) est pure ; `PontMessagerie` y ajoute l'état
+  des médias de la ligne (image chargée, aperçu reçu, téléchargement) et `annexes_slint()` en fait un `AnnexesMessage`, affiché par
+  `AnnexesMessageVue` (`ui/messagerie/annexes.slint`) ; `resume` sert au lecteur d'écran. Un message avec sondage affiche la carte du sondage à la place
+  du corps, des pièces jointes et de l'aperçu, comme `MessageItem.svelte`. Une image chargée, un aperçu reçu ou un téléchargement qui avance ne remplacent que la ligne du message.
 - État d'envoi : champ `etat-envoi` de `LigneMessage`, vide en lecture ; l'écriture (lot 3) le remplira.
 - Accusés de lecture (avatars « Vu par ») : pas encore affichés (`Store::lecteurs` est prêt).
 
+### Emoji
+
+Le moteur logiciel de Slint (captures) ne dessine les glyphes qu'en niveaux de gris (`swash`, contours seuls) ; le moteur Skia (l'app) dessinerait une
+police couleur, mais chacun la sienne, et la police d'emoji du système change d'un OS à l'autre. Les emoji sont donc des **images**, identiques dans les
+deux moteurs et sur les deux OS :
+
+- `emoji/twemoji.bin` : les 3 786 images SVG de [Twemoji](https://github.com/jdecked/twemoji) v17.0.3 (dessins sous licence CC-BY 4.0, attribution dans
+  « À propos ») pour les 4 739 séquences d'emoji-data v16.0.0 (MIT) : teintes de peau, drapeaux, séquences ZWJ, touches. SVG regroupés par blocs de 32
+  compressés (deflate) : 9,1 Mo de SVG, **1,9 Mo** dans le binaire ; un bloc est décompressé à la demande (4 blocs gardés), une image rendue par
+  Slint (resvg) à sa taille d'affichage et gardée (512 images, LRU, fil d'interface).
+- Régénérer : `just estompe-natif-emoji` (`scripts/estompe/natif-emoji.mjs`, télécharge `emoji.json` d'emoji-data et les SVG depuis `raw.githubusercontent.com`).
+- Découpe (`emoji::decouper`) : plus longue séquence connue du paquet à chaque position ; un caractère à présentation texte par défaut (©, ®, ❤ sans
+  sélecteur `FE0F`) reste du texte, comme dans un navigateur.
+- Emoji de serveur : `GET /emojis` à l'ouverture de la première conversation et à chaque `emoji.updated` (`Changement::Emojis`) ; un `:nom:` connu
+  devient une image (`GET /emojis/{id}/image`, celle du serveur courant d'abord, animée si c'est un GIF ou un WebP animé), un nom inconnu reste du texte.
+- Message composé seulement d'emoji (27 au plus, espaces et retours à la ligne compris) : emoji de 48 px au lieu de 1,375 fois le corps (20 px). Le
+  front n'a pas de règle équivalente (les emoji y gardent la taille du texte) : c'est un ajout de l'app native, demandé par #302.
+- Réactions : pilule de 28 px, emoji en image, compte en JetBrains Mono, « la mienne » en rose avec un trait rose foncé ; au survol, la liste des
+  personnes (`titre_de_reaction`, sans l'emoji final, déjà dessiné) ; le lecteur d'écran lit le titre complet. Mise à jour en direct par `reaction.updated`.
+
+### Pièces jointes
+
+| Genre (`categorie`) | Affichage |
+|---|---|
+| image (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, comme `AttachmentView.svelte` ; AVIF non affiché par le front, donc pas pris en charge) | vignette dans 360 × 300, coins arrondis dans ses pixels ; clic : visionneuse |
+| fichier | puce : nom, taille ; clic : téléchargement avec progression, puis « Ouvrir » |
+| vidéo, replay, message vocal | puce « bientôt dans l'app native » (lot 9) |
+| expiré | puce barrée « (fichier expiré) » |
+
+- Avant le chargement, la vignette a sa taille définitive si les dimensions d'origine sont connues (mémorisées au premier décodage, 4 096 sources,
+  LRU) ; sinon 240 × 180. L'API n'annonce pas les dimensions d'une pièce jointe : la première ouverture d'une image peut donc décaler la ligne
+  (l'ancre de défilement la compense).
+- Téléchargement et décodage seulement pour les lignes de la fenêtre ; décodage par `spawn_blocking` (hors du fil d'interface et du runtime), deux à la
+  fois au plus (`DECODAGES_SIMULTANES`), avec des limites (`COTE_DECODABLE_MAX` 16 384 px, `ALLOCATION_DECODAGE_MAX` 512 Mo) ; l'image est réduite à
+  sa taille d'affichage aussitôt décodée, seule la réduite est gardée.
+- Animations (GIF, WebP animé ; emoji de serveur animés) : toutes les images décodées au chargement, réduites (240 au plus, la moitié du plafond
+  mémoire au plus), délai minimal de 20 ms (en dessous : 100 ms, comme les navigateurs). Une seule minuterie pour toute la liste, armée sur la
+  prochaine image due, et seulement tant qu'une image animée est **à l'écran** (`Defilement::visible`, pas seulement dans la fenêtre de 600 px) :
+  hors de l'écran, ni minuterie ni réveil. Une image change par `set_row_data` du modèle de pièces (ou de segments) de la ligne, sans la remplacer.
+- Visionneuse (`ui/messagerie/visionneuse.slint`) : image décodée dans 2048 × 2048 (fixe pour un GIF), zoom de 100 % à 800 % (boutons, + et -, 0,
+  double clic), déplacement quand elle dépasse, image précédente et suivante du message (flèches), copie (Ctrl+C, image d'origine décodée à la
+  demande, `PressePapiers` de la crate plateforme), enregistrement (comme un fichier), Échap ou le fond pour fermer.
+- Enregistrement : `Fichiers::choisir_dossier` (crate plateforme, `rfd` : sélecteur de Windows, portail XDG sous Linux) ; sans sélecteur ou en
+  erreur, le dossier Téléchargements (`dossier_telechargements` : `%USERPROFILE%\Downloads`, `XDG_DOWNLOAD_DIR` ou `~/Downloads` ; sous
+  `ESTOMPE_NATIF_DOSSIER`, `<dossier>/telechargements`). Nom = `fichiers::nom_de_fichier_sur`, suffixe « (n) » si le fichier existe (`chemin_libre`) ;
+  écriture dans `<nom>.partiel` renommé à la fin (`Client::telecharger`, `GET /files/{id}?download=1` en flux) ; « Ouvrir » passe par `Fichiers::ouvrir`.
+
+| Cache | Clé | Borne |
+|---|---|---|
+| disque, `<cache>/medias/` (`CacheDisque`) | `f.<pièce>`, `e.<emoji>`, `x.<empreinte de l'URL>` | 256 Mo (`BORNE_DISQUE_MEDIAS`), moins récemment lu évincé |
+| mémoire, images décodées (vignettes, visionneuse, emoji de serveur, images d'aperçu, toutes les images d'une animation) | source et format | 96 Mo (`PLAFOND_MEMOIRE_IMAGES`), en octets, LRU ; une image plus grosse que le plafond n'est pas gardée |
+| mémoire, aperçus de liens | message et lien (`cle_de_cache`) | 200 (`TAILLE_DU_CACHE`), LRU, réponse vide comprise |
+| images des emoji Unicode | séquence | 512 images rendues, 4 blocs décompressés |
+
+### Aperçus de liens et sondages
+
+- Le premier lien du message (si la préférence « aperçus » est active) est demandé à `GET /link-preview?url=&message=` (`Client::apercu_de_lien`,
+  404 = pas d'aperçu) ; la carte suit `choisir_carte` : lien (site, titre, description sur deux lignes, image à droite recadrée en carré), YouTube
+  (miniature `img.youtube.com` et titre de l'aperçu ; le clic ouvre le lien dans le navigateur, le lecteur arrive au lot 9), Sillon (genre, titre,
+  artiste ; ni pochette ni « Écouter » avant la section Sillon du lot 10). Les images d'aperçu viennent de leur site (`Client::octets_externes`,
+  sans jeton, 8 Mo au plus).
+- Sondage : question (markdown), « Sondage lancé par », choix avec barre, pourcentage et votes, mon choix (coche), gagnants (trophée) une fois clos,
+  pied (`libelle_du_pied`). `poll.voted` et `poll.closed` remplacent la seule ligne du sondage ; l'échéance réveille la liste (une minuterie sur la
+  prochaine clôture visible). Voter, clore et supprimer arrivent au lot 3.
+
 ### Temps réel et lecture
 
-- Nouveau message, modification, suppression, épinglage, saisie (« carol est en train d'écrire… », expirée par la boucle de la session) : appliqués par `PontMessagerie::appliquer`.
+- Nouveau message, modification, suppression, épinglage, réaction, vote, saisie (« carol est en train d'écrire… », expirée au bout de 5 s par la boucle du store, testé en temps simulé) : appliqués par `PontMessagerie::appliquer`.
 - Lu : `signaler_lecture(en_bas, ancre)` quand le bas de la liste est atteint ou quitté, `definir_focus` quand la fenêtre gagne ou perd le focus.
   Le focus vient de l'évènement `Focused` de winit (`on_winit_window_event`, feature `unstable-winit-030` de Slint), sans code propre à un OS ;
   `Coquille::fenetre_active` est le même chemin, utilisé par les tests. Une lecture sur un autre appareil (`read.updated` à mon nom) retire la pastille.
@@ -250,7 +324,8 @@ La crate plateforme expose un trait par fonction : coffre de secrets, notificati
 et de fenêtre, capture du son, overlay, application au premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
-sous Windows, Secret Service sous Linux) et l'ouverture d'une URL `http` ou `https` dans le navigateur. Le reste arrive avec son lot, Windows d'abord.
+sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 
@@ -261,7 +336,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | | Windows | Linux |
 |---|---|---|
 | Données (`preferences.json`) | `%APPDATA%\fr.plbls.estompe.natif` | `$XDG_DATA_HOME/fr.plbls.estompe.natif` (défaut `~/.local/share`) |
-| Cache (avatars dans `avatars/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
+| Cache (avatars dans `avatars/`, images dans `medias/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
 
@@ -305,8 +380,12 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `membres.rs` (même backend) ouvre un serveur de 5 000 membres sur une fausse source de profils qui compte les requêtes : seules les lignes de la fenêtre
   sont instanciées et demandent leur avatar, un défilement ne demande que les nouvelles, un retour en arrière aucune ; un statut ou un passage en ligne reçus en temps réel
   ne remplacent ou ne déplacent que la ligne du membre. Sans rendu, le test fait tourner lui-même les gestionnaires `changed` (`update_timers_and_animations`).
-`messagerie.rs` (même backend, faux serveur HTTP de 300 messages, `ServeurMessages` de `tests/commun/`) : ouverture sur le premier non-lu, saisie, message reçu en lisant l'historique sans défilement, modification, épinglage et suppression par une seule opération sur le modèle, liens refusés, saut vers un message cité non chargé, non-lu fenêtre inactive puis lu au retour, lecture sur un autre appareil.
-`messagerie_volume.rs` : salon de 50 000 messages remonté pendant 2 minutes simulées (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
+`messagerie.rs` (même backend, faux serveur HTTP de 300 messages, `ServeurMessages` de `tests/commun/`, qui sert aussi des fichiers) : ouverture sur le premier non-lu, saisie, message reçu en lisant l'historique sans défilement, modification, épinglage et suppression par une seule opération sur le modèle, liens refusés, saut vers un message cité non chargé, non-lu fenêtre inactive puis lu au retour, lecture sur un autre appareil ;
+  puis une image de 8 000 × 8 000 (décodée hors du fil d'interface, qui répond pendant ce temps, plafond mémoire respecté), un GIF animé à l'écran puis
+  hors de l'écran (aucun réveil ni image en 10 s simulées), le téléchargement d'un fichier au nom hostile dans un dossier temporaire puis son ouverture, la
+  visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
+`messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
+  Par défaut 16 pas de 3 000 px (16 s simulées) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 
 ## CI

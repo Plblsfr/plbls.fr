@@ -105,11 +105,11 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 |---|---|---|---|---|
 | `components/ChatView.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | en cours | en-tête, liste, « est en train d'écrire », lecture seule de la conversation Estompe (`apps/estompe/natif/ui/messagerie/vue.slint`) ; pas encore : bouton des épinglés, recherche, zone de saisie (lot 3) |
 | `components/MessageList.svelte` | 2 | [#299](https://github.com/Plblsfr/plbls.fr/issues/299) | en cours | liste virtualisée à hauteurs mesurées, position gardée à l'ajout en tête, pages vers le haut et le bas, collage en bas, bouton « nouveaux messages », saut au premier non-lu, séparateurs de jour et de non-lus, saut vers un message cité (`apps/estompe/natif/src/messagerie/defilement.rs`) ; pas encore : accusés de lecture (« Vu par »), adresse `#/…/<message>` d'une notification, sélection de texte (copie par message entier) |
-| `components/MessageItem.svelte` | 2 | [#301](https://github.com/Plblsfr/plbls.fr/issues/301) | en cours | auteur, avatar, couleur du rôle, « Bot », badges, heure, regroupement, réponse citée, modifié, épinglé, système, mention, mise en évidence, markdown et mentions, masqués, copie du message (`apps/estompe/natif/ui/messagerie/element.slint`) ; pièces jointes, sondages, réactions et aperçus résumés en une ligne provisoire ; édition, réponse, réactions et menu au lot 3 |
-| `components/AttachmentView.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | images, GIF, fichiers ; vidéos au lot 9 |
-| `components/Lightbox.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | visionneuse plein écran |
-| `components/VoiceMessage.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | lecture d'un message vocal, vitesse, transcription |
-| `components/PollCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent | sondage affiché ; le vote est une écriture (lot 3) |
+| `components/MessageItem.svelte` | 2 | [#301](https://github.com/Plblsfr/plbls.fr/issues/301) | en cours | auteur, avatar, couleur du rôle, « Bot », badges, heure, regroupement, réponse citée, modifié, épinglé, système, mention, mise en évidence, markdown et mentions, masqués, copie du message, emoji en couleur, message d'emoji seuls en grand, pièces jointes, sondage, aperçu de lien, réactions (compte, la mienne, personnes au survol, temps réel) (`apps/estompe/natif/ui/messagerie/element.slint`, `annexes.slint`) ; « Vu par », édition, réponse, ajout d'une réaction et menu au lot 3 |
+| `components/AttachmentView.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | en cours | images (PNG, JPEG, GIF et WebP animés, en pause hors de l'écran), fichiers (téléchargement avec progression dans un dossier choisi, ouverture), fichier expiré ; replays et vidéos : carte « bientôt dans l'app native » jusqu'au lot 9 ; la taille d'une image n'est connue qu'après son premier chargement (l'API n'annonce pas ses dimensions) |
+| `components/Lightbox.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | en cours | visionneuse d'image : zoom, déplacement, navigation entre les images du message, copie, enregistrement (`ui/messagerie/visionneuse.slint`) ; une image animée y est fixe ; vidéos et lecteur YouTube au lot 9 |
+| `components/VoiceMessage.svelte` | 9 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | en cours | carte « bientôt dans l'app native » ; lecture, vitesse et transcription au lot 9 |
+| `components/PollCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | en cours | question, choix, pourcentages, mon choix, gagnants, état clos (à l'échéance aussi), résultats en temps réel ; voter, clore, supprimer et « Voir les votants » au lot 3 |
 | `components/ConvPanel.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | absent | messages épinglés d'une conversation ; l'épingle d'un message est affichée dans la liste, pas encore le panneau |
 | `components/SearchModal.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | absent | recherche de messages et palette « aller à » (Ctrl+K) |
 
@@ -188,11 +188,11 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
 | `blocks/activite-statut/` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | statut (en ligne, absent, ne pas déranger, hors ligne) et jeu en cours affichés dans la liste des membres et la carte ; détection et partage du jeu en cours au lot 7, « Écoute » avec la musique |
-| `blocks/apercu-liens/` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent |  |
+| `blocks/apercu-liens/` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | en cours | appel `GET /link-preview` (`appels.rs`), cache par lien et message (200, LRU), préférence « aperçus » |
 | `blocks/avatars/` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | avatars globaux et propres au serveur, demandés quand leur ligne devient visible, caches mémoire et disque bornés (`apps/estompe/natif/src/coquille/avatars.rs`), icônes des serveurs (#296) ; pas encore : images des badges, choix et recadrage de son avatar (lot 8) |
 | `blocks/badges/` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | affichage dans les membres et la carte de profil (#297) ; messages au lot 2, administration au lot 8 |
 | `blocks/draw2gether/` | 11 | [#283](https://github.com/Plblsfr/plbls.fr/issues/283) | absent |  |
-| `blocks/emojis/` | 3 | [#275](https://github.com/Plblsfr/plbls.fr/issues/275) | absent | lecture au lot 2 (#302), sélecteur au lot 3 |
+| `blocks/emojis/` | 3 | [#275](https://github.com/Plblsfr/plbls.fr/issues/275) | en cours | lecture faite (#302) : emoji Unicode en images Twemoji embarquées, emoji de serveur (`GET /emojis`, `emoji.updated`) ; sélecteur et conversion à la saisie au lot 3 |
 | `blocks/gifs/` | 3 | [#275](https://github.com/Plblsfr/plbls.fr/issues/275) | absent | lecture au lot 2 (#303), sélecteur au lot 3 |
 | `blocks/musique/` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
 | `blocks/notifications/` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | notifications de l'OS au lot 6, réglages au lot 8 ; push web : écart assumé |
@@ -206,7 +206,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `blocks/apercu-liens/LinkCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent | aperçu d'un lien, carte Sillon |
+| `blocks/apercu-liens/LinkCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | en cours | carte avec et sans image, YouTube (miniature et titre, le clic ouvre le navigateur ; lecteur intégré au lot 9), carte Sillon sans pochette ni « Écouter » (section Sillon au lot 10) |
 | `blocks/badges/BadgeIcon.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | médaille de la couleur du badge, nom en libellé accessible ; l'image (SVG, WebP, PNG, JPEG) et l'emoji du badge ne sont pas encore affichés |
 | `blocks/badges/BadgeInline.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | deux badges puis « +N » à côté du pseudo dans la liste des membres ; dans les messages, deux badges à côté du pseudo (#301) |
 | `blocks/badges/BadgeRow.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | rangée de badges de la carte de profil (#297), sans l'infobulle du nom et de la description |

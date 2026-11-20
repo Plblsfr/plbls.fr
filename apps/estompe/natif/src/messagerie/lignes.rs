@@ -5,7 +5,15 @@ use estompe_client::mention::Mentionnables;
 use estompe_client::roles::{couleur_du_pseudo, Membre};
 use estompe_client::store::messages::{auteur, est_compte_estompe, id_message};
 use estompe_client::store::{CleConversation, Etat};
-use estompe_client::types::Message;
+use estompe_client::emoji::titre_de_reaction;
+use estompe_client::fichiers::{categorie, nom_de_fichier_sur, CategoriePiece};
+use estompe_client::format::taille_lisible;
+use estompe_client::sondage::{
+    est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total,
+};
+use estompe_client::types::{Attachment, Message, MessagePoll};
+
+pub const TITRE_REACTION_MAX: usize = 3;
 
 use crate::coquille::avatars::CleAvatar;
 use crate::coquille::membres::{analyser_couleur, cle_avatar};
@@ -31,29 +39,76 @@ pub struct DonneesReaction {
     pub emoji: String,
     pub nombre: i64,
     pub moi: bool,
+    pub titre: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GenrePiece {
+    Image,
+    Fichier,
+    Media,
+    Expiree,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DonneesPiece {
+    pub id: String,
+    pub nom: String,
+    pub nom_sur: String,
+    pub genre: GenrePiece,
+    pub taille: String,
+    pub anime: bool,
+    pub vocal: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DonneesOptionSondage {
+    pub id: String,
+    pub libelle: String,
+    pub votes: i64,
+    pub pourcentage: i64,
+    pub moi: bool,
+    pub gagnant: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DonneesSondage {
+    pub auteur: String,
+    pub auteur_bot: bool,
+    pub clos: bool,
+    pub options: Vec<DonneesOptionSondage>,
+    pub pied: String,
+    pub fin_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DonneesAnnexes {
-    pub pieces_jointes: usize,
-    pub sondage: bool,
+    pub pieces: Vec<DonneesPiece>,
+    pub sondage: Option<DonneesSondage>,
     pub reactions: Vec<DonneesReaction>,
     pub lien: Option<String>,
 }
 
 impl DonneesAnnexes {
     pub fn est_vide(&self) -> bool {
-        self.pieces_jointes == 0 && !self.sondage && self.reactions.is_empty()
+        self.pieces.is_empty()
+            && self.sondage.is_none()
+            && self.reactions.is_empty()
+            && self.lien.is_none()
+    }
+
+    pub fn images(&self) -> impl Iterator<Item = &DonneesPiece> {
+        self.pieces.iter().filter(|p| p.genre == GenrePiece::Image)
     }
 
     pub fn resume(&self) -> String {
         let mut parties = Vec::new();
-        match self.pieces_jointes {
+        match self.pieces.len() {
             0 => {}
             1 => parties.push("1 pièce jointe".to_string()),
             n => parties.push(format!("{n} pièces jointes")),
         }
-        if self.sondage {
+        if self.sondage.is_some() {
             parties.push("Sondage".to_string());
         }
         if !self.reactions.is_empty() {
@@ -108,6 +163,8 @@ pub struct ContexteLignes<'a> {
     pub mis_en_evidence: Option<&'a str>,
     pub supprimes: &'a HashSet<String>,
     pub decalage_minutes: i32,
+    pub maintenant_ms: i64,
+    pub apercus: bool,
 }
 
 fn texte(valeur: &Option<String>) -> &str {
@@ -145,10 +202,75 @@ fn une_ligne(texte: &str) -> String {
     texte.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub fn annexes(message: &Message) -> DonneesAnnexes {
+pub fn piece(piece: &Attachment) -> DonneesPiece {
+    let nom = texte(&piece.name).to_string();
+    let mime = texte(&piece.mime);
+    DonneesPiece {
+        id: texte(&piece.id).to_string(),
+        nom_sur: nom_de_fichier_sur(&nom),
+        genre: match categorie(piece) {
+            CategoriePiece::Image => GenrePiece::Image,
+            CategoriePiece::Fichier => GenrePiece::Fichier,
+            CategoriePiece::Expiree => GenrePiece::Expiree,
+            CategoriePiece::Vocal | CategoriePiece::Replay | CategoriePiece::Video => {
+                GenrePiece::Media
+            }
+        },
+        taille: taille_lisible(piece.size.unwrap_or(0).max(0) as u64),
+        anime: matches!(mime, "image/gif" | "image/webp"),
+        vocal: categorie(piece) == CategoriePiece::Vocal,
+        nom,
+    }
+}
+
+pub fn sondage(sondage: &MessagePoll, maintenant_ms: i64) -> DonneesSondage {
+    let options = sondage.options.as_deref().unwrap_or_default();
+    let clos_a = sondage.closes_at.as_deref();
+    let clos = est_clos(clos_a, maintenant_ms);
+    let total = total(options);
+    let gagnants = if clos { gagnants(options) } else { Vec::new() };
+    let auteur = sondage.created_by.as_ref();
+    DonneesSondage {
+        auteur: auteur
+            .and_then(|p| p.pseudo.clone())
+            .unwrap_or_default(),
+        auteur_bot: auteur
+            .and_then(|p| p.id.as_deref())
+            .is_some_and(est_compte_estompe),
+        clos,
+        options: options
+            .iter()
+            .map(|o| {
+                let id = texte(&o.id).to_string();
+                let votes = o.votes.unwrap_or(0);
+                DonneesOptionSondage {
+                    gagnant: gagnants.contains(&id),
+                    libelle: texte(&o.label).to_string(),
+                    pourcentage: pourcentage(votes, total),
+                    moi: o.me == Some(true),
+                    votes,
+                    id,
+                }
+            })
+            .collect(),
+        pied: libelle_du_pied(
+            total,
+            sondage.multiple == Some(true),
+            clos_a,
+            maintenant_ms,
+        ),
+        fin_ms: fin_en_ms(clos_a).filter(|fin| *fin > maintenant_ms),
+    }
+}
+
+pub fn annexes(message: &Message, moi: &str, maintenant_ms: i64, apercus: bool) -> DonneesAnnexes {
+    let sondage = message.poll.as_ref().map(|p| sondage(p, maintenant_ms));
     DonneesAnnexes {
-        pieces_jointes: message.attachments.as_ref().map_or(0, Vec::len),
-        sondage: message.poll.is_some(),
+        pieces: if sondage.is_some() {
+            Vec::new()
+        } else {
+            message.attachments.iter().flatten().map(piece).collect()
+        },
         reactions: message
             .reactions
             .iter()
@@ -158,9 +280,15 @@ pub fn annexes(message: &Message) -> DonneesAnnexes {
                 emoji: texte(&r.emoji).to_string(),
                 nombre: r.count.unwrap_or(0),
                 moi: r.me == Some(true),
+                titre: titre_de_reaction(r, moi, TITRE_REACTION_MAX),
             })
             .collect(),
-        lien: estompe_client::markdown::premier_lien(texte(&message.content)),
+        lien: if sondage.is_some() || !apercus {
+            None
+        } else {
+            estompe_client::markdown::premier_lien(texte(&message.content))
+        },
+        sondage,
     }
 }
 
@@ -225,7 +353,7 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
             }
         }),
         contenu: texte(&message.content).to_string(),
-        annexes: annexes(message),
+        annexes: annexes(message, moi, c.maintenant_ms, c.apercus),
         auteur: pseudo,
         utilisateur,
         id,
@@ -285,7 +413,7 @@ pub fn premier_non_lu(messages: &[Message], non_lus: i64, moi: &str) -> Option<S
     premier
 }
 
-pub fn mentionnables(etat: &Etat, cle: &CleConversation) -> Mentionnables {
+pub fn mentionnables(etat: &Etat, cle: &CleConversation, emojis: &[String]) -> Mentionnables {
     let mut personnes = etat.pseudos_de(Some(cle));
     let mut roles = Vec::new();
     let mut groupes = Vec::new();
@@ -305,7 +433,7 @@ pub fn mentionnables(etat: &Etat, cle: &CleConversation) -> Mentionnables {
             .collect();
         groupes = vec!["everyone".to_string(), "here".to_string()];
     }
-    Mentionnables::nouveau(personnes, roles, groupes, Vec::<String>::new())
+    Mentionnables::nouveau(personnes, roles, groupes, emojis)
 }
 
 pub fn utilisateur_mentionne(etat: &Etat, cle: &CleConversation, nom: &str) -> Option<String> {
@@ -352,8 +480,12 @@ mod tests {
             mis_en_evidence: None,
             supprimes,
             decalage_minutes: 60,
+            maintenant_ms: MAINTENANT,
+            apercus: true,
         }
     }
+
+    const MAINTENANT: i64 = 1_795_600_000_000;
 
     #[test]
     fn regroupe_les_messages_consecutifs_et_separe_les_jours() {
@@ -465,6 +597,76 @@ mod tests {
     }
 
     #[test]
+    fn pieces_jointes_classees_avec_nom_sur_et_taille_lisible() {
+        let m: Message = serde_json::from_value(json!({
+            "id": "1", "channel_id": "c1", "author": {"id": "carol", "pseudo": "carol"},
+            "content": "voir https://plbls.fr/page et https://autre.fr",
+            "attachments": [
+                {"id": "a", "name": "photo.png", "mime": "image/png", "size": 2048},
+                {"id": "b", "name": "anim.gif", "mime": "image/gif", "size": 10},
+                {"id": "c", "name": "..\\CON.txt", "mime": "text/plain", "size": 3_500_000},
+                {"id": "d", "name": "vieux.zip", "mime": "application/zip", "expired": true},
+                {"id": "e", "name": "voix.ogg", "kind": "voice"},
+                {"id": "f", "name": "clip.mp4", "mime": "video/mp4"}
+            ],
+            "reactions": [{"emoji": "👍", "count": 2, "me": true, "users": [{"id": "me", "pseudo": "moi"}, {"id": "bob", "pseudo": "bob"}]}]
+        }))
+        .unwrap();
+        let a = annexes(&m, "me", MAINTENANT, true);
+        let resume: Vec<(&str, GenrePiece, &str, bool)> = a
+            .pieces
+            .iter()
+            .map(|p| (p.id.as_str(), p.genre, p.taille.as_str(), p.anime))
+            .collect();
+        assert_eq!(
+            resume,
+            [
+                ("a", GenrePiece::Image, "2.0 Ko", false),
+                ("b", GenrePiece::Image, "10 o", true),
+                ("c", GenrePiece::Fichier, "3.3 Mo", false),
+                ("d", GenrePiece::Expiree, "0 o", false),
+                ("e", GenrePiece::Media, "0 o", false),
+                ("f", GenrePiece::Media, "0 o", false),
+            ]
+        );
+        assert_eq!(a.pieces[2].nom_sur, "_CON.txt");
+        assert_eq!(a.images().count(), 2);
+        assert_eq!(a.lien.as_deref(), Some("https://plbls.fr/page"));
+        assert_eq!(a.reactions[0].titre, "Toi et bob ont réagi avec 👍");
+        assert_eq!(annexes(&m, "me", MAINTENANT, false).lien, None);
+    }
+
+    #[test]
+    fn un_sondage_remplace_pieces_et_apercu_et_passe_clos_a_l_echeance() {
+        let fin = "2026-11-25T10:00:00Z";
+        let fin_ms = estompe_client::roles::date_en_millisecondes(fin).unwrap();
+        let m: Message = serde_json::from_value(json!({
+            "id": "1", "channel_id": "c1", "author": {"id": "carol", "pseudo": "carol"},
+            "content": "On mange où ? https://plbls.fr",
+            "attachments": [{"id": "a", "name": "x.png", "mime": "image/png"}],
+            "poll": {"multiple": false, "closes_at": fin, "created_by": {"id": "carol", "pseudo": "carol"},
+                "options": [{"id": "o1", "label": "Pizza", "votes": 3, "me": true}, {"id": "o2", "label": "Sushi", "votes": 1}]}
+        }))
+        .unwrap();
+        let ouvert = annexes(&m, "me", fin_ms - 2 * 3_600_000, true);
+        assert!(ouvert.pieces.is_empty() && ouvert.lien.is_none());
+        let s = ouvert.sondage.unwrap();
+        assert!(!s.clos && s.fin_ms == Some(fin_ms));
+        assert_eq!(
+            s.options
+                .iter()
+                .map(|o| (o.pourcentage, o.moi, o.gagnant))
+                .collect::<Vec<_>>(),
+            [(75, true, false), (25, false, false)]
+        );
+        assert_eq!(s.pied, "4 votes · réponse unique · reste 2 h");
+        let clos = annexes(&m, "me", fin_ms, true).sondage.unwrap();
+        assert!(clos.clos && clos.fin_ms.is_none());
+        assert!(clos.options[0].gagnant && !clos.options[1].gagnant);
+        assert_eq!(clos.pied, "4 votes · réponse unique · Clos");
+    }
+
+    #[test]
     fn mentionnables_et_resolution_d_une_mention() {
         let mut e = etat();
         e.details.get_mut("s1").unwrap().members = Some(
@@ -472,9 +674,15 @@ mod tests {
                 .unwrap(),
         );
         let cle = CleConversation::Salon("c1".into());
-        let contexte = mentionnables(&e, &cle);
-        let rendu = estompe_client::markdown::analyser("@Caro @everyone", &contexte);
+        let contexte = mentionnables(&e, &cle, &["chat".to_string()]);
+        let rendu = estompe_client::markdown::analyser("@Caro @everyone :chat:", &contexte);
         assert_eq!(rendu.blocs.len(), 1);
+        let estompe_client::markdown::Bloc::Paragraphe(segments) = &rendu.blocs[0] else {
+            panic!("paragraphe attendu");
+        };
+        assert!(segments
+            .iter()
+            .any(|s| s.contenu == estompe_client::markdown::Contenu::Emoji("chat".into())));
         assert_eq!(
             utilisateur_mentionne(&e, &cle, "caro").as_deref(),
             Some("carol")

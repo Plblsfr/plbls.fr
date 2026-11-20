@@ -1,4 +1,7 @@
+pub mod annexes;
 pub mod defilement;
+pub mod emoji;
 pub mod lignes;
+pub mod medias;
 pub mod pont;
 pub mod rendu;

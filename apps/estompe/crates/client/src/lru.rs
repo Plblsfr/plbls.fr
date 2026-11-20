@@ -77,6 +77,12 @@ impl<K: Eq + Hash + Clone, V> Lru<K, V> {
         self.entrees.clear();
         self.ordre.clear();
     }
+
+    pub fn retirer_le_plus_ancien(&mut self) -> Option<(K, V)> {
+        let (_, cle) = self.ordre.pop_first()?;
+        let (valeur, _) = self.entrees.remove(&cle)?;
+        Some((cle, valeur))
+    }
 }
 
 impl<K: Eq + Hash + Clone, V: Clone> Lru<K, V> {
@@ -151,6 +157,20 @@ mod tests {
         assert_eq!(c.lire_ou_inserer("a", || 5), 5);
         assert_eq!(c.len(), 0);
         assert_eq!(c.capacite(), 0);
+    }
+
+    #[test]
+    fn retirer_le_plus_ancien_suit_l_ordre_des_lectures() {
+        let mut c: Lru<&str, i32> = Lru::nouveau(3);
+        c.inserer("a", 1);
+        c.inserer("b", 2);
+        c.inserer("c", 3);
+        c.lire(&"a");
+        assert_eq!(c.retirer_le_plus_ancien(), Some(("b", 2)));
+        assert_eq!(c.retirer_le_plus_ancien(), Some(("c", 3)));
+        assert_eq!(c.retirer_le_plus_ancien(), Some(("a", 1)));
+        assert_eq!(c.retirer_le_plus_ancien(), None);
+        assert!(c.is_empty());
     }
 
     #[test]

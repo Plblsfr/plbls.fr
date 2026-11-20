@@ -1,0 +1,247 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone, Chargement } from "../composants.slint";
+import { DonneesMessagerie } from "donnees.slint";
+
+component BoutonSombre inherits Rectangle {
+    in property <string> icone;
+    in property <string> description;
+    in property <bool> actif: true;
+    callback clique();
+    width: 40px;
+    height: 40px;
+    border-radius: Rayon.s;
+    background: zone.has-hover && root.actif ? #ffffff1f : transparent;
+    opacity: root.actif ? 1 : 0.4;
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-enabled: root.actif;
+    accessible-action-default => {
+        if (root.actif) {
+            root.clique();
+        }
+    }
+    Icone {
+        nom: root.icone;
+        taille: 18px;
+        couleur: #f1ece6;
+    }
+    zone := TouchArea {
+        enabled: root.actif;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+export component VisionneuseVue {
+    in property <bool> ouverte: false;
+    property <length> largeur-affichee: DonneesMessagerie.visionneuse.largeur * root.ajuste * DonneesMessagerie.visionneuse.zoom;
+    property <length> hauteur-affichee: DonneesMessagerie.visionneuse.hauteur * root.ajuste * DonneesMessagerie.visionneuse.zoom;
+    property <float> ajuste: DonneesMessagerie.visionneuse.largeur > 0 && DonneesMessagerie.visionneuse.hauteur > 0 ? Math.min(1, Math.min(zone-image.width * 0.92 / DonneesMessagerie.visionneuse.largeur, (zone-image.height - 16px) / DonneesMessagerie.visionneuse.hauteur)) : 1;
+    width: 100%;
+    height: 100%;
+    visible: ouverte;
+    accessible-role: none;
+    changed ouverte => {
+        Calques.ouverts = Math.max(0, Calques.ouverts + (ouverte ? 1 : -1));
+        if (ouverte) {
+            clavier.focus();
+        }
+    }
+    Rectangle {
+        background: #0e0c0bf0;
+        TouchArea {
+            mouse-cursor: default;
+            clicked => {
+                DonneesMessagerie.fermer-visionneuse();
+            }
+        }
+    }
+    clavier := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                DonneesMessagerie.fermer-visionneuse();
+                return accept;
+            }
+            if (e.text == Key.LeftArrow) {
+                DonneesMessagerie.visionneuse-voisine(-1);
+                return accept;
+            }
+            if (e.text == Key.RightArrow) {
+                DonneesMessagerie.visionneuse-voisine(1);
+                return accept;
+            }
+            if (e.text == "+" || e.text == "=") {
+                DonneesMessagerie.visionneuse-zoom(1.25);
+                return accept;
+            }
+            if (e.text == "-") {
+                DonneesMessagerie.visionneuse-zoom(0.8);
+                return accept;
+            }
+            if (e.text == "0") {
+                DonneesMessagerie.visionneuse-zoom(0);
+                return accept;
+            }
+            if (e.modifiers.control && (e.text == "c" || e.text == "C")) {
+                DonneesMessagerie.visionneuse-copier();
+                return accept;
+            }
+            return reject;
+        }
+        VerticalLayout {
+            Rectangle {
+                height: 68px;
+                TouchArea { }
+                HorizontalLayout {
+                    padding-left: 18px;
+                    padding-right: 18px;
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 8px;
+                            background: #ffffff1a;
+                            Icone {
+                                nom: "image";
+                                taille: 16px;
+                                couleur: #f1ece6;
+                            }
+                        }
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: DonneesMessagerie.visionneuse.nom;
+                        color: #f1ece6;
+                        font-size: 14px;
+                        font-weight: Typo.demi-gras;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if DonneesMessagerie.visionneuse.total > 1: Text {
+                        text: (DonneesMessagerie.visionneuse.index + 1) + " / " + DonneesMessagerie.visionneuse.total;
+                        color: #f1ece6b3;
+                        font-family: Typo.mono;
+                        font-size: 12.5px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: Math.round(DonneesMessagerie.visionneuse.zoom * 100) + " %";
+                        color: #f1ece6b3;
+                        font-family: Typo.mono;
+                        font-size: 12.5px;
+                        vertical-alignment: center;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        HorizontalLayout {
+                            spacing: 4px;
+                            BoutonSombre {
+                                icone: "minus";
+                                description: "Dézoomer";
+                                actif: DonneesMessagerie.visionneuse.zoom > 1;
+                                clique => {
+                                    DonneesMessagerie.visionneuse-zoom(0.8);
+                                }
+                            }
+                            BoutonSombre {
+                                icone: "plus";
+                                description: "Zoomer";
+                                actif: DonneesMessagerie.visionneuse.zoom < 8;
+                                clique => {
+                                    DonneesMessagerie.visionneuse-zoom(1.25);
+                                }
+                            }
+                            BoutonSombre {
+                                icone: "copie";
+                                description: "Copier l'image";
+                                actif: DonneesMessagerie.visionneuse.chargee && DonneesMessagerie.visionneuse.copie-possible;
+                                clique => {
+                                    DonneesMessagerie.visionneuse-copier();
+                                }
+                            }
+                            BoutonSombre {
+                                icone: "telecharge";
+                                description: "Enregistrer l'image";
+                                clique => {
+                                    DonneesMessagerie.visionneuse-enregistrer();
+                                }
+                            }
+                            BoutonSombre {
+                                icone: "x";
+                                description: "Fermer (Échap)";
+                                clique => {
+                                    DonneesMessagerie.fermer-visionneuse();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            zone-image := Rectangle {
+                vertical-stretch: 1;
+                defile := Flickable {
+                    width: 100%;
+                    height: 100%;
+                    content-width: Math.max(self.width, root.largeur-affichee);
+                    content-height: Math.max(self.height, root.hauteur-affichee);
+                    interactive: DonneesMessagerie.visionneuse.zoom > 1;
+                    if DonneesMessagerie.visionneuse.chargee: Image {
+                        x: (parent.content-width - self.width) / 2;
+                        y: (parent.content-height - self.height) / 2;
+                        width: root.largeur-affichee;
+                        height: root.hauteur-affichee;
+                        source: DonneesMessagerie.visionneuse.image;
+                        image-fit: fill;
+                        accessible-role: image;
+                        accessible-label: DonneesMessagerie.visionneuse.nom;
+                        TouchArea {
+                            mouse-cursor: DonneesMessagerie.visionneuse.zoom > 1 ? move : default;
+                            double-clicked => {
+                                DonneesMessagerie.visionneuse-zoom(DonneesMessagerie.visionneuse.zoom > 1 ? 0 : 2);
+                            }
+                        }
+                    }
+                }
+                if !DonneesMessagerie.visionneuse.chargee && !DonneesMessagerie.visionneuse.echec: Chargement {
+                    taille: 28px;
+                    description: "Chargement de l'image";
+                }
+                if DonneesMessagerie.visionneuse.echec: Text {
+                    text: "Image indisponible";
+                    color: #f1ece6;
+                    font-size: 14px;
+                }
+                if DonneesMessagerie.visionneuse.total > 1: BoutonSombre {
+                    x: 12px;
+                    icone: "gauche";
+                    description: "Image précédente";
+                    actif: DonneesMessagerie.visionneuse.index > 0;
+                    clique => {
+                        DonneesMessagerie.visionneuse-voisine(-1);
+                    }
+                }
+                if DonneesMessagerie.visionneuse.total > 1: BoutonSombre {
+                    x: parent.width - self.width - 12px;
+                    icone: "droite";
+                    description: "Image suivante";
+                    actif: DonneesMessagerie.visionneuse.index < DonneesMessagerie.visionneuse.total - 1;
+                    clique => {
+                        DonneesMessagerie.visionneuse-voisine(1);
+                    }
+                }
+            }
+            if DonneesMessagerie.visionneuse.note != "": Rectangle {
+                height: 36px;
+                Text {
+                    text: DonneesMessagerie.visionneuse.note;
+                    color: #f1ece6cc;
+                    font-size: 12.5px;
+                }
+            }
+        }
+    }
+}

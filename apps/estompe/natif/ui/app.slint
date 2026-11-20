@@ -5,14 +5,15 @@ import { Demonstration } from "demonstration.slint";
 import { Coquille } from "coquille/coquille.slint";
 import { MargeMembres } from "coquille/membres.slint";
 import { CarteProfilVue } from "coquille/carte-profil.slint";
+import { VisionneuseVue } from "messagerie/visionneuse.slint";
 import { DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, RoleProfil, CarteProfil, EtatPresence } from "coquille/donnees.slint";
-import { DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc } from "messagerie/donnees.slint";
+import { DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse } from "messagerie/donnees.slint";
 import { Attente } from "entree/commun.slint";
 import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
 import { MiseAJour } from "entree/mise-a-jour.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -278,5 +279,8 @@ export component Principale inherits Window {
     }
     CarteProfilVue {
         ouverte: root.page == Page.coquille && DonneesCoquille.carte-ouverte;
+    }
+    VisionneuseVue {
+        ouverte: root.page == Page.coquille && DonneesMessagerie.visionneuse.ouverte;
     }
 }

@@ -201,7 +201,10 @@ pub mod coquille {
     use estompe_natif::coquille::{
         CleAvatar, EchecOuverture, Fabrique, Ouverture, Profils, SourceProfils,
     };
+    use estompe_client::appels::EmojiPersonnalise;
     use estompe_natif::entree::Futur;
+    use estompe_natif::messagerie::medias::{Medias, Progres, Source, SourceMedias};
+    use estompe_plateforme::Fichiers;
     use serde_json::{json, Value};
     use tokio::sync::{mpsc, watch};
 
@@ -318,8 +321,7 @@ pub mod coquille {
         v[4]["edited_at"] = json!("2026-11-19T08:04:00Z");
         v[5]["reply_to"] = json!({"id": "99", "author": {"id": "hugo", "pseudo": "hugo"}, "content": "message retiré"});
         v[7]["mentions"] = json!(["u1"]);
-        v[8]["attachments"] =
-            json!([{"id": "a1", "name": "plage.jpg"}, {"id": "a2", "name": "dune.jpg"}]);
+        v[8]["attachments"] = json!([{"id": "a1", "name": "plage.jpg", "mime": "image/jpeg", "size": 812345}, {"id": "a2", "name": "dune.jpg", "mime": "image/jpeg", "size": 645000}]);
         v[8]["reactions"] = json!([{"emoji": "👍", "count": 3, "me": true}, {"emoji": "🎉", "count": 1, "me": false}]);
         v.into_iter().map(depuis).collect()
     }
@@ -342,6 +344,150 @@ pub mod coquille {
                 ("dave", "dave"),
                 "2026-11-19T08:31:00Z",
                 "Révélé : ||la fin du film|| et ### pas un titre en ligne",
+            )),
+        ]
+    }
+
+    pub fn conversation_emoji() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit(
+                "500",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:10:00Z",
+                "Bravo pour la démo 🎉🎉 ! On fête ça vendredi 🍕🍺 ?",
+            ),
+            ecrit(
+                "501",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:11:00Z",
+                "Drapeaux du tournoi : 🇫🇷 🇧🇪 🇨🇦 🇯🇵, et l'équipe 👩🏽‍💻👨🏿‍💻🧑🏻‍🎨 au complet 👋🏾",
+            ),
+            ecrit("502", c1, ("eve", "Ève"), "2026-11-19T08:12:00Z", "🥳🎂"),
+            ecrit(
+                "503",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:12:30Z",
+                "Les emoji du serveur : :chaton: et :fete: dans une phrase.",
+            ),
+            ecrit("504", c1, ("ines", "Inès"), "2026-11-19T08:13:00Z", ":chaton:"),
+            ecrit(
+                "505",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:14:00Z",
+                "Famille 👨‍👩‍👧‍👦, drapeau 🏳️‍🌈, `code` et © en texte simple.",
+            ),
+        ];
+        v[0]["reactions"] = json!([
+            {"emoji": "👍", "count": 4, "me": true, "users": [{"id": "u1", "pseudo": "bob"}, {"id": "dave", "pseudo": "dave"}, {"id": "eve", "pseudo": "Ève"}, {"id": "ines", "pseudo": "Inès"}]},
+            {"emoji": "❤️", "count": 2, "me": false, "users": [{"id": "dave", "pseudo": "dave"}, {"id": "eve", "pseudo": "Ève"}]},
+            {"emoji": "😂", "count": 1, "me": false, "users": [{"id": "ines", "pseudo": "Inès"}]}
+        ]);
+        v[5]["reactions"] = json!([
+            {"emoji": "🇫🇷", "count": 1, "me": false, "users": [{"id": "dave", "pseudo": "dave"}]},
+            {"emoji": "👍🏽", "count": 2, "me": true, "users": [{"id": "u1", "pseudo": "bob"}, {"id": "carol", "pseudo": "carol"}]}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub fn conversation_pieces() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit(
+                "600",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:20:00Z",
+                "Les photos du week-end :",
+            ),
+            ecrit(
+                "601",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:22:00Z",
+                "Le compte rendu, l'enregistrement et l'ancienne archive :",
+            ),
+            ecrit("602", c1, ("carol", "carol"), "2026-11-19T08:23:00Z", ""),
+        ];
+        v[0]["attachments"] = json!([
+            {"id": "a1", "name": "plage.jpg", "mime": "image/jpeg", "size": 812345},
+            {"id": "a2", "name": "dune.jpg", "mime": "image/jpeg", "size": 645000},
+            {"id": "a3", "name": "coucher.png", "mime": "image/png", "size": 1203000}
+        ]);
+        v[1]["attachments"] = json!([
+            {"id": "f1", "name": "compte-rendu de la réunion.pdf", "mime": "application/pdf", "size": 245760},
+            {"id": "f2", "name": "budget.ods", "mime": "application/vnd.oasis.opendocument.spreadsheet", "size": 18432},
+            {"id": "v1", "name": "reunion.mp4", "mime": "video/mp4", "size": 52428800},
+            {"id": "x1", "name": "vieille-archive.zip", "mime": "application/zip", "size": 1024, "expired": true}
+        ]);
+        v[2]["attachments"] = json!([
+            {"id": "g1", "name": "danse.gif", "mime": "image/gif", "size": 32000},
+            {"id": "m1", "name": "message vocal", "kind": "voice", "duration_ms": 4000}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub fn conversation_cartes() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        [
+            ecrit(
+                "700",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:30:00Z",
+                "L'article dont je parlais : https://plbls.fr/journal/estompe-natif",
+            ),
+            ecrit(
+                "701",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:31:00Z",
+                "Et sans image : https://exemple.fr/article",
+            ),
+            ecrit(
+                "702",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:32:00Z",
+                "https://youtu.be/dQw4w9WgXcQ",
+            ),
+        ]
+        .into_iter()
+        .map(depuis)
+        .collect()
+    }
+
+    pub fn sondage(id: &str, question: &str, clos_a: &str, options: Value) -> Value {
+        let mut m = ecrit(
+            id,
+            ("channel_id", "c1"),
+            ("ines", "Inès"),
+            "2026-11-19T08:33:00Z",
+            question,
+        );
+        m["poll"] = json!({"multiple": false, "closes_at": clos_a, "created_by": {"id": "ines", "pseudo": "Inès"}, "options": options});
+        m
+    }
+
+    pub fn conversation_sondages() -> Vec<estompe_client::types::Message> {
+        let mut clos = sondage(
+            "703",
+            "Film de dimanche ?",
+            "2026-11-19T07:00:00Z",
+            json!([{"id": "o1", "label": "Dune", "votes": 5}, {"id": "o2", "label": "Alien", "votes": 2, "me": true}]),
+        );
+        clos["created_at"] = json!("2026-11-18T20:00:00Z");
+        vec![
+            depuis(clos),
+            depuis(sondage(
+                "704",
+                "On mange où **vendredi** ?",
+                "2026-11-19T10:30:00Z",
+                json!([{"id": "o1", "label": "Pizza", "votes": 3, "me": true}, {"id": "o2", "label": "Sushi", "votes": 1}, {"id": "o3", "label": "Crêpes", "votes": 2}]),
             )),
         ]
     }
@@ -645,6 +791,8 @@ pub mod coquille {
         pub requetes: Mutex<Vec<String>>,
         bloque: Mutex<bool>,
         reveil: std::sync::Condvar,
+        fichiers: Mutex<BTreeMap<String, (String, Vec<u8>)>>,
+        messages: Mutex<BTreeMap<u64, Value>>,
     }
 
     pub fn contenu_de(n: u64) -> String {
@@ -692,6 +840,8 @@ pub mod coquille {
                 requetes: Mutex::new(Vec::new()),
                 bloque: Mutex::new(false),
                 reveil: std::sync::Condvar::new(),
+                fichiers: Mutex::new(BTreeMap::new()),
+                messages: Mutex::new(BTreeMap::new()),
             });
             let s = serveur.clone();
             std::thread::spawn(move || {
@@ -713,16 +863,43 @@ pub mod coquille {
                         let mut morceaux = premiere.split_whitespace();
                         let methode = morceaux.next().unwrap_or_default().to_string();
                         let chemin = morceaux.next().unwrap_or_default().to_string();
-                        let (statut, corps) = s.repondre(&methode, &chemin);
+                        let (statut, type_mime, corps) = match s.fichier(&chemin) {
+                            Some((type_mime, octets)) => (200, type_mime, octets),
+                            None => {
+                                let (statut, corps) = s.repondre(&methode, &chemin);
+                                (statut, "application/json".to_string(), corps.into_bytes())
+                            }
+                        };
                         let _ = write!(
                             flux,
-                            "HTTP/1.1 {statut} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{corps}",
+                            "HTTP/1.1 {statut} OK\r\ncontent-type: {type_mime}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                             corps.len()
                         );
+                        let _ = flux.write_all(&corps);
                     });
                 }
             });
             serveur
+        }
+
+        pub fn servir_fichier(&self, chemin: &str, type_mime: &str, octets: Vec<u8>) {
+            self.fichiers
+                .lock()
+                .unwrap()
+                .insert(chemin.to_string(), (type_mime.to_string(), octets));
+        }
+
+        pub fn remplacer_message(&self, n: u64, message: Value) {
+            self.messages.lock().unwrap().insert(n, message);
+        }
+
+        fn fichier(&self, chemin: &str) -> Option<(String, Vec<u8>)> {
+            let sans_parametres = chemin.split('?').next().unwrap_or(chemin);
+            let trouve = self.fichiers.lock().unwrap().get(sans_parametres).cloned();
+            if trouve.is_some() {
+                self.requetes.lock().unwrap().push(format!("GET {chemin}"));
+            }
+            trouve
         }
 
         pub fn bloquer(&self, bloque: bool) {
@@ -747,7 +924,7 @@ pub mod coquille {
             if methode == "POST" {
                 return (200, "{}".into());
             }
-            if chemin.ends_with("/reads") {
+            if chemin.ends_with("/reads") || chemin == "/emojis" {
                 return (200, "[]".into());
             }
             if !chemin.starts_with("/channels/c1/messages") {
@@ -775,9 +952,15 @@ pub mod coquille {
                         (debut, self.nombre, debut > 1)
                     }
                 };
+            let remplaces = self.messages.lock().unwrap().clone();
             let messages: Vec<Value> = (debut..=fin)
                 .filter(|n| *n >= 1)
-                .map(|n| message_numero(n, self.nombre))
+                .map(|n| {
+                    remplaces
+                        .get(&n)
+                        .cloned()
+                        .unwrap_or_else(|| message_numero(n, self.nombre))
+                })
                 .collect();
             (
                 200,
@@ -797,6 +980,58 @@ pub mod coquille {
         pub profils: Arc<Profils>,
         pub adresse: String,
         pub navigateur: Arc<super::FauxNavigateur>,
+        pub medias: Arc<Medias>,
+        pub fichiers: Arc<FauxFichiers>,
+    }
+
+    #[derive(Default)]
+    pub struct FauxFichiers {
+        pub dossier: Mutex<Option<std::path::PathBuf>>,
+        pub ouverts: Mutex<Vec<std::path::PathBuf>>,
+    }
+
+    impl Fichiers for FauxFichiers {
+        fn disponible(&self) -> bool {
+            true
+        }
+
+        fn choisir_dossier(
+            &self,
+            _: Option<&std::path::Path>,
+        ) -> estompe_plateforme::Resultat<Option<std::path::PathBuf>> {
+            Ok(self.dossier.lock().unwrap().clone())
+        }
+
+        fn ouvrir(&self, chemin: &std::path::Path) -> estompe_plateforme::Resultat<()> {
+            self.ouverts.lock().unwrap().push(chemin.to_path_buf());
+            Ok(())
+        }
+    }
+
+    pub struct SourceMediasFactice;
+
+    impl SourceMedias for SourceMediasFactice {
+        fn octets(&self, _: &Source) -> Futur<Result<Vec<u8>, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
+        fn emojis(&self) -> Futur<Result<Vec<EmojiPersonnalise>, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
+        fn apercu(
+            &self,
+            _: &str,
+            _: Option<&str>,
+        ) -> Futur<Result<Option<estompe_client::types::LinkPreview>, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
+        fn telecharger(
+            &self,
+            _: &str,
+            _: std::path::PathBuf,
+            _: Progres,
+        ) -> Futur<Result<u64, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
     }
 
     impl FausseFabrique {
@@ -806,7 +1041,16 @@ pub mod coquille {
 
         pub fn sur(etat: Etat, sections: Vec<Section>, adresse: &str) -> Arc<Self> {
             let source = Arc::new(SourceFactice::default());
+            let reglages = estompe_client::http::Reglages {
+                mandataire_systeme: false,
+                ..estompe_client::http::Reglages::default()
+            };
             Arc::new(Self {
+                medias: Medias::nouveaux(
+                    Arc::new(Client::avec_reglages(adresse, reglages).unwrap()),
+                    None,
+                ),
+                fichiers: Arc::new(FauxFichiers::default()),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
@@ -866,6 +1110,18 @@ pub mod coquille {
 
         fn navigateur(&self) -> estompe_natif::messagerie::pont::Navigateur {
             self.navigateur.clone()
+        }
+
+        fn medias(&self) -> Option<Arc<Medias>> {
+            Some(self.medias.clone())
+        }
+
+        fn fichiers(&self) -> estompe_natif::messagerie::pont::SystemeFichiers {
+            self.fichiers.clone()
+        }
+
+        fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
+            Arc::new(estompe_plateforme::Indisponible)
         }
     }
 }

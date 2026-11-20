@@ -39,7 +39,8 @@ estompe-plateforme.workspace = true
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia", "accessibility", "unstable-winit-030"] }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
 
 [dev-dependencies]
 serde.workspace = true
@@ -52,6 +53,18 @@ slint-build = "=1.18.1"
 
 [profile.dev]
 debug = "line-tables-only"
+
+[profile.dev.package]
+image = { opt-level = 3 }
+png = { opt-level = 3 }
+zune-jpeg = { opt-level = 3 }
+zune-core = { opt-level = 3 }
+gif = { opt-level = 3 }
+image-webp = { opt-level = 3 }
+fdeflate = { opt-level = 3 }
+miniz_oxide = { opt-level = 3 }
+crc32fast = { opt-level = 3 }
+weezl = { opt-level = 3 }
 
 [profile.release]
 opt-level = "s"
