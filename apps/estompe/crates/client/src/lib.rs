@@ -1,4 +1,5 @@
 pub mod appels;
+pub mod audio;
 pub mod auth;
 pub mod cache;
 pub mod config;
@@ -27,4 +28,5 @@ pub mod store;
 pub mod temps_reel;
 pub mod version;
 pub mod virtualisation;
+pub mod vocal;
 pub use genere::types;

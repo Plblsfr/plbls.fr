@@ -50,6 +50,8 @@ pub struct Preferences {
     pub derniere_vue: Option<DerniereVue>,
     pub panneau_replie: bool,
     pub marge_ouverte: bool,
+    pub micro: Option<String>,
+    pub sortie_audio: Option<String>,
 }
 
 impl Default for Preferences {
@@ -67,6 +69,8 @@ impl Default for Preferences {
             derniere_vue: None,
             panneau_replie: false,
             marge_ouverte: true,
+            micro: None,
+            sortie_audio: None,
         }
     }
 }
@@ -124,6 +128,9 @@ impl Preferences {
                 .filter(|v: &DerniereVue| !v.compte.is_empty() && !v.adresse.is_empty()),
             panneau_replie: champ(&objet, "panneau_replie", d.panneau_replie),
             marge_ouverte: champ(&objet, "marge_ouverte", d.marge_ouverte),
+            micro: champ(&objet, "micro", d.micro).filter(|m: &String| !m.is_empty()),
+            sortie_audio: champ(&objet, "sortie_audio", d.sortie_audio)
+                .filter(|s: &String| !s.is_empty()),
         })
     }
 
@@ -274,6 +281,8 @@ mod tests {
             derniere_vue: Some(DerniereVue::enregistrer("u1", "#/s/s1/c9")),
             panneau_replie: true,
             marge_ouverte: false,
+            micro: Some("wasapi:{micro}".to_string()),
+            sortie_audio: Some("alsa:casque".to_string()),
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -310,7 +319,7 @@ mod tests {
     #[test]
     fn une_valeur_invalide_ne_perd_que_son_champ() {
         let lu = Preferences::depuis_json(
-            r#"{"theme": "fluo", "densite": "compacte", "notifications": "oui", "apercus": false, "ordre_serveurs": [1], "fenetre": {"x": 0, "y": 0, "largeur": 0, "hauteur": 600}, "adresse_serveur": "  "}"#,
+            r#"{"theme": "fluo", "densite": "compacte", "notifications": "oui", "apercus": false, "ordre_serveurs": [1], "fenetre": {"x": 0, "y": 0, "largeur": 0, "hauteur": 600}, "adresse_serveur": "  ", "micro": "", "sortie_audio": 3}"#,
         )
         .unwrap();
         let attendu = Preferences {

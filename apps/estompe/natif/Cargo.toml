@@ -33,6 +33,10 @@ name = "estompe_natif"
 name = "estompe-natif"
 path = "src/main.rs"
 
+[features]
+default = ["livekit"]
+livekit = ["estompe-client/livekit"]
+
 [dependencies]
 estompe-client.workspace = true
 estompe-plateforme.workspace = true

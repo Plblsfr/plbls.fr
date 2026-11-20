@@ -100,3 +100,54 @@ pub trait DemarrageSession {
     fn actif(&self) -> Resultat<bool>;
     fn definir(&self, actif: bool) -> Resultat<()>;
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SensAudio {
+    Entree,
+    Sortie,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeripheriqueAudio {
+    pub id: String,
+    pub nom: String,
+    pub defaut: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormatAudio {
+    pub frequence: u32,
+    pub canaux: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErreurFluxAudio {
+    Debranche,
+    Echec(String),
+}
+
+pub type RecepteurAudio = Box<dyn FnMut(&[f32]) + Send>;
+pub type FournisseurAudio = Box<dyn FnMut(&mut [f32]) + Send>;
+pub type SignalErreurAudio = Box<dyn FnMut(ErreurFluxAudio) + Send>;
+
+pub trait FluxAudio: Send {
+    fn format(&self) -> FormatAudio;
+    fn peripherique(&self) -> &str;
+}
+
+pub trait SystemeAudio: Send + Sync {
+    fn disponible(&self) -> bool;
+    fn peripheriques(&self, sens: SensAudio) -> Resultat<Vec<PeripheriqueAudio>>;
+    fn ouvrir_entree(
+        &self,
+        id: Option<&str>,
+        echantillons: RecepteurAudio,
+        erreur: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>>;
+    fn ouvrir_sortie(
+        &self,
+        id: Option<&str>,
+        echantillons: FournisseurAudio,
+        erreur: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>>;
+}

@@ -35,6 +35,17 @@ pub struct Application {
     pub entree: entree::Entree,
     pub client: estompe_client::http::Client,
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
+    pub vocal: estompe_client::vocal::SessionVocale,
+}
+
+#[cfg(feature = "livekit")]
+fn connecteur_vocal() -> std::sync::Arc<dyn estompe_client::vocal::Connecteur> {
+    std::sync::Arc::new(estompe_client::vocal::livekit::ConnecteurLiveKit)
+}
+
+#[cfg(not(feature = "livekit"))]
+fn connecteur_vocal() -> std::sync::Arc<dyn estompe_client::vocal::Connecteur> {
+    std::sync::Arc::new(estompe_client::vocal::ConnecteurIndisponible)
 }
 
 pub fn demarrer(
@@ -96,11 +107,28 @@ pub fn demarrer(
         coquille::horloge_locale(),
     );
     suivre_le_focus(fenetre, coquille.suivi_du_focus());
+    let (micro, sortie) = session
+        .memoire
+        .lire(|p| (p.micro.clone(), p.sortie_audio.clone()));
+    let vocal = estompe_client::vocal::SessionVocale::demarrer(
+        &entree.runtime(),
+        estompe_client::vocal::Dependances {
+            api: std::sync::Arc::new(reels.client.clone()),
+            connecteur: connecteur_vocal(),
+            audio: std::sync::Arc::new(estompe_plateforme::AudioSysteme),
+            reglages: estompe_client::vocal::Reglages {
+                micro,
+                sortie,
+                ..estompe_client::vocal::Reglages::default()
+            },
+        },
+    );
     Ok(Application {
         coquille,
         entree,
         client: reels.client,
         auth: reels.auth,
+        vocal,
     })
 }
 

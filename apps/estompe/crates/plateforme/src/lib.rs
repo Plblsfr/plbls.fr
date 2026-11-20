@@ -1,3 +1,4 @@
+mod audio;
 mod coffre;
 mod dossiers;
 mod erreur;
@@ -6,6 +7,7 @@ mod indisponible;
 mod traits;
 mod url;
 
+pub use audio::AudioSysteme;
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use dossiers::{
     dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
@@ -14,11 +16,15 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use traits::{
-    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, Fichiers, Image,
-    Notification, Notifications, OuvertureUrl, Overlay, PremierPlan, PressePapiers,
-    RaccourcisGlobaux, RecepteurSon, SourceCapture, TypeSource,
+    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, ErreurFluxAudio,
+    Fichiers, FluxAudio, FormatAudio, FournisseurAudio, Image, Notification, Notifications,
+    OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan, PressePapiers, RaccourcisGlobaux,
+    RecepteurAudio, RecepteurSon, SensAudio, SignalErreurAudio, SourceCapture, SystemeAudio,
+    TypeSource,
 };
 pub use url::NavigateurSysteme;
+
+use std::sync::Arc;
 
 pub struct Plateforme {
     pub coffre: Box<dyn Coffre>,
@@ -29,6 +35,7 @@ pub struct Plateforme {
     pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
     pub capture_ecran: Box<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
+    pub audio: Arc<dyn SystemeAudio>,
     pub overlay: Box<dyn Overlay>,
     pub premier_plan: Box<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
@@ -41,6 +48,7 @@ impl Plateforme {
             url: Box::new(NavigateurSysteme),
             fichiers: Box::new(FichiersSysteme),
             presse_papiers: Box::new(PressePapiersSysteme),
+            audio: Arc::new(AudioSysteme),
             ..Self::indisponible()
         }
     }
@@ -55,6 +63,7 @@ impl Plateforme {
             presse_papiers: Box::new(Indisponible),
             capture_ecran: Box::new(Indisponible),
             capture_son: Box::new(Indisponible),
+            audio: Arc::new(Indisponible),
             overlay: Box::new(Indisponible),
             premier_plan: Box::new(Indisponible),
             demarrage: Box::new(Indisponible),
@@ -71,6 +80,7 @@ mod tests {
         let p = Plateforme::de_l_os();
         assert!(p.url.disponible());
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
+        assert!(p.audio.disponible());
         for (nom, disponible) in [
             ("notifications", p.notifications.disponible()),
             ("raccourcis", p.raccourcis.disponible()),
@@ -141,6 +151,17 @@ mod tests {
         assert!(!p.coffre.disponible());
         assert!(!p.url.disponible());
         assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
+        assert!(!p.audio.disponible());
+        assert!(matches!(
+            p.audio.peripheriques(SensAudio::Entree),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.audio
+                .ouvrir_sortie(None, Box::new(|_| {}), Box::new(|_| {}))
+                .map(|_| ()),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.fichiers.choisir_dossier(None),
             Err(Erreur::Indisponible(_))

@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fenetre = estompe_natif::creer_fenetre()?;
     session.brancher(&fenetre);
     let invitation = estompe_natif::invitation_des_arguments(std::env::args().skip(1));
-    let _application = estompe_natif::demarrer(&session, &fenetre, invitation)?;
+    let application = estompe_natif::demarrer(&session, &fenetre, invitation)?;
     if essai {
         let rendue = Cell::new(false);
         fenetre
@@ -29,6 +29,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| format!("notification de rendu indisponible : {e:?}"))?;
     }
     fenetre.run()?;
+    application
+        .vocal
+        .fermer_bloquant(estompe_client::vocal::DELAI_FERMETURE);
     session.retenir_geometrie(&fenetre);
     Ok(())
 }

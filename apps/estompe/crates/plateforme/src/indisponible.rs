@@ -130,3 +130,28 @@ impl DemarrageSession for Indisponible {
         refus("démarrage avec la session")
     }
 }
+
+impl SystemeAudio for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn peripheriques(&self, _: SensAudio) -> Resultat<Vec<PeripheriqueAudio>> {
+        refus("périphériques audio")
+    }
+    fn ouvrir_entree(
+        &self,
+        _: Option<&str>,
+        _: RecepteurAudio,
+        _: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>> {
+        refus("périphériques audio")
+    }
+    fn ouvrir_sortie(
+        &self,
+        _: Option<&str>,
+        _: FournisseurAudio,
+        _: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>> {
+        refus("périphériques audio")
+    }
+}
