@@ -9,14 +9,12 @@ pub mod session;
 
 pub use erreurs::{CauseMicro, ErreurVocal};
 pub use etat::{etats_affiches, EtatAffiche, EtatVocal, Phase};
-pub use mixage::Mixeur;
+pub use mixage::{Ecoute, Limiteur, Mixeur};
 pub use salle::{
     Connecteur, ConnecteurIndisponible, Connexion, ErreurSalle, EvenementSalle, InfoParticipant,
     JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
 };
-pub use session::{
-    ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, TraitementMicro, DELAI_FERMETURE,
-};
+pub use session::{ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, DELAI_FERMETURE};
 
 #[cfg(test)]
 mod tests {
@@ -30,7 +28,7 @@ mod tests {
     use super::factice::{ApiVocaleFactice, ServeurVocalFactice};
     use super::*;
     use crate::audio::factice::SystemeFactice;
-    use crate::audio::{Bascule, ECHANTILLONS_PAR_TRAME};
+    use crate::audio::{Bascule, ModeBruit, ReglagesMicro, ECHANTILLONS_PAR_TRAME};
 
     struct Poste {
         audio: SystemeFactice,
@@ -72,7 +70,26 @@ mod tests {
         audio
     }
 
+    fn sans_bruit() -> Reglages {
+        Reglages {
+            traitement: ReglagesMicro {
+                bruit: ModeBruit::Aucun,
+                ..ReglagesMicro::default()
+            },
+            ..Reglages::default()
+        }
+    }
+
     fn poste(serveur: &ServeurVocalFactice, identite: &str, avec_micro: bool) -> Poste {
+        poste_regle(serveur, identite, avec_micro, sans_bruit())
+    }
+
+    fn poste_regle(
+        serveur: &ServeurVocalFactice,
+        identite: &str,
+        avec_micro: bool,
+        reglages: Reglages,
+    ) -> Poste {
         let audio = audio(avec_micro);
         let api = Arc::new(ApiVocaleFactice::nouvelle(identite));
         let session = SessionVocale::demarrer(
@@ -81,7 +98,8 @@ mod tests {
                 api: api.clone(),
                 connecteur: Arc::new(serveur.clone()),
                 audio: Arc::new(audio.clone()),
-                reglages: Reglages::default(),
+                apm: None,
+                reglages,
             },
         );
         Poste {
@@ -412,5 +430,134 @@ mod tests {
             .audio
             .pousser("micro", &[0.5; ECHANTILLONS_PAR_TRAME + 1]);
         assert_eq!(serveur.trames_recues("alice"), 1);
+    }
+
+    async fn entendre(poste: &Poste, attendu: f32) {
+        attendre_que(|| {
+            poste
+                .audio
+                .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
+                .is_some_and(|s| s.iter().skip(4).all(|e| (e - attendu).abs() < 0.01))
+        })
+        .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn le_volume_d_un_participant_est_retrouve_apres_avoir_quitte_puis_rejoint() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        let bob = poste(&serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        bob.session.rejoindre("v1");
+        attendre(&alice.session, |e| e.participants.len() == 2).await;
+        alice.session.definir_volume("bob", SourceAudio::Micro, 50);
+        alice.session.definir_volume_general(80);
+        attendre(&alice.session, |e| {
+            e.ecoute.volume("bob", SourceAudio::Micro) == 50
+        })
+        .await;
+        let parler = || {
+            bob.audio
+                .pousser("micro", &[0.5; 4 * ECHANTILLONS_PAR_TRAME])
+        };
+        attendre_que(|| {
+            parler();
+            alice
+                .audio
+                .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
+                .is_some_and(|s| s.iter().any(|e| (e - 0.2).abs() < 0.01))
+        })
+        .await;
+        alice.session.quitter();
+        attendre(&alice.session, |e| !e.actif()).await;
+        alice.session.rejoindre("v1");
+        let etat = attendre(&alice.session, |e| e.participants.len() == 2).await;
+        assert_eq!(etat.ecoute.volume("bob", SourceAudio::Micro), 50);
+        attendre_que(|| {
+            parler();
+            alice
+                .audio
+                .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
+                .is_some_and(|s| s.iter().any(|e| (e - 0.2).abs() < 0.01))
+        })
+        .await;
+        alice.session.definir_muet("bob", SourceAudio::Micro, true);
+        attendre(&alice.session, |e| e.ecoute.muet("bob", SourceAudio::Micro)).await;
+        parler();
+        alice.audio.tirer("hp", 4 * ECHANTILLONS_PAR_TRAME);
+        parler();
+        entendre(&alice, 0.0).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn la_detection_de_voix_envoie_du_silence_sous_le_seuil_et_mesure_toujours() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let mut reglages = sans_bruit();
+        reglages.traitement.detection_voix = true;
+        reglages.traitement.seuil = -30;
+        let alice = poste_regle(&serveur, "alice", true, reglages);
+        let bob = poste(&serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        bob.session.rejoindre("v1");
+        attendre(&bob.session, |e| e.participants.len() == 2).await;
+        assert_eq!(
+            alice.session.niveau_micro().db,
+            crate::audio::micro::SILENCE_DB
+        );
+        let faible = || {
+            alice
+                .audio
+                .pousser("micro", &[0.01; 4 * ECHANTILLONS_PAR_TRAME])
+        };
+        faible();
+        let niveau = alice.session.niveau_micro();
+        assert!(!niveau.voix && (niveau.db + 40.0).abs() < 0.5, "{niveau:?}");
+        attendre_que(|| {
+            faible();
+            bob.audio
+                .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
+                .is_some_and(|s| s.iter().all(|e| *e == 0.0))
+        })
+        .await;
+        alice
+            .audio
+            .pousser("micro", &[0.5; 4 * ECHANTILLONS_PAR_TRAME]);
+        assert!(alice.session.niveau_micro().voix);
+        attendre_que(|| {
+            alice
+                .audio
+                .pousser("micro", &[0.5; 2 * ECHANTILLONS_PAR_TRAME]);
+            bob.audio
+                .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
+                .is_some_and(|s| s.iter().any(|e| *e > 0.4))
+        })
+        .await;
+        alice.session.basculer_micro();
+        attendre(&alice.session, |e| e.micro_coupe).await;
+        let avant = serveur.trames_recues("alice");
+        alice
+            .audio
+            .pousser("micro", &[0.25; 2 * ECHANTILLONS_PAR_TRAME]);
+        assert_eq!(serveur.trames_recues("alice"), avant);
+        assert!((alice.session.niveau_micro().db + 12.04).abs() < 0.1);
+        alice.session.definir_traitement(ReglagesMicro {
+            gain: 900,
+            ..ReglagesMicro::default()
+        });
+        let etat = attendre(&alice.session, |e| e.traitement.gain != 100).await;
+        assert_eq!(
+            etat.traitement.gain,
+            crate::audio::micro::GAIN_MICRO_MAXIMAL
+        );
+        alice.session.quitter();
+        let etat = attendre(&alice.session, |e| !e.actif()).await;
+        assert_eq!(
+            etat.traitement.gain,
+            crate::audio::micro::GAIN_MICRO_MAXIMAL
+        );
+        assert_eq!(
+            alice.session.niveau_micro().db,
+            crate::audio::micro::SILENCE_DB
+        );
     }
 }

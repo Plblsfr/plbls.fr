@@ -1,11 +1,18 @@
+pub mod essai;
 pub mod factice;
 pub mod format;
+pub mod micro;
 pub mod peripheriques;
 
+pub use essai::EssaiMicro;
 pub use estompe_plateforme::{FormatAudio, PeripheriqueAudio, SensAudio, SystemeAudio};
 pub use format::{
     ConversionEntree, ConversionSortie, SourceLecture, TamponLecture, ECHANTILLONS_PAR_TRAME,
     FREQUENCE,
+};
+pub use micro::{
+    niveau_db, porte_ouverte, Apm, ChaineMicro, DetectionVoix, MesureMicro, ModeBruit, MoteurApm,
+    NiveauMicro, ReglagesMicro,
 };
 pub use peripheriques::{resoudre, Bascule, Capture, Lecture, RenduTrame};
 

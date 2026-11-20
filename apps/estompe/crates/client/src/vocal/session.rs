@@ -11,12 +11,14 @@ use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use crate::audio::{Bascule, Capture, Lecture};
+use crate::audio::{
+    Apm, Bascule, Capture, ChaineMicro, Lecture, MesureMicro, NiveauMicro, ReglagesMicro,
+};
 use crate::http::{Client, ErreurApi};
 
 use super::erreurs::{CauseMicro, ErreurVocal};
 use super::etat::{EtatVocal, Phase};
-use super::mixage::Mixeur;
+use super::mixage::{Ecoute, Mixeur};
 use super::salle::{
     est_partage, proprietaire, Connecteur, Connexion, EvenementSalle, JetonSalle,
     RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
@@ -53,10 +55,6 @@ impl ApiVocale for Client {
     }
 }
 
-pub trait TraitementMicro: Send {
-    fn traiter(&mut self, trame: &mut [i16]);
-}
-
 #[derive(Debug, Clone)]
 pub struct Reglages {
     pub micro: Option<String>,
@@ -64,6 +62,8 @@ pub struct Reglages {
     pub surveillance: Duration,
     pub attentes: Vec<Duration>,
     pub fenetre_deplacement: Duration,
+    pub traitement: ReglagesMicro,
+    pub ecoute: Ecoute,
 }
 
 impl Default for Reglages {
@@ -77,6 +77,8 @@ impl Default for Reglages {
                 .map(Duration::from_secs)
                 .collect(),
             fenetre_deplacement: Duration::from_secs(5),
+            traitement: ReglagesMicro::default(),
+            ecoute: Ecoute::default(),
         }
     }
 }
@@ -85,6 +87,7 @@ pub struct Dependances {
     pub api: Arc<dyn ApiVocale>,
     pub connecteur: Arc<dyn Connecteur>,
     pub audio: Arc<dyn SystemeAudio>,
+    pub apm: Option<Arc<Apm>>,
     pub reglages: Reglages,
 }
 
@@ -118,9 +121,15 @@ enum Commande {
     Volume {
         identite: String,
         source: SourceAudio,
-        gain: f32,
+        pourcent: u16,
     },
-    Traitement(Box<dyn TraitementMicro>),
+    Muet {
+        identite: String,
+        source: SourceAudio,
+        muet: bool,
+    },
+    VolumeGeneral(u16),
+    Traitement(ReglagesMicro),
     Fermer(oneshot::Sender<()>),
 }
 
@@ -151,29 +160,37 @@ struct Tentative {
     resultat: Result<Connexion, EchecConnexion>,
 }
 
-#[derive(Default)]
 struct RouteMicro {
     sortie: Mutex<Option<Arc<dyn SortieMicro>>>,
     emet: AtomicBool,
-    traitement: Mutex<Option<Box<dyn TraitementMicro>>>,
+    chaine: Mutex<ChaineMicro>,
 }
 
 impl RouteMicro {
+    fn nouvelle(chaine: ChaineMicro) -> Self {
+        Self {
+            sortie: Mutex::new(None),
+            emet: AtomicBool::new(false),
+            chaine: Mutex::new(chaine),
+        }
+    }
+
     fn envoyer(&self, trame: &[i16]) {
+        let Ok(mut chaine) = self.chaine.lock() else {
+            return;
+        };
+        let traitee = chaine.traiter(trame);
         if !self.emet.load(Ordering::Relaxed) {
             return;
         }
-        let Some(sortie) = self.sortie.lock().ok().and_then(|s| s.clone()) else {
-            return;
-        };
-        let mut traitement = self.traitement.lock().ok();
-        match traitement.as_mut().and_then(|t| t.as_mut()) {
-            Some(traitement) => {
-                let mut copie = trame.to_vec();
-                traitement.traiter(&mut copie);
-                sortie.envoyer(&copie);
-            }
-            None => sortie.envoyer(trame),
+        if let Some(sortie) = self.sortie.lock().ok().and_then(|s| s.clone()) {
+            sortie.envoyer(traitee);
+        }
+    }
+
+    fn regler(&self, reglages: ReglagesMicro) {
+        if let Ok(mut chaine) = self.chaine.lock() {
+            chaine.appliquer(reglages);
         }
     }
 
@@ -195,6 +212,7 @@ pub struct SessionVocale {
     commandes: mpsc::UnboundedSender<Commande>,
     etat: watch::Receiver<EtatVocal>,
     avis: broadcast::Sender<AvisVocal>,
+    mesure: Arc<MesureMicro>,
     runtime: Handle,
 }
 
@@ -204,14 +222,24 @@ impl SessionVocale {
         let mut etat_initial = EtatVocal::default();
         etat_initial.micro = dependances.reglages.micro.clone();
         etat_initial.sortie = dependances.reglages.sortie.clone();
+        etat_initial.traitement = dependances.reglages.traitement.borne();
+        etat_initial.ecoute = dependances.reglages.ecoute.clone().bornee();
         let (diffusion, etat) = watch::channel(etat_initial.clone());
         let (avis, _) = broadcast::channel(64);
-        let acteur = Acteur::nouveau(dependances, etat_initial, diffusion, avis.clone());
+        let mesure = Arc::new(MesureMicro::default());
+        let acteur = Acteur::nouveau(
+            dependances,
+            etat_initial,
+            diffusion,
+            avis.clone(),
+            mesure.clone(),
+        );
         runtime.spawn(acteur.tourner(reception));
         Self {
             commandes,
             etat,
             avis,
+            mesure,
             runtime: runtime.clone(),
         }
     }
@@ -278,16 +306,32 @@ impl SessionVocale {
         self.envoyer(Commande::ChoisirSortie(id));
     }
 
-    pub fn definir_volume(&self, identite: &str, source: SourceAudio, gain: f32) {
+    pub fn definir_volume(&self, identite: &str, source: SourceAudio, pourcent: u16) {
         self.envoyer(Commande::Volume {
-            identite: identite.to_string(),
+            identite: proprietaire(identite).to_string(),
             source,
-            gain,
+            pourcent,
         });
     }
 
-    pub fn definir_traitement(&self, traitement: Box<dyn TraitementMicro>) {
-        self.envoyer(Commande::Traitement(traitement));
+    pub fn definir_muet(&self, identite: &str, source: SourceAudio, muet: bool) {
+        self.envoyer(Commande::Muet {
+            identite: proprietaire(identite).to_string(),
+            source,
+            muet,
+        });
+    }
+
+    pub fn definir_volume_general(&self, pourcent: u16) {
+        self.envoyer(Commande::VolumeGeneral(pourcent));
+    }
+
+    pub fn definir_traitement(&self, reglages: ReglagesMicro) {
+        self.envoyer(Commande::Traitement(reglages));
+    }
+
+    pub fn niveau_micro(&self) -> NiveauMicro {
+        self.mesure.lire()
     }
 
     pub async fn fermer(&self) {
@@ -324,6 +368,7 @@ struct Acteur {
     ancienne: Option<Arc<dyn Salle>>,
     evenements: Option<mpsc::UnboundedReceiver<EvenementSalle>>,
     route: Arc<RouteMicro>,
+    mesure: Arc<MesureMicro>,
     capture: Option<Capture>,
     lecture: Option<Lecture>,
     mixeur: Arc<Mutex<Mixeur>>,
@@ -359,7 +404,11 @@ impl Acteur {
         etat: EtatVocal,
         diffusion: watch::Sender<EtatVocal>,
         avis: broadcast::Sender<AvisVocal>,
+        mesure: Arc<MesureMicro>,
     ) -> Self {
+        let chaine =
+            ChaineMicro::nouvelle(etat.traitement, dependances.apm.clone(), mesure.clone());
+        let mixeur = Mixeur::nouveau(etat.ecoute.clone(), dependances.apm);
         Self {
             api: dependances.api,
             connecteur: dependances.connecteur,
@@ -372,10 +421,11 @@ impl Acteur {
             salle: None,
             ancienne: None,
             evenements: None,
-            route: Arc::new(RouteMicro::default()),
+            route: Arc::new(RouteMicro::nouvelle(chaine)),
+            mesure,
             capture: None,
             lecture: None,
-            mixeur: Arc::new(Mutex::new(Mixeur::default())),
+            mixeur: Arc::new(Mutex::new(mixeur)),
             pistes: BTreeMap::new(),
             tentatives: mpsc::unbounded_channel(),
             essais: 0,
@@ -426,8 +476,15 @@ impl Acteur {
     fn appliquer_micro(&self) {
         self.route.appliquer(self.etat.micro_emet());
         if let Ok(mut mixeur) = self.mixeur.lock() {
-            mixeur.definir_muet(!self.etat.son_recu());
+            mixeur.definir_sourd(!self.etat.son_recu());
         }
+    }
+
+    fn appliquer_ecoute(&self) {
+        if let Ok(mut mixeur) = self.mixeur.lock() {
+            mixeur.definir_ecoute(self.etat.ecoute.clone());
+        }
+        self.publier();
     }
 
     async fn publier_attributs(&mut self) {
@@ -498,16 +555,27 @@ impl Acteur {
             Commande::Volume {
                 identite,
                 source,
-                gain,
+                pourcent,
             } => {
-                if let Ok(mut mixeur) = self.mixeur.lock() {
-                    mixeur.definir_gain(&identite, source, gain);
-                }
+                self.etat.ecoute.definir_volume(&identite, source, pourcent);
+                self.appliquer_ecoute();
             }
-            Commande::Traitement(traitement) => {
-                if let Ok(mut t) = self.route.traitement.lock() {
-                    *t = Some(traitement);
-                }
+            Commande::Muet {
+                identite,
+                source,
+                muet,
+            } => {
+                self.etat.ecoute.definir_muet(&identite, source, muet);
+                self.appliquer_ecoute();
+            }
+            Commande::VolumeGeneral(pourcent) => {
+                self.etat.ecoute.definir_general(pourcent);
+                self.appliquer_ecoute();
+            }
+            Commande::Traitement(reglages) => {
+                self.etat.traitement = reglages.borne();
+                self.route.regler(self.etat.traitement);
+                self.publier();
             }
             Commande::Fermer(_) => {}
         }
@@ -796,6 +864,7 @@ impl Acteur {
         self.arreter_pistes();
         self.capture = None;
         self.lecture = None;
+        self.mesure.reinitialiser();
     }
 
     async fn quitter(&mut self) {

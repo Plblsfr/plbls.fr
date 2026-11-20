@@ -12,11 +12,12 @@ use livekit::webrtc::audio_frame::AudioFrame;
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
+use livekit::webrtc::native::apm::AudioProcessingModule;
 use livekit::DisconnectReason;
 use livekit_protocol::{ParticipantPermission, TrackSource as SourceProto};
 use tokio::sync::mpsc;
 
-use crate::audio::FREQUENCE;
+use crate::audio::{Apm, MoteurApm, FREQUENCE};
 
 use super::salle::{
     Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle, Qualite,
@@ -28,6 +29,24 @@ const TAMPON_SOURCE_MS: u32 = 100;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ConnecteurLiveKit;
+
+struct MoteurWebRtc(AudioProcessingModule);
+
+impl MoteurApm for MoteurWebRtc {
+    fn capter(&mut self, trame: &mut [i16]) {
+        let _ = self.0.process_stream(trame, FREQUENCE as i32, 1);
+    }
+
+    fn jouer(&mut self, trame: &mut [i16]) {
+        let _ = self.0.process_reverse_stream(trame, FREQUENCE as i32, 1);
+    }
+}
+
+pub fn apm() -> Arc<Apm> {
+    Apm::nouveau(Box::new(MoteurWebRtc(AudioProcessingModule::new(
+        true, true, true, true,
+    ))))
+}
 
 struct SalleLiveKit {
     salle: Room,
@@ -290,5 +309,96 @@ impl Connecteur for ConnecteurLiveKit {
                 evenements,
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::format::Reechantillonneur;
+    use crate::audio::{niveau_db, ECHANTILLONS_PAR_TRAME};
+
+    fn voix() -> Vec<f32> {
+        let octets = include_bytes!("../../tests/donnees/voix-16k.wav");
+        let debut = octets.windows(4).position(|f| f == b"data").unwrap() + 8;
+        let voix16: Vec<f32> = octets[debut..]
+            .chunks_exact(2)
+            .map(|o| f32::from(i16::from_le_bytes([o[0], o[1]])) / f32::from(i16::MAX))
+            .collect();
+        let mut voix = Vec::new();
+        Reechantillonneur::nouveau(16_000, FREQUENCE).traiter(&voix16, &mut voix);
+        voix.truncate(voix.len() / ECHANTILLONS_PAR_TRAME * ECHANTILLONS_PAR_TRAME);
+        voix
+    }
+
+    #[test]
+    fn l_annulation_d_echo_retire_le_son_joue_repris_par_le_micro() {
+        let apm = apm();
+        apm.activer(true);
+        let lointain: Vec<f32> = voix().repeat(3);
+        let retard = 3 * ECHANTILLONS_PAR_TRAME;
+        let mut echo = vec![0.0f32; lointain.len()];
+        for i in retard..lointain.len() {
+            echo[i] = 0.5 * lointain[i - retard];
+        }
+        let mut entree = Vec::new();
+        let mut sortie = Vec::new();
+        for (joue, capte) in lointain
+            .chunks_exact(ECHANTILLONS_PAR_TRAME)
+            .zip(echo.chunks_exact(ECHANTILLONS_PAR_TRAME))
+        {
+            apm.jouer(joue);
+            let mut trame: Vec<i16> = capte
+                .iter()
+                .map(|e| crate::audio::format::vers_i16(*e))
+                .collect();
+            entree.extend(capte.iter().copied());
+            apm.capter(&mut trame);
+            sortie.extend(trame.iter().map(|e| f32::from(*e) / f32::from(i16::MAX)));
+        }
+        let fin = 2 * lointain.len() / 3;
+        let avant = niveau_db(&entree[fin..]);
+        let apres = niveau_db(&sortie[fin..]);
+        assert!(
+            avant - apres >= 15.0,
+            "écho : {avant:.1} dB repris, {apres:.1} dB après annulation"
+        );
+    }
+
+    #[test]
+    #[ignore = "mesure du coût, à lancer en release : cargo test --release --features livekit -- --ignored --nocapture cout"]
+    fn mesure_le_cout_de_la_chaine_complete_du_micro() {
+        use crate::audio::{ChaineMicro, MesureMicro, ReglagesMicro};
+        let apm = apm();
+        let mut chaine = ChaineMicro::nouvelle(
+            ReglagesMicro {
+                detection_voix: true,
+                ..ReglagesMicro::default()
+            },
+            Some(apm.clone()),
+            Arc::new(MesureMicro::default()),
+        );
+        let signal = voix();
+        let micro: Vec<i16> = signal
+            .iter()
+            .map(|e| crate::audio::format::vers_i16(e * 0.3))
+            .collect();
+        let tours = 10;
+        let debut = std::time::Instant::now();
+        for _ in 0..tours {
+            for (joue, capte) in signal
+                .chunks_exact(ECHANTILLONS_PAR_TRAME)
+                .zip(micro.chunks_exact(ECHANTILLONS_PAR_TRAME))
+            {
+                apm.jouer(joue);
+                std::hint::black_box(chaine.traiter(capte));
+            }
+        }
+        let calcul = debut.elapsed().as_secs_f64();
+        let audio = (tours * signal.len()) as f64 / f64::from(FREQUENCE);
+        println!(
+            "chaîne complète du micro (APM WebRTC, RNNoise, détection de voix, référence d'écho) : {:.2} % d'un cœur ({calcul:.3} s pour {audio:.1} s de son)",
+            100.0 * calcul / audio
+        );
     }
 }

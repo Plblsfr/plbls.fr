@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::audio::ReglagesMicro;
+
 use super::erreurs::CauseMicro;
+use super::mixage::Ecoute;
 use super::salle::{est_partage, InfoParticipant, Qualite};
 
 pub const ATTRIBUT_MUET: &str = "muted";
@@ -38,6 +41,8 @@ pub struct EtatVocal {
     pub parlent: BTreeSet<String>,
     pub micro: Option<String>,
     pub sortie: Option<String>,
+    pub traitement: ReglagesMicro,
+    pub ecoute: Ecoute,
 }
 
 impl Default for EtatVocal {
@@ -58,6 +63,8 @@ impl Default for EtatVocal {
             parlent: BTreeSet::new(),
             micro: None,
             sortie: None,
+            traitement: ReglagesMicro::default(),
+            ecoute: Ecoute::default(),
         }
     }
 }
@@ -179,6 +186,8 @@ impl EtatVocal {
         *self = Self {
             micro: self.micro.take(),
             sortie: self.sortie.take(),
+            traitement: self.traitement,
+            ecoute: std::mem::take(&mut self.ecoute),
             ..Self::default()
         };
     }

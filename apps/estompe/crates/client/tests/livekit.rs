@@ -133,6 +133,7 @@ fn poste(url: &str, identite: &str) -> (SessionVocale, SystemeFactice) {
             }),
             connecteur: Arc::new(ConnecteurLiveKit),
             audio: Arc::new(audio.clone()),
+            apm: Some(estompe_client::vocal::livekit::apm()),
             reglages: Reglages::default(),
         },
     );

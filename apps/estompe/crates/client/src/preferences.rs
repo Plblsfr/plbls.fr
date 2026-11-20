@@ -6,7 +6,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::audio::ReglagesMicro;
 use crate::derniere_vue::DerniereVue;
+use crate::vocal::Ecoute;
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -52,6 +54,8 @@ pub struct Preferences {
     pub marge_ouverte: bool,
     pub micro: Option<String>,
     pub sortie_audio: Option<String>,
+    pub traitement_micro: ReglagesMicro,
+    pub ecoute: Ecoute,
 }
 
 impl Default for Preferences {
@@ -71,6 +75,8 @@ impl Default for Preferences {
             marge_ouverte: true,
             micro: None,
             sortie_audio: None,
+            traitement_micro: ReglagesMicro::default(),
+            ecoute: Ecoute::default(),
         }
     }
 }
@@ -131,6 +137,8 @@ impl Preferences {
             micro: champ(&objet, "micro", d.micro).filter(|m: &String| !m.is_empty()),
             sortie_audio: champ(&objet, "sortie_audio", d.sortie_audio)
                 .filter(|s: &String| !s.is_empty()),
+            traitement_micro: champ(&objet, "traitement_micro", d.traitement_micro).borne(),
+            ecoute: champ(&objet, "ecoute", d.ecoute).bornee(),
         })
     }
 
@@ -283,6 +291,20 @@ mod tests {
             marge_ouverte: false,
             micro: Some("wasapi:{micro}".to_string()),
             sortie_audio: Some("alsa:casque".to_string()),
+            traitement_micro: ReglagesMicro {
+                bruit: crate::audio::ModeBruit::Standard,
+                gain: 150,
+                detection_voix: true,
+                seuil: -38,
+            },
+            ecoute: {
+                let mut e = Ecoute::default();
+                e.definir_volume("u2", crate::vocal::SourceAudio::Micro, 40);
+                e.definir_volume("u2", crate::vocal::SourceAudio::Partage, 250);
+                e.definir_muet("u3", crate::vocal::SourceAudio::Micro, true);
+                e.definir_general(70);
+                e
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -297,6 +319,34 @@ mod tests {
             Preferences::charger(&dossier).preferences,
             Preferences::default()
         );
+    }
+
+    #[test]
+    fn les_reglages_audio_relus_sont_bornes() {
+        let lu = Preferences::depuis_json(
+            r#"{"traitement_micro": {"gain": 500, "seuil": 0, "bruit": "aucun"}, "ecoute": {"volumes": {"u2": 1000}, "general": 300}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            lu.traitement_micro.gain,
+            crate::audio::micro::GAIN_MICRO_MAXIMAL
+        );
+        assert_eq!(
+            lu.traitement_micro.seuil,
+            crate::audio::micro::SEUIL_MAXIMAL
+        );
+        assert_eq!(lu.traitement_micro.bruit, crate::audio::ModeBruit::Aucun);
+        assert_eq!(
+            lu.ecoute.volume("u2", crate::vocal::SourceAudio::Micro),
+            crate::vocal::mixage::VOLUME_MAXIMAL
+        );
+        assert_eq!(
+            lu.ecoute.general,
+            crate::vocal::mixage::VOLUME_GENERAL_MAXIMAL
+        );
+        let invalide =
+            Preferences::depuis_json(r#"{"traitement_micro": {"bruit": "fort"}}"#).unwrap();
+        assert_eq!(invalide.traitement_micro, ReglagesMicro::default());
     }
 
     #[test]

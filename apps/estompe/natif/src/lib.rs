@@ -48,6 +48,16 @@ fn connecteur_vocal() -> std::sync::Arc<dyn estompe_client::vocal::Connecteur> {
     std::sync::Arc::new(estompe_client::vocal::ConnecteurIndisponible)
 }
 
+#[cfg(feature = "livekit")]
+fn apm_vocal() -> Option<std::sync::Arc<estompe_client::audio::Apm>> {
+    Some(estompe_client::vocal::livekit::apm())
+}
+
+#[cfg(not(feature = "livekit"))]
+fn apm_vocal() -> Option<std::sync::Arc<estompe_client::audio::Apm>> {
+    None
+}
+
 pub fn demarrer(
     session: &session::Session,
     fenetre: &Principale,
@@ -107,18 +117,26 @@ pub fn demarrer(
         coquille::horloge_locale(),
     );
     suivre_le_focus(fenetre, coquille.suivi_du_focus());
-    let (micro, sortie) = session
-        .memoire
-        .lire(|p| (p.micro.clone(), p.sortie_audio.clone()));
+    let (micro, sortie, traitement, ecoute) = session.memoire.lire(|p| {
+        (
+            p.micro.clone(),
+            p.sortie_audio.clone(),
+            p.traitement_micro,
+            p.ecoute.clone(),
+        )
+    });
     let vocal = estompe_client::vocal::SessionVocale::demarrer(
         &entree.runtime(),
         estompe_client::vocal::Dependances {
             api: std::sync::Arc::new(reels.client.clone()),
             connecteur: connecteur_vocal(),
             audio: std::sync::Arc::new(estompe_plateforme::AudioSysteme),
+            apm: apm_vocal(),
             reglages: estompe_client::vocal::Reglages {
                 micro,
                 sortie,
+                traitement,
+                ecoute,
                 ..estompe_client::vocal::Reglages::default()
             },
         },
