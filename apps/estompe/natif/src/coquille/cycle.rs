@@ -21,10 +21,11 @@ use crate::menu::Ancre;
 use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
+use crate::messagerie::vocal::{MicroPartage, SortiePartagee};
 use crate::session::Memoire;
 use crate::{
     DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessagerie, DonneesNouveauPrive,
-    DonneesRecherche, DonneesSaisie, DonneesSelecteur, Principale,
+    DonneesRecherche, DonneesSaisie, DonneesSelecteur, DonneesVocal, Principale,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::video::Conversions;
@@ -68,6 +69,12 @@ pub trait Fabrique: Send + Sync + 'static {
     }
     fn conversions(&self) -> Arc<Conversions> {
         Arc::new(Conversions::aucune())
+    }
+    fn micro(&self) -> MicroPartage {
+        Arc::new(estompe_plateforme::SonSysteme)
+    }
+    fn sortie_son(&self) -> SortiePartagee {
+        Arc::new(estompe_plateforme::SonSysteme)
     }
 }
 
@@ -431,6 +438,31 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_saisie!(on_ouvrir_selecteur, |p, f| p
         .messagerie()
         .ouvrir_selecteur(&f, CibleSelecteur::Saisie));
+    let vocal = f.global::<DonneesVocal>();
+    macro_rules! rappel_vocal {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            vocal.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_vocal!(on_demarrer, |p, f| p.messagerie().demarrer_vocal(&f));
+    rappel_vocal!(on_annuler, |p, f| p.messagerie().annuler_vocal(&f));
+    rappel_vocal!(on_arreter, |p, f| p.messagerie().arreter_vocal(&f));
+    rappel_vocal!(on_envoyer, |p, f| p.messagerie().envoyer_vocal(&f));
+    rappel_vocal!(on_basculer, |p, f, _message, piece| p
+        .messagerie()
+        .basculer_lecture(&f, &piece));
+    rappel_vocal!(on_placer, |p, f, _message, piece, fraction| p
+        .messagerie()
+        .placer_lecture(&f, &piece, fraction));
+    rappel_vocal!(on_changer_vitesse, |p, f| p
+        .messagerie()
+        .changer_vitesse(&f));
     let selecteur = f.global::<DonneesSelecteur>();
     macro_rules! rappel_selecteur {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -828,6 +860,13 @@ async fn session(
         .definir_presse_papiers(contexte.fabrique.presse_papiers());
     pont.messagerie()
         .definir_conversions(contexte.fabrique.conversions());
+    pont.messagerie()
+        .definir_son(contexte.fabrique.micro(), contexte.fabrique.sortie_son());
+    let memoire = contexte.memoire.clone();
+    pont.messagerie().definir_ecoutes(
+        contexte.memoire.lire(|p| p.vocaux_ecoutes.clone()),
+        Arc::new(move |ecoutes| memoire.modifier(|p| p.vocaux_ecoutes = ecoutes)),
+    );
     pont.messagerie()
         .saisie()
         .definir_brouillons(contexte.fabrique.brouillons());

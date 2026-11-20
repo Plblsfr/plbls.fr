@@ -4,6 +4,7 @@ mod erreur;
 mod fichiers;
 mod indisponible;
 mod processus;
+mod son;
 mod traits;
 mod url;
 
@@ -15,10 +16,12 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use processus::commande_d_arriere_plan;
+pub use son::SonSysteme;
 pub use traits::{
     ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, ContenuPressePapiers,
-    DemarrageSession, Fichiers, Image, Notification, Notifications, OuvertureUrl, Overlay,
-    PremierPlan, PressePapiers, RaccourcisGlobaux, RecepteurSon, SourceCapture, TypeSource,
+    DemarrageSession, Fichiers, FluxSon, Image, Micro, Notification, Notifications, OuvertureUrl,
+    Overlay, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurSon, SortieSon,
+    SourceCapture, TypeSource,
 };
 pub use url::NavigateurSysteme;
 
@@ -31,6 +34,8 @@ pub struct Plateforme {
     pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
     pub capture_ecran: Box<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
+    pub micro: Box<dyn Micro + Send + Sync>,
+    pub sortie_son: Box<dyn SortieSon + Send + Sync>,
     pub overlay: Box<dyn Overlay>,
     pub premier_plan: Box<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
@@ -43,6 +48,8 @@ impl Plateforme {
             url: Box::new(NavigateurSysteme),
             fichiers: Box::new(FichiersSysteme),
             presse_papiers: Box::new(PressePapiersSysteme),
+            micro: Box::new(SonSysteme),
+            sortie_son: Box::new(SonSysteme),
             ..Self::indisponible()
         }
     }
@@ -57,6 +64,8 @@ impl Plateforme {
             presse_papiers: Box::new(Indisponible),
             capture_ecran: Box::new(Indisponible),
             capture_son: Box::new(Indisponible),
+            micro: Box::new(Indisponible),
+            sortie_son: Box::new(Indisponible),
             overlay: Box::new(Indisponible),
             premier_plan: Box::new(Indisponible),
             demarrage: Box::new(Indisponible),
@@ -73,6 +82,7 @@ mod tests {
         let p = Plateforme::de_l_os();
         assert!(p.url.disponible());
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
+        assert!(p.micro.disponible() && p.sortie_son.disponible());
         for (nom, disponible) in [
             ("notifications", p.notifications.disponible()),
             ("raccourcis", p.raccourcis.disponible()),
@@ -143,6 +153,15 @@ mod tests {
         assert!(!p.coffre.disponible());
         assert!(!p.url.disponible());
         assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
+        assert!(!p.micro.disponible() && !p.sortie_son.disponible());
+        assert!(matches!(
+            p.micro.ecouter(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible("micro"))
+        ));
+        assert!(matches!(
+            p.sortie_son.jouer(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.fichiers.choisir_dossier(None),
             Err(Erreur::Indisponible(_))

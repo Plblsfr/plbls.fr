@@ -470,6 +470,30 @@ impl Client {
         self.televerser_en_flux("/files", &envoi, progres).await
     }
 
+    pub async fn envoyer_vocal(
+        &self,
+        fichier: Vec<u8>,
+        duree_ms: u64,
+        forme: &[u8],
+    ) -> Result<Attachment, ErreurApi> {
+        let forme: Vec<String> = forme.iter().map(u8::to_string).collect();
+        let envoi = Televersement {
+            parties: vec![
+                Partie::texte("kind", "voice"),
+                Partie::texte(
+                    "duration_ms",
+                    &duree_ms.clamp(1, crate::vocal::DUREE_MAX_MS).to_string(),
+                ),
+                Partie::texte("waveform", &forme.join(",")),
+            ],
+            nom: crate::vocal::NOM_DU_FICHIER.to_string(),
+            type_mime: crate::vocal::TYPE_MIME.to_string(),
+            source: SourceEnvoi::Octets(fichier.into()),
+        };
+        self.televerser_en_flux("/files", &envoi, std::sync::Arc::new(|_, _| {}))
+            .await
+    }
+
     pub async fn definir_avatar(
         &self,
         type_mime: &str,

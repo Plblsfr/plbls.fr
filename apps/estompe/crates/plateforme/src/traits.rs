@@ -111,3 +111,23 @@ pub trait DemarrageSession {
     fn actif(&self) -> Resultat<bool>;
     fn definir(&self, actif: bool) -> Resultat<()>;
 }
+
+pub type ProducteurSon = Box<dyn FnMut(&mut [f32], u32) + Send>;
+
+pub struct FluxSon(#[allow(dead_code)] Box<dyn Send>);
+
+impl FluxSon {
+    pub fn nouveau(garde: impl Send + 'static) -> Self {
+        Self(Box::new(garde))
+    }
+}
+
+pub trait Micro {
+    fn disponible(&self) -> bool;
+    fn ecouter(&self, echantillons: RecepteurSon) -> Resultat<FluxSon>;
+}
+
+pub trait SortieSon {
+    fn disponible(&self) -> bool;
+    fn jouer(&self, producteur: ProducteurSon) -> Resultat<FluxSon>;
+}

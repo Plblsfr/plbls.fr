@@ -17,14 +17,16 @@ use estompe_client::route::Route;
 use estompe_client::video::{codec_mp4, Conversions, Convertisseur, DOSSIER_CONVERSIONS};
 use estompe_natif::coquille::{Coquille, Depot, Pont};
 use estompe_natif::entree::{self, Entree, Machine};
+use estompe_natif::messagerie::pont::vocal::RAFRAICHISSEMENT_LECTURE;
+use estompe_natif::messagerie::vocal::{MICRO_ABSENT, MICRO_REFUSE};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille,
     DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessagerie, DonneesNouveauPrive,
-    DonneesRecherche, DonneesSaisie, DonneesSelecteur, GenreBandeau, GenreLigneMessage,
-    LigneMessage, Page, PieceSaisie, Principale, SondageMessage,
+    DonneesRecherche, DonneesSaisie, DonneesSelecteur, DonneesVocal, EtapeVocal, GenreBandeau,
+    GenreLigneMessage, LigneMessage, Page, PieceJointe, PieceSaisie, Principale, SondageMessage,
 };
-use estompe_plateforme::ContenuPressePapiers;
+use estompe_plateforme::{ContenuPressePapiers, Erreur};
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use slint::platform::{Key, PointerEventButton, WindowEvent};
 use slint::{ComponentHandle, Model, SharedString};
@@ -657,6 +659,296 @@ fn conversion_video(
     *serveur.fichiers_bloques.lock().unwrap() = false;
     assert!(hevc.is_file(), "l'original n'est pas touché");
     println!("317 C3 : conversion ou envoi annulé, aucun fichier temporaire");
+}
+
+const VOCAL_DU_WEB: &[u8] = include_bytes!("../../crates/client/src/vocal/essais/chrome.webm");
+
+fn sinus(taux: u32, duree_ms: u64) -> Vec<f32> {
+    let n = (u64::from(taux) * duree_ms / 1000) as usize;
+    (0..n)
+        .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / taux as f32).sin())
+        .collect()
+}
+
+fn frequence(echantillons: &[f32], taux: u32) -> f32 {
+    let passages = echantillons
+        .windows(2)
+        .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+        .count();
+    passages as f32 * taux as f32 / echantillons.len() as f32
+}
+
+fn etape_vocal(f: &Principale) -> EtapeVocal {
+    f.global::<DonneesVocal>().get_etape()
+}
+
+fn piece_jointe(f: &Principale, id: &str) -> Option<PieceJointe> {
+    lignes(f)
+        .into_iter()
+        .flat_map(|l| l.annexes.pieces_jointes.iter().collect::<Vec<_>>())
+        .find(|p| p.id == id)
+}
+
+fn lecture(f: &Principale) -> (String, bool, f32, String) {
+    let v = f.global::<DonneesVocal>();
+    (
+        v.get_piece().to_string(),
+        v.get_en_lecture(),
+        v.get_avance(),
+        v.get_temps().to_string(),
+    )
+}
+
+fn ecouter(faible: &slint::Weak<Principale>, fabrique: &FausseFabrique, echantillons: usize) {
+    attendre(|| fabrique.sortie.ouverte(), "sortie du son ouverte");
+    fabrique.sortie.tirer(echantillons, 48_000).unwrap();
+    avancer(faible, RAFRAICHISSEMENT_LECTURE);
+}
+
+fn messages_vocaux(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    fabrique: &FausseFabrique,
+) {
+    cliquer_le_champ(faible, "Écrire dans #général");
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesVocal>().get_possible()
+                && f.global::<DonneesSaisie>().get_texte().is_empty()
+                && ElementHandle::find_by_accessible_label(f, "Message vocal")
+                    .next()
+                    .is_some()
+        },
+        "bouton « Message vocal » à la place d'« Envoyer »",
+    );
+    for (refus, message) in [
+        (Erreur::Refuse("E_ACCESSDENIED".into()), MICRO_REFUSE),
+        (Erreur::Indisponible("micro"), MICRO_ABSENT),
+    ] {
+        *fabrique.micro.refus.lock().unwrap() = Some(refus);
+        cliquer(faible, "Message vocal");
+        attendre_l_interface(
+            faible,
+            move |f| erreur(f) == message && etape_vocal(f) == EtapeVocal::Aucune,
+            "micro refusé ou absent : message clair",
+        );
+    }
+    *fabrique.micro.refus.lock().unwrap() = None;
+    println!("323 : micro refusé puis absent, message clair sous le champ");
+
+    cliquer(faible, "Message vocal");
+    attendre(|| fabrique.micro.ouvert(), "micro ouvert");
+    attendre_l_interface(
+        faible,
+        |f| etape_vocal(f) == EtapeVocal::Enregistrement && erreur(f).is_empty(),
+        "enregistrement en cours",
+    );
+    for bloc in sinus(44_100, 1500).chunks(441) {
+        assert!(fabrique.micro.parler(bloc, 44_100));
+    }
+    attendre_l_interface(
+        faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_duree() == "0:01"
+                && v.get_niveaux().row_count() >= 14
+                && v.get_niveaux().iter().all(|n| (0.8..0.95).contains(&n))
+        },
+        "durée et niveau en direct",
+    );
+    cliquer(faible, "Mettre en pause et écouter");
+    attendre_l_interface(
+        faible,
+        |f| {
+            etape_vocal(f) == EtapeVocal::Ecoute
+                && f.global::<DonneesVocal>().get_forme().row_count() == 15
+        },
+        "écoute avant l'envoi",
+    );
+    assert!(!fabrique.micro.ouvert(), "micro fermé à la pause");
+    cliquer(faible, "Écouter le message vocal");
+    attendre(
+        || fabrique.sortie.ouverte(),
+        "sortie ouverte pour réécouter",
+    );
+    let son = fabrique.sortie.tirer(48_000, 48_000).unwrap();
+    assert!((frequence(&son[4_800..], 48_000) - 440.0).abs() < 8.0);
+    avancer(faible, RAFRAICHISSEMENT_LECTURE);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let (piece, joue, avance, temps) = lecture(f);
+            piece == "apercu" && joue && temps == "0:01" && avance > 0.6
+        },
+        "position de la réécoute",
+    );
+    cliquer(faible, "Mettre en pause");
+    attendre_l_interface(faible, |f| !lecture(f).1, "réécoute en pause");
+    assert!(!fabrique.sortie.ouverte(), "sortie fermée à la pause");
+
+    cliquer(faible, "Envoyer le message vocal");
+    attendre(
+        || {
+            serveur
+                .identifiants_envoyes("POST /channels/c1/messages")
+                .last()
+                .is_some_and(|ids| ids.len() == 1 && serveur.piece(&ids[0])["kind"] == "voice")
+        },
+        "message vocal envoyé seul",
+    );
+    let id = serveur
+        .identifiants_envoyes("POST /channels/c1/messages")
+        .last()
+        .unwrap()[0]
+        .clone();
+    let piece = serveur.piece(&id);
+    assert_eq!(piece["mime"], "audio/ogg");
+    assert_eq!(piece["name"], "message-vocal.ogg");
+    assert!(
+        piece["duration_ms"].as_u64().unwrap().abs_diff(1500) <= 2,
+        "{piece}"
+    );
+    assert_eq!(piece["waveform"].as_array().unwrap().len(), 15);
+    let contenu = serveur.contenus.lock().unwrap()[&id].clone();
+    let audio = estompe_client::vocal::decoder(&contenu).unwrap();
+    assert!(audio.duree_ms().abs_diff(1500) <= 2);
+    attendre_l_interface(
+        faible,
+        |f| etape_vocal(f) == EtapeVocal::Aucune,
+        "zone de saisie rendue",
+    );
+    serveur.servir_fichier(&format!("/files/{id}"), "audio/ogg", contenu);
+    let natif = id.clone();
+    attendre_l_interface(
+        faible,
+        move |f| {
+            derniere_ligne(f).is_some_and(|l| {
+                !l.id.starts_with("local:")
+                    && l.annexes
+                        .pieces_jointes
+                        .iter()
+                        .any(|p| p.id == natif && p.vocal && p.duree == "0:01" && !p.ecoute)
+            })
+        },
+        "message vocal envoyé affiché dans la liste, non écouté",
+    );
+    println!(
+        "323 : enregistrement (niveau, durée), pause, réécoute, envoi en Ogg Opus (kind=voice)"
+    );
+
+    serveur.servir_fichier("/files/v-web", "audio/webm", VOCAL_DU_WEB.to_vec());
+    serveur.servir_fichier("/files/v-casse", "audio/ogg", b"OggS illisible".to_vec());
+    let mut m = commun::coquille::message("310", "c1", "carol");
+    m["content"] = serde_json::json!("");
+    m["attachments"] = serde_json::json!([
+        {"id": "v-web", "name": "message-vocal.webm", "mime": "audio/webm", "size": VOCAL_DU_WEB.len(), "kind": "voice", "duration_ms": 1500, "waveform": [40, 80, 60]},
+        {"id": "v-casse", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 14, "kind": "voice", "duration_ms": 1000, "waveform": [10]}
+    ]);
+    fabrique.envoyer(commun::coquille::evenement("message.created", m));
+    attendre_l_interface(
+        faible,
+        |f| piece_jointe(f, "v-web").is_some_and(|p| p.barres.row_count() == 3),
+        "message vocal du web reçu",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_basculer("310".into(), "v-web".into())
+    });
+    ecouter(faible, fabrique, 24_000);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let (piece, joue, avance, temps) = lecture(f);
+            piece == "v-web" && joue && temps == "0:00" && (avance - 1.0 / 3.0).abs() < 0.03
+        },
+        "message WebM du web lu et suivi",
+    );
+    attendre_l_interface(
+        faible,
+        |f| piece_jointe(f, "v-web").is_some_and(|p| p.ecoute),
+        "message marqué écouté",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesVocal>().invoke_changer_vitesse()
+    });
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesVocal>().get_vitesse() == "1,5×",
+        "vitesse 1,5×",
+    );
+    ecouter(faible, fabrique, 24_000);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let (_, joue, avance, _) = lecture(f);
+            joue && (0.78..0.9).contains(&avance)
+        },
+        "lecture plus rapide à 1,5×",
+    );
+    let ouvertures = fabrique
+        .sortie
+        .ouvertures
+        .load(std::sync::atomic::Ordering::SeqCst);
+    let natif = id.clone();
+    sur_l_interface(faible, move |f| {
+        f.global::<DonneesVocal>()
+            .invoke_basculer("".into(), natif.as_str().into())
+    });
+    let natif = id.clone();
+    attendre(
+        || {
+            fabrique
+                .sortie
+                .ouvertures
+                .load(std::sync::atomic::Ordering::SeqCst)
+                == ouvertures + 1
+        },
+        "sortie ouverte pour le message suivant",
+    );
+    attendre_l_interface(
+        faible,
+        move |f| {
+            let (piece, joue, _, _) = lecture(f);
+            piece == natif && joue
+        },
+        "un seul message joué à la fois",
+    );
+    let natif = id.clone();
+    sur_l_interface(faible, move |f| {
+        f.global::<DonneesVocal>()
+            .invoke_placer("".into(), natif.as_str().into(), 0.5)
+    });
+    attendre_l_interface(
+        faible,
+        |f| (lecture(f).2 - 0.5).abs() < 0.01,
+        "placé au milieu",
+    );
+    ecouter(faible, fabrique, 96_000);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let (_, joue, avance, _) = lecture(f);
+            !joue && avance == 0.0
+        },
+        "fin de la lecture, retour au début",
+    );
+    assert!(!fabrique.sortie.ouverte(), "sortie fermée à la fin");
+    for _ in 0..2 {
+        sur_l_interface(faible, |f| {
+            f.global::<DonneesVocal>().invoke_changer_vitesse()
+        });
+    }
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_basculer("310".into(), "v-casse".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| piece_jointe(f, "v-casse").is_some_and(|p| p.echec),
+        "message vocal illisible signalé",
+    );
+    println!("323 : lecture d'un WebM du web et d'un message natif, position, vitesse, un seul à la fois, illisible");
 }
 
 fn traiter_les_changements(faible: &slint::Weak<Principale>) {
@@ -2005,6 +2297,7 @@ fn scenario(
         f.global::<DonneesSaisie>().set_texte("".into());
     });
     pieces_jointes(&faible, &serveur, &fabrique, &coquille, &dossier);
+    messages_vocaux(&faible, &serveur, &fabrique);
     recherche_et_palette(&faible, &serveur, &pont, &dossier);
     nouveau_prive_statut_et_tout_lu(&faible, &serveur, &pont);
 }

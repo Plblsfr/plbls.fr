@@ -20,7 +20,7 @@ use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::messagerie::selecteur::Cible;
 use estompe_natif::{
     creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie,
-    DonneesSelecteur, ModeTheme, Mouvement, Principale, Theme,
+    DonneesSelecteur, DonneesVocal, EtapeVocal, ModeTheme, Mouvement, Principale, Theme,
 };
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
@@ -124,6 +124,12 @@ const ECRANS: &[Ecran] = ecrans![
     "saisie-pieces-clair", Clair, saisie_pieces;
     "saisie-pieces-sombre", Sombre, saisie_pieces;
     "saisie-depot-clair", Clair, saisie_depot;
+    "saisie-vocal-enregistrement-clair", Clair, saisie_vocal_enregistrement;
+    "saisie-vocal-enregistrement-sombre", Sombre, saisie_vocal_enregistrement;
+    "saisie-vocal-ecoute-clair", Clair, saisie_vocal_ecoute;
+    "saisie-vocal-ecoute-sombre", Sombre, saisie_vocal_ecoute;
+    "messagerie-vocal-clair", Clair, messagerie_vocal;
+    "messagerie-vocal-sombre", Sombre, messagerie_vocal;
     "selecteur-emoji-clair", Clair, selecteur_emoji;
     "selecteur-emoji-sombre", Sombre, selecteur_emoji;
     "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
@@ -958,6 +964,23 @@ fn messagerie_pieces(f: &Principale) {
     stabiliser(f);
 }
 
+fn messagerie_vocal(f: &Principale) {
+    let pont = messagerie_avec(f, commun::coquille::conversation_vocaux());
+    let son: Arc<estompe_plateforme::SonSysteme> = Arc::new(estompe_plateforme::SonSysteme);
+    pont.messagerie().definir_son(son.clone(), son);
+    pont.messagerie()
+        .definir_ecoutes(vec!["m2".into()], Arc::new(|_| {}));
+    pont.messagerie().marquer_illisible("m3");
+    pont.messagerie().rafraichir_maintenant(f);
+    let v = f.global::<DonneesVocal>();
+    v.set_piece("m2".into());
+    v.set_en_lecture(true);
+    v.set_avance(0.4);
+    v.set_temps("0:01".into());
+    v.set_vitesse("1,5×".into());
+    stabiliser(f);
+}
+
 fn messagerie_visionneuse(f: &Principale) {
     let pont = messagerie_avec(f, commun::coquille::conversation_pieces());
     pont.messagerie().image_cliquee(f, "600", 1);
@@ -1146,6 +1169,13 @@ fn remettre_a_zero(f: &Principale) {
         .set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);
+    let v = f.global::<DonneesVocal>();
+    v.set_possible(false);
+    v.set_etape(EtapeVocal::Aucune);
+    v.set_piece("".into());
+    v.set_en_lecture(false);
+    v.set_avance(0.0);
+    v.set_vitesse("1×".into());
     f.window()
         .dispatch_event(slint::platform::WindowEvent::PointerExited);
     f.set_demonstration(false);
@@ -1423,6 +1453,34 @@ fn saisie_non_envoye(f: &Principale) {
             ));
         },
     );
+    stabiliser(f);
+}
+
+fn saisie_vocal_enregistrement(f: &Principale) {
+    saisie_courte(f);
+    let v = f.global::<DonneesVocal>();
+    v.set_etape(EtapeVocal::Enregistrement);
+    v.set_duree("0:12".into());
+    let niveaux: Vec<f32> = commun::coquille::forme_de_test(40)
+        .into_iter()
+        .map(|n| f32::from(n) / 100.0)
+        .collect();
+    v.set_niveaux(slint::ModelRc::new(slint::VecModel::from(niveaux)));
+    stabiliser(f);
+}
+
+fn saisie_vocal_ecoute(f: &Principale) {
+    saisie_courte(f);
+    let v = f.global::<DonneesVocal>();
+    v.set_etape(EtapeVocal::Ecoute);
+    v.set_duree("0:12".into());
+    v.set_forme(slint::ModelRc::new(slint::VecModel::from(
+        estompe_natif::messagerie::pont::barres(&commun::coquille::forme_de_test(40)),
+    )));
+    v.set_piece("apercu".into());
+    v.set_en_lecture(true);
+    v.set_avance(0.35);
+    v.set_temps("0:04".into());
     stabiliser(f);
 }
 

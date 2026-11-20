@@ -136,3 +136,21 @@ impl DemarrageSession for Indisponible {
         refus("démarrage avec la session")
     }
 }
+
+impl Micro for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn ecouter(&self, _: RecepteurSon) -> Resultat<FluxSon> {
+        refus("micro")
+    }
+}
+
+impl SortieSon for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn jouer(&self, _: ProducteurSon) -> Resultat<FluxSon> {
+        refus("sortie du son")
+    }
+}

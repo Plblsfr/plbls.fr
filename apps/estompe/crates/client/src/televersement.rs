@@ -285,6 +285,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn un_message_vocal_annonce_sa_duree_et_sa_forme_avant_le_fichier() {
+        let serveur = ServeurFactice::demarrer([Reponse::json(
+            201,
+            json!({"id": "f3", "kind": "voice", "duration_ms": 1500}),
+        )])
+        .await;
+        let piece = serveur
+            .client()
+            .envoyer_vocal(b"OggS".to_vec(), 400_000, &[0, 42, 100])
+            .await
+            .unwrap();
+        assert_eq!(piece.duration_ms, Some(1500));
+        let texte = serveur.requetes()[0].texte();
+        let champ = |nom: &str, valeur: &str| {
+            texte
+                .find(&format!("name=\"{nom}\"\r\n\r\n{valeur}\r\n"))
+                .unwrap_or_else(|| panic!("{nom} : {texte}"))
+        };
+        let fichier = texte
+            .find("name=\"file\"; filename=\"message-vocal.ogg\"\r\nContent-Type: audio/ogg\r\n\r\nOggS")
+            .unwrap();
+        assert!(champ("kind", "voice") < champ("duration_ms", "300000"));
+        assert!(champ("waveform", "0,42,100") < fichier);
+    }
+
+    #[tokio::test]
     async fn un_401_isole_renvoie_le_fichier_entier() {
         let serveur =
             ServeurFactice::demarrer([Reponse::vide(401), Reponse::json(201, json!({"id": "f2"}))])

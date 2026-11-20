@@ -61,6 +61,8 @@ pub struct DonneesPiece {
     pub taille: String,
     pub anime: bool,
     pub vocal: bool,
+    pub duree_ms: u64,
+    pub forme: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -233,12 +235,19 @@ fn une_ligne(texte: &str) -> String {
 }
 
 pub fn piece(piece: &Attachment) -> DonneesPiece {
-    let nom = texte(&piece.name).to_string();
     let mime = texte(&piece.mime);
+    let vocal = categorie(piece) == CategoriePiece::Vocal;
+    let expiree = piece.expired == Some(true);
+    let nom = if vocal && expiree {
+        "Message vocal".to_string()
+    } else {
+        texte(&piece.name).to_string()
+    };
     DonneesPiece {
         id: texte(&piece.id).to_string(),
         nom_sur: nom_de_fichier_sur(&nom),
         genre: match categorie(piece) {
+            _ if expiree => GenrePiece::Expiree,
             CategoriePiece::Image => GenrePiece::Image,
             CategoriePiece::Fichier => GenrePiece::Fichier,
             CategoriePiece::Expiree => GenrePiece::Expiree,
@@ -248,7 +257,15 @@ pub fn piece(piece: &Attachment) -> DonneesPiece {
         },
         taille: taille_lisible(piece.size.unwrap_or(0).max(0) as u64),
         anime: matches!(mime, "image/gif" | "image/webp"),
-        vocal: categorie(piece) == CategoriePiece::Vocal,
+        vocal,
+        duree_ms: piece.duration_ms.unwrap_or(0).max(0) as u64,
+        forme: piece
+            .waveform
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|v| (*v).clamp(0, 100) as u8)
+            .collect(),
         nom,
     }
 }

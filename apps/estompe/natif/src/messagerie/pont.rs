@@ -34,6 +34,7 @@ use super::rendu::{
 };
 use super::saisie::{executer, indice_de, Action, Mode, Saisie};
 use super::selecteur::{Cible as CibleSelecteur, Selecteur};
+use super::vocal::Vocal;
 use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
@@ -85,6 +86,7 @@ mod actions;
 mod gifs;
 mod sondages;
 mod televersements;
+pub mod vocal;
 
 pub use actions::TITRE_MENU_MESSAGE;
 
@@ -136,6 +138,7 @@ pub struct EtatPiece {
     pub progression: u8,
     pub chemin: Option<PathBuf>,
     pub note: String,
+    pub illisible: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +150,7 @@ struct PieceAffichee {
     echec: bool,
     index_image: i32,
     etat: EtatPiece,
+    ecoute: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -571,6 +575,13 @@ fn bloc_slint(bloc: &BlocAffiche, images: Option<&Images>) -> BlocTexte {
     }
 }
 
+pub fn barres(forme: &[u8]) -> Vec<f32> {
+    if forme.is_empty() {
+        return vec![0.0];
+    }
+    forme.iter().map(|v| f32::from(*v) / 100.0).collect()
+}
+
 fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
     let image = if p.chargee {
         images
@@ -593,9 +604,12 @@ fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
         hauteur: p.hauteur as f32,
         image,
         chargee: p.chargee,
-        echec: p.echec,
+        echec: p.echec || p.etat.illisible,
         anime: p.donnees.anime,
         vocal: p.donnees.vocal,
+        duree: estompe_client::vocal::horloge(p.donnees.duree_ms).into(),
+        barres: ModelRc::new(VecModel::from(barres(&p.donnees.forme))),
+        ecoute: p.ecoute,
         index_image: p.index_image,
         telechargement: match p.etat.telechargement {
             Telechargement::Aucun => EtatTelechargement::Aucun,
@@ -930,6 +944,7 @@ pub struct PontMessagerie {
     saisie: Saisie,
     selecteur: Selecteur,
     gifs: Gifs,
+    vocal: Vocal,
 }
 
 struct SourceIndisponible;
@@ -1000,6 +1015,7 @@ impl PontMessagerie {
             saisie: Saisie::default(),
             selecteur: Selecteur::default(),
             gifs: Gifs::default(),
+            vocal: Vocal::default(),
         }
     }
 
@@ -1520,6 +1536,7 @@ impl PontMessagerie {
         let ancienne = self.saisie.cle();
         self.saisie.ouvrir(f, cle.clone(), indice);
         if ancienne != cle {
+            self.annuler_vocal(f);
             self.selecteur.fermer(f);
             f.global::<crate::DonneesSaisie>()
                 .set_selecteur_ouvert(false);
@@ -2083,6 +2100,11 @@ impl PontMessagerie {
         if s.get_gifs_possibles() != gifs {
             s.set_gifs_possibles(gifs);
         }
+        let v = f.global::<crate::DonneesVocal>();
+        let vocal = self.vocal_possible();
+        if v.get_possible() != vocal {
+            v.set_possible(vocal);
+        }
         let (fenetre, lignes_fenetre) = {
             let mut i = self.verrou();
             i.lecture_seule = raison.is_some();
@@ -2581,6 +2603,7 @@ impl PontMessagerie {
                 echec: false,
                 index_image: -1,
                 etat: i.pieces.get(&p.id).cloned().unwrap_or_default(),
+                ecoute: p.vocal && self.vocal.ecoute(&p.id),
             };
             if p.genre == GenrePiece::Image {
                 let cle = cle_vignette(&p.id);
@@ -3118,6 +3141,7 @@ impl PontMessagerie {
             pont.noter_piece(&piece.id, |e| {
                 *e = EtatPiece {
                     telechargement: Telechargement::EnCours,
+                    illisible: e.illisible,
                     ..EtatPiece::default()
                 };
             });
@@ -3157,12 +3181,14 @@ impl PontMessagerie {
                                 destination.parent().unwrap_or(&dossier).display()
                             ),
                             chemin: Some(destination.clone()),
+                            illisible: e.illisible,
                         }
                     }
                     Err(erreur) => {
                         *e = EtatPiece {
                             telechargement: Telechargement::Echec,
                             note: format!("Échec du téléchargement : {erreur}"),
+                            illisible: e.illisible,
                             ..EtatPiece::default()
                         }
                     }

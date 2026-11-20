@@ -1,0 +1,272 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone } from "../composants.slint";
+import { DonneesMessagerie, PieceJointe } from "donnees.slint";
+
+export enum EtapeVocal { aucune, ouverture, enregistrement, finalisation, ecoute, envoi }
+
+export global DonneesVocal {
+    in property <bool> possible: false;
+    in property <EtapeVocal> etape: EtapeVocal.aucune;
+    in property <string> duree: "0:00";
+    in property <[float]> niveaux;
+    in property <[float]> forme;
+    in property <bool> echec: false;
+    in property <string> piece;
+    in property <bool> en-lecture: false;
+    in property <bool> chargement: false;
+    in property <float> avance: 0;
+    in property <string> temps;
+    in property <string> vitesse: "1×";
+    callback demarrer();
+    callback annuler();
+    callback arreter();
+    callback envoyer();
+    callback basculer(string, string);
+    callback placer(string, string, float);
+    callback changer-vitesse();
+}
+
+export component Onde inherits Rectangle {
+    in property <[float]> valeurs;
+    in property <float> avance: 0;
+    in property <brush> fait: Theme.encre;
+    in property <brush> reste: Theme.trait-fort;
+    in property <float> minimum: 0.12;
+    height: 32px;
+    HorizontalLayout {
+        spacing: 2px;
+        for v[i] in root.valeurs: Rectangle {
+            horizontal-stretch: 1;
+            Rectangle {
+                width: min(3px, parent.width);
+                height: max(3px, parent.height * max(root.minimum, v));
+                border-radius: 1.5px;
+                background: i / max(1, root.valeurs.length) < root.avance ? root.fait : root.reste;
+            }
+        }
+    }
+}
+
+export component BoutonVocal inherits Rectangle {
+    in property <string> icone;
+    in property <string> libelle;
+    in property <bool> actif: true;
+    in property <color> encre: Theme.gris;
+    in property <brush> fond: transparent;
+    in property <length> taille: 18px;
+    callback clique();
+    forward-focus: portee;
+    width: 34px;
+    height: 34px;
+    border-radius: self.height / 2;
+    background: zone.has-hover && root.actif && root.fond == transparent ? Theme.encre.with-alpha(0.06) : root.fond;
+    border-width: portee.has-focus ? 2px : 0;
+    border-color: Theme.rose-fonce;
+    opacity: root.actif ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: root.libelle;
+    accessible-enabled: root.actif;
+    accessible-action-default => {
+        if (root.actif) {
+            root.clique();
+        }
+    }
+    Icone {
+        nom: root.icone;
+        taille: root.taille;
+        couleur: root.encre;
+    }
+    portee := FocusScope {
+        enabled: root.actif;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.actif;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
+        }
+    }
+}
+
+export component LecteurVocal inherits HorizontalLayout {
+    in property <string> message;
+    in property <string> piece;
+    in property <string> duree;
+    in property <[float]> barres;
+    property <bool> courant: DonneesVocal.piece == root.piece;
+    property <bool> joue: root.courant && DonneesVocal.en-lecture;
+    spacing: 10px;
+    VerticalLayout {
+        alignment: center;
+        BoutonVocal {
+            width: 36px;
+            height: 36px;
+            icone: root.joue ? "pause" : "lecture";
+            libelle: root.joue ? "Mettre en pause" : "Écouter le message vocal";
+            fond: Theme.encre;
+            encre: Theme.rose;
+            opacity: root.courant && DonneesVocal.chargement ? 0.6 : 1;
+            clique => {
+                DonneesVocal.basculer(root.message, root.piece);
+            }
+        }
+    }
+    onde := Onde {
+        horizontal-stretch: 1;
+        min-width: 80px;
+        valeurs: root.barres;
+        avance: root.courant ? DonneesVocal.avance : 0;
+        accessible-role: slider;
+        accessible-label: "Se placer dans le message vocal";
+        accessible-value: temps.text;
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                DonneesVocal.placer(root.message, root.piece, max(0, min(1, self.mouse-x / self.width)));
+            }
+        }
+    }
+    temps := Text {
+        min-width: 30px;
+        text: root.courant && (root.joue || DonneesVocal.avance > 0) ? DonneesVocal.temps : root.duree;
+        color: Theme.encre-2;
+        font-family: Typo.mono;
+        font-size: 12px;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+export component MessageVocal inherits Rectangle {
+    in property <PieceJointe> piece;
+    in property <string> message;
+    preferred-width: 380px;
+    max-width: 380px;
+    height: 48px;
+    border-radius: Rayon.s;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: groupbox;
+    accessible-label: "Message vocal, " + root.piece.duree;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 8px;
+        spacing: 8px;
+        LecteurVocal {
+            horizontal-stretch: 1;
+            message: root.message;
+            piece: root.piece.id;
+            duree: root.piece.duree;
+            barres: root.piece.barres;
+        }
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 24px;
+                width: vitesse.preferred-width + 12px;
+                border-radius: Rayon.xs;
+                background: zone-vitesse.has-hover ? Theme.papier-3 : Theme.papier-2;
+                accessible-role: button;
+                accessible-label: "Vitesse de lecture";
+                accessible-value: DonneesVocal.vitesse;
+                accessible-action-default => {
+                    DonneesVocal.changer-vitesse();
+                }
+                vitesse := Text {
+                    text: DonneesVocal.vitesse;
+                    color: Theme.encre-2;
+                    font-family: Typo.mono;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                zone-vitesse := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        DonneesVocal.changer-vitesse();
+                    }
+                }
+            }
+        }
+        if !root.piece.ecoute: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: Theme.rose-fonce;
+                accessible-role: text;
+                accessible-label: "Non écouté";
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            BoutonVocal {
+                width: 28px;
+                height: 28px;
+                icone: "telecharge";
+                taille: 16px;
+                libelle: "Télécharger le message vocal";
+                clique => {
+                    DonneesMessagerie.telecharger(root.message, root.piece.id);
+                }
+            }
+        }
+    }
+}
+
+export component VocalIllisible inherits Rectangle {
+    in property <PieceJointe> piece;
+    in property <string> message;
+    min-height: 36px;
+    border-radius: Rayon.s;
+    background: Theme.attention-fond;
+    accessible-role: text;
+    accessible-label: "Message vocal illisible sur cet appareil";
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "mic";
+                taille: 15px;
+                couleur: Theme.attention;
+            }
+        }
+        Text {
+            text: "Message vocal illisible sur cet appareil";
+            color: Theme.attention;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: "Télécharger";
+            color: Theme.attention;
+            font-size: 13px;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+            accessible-role: button;
+            accessible-label: "Télécharger le message vocal";
+            accessible-action-default => {
+                DonneesMessagerie.telecharger(root.message, root.piece.id);
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    DonneesMessagerie.telecharger(root.message, root.piece.id);
+                }
+            }
+        }
+    }
+}

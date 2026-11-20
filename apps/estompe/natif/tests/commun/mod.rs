@@ -231,7 +231,10 @@ pub mod coquille {
     };
     use estompe_natif::entree::Futur;
     use estompe_natif::messagerie::medias::{Medias, Progres, Source, SourceMedias};
-    use estompe_plateforme::{ContenuPressePapiers, Fichiers, PressePapiers};
+    use estompe_plateforme::{
+        ContenuPressePapiers, Erreur, Fichiers, FluxSon, Micro, PressePapiers, ProducteurSon,
+        RecepteurSon, SortieSon,
+    };
     use serde_json::{json, Value};
     use tokio::sync::{mpsc, watch};
 
@@ -460,6 +463,38 @@ pub mod coquille {
         v[2]["attachments"] = json!([
             {"id": "g1", "name": "danse.gif", "mime": "image/gif", "size": 32000},
             {"id": "m1", "name": "message vocal", "kind": "voice", "duration_ms": 4000}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub fn forme_de_test(n: usize) -> Vec<u8> {
+        (0..n)
+            .map(|i| (30 + (i * 37) % 60 + if i % 7 == 3 { 10 } else { 0 }) as u8)
+            .collect()
+    }
+
+    pub fn conversation_vocaux() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit("700", c1, ("ines", "Inès"), "2026-11-19T08:20:00Z", ""),
+            ecrit(
+                "701",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:22:00Z",
+                "Je réponds en vocal :",
+            ),
+            ecrit("702", c1, ("carol", "carol"), "2026-11-19T08:23:00Z", ""),
+        ];
+        v[0]["attachments"] = json!([
+            {"id": "m1", "name": "message-vocal.webm", "mime": "audio/webm", "size": 48000, "kind": "voice", "duration_ms": 12_400, "waveform": forme_de_test(40)}
+        ]);
+        v[1]["attachments"] = json!([
+            {"id": "m2", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 9000, "kind": "voice", "duration_ms": 2_300, "waveform": forme_de_test(23)}
+        ]);
+        v[2]["attachments"] = json!([
+            {"id": "m3", "name": "message-vocal.m4a", "mime": "audio/mp4", "size": 7000, "kind": "voice", "duration_ms": 1_800, "waveform": [50]},
+            {"id": "m4", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 7000, "kind": "voice", "duration_ms": 1_800, "expired": true}
         ]);
         v.into_iter().map(depuis).collect()
     }
@@ -1075,10 +1110,22 @@ pub mod coquille {
             let id = format!("f{}", pieces.len() + 1);
             let genre = if corps.contains("name=\"kind\"\r\n\r\nvideo") {
                 "video"
+            } else if corps.contains("name=\"kind\"\r\n\r\nvoice") {
+                "voice"
             } else {
                 "file"
             };
-            let piece = json!({"id": id, "name": champ("filename=\"", "\""), "mime": champ("Content-Type: ", "\r\n"), "size": longueur, "kind": genre});
+            let mut piece = json!({"id": id, "name": champ("filename=\"", "\""), "mime": champ("Content-Type: ", "\r\n"), "size": longueur, "kind": genre});
+            if genre == "voice" {
+                piece["duration_ms"] = json!(champ("name=\"duration_ms\"\r\n\r\n", "\r\n")
+                    .parse::<u64>()
+                    .unwrap_or(0));
+                piece["waveform"] = champ("name=\"waveform\"\r\n\r\n", "\r\n")
+                    .split(',')
+                    .filter_map(|v| v.parse::<u8>().ok())
+                    .collect::<Vec<_>>()
+                    .into();
+            }
             self.contenus
                 .lock()
                 .unwrap()
@@ -1104,6 +1151,10 @@ pub mod coquille {
                         .unwrap_or_default()
                 })
                 .collect()
+        }
+
+        pub fn piece(&self, id: &str) -> Value {
+            self.pieces.lock().unwrap()[id].clone()
         }
 
         pub fn nom_de_piece(&self, id: &str) -> String {
@@ -1366,6 +1417,92 @@ pub mod coquille {
         pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
         pub conversions: Mutex<Option<Arc<estompe_client::video::Conversions>>>,
+        pub micro: Arc<FauxMicro>,
+        pub sortie: Arc<FausseSortie>,
+    }
+
+    type Emplacement<T> = Arc<Mutex<(u64, Option<T>)>>;
+
+    struct GardeSon<T: Send>(Emplacement<T>, u64);
+
+    impl<T: Send> Drop for GardeSon<T> {
+        fn drop(&mut self) {
+            let mut e = self.0.lock().unwrap();
+            if e.0 == self.1 {
+                e.1 = None;
+            }
+        }
+    }
+
+    fn installer<T: Send + 'static>(emplacement: &Emplacement<T>, valeur: T) -> FluxSon {
+        let mut e = emplacement.lock().unwrap();
+        e.0 += 1;
+        e.1 = Some(valeur);
+        FluxSon::nouveau(GardeSon(emplacement.clone(), e.0))
+    }
+
+    #[derive(Default)]
+    pub struct FauxMicro {
+        recepteur: Emplacement<RecepteurSon>,
+        pub refus: Mutex<Option<Erreur>>,
+    }
+
+    impl FauxMicro {
+        pub fn ouvert(&self) -> bool {
+            self.recepteur.lock().unwrap().1.is_some()
+        }
+
+        pub fn parler(&self, echantillons: &[f32], taux: u32) -> bool {
+            match self.recepteur.lock().unwrap().1.as_mut() {
+                Some(recepteur) => {
+                    recepteur(echantillons, taux);
+                    true
+                }
+                None => false,
+            }
+        }
+    }
+
+    impl Micro for FauxMicro {
+        fn disponible(&self) -> bool {
+            true
+        }
+
+        fn ecouter(&self, recepteur: RecepteurSon) -> estompe_plateforme::Resultat<FluxSon> {
+            if let Some(refus) = self.refus.lock().unwrap().clone() {
+                return Err(refus);
+            }
+            Ok(installer(&self.recepteur, recepteur))
+        }
+    }
+
+    #[derive(Default)]
+    pub struct FausseSortie {
+        producteur: Emplacement<ProducteurSon>,
+        pub ouvertures: AtomicUsize,
+    }
+
+    impl FausseSortie {
+        pub fn ouverte(&self) -> bool {
+            self.producteur.lock().unwrap().1.is_some()
+        }
+
+        pub fn tirer(&self, nombre: usize, taux: u32) -> Option<Vec<f32>> {
+            let mut tampon = vec![0f32; nombre];
+            (self.producteur.lock().unwrap().1.as_mut()?)(&mut tampon, taux);
+            Some(tampon)
+        }
+    }
+
+    impl SortieSon for FausseSortie {
+        fn disponible(&self) -> bool {
+            true
+        }
+
+        fn jouer(&self, producteur: ProducteurSon) -> estompe_plateforme::Resultat<FluxSon> {
+            self.ouvertures.fetch_add(1, Ordering::SeqCst);
+            Ok(installer(&self.producteur, producteur))
+        }
     }
 
     #[derive(Default)]
@@ -1465,6 +1602,8 @@ pub mod coquille {
                 presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
                 conversions: Mutex::new(None),
+                micro: Arc::new(FauxMicro::default()),
+                sortie: Arc::new(FausseSortie::default()),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
@@ -1544,6 +1683,14 @@ pub mod coquille {
                 .unwrap()
                 .clone()
                 .unwrap_or_else(|| Arc::new(estompe_client::video::Conversions::aucune()))
+        }
+
+        fn micro(&self) -> estompe_natif::messagerie::vocal::MicroPartage {
+            self.micro.clone()
+        }
+
+        fn sortie_son(&self) -> estompe_natif::messagerie::vocal::SortiePartagee {
+            self.sortie.clone()
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

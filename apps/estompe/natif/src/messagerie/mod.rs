@@ -10,3 +10,4 @@ pub mod pont;
 pub mod rendu;
 pub mod saisie;
 pub mod selecteur;
+pub mod vocal;

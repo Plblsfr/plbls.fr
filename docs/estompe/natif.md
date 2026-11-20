@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `d
 
 ## Construire et lancer
 
-Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0` et un pilote OpenGL (Mesa). Sous Windows : la
+Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libasound2-dev libxkbcommon-x11-0` et un pilote OpenGL (Mesa). Sous Windows : la
 toolchain MSVC. Les binaires de Skia sont téléchargés à la première compilation.
 
 ```sh
@@ -248,6 +248,7 @@ mentions, regroupement et séparateurs (`format::lignes_de_messages`).
 | `src/messagerie/actions.rs`, `src/messagerie/pont/actions.rs` | droits d'un message et entrées de son menu (purs) ; exécution des actions (réponse, modification, épingle, réaction, copie, non-lu, suppression confirmée) |
 | `src/messagerie/pont/sondages.rs`, `ui/messagerie/creation-sondage.slint` | création d'un sondage (formulaire, validation, publication), vote, clôture, suppression et votants |
 | `src/messagerie/annexes.rs` | projections pures : carte d'aperçu d'un lien, taille d'une vignette avant chargement, chemin sûr d'un fichier enregistré |
+| `src/messagerie/vocal.rs`, `src/messagerie/pont/vocal.rs`, `ui/messagerie/vocal.slint` | messages vocaux : enregistrement (micro, encodage hors du fil d'interface), écoute avant l'envoi, envoi, lecture d'un message reçu (voir [Messages vocaux](#messages-vocaux)) |
 | `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `epingles.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage, réactions et « Vu par », visionneuse, messages épinglés, global `DonneesMessagerie` |
 
 ### Virtualisation
@@ -337,7 +338,8 @@ deux moteurs et sur les deux OS :
 |---|---|
 | image (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, comme `AttachmentView.svelte` ; AVIF non affiché par le front, donc pas pris en charge) | vignette dans 360 × 300, coins arrondis dans ses pixels ; clic : visionneuse |
 | fichier | puce : nom, taille ; clic : téléchargement avec progression, puis « Ouvrir » |
-| vidéo, replay, message vocal | puce « bientôt dans l'app native » (lot 9) |
+| message vocal | lecteur (voir [Messages vocaux](#messages-vocaux)) ; « illisible sur cet appareil » avec « Télécharger » si le fichier ne se décode pas |
+| vidéo, replay | puce « bientôt dans l'app native » (lot 9) |
 | expiré | puce barrée « (fichier expiré) » |
 
 - Avant le chargement, la vignette a sa taille définitive si les dimensions d'origine sont connues (mémorisées au premier décodage, 4 096 sources,
@@ -541,6 +543,39 @@ deux moteurs et sur les deux OS :
 - Écarts : rangées justifiées au lieu de deux colonnes en maçonnerie (un GIF très large ou très haut est recadré) ; indicateur de chargement au lieu des cases grisées animées ;
   idées sur deux lignes fixes (Slint 1.18 n'a pas de retour à la ligne automatique d'une rangée) ; le message 429 est propre à l'app native (le front affiche « Recherche de GIF impossible. »).
 
+### Messages vocaux
+
+- Logique sans interface dans `estompe_client::vocal` (testée sans périphérique, sur des signaux de synthèse) : niveau en dBFS et forme d'onde de 40 barres
+  (`niveau`, `forme_d_onde`, mêmes calculs que `levelOf` et `toWaveform` du front), rééchantillonnage linéaire, encodage Opus (`Encodeur` : 48 kHz mono,
+  32 kbit/s comme `recorder.svelte.ts`, application VoIP, trames de 20 ms) dans un Ogg écrit à la main (`OpusHead`, `OpusTags`, une page par seconde, granule exact
+  à la fin), décodage d'un Ogg Opus ou d'un WebM Opus (lecture EBML minimale, tailles inconnues de MediaRecorder comprises) ; tout autre format (AAC en MP4 de
+  Safari) passe par ffmpeg s'il est présent (`decoder_avec_ffmpeg`), sinon le message est « illisible ». Opus vient de `unsafe-libopus` (libopus 1.3.1 traduit en
+  Rust : aucune chaîne C à installer, ni sous Linux ni sous MSVC).
+- Fichier produit : `message-vocal.ogg` (`audio/ogg`, Opus), que le serveur accepte (`application/ogg`) et que lisent Chrome, Firefox, Safari 17 et la WebView
+  d'Android ; envoyé par `Client::envoyer_vocal` (`kind=voice`, `duration_ms`, `waveform` avant le fichier) puis en message sans texte par la file d'envoi, en
+  réponse au message cité s'il y en a un. Formats de test versionnés dans `apps/estompe/crates/client/src/vocal/essais/` : `chrome.webm` (WebM à taille
+  inconnue), `firefox.ogg`, `safari.m4a` (MP4 fragmenté, AAC), produits par ffmpeg comme les produirait MediaRecorder, et `natif.ogg`, produit par l'app ;
+  les tests décodent les uns et font relire à ffmpeg (autre décodeur, celui de Chromium) ceux de l'app.
+- Son : traits `Micro` et `SortieSon` de la crate plateforme (`SonSysteme`, `cpal` : WASAPI sous Windows, ALSA sous Linux), appareils par défaut du système, flux
+  ouvert sur un fil dédié et fermé quand son `FluxSon` disparaît. Un refus d'accès (`PermissionDenied`) donne « Accès au micro refusé… », l'absence de micro
+  « Aucun micro disponible… », toute autre erreur « Le micro est inutilisable. », sous le champ. Le choix du micro arrive avec les réglages du vocal (lot 4).
+- Enregistrement (`ui/messagerie/saisie.slint`, global `DonneesVocal`) : le bouton « Envoyer » devient « Message vocal » quand le champ est vide, sans pièce ni
+  modification en cours, si la conversation accepte les fichiers et qu'un micro existe. Le micro rend ses échantillons sur son fil ; un fil `estompe-vocal`
+  rééchantillonne à 48 kHz, encode, calcule un niveau toutes les 100 ms et prévient l'interface (durée et 40 derniers niveaux). La durée est celle des
+  échantillons reçus, pas d'une horloge ; l'enregistrement s'arrête seul à 5 minutes (`DUREE_MAX_MS`). « Mettre en pause et écouter » ferme le micro et passe
+  à l'écoute (lecteur de l'aperçu, forme d'onde, envoi) ; « Envoyer » pendant l'enregistrement enchaîne arrêt et envoi ; la corbeille annule. Un échec d'envoi
+  laisse l'écoute avec « Envoi impossible. » et « Réessayer ». Changer de conversation annule l'enregistrement.
+- Lecture (`MessageVocal`, `ui/messagerie/vocal.slint`) : bouton lecture et pause, forme d'onde du message avec la position (un clic s'y place), temps écoulé
+  pendant la lecture et durée sinon, vitesse 1×, 1,5×, 2× (`Lecture` : WSOLA, la hauteur ne change pas), point « non écouté » (500 derniers messages écoutés
+  dans `vocaux_ecoutes` des préférences), téléchargement comme un fichier. Le fichier est demandé à la première lecture et décodé hors du fil d'interface
+  (8 messages décodés gardés) ; un seul message joue à la fois (`Lecteur`), la position est suivie toutes les 100 ms par un `slint::Timer` qui ne tourne que
+  pendant la lecture ; à la fin, retour au début.
+- Écarts : pas d'enchaînement automatique sur le message vocal suivant, une vitesse commune à tous les messages, position oubliée quand un autre message est
+  lancé ; pas de geste « maintenir pour enregistrer » (tactile) ; pas d'annulation d'écho ni de réduction de bruit à l'enregistrement (le navigateur les fait,
+  `nnnoiseless` arrive avec le vocal au lot 4) ; pas de transcription (lot 9).
+- À vérifier sur une vraie machine (Windows et Linux) : micro et haut-parleurs réels, refus du micro par les réglages de confidentialité de Windows, message
+  enregistré lu par le front web et l'inverse.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -551,7 +586,7 @@ et de fenêtre, capture du son, overlay, application au premier plan, démarrage
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), le lancement d'un processus d'arrière-plan
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), le micro et la sortie du son (`Micro`, `SortieSon`, `cpal`), le lancement d'un processus d'arrière-plan
 (`commande_d_arriere_plan`, utilisé pour ffmpeg). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
@@ -570,7 +605,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -627,7 +662,9 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   puis totaux de `poll.voted`, votants affichés puis masqués, clôture, suppression confirmée) ;
   puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,
   échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
-  texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
+  texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis les messages vocaux (micro et sortie simulés par `FauxMicro` et
+  `FausseSortie` de la fausse fabrique : micro refusé puis absent, 1,5 s à 44,1 kHz avec durée et niveau, pause et réécoute à 440 Hz, envoi `kind=voice` relu par
+  le décodeur, puis lecture d'un WebM du web et du message envoyé, vitesse, position, un seul à la fois, fin, fichier illisible) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
   jointe, envoyée en `kind=video` et reçue en H.264, fichier converti supprimé après l'envoi, puis une conversion (ou son envoi bloqué) annulée sans laisser de fichier.
   Les tests de `estompe_client::video` convertissent aussi une vidéo HEVC (`libx264` à la place des encodeurs matériels, absents du runner) et l'annulent pendant l'encodage.
   Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.

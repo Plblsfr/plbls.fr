@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Icone } from "../composants.slint";
 import { DonneesCoquille, EtatBandeau } from "../coquille/donnees.slint";
+import { DonneesVocal, EtapeVocal, Onde, LecteurVocal } from "vocal.slint";
 
 export enum GenreBandeau { aucun, reponse, modification }
 
@@ -81,6 +82,7 @@ component BoutonIcone inherits Rectangle {
     in property <color> encre: Theme.gris;
     in property <length> taille: 18px;
     callback clique();
+    forward-focus: portee;
     width: 34px;
     height: 34px;
     border-radius: Rayon.s;
@@ -277,8 +279,122 @@ component VignettePiece inherits Rectangle {
     }
 }
 
+component EnregistrementVocal inherits HorizontalLayout {
+    property <bool> ecoute: DonneesVocal.etape == EtapeVocal.ecoute || DonneesVocal.etape == EtapeVocal.envoi;
+    height: 40px;
+    spacing: Espace.e2;
+    accessible-role: groupbox;
+    accessible-label: "Message vocal";
+    VerticalLayout {
+        alignment: center;
+        annuler := BoutonIcone {
+            icone: "corbeille";
+            libelle: root.ecoute ? "Supprimer le message vocal" : "Annuler l'enregistrement";
+            encre: Theme.danger;
+            actif: DonneesVocal.etape != EtapeVocal.envoi;
+            clique => {
+                DonneesVocal.annuler();
+            }
+        }
+    }
+    if DonneesVocal.etape == EtapeVocal.ouverture: Text {
+        horizontal-stretch: 1;
+        text: "Ouverture du micro…";
+        color: Theme.gris;
+        font-size: Typo.petit;
+        vertical-alignment: center;
+        init => {
+            annuler.focus();
+        }
+    }
+    if DonneesVocal.etape == EtapeVocal.enregistrement || DonneesVocal.etape == EtapeVocal.finalisation: HorizontalLayout {
+        horizontal-stretch: 1;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            padding-left: Espace.e1;
+            horizontal-stretch: 0;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Theme.danger;
+                }
+            }
+            Text {
+                text: DonneesVocal.duree;
+                color: Theme.encre;
+                font-family: Typo.mono;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: "Enregistrement : " + DonneesVocal.duree;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Onde {
+                valeurs: DonneesVocal.niveaux;
+                avance: 1;
+                fait: Theme.rose-fonce;
+                minimum: 0.08;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            pause := BoutonIcone {
+                icone: "pause";
+                libelle: "Mettre en pause et écouter";
+                actif: DonneesVocal.etape == EtapeVocal.enregistrement;
+                clique => {
+                    DonneesVocal.arreter();
+                }
+                init => {
+                    self.focus();
+                }
+            }
+        }
+    }
+    if root.ecoute: HorizontalLayout {
+        horizontal-stretch: 1;
+        spacing: Espace.e2;
+        LecteurVocal {
+            horizontal-stretch: 1;
+            piece: "apercu";
+            duree: DonneesVocal.duree;
+            barres: DonneesVocal.forme;
+            init => {
+                envoi.focus();
+            }
+        }
+        if DonneesVocal.echec: Text {
+            text: "Envoi impossible.";
+            color: Theme.danger;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+            accessible-role: text;
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        envoi := BoutonIcone {
+            icone: "envoi";
+            libelle: DonneesVocal.echec ? "Réessayer" : "Envoyer le message vocal";
+            actif: DonneesVocal.etape == EtapeVocal.enregistrement || DonneesVocal.etape == EtapeVocal.ecoute;
+            encre: Theme.rose-texte;
+            clique => {
+                DonneesVocal.envoyer();
+            }
+        }
+    }
+}
+
 component ChampSaisie inherits Rectangle {
     property <length> hauteur-ligne: 22px;
+    property <bool> micro: DonneesVocal.possible && saisie.text == "" && saisie.preedit-text == "" && DonneesSaisie.pieces.length == 0 && DonneesSaisie.bandeau.genre != GenreBandeau.modification;
     property <length> hauteur-champ: max(root.hauteur-ligne, min(saisie.preferred-height, DonneesSaisie.hauteur-max));
     property <int> demande: DonneesSaisie.demande-focus;
     changed demande => {
@@ -322,6 +438,7 @@ component ChampSaisie inherits Rectangle {
         }
         HorizontalLayout {
             spacing: Espace.e1;
+            visible: DonneesVocal.etape == EtapeVocal.aucune;
             if DonneesSaisie.joindre-possible: VerticalLayout {
                 alignment: end;
                 BoutonIcone {
@@ -469,7 +586,17 @@ component ChampSaisie inherits Rectangle {
                     }
                 }
             }
-            VerticalLayout {
+            if root.micro: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "mic";
+                    libelle: "Message vocal";
+                    clique => {
+                        DonneesVocal.demarrer();
+                    }
+                }
+            }
+            if !root.micro: VerticalLayout {
                 alignment: end;
                 BoutonIcone {
                     icone: "envoi";
@@ -482,6 +609,18 @@ component ChampSaisie inherits Rectangle {
                     }
                 }
             }
+        }
+    }
+    if DonneesVocal.etape != EtapeVocal.aucune: Rectangle {
+        x: Espace.e2;
+        y: parent.height - self.height - Espace.e2 + 3px;
+        width: parent.width - 2 * Espace.e2;
+        height: 40px;
+        background: Theme.surface;
+        TouchArea { }
+        EnregistrementVocal {
+            width: 100%;
+            height: 100%;
         }
     }
     if DonneesSaisie.depot-survole && DonneesSaisie.joindre-possible: Rectangle {
