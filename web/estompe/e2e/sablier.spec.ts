@@ -404,6 +404,7 @@ test('accessibilité : aucune violation axe sur la section, le récap, le partag
   for (const [chemin, attente] of [['/#/stats', 'Stats par domaine'], ['/#/stats/partage', 'Journal des consultations'], ['/#/stats/recaps', 'Mois'], ['/#/stats/admin', 'Personnes sans compte'], ['/#/stats/admin/personnes/kc-camille', 'Trophées'], ['/#/stats/admin/totaux', 'Totaux globaux'], ['/#/stats/admin/journal', 'Journal des consultations'], ['/#/stats/admin/trophees', 'Configuration des trophées'], ['/#/stats/admin/trophees/6', 'Modifier un trophée']] as const) {
     await page.goto(chemin)
     await expect(page.getByRole('region', { name: attente })).toBeVisible()
+    await expect(page.locator('.conn-banner')).toBeVisible()
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'))
     const res = await new AxeBuilder({ page }).include('#main').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
     expect(res.violations.map((v) => `${v.id} : ${v.nodes.map((n) => `${n.target.join(' ')} ${n.failureSummary}`).join(', ')}`)).toEqual([])
