@@ -367,6 +367,99 @@ fn scenario(
 
     pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
     epingles_dans_la_marge(&faible, &fabrique, &serveur);
+    molette_sans_a_coup(&faible, &pont);
+}
+
+fn image_suivante(faible: &slint::Weak<Principale>) {
+    sur_l_interface(faible, |f| {
+        i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+        slint::platform::update_timers_and_animations();
+        ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count();
+    });
+}
+
+fn repere_au_milieu(faible: &slint::Weak<Principale>) -> (u64, f32) {
+    sur_l_interface(faible, |f| {
+        let liste = ElementHandle::find_by_accessible_label(f, "Messages")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::List))
+            .unwrap();
+        let haut = liste.absolute_position().y;
+        let milieu = haut + liste.size().height / 2.0;
+        ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+            .filter_map(|e| {
+                let y = e.absolute_position().y;
+                let n = e
+                    .accessible_description()?
+                    .strip_prefix("message n°")?
+                    .split('\n')
+                    .next()?
+                    .parse()
+                    .ok()?;
+                (y >= haut && y < milieu).then_some((n, y))
+            })
+            .next()
+            .expect("un message au milieu de la liste")
+    })
+}
+
+fn molette_sans_a_coup(faible: &slint::Weak<Principale>, pont: &Pont) {
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas();
+        f.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
+    });
+    stabiliser(faible, pont);
+    let mesures_avant = pont.messagerie().mesures();
+    let (repere, depart) = repere_au_milieu(faible);
+    let (x, y) = sur_l_interface(faible, |f| {
+        let liste = ElementHandle::find_by_accessible_label(f, "Messages")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::List))
+            .unwrap();
+        let p = liste.absolute_position();
+        let t = liste.size();
+        (p.x + t.width / 2.0, p.y + t.height / 2.0)
+    });
+    const CRAN: f32 = 90.0;
+    const CRANS: usize = 8;
+    for _ in 0..CRANS {
+        sur_l_interface(faible, move |f| {
+            f.window()
+                .dispatch_event(slint::platform::WindowEvent::PointerMoved {
+                    position: slint::LogicalPosition::new(x, y),
+                });
+            f.window()
+                .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+                    position: slint::LogicalPosition::new(x, y),
+                    delta_x: 0.0,
+                    delta_y: CRAN,
+                })
+        });
+        for _ in 0..4 {
+            image_suivante(faible);
+        }
+    }
+    for _ in 0..20 {
+        image_suivante(faible);
+    }
+    let pendant = ecran_de(faible, repere).expect("repère encore affiché");
+    let attendu = depart + CRAN * CRANS as f32;
+    println!(
+        "molette : repère n°{repere} de {depart} à {pendant} px (attendu {attendu}), lignes mesurées {} puis {}",
+        mesures_avant,
+        pont.messagerie().mesures()
+    );
+    assert!(
+        (pendant - attendu).abs() < 1.0,
+        "chaque cran de molette déplace la liste de toute sa distance : {pendant} au lieu de {attendu}"
+    );
+    for _ in 0..40 {
+        image_suivante(faible);
+    }
+    stabiliser(faible, pont);
+    let apres = ecran_de(faible, repere).expect("repère encore affiché après l'arrêt");
+    assert!(
+        (apres - pendant).abs() < 1.0,
+        "rien ne bouge une fois le geste fini : {pendant} puis {apres}"
+    );
 }
 
 fn pomper_fenetre(f: &Principale) {

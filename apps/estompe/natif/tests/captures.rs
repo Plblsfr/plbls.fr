@@ -108,6 +108,8 @@ const ECRANS: &[Ecran] = ecrans![
     "messagerie-cartes-sombre", Sombre, messagerie_cartes;
     "messagerie-sondages-clair", Clair, messagerie_sondages;
     "messagerie-sondages-sombre", Sombre, messagerie_sondages;
+    "messagerie-defilement-clair", Clair, messagerie_defilement;
+    "messagerie-defilement-sombre", Sombre, messagerie_defilement;
 ];
 
 fn bob() -> Compte {
@@ -577,6 +579,33 @@ fn messagerie_variantes(f: &Principale) {
             }),
         ],
     );
+    stabiliser(f);
+}
+
+fn messagerie_defilement(f: &Principale) {
+    let _pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            let mut messages = Vec::new();
+            for _ in 0..4 {
+                messages.extend(commun::coquille::conversation_variantes());
+            }
+            for (n, m) in messages.iter_mut().enumerate() {
+                m.id = Some((1000 + n).to_string());
+            }
+            store.installer_conversation(&salon_c1(), messages, false)
+        },
+    );
+    stabiliser(f);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+            position: slint::LogicalPosition::new(700.0, 500.0),
+            delta_x: 0.0,
+            delta_y: 120.0,
+        });
     stabiliser(f);
 }
 

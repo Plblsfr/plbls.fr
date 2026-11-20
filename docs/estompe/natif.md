@@ -201,7 +201,11 @@ L'app virtualise donc elle-même, avec `virtualisation::fenetre_de_hauteurs` de 
   un changement de largeur oublie les mesures et incrémente `DonneesMessagerie.mesure`, qui fait signaler à nouveau leur hauteur aux lignes instanciées ;
 - une ancre (ligne sous le haut de l'écran et décalage) est rétablie après chaque changement : ajout en tête, mesure d'une ligne au-dessus,
   retrait par la borne du store. Collée en bas, la liste suit les nouveaux messages ; en lecture de l'historique, un message reçu ne la déplace pas
-  et le bouton « N nouveaux messages » apparaît ;
+  et le bouton « N nouveaux messages » apparaît. La liste n'est collée que tout en bas (à moins de 1 px) : un cran de molette depuis le bas
+  n'est plus ramené en bas à la mesure suivante ; à moins de 80 px du bas, un message ajouté en fin la recolle ;
+- défilement à la molette, au pavé tactile ou par la barre seulement : `mouse-drag-pan-enabled: false` sur les `Flickable` (le glisser à la
+  souris, actif par défaut dans Slint, faisait bouger la liste avec de l'inertie). `BarreDefilement` (`ui/composants/defilement.slint`, commune à
+  `Defilement`, `ListeVirtuelle` et la liste des messages) apparaît au survol et pendant un geste (`flicked`, masquée 600 ms après le dernier), et se tire ;
 - les pages plus anciennes ou plus récentes sont demandées à moins de 1 500 px d'un bord ; une ligne « Chargement des messages… » ou
   « Début de la conversation » occupe le bord ;
 - à l'ouverture, la vue se place sur le premier non-lu (nombre de non-lus lu avant que le store ne les efface) ; sans non-lu, en bas ;

@@ -4,6 +4,7 @@ use estompe_client::virtualisation::{fenetre_de_hauteurs, Fenetre};
 
 pub const MARGE: f64 = 600.0;
 pub const SEUIL_BAS: f64 = 80.0;
+pub const TOUT_EN_BAS: f64 = 1.0;
 pub const SEUIL_CHARGEMENT: f64 = 1500.0;
 pub const RETRAIT_DU_HAUT: f64 = 24.0;
 
@@ -182,6 +183,8 @@ impl Defilement {
     }
 
     pub fn remplacer_lignes(&mut self, lignes: Vec<(String, f64)>) {
+        let pres_du_bas = !self.cles.is_empty() && self.en_bas();
+        let derniere = self.cles.last().cloned();
         let (cles, estimations): (Vec<String>, Vec<f64>) = lignes.into_iter().unzip();
         self.index = cles
             .iter()
@@ -201,8 +204,13 @@ impl Defilement {
                 self.ancre = suivante.map(|cle| Ancre { cle, decalage: 0.0 });
             }
         }
+        let ajout_en_fin =
+            derniere.is_some_and(|d| cles.last().is_some_and(|n| *n != d) && cles.contains(&d));
         self.cles = cles;
         self.estimations = estimations;
+        if pres_du_bas && ajout_en_fin {
+            self.colle = true;
+        }
         self.retrouver();
     }
 
@@ -234,7 +242,7 @@ impl Defilement {
     pub fn defiler(&mut self, position: f64) {
         self.position = position.max(0.0);
         self.borner();
-        self.colle = self.en_bas();
+        self.colle = self.position_max() - self.position < TOUT_EN_BAS;
         self.noter_ancre();
     }
 
@@ -313,6 +321,22 @@ mod tests {
         d.remplacer_lignes(lignes(0, 110, 50.0));
         assert_eq!(d.position(), 110.0 * 50.0 - 600.0);
         assert!(d.en_bas());
+    }
+
+    #[test]
+    fn un_cran_de_molette_pres_du_bas_n_est_pas_annule_par_une_mesure() {
+        let mut d = avec(100);
+        let bas = d.position();
+        d.defiler(bas - 60.0);
+        assert!(!d.colle() && d.en_bas());
+        assert!(d.mesurer("l00010", 70.0));
+        assert_eq!(d.position(), bas - 40.0);
+        assert!(!d.colle());
+        d.remplacer_lignes(lignes(0, 101, 50.0));
+        assert!(d.colle());
+        assert_eq!(d.position(), d.position_max());
+        d.defiler(d.position_max() - 0.4);
+        assert!(d.colle());
     }
 
     #[test]
