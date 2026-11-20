@@ -4,6 +4,7 @@ import { DonneesMessagerie, EtatConversation } from "donnees.slint";
 import { LigneMessageVue } from "element.slint";
 import { ZoneSaisie, ListePropositions, DonneesSaisie } from "saisie.slint";
 import { SelecteurEmoji, DonneesSelecteur } from "selecteur.slint";
+import { SelecteurGifs, DonneesGifs } from "gifs.slint";
 
 component BoutonNouveaux inherits Rectangle {
     in property <int> nombre;
@@ -226,6 +227,16 @@ export component VueMessages inherits Rectangle {
     }
     if DonneesSelecteur.ouvert: SelecteurEmoji {
         x: root.width - self.width - Espace.e4;
+        y: zone.y + Espace.e1 - self.height;
+    }
+    if DonneesGifs.ouvert: TouchArea {
+        clicked => {
+            DonneesGifs.fermer();
+        }
+    }
+    if DonneesGifs.ouvert: SelecteurGifs {
+        width: min(400px, root.width - 2 * Espace.e2);
+        x: max(Espace.e2, root.width - self.width - Espace.e4);
         y: zone.y + Espace.e1 - self.height;
     }
 }

@@ -127,6 +127,9 @@ const ECRANS: &[Ecran] = ecrans![
     "selecteur-emoji-clair", Clair, selecteur_emoji;
     "selecteur-emoji-sombre", Sombre, selecteur_emoji;
     "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
+    "selecteur-gifs-clair", Clair, selecteur_gifs;
+    "selecteur-gifs-sombre", Sombre, selecteur_gifs;
+    "selecteur-gifs-limite-clair", Clair, selecteur_gifs_limite;
     "messagerie-actions-clair", Clair, messagerie_actions;
     "messagerie-actions-sombre", Sombre, messagerie_actions;
     "messagerie-menu-clair", Clair, messagerie_menu;
@@ -830,6 +833,14 @@ fn medias_des_captures() -> Arc<Medias> {
         Format::Visionneuse,
         &photos[1].1,
     );
+    for (n, (largeur, hauteur, ciel, sol)) in apercus_de_gifs().into_iter().enumerate() {
+        installer(
+            &medias,
+            Source::Externe(format!("https://media1.giphy.com/captures/{n}.gif")),
+            Format::Gif,
+            &photo(largeur, hauteur, ciel, sol),
+        );
+    }
     medias.installer_emojis(vec![
         EmojiPersonnalise {
             id: "e1".into(),
@@ -1007,6 +1018,7 @@ fn sondage_votants(f: &Principale) {
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
     f.global::<DonneesCreationSondage>().set_ouvert(false);
+    f.global::<estompe_natif::DonneesGifs>().set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);
     f.window()
@@ -1367,5 +1379,59 @@ fn selecteur_sans_resultat(f: &Principale) {
     f.global::<DonneesSelecteur>()
         .set_recherche("zzzzzz".into());
     pont.messagerie().selecteur().chercher(f, "zzzzzz");
+    stabiliser(f);
+}
+
+fn apercus_de_gifs() -> Vec<(u32, u32, [u8; 3], [u8; 3])> {
+    vec![
+        (200, 150, [246, 198, 214], [208, 104, 138]),
+        (150, 200, [120, 170, 220], [47, 93, 138]),
+        (200, 112, [242, 166, 90], [120, 70, 40]),
+        (200, 200, [150, 210, 160], [90, 120, 80]),
+        (200, 120, [200, 190, 240], [100, 80, 160]),
+        (160, 200, [240, 220, 140], [180, 140, 60]),
+        (200, 150, [180, 220, 230], [60, 120, 140]),
+        (200, 180, [230, 160, 160], [140, 60, 60]),
+    ]
+}
+
+fn gifs_ouverts(f: &Principale) -> (Pont, u64) {
+    let pont = saisie_courte(f);
+    pont.messagerie().ouvrir_gifs(f);
+    let sequence = pont.messagerie().gifs().etat().recherche.sequence();
+    (pont, sequence)
+}
+
+fn selecteur_gifs(f: &Principale) {
+    let (pont, sequence) = gifs_ouverts(f);
+    let titres = [
+        "Bravo", "Merci", "Fou rire", "Ok", "Coucou", "Fête", "Pouce", "Bisou",
+    ];
+    let gifs = apercus_de_gifs()
+        .into_iter()
+        .enumerate()
+        .map(|(n, (largeur, hauteur, _, _))| estompe_client::gifs::Gif {
+            id: format!("g{n}"),
+            title: titres[n].into(),
+            preview: format!("https://media1.giphy.com/captures/{n}.gif"),
+            url: format!("https://media1.giphy.com/captures/{n}/giphy.gif"),
+            width: largeur,
+            height: hauteur,
+        })
+        .collect();
+    pont.messagerie().recevoir_gifs(f, sequence, Ok(gifs));
+    pont.messagerie().gifs().deplacer(f, 0, 1);
+    stabiliser(f);
+}
+
+fn selecteur_gifs_limite(f: &Principale) {
+    let (pont, sequence) = gifs_ouverts(f);
+    let refus = estompe_client::http::ErreurApi::Autre(estompe_client::http::Refus {
+        statut: 429,
+        code: "too_many_requests".into(),
+        message: String::new(),
+        donnees: Default::default(),
+    });
+    pont.messagerie().recevoir_gifs(f, sequence, Err(refus));
     stabiliser(f);
 }

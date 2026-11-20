@@ -129,6 +129,7 @@ impl std::error::Error for ErreurApi {}
 pub struct OptionsAppel {
     pub discret: bool,
     pub delai: Option<Duration>,
+    pub sans_relance: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -442,7 +443,10 @@ impl Client {
         if reponse.status() == StatusCode::UNAUTHORIZED && !options.discret {
             reponse = self.tenter(&methode, chemin, corps, options).await?;
         }
-        if reponse.status() == StatusCode::TOO_MANY_REQUESTS && methode == Method::GET {
+        if reponse.status() == StatusCode::TOO_MANY_REQUESTS
+            && methode == Method::GET
+            && !options.sans_relance
+        {
             let annonce = reponse
                 .headers()
                 .get(RETRY_AFTER)
@@ -650,8 +654,8 @@ impl Client {
         mut progres: impl FnMut(u64, Option<u64>),
     ) -> Result<u64, ErreurApi> {
         let options = OptionsAppel {
-            discret: false,
             delai: Some(DELAI_TELECHARGEMENT),
+            ..OptionsAppel::default()
         };
         let mut reponse = self
             .appeler(Method::GET, chemin, &Corps::Aucun, options)
@@ -926,7 +930,7 @@ mod tests {
             .a_la_perte_de_session(signal);
         let discret = OptionsAppel {
             discret: true,
-            delai: None,
+            ..OptionsAppel::default()
         };
         let fichier = client
             .fichier("/export", "defaut.json", discret)
@@ -1270,8 +1274,8 @@ mod tests {
         );
         let patient = serveur.client();
         let options = OptionsAppel {
-            discret: false,
             delai: Some(court),
+            ..OptionsAppel::default()
         };
         let erreur = patient
             .requete::<Value>(Method::GET, "/search?q=x", &Corps::Aucun, options)

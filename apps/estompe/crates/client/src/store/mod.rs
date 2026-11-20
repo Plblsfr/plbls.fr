@@ -498,6 +498,27 @@ mod tests {
         CleConversation::analyser(texte).unwrap()
     }
 
+    #[test]
+    fn une_capacite_suit_allow_et_deny_comme_le_front() {
+        let mut etat = Etat::default();
+        assert!(
+            etat.capacite("gifs.use"),
+            "sans capacités annoncées, tout est permis"
+        );
+        etat.compte.capabilities = Some(
+            serde_json::from_value(json!({
+                "estompe:gifs.use": {"allow": ["*"], "deny": []},
+                "estompe:videos.use": {"allow": ["*"], "deny": ["*"]},
+                "estompe:vocal.screen": {"allow": ["srv-2"], "deny": []}
+            }))
+            .unwrap(),
+        );
+        assert!(etat.capacite("gifs.use"));
+        assert!(!etat.capacite("videos.use"));
+        assert!(!etat.capacite("vocal.screen"));
+        assert!(!etat.capacite("admin.users"));
+    }
+
     #[tokio::test]
     async fn charge_le_compte_les_serveurs_et_leurs_details() {
         let serveur = monde(monde_a()).await;

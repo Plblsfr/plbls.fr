@@ -477,6 +477,29 @@ deux moteurs et sur les deux OS :
   appliquée sans attendre `poll.closed`) ; suppression après la confirmation « Supprimer ce sondage ? ». « Voir les votants » (dès un vote) demande
   `GET /messages/{id}/poll/votes` et affiche les pseudos sous chaque choix jusqu'à « Masquer les votants » (`PontMessagerie::afficher_votants`) ; la liste n'est pas relue à chaque vote, comme dans le front.
 
+### GIF
+
+- Sélecteur (`ui/messagerie/gifs.slint`, global `DonneesGifs` ; `src/messagerie/gifs.rs`, `src/messagerie/pont/gifs.rs`) : bouton « GIF » de la zone de saisie, avant « Emojis »
+  (atteignable par Tab), affiché si le bloc `gifs` est actif et la capacité `estompe:gifs.use` accordée (`Etat::capacite`, même règle que `autorise` du front), hors lecture seule.
+  Ouvrir l'un des deux sélecteurs ferme l'autre. Ouverture sur les tendances (`GET /gifs/trending`), recherche (`GET /gifs/search`) après 350 ms sans frappe (`slint::Timer`
+  relancé à chaque touche, `TEMPORISATION`), « Tendances » et huit idées de recherche en pastilles (lancées tout de suite). Logique sans interface dans `estompe_client::gifs`
+  (`RechercheGifs`, testée) : une réponse d'une recherche remplacée est ignorée, la suite sans doublon, arrêt sur une page vide ou au-delà du décalage 480 (le serveur repartirait de 0).
+- Grille : rangées justifiées de deux GIF (même hauteur, largeurs selon leur rapport borné entre 0,4 et 2,5, 200 px de haut au plus) dans une `ListeVirtuelle` ; suite chargée à
+  160 px du bas (`MARGE_DE_SUITE`). Aperçus `preview` (Giphy `fixed_width_small`) chargés depuis giphy.com par `Medias` (`Source::Externe`, `Format::Gif` : 200 × 200 au plus,
+  coins arrondis dans les pixels, toutes les images de l'animation décodées hors du fil d'interface).
+- Animation : une minuterie pour le sélecteur, armée seulement tant qu'un GIF animé est **à l'écran** (`rangees_visibles` sur la position de défilement) ; un GIF qui sort
+  de l'écran s'arrête, la minuterie aussi quand plus aucun ne bouge ou à la fermeture. Une image change par `set_row_data` du modèle de cellules de sa rangée.
+- Clavier : la recherche garde le focus ; flèches dans la grille (haut sur la première rangée : retour à la recherche), Entrée envoie le GIF actif, Tab passe aux idées
+  (flèches, Entrée), Échap ou un clic à côté ferme et rend le focus au champ.
+- Envoi : `POST /gifs/import` (`Client::importer_gif`) puis message sans texte avec la pièce (`Brouillon.pieces`) par la file d'envoi, en réponse au message cité s'il y en a un
+  (le bandeau se ferme) ; un échec s'affiche sous le champ (« Le GIF n'a pas pu être envoyé : … »). Attribution « Propulsé par GIPHY · les aperçus sont chargés depuis giphy.com »
+  en pied, comme le front.
+- Erreurs : 501 « La recherche de GIF n'est pas activée sur ce serveur. », 429 « Trop de recherches de GIF en peu de temps : réessaie dans une minute. », autres « Recherche de GIF
+  impossible. » ; après une erreur la suite n'est plus demandée. La recherche passe `OptionsAppel::sans_relance` : le client ne relance pas un `GET` refusé par 429 (sans
+  cette option il attend `Retry-After` et réessaie une fois).
+- Écarts : rangées justifiées au lieu de deux colonnes en maçonnerie (un GIF très large ou très haut est recadré) ; indicateur de chargement au lieu des cases grisées animées ;
+  idées sur deux lignes fixes (Slint 1.18 n'a pas de retour à la ligne automatique d'une rangée) ; le message 429 est propre à l'app native (le front affiche « Recherche de GIF impossible. »).
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -551,6 +574,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `saisie.rs` (même backend, `ServeurMessages` qui accepte aussi `POST …/messages` et `PATCH /messages/{id}`) : saisie au clavier, Maj+Entrée, envoi par Entrée et message du serveur
   en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », mentions (`@`, Tab), salons (`#`, Échap), smileys (`:`, flèches, Entrée), conversion de `:thumbsup:`,
   sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque ;
+  sélecteur de GIF (tendances à l'ouverture, focus sur la recherche, 10 caractères tapés en 500 ms simulées : une seule recherche, seuls les GIF à l'écran animés et plus le premier
+  après défilement, suite au défilement, choix au clavier, import puis envoi en réponse, 429 sans nouvelle tentative, sélecteur gardé dans une vue étroite) ;
   actions sur un message (clic droit sur un message, menu par la touche Menu et Maj+F10, répondre, épingler, réaction ajoutée par le sélecteur puis retirée par Entrée, copier le texte
   et le lien, marquer comme non lu, supprimer confirmé au clavier, modifier), menu d'un salon (« Marquer comme lu ») et d'un membre (« Mentionner ») ;
   sondage (bouton « Créer un sondage », erreurs de validation au clavier, choix ajouté puis retiré, échéance passée refusée, corps du `POST` vérifié, vote affiché tout de suite

@@ -74,6 +74,7 @@ pub enum Format {
     Carte,
     Miniature,
     Piece,
+    Gif,
 }
 
 impl Format {
@@ -85,11 +86,12 @@ impl Format {
             Self::Carte => (168, 168),
             Self::Miniature => (520, 293),
             Self::Piece => (128, 128),
+            Self::Gif => (200, 200),
         }
     }
 
     pub fn anime(self) -> bool {
-        matches!(self, Self::Vignette | Self::Emoji)
+        matches!(self, Self::Vignette | Self::Emoji | Self::Gif)
     }
 }
 
@@ -188,7 +190,7 @@ impl Format {
     fn rayon(self) -> f32 {
         match self {
             Self::Vignette | Self::Miniature => 10.0,
-            Self::Carte | Self::Piece => 8.0,
+            Self::Carte | Self::Piece | Self::Gif => 8.0,
             Self::Emoji | Self::Visionneuse => 0.0,
         }
     }

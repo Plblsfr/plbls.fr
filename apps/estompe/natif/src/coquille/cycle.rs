@@ -23,8 +23,8 @@ use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::session::Memoire;
 use crate::{
-    DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
-    Principale,
+    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessagerie, DonneesSaisie,
+    DonneesSelecteur, Principale,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::video::Conversions;
@@ -476,6 +476,39 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
         .selecteur()
         .defile(&f, haut, hauteur));
     rappel_selecteur!(on_fermer, |p, f| p.messagerie().fermer_selecteur(&f));
+    rappel_saisie!(on_ouvrir_gifs, |p, f| p.messagerie().ouvrir_gifs(&f));
+    let gifs = f.global::<DonneesGifs>();
+    macro_rules! rappel_gifs {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            gifs.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_gifs!(on_chercher, |p, _f, texte| p
+        .messagerie()
+        .chercher_gifs(&texte));
+    rappel_gifs!(on_idee, |p, f, libelle| p
+        .messagerie()
+        .idee_de_gif(&f, &libelle));
+    rappel_gifs!(on_choisir, |p, f, index| p
+        .messagerie()
+        .choisir_gif(&f, usize::try_from(index).ok()));
+    rappel_gifs!(on_choisir_actif, |p, f| p
+        .messagerie()
+        .choisir_gif(&f, None));
+    rappel_gifs!(on_deplacer, |p, f, dx, dy| p
+        .messagerie()
+        .gifs()
+        .deplacer(&f, dx, dy));
+    rappel_gifs!(on_defile, |p, f, haut, hauteur, largeur| p
+        .messagerie()
+        .defile_gifs(&f, haut, hauteur, largeur));
+    rappel_gifs!(on_fermer, |p, f| p.messagerie().fermer_gifs(&f));
     let creation = f.global::<DonneesCreationSondage>();
     macro_rules! rappel_creation {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

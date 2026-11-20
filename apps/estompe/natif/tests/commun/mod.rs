@@ -686,6 +686,25 @@ pub mod coquille {
         etat
     }
 
+    pub fn gif_anime(images: usize) -> Vec<u8> {
+        let mut octets = Vec::new();
+        {
+            let mut encodeur = image::codecs::gif::GifEncoder::new(&mut octets);
+            for i in 0..images {
+                let couleur = image::Rgba([(i * 50) as u8, 120, 200, 255]);
+                encodeur
+                    .encode_frame(image::Frame::from_parts(
+                        image::RgbaImage::from_pixel(60, 40, couleur),
+                        0,
+                        0,
+                        image::Delay::from_numer_denom_ms(100, 1),
+                    ))
+                    .unwrap();
+            }
+        }
+        octets
+    }
+
     pub fn png(couleur: [u8; 3]) -> Vec<u8> {
         let image = image::RgbaImage::from_fn(48, 48, |x, y| {
             if (x / 12 + y / 12) % 2 == 0 {
@@ -830,6 +849,7 @@ pub mod coquille {
         pub refus_d_envoi: Mutex<Option<u16>>,
         pub refus_de_fichier: Mutex<Option<u16>>,
         pub fichiers_bloques: Mutex<bool>,
+        pub refus_de_gifs: Mutex<Option<u16>>,
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         envoyes: AtomicUsize,
@@ -886,6 +906,7 @@ pub mod coquille {
                 refus_d_envoi: Mutex::new(None),
                 refus_de_fichier: Mutex::new(None),
                 fichiers_bloques: Mutex::new(false),
+                refus_de_gifs: Mutex::new(None),
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
@@ -1147,7 +1168,45 @@ pub mod coquille {
                 }
                 return (200, m.to_string());
             }
+            if chemin.starts_with("/gifs/") {
+                return self.repondre_gifs(methode, chemin, corps);
+            }
             self.repondre(methode, chemin)
+        }
+
+        fn repondre_gifs(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
+            self.requetes
+                .lock()
+                .unwrap()
+                .push(format!("{methode} {chemin}"));
+            if let Some(statut) = *self.refus_de_gifs.lock().unwrap() {
+                return (
+                    statut,
+                    r#"{"error":"too_many_requests","message":"doucement"}"#.into(),
+                );
+            }
+            if methode == "POST" {
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let mut pieces = self.pieces.lock().unwrap();
+                let id = format!("f{}", pieces.len() + 1);
+                let piece = json!({"id": id, "name": "giphy.gif", "mime": "image/gif", "size": 2000, "kind": "file", "url": recu["url"]});
+                pieces.insert(id, piece.clone());
+                return (201, piece.to_string());
+            }
+            let terme = chemin
+                .split_once("q=")
+                .map_or("tendances", |(_, reste)| {
+                    reste.split('&').next().unwrap_or_default()
+                })
+                .to_string();
+            let decalage = parametre(chemin, "offset").unwrap_or(0) as usize;
+            let gifs: Vec<Value> = (decalage..decalage + 24)
+                .map(|n| {
+                    let (largeur, hauteur) = [(200, 150), (150, 200), (200, 100), (200, 200)][n % 4];
+                    json!({"id": format!("{terme}-{n}"), "title": format!("{terme} {n}"), "preview": format!("{}/giphy/{}.gif", self.adresse, n % 4), "url": format!("https://media1.giphy.com/media/{terme}-{n}/giphy.gif"), "width": largeur, "height": hauteur})
+                })
+                .collect();
+            (200, Value::from(gifs).to_string())
         }
 
         fn repondre(&self, methode: &str, chemin: &str) -> (u16, String) {

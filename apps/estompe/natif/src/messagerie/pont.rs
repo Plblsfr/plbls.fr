@@ -21,6 +21,7 @@ use super::actions::DroitsConversation;
 use super::annexes::{carte_affichee, chemin_libre, taille_de_vignette, CarteAffichee};
 use super::defilement::{Alignement, Defilement};
 use super::emoji;
+use super::gifs::Gifs;
 use super::lignes::{
     donnees_message, libelle_vu_par, lignes_de_conversation, mentionnables, premier_non_lu,
     utilisateur_mentionne, ContexteLignes, DonneesAnnexes, DonneesLecteur, DonneesLigne,
@@ -81,6 +82,7 @@ thread_local! {
 }
 
 mod actions;
+mod gifs;
 mod sondages;
 mod televersements;
 
@@ -927,6 +929,7 @@ pub struct PontMessagerie {
     dossier_par_defaut: Arc<Mutex<DossierParDefaut>>,
     saisie: Saisie,
     selecteur: Selecteur,
+    gifs: Gifs,
 }
 
 struct SourceIndisponible;
@@ -996,6 +999,7 @@ impl PontMessagerie {
             ))),
             saisie: Saisie::default(),
             selecteur: Selecteur::default(),
+            gifs: Gifs::default(),
         }
     }
 
@@ -1156,6 +1160,10 @@ impl PontMessagerie {
         if self.selecteur.ouvert() {
             self.fermer_selecteur(f);
             return;
+        }
+        if self.gifs.ouvert() {
+            self.gifs.fermer(f);
+            f.global::<crate::DonneesSaisie>().set_gifs_ouvert(false);
         }
         let medias = self.medias();
         let emojis = medias.emojis().unwrap_or_default();
@@ -1502,6 +1510,8 @@ impl PontMessagerie {
             self.selecteur.fermer(f);
             f.global::<crate::DonneesSaisie>()
                 .set_selecteur_ouvert(false);
+            self.gifs.fermer(f);
+            f.global::<crate::DonneesSaisie>().set_gifs_ouvert(false);
         }
         self.medias().noter_fil_interface();
         self.charger_emojis(false);
@@ -2055,6 +2065,10 @@ impl PontMessagerie {
         }
         if s.get_sondage_possible() != sondage {
             s.set_sondage_possible(sondage);
+        }
+        let gifs = self.gifs_possibles();
+        if s.get_gifs_possibles() != gifs {
+            s.set_gifs_possibles(gifs);
         }
         let (fenetre, lignes_fenetre) = {
             let mut i = self.verrou();

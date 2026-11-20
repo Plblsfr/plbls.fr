@@ -50,6 +50,8 @@ export global DonneesSaisie {
     in property <int> curseur-demande: 0;
     in property <int> demande-curseur: 0;
     in property <bool> selecteur-ouvert: false;
+    in property <bool> gifs-possibles: false;
+    in property <bool> gifs-ouvert: false;
     in property <[PieceSaisie]> pieces;
     in property <bool> joindre-possible: false;
     in property <bool> sondage-possible: false;
@@ -66,6 +68,7 @@ export global DonneesSaisie {
     callback choisir(int);
     callback fermer-propositions();
     callback ouvrir-selecteur();
+    callback ouvrir-gifs();
     callback envoyer(string);
     callback annuler-bandeau();
     callback fleche-haut();
@@ -442,6 +445,17 @@ component ChampSaisie inherits Rectangle {
                     font-size: 11px;
                     accessible-role: text;
                     accessible-label: "Longueur : " + DonneesSaisie.compteur;
+                }
+            }
+            if DonneesSaisie.gifs-possibles: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "gif";
+                    libelle: "GIF";
+                    encre: DonneesSaisie.gifs-ouvert ? Theme.encre : Theme.gris;
+                    clique => {
+                        DonneesSaisie.ouvrir-gifs();
+                    }
                 }
             }
             VerticalLayout {

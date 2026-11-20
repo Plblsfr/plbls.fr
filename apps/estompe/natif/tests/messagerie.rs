@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use chrono::NaiveDate;
 use commun::coquille::{
-    contenu_de, etat, evenement, message, message_numero, FausseFabrique, ServeurMessages,
+    contenu_de, etat, evenement, gif_anime, message, message_numero, FausseFabrique,
+    ServeurMessages,
 };
 use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
@@ -621,25 +622,6 @@ fn png_gris(cote: u32) -> Vec<u8> {
         .write_to(&mut octets, image::ImageFormat::Png)
         .unwrap();
     octets.into_inner()
-}
-
-fn gif_anime(images: usize) -> Vec<u8> {
-    let mut octets = Vec::new();
-    {
-        let mut encodeur = image::codecs::gif::GifEncoder::new(&mut octets);
-        for i in 0..images {
-            let couleur = image::Rgba([(i * 50) as u8, 120, 200, 255]);
-            encodeur
-                .encode_frame(image::Frame::from_parts(
-                    image::RgbaImage::from_pixel(60, 40, couleur),
-                    0,
-                    0,
-                    image::Delay::from_numer_denom_ms(100, 1),
-                ))
-                .unwrap();
-        }
-    }
-    octets
 }
 
 fn avancer(faible: &slint::Weak<Principale>, duree: std::time::Duration) {

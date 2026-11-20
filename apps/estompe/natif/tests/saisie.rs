@@ -4,12 +4,13 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use chrono::NaiveDate;
-use commun::coquille::{etat_avec_membres, png, FausseFabrique, ServeurMessages};
+use commun::coquille::{etat_avec_membres, gif_anime, png, FausseFabrique, ServeurMessages};
 use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::derniere_vue::DerniereVue;
+use estompe_client::gifs::TROP_DE_RECHERCHES;
 use estompe_client::pieces::{ATTENDRE_LES_FICHIERS, FICHIERS_EN_ECHEC};
 use estompe_client::preferences::Preferences;
 use estompe_client::video::{codec_mp4, Conversions, Convertisseur, DOSSIER_CONVERSIONS};
@@ -18,8 +19,9 @@ use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille,
-    DonneesCreationSondage, DonneesMenu, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
-    GenreBandeau, GenreLigneMessage, LigneMessage, Page, PieceSaisie, Principale, SondageMessage,
+    DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessagerie, DonneesSaisie,
+    DonneesSelecteur, GenreBandeau, GenreLigneMessage, LigneMessage, Page, PieceSaisie, Principale,
+    SondageMessage,
 };
 use estompe_plateforme::ContenuPressePapiers;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
@@ -97,6 +99,7 @@ fn propositions(f: &Principale) -> Vec<String> {
 }
 
 fn ouvrir_le_selecteur_au_clavier(faible: &slint::Weak<Principale>) {
+    touche(faible, Key::Tab);
     touche(faible, Key::Tab);
     touche(faible, Key::Return);
     attendre_l_interface(
@@ -1151,6 +1154,239 @@ fn sondages(
     cliquer_le_champ(faible, "Écrire dans #général");
 }
 
+fn avancer(faible: &slint::Weak<Principale>, duree: std::time::Duration) {
+    sur_l_interface(faible, move |_| {
+        i_slint_backend_testing::mock_elapsed_time(duree);
+        slint::platform::update_timers_and_animations();
+    });
+}
+
+fn gifs_affiches(f: &Principale) -> Vec<String> {
+    f.global::<DonneesGifs>()
+        .get_rangees()
+        .iter()
+        .flat_map(|r| {
+            r.cellules
+                .iter()
+                .map(|c| c.titre.to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn animes_et_visibles(pont: &Pont) -> (Vec<usize>, Vec<usize>, usize) {
+    let messagerie = pont.messagerie();
+    let e = messagerie.gifs().etat();
+    (
+        e.animees(),
+        e.indices_visibles().collect(),
+        e.recherche.resultats.len(),
+    )
+}
+
+fn selecteur_de_gifs(faible: &slint::Weak<Principale>, serveur: &ServeurMessages, pont: &Pont) {
+    for n in 0..4 {
+        serveur.servir_fichier(&format!("/giphy/{n}.gif"), "image/gif", gif_anime(4));
+    }
+    let p = pont.clone();
+    sur_l_interface(faible, move |f| p.messagerie().repondre_a(f, "300"));
+    cliquer(faible, "GIF");
+    attendre_l_interface(
+        faible,
+        |f| gifs_affiches(f).len() == 24 && gifs_affiches(f)[0] == "tendances 0",
+        "tendances affichées à l'ouverture",
+    );
+    assert_eq!(serveur.nombre_de("GET /gifs/trending?offset=0"), 1);
+    let avant = serveur.nombre_de("GET /gifs/");
+    for c in "chatonsxyz".chars() {
+        taper(faible, &c.to_string());
+        avancer(faible, std::time::Duration::from_millis(50));
+    }
+    assert_eq!(
+        sur_l_interface(faible, |f| f
+            .global::<DonneesGifs>()
+            .get_recherche()
+            .to_string()),
+        "chatonsxyz",
+        "le champ de recherche a le focus à l'ouverture"
+    );
+    assert_eq!(
+        serveur.nombre_de("GET /gifs/"),
+        avant,
+        "aucune requête pendant la frappe"
+    );
+    avancer(faible, std::time::Duration::from_millis(400));
+    attendre_l_interface(
+        faible,
+        |f| gifs_affiches(f).first().map(String::as_str) == Some("chatonsxyz 0"),
+        "résultats de la recherche",
+    );
+    let requetes = serveur.nombre_de("GET /gifs/");
+    assert_eq!(requetes - avant, 1);
+    assert_eq!(
+        serveur.nombre_de("GET /gifs/search?q=chatonsxyz&offset=0"),
+        1
+    );
+    println!("320 C2 : 10 caractères tapés en 500 ms, {requetes} requêtes en tout (tendances à l'ouverture et recherche)");
+
+    attendre(
+        || {
+            let (animes, visibles, _) = animes_et_visibles(pont);
+            !visibles.is_empty() && animes == visibles
+        },
+        "aperçus visibles chargés et animés",
+    );
+    let (animes, visibles, total) = animes_et_visibles(pont);
+    assert!(animes.len() < total, "seuls les GIF à l'écran sont animés");
+    let changees = || pont.messagerie().gifs().etat().statistiques.images_changees;
+    let debut = changees();
+    for _ in 0..10 {
+        avancer(faible, std::time::Duration::from_millis(100));
+    }
+    let delta = changees() - debut;
+    assert!(delta > 0 && delta <= animes.len() * 10);
+    println!("320 C3 : {} GIF visibles sur {total} animés ({visibles:?}), {delta} images changées en 1 s simulée", animes.len());
+
+    let bas = {
+        let messagerie = pont.messagerie();
+        let e = messagerie.gifs().etat();
+        estompe_client::gifs::hauteur_totale(&e.rangees) - 300.0
+    };
+    sur_l_interface(faible, move |f| {
+        f.global::<DonneesGifs>().set_defilement(-bas);
+        slint::platform::update_timers_and_animations();
+    });
+    attendre(
+        || serveur.nombre_de("GET /gifs/search?q=chatonsxyz&offset=24") == 1,
+        "suite chargée au défilement",
+    );
+    attendre_l_interface(faible, |f| gifs_affiches(f).len() == 48, "48 GIF affichés");
+    attendre(
+        || {
+            let (animes, visibles, _) = animes_et_visibles(pont);
+            !animes.is_empty() && animes == visibles
+        },
+        "GIF du bas animés",
+    );
+    let (animes, _, _) = animes_et_visibles(pont);
+    assert!(
+        !animes.contains(&0),
+        "un GIF sorti de l'écran n'est plus animé"
+    );
+    println!("320 : suite chargée au défilement, le premier GIF sorti de l'écran n'est plus animé ({animes:?})");
+
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::RightArrow);
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesGifs>().get_actif() == 1,
+        "flèches dans la grille",
+    );
+    touche(faible, Key::Return);
+    attendre(
+        || serveur.nombre_de("POST /gifs/import") == 1,
+        "GIF importé",
+    );
+    attendre(
+        || {
+            serveur
+                .identifiants_envoyes("POST /channels/c1/messages")
+                .last()
+                .is_some_and(|ids| ids.len() == 1)
+        },
+        "message envoyé avec le GIF en pièce jointe",
+    );
+    let corps = serveur.corps.lock().unwrap().clone();
+    let import = corps
+        .iter()
+        .find(|(r, _)| r == "POST /gifs/import")
+        .unwrap();
+    assert!(import
+        .1
+        .contains("https://media1.giphy.com/media/chatonsxyz-1/giphy.gif"));
+    let envoi = corps
+        .iter()
+        .rev()
+        .find(|(r, _)| r == "POST /channels/c1/messages")
+        .unwrap();
+    assert!(envoi.1.contains(r#""reply_to":"300""#), "{}", envoi.1);
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesGifs>().get_ouvert()
+                && f.global::<DonneesSaisie>().get_bandeau().genre == GenreBandeau::Aucun
+                && derniere_ligne(f).is_some_and(|l| l.annexes.pieces_jointes.row_count() == 1)
+        },
+        "sélecteur fermé, réponse envoyée, GIF dans la liste",
+    );
+    println!("320 : GIF choisi au clavier, importé puis envoyé en réponse");
+
+    *serveur.refus_de_gifs.lock().unwrap() = Some(429);
+    cliquer(faible, "GIF");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesGifs>().get_message() == TROP_DE_RECHERCHES,
+        "limite de débit annoncée",
+    );
+    let refusees = serveur.nombre_de("GET /gifs/");
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesGifs>().set_defilement(-100_000.0);
+        slint::platform::update_timers_and_animations();
+    });
+    for _ in 0..5 {
+        avancer(faible, std::time::Duration::from_secs(1));
+    }
+    assert_eq!(
+        serveur.nombre_de("GET /gifs/"),
+        refusees,
+        "aucune nouvelle tentative"
+    );
+    println!("320 : 429 annoncé clairement, aucune nouvelle tentative en 5 s simulées");
+
+    sur_l_interface(faible, |f| {
+        f.window().set_size(slint::LogicalSize::new(760.0, 900.0));
+        slint::platform::update_timers_and_animations();
+    });
+    let (selecteur, vue) = sur_l_interface(faible, |f| {
+        let bornes = |e: ElementHandle| (e.absolute_position().x, e.size().width);
+        let selecteur = ElementHandle::find_by_accessible_label(f, "Choisir un GIF")
+            .next()
+            .expect("sélecteur de GIF");
+        let vue = ElementHandle::find_by_accessible_label(f, "Messages")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::List))
+            .expect("liste des messages");
+        (bornes(selecteur), bornes(vue))
+    });
+    sur_l_interface(faible, |f| {
+        f.window().set_size(slint::LogicalSize::new(1180.0, 900.0));
+        slint::platform::update_timers_and_animations();
+    });
+    assert!(
+        vue.1 < 416.0
+            && selecteur.0 >= vue.0 + 8.0
+            && selecteur.0 + selecteur.1 <= vue.0 + vue.1 - 8.0,
+        "sélecteur {selecteur:?}, vue {vue:?}"
+    );
+    println!("320 C1 : focus sur la recherche à l'ouverture ; dans une vue de {} px le sélecteur reste dedans ({selecteur:?})", vue.1);
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesGifs>().get_ouvert()
+                && !f.global::<DonneesSaisie>().get_gifs_ouvert()
+        },
+        "Échap ferme le sélecteur de GIF",
+    );
+    *serveur.refus_de_gifs.lock().unwrap() = None;
+    let p = pont.clone();
+    sur_l_interface(faible, move |f| {
+        p.messagerie().saisie().placer(f, "", 0);
+        p.messagerie().saisie_modifiee(f, "");
+    });
+    traiter_les_changements(faible);
+    cliquer_le_champ(faible, "Écrire dans #général");
+}
+
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
     f.global::<DonneesCoquille>()
         .get_salons()
@@ -1268,6 +1504,7 @@ fn scenario(
 
     actions_et_menus(&faible, &serveur, &pont);
     sondages(&faible, &serveur, &fabrique);
+    selecteur_de_gifs(&faible, &serveur, &pont);
     mentions_et_selecteur(&faible, &serveur, &dossier);
 
     taper(&faible, "brouillon à garder");
