@@ -166,6 +166,8 @@ pub struct Config {
     pub transcodage_max_octets: u64,
     pub mode_materiel: ModeMateriel,
     pub peripherique: String,
+    pub transcodage_vitesse: f64,
+    pub transcodage_threads: u32,
     pub max_flux: usize,
     pub max_transcodages: usize,
     pub inactivite: Duration,
@@ -331,6 +333,16 @@ impl Config {
             mode_materiel,
             peripherique: env("ENTRACTE_TRANSCODE_DEVICE")
                 .unwrap_or_else(|| "/dev/dri/renderD128".into()),
+            transcodage_vitesse: nombre(
+                "ENTRACTE_TRANSCODE_VITESSE",
+                env("ENTRACTE_TRANSCODE_VITESSE"),
+                2.0,
+            )?,
+            transcodage_threads: nombre(
+                "ENTRACTE_TRANSCODE_THREADS",
+                env("ENTRACTE_TRANSCODE_THREADS"),
+                0,
+            )?,
             max_flux: nombre("ENTRACTE_MAX_FLUX", env("ENTRACTE_MAX_FLUX"), 2)?,
             max_transcodages: nombre(
                 "ENTRACTE_MAX_TRANSCODAGES",
@@ -379,6 +391,7 @@ mod tests {
         assert_eq!(c.secret_flux.len(), 64);
         assert_eq!(c.mode_materiel, ModeMateriel::Cpu);
         assert_eq!((c.max_flux, c.max_transcodages), (2, 2));
+        assert_eq!((c.transcodage_vitesse, c.transcodage_threads), (2.0, 0));
         assert_eq!(c.periode_synchro, Duration::from_secs(900));
         assert_eq!(c.langue, "fr-FR");
         assert_eq!(

@@ -300,6 +300,8 @@ pub async fn ouvrir(
             origine: debut,
             mode: state.materiel().mode(),
             peripherique: state.config().peripherique.clone(),
+            vitesse: state.config().transcodage_vitesse,
+            threads: state.config().transcodage_threads,
         };
         let grille = params.sur_grille();
         let abonnement = |decalage: f64| Abonnement {
