@@ -161,6 +161,10 @@ impl Session {
     }
 
     pub fn retenir_geometrie(&self, fenetre: &Principale) {
+        let window = fenetre.window();
+        if !window.is_visible() || window.is_minimized() {
+            return;
+        }
         let geometrie = geometrie(fenetre);
         self.memoire.modifier(|p| p.fenetre = Some(geometrie));
     }
@@ -186,6 +190,11 @@ pub fn geometrie_valide(f: &Fenetre) -> bool {
     (LARGEUR_MIN..=COTE_MAX).contains(&f.largeur) && (HAUTEUR_MIN..=COTE_MAX).contains(&f.hauteur)
 }
 
+pub fn position_valide(f: &Fenetre) -> bool {
+    let borne = COTE_MAX as i32;
+    (-borne..=borne).contains(&f.x) && (-borne..=borne).contains(&f.y)
+}
+
 pub fn appliquer(fenetre: &Principale, preferences: &Preferences) {
     fenetre
         .global::<Theme>()
@@ -197,9 +206,11 @@ pub fn appliquer(fenetre: &Principale, preferences: &Preferences) {
         fenetre
             .window()
             .set_size(slint::LogicalSize::new(f.largeur as f32, f.hauteur as f32));
-        fenetre
-            .window()
-            .set_position(slint::LogicalPosition::new(f.x as f32, f.y as f32));
+        if position_valide(&f) {
+            fenetre
+                .window()
+                .set_position(slint::LogicalPosition::new(f.x as f32, f.y as f32));
+        }
     }
 }
 

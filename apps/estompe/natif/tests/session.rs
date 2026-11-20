@@ -45,6 +45,53 @@ fn les_preferences_sont_appliquees_a_la_fenetre_puis_retenues() {
 }
 
 #[test]
+fn la_position_retenue_a_la_fermeture_n_est_pas_ecrasee_une_fois_la_fenetre_masquee() {
+    i_slint_backend_testing::init_no_event_loop();
+    let tmp = tempfile::tempdir().unwrap();
+    let dossiers = Dossiers::sous(tmp.path());
+    dossiers.creer().unwrap();
+    Preferences {
+        fenetre: Some(Fenetre {
+            x: 40,
+            y: 60,
+            largeur: 900,
+            hauteur: 700,
+        }),
+        ..Preferences::default()
+    }
+    .enregistrer(&dossiers.donnees)
+    .unwrap();
+    let s = Session::ouvrir(dossiers.clone());
+    let f = creer_fenetre().unwrap();
+    s.brancher(&f);
+    f.show().unwrap();
+    let fermeture = Fenetre {
+        x: 300,
+        y: 200,
+        largeur: 1000,
+        hauteur: 800,
+    };
+    s.memoire.modifier(|p| p.fenetre = Some(fermeture));
+    f.hide().unwrap();
+    s.retenir_geometrie(&f);
+    let relu = Preferences::charger(&dossiers.donnees).preferences.fenetre;
+    assert_eq!(relu, Some(fermeture));
+}
+
+#[test]
+fn une_position_hors_ecran_n_est_pas_reappliquee() {
+    let f = |x, y| Fenetre {
+        x,
+        y,
+        largeur: 1180,
+        hauteur: 760,
+    };
+    assert!(session::position_valide(&f(-8, 0)));
+    assert!(session::position_valide(&f(2560, 1440)));
+    assert!(!session::position_valide(&f(-32000, -32000)));
+}
+
+#[test]
 fn une_geometrie_aberrante_est_ignoree() {
     let f = |largeur, hauteur| Fenetre {
         x: 0,

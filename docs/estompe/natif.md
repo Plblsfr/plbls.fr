@@ -227,7 +227,8 @@ Titres, blocs de code, citations (barres) et listes (puces, retraits) sont des �
 un lien (`u:`) n'est ouvert par `OuvertureUrl` que si `lien_ouvrable` l'accepte, au clic comme à l'analyse.
 
 Sélection : ni `Text` ni `StyledText` ne permettent de sélectionner du texte en 1.18 (seul `TextInput`, d'un seul style, le fait). La copie se fait
-donc par message entier : bouton « Copier le message » au survol, ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
+donc par message entier : bouton « Copier le message » au survol (toujours instancié, affiché si la ligne est survolée, a le focus ou si le bouton
+lui-même est survolé : il est dessiné au-dessus de la zone de la ligne, qui perd alors le survol), ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
 au presse-papiers par un `TextInput` caché (`select-all()`, `copy()`).
 
 L'italique vient de la face italique d'Instrument Sans (`polices/InstrumentSans-Italic.ttf`, même source et même licence que la face droite). Écarts : un lien est toujours souligné ; dans un paragraphe
@@ -364,7 +365,8 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre, adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et

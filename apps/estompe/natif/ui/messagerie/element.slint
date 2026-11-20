@@ -54,6 +54,7 @@ component EnTeteReponse {
 
 component BoutonCopier {
     callback clique();
+    out property <bool> survole: zone.has-hover;
     width: 28px;
     height: 28px;
     accessible-role: button;
@@ -138,7 +139,8 @@ component ChargementLigne {
 component CorpsMessage inherits Rectangle {
     in property <LigneMessage> ligne;
     callback copier(string);
-    property <bool> actif: zone.has-hover || portee.has-focus;
+    property <bool> sur-copie: false;
+    property <bool> actif: zone.has-hover || portee.has-focus || root.sur-copie;
     background: ligne.mis-en-evidence ? Theme.rose : ligne.mention ? Theme.rose.with-alpha(root.actif ? 0.38 : 0.28) : root.actif ? Theme.encre.with-alpha(0.03) : transparent;
     animate background { duration: Mouvement.d-l; easing: Courbes.sortie; }
     accessible-role: text;
@@ -321,9 +323,13 @@ component CorpsMessage inherits Rectangle {
             }
         }
     }
-    if root.actif && !root.ligne.systeme && root.ligne.texte-brut != "": BoutonCopier {
+    if !root.ligne.systeme && root.ligne.texte-brut != "": BoutonCopier {
         x: parent.width - self.width - 24px;
         y: root.ligne.suite ? 0 : 6px;
+        visible: root.actif;
+        changed survole => {
+            root.sur-copie = self.survole;
+        }
         clique => {
             root.copier(root.ligne.texte-brut);
         }
