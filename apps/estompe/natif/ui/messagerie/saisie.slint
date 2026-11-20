@@ -19,6 +19,17 @@ export struct PropositionSaisie {
     image: image,
 }
 
+export struct PieceSaisie {
+    cle: int,
+    nom: string,
+    detail: string,
+    vignette: image,
+    a-vignette: bool,
+    progression: float,
+    en-cours: bool,
+    echec: bool,
+}
+
 export global DonneesSaisie {
     in property <bool> visible: false;
     in-out property <string> texte;
@@ -39,6 +50,14 @@ export global DonneesSaisie {
     in property <int> curseur-demande: 0;
     in property <int> demande-curseur: 0;
     in property <bool> selecteur-ouvert: false;
+    in property <[PieceSaisie]> pieces;
+    in property <bool> joindre-possible: false;
+    in property <bool> depot-survole: false;
+    in property <string> limite-pieces: "10 Mo max par fichier";
+    callback joindre();
+    callback retirer-piece(int);
+    callback reessayer-piece(int);
+    callback coller() -> bool;
     callback modifie(string);
     callback curseur-deplace(string, int);
     callback naviguer(int);
@@ -155,6 +174,104 @@ component Bandeau inherits Rectangle {
     }
 }
 
+component VignettePiece inherits Rectangle {
+    in property <PieceSaisie> piece;
+    width: root.piece.a-vignette ? 64px : 220px;
+    height: 64px;
+    border-radius: Rayon.s;
+    background: Theme.papier-2;
+    border-width: 1px;
+    border-color: root.piece.echec ? Theme.danger : Theme.trait;
+    accessible-role: list-item;
+    accessible-label: root.piece.nom + ", " + root.piece.detail;
+    if root.piece.a-vignette: Image {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        source: root.piece.vignette;
+        image-fit: cover;
+        opacity: root.piece.en-cours ? 0.55 : 1;
+    }
+    if !root.piece.a-vignette: HorizontalLayout {
+        padding-left: Espace.e3;
+        padding-right: 30px;
+        spacing: Espace.e2;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "trombone";
+                taille: 16px;
+                couleur: Theme.gris;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.piece.nom;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                font-weight: Typo.moyen;
+                overflow: elide;
+            }
+            Text {
+                text: root.piece.detail;
+                color: root.piece.echec ? Theme.danger : Theme.gris;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+    if root.piece.a-vignette && (root.piece.echec || root.piece.en-cours): Rectangle {
+        x: 4px;
+        y: parent.height - 20px;
+        width: parent.width - 8px;
+        height: 16px;
+        border-radius: Rayon.xs;
+        background: Theme.papier.with-alpha(0.9);
+        Text {
+            text: root.piece.echec ? "échec" : root.piece.detail;
+            color: root.piece.echec ? Theme.danger : Theme.encre;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    if root.piece.en-cours: Rectangle {
+        x: 0;
+        y: parent.height - 3px;
+        width: parent.width * max(0, min(1, root.piece.progression));
+        height: 3px;
+        background: Theme.rose-fonce;
+    }
+    BoutonIcone {
+        x: parent.width - self.width + 4px;
+        y: -4px;
+        width: 26px;
+        height: 26px;
+        icone: "x";
+        taille: 13px;
+        libelle: (root.piece.en-cours ? "Annuler l'envoi de " : "Retirer ") + root.piece.nom;
+        clique => {
+            DonneesSaisie.retirer-piece(root.piece.cle);
+        }
+    }
+    if root.piece.echec: BoutonIcone {
+        x: parent.width - self.width + 4px;
+        y: 22px;
+        width: 26px;
+        height: 26px;
+        icone: "actualise";
+        taille: 13px;
+        libelle: "Réessayer " + root.piece.nom;
+        clique => {
+            DonneesSaisie.reessayer-piece(root.piece.cle);
+        }
+    }
+}
+
 component ChampSaisie inherits Rectangle {
     property <length> hauteur-ligne: 22px;
     property <length> hauteur-champ: max(root.hauteur-ligne, min(saisie.preferred-height, DonneesSaisie.hauteur-max));
@@ -182,8 +299,34 @@ component ChampSaisie inherits Rectangle {
         if DonneesSaisie.bandeau.genre != GenreBandeau.aucun: Bandeau {
             bandeau: DonneesSaisie.bandeau;
         }
+        if DonneesSaisie.pieces.length > 0: Flickable {
+            height: 72px;
+            mouse-drag-pan-enabled: false;
+            content-width: max(self.width, rangee.preferred-width);
+            accessible-role: list;
+            accessible-label: "Pièces jointes";
+            rangee := HorizontalLayout {
+                padding-top: 6px;
+                padding-right: 6px;
+                spacing: Espace.e2;
+                alignment: start;
+                for p in DonneesSaisie.pieces: VignettePiece {
+                    piece: p;
+                }
+            }
+        }
         HorizontalLayout {
             spacing: Espace.e1;
+            if DonneesSaisie.joindre-possible: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "trombone";
+                    libelle: "Joindre un fichier";
+                    clique => {
+                        DonneesSaisie.joindre();
+                    }
+                }
+            }
             Rectangle {
                 horizontal-stretch: 1;
                 height: root.hauteur-champ + 12px;
@@ -238,6 +381,9 @@ component ChampSaisie inherits Rectangle {
                         key-pressed(e) => {
                             if (self.preedit-text != "") {
                                 return reject;
+                            }
+                            if (e.modifiers.control && (e.text == "v" || e.text == "V") && DonneesSaisie.coller()) {
+                                return accept;
                             }
                             if (DonneesSaisie.propositions.length > 0) {
                                 if (e.text == Key.DownArrow) {
@@ -302,13 +448,40 @@ component ChampSaisie inherits Rectangle {
                 BoutonIcone {
                     icone: "envoi";
                     libelle: DonneesSaisie.bandeau.genre == GenreBandeau.modification ? "Enregistrer" : "Envoyer";
-                    actif: saisie.text != "";
+                    actif: saisie.text != "" || DonneesSaisie.pieces.length > 0;
                     encre: Theme.rose-texte;
                     clique => {
                         DonneesSaisie.envoyer(saisie.text);
                         saisie.focus();
                     }
                 }
+            }
+        }
+    }
+    if DonneesSaisie.depot-survole && DonneesSaisie.joindre-possible: Rectangle {
+        border-radius: Rayon.m;
+        background: Theme.rose-doux.with-alpha(0.92);
+        border-width: 2px;
+        border-color: Theme.rose-fonce;
+        accessible-role: text;
+        accessible-label: "Dépose pour joindre · " + DonneesSaisie.limite-pieces;
+        HorizontalLayout {
+            alignment: center;
+            spacing: Espace.e2;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "envoie";
+                    taille: 20px;
+                    couleur: Theme.rose-texte;
+                }
+            }
+            Text {
+                text: "Dépose pour joindre · " + DonneesSaisie.limite-pieces;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
             }
         }
     }

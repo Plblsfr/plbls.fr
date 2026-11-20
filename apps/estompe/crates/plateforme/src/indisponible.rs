@@ -60,6 +60,9 @@ impl Fichiers for Indisponible {
     fn choisir_dossier(&self, _: Option<&std::path::Path>) -> Resultat<Option<std::path::PathBuf>> {
         refus("choix d'un dossier")
     }
+    fn choisir_fichiers(&self, _: Option<&std::path::Path>) -> Resultat<Vec<std::path::PathBuf>> {
+        refus("choix de fichiers")
+    }
     fn ouvrir(&self, _: &std::path::Path) -> Resultat<()> {
         refus("ouverture d'un fichier")
     }
@@ -71,6 +74,9 @@ impl PressePapiers for Indisponible {
     }
     fn copier_image(&self, _: &Image) -> Resultat<()> {
         refus("copie d'une image")
+    }
+    fn lire_pieces(&self) -> Resultat<Option<ContenuPressePapiers>> {
+        refus("lecture du presse-papiers")
     }
 }
 

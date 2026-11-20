@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -380,6 +380,31 @@ deux moteurs et sur les deux OS :
 - Écarts : pas de teinte de peau (le front n'en propose pas non plus) ; `#` (salons) et les emoji de serveur dans la liste de `:` n'existent pas dans le front ; un `#salon`
   inséré reste du texte (le markdown n'a pas de lien de salon).
 
+### Pièces jointes à l'envoi
+
+- Trois entrées, seulement si la conversation accepte l'écriture et `attach_files` : bouton « Joindre un fichier » à gauche du champ (`Fichiers::choisir_fichiers`, sélecteur du
+  système par `rfd`, sur un fil à part), dépôt de fichiers sur la fenêtre (évènements `HoveredFile`, `HoveredFileCancelled` et `DroppedFile` de winit, `Coquille::suivi_du_depot` ;
+  la zone « Dépose pour joindre · 10 Mo max par fichier » couvre le champ pendant le survol), Ctrl+V dans le champ (`PressePapiers::lire_pieces` : une liste de fichiers, sinon une
+  image, collée en `capture.png` ; un texte garde le collage normal du `TextInput`).
+- Préparation (`src/messagerie/pieces.rs`, `preparer`, hors du fil d'interface) : nom, type déduit de l'extension (`type_mime_du_nom`), taille ; vignette carrée de 128 px pour une
+  image ; une image JPEG, PNG ou WebP plus grande que 1 920 px ou plus lourde que 300 Ko est réduite (`dimensions_a_envoyer`) puis réencodée, gardée si elle est plus légère. C'est
+  là que la conversion d'une vidéo (#317) se branchera.
+- Limites (`fichiers::Limites`, `refus_de_piece`, `refus_du_nombre`) : 10 Mo par fichier, `max_video_size` de `GET /me` pour un MP4 (envoyé en `kind=video`), 10 pièces par
+  message. Un refus s'affiche sous le champ avec la limite (« Fichier trop gros : « gros.bin » fait 11.0 Mo, 10 Mo maximum. ») et rien ne part.
+- Envoi (`televersement.rs` de la crate client, `Client::televerser_en_flux`, `Client::envoyer_piece`) : corps multipart produit par morceaux de 64 Ko lus sur le disque par un fil
+  bloquant, quatre morceaux en vol au plus, `Content-Length` exact, un seul nouvel essai sur un 401. Un fichier de 500 Mo ne fait grandir la mémoire résidente que de 2,4 Mo
+  (`mesure_memoire_d_un_envoi_de_500_mo`, ignoré par défaut : `cargo test -p estompe-client --release mesure_memoire -- --ignored --nocapture`).
+- État d'une pièce (`estompe_client::pieces::ListePieces`, une liste par conversation dans `EtatSaisie`, une pour le message modifié) : préparation, envoi (pourcentage et barre),
+  jointe (taille), échec (raison du serveur et « Réessayer », qui relance l'envoi depuis la source gardée). La croix retire la pièce ; pendant l'envoi, elle l'annule : la tâche est
+  interrompue et la connexion fermée. Entrée attend que toutes les pièces soient jointes (« Attends la fin de l'envoi des fichiers. ») et refuse une pièce en échec ; un message
+  peut partir sans texte. Les pièces suivent leur conversation (envoi poursuivi en changeant de salon) mais ne survivent pas au redémarrage.
+- Modification : flèche haut ou « Modifier » reprend les pièces du message (vignette de la liste si elle est chargée) ; retirer ou ajouter change la liste, envoyée en
+  `file_ids` seulement si elle diffère.
+- Écarts : pas de marquage « masqué » (le front ne le propose pas pour une pièce jointe) ; pas de réordonnancement des pièces d'un message modifié (glisser dans le front) ; une
+  image JPEG réduite reste en JPEG (qualité 82) et une PNG ou WebP devient du WebP sans perte, le front produit du WebP avec perte (l'encodeur WebP de `image` est sans perte) ;
+  pas de miniature pour une vidéo MP4 (le front en calcule une dans le navigateur) ; dépôt de fichiers non pris en charge par winit sous Wayland, collage par le presse-papiers
+  X11 d'`arboard` (XWayland) : à vérifier sur machine réelle.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -389,8 +414,8 @@ La crate plateforme expose un trait par fonction : coffre de secrets, notificati
 et de fenêtre, capture du son, overlay, application au premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
-sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`). Le reste arrive avec son lot, Windows d'abord.
+sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 
@@ -452,7 +477,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
 `saisie.rs` (même backend, `ServeurMessages` qui accepte aussi `POST …/messages` et `PATCH /messages/{id}`) : saisie au clavier, Maj+Entrée, envoi par Entrée et message du serveur
   en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », mentions (`@`, Tab), salons (`#`, Échap), smileys (`:`, flèches, Entrée), conversion de `:thumbsup:`,
-  sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque.
+  sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque ;
+  puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,
+  échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
+  texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale).
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.

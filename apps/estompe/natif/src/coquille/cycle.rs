@@ -173,6 +173,12 @@ fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
         .clone()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Depot {
+    Survol(bool),
+    Fichiers(Vec<std::path::PathBuf>),
+}
+
 pub struct Coquille {
     emplacement: Emplacement,
     focus: Arc<AtomicBool>,
@@ -227,6 +233,22 @@ impl Coquille {
 
     pub fn fenetre_active(&self, actif: bool) {
         (self.suivi_du_focus())(actif);
+    }
+
+    pub fn suivi_du_depot(&self) -> impl Fn(&Principale, Depot) + 'static {
+        let emplacement = self.emplacement.clone();
+        move |f, depot| {
+            if let Some(pont) = pont_courant(&emplacement) {
+                match depot {
+                    Depot::Survol(survol) => pont.messagerie().survol_depot(f, survol),
+                    Depot::Fichiers(chemins) => pont.messagerie().deposer(f, chemins),
+                }
+            }
+        }
+    }
+
+    pub fn deposer(&self, f: &Principale, depot: Depot) {
+        (self.suivi_du_depot())(f, depot);
     }
 }
 
@@ -351,6 +373,21 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_saisie!(on_fermer_propositions, |p, f| p
         .messagerie()
         .fermer_propositions(&f));
+    rappel_saisie!(on_joindre, |p, _f| p.messagerie().choisir_pieces());
+    rappel_saisie!(on_retirer_piece, |p, f, cle| p
+        .messagerie()
+        .retirer_piece(&f, cle));
+    rappel_saisie!(on_reessayer_piece, |p, f, cle| p
+        .messagerie()
+        .reessayer_piece(&f, cle));
+    {
+        let source = source.clone();
+        let faible = f.as_weak();
+        s.on_coller(move || match (source(), faible.upgrade()) {
+            (Some(p), Some(f)) => p.messagerie().coller(&f),
+            _ => false,
+        });
+    }
     rappel_saisie!(on_ouvrir_selecteur, |p, f| p
         .messagerie()
         .ouvrir_selecteur(&f, CibleSelecteur::Saisie));

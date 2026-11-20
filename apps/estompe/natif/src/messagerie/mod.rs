@@ -3,6 +3,7 @@ pub mod defilement;
 pub mod emoji;
 pub mod lignes;
 pub mod medias;
+pub mod pieces;
 pub mod pont;
 pub mod rendu;
 pub mod saisie;

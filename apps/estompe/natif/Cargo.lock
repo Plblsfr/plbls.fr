@@ -1323,6 +1323,7 @@ dependencies = [
  "form_urlencoded",
  "futures-util",
  "getrandom 0.4.3",
+ "http-body",
  "reqwest",
  "rustls",
  "rustls-platform-verifier",

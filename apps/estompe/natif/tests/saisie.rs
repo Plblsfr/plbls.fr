@@ -4,20 +4,22 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use chrono::NaiveDate;
-use commun::coquille::{etat_avec_membres, FausseFabrique, ServeurMessages};
+use commun::coquille::{etat_avec_membres, png, FausseFabrique, ServeurMessages};
 use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::derniere_vue::DerniereVue;
+use estompe_client::pieces::{ATTENDRE_LES_FICHIERS, FICHIERS_EN_ECHEC};
 use estompe_client::preferences::Preferences;
-use estompe_natif::coquille::Coquille;
+use estompe_natif::coquille::{Coquille, Depot};
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
-    GenreBandeau, LigneMessage, Page, Principale,
+    GenreBandeau, LigneMessage, Page, PieceSaisie, Principale,
 };
+use estompe_plateforme::ContenuPressePapiers;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use slint::platform::{Key, PointerEventButton, WindowEvent};
 use slint::{ComponentHandle, Model, SharedString};
@@ -270,6 +272,293 @@ fn mentions_et_selecteur(
     println!("315 C3 : sélecteur ouvert, parcouru et refermé au clavier, récents gardés");
 }
 
+fn pieces(f: &Principale) -> Vec<PieceSaisie> {
+    f.global::<DonneesSaisie>().get_pieces().iter().collect()
+}
+
+fn cliquer(faible: &slint::Weak<Principale>, libelle: &str) {
+    let libelle = libelle.to_string();
+    sur_l_interface(faible, move |f| {
+        ElementHandle::find_by_accessible_label(f, &libelle)
+            .next()
+            .unwrap_or_else(|| panic!("élément « {libelle} »"))
+            .mock_single_click(PointerEventButton::Left);
+    });
+}
+
+fn coller(faible: &slint::Weak<Principale>) {
+    sur_l_interface(faible, |f| {
+        f.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Control.into(),
+        });
+        appuyer(f, "v");
+        f.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Control.into(),
+        });
+    });
+}
+
+fn erreur(f: &Principale) -> String {
+    f.global::<DonneesSaisie>().get_erreur().to_string()
+}
+
+fn pieces_jointes(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    fabrique: &FausseFabrique,
+    coquille: &Coquille,
+    dossier: &std::path::Path,
+) {
+    let notes = dossier.join("notes.txt");
+    std::fs::write(&notes, "des notes").unwrap();
+    let photo = dossier.join("photo.png");
+    std::fs::write(&photo, png([200, 40, 90])).unwrap();
+    let gros = dossier.join("gros.bin");
+    std::fs::File::create(&gros)
+        .unwrap()
+        .set_len(11 * 1024 * 1024)
+        .unwrap();
+    let moyen = dossier.join("moyen.bin");
+    std::fs::write(&moyen, vec![1u8; 2 * 1024 * 1024]).unwrap();
+
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_joindre_possible(),
+        "bouton « Joindre un fichier » proposé",
+    );
+    *fabrique.fichiers.choix.lock().unwrap() = vec![notes.clone(), photo.clone()];
+    cliquer(faible, "Joindre un fichier");
+    attendre_l_interface(
+        faible,
+        |f| {
+            let p = pieces(f);
+            p.len() == 2
+                && p.iter().all(|p| !p.en_cours && !p.echec)
+                && p[0].nom == "notes.txt"
+                && p[0].detail == "9 o"
+                && !p[0].a_vignette
+                && p[1].a_vignette
+        },
+        "deux pièces envoyées, aperçu de l'image, nom et taille du fichier",
+    );
+    assert_eq!(serveur.nombre_de("POST /files"), 2);
+
+    let avant = serveur.nombre_de("POST /files");
+    *fabrique.fichiers.choix.lock().unwrap() = vec![gros.clone()];
+    cliquer(faible, "Joindre un fichier");
+    attendre_l_interface(
+        faible,
+        |f| erreur(f) == "Fichier trop gros : « gros.bin » fait 11.0 Mo, 10 Mo maximum.",
+        "fichier trop gros refusé avec la limite",
+    );
+    assert_eq!(sur_l_interface(faible, |f| pieces(f).len()), 2);
+    assert_eq!(serveur.nombre_de("POST /files"), avant, "rien n'est envoyé");
+    println!("316 C2 : fichier de 11 Mo refusé avant tout envoi, limite de 10 Mo affichée");
+
+    cliquer_le_champ(faible, "Écrire dans #général");
+    taper(faible, "avec pièces");
+    touche(faible, Key::Return);
+    attendre(
+        || serveur.envois().last().map(String::as_str) == Some("avec pièces"),
+        "message envoyé avec ses pièces",
+    );
+    let ids = serveur
+        .identifiants_envoyes("POST /channels/c1/messages")
+        .pop()
+        .unwrap();
+    assert_eq!(
+        ids.iter()
+            .map(|id| serveur.nom_de_piece(id))
+            .collect::<Vec<_>>(),
+        ["notes.txt", "photo.png"],
+        "pièces dans l'ordre du champ"
+    );
+    attendre_l_interface(
+        faible,
+        |f| pieces(f).is_empty() && derniere_ligne(f).is_some_and(|l| !l.id.starts_with("local:")),
+        "pièces retirées du champ après l'envoi",
+    );
+
+    *serveur.refus_de_fichier.lock().unwrap() = Some(507);
+    *fabrique.fichiers.choix.lock().unwrap() = vec![notes.clone()];
+    cliquer(faible, "Joindre un fichier");
+    attendre_l_interface(
+        faible,
+        |f| {
+            pieces(f)
+                .first()
+                .is_some_and(|p| p.echec && p.detail == "échec : Stockage plein")
+        },
+        "échec de l'envoi expliqué",
+    );
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| erreur(f) == FICHIERS_EN_ECHEC,
+        "un fichier en échec bloque l'envoi",
+    );
+    *serveur.refus_de_fichier.lock().unwrap() = None;
+    cliquer(faible, "Réessayer notes.txt");
+    attendre_l_interface(
+        faible,
+        |f| pieces(f).first().is_some_and(|p| !p.echec && !p.en_cours),
+        "reprise après l'échec",
+    );
+    cliquer(faible, "Retirer notes.txt");
+    attendre_l_interface(faible, |f| pieces(f).is_empty(), "pièce retirée");
+
+    let messages = serveur.envois().len();
+    *serveur.fichiers_bloques.lock().unwrap() = true;
+    *fabrique.presse_papiers.contenu.lock().unwrap() =
+        Some(ContenuPressePapiers::Fichiers(vec![moyen.clone()]));
+    cliquer_le_champ(faible, "Écrire dans #général");
+    coller(faible);
+    attendre_l_interface(
+        faible,
+        |f| {
+            pieces(f)
+                .first()
+                .is_some_and(|p| p.en_cours && p.nom == "moyen.bin")
+        },
+        "fichier collé en cours d'envoi",
+    );
+    attendre(
+        || serveur.nombre_de("POST /files bloqué") == 1,
+        "envoi reçu par le serveur",
+    );
+    taper(faible, "pas encore");
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| erreur(f) == ATTENDRE_LES_FICHIERS,
+        "le message attend la fin des envois",
+    );
+    cliquer(faible, "Annuler l'envoi de moyen.bin");
+    attendre(
+        || serveur.nombre_de("FERMÉE /files") == 1,
+        "connexion de l'envoi fermée par l'annulation",
+    );
+    attendre_l_interface(faible, |f| pieces(f).is_empty(), "pièce annulée retirée");
+    assert_eq!(serveur.envois().len(), messages, "aucun message envoyé");
+    attendre(
+        || {
+            coquille
+                .pont()
+                .unwrap()
+                .messagerie()
+                .saisie()
+                .televersements_en_cours()
+                == 0
+        },
+        "plus aucun envoi en cours",
+    );
+    println!("316 C3 : annuler l'envoi ferme la connexion et n'envoie pas le message");
+    *serveur.fichiers_bloques.lock().unwrap() = false;
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesSaisie>().set_texte("".into());
+    });
+
+    let image = image::RgbaImage::from_pixel(30, 20, image::Rgba([10, 120, 200, 255]));
+    *fabrique.presse_papiers.contenu.lock().unwrap() =
+        Some(ContenuPressePapiers::Image(estompe_plateforme::Image {
+            largeur: 30,
+            hauteur: 20,
+            rgba: image.into_raw(),
+        }));
+    coller(faible);
+    attendre_l_interface(
+        faible,
+        |f| {
+            pieces(f)
+                .first()
+                .is_some_and(|p| p.nom == "capture.png" && p.a_vignette && !p.en_cours)
+        },
+        "capture collée envoyée en PNG",
+    );
+    *fabrique.presse_papiers.contenu.lock().unwrap() = None;
+    coller(faible);
+    assert_eq!(sur_l_interface(faible, |f| pieces(f).len()), 1);
+
+    sur_l_interface(faible, {
+        let depot = coquille.suivi_du_depot();
+        move |f| depot(f, Depot::Survol(true))
+    });
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_depot_survole(),
+        "zone de dépôt affichée au survol",
+    );
+    let chemin = photo.clone();
+    sur_l_interface(faible, {
+        let depot = coquille.suivi_du_depot();
+        move |f| depot(f, Depot::Fichiers(vec![chemin.clone()]))
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesSaisie>().get_depot_survole()
+                && pieces(f).len() == 2
+                && pieces(f).iter().all(|p| !p.en_cours)
+        },
+        "fichier déposé sur la fenêtre puis envoyé",
+    );
+    touche(faible, Key::Return);
+    attendre(
+        || {
+            serveur
+                .identifiants_envoyes("POST /channels/c1/messages")
+                .last()
+                .is_some_and(|ids| ids.len() == 2)
+                && serveur.envois().last().map(String::as_str) == Some("")
+        },
+        "message sans texte avec deux pièces",
+    );
+    attendre_l_interface(
+        faible,
+        |f| {
+            derniere_ligne(f).is_some_and(|l| {
+                !l.id.starts_with("local:") && l.annexes.pieces_jointes.row_count() == 2
+            })
+        },
+        "message du serveur avec ses pièces",
+    );
+    println!(
+        "316 : choix, collage de fichiers et d'une capture, dépôt, aperçu, reprise après échec"
+    );
+
+    let dernier = sur_l_interface(faible, |f| derniere_ligne(f).unwrap().id.to_string());
+    touche(faible, Key::UpArrow);
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesSaisie>().get_bandeau().genre == GenreBandeau::Modification
+                && pieces(f).len() == 2
+        },
+        "modification avec les pièces du message",
+    );
+    cliquer(faible, "Retirer capture.png");
+    attendre_l_interface(faible, |f| pieces(f).len() == 1, "pièce retirée du message");
+    touche(faible, Key::Return);
+    attendre(
+        || {
+            serveur
+                .identifiants_envoyes(&format!("PATCH /messages/{dernier}"))
+                .last()
+                .is_some_and(|ids| ids.len() == 1)
+        },
+        "liste finale des pièces envoyée",
+    );
+    attendre_l_interface(
+        faible,
+        |f| {
+            derniere_ligne(f)
+                .is_some_and(|l| l.modifie && l.annexes.pieces_jointes.row_count() == 1)
+        },
+        "message modifié avec une seule pièce",
+    );
+    println!("316 : pièces jointes d'un message modifiées (EditAttachments)");
+}
+
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
     f.global::<DonneesCoquille>()
         .get_salons()
@@ -283,6 +572,7 @@ fn scenario(
     serveur: Arc<ServeurMessages>,
     coquille: Arc<Coquille>,
     dossier: std::path::PathBuf,
+    fabrique: Arc<FausseFabrique>,
 ) {
     attendre_l_interface(
         &faible,
@@ -416,6 +706,10 @@ fn scenario(
         "brouillon enregistré sur le disque pour le prochain lancement",
     );
     println!("314 C3 : brouillon retrouvé au retour dans le salon et relu depuis le disque");
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesSaisie>().set_texte("".into());
+    });
+    pieces_jointes(&faible, &serveur, &fabrique, &coquille, &dossier);
 }
 
 #[test]
@@ -466,7 +760,9 @@ fn saisie_envoi_modification_et_brouillons() {
     let c = coquille.clone();
     let chemin = dossier.path().to_path_buf();
     let pilote = std::thread::spawn(move || {
-        let resultat = catch_unwind(AssertUnwindSafe(|| scenario(faible, serveur, c, chemin)));
+        let resultat = catch_unwind(AssertUnwindSafe(|| {
+            scenario(faible, serveur, c, chemin, fabrique)
+        }));
         let _ = slint::quit_event_loop();
         resultat
     });

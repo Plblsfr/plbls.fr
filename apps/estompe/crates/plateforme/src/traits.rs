@@ -35,12 +35,23 @@ pub trait Fichiers {
         &self,
         depart: Option<&std::path::Path>,
     ) -> Resultat<Option<std::path::PathBuf>>;
+    fn choisir_fichiers(
+        &self,
+        depart: Option<&std::path::Path>,
+    ) -> Resultat<Vec<std::path::PathBuf>>;
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContenuPressePapiers {
+    Image(Image),
+    Fichiers(Vec<std::path::PathBuf>),
 }
 
 pub trait PressePapiers {
     fn disponible(&self) -> bool;
     fn copier_image(&self, image: &Image) -> Resultat<()>;
+    fn lire_pieces(&self) -> Resultat<Option<ContenuPressePapiers>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

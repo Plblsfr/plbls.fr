@@ -73,6 +73,7 @@ pub enum Format {
     Emoji,
     Carte,
     Miniature,
+    Piece,
 }
 
 impl Format {
@@ -83,6 +84,7 @@ impl Format {
             Self::Emoji => (96, 96),
             Self::Carte => (168, 168),
             Self::Miniature => (520, 293),
+            Self::Piece => (128, 128),
         }
     }
 
@@ -177,7 +179,7 @@ pub fn arrondir_coins(image: &mut image::RgbaImage, rayon: f32) {
 impl Format {
     fn rapport(self) -> Option<(u32, u32)> {
         match self {
-            Self::Carte => Some((1, 1)),
+            Self::Carte | Self::Piece => Some((1, 1)),
             Self::Miniature => Some((16, 9)),
             _ => None,
         }
@@ -186,13 +188,13 @@ impl Format {
     fn rayon(self) -> f32 {
         match self {
             Self::Vignette | Self::Miniature => 10.0,
-            Self::Carte => 8.0,
+            Self::Carte | Self::Piece => 8.0,
             Self::Emoji | Self::Visionneuse => 0.0,
         }
     }
 }
 
-fn reduire(image: image::DynamicImage, format: Format) -> image::RgbaImage {
+pub fn reduire(image: image::DynamicImage, format: Format) -> image::RgbaImage {
     let image = match format.rapport() {
         Some(rapport) => recadrer(image, rapport),
         None => image,

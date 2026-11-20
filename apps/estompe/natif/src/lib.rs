@@ -95,7 +95,11 @@ pub fn demarrer(
         session.memoire.clone(),
         coquille::horloge_locale(),
     );
-    suivre_le_focus(fenetre, coquille.suivi_du_focus());
+    suivre_la_fenetre(
+        fenetre,
+        coquille.suivi_du_focus(),
+        coquille.suivi_du_depot(),
+    );
     Ok(Application {
         coquille,
         entree,
@@ -104,11 +108,28 @@ pub fn demarrer(
     })
 }
 
-fn suivre_le_focus(fenetre: &Principale, suivi: impl Fn(bool) + 'static) {
+fn suivre_la_fenetre(
+    fenetre: &Principale,
+    focus: impl Fn(bool) + 'static,
+    depot: impl Fn(&Principale, coquille::Depot) + 'static,
+) {
+    use coquille::Depot;
     use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
+    use winit::event::WindowEvent;
+    let faible = fenetre.as_weak();
     fenetre.window().on_winit_window_event(move |_, evenement| {
-        if let winit::event::WindowEvent::Focused(actif) = evenement {
-            suivi(*actif);
+        let signal = match evenement {
+            WindowEvent::Focused(actif) => {
+                focus(*actif);
+                None
+            }
+            WindowEvent::HoveredFile(_) => Some(Depot::Survol(true)),
+            WindowEvent::HoveredFileCancelled => Some(Depot::Survol(false)),
+            WindowEvent::DroppedFile(chemin) => Some(Depot::Fichiers(vec![chemin.clone()])),
+            _ => None,
+        };
+        if let (Some(signal), Some(f)) = (signal, faible.upgrade()) {
+            depot(&f, signal);
         }
         EventResult::Propagate
     });

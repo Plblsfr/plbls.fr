@@ -5,8 +5,10 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::fichiers::est_une_video;
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
 use crate::store::CleConversation;
+use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement, GetMeReponse,
@@ -435,6 +437,27 @@ impl Client {
             envoi.contenu.clone(),
         ));
         self.televerser("/files", &parties).await
+    }
+
+    pub async fn envoyer_piece(
+        &self,
+        nom: &str,
+        type_mime: &str,
+        source: SourceEnvoi,
+        progres: Progression,
+    ) -> Result<Attachment, ErreurApi> {
+        let parties = if est_une_video(type_mime) {
+            vec![Partie::texte("kind", "video")]
+        } else {
+            Vec::new()
+        };
+        let envoi = Televersement {
+            parties,
+            nom: nom.to_string(),
+            type_mime: type_mime.to_string(),
+            source,
+        };
+        self.televerser_en_flux("/files", &envoi, progres).await
     }
 
     pub async fn definir_avatar(

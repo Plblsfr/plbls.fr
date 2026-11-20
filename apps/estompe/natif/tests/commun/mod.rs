@@ -204,7 +204,7 @@ pub mod coquille {
     };
     use estompe_natif::entree::Futur;
     use estompe_natif::messagerie::medias::{Medias, Progres, Source, SourceMedias};
-    use estompe_plateforme::Fichiers;
+    use estompe_plateforme::{ContenuPressePapiers, Fichiers, PressePapiers};
     use serde_json::{json, Value};
     use tokio::sync::{mpsc, watch};
 
@@ -801,6 +801,9 @@ pub mod coquille {
         messages: Mutex<BTreeMap<u64, Value>>,
         pub corps: Mutex<Vec<(String, String)>>,
         pub refus_d_envoi: Mutex<Option<u16>>,
+        pub refus_de_fichier: Mutex<Option<u16>>,
+        pub fichiers_bloques: Mutex<bool>,
+        pieces: Mutex<BTreeMap<String, Value>>,
         envoyes: AtomicUsize,
     }
 
@@ -853,6 +856,9 @@ pub mod coquille {
                 messages: Mutex::new(BTreeMap::new()),
                 corps: Mutex::new(Vec::new()),
                 refus_d_envoi: Mutex::new(None),
+                refus_de_fichier: Mutex::new(None),
+                fichiers_bloques: Mutex::new(false),
+                pieces: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -878,6 +884,16 @@ pub mod coquille {
                                 }
                             }
                         }
+                        if premiere.starts_with("POST /files ")
+                            && *s.fichiers_bloques.lock().unwrap()
+                        {
+                            use std::io::Read;
+                            s.requetes.lock().unwrap().push("POST /files bloqué".into());
+                            let mut tampon = vec![0u8; 64 * 1024];
+                            while matches!(lecteur.read(&mut tampon), Ok(n) if n > 0) {}
+                            s.requetes.lock().unwrap().push("FERMÉE /files".into());
+                            return;
+                        }
                         let mut octets = vec![0u8; longueur];
                         if longueur > 0 {
                             use std::io::Read;
@@ -886,6 +902,15 @@ pub mod coquille {
                             }
                         }
                         let corps_recu = String::from_utf8_lossy(&octets).into_owned();
+                        if premiere.starts_with("POST /files ") {
+                            let (statut, corps) = s.recevoir_fichier(&octets);
+                            let _ = write!(
+                                flux,
+                                "HTTP/1.1 {statut} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{corps}",
+                                corps.len()
+                            );
+                            return;
+                        }
                         let mut morceaux = premiere.split_whitespace();
                         let methode = morceaux.next().unwrap_or_default().to_string();
                         let chemin = morceaux.next().unwrap_or_default().to_string();
@@ -964,6 +989,82 @@ pub mod coquille {
                 .collect()
         }
 
+        fn recevoir_fichier(&self, octets: &[u8]) -> (u16, String) {
+            let corps = String::from_utf8_lossy(octets);
+            let position = |motif: &[u8], depuis: usize| {
+                octets[depuis..]
+                    .windows(motif.len())
+                    .position(|f| f == motif)
+                    .map(|p| p + depuis)
+            };
+            let debut = position(b"filename=", 0)
+                .and_then(|p| position(b"\r\n\r\n", p))
+                .map_or(0, |p| p + 4);
+            let fin = octets
+                .windows(4)
+                .rposition(|f| f == b"\r\n--")
+                .unwrap_or(octets.len());
+            let longueur = fin.saturating_sub(debut);
+            self.requetes.lock().unwrap().push("POST /files".into());
+            if let Some(statut) = *self.refus_de_fichier.lock().unwrap() {
+                return (
+                    statut,
+                    r#"{"error":"storage_full","message":"Stockage plein"}"#.into(),
+                );
+            }
+            let champ = |debut: &str, fin: &str| {
+                corps
+                    .split_once(debut)
+                    .and_then(|(_, reste)| reste.split_once(fin))
+                    .map(|(v, _)| v.to_string())
+                    .unwrap_or_default()
+            };
+            let mut pieces = self.pieces.lock().unwrap();
+            let id = format!("f{}", pieces.len() + 1);
+            let piece = json!({"id": id, "name": champ("filename=\"", "\""), "mime": champ("Content-Type: ", "\r\n"), "size": longueur, "kind": "file"});
+            pieces.insert(id, piece.clone());
+            (201, piece.to_string())
+        }
+
+        pub fn identifiants_envoyes(&self, requete: &str) -> Vec<Vec<String>> {
+            self.corps
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(r, _)| r == requete)
+                .map(|(_, c)| {
+                    serde_json::from_str::<Value>(c).unwrap()["file_ids"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|v| v.as_str().unwrap_or_default().to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                })
+                .collect()
+        }
+
+        pub fn nom_de_piece(&self, id: &str) -> String {
+            self.pieces.lock().unwrap()[id]["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        }
+
+        fn pieces_de(&self, recu: &Value) -> Value {
+            let pieces = self.pieces.lock().unwrap();
+            recu["file_ids"]
+                .as_array()
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| pieces.get(id.as_str()?).cloned())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into()
+        }
+
         fn repondre_avec(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
             if methode == "POST" && chemin == "/channels/c1/messages" {
                 self.requetes
@@ -978,6 +1079,7 @@ pub mod coquille {
                 let mut m = message_numero(n, 0);
                 m["author"] = json!({"id": "u1", "pseudo": "moi"});
                 m["content"] = recu["content"].clone();
+                m["attachments"] = self.pieces_de(&recu);
                 if let Some(r) = recu["reply_to"].as_str() {
                     m["reply_to"] = json!({"id": r, "author": {"id": "carol", "pseudo": "carol"}, "content": "cité"});
                 }
@@ -994,6 +1096,9 @@ pub mod coquille {
                 m["author"] = json!({"id": "u1", "pseudo": "moi"});
                 m["content"] = recu["content"].clone();
                 m["edited_at"] = json!("2026-11-19T12:00:00Z");
+                if recu.get("file_ids").is_some() {
+                    m["attachments"] = self.pieces_de(&recu);
+                }
                 return (200, m.to_string());
             }
             self.repondre(methode, chemin)
@@ -1065,6 +1170,7 @@ pub mod coquille {
         pub navigateur: Arc<super::FauxNavigateur>,
         pub medias: Arc<Medias>,
         pub fichiers: Arc<FauxFichiers>,
+        pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
     }
 
@@ -1072,6 +1178,26 @@ pub mod coquille {
     pub struct FauxFichiers {
         pub dossier: Mutex<Option<std::path::PathBuf>>,
         pub ouverts: Mutex<Vec<std::path::PathBuf>>,
+        pub choix: Mutex<Vec<std::path::PathBuf>>,
+    }
+
+    #[derive(Default)]
+    pub struct FauxPressePapiers {
+        pub contenu: Mutex<Option<ContenuPressePapiers>>,
+    }
+
+    impl PressePapiers for FauxPressePapiers {
+        fn disponible(&self) -> bool {
+            self.contenu.lock().unwrap().is_some()
+        }
+
+        fn copier_image(&self, _: &estompe_plateforme::Image) -> estompe_plateforme::Resultat<()> {
+            Ok(())
+        }
+
+        fn lire_pieces(&self) -> estompe_plateforme::Resultat<Option<ContenuPressePapiers>> {
+            Ok(self.contenu.lock().unwrap().clone())
+        }
     }
 
     impl Fichiers for FauxFichiers {
@@ -1084,6 +1210,13 @@ pub mod coquille {
             _: Option<&std::path::Path>,
         ) -> estompe_plateforme::Resultat<Option<std::path::PathBuf>> {
             Ok(self.dossier.lock().unwrap().clone())
+        }
+
+        fn choisir_fichiers(
+            &self,
+            _: Option<&std::path::Path>,
+        ) -> estompe_plateforme::Resultat<Vec<std::path::PathBuf>> {
+            Ok(std::mem::take(&mut *self.choix.lock().unwrap()))
         }
 
         fn ouvrir(&self, chemin: &std::path::Path) -> estompe_plateforme::Resultat<()> {
@@ -1135,6 +1268,7 @@ pub mod coquille {
                     None,
                 ),
                 fichiers: Arc::new(FauxFichiers::default()),
+                presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
@@ -1206,7 +1340,7 @@ pub mod coquille {
         }
 
         fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
-            Arc::new(estompe_plateforme::Indisponible)
+            self.presse_papiers.clone()
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

@@ -78,6 +78,8 @@ thread_local! {
     static PROPRIETAIRE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
+mod televersements;
+
 static IDENTIFIANTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 pub fn liberer_modele() {
@@ -1241,6 +1243,7 @@ impl PontMessagerie {
         };
         if let Some(message) = self.store.dernier_de_moi(&cle) {
             self.saisie.modifier(f, &message);
+            self.vignettes_d_edition(f);
         }
     }
 
@@ -1267,6 +1270,7 @@ impl PontMessagerie {
             .and_then(|c| c.message(id).cloned())
         {
             self.saisie.modifier(f, &message);
+            self.vignettes_d_edition(f);
         }
     }
 
@@ -1984,6 +1988,11 @@ impl PontMessagerie {
         }
         let g = f.global::<DonneesMessagerie>();
         let raison = self.raison_lecture_seule();
+        let joindre = self.pieces_possibles();
+        let s = f.global::<crate::DonneesSaisie>();
+        if s.get_joindre_possible() != joindre {
+            s.set_joindre_possible(joindre);
+        }
         let (fenetre, lignes_fenetre) = {
             let mut i = self.verrou();
             i.lecture_seule = raison.is_some();

@@ -8,6 +8,8 @@ pub const DUREE_MAXIMALE_VOCAL_MS: u64 = 5 * 60 * 1000;
 pub const MIMES_COMPRESSIBLES: [&str; 3] = ["image/jpeg", "image/png", "image/webp"];
 pub const MIMES_IMAGE: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 pub const MIMES_VIDEO: [&str; 2] = ["video/mp4", "video/webm"];
+pub const PIECES_PAR_MESSAGE: usize = 10;
+pub const MIME_PAR_DEFAUT: &str = "application/octet-stream";
 
 const SEUIL_DE_COMPRESSION: u64 = 300 * 1024;
 const LONGUEUR_MAXIMALE_DE_NOM: usize = 200;
@@ -92,6 +94,92 @@ pub fn verifier_taille(taille: u64) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limites {
+    pub fichier: u64,
+    pub video: u64,
+    pub nombre: usize,
+}
+
+impl Limites {
+    pub fn du_compte(max_video_size: Option<i64>) -> Self {
+        Self {
+            fichier: TAILLE_MAXIMALE,
+            video: max_video_size
+                .and_then(|v| u64::try_from(v).ok())
+                .filter(|v| *v > 0)
+                .unwrap_or(VIDEO_MAXIMALE_PAR_DEFAUT),
+            nombre: PIECES_PAR_MESSAGE,
+        }
+    }
+
+    pub fn taille_pour(&self, mime: &str) -> u64 {
+        if est_une_video(mime) {
+            self.video
+        } else {
+            self.fichier
+        }
+    }
+}
+
+impl Default for Limites {
+    fn default() -> Self {
+        Self::du_compte(None)
+    }
+}
+
+pub fn est_une_video(mime: &str) -> bool {
+    mime == "video/mp4"
+}
+
+pub fn type_mime_du_nom(nom: &str) -> &'static str {
+    let extension = nom
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mp3" => "audio/mpeg",
+        "ogg" | "opus" => "audio/ogg",
+        "m4a" => "audio/mp4",
+        "wav" => "audio/wav",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        "json" => "application/json",
+        "txt" | "md" | "log" => "text/plain",
+        _ => MIME_PAR_DEFAUT,
+    }
+}
+
+pub fn megaoctets(octets: u64) -> String {
+    format!("{} Mo", (octets + 524_288) / 1_048_576)
+}
+
+pub fn refus_de_piece(nom: &str, taille: u64, mime: &str, limites: &Limites) -> Option<String> {
+    let limite = limites.taille_pour(mime);
+    (taille > limite).then(|| {
+        let genre = if est_une_video(mime) {
+            "Vidéo trop grosse"
+        } else {
+            "Fichier trop gros"
+        };
+        format!(
+            "{genre} : « {nom} » fait {}, {} maximum.",
+            crate::format::taille_lisible(taille),
+            megaoctets(limite)
+        )
+    })
+}
+
+pub fn refus_du_nombre(deja: usize, limites: &Limites) -> Option<String> {
+    (deja >= limites.nombre).then(|| format!("{} fichiers maximum par message.", limites.nombre))
 }
 
 pub fn type_d_enregistrement(pris_en_charge: impl Fn(&str) -> bool) -> Option<TypeEnregistrement> {
@@ -358,6 +446,45 @@ mod tests {
         assert!(verifier_taille(10 * 1024 * 1024 + 1)
             .unwrap()
             .contains("10 Mo"));
+    }
+
+    #[test]
+    fn une_piece_au_dessus_de_la_limite_est_refusee_avec_la_limite() {
+        let limites = Limites::du_compte(Some(50 * 1024 * 1024));
+        assert_eq!(
+            refus_de_piece("a.bin", 10 * 1024 * 1024, MIME_PAR_DEFAUT, &limites),
+            None
+        );
+        assert_eq!(
+            refus_de_piece("gros.bin", 12 * 1024 * 1024, MIME_PAR_DEFAUT, &limites).as_deref(),
+            Some("Fichier trop gros : « gros.bin » fait 12.0 Mo, 10 Mo maximum.")
+        );
+        assert_eq!(
+            refus_de_piece("clip.mp4", 40 * 1024 * 1024, "video/mp4", &limites),
+            None
+        );
+        assert!(
+            refus_de_piece("clip.mp4", 60 * 1024 * 1024, "video/mp4", &limites)
+                .unwrap()
+                .starts_with("Vidéo trop grosse")
+        );
+        assert_eq!(Limites::du_compte(None).video, VIDEO_MAXIMALE_PAR_DEFAUT);
+        assert_eq!(Limites::du_compte(Some(0)).video, VIDEO_MAXIMALE_PAR_DEFAUT);
+        assert_eq!(refus_du_nombre(9, &limites), None);
+        assert_eq!(
+            refus_du_nombre(10, &limites).as_deref(),
+            Some("10 fichiers maximum par message.")
+        );
+    }
+
+    #[test]
+    fn le_type_d_une_piece_vient_de_son_extension() {
+        assert_eq!(type_mime_du_nom("Photo.JPG"), "image/jpeg");
+        assert_eq!(type_mime_du_nom("capture.png"), "image/png");
+        assert_eq!(type_mime_du_nom("clip.mp4"), "video/mp4");
+        assert_eq!(type_mime_du_nom("sans"), MIME_PAR_DEFAUT);
+        assert_eq!(type_mime_du_nom("archive.tar.inconnu"), MIME_PAR_DEFAUT);
+        assert!(est_une_video("video/mp4") && !est_une_video("video/webm"));
     }
 
     #[test]

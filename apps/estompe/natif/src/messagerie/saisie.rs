@@ -1,17 +1,31 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use estompe_client::autocompletion::{Autocompletion, GenreProposition, Proposition};
 use estompe_client::brouillons::Brouillons;
+use estompe_client::format::taille_lisible;
 use estompe_client::markdown::{analyser, texte_brut};
 use estompe_client::mention::Mentionnables;
+use estompe_client::pieces::{EtatPiece, ListePieces, Piece};
 use estompe_client::store::messages::{compteur, id_message, Brouillon};
 use estompe_client::store::{CleConversation, Store};
+use estompe_client::televersement::SourceEnvoi;
 use estompe_client::types::Message;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model};
 
-use crate::{BandeauSaisie, DonneesSaisie, GenreBandeau, Principale, PropositionSaisie};
+use crate::{
+    BandeauSaisie, DonneesSaisie, GenreBandeau, PieceSaisie, Principale, PropositionSaisie,
+};
+
+pub type Vignette = slint::SharedPixelBuffer<slint::Rgba8Pixel>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourcePiece {
+    pub nom: String,
+    pub type_mime: String,
+    pub source: SourceEnvoi,
+}
 
 pub const DELAI_ENREGISTREMENT: Duration = Duration::from_millis(300);
 pub const LONGUEUR_APERCU: usize = 80;
@@ -28,6 +42,7 @@ pub enum Mode {
     Modification {
         id: String,
         texte: String,
+        pieces: Vec<String>,
     },
 }
 
@@ -41,11 +56,18 @@ pub struct Affichage {
     pub erreur: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Envoyer(CleConversation, Brouillon),
-    Modifier { id: String, contenu: String },
-    Supprimer { cle: CleConversation, id: String },
+    Modifier {
+        id: String,
+        contenu: String,
+        fichiers: Option<Vec<String>>,
+    },
+    Supprimer {
+        cle: CleConversation,
+        id: String,
+    },
 }
 
 pub fn apercu(contenu: &str) -> String {
@@ -78,6 +100,9 @@ pub struct EtatSaisie {
     pub curseur: usize,
     pub auto: Option<Autocompletion>,
     pub choisie: usize,
+    pub pieces: HashMap<CleConversation, ListePieces>,
+    pub edition: ListePieces,
+    pub prochaine_piece: u64,
 }
 
 impl EtatSaisie {
@@ -116,6 +141,7 @@ impl EtatSaisie {
             .unwrap_or_default();
         self.cle = cle;
         self.mode = Mode::Normal;
+        self.edition = ListePieces::default();
         self.indice = indice;
         self.erreur.clear();
     }
@@ -141,34 +167,56 @@ impl EtatSaisie {
         let cle = self.cle.clone()?;
         self.texte = texte.to_string();
         let contenu = texte.trim().to_string();
+        let modification = matches!(self.mode, Mode::Modification { .. });
+        let liste = if modification {
+            Some(&self.edition)
+        } else {
+            self.pieces.get(&cle)
+        };
+        let sans_piece = liste.is_none_or(ListePieces::est_vide);
+        if contenu.is_empty() && sans_piece {
+            return None;
+        }
+        if let Some(bloquant) = liste.and_then(ListePieces::bloquant) {
+            self.erreur = bloquant.to_string();
+            return None;
+        }
         let action = match std::mem::take(&mut self.mode) {
-            Mode::Modification { id, texte: avant } => {
-                if contenu.is_empty() {
-                    self.mode = Mode::Modification { id, texte: avant };
-                    return None;
-                }
+            Mode::Modification {
+                id,
+                texte: avant,
+                pieces: avant_pieces,
+            } => {
+                let pieces = std::mem::take(&mut self.edition).identifiants();
                 self.texte = brouillons.texte(&cle.to_string()).to_string();
-                if contenu == avant.trim() {
+                let fichiers = (pieces != avant_pieces).then_some(pieces);
+                if contenu == avant.trim() && fichiers.is_none() {
                     return None;
                 }
-                Action::Modifier { id, contenu }
+                Action::Modifier {
+                    id,
+                    contenu,
+                    fichiers,
+                }
             }
             mode => {
-                if contenu.is_empty() {
-                    self.mode = mode;
-                    return None;
-                }
                 let reponse_a = match mode {
                     Mode::Reponse { id, .. } => Some(id),
                     _ => None,
                 };
                 self.texte.clear();
                 brouillons.effacer(&cle.to_string());
+                let pieces = self
+                    .pieces
+                    .remove(&cle)
+                    .map(|l| l.pieces_jointes())
+                    .unwrap_or_default();
                 Action::Envoyer(
                     cle,
                     Brouillon {
                         contenu,
                         reponse_a,
+                        pieces,
                         ..Brouillon::default()
                     },
                 )
@@ -176,6 +224,39 @@ impl EtatSaisie {
         };
         self.erreur.clear();
         Some(action)
+    }
+
+    pub fn liste_courante(&mut self) -> Option<&mut ListePieces> {
+        if matches!(self.mode, Mode::Modification { .. }) {
+            return Some(&mut self.edition);
+        }
+        let cle = self.cle.clone()?;
+        Some(self.pieces.entry(cle).or_default())
+    }
+
+    pub fn pieces_courantes(&self) -> Option<&ListePieces> {
+        if matches!(self.mode, Mode::Modification { .. }) {
+            return Some(&self.edition);
+        }
+        self.pieces.get(self.cle.as_ref()?)
+    }
+
+    pub fn liste_de(&mut self, piece: u64) -> Option<&mut ListePieces> {
+        std::iter::once(&mut self.edition)
+            .chain(self.pieces.values_mut())
+            .find(|l| l.pieces.iter().any(|p| p.cle == piece))
+    }
+
+    pub fn cles_des_pieces(&self) -> HashSet<u64> {
+        std::iter::once(&self.edition)
+            .chain(self.pieces.values())
+            .flat_map(|l| l.pieces.iter().map(|p| p.cle))
+            .collect()
+    }
+
+    pub fn nouvelle_piece(&mut self) -> u64 {
+        self.prochaine_piece += 1;
+        self.prochaine_piece
     }
 
     pub fn repondre(&mut self, message: &Message) {
@@ -186,6 +267,7 @@ impl EtatSaisie {
             .unwrap_or_default();
         if matches!(self.mode, Mode::Modification { .. }) {
             self.texte.clear();
+            self.edition = ListePieces::default();
         }
         self.mode = Mode::Reponse {
             id: id_message(message).to_string(),
@@ -197,9 +279,17 @@ impl EtatSaisie {
     pub fn modifier(&mut self, brouillons: &mut Brouillons, message: &Message) {
         self.quitter(brouillons);
         let texte = message.content.clone().unwrap_or_default();
+        let pieces = message.attachments.clone().unwrap_or_default();
+        let mut prochaine = self.prochaine_piece;
+        self.edition = ListePieces::depuis(&pieces, || {
+            prochaine += 1;
+            prochaine
+        });
+        self.prochaine_piece = prochaine;
         self.mode = Mode::Modification {
             id: id_message(message).to_string(),
             texte: texte.clone(),
+            pieces: self.edition.identifiants(),
         };
         self.texte = texte;
         self.erreur.clear();
@@ -236,6 +326,7 @@ impl EtatSaisie {
             Mode::Normal => false,
             Mode::Reponse { .. } => true,
             Mode::Modification { .. } => {
+                self.edition = ListePieces::default();
                 self.texte = self
                     .cle
                     .as_ref()
@@ -252,6 +343,9 @@ pub struct Saisie {
     etat: Arc<Mutex<EtatSaisie>>,
     brouillons: Arc<Mutex<Brouillons>>,
     enregistrement: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    televersements: Arc<Mutex<HashMap<u64, tokio::task::JoinHandle<()>>>>,
+    vignettes: Arc<Mutex<HashMap<u64, Vignette>>>,
+    sources: Arc<Mutex<HashMap<u64, SourcePiece>>>,
 }
 
 impl Default for Saisie {
@@ -267,6 +361,47 @@ fn genre_slint(genre: GenreProposition) -> crate::GenreProposition {
         GenreProposition::Role => crate::GenreProposition::Role,
         GenreProposition::Salon => crate::GenreProposition::Salon,
         GenreProposition::Emoji | GenreProposition::EmojiServeur => crate::GenreProposition::Emoji,
+    }
+}
+
+pub fn detail_de_piece(piece: &Piece) -> String {
+    match &piece.etat {
+        EtatPiece::Preparation => "préparation…".to_string(),
+        EtatPiece::Envoi { envoyes, total } => {
+            format!(
+                "envoi… {} %",
+                (envoyes * 100).checked_div(*total).unwrap_or(0)
+            )
+        }
+        EtatPiece::Envoyee(_) => taille_lisible(piece.taille),
+        EtatPiece::Echec(raison) => format!("échec : {raison}"),
+    }
+}
+
+fn piece_slint(piece: &Piece, vignette: Option<&Vignette>) -> PieceSaisie {
+    let (progression, en_cours) = match &piece.etat {
+        EtatPiece::Preparation => (0.0, true),
+        EtatPiece::Envoi { envoyes, total } => (
+            if *total == 0 {
+                1.0
+            } else {
+                *envoyes as f32 / *total as f32
+            },
+            true,
+        ),
+        _ => (1.0, false),
+    };
+    PieceSaisie {
+        cle: piece.cle.min(i32::MAX as u64) as i32,
+        nom: piece.nom.as_str().into(),
+        detail: detail_de_piece(piece).into(),
+        vignette: vignette
+            .map(|v| slint::Image::from_rgba8(v.clone()))
+            .unwrap_or_default(),
+        a_vignette: vignette.is_some(),
+        progression,
+        en_cours,
+        echec: matches!(piece.etat, EtatPiece::Echec(_)),
     }
 }
 
@@ -292,6 +427,113 @@ impl Saisie {
             etat: Arc::new(Mutex::new(EtatSaisie::default())),
             brouillons: Arc::new(Mutex::new(brouillons)),
             enregistrement: Arc::new(Mutex::new(None)),
+            televersements: Arc::new(Mutex::new(HashMap::new())),
+            vignettes: Arc::new(Mutex::new(HashMap::new())),
+            sources: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn avec_etat<R>(&self, f: impl FnOnce(&mut EtatSaisie) -> R) -> R {
+        f(&mut self.etat())
+    }
+
+    pub fn noter_televersement(&self, piece: u64, tache: tokio::task::JoinHandle<()>) {
+        let ancienne = self
+            .televersements
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(piece, tache);
+        if let Some(ancienne) = ancienne {
+            ancienne.abort();
+        }
+    }
+
+    pub fn televersements_en_cours(&self) -> usize {
+        self.televersements
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .filter(|t| !t.is_finished())
+            .count()
+    }
+
+    pub fn definir_source(&self, piece: u64, source: SourcePiece) {
+        self.sources
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(piece, source);
+    }
+
+    pub fn source(&self, piece: u64) -> Option<SourcePiece> {
+        self.sources
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&piece)
+            .cloned()
+    }
+
+    pub fn definir_vignette(&self, piece: u64, vignette: Vignette) {
+        self.vignettes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(piece, vignette);
+    }
+
+    pub fn nettoyer_pieces(&self) {
+        let presentes = self.etat().cles_des_pieces();
+        self.televersements
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|cle, tache| {
+                let garder = presentes.contains(cle);
+                if !garder {
+                    tache.abort();
+                }
+                garder && !tache.is_finished()
+            });
+        self.vignettes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|cle, _| presentes.contains(cle));
+        self.sources
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|cle, _| presentes.contains(cle));
+    }
+
+    pub fn afficher_pieces(&self, f: &Principale) {
+        self.nettoyer_pieces();
+        let lignes: Vec<PieceSaisie> = {
+            let etat = self.etat();
+            let vignettes = self.vignettes.lock().unwrap_or_else(|e| e.into_inner());
+            etat.pieces_courantes()
+                .map(|l| {
+                    l.pieces
+                        .iter()
+                        .map(|p| piece_slint(p, vignettes.get(&p.cle)))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let g = f.global::<DonneesSaisie>();
+        let modele = g.get_pieces();
+        let Some(vec) = modele
+            .as_any()
+            .downcast_ref::<slint::VecModel<PieceSaisie>>()
+        else {
+            g.set_pieces(slint::ModelRc::new(slint::VecModel::from(lignes)));
+            return;
+        };
+        let memes =
+            vec.row_count() == lignes.len() && vec.iter().zip(&lignes).all(|(a, b)| a.cle == b.cle);
+        if !memes {
+            vec.set_vec(lignes);
+            return;
+        }
+        for (i, ligne) in lignes.into_iter().enumerate() {
+            if vec.row_data(i).as_ref() != Some(&ligne) {
+                vec.set_row_data(i, ligne);
+            }
         }
     }
 
@@ -334,6 +576,7 @@ impl Saisie {
         g.set_compteur(a.compteur.as_str().into());
         g.set_compteur_alerte(a.alerte);
         g.set_erreur(a.erreur.as_str().into());
+        self.afficher_pieces(f);
     }
 
     pub fn demander_focus(&self, f: &Principale) {
@@ -538,8 +781,12 @@ pub fn executer(
                 store.envoyer(&cle, brouillon).await;
                 Ok(())
             }
-            Action::Modifier { id, contenu } => store
-                .modifier_message(&id, &contenu, None)
+            Action::Modifier {
+                id,
+                contenu,
+                fichiers,
+            } => store
+                .modifier_message(&id, &contenu, fichiers)
                 .await
                 .map_err(|e| format!("Modification impossible : {}", e.message())),
             Action::Supprimer { cle, id } => store
@@ -631,7 +878,8 @@ mod tests {
             action,
             Action::Modifier {
                 id: "3".into(),
-                contenu: "nouveau".into()
+                contenu: "nouveau".into(),
+                fichiers: None
             }
         );
         assert_eq!(e.texte, "brouillon en cours");
@@ -644,6 +892,65 @@ mod tests {
         e.modifier(&mut b, &message("3", "me", "ancien"));
         assert!(e.annuler(&b));
         assert_eq!(e.texte, "brouillon en cours");
+    }
+
+    fn jointe(id: &str) -> estompe_client::types::Attachment {
+        estompe_client::types::Attachment {
+            id: Some(id.into()),
+            name: Some(format!("{id}.txt")),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn les_pieces_partent_avec_le_message_une_fois_envoyees() {
+        let mut b = Brouillons::en_memoire();
+        let mut e = EtatSaisie::default();
+        let limites = estompe_client::fichiers::Limites::default();
+        e.ouvrir(&mut b, Some(c("1")), String::new());
+        let cle = e.nouvelle_piece();
+        e.liste_courante()
+            .unwrap()
+            .ajouter(cle, "a.txt", &limites)
+            .unwrap();
+        assert_eq!(e.envoyer(&mut b, ""), None);
+        assert_eq!(e.erreur, estompe_client::pieces::ATTENDRE_LES_FICHIERS);
+        e.ouvrir(&mut b, Some(c("2")), String::new());
+        assert!(e.pieces_courantes().is_none());
+        e.liste_de(cle).unwrap().terminer(cle, Ok(jointe("f1")));
+        e.ouvrir(&mut b, Some(c("1")), String::new());
+        let Some(Action::Envoyer(_, brouillon)) = e.envoyer(&mut b, "") else {
+            panic!("envoi avec la seule pièce jointe attendu");
+        };
+        assert_eq!(brouillon.requete().file_ids, ["f1"]);
+        assert!(e.pieces_courantes().is_none());
+        assert!(e.cles_des_pieces().is_empty());
+    }
+
+    #[test]
+    fn modifier_les_pieces_d_un_message_envoie_la_liste_finale() {
+        let mut b = Brouillons::en_memoire();
+        let mut e = EtatSaisie::default();
+        e.ouvrir(&mut b, Some(c("1")), String::new());
+        let mut m = message("3", "me", "texte");
+        m.attachments = Some(vec![jointe("f1"), jointe("f2")]);
+        e.modifier(&mut b, &m);
+        assert_eq!(e.pieces_courantes().unwrap().identifiants(), ["f1", "f2"]);
+        assert_eq!(e.envoyer(&mut b, "texte"), None, "rien n'a changé");
+        e.modifier(&mut b, &m);
+        let premiere = e.edition.pieces[0].cle;
+        e.liste_de(premiere).unwrap().retirer(premiere);
+        assert_eq!(
+            e.envoyer(&mut b, "texte"),
+            Some(Action::Modifier {
+                id: "3".into(),
+                contenu: "texte".into(),
+                fichiers: Some(vec!["f2".into()])
+            })
+        );
+        e.modifier(&mut b, &m);
+        assert!(e.annuler(&b));
+        assert!(e.edition.est_vide());
     }
 
     #[test]

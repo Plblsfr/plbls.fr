@@ -121,6 +121,9 @@ const ECRANS: &[Ecran] = ecrans![
     "saisie-non-envoye-sombre", Sombre, saisie_non_envoye;
     "saisie-mentions-clair", Clair, saisie_mentions;
     "saisie-mentions-sombre", Sombre, saisie_mentions;
+    "saisie-pieces-clair", Clair, saisie_pieces;
+    "saisie-pieces-sombre", Sombre, saisie_pieces;
+    "saisie-depot-clair", Clair, saisie_depot;
     "selecteur-emoji-clair", Clair, selecteur_emoji;
     "selecteur-emoji-sombre", Sombre, selecteur_emoji;
     "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
@@ -1186,6 +1189,58 @@ fn saisie_mentions(f: &Principale) {
     let texte = "On se retrouve ce soir avec @e";
     pont.messagerie().saisie().placer(f, texte, texte.len());
     pont.messagerie().saisie_modifiee(f, texte);
+    stabiliser(f);
+}
+
+fn saisie_pieces(f: &Principale) {
+    let pont = saisie_courte(f);
+    let saisie = pont.messagerie().saisie();
+    let limites = estompe_client::fichiers::Limites::default();
+    let cles = saisie.avec_etat(|e| {
+        let cles: Vec<u64> = (0..3).map(|_| e.nouvelle_piece()).collect();
+        let liste = e.liste_courante().unwrap();
+        for (cle, nom) in cles
+            .iter()
+            .zip(["photo.png", "rapport-annuel.pdf", "archive.zip"])
+        {
+            liste.ajouter(*cle, nom, &limites).unwrap();
+        }
+        liste.terminer(
+            cles[0],
+            Ok(estompe_client::types::Attachment {
+                id: Some("f1".into()),
+                name: Some("photo.png".into()),
+                size: Some(48_213),
+                ..Default::default()
+            }),
+        );
+        liste.progression(cles[1], 420_000, 1_000_000);
+        liste.terminer(cles[2], Err("Stockage plein".into()));
+        cles
+    });
+    let image = image::load_from_memory(&commun::coquille::png([200, 40, 90])).unwrap();
+    let reduite = estompe_natif::messagerie::medias::reduire(
+        image,
+        estompe_natif::messagerie::medias::Format::Piece,
+    );
+    saisie.definir_vignette(
+        cles[0],
+        slint::SharedPixelBuffer::clone_from_slice(
+            reduite.as_raw(),
+            reduite.width(),
+            reduite.height(),
+        ),
+    );
+    let texte = "Les documents de samedi";
+    saisie.placer(f, texte, texte.len());
+    pont.messagerie().saisie_modifiee(f, texte);
+    saisie.afficher_pieces(f);
+    stabiliser(f);
+}
+
+fn saisie_depot(f: &Principale) {
+    let _pont = saisie_courte(f);
+    f.global::<DonneesSaisie>().set_depot_survole(true);
     stabiliser(f);
 }
 

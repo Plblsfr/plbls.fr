@@ -14,9 +14,9 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use traits::{
-    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, Fichiers, Image,
-    Notification, Notifications, OuvertureUrl, Overlay, PremierPlan, PressePapiers,
-    RaccourcisGlobaux, RecepteurSon, SourceCapture, TypeSource,
+    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, ContenuPressePapiers,
+    DemarrageSession, Fichiers, Image, Notification, Notifications, OuvertureUrl, Overlay,
+    PremierPlan, PressePapiers, RaccourcisGlobaux, RecepteurSon, SourceCapture, TypeSource,
 };
 pub use url::NavigateurSysteme;
 
@@ -151,6 +151,14 @@ mod tests {
         ));
         assert!(matches!(
             p.presse_papiers.copier_image(&Image::default()),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.fichiers.choisir_fichiers(None),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.presse_papiers.lire_pieces(),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(p.coffre.lire("cle"), Err(Erreur::Indisponible(_))));
