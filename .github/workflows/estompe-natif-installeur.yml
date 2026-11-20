@@ -18,6 +18,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: x86_64-pc-windows-msvc
+      - name: ninja (Skia compilé depuis ses sources en CRT statique, voir docs/estompe/natif.md)
+        run: python -m pip install --disable-pip-version-check ninja==1.13.0
       - name: Build release
         working-directory: apps/estompe/natif
         run: cargo build --release --locked --target x86_64-pc-windows-msvc

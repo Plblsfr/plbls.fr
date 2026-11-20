@@ -313,6 +313,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ESTOMPE_COFFRE_EXIGE: 1
+      CXX: clang++-21
+      ESTOMPE_LIVEKIT_URL: ws://127.0.0.1:7880
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -322,7 +324,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev
+      - name: clang 21 (libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium)
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list >/dev/null
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang-21
+      - name: Serveur LiveKit de dev (test d'intégration du vocal)
+        run: docker compose -f deploy/docker-compose.dev.yml up -d livekit
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
@@ -361,6 +370,7 @@ jobs:
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
   # Cible Windows MSVC (imposée par le SDK Rust LiveKit du lot vocal) : build et tests sur un runner Windows.
+  # CRT statique (apps/estompe/natif/.cargo/config.toml) : Skia n'a pas de binaires précompilés pour lui et se compile depuis ses sources.
   # Les captures de rendu ne sont comparées que sous Linux.
   estompe-natif-windows:
     needs: changements
@@ -376,6 +386,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: x86_64-pc-windows-msvc
+      - name: ninja (Skia compilé depuis ses sources en CRT statique, voir docs/estompe/natif.md)
+        run: python -m pip install --disable-pip-version-check ninja==1.13.0
       - id: cargo
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

@@ -87,6 +87,10 @@ estompe-natif-emoji DOSSIER="":
 estompe-natif-volume:
     cd apps/estompe/natif && ESTOMPE_VOLUME=long cargo test --locked --test messagerie_volume -- --nocapture
 
+# Test d'intégration du vocal contre le LiveKit de dev-up (docker compose -f deploy/docker-compose.dev.yml up -d --wait livekit)
+estompe-natif-vocal:
+    cd apps/estompe/natif && ESTOMPE_LIVEKIT_URL=ws://127.0.0.1:7880 cargo test --locked -p estompe-client --features livekit --test livekit -- --nocapture
+
 # Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
 estompe-natif-captures:
     cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures
@@ -111,7 +115,7 @@ build-ui:
     npm ci && npm run build --workspace packages/ui
 
 # Dépendances de dev de tous les projets, éphémères (deploy/docker-compose.dev.yml) : Postgres :5432 (postgres/postgres, une base
-# par backend), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081. Variables des backends : deploy/dev.env
+# par backend), Redis :6379, Keycloak :8180, Mailpit :8025/:1025, écho :8081, LiveKit :7880. Variables des backends : deploy/dev.env
 dev-up:
     docker compose -f deploy/docker-compose.dev.yml up -d --wait
 
