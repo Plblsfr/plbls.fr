@@ -146,7 +146,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `components/SettingsModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | réglages : compte, apparence, vocal, caméra, raccourcis, pages de la plateforme |
+| `components/SettingsModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | réglages : compte, apparence, vocal, caméra, raccourcis, pages de la plateforme ; logique de l'onglet vocal prête sans interface (bruit, gain, détection de voix et seuil, test du micro : `ReglagesMicro`, `EssaiMicro`, #327) |
 | `components/SettingsDebug.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | journal de débogage ; le journal lui-même vient de #291 |
 | `components/ProfileModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | carte en lecture depuis la liste des membres (#297) : bannière, avatar et présence, pseudo de serveur et d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée ; boutons « Envoyer un message » et « Modifier mon profil » marqués « bientôt » ; pas encore : modification des rôles, bannière, modération, historique, temps en vocal, statistiques de Sablier |
 | `components/ServerSettingsModal.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent | réglages d'un serveur |
@@ -200,7 +200,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `blocks/signalements/` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent |  |
 | `blocks/transcription/` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | transcription des messages vocaux, sans composant propre |
 | `blocks/videos/` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
-| `blocks/vocal/` | 5 | [#277](https://github.com/Plblsfr/plbls.fr/issues/277) | en cours | socle sans interface : SDK Rust LiveKit (#324), périphériques audio avec repli et changement à chaud (#325), session vocale (rejoindre, quitter, déplacer, micro et casque, coupures imposées, reconnexion, sortie à la fermeture, #326) dans `apps/estompe/crates/client/src/vocal/` ; restent l'interface, la chaîne du micro, l'écoute par participant et l'appuyer pour parler (lot 4), caméra et partage (lot 5) |
+| `blocks/vocal/` | 5 | [#277](https://github.com/Plblsfr/plbls.fr/issues/277) | en cours | socle sans interface : SDK Rust LiveKit (#324), périphériques audio avec repli et changement à chaud (#325), session vocale (rejoindre, quitter, déplacer, micro et casque, coupures imposées, reconnexion, sortie à la fermeture, #326) dans `apps/estompe/crates/client/src/vocal/` ; chaîne du micro (gain, bruit `aucun`/`standard`/`renforce` avec APM de WebRTC et `nnnoiseless`, détection de voix, test du micro, #327, `apps/estompe/crates/client/src/audio/micro.rs`) et écoute (volume et muet par participant et pour le son du partage, volume général, limiteur, #328, `vocal/mixage.rs`), réglages retenus dans les préférences ; restent l'interface, l'appuyer pour parler (lot 4), caméra et partage (lot 5) |
 
 ### Composants des blocs
 
@@ -235,8 +235,8 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `blocks/videos/SoloDock.svelte` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
 | `blocks/videos/SoloMini.svelte` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
 | `blocks/vocal/VoiceChannelView.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | salon vocal ; scène vidéo au lot 5 |
-| `blocks/vocal/VoiceControls.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | en cours | micro, casque et raccrocher dans la session vocale (`SessionVocale::basculer_micro`, `basculer_casque`, `quitter`, #326) ; boutons avec l'interface du salon vocal (#329), caméra et partage au lot 5 |
-| `blocks/vocal/StageTile.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | tuile d'un participant ; flux caméra et écran au lot 5 |
+| `blocks/vocal/VoiceControls.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | en cours | micro, casque et raccrocher dans la session vocale (`SessionVocale::basculer_micro`, `basculer_casque`, `quitter`, #326) ; jauge du micro et « tu parles micro coupé » prêts (`SessionVocale::niveau_micro`, #327) ; boutons avec l'interface du salon vocal (#329), caméra et partage au lot 5 |
+| `blocks/vocal/StageTile.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | tuile d'un participant ; volume et muet « pour moi » prêts dans la session (`definir_volume`, `definir_muet`, #328) ; flux caméra et écran au lot 5 |
 
 ## Sections
 

@@ -366,8 +366,9 @@ deux moteurs et sur les deux OS :
 
 ## Vocal
 
-Socle sans interface du lot 4 ([#276](https://github.com/Plblsfr/plbls.fr/issues/276)) : SDK Rust LiveKit, périphériques audio et session vocale.
-L'interface du salon vocal, la chaîne du micro (suppression de bruit, gain, détection de voix), l'écoute par participant et l'appuyer pour parler arrivent avec la suite du lot.
+Socle sans interface du lot 4 ([#276](https://github.com/Plblsfr/plbls.fr/issues/276)) : SDK Rust LiveKit, périphériques audio, session vocale,
+chaîne du micro (gain, suppression de bruit, annulation d'écho, détection de voix, test du micro) et écoute (volume et muet par participant, volume général, limiteur).
+L'interface du salon vocal et l'appuyer pour parler arrivent avec la suite du lot.
 
 ### Emplacement et décision
 
@@ -380,41 +381,77 @@ Le reste du module (état, session, mixage, faux serveur) compile et se teste sa
 | `crates/plateforme/src/audio.rs` | `AudioSysteme` (trait `SystemeAudio`) : liste des entrées et sorties, périphérique par défaut, ouverture d'un flux d'entrée ou de sortie en `f32` entrelacé ; débranchement signalé par `ErreurFluxAudio::Debranche` |
 | `crates/client/src/audio/format.rs` | format de LiveKit (48 kHz mono, trames de 10 ms, 480 échantillons `i16`) : passage en mono, rééchantillonnage linéaire sans dérive (pas entiers), découpe en trames (`ConversionEntree`), conversion vers la sortie (`ConversionSortie`), tampon de lecture amorcé et borné (`TamponLecture`) |
 | `crates/client/src/audio/peripheriques.rs` | `Capture` et `Lecture` : périphérique choisi, sinon celui par défaut ; changement à chaud (`choisir`) ; `surveiller` bascule sur celui par défaut quand le choisi est débranché et y revient quand il réapparaît (`Bascule`) |
+| `crates/client/src/audio/micro.rs` | chaîne du micro, pure et sans allocation dans la boucle audio : `ReglagesMicro` (bruit, gain, détection de voix, seuil), `ChaineMicro`, `DetectionVoix`, `niveau_db` (équivalent de `rmsDb`), `MesureMicro` (niveau lu par l'interface), `Apm` (traitement de WebRTC partagé entre micro et sortie) |
+| `crates/client/src/audio/essai.rs` | `EssaiMicro` : test du micro hors appel (niveau en direct, retour de sa voix traitée) |
 | `crates/client/src/audio/factice.rs` | `SystemeFactice` : périphériques factices pilotés par les tests (`brancher`, `debrancher`, `pousser`, `tirer`) |
 | `crates/client/src/vocal/salle.rs` | traits `Connecteur`, `Salle`, `SortieMicro` et `EvenementSalle` : ce que la session attend d'une salle, LiveKit ou fausse |
-| `crates/client/src/vocal/livekit.rs` | `ConnecteurLiveKit` (feature `livekit`) : connexion, attributs, publication du micro (`NativeAudioSource`), réception des pistes audio (`NativeAudioStream`), traduction des évènements |
+| `crates/client/src/vocal/livekit.rs` | `ConnecteurLiveKit` (feature `livekit`) : connexion, attributs, publication du micro (`NativeAudioSource`), réception des pistes audio (`NativeAudioStream`), traduction des évènements ; `apm()` : `AudioProcessingModule` de WebRTC (écho, gain automatique, passe-haut, bruit) |
 | `crates/client/src/vocal/etat.rs` | `EtatVocal`, pur : phase, salon, micro et casque coupés, coupures imposées, porte du micro, micro indisponible, participants (attributs, qualité), qui parle ; `etats_affiches` (équivalent de `voiceStates`) |
 | `crates/client/src/vocal/session.rs` | `SessionVocale` : acteur sur un runtime tokio, commandes, reconnexion, audio |
-| `crates/client/src/vocal/mixage.rs` | `Mixeur` : une file par participant et par source (micro, son du partage), gain de 0 à 300 %, sourdine globale, écrêtage |
+| `crates/client/src/vocal/mixage.rs` | `Ecoute` (volumes et muets par participant, voix et son du partage à part, volume général ; équivalent de `gainOf`), `Limiteur`, `Mixeur` : une file par participant et par source, gain précalculé, sourdine, référence d'écho |
 | `crates/client/src/vocal/erreurs.rs` | `ErreurVocal` (salon plein, droit manquant…) et `CauseMicro` (équivalents de `micCause` et `micError`) |
 | `crates/client/src/vocal/factice.rs` | `ServeurVocalFactice` (connecteur et salles en mémoire, coupure du réseau, exclusion) et `ApiVocaleFactice` |
 
 ### Session vocale
 
-`SessionVocale::demarrer(runtime, Dependances { api, connecteur, audio, reglages })` lance un acteur sur le runtime donné (dans l'app : celui de l'entrée,
+`SessionVocale::demarrer(runtime, Dependances { api, connecteur, audio, apm, reglages })` lance un acteur sur le runtime donné (dans l'app : celui de l'entrée,
 `Application::vocal`). Commandes : `rejoindre`, `deplacer` (sans coupure : l'ancienne salle n'est quittée qu'une fois la nouvelle connectée), `deplace_par_moderation(de, vers)`
 (évènement `voice.moved`, accepté si l'on est dans `de` ou si on l'a quitté depuis moins de 5 s), `quitter`, `basculer_micro`, `basculer_casque`, `imposer(micro, son)`
-(`mic_off`, `sound_off` d'un modérateur), `definir_porte(ouverte)` (appuyer pour parler, détection de voix), `choisir_micro`, `choisir_sortie`, `definir_volume(identité, source, gain)`,
-`definir_traitement(Box<dyn TraitementMicro>)` (chaîne du micro), `fermer().await` ou `fermer_bloquant(délai)` (sortie propre, appelée par `main` après la boucle de la fenêtre).
-L'état se lit par `etat()` (`watch` de `EtatVocal`) ; `abonner_avis()` donne les `AvisVocal` (rejoint, quitté, arrivée, départ, déplacé, bascule de périphérique).
+(`mic_off`, `sound_off` d'un modérateur), `definir_porte(ouverte)` (appuyer pour parler ; la détection de voix est dans la chaîne du micro), `choisir_micro`, `choisir_sortie`,
+`definir_traitement(ReglagesMicro)`, `definir_volume(identité, source, pourcent)`, `definir_muet(identité, source, muet)`, `definir_volume_general(pourcent)`, `fermer().await` ou `fermer_bloquant(délai)` (sortie propre, appelée par `main` après la boucle de la fenêtre).
+L'état se lit par `etat()` (`watch` de `EtatVocal`, qui porte aussi `traitement` et `ecoute`) ; `niveau_micro()` lit sans attendre le niveau du micro et la voix détectée ; `abonner_avis()` donne les `AvisVocal` (rejoint, quitté, arrivée, départ, déplacé, bascule de périphérique).
 
 - Un seul vocal à la fois : l'identité LiveKit est l'utilisateur ; rejoindre ailleurs (app Tauri, web) déconnecte avec `DuplicateIdentity`, la session revient à « inactif » sans se reconnecter.
 - Jeton : `Client::jeton_vocal` (`POST /voice/{salon}/token`) ; `voice_full`, 403, `not_voice_channel`, 502 deviennent un message (`ErreurVocal::message`), la session reste inactive.
-- Micro : `Capture` → trames de 10 ms → `TraitementMicro` éventuel → `SortieMicro` (piste `microphone`, DTX et RED) seulement si `EtatVocal::micro_emet()` ; sinon la piste est coupée (`mute`).
+- Micro : `Capture` → trames de 10 ms → `ChaineMicro` (toujours, pour mesurer le niveau même micro coupé) → `SortieMicro` (piste `microphone`, DTX et RED) seulement si `EtatVocal::micro_emet()` ; sinon la piste est coupée (`mute`).
   Micro introuvable ou refusé : connecté en écoute seule (`micro_indisponible`, message suivi de « Vous êtes en écoute seule. »).
-- Écoute : chaque piste audio reçue alimente le `Mixeur`, lu par `Lecture` sur la sortie choisie ; casque coupé ou `sound_off` : sourdine globale.
+- Écoute : chaque piste audio reçue alimente le `Mixeur`, lu par `Lecture` sur la sortie choisie ; casque coupé ou `sound_off` : plus rien n'est joué.
 - Coupé par un modérateur (`imposer`, ou permission de publier retirée par le serveur) : le micro ne se réactive pas tant que la coupure dure.
 - Attributs publiés à chaque changement et après une reconnexion : `muted`, `deaf` (mêmes clés que le front).
 - Reconnexion : le SDK reprend seul une coupure courte (`Reconnexion`, `Reconnecte`, jusqu'à 60 s). S'il abandonne, la session redemande un jeton et se reconnecte
   (1, 2, 4, 8 puis 10 s, 12 essais) en gardant micro et casque ; une déconnexion voulue par le serveur (exclusion, salle fermée, doublon d'identité) ne se reconnecte pas.
 - Fils : l'acteur et les tâches de LiveKit sur le runtime ; capture et lecture sur les fils de `cpal`, qui ne touchent que des verrous courts (`RouteMicro`, `Mixeur`) ; libwebrtc a ses propres fils.
 
+### Chaîne du micro
+
+Mêmes réglages et valeurs par défaut que le front (`prefs.noise`, `micGain`, `vad`, `vadThreshold`), retenus dans `traitement_micro` :
+
+| Réglage | Front | Natif |
+|---|---|---|
+| Bruit `aucun` | contraintes du navigateur coupées | rien |
+| Bruit `standard` | `echoCancellation`, `noiseSuppression`, `autoGainControl` du navigateur | `AudioProcessingModule` de WebRTC (écho, gain automatique, passe-haut, bruit), référence d'écho = sortie du `Mixeur` |
+| Bruit `renforce` (défaut) | idem + RNNoise (WASM) | idem + `nnnoiseless` (RNNoise en Rust, trames de 480 échantillons) |
+| Gain | 0 à 300 % | idem, après la mesure du niveau |
+| Détection de voix | seuil de -75 à -15 dB (défaut -45), maintien 400 ms | idem, mesurée à chaque trame de 10 ms ; porte fermée : la piste envoie du silence (rampe de 1 ms à l'ouverture, 10 ms à la fermeture) |
+
+Ordre : APM, `nnnoiseless`, mesure du niveau (`niveau_db`, publié dans `MesureMicro`), détection de voix, gain, porte. Le traitement tourne sur le fil de capture de `cpal`,
+dans des tampons fixes alloués à la création (un changement de réglage se fait sur le fil de l'acteur, sous le verrou de `RouteMicro`). L'APM existe seulement avec la feature `livekit`.
+`porte_ouverte(ptt, vad, touche, voix)` reprend `gateOpen` : l'appuyer pour parler l'emporte sur la détection de voix.
+Test du micro : `EssaiMicro::ouvrir(audio, micro, sortie, reglages, apm)` (hors appel), `niveau()`, `regler`, `ecouter(true)` pour entendre sa voix traitée.
+
+Mesures (tests de `audio::micro`, voix de synthèse versionnée `crates/client/tests/donnees/voix-16k.wav` plus bruit de fond et clics générés) : en mode renforcé,
+le bruit hors parole baisse de 26,5 dB (-40,6 → -67,1 dBFS) ; sur 50 ms après chaque début de mot, la voix traitée reste à moins de 1 dB de la voix propre
+(RNNoise atténue toutefois les 10 à 20 premières millisecondes). Annulation d'écho (feature `livekit`, écho simulé linéaire, retard de 30 ms) : -52 dB.
+Coût mesuré sur une machine de développement (4 cœurs, release) : 1,0 % d'un cœur pour `nnnoiseless` et la détection de voix, 2,7 % avec l'APM et la référence d'écho.
+
+### Écoute
+
+`Ecoute` (préférence `ecoute`) reprend `volumes`, `screenVolumes`, `mutedVoice`, `mutedScreen` du front : volume de 0 à 300 % et muet par participant, la voix
+et le son du partage (`<id>#screen`, rangé sous `<id>`) à part ; comme le front, c'est par utilisateur, quel que soit le salon. Volume général du vocal de 0 à 100 %,
+qui n'existe pas dans le front. Le muet garde le volume. Gain = 0 si casque coupé ou muet, sinon volume × volume général.
+Le `Mixeur` additionne les pistes (gain précalculé à chaque changement, aucune recherche par nom dans la boucle audio), puis un limiteur à attaque immédiate
+et relâchement de 100 ms garde le signal sous 0,98 sans écrêtage dur (dix pistes à pleine échelle : sinusoïde conservée). Il n'ajoute aucun échantillon de retard
+au tampon de réception (amorce de 20 ms, `TamponLecture`). La sortie mixée sert de référence à l'annulation d'écho.
+
+L'app lit `traitement_micro` et `ecoute` au démarrage (`Reglages`) ; l'interface appelle la session pendant un réglage, et enregistre la préférence au relâchement
+(comme `prefs.save()` sur `onchange`), avec les mêmes fonctions (`Ecoute::definir_volume`, `definir_muet`, `definir_general`, `ReglagesMicro::borne`).
+
 ### Ce que le SDK Rust offre par rapport à `livekit-client`
 
 | Fonction | `livekit-client` (web) | SDK Rust 0.12 |
 |---|---|---|
 | Capture et lecture | navigateur | à la charge de l'app (`NativeAudioSource`, `NativeAudioStream`) ; ou `PlatformAudio` (ADM de WebRTC : WASAPI, PulseAudio/ALSA), non retenu : pas de périphérique factice, pas de volume par participant, pas de point d'insertion pour `nnnoiseless` |
-| Écho, gain, bruit | contraintes `getUserMedia` | `AudioProcessingModule` exposé (`webrtc::native::apm` : annulation d'écho, gain automatique, passe-haut, suppression de bruit) sur des trames de 10 ms `i16`, micro (`process_stream`) et son joué (`process_reverse_stream`) |
+| Écho, gain, bruit | contraintes `getUserMedia` | `AudioProcessingModule` exposé (`webrtc::native::apm` : annulation d'écho, gain automatique, passe-haut, suppression de bruit) sur des trames de 10 ms `i16`, micro (`process_stream`) et son joué (`process_reverse_stream`) ; utilisé par la chaîne du micro |
 | Volume par piste | `setVolume` (jusqu'à 100 %, au-delà avec `webAudioMix`) | absent : mixage de l'app (`Mixeur`, 0 à 300 %) |
 | Qualité de connexion | `ConnectionQualityChanged`, `connectionQuality` | idem (`ConnectionQualityChanged`, `connection_quality()`) |
 | Qui parle | `ActiveSpeakersChanged` | idem |
@@ -430,10 +467,16 @@ Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le comp
 
 ### Tests
 
+- `audio::micro::tests` : cas de `micprocessor.test.ts` (`niveau_db`), porte (`gateOpen`), maintien de la détection de voix, gain borné, silence porte fermée,
+  bruit hors parole et débuts de mots sur l'enregistrement versionné ; `audio::essai::tests` : niveau et retour du test du micro.
+- `vocal::mixage::tests` : cas de `volume.test.ts` (`gainOf`), volume général, dix pistes à pleine échelle sans écrêtage dur, aucune latence ajoutée, référence d'écho.
+- Mesure du coût (ignorée par défaut) : `cargo test --release -p estompe-client --features livekit --lib -- --ignored --nocapture cout`.
 - `audio::tests` (périphériques factices) : capture à 44,1 kHz stéréo puis lecture à 48 kHz pendant 10 minutes simulées, sans perte ni latence croissante ;
   micro et sortie débranchés : bascule sur le périphérique par défaut, retour du choisi.
 - `vocal::tests` (faux serveur, temps simulé) : deux participants se voient et s'entendent, quitter, refus du jeton, écoute seule, micro et casque publiés,
-  coupure imposée, coupure du réseau de 20 s (retour sans action, micro conservé), reconnexion du SDK, doublon d'identité, déplacement par un modérateur, passage d'un salon à l'autre, fermeture, changement de micro à chaud.
+  coupure imposée, coupure du réseau de 20 s (retour sans action, micro conservé), reconnexion du SDK, doublon d'identité, déplacement par un modérateur, passage d'un salon à l'autre, fermeture, changement de micro à chaud,
+  volume d'un participant retrouvé après avoir quitté puis rejoint, détection de voix (silence sous le seuil, niveau mesuré micro coupé).
+- `vocal::livekit::tests` (feature `livekit`) : l'annulation d'écho de l'APM retire le son joué repris par le micro.
 - `crates/client/tests/livekit.rs` (feature `livekit`) : contre le serveur LiveKit de `deploy/docker-compose.dev.yml` (`ESTOMPE_LIVEKIT_URL`, clé `devkey` du mode `--dev`),
   deux clients se voient, s'entendent, et la fermeture de l'un le retire de la salle chez l'autre en moins de 5 s. Sans la variable, il est ignoré et le dit.
   `just estompe-natif-vocal` le lance ; la CI Linux démarre ce serveur.
@@ -466,7 +509,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`) et écoute du vocal (`ecoute`), bornées à la lecture. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
