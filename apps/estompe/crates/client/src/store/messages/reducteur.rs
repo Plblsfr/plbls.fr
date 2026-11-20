@@ -61,6 +61,9 @@ pub enum ChangementMessages {
     Epingles {
         conversation: CleConversation,
     },
+    Envois {
+        conversation: CleConversation,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -648,7 +651,13 @@ fn arreter_saisie(
     }
 }
 
-fn message_cree(etat: &mut EtatMessages, contexte: &Contexte, m: &Message, a: &mut Application) {
+pub(super) fn message_cree(
+    etat: &mut EtatMessages,
+    contexte: &Contexte,
+    m: &Message,
+    a: &mut Application,
+) {
+    super::envois::rapprocher_du_temps_reel(etat, contexte, m, a);
     let Some(cle) = conversation_du_message(m) else {
         return;
     };
@@ -778,7 +787,12 @@ fn epingle_modifiee(
     }
 }
 
-fn supprimer(etat: &mut EtatMessages, cle: &CleConversation, ids: &[String], a: &mut Application) {
+pub(super) fn supprimer(
+    etat: &mut EtatMessages,
+    cle: &CleConversation,
+    ids: &[String],
+    a: &mut Application,
+) {
     if let Some((c, liste)) = etat.epingles.as_mut() {
         if c == cle {
             let avant = liste.len();

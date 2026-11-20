@@ -45,6 +45,9 @@ struct Interne {
     etat: RwLock<Etat>,
     messages: RwLock<messages::EtatMessages>,
     abonnes: Mutex<Vec<mpsc::UnboundedSender<Vec<Changement>>>>,
+    expedition: tokio::sync::Mutex<()>,
+    relance: std::sync::atomic::AtomicBool,
+    rythme: Mutex<messages::RythmeSaisie>,
 }
 
 #[derive(Clone)]
@@ -60,6 +63,9 @@ impl Store {
                 etat: RwLock::new(Etat::avec_ordre_serveurs(ordre_serveurs)),
                 messages: RwLock::new(messages::EtatMessages::default()),
                 abonnes: Mutex::new(Vec::new()),
+                expedition: tokio::sync::Mutex::new(()),
+                relance: std::sync::atomic::AtomicBool::new(false),
+                rythme: Mutex::new(messages::RythmeSaisie::default()),
             }),
         }
     }
@@ -408,6 +414,7 @@ impl Store {
                     Signal::Reconnecte => {
                         let _ = self.charger().await;
                         self.rattraper_messages().await;
+                        self.expedier().await;
                     }
                     Signal::SessionExpiree => {
                         fin = Some(FinFlux::SessionExpiree);

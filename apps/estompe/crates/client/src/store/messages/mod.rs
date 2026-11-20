@@ -1,11 +1,19 @@
 mod chargement;
+mod envois;
 mod etat;
 mod reducteur;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::Ordering;
 
 use tokio::time::Instant;
 
+pub use envois::{
+    ajouter_envoi, compteur, confirmer_envoi, echec_envoi, est_local, maintenant_iso,
+    prochain_a_expedier, reprendre_envoi, retirer_envoi, Brouillon, EnvoiLocal, EtatEnvoi,
+    RaisonEchec, RythmeSaisie, LONGUEUR_MAX, PREFIXE_LOCAL, RYTHME_SAISIE, SEUIL_ALERTE,
+    SEUIL_COMPTEUR,
+};
 pub use etat::{
     auteur, comparer_ids, conversation_du_message, est_compte_estompe, id_message, lignes_privees,
     Conversation, EtatMessages, LignePrivee, SaisieEnCours, CONVERSATIONS_EN_CACHE, DUREE_SAISIE,
@@ -23,9 +31,137 @@ use super::Store;
 use crate::http::ErreurApi;
 use crate::temps_reel::evenements::Lecture;
 use crate::temps_reel::Evenement;
-use crate::types::Message;
+use crate::types::{Message, Person};
 
 impl Store {
+    pub fn envois(&self, cle: &CleConversation) -> Vec<EnvoiLocal> {
+        self.lire_messages(|m| m.envois_de(cle).into_iter().cloned().collect())
+    }
+
+    pub fn deposer(&self, cle: &CleConversation, brouillon: Brouillon) -> Option<u64> {
+        if brouillon.vide() {
+            return None;
+        }
+        let auteur: Person = self.lire(|e| Person {
+            id: Some(e.moi().to_string()),
+            pseudo: Some(e.pseudo().to_string()),
+        });
+        let cree_a = maintenant_iso();
+        Some(self.modifier_messages(|m, _| ajouter_envoi(m, cle, brouillon, auteur, cree_a)))
+    }
+
+    pub async fn envoyer(&self, cle: &CleConversation, brouillon: Brouillon) -> Option<u64> {
+        let id = self.deposer(cle, brouillon)?;
+        self.expedier().await;
+        Some(id)
+    }
+
+    pub async fn expedier(&self) {
+        let interne = &self.interne;
+        loop {
+            interne.relance.store(true, Ordering::SeqCst);
+            let Ok(verrou) = interne.expedition.try_lock() else {
+                return;
+            };
+            interne.relance.store(false, Ordering::SeqCst);
+            while let Some(envoi) = self.modifier_messages(|m, _| prochain_a_expedier(m)) {
+                let requete = envoi.brouillon.requete();
+                match self
+                    .client()
+                    .envoyer_message(&envoi.conversation, &requete)
+                    .await
+                {
+                    Ok(message) => self.modifier_messages(|m, contexte| {
+                        ((), confirmer_envoi(m, contexte, envoi.id, &message))
+                    }),
+                    Err(erreur) => {
+                        let reseau =
+                            self.modifier_messages(|m, _| echec_envoi(m, envoi.id, &erreur));
+                        if reseau {
+                            drop(verrou);
+                            return;
+                        }
+                    }
+                }
+            }
+            drop(verrou);
+            if !interne.relance.load(Ordering::SeqCst) {
+                return;
+            }
+        }
+    }
+
+    pub async fn reessayer(&self, id: u64) {
+        self.modifier_messages(|m, _| ((), reprendre_envoi(m, id)));
+        self.expedier().await;
+    }
+
+    pub fn abandonner(&self, id: u64) {
+        self.modifier_messages(|m, _| ((), retirer_envoi(m, id)));
+    }
+
+    pub async fn modifier_message(
+        &self,
+        message: &str,
+        contenu: &str,
+        fichiers: Option<Vec<String>>,
+    ) -> Result<(), ErreurApi> {
+        let modifie = self
+            .client()
+            .modifier_message(message, contenu.trim(), fichiers)
+            .await?;
+        self.appliquer_aux_messages(&Evenement::MessageModifie(modifie));
+        Ok(())
+    }
+
+    pub async fn supprimer_message(
+        &self,
+        cle: &CleConversation,
+        message: &str,
+    ) -> Result<(), ErreurApi> {
+        self.client().supprimer_message(message).await?;
+        self.modifier_messages(|m, _| {
+            let mut a = Application::default();
+            reducteur::supprimer(m, cle, &[message.to_string()], &mut a);
+            ((), a)
+        });
+        Ok(())
+    }
+
+    pub async fn signaler_saisie(&self, cle: &CleConversation, texte: &str) -> bool {
+        let signaler = self
+            .interne
+            .rythme
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .doit_signaler(cle, texte, Instant::now());
+        if signaler {
+            let _ = self.client().signaler_saisie(cle).await;
+        }
+        signaler
+    }
+
+    pub fn oublier_saisie(&self) {
+        self.interne
+            .rythme
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .oublier();
+    }
+
+    pub fn dernier_de_moi(&self, cle: &CleConversation) -> Option<Message> {
+        let moi = self.lire(|e| e.moi().to_string());
+        self.lire_messages(|m| {
+            m.conversation(cle).and_then(|c| {
+                c.messages
+                    .iter()
+                    .rev()
+                    .find(|x| auteur(x) == moi && x.system != Some(true) && x.poll.is_none())
+                    .cloned()
+            })
+        })
+    }
+
     pub fn lire_messages<R>(&self, lecture: impl FnOnce(&EtatMessages) -> R) -> R {
         lecture(
             &self
@@ -142,12 +278,253 @@ impl Store {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+    use std::time::Duration;
+
     use serde_json::json;
 
     use super::*;
     use crate::http::Client;
-    use crate::store::essais::depuis_json;
+    use crate::serveur_factice::{Reponse, ServeurFactice};
+    use crate::store::essais::{depuis_json, etat_de_depart};
     use crate::store::Changement;
+
+    fn store_sur(client: Client) -> (Store, CleConversation) {
+        let store = Store::nouveau(client, &[]);
+        store.installer(etat_de_depart());
+        let cle = CleConversation::Salon("c1".into());
+        store.installer_conversation(
+            &cle,
+            vec![depuis_json(json!({"id": "1", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "salut"}))],
+            false,
+        );
+        (store, cle)
+    }
+
+    fn contenus(store: &Store, cle: &CleConversation) -> Vec<String> {
+        store
+            .conversation(cle)
+            .unwrap()
+            .messages
+            .iter()
+            .map(|m| m.content.clone().unwrap_or_default())
+            .collect()
+    }
+
+    fn serveur_d_echo(serveur: &ServeurFactice) {
+        let compteur = Arc::new(AtomicUsize::new(10));
+        serveur.router_dynamique("POST", "/channels/c1/messages", move |r| {
+            let id = compteur.fetch_add(1, Ordering::SeqCst);
+            let corps = r.json();
+            Reponse::json(
+                201,
+                json!({"id": id.to_string(), "channel_id": "c1", "author": {"id": "me", "pseudo": "moi"}, "content": corps["content"], "reply_to": null}),
+            )
+        });
+    }
+
+    #[tokio::test]
+    async fn un_envoi_apparait_tout_de_suite_puis_devient_le_message_du_serveur() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        serveur_d_echo(&serveur);
+        let (store, cle) = store_sur(serveur.client());
+        let mut abonne = store.abonner();
+        let id = store.deposer(&cle, Brouillon::texte("coucou")).unwrap();
+        assert_eq!(store.envois(&cle)[0].etat, EtatEnvoi::EnAttente);
+        assert_eq!(
+            store.envois(&cle)[0].message().content.as_deref(),
+            Some("coucou")
+        );
+        store.expedier().await;
+        assert!(store.envois(&cle).is_empty());
+        assert_eq!(contenus(&store, &cle), ["salut", "coucou"]);
+        let recus: Vec<Changement> = std::iter::from_fn(|| abonne.try_recv().ok())
+            .flatten()
+            .collect();
+        assert!(
+            recus.contains(&Changement::Messages(ChangementMessages::Envois {
+                conversation: cle.clone()
+            }))
+        );
+        assert_eq!(store.lire_messages(|m| m.envoi(id).cloned()), None);
+        let requete = serveur
+            .requetes()
+            .into_iter()
+            .find(|r| r.methode == "POST")
+            .unwrap();
+        assert_eq!(requete.json(), json!({"content": "coucou", "file_ids": []}));
+    }
+
+    #[tokio::test]
+    async fn trois_messages_saisis_hors_ligne_partent_dans_l_ordre_au_retour_du_reseau() {
+        let lieu = {
+            let libre = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            libre.local_addr().unwrap().to_string()
+        };
+        let client =
+            Client::avec_reglages(&format!("http://{lieu}"), ServeurFactice::reglages()).unwrap();
+        let (store, cle) = store_sur(client);
+        for texte in ["un", "deux", "trois"] {
+            store.envoyer(&cle, Brouillon::texte(texte)).await;
+        }
+        let etats: Vec<EtatEnvoi> = store.envois(&cle).into_iter().map(|e| e.etat).collect();
+        assert_eq!(
+            etats,
+            [
+                EtatEnvoi::EnAttente,
+                EtatEnvoi::EnAttente,
+                EtatEnvoi::EnAttente
+            ]
+        );
+        let serveur = ServeurFactice::demarrer_sur(&lieu, [Reponse::vide(500)]).await;
+        serveur_d_echo(&serveur);
+        store.expedier().await;
+        assert!(store.envois(&cle).is_empty());
+        assert_eq!(contenus(&store, &cle), ["salut", "un", "deux", "trois"]);
+        let envoyes: Vec<String> = serveur
+            .requetes()
+            .into_iter()
+            .filter(|r| r.methode == "POST")
+            .map(|r| r.json()["content"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(envoyes, ["un", "deux", "trois"]);
+    }
+
+    #[tokio::test]
+    async fn un_envoi_refuse_reste_non_envoye_avec_la_raison() {
+        for (statut, code, raison) in [
+            (403, "forbidden", RaisonEchec::DroitManquant),
+            (413, "too_large", RaisonEchec::TropLong),
+            (429, "too_many_messages", RaisonEchec::Debit),
+        ] {
+            let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+            let accepte = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let bascule = accepte.clone();
+            serveur.router_dynamique("POST", "/channels/c1/messages", move |r| {
+                if bascule.load(Ordering::SeqCst) {
+                    Reponse::json(201, json!({"id": "9", "channel_id": "c1", "author": {"id": "me", "pseudo": "moi"}, "content": r.json()["content"]}))
+                } else {
+                    Reponse::json(statut, json!({"error": code, "message": "non"}))
+                }
+            });
+            let (store, cle) = store_sur(serveur.client());
+            let id = store.envoyer(&cle, Brouillon::texte("a")).await.unwrap();
+            let envoi = store.lire_messages(|m| m.envoi(id).cloned()).unwrap();
+            assert_eq!(
+                envoi.etat,
+                EtatEnvoi::Echec(raison.clone()),
+                "statut {statut}"
+            );
+            assert_eq!(contenus(&store, &cle), ["salut"]);
+            accepte.store(true, Ordering::SeqCst);
+            store.reessayer(id).await;
+            assert!(store.envois(&cle).is_empty());
+            assert_eq!(contenus(&store, &cle), ["salut", "a"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn un_refus_ne_bloque_pas_les_envois_suivants_et_supprimer_l_oublie() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        let compteur = Arc::new(AtomicUsize::new(0));
+        serveur.router_dynamique("POST", "/channels/c1/messages", move |r| {
+            let n = compteur.fetch_add(1, Ordering::SeqCst);
+            if n == 0 {
+                return Reponse::json(429, json!({"error": "too_many_messages", "message": "non"}));
+            }
+            Reponse::json(201, json!({"id": (20 + n).to_string(), "channel_id": "c1", "author": {"id": "me", "pseudo": "moi"}, "content": r.json()["content"]}))
+        });
+        let (store, cle) = store_sur(serveur.client());
+        let premier = store.deposer(&cle, Brouillon::texte("un")).unwrap();
+        store.deposer(&cle, Brouillon::texte("deux"));
+        store.expedier().await;
+        assert_eq!(contenus(&store, &cle), ["salut", "deux"]);
+        assert_eq!(store.envois(&cle).len(), 1);
+        store.abandonner(premier);
+        assert!(store.envois(&cle).is_empty());
+    }
+
+    #[tokio::test]
+    async fn modifier_applique_la_reponse_et_garde_mes_reactions() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        serveur.router(
+            "PATCH",
+            "/messages/1",
+            Reponse::json(200, json!({"id": "1", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "modifié", "edited_at": "x", "reactions": [{"emoji": "👍", "count": 2, "me": false}]})),
+        );
+        let (store, cle) = store_sur(serveur.client());
+        store.modifier_messages(|m, _| {
+            m.conversations.get_mut(&cle).unwrap().messages[0].reactions = Some(vec![depuis_json(
+                json!({"emoji": "👍", "count": 2, "me": true}),
+            )]);
+            ((), Application::default())
+        });
+        store
+            .modifier_message("1", " modifié ", None)
+            .await
+            .unwrap();
+        let m = store.conversation(&cle).unwrap().messages[0].clone();
+        assert_eq!(m.content.as_deref(), Some("modifié"));
+        assert_eq!(m.reactions.unwrap()[0].me, Some(true));
+        let requete = serveur
+            .requetes()
+            .into_iter()
+            .find(|r| r.methode == "PATCH")
+            .unwrap();
+        assert_eq!(requete.json(), json!({"content": "modifié"}));
+    }
+
+    #[tokio::test]
+    async fn supprimer_retire_le_message_a_la_confirmation_et_le_garde_en_cas_d_erreur() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        serveur.router(
+            "DELETE",
+            "/messages/1",
+            Reponse::json(403, json!({"error": "forbidden", "message": "non"})),
+        );
+        let (store, cle) = store_sur(serveur.client());
+        assert!(store.supprimer_message(&cle, "1").await.is_err());
+        assert_eq!(contenus(&store, &cle), ["salut"]);
+        serveur.router("DELETE", "/messages/1", Reponse::vide(204));
+        store.supprimer_message(&cle, "1").await.unwrap();
+        assert!(contenus(&store, &cle).is_empty());
+    }
+
+    #[tokio::test]
+    async fn le_signal_de_saisie_part_au_plus_toutes_les_trois_secondes() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        serveur.router("POST", "/channels/c1/typing", Reponse::vide(204));
+        let (store, cle) = store_sur(serveur.client());
+        assert!(store.signaler_saisie(&cle, "a").await);
+        assert!(!store.signaler_saisie(&cle, "ab").await);
+        assert!(!store.signaler_saisie(&cle, "").await);
+        let envoyes = serveur
+            .requetes()
+            .iter()
+            .filter(|r| r.chemin == "/channels/c1/typing")
+            .count();
+        assert_eq!(envoyes, 1);
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+
+    #[tokio::test]
+    async fn le_dernier_message_de_moi_est_celui_que_fleche_haut_modifie() {
+        let (store, cle) = store_sur(Client::nouveau("http://127.0.0.1:9").unwrap());
+        assert!(store.dernier_de_moi(&cle).is_none());
+        store.installer_conversation(
+            &cle,
+            vec![
+                depuis_json(json!({"id": "1", "channel_id": "c1", "author": {"id": "me", "pseudo": "moi"}, "content": "a"})),
+                depuis_json(json!({"id": "2", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "b"})),
+            ],
+            false,
+        );
+        assert_eq!(
+            store.dernier_de_moi(&cle).unwrap().content.as_deref(),
+            Some("a")
+        );
+    }
 
     #[test]
     fn installer_une_conversation_la_rend_lisible_et_l_annonce() {
