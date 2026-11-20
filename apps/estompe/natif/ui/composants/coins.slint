@@ -1,0 +1,16 @@
+export component Coins {
+    in property <length> rayon;
+    in property <brush> couleur;
+    property <float> r: rayon / 1px;
+    property <float> l: self.width / 1px;
+    property <float> h: self.height / 1px;
+    accessible-role: none;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: root.l;
+        viewbox-height: root.h;
+        fill: root.couleur;
+        commands: "M 0 0 L \{root.r} 0 A \{root.r} \{root.r} 0 0 0 0 \{root.r} Z M \{root.l} 0 L \{root.l} \{root.r} A \{root.r} \{root.r} 0 0 0 \{root.l - root.r} 0 Z M \{root.l} \{root.h} L \{root.l - root.r} \{root.h} A \{root.r} \{root.r} 0 0 0 \{root.l} \{root.h - root.r} Z M 0 \{root.h} L 0 \{root.h - root.r} A \{root.r} \{root.r} 0 0 0 \{root.r} \{root.h} Z";
+    }
+}

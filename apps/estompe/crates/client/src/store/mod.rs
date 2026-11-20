@@ -1,0 +1,796 @@
+mod chargement;
+mod etat;
+mod reconciliation;
+mod reducteur;
+
+#[cfg(test)]
+mod essais;
+
+use std::sync::{Arc, Mutex, RwLock};
+
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+
+pub use chargement::{
+    charger, charger_serveur, etat_depuis, Chargement, DonneesServeur, ErreurStore,
+};
+pub use etat::{
+    est_vocal, reglages_par_defaut, salon_depuis, texte_du_genre, trier_salons, CleConversation,
+    Etat, GenreSalon, ParticipantVocal, Presence, Salon,
+};
+pub use reconciliation::reconcilier;
+pub use reducteur::{
+    appliquer, appliquer_avec_effets, definir_focus, lire_conversation, ouvrir_conversation,
+    Application, Avis, Changement, Effet,
+};
+
+use crate::derniere_vue::{adresse_a_rouvrir, conversation_de_la_derniere_vue, DerniereVue};
+use crate::http::{Client, ErreurApi};
+use crate::ordre_serveurs::{deplacer_serveur, Sens};
+use crate::temps_reel::evenements::StatutPresence;
+use crate::temps_reel::{Evenement, FluxTempsReel, Signal};
+use crate::types::NotifySettings;
+use etat::id_de;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FinFlux {
+    Termine,
+    SessionExpiree,
+    AccesRetire,
+}
+
+struct Interne {
+    client: Client,
+    etat: RwLock<Etat>,
+    abonnes: Mutex<Vec<mpsc::UnboundedSender<Vec<Changement>>>>,
+}
+
+#[derive(Clone)]
+pub struct Store {
+    interne: Arc<Interne>,
+}
+
+impl Store {
+    pub fn nouveau(client: Client, ordre_serveurs: &[String]) -> Self {
+        Self {
+            interne: Arc::new(Interne {
+                client,
+                etat: RwLock::new(Etat::avec_ordre_serveurs(ordre_serveurs)),
+                abonnes: Mutex::new(Vec::new()),
+            }),
+        }
+    }
+
+    pub fn client(&self) -> &Client {
+        &self.interne.client
+    }
+
+    pub fn abonner(&self) -> mpsc::UnboundedReceiver<Vec<Changement>> {
+        let (entree, sortie) = mpsc::unbounded_channel();
+        self.interne
+            .abonnes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(entree);
+        sortie
+    }
+
+    pub fn lire<R>(&self, lecture: impl FnOnce(&Etat) -> R) -> R {
+        lecture(&self.interne.etat.read().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub fn instantane(&self) -> Etat {
+        self.lire(Etat::clone)
+    }
+
+    fn modifier<R>(&self, modification: impl FnOnce(&mut Etat) -> (R, Vec<Changement>)) -> R {
+        let (resultat, changements) = {
+            let mut etat = self.interne.etat.write().unwrap_or_else(|e| e.into_inner());
+            modification(&mut etat)
+        };
+        self.publier(changements);
+        resultat
+    }
+
+    fn appliquer_application(&self, calcul: impl FnOnce(&mut Etat) -> Application) -> Vec<Effet> {
+        self.modifier(|etat| {
+            let Application {
+                changements,
+                effets,
+            } = calcul(etat);
+            (effets, changements)
+        })
+    }
+
+    fn remplacer(&self, calcul: impl FnOnce(&Etat) -> Etat) {
+        self.modifier(|etat| {
+            let nouveau = calcul(etat);
+            let changements = reconcilier(etat, &nouveau);
+            *etat = nouveau;
+            ((), changements)
+        });
+    }
+
+    fn publier(&self, changements: Vec<Changement>) {
+        if changements.is_empty() {
+            return;
+        }
+        let mut abonnes = self
+            .interne
+            .abonnes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        abonnes.retain(|abonne| abonne.send(changements.clone()).is_ok());
+    }
+
+    pub fn installer(&self, nouveau: Etat) {
+        self.remplacer(|_| nouveau);
+    }
+
+    pub async fn charger(&self) -> Result<(), ErreurStore> {
+        let chargement = charger(self.client()).await?;
+        self.remplacer(|etat| etat_depuis(chargement, etat));
+        Ok(())
+    }
+
+    pub fn appliquer(&self, evenement: &Evenement) -> Vec<Effet> {
+        self.appliquer_application(|etat| appliquer_avec_effets(etat, evenement))
+    }
+
+    pub async fn executer(&self, effets: Vec<Effet>) {
+        for effet in effets {
+            let _ = match effet {
+                Effet::RechargerServeurs => self.rafraichir_serveurs().await,
+                Effet::RechargerServeur(id) => self.recharger_serveur(&id).await,
+                Effet::RechargerMessagesPrives => self.rafraichir_messages_prives().await,
+                Effet::MarquerLu(cle) => self.client().marquer_lu(&cle).await,
+                Effet::LireNotifications(ids) => self.client().lire_notifications(&ids).await,
+            };
+        }
+    }
+
+    pub async fn recharger_serveur(&self, id: &str) -> Result<(), ErreurApi> {
+        let detail = self.client().serveur(id).await?;
+        self.modifier(|etat| {
+            let Some(ancien) = etat.details.get(id).cloned() else {
+                return ((), Vec::new());
+            };
+            let mut a = Application::default();
+            let gardes: Vec<&str> = detail
+                .channels
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|c| id_de(&c.id))
+                .collect();
+            for salon in ancien.channels.as_deref().unwrap_or_default() {
+                if !gardes.contains(&id_de(&salon.id)) {
+                    reducteur::oublier_salon(etat, id_de(&salon.id), Some(id), &mut a);
+                }
+            }
+            let mut changements = Vec::new();
+            reconciliation::differences_detail(id, Some(&ancien), Some(&detail), &mut changements);
+            let proprietaire = detail.server.as_ref().and_then(|s| s.owner_id.clone());
+            if let Some(serveur) = etat.serveurs.iter_mut().find(|s| id_de(&s.id) == id) {
+                if serveur.owner_id != proprietaire {
+                    serveur.owner_id = proprietaire;
+                    a.changer(Changement::Serveur {
+                        serveur: id.to_string(),
+                    });
+                }
+            }
+            etat.details.insert(id.to_string(), detail);
+            for changement in changements {
+                a.changer(changement);
+            }
+            ((), a.changements)
+        });
+        Ok(())
+    }
+
+    pub async fn rafraichir_serveurs(&self) -> Result<(), ErreurApi> {
+        let serveurs = self.client().serveurs().await?;
+        let manquants: Vec<String> = self.lire(|etat| {
+            serveurs
+                .iter()
+                .map(|s| id_de(&s.id).to_string())
+                .filter(|id| !id.is_empty() && !etat.details.contains_key(id))
+                .collect()
+        });
+        let charges = chargement::charger_les_serveurs(self.client(), &manquants).await;
+        self.remplacer(|etat| {
+            let mut nouveau = etat.clone();
+            nouveau.serveurs = serveurs;
+            for (id, donnees) in charges {
+                if let Ok(donnees) = donnees {
+                    chargement::installer_serveur(&mut nouveau, etat, &id, donnees);
+                }
+            }
+            nouveau
+        });
+        Ok(())
+    }
+
+    pub async fn rafraichir_messages_prives(&self) -> Result<(), ErreurApi> {
+        let messages_prives = self.client().conversations_privees().await?;
+        self.remplacer(|etat| {
+            let mut nouveau = etat.clone();
+            for dm in &messages_prives {
+                if dm.online == Some(true) {
+                    if let Some(autre) = dm.other.as_ref().and_then(|p| p.id.clone()) {
+                        nouveau.en_ligne.insert(autre);
+                    }
+                }
+            }
+            nouveau.messages_prives = messages_prives;
+            nouveau
+        });
+        Ok(())
+    }
+
+    pub async fn ouvrir(&self, conversation: Option<CleConversation>) {
+        let effets = self.appliquer_application(|etat| ouvrir_conversation(etat, conversation));
+        self.executer(effets).await;
+    }
+
+    pub async fn lire_conversation(&self, conversation: &CleConversation) {
+        let effets = self.appliquer_application(|etat| lire_conversation(etat, conversation));
+        self.executer(effets).await;
+    }
+
+    pub async fn definir_focus(&self, focus: bool) {
+        let effets = self.appliquer_application(|etat| definir_focus(etat, focus));
+        self.executer(effets).await;
+    }
+
+    pub fn definir_activite_locale(&self, nom: &str) {
+        let nom = nom.to_string();
+        self.modifier(|etat| {
+            if etat.activite_locale == nom {
+                return ((), Vec::new());
+            }
+            etat.activite_locale = nom;
+            let moi = etat.moi().to_string();
+            ((), vec![Changement::Presence { utilisateur: moi }])
+        });
+    }
+
+    fn poser_statut(&self, statut: Option<StatutPresence>) -> Option<StatutPresence> {
+        self.modifier(|etat| {
+            let moi = etat.moi().to_string();
+            let avant = match statut.filter(|s| *s != StatutPresence::Online) {
+                Some(s) => etat.statuts.insert(moi.clone(), s),
+                None => etat.statuts.remove(&moi),
+            };
+            let changements = if avant != etat.statuts.get(&moi).copied() {
+                vec![Changement::Presence { utilisateur: moi }]
+            } else {
+                Vec::new()
+            };
+            (avant, changements)
+        })
+    }
+
+    pub async fn definir_statut(&self, statut: StatutPresence) -> Result<(), ErreurApi> {
+        let avant = self.poser_statut(Some(statut));
+        let resultat = self.client().definir_statut(statut).await;
+        if resultat.is_err() {
+            self.poser_statut(avant);
+        }
+        resultat
+    }
+
+    fn poser_reglages(&self, reglages: NotifySettings) -> NotifySettings {
+        self.modifier(|etat| {
+            let avant = std::mem::replace(&mut etat.reglages_notification, reglages);
+            let changements = if avant != etat.reglages_notification {
+                vec![Changement::ReglagesNotification]
+            } else {
+                Vec::new()
+            };
+            (avant, changements)
+        })
+    }
+
+    pub async fn enregistrer_reglages_notification(
+        &self,
+        reglages: NotifySettings,
+    ) -> Result<(), ErreurApi> {
+        let avant = self.poser_reglages(reglages.clone());
+        let resultat = self
+            .client()
+            .enregistrer_reglages_notification(&reglages)
+            .await;
+        if resultat.is_err() {
+            self.poser_reglages(avant);
+        }
+        resultat
+    }
+
+    pub fn ordre_serveurs(&self) -> Vec<String> {
+        self.lire(Etat::ids_serveurs_ordonnes)
+    }
+
+    pub fn definir_ordre_serveurs(&self, ordre: &[String]) {
+        self.modifier(|etat| {
+            let avant = etat.ids_serveurs_ordonnes();
+            etat.ordre_serveurs = ordre.to_vec();
+            let changements = if avant != etat.ids_serveurs_ordonnes() {
+                vec![Changement::OrdreServeurs]
+            } else {
+                Vec::new()
+            };
+            ((), changements)
+        });
+    }
+
+    pub fn deplacer_serveur(&self, de: &str, vers: &str) -> Vec<String> {
+        let ordre = deplacer_serveur(&self.ordre_serveurs(), de, vers);
+        self.definir_ordre_serveurs(&ordre);
+        ordre
+    }
+
+    pub fn serveur_voisin(&self, courant: Option<&str>, sens: Sens) -> Option<String> {
+        self.lire(|etat| etat.serveur_voisin(courant, sens))
+    }
+
+    fn ids_connus(etat: &Etat) -> (Vec<String>, Vec<String>) {
+        (
+            etat.serveurs
+                .iter()
+                .map(|s| id_de(&s.id).to_string())
+                .collect(),
+            etat.messages_prives
+                .iter()
+                .map(|d| id_de(&d.id).to_string())
+                .collect(),
+        )
+    }
+
+    pub fn adresse_a_rouvrir(&self, vue: Option<&DerniereVue>) -> Option<String> {
+        self.lire(|etat| {
+            let (serveurs, prives) = Self::ids_connus(etat);
+            adresse_a_rouvrir(vue, etat.moi(), &serveurs, &prives).map(str::to_string)
+        })
+    }
+
+    pub fn conversation_a_rouvrir(&self, vue: Option<&DerniereVue>) -> Option<CleConversation> {
+        self.lire(|etat| {
+            let (serveurs, prives) = Self::ids_connus(etat);
+            conversation_de_la_derniere_vue(vue, etat.moi(), &serveurs, &prives)
+                .and_then(|cle| CleConversation::analyser(&cle))
+        })
+    }
+
+    pub fn memoriser_vue(&self, adresse: &str) -> DerniereVue {
+        self.lire(|etat| DerniereVue::enregistrer(etat.moi(), adresse))
+    }
+
+    pub async fn suivre(&self, mut flux: FluxTempsReel) -> FinFlux {
+        loop {
+            let Some(premier) = flux.suivant().await else {
+                return FinFlux::Termine;
+            };
+            let mut lot = vec![premier];
+            while let Some(signal) = flux.essayer() {
+                lot.push(signal);
+            }
+            let mut effets: Vec<Effet> = Vec::new();
+            let mut fin = None;
+            for signal in lot {
+                match signal {
+                    Signal::Evenement(evenement) => {
+                        for effet in self.appliquer(&evenement) {
+                            if !effets.contains(&effet) {
+                                effets.push(effet);
+                            }
+                        }
+                    }
+                    Signal::Reconnecte => {
+                        let _ = self.charger().await;
+                    }
+                    Signal::SessionExpiree => {
+                        fin = Some(FinFlux::SessionExpiree);
+                        break;
+                    }
+                    Signal::AccesRetire => {
+                        fin = Some(FinFlux::AccesRetire);
+                        break;
+                    }
+                    Signal::Statut(_) | Signal::Reseau(_) => {}
+                }
+            }
+            self.executer(effets).await;
+            if let Some(fin) = fin {
+                return fin;
+            }
+        }
+    }
+
+    pub fn brancher(&self, flux: FluxTempsReel) -> JoinHandle<FinFlux> {
+        let store = self.clone();
+        tokio::spawn(async move { store.suivre(flux).await })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use serde_json::json;
+
+    use super::essais::{evenement, message, monde_a, monde_b, programmer};
+    use super::*;
+    use crate::serveur_factice::{Reponse, ServeurFactice};
+
+    const GARDE_FOU: Duration = Duration::from_secs(20);
+
+    async fn monde(routes: Vec<(&'static str, serde_json::Value)>) -> ServeurFactice {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        programmer(&serveur, routes);
+        serveur
+    }
+
+    async fn attendre(
+        store: &Store,
+        abonne: &mut mpsc::UnboundedReceiver<Vec<Changement>>,
+        recus: &mut Vec<Changement>,
+        condition: impl Fn(&Etat) -> bool,
+    ) {
+        tokio::time::timeout(GARDE_FOU, async {
+            while !store.lire(&condition) {
+                recus.extend(abonne.recv().await.expect("store fermé"));
+            }
+        })
+        .await
+        .expect("condition jamais remplie");
+    }
+
+    fn cle(texte: &str) -> CleConversation {
+        CleConversation::analyser(texte).unwrap()
+    }
+
+    #[tokio::test]
+    async fn charge_le_compte_les_serveurs_et_leurs_details() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        let mut abonne = store.abonner();
+        store.charger().await.unwrap();
+        let etat = store.instantane();
+        assert_eq!((etat.moi(), etat.pseudo()), ("me", "moi"));
+        assert!(etat.bloc_actif("vocal") && !etat.bloc_actif("films"));
+        assert_eq!(etat.salons("s1").len(), 3);
+        assert_eq!(
+            etat.membre("s1", "carol").unwrap().nickname.as_deref(),
+            Some("Caro")
+        );
+        assert_eq!(etat.non_lus_de(&cle("c:c1")), 3);
+        assert_eq!(etat.nombre_mentions(&cle("c:c1")), 1);
+        assert_eq!(etat.presence_de("bob"), Presence::HorsLigne);
+        assert_eq!(etat.presence_de("dave"), Presence::EnLigne);
+        assert_eq!(etat.participants("v1")[0].utilisateur, "carol");
+        assert_eq!(etat.version_avatar_du_serveur("bob", Some("s1")), 2);
+        assert_eq!(etat.version_avatar("me"), 1);
+        let recus = abonne.try_recv().unwrap();
+        assert!(recus.contains(&Changement::ServeurAjoute {
+            serveur: "s1".into()
+        }));
+        assert!(recus.contains(&Changement::Compte));
+        assert!(!recus
+            .iter()
+            .any(|c| matches!(c, Changement::SalonAjoute { .. })));
+    }
+
+    #[tokio::test]
+    async fn installer_un_etat_ne_publie_que_ses_differences() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        let mut abonne = store.abonner();
+        let mut etat = store.instantane();
+        etat.non_lus.insert(cle("c:c3"), 4);
+        store.installer(etat.clone());
+        assert_eq!(store.instantane(), etat);
+        assert_eq!(
+            abonne.try_recv().unwrap(),
+            [Changement::NonLus {
+                conversation: cle("c:c3"),
+                serveur: Some("s1".into())
+            }]
+        );
+        store.installer(etat);
+        assert!(abonne.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn refuse_un_compte_non_active() {
+        let serveur = monde(vec![("/me", json!({"activated": false, "allowed": true}))]).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        assert_eq!(store.charger().await, Err(ErreurStore::CompteInactif));
+        assert_eq!(store.instantane(), Etat::default());
+    }
+
+    #[tokio::test]
+    async fn apres_une_reconnexion_le_store_est_identique_a_un_chargement_a_neuf() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        let mut abonne = store.abonner();
+        let (signaux, flux) = FluxTempsReel::factice();
+        let boucle = store.brancher(flux);
+        let envoyer = |type_evenement: &str, data: serde_json::Value| {
+            signaux
+                .send(Signal::Evenement(Box::new(evenement(type_evenement, data))))
+                .unwrap()
+        };
+        envoyer(
+            "presence.snapshot",
+            json!({"online": ["carol", "dave"], "activities": {"carol": "Tetris"}}),
+        );
+        envoyer("message.created", message("10", "c3", "carol"));
+        let mut recus = Vec::new();
+        attendre(&store, &mut abonne, &mut recus, |e| {
+            e.non_lus_de(&cle("c:c3")) == 1
+        })
+        .await;
+
+        programmer(&serveur, monde_b());
+        signaux.send(Signal::Reconnecte).unwrap();
+        let instantane =
+            json!({"online": ["carol", "eve", "fred"], "activities": {"eve": "Factorio"}});
+        envoyer("presence.snapshot", instantane.clone());
+        recus.clear();
+        attendre(&store, &mut abonne, &mut recus, |e| {
+            e.serveur("s2").is_some() && e.activite_de("eve") == "Factorio"
+        })
+        .await;
+
+        let neuf = Store::nouveau(serveur.client(), &[]);
+        neuf.charger().await.unwrap();
+        neuf.appliquer(&evenement("presence.snapshot", instantane));
+        assert_eq!(store.instantane(), neuf.instantane());
+
+        for attendu in [
+            Changement::ServeurAjoute {
+                serveur: "s2".into(),
+            },
+            Changement::Serveur {
+                serveur: "s1".into(),
+            },
+            Changement::Salon {
+                serveur: "s1".into(),
+                salon: "c1".into(),
+            },
+            Changement::SalonAjoute {
+                serveur: "s1".into(),
+                salon: "c2".into(),
+            },
+            Changement::MembreRetire {
+                serveur: "s1".into(),
+                utilisateur: "bob".into(),
+            },
+            Changement::Membre {
+                serveur: "s1".into(),
+                utilisateur: "carol".into(),
+            },
+            Changement::NonLus {
+                conversation: cle("c:c3"),
+                serveur: Some("s1".into()),
+            },
+            Changement::Vocal { salon: "v1".into() },
+            Changement::MessagesPrives,
+        ] {
+            assert!(recus.contains(&attendu), "{attendu:?} absent de {recus:?}");
+        }
+        for absent in [
+            Changement::Salon {
+                serveur: "s1".into(),
+                salon: "c3".into(),
+            },
+            Changement::SalonAjoute {
+                serveur: "s2".into(),
+                salon: "t1".into(),
+            },
+            Changement::Membre {
+                serveur: "s1".into(),
+                utilisateur: "me".into(),
+            },
+        ] {
+            assert!(!recus.contains(&absent), "{absent:?} émis : {recus:?}");
+        }
+        drop(signaux);
+        assert_eq!(boucle.await.unwrap(), FinFlux::Termine);
+    }
+
+    #[tokio::test]
+    async fn un_evenement_sur_un_salon_ne_notifie_que_ce_salon() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        let mut abonne = store.abonner();
+        let effets = store.appliquer(&evenement(
+            "channel.updated",
+            json!({"server_id": "s1", "id": "c3", "name": "jeux-video"}),
+        ));
+        assert!(effets.is_empty());
+        assert_eq!(
+            abonne.try_recv().unwrap(),
+            [Changement::Salon {
+                serveur: "s1".into(),
+                salon: "c3".into()
+            }]
+        );
+        assert!(abonne.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn retire_un_salon_devenu_invisible_au_rechargement_du_serveur() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        store.appliquer(&evenement("message.created", message("11", "c3", "carol")));
+        let mut abonne = store.abonner();
+        serveur.router(
+            "GET",
+            "/servers/s1",
+            Reponse::json(
+                200,
+                json!({
+                    "server": {"id": "s1", "name": "Amis", "owner_id": "me", "icon_version": 0},
+                    "channels": [{"id": "c1", "name": "général", "kind": "text", "position": 1, "permissions": ["view_channel"]}],
+                    "members": [{"id": "me", "pseudo": "moi", "online": true}],
+                    "roles": [],
+                    "permissions": ["view_channel"]
+                }),
+            ),
+        );
+        let (signaux, flux) = FluxTempsReel::factice();
+        let boucle = store.brancher(flux);
+        signaux
+            .send(Signal::Evenement(Box::new(evenement(
+                "roles.updated",
+                json!({"server_id": "s1"}),
+            ))))
+            .unwrap();
+        let mut recus = Vec::new();
+        attendre(&store, &mut abonne, &mut recus, |e| {
+            e.salons("s1").len() == 1
+        })
+        .await;
+        let etat = store.instantane();
+        assert_eq!(etat.salons("s1")[0].id.as_deref(), Some("c1"));
+        assert_eq!(
+            etat.salons("s1")[0].permissions,
+            Some(vec!["view_channel".to_string()])
+        );
+        assert_eq!(
+            etat.details["s1"].permissions,
+            Some(vec!["view_channel".to_string()])
+        );
+        assert_eq!(etat.non_lus.get(&cle("c:c3")), None);
+        assert!(etat.participants("v1").is_empty());
+        assert!(recus.contains(&Changement::Roles {
+            serveur: "s1".into()
+        }));
+        assert!(recus.contains(&Changement::SalonRetire {
+            serveur: "s1".into(),
+            salon: "c3".into()
+        }));
+        signaux.send(Signal::AccesRetire).unwrap();
+        assert_eq!(boucle.await.unwrap(), FinFlux::AccesRetire);
+    }
+
+    #[tokio::test]
+    async fn rend_la_main_quand_la_session_expire() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        let (signaux, flux) = FluxTempsReel::factice();
+        signaux.send(Signal::SessionExpiree).unwrap();
+        assert_eq!(store.suivre(flux).await, FinFlux::SessionExpiree);
+    }
+
+    #[tokio::test]
+    async fn enregistre_les_reglages_et_les_retablit_en_cas_d_erreur() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(204)]).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        let mut reglages = store.lire(|e| e.reglages_notification.clone());
+        reglages.sound = Some(false);
+        store
+            .enregistrer_reglages_notification(reglages.clone())
+            .await
+            .unwrap();
+        assert_eq!(store.lire(|e| e.reglages_notification.sound), Some(false));
+        let envoye = serveur.requetes()[0].json();
+        assert_eq!(
+            (envoye["sound"].clone(), envoye["preview"].clone()),
+            (json!(false), json!(true))
+        );
+        serveur.programmer([Reponse::json(500, json!({"error": "x", "message": "x"}))]);
+        let mut sans_apercu = reglages.clone();
+        sans_apercu.preview = Some(false);
+        assert!(store
+            .enregistrer_reglages_notification(sans_apercu)
+            .await
+            .is_err());
+        assert_eq!(store.lire(|e| e.reglages_notification.preview), Some(true));
+    }
+
+    #[tokio::test]
+    async fn change_son_statut_et_le_retablit_en_cas_d_erreur() {
+        let serveur = monde(monde_a()).await;
+        serveur.router("PUT", "/me/status", Reponse::vide(204));
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        store.definir_statut(StatutPresence::Dnd).await.unwrap();
+        assert_eq!(store.lire(|e| e.presence_de("me")), Presence::NePasDeranger);
+        serveur.router(
+            "PUT",
+            "/me/status",
+            Reponse::json(500, json!({"error": "x", "message": "x"})),
+        );
+        assert!(store.definir_statut(StatutPresence::Idle).await.is_err());
+        assert_eq!(store.lire(|e| e.presence_de("me")), Presence::NePasDeranger);
+        store.definir_activite_locale("Tetris");
+        assert_eq!(store.lire(|e| e.activite_de("me").to_string()), "Tetris");
+    }
+
+    #[tokio::test]
+    async fn ouvrir_une_conversation_la_marque_lue_cote_serveur() {
+        let serveur = monde(monde_a()).await;
+        serveur.router("POST", "/channels/c1/read", Reponse::vide(204));
+        serveur.router("POST", "/notifications/read", Reponse::vide(204));
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        let avant = serveur.requetes().len();
+        store.ouvrir(Some(cle("c:c1"))).await;
+        let etat = store.instantane();
+        assert_eq!(
+            (etat.non_lus_de(&cle("c:c1")), etat.total_mentions()),
+            (0, 0)
+        );
+        let requetes: Vec<_> = serveur.requetes().into_iter().skip(avant).collect();
+        let lignes: Vec<_> = requetes.iter().map(|r| r.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/notifications/read", "POST"),
+                ("/channels/c1/read", "POST")
+            ]
+        );
+        assert_eq!(requetes[0].json(), json!({"message_ids": ["5"]}));
+    }
+
+    #[tokio::test]
+    async fn ordonne_les_serveurs_et_retient_la_derniere_vue() {
+        let serveur = monde(monde_b()).await;
+        programmer(&serveur, vec![monde_a().remove(0)]);
+        let store = Store::nouveau(serveur.client(), &["s2".to_string()]);
+        store.charger().await.unwrap();
+        assert_eq!(store.ordre_serveurs(), ["s2", "s1"]);
+        let mut abonne = store.abonner();
+        assert_eq!(store.deplacer_serveur("s2", "s1"), ["s1", "s2"]);
+        assert_eq!(store.ordre_serveurs(), ["s1", "s2"]);
+        assert_eq!(abonne.try_recv().unwrap(), [Changement::OrdreServeurs]);
+        assert_eq!(
+            store.serveur_voisin(Some("s2"), Sens::Suivant).as_deref(),
+            Some("")
+        );
+        assert_eq!(
+            store.serveur_voisin(None, Sens::Suivant).as_deref(),
+            Some("s1")
+        );
+        let vue = store.memoriser_vue("#/s/s2/t1");
+        assert_eq!(vue, DerniereVue::enregistrer("me", "#/s/s2/t1"));
+        assert_eq!(
+            store.adresse_a_rouvrir(Some(&vue)).as_deref(),
+            Some("#/s/s2/t1")
+        );
+        assert_eq!(store.conversation_a_rouvrir(Some(&vue)), Some(cle("c:t1")));
+        let ailleurs = DerniereVue::enregistrer("autre", "#/dm/d2");
+        assert_eq!(store.adresse_a_rouvrir(Some(&ailleurs)), None);
+        assert_eq!(
+            store.conversation_a_rouvrir(Some(&store.memoriser_vue("#/dm/d2"))),
+            Some(cle("d:d2"))
+        );
+    }
+}

@@ -1,0 +1,314 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Compteur, Coins } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { DonneesCoquille, LigneServeur, LigneSection } from "donnees.slint";
+
+component Pave {
+    in property <string> libelle;
+    in property <string> description;
+    in property <bool> actif: false;
+    in property <bool> non-lu: false;
+    in property <int> compteur: 0;
+    in property <bool> mention: false;
+    in property <color> fond: Theme.surface;
+    in property <color> fond-survol: Theme.rose-doux;
+    in property <bool> contour: true;
+    in property <bool> deplacable: false;
+    out property <bool> glisse: false;
+    out property <length> decalage: 0;
+    callback clique();
+    callback lache(length);
+    property <bool> utilisable: Calques.ouverts == 0;
+    width: 44px;
+    height: 44px;
+    accessible-role: button;
+    accessible-label: libelle;
+    accessible-description: description;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.clique();
+        }
+    }
+    forward-focus: portee;
+    if root.actif: Rectangle {
+        x: -4px;
+        y: -4px;
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        border-radius: Rayon.m + 4px;
+        border-width: 2px;
+        border-color: Theme.encre;
+    }
+    Rectangle {
+        border-radius: Rayon.m;
+        background: root.actif ? Theme.rose : zone.has-hover && root.utilisable ? root.fond-survol : root.fond;
+        border-width: root.contour && !root.actif ? 1px : 0;
+        border-color: Theme.trait;
+        opacity: root.glisse ? 0.4 : 1;
+        clip: true;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+        @children
+    }
+    Anneau {
+        rayon: Rayon.m;
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    if root.non-lu && !root.actif: Rectangle {
+        x: 12px;
+        y: parent.height + 3px;
+        width: parent.width - 24px;
+        height: 3px;
+        border-radius: 3px;
+        background: Theme.rose-fonce;
+    }
+    if root.compteur > 0: Compteur {
+        x: parent.width - self.width + 8px;
+        y: -6px;
+        nombre: root.compteur;
+        mention: root.mention;
+        contour: Theme.papier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            moved => {
+                if (root.deplacable && self.pressed) {
+                    root.decalage = self.mouse-y - self.pressed-y;
+                    if (Math.abs(root.decalage) > 6px) {
+                        root.glisse = true;
+                    }
+                }
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.up && root.glisse) {
+                    root.lache(root.decalage);
+                    root.glisse = false;
+                    root.decalage = 0;
+                }
+            }
+            clicked => {
+                if (!root.glisse) {
+                    root.clique();
+                }
+            }
+        }
+    }
+}
+
+component Outil {
+    in property <string> icone;
+    in property <string> libelle;
+    in property <bool> actif: false;
+    callback clique();
+    width: 44px;
+    height: 44px;
+    accessible-role: button;
+    accessible-label: libelle;
+    accessible-enabled: Calques.ouverts == 0;
+    accessible-action-default => {
+        if (Calques.ouverts == 0) {
+            root.clique();
+        }
+    }
+    forward-focus: portee;
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.actif ? Theme.rose : zone.has-hover ? Theme.papier-2 : transparent;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    Icone {
+        nom: root.icone;
+        taille: 22px;
+        couleur: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: Calques.ouverts == 0;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: Calques.ouverts == 0;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
+        }
+    }
+}
+
+export component Rail inherits Rectangle {
+    callback rejoindre();
+    property <length> pas: 54px;
+    width: 68px;
+    background: Theme.papier;
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.trait;
+    }
+    VerticalLayout {
+        padding-top: 14px;
+        padding-bottom: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            alignment: center;
+            Pave {
+                libelle: "Accueil";
+                description: DonneesCoquille.accueil.mentions > 0 ? "Messages privés, mentions : \{DonneesCoquille.accueil.mentions}" : DonneesCoquille.accueil.non-lus > 0 ? "Messages privés, non lus : \{DonneesCoquille.accueil.non-lus}" : "Messages privés";
+                actif: DonneesCoquille.accueil.actif;
+                non-lu: DonneesCoquille.accueil.non-lus > 0;
+                compteur: DonneesCoquille.accueil.mentions > 0 ? DonneesCoquille.accueil.mentions : DonneesCoquille.accueil.non-lus;
+                mention: DonneesCoquille.accueil.mentions > 0;
+                fond: Theme.rose;
+                fond-survol: Theme.rose;
+                contour: false;
+                clique => {
+                    DonneesCoquille.ouvrir-accueil();
+                }
+                Text {
+                    text: "E";
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 22px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: center;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            Rectangle {
+                width: 28px;
+                height: 1px;
+                background: Theme.trait-fort;
+            }
+        }
+        TouchArea {
+            vertical-stretch: 1;
+            min-height: 54px;
+            scroll-event(e) => {
+                liste.content-y = Math.clamp(liste.content-y + e.delta-y, liste.height - liste.content-height, 0);
+                return accept;
+            }
+            liste := Flickable {
+                width: 100%;
+                height: 100%;
+                content-height: Math.max(self.height, DonneesCoquille.serveurs.length * root.pas + 64px);
+                interactive: false;
+                for serveur[i] in DonneesCoquille.serveurs: Pave {
+                    x: (parent.width - self.width) / 2;
+                    y: 8px + i * root.pas;
+                    libelle: serveur.nom;
+                    description: serveur.mentions > 1 ? "\{serveur.mentions} mentions" : serveur.mentions == 1 ? "1 mention" : serveur.non-lus > 1 ? "\{serveur.non-lus} nouveaux messages" : serveur.non-lus == 1 ? "1 nouveau message" : "";
+                    actif: serveur.actif;
+                    non-lu: serveur.non-lus > 0;
+                    compteur: serveur.mentions;
+                    mention: true;
+                    deplacable: true;
+                    clique => {
+                        DonneesCoquille.ouvrir-serveur(serveur.id);
+                    }
+                    lache(decalage) => {
+                        let arrivee = Math.clamp(i + Math.round(decalage / root.pas), 0, DonneesCoquille.serveurs.length - 1);
+                        if (arrivee != i) {
+                            DonneesCoquille.deplacer-serveur(serveur.id, DonneesCoquille.serveurs[arrivee].id);
+                        }
+                    }
+                    if serveur.a-image: Image {
+                        width: 100%;
+                        height: 100%;
+                        source: serveur.image;
+                        image-fit: cover;
+                    }
+                    if serveur.a-image: Coins {
+                        width: 100%;
+                        height: 100%;
+                        rayon: Rayon.m;
+                        couleur: Theme.papier;
+                    }
+                    if !serveur.a-image: Text {
+                        text: serveur.initiales;
+                        color: Theme.encre;
+                        font-family: Typo.titre;
+                        font-size: 15px;
+                        font-weight: 800;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                Pave {
+                    x: (parent.width - self.width) / 2;
+                    y: 8px + DonneesCoquille.serveurs.length * root.pas;
+                    libelle: "Rejoindre un serveur";
+                    contour: false;
+                    fond: transparent;
+                    fond-survol: Theme.papier-2;
+                    clique => {
+                        root.rejoindre();
+                    }
+                    Rectangle {
+                        border-radius: Rayon.m;
+                        border-width: 1.5px;
+                        border-color: Theme.trait-fort;
+                        Icone {
+                            nom: "plus";
+                            taille: 22px;
+                            couleur: Theme.gris;
+                        }
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            vertical-stretch: 0;
+            alignment: end;
+            spacing: Espace.e1;
+            padding-top: DonneesCoquille.sections.length > 0 ? Espace.e2 : 0;
+            for section in DonneesCoquille.sections: HorizontalLayout {
+                alignment: center;
+                Outil {
+                    icone: section.icone;
+                    libelle: section.nom;
+                    actif: section.actif;
+                    clique => {
+                        DonneesCoquille.ouvrir-section(section.id);
+                    }
+                }
+            }
+        }
+    }
+}

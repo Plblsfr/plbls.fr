@@ -1,20 +1,72 @@
+use crate::entree::{self, AuthReelle, Emetteur, Services};
 use crate::{ModeTheme, Mouvement, Principale, Theme};
+use estompe_client::auth::{Authentification, ConfigAuth};
 use estompe_client::config::{self, AdresseServeur};
+use estompe_client::http::{Client, Reglages};
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::preferences::{self, EtatFichier, Fenetre, Preferences};
-use estompe_plateforme::Dossiers;
+use estompe_plateforme::{CoffreSysteme, Dossiers, NavigateurSysteme, OuvertureUrl, IDENTIFIANT};
 use slint::ComponentHandle;
-use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 pub const LARGEUR_MIN: u32 = 720;
 pub const HAUTEUR_MIN: u32 = 480;
 const COTE_MAX: u32 = 16_384;
 
+pub struct ServicesReels {
+    pub client: Client,
+    pub auth: Arc<Authentification>,
+    pub services: Services,
+}
+
+#[derive(Clone)]
+pub struct Memoire {
+    preferences: Arc<Mutex<Preferences>>,
+    dossier: PathBuf,
+    journal: Option<Arc<Journal>>,
+}
+
+impl Memoire {
+    pub fn nouvelle(
+        preferences: Preferences,
+        dossier: PathBuf,
+        journal: Option<Arc<Journal>>,
+    ) -> Self {
+        Self {
+            preferences: Arc::new(Mutex::new(preferences)),
+            dossier,
+            journal,
+        }
+    }
+
+    pub fn lire<R>(&self, lecture: impl FnOnce(&Preferences) -> R) -> R {
+        lecture(&self.preferences.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    pub fn modifier(&self, modification: impl FnOnce(&mut Preferences)) {
+        let mut preferences = self.preferences.lock().unwrap_or_else(|e| e.into_inner());
+        let avant = preferences.clone();
+        modification(&mut preferences);
+        if *preferences == avant {
+            return;
+        }
+        if let Err(e) = preferences.enregistrer(&self.dossier) {
+            if let Some(journal) = &self.journal {
+                journal.ecrire(
+                    Niveau::Erreur,
+                    "preferences",
+                    &format!("enregistrement impossible : {e}"),
+                );
+            }
+        }
+    }
+}
+
 pub struct Session {
     pub dossiers: Dossiers,
-    pub preferences: RefCell<Preferences>,
+    pub memoire: Memoire,
     pub journal: Arc<Journal>,
     pub adresse: AdresseServeur,
 }
@@ -49,34 +101,54 @@ impl Session {
                 &format!("adresse du serveur écartée ({origine:?}) : {erreur:?}"),
             );
         }
+        let memoire = Memoire::nouvelle(
+            chargement.preferences,
+            dossiers.donnees.clone(),
+            Some(journal.clone()),
+        );
         Rc::new(Self {
             dossiers,
-            preferences: RefCell::new(chargement.preferences),
+            memoire,
             journal,
             adresse,
         })
     }
 
-    pub fn enregistrer(&self) {
-        if let Err(e) = self
-            .preferences
-            .borrow()
-            .enregistrer(&self.dossiers.donnees)
-        {
-            self.journal.ecrire(
-                Niveau::Erreur,
-                "preferences",
-                &format!("enregistrement impossible : {e}"),
-            );
-        }
+    pub fn services(&self, emetteur: &Emetteur) -> Result<ServicesReels, String> {
+        let navigateur: Arc<dyn OuvertureUrl + Send + Sync> = Arc::new(NavigateurSysteme);
+        let auth = Authentification::nouvelle(
+            ConfigAuth::depuis_environnement(),
+            Arc::new(CoffreSysteme::new(IDENTIFIANT)),
+        )
+        .map_err(|e| e.to_string())?
+        .avec_journal(self.journal.clone());
+        let auth = Arc::new(auth);
+        let client = entree::client_de_l_app(&self.adresse.url, Reglages::default(), emetteur)
+            .map_err(|e| e.to_string())?
+            .avec_jeton(auth.fournisseur_jeton())
+            .avec_journal(self.journal.clone());
+        let services = Services {
+            auth: Arc::new(AuthReelle {
+                auth: auth.clone(),
+                navigateur: navigateur.clone(),
+            }),
+            api: Arc::new(client.clone()),
+            navigateur,
+            lien_telechargement: entree::lien_telechargement(&self.adresse.url),
+            journal: Some(self.journal.clone()),
+        };
+        Ok(ServicesReels {
+            client,
+            auth,
+            services,
+        })
     }
 
     pub fn brancher(self: &Rc<Self>, fenetre: &Principale) {
-        appliquer(fenetre, &self.preferences.borrow());
-        let session = self.clone();
+        self.memoire.lire(|p| appliquer(fenetre, p));
+        let memoire = self.memoire.clone();
         fenetre.on_theme_change(move |mode| {
-            session.preferences.borrow_mut().theme = theme_des_preferences(mode);
-            session.enregistrer();
+            memoire.modifier(|p| p.theme = theme_des_preferences(mode));
         });
         let session = self.clone();
         let faible = fenetre.as_weak();
@@ -89,8 +161,8 @@ impl Session {
     }
 
     pub fn retenir_geometrie(&self, fenetre: &Principale) {
-        self.preferences.borrow_mut().fenetre = Some(geometrie(fenetre));
-        self.enregistrer();
+        let geometrie = geometrie(fenetre);
+        self.memoire.modifier(|p| p.fenetre = Some(geometrie));
     }
 }
 

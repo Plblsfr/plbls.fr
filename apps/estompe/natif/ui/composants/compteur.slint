@@ -1,0 +1,25 @@
+import { Theme, Typo, Rayon } from "../jetons.slint";
+
+export component Compteur inherits Rectangle {
+    in property <int> nombre;
+    in property <bool> mention: false;
+    in property <color> contour: transparent;
+    visible: nombre > 0;
+    width: Math.max(20px, libelle.preferred-width + 12px);
+    height: 20px;
+    border-radius: Rayon.pilule;
+    background: mention ? Theme.rose-texte : Theme.encre;
+    border-width: contour == transparent ? 0 : 2px;
+    border-color: contour;
+    accessible-role: text;
+    accessible-label: mention ? (nombre == 1 ? "1 mention" : "\{nombre} mentions") : (nombre == 1 ? "1 nouveau message" : "\{nombre} nouveaux messages");
+    libelle := Text {
+        text: root.nombre > 99 ? "99+" : "\{root.nombre}";
+        color: Theme.papier;
+        font-family: Typo.mono;
+        font-size: 11px;
+        font-weight: Typo.gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

@@ -1,0 +1,105 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone } from "icone.slint";
+import { Anneau } from "focus.slint";
+import { Compteur } from "compteur.slint";
+import { Etiquette } from "etiquette.slint";
+
+export component ElementListe {
+    in property <string> texte;
+    in property <string> icone;
+    in property <bool> actif: false;
+    in property <bool> non-lu: false;
+    in property <int> non-lus: 0;
+    in property <int> mentions: 0;
+    in property <string> etiquette;
+    in property <string> description;
+    in property <int> calque: 0;
+    out property <bool> a-le-focus: portee.has-focus;
+    callback clique();
+    property <bool> utilisable: calque >= Calques.ouverts;
+    property <bool> fort: actif || non-lu || non-lus > 0 || mentions > 0;
+    property <color> encre: fort || zone.has-hover ? Theme.encre : Theme.gris;
+    min-height: 36px;
+    horizontal-stretch: 1;
+    accessible-role: button;
+    accessible-label: texte;
+    accessible-description: description;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.clique();
+        }
+    }
+    forward-focus: portee;
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.actif ? Theme.surface : zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
+        border-width: root.actif ? 1px : 0;
+        border-color: Theme.trait;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 10px;
+        if root.icone != "": VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                taille: 16px;
+                couleur: root.encre;
+            }
+        }
+        @children
+        Text {
+            horizontal-stretch: 1;
+            text: root.texte;
+            color: root.encre;
+            font-family: Typo.texte;
+            font-size: 14.5px;
+            font-weight: root.fort ? Typo.demi-gras : Typo.normal;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.etiquette != "": VerticalLayout {
+            alignment: center;
+            Etiquette {
+                texte: root.etiquette;
+            }
+        }
+        if root.mentions > 0 || root.non-lus > 0: VerticalLayout {
+            alignment: center;
+            Compteur {
+                nombre: root.mentions > 0 ? root.mentions : root.non-lus;
+                mention: root.mentions > 0;
+            }
+        }
+    }
+}

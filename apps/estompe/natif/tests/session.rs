@@ -69,7 +69,7 @@ fn un_fichier_de_preferences_corrompu_n_empeche_pas_d_ouvrir_la_session() {
     dossiers.creer().unwrap();
     std::fs::write(Preferences::chemin(&dossiers.donnees), b"{ pas du json").unwrap();
     let s = Session::ouvrir(dossiers.clone());
-    assert_eq!(*s.preferences.borrow(), Preferences::default());
+    assert_eq!(s.memoire.lire(Clone::clone), Preferences::default());
     assert_eq!(
         Preferences::charger(&dossiers.donnees).preferences,
         Preferences::default()

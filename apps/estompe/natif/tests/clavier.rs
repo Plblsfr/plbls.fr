@@ -1,4 +1,4 @@
-use estompe_natif::{creer_fenetre, Page, Principale};
+use estompe_natif::{creer_fenetre, Principale};
 use slint::platform::{Key, WindowEvent};
 use slint::{ComponentHandle, SharedString};
 use std::time::Duration;
@@ -23,7 +23,7 @@ fn tabulations(fenetre: &Principale, nombre: usize) {
 fn demonstration() -> Principale {
     i_slint_backend_testing::init_no_event_loop();
     let fenetre = creer_fenetre().unwrap();
-    fenetre.set_page(Page::Composants);
+    fenetre.set_demonstration(true);
     fenetre
         .window()
         .set_size(slint::LogicalSize::new(1180.0, 900.0));

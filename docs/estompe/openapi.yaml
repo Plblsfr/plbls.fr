@@ -18,8 +18,8 @@ info:
     tant que l'utilisateur n'a pas choisi son pseudo (`POST /activate`).
 
     **Version du client** : les apps envoient `X-Estompe-Version` (x.y.z) et `X-Estompe-Platform` (`web`, `pwa`, `windows`,
-    `android`) ; à l'ouverture du WebSocket, les paramètres `v` et `platform`. Si la version est inférieure au minimum de la
-    plateforme (`backend/core/updates.json`), toute route répond 426 `upgrade_required`
+    `android`, `natif` pour l'app native) ; à l'ouverture du WebSocket, les paramètres `v` et `platform`. Si la version est inférieure au minimum de la
+    plateforme (`api/estompe/core/updates.json`), toute route répond 426 `upgrade_required`
     (`{error, message, min_version}`) et l'app affiche l'écran « Mise à jour requise ». Sans en-tête, la requête passe.
 
     **Erreurs** : `{"error": "<code>", "message": "<texte>"}`. Un non-membre qui vise un serveur, un salon, un message
@@ -1096,6 +1096,11 @@ paths:
                           properties:
                             online: {type: boolean}
                             roles: {type: array, items: {type: string, format: uuid}, description: "rôles du membre, du plus élevé au plus bas, hors « @tout le monde »"}
+                            nickname: {type: string, description: "pseudo propre au serveur, vide sans"}
+                            timeout_until: {type: string, format: date-time, nullable: true, description: "fin de l'exclusion temporaire, null sans"}
+                            joined_at: {type: string, format: date-time, description: arrivée sur le serveur}
+                            created_at: {type: string, format: date-time, description: création du compte}
+                            banner_color: {type: string, description: "couleur de la bannière du profil (« #rrggbb »), vide sans"}
                   roles: {type: array, items: {$ref: "#/components/schemas/Role"}, description: "du plus élevé à « @tout le monde »"}
                   permissions: {$ref: "#/components/schemas/Permissions", description: vos permissions au niveau du serveur}
         "404": {$ref: "#/components/responses/NotFound"}

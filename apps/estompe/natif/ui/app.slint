@@ -2,15 +2,37 @@ import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Calques } from "jeton
 import { Icone, Bouton, VarianteBouton, Modal } from "composants.slint";
 import { APropos } from "a-propos.slint";
 import { Demonstration } from "demonstration.slint";
+import { Coquille } from "coquille/coquille.slint";
+import { MargeMembres } from "coquille/membres.slint";
+import { CarteProfilVue } from "coquille/carte-profil.slint";
+import { DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, RoleProfil, CarteProfil, EtatPresence } from "coquille/donnees.slint";
+import { Attente } from "entree/commun.slint";
+import { Connexion } from "entree/connexion.slint";
+import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
+import { MiseAJour } from "entree/mise-a-jour.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, RoleProfil, CarteProfil, EtatPresence }
 
-export enum Page { accueil, composants }
+export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
 export component Principale inherits Window {
     in property <string> version;
     in property <bool> debogage: false;
-    in-out property <Page> page: Page.accueil;
+    in property <Page> page: Page.demarrage;
+    in-out property <bool> demonstration: false;
+    in property <bool> connexion-en-attente: false;
+    in property <string> connexion-erreur;
+    in property <string> activation-erreur;
+    in property <bool> activation-champ-en-faute: false;
+    in property <bool> activation-en-cours: false;
+    in-out property <string> activation-pseudo;
+    in property <string> invitation-erreur;
+    in property <bool> invitation-en-cours: false;
+    in-out property <string> invitation-saisie;
+    in property <string> injoignable-message;
+    in property <string> mise-a-jour-message;
+    in property <string> mise-a-jour-version-minimale;
+    in property <string> pseudo;
     in-out property <bool> a-propos-ouvert: false;
     in-out property <bool> modal-demo-ouvert: false;
     in property <bool> infobulle-forcee: false;
@@ -20,8 +42,21 @@ export component Principale inherits Window {
     out property <bool> interrupteur-demo: demo.interrupteur-allume;
     out property <int> confirmations-demo;
     callback theme-change(ModeTheme);
+    callback se-connecter();
+    callback creer-compte();
+    callback annuler-connexion();
+    callback reessayer();
+    callback se-deconnecter();
+    callback activer(string);
+    callback ouvrir-invitation();
+    callback rejoindre(string);
+    callback retour-accueil();
+    callback telecharger-mise-a-jour();
     public function focus-demo() {
         demo.focus-initial();
+    }
+    public function focus-connexion() {
+        connexion.focus-initial();
     }
     title: "Estompe natif (beta)";
     icon: @image-url("../icones/estompe.png");
@@ -72,10 +107,10 @@ export component Principale inherits Window {
                     HorizontalLayout {
                         spacing: Espace.e2;
                         if root.debogage: Bouton {
-                            texte: root.page == Page.composants ? "Accueil" : "Composants";
+                            texte: root.demonstration ? "Retour" : "Composants";
                             variante: VarianteBouton.fantome;
                             clique => {
-                                root.page = root.page == Page.composants ? Page.accueil : Page.composants;
+                                root.demonstration = !root.demonstration;
                             }
                         }
                         Bouton {
@@ -105,36 +140,90 @@ export component Principale inherits Window {
         }
         Rectangle {
             vertical-stretch: 1;
-            if root.page == Page.accueil: VerticalLayout {
-                alignment: center;
-                spacing: Espace.e3;
-                HorizontalLayout {
-                    alignment: center;
-                    Icone {
-                        nom: "bulle";
-                        taille: 40px;
-                        couleur: Theme.rose-fonce;
+            Rectangle {
+                visible: !root.demonstration;
+                if root.page == Page.demarrage || root.page == Page.verification: Attente {
+                    texte: root.page == Page.demarrage ? "Ouverture d'Estompe…" : "Vérification du compte…";
+                }
+                connexion := Connexion {
+                    visible: root.page == Page.connexion;
+                    en-attente: root.connexion-en-attente;
+                    erreur: root.connexion-erreur;
+                    se-connecter => {
+                        root.se-connecter();
+                    }
+                    creer-compte => {
+                        root.creer-compte();
+                    }
+                    annuler => {
+                        root.annuler-connexion();
                     }
                 }
-                Text {
-                    text: "Rien à afficher pour l'instant";
-                    color: Theme.encre;
-                    font-family: Typo.titre;
-                    font-size: Typo.titre-section;
-                    font-weight: Typo.demi-gras;
-                    horizontal-alignment: center;
+                if root.page == Page.refuse: Refus {
+                    reessayer => {
+                        root.reessayer();
+                    }
+                    se-deconnecter => {
+                        root.se-deconnecter();
+                    }
                 }
-                Text {
-                    text: "Le socle est en place : la connexion et la messagerie arrivent avec les lots suivants.";
-                    color: Theme.gris;
-                    horizontal-alignment: center;
-                    wrap: word-wrap;
+                if root.page == Page.activation: Activation {
+                    erreur: root.activation-erreur;
+                    champ-en-faute: root.activation-champ-en-faute;
+                    en-cours: root.activation-en-cours;
+                    pseudo <=> root.activation-pseudo;
+                    activer(pseudo) => {
+                        root.activer(pseudo);
+                    }
+                    se-deconnecter => {
+                        root.se-deconnecter();
+                    }
+                }
+                if root.page == Page.invitation: Invitation {
+                    erreur: root.invitation-erreur;
+                    en-cours: root.invitation-en-cours;
+                    saisie <=> root.invitation-saisie;
+                    rejoindre(saisie) => {
+                        root.rejoindre(saisie);
+                    }
+                    retour => {
+                        root.retour-accueil();
+                    }
+                }
+                if root.page == Page.injoignable: Injoignable {
+                    message: root.injoignable-message;
+                    reessayer => {
+                        root.reessayer();
+                    }
+                    se-deconnecter => {
+                        root.se-deconnecter();
+                    }
+                }
+                if root.page == Page.mise-a-jour: MiseAJour {
+                    version: root.version;
+                    version-minimale: root.mise-a-jour-version-minimale;
+                    message: root.mise-a-jour-message;
+                    telecharger => {
+                        root.telecharger-mise-a-jour();
+                    }
+                }
+                if root.page == Page.coquille: Coquille {
+                    ouvrir-invitation => {
+                        root.ouvrir-invitation();
+                    }
+                    se-deconnecter => {
+                        root.se-deconnecter();
+                    }
+                    if DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte: MargeMembres {
+                        width: 100%;
+                        height: 100%;
+                    }
                 }
             }
             demo := Demonstration {
                 width: 100%;
                 height: 100%;
-                visible: root.page == Page.composants;
+                visible: root.demonstration;
                 infobulle-forcee: root.infobulle-forcee;
                 ouvrir-modal => {
                     root.modal-demo-ouvert = true;
@@ -185,5 +274,8 @@ export component Principale inherits Window {
                 }
             }
         }
+    }
+    CarteProfilVue {
+        ouverte: root.page == Page.coquille && DonneesCoquille.carte-ouverte;
     }
 }

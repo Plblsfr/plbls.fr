@@ -1,0 +1,319 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Avatar, Pastille, BadgeRole, GenreBadgeRole, Etiquette } from "../composants.slint";
+import { DonneesCoquille, RoleProfil } from "donnees.slint";
+import { Medaille } from "membres.slint";
+
+component Surtitre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+    accessible-role: text;
+}
+
+component Puce inherits Rectangle {
+    in property <string> texte;
+    in property <color> lisere: transparent;
+    property <bool> colore: lisere != transparent;
+    height: 24px;
+    width: libelle.preferred-width + (colore ? 34px : 20px);
+    border-radius: Rayon.pilule;
+    background: Theme.papier-2;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: text;
+    accessible-label: texte;
+    if root.colore: Rectangle {
+        x: 10px;
+        y: (parent.height - self.height) / 2;
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: root.lisere;
+    }
+    libelle := Text {
+        x: root.colore ? 24px : 10px;
+        text: root.texte;
+        color: Theme.encre;
+        font-family: Typo.texte;
+        font-size: 12.5px;
+        font-weight: Typo.moyen;
+        vertical-alignment: center;
+    }
+}
+
+component Ligne {
+    in property <string> libelle;
+    in property <string> valeur;
+    HorizontalLayout {
+        spacing: 10px;
+        Text {
+            horizontal-stretch: 1;
+            text: root.libelle;
+            color: Theme.gris;
+            font-size: 13.5px;
+            overflow: elide;
+        }
+        Text {
+            text: root.valeur;
+            color: Theme.encre;
+            font-family: Typo.mono;
+            font-size: 12.5px;
+            font-weight: Typo.demi-gras;
+            horizontal-alignment: right;
+        }
+    }
+}
+
+export component CarteProfilVue {
+    in property <bool> ouverte: false;
+    width: 100%;
+    height: 100%;
+    visible: ouverte;
+    accessible-role: none;
+    changed ouverte => {
+        Calques.ouverts = Math.max(0, Calques.ouverts + (ouverte ? 1 : -1));
+        if (ouverte) {
+            croix.prendre-focus();
+        }
+    }
+    Rectangle {
+        background: Theme.papier.with-alpha(0.6);
+        TouchArea {
+            clicked => {
+                DonneesCoquille.fermer-carte();
+            }
+        }
+    }
+    FocusScope {
+        enabled: false;
+        capture-key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                DonneesCoquille.fermer-carte();
+                return accept;
+            }
+            return reject;
+        }
+        carte := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: Math.min(380px, parent.width - 16px);
+            height: Math.min(contenu.preferred-height, parent.height - 16px);
+            border-radius: Rayon.xl;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.trait;
+            clip: true;
+            drop-shadow-blur: 28px;
+            drop-shadow-offset-y: 10px;
+            drop-shadow-color: Theme.sombre ? #00000099 : #16130f2e;
+            accessible-role: groupbox;
+            accessible-label: "Profil de " + DonneesCoquille.carte.nom;
+            TouchArea { }
+            contenu := VerticalLayout {
+                Rectangle {
+                    height: 146px;
+                    Rectangle {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: 99px;
+                        border-radius: Rayon.xl - 1px;
+                        background: @linear-gradient(180deg, DonneesCoquille.carte.banniere 0%, Theme.surface 100%);
+                    }
+                    Rectangle {
+                        x: 18px;
+                        y: 47px;
+                        width: 98px;
+                        height: 98px;
+                        border-radius: 88px * 0.3 + 5px;
+                        background: Theme.surface;
+                        Avatar {
+                            x: 5px;
+                            y: 5px;
+                            nom: DonneesCoquille.carte.nom;
+                            initiales: DonneesCoquille.carte.initiales;
+                            teinte: DonneesCoquille.carte.teinte;
+                            portrait: DonneesCoquille.carte.portrait;
+                            presence: DonneesCoquille.carte.presence;
+                            taille: 88px;
+                            fond: Theme.surface;
+                        }
+                    }
+                    croix := Bouton {
+                        x: parent.width - self.width - 10px;
+                        y: 10px;
+                        icone: "x";
+                        description: "Fermer le profil";
+                        variante: VarianteBouton.secondaire;
+                        calque: Calques.ouverts;
+                        clique => {
+                            DonneesCoquille.fermer-carte();
+                        }
+                    }
+                }
+                VerticalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    spacing: 4px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            horizontal-stretch: 0;
+                            text: DonneesCoquille.carte.nom;
+                            color: DonneesCoquille.carte.a-couleur ? DonneesCoquille.carte.couleur : Theme.encre;
+                            font-family: Typo.titre;
+                            font-size: 28px;
+                            font-weight: Typo.gras;
+                            letter-spacing: -0.5px;
+                            overflow: elide;
+                            accessible-role: text;
+                        }
+                        if DonneesCoquille.carte.bot: VerticalLayout {
+                            alignment: center;
+                            BadgeRole {
+                                genre: GenreBadgeRole.bot;
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    if DonneesCoquille.carte.badges.length > 0: HorizontalLayout {
+                        alignment: start;
+                        Rectangle {
+                            border-radius: Rayon.m;
+                            background: Theme.papier-2;
+                            width: rangee.preferred-width;
+                            height: 40px;
+                            accessible-role: list;
+                            accessible-label: "Badges";
+                            rangee := HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: 8px;
+                                for badge in DonneesCoquille.carte.badges: VerticalLayout {
+                                    alignment: center;
+                                    Medaille {
+                                        badge: badge;
+                                        taille: 22px;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if DonneesCoquille.carte.pseudo-origine != "": Text {
+                        text: DonneesCoquille.carte.pseudo-origine + " · pseudo d'origine";
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: 12px;
+                        overflow: elide;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        VerticalLayout {
+                            alignment: center;
+                            Pastille {
+                                presence: DonneesCoquille.carte.presence;
+                                fond: Theme.surface;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: DonneesCoquille.carte.statut;
+                            color: Theme.encre-2;
+                            font-size: Typo.petit;
+                            overflow: elide;
+                            accessible-role: text;
+                        }
+                    }
+                    if DonneesCoquille.carte.exclu-jusqu-au != "": HorizontalLayout {
+                        alignment: start;
+                        Rectangle {
+                            border-radius: Rayon.xs;
+                            background: Theme.attention-fond;
+                            width: exclusion.preferred-width;
+                            height: 24px;
+                            exclusion := HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 5px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icone {
+                                        nom: "horloge";
+                                        taille: 12px;
+                                        couleur: Theme.attention;
+                                    }
+                                }
+                                Text {
+                                    text: "Exclu temporairement jusqu'au " + DonneesCoquille.carte.exclu-jusqu-au;
+                                    color: Theme.attention;
+                                    font-size: 12px;
+                                    font-weight: Typo.moyen;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    padding-left: 24px;
+                    padding-right: 24px;
+                    padding-top: 16px;
+                    padding-bottom: 24px;
+                    spacing: 16px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        Surtitre {
+                            text: "RÔLES";
+                        }
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: 6px;
+                            Puce {
+                                texte: DonneesCoquille.carte.rang;
+                            }
+                            for role in DonneesCoquille.carte.roles: Puce {
+                                texte: role.nom;
+                                lisere: role.a-couleur ? role.couleur : transparent;
+                            }
+                        }
+                    }
+                    if DonneesCoquille.carte.arrivee != "": VerticalLayout {
+                        spacing: 6px;
+                        Surtitre {
+                            text: "MEMBRE DEPUIS";
+                        }
+                        Ligne {
+                            libelle: DonneesCoquille.carte.serveur;
+                            valeur: DonneesCoquille.carte.arrivee;
+                        }
+                        if DonneesCoquille.carte.creation != "": Ligne {
+                            libelle: "Estompe";
+                            valeur: DonneesCoquille.carte.creation;
+                        }
+                    }
+                    if !DonneesCoquille.carte.bot: HorizontalLayout {
+                        spacing: Espace.e2;
+                        Bouton {
+                            horizontal-stretch: 1;
+                            texte: DonneesCoquille.carte.moi ? "Modifier mon profil" : "Envoyer un message";
+                            icone: DonneesCoquille.carte.moi ? "crayon" : "bulle";
+                            variante: VarianteBouton.secondaire;
+                            description: "bientôt dans l'app native";
+                            actif: false;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Etiquette {
+                                texte: "bientôt";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -7,7 +7,7 @@ WebSocket ne sert qu'à recevoir, plus un ping applicatif.
 
 1. `POST /ws-ticket` (authentifié comme le reste de l'API : cookie ou Bearer) → `{"ticket": "..."}`.
    Un navigateur ne peut pas mettre d'en-tête sur un WebSocket, d'où le ticket : à usage unique, valable 30 s.
-2. Ouvrir `wss://<hôte>/ws?ticket=<ticket>` (facultatif : `&platform=web|pwa|windows|android&v=<version>`, affichés dans le tableau de bord d'administration et journalisés ; une version sous le minimum de la plateforme est refusée par 426 `upgrade_required`). L'en-tête `Origin`, s'il est présent, doit être autorisé.
+2. Ouvrir `wss://<hôte>/ws?ticket=<ticket>` (facultatif : `&platform=web|pwa|windows|android|natif&v=<version>`, affichés dans le tableau de bord d'administration et journalisés ; une version sous le minimum de la plateforme est refusée par 426 `upgrade_required`). L'en-tête `Origin`, s'il est présent, doit être autorisé.
 3. Le service revalide la session auprès du gateway toutes les 2 minutes, avec le justificatif (cookie ou Bearer) qui a obtenu le ticket.
    Un Bearer ne dure que quelques minutes : pour garder la connexion ouverte, le client envoie régulièrement (l'app web : toutes les minutes)
    un nouveau ticket, `{"type":"renew","data":{"ticket":"..."}}` ; si le ticket est valide et appartient au même compte, son justificatif

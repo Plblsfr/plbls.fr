@@ -727,6 +727,16 @@ pub struct GetServersIdReponseMembersElement {
     pub online: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub roles: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nickname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_until: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub joined_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub banner_color: Option<String>,
 }
 
 pub type PatchServersIdRequete = Name50;

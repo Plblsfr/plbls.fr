@@ -1,0 +1,157 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Chargement } from "../composants.slint";
+
+export enum TonPastille { neutre, attention, danger }
+
+export component FondAcces inherits Rectangle {
+    background: Theme.papier-2;
+    VerticalLayout {
+        alignment: center;
+        padding-top: 40px;
+        padding-bottom: 40px;
+        padding-left: Espace.e4;
+        padding-right: Espace.e4;
+        HorizontalLayout {
+            alignment: center;
+            @children
+        }
+    }
+}
+
+export component Carte inherits Rectangle {
+    width: 400px;
+    border-radius: Rayon.xl;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: Theme.sombre ? #00000066 : #16130f1f;
+    VerticalLayout {
+        padding: 28px;
+        spacing: Espace.e4;
+        @children
+    }
+}
+
+export component Logo inherits Rectangle {
+    in property <bool> grand: false;
+    width: grand ? 64px : 44px;
+    height: self.width;
+    border-radius: grand ? 18px : 12px;
+    background: Theme.rose;
+    accessible-role: none;
+    Text {
+        text: "E";
+        color: Theme.encre;
+        font-family: Typo.titre;
+        font-size: root.grand ? 34px : 24px;
+        font-weight: 800;
+    }
+}
+
+export component Pastille inherits Rectangle {
+    in property <string> icone;
+    in property <TonPastille> ton: TonPastille.neutre;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: ton == TonPastille.attention ? Theme.attention-fond : ton == TonPastille.danger ? Theme.danger-fond : Theme.papier-2;
+    accessible-role: none;
+    Icone {
+        nom: root.icone;
+        taille: 22px;
+        couleur: root.ton == TonPastille.attention ? Theme.attention : root.ton == TonPastille.danger ? Theme.danger : Theme.gris;
+    }
+}
+
+export component AGauche inherits HorizontalLayout {
+    alignment: start;
+}
+
+export component AuCentre inherits HorizontalLayout {
+    alignment: center;
+}
+
+export component TitreCarte inherits Text {
+    color: Theme.encre;
+    font-family: Typo.titre;
+    font-size: 28px;
+    font-weight: Typo.gras;
+    letter-spacing: -0.8px;
+    wrap: word-wrap;
+    accessible-role: text;
+}
+
+export component TexteCarte inherits Text {
+    color: Theme.encre-2;
+    font-family: Typo.texte;
+    font-size: Typo.corps;
+    wrap: word-wrap;
+}
+
+export component Note inherits Text {
+    color: Theme.gris;
+    font-family: Typo.texte;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+export component Alerte inherits Rectangle {
+    in property <string> texte;
+    border-radius: Rayon.m;
+    background: Theme.danger-fond;
+    accessible-role: text;
+    accessible-label: texte;
+    HorizontalLayout {
+        padding-top: 14px;
+        padding-bottom: 14px;
+        padding-left: Espace.e4;
+        padding-right: Espace.e4;
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: start;
+            padding-top: 1px;
+            Icone {
+                nom: "alerte";
+                couleur: Theme.danger;
+            }
+        }
+        Text {
+            text: root.texte;
+            color: Theme.encre;
+            font-family: Typo.texte;
+            font-size: Typo.compact;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+            accessible-role: none;
+        }
+    }
+}
+
+export component Attente inherits Rectangle {
+    in property <string> texte;
+    background: Theme.papier-2;
+    VerticalLayout {
+        alignment: center;
+        spacing: 18px;
+        AuCentre {
+            Logo {
+                grand: true;
+            }
+        }
+        AuCentre {
+            Chargement {
+                taille: 32px;
+                description: root.texte;
+            }
+        }
+        Text {
+            text: root.texte;
+            color: Theme.gris;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            horizontal-alignment: center;
+        }
+    }
+}

@@ -1,0 +1,78 @@
+import { Theme, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton } from "../composants.slint";
+import { Attente } from "../entree/commun.slint";
+import { DonneesCoquille } from "donnees.slint";
+import { Rail } from "rail.slint";
+import { Panneau } from "panneau.slint";
+import { Contenu } from "contenu.slint";
+import { EmplacementMarge } from "marge.slint";
+
+export component Coquille inherits Rectangle {
+    callback ouvrir-invitation();
+    callback se-deconnecter();
+    background: Theme.papier;
+    init => {
+        clavier.focus();
+    }
+    clavier := FocusScope {
+        key-pressed(e) => {
+            if (e.modifiers.control && e.modifiers.alt && e.text == Key.UpArrow) {
+                DonneesCoquille.serveur-voisin(false);
+                return accept;
+            }
+            if (e.modifiers.control && e.modifiers.alt && e.text == Key.DownArrow) {
+                DonneesCoquille.serveur-voisin(true);
+                return accept;
+            }
+            if (e.modifiers.control && !e.modifiers.alt && e.text == "." && DonneesCoquille.marge-disponible) {
+                DonneesCoquille.marge-bascule(!DonneesCoquille.marge-ouverte);
+                return accept;
+            }
+            return reject;
+        }
+        Rectangle {
+            visible: DonneesCoquille.pret;
+            HorizontalLayout {
+                Rail {
+                    rejoindre => {
+                        root.ouvrir-invitation();
+                    }
+                }
+                if !DonneesCoquille.panneau-replie: Panneau {
+                    se-deconnecter => {
+                        root.se-deconnecter();
+                    }
+                }
+                Contenu {
+                    horizontal-stretch: 1;
+                    rejoindre => {
+                        root.ouvrir-invitation();
+                    }
+                }
+                EmplacementMarge {
+                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte;
+                    largeur: DonneesCoquille.largeur-marge;
+                    @children
+                }
+            }
+        }
+        if !DonneesCoquille.pret: Attente {
+            texte: "Chargement de tes serveurs…";
+        }
+        if !DonneesCoquille.pret: VerticalLayout {
+            alignment: end;
+            padding: Espace.e6;
+            HorizontalLayout {
+                alignment: center;
+                Bouton {
+                    texte: "Se déconnecter";
+                    icone: "sortie";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        root.se-deconnecter();
+                    }
+                }
+            }
+        }
+    }
+}

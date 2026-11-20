@@ -6,7 +6,8 @@ fn main() {
         .spawn(|| {
             let config = slint_build::CompilerConfiguration::new()
                 .embed_resources(slint_build::EmbedResourcesKind::EmbedFiles)
-                .with_style("fluent".into());
+                .with_style("fluent".into())
+                .with_debug_info(std::env::var("PROFILE").as_deref() == Ok("debug"));
             slint_build::compile_with_config("ui/app.slint", config)
                 .expect("compilation de l'interface Slint");
         })

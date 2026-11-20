@@ -1,0 +1,16 @@
+import { Theme } from "../jetons.slint";
+
+export component EmplacementMarge inherits Rectangle {
+    in property <bool> ouverte: false;
+    in property <length> largeur: 320px;
+    min-width: ouverte ? largeur : 0;
+    max-width: ouverte ? largeur : 0;
+    visible: ouverte;
+    background: Theme.papier-2;
+    Rectangle {
+        x: 0;
+        width: 1px;
+        background: Theme.trait;
+    }
+    @children
+}

@@ -1,0 +1,300 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Avatar, Champ, ListeVirtuelle, BadgeRole, GenreBadgeRole, EtatPresence } from "../composants.slint";
+import { DonneesCoquille, LigneMembre, LigneBadge } from "donnees.slint";
+
+export component Medaille {
+    in property <LigneBadge> badge;
+    in property <length> taille: 16px;
+    width: taille;
+    height: taille;
+    accessible-role: image;
+    accessible-label: badge.nom;
+    Icone {
+        nom: "medaille";
+        taille: root.taille;
+        couleur: root.badge.couleur;
+    }
+}
+
+component EnTeteGroupe {
+    in property <LigneMembre> ligne;
+    accessible-role: text;
+    accessible-label: ligne.titre;
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        padding-bottom: 7px;
+        Text {
+            text: root.ligne.titre;
+            color: root.ligne.a-couleur-titre ? root.ligne.couleur-titre : Theme.gris;
+            font-family: Typo.mono;
+            font-size: 10.5px;
+            font-weight: Typo.moyen;
+            letter-spacing: 0.8px;
+            vertical-alignment: bottom;
+            overflow: elide;
+        }
+    }
+}
+
+component LigneMembreVue {
+    in property <LigneMembre> ligne;
+    property <bool> eteint: ligne.presence == EtatPresence.hors-ligne;
+    accessible-role: button;
+    accessible-label: ligne.nom;
+    accessible-description: ligne.libelle-presence + (ligne.activite != "" ? ", joue à " + ligne.activite : "");
+    accessible-action-default => {
+        DonneesCoquille.ouvrir-membre(root.ligne.utilisateur);
+    }
+    Rectangle {
+        x: 8px;
+        width: parent.width - 16px;
+        border-radius: Rayon.s;
+        background: zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesCoquille.ouvrir-membre(root.ligne.utilisateur);
+        }
+    }
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 16px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.ligne.nom;
+                initiales: root.ligne.initiales;
+                teinte: root.ligne.teinte;
+                portrait: root.ligne.portrait;
+                presence: root.ligne.presence;
+                taille: 32px;
+                fond: Theme.papier-2;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 1px;
+            HorizontalLayout {
+                spacing: 6px;
+                Text {
+                    horizontal-stretch: 0;
+                    text: root.ligne.nom;
+                    color: root.ligne.a-couleur ? root.ligne.couleur : Theme.encre;
+                    opacity: root.eteint ? 0.62 : 1;
+                    font-family: Typo.texte;
+                    font-size: 14.5px;
+                    font-weight: Typo.moyen;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                if root.ligne.exclu: VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 13px;
+                        height: 13px;
+                        accessible-role: image;
+                        accessible-label: "Exclu temporairement";
+                        Icone {
+                            nom: "lock";
+                            taille: 13px;
+                            couleur: Theme.attention;
+                        }
+                    }
+                }
+                if root.ligne.bot: VerticalLayout {
+                    alignment: center;
+                    BadgeRole {
+                        genre: GenreBadgeRole.bot;
+                    }
+                }
+                if root.ligne.createur: VerticalLayout {
+                    alignment: center;
+                    BadgeRole {
+                        genre: GenreBadgeRole.createur;
+                    }
+                }
+                if root.ligne.nombre-badges > 0: VerticalLayout {
+                    alignment: center;
+                    Medaille {
+                        badge: root.ligne.badge-1;
+                    }
+                }
+                if root.ligne.nombre-badges > 1: VerticalLayout {
+                    alignment: center;
+                    Medaille {
+                        badge: root.ligne.badge-2;
+                    }
+                }
+                if root.ligne.nombre-badges > 2: Text {
+                    text: "+" + (root.ligne.nombre-badges - 2);
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 10px;
+                    font-weight: Typo.demi-gras;
+                    vertical-alignment: center;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            if root.ligne.activite != "": HorizontalLayout {
+                spacing: 4px;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "lecture";
+                        taille: 11px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.ligne.activite;
+                    color: Theme.gris;
+                    font-family: Typo.texte;
+                    font-size: 11.5px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
+
+export component MargeMembres inherits Rectangle {
+    VerticalLayout {
+        Rectangle {
+            height: 60px;
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e2;
+                spacing: Espace.e1;
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Rectangle {
+                        height: 34px;
+                        border-radius: Rayon.s;
+                        background: Theme.papier-3;
+                        accessible-role: tab-list;
+                        accessible-label: "Contenu de la marge";
+                        Rectangle {
+                            x: 3px;
+                            y: 3px;
+                            width: parent.width - 6px;
+                            height: parent.height - 6px;
+                            border-radius: Rayon.xs;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.trait;
+                            accessible-role: tab;
+                            accessible-label: "Membres";
+                            Text {
+                                text: "Membres";
+                                color: Theme.encre;
+                                font-family: Typo.texte;
+                                font-size: Typo.petit;
+                                font-weight: Typo.demi-gras;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "x";
+                        description: "Fermer la marge";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesCoquille.marge-bascule(false);
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.trait;
+            }
+        }
+        VerticalLayout {
+            padding-top: Espace.e2;
+            padding-left: Espace.e2;
+            padding-right: Espace.e2;
+            spacing: Espace.e1;
+            Rectangle {
+                height: 30px;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    Text {
+                        text: DonneesCoquille.marge.titre;
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: 10.5px;
+                        font-weight: Typo.moyen;
+                        letter-spacing: 0.8px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        accessible-role: text;
+                    }
+                }
+            }
+            if DonneesCoquille.marge.filtrable: HorizontalLayout {
+                padding-left: Espace.e1;
+                padding-right: Espace.e1;
+                padding-bottom: Espace.e1;
+                Champ {
+                    indice: "Filtrer les membres";
+                    accessible-label: "Filtrer les membres";
+                    valeur <=> DonneesCoquille.filtre-membres;
+                    modifie(texte) => {
+                        DonneesCoquille.filtrer-membres(texte);
+                    }
+                }
+            }
+            if DonneesCoquille.marge.vide: HorizontalLayout {
+                padding: Espace.e3;
+                Text {
+                    text: "Aucun membre ne correspond.";
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        liste := ListeVirtuelle {
+            vertical-stretch: 1;
+            content-y <=> DonneesCoquille.defilement-membres;
+            init => {
+                DonneesCoquille.membres-defiles(-self.content-y, self.visible-height);
+            }
+            changed content-y => {
+                DonneesCoquille.membres-defiles(-self.content-y, self.visible-height);
+            }
+            changed visible-height => {
+                DonneesCoquille.membres-defiles(-self.content-y, self.visible-height);
+            }
+            for ligne in DonneesCoquille.membres: Rectangle {
+                width: liste.visible-width;
+                height: 44px;
+                if ligne.en-tete: EnTeteGroupe {
+                    width: 100%;
+                    height: 100%;
+                    ligne: ligne;
+                }
+                if !ligne.en-tete: LigneMembreVue {
+                    width: 100%;
+                    height: 100%;
+                    ligne: ligne;
+                }
+            }
+        }
+    }
+}
