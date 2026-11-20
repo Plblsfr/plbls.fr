@@ -1173,6 +1173,31 @@ pub mod coquille {
             if chemin.starts_with("/gifs/") {
                 return self.repondre_gifs(methode, chemin, corps);
             }
+            if methode == "POST" && chemin == "/dms" {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"));
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let pseudo = recu["pseudo"].as_str().unwrap_or_default();
+                let (id, autre) = match pseudo {
+                    "carol" => ("d1", "carol"),
+                    "dave" => ("d2", "dave"),
+                    "Élise" => ("d3", "elise"),
+                    "zoe" => {
+                        return (
+                            404,
+                            r#"{"error":"user_not_found","message":"introuvable"}"#.into(),
+                        )
+                    }
+                    _ => ("d9", "nouveau"),
+                };
+                return (
+                    200,
+                    json!({"id": id, "other": {"id": autre, "pseudo": pseudo}, "online": false})
+                        .to_string(),
+                );
+            }
             if chemin.starts_with("/search?") {
                 return self.repondre_recherche(chemin);
             }

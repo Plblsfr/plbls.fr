@@ -14,8 +14,8 @@ use crate::types::{
     Attachment, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement, GetMeReponse,
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
     MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostNotificationsReadRequete,
-    PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
+    PostNotificationsReadRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -181,6 +181,16 @@ impl Client {
 
     pub async fn conversations_privees(&self) -> Result<Vec<DM>, ErreurApi> {
         self.get("/dms").await
+    }
+
+    pub async fn ouvrir_conversation_privee(&self, pseudo: &str) -> Result<DM, ErreurApi> {
+        self.post(
+            "/dms",
+            &PostDmsRequete {
+                pseudo: pseudo.to_string(),
+            },
+        )
+        .await
     }
 
     pub async fn notifications(&self) -> Result<Vec<Mention>, ErreurApi> {

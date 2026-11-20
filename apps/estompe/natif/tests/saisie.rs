@@ -20,9 +20,9 @@ use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille,
-    DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessagerie, DonneesRecherche,
-    DonneesSaisie, DonneesSelecteur, GenreBandeau, GenreLigneMessage, LigneMessage, Page,
-    PieceSaisie, Principale, SondageMessage,
+    DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessagerie, DonneesNouveauPrive,
+    DonneesRecherche, DonneesSaisie, DonneesSelecteur, GenreBandeau, GenreLigneMessage,
+    LigneMessage, Page, PieceSaisie, Principale, SondageMessage,
 };
 use estompe_plateforme::ContenuPressePapiers;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
@@ -1627,6 +1627,230 @@ fn recherche_et_palette(
     );
 }
 
+fn statut_envoye(serveur: &ServeurMessages) -> Option<String> {
+    serveur
+        .corps
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|(requete, _)| requete == "PUT /me/status")
+        .map(|(_, corps)| corps.clone())
+}
+
+fn pastilles(f: &Principale) -> (i32, i32) {
+    let g = f.global::<DonneesCoquille>();
+    let prives: i32 = g.get_prives().iter().map(|p| p.non_lus + p.mentions).sum();
+    let serveurs: i32 = g
+        .get_serveurs()
+        .iter()
+        .map(|s| s.non_lus + s.mentions)
+        .sum();
+    (prives, serveurs)
+}
+
+fn nouveau_prive_statut_et_tout_lu(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    pont: &Pont,
+) {
+    ctrl_k(faible);
+    taper(faible, ">");
+    attendre_l_interface(
+        faible,
+        |f| {
+            entrees_de_la_palette(f)
+                == [
+                    "Nouveau message privé",
+                    "Statut : En ligne",
+                    "Statut : Absent",
+                    "Statut : Ne pas déranger",
+                ]
+        },
+        "actions de la palette",
+    );
+    for _ in 0..4 {
+        touche(faible, Key::DownArrow);
+    }
+    touche(faible, Key::Return);
+    attendre(
+        || statut_envoye(serveur).as_deref() == Some(r#"{"status":"dnd"}"#),
+        "statut envoyé depuis la palette",
+    );
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesCoquille>();
+            !f.global::<DonneesRecherche>().get_ouvert() && g.get_statut() == "Ne pas déranger"
+        },
+        "statut affiché dans la barre de l'utilisateur",
+    );
+    traiter_les_changements(faible);
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_element_type_name(f, "BoutonMoi")
+            .next()
+            .expect("barre de l'utilisateur")
+            .mock_single_click(PointerEventButton::Left);
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesMenu>();
+            entrees_du_menu(f)[..3] == ["online", "idle", "dnd"]
+                && g.get_entrees().row_data(2).is_some_and(|e| e.coche)
+        },
+        "menu de statut ouvert, statut actuel coché",
+    );
+    traiter_les_changements(faible);
+    choisir_au_clavier(faible, "idle");
+    attendre(
+        || statut_envoye(serveur).as_deref() == Some(r#"{"status":"idle"}"#),
+        "statut choisi dans le menu",
+    );
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesCoquille>().get_statut() == "Absent",
+        "statut absent affiché",
+    );
+    println!("322 C3 : statut choisi par la palette puis par le menu de la barre de l'utilisateur, envoyé au serveur");
+
+    ctrl_k(faible);
+    taper(faible, "> nouveau");
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesRecherche>().get_ouvert()
+                && f.global::<DonneesNouveauPrive>().get_ouvert()
+        },
+        "nouveau message privé ouvert depuis la palette",
+    );
+    traiter_les_changements(faible);
+    taper(faible, "car");
+    attendre_l_interface(
+        faible,
+        |f| {
+            let p: Vec<(String, String)> = f
+                .global::<DonneesNouveauPrive>()
+                .get_proposes()
+                .iter()
+                .map(|p| (p.pseudo.to_string(), p.ou.to_string()))
+                .collect();
+            p == [("carol".to_string(), "conversation existante".to_string())]
+        },
+        "pseudo connu proposé",
+    );
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesNouveauPrive>();
+            g.get_saisie() == "carol" && g.get_proposes().row_count() == 0 && g.get_peut_valider()
+        },
+        "pseudo choisi dans la liste",
+    );
+    let ouvertures = || {
+        serveur
+            .requetes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| *r == "POST /dms")
+            .count()
+    };
+    let avant = ouvertures();
+    touche(faible, Key::Return);
+    attendre(
+        || {
+            pont.route()
+                == Route::MessagePrive {
+                    id: "d1".into(),
+                    message: None,
+                }
+        },
+        "conversation existante ouverte",
+    );
+    assert_eq!(ouvertures(), avant + 1);
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesNouveauPrive>().get_ouvert()
+                && f.global::<DonneesCoquille>().get_prives().row_count() == 3
+        },
+        "fenêtre fermée, aucune conversation en double",
+    );
+    println!("322 C1 : une personne déjà en conversation rouvre la conversation existante");
+
+    traiter_les_changements(faible);
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesCoquille>().invoke_nouveau_prive()
+    });
+    traiter_les_changements(faible);
+    taper(faible, "zoe");
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesNouveauPrive>().get_erreur() == "Aucun utilisateur avec ce pseudo.",
+        "erreur du serveur affichée",
+    );
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesNouveauPrive>().get_ouvert(),
+        "Échap ferme la fenêtre",
+    );
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesCoquille>().invoke_ouvrir_accueil()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesCoquille>();
+            g.get_rattrapage().row_count() > 0 && pastilles(f) != (0, 0)
+        },
+        "accueil avec des conversations à rattraper",
+    );
+    sur_l_interface(faible, |f| {
+        let g = f.global::<DonneesCoquille>();
+        let contacts: Vec<(String, String)> = g
+            .get_contacts()
+            .iter()
+            .map(|c| (c.pseudo.to_string(), c.detail.to_string()))
+            .collect();
+        assert_eq!(
+            contacts[0],
+            ("carol".to_string(), "En vocal · Salon vocal".to_string()),
+            "contacts en ligne de l'accueil"
+        );
+        assert_eq!(
+            g.get_accueil().contacts,
+            format!("{} sur 3", contacts.len())
+        );
+    });
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "Tout marquer lu")
+            .next()
+            .expect("bouton Tout marquer lu")
+            .invoke_accessible_default_action();
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesCoquille>().get_rattrapage().row_count() == 0
+                && pastilles(f) == (0, 0)
+        },
+        "toutes les pastilles remises à zéro",
+    );
+    attendre(
+        || serveur.nombre_de("POST /channels/") > 0 && serveur.nombre_de("POST /dms/d1/read") == 1,
+        "conversations marquées lues sur le serveur",
+    );
+    println!("322 C2 : « Tout marquer lu » remet à zéro les pastilles et marque lu sur le serveur");
+}
+
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
     f.global::<DonneesCoquille>()
         .get_salons()
@@ -1782,6 +2006,7 @@ fn scenario(
     });
     pieces_jointes(&faible, &serveur, &fabrique, &coquille, &dossier);
     recherche_et_palette(&faible, &serveur, &pont, &dossier);
+    nouveau_prive_statut_et_tout_lu(&faible, &serveur, &pont);
 }
 
 #[test]

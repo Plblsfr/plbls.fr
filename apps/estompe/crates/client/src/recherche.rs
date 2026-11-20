@@ -255,6 +255,7 @@ pub enum GenreDestination {
     Section,
     Salon,
     Prive,
+    Action,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,6 +307,26 @@ pub fn aller_a<C: Clone>(saisie: &str, destinations: &[Destination<C>]) -> Vec<D
         .filter(|d| garder(d.genre))
         .filter(|d| plier(&d.libelle).contains(&s.texte) || plier(&d.detail).contains(&s.texte))
         .take(limite)
+        .cloned()
+        .collect()
+}
+
+pub fn actions<C: Clone>(saisie: &str, actions: &[Destination<C>]) -> Vec<Destination<C>> {
+    let s = analyser_palette(saisie);
+    if !s.libre || matches!(s.prefixe, Some('@' | '#')) {
+        return Vec::new();
+    }
+    if s.texte.is_empty() {
+        return if s.prefixe == Some('>') {
+            actions.to_vec()
+        } else {
+            Vec::new()
+        };
+    }
+    actions
+        .iter()
+        .filter(|d| plier(&d.libelle).contains(&s.texte) || plier(&d.detail).contains(&s.texte))
+        .take(8)
         .cloned()
         .collect()
 }
@@ -628,6 +649,32 @@ mod tests {
         assert_eq!(aller_a("#", &nombreuses).len(), 50);
         assert!(!analyser_palette("de:").libre);
         assert!(analyser_palette("heure : 10").libre);
+    }
+
+    #[test]
+    fn les_actions_suivent_le_prefixe_et_le_texte() {
+        let toutes = vec![
+            d(GenreDestination::Action, "Nouveau message privé", ""),
+            d(GenreDestination::Action, "Statut : Absent", ""),
+            d(GenreDestination::Action, "Statut : En ligne", "actuel"),
+        ];
+        let libelles = |saisie: &str| -> Vec<String> {
+            actions(saisie, &toutes)
+                .into_iter()
+                .map(|d| d.libelle)
+                .collect()
+        };
+        assert_eq!(libelles(">").len(), 3);
+        assert!(libelles("").is_empty());
+        assert!(libelles("#statut").is_empty());
+        assert!(libelles("@statut").is_empty());
+        assert!(libelles("de:statut").is_empty());
+        assert_eq!(
+            libelles("> statut"),
+            ["Statut : Absent", "Statut : En ligne"]
+        );
+        assert_eq!(libelles("prive"), ["Nouveau message privé"]);
+        assert_eq!(libelles("actuel"), ["Statut : En ligne"]);
     }
 
     #[test]

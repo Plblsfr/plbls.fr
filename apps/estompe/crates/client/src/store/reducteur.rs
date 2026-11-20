@@ -650,6 +650,37 @@ pub fn lire_conversation(etat: &mut Etat, conversation: &CleConversation) -> App
     a
 }
 
+pub fn tout_lire(etat: &mut Etat) -> Application {
+    let mut cles: Vec<CleConversation> = Vec::new();
+    let a_lire = etat
+        .mentions_comptees()
+        .filter_map(CleConversation::de_mention)
+        .chain(
+            etat.non_lus
+                .iter()
+                .filter(|(cle, n)| **n > 0 && etat.courante.as_ref() != Some(*cle))
+                .map(|(cle, _)| cle.clone()),
+        );
+    for cle in a_lire {
+        if !cles.contains(&cle) {
+            cles.push(cle);
+        }
+    }
+    let mut a = Application::default();
+    let mut ids = Vec::new();
+    for cle in &cles {
+        retirer_non_lus(etat, cle, &mut a);
+        ids.extend(retirer_mentions(etat, &mut a, |m| {
+            CleConversation::de_mention(m).as_ref() == Some(cle)
+        }));
+        marquer_lu(cle, &mut a);
+    }
+    if !ids.is_empty() {
+        a.effet(Effet::LireNotifications(ids));
+    }
+    a
+}
+
 pub fn marquer_non_lu(etat: &mut Etat, conversation: &CleConversation, nombre: i64) -> Application {
     let mut a = Application::default();
     if nombre <= 0 {

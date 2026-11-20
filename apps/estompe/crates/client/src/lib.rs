@@ -20,6 +20,7 @@ pub mod gifs;
 pub mod lru;
 pub mod markdown;
 pub mod mention;
+pub mod nouveau_prive;
 pub mod ordre_serveurs;
 pub mod pieces;
 pub mod recherche;

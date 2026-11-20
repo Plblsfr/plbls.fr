@@ -126,6 +126,15 @@ impl Pont {
                 }
                 self.fermer_recherche(f);
             }
+            Some(Action::NouveauPrive) => {
+                self.verrou().recherche = None;
+                f.global::<DonneesRecherche>().set_ouvert(false);
+                self.ouvrir_nouveau_prive(f);
+            }
+            Some(Action::Statut(statut)) => {
+                self.definir_statut(statut);
+                self.fermer_recherche(f);
+            }
             None => {}
         }
     }

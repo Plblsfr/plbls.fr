@@ -148,6 +148,11 @@ const ECRANS: &[Ecran] = ecrans![
     "recherche-erreur-sombre", Sombre, recherche_erreur;
     "palette-clair", Clair, palette;
     "palette-sombre", Sombre, palette;
+    "nouveau-prive-clair", Clair, nouveau_prive;
+    "nouveau-prive-sombre", Sombre, nouveau_prive;
+    "nouveau-prive-erreur-clair", Clair, nouveau_prive_erreur;
+    "menu-statut-clair", Clair, menu_statut;
+    "menu-statut-sombre", Sombre, menu_statut;
 ];
 
 fn bob() -> Compte {
@@ -1080,11 +1085,64 @@ fn palette(f: &Principale) {
     stabiliser(f);
 }
 
+fn nouveau_prive_saisi(f: &Principale, saisie: &str) -> Pont {
+    let pont = coquille(f, commun::coquille::etat(), Route::Accueil);
+    pont.ouvrir_nouveau_prive(f);
+    let g = f.global::<estompe_natif::DonneesNouveauPrive>();
+    g.set_saisie(saisie.into());
+    g.set_curseur(saisie.len() as i32);
+    g.set_demande_curseur(g.get_demande_curseur() + 1);
+    pont.nouveau_prive_modifie(f, saisie);
+    pont
+}
+
+fn nouveau_prive(f: &Principale) {
+    let pont = nouveau_prive_saisi(f, "e");
+    pont.naviguer_nouveau_prive(f, 1);
+    stabiliser(f);
+}
+
+fn nouveau_prive_erreur(f: &Principale) {
+    let pont = nouveau_prive_saisi(f, "zoe");
+    let refus = estompe_client::http::ErreurApi::Introuvable(estompe_client::http::Refus {
+        statut: 404,
+        code: "user_not_found".into(),
+        message: "introuvable".into(),
+        donnees: Default::default(),
+    });
+    pont.nouveau_prive_recu(f, Err(refus));
+    stabiliser(f);
+}
+
+fn menu_statut(f: &Principale) {
+    let mut etat = commun::coquille::etat();
+    etat.statuts.insert(
+        "u1".into(),
+        estompe_client::temps_reel::evenements::StatutPresence::Dnd,
+    );
+    let pont = coquille(f, etat, Route::Accueil);
+    let barre = i_slint_backend_testing::ElementHandle::find_by_element_type_name(f, "BoutonMoi")
+        .next()
+        .expect("barre de l'utilisateur");
+    let position = barre.absolute_position();
+    pont.menu_moi(
+        f,
+        estompe_natif::menu::Ancre::Element {
+            x: position.x,
+            haut: position.y,
+            bas: position.y + barre.size().height,
+        },
+    );
+    stabiliser(f);
+}
+
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
     f.global::<DonneesCreationSondage>().set_ouvert(false);
     f.global::<estompe_natif::DonneesGifs>().set_ouvert(false);
     f.global::<estompe_natif::DonneesRecherche>()
+        .set_ouvert(false);
+    f.global::<estompe_natif::DonneesNouveauPrive>()
         .set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);

@@ -23,8 +23,8 @@ use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::session::Memoire;
 use crate::{
-    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessagerie, DonneesRecherche,
-    DonneesSaisie, DonneesSelecteur, Principale,
+    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessagerie, DonneesNouveauPrive,
+    DonneesRecherche, DonneesSaisie, DonneesSelecteur, Principale,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::video::Conversions;
@@ -588,6 +588,29 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         &id,
         Ancre::Point { x, y }
     ));
+    rappel!(on_menu_moi, |p, f, x, haut, bas| p
+        .menu_moi(&f, Ancre::Element { x, haut, bas }));
+    rappel!(on_tout_lire, |p, _f| p.tout_lire());
+    rappel!(on_nouveau_prive, |p, f| p.ouvrir_nouveau_prive(&f));
+    let nouveau = f.global::<DonneesNouveauPrive>();
+    macro_rules! rappel_nouveau {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            nouveau.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_nouveau!(on_modifie, |p, f, texte| p
+        .nouveau_prive_modifie(&f, &texte));
+    rappel_nouveau!(on_naviguer, |p, f, pas| p.naviguer_nouveau_prive(&f, pas));
+    rappel_nouveau!(on_choisir, |p, f, index| p.choisir_personne(&f, index));
+    rappel_nouveau!(on_valider, |p, f| p.valider_nouveau_prive(&f));
+    rappel_nouveau!(on_fermer_liste, |p, f| p.fermer_liste_nouveau_prive(&f));
+    rappel_nouveau!(on_fermer, |p, f| p.fermer_nouveau_prive(&f));
     let recherche = f.global::<DonneesRecherche>();
     macro_rules! rappel_recherche {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

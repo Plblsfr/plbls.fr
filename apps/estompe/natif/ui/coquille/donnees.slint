@@ -69,6 +69,15 @@ export struct LigneVocal {
     occupants: int,
 }
 
+export struct LigneContact {
+    id: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+    presence: EtatPresence,
+    detail: string,
+}
+
 export struct EnTetePanneau {
     genre: GenrePanneau,
     titre: string,
@@ -94,6 +103,7 @@ export struct Accueil {
     salut: string,
     resume: string,
     sans-serveur: bool,
+    contacts: string,
 }
 
 export struct LigneBadge {
@@ -171,6 +181,7 @@ export global DonneesCoquille {
     in property <[LigneSection]> sections;
     in property <[LigneRattrapage]> rattrapage;
     in property <[LigneVocal]> vocaux;
+    in property <[LigneContact]> contacts;
     in property <EnTetePanneau> panneau;
     in property <VueContenu> vue;
     in property <Accueil> accueil;
@@ -178,6 +189,8 @@ export global DonneesCoquille {
     in property <EtatBandeau> bandeau: EtatBandeau.aucun;
     in property <string> pseudo;
     in property <string> initiales;
+    in property <EtatPresence> presence: EtatPresence.en-ligne;
+    in property <string> statut: "En ligne";
     in-out property <bool> panneau-replie: false;
     in property <bool> marge-disponible: false;
     in-out property <bool> marge-ouverte: false;
@@ -210,4 +223,7 @@ export global DonneesCoquille {
     callback filtrer-membres(string);
     callback ouvrir-membre(string);
     callback fermer-carte();
+    callback tout-lire();
+    callback menu-moi(length, length, length);
+    callback nouveau-prive();
 }

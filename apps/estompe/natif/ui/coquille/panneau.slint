@@ -1,6 +1,7 @@
-import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
-import { Icone, Bouton, VarianteBouton, Avatar, ElementListe, Compteur, Defilement, Coins } from "../composants.slint";
-import { DonneesCoquille, GenrePanneau, GenreVue, EtatBandeau } from "donnees.slint";
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Avatar, ElementListe, Compteur, Defilement, Coins, DonneesMenu } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { DonneesCoquille, GenrePanneau, GenreVue, EtatBandeau, EtatPresence } from "donnees.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -21,14 +22,68 @@ component TitreGroupe {
     }
 }
 
-component BarreMoi inherits Rectangle {
-    callback se-deconnecter();
-    border-radius: Rayon.m;
-    background: Theme.surface;
-    border-width: 1px;
-    border-color: Theme.trait;
+component BoutonMoi {
+    property <bool> hors-ligne: DonneesCoquille.bandeau == EtatBandeau.hors-ligne;
+    property <bool> utilisable: Calques.ouverts == 0;
+    property <bool> menu-ouvert: DonneesMenu.ouvert;
+    property <bool> a-ouvert-menu: false;
+    changed menu-ouvert => {
+        if (!self.menu-ouvert && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            if (!DonneesMenu.focus-ailleurs) {
+                portee.focus();
+            }
+        }
+    }
+    function ouvrir-menu() {
+        if (root.utilisable) {
+            root.a-ouvert-menu = true;
+            DonneesCoquille.menu-moi(root.absolute-position.x, root.absolute-position.y, root.absolute-position.y + root.height);
+        }
+    }
+    horizontal-stretch: 1;
+    accessible-role: button;
+    accessible-label: DonneesCoquille.pseudo;
+    accessible-description: "Statut : " + (root.hors-ligne ? "Hors ligne" : DonneesCoquille.statut);
+    accessible-enabled: root.utilisable;
+    accessible-action-default => {
+        root.ouvrir-menu();
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: zone.has-hover && root.utilisable ? Theme.papier-2 : transparent;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " " || e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                root.ouvrir-menu();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                portee.focus();
+                root.ouvrir-menu();
+            }
+        }
+    }
     HorizontalLayout {
-        padding: Espace.e2;
+        padding: 4px;
         spacing: 10px;
         VerticalLayout {
             alignment: center;
@@ -37,6 +92,8 @@ component BarreMoi inherits Rectangle {
                 initiales: DonneesCoquille.initiales;
                 taille: 32px;
                 teinte: 1;
+                presence: root.hors-ligne ? EtatPresence.hors-ligne : DonneesCoquille.presence;
+                fond: Theme.surface;
             }
         }
         VerticalLayout {
@@ -51,19 +108,36 @@ component BarreMoi inherits Rectangle {
                 overflow: elide;
             }
             Text {
-                text: DonneesCoquille.bandeau == EtatBandeau.hors-ligne ? "Hors ligne" : "En ligne";
+                text: root.hors-ligne ? "Hors ligne" : DonneesCoquille.statut;
                 color: Theme.gris;
                 font-family: Typo.texte;
                 font-size: Typo.minuscule;
                 overflow: elide;
             }
         }
-        Bouton {
-            icone: "sortie";
-            description: "Se déconnecter";
-            variante: VarianteBouton.fantome;
-            clique => {
-                root.se-deconnecter();
+    }
+}
+
+component BarreMoi inherits Rectangle {
+    callback se-deconnecter();
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    HorizontalLayout {
+        padding: 4px;
+        padding-right: Espace.e2;
+        spacing: 6px;
+        BoutonMoi { }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                icone: "sortie";
+                description: "Se déconnecter";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    root.se-deconnecter();
+                }
             }
         }
     }
@@ -162,9 +236,23 @@ export component Panneau inherits Rectangle {
                         DonneesCoquille.ouvrir-accueil();
                     }
                 }
-                if DonneesCoquille.panneau.genre == GenrePanneau.accueil: TitreGroupe {
-                    min-height: 38px;
-                    texte: "CONVERSATIONS";
+                if DonneesCoquille.panneau.genre == GenrePanneau.accueil: HorizontalLayout {
+                    TitreGroupe {
+                        horizontal-stretch: 1;
+                        min-height: 40px;
+                        texte: "CONVERSATIONS";
+                    }
+                    VerticalLayout {
+                        alignment: end;
+                        Bouton {
+                            icone: "plus";
+                            description: "Nouveau message privé";
+                            variante: VarianteBouton.fantome;
+                            clique => {
+                                DonneesCoquille.nouveau-prive();
+                            }
+                        }
+                    }
                 }
                 if DonneesCoquille.panneau.genre == GenrePanneau.accueil: VerticalLayout {
                     spacing: 1px;

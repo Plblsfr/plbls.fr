@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -125,8 +125,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 | Élément | Interface (`ui/coquille/`) | Contenu |
 |---|---|---|
 | Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Rejoindre un serveur », entrées des sections ouvertes |
-| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés, ou section ; barre du compte avec « Se déconnecter » ; repliable |
-| Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper, vocaux en cours) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
+| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
+| Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper avec « Tout marquer lu », vocaux en cours, contacts en ligne) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
 | Marge | `marge.slint`, `membres.slint`, `carte-profil.slint`, `../messagerie/epingles.slint` | `EmplacementMarge` ; onglets « Membres » sur un serveur (voir [Membres](#membres)) et « Épinglés » dans une conversation (voir [Épinglés](#épinglés)), carte de profil |
 
 - Données : global `DonneesCoquille` (`ui/coquille/donnees.slint`) : modèles des lignes (`serveurs`, `salons`, `prives`, `sections`, `rattrapage`,
@@ -201,7 +201,8 @@ actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estom
   complète le filtre actif (curseur en fin de saisie), Entrée ouvre l'entrée active ou lance la recherche, Échap ferme et rend le focus au champ de saisie (sinon à la coquille).
 - Palette « Aller à » (`aller_a`, mêmes règles que le front) : accueil, serveurs (dernier salon vu), sections ouvertes, salons de tous les serveurs, conversations privées ;
   `#` limite aux salons, `@` aux personnes (conversations privées) ; 8 entrées pour un texte, 50 pour un préfixe seul ; rien si la saisie contient un filtre. L'entrée active reste
-  visible (défilement calculé en Rust). Pas d'actions (`>`) : elles dépendent des lots du vocal, des réglages et du profil.
+  visible (défilement calculé en Rust). Actions (`actions` de la crate client, `actions_de_la_palette`) : « Nouveau message privé » et « Statut : … » (le statut actuel porte « actuel »),
+  toutes avec `>`, 8 au plus pour un texte ; celles du vocal, du profil et des paramètres arrivent avec leurs lots.
 - Recherche (`RechercheMessages`, `Client::chercher_messages`) : `GET /search?q=&sort=&offset=` avec `server_id`, `channel_id` ou `dm_id` ; portées « Partout », le serveur courant et
   la conversation ouverte (choisie par défaut), tri « Pertinence » ou « Plus récents » ; changer l'une ou l'autre relance la recherche. Une réponse d'une recherche remplacée est
   ignorée ; la page suivante est demandée à 200 px du bas (`MARGE_DE_SUITE`) tant que `has_more`.
@@ -211,7 +212,24 @@ actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estom
 - États : « Aucun résultat pour « … ». » (et « Essaie d'élargir à « Partout ». » hors de « Partout »), erreur du serveur affichée dans la fenêtre (« Recherche impossible : … »),
   dernières recherches (10, `recherches_recentes` des préférences, « Effacer »), sinon l'aide des filtres.
 - Écarts : le front affiche une erreur dans une notification, l'app native dans la fenêtre ; un extrait s'affiche sur une ligne continue (retours à la ligne du message remplacés
-  par des espaces) ; le pied liste les raccourcis sans `>`.
+  par des espaces) ; une saisie vide garde l'aide des filtres au lieu des six premières actions du front.
+
+### Nouvelle conversation, accueil et statut
+
+- « Nouveau message privé » (`ui/coquille/nouveau-prive.slint`, global `DonneesNouveauPrive` ; état `EtatNouveauPrive` et actions dans `src/coquille/pont/nouveau_prive.rs`),
+  ouvert par le « + » des conversations du panneau ou l'action de la palette : champ « Pseudo » qui propose 6 pseudos connus au plus (`estompe_client::nouveau_prive` :
+  conversations existantes puis membres des serveurs, sans soi, sans accents ni casse, le pseudo exact exclu) avec la présence et l'origine ; flèches, Entrée ou clic
+  choisissent, Échap ferme la liste puis la fenêtre. « Ouvrir la conversation » appelle `Store::ouvrir_message_prive` (`POST /dms`) : le serveur rend la conversation existante
+  s'il y en a une, ajoutée en tête de la liste seulement si elle n'y est pas, puis la vue l'ouvre ; `user_not_found`, `self_dm` et les autres refus s'affichent dans la fenêtre.
+  Pas de conversation de groupe : l'API ne prend qu'un pseudo, comme le front.
+- Accueil : « Tout marquer lu » (`Store::tout_lire`, `tout_lire` du réducteur) lit toutes les conversations à rattraper (mentions comptées et non-lus, sauf la conversation
+  ouverte) : pastilles et mentions retirées tout de suite, `POST …/read` par conversation et un seul `POST /notifications/read` ; les autres appareils reçoivent `read.updated`.
+  Carte « En ligne » (`lignes_contacts`) : les conversations privées dont la personne n'est pas hors ligne, avec « En vocal · salon », son jeu ou son statut, et « N sur M » ;
+  un clic ouvre la conversation.
+- Barre de l'utilisateur : pastille de présence et statut (ou jeu en cours) sous le pseudo (`donnees_compte`) ; un clic, Entrée, la touche Menu ou Maj+F10 ouvrent le menu
+  (`menu_moi`) : « En ligne », « Absent », « Ne pas déranger » (statut actuel coché, `PUT /me/status` par `Store::definir_statut`, optimiste et rétabli en cas d'erreur, que la zone
+  de saisie signale), puis « Voir mon profil », « Modifier mon profil » et « Signaler un bug » marqués « bientôt ». Le changement arrive aux autres par `status.updated`.
+  Le statut « invisible » n'existe ni dans l'API ni dans le front.
 
 ## Messagerie
 
@@ -603,6 +621,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   et le lien, marquer comme non lu, supprimer confirmé au clavier, modifier), menu d'un salon (« Marquer comme lu ») et d'un membre (« Mentionner ») ;
   recherche et palette (Ctrl+K, portée du salon ouvert, `GET /search` vérifié, terme surligné, résultat ancien ouvert : page chargée autour et message mis en évidence, dernière
   recherche retenue ; palette : salon et conversation privée ouverts au clavier, flèches en boucle, Tab qui complète un filtre, Échap, erreur du serveur affichée) ;
+  statut choisi par la palette (`>`) puis par le menu de la barre de l'utilisateur (corps du `PUT /me/status` vérifié), nouveau message privé vers une personne déjà en conversation
+  (pseudo proposé et choisi au clavier, conversation existante ouverte sans doublon), refus `user_not_found` affiché, « Tout marquer lu » sur l'accueil (pastilles à zéro, `POST …/read`) ;
   sondage (bouton « Créer un sondage », erreurs de validation au clavier, choix ajouté puis retiré, échéance passée refusée, corps du `POST` vérifié, vote affiché tout de suite
   puis totaux de `poll.voted`, votants affichés puis masqués, clôture, suppression confirmée) ;
   puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,

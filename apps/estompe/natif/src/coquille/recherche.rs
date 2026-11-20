@@ -1,11 +1,12 @@
 use estompe_client::format::{heure_de, jour_de};
 use estompe_client::recherche::{
-    aller_a, extrait, suggestions, ContexteRecherche, Destination, GenreDestination, Morceau,
-    Portee, RechercheMessages, Tri, LARGEUR_EXTRAIT,
+    actions, aller_a, extrait, suggestions, ContexteRecherche, Destination, GenreDestination,
+    Morceau, Portee, RechercheMessages, Tri, LARGEUR_EXTRAIT,
 };
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
-use estompe_client::store::{CleConversation, Etat, GenreSalon};
+use estompe_client::store::{CleConversation, Etat, GenreSalon, Presence};
+use estompe_client::temps_reel::evenements::StatutPresence;
 use estompe_client::types::Message;
 
 use super::projection::{icone_de_section, icone_du_salon, nom_de_section, route_de_section};
@@ -15,6 +16,16 @@ pub const HAUTEUR_GROUPE: f32 = 26.0;
 pub const MARGE_HAUTE: f32 = 8.0;
 pub const FILTRES: &str = "FILTRES";
 pub const ALLER_A: &str = "ALLER À";
+pub const ACTIONS: &str = "ACTIONS";
+pub const STATUTS: [(StatutPresence, Presence, &str); 3] = [
+    (StatutPresence::Online, Presence::EnLigne, "En ligne"),
+    (StatutPresence::Idle, Presence::Absent, "Absent"),
+    (
+        StatutPresence::Dnd,
+        Presence::NePasDeranger,
+        "Ne pas déranger",
+    ),
+];
 
 fn id(valeur: &Option<String>) -> &str {
     valeur.as_deref().unwrap_or_default()
@@ -30,6 +41,8 @@ pub enum Cible {
 pub enum Action {
     Completer(String),
     Aller(Cible),
+    NouveauPrive,
+    Statut(StatutPresence),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +152,32 @@ pub fn destinations(etat: &Etat, sections: &[Section]) -> Vec<Destination<Cible>
     sortie
 }
 
+pub fn actions_de_la_palette(etat: &Etat) -> Vec<Destination<Action>> {
+    let actuel = etat.presence_de(etat.moi());
+    let action = |libelle: String, detail: &str, icone: &'static str, cible: Action| Destination {
+        genre: GenreDestination::Action,
+        libelle,
+        detail: detail.to_string(),
+        icone,
+        cible,
+    };
+    let mut sortie = vec![action(
+        "Nouveau message privé".into(),
+        "",
+        "bulle",
+        Action::NouveauPrive,
+    )];
+    for (statut, presence, libelle) in STATUTS {
+        sortie.push(action(
+            format!("Statut : {libelle}"),
+            if presence == actuel { "actuel" } else { "" },
+            "perso",
+            Action::Statut(statut),
+        ));
+    }
+    sortie
+}
+
 fn nom_du_prive<'a>(etat: &'a Etat, prive: &str) -> Option<&'a str> {
     etat.messages_prives
         .iter()
@@ -240,6 +279,7 @@ pub fn entrees(
     saisie: &str,
     contexte: &ContexteRecherche,
     destinations: &[Destination<Cible>],
+    possibles: &[Destination<Action>],
 ) -> Vec<Entree> {
     let filtres = suggestions(saisie, contexte)
         .into_iter()
@@ -261,7 +301,17 @@ pub fn entrees(
             detail: d.detail,
             action: Action::Aller(d.cible),
         });
-    filtres.chain(aller).collect()
+    let faire = actions(saisie, possibles)
+        .into_iter()
+        .enumerate()
+        .map(|(i, d)| Entree {
+            titre_groupe: if i == 0 { ACTIONS } else { "" },
+            icone: d.icone,
+            libelle: d.libelle,
+            detail: d.detail,
+            action: d.cible,
+        });
+    filtres.chain(aller).chain(faire).collect()
 }
 
 pub fn voisine(actuelle: Option<usize>, pas: i32, nombre: usize) -> Option<usize> {
@@ -480,7 +530,12 @@ impl EtatRecherche {
             self.serveur.as_deref(),
             self.conversation.as_ref(),
         );
-        self.entrees = entrees(saisie, &contexte, &destinations(etat, sections));
+        self.entrees = entrees(
+            saisie,
+            &contexte,
+            &destinations(etat, sections),
+            &actions_de_la_palette(etat),
+        );
         self.active = None;
     }
 
@@ -516,7 +571,7 @@ mod tests {
         let d = destinations(&etat, &[Section::Entracte]);
         let ctx = contexte(&etat, &Portee::Partout, None, None);
         assert_eq!(
-            libelles(&entrees("#", &ctx, &d)),
+            libelles(&entrees("#", &ctx, &d, &[])),
             [
                 (ALLER_A, "Salon vocal"),
                 ("", "Musique"),
@@ -526,12 +581,12 @@ mod tests {
                 ("", "équipe"),
             ]
         );
-        let tous = entrees("i", &ctx, &d);
+        let tous = entrees("i", &ctx, &d, &[]);
         assert_eq!(tous[0].libelle, "Accueil");
         assert!(tous
             .iter()
             .any(|e| e.libelle == "Entracte · films et séries"));
-        let equipe = entrees("equipe", &ctx, &d);
+        let equipe = entrees("equipe", &ctx, &d, &[]);
         assert_eq!(
             equipe[0].action,
             Action::Aller(Cible::Route(Route::Salon {
@@ -542,23 +597,46 @@ mod tests {
         );
         assert_eq!(equipe[0].detail, "Travail");
         assert_eq!(
-            entrees("@car", &ctx, &d)[0].action,
+            entrees("@car", &ctx, &d, &[])[0].action,
             Action::Aller(Cible::Route(Route::MessagePrive {
                 id: "d1".into(),
                 message: None
             }))
         );
         assert_eq!(
-            entrees("trav", &ctx, &d)[0].action,
+            entrees("trav", &ctx, &d, &[])[0].action,
             Action::Aller(Cible::Serveur("s2".into()))
         );
         assert_eq!(
-            libelles(&entrees("dans:g", &ctx, &d)),
+            libelles(&entrees("dans:g", &ctx, &d, &[])),
             [(FILTRES, "général")]
         );
-        let melange = entrees("a", &ctx, &d);
+        let melange = entrees("a", &ctx, &d, &[]);
         assert_eq!(melange[0].titre_groupe, FILTRES);
         assert!(melange.iter().any(|e| e.titre_groupe == ALLER_A));
+    }
+
+    #[test]
+    fn la_palette_propose_un_message_prive_et_les_statuts() {
+        let etat = etat();
+        let ctx = contexte(&etat, &Portee::Partout, None, None);
+        let possibles = actions_de_la_palette(&etat);
+        let toutes = entrees(">", &ctx, &[], &possibles);
+        assert_eq!(
+            libelles(&toutes),
+            [
+                (ACTIONS, "Nouveau message privé"),
+                ("", "Statut : En ligne"),
+                ("", "Statut : Absent"),
+                ("", "Statut : Ne pas déranger"),
+            ]
+        );
+        assert_eq!(toutes[0].action, Action::NouveauPrive);
+        assert_eq!(toutes[1].detail, "actuel");
+        assert_eq!(toutes[3].action, Action::Statut(StatutPresence::Dnd));
+        let message = entrees("message", &ctx, &destinations(&etat, &[]), &possibles);
+        assert_eq!(message.last().unwrap().action, Action::NouveauPrive);
+        assert!(entrees("", &ctx, &[], &possibles).is_empty());
     }
 
     #[test]
