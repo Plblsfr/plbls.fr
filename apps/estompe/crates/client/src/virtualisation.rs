@@ -15,6 +15,22 @@ pub fn fenetre_visible<K>(
     zone_visible: f64,
     marge: f64,
 ) -> Fenetre {
+    fenetre_de_hauteurs(
+        cles.len(),
+        |i| hauteur(&cles[i]),
+        defilement,
+        zone_visible,
+        marge,
+    )
+}
+
+pub fn fenetre_de_hauteurs(
+    nombre: usize,
+    hauteur: impl Fn(usize) -> f64,
+    defilement: f64,
+    zone_visible: f64,
+    marge: f64,
+) -> Fenetre {
     let bas_de_zone = defilement - marge;
     let haut_de_zone = defilement + zone_visible + marge;
     let mut y = 0.0;
@@ -22,8 +38,9 @@ pub fn fenetre_visible<K>(
     let mut fin: Option<usize> = None;
     let mut haut = 0.0;
     let mut y_de_fin = 0.0;
-    for (i, cle) in cles.iter().enumerate() {
-        let h = hauteur(cle);
+    let mut derniere = 0.0;
+    for i in 0..nombre {
+        let h = hauteur(i);
         if debut.is_none() && y + h > bas_de_zone {
             debut = Some(i);
             haut = y;
@@ -33,14 +50,15 @@ pub fn fenetre_visible<K>(
             y_de_fin = y;
         }
         y += h;
+        derniere = h;
     }
     let debut = debut.unwrap_or_else(|| {
-        haut = y - cles.last().map_or(0.0, &hauteur);
-        cles.len().saturating_sub(1)
+        haut = y - derniere;
+        nombre.saturating_sub(1)
     });
     let fin = fin.unwrap_or_else(|| {
         y_de_fin = y;
-        cles.len()
+        nombre
     });
     Fenetre {
         debut,
@@ -115,6 +133,15 @@ mod tests {
         assert_eq!(w.debut, 2);
         assert_eq!(w.haut, 100.0);
         assert_eq!(w.bas, 0.0);
+    }
+
+    #[test]
+    fn par_hauteurs_comme_par_cles() {
+        let par_cles = fenetre_visible(&cles(), h, 10_000.0, 600.0, 500.0);
+        let par_hauteurs = fenetre_de_hauteurs(1000, |_| 50.0, 10_000.0, 600.0, 500.0);
+        assert_eq!(par_cles, par_hauteurs);
+        let vide = fenetre_de_hauteurs(0, |_| 50.0, 0.0, 600.0, 500.0);
+        assert_eq!((vide.debut, vide.fin, vide.haut, vide.bas), (0, 0, 0.0, 0.0));
     }
 
     #[test]

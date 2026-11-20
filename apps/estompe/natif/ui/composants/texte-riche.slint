@@ -1,0 +1,115 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+
+export enum GenreBloc { paragraphe, titre, code }
+
+export struct BlocTexte {
+    genre: GenreBloc,
+    texte: styled-text,
+    code: string,
+    niveau: int,
+    citation: int,
+    retrait: int,
+    puce: string,
+}
+
+component Barres {
+    in property <int> nombre;
+    width: nombre * 15px;
+    for i in nombre: Rectangle {
+        x: i * 15px;
+        width: 3px;
+        border-radius: 1.5px;
+        background: Theme.trait-fort;
+    }
+}
+
+export component BlocTexteVue {
+    in property <BlocTexte> bloc;
+    in property <length> taille: Typo.corps;
+    in property <color> encre: Theme.encre-2;
+    callback lien(string);
+    property <bool> cite: bloc.citation > 0;
+    HorizontalLayout {
+        spacing: 0;
+        if root.bloc.citation > 0: Barres {
+            nombre: root.bloc.citation;
+        }
+        Rectangle {
+            width: root.bloc.retrait > 1 ? (root.bloc.retrait - 1) * 24px : 0;
+        }
+        if root.bloc.retrait > 0: Text {
+            width: 24px;
+            text: root.bloc.puce;
+            color: root.cite ? Theme.gris : root.encre;
+            font-size: root.taille;
+            horizontal-alignment: right;
+            vertical-alignment: top;
+        }
+        Rectangle {
+            width: root.bloc.retrait > 0 ? 8px : 0;
+        }
+        if root.bloc.genre == GenreBloc.paragraphe: StyledText {
+            horizontal-stretch: 1;
+            text: root.bloc.texte;
+            default-color: root.cite ? Theme.gris : root.encre;
+            default-font-size: root.taille;
+            link-color: Theme.rose-texte;
+            vertical-alignment: top;
+            link-clicked(cible) => {
+                root.lien(cible);
+            }
+        }
+        if root.bloc.genre == GenreBloc.titre: StyledText {
+            horizontal-stretch: 1;
+            text: root.bloc.texte;
+            default-color: root.cite ? Theme.gris : Theme.encre;
+            default-font-family: Typo.titre;
+            default-font-size: root.bloc.niveau == 1 ? 22px : root.bloc.niveau == 2 ? 19px : 17px;
+            link-color: Theme.rose-texte;
+            vertical-alignment: top;
+            link-clicked(cible) => {
+                root.lien(cible);
+            }
+        }
+        if root.bloc.genre == GenreBloc.code: Rectangle {
+            horizontal-stretch: 1;
+            max-width: 720px;
+            border-radius: Rayon.s;
+            background: Theme.papier-2;
+            border-width: 1px;
+            border-color: Theme.trait;
+            HorizontalLayout {
+                padding-top: Espace.e3;
+                padding-bottom: Espace.e3;
+                padding-left: 14px;
+                padding-right: 14px;
+                Text {
+                    text: root.bloc.code;
+                    color: Theme.encre-2;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    wrap: char-wrap;
+                    accessible-role: text;
+                }
+            }
+        }
+    }
+}
+
+export component TexteRiche {
+    in property <[BlocTexte]> blocs;
+    in property <length> taille: Typo.corps;
+    in property <color> encre: Theme.encre-2;
+    callback lien(string);
+    VerticalLayout {
+        spacing: Espace.e1;
+        for bloc in root.blocs: BlocTexteVue {
+            bloc: bloc;
+            taille: root.taille;
+            encre: root.encre;
+            lien(cible) => {
+                root.lien(cible);
+            }
+        }
+    }
+}

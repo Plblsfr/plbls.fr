@@ -22,6 +22,7 @@ use super::reducteur::{definir_bas_de_liste, Application};
 use super::Store;
 use crate::temps_reel::evenements::Lecture;
 use crate::temps_reel::Evenement;
+use crate::types::Message;
 
 impl Store {
     pub fn lire_messages<R>(&self, lecture: impl FnOnce(&EtatMessages) -> R) -> R {
@@ -36,6 +37,23 @@ impl Store {
 
     pub fn conversation(&self, cle: &CleConversation) -> Option<Conversation> {
         self.lire_messages(|m| m.conversation(cle).cloned())
+    }
+
+    pub fn installer_conversation(
+        &self,
+        cle: &CleConversation,
+        messages: Vec<Message>,
+        plus_anciens: bool,
+    ) {
+        self.modifier_messages(|m, contexte| {
+            m.reserver(cle, contexte.courante.as_ref());
+            let installation = Installation::Dernieres {
+                messages,
+                plus_anciens,
+                rechargee: false,
+            };
+            ((), installer(m, contexte, cle, installation))
+        });
     }
 
     pub fn saisies(&self, cle: &CleConversation) -> Vec<String> {
@@ -97,5 +115,36 @@ impl Store {
         });
         let effets = self.appliquer_application(|etat| definir_bas_de_liste(etat, en_bas));
         self.executer(effets).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::http::Client;
+    use crate::store::essais::depuis_json;
+    use crate::store::Changement;
+
+    #[test]
+    fn installer_une_conversation_la_rend_lisible_et_l_annonce() {
+        let store = Store::nouveau(Client::nouveau("http://127.0.0.1:9").unwrap(), &[]);
+        let mut abonne = store.abonner();
+        let cle = CleConversation::Salon("c1".into());
+        let messages: Vec<Message> = ["2", "1"]
+            .iter()
+            .map(|id| depuis_json(json!({"id": id, "channel_id": "c1"})))
+            .collect();
+        store.installer_conversation(&cle, messages, true);
+        let c = store.conversation(&cle).unwrap();
+        assert!(c.chargee && c.fin_atteinte && !c.debut_atteint);
+        assert_eq!(c.premier_id(), Some("1"));
+        assert_eq!(
+            abonne.try_recv().unwrap(),
+            [Changement::Messages(ChangementMessages::Rechargee {
+                conversation: cle
+            })]
+        );
     }
 }

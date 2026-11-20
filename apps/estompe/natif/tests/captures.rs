@@ -5,13 +5,19 @@ use estompe_client::auth::ErreurAuth;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::temps_reel::EtatReseau;
+use estompe_client::store::messages::ChangementMessages;
+use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_natif::coquille::pont::vider_modeles;
-use estompe_natif::coquille::{avatars, CleAvatar, Icone, Navigation, Pont, Profils};
+use estompe_natif::coquille::{
+    avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
+};
 use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
-use estompe_natif::{creer_fenetre, DonneesCoquille, ModeTheme, Mouvement, Principale, Theme};
+use estompe_natif::{
+    creer_fenetre, DonneesCoquille, DonneesMessagerie, ModeTheme, Mouvement, Principale, Theme,
+};
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -79,6 +85,12 @@ const ECRANS: &[Ecran] = ecrans![
     "carte-profil-clair", Clair, carte_profil;
     "carte-profil-sombre", Sombre, carte_profil;
     "carte-profil-moi-clair", Clair, carte_profil_moi;
+    "messagerie-variantes-clair", Clair, messagerie_variantes;
+    "messagerie-variantes-sombre", Sombre, messagerie_variantes;
+    "messagerie-markdown-clair", Clair, messagerie_markdown;
+    "messagerie-markdown-sombre", Sombre, messagerie_markdown;
+    "messages-prives-clair", Clair, messages_prives;
+    "messages-prives-sombre", Sombre, messages_prives;
 ];
 
 fn bob() -> Compte {
@@ -274,13 +286,61 @@ fn coquille_avec(
     route: Route,
     profils: Arc<Profils>,
 ) -> Pont {
+    coquille_preparee(f, etat, route, profils, |_| {})
+}
+
+fn installer_conversations(store: &Store) {
+    use commun::coquille::{conversation_courte, conversation_privee};
+    for salon in ["c1", "c3", "t1"] {
+        store.installer_conversation(
+            &CleConversation::Salon(salon.into()),
+            conversation_courte(salon),
+            false,
+        );
+    }
+    store.installer_conversation(
+        &CleConversation::Prive("d1".into()),
+        conversation_privee(),
+        false,
+    );
+}
+
+fn stabiliser(f: &Principale) {
+    let mut precedent = None;
+    for _ in 0..40 {
+        let _ = f.window().take_snapshot();
+        slint::platform::update_timers_and_animations();
+        let m = f.global::<DonneesMessagerie>();
+        let etat = (
+            m.get_defilement(),
+            m.get_haut(),
+            m.get_bas(),
+            m.get_lignes().row_count(),
+        );
+        if precedent == Some(etat) {
+            break;
+        }
+        precedent = Some(etat);
+    }
+}
+
+fn coquille_preparee(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    route: Route,
+    profils: Arc<Profils>,
+    preparer: impl FnOnce(&Store),
+) -> Pont {
     connecte(f);
     let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()
         .and_hms_opt(9, 30, 0)
         .unwrap();
+    let store = commun::coquille::store(etat);
+    installer_conversations(&store);
+    preparer(&store);
     let pont = Pont::nouveau(
-        commun::coquille::store(etat),
+        store,
         f.as_weak(),
         runtime(),
         None,
@@ -294,7 +354,11 @@ fn coquille_avec(
         f,
         vec![Section::Entracte, Section::Sillon, Section::Sablier],
     );
+    pont.messagerie().definir_fuseau(Arc::new(|_| 60));
+    let source = pont.clone();
+    brancher_messagerie(f, Arc::new(move || Some(source.clone())));
     pont.demarrer(f);
+    stabiliser(f);
     pont
 }
 
@@ -422,6 +486,83 @@ fn carte_profil(f: &Principale) {
 fn carte_profil_moi(f: &Principale) {
     let pont = membres_ouverts(f);
     pont.ouvrir_membre(f, "u1");
+}
+
+fn salon_c1() -> CleConversation {
+    CleConversation::Salon("c1".into())
+}
+
+fn messagerie_variantes(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_variantes(),
+                false,
+            )
+        },
+    );
+    pont.appliquer(
+        f,
+        &[
+            Changement::Messages(ChangementMessages::Supprime {
+                conversation: salon_c1(),
+                message: "99".into(),
+            }),
+            Changement::Messages(ChangementMessages::MiseEnEvidence {
+                conversation: salon_c1(),
+                message: "109".into(),
+            }),
+        ],
+    );
+    stabiliser(f);
+}
+
+fn messagerie_markdown(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            store.installer_conversation(&salon_c1(), commun::coquille::galerie_markdown(), true)
+        },
+    );
+    pont.messagerie().lien_clique(f, "201", "s:1");
+    stabiliser(f);
+}
+
+fn messages_prives(f: &Principale) {
+    let mut etat = commun::coquille::etat();
+    etat.en_ligne.insert("dave".into());
+    etat.statuts
+        .insert("dave".into(), serde_json::from_value(serde_json::json!("dnd")).unwrap());
+    etat.non_lus.insert(CleConversation::Prive("d3".into()), 5);
+    coquille_preparee(
+        f,
+        etat,
+        Route::MessagePrive {
+            id: "d1".into(),
+            message: None,
+        },
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+        |store| {
+            for (id, prive, auteur) in [("500", "d3", "elise"), ("501", "d2", "dave")] {
+                let mut message = commun::coquille::message(id, "", auteur);
+                message["channel_id"] = serde_json::Value::Null;
+                message["dm_id"] = serde_json::json!(prive);
+                if let estompe_client::temps_reel::Signal::Evenement(e) =
+                    commun::coquille::evenement("message.created", message)
+                {
+                    store.appliquer(&e);
+                }
+            }
+        },
+    );
 }
 
 fn remettre_a_zero(f: &Principale) {

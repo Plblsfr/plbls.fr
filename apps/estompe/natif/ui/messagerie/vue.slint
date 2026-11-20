@@ -1,0 +1,206 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Vide, Chargement } from "../composants.slint";
+import { DonneesMessagerie, EtatConversation } from "donnees.slint";
+import { LigneMessageVue } from "element.slint";
+
+component BoutonNouveaux inherits Rectangle {
+    in property <int> nombre;
+    callback clique();
+    height: 34px;
+    width: contenu.preferred-width + 28px;
+    border-radius: Rayon.pilule;
+    background: Theme.encre;
+    accessible-role: button;
+    accessible-label: root.nombre > 0 ? (root.nombre == 1 ? "1 nouveau message" : "\{root.nombre} nouveaux messages") : "Revenir aux messages récents";
+    accessible-action-default => {
+        root.clique();
+    }
+    contenu := HorizontalLayout {
+        x: 14px;
+        spacing: 6px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "bas";
+                taille: 15px;
+                couleur: Theme.papier;
+            }
+        }
+        Text {
+            text: root.nombre > 0 ? (root.nombre == 1 ? "1 nouveau message" : "\{root.nombre} nouveaux messages") : "Messages récents";
+            color: Theme.papier;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+export component VueMessages inherits Rectangle {
+    property <bool> sombre: Theme.sombre;
+    changed sombre => {
+        DonneesMessagerie.theme-change(self.sombre);
+    }
+    function signaler() {
+        DonneesMessagerie.defilee(-flick.content-y, flick.height, flick.width);
+    }
+    presse-papiers := TextInput {
+        width: 0;
+        height: 0;
+        visible: false;
+        read-only: true;
+        enabled: false;
+    }
+    VerticalLayout {
+        Rectangle {
+            vertical-stretch: 1;
+            flick := Flickable {
+                content-width: self.width;
+                content-height: DonneesMessagerie.haut + colonne.preferred-height + DonneesMessagerie.bas;
+                content-y <=> DonneesMessagerie.defilement;
+                accessible-role: list;
+                accessible-label: "Messages";
+                init => {
+                    root.signaler();
+                }
+                changed content-y => {
+                    root.signaler();
+                }
+                changed height => {
+                    root.signaler();
+                }
+                changed width => {
+                    root.signaler();
+                }
+                colonne := VerticalLayout {
+                    y: DonneesMessagerie.haut;
+                    width: flick.width;
+                    height: self.preferred-height;
+                    alignment: start;
+                    for ligne in DonneesMessagerie.lignes: LigneMessageVue {
+                        ligne: ligne;
+                        copier(texte) => {
+                            presse-papiers.text = texte;
+                            presse-papiers.select-all();
+                            presse-papiers.copy();
+                        }
+                    }
+                }
+            }
+            if DonneesMessagerie.etat == EtatConversation.chargement && DonneesMessagerie.lignes.length == 0: VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Espace.e2;
+                    Chargement {
+                        taille: 20px;
+                        description: "Chargement des messages";
+                    }
+                    Text {
+                        text: "Chargement des messages…";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            if DonneesMessagerie.etat == EtatConversation.erreur && DonneesMessagerie.lignes.length == 0: VerticalLayout {
+                alignment: center;
+                padding: Espace.e8;
+                HorizontalLayout {
+                    alignment: center;
+                    Vide {
+                        preferred-width: 440px;
+                        max-width: 440px;
+                        icone: "alerte";
+                        titre: "Impossible de charger les messages";
+                        texte: "Vérifie ta connexion puis réessaie.";
+                        HorizontalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Réessayer";
+                                icone: "actualise";
+                                clique => {
+                                    DonneesMessagerie.reessayer();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if DonneesMessagerie.bouton-bas: VerticalLayout {
+                alignment: end;
+                padding-bottom: Espace.e3;
+                HorizontalLayout {
+                    alignment: center;
+                    BoutonNouveaux {
+                        nombre: DonneesMessagerie.nouveaux;
+                        clique => {
+                            DonneesMessagerie.aller-en-bas();
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            height: 24px;
+            accessible-role: text;
+            accessible-label: DonneesMessagerie.saisie;
+            HorizontalLayout {
+                padding-left: 72px;
+                padding-right: 24px;
+                spacing: Espace.e2;
+                if DonneesMessagerie.saisie != "": VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 3px;
+                        for i in 3: Rectangle {
+                            width: 5px;
+                            height: 5px;
+                            border-radius: 2.5px;
+                            background: Theme.rose-fonce.with-alpha(1 - i * 0.35);
+                        }
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: DonneesMessagerie.saisie;
+                    color: Theme.gris;
+                    font-size: 12.5px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+        if DonneesMessagerie.lecture-seule: Rectangle {
+            height: 44px;
+            border-width: 0;
+            HorizontalLayout {
+                padding-left: 72px;
+                padding-right: 24px;
+                spacing: Espace.e2;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "cadenas";
+                        taille: 15px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    text: DonneesMessagerie.lecture-seule-texte;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

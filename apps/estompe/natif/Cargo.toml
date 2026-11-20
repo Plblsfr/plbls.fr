@@ -36,7 +36,7 @@ path = "src/main.rs"
 [dependencies]
 estompe-client.workspace = true
 estompe-plateforme.workspace = true
-slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia", "accessibility"] }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-skia", "accessibility", "unstable-winit-030"] }
 tokio = { version = "1", default-features = false, features = ["macros", "net", "rt", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

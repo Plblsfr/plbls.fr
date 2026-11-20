@@ -1,7 +1,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use estompe_client::appels::Badge;
-use estompe_client::cache::{cle_valide, CacheDisque, Lru};
+use estompe_client::cache::{cle_valide, CacheDisque};
+use estompe_client::lru::Lru;
 use estompe_client::http::{Client, ErreurApi};
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 

@@ -1,6 +1,7 @@
 use chrono::{Datelike, NaiveDateTime, Timelike};
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
+use estompe_client::store::messages::LignePrivee;
 use estompe_client::store::{est_vocal, CleConversation, Etat, GenreSalon, Presence, Salon};
 use estompe_client::temps_reel::EtatReseau;
 
@@ -41,7 +42,7 @@ pub struct DonneesPrive {
     pub actif: bool,
     pub non_lus: i64,
     pub mentions: usize,
-    pub en_ligne: bool,
+    pub presence: Presence,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,33 +319,26 @@ pub fn lignes_salons(etat: &Etat, route: &Route) -> Vec<DonneesSalon> {
         .collect()
 }
 
-pub fn lignes_prives(etat: &Etat, route: &Route) -> Vec<DonneesPrive> {
+pub fn lignes_prives(privees: &[LignePrivee], route: &Route) -> Vec<DonneesPrive> {
     let courant = match route {
         Route::MessagePrive { id, .. } => Some(id.as_str()),
         _ => None,
     };
-    etat.messages_prives
+    privees
         .iter()
-        .map(|d| {
-            let identifiant = id(&d.id).to_string();
-            let autre = d.other.as_ref();
-            let pseudo = autre.map(|p| id(&p.pseudo)).unwrap_or_default().to_string();
-            let utilisateur = autre.map(|p| id(&p.id)).unwrap_or_default();
-            let cle = CleConversation::Prive(identifiant.clone());
-            DonneesPrive {
-                actif: courant == Some(identifiant.as_str()),
-                non_lus: etat.non_lus_de(&cle),
-                mentions: etat.nombre_mentions(&cle),
-                en_ligne: etat.presence_de(utilisateur) != Presence::HorsLigne,
-                teinte: teinte(if utilisateur.is_empty() {
-                    &pseudo
-                } else {
-                    utilisateur
-                }),
-                initiales: initiales(&pseudo),
-                pseudo,
-                id: identifiant,
-            }
+        .map(|l| DonneesPrive {
+            actif: courant == Some(l.id.as_str()),
+            non_lus: l.non_lus,
+            mentions: l.mentions,
+            presence: l.presence,
+            teinte: teinte(if l.utilisateur.is_empty() {
+                &l.pseudo
+            } else {
+                &l.utilisateur
+            }),
+            initiales: initiales(&l.pseudo),
+            pseudo: l.pseudo.clone(),
+            id: l.id.clone(),
         })
         .collect()
 }
@@ -556,7 +550,7 @@ pub fn donnees_panneau(etat: &Etat, route: &Route) -> DonneesPanneau {
     }
 }
 
-const LOT_MESSAGES: &str = "Les messages arrivent avec le lot 2";
+const CONVERSATION: &str = "Ouverture de la conversation…";
 const BIENTOT: &str = "Bientôt dans l'app native";
 
 pub fn donnees_vue(etat: &Etat, route: &Route) -> DonneesVue {
@@ -608,8 +602,7 @@ pub fn donnees_vue(etat: &Etat, route: &Route) -> DonneesVue {
                         .filter(|p| !p.is_empty())
                         .collect::<Vec<_>>()
                         .join(" · ");
-                        let detail = format!("Le fil de « {nom} » s'affichera ici. En attendant, il reste lisible dans l'app Estompe.");
-                        vue(GenreVue::Salon, nom, sujet, icone, LOT_MESSAGES, detail)
+                        vue(GenreVue::Salon, nom, sujet, icone, CONVERSATION, String::new())
                     }
                 }
             }
@@ -629,14 +622,13 @@ pub fn donnees_vue(etat: &Etat, route: &Route) -> DonneesVue {
             let pseudo = lieu(etat, &CleConversation::Prive(prive.clone()))
                 .map(|(nom, _)| nom)
                 .unwrap_or_else(|| "…".to_string());
-            let detail = format!("La conversation avec {pseudo} s'affichera ici. En attendant, elle reste lisible dans l'app Estompe.");
             vue(
                 GenreVue::Prive,
                 pseudo,
                 String::new(),
                 "arobase",
-                LOT_MESSAGES,
-                detail,
+                CONVERSATION,
+                String::new(),
             )
         }
         _ => match section_de_la_route(route) {
@@ -680,6 +672,7 @@ pub fn bandeau(reseau: EtatReseau, deja_connecte: bool) -> EtatBandeau {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use estompe_client::store::messages::{lignes_privees, EtatMessages};
     use crate::coquille::essais::etat;
     use chrono::NaiveDate;
 
@@ -783,10 +776,11 @@ mod tests {
     }
 
     #[test]
-    fn les_messages_prives_portent_presence_et_non_lus() {
+    fn les_messages_prives_portent_presence_et_non_lus_par_activite() {
         let e = etat();
+        let mut activite = EtatMessages::default();
         let lignes = lignes_prives(
-            &e,
+            &lignes_privees(&e, &activite),
             &Route::MessagePrive {
                 id: "d2".into(),
                 message: None,
@@ -802,10 +796,14 @@ mod tests {
                 actif: false,
                 non_lus: 2,
                 mentions: 0,
-                en_ligne: true,
+                presence: Presence::EnLigne,
             }
         );
-        assert!(lignes[1].actif && !lignes[1].en_ligne);
+        assert!(lignes[1].actif && lignes[1].presence == Presence::HorsLigne);
+        activite.remontees_privees = vec!["d2".into()];
+        let triees = lignes_prives(&lignes_privees(&e, &activite), &Route::Accueil);
+        let ordre: Vec<&str> = triees.iter().map(|l| l.id.as_str()).collect();
+        assert_eq!(ordre, ["d2", "d1"]);
     }
 
     #[test]
@@ -862,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn la_vue_annonce_le_lot_qui_livrera_le_contenu() {
+    fn la_vue_decrit_le_salon_ou_annonce_le_lot_qui_livrera_le_contenu() {
         let e = etat();
         let texte = donnees_vue(&e, &salon("s1", None));
         assert_eq!(
@@ -876,7 +874,7 @@ mod tests {
                 GenreVue::Salon,
                 "général",
                 "On parle de tout · mode lent 10 s",
-                "Les messages arrivent avec le lot 2"
+                "Ouverture de la conversation…"
             )
         );
         let vocal = donnees_vue(&e, &salon("s1", Some("v1")));

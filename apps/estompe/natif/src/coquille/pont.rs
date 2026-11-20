@@ -19,11 +19,12 @@ use super::membres::{
 use super::modeles::{cibles, remplacer_ligne, synchroniser, Cibles, Ensemble, Operation};
 use super::navigation::Navigation;
 use super::projection::*;
+use crate::messagerie::pont::PontMessagerie;
 use crate::session::Memoire;
 use crate::{
     Accueil, CarteProfil, DonneesCoquille, EnTeteMarge, EnTetePanneau, EtatPresence, LigneBadge,
-    LigneMembre, LignePrive, LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal,
-    Principale, RoleProfil, VueContenu,
+    DonneesMessagerie, EtatConversation, LigneMembre, LigneMessage, LignePrive, LigneRattrapage,
+    LigneSalon, LigneSection, LigneServeur, LigneVocal, Principale, RoleProfil, VueContenu,
 };
 
 pub type Horloge = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
@@ -86,13 +87,13 @@ impl Default for EtatMembres {
     }
 }
 
-fn couleur_slint(couleur: Option<&str>) -> Option<slint::Color> {
+pub(crate) fn couleur_slint(couleur: Option<&str>) -> Option<slint::Color> {
     couleur
         .and_then(analyser_couleur)
         .map(|(r, v, b)| slint::Color::from_rgb_u8(r, v, b))
 }
 
-fn presence_slint(presence: Presence) -> EtatPresence {
+pub(crate) fn presence_slint(presence: Presence) -> EtatPresence {
     match presence {
         Presence::EnLigne => EtatPresence::EnLigne,
         Presence::Absent => EtatPresence::Absent,
@@ -101,7 +102,7 @@ fn presence_slint(presence: Presence) -> EtatPresence {
     }
 }
 
-fn badge_slint(badge: &Badge) -> LigneBadge {
+pub(crate) fn badge_slint(badge: &Badge) -> LigneBadge {
     LigneBadge {
         nom: badge.name.as_str().into(),
         couleur: couleur_slint(Some(&badge.color))
@@ -243,9 +244,10 @@ pub struct Pont {
     memoire: Option<Memoire>,
     horloge: Horloge,
     profils: Arc<Profils>,
+    messagerie: PontMessagerie,
 }
 
-fn vec_de<S: Clone + 'static>(modele: &ModelRc<S>) -> &VecModel<S> {
+pub(crate) fn vec_de<S: Clone + 'static>(modele: &ModelRc<S>) -> &VecModel<S> {
     modele
         .as_any()
         .downcast_ref::<VecModel<S>>()
@@ -261,6 +263,8 @@ pub fn installer_modeles(f: &Principale) {
     g.set_rattrapage(ModelRc::new(VecModel::<LigneRattrapage>::default()));
     g.set_vocaux(ModelRc::new(VecModel::<LigneVocal>::default()));
     g.set_membres(ModelRc::new(VecModel::<LigneMembre>::default()));
+    f.global::<DonneesMessagerie>()
+        .set_lignes(ModelRc::new(VecModel::<LigneMessage>::default()));
 }
 
 pub fn vider_modeles(f: &Principale) {
@@ -284,6 +288,17 @@ pub fn vider_modeles(f: &Principale) {
     g.set_pret(false);
     g.set_pseudo("".into());
     g.set_initiales("".into());
+    let m = f.global::<DonneesMessagerie>();
+    vec_de(&m.get_lignes()).set_vec(Vec::new());
+    m.set_active(false);
+    m.set_haut(0.0);
+    m.set_bas(0.0);
+    m.set_defilement(0.0);
+    m.set_etat(EtatConversation::Chargement);
+    m.set_bouton_bas(false);
+    m.set_nouveaux(0);
+    m.set_saisie("".into());
+    m.set_lecture_seule(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -333,7 +348,8 @@ fn ligne_prive_slint(d: &DonneesPrive) -> LignePrive {
         actif: d.actif,
         non_lus: d.non_lus.min(i64::from(i32::MAX)) as i32,
         mentions: d.mentions.min(i32::MAX as usize) as i32,
-        en_ligne: d.en_ligne,
+        presence: presence_slint(d.presence),
+        libelle_presence: super::membres::libelle_presence(d.presence).into(),
     }
 }
 
@@ -428,6 +444,8 @@ impl Pont {
         navigation: Navigation,
         profils: Arc<Profils>,
     ) -> Self {
+        let messagerie =
+            PontMessagerie::nouveau(store.clone(), fenetre.clone(), runtime.clone(), profils.clone());
         Self {
             interne: Arc::new(Mutex::new(Interne {
                 navigation,
@@ -445,7 +463,12 @@ impl Pont {
             memoire,
             horloge,
             profils,
+            messagerie,
         }
+    }
+
+    pub fn messagerie(&self) -> &PontMessagerie {
+        &self.messagerie
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
@@ -475,16 +498,32 @@ impl Pont {
             let interne = self.verrou();
             cibles(changements, interne.navigation.route())
         };
+        let mut corrigee = false;
         if c.corriger {
-            let corrigee = self
+            corrigee = self
                 .store
                 .lire(|etat| self.verrou().navigation.corriger(etat));
             if corrigee {
                 c = tout();
-                self.ouvrir_conversation_courante();
             }
         }
         self.projeter(f, &c, false);
+        if corrigee {
+            self.suivre_conversation(f);
+            self.ouvrir_conversation_courante();
+        }
+        self.messagerie.appliquer(f, changements);
+    }
+
+    fn suivre_conversation(&self, f: &Principale) {
+        let route = self.route();
+        let (cle, non_lus) = self.store.lire(|etat| {
+            let cle = conversation_de_la_route(etat, &route);
+            let non_lus = cle.as_ref().map_or(0, |c| etat.non_lus_de(c));
+            (cle, non_lus)
+        });
+        let serveur = serveur_courant(&route).map(str::to_string);
+        self.messagerie.ouvrir(f, cle, serveur, non_lus);
     }
 
     fn projeter(&self, f: &Principale, c: &Cibles, sections: bool) {
@@ -499,6 +538,11 @@ impl Pont {
             sections: liste_sections,
             ..
         } = interne;
+        let privees = if c.prives.est_vide() {
+            Vec::new()
+        } else {
+            self.store.lignes_privees()
+        };
         self.store.lire(|etat| {
             let serveurs = g.get_serveurs();
             let modele = vec_de(&serveurs);
@@ -539,7 +583,7 @@ impl Pont {
                 synchroniser(
                     vec_de(&g.get_prives()),
                     &mut ombres.prives,
-                    lignes_prives(etat, &route),
+                    lignes_prives(&privees, &route),
                     |d| d.id.clone(),
                     ligne_prive_slint,
                 );
@@ -676,6 +720,7 @@ impl Pont {
             interne.navigation.adresse_a_retenir(etat)
         });
         self.tout_projeter(f);
+        self.suivre_conversation(f);
         if let (Some(adresse), Some(memoire)) = (adresse, &self.memoire) {
             let vue = self.store.memoriser_vue(&adresse);
             memoire.modifier(|p| p.derniere_vue = Some(vue));
@@ -692,7 +737,16 @@ impl Pont {
         if store.lire(|etat| etat.courante == cle) {
             return;
         }
-        self.runtime.spawn(async move { store.ouvrir(cle).await });
+        let messagerie = self.messagerie.clone();
+        let fenetre = self.fenetre.clone();
+        self.runtime.spawn(async move {
+            store.ouvrir(cle.clone()).await;
+            if let Some(cle) = cle {
+                let reussi = store.conversation(&cle).is_some_and(|c| c.chargee);
+                let _ = fenetre
+                    .upgrade_in_event_loop(move |f| messagerie.etat_chargement(&f, &cle, reussi));
+            }
+        });
     }
 
     pub fn ouvrir_accueil(&self, f: &Principale) {

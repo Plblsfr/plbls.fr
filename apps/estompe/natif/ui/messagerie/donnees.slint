@@ -1,0 +1,84 @@
+import { BlocTexte, GenreBloc } from "../composants/texte-riche.slint";
+import { LigneBadge } from "../coquille/donnees.slint";
+
+export { BlocTexte, GenreBloc }
+
+export enum GenreLigneMessage { debut, chargement, jour, nouveau, message }
+
+export struct ReactionMessage {
+    emoji: string,
+    nombre: int,
+    moi: bool,
+}
+
+export struct AnnexesMessage {
+    pieces-jointes: int,
+    sondage: bool,
+    reactions: [ReactionMessage],
+    lien: string,
+    resume: string,
+}
+
+export struct ReponseMessage {
+    presente: bool,
+    id: string,
+    auteur: string,
+    texte: string,
+    supprimee: bool,
+}
+
+export struct LigneMessage {
+    cle: string,
+    genre: GenreLigneMessage,
+    libelle: string,
+    id: string,
+    suite: bool,
+    utilisateur: string,
+    auteur: string,
+    initiales: string,
+    teinte: int,
+    portrait: image,
+    couleur: color,
+    a-couleur: bool,
+    bot: bool,
+    badge-1: LigneBadge,
+    badge-2: LigneBadge,
+    nombre-badges: int,
+    heure: string,
+    date-complete: string,
+    systeme: bool,
+    epingle: bool,
+    modifie: bool,
+    date-modification: string,
+    mention: bool,
+    mis-en-evidence: bool,
+    reponse: ReponseMessage,
+    blocs: [BlocTexte],
+    texte-brut: string,
+    annexes: AnnexesMessage,
+    etat-envoi: string,
+}
+
+export enum EtatConversation { chargement, erreur, prete }
+
+export global DonneesMessagerie {
+    in property <bool> active: false;
+    in property <[LigneMessage]> lignes;
+    in property <length> haut;
+    in property <length> bas;
+    in-out property <length> defilement;
+    in property <EtatConversation> etat: EtatConversation.chargement;
+    in property <bool> bouton-bas: false;
+    in property <int> nouveaux: 0;
+    in property <string> saisie;
+    in property <bool> lecture-seule: false;
+    in property <string> lecture-seule-texte;
+    callback defilee(length, length, length);
+    callback ligne-mesuree(string, length);
+    callback lien-clique(string, string);
+    callback reponse-cliquee(string);
+    callback auteur-clique(string);
+    callback aller-en-bas();
+    callback reessayer();
+    callback theme-change(bool);
+}

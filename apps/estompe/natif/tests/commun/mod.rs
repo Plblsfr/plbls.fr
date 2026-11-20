@@ -220,6 +220,78 @@ pub mod coquille {
         json!({"id": id, "channel_id": salon, "author": {"id": auteur, "pseudo": auteur}, "content": "salut", "created_at": "2026-11-19T10:00:00Z", "attachments": [], "reactions": [], "mentions": []})
     }
 
+    pub fn message_de(valeur: Value) -> estompe_client::types::Message {
+        depuis(valeur)
+    }
+
+    fn ecrit(id: &str, lieu: (&str, &str), auteur: (&str, &str), quand: &str, contenu: &str) -> Value {
+        let mut valeur = json!({"id": id, "author": {"id": auteur.0, "pseudo": auteur.1}, "content": contenu, "created_at": quand, "attachments": [], "reactions": [], "mentions": []});
+        valeur[lieu.0] = json!(lieu.1);
+        valeur
+    }
+
+    pub const ESTOMPE: &str = "00000000-0000-0000-0000-000000000001";
+
+    pub fn conversation_variantes() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit("100", c1, ("eve", "Ève"), "2026-11-18T21:40:00Z", "Bonne nuit tout le monde, à demain !"),
+            ecrit("101", c1, (ESTOMPE, "Estompe"), "2026-11-19T07:58:00Z", "Inès a rejoint le serveur."),
+            ecrit("102", c1, ("carol", "carol"), "2026-11-19T08:00:00Z", "Salut ! Quelqu'un a vu le **planning** de demain ?"),
+            ecrit("103", c1, ("carol", "carol"), "2026-11-19T08:01:00Z", "Je l'avais posé ici mais je ne le retrouve plus."),
+            ecrit("104", c1, ("dave", "dave"), "2026-11-19T08:02:00Z", "Oui, il est dans le dossier partagé, je l'ai mis à jour."),
+            ecrit("105", c1, ("elise", "Élise"), "2026-11-19T08:03:00Z", "Je ne vois plus le message auquel je répondais."),
+            ecrit("106", c1, (ESTOMPE, "Estompe"), "2026-11-19T08:05:00Z", "Nouvelle version disponible : 0.42 apporte la messagerie native."),
+            ecrit("107", c1, ("eve", "Ève"), "2026-11-19T08:06:00Z", "@bob tu peux valider le planning avant midi ?"),
+            ecrit("108", c1, ("ines", "Inès"), "2026-11-19T08:07:00Z", "Les photos du week-end :"),
+            ecrit("109", c1, ("carol", "carol"), "2026-11-19T08:09:00Z", "Et ce message est mis en évidence après un saut."),
+        ];
+        v[1]["system"] = json!(true);
+        v[2]["pinned_at"] = json!("2026-11-19T08:10:00Z");
+        v[4]["reply_to"] = json!({"id": "102", "author": {"id": "carol", "pseudo": "carol"}, "content": "Salut ! Quelqu'un a vu le **planning** de demain ?"});
+        v[4]["edited_at"] = json!("2026-11-19T08:04:00Z");
+        v[5]["reply_to"] = json!({"id": "99", "author": {"id": "hugo", "pseudo": "hugo"}, "content": "message retiré"});
+        v[7]["mentions"] = json!(["u1"]);
+        v[8]["attachments"] = json!([{"id": "a1", "name": "plage.jpg"}, {"id": "a2", "name": "dune.jpg"}]);
+        v[8]["reactions"] = json!([{"emoji": "👍", "count": 3, "me": true}, {"emoji": "🎉", "count": 1, "me": false}]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub const GALERIE: &str = "# Titre de niveau 1\n**Gras**, *italique*, ~~barré~~, `code en ligne`, [un lien](https://plbls.fr) et une mention de @carol.\nUn passage ||masqué|| à révéler d'un clic.\n> Une citation\n> > et une citation imbriquée\n- premier point\n- second point\n  - sous-point\n1. étape une\n2. étape deux\n```\nfn main() {\n    println!(\"Bonjour\");\n}\n```\n## Titre de niveau 2\nUn texte assez long pour passer à la ligne : la liste conserve la position du message sous le curseur quand l'historique arrive au-dessus.";
+
+    pub fn galerie_markdown() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        vec![
+            depuis(ecrit("200", c1, ("eve", "Ève"), "2026-11-19T08:30:00Z", GALERIE)),
+            depuis(ecrit("201", c1, ("dave", "dave"), "2026-11-19T08:31:00Z", "Révélé : ||la fin du film|| et ### pas un titre en ligne")),
+        ]
+    }
+
+    pub fn conversation_privee() -> Vec<estompe_client::types::Message> {
+        let d1 = ("dm_id", "d1");
+        [
+            ecrit("300", d1, ("u1", "bob"), "2026-11-19T07:50:00Z", "On se voit toujours ce soir ?"),
+            ecrit("301", d1, ("carol", "carol"), "2026-11-19T07:52:00Z", "Oui ! 19 h devant le cinéma."),
+            ecrit("302", d1, ("carol", "carol"), "2026-11-19T08:20:00Z", "Petit changement : on se retrouve plutôt au café d'à côté."),
+            ecrit("303", d1, ("carol", "carol"), "2026-11-19T08:21:00Z", "Ça te va ?"),
+        ]
+        .into_iter()
+        .map(depuis)
+        .collect()
+    }
+
+    pub fn conversation_courte(salon: &str) -> Vec<estompe_client::types::Message> {
+        let lieu = ("channel_id", salon);
+        [
+            ecrit("400", lieu, ("carol", "carol"), "2026-11-19T08:00:00Z", "Bonjour à toutes et à tous !"),
+            ecrit("401", lieu, ("dave", "dave"), "2026-11-19T08:05:00Z", "Salut, prêt pour la réunion de **10 h** ?"),
+            ecrit("402", lieu, ("dave", "dave"), "2026-11-19T08:06:00Z", "L'ordre du jour : [plbls.fr/agenda](https://plbls.fr/agenda)"),
+        ]
+        .into_iter()
+        .map(depuis)
+        .collect()
+    }
+
     pub fn etat() -> Etat {
         let mut etat = Etat {
             compte: depuis(

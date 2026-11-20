@@ -1,90 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
-use std::hash::Hash;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
-
-pub struct Lru<K, V> {
-    capacite: usize,
-    entrees: HashMap<K, (V, u64)>,
-    ordre: BTreeMap<u64, K>,
-    horloge: u64,
-}
-
-impl<K: Eq + Hash + Clone, V> Lru<K, V> {
-    pub fn nouveau(capacite: usize) -> Self {
-        Self {
-            capacite: capacite.max(1),
-            entrees: HashMap::new(),
-            ordre: BTreeMap::new(),
-            horloge: 0,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.entrees.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entrees.is_empty()
-    }
-
-    pub fn capacite(&self) -> usize {
-        self.capacite
-    }
-
-    pub fn contient(&self, cle: &K) -> bool {
-        self.entrees.contains_key(cle)
-    }
-
-    fn toucher(&mut self, cle: &K) {
-        self.horloge += 1;
-        let horloge = self.horloge;
-        if let Some((_, rang)) = self.entrees.get_mut(cle) {
-            self.ordre.remove(rang);
-            *rang = horloge;
-            self.ordre.insert(horloge, cle.clone());
-        }
-    }
-
-    pub fn lire(&mut self, cle: &K) -> Option<&V> {
-        self.toucher(cle);
-        self.entrees.get(cle).map(|(valeur, _)| valeur)
-    }
-
-    pub fn inserer(&mut self, cle: K, valeur: V) -> Vec<K> {
-        self.horloge += 1;
-        if let Some((_, rang)) = self.entrees.remove(&cle) {
-            self.ordre.remove(&rang);
-        }
-        self.ordre.insert(self.horloge, cle.clone());
-        self.entrees.insert(cle, (valeur, self.horloge));
-        let mut oubliees = Vec::new();
-        while self.entrees.len() > self.capacite {
-            let Some((_, ancienne)) = self.ordre.pop_first() else {
-                break;
-            };
-            self.entrees.remove(&ancienne);
-            oubliees.push(ancienne);
-        }
-        oubliees
-    }
-
-    pub fn retirer(&mut self, cle: &K) -> Option<V> {
-        let (valeur, rang) = self.entrees.remove(cle)?;
-        self.ordre.remove(&rang);
-        Some(valeur)
-    }
-
-    pub fn lire_ou_inserer(&mut self, cle: K, fabriquer: impl FnOnce() -> V) -> &V {
-        if !self.entrees.contains_key(&cle) {
-            self.inserer(cle.clone(), fabriquer());
-        }
-        self.lire(&cle).expect("entrée présente")
-    }
-}
 
 const EXTENSION: &str = "cache";
 const EXTENSION_TEMPORAIRE: &str = "tmp";
@@ -296,46 +215,6 @@ impl CacheDisque {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lru_oublie_la_moins_recemment_utilisee_au_dela_de_la_limite() {
-        let mut c = Lru::nouveau(2);
-        c.inserer("a", 1);
-        c.inserer("b", 2);
-        assert_eq!(c.lire(&"a"), Some(&1));
-        assert_eq!(c.inserer("c", 3), ["b"]);
-        assert_eq!(c.len(), 2);
-        assert_eq!(c.lire(&"a"), Some(&1));
-        assert_eq!(c.lire(&"b"), None);
-        assert_eq!(c.lire(&"c"), Some(&3));
-    }
-
-    #[test]
-    fn lru_ne_calcule_une_valeur_absente_qu_une_fois() {
-        let mut c = Lru::nouveau(1);
-        let appels = std::cell::Cell::new(0);
-        let fabriquer = || {
-            appels.set(appels.get() + 1);
-            7
-        };
-        assert_eq!(*c.lire_ou_inserer("x", fabriquer), 7);
-        assert_eq!(*c.lire_ou_inserer("x", fabriquer), 7);
-        assert_eq!(appels.get(), 1);
-        c.inserer("y", 1);
-        assert_eq!(*c.lire_ou_inserer("x", fabriquer), 7);
-        assert_eq!(appels.get(), 2);
-    }
-
-    #[test]
-    fn lru_reecrire_une_cle_ne_double_pas_l_entree() {
-        let mut c = Lru::nouveau(2);
-        c.inserer("a", 1);
-        c.inserer("a", 2);
-        c.inserer("b", 3);
-        assert_eq!((c.len(), c.lire(&"a")), (2, Some(&2)));
-        assert_eq!(c.retirer(&"a"), Some(2));
-        assert!(!c.contient(&"a") && c.contient(&"b"));
-    }
 
     fn fichiers(dossier: &Path) -> Vec<String> {
         let mut noms: Vec<String> = fs::read_dir(dossier)

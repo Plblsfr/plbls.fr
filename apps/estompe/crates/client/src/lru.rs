@@ -1,70 +1,91 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 
 pub struct Lru<K, V> {
-    elements: HashMap<K, V>,
-    ordre: VecDeque<K>,
-    max: usize,
+    capacite: usize,
+    entrees: HashMap<K, (V, u64)>,
+    ordre: BTreeMap<u64, K>,
+    horloge: u64,
 }
 
 impl<K: Eq + Hash + Clone, V> Lru<K, V> {
-    pub fn new(max: usize) -> Self {
+    pub fn nouveau(capacite: usize) -> Self {
         Self {
-            elements: HashMap::new(),
-            ordre: VecDeque::new(),
-            max,
+            capacite,
+            entrees: HashMap::new(),
+            ordre: BTreeMap::new(),
+            horloge: 0,
         }
     }
 
     pub fn len(&self) -> usize {
-        self.elements.len()
+        self.entrees.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.elements.is_empty()
+        self.entrees.is_empty()
+    }
+
+    pub fn capacite(&self) -> usize {
+        self.capacite
     }
 
     pub fn contient(&self, cle: &K) -> bool {
-        self.elements.contains_key(cle)
+        self.entrees.contains_key(cle)
     }
 
-    pub fn get(&mut self, cle: &K) -> Option<&V> {
-        if !self.elements.contains_key(cle) {
-            return None;
-        }
-        self.retirer_de_l_ordre(cle);
-        self.ordre.push_back(cle.clone());
-        self.elements.get(cle)
-    }
-
-    pub fn set(&mut self, cle: K, valeur: V) {
-        self.retirer_de_l_ordre(&cle);
-        self.ordre.push_back(cle.clone());
-        self.elements.insert(cle, valeur);
-        while self.elements.len() > self.max {
-            match self.ordre.pop_front() {
-                Some(ancienne) => {
-                    self.elements.remove(&ancienne);
-                }
-                None => break,
-            }
+    fn toucher(&mut self, cle: &K) {
+        self.horloge += 1;
+        let horloge = self.horloge;
+        if let Some((_, rang)) = self.entrees.get_mut(cle) {
+            self.ordre.remove(rang);
+            *rang = horloge;
+            self.ordre.insert(horloge, cle.clone());
         }
     }
 
-    fn retirer_de_l_ordre(&mut self, cle: &K) {
-        if let Some(position) = self.ordre.iter().position(|k| k == cle) {
-            self.ordre.remove(position);
+    pub fn lire(&mut self, cle: &K) -> Option<&V> {
+        self.toucher(cle);
+        self.entrees.get(cle).map(|(valeur, _)| valeur)
+    }
+
+    pub fn inserer(&mut self, cle: K, valeur: V) -> Vec<K> {
+        self.horloge += 1;
+        if let Some((_, rang)) = self.entrees.remove(&cle) {
+            self.ordre.remove(&rang);
         }
+        self.ordre.insert(self.horloge, cle.clone());
+        self.entrees.insert(cle, (valeur, self.horloge));
+        let mut oubliees = Vec::new();
+        while self.entrees.len() > self.capacite {
+            let Some((_, ancienne)) = self.ordre.pop_first() else {
+                break;
+            };
+            self.entrees.remove(&ancienne);
+            oubliees.push(ancienne);
+        }
+        oubliees
+    }
+
+    pub fn retirer(&mut self, cle: &K) -> Option<V> {
+        let (valeur, rang) = self.entrees.remove(cle)?;
+        self.ordre.remove(&rang);
+        Some(valeur)
+    }
+
+    pub fn vider(&mut self) {
+        self.entrees.clear();
+        self.ordre.clear();
     }
 }
 
 impl<K: Eq + Hash + Clone, V: Clone> Lru<K, V> {
-    pub fn get_or_set(&mut self, cle: K, creer: impl FnOnce() -> V) -> V {
-        if let Some(valeur) = self.get(&cle) {
+    pub fn lire_ou_inserer(&mut self, cle: K, fabriquer: impl FnOnce() -> V) -> V {
+        if let Some(valeur) = self.lire(&cle) {
             return valeur.clone();
         }
-        let valeur = creer();
-        self.set(cle, valeur.clone());
+        let valeur = fabriquer();
+        self.inserer(cle, valeur.clone());
         valeur
     }
 }
@@ -76,55 +97,70 @@ mod tests {
 
     #[test]
     fn oublie_la_moins_recemment_utilisee_au_dela_de_la_limite() {
-        let mut c: Lru<String, i32> = Lru::new(2);
-        c.set("a".into(), 1);
-        c.set("b".into(), 2);
-        assert_eq!(c.get(&"a".to_string()), Some(&1));
-        c.set("c".into(), 3);
+        let mut c: Lru<&str, i32> = Lru::nouveau(2);
+        c.inserer("a", 1);
+        c.inserer("b", 2);
+        assert_eq!(c.lire(&"a"), Some(&1));
+        assert_eq!(c.inserer("c", 3), ["b"]);
         let taille = c.len();
-        let a = c.get(&"a".to_string()).copied();
-        let b = c.get(&"b".to_string()).copied();
-        let c3 = c.get(&"c".to_string()).copied();
+        let a = c.lire(&"a").copied();
+        let b = c.lire(&"b").copied();
+        let c3 = c.lire(&"c").copied();
         assert_eq!((taille, a, b, c3), (2, Some(1), None, Some(3)));
     }
 
     #[test]
     fn ne_calcule_une_valeur_absente_qu_une_fois() {
-        let mut c: Lru<String, i32> = Lru::new(1);
+        let mut c: Lru<String, i32> = Lru::nouveau(1);
         let appels = Cell::new(0);
         let creer = || {
             appels.set(appels.get() + 1);
             7
         };
         let deux = [
-            c.get_or_set("x".into(), creer),
-            c.get_or_set("x".into(), creer),
+            c.lire_ou_inserer("x".into(), creer),
+            c.lire_ou_inserer("x".into(), creer),
         ];
         assert_eq!(deux, [7, 7]);
         assert_eq!(appels.get(), 1);
-        c.set("y".into(), 1);
-        assert_eq!(c.get_or_set("x".into(), creer), 7);
+        c.inserer("y".into(), 1);
+        assert_eq!(c.lire_ou_inserer("x".into(), creer), 7);
         assert_eq!(appels.get(), 2);
     }
 
     #[test]
-    fn reecrire_une_cle_la_rend_la_plus_recente() {
-        let mut c: Lru<&str, i32> = Lru::new(2);
-        c.set("a", 1);
-        c.set("b", 2);
-        c.set("a", 3);
-        c.set("c", 4);
+    fn reecrire_une_cle_la_rend_la_plus_recente_sans_doubler_l_entree() {
+        let mut c: Lru<&str, i32> = Lru::nouveau(2);
+        c.inserer("a", 1);
+        c.inserer("b", 2);
+        c.inserer("a", 3);
+        assert_eq!(c.len(), 2);
+        c.inserer("c", 4);
         assert!(c.contient(&"a"));
         assert!(!c.contient(&"b"));
-        assert_eq!(c.get(&"a"), Some(&3));
+        assert_eq!(c.lire(&"a"), Some(&3));
+        assert_eq!(c.retirer(&"a"), Some(3));
+        assert!(!c.contient(&"a") && c.contient(&"c"));
     }
 
     #[test]
     fn une_limite_nulle_ne_garde_rien() {
-        let mut c: Lru<&str, i32> = Lru::new(0);
-        c.set("a", 1);
+        let mut c: Lru<&str, i32> = Lru::nouveau(0);
+        c.inserer("a", 1);
         assert!(c.is_empty());
-        assert_eq!(c.get_or_set("a", || 5), 5);
+        assert_eq!(c.lire_ou_inserer("a", || 5), 5);
         assert_eq!(c.len(), 0);
+        assert_eq!(c.capacite(), 0);
+    }
+
+    #[test]
+    fn vider_oublie_tout() {
+        let mut c: Lru<&str, i32> = Lru::nouveau(3);
+        c.inserer("a", 1);
+        c.inserer("b", 2);
+        c.vider();
+        assert!(c.is_empty());
+        c.inserer("c", 3);
+        assert_eq!(c.lire(&"c"), Some(&3));
     }
 }

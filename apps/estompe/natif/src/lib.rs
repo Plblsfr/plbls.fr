@@ -3,6 +3,7 @@ slint::include_modules!();
 pub mod coquille;
 pub mod ecrans;
 pub mod entree;
+pub mod messagerie;
 pub mod session;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -43,6 +44,7 @@ pub fn demarrer(
 ) -> Result<Application, String> {
     let canal = entree::canal();
     let reels = session.services(&canal.0)?;
+    let navigateur = reels.services.navigateur.clone();
     ecrans::brancher(fenetre, &canal.0);
     let entree = entree::Entree::demarrer(
         entree::Machine::nouvelle(invitation),
@@ -61,6 +63,7 @@ pub fn demarrer(
             production,
         ),
         journal: Some(session.journal.clone()),
+        navigateur,
         profils: coquille::Profils::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(
@@ -80,10 +83,23 @@ pub fn demarrer(
         session.memoire.clone(),
         coquille::horloge_locale(),
     );
+    suivre_le_focus(fenetre, coquille.suivi_du_focus());
     Ok(Application {
         coquille,
         entree,
         client: reels.client,
         auth: reels.auth,
     })
+}
+
+fn suivre_le_focus(fenetre: &Principale, suivi: impl Fn(bool) + 'static) {
+    use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
+    fenetre
+        .window()
+        .on_winit_window_event(move |_, evenement| {
+            if let winit::event::WindowEvent::Focused(actif) = evenement {
+                suivi(*actif);
+            }
+            EventResult::Propagate
+        });
 }
