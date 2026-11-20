@@ -22,7 +22,10 @@ use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::session::Memoire;
-use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur, Principale};
+use crate::{
+    DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
+    Principale,
+};
 use estompe_client::brouillons::Brouillons;
 use estompe_client::video::Conversions;
 
@@ -355,6 +358,18 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_reagir, |p, _f, id, emoji| p
         .messagerie()
         .reagir(&id, &emoji));
+    rappel_messagerie!(on_voter, |p, _f, id, option| p
+        .messagerie()
+        .voter(&id, &option));
+    rappel_messagerie!(on_clore_sondage, |p, _f, id| p
+        .messagerie()
+        .clore_sondage(&id));
+    rappel_messagerie!(on_supprimer_sondage, |p, f, id| p
+        .messagerie()
+        .supprimer_sondage(&f, &id));
+    rappel_messagerie!(on_basculer_votants, |p, f, id| p
+        .messagerie()
+        .basculer_votants(&f, &id));
     let s = f.global::<DonneesSaisie>();
     macro_rules! rappel_saisie {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -396,6 +411,9 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
         .messagerie()
         .fermer_propositions(&f));
     rappel_saisie!(on_joindre, |p, _f| p.messagerie().choisir_pieces());
+    rappel_saisie!(on_creer_sondage, |p, f| p
+        .messagerie()
+        .ouvrir_creation_sondage(&f));
     rappel_saisie!(on_retirer_piece, |p, f, cle| p
         .messagerie()
         .retirer_piece(&f, cle));
@@ -458,6 +476,31 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
         .selecteur()
         .defile(&f, haut, hauteur));
     rappel_selecteur!(on_fermer, |p, f| p.messagerie().fermer_selecteur(&f));
+    let creation = f.global::<DonneesCreationSondage>();
+    macro_rules! rappel_creation {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            creation.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_creation!(on_modifie, |p, f| p.messagerie().creation_modifiee(&f));
+    rappel_creation!(on_choix_modifie, |p, f, index, texte| p
+        .messagerie()
+        .choix_modifie(&f, index, &texte));
+    rappel_creation!(on_ajouter_choix, |p, f| p.messagerie().ajouter_choix(&f));
+    rappel_creation!(on_retirer_choix, |p, f, index| p
+        .messagerie()
+        .retirer_choix(&f, index));
+    rappel_creation!(on_choisir_cloture, |p, f, index| p
+        .messagerie()
+        .choisir_cloture(&f, index));
+    rappel_creation!(on_publier, |p, f| p.messagerie().publier_sondage(&f));
+    rappel_creation!(on_fermer, |p, f| p.messagerie().fermer_creation_sondage(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {

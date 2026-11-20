@@ -52,9 +52,11 @@ export global DonneesSaisie {
     in property <bool> selecteur-ouvert: false;
     in property <[PieceSaisie]> pieces;
     in property <bool> joindre-possible: false;
+    in property <bool> sondage-possible: false;
     in property <bool> depot-survole: false;
     in property <string> limite-pieces: "10 Mo max par fichier";
     callback joindre();
+    callback creer-sondage();
     callback retirer-piece(int);
     callback reessayer-piece(int);
     callback coller() -> bool;
@@ -324,6 +326,16 @@ component ChampSaisie inherits Rectangle {
                     libelle: "Joindre un fichier";
                     clique => {
                         DonneesSaisie.joindre();
+                    }
+                }
+            }
+            if DonneesSaisie.sondage-possible: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "sondage";
+                    libelle: "Créer un sondage";
+                    clique => {
+                        DonneesSaisie.creer-sondage();
                     }
                 }
             }

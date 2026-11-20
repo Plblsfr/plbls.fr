@@ -24,7 +24,7 @@ use super::emoji;
 use super::lignes::{
     donnees_message, libelle_vu_par, lignes_de_conversation, mentionnables, premier_non_lu,
     utilisateur_mentionne, ContexteLignes, DonneesAnnexes, DonneesLecteur, DonneesLigne,
-    DonneesMessage, DonneesPiece, GenreLigne, GenrePiece,
+    DonneesMessage, DonneesPiece, GenreLigne, GenrePiece, Votants,
 };
 use super::medias::{CleImage, Decodee, Format, Medias, Progres, Source, SourceMedias};
 use super::rendu::{
@@ -81,6 +81,7 @@ thread_local! {
 }
 
 mod actions;
+mod sondages;
 mod televersements;
 
 pub use actions::TITRE_MENU_MESSAGE;
@@ -273,6 +274,8 @@ struct Interne {
     apercus: bool,
     dossier: Option<PathBuf>,
     reveil_sondage: Option<i64>,
+    votants: HashMap<String, Votants>,
+    creation_sondage: Option<sondages::CreationEnCours>,
     minuterie_active: bool,
     epingles_visibles: bool,
     etat_epingles: EtatEpingles,
@@ -329,6 +332,8 @@ impl Interne {
             apercus: true,
             dossier: None,
             reveil_sondage: None,
+            votants: HashMap::new(),
+            creation_sondage: None,
             minuterie_active: false,
             epingles_visibles: false,
             etat_epingles: EtatEpingles::Chargement,
@@ -392,7 +397,8 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
         h += 24.0;
     }
     if let Some(sondage) = &m.annexes.sondage {
-        h += 110.0 + 46.0 * sondage.options.len() as f64;
+        let votants = if sondage.votants_ouverts { 20.0 } else { 0.0 };
+        h += 110.0 + (46.0 + votants) * sondage.options.len() as f64;
     }
     if m.annexes.images().next().is_some() {
         h += 196.0;
@@ -715,15 +721,21 @@ fn annexes_slint(
                 s.options
                     .iter()
                     .map(|o| OptionSondage {
+                        id: o.id.as_str().into(),
                         libelle: o.libelle.as_str().into(),
                         pourcentage: o.pourcentage.clamp(0, 100) as i32,
                         votes: o.votes.clamp(0, i64::from(i32::MAX)) as i32,
                         moi: o.moi,
                         gagnant: o.gagnant,
+                        votants: o.votants.as_deref().unwrap_or_default().into(),
                     })
                     .collect::<Vec<_>>(),
             )),
             pied: s.pied.as_str().into(),
+            total: s.total.clamp(0, i64::from(i32::MAX)) as i32,
+            votable: s.votable,
+            gerer: s.gerer,
+            votants_ouverts: s.votants_ouverts,
         })
         .unwrap_or_default();
     AnnexesMessage {
@@ -1590,6 +1602,7 @@ impl PontMessagerie {
                 lecteurs: &aucun,
                 envois: &[],
                 droits,
+                votants: &HashMap::new(),
             };
             messages
                 .iter()
@@ -1874,6 +1887,7 @@ impl PontMessagerie {
         let supprimes = i.supprimes.clone();
         let apercus = i.apercus;
         let cle = i.cle.clone();
+        let votants = i.votants.clone();
         drop(i);
         let lecteurs = cle
             .as_ref()
@@ -1904,6 +1918,7 @@ impl PontMessagerie {
                     lecteurs: &lecteurs,
                     envois: &envois,
                     droits,
+                    votants: &votants,
                 },
             )
         })
@@ -1924,7 +1939,7 @@ impl PontMessagerie {
                 .clone();
             fuseau(chrono::Utc::now().timestamp_millis())
         };
-        let (serveur, evidence, supprimes, indice, suite, apercus) = {
+        let (serveur, evidence, supprimes, indice, suite, apercus, votants) = {
             let i = self.verrou();
             let Some(&n) = i.index.get(id) else {
                 return;
@@ -1937,6 +1952,7 @@ impl PontMessagerie {
                 n,
                 suite,
                 i.apercus,
+                i.votants.clone(),
             )
         };
         let maintenant = self.maintenant();
@@ -1958,6 +1974,7 @@ impl PontMessagerie {
                     lecteurs: &lecteurs,
                     envois: &[],
                     droits,
+                    votants: &votants,
                 },
             )
         });
@@ -2031,9 +2048,13 @@ impl PontMessagerie {
         let g = f.global::<DonneesMessagerie>();
         let raison = self.raison_lecture_seule();
         let joindre = self.pieces_possibles();
+        let sondage = self.sondage_possible();
         let s = f.global::<crate::DonneesSaisie>();
         if s.get_joindre_possible() != joindre {
             s.set_joindre_possible(joindre);
+        }
+        if s.get_sondage_possible() != sondage {
+            s.set_sondage_possible(sondage);
         }
         let (fenetre, lignes_fenetre) = {
             let mut i = self.verrou();

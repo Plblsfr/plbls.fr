@@ -9,7 +9,9 @@ use crate::format::iso_de_ms;
 use crate::http::ErreurApi;
 use crate::store::etat::CleConversation;
 use crate::store::reducteur::{Application, Changement};
-use crate::types::{Attachment, Message, MessageReplyTo, Person};
+use crate::types::{
+    Attachment, Message, MessagePoll, MessagePollOptionsElement, MessageReplyTo, Person,
+};
 
 pub const LONGUEUR_MAX: usize = 4000;
 pub const SEUIL_COMPTEUR: usize = 3500;
@@ -127,6 +129,23 @@ impl EnvoiLocal {
             reactions: Some(Vec::new()),
             mentions: Some(Vec::new()),
             reply_to: self.citation.clone(),
+            poll: self.brouillon.sondage.as_ref().map(|s| MessagePoll {
+                multiple: Some(s.multiple),
+                closes_at: s.closes_at.clone(),
+                created_by: Some(self.auteur.clone()),
+                options: Some(
+                    s.options
+                        .iter()
+                        .enumerate()
+                        .map(|(i, libelle)| MessagePollOptionsElement {
+                            id: Some(format!("{PREFIXE_LOCAL}{i}")),
+                            label: Some(libelle.clone()),
+                            votes: Some(0),
+                            me: Some(false),
+                        })
+                        .collect(),
+                ),
+            }),
             ..Message::default()
         }
     }
@@ -368,6 +387,37 @@ mod tests {
             .iter()
             .map(|m| id_message(m).to_string())
             .collect()
+    }
+
+    #[test]
+    fn un_sondage_en_cours_d_envoi_s_affiche_avec_ses_choix() {
+        let (mut etat, _, cle) = conversation_chargee();
+        let brouillon = Brouillon {
+            sondage: Some(NouveauSondage {
+                options: vec!["a".into(), "b".into()],
+                multiple: true,
+                closes_at: None,
+            }),
+            ..Brouillon::texte("Q ?")
+        };
+        assert_eq!(brouillon.requete().poll, brouillon.sondage);
+        ajouter_envoi(&mut etat, &cle, brouillon, moi(), "t".into());
+        let message = etat.envois_de(&cle)[0].message();
+        let sondage = message.poll.unwrap();
+        assert_eq!(sondage.multiple, Some(true));
+        let libelles: Vec<_> = sondage
+            .options
+            .unwrap()
+            .into_iter()
+            .map(|o| (o.id.unwrap(), o.label.unwrap(), o.votes.unwrap()))
+            .collect();
+        assert_eq!(
+            libelles,
+            [
+                ("local:0".to_string(), "a".to_string(), 0),
+                ("local:1".to_string(), "b".to_string(), 0)
+            ]
+        );
     }
 
     #[test]

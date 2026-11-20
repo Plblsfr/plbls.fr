@@ -37,11 +37,13 @@ export struct PieceJointe {
 }
 
 export struct OptionSondage {
+    id: string,
     libelle: string,
     pourcentage: int,
     votes: int,
     moi: bool,
     gagnant: bool,
+    votants: string,
 }
 
 export struct SondageMessage {
@@ -51,6 +53,10 @@ export struct SondageMessage {
     clos: bool,
     options: [OptionSondage],
     pied: string,
+    total: int,
+    votable: bool,
+    gerer: bool,
+    votants-ouverts: bool,
 }
 
 export enum GenreCarte { aucune, lien, youtube, sillon }
@@ -211,4 +217,8 @@ export global DonneesMessagerie {
     callback menu-message(string, length, length);
     callback menu-message-bouton(string, length, length, length);
     callback reagir(string, string);
+    callback voter(string, string);
+    callback clore-sondage(string);
+    callback supprimer-sondage(string);
+    callback basculer-votants(string);
 }

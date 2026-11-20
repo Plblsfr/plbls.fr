@@ -17,9 +17,9 @@ use estompe_natif::coquille::{Coquille, Depot, Pont};
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille, DonneesMenu,
-    DonneesMessagerie, DonneesSaisie, DonneesSelecteur, GenreBandeau, GenreLigneMessage,
-    LigneMessage, Page, PieceSaisie, Principale,
+    creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille,
+    DonneesCreationSondage, DonneesMenu, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
+    GenreBandeau, GenreLigneMessage, LigneMessage, Page, PieceSaisie, Principale, SondageMessage,
 };
 use estompe_plateforme::ContenuPressePapiers;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
@@ -957,6 +957,200 @@ fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages,
     println!("318 C3 : menu au clavier (Menu, Maj+F10), répondre, épingler, réagir, retirer, copier, non lu, supprimer confirmé, modifier ; menus du panneau et des membres");
 }
 
+fn sondage_affiche(f: &Principale) -> Option<(String, SondageMessage)> {
+    lignes(f)
+        .into_iter()
+        .rev()
+        .find(|l| l.annexes.sondage.present)
+        .map(|l| (l.id.to_string(), l.annexes.sondage))
+}
+
+fn options_du_sondage(f: &Principale) -> Vec<(String, i32, bool, String)> {
+    sondage_affiche(f)
+        .map(|(_, s)| {
+            s.options
+                .iter()
+                .map(|o| (o.libelle.to_string(), o.votes, o.moi, o.votants.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn creation(f: &Principale) -> (bool, String, usize) {
+    let g = f.global::<DonneesCreationSondage>();
+    (
+        g.get_ouvert(),
+        g.get_erreur().to_string(),
+        g.get_choix().row_count(),
+    )
+}
+
+fn rendre_visible(faible: &slint::Weak<Principale>, libelle: &'static str) {
+    attendre_l_interface(
+        faible,
+        move |f| {
+            slint::platform::update_timers_and_animations();
+            f.global::<DonneesMessagerie>().invoke_aller_en_bas();
+            let liste = ElementHandle::find_by_accessible_label(f, "Messages")
+                .find(|e| e.accessible_role() == Some(AccessibleRole::List))
+                .expect("liste des messages");
+            let bas = liste.absolute_position().y + liste.size().height;
+            ElementHandle::find_by_accessible_label(f, libelle)
+                .next()
+                .is_some_and(|e| e.absolute_position().y + e.size().height <= bas)
+        },
+        "élément visible dans la liste",
+    );
+}
+
+fn sondages(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    fabrique: &FausseFabrique,
+) {
+    cliquer(faible, "Créer un sondage");
+    attendre_l_interface(faible, |f| creation(f).0, "fenêtre de création ouverte");
+    traiter_les_changements(faible);
+    cliquer(faible, "Publier le sondage");
+    attendre_l_interface(
+        faible,
+        |f| creation(f).1 == "Écris une question.",
+        "erreur sans question",
+    );
+    cliquer_le_champ(faible, "Question");
+    taper(faible, "Pizza ou sushi ?");
+    attendre_l_interface(
+        faible,
+        |f| creation(f).1 == "Il faut au moins 2 choix remplis.",
+        "l'erreur suit la saisie",
+    );
+    cliquer_le_champ(faible, "Choix 1");
+    taper(faible, "Pizza");
+    cliquer_le_champ(faible, "Choix 2");
+    taper(faible, "Sushi");
+    attendre_l_interface(faible, |f| creation(f).1.is_empty(), "formulaire valide");
+    cliquer(faible, "Ajouter un choix");
+    attendre_l_interface(faible, |f| creation(f).2 == 3, "troisième choix ajouté");
+    cliquer(faible, "Supprimer le choix 3");
+    attendre_l_interface(faible, |f| creation(f).2 == 2, "troisième choix retiré");
+    cliquer(faible, "Personnalisée");
+    cliquer_le_champ(faible, "Date de clôture");
+    taper(faible, "01/01/2020 10:00");
+    cliquer(faible, "Publier le sondage");
+    attendre_l_interface(
+        faible,
+        |f| {
+            creation(f)
+                == (
+                    true,
+                    "La date de clôture doit être dans le futur.".into(),
+                    2,
+                )
+        },
+        "échéance passée refusée",
+    );
+    cliquer(faible, "Sans clôture");
+    cliquer(faible, "Publier le sondage");
+    attendre_l_interface(
+        faible,
+        |f| !creation(f).0,
+        "fenêtre refermée à la publication",
+    );
+    attendre(
+        || {
+            serveur.corps.lock().unwrap().iter().any(|(r, c)| {
+                r == "POST /channels/c1/messages"
+                    && serde_json::from_str::<serde_json::Value>(c).unwrap()
+                        == serde_json::json!({"content": "Pizza ou sushi ?", "file_ids": [], "poll": {"options": ["Pizza", "Sushi"], "multiple": false}})
+            })
+        },
+        "sondage envoyé",
+    );
+    attendre_l_interface(
+        faible,
+        |f| {
+            sondage_affiche(f).is_some_and(|(id, s)| !id.starts_with("local:") && s.votable)
+                && options_du_sondage(f).len() == 2
+        },
+        "sondage publié dans la liste",
+    );
+    let id = sur_l_interface(faible, |f| sondage_affiche(f).unwrap().0);
+    println!("319 C3 : création au clavier et à la souris, erreurs de validation, sondage publié");
+
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_element_type_name(f, "OptionVue")
+            .find(|e| {
+                e.accessible_label()
+                    .is_some_and(|l| l.starts_with("Pizza,"))
+            })
+            .expect("choix Pizza")
+            .mock_single_click(PointerEventButton::Left);
+    });
+    attendre_l_interface(
+        faible,
+        |f| options_du_sondage(f)[0] == ("Pizza".into(), 1, true, String::new()),
+        "vote affiché tout de suite",
+    );
+    let chemin = format!("PUT /messages/{id}/vote");
+    attendre(|| serveur.nombre_de(&chemin) == 1, "vote envoyé");
+    let message = id.clone();
+    fabrique.envoyer(commun::coquille::evenement(
+        "poll.voted",
+        serde_json::json!({"message_id": message, "user_id": "u1", "options": ["o1"], "counts": {"o1": 2, "o2": 0}}),
+    ));
+    attendre_l_interface(
+        faible,
+        |f| options_du_sondage(f)[0] == ("Pizza".into(), 2, true, String::new()),
+        "totaux confirmés par le temps réel",
+    );
+    println!("319 C2 : vote affiché tout de suite puis confirmé par le temps réel");
+
+    cliquer(faible, "Voir les votants");
+    attendre_l_interface(
+        faible,
+        |f| {
+            sondage_affiche(f).is_some_and(|(_, s)| s.votants_ouverts)
+                && options_du_sondage(f)[0].3 == "carol, moi"
+        },
+        "votants affichés",
+    );
+    rendre_visible(faible, "Masquer les votants");
+    cliquer(faible, "Masquer les votants");
+    attendre_l_interface(
+        faible,
+        |f| sondage_affiche(f).is_some_and(|(_, s)| !s.votants_ouverts),
+        "votants masqués",
+    );
+    cliquer(faible, "Clore");
+    attendre_l_interface(
+        faible,
+        |f| sondage_affiche(f).is_some_and(|(_, s)| s.clos && !s.votable),
+        "sondage clos",
+    );
+    assert_eq!(
+        serveur.nombre_de(&format!("POST /messages/{id}/poll/close")),
+        1
+    );
+    cliquer(faible, "Supprimer le sondage");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesConfirmation>().get_ouverte(),
+        "suppression du sondage à confirmer",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesConfirmation>().invoke_repondre(true)
+    });
+    let suppression = format!("DELETE /messages/{id}");
+    attendre(|| serveur.nombre_de(&suppression) == 1, "sondage supprimé");
+    attendre_l_interface(
+        faible,
+        |f| sondage_affiche(f).is_none(),
+        "sondage retiré de la liste",
+    );
+    println!("319 : voir les votants, clore et supprimer depuis la carte");
+    cliquer_le_champ(faible, "Écrire dans #général");
+}
+
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
     f.global::<DonneesCoquille>()
         .get_salons()
@@ -1073,6 +1267,7 @@ fn scenario(
     );
 
     actions_et_menus(&faible, &serveur, &pont);
+    sondages(&faible, &serveur, &fabrique);
     mentions_et_selecteur(&faible, &serveur, &dossier);
 
     taper(&faible, "brouillon à garder");

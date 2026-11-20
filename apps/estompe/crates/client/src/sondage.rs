@@ -1,8 +1,191 @@
+use crate::appels::NouveauSondage;
+use crate::format::{date_locale_de_ms, iso_de_ms};
 use crate::roles::date_en_millisecondes;
 use crate::types::{MessagePoll, MessagePollOptionsElement};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 const DELAI_MAXIMAL_MS: i64 = i32::MAX as i64;
+const HEURE_MS: i64 = 3_600_000;
+
+pub const QUESTION_MAX: usize = 500;
+pub const CHOIX_MAX: usize = 100;
+pub const CHOIX_MIN: usize = 2;
+pub const NOMBRE_DE_CHOIX_MAX: usize = 10;
+pub const FORMAT_DATE: &str = "JJ/MM/AAAA HH:MM";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cloture {
+    Duree(i64),
+    Aucune,
+    Personnalisee,
+}
+
+pub const CLOTURES: [(&str, Cloture); 6] = [
+    ("1 h", Cloture::Duree(1)),
+    ("24 h", Cloture::Duree(24)),
+    ("3 jours", Cloture::Duree(72)),
+    ("1 semaine", Cloture::Duree(168)),
+    ("Sans clôture", Cloture::Aucune),
+    ("Personnalisée", Cloture::Personnalisee),
+];
+pub const CLOTURE_PAR_DEFAUT: usize = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErreurSondage {
+    QuestionVide,
+    QuestionTropLongue,
+    ChoixInsuffisants,
+    TropDeChoix,
+    ChoixTropLong(usize),
+    DateInvalide,
+    DatePassee,
+}
+
+impl ErreurSondage {
+    pub fn libelle(&self) -> String {
+        match self {
+            Self::QuestionVide => "Écris une question.".to_string(),
+            Self::QuestionTropLongue => {
+                format!("La question dépasse {QUESTION_MAX} caractères.")
+            }
+            Self::ChoixInsuffisants => format!("Il faut au moins {CHOIX_MIN} choix remplis."),
+            Self::TropDeChoix => format!("{NOMBRE_DE_CHOIX_MAX} choix au plus."),
+            Self::ChoixTropLong(n) => {
+                format!("Le choix {n} dépasse {CHOIX_MAX} caractères.")
+            }
+            Self::DateInvalide => format!("Date de clôture attendue : {FORMAT_DATE}."),
+            Self::DatePassee => "La date de clôture doit être dans le futur.".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Formulaire {
+    pub question: String,
+    pub choix: Vec<String>,
+    pub multiple: bool,
+    pub cloture: Cloture,
+    pub date: String,
+}
+
+impl Default for Formulaire {
+    fn default() -> Self {
+        Self {
+            question: String::new(),
+            choix: vec![String::new(); CHOIX_MIN],
+            multiple: false,
+            cloture: CLOTURES[CLOTURE_PAR_DEFAUT].1,
+            date: String::new(),
+        }
+    }
+}
+
+pub fn date_saisie(texte: &str, decalage_minutes: i32) -> Option<i64> {
+    let (jour, heure) = texte.trim().split_once(' ')?;
+    let mut j = jour.split('/');
+    let (quantieme, mois, annee) = (j.next()?, j.next()?, j.next()?);
+    let (h, m) = heure.trim().split_once(':')?;
+    if j.next().is_some() || quantieme.len() > 2 || mois.len() > 2 || h.len() > 2 {
+        return None;
+    }
+    let n = |t: &str| t.parse::<u32>().ok();
+    let (quantieme, mois, h, m) = (n(quantieme)?, n(mois)?, n(h)?, n(m)?);
+    let annee: i64 = annee.parse().ok().filter(|a| (1000..10_000).contains(a))?;
+    let iso = format!("{annee:04}-{mois:02}-{quantieme:02}T{h:02}:{m:02}:00Z");
+    let ms = date_en_millisecondes(&iso)? - i64::from(decalage_minutes) * 60_000;
+    let d = date_locale_de_ms(ms, decalage_minutes);
+    (d.annee == annee && d.mois == mois && d.jour == quantieme && d.heure == h && d.minute == m)
+        .then_some(ms)
+}
+
+pub fn valider(
+    f: &Formulaire,
+    maintenant_ms: i64,
+    decalage_minutes: i32,
+) -> Result<(String, NouveauSondage), ErreurSondage> {
+    let question = f.question.trim();
+    if question.is_empty() {
+        return Err(ErreurSondage::QuestionVide);
+    }
+    if question.chars().count() > QUESTION_MAX {
+        return Err(ErreurSondage::QuestionTropLongue);
+    }
+    if let Some(n) = f
+        .choix
+        .iter()
+        .position(|c| c.trim().chars().count() > CHOIX_MAX)
+    {
+        return Err(ErreurSondage::ChoixTropLong(n + 1));
+    }
+    let options: Vec<String> = f
+        .choix
+        .iter()
+        .map(|c| c.trim())
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+        .collect();
+    if options.len() < CHOIX_MIN {
+        return Err(ErreurSondage::ChoixInsuffisants);
+    }
+    if options.len() > NOMBRE_DE_CHOIX_MAX {
+        return Err(ErreurSondage::TropDeChoix);
+    }
+    let fin = match f.cloture {
+        Cloture::Duree(heures) => Some(maintenant_ms + heures * HEURE_MS),
+        Cloture::Aucune => None,
+        Cloture::Personnalisee => {
+            let fin = date_saisie(&f.date, decalage_minutes).ok_or(ErreurSondage::DateInvalide)?;
+            if fin <= maintenant_ms {
+                return Err(ErreurSondage::DatePassee);
+            }
+            Some(fin)
+        }
+    };
+    Ok((
+        question.to_string(),
+        NouveauSondage {
+            options,
+            multiple: f.multiple,
+            closes_at: fin.map(iso_de_ms),
+        },
+    ))
+}
+
+pub fn mes_choix(sondage: &Sondage) -> Vec<String> {
+    sondage
+        .options
+        .iter()
+        .flatten()
+        .filter(|o| o.me == Some(true))
+        .filter_map(|o| o.id.clone())
+        .collect()
+}
+
+pub fn choix_apres_vote(sondage: &Sondage, option_id: &str) -> Vec<String> {
+    let mes = mes_choix(sondage);
+    let options = sondage.options.as_deref().unwrap_or_default();
+    match action_de_vote(options, option_id) {
+        ActionVote::Retirer => mes.into_iter().filter(|c| c != option_id).collect(),
+        ActionVote::Voter if sondage.multiple == Some(true) => {
+            mes.into_iter().chain([option_id.to_string()]).collect()
+        }
+        ActionVote::Voter => vec![option_id.to_string()],
+    }
+}
+
+pub fn comptes_avec(sondage: &Sondage, choix: &[String]) -> BTreeMap<String, i64> {
+    sondage
+        .options
+        .iter()
+        .flatten()
+        .map(|o| {
+            let id = o.id.clone().unwrap_or_default();
+            let avant = i64::from(o.me == Some(true));
+            let apres = i64::from(choix.contains(&id));
+            (id, (o.votes.unwrap_or(0) - avant + apres).max(0))
+        })
+        .collect()
+}
 
 pub type OptionSondage = MessagePollOptionsElement;
 pub type Sondage = MessagePoll;
@@ -302,6 +485,140 @@ mod tests {
         assert_eq!(action_de_vote(&options, "a"), ActionVote::Retirer);
         assert_eq!(action_de_vote(&options, "b"), ActionVote::Voter);
         assert_eq!(action_de_vote(&options, "inconnu"), ActionVote::Voter);
+    }
+
+    fn formulaire(question: &str, choix: &[&str], cloture: Cloture, date: &str) -> Formulaire {
+        Formulaire {
+            question: question.into(),
+            choix: choix.iter().map(|c| c.to_string()).collect(),
+            multiple: false,
+            cloture,
+            date: date.into(),
+        }
+    }
+
+    #[test]
+    fn valide_le_formulaire_comme_le_front() {
+        let maintenant = date_en_millisecondes("2026-10-26T12:00:00Z").unwrap();
+        let ok = valider(
+            &formulaire(" Q ? ", &[" a ", "", "b"], Cloture::Duree(24), ""),
+            maintenant,
+            0,
+        )
+        .unwrap();
+        assert_eq!(ok.0, "Q ?");
+        assert_eq!(ok.1.options, ["a", "b"]);
+        assert_eq!(ok.1.closes_at.as_deref(), Some("2026-10-27T12:00:00.000Z"));
+        let sans = valider(
+            &formulaire("Q", &["a", "b"], Cloture::Aucune, ""),
+            maintenant,
+            0,
+        );
+        assert_eq!(sans.unwrap().1.closes_at, None);
+        let erreur = |f: Formulaire| valider(&f, maintenant, 0).unwrap_err();
+        assert_eq!(
+            erreur(formulaire("  ", &["a", "b"], Cloture::Aucune, "")),
+            ErreurSondage::QuestionVide
+        );
+        assert_eq!(
+            erreur(formulaire(
+                &"q".repeat(501),
+                &["a", "b"],
+                Cloture::Aucune,
+                ""
+            )),
+            ErreurSondage::QuestionTropLongue
+        );
+        assert!(valider(
+            &formulaire(&"é".repeat(500), &["a", "b"], Cloture::Aucune, ""),
+            maintenant,
+            0
+        )
+        .is_ok());
+        assert_eq!(
+            erreur(formulaire("Q", &["a", " "], Cloture::Aucune, "")),
+            ErreurSondage::ChoixInsuffisants
+        );
+        assert_eq!(
+            erreur(formulaire(
+                "Q",
+                &["a", &"b".repeat(101)],
+                Cloture::Aucune,
+                ""
+            )),
+            ErreurSondage::ChoixTropLong(2)
+        );
+        assert_eq!(
+            erreur(formulaire("Q", &["a"; 11], Cloture::Aucune, "")),
+            ErreurSondage::TropDeChoix
+        );
+        assert_eq!(
+            erreur(formulaire(
+                "Q",
+                &["a", "b"],
+                Cloture::Personnalisee,
+                "demain"
+            )),
+            ErreurSondage::DateInvalide
+        );
+        assert_eq!(
+            erreur(formulaire(
+                "Q",
+                &["a", "b"],
+                Cloture::Personnalisee,
+                "26/10/2026 12:00"
+            )),
+            ErreurSondage::DatePassee
+        );
+        let futur = valider(
+            &formulaire("Q", &["a", "b"], Cloture::Personnalisee, "26/10/2026 14:30"),
+            maintenant,
+            60,
+        )
+        .unwrap();
+        assert_eq!(
+            futur.1.closes_at.as_deref(),
+            Some("2026-10-26T13:30:00.000Z")
+        );
+        assert_eq!(
+            ErreurSondage::ChoixTropLong(2).libelle(),
+            "Le choix 2 dépasse 100 caractères."
+        );
+    }
+
+    #[test]
+    fn lit_une_date_locale_et_refuse_les_dates_impossibles() {
+        assert_eq!(
+            date_saisie("1/3/2027 9:05", -120),
+            date_en_millisecondes("2027-03-01T11:05:00Z")
+        );
+        assert_eq!(date_saisie("31/02/2027 10:00", 0), None);
+        assert_eq!(date_saisie("01/13/2027 10:00", 0), None);
+        assert_eq!(date_saisie("01/01/2027 24:00", 0), None);
+        assert_eq!(date_saisie("01/01/2027", 0), None);
+        assert_eq!(date_saisie("2027-01-01 10:00", 0), None);
+    }
+
+    #[test]
+    fn le_vote_local_suit_le_choix_unique_ou_multiple() {
+        let mut s = sondage(vec![opt("a", 2), opt("b", 1), opt("c", 0)]);
+        s.options.as_mut().unwrap()[0].me = Some(true);
+        assert_eq!(mes_choix(&s), ["a"]);
+        let apres = choix_apres_vote(&s, "b");
+        assert_eq!(apres, ["b"]);
+        let comptes = comptes_avec(&s, &apres);
+        assert_eq!(
+            comptes.into_iter().collect::<Vec<_>>(),
+            [
+                ("a".to_string(), 1),
+                ("b".to_string(), 2),
+                ("c".to_string(), 0)
+            ]
+        );
+        assert!(choix_apres_vote(&s, "a").is_empty());
+        s.multiple = Some(true);
+        assert_eq!(choix_apres_vote(&s, "c"), ["a", "c"]);
+        assert_eq!(comptes_avec(&s, &["a".into(), "c".into()])["c"], 1);
     }
 
     #[test]

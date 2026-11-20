@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -205,6 +205,7 @@ mentions, regroupement et séparateurs (`format::lignes_de_messages`).
 | `src/messagerie/emoji.rs` | paquet d'emoji embarqué, découpe du texte en texte et emoji (séquences composées comprises), images des emoji |
 | `src/messagerie/medias.rs` (`Medias`) | téléchargement, décodage hors du fil d'interface et caches des images (pièces jointes, emoji de serveur, images d'aperçu), liste des emoji de serveur, aperçus de liens |
 | `src/messagerie/actions.rs`, `src/messagerie/pont/actions.rs` | droits d'un message et entrées de son menu (purs) ; exécution des actions (réponse, modification, épingle, réaction, copie, non-lu, suppression confirmée) |
+| `src/messagerie/pont/sondages.rs`, `ui/messagerie/creation-sondage.slint` | création d'un sondage (formulaire, validation, publication), vote, clôture, suppression et votants |
 | `src/messagerie/annexes.rs` | projections pures : carte d'aperçu d'un lien, taille d'une vignette avant chargement, chemin sûr d'un fichier enregistré |
 | `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `epingles.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage, réactions et « Vu par », visionneuse, messages épinglés, global `DonneesMessagerie` |
 
@@ -332,7 +333,7 @@ deux moteurs et sur les deux OS :
   sans jeton, 8 Mo au plus).
 - Sondage : question (markdown), « Sondage lancé par », choix avec barre, pourcentage et votes, mon choix (coche), gagnants (trophée) une fois clos,
   pied (`libelle_du_pied`). `poll.voted` et `poll.closed` remplacent la seule ligne du sondage ; l'échéance réveille la liste (une minuterie sur la
-  prochaine clôture visible). Un sondage se supprime par le menu du message ; voter et clore arrivent avec #319.
+  prochaine clôture visible). Voter, clore, supprimer et « Voir les votants » : voir [Sondages](#sondages).
 
 ### Temps réel et lecture
 
@@ -458,6 +459,24 @@ deux moteurs et sur les deux OS :
 - Écarts : la barre n'a pas de position « dessous » pour le premier message visible (elle peut y être coupée par le haut de la liste) ; « Copier le lien » et « Signaler » n'existent pas dans le front ;
   pas de « Copier la sélection » ni « Sélectionner le texte » (Slint ne sélectionne pas un `Text`) ; le sélecteur d'une réaction s'ouvre au-dessus du champ, pas près du message.
 
+### Sondages
+
+- Création (`ui/messagerie/creation-sondage.slint`, global `DonneesCreationSondage` ; `src/messagerie/pont/sondages.rs`) : bouton « Créer un sondage » de la zone de saisie,
+  affiché avec la permission `create_polls` (`PontMessagerie::sondage_possible`). Modal « Nouveau sondage » comme `PollModal.svelte` : question, 2 à 10 choix (ajout et retrait),
+  « Autoriser plusieurs réponses », clôture 1 h, 24 h (par défaut), 3 jours, 1 semaine, sans clôture ou personnalisée. Slint n'a pas de sélecteur de date : la date
+  personnalisée se tape `JJ/MM/AAAA HH:MM`, en heure locale (`sondage::date_saisie`, date impossible refusée).
+- Validation (`estompe_client::sondage::valider`, pure et testée) : les règles du front (question non vide, au moins deux choix remplis, choix vides ignorés, échéance future)
+  et les limites que le front pose par `maxlength` (500 caractères pour la question, 100 par choix, 10 choix). `TextInput` n'ayant pas de longueur maximale, elles deviennent des
+  messages d'erreur, affichés sous le formulaire au premier « Publier le sondage » puis tenus à jour pendant la saisie.
+- Publication : le sondage part par la file d'envoi des messages (`Brouillon.sondage`), avec « Envoi… », « Non envoyé » et « Réessayer » ; l'envoi local affiche déjà la carte
+  avec ses choix (`EnvoiLocal::message`), sans vote possible.
+- Voter (clic ou Entrée sur un choix, focusable tant que le sondage est ouvert) : `Store::voter` applique le vote tout de suite par le même chemin que `poll.voted`
+  (`choix_apres_vote`, `comptes_avec` : recliquer retire son vote, en choix unique le nouveau remplace l'ancien) puis appelle `PUT` ou `DELETE /messages/{id}/vote` ; l'évènement
+  du serveur remplace ensuite les totaux. Un refus remet mes choix d'avant (sans effacer les votes des autres arrivés entre-temps) et s'affiche sous le champ.
+- « Clore » et la corbeille (lanceur, `manage_messages` : mêmes droits que la suppression du message) : `Store::clore_sondage` (`POST /messages/{id}/poll/close`, clôture
+  appliquée sans attendre `poll.closed`) ; suppression après la confirmation « Supprimer ce sondage ? ». « Voir les votants » (dès un vote) demande
+  `GET /messages/{id}/poll/votes` et affiche les pseudos sous chaque choix jusqu'à « Masquer les votants » (`PontMessagerie::afficher_votants`) ; la liste n'est pas relue à chaque vote, comme dans le front.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -534,6 +553,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque ;
   actions sur un message (clic droit sur un message, menu par la touche Menu et Maj+F10, répondre, épingler, réaction ajoutée par le sélecteur puis retirée par Entrée, copier le texte
   et le lien, marquer comme non lu, supprimer confirmé au clavier, modifier), menu d'un salon (« Marquer comme lu ») et d'un membre (« Mentionner ») ;
+  sondage (bouton « Créer un sondage », erreurs de validation au clavier, choix ajouté puis retiré, échéance passée refusée, corps du `POST` vérifié, vote affiché tout de suite
+  puis totaux de `poll.voted`, votants affichés puis masqués, clôture, suppression confirmée) ;
   puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,
   échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
   texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse

@@ -29,7 +29,8 @@ use super::etat::CleConversation;
 use super::reducteur::{definir_bas_de_liste, marquer_non_lu, Application};
 use super::Store;
 use crate::http::ErreurApi;
-use crate::temps_reel::evenements::{Lecture, ReactionModifiee};
+use crate::sondage::{choix_apres_vote, comptes_avec, mes_choix, Sondage};
+use crate::temps_reel::evenements::{Lecture, ReactionModifiee, SondageClos, SondageVote};
 use crate::temps_reel::Evenement;
 use crate::types::{Message, Person};
 
@@ -163,6 +164,63 @@ impl Store {
             self.appliquer_aux_messages(&evenement(avait));
         }
         resultat
+    }
+
+    fn sondage_de(&self, message: &str) -> Option<Sondage> {
+        self.lire_messages(|m| {
+            m.conversations
+                .values()
+                .find_map(|c| c.message(message))
+                .and_then(|x| x.poll.clone())
+        })
+    }
+
+    fn choisir_localement(&self, message: &str, choix: &[String]) {
+        let Some(sondage) = self.sondage_de(message) else {
+            return;
+        };
+        let moi = self.lire(|e| e.moi().to_string());
+        self.appliquer_aux_messages(&Evenement::SondageVote(SondageVote {
+            message_id: message.to_string(),
+            user_id: moi,
+            options: choix.to_vec(),
+            counts: comptes_avec(&sondage, choix),
+        }));
+    }
+
+    pub async fn voter(&self, message: &str, option: &str) -> Result<(), ErreurApi> {
+        let Some(sondage) = self.sondage_de(message) else {
+            return Ok(());
+        };
+        let avant = mes_choix(&sondage);
+        let apres = choix_apres_vote(&sondage, option);
+        self.choisir_localement(message, &apres);
+        let resultat = if apres.iter().any(|c| c == option) {
+            self.client().voter(message, option).await
+        } else {
+            self.client().retirer_vote(message, Some(option)).await
+        };
+        if resultat.is_err() {
+            self.choisir_localement(message, &avant);
+        }
+        resultat
+    }
+
+    pub async fn clore_sondage(&self, message: &str) -> Result<(), ErreurApi> {
+        self.client().clore_sondage(message).await?;
+        let maintenant = self
+            .maintenant_ms()
+            .map(crate::format::iso_de_ms)
+            .unwrap_or_else(maintenant_iso);
+        self.appliquer_aux_messages(&Evenement::SondageClos(SondageClos {
+            message_id: message.to_string(),
+            closes_at: maintenant,
+        }));
+        Ok(())
+    }
+
+    pub async fn votants(&self, message: &str) -> Result<BTreeMap<String, Vec<Person>>, ErreurApi> {
+        self.client().votants(message).await
     }
 
     pub async fn epingler(&self, message: &str, epingle: bool) -> Result<(), ErreurApi> {
@@ -599,6 +657,82 @@ mod tests {
             .map(|r| r.methode)
             .collect();
         assert_eq!(methodes, ["PUT", "DELETE", "PUT"]);
+    }
+
+    fn votes_de(store: &Store, cle: &CleConversation) -> Vec<(i64, bool)> {
+        store.conversation(cle).unwrap().messages[0]
+            .poll
+            .as_ref()
+            .unwrap()
+            .options
+            .iter()
+            .flatten()
+            .map(|o| (o.votes.unwrap_or(0), o.me == Some(true)))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn un_vote_apparait_tout_de_suite_est_confirme_par_le_temps_reel_et_annule_en_cas_de_refus(
+    ) {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        serveur.router("PUT", "/messages/1/vote", Reponse::vide(204));
+        serveur.router("DELETE", "/messages/1/vote", Reponse::vide(204));
+        serveur.router("POST", "/messages/1/poll/close", Reponse::vide(204));
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.installer(etat_de_depart());
+        let cle = CleConversation::Salon("c1".into());
+        store.installer_conversation(
+            &cle,
+            vec![depuis_json(json!({"id": "1", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "Q ?",
+                "poll": {"multiple": false, "closes_at": null, "created_by": {"id": "bob", "pseudo": "bob"},
+                         "options": [{"id": "5", "label": "a", "votes": 1, "me": false}, {"id": "6", "label": "b", "votes": 0, "me": false}]}}))],
+            false,
+        );
+        let mut abonne = store.abonner();
+        store.voter("1", "6").await.unwrap();
+        assert_eq!(votes_de(&store, &cle), [(1, false), (1, true)]);
+        assert!(abonne.try_recv().is_ok());
+        store.appliquer_aux_messages(&Evenement::SondageVote(SondageVote {
+            message_id: "1".into(),
+            user_id: "me".into(),
+            options: vec!["6".into()],
+            counts: [("5".to_string(), 2), ("6".to_string(), 1)].into(),
+        }));
+        assert_eq!(votes_de(&store, &cle), [(2, false), (1, true)]);
+        store.voter("1", "5").await.unwrap();
+        assert_eq!(votes_de(&store, &cle), [(3, true), (0, false)]);
+        store.voter("1", "5").await.unwrap();
+        assert_eq!(votes_de(&store, &cle), [(2, false), (0, false)]);
+        serveur.router(
+            "PUT",
+            "/messages/1/vote",
+            Reponse::json(409, json!({"error": "poll_closed", "message": "clos"})),
+        );
+        assert!(store.voter("1", "6").await.is_err());
+        assert_eq!(votes_de(&store, &cle), [(2, false), (0, false)]);
+        let corps: Vec<(String, String)> = serveur
+            .requetes()
+            .into_iter()
+            .filter(|r| r.chemin == "/messages/1/vote")
+            .map(|r| (r.methode, String::from_utf8_lossy(&r.corps).into_owned()))
+            .collect();
+        assert_eq!(
+            corps,
+            [
+                ("PUT".to_string(), r#"{"option_id":"6"}"#.to_string()),
+                ("PUT".to_string(), r#"{"option_id":"5"}"#.to_string()),
+                ("DELETE".to_string(), r#"{"option_id":"5"}"#.to_string()),
+                ("PUT".to_string(), r#"{"option_id":"6"}"#.to_string()),
+            ]
+        );
+        store.clore_sondage("1").await.unwrap();
+        let clos = store.conversation(&cle).unwrap().messages[0]
+            .poll
+            .as_ref()
+            .unwrap()
+            .closes_at
+            .clone();
+        assert!(clos.is_some());
     }
 
     #[tokio::test]

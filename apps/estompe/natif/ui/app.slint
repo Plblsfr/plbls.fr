@@ -10,12 +10,13 @@ import { DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, Lig
 import { DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse } from "messagerie/donnees.slint";
 import { DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie } from "messagerie/saisie.slint";
 import { DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji } from "messagerie/selecteur.slint";
+import { CreationSondage, DonneesCreationSondage } from "messagerie/creation-sondage.slint";
 import { Attente } from "entree/commun.slint";
 import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
 import { MiseAJour } from "entree/mise-a-jour.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -285,6 +286,7 @@ export component Principale inherits Window {
     VisionneuseVue {
         ouverte: root.page == Page.coquille && DonneesMessagerie.visionneuse.ouverte;
     }
+    CreationSondage { }
     Confirmation { }
     MenuContextuel { }
     CopieTexte { }

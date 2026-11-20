@@ -1,0 +1,232 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Modal, Champ, Case, Bouton, VarianteBouton } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+
+export global DonneesCreationSondage {
+    in property <bool> ouvert: false;
+    in-out property <string> question;
+    in property <[string]> choix;
+    in property <int> choix-max: 10;
+    in-out property <bool> multiple: false;
+    in property <[string]> clotures;
+    in property <int> cloture: 1;
+    in property <bool> personnalisee: false;
+    in-out property <string> date;
+    in property <string> format-date;
+    in property <string> erreur;
+    callback modifie();
+    callback choix-modifie(int, string);
+    callback ajouter-choix();
+    callback retirer-choix(int);
+    callback choisir-cloture(int);
+    callback publier();
+    callback fermer();
+}
+
+component PuceCloture inherits Rectangle {
+    in property <int> index;
+    property <bool> choisie: DonneesCreationSondage.cloture == root.index;
+    property <bool> utilisable: Calques.ouverts <= 1;
+    height: 32px;
+    horizontal-stretch: 1;
+    border-radius: Rayon.pilule;
+    background: root.choisie ? Theme.encre : zone.has-hover ? Theme.papier-2 : Theme.surface;
+    border-width: 1px;
+    border-color: root.choisie ? Theme.encre : Theme.trait-fort;
+    accessible-role: button;
+    accessible-label: DonneesCreationSondage.clotures[root.index];
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-action-default => {
+        DonneesCreationSondage.choisir-cloture(root.index);
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesCreationSondage.choisir-cloture(root.index);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    Text {
+        text: DonneesCreationSondage.clotures[root.index];
+        color: root.choisie ? Theme.papier : Theme.encre;
+        font-size: 13px;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesCreationSondage.choisir-cloture(root.index);
+        }
+    }
+}
+
+export component CreationSondage {
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: "Nouveau sondage";
+        ouvert: DonneesCreationSondage.ouvert;
+        largeur: 480px;
+        ferme => {
+            DonneesCreationSondage.fermer();
+        }
+        Champ {
+            etiquette: "Question";
+            indice: "Ta question";
+            valeur <=> DonneesCreationSondage.question;
+            calque: 1;
+            modifie => {
+                DonneesCreationSondage.modifie();
+            }
+            valide => {
+                DonneesCreationSondage.publier();
+            }
+        }
+        VerticalLayout {
+            spacing: Espace.e2;
+            Text {
+                text: "Choix";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+            }
+            for valeur[i] in DonneesCreationSondage.choix: HorizontalLayout {
+                spacing: Espace.e2;
+                Text {
+                    width: 16px;
+                    text: i + 1;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+                Champ {
+                    indice: "Choix " + (i + 1);
+                    valeur: valeur;
+                    calque: 1;
+                    modifie(texte) => {
+                        DonneesCreationSondage.choix-modifie(i, texte);
+                    }
+                    valide => {
+                        DonneesCreationSondage.publier();
+                    }
+                }
+                if DonneesCreationSondage.choix.length > 2: Bouton {
+                    icone: "x";
+                    variante: VarianteBouton.fantome;
+                    description: "Supprimer le choix " + (i + 1);
+                    calque: 1;
+                    clique => {
+                        DonneesCreationSondage.retirer-choix(i);
+                    }
+                }
+            }
+            if DonneesCreationSondage.choix.length < DonneesCreationSondage.choix-max: HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Ajouter un choix";
+                    icone: "plus";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesCreationSondage.ajouter-choix();
+                    }
+                }
+            }
+        }
+        Case {
+            texte: "Autoriser plusieurs réponses";
+            cochee <=> DonneesCreationSondage.multiple;
+            calque: 1;
+        }
+        VerticalLayout {
+            spacing: Espace.e2;
+            accessible-role: groupbox;
+            accessible-label: "Clôture";
+            Text {
+                text: "Clôture";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                PuceCloture {
+                    index: 0;
+                }
+                PuceCloture {
+                    index: 1;
+                }
+                PuceCloture {
+                    index: 2;
+                }
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                PuceCloture {
+                    index: 3;
+                }
+                PuceCloture {
+                    index: 4;
+                }
+                PuceCloture {
+                    index: 5;
+                }
+            }
+        }
+        if DonneesCreationSondage.personnalisee: Champ {
+            etiquette: "Date de clôture";
+            indice: DonneesCreationSondage.format-date;
+            aide: "Heure locale";
+            valeur <=> DonneesCreationSondage.date;
+            calque: 1;
+            modifie => {
+                DonneesCreationSondage.modifie();
+            }
+            valide => {
+                DonneesCreationSondage.publier();
+            }
+        }
+        if DonneesCreationSondage.erreur != "": Text {
+            text: DonneesCreationSondage.erreur;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Annuler";
+                calque: 1;
+                clique => {
+                    DonneesCreationSondage.fermer();
+                }
+            }
+            Bouton {
+                texte: "Publier le sondage";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                clique => {
+                    DonneesCreationSondage.publier();
+                }
+            }
+        }
+    }
+}

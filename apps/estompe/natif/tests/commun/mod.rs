@@ -1121,6 +1121,14 @@ pub mod coquille {
                 if let Some(r) = recu["reply_to"].as_str() {
                     m["reply_to"] = json!({"id": r, "author": {"id": "carol", "pseudo": "carol"}, "content": "cité"});
                 }
+                if let Some(options) = recu["poll"]["options"].as_array() {
+                    let options: Vec<Value> = options
+                        .iter()
+                        .enumerate()
+                        .map(|(i, o)| json!({"id": format!("o{}", i + 1), "label": o, "votes": 0, "me": false}))
+                        .collect();
+                    m["poll"] = json!({"multiple": recu["poll"]["multiple"], "closes_at": recu["poll"]["closes_at"], "created_by": {"id": "u1", "pseudo": "moi"}, "options": options});
+                }
                 return (201, m.to_string());
             }
             if methode == "PATCH" {
@@ -1155,6 +1163,12 @@ pub mod coquille {
             }
             if chemin.ends_with("/reads") || chemin == "/emojis" {
                 return (200, "[]".into());
+            }
+            if chemin.ends_with("/poll/votes") {
+                return (
+                    200,
+                    json!({"o1": [{"id": "carol", "pseudo": "carol"}, {"id": "u1", "pseudo": "moi"}], "o2": [{"id": "dave", "pseudo": "dave"}]}).to_string(),
+                );
             }
             if !chemin.starts_with("/channels/c1/messages") {
                 return (404, r#"{"error":"introuvable"}"#.into());

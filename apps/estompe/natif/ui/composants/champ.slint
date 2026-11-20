@@ -20,7 +20,7 @@ export component Champ {
     opacity: actif ? 1 : 0.5;
     forward-focus: saisie;
     accessible-role: text-input;
-    accessible-label: etiquette;
+    accessible-label: etiquette != "" ? etiquette : indice;
     accessible-value: valeur;
     accessible-enabled: utilisable;
     VerticalLayout {

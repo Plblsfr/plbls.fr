@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use estompe_client::emoji::titre_de_reaction;
 use estompe_client::fichiers::{categorie, nom_de_fichier_sur, CategoriePiece};
@@ -12,7 +12,7 @@ use estompe_client::store::messages::{
 };
 use estompe_client::store::{CleConversation, Etat};
 use estompe_client::temps_reel::evenements::Lecture;
-use estompe_client::types::{Attachment, Message, MessagePoll};
+use estompe_client::types::{Attachment, Message, MessagePoll, Person};
 
 pub const TITRE_REACTION_MAX: usize = 3;
 
@@ -71,6 +71,7 @@ pub struct DonneesOptionSondage {
     pub pourcentage: i64,
     pub moi: bool,
     pub gagnant: bool,
+    pub votants: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,7 +82,13 @@ pub struct DonneesSondage {
     pub options: Vec<DonneesOptionSondage>,
     pub pied: String,
     pub fin_ms: Option<i64>,
+    pub total: i64,
+    pub votable: bool,
+    pub gerer: bool,
+    pub votants_ouverts: bool,
 }
+
+pub type Votants = BTreeMap<String, Vec<Person>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DonneesLecteur {
@@ -187,6 +194,7 @@ pub struct ContexteLignes<'a> {
     pub lecteurs: &'a BTreeMap<String, Vec<Lecture>>,
     pub envois: &'a [EnvoiLocal],
     pub droits: DroitsConversation,
+    pub votants: &'a HashMap<String, Votants>,
 }
 
 fn texte(valeur: &Option<String>) -> &str {
@@ -270,11 +278,37 @@ pub fn sondage(sondage: &MessagePoll, maintenant_ms: i64) -> DonneesSondage {
                     moi: o.me == Some(true),
                     votes,
                     id,
+                    votants: None,
                 }
             })
             .collect(),
         pied: libelle_du_pied(total, sondage.multiple == Some(true), clos_a, maintenant_ms),
         fin_ms: fin_en_ms(clos_a).filter(|fin| *fin > maintenant_ms),
+        total,
+        votable: !clos,
+        gerer: false,
+        votants_ouverts: false,
+    }
+}
+
+fn completer_sondage(
+    sondage: &mut DonneesSondage,
+    droits: DroitsMessage,
+    local: bool,
+    votants: Option<&Votants>,
+) {
+    sondage.votable &= !local;
+    sondage.gerer = droits.supprimer;
+    sondage.votants_ouverts = votants.is_some();
+    for option in &mut sondage.options {
+        option.votants = votants.map(|v| {
+            v.get(&option.id)
+                .into_iter()
+                .flatten()
+                .map(|p| texte(&p.pseudo))
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
     }
 }
 
@@ -349,6 +383,28 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
     let systeme = message.system == Some(true);
     let moi = c.etat.moi();
     let cree = texte(&message.created_at);
+    let local = est_local(&id);
+    let droits = droits_du_message(
+        &Sujet {
+            auteur: &utilisateur,
+            moi,
+            systeme,
+            local,
+            sondage: message.poll.is_some(),
+        },
+        c.droits,
+    );
+    let mut annexes = DonneesAnnexes {
+        lecteurs: c
+            .lecteurs
+            .get(&id)
+            .map(|l| lecteurs(l, c))
+            .unwrap_or_default(),
+        ..annexes(message, moi, c.maintenant_ms, c.apercus)
+    };
+    if let Some(sondage) = annexes.sondage.as_mut() {
+        completer_sondage(sondage, droits, local, c.votants.get(&id));
+    }
     DonneesMessage {
         initiales: initiales(&pseudo),
         teinte: teinte(if utilisateur.is_empty() {
@@ -395,29 +451,13 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
             }
         }),
         contenu: texte(&message.content).to_string(),
-        annexes: DonneesAnnexes {
-            lecteurs: c
-                .lecteurs
-                .get(&id)
-                .map(|l| lecteurs(l, c))
-                .unwrap_or_default(),
-            ..annexes(message, moi, c.maintenant_ms, c.apercus)
-        },
+        annexes,
         envoi: c
             .envois
             .iter()
             .find(|e| e.id_local() == id)
             .map(|e| e.etat.clone()),
-        droits: droits_du_message(
-            &Sujet {
-                auteur: &utilisateur,
-                moi,
-                systeme,
-                local: est_local(&id),
-                sondage: message.poll.is_some(),
-            },
-            c.droits,
-        ),
+        droits,
         auteur: pseudo,
         utilisateur,
         id,
@@ -549,8 +589,12 @@ mod tests {
             lecteurs: &AUCUN_LECTEUR,
             envois: &[],
             droits: DroitsConversation::default(),
+            votants: &AUCUN_VOTANT,
         }
     }
+
+    static AUCUN_VOTANT: std::sync::LazyLock<HashMap<String, Votants>> =
+        std::sync::LazyLock::new(HashMap::new);
 
     static AUCUN_LECTEUR: BTreeMap<String, Vec<Lecture>> = BTreeMap::new();
 
@@ -777,6 +821,42 @@ mod tests {
         assert!(clos.clos && clos.fin_ms.is_none());
         assert!(clos.options[0].gagnant && !clos.options[1].gagnant);
         assert_eq!(clos.pied, "4 votes · réponse unique · Clos");
+    }
+
+    #[test]
+    fn un_sondage_porte_le_vote_la_gestion_et_les_votants_affiches() {
+        let e = etat();
+        let supprimes = HashSet::new();
+        let sondage = |id: &str, auteur: &str| -> Message {
+            serde_json::from_value(json!({
+                "id": id, "channel_id": "c1", "author": {"id": auteur, "pseudo": auteur}, "content": "Q ?",
+                "poll": {"multiple": false, "closes_at": null, "created_by": {"id": auteur, "pseudo": auteur},
+                    "options": [{"id": "o1", "label": "a", "votes": 2}, {"id": "o2", "label": "b", "votes": 0}]}
+            }))
+            .unwrap()
+        };
+        let votants = HashMap::from([(
+            "1".to_string(),
+            Votants::from([(
+                "o1".to_string(),
+                serde_json::from_value::<Vec<Person>>(
+                    json!([{"id": "bob", "pseudo": "bob"}, {"id": "eve", "pseudo": "Ève"}]),
+                )
+                .unwrap(),
+            )]),
+        )]);
+        let c = ContexteLignes {
+            votants: &votants,
+            ..contexte(&e, &supprimes)
+        };
+        let d = |m: &Message| donnees_message(m, false, &c).annexes.sondage.unwrap();
+        let autre = d(&sondage("1", "carol"));
+        assert!(autre.votable && !autre.gerer && autre.votants_ouverts && autre.total == 2);
+        assert_eq!(autre.options[0].votants.as_deref(), Some("bob, Ève"));
+        assert_eq!(autre.options[1].votants.as_deref(), Some(""));
+        let mien = d(&sondage("2", e.moi()));
+        assert!(mien.gerer && !mien.votants_ouverts && mien.options[0].votants.is_none());
+        assert!(!d(&sondage("local:1", e.moi())).votable);
     }
 
     #[test]

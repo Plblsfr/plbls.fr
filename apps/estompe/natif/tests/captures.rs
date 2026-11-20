@@ -19,8 +19,8 @@ use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
 use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::messagerie::selecteur::Cible;
 use estompe_natif::{
-    creer_fenetre, DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur, ModeTheme,
-    Mouvement, Principale, Theme,
+    creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie,
+    DonneesSelecteur, ModeTheme, Mouvement, Principale, Theme,
 };
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
@@ -133,6 +133,11 @@ const ECRANS: &[Ecran] = ecrans![
     "messagerie-menu-sombre", Sombre, messagerie_menu;
     "confirmation-clair", Clair, confirmation_suppression;
     "confirmation-sombre", Sombre, confirmation_suppression;
+    "sondage-creation-clair", Clair, sondage_creation;
+    "sondage-creation-sombre", Sombre, sondage_creation;
+    "sondage-erreur-clair", Clair, sondage_erreur;
+    "sondage-votants-clair", Clair, sondage_votants;
+    "sondage-votants-sombre", Sombre, sondage_votants;
 ];
 
 fn bob() -> Compte {
@@ -945,8 +950,63 @@ fn messagerie_sondages(f: &Principale) {
     messagerie_avec(f, commun::coquille::conversation_sondages());
 }
 
+fn sondage_rempli(f: &Principale, question: &str, choix: &[&str]) -> Pont {
+    let pont = saisie_courte(f);
+    pont.messagerie().ouvrir_creation_sondage(f);
+    f.global::<DonneesCreationSondage>()
+        .set_question(question.into());
+    pont.messagerie().creation_modifiee(f);
+    for _ in 2..choix.len() {
+        pont.messagerie().ajouter_choix(f);
+    }
+    for (i, c) in choix.iter().enumerate() {
+        pont.messagerie().choix_modifie(f, i as i32, c);
+    }
+    pont
+}
+
+fn sondage_creation(f: &Principale) {
+    let pont = sondage_rempli(f, "On mange où vendredi ?", &["Pizza", "Sushi", ""]);
+    f.global::<DonneesCreationSondage>().set_multiple(true);
+    pont.messagerie().choisir_cloture(f, 2);
+    stabiliser(f);
+}
+
+fn sondage_erreur(f: &Principale) {
+    let pont = sondage_rempli(f, "Quel jour pour la sortie ?", &["Samedi", "Dimanche"]);
+    pont.messagerie().choisir_cloture(f, 5);
+    f.global::<DonneesCreationSondage>()
+        .set_date("31/02/2026 18:00".into());
+    pont.messagerie().publier_sondage(f);
+    stabiliser(f);
+}
+
+fn sondage_votants(f: &Principale) {
+    let pont = messagerie_avec(f, commun::coquille::conversation_sondages());
+    let personnes = |noms: &[&str]| -> Vec<estompe_client::types::Person> {
+        noms.iter()
+            .map(|n| estompe_client::types::Person {
+                id: Some(n.to_lowercase()),
+                pseudo: Some(n.to_string()),
+            })
+            .collect()
+    };
+    pont.messagerie().afficher_votants(
+        f,
+        "704",
+        [
+            ("o1".to_string(), personnes(&["Bob", "Carol", "Dave"])),
+            ("o2".to_string(), personnes(&["Ève"])),
+            ("o3".to_string(), personnes(&["Inès", "Caro"])),
+        ]
+        .into(),
+    );
+    stabiliser(f);
+}
+
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
+    f.global::<DonneesCreationSondage>().set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);
     f.window()
