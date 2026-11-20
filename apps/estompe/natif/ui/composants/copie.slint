@@ -1,0 +1,22 @@
+export global DonneesCopie {
+    in property <string> texte;
+    in property <int> demandes: 0;
+}
+
+export component CopieTexte {
+    width: 0;
+    height: 0;
+    property <int> demandes: DonneesCopie.demandes;
+    changed demandes => {
+        entree.text = DonneesCopie.texte;
+        entree.select-all();
+        entree.copy();
+    }
+    entree := TextInput {
+        width: 0;
+        height: 0;
+        visible: false;
+        read-only: true;
+        enabled: false;
+    }
+}

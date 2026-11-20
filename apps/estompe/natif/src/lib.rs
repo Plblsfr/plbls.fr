@@ -1,8 +1,10 @@
 slint::include_modules!();
 
+pub mod confirmation;
 pub mod coquille;
 pub mod ecrans;
 pub mod entree;
+pub mod menu;
 pub mod messagerie;
 pub mod session;
 
@@ -12,6 +14,8 @@ pub const OPTION_INVITATION: &str = "--invitation";
 pub fn creer_fenetre() -> Result<Principale, slint::PlatformError> {
     let fenetre = Principale::new()?;
     coquille::installer_modeles(&fenetre);
+    menu::brancher(&fenetre);
+    confirmation::brancher(&fenetre);
     fenetre.set_version(VERSION.into());
     fenetre.set_debogage(cfg!(debug_assertions));
     Ok(fenetre)

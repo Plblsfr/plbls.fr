@@ -1150,6 +1150,9 @@ pub mod coquille {
             if methode == "POST" {
                 return (200, "{}".into());
             }
+            if methode == "PUT" || methode == "DELETE" {
+                return (204, String::new());
+            }
             if chemin.ends_with("/reads") || chemin == "/emojis" {
                 return (200, "[]".into());
             }

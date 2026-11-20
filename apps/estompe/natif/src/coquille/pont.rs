@@ -33,6 +33,8 @@ pub type Icone = SharedPixelBuffer<Rgba8Pixel>;
 
 const COTE_ICONE: u32 = 128;
 
+mod menus;
+
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
 }

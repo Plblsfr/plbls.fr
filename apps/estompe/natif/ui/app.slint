@@ -1,5 +1,5 @@
 import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Calques } from "jetons.slint";
-import { Icone, Bouton, VarianteBouton, Modal } from "composants.slint";
+import { Icone, Bouton, VarianteBouton, Modal, MenuContextuel, DonneesMenu, EntreeMenu, Confirmation, DonneesConfirmation, DemandeConfirmation, CopieTexte, DonneesCopie } from "composants.slint";
 import { APropos } from "a-propos.slint";
 import { Demonstration } from "demonstration.slint";
 import { Coquille } from "coquille/coquille.slint";
@@ -7,7 +7,7 @@ import { MargeMembres } from "coquille/membres.slint";
 import { CarteProfilVue } from "coquille/carte-profil.slint";
 import { VisionneuseVue } from "messagerie/visionneuse.slint";
 import { DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence } from "coquille/donnees.slint";
-import { DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse } from "messagerie/donnees.slint";
+import { DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse } from "messagerie/donnees.slint";
 import { DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie } from "messagerie/saisie.slint";
 import { DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji } from "messagerie/selecteur.slint";
 import { Attente } from "entree/commun.slint";
@@ -15,7 +15,7 @@ import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
 import { MiseAJour } from "entree/mise-a-jour.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -285,4 +285,7 @@ export component Principale inherits Window {
     VisionneuseVue {
         ouverte: root.page == Page.coquille && DonneesMessagerie.visionneuse.ouverte;
     }
+    Confirmation { }
+    MenuContextuel { }
+    CopieTexte { }
 }

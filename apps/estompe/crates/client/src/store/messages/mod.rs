@@ -26,10 +26,10 @@ pub use reducteur::{
 };
 
 use super::etat::CleConversation;
-use super::reducteur::{definir_bas_de_liste, Application};
+use super::reducteur::{definir_bas_de_liste, marquer_non_lu, Application};
 use super::Store;
 use crate::http::ErreurApi;
-use crate::temps_reel::evenements::Lecture;
+use crate::temps_reel::evenements::{Lecture, ReactionModifiee};
 use crate::temps_reel::Evenement;
 use crate::types::{Message, Person};
 
@@ -129,6 +129,63 @@ impl Store {
             ((), a)
         });
         Ok(())
+    }
+
+    pub async fn basculer_reaction(&self, message: &str, emoji: &str) -> Result<(), ErreurApi> {
+        let (moi, pseudo) = self.lire(|e| (e.moi().to_string(), e.pseudo().to_string()));
+        let avait = self.lire_messages(|m| {
+            m.conversations
+                .values()
+                .find_map(|c| c.message(message))
+                .is_some_and(|x| {
+                    x.reactions
+                        .iter()
+                        .flatten()
+                        .any(|r| r.emoji.as_deref() == Some(emoji) && r.me == Some(true))
+                })
+        });
+        let evenement = |added| {
+            Evenement::ReactionModifiee(ReactionModifiee {
+                message_id: message.to_string(),
+                emoji: emoji.to_string(),
+                user_id: moi.clone(),
+                pseudo: Some(pseudo.clone()),
+                added,
+            })
+        };
+        self.appliquer_aux_messages(&evenement(!avait));
+        let resultat = if avait {
+            self.client().retirer_reaction(message, emoji).await
+        } else {
+            self.client().reagir(message, emoji).await
+        };
+        if resultat.is_err() {
+            self.appliquer_aux_messages(&evenement(avait));
+        }
+        resultat
+    }
+
+    pub async fn epingler(&self, message: &str, epingle: bool) -> Result<(), ErreurApi> {
+        self.client().epingler(message, epingle).await
+    }
+
+    pub fn marquer_non_lu(&self, cle: &CleConversation, depuis: &str) -> i64 {
+        let moi = self.lire(|e| e.moi().to_string());
+        let nombre = self.lire_messages(|m| {
+            m.conversation(cle)
+                .and_then(|c| {
+                    let debut = c.position(depuis).ok()?;
+                    Some(
+                        c.messages[debut..]
+                            .iter()
+                            .filter(|x| auteur(x) != moi && x.system != Some(true))
+                            .count(),
+                    )
+                })
+                .unwrap_or(0)
+        }) as i64;
+        self.appliquer_application(|etat| marquer_non_lu(etat, cle, nombre));
+        nombre
     }
 
     pub async fn signaler_saisie(&self, cle: &CleConversation, texte: &str) -> bool {
@@ -492,6 +549,84 @@ mod tests {
         serveur.router("DELETE", "/messages/1", Reponse::vide(204));
         store.supprimer_message(&cle, "1").await.unwrap();
         assert!(contenus(&store, &cle).is_empty());
+    }
+
+    fn reactions_de(store: &Store, cle: &CleConversation) -> Vec<(String, i64, bool)> {
+        store.conversation(cle).unwrap().messages[0]
+            .reactions
+            .iter()
+            .flatten()
+            .map(|r| {
+                (
+                    r.emoji.clone().unwrap_or_default(),
+                    r.count.unwrap_or(0),
+                    r.me == Some(true),
+                )
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn basculer_une_reaction_l_ajoute_puis_la_retire_et_revient_en_arriere_en_cas_d_erreur() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        let chemin = "/messages/1/reactions/%F0%9F%91%8D";
+        serveur.router("PUT", chemin, Reponse::vide(204));
+        serveur.router("DELETE", chemin, Reponse::vide(204));
+        let (store, cle) = store_sur(serveur.client());
+        store.basculer_reaction("1", "👍").await.unwrap();
+        assert_eq!(reactions_de(&store, &cle), [("👍".to_string(), 1, true)]);
+        store.appliquer_aux_messages(&Evenement::ReactionModifiee(ReactionModifiee {
+            message_id: "1".into(),
+            emoji: "👍".into(),
+            user_id: "me".into(),
+            pseudo: Some("moi".into()),
+            added: true,
+        }));
+        assert_eq!(reactions_de(&store, &cle), [("👍".to_string(), 1, true)]);
+        store.basculer_reaction("1", "👍").await.unwrap();
+        assert!(reactions_de(&store, &cle).is_empty());
+        serveur.router(
+            "PUT",
+            chemin,
+            Reponse::json(403, json!({"error": "forbidden", "message": "non"})),
+        );
+        assert!(store.basculer_reaction("1", "👍").await.is_err());
+        assert!(reactions_de(&store, &cle).is_empty());
+        let methodes: Vec<String> = serveur
+            .requetes()
+            .into_iter()
+            .filter(|r| r.chemin == chemin)
+            .map(|r| r.methode)
+            .collect();
+        assert_eq!(methodes, ["PUT", "DELETE", "PUT"]);
+    }
+
+    #[tokio::test]
+    async fn marquer_comme_non_lu_compte_les_messages_des_autres_depuis_celui_choisi() {
+        let (store, cle) = store_sur(Client::nouveau("http://127.0.0.1:9").unwrap());
+        store.installer_conversation(
+            &cle,
+            vec![
+                depuis_json(json!({"id": "1", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "a"})),
+                depuis_json(json!({"id": "2", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "b"})),
+                depuis_json(json!({"id": "3", "channel_id": "c1", "author": {"id": "me", "pseudo": "moi"}, "content": "c"})),
+                depuis_json(json!({"id": "4", "channel_id": "c1", "author": {"id": "bob", "pseudo": "bob"}, "content": "d"})),
+            ],
+            false,
+        );
+        store.ouvrir(Some(cle.clone())).await;
+        let mut abonne = store.abonner();
+        assert_eq!(store.marquer_non_lu(&cle, "2"), 2);
+        assert_eq!(store.lire(|e| e.non_lus_de(&cle)), 2);
+        assert!(!store.lire(|e| e.en_bas));
+        assert!(abonne.try_recv().unwrap().contains(&Changement::NonLus {
+            conversation: cle.clone(),
+            serveur: store.lire(|e| e.serveur_de(&cle)),
+        }));
+        assert_eq!(store.marquer_non_lu(&cle, "absent"), 0);
+        assert_eq!(store.lire(|e| e.non_lus_de(&cle)), 2);
+        store.signaler_lecture(true, None).await;
+        assert_eq!(store.lire(|e| e.non_lus_de(&cle)), 0);
     }
 
     #[tokio::test]

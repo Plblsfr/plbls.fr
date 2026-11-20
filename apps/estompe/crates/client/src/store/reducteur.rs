@@ -650,6 +650,22 @@ pub fn lire_conversation(etat: &mut Etat, conversation: &CleConversation) -> App
     a
 }
 
+pub fn marquer_non_lu(etat: &mut Etat, conversation: &CleConversation, nombre: i64) -> Application {
+    let mut a = Application::default();
+    if nombre <= 0 {
+        return a;
+    }
+    etat.non_lus.insert(conversation.clone(), nombre);
+    if etat.courante.as_ref() == Some(conversation) {
+        etat.en_bas = false;
+    }
+    a.changer(Changement::NonLus {
+        conversation: conversation.clone(),
+        serveur: etat.serveur_de(conversation),
+    });
+    a
+}
+
 pub fn definir_focus(etat: &mut Etat, focus: bool) -> Application {
     let mut a = Application::default();
     etat.focus = focus;

@@ -1,5 +1,5 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
-import { Icone, Avatar, BadgeRole, GenreBadgeRole, Chargement, Separateur, TexteRiche } from "../composants.slint";
+import { Icone, Avatar, BadgeRole, GenreBadgeRole, Chargement, Separateur, TexteRiche, DonneesMenu } from "../composants.slint";
 import { Medaille } from "../coquille/membres.slint";
 import { DonneesMessagerie, LigneMessage, GenreLigneMessage, AnnexesMessage, ReponseMessage, GenreCarte } from "donnees.slint";
 import { AnnexesMessageVue, SondageVue } from "annexes.slint";
@@ -52,31 +52,133 @@ component EnTeteReponse {
     }
 }
 
-component BoutonCopier {
+component BoutonOutil {
+    in property <string> icone;
+    in property <string> libelle;
+    in property <image> image;
+    in property <bool> danger: false;
+    in property <bool> enfonce: false;
     callback clique();
     out property <bool> survole: zone.has-hover;
     width: 28px;
     height: 28px;
     accessible-role: button;
-    accessible-label: "Copier le message";
+    accessible-label: root.libelle;
     accessible-action-default => {
         root.clique();
     }
     Rectangle {
         border-radius: Rayon.xs;
-        background: zone.has-hover ? Theme.rose-doux : Theme.surface;
-        border-width: 1px;
-        border-color: Theme.trait;
+        background: zone.has-hover ? (root.danger ? Theme.danger.with-alpha(0.14) : Theme.rose-doux) : root.enfonce ? Theme.rose : transparent;
     }
-    Icone {
-        nom: "copie";
-        taille: 15px;
-        couleur: Theme.encre;
+    if root.image.width > 0: Image {
+        width: 18px;
+        height: 18px;
+        source: root.image;
+        image-fit: contain;
+    }
+    if root.image.width == 0: Icone {
+        nom: root.icone;
+        taille: 16px;
+        couleur: root.danger ? Theme.danger : Theme.encre;
     }
     zone := TouchArea {
         mouse-cursor: pointer;
         clicked => {
             root.clique();
+        }
+    }
+}
+
+component BarreActions inherits Rectangle {
+    in property <LigneMessage> ligne;
+    callback copier(string);
+    callback plus(length, length, length);
+    out property <bool> survolee: zone.has-hover;
+    height: 34px;
+    width: rangee.preferred-width;
+    border-radius: Rayon.s;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: 2px;
+    drop-shadow-color: Theme.sombre ? #00000066 : #16130f14;
+    accessible-role: groupbox;
+    accessible-label: "Actions sur le message";
+    zone := TouchArea {
+        rangee := HorizontalLayout {
+            padding: 2px;
+            spacing: 1px;
+            if root.ligne.droits.reagir: HorizontalLayout {
+                spacing: 1px;
+                for reaction in DonneesMessagerie.reactions-rapides: BoutonOutil {
+                    image: reaction.image;
+                    libelle: "Réagir avec " + reaction.emoji;
+                    clique => {
+                        DonneesMessagerie.reagir(root.ligne.id, reaction.emoji);
+                    }
+                }
+                Rectangle {
+                    width: 9px;
+                    Rectangle {
+                        width: 1px;
+                        height: 18px;
+                        background: Theme.trait;
+                    }
+                }
+            }
+            if root.ligne.droits.repondre: BoutonOutil {
+                icone: "repondre";
+                libelle: "Répondre";
+                clique => {
+                    DonneesMessagerie.action-message(root.ligne.id, "repondre");
+                }
+            }
+            if root.ligne.droits.reagir: BoutonOutil {
+                icone: "sourire";
+                libelle: "Ajouter une réaction";
+                clique => {
+                    DonneesMessagerie.action-message(root.ligne.id, "reagir");
+                }
+            }
+            if root.ligne.droits.modifier: BoutonOutil {
+                icone: "crayon";
+                libelle: "Modifier";
+                clique => {
+                    DonneesMessagerie.action-message(root.ligne.id, "modifier");
+                }
+            }
+            if root.ligne.droits.epingler: BoutonOutil {
+                icone: "epingle";
+                libelle: root.ligne.epingle ? "Désépingler" : "Épingler";
+                enfonce: root.ligne.epingle;
+                clique => {
+                    DonneesMessagerie.action-message(root.ligne.id, root.ligne.epingle ? "desepingler" : "epingler");
+                }
+            }
+            if root.ligne.texte-brut != "": BoutonOutil {
+                icone: "copie";
+                libelle: "Copier le message";
+                clique => {
+                    root.copier(root.ligne.texte-brut);
+                }
+            }
+            if root.ligne.droits.supprimer: BoutonOutil {
+                icone: "corbeille";
+                libelle: "Supprimer";
+                danger: true;
+                clique => {
+                    DonneesMessagerie.action-message(root.ligne.id, "supprimer");
+                }
+            }
+            if root.ligne.droits.menu: plus := BoutonOutil {
+                icone: "plus3";
+                libelle: "Plus d'actions";
+                clique => {
+                    root.plus(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                }
+            }
         }
     }
 }
@@ -160,8 +262,24 @@ component LienAction inherits Text {
 component CorpsMessage inherits Rectangle {
     in property <LigneMessage> ligne;
     callback copier(string);
-    property <bool> sur-copie: false;
-    property <bool> actif: zone.has-hover || portee.has-focus || root.sur-copie;
+    property <bool> sur-barre: false;
+    property <bool> actif: zone.has-hover || portee.has-focus || root.sur-barre;
+    property <bool> menu-ouvert: DonneesMenu.ouvert;
+    property <bool> a-ouvert-menu: false;
+    changed menu-ouvert => {
+        if (!self.menu-ouvert && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            if (!DonneesMenu.focus-ailleurs) {
+                portee.focus();
+            }
+        }
+    }
+    function ouvrir-menu(x: length, y: length) {
+        if (root.ligne.droits.menu) {
+            root.a-ouvert-menu = true;
+            DonneesMessagerie.menu-message(root.ligne.id, x, y);
+        }
+    }
     background: ligne.mis-en-evidence ? Theme.rose : ligne.mention ? Theme.rose.with-alpha(root.actif ? 0.38 : 0.28) : root.actif ? Theme.encre.with-alpha(0.03) : transparent;
     animate background { duration: Mouvement.d-l; easing: Courbes.sortie; }
     accessible-role: text;
@@ -173,10 +291,23 @@ component CorpsMessage inherits Rectangle {
         background: Theme.rose-fonce;
     }
     zone := TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                portee.focus();
+                if (e.button == PointerEventButton.right) {
+                    root.ouvrir-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+        }
         portee := FocusScope {
+            focus-on-click: false;
             key-pressed(e) => {
                 if (e.modifiers.control && (e.text == "c" || e.text == "C")) {
                     root.copier(root.ligne.texte-brut);
+                    return accept;
+                }
+                if (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                    root.ouvrir-menu(root.absolute-position.x + 72px, root.absolute-position.y + Math.min(root.height, 28px));
                     return accept;
                 }
                 return reject;
@@ -334,6 +465,7 @@ component CorpsMessage inherits Rectangle {
                     if root.ligne.annexes.pieces-jointes.length > 0 || root.ligne.annexes.reactions.length > 0 || root.ligne.annexes.lecteurs.length > 0 || root.ligne.annexes.carte.genre != GenreCarte.aucune: AnnexesMessageVue {
                         annexes: root.ligne.annexes;
                         message: root.ligne.id;
+                        reagir: root.ligne.droits.reagir;
                     }
                     if root.ligne.etat-envoi != "": HorizontalLayout {
                         spacing: Espace.e3;
@@ -366,15 +498,20 @@ component CorpsMessage inherits Rectangle {
             }
         }
     }
-    if !root.ligne.systeme && root.ligne.texte-brut != "": BoutonCopier {
+    if !root.ligne.systeme && (root.ligne.droits.menu || root.ligne.texte-brut != ""): BarreActions {
         x: parent.width - self.width - 24px;
-        y: root.ligne.suite ? 0 : 6px;
+        y: -16px;
+        ligne: root.ligne;
         visible: root.actif;
-        changed survole => {
-            root.sur-copie = self.survole;
+        changed survolee => {
+            root.sur-barre = self.survolee;
         }
-        clique => {
-            root.copier(root.ligne.texte-brut);
+        copier(texte) => {
+            root.copier(texte);
+        }
+        plus(x, haut, bas) => {
+            root.a-ouvert-menu = true;
+            DonneesMessagerie.menu-message-bouton(root.ligne.id, x, haut, bas);
         }
     }
 }

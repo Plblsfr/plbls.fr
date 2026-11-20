@@ -1,0 +1,79 @@
+import { Theme, Typo, Espace } from "../jetons.slint";
+import { Modal } from "modal.slint";
+import { Bouton, VarianteBouton } from "bouton.slint";
+import { Champ } from "champ.slint";
+import { Case } from "case.slint";
+
+export struct DemandeConfirmation {
+    titre: string,
+    message: string,
+    action: string,
+    destructif: bool,
+    saisie: bool,
+    saisie-libelle: string,
+    case: bool,
+    case-libelle: string,
+}
+
+export global DonneesConfirmation {
+    in property <bool> ouverte: false;
+    in property <DemandeConfirmation> demande;
+    in-out property <string> valeur;
+    in-out property <bool> coche: false;
+    pure callback peut-valider(DemandeConfirmation, string, bool) -> bool;
+    callback repondre(bool);
+}
+
+export component Confirmation {
+    width: 100%;
+    height: 100%;
+    property <bool> valide: DonneesConfirmation.ouverte && DonneesConfirmation.peut-valider(DonneesConfirmation.demande, DonneesConfirmation.valeur, DonneesConfirmation.coche);
+    Modal {
+        titre: DonneesConfirmation.demande.titre;
+        ouvert: DonneesConfirmation.ouverte;
+        ferme => {
+            DonneesConfirmation.repondre(false);
+        }
+        if DonneesConfirmation.demande.message != "": Text {
+            text: DonneesConfirmation.demande.message;
+            color: Theme.encre-2;
+            font-size: Typo.corps;
+            wrap: word-wrap;
+        }
+        if DonneesConfirmation.demande.saisie: Champ {
+            etiquette: DonneesConfirmation.demande.saisie-libelle;
+            valeur <=> DonneesConfirmation.valeur;
+            calque: 1;
+            valide => {
+                if (root.valide) {
+                    DonneesConfirmation.repondre(true);
+                }
+            }
+        }
+        if DonneesConfirmation.demande.case: Case {
+            texte: DonneesConfirmation.demande.case-libelle;
+            cochee <=> DonneesConfirmation.coche;
+            calque: 1;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Annuler";
+                calque: 1;
+                clique => {
+                    DonneesConfirmation.repondre(false);
+                }
+            }
+            Bouton {
+                texte: DonneesConfirmation.demande.action;
+                variante: DonneesConfirmation.demande.destructif ? VarianteBouton.danger : VarianteBouton.primaire;
+                actif: root.valide;
+                calque: 1;
+                clique => {
+                    DonneesConfirmation.repondre(true);
+                }
+            }
+        }
+    }
+}

@@ -175,8 +175,12 @@ export component Panneau inherits Rectangle {
                         mentions: prive.mentions;
                         description: prive.libelle-presence;
                         brouillon: prive.brouillon;
+                        avec-menu: true;
                         clique => {
                             DonneesCoquille.ouvrir-prive(prive.id);
+                        }
+                        menu(x, y) => {
+                            DonneesCoquille.menu-prive(prive.id, x, y);
                         }
                         VerticalLayout {
                             alignment: center;
@@ -222,8 +226,12 @@ export component Panneau inherits Rectangle {
                             etiquette: salon.bientot ? "bientôt" : "";
                             description: salon.bientot ? "bientôt dans l'app native" : "";
                             brouillon: salon.brouillon;
+                            avec-menu: true;
                             clique => {
                                 DonneesCoquille.ouvrir-salon(salon.id);
+                            }
+                            menu(x, y) => {
+                                DonneesCoquille.menu-salon(salon.id, x, y);
                             }
                         }
                     }

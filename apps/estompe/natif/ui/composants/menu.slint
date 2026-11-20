@@ -1,0 +1,226 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone } from "icone.slint";
+import { Etiquette } from "etiquette.slint";
+
+export struct EntreeMenu {
+    id: string,
+    libelle: string,
+    icone: string,
+    danger: bool,
+    separe: bool,
+    bientot: bool,
+    coche: bool,
+    raccourci: string,
+}
+
+export global DonneesMenu {
+    in property <bool> ouvert: false;
+    in property <length> x;
+    in property <length> y;
+    in property <string> titre;
+    in property <[EntreeMenu]> entrees;
+    in property <int> ouvertures: 0;
+    in property <bool> focus-ailleurs: false;
+    out property <length> largeur: 248px;
+    out property <length> hauteur-entree: 32px;
+    out property <length> hauteur-separation: 9px;
+    out property <length> marge: 4px;
+    callback choisir(string);
+    callback fermer();
+}
+
+component LigneMenu inherits Rectangle {
+    in property <EntreeMenu> entree;
+    in property <bool> active;
+    callback survolee();
+    callback choisie();
+    height: DonneesMenu.hauteur-entree;
+    border-radius: Rayon.xs;
+    background: root.active && !root.entree.bientot ? (root.entree.danger ? Theme.danger.with-alpha(0.14) : Theme.rose) : transparent;
+    animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    accessible-role: button;
+    accessible-label: root.entree.libelle;
+    accessible-description: root.entree.bientot ? "bientôt dans l'app native" : "";
+    accessible-enabled: !root.entree.bientot;
+    accessible-checkable: root.entree.coche;
+    accessible-checked: root.entree.coche;
+    accessible-action-default => {
+        root.choisie();
+    }
+    zone := TouchArea {
+        mouse-cursor: root.entree.bientot ? default : pointer;
+        changed has-hover => {
+            if (self.has-hover) {
+                root.survolee();
+            }
+        }
+        clicked => {
+            root.choisie();
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.entree.icone;
+                taille: 16px;
+                couleur: root.entree.bientot ? Theme.gris-2 : root.entree.danger ? Theme.danger : Theme.encre-2;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.entree.libelle;
+            color: root.entree.bientot ? Theme.gris : root.entree.danger ? Theme.danger : Theme.encre;
+            font-size: Typo.petit + 0.5px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.entree.raccourci != "": Text {
+            text: root.entree.raccourci;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        if root.entree.coche: VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "ok";
+                taille: 15px;
+                couleur: Theme.encre;
+            }
+        }
+        if root.entree.bientot: VerticalLayout {
+            alignment: center;
+            Etiquette {
+                texte: "bientôt";
+            }
+        }
+    }
+}
+
+export component MenuContextuel {
+    width: 100%;
+    height: 100%;
+    visible: DonneesMenu.ouvert;
+    property <int> active: -1;
+    property <int> nombre: DonneesMenu.entrees.length;
+    property <int> ouvertures: DonneesMenu.ouvertures;
+    function suivante(depart: int, pas: int) -> int {
+        if (root.nombre == 0) {
+            return -1;
+        }
+        return Math.mod(depart + pas + root.nombre, root.nombre);
+    }
+    function deplacer(pas: int) {
+        root.active = root.suivante(root.active < 0 && pas < 0 ? 0 : root.active, pas);
+        if (DonneesMenu.entrees[root.active].bientot) {
+            root.active = root.suivante(root.active, pas);
+        }
+    }
+    function choisir(index: int) {
+        if (index >= 0 && index < root.nombre && !DonneesMenu.entrees[index].bientot) {
+            DonneesMenu.choisir(DonneesMenu.entrees[index].id);
+        }
+    }
+    changed ouvertures => {
+        root.active = -1;
+        root.deplacer(1);
+        portee.focus();
+    }
+    if DonneesMenu.ouvert: TouchArea {
+        clicked => {
+            DonneesMenu.fermer();
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                DonneesMenu.fermer();
+            }
+        }
+        scroll-event(e) => {
+            DonneesMenu.fermer();
+            return reject;
+        }
+    }
+    portee := FocusScope {
+        x: DonneesMenu.x;
+        y: DonneesMenu.y;
+        width: DonneesMenu.largeur;
+        height: colonne.preferred-height;
+        enabled: DonneesMenu.ouvert;
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                DonneesMenu.fermer();
+                return accept;
+            }
+            if (e.text == Key.DownArrow || (e.text == Key.Tab && !e.modifiers.shift)) {
+                root.deplacer(1);
+                return accept;
+            }
+            if (e.text == Key.UpArrow || e.text == Key.Backtab || (e.text == Key.Tab && e.modifiers.shift)) {
+                root.deplacer(-1);
+                return accept;
+            }
+            if (e.text == Key.Home) {
+                root.active = -1;
+                root.deplacer(1);
+                return accept;
+            }
+            if (e.text == Key.End) {
+                root.active = 0;
+                root.deplacer(-1);
+                return accept;
+            }
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir(root.active);
+                return accept;
+            }
+            return accept;
+        }
+        focus-lost(raison) => {
+            if (DonneesMenu.ouvert) {
+                DonneesMenu.fermer();
+            }
+        }
+        Rectangle {
+            border-radius: Rayon.m;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.trait;
+            drop-shadow-blur: 18px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: Theme.sombre ? #00000099 : #16130f26;
+            accessible-role: list;
+            accessible-label: DonneesMenu.titre;
+            TouchArea { }
+            colonne := VerticalLayout {
+                padding: DonneesMenu.marge;
+                spacing: 0;
+                for entree[i] in DonneesMenu.entrees: VerticalLayout {
+                    if entree.separe: Rectangle {
+                        height: DonneesMenu.hauteur-separation;
+                        Rectangle {
+                            x: 6px;
+                            width: parent.width - 12px;
+                            height: 1px;
+                            background: Theme.trait;
+                        }
+                    }
+                    LigneMenu {
+                        entree: entree;
+                        active: i == root.active;
+                        survolee => {
+                            root.active = i;
+                        }
+                        choisie => {
+                            root.choisir(i);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

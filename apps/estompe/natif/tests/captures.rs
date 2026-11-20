@@ -127,6 +127,12 @@ const ECRANS: &[Ecran] = ecrans![
     "selecteur-emoji-clair", Clair, selecteur_emoji;
     "selecteur-emoji-sombre", Sombre, selecteur_emoji;
     "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
+    "messagerie-actions-clair", Clair, messagerie_actions;
+    "messagerie-actions-sombre", Sombre, messagerie_actions;
+    "messagerie-menu-clair", Clair, messagerie_menu;
+    "messagerie-menu-sombre", Sombre, messagerie_menu;
+    "confirmation-clair", Clair, confirmation_suppression;
+    "confirmation-sombre", Sombre, confirmation_suppression;
 ];
 
 fn bob() -> Compte {
@@ -940,6 +946,11 @@ fn messagerie_sondages(f: &Principale) {
 }
 
 fn remettre_a_zero(f: &Principale) {
+    estompe_natif::menu::fermer(f);
+    estompe_natif::confirmation::repondre(f, false);
+    f.global::<DonneesSaisie>().set_depot_survole(false);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerExited);
     f.set_demonstration(false);
     f.set_infobulle_forcee(false);
     f.set_modal_demo_ouvert(false);
@@ -1089,6 +1100,40 @@ fn la_comparaison_tolere_le_bruit_et_signale_un_changement_de_couleur() {
     assert_eq!(difference.get_pixel(0, 0).0, [220, 0, 60, 255]);
     let autre_taille = image::RgbaImage::new(50, 100);
     assert_eq!(comparer(&autre_taille, &reference).0, 1.0);
+}
+
+fn survoler_le_message(f: &Principale, texte: &str) -> (f32, f32) {
+    let e = i_slint_backend_testing::ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+        .find(|e| e.accessible_description().is_some_and(|d| d == texte))
+        .expect("message affiché");
+    let p = e.absolute_position();
+    let position = slint::LogicalPosition::new(p.x + 200.0, p.y + e.size().height / 2.0);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerMoved { position });
+    (position.x, position.y)
+}
+
+fn messagerie_actions(f: &Principale) {
+    let _pont = saisie_courte(f);
+    stabiliser(f);
+    survoler_le_message(f, "Salut, prêt pour la réunion de 10 h ?");
+    stabiliser(f);
+}
+
+fn messagerie_menu(f: &Principale) {
+    let pont = saisie_courte(f);
+    stabiliser(f);
+    let (x, y) = survoler_le_message(f, "Salut, prêt pour la réunion de 10 h ?");
+    pont.messagerie()
+        .ouvrir_menu_message(f, "401", estompe_natif::menu::Ancre::Point { x, y });
+    stabiliser(f);
+}
+
+fn confirmation_suppression(f: &Principale) {
+    let pont = saisie_courte(f);
+    stabiliser(f);
+    pont.messagerie().action_message(f, "401", "supprimer");
+    stabiliser(f);
 }
 
 fn saisie_courte(f: &Principale) -> Pont {

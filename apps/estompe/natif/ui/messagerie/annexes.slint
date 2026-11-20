@@ -203,17 +203,55 @@ component PieceJointeVue inherits HorizontalLayout {
 
 component ReactionVue inherits Rectangle {
     in property <ReactionMessage> reaction;
+    in property <string> message;
+    in property <bool> actif: false;
     height: 28px;
     width: contenu.preferred-width;
     border-radius: Rayon.pilule;
     background: root.reaction.moi ? Theme.rose : bulle.visible-maintenant ? Theme.rose-doux : Theme.surface;
     border-width: root.reaction.moi ? 1.5px : 1px;
     border-color: root.reaction.moi ? Theme.rose-fonce : Theme.trait;
-    accessible-role: text;
+    accessible-role: button;
+    accessible-enabled: root.actif;
     accessible-label: root.reaction.emoji + " " + root.reaction.nombre;
     accessible-description: root.reaction.titre;
+    accessible-checkable: root.actif;
+    accessible-checked: root.reaction.moi;
+    accessible-action-default => {
+        root.basculer();
+    }
+    function basculer() {
+        if (root.actif) {
+            DonneesMessagerie.reagir(root.message, root.reaction.emoji);
+        }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.actif;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.basculer();
+                return accept;
+            }
+            return reject;
+        }
+    }
     bulle := Infobulle {
         texte: root.reaction.infobulle;
+        curseur: root.actif ? MouseCursor.pointer : MouseCursor.default;
+        clique => {
+            root.basculer();
+        }
         contenu := HorizontalLayout {
             padding-left: 9px;
             padding-right: 9px;
@@ -633,9 +671,36 @@ component LecteursVue {
     }
 }
 
+component AjoutReaction inherits Rectangle {
+    in property <string> message;
+    height: 28px;
+    width: 36px;
+    border-radius: Rayon.pilule;
+    background: zone.has-hover ? Theme.rose-doux : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: button;
+    accessible-label: "Ajouter une réaction";
+    accessible-action-default => {
+        DonneesMessagerie.action-message(root.message, "reagir");
+    }
+    Icone {
+        nom: "sourire";
+        taille: 15px;
+        couleur: Theme.gris;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesMessagerie.action-message(root.message, "reagir");
+        }
+    }
+}
+
 export component AnnexesMessageVue {
     in property <AnnexesMessage> annexes;
     in property <string> message;
+    in property <bool> reagir: false;
     accessible-role: groupbox;
     accessible-label: annexes.resume;
     VerticalLayout {
@@ -670,6 +735,11 @@ export component AnnexesMessageVue {
                 spacing: 6px;
                 for reaction in root.annexes.reactions: ReactionVue {
                     reaction: reaction;
+                    message: root.message;
+                    actif: root.reagir;
+                }
+                if root.reagir && root.annexes.reactions.length > 0: AjoutReaction {
+                    message: root.message;
                 }
             }
             if root.annexes.lecteurs.length > 0: LecteursVue {

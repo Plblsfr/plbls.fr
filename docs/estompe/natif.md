@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -40,9 +40,25 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
   JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
 - `emoji/twemoji.bin` : les emoji en couleur (voir [Emoji](#emoji)), licences `emoji/CC-BY-4.0-twemoji.txt` et `emoji/MIT-emoji-data.txt`, citées dans « À propos ».
 - `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
-  liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image.
+  liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
+  menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
 - L'écran « À propos » affiche la version et l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`).
+
+### Menus contextuels et confirmation
+
+- Menu (`ui/composants/menu.slint`, global `DonneesMenu` ; `src/menu.rs`) : une seule instance, au-dessus de tout dans `ui/app.slint`. `menu::ouvrir(f, titre, ancre, entrées, action)`
+  le remplit et le place : au curseur (`Ancre::Point`) ou sous un bouton (`Ancre::Element`, retourné au-dessus s'il manque de place en bas, `retourner`), toujours gardé dans la
+  fenêtre (`placer`, marge de 8 px), comme `placeMenu` et `flipY` du front ; la hauteur est calculée en Rust (`hauteur`). Sans entrée, rien ne s'ouvre. Une entrée (`Entree`) a
+  une icône et peut être séparée, dangereuse, cochée, porter un raccourci ou être marquée « bientôt » (affichée, sautée par les flèches, inactive).
+- Clavier : flèches (en boucle), Tab, Origine, Fin, Entrée ou Espace, Échap. Un clic hors du menu, la molette ou la perte du focus le ferment. L'élément qui l'a ouvert retient
+  `a-ouvert-menu` et reprend le focus à la fermeture, sauf si l'action l'a donné ailleurs (l'action rend `true` : champ de saisie, sélecteur, confirmation ; `focus-ailleurs`).
+- Ouverture : clic droit, touche Menu ou Maj+F10 sur l'élément qui a le focus. Un `FocusScope` qui prend le focus au clic avale l'appui : la ligne d'un message a
+  `focus-on-click: false` et se donne le focus dans `pointer-event`, sinon le premier clic droit ne ferait que la sélectionner.
+- Confirmation (`ui/composants/confirmation.slint`, global `DonneesConfirmation` ; `src/confirmation.rs`) : `confirmation::confirmer` et `confirmation::saisir`, sur le modal
+  commun : titre, message, bouton d'action (rouge si destructive), saisie éventuelle (à recopier exactement : `exiger`) ou case à cocher ; `peut_valider` décide si le bouton est actif
+  (le rappel pur reçoit la demande en argument pour que Slint le réévalue à chaque nouvelle demande). Une nouvelle demande annule la précédente (sa suite reçoit un refus), comme `confirm.svelte.ts`.
+- Copie d'un texte depuis Rust : `menu::copier_texte` passe par le `TextInput` caché de `CopieTexte` (global `DonneesCopie`).
 
 ### Jetons
 
@@ -130,6 +146,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
   `permissions.admin` pour Régie), comme le front. Adresses : `ESTOMPE_ENTRACTE_URL`, `ESTOMPE_SILLON_URL`, `ESTOMPE_SABLIER_URL`, `ESTOMPE_REGIE_URL`
   (vide : section coupée) ; sans variable, celles de production pour le serveur de production (Régie n'en a pas). Leur contenu arrive au lot 10.
 - Salons vocaux, cinéma, vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
+- Menu contextuel d'un salon texte ou d'une conversation privée du panneau (`src/coquille/pont/menus.rs`) : « Marquer comme lu » s'il y a des non-lus ou des mentions
+  (`Store::lire_conversation`), « Copier le lien » (`https://<serveur>/#/s/…` ou `#/dm/…`) ; un salon « bientôt » n'a que le lien.
 - Messages privés du panneau : triés par activité (`lignes_privees` du store, une conversation qui reçoit un message remonte), avec non-lus, mentions et présence par formes sur l'avatar.
 
 ### Membres
@@ -141,7 +159,8 @@ bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préfé
   En tête, l'onglet « Membres », le compteur `MEMBRES · en ligne/total` et, au-delà de 8 membres, le filtre (pseudo et pseudo de serveur, sans casse ni accents).
 - Liste : groupes des rôles affichés séparément (`hoist`, du plus haut au plus bas, comme `grouper_membres`), puis « EN LIGNE » et « HORS LIGNE » pour les autres ;
   dans chaque groupe, en ligne d'abord puis par pseudo. Une ligne : avatar avec pastille de présence, pseudo de serveur à la couleur du rôle (atténué hors ligne),
-  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours. Un clic ouvre la carte de profil.
+  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours. Un clic ou Entrée ouvre la carte de profil ; clic droit, touche Menu ou Maj+F10 ouvrent le menu du membre : « Profil », « Mentionner »
+  (si une conversation de ce serveur est ouverte en écriture : `@pseudo ` inséré au curseur), « Copier le pseudo ».
 - Présence par formes, lisible sans couleur (`Pastille`, `ui/composants/avatar.slint`) : disque plein (en ligne), demi-lune (absent), disque barré (ne pas déranger), anneau (hors ligne).
 - Virtualisation : la liste est une `ListeVirtuelle`, réimplémentation de `ListView` aux couleurs de la DA (le compilateur Slint ne virtualise que les enfants d'un
   composant nommé `ListView`) ; toutes les lignes font 44 px, seules les lignes visibles sont instanciées (16 pour 5 000 membres dans une fenêtre de 900 px).
@@ -185,6 +204,7 @@ mentions, regroupement et séparateurs (`format::lignes_de_messages`).
 | `src/messagerie/pont.rs` (`PontMessagerie`) | applique les `Changement::Messages` aux modèles, cache borné des rendus (512, LRU), chargement des pages, avatars et badges des auteurs, images, aperçus et emoji de serveur des lignes de la fenêtre, animations, visionneuse, téléchargements, marquage comme lu, saisie en cours |
 | `src/messagerie/emoji.rs` | paquet d'emoji embarqué, découpe du texte en texte et emoji (séquences composées comprises), images des emoji |
 | `src/messagerie/medias.rs` (`Medias`) | téléchargement, décodage hors du fil d'interface et caches des images (pièces jointes, emoji de serveur, images d'aperçu), liste des emoji de serveur, aperçus de liens |
+| `src/messagerie/actions.rs`, `src/messagerie/pont/actions.rs` | droits d'un message et entrées de son menu (purs) ; exécution des actions (réponse, modification, épingle, réaction, copie, non-lu, suppression confirmée) |
 | `src/messagerie/annexes.rs` | projections pures : carte d'aperçu d'un lien, taille d'une vignette avant chargement, chemin sûr d'un fichier enregistré |
 | `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `epingles.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage, réactions et « Vu par », visionneuse, messages épinglés, global `DonneesMessagerie` |
 
@@ -312,7 +332,7 @@ deux moteurs et sur les deux OS :
   sans jeton, 8 Mo au plus).
 - Sondage : question (markdown), « Sondage lancé par », choix avec barre, pourcentage et votes, mon choix (coche), gagnants (trophée) une fois clos,
   pied (`libelle_du_pied`). `poll.voted` et `poll.closed` remplacent la seule ligne du sondage ; l'échéance réveille la liste (une minuterie sur la
-  prochaine clôture visible). Voter, clore et supprimer arrivent au lot 3.
+  prochaine clôture visible). Un sondage se supprime par le menu du message ; voter et clore arrivent avec #319.
 
 ### Temps réel et lecture
 
@@ -336,7 +356,7 @@ deux moteurs et sur les deux OS :
 - `PontMessagerie::montrer_epingles` charge la liste quand l'onglet devient visible ou que la conversation change, et l'oublie quand il se ferme ;
   chaque carte (`CarteEpingle`, `ui/messagerie/epingles.slint`) donne l'auteur à la couleur de son rôle, la date, le markdown et le nombre de fichiers ;
   « Voir dans la conversation » passe par `sauter_a` (chargement autour du message s'il n'est pas dans la fenêtre, puis mise en évidence).
-- Désépingler est une écriture : lot 3.
+- « Désépingler » sur chaque carte si le rôle permet d'épingler ce message (`PUT`/`DELETE /messages/{id}/pin`) ; la liste suit par `message.updated`.
 
 ### Écriture
 
@@ -375,8 +395,8 @@ deux moteurs et sur les deux OS :
   (images chargées à l'ouverture), nom et code en pied. Grille de 8 colonnes en rangées de 36 px dans une `ListeVirtuelle` : seules les rangées visibles sont instanciées et leurs
   images rendues (`ModeleRangees`, modèle paresseux). Clavier : la recherche garde le focus ; flèches dans la grille (haut sur la première ligne : retour à la recherche),
   Entrée insère et ferme, Maj+Entrée ou Maj+clic insère sans fermer, Tab passe aux catégories (flèches, Entrée), Échap ferme et rend le focus au champ.
-- Cible du sélecteur (`Cible`) : la saisie (insertion au curseur, sélection remplacée) ou une réaction (`Cible::Reaction`, `PUT /messages/{id}/reactions/{emoji}`) ; le bouton
-  d'ajout d'une réaction sur un message arrive avec #318 (`PontMessagerie::ouvrir_selecteur`).
+- Cible du sélecteur (`Cible`) : la saisie (insertion au curseur, sélection remplacée) ou une réaction (`Cible::Reaction`, ouverte par « Ajouter une réaction »
+  d'un message, voir [Actions sur un message](#actions-sur-un-message)) ; une réaction choisie compte dans les récents.
 - Écarts : pas de teinte de peau (le front n'en propose pas non plus) ; `#` (salons) et les emoji de serveur dans la liste de `:` n'existent pas dans le front ; un `#salon`
   inséré reste du texte (le markdown n'a pas de lien de salon).
 
@@ -417,6 +437,26 @@ deux moteurs et sur les deux OS :
   pas de miniature pour une vidéo MP4 (le front en calcule une dans le navigateur) ; sous Linux, seuls `h264_nvenc` et `h264_qsv` peuvent convertir une vidéo (VAAPI
   demanderait un filtre propre à l'appareil) ; dépôt de fichiers non pris en charge par winit sous Wayland, collage par le presse-papiers
   X11 d'`arboard` (XWayland) : à vérifier sur machine réelle.
+
+### Actions sur un message
+
+- Droits (`src/messagerie/actions.rs`, pur) : `droits_du_message` part des droits de la conversation (`DroitsConversation` : écrire, `manage_messages`, `add_reactions`,
+  calculés par `PontMessagerie::droits_conversation`) et du message, comme `MessageItem.svelte` : répondre si l'on peut écrire ; modifier son propre message (pas un sondage) ;
+  épingler et supprimer son message ou, avec `manage_messages`, celui d'un autre ; réagir avec `add_reactions` ; rien sur un message système ni sur un envoi local. Ils sont
+  projetés dans `LigneMessage.droits` (`DroitsLigne`) et `entrees_du_message` en tire le menu.
+- Barre au survol (`BarreActions`, `ui/messagerie/element.slint`) : trois réactions rapides (👍, ❤️, 😂, en images), répondre, ajouter une réaction, modifier, épingler ou
+  désépingler, copier le message, supprimer, « Plus d'actions » (menu sous le bouton). Placée à cheval sur le haut de la ligne (16 px au-dessus, comme le front), elle reste affichée tant qu'elle est survolée.
+- Menu du message (clic droit, touche Menu ou Maj+F10 sur le message qui a le focus) : répondre, modifier, épingler ou désépingler, ajouter une réaction, copier le texte,
+  copier le lien (`https://<serveur>/#/s/<serveur>/<salon>/<message>` ou `#/dm/<conversation>/<message>`), marquer comme non lu, « Signaler » (« bientôt », lot 8),
+  supprimer (après confirmation « Supprimer ce message ? »). `PontMessagerie::action_message` exécute l'entrée choisie (`src/messagerie/pont/actions.rs`).
+- Réactions : un clic ou Entrée sur une réaction (focusable si `add_reactions`) l'ajoute ou la retire ; un bouton après les réactions ouvre le sélecteur.
+  `Store::basculer_reaction` applique le changement tout de suite (même chemin que `reaction.updated`, qui ne compte pas deux fois la mienne) puis appelle
+  `PUT` ou `DELETE /messages/{id}/reactions/{emoji}` ; un refus remet la réaction comme avant et s'affiche sous le champ.
+- Épingler (`Store::epingler`) attend le `message.updated` du serveur. Marquer comme non lu (`Store::marquer_non_lu`) est local : la conversation reprend comme non-lus les
+  messages des autres à partir de celui choisi, le séparateur « Nouveaux messages » s'y place, et la lecture n'est signalée qu'au prochain retour en bas de la liste ou à la
+  prochaine ouverture (le store passe `en_bas` à faux). L'API ne sait pas reculer la lecture : un redémarrage ou un autre appareil ne voient pas ce non-lu.
+- Écarts : la barre n'a pas de position « dessous » pour le premier message visible (elle peut y être coupée par le haut de la liste) ; « Copier le lien » et « Signaler » n'existent pas dans le front ;
+  pas de « Copier la sélection » ni « Sélectionner le texte » (Slint ne sélectionne pas un `Text`) ; le sélecteur d'une réaction s'ouvre au-dessus du champ, pas près du message.
 
 ## Portabilité
 
@@ -492,6 +532,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `saisie.rs` (même backend, `ServeurMessages` qui accepte aussi `POST …/messages` et `PATCH /messages/{id}`) : saisie au clavier, Maj+Entrée, envoi par Entrée et message du serveur
   en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », mentions (`@`, Tab), salons (`#`, Échap), smileys (`:`, flèches, Entrée), conversion de `:thumbsup:`,
   sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque ;
+  actions sur un message (clic droit sur un message, menu par la touche Menu et Maj+F10, répondre, épingler, réaction ajoutée par le sélecteur puis retirée par Entrée, copier le texte
+  et le lien, marquer comme non lu, supprimer confirmé au clavier, modifier), menu d'un salon (« Marquer comme lu ») et d'un membre (« Mentionner ») ;
   puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,
   échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
   texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse

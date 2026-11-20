@@ -8,7 +8,7 @@ use estompe_client::mention::Mentionnables;
 use estompe_client::roles::{couleur_du_pseudo, Membre};
 use estompe_client::sondage::{est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total};
 use estompe_client::store::messages::{
-    auteur, est_compte_estompe, id_message, EnvoiLocal, EtatEnvoi,
+    auteur, est_compte_estompe, est_local, id_message, EnvoiLocal, EtatEnvoi,
 };
 use estompe_client::store::{CleConversation, Etat};
 use estompe_client::temps_reel::evenements::Lecture;
@@ -16,6 +16,7 @@ use estompe_client::types::{Attachment, Message, MessagePoll};
 
 pub const TITRE_REACTION_MAX: usize = 3;
 
+use super::actions::{droits_du_message, DroitsConversation, DroitsMessage, Sujet};
 use crate::coquille::avatars::CleAvatar;
 use crate::coquille::membres::{analyser_couleur, cle_avatar};
 use crate::coquille::projection::{initiales, teinte};
@@ -163,6 +164,7 @@ pub struct DonneesMessage {
     pub contenu: String,
     pub annexes: DonneesAnnexes,
     pub envoi: Option<EtatEnvoi>,
+    pub droits: DroitsMessage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,6 +186,7 @@ pub struct ContexteLignes<'a> {
     pub apercus: bool,
     pub lecteurs: &'a BTreeMap<String, Vec<Lecture>>,
     pub envois: &'a [EnvoiLocal],
+    pub droits: DroitsConversation,
 }
 
 fn texte(valeur: &Option<String>) -> &str {
@@ -405,6 +408,16 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
             .iter()
             .find(|e| e.id_local() == id)
             .map(|e| e.etat.clone()),
+        droits: droits_du_message(
+            &Sujet {
+                auteur: &utilisateur,
+                moi,
+                systeme,
+                local: est_local(&id),
+                sondage: message.poll.is_some(),
+            },
+            c.droits,
+        ),
         auteur: pseudo,
         utilisateur,
         id,
@@ -535,6 +548,7 @@ mod tests {
             apercus: true,
             lecteurs: &AUCUN_LECTEUR,
             envois: &[],
+            droits: DroitsConversation::default(),
         }
     }
 

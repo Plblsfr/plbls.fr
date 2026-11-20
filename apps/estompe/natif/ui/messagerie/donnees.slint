@@ -97,6 +97,7 @@ export struct EpingleMessage {
     date: string,
     blocs: [BlocTexte],
     fichiers: string,
+    desepingler: bool,
 }
 
 export struct Visionneuse {
@@ -121,6 +122,15 @@ export struct ReponseMessage {
     auteur: string,
     texte: string,
     supprimee: bool,
+}
+
+export struct DroitsLigne {
+    repondre: bool,
+    modifier: bool,
+    epingler: bool,
+    supprimer: bool,
+    reagir: bool,
+    menu: bool,
 }
 
 export struct LigneMessage {
@@ -154,6 +164,7 @@ export struct LigneMessage {
     annexes: AnnexesMessage,
     etat-envoi: string,
     envoi-echec: bool,
+    droits: DroitsLigne,
 }
 
 export enum EtatConversation { chargement, erreur, prete }
@@ -174,6 +185,7 @@ export global DonneesMessagerie {
     in property <int> mesure: 0;
     in property <[EpingleMessage]> epingles;
     in property <EtatEpingles> etat-epingles: EtatEpingles.chargement;
+    in property <[ReactionMessage]> reactions-rapides;
     callback defilee(length, length, length);
     callback ligne-mesuree(string, length);
     callback lien-clique(string, string);
@@ -195,4 +207,8 @@ export global DonneesMessagerie {
     callback recharger-epingles();
     callback reessayer-envoi(string);
     callback abandonner-envoi(string);
+    callback action-message(string, string);
+    callback menu-message(string, length, length);
+    callback menu-message-bouton(string, length, length, length);
+    callback reagir(string, string);
 }

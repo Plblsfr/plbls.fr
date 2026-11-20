@@ -17,6 +17,7 @@ use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
 use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
+use crate::menu::Ancre;
 use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
@@ -342,6 +343,18 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_abandonner_envoi, |p, _f, id| p
         .messagerie()
         .abandonner_envoi(&id));
+    rappel_messagerie!(on_action_message, |p, f, id, action| p
+        .messagerie()
+        .action_message(&f, &id, &action));
+    rappel_messagerie!(on_menu_message, |p, f, id, x, y| p
+        .messagerie()
+        .ouvrir_menu_message(&f, &id, Ancre::Point { x, y }));
+    rappel_messagerie!(on_menu_message_bouton, |p, f, id, x, haut, bas| p
+        .messagerie()
+        .ouvrir_menu_message(&f, &id, Ancre::Element { x, haut, bas }));
+    rappel_messagerie!(on_reagir, |p, _f, id, emoji| p
+        .messagerie()
+        .reagir(&id, &emoji));
     let s = f.global::<DonneesSaisie>();
     macro_rules! rappel_saisie {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -484,6 +497,21 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel!(on_onglet_marge_choisi, |p, f, onglet| p
         .choisir_onglet_marge(&f, onglet));
     rappel!(on_epingles_bascule, |p, f| p.basculer_epingles(&f));
+    rappel!(on_menu_salon, |p, f, id, x, y| p.menu_salon(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
+    rappel!(on_menu_prive, |p, f, id, x, y| p.menu_prive(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
+    rappel!(on_menu_membre, |p, f, id, x, y| p.menu_membre(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
     let source = emplacement.clone();
     brancher_messagerie(f, Arc::new(move || pont_courant(&source)));
     let faible = f.as_weak();

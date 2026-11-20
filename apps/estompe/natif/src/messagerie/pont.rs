@@ -17,6 +17,7 @@ use estompe_client::video::Conversions;
 use estompe_plateforme::{Fichiers, Indisponible, OuvertureUrl, PressePapiers};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 
+use super::actions::DroitsConversation;
 use super::annexes::{carte_affichee, chemin_libre, taille_de_vignette, CarteAffichee};
 use super::defilement::{Alignement, Defilement};
 use super::emoji;
@@ -37,10 +38,10 @@ use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
 use crate::{
-    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EpingleMessage, EtatConversation,
-    EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe,
-    GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe, Principale,
-    ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
+    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, DroitsLigne, EpingleMessage,
+    EtatConversation, EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage,
+    GenrePieceJointe, GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe,
+    Principale, ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
 };
 use estompe_client::autocompletion::{
     autocompletion, convertir_code, GenreProposition, Proposition,
@@ -79,7 +80,10 @@ thread_local! {
     static PROPRIETAIRE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
+mod actions;
 mod televersements;
+
+pub use actions::TITRE_MENU_MESSAGE;
 
 static IDENTIFIANTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -860,6 +864,14 @@ fn ligne_slint(
         annexes: annexes_slint(&m.annexes, &l.medias, &images, profils),
         etat_envoi: libelle_d_envoi(m.envoi.as_ref()).into(),
         envoi_echec: matches!(m.envoi, Some(EtatEnvoi::Echec(_))),
+        droits: DroitsLigne {
+            repondre: m.droits.repondre,
+            modifier: m.droits.modifier,
+            epingler: m.droits.epingler,
+            supprimer: m.droits.supprimer,
+            reagir: m.droits.reagir,
+            menu: m.droits.menu,
+        },
     }
 }
 
@@ -987,6 +999,18 @@ impl PontMessagerie {
             .store
             .lire(|etat| etat.peut_dans(Some(&cle), "send_messages")))
         .then_some(TEXTE_SANS_DROIT_D_ECRIRE)
+    }
+
+    fn droits_conversation(&self) -> DroitsConversation {
+        let Some(cle) = self.conversation() else {
+            return DroitsConversation::default();
+        };
+        let ecrire = self.raison_lecture_seule().is_none();
+        self.store.lire(|etat| DroitsConversation {
+            ecrire,
+            gerer: etat.peut_dans(Some(&cle), "manage_messages"),
+            reagir: etat.peut_dans(Some(&cle), "add_reactions"),
+        })
     }
 
     pub fn saisie(&self) -> &Saisie {
@@ -1183,26 +1207,27 @@ impl PontMessagerie {
                 .set_selecteur_ouvert(false);
         }
         match choix.cible {
-            CibleSelecteur::Saisie => {
-                let g = f.global::<crate::DonneesSaisie>();
-                self.saisie.definir_curseur(g.get_curseur().max(0) as usize);
-                let insere = self
-                    .saisie
-                    .inserer(&choix.insertion, g.get_ancre().max(0) as usize);
-                let change = self.remplacer_saisie(f, insere);
-                if !garder {
-                    self.saisie.demander_focus(f);
-                }
-                change
-            }
+            CibleSelecteur::Saisie => self.inserer_dans_la_saisie(f, &choix.insertion, !garder),
             CibleSelecteur::Reaction(message) => {
-                let store = self.store.clone();
-                self.runtime.spawn(async move {
-                    let _ = store.client().reagir(&message, &choix.insertion).await;
-                });
+                self.reagir(&message, &choix.insertion);
                 false
             }
         }
+    }
+
+    pub fn inserer_dans_la_saisie(&self, f: &Principale, texte: &str, focus: bool) -> bool {
+        let g = f.global::<crate::DonneesSaisie>();
+        self.saisie.definir_curseur(g.get_curseur().max(0) as usize);
+        let insere = self.saisie.inserer(texte, g.get_ancre().max(0) as usize);
+        let change = self.remplacer_saisie(f, insere);
+        if focus {
+            self.saisie.demander_focus(f);
+        }
+        change
+    }
+
+    pub fn ecriture_permise(&self) -> bool {
+        !self.verrou().lecture_seule
     }
 
     pub fn envoyer_saisie(&self, f: &Principale, texte: &str) -> bool {
@@ -1450,6 +1475,9 @@ impl PontMessagerie {
             };
         }
         let g = f.global::<DonneesMessagerie>();
+        if g.get_reactions_rapides().row_count() == 0 {
+            self.installer_reactions_rapides(f);
+        }
         vec_de(&g.get_lignes()).set_vec(Vec::new());
         g.set_defilement(0.0);
         g.set_visionneuse(Visionneuse::default());
@@ -1548,6 +1576,7 @@ impl PontMessagerie {
         };
         let aucun = BTreeMap::new();
         let maintenant = self.maintenant();
+        let droits = self.droits_conversation();
         let donnees: Vec<DonneesMessage> = self.store.lire(|etat| {
             let contexte = ContexteLignes {
                 etat,
@@ -1560,6 +1589,7 @@ impl PontMessagerie {
                 apercus,
                 lecteurs: &aucun,
                 envois: &[],
+                droits,
             };
             messages
                 .iter()
@@ -1585,6 +1615,7 @@ impl PontMessagerie {
                             .collect::<Vec<_>>(),
                     )),
                     fichiers: libelle_fichiers(m.annexes.pieces.len()).into(),
+                    desepingler: m.droits.epingler,
                 }
             })
             .collect();
@@ -1857,6 +1888,7 @@ impl PontMessagerie {
             std::borrow::Cow::Owned(tous)
         };
         let maintenant = self.maintenant();
+        let droits = self.droits_conversation();
         self.store.lire(|etat| {
             lignes_de_conversation(
                 &messages,
@@ -1871,6 +1903,7 @@ impl PontMessagerie {
                     apercus,
                     lecteurs: &lecteurs,
                     envois: &envois,
+                    droits,
                 },
             )
         })
@@ -1908,6 +1941,7 @@ impl PontMessagerie {
         };
         let maintenant = self.maintenant();
         let lecteurs = self.store.lecteurs(cle);
+        let droits = self.droits_conversation();
         let donnees = self.store.lire(|etat| {
             donnees_message(
                 &message,
@@ -1923,6 +1957,7 @@ impl PontMessagerie {
                     apercus,
                     lecteurs: &lecteurs,
                     envois: &[],
+                    droits,
                 },
             )
         });
@@ -3212,6 +3247,7 @@ mod tests {
                 contenu: contenu.into(),
                 annexes: DonneesAnnexes::default(),
                 envoi: None,
+                droits: Default::default(),
             }),
         }
     }

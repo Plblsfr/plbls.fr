@@ -22,7 +22,7 @@ pub use etat::{
 pub use reconciliation::reconcilier;
 pub use reducteur::{
     appliquer, appliquer_avec_effets, decision_lecture, definir_bas_de_liste, definir_focus,
-    lire_conversation, ouvrir_conversation, Application, Avis, Changement, Effet,
+    lire_conversation, marquer_non_lu, ouvrir_conversation, Application, Avis, Changement, Effet,
 };
 
 use crate::derniere_vue::{adresse_a_rouvrir, conversation_de_la_derniere_vue, DerniereVue};

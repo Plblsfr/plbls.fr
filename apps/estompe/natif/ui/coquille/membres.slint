@@ -1,5 +1,6 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
-import { Icone, Bouton, VarianteBouton, Avatar, Champ, ListeVirtuelle, BadgeRole, GenreBadgeRole, EtatPresence } from "../composants.slint";
+import { Icone, Bouton, VarianteBouton, Avatar, Champ, ListeVirtuelle, BadgeRole, GenreBadgeRole, EtatPresence, DonneesMenu } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
 import { DonneesCoquille, LigneMembre, LigneBadge, OngletMarge } from "donnees.slint";
 import { MargeEpingles } from "../messagerie/epingles.slint";
 
@@ -41,12 +42,27 @@ component EnTeteGroupe {
 component LigneMembreVue {
     in property <LigneMembre> ligne;
     property <bool> eteint: ligne.presence == EtatPresence.hors-ligne;
+    property <bool> menu-ouvert: DonneesMenu.ouvert;
+    property <bool> a-ouvert-menu: false;
+    changed menu-ouvert => {
+        if (!self.menu-ouvert && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            if (!DonneesMenu.focus-ailleurs) {
+                portee.focus();
+            }
+        }
+    }
+    function ouvrir-menu(x: length, y: length) {
+        root.a-ouvert-menu = true;
+        DonneesCoquille.menu-membre(root.ligne.utilisateur, x, y);
+    }
     accessible-role: button;
     accessible-label: ligne.nom;
     accessible-description: ligne.libelle-presence + (ligne.activite != "" ? ", joue à " + ligne.activite : "");
     accessible-action-default => {
         DonneesCoquille.ouvrir-membre(root.ligne.utilisateur);
     }
+    forward-focus: portee;
     Rectangle {
         x: 8px;
         width: parent.width - 16px;
@@ -54,10 +70,40 @@ component LigneMembreVue {
         background: zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
         animate background { duration: Mouvement.d; easing: Courbes.sortie; }
     }
-    zone := TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            DonneesCoquille.ouvrir-membre(root.ligne.utilisateur);
+    Anneau {
+        x: 4px;
+        y: 0;
+        width: parent.width - 8px;
+        height: parent.height;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesCoquille.ouvrir-membre(root.ligne.utilisateur);
+                return accept;
+            }
+            if (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                root.ouvrir-menu(root.absolute-position.x + 18px, root.absolute-position.y + root.height);
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                DonneesCoquille.ouvrir-membre(root.ligne.utilisateur);
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                    root.ouvrir-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
         }
     }
     HorizontalLayout {

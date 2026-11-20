@@ -13,12 +13,13 @@ use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::pieces::{ATTENDRE_LES_FICHIERS, FICHIERS_EN_ECHEC};
 use estompe_client::preferences::Preferences;
 use estompe_client::video::{codec_mp4, Conversions, Convertisseur, DOSSIER_CONVERSIONS};
-use estompe_natif::coquille::{Coquille, Depot};
+use estompe_natif::coquille::{Coquille, Depot, Pont};
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
-    GenreBandeau, LigneMessage, Page, PieceSaisie, Principale,
+    creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille, DonneesMenu,
+    DonneesMessagerie, DonneesSaisie, DonneesSelecteur, GenreBandeau, GenreLigneMessage,
+    LigneMessage, Page, PieceSaisie, Principale,
 };
 use estompe_plateforme::ContenuPressePapiers;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
@@ -225,7 +226,7 @@ fn mentions_et_selecteur(
             estompe_client::preferences::Preferences::charger(dossier)
                 .preferences
                 .emoji_recents
-                == ["😂"]
+                == ["😂", "👍"]
         },
         "récents enregistrés dans les préférences",
     );
@@ -479,6 +480,15 @@ fn pieces_jointes(
     *fabrique.presse_papiers.contenu.lock().unwrap() = None;
     coller(faible);
     assert_eq!(sur_l_interface(faible, |f| pieces(f).len()), 1);
+    let lien = format!("{}/#/s/s1/c1/299", serveur.adresse);
+    attendre_l_interface(
+        faible,
+        move |f| f.global::<DonneesSaisie>().get_texte() == lien.as_str(),
+        "sans fichier ni image, Ctrl+V colle le texte copié par « Copier le lien »",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesSaisie>().set_texte("".into());
+    });
 
     sur_l_interface(faible, {
         let depot = coquille.suivi_du_depot();
@@ -645,6 +655,308 @@ fn conversion_video(
     println!("317 C3 : conversion ou envoi annulé, aucun fichier temporaire");
 }
 
+fn traiter_les_changements(faible: &slint::Weak<Principale>) {
+    sur_l_interface(faible, |_| slint::platform::update_timers_and_animations());
+}
+
+fn entrees_du_menu(f: &Principale) -> Vec<String> {
+    let g = f.global::<DonneesMenu>();
+    if !g.get_ouvert() {
+        return Vec::new();
+    }
+    g.get_entrees().iter().map(|e| e.id.to_string()).collect()
+}
+
+fn cliquer_message(
+    faible: &slint::Weak<Principale>,
+    texte: &'static str,
+    bouton: PointerEventButton,
+) {
+    sur_l_interface(faible, move |f| {
+        let e = ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+            .find(|e| e.accessible_description().is_some_and(|d| d == texte))
+            .expect("message affiché");
+        let position = e.absolute_position();
+        let position =
+            slint::LogicalPosition::new(position.x + 66.0, position.y + e.size().height / 2.0);
+        f.window()
+            .dispatch_event(WindowEvent::PointerMoved { position });
+        f.window().dispatch_event(WindowEvent::PointerPressed {
+            position,
+            button: bouton,
+        });
+        f.window().dispatch_event(WindowEvent::PointerReleased {
+            position,
+            button: bouton,
+        });
+    });
+}
+
+fn menu_du_message(faible: &slint::Weak<Principale>, texte: &'static str, maj_f10: bool) {
+    traiter_les_changements(faible);
+    cliquer_message(faible, texte, PointerEventButton::Left);
+    if maj_f10 {
+        sur_l_interface(faible, |f| {
+            f.window().dispatch_event(WindowEvent::KeyPressed {
+                text: Key::Shift.into(),
+            });
+            appuyer(f, Key::F10);
+            f.window().dispatch_event(WindowEvent::KeyReleased {
+                text: Key::Shift.into(),
+            });
+        });
+    } else {
+        touche(faible, Key::Menu);
+    }
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesMenu>().get_ouvert(),
+        "menu du message ouvert au clavier",
+    );
+    traiter_les_changements(faible);
+}
+
+fn choisir_au_clavier(faible: &slint::Weak<Principale>, action: &'static str) {
+    let rang = sur_l_interface(faible, move |f| {
+        entrees_du_menu(f)
+            .iter()
+            .position(|e| e == action)
+            .unwrap_or_else(|| panic!("entrée {action} dans {:?}", entrees_du_menu(f)))
+    });
+    for _ in 0..rang {
+        touche(faible, Key::DownArrow);
+    }
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesMenu>().get_ouvert(),
+        "menu refermé après le choix",
+    );
+}
+
+fn reactions_de(f: &Principale, id: &str) -> Vec<(String, bool)> {
+    lignes(f)
+        .into_iter()
+        .find(|l| l.id == id)
+        .map(|l| {
+            l.annexes
+                .reactions
+                .iter()
+                .map(|r| (r.emoji.to_string(), r.moi))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn non_lus_du_salon(f: &Principale, salon: &str) -> i32 {
+    f.global::<DonneesCoquille>()
+        .get_salons()
+        .iter()
+        .find(|s| s.id == salon)
+        .map_or(0, |s| s.non_lus)
+}
+
+fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages, pont: &Pont) {
+    let message = "message n°299";
+    cliquer_message(faible, "message n°298", PointerEventButton::Right);
+    attendre_l_interface(
+        faible,
+        |f| entrees_du_menu(f).first().is_some_and(|e| e == "repondre"),
+        "clic droit sur un message : menu ouvert au curseur",
+    );
+    traiter_les_changements(faible);
+    touche(faible, Key::Escape);
+    menu_du_message(faible, message, false);
+    let entrees = sur_l_interface(faible, entrees_du_menu);
+    assert_eq!(
+        entrees,
+        [
+            "repondre",
+            "epingler",
+            "reagir",
+            "copier-texte",
+            "copier-lien",
+            "non-lu",
+            "signaler",
+            "supprimer"
+        ],
+        "menu complet sur le message d'un autre avec le droit de gérer les messages"
+    );
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesMenu>().get_ouvert(),
+        "Échap ferme le menu",
+    );
+    menu_du_message(faible, message, true);
+    choisir_au_clavier(faible, "repondre");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_bandeau().genre == GenreBandeau::Reponse,
+        "Répondre ouvre le bandeau de réponse",
+    );
+    touche(faible, Key::Escape);
+
+    menu_du_message(faible, message, false);
+    choisir_au_clavier(faible, "epingler");
+    attendre(
+        || serveur.nombre_de("PUT /messages/299/pin") == 1,
+        "épinglage envoyé",
+    );
+
+    menu_du_message(faible, message, false);
+    choisir_au_clavier(faible, "reagir");
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesSelecteur>();
+            g.get_ouvert() && g.get_rangees().row_count() > 0
+        },
+        "le sélecteur s'ouvre pour une réaction",
+    );
+    taper(faible, "thumbsup");
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| reactions_de(f, "299") == [("👍".to_string(), true)],
+        "réaction ajoutée par le sélecteur",
+    );
+    attendre(
+        || serveur.nombre_de("PUT /messages/299/reactions/") == 1,
+        "réaction envoyée",
+    );
+    cliquer_message(faible, message, PointerEventButton::Left);
+    touche(faible, Key::Tab);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| reactions_de(f, "299").is_empty(),
+        "Entrée sur la réaction la retire",
+    );
+    attendre(
+        || serveur.nombre_de("DELETE /messages/299/reactions/") == 1,
+        "retrait de la réaction envoyé",
+    );
+
+    menu_du_message(faible, message, false);
+    choisir_au_clavier(faible, "copier-texte");
+    assert_eq!(
+        sur_l_interface(faible, |f| f
+            .global::<DonneesCopie>()
+            .get_texte()
+            .to_string()),
+        message
+    );
+    menu_du_message(faible, message, false);
+    choisir_au_clavier(faible, "copier-lien");
+    let lien = format!("{}/#/s/s1/c1/299", serveur.adresse);
+    assert_eq!(
+        sur_l_interface(faible, |f| f
+            .global::<DonneesCopie>()
+            .get_texte()
+            .to_string()),
+        lien
+    );
+
+    menu_du_message(faible, message, false);
+    choisir_au_clavier(faible, "non-lu");
+    attendre_l_interface(
+        faible,
+        |f| {
+            non_lus_du_salon(f, "c1") > 0
+                && lignes(f)
+                    .iter()
+                    .any(|l| l.genre == GenreLigneMessage::Nouveau)
+        },
+        "marqué comme non lu : compteur du salon et séparateur",
+    );
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "général")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::Button))
+            .expect("salon dans le panneau")
+            .mock_single_click(PointerEventButton::Right);
+    });
+    attendre_l_interface(
+        faible,
+        |f| entrees_du_menu(f) == ["lu", "lien"],
+        "menu contextuel du salon",
+    );
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| non_lus_du_salon(f, "c1") == 0,
+        "« Marquer comme lu » depuis le panneau",
+    );
+
+    menu_du_message(faible, message, false);
+    touche(faible, Key::End);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesConfirmation>().get_ouverte(),
+        "Supprimer demande confirmation",
+    );
+    traiter_les_changements(faible);
+    touche(faible, Key::Tab);
+    touche(faible, Key::Tab);
+    touche(faible, Key::Return);
+    attendre(
+        || {
+            serveur
+                .requetes
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r == "DELETE /messages/299")
+        },
+        "suppression envoyée après confirmation",
+    );
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesConfirmation>().get_ouverte()
+                && !lignes(f).iter().any(|l| l.id == "299")
+        },
+        "message retiré de la liste",
+    );
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas()
+    });
+    attendre(|| pont.messagerie().colle(), "liste revenue en bas");
+    traiter_les_changements(faible);
+    menu_du_message(faible, "Bonjour à tous, modifié", false);
+    choisir_au_clavier(faible, "modifier");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_bandeau().genre == GenreBandeau::Modification,
+        "Modifier ouvre le bandeau de modification",
+    );
+    touche(faible, Key::Escape);
+
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "Caro")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::Button))
+            .expect("carol dans la liste des membres")
+            .mock_single_click(PointerEventButton::Right);
+    });
+    attendre_l_interface(
+        faible,
+        |f| entrees_du_menu(f) == ["profil", "mentionner", "pseudo"],
+        "menu contextuel d'un membre",
+    );
+    choisir_au_clavier(faible, "mentionner");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_texte() == "@carol ",
+        "« Mentionner » insère la mention dans le champ",
+    );
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesSaisie>().set_texte("".into());
+    });
+    println!("318 C3 : menu au clavier (Menu, Maj+F10), répondre, épingler, réagir, retirer, copier, non lu, supprimer confirmé, modifier ; menus du panneau et des membres");
+}
+
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
     f.global::<DonneesCoquille>()
         .get_salons()
@@ -760,6 +1072,7 @@ fn scenario(
         "réessayer envoie le message",
     );
 
+    actions_et_menus(&faible, &serveur, &pont);
     mentions_et_selecteur(&faible, &serveur, &dossier);
 
     taper(&faible, "brouillon à garder");
