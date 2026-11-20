@@ -57,10 +57,7 @@ impl Fichiers for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
-    fn choisir_dossier(
-        &self,
-        _: Option<&std::path::Path>,
-    ) -> Resultat<Option<std::path::PathBuf>> {
+    fn choisir_dossier(&self, _: Option<&std::path::Path>) -> Resultat<Option<std::path::PathBuf>> {
         refus("choix d'un dossier")
     }
     fn ouvrir(&self, _: &std::path::Path) -> Resultat<()> {

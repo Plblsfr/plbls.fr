@@ -205,7 +205,9 @@ mod tests {
         );
         let sans = carte_affichee(
             "https://plbls.fr/a",
-            Some(&apercu(json!({"url": "https://plbls.fr/a", "title": "Titre", "image": "javascript:x"}))),
+            Some(&apercu(
+                json!({"url": "https://plbls.fr/a", "title": "Titre", "image": "javascript:x"}),
+            )),
         );
         assert_eq!(sans.image(), None);
         assert_eq!(sans.url(), Some("https://plbls.fr/a"));
@@ -242,14 +244,21 @@ mod tests {
             );
         }
         assert_eq!(
-            chemin_libre(dossier.path(), "..\\..\\evil.dll").file_name().unwrap(),
+            chemin_libre(dossier.path(), "..\\..\\evil.dll")
+                .file_name()
+                .unwrap(),
             "evil.dll"
         );
-        assert_eq!(chemin_libre(dossier.path(), "CON").file_name().unwrap(), "_CON");
+        assert_eq!(
+            chemin_libre(dossier.path(), "CON").file_name().unwrap(),
+            "_CON"
+        );
         std::fs::write(dossier.path().join("rapport.pdf"), b"x").unwrap();
         std::fs::write(dossier.path().join("rapport (1).pdf"), b"x").unwrap();
         assert_eq!(
-            chemin_libre(dossier.path(), "rapport.pdf").file_name().unwrap(),
+            chemin_libre(dossier.path(), "rapport.pdf")
+                .file_name()
+                .unwrap(),
             "rapport (2).pdf"
         );
     }

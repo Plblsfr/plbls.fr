@@ -385,7 +385,7 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   hors de l'écran (aucun réveil ni image en 10 s simulées), le téléchargement d'un fichier au nom hostile dans un dossier temporaire puis son ouverture, la
   visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
-  Par défaut 16 pas de 3 000 px (16 s simulées) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées).
+  Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 
 ## CI

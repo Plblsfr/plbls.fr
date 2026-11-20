@@ -31,8 +31,10 @@ pub trait OuvertureUrl {
 
 pub trait Fichiers {
     fn disponible(&self) -> bool;
-    fn choisir_dossier(&self, depart: Option<&std::path::Path>)
-        -> Resultat<Option<std::path::PathBuf>>;
+    fn choisir_dossier(
+        &self,
+        depart: Option<&std::path::Path>,
+    ) -> Resultat<Option<std::path::PathBuf>>;
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
 }
 

@@ -1,16 +1,14 @@
 use std::collections::HashSet;
 
-use estompe_client::format::{date_heure_complete, heure_de, lignes_de_messages, Ligne};
-use estompe_client::mention::Mentionnables;
-use estompe_client::roles::{couleur_du_pseudo, Membre};
-use estompe_client::store::messages::{auteur, est_compte_estompe, id_message};
-use estompe_client::store::{CleConversation, Etat};
 use estompe_client::emoji::titre_de_reaction;
 use estompe_client::fichiers::{categorie, nom_de_fichier_sur, CategoriePiece};
 use estompe_client::format::taille_lisible;
-use estompe_client::sondage::{
-    est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total,
-};
+use estompe_client::format::{date_heure_complete, heure_de, lignes_de_messages, Ligne};
+use estompe_client::mention::Mentionnables;
+use estompe_client::roles::{couleur_du_pseudo, Membre};
+use estompe_client::sondage::{est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total};
+use estompe_client::store::messages::{auteur, est_compte_estompe, id_message};
+use estompe_client::store::{CleConversation, Etat};
 use estompe_client::types::{Attachment, Message, MessagePoll};
 
 pub const TITRE_REACTION_MAX: usize = 3;
@@ -231,9 +229,7 @@ pub fn sondage(sondage: &MessagePoll, maintenant_ms: i64) -> DonneesSondage {
     let gagnants = if clos { gagnants(options) } else { Vec::new() };
     let auteur = sondage.created_by.as_ref();
     DonneesSondage {
-        auteur: auteur
-            .and_then(|p| p.pseudo.clone())
-            .unwrap_or_default(),
+        auteur: auteur.and_then(|p| p.pseudo.clone()).unwrap_or_default(),
         auteur_bot: auteur
             .and_then(|p| p.id.as_deref())
             .is_some_and(est_compte_estompe),
@@ -253,12 +249,7 @@ pub fn sondage(sondage: &MessagePoll, maintenant_ms: i64) -> DonneesSondage {
                 }
             })
             .collect(),
-        pied: libelle_du_pied(
-            total,
-            sondage.multiple == Some(true),
-            clos_a,
-            maintenant_ms,
-        ),
+        pied: libelle_du_pied(total, sondage.multiple == Some(true), clos_a, maintenant_ms),
         fin_ms: fin_en_ms(clos_a).filter(|fin| *fin > maintenant_ms),
     }
 }

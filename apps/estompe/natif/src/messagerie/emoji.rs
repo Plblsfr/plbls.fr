@@ -131,8 +131,11 @@ impl Paquet {
             return Some(bloc.clone());
         }
         let b = self.blocs.get(usize::from(numero))?;
-        let compresse = self.donnees.get(b.debut..b.debut.checked_add(b.compresse)?)?;
-        let brut = miniz_oxide::inflate::decompress_to_vec_with_limit(compresse, b.longueur).ok()?;
+        let compresse = self
+            .donnees
+            .get(b.debut..b.debut.checked_add(b.compresse)?)?;
+        let brut =
+            miniz_oxide::inflate::decompress_to_vec_with_limit(compresse, b.longueur).ok()?;
         let brut = Arc::new(brut);
         cache.inserer(numero, brut.clone());
         Some(brut)

@@ -32,10 +32,10 @@ use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
 use crate::{
-    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EtatConversation,
-    EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe,
-    GenreSegment, LigneMessage, OptionSondage, PieceJointe, Principale, ReactionMessage,
-    ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
+    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EtatConversation, EtatTelechargement,
+    GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe, GenreSegment, LigneMessage,
+    OptionSondage, PieceJointe, Principale, ReactionMessage, ReponseMessage, SegmentTexte,
+    SondageMessage, Theme, Visionneuse,
 };
 
 pub type Fuseau = Arc<dyn Fn(i64) -> i32 + Send + Sync>;
@@ -368,7 +368,11 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
     if m.annexes.images().next().is_some() {
         h += 196.0;
     }
-    if m.annexes.pieces.iter().any(|p| p.genre != GenrePiece::Image) {
+    if m.annexes
+        .pieces
+        .iter()
+        .any(|p| p.genre != GenrePiece::Image)
+    {
         h += 44.0;
     }
     if m.annexes.lien.is_some() {
@@ -725,7 +729,12 @@ fn ligne_slint(
     let blocs: Vec<BlocTexte> = l
         .rendus
         .as_ref()
-        .map(|r| r.blocs.iter().map(|b| bloc_slint(b, Some(&images))).collect())
+        .map(|r| {
+            r.blocs
+                .iter()
+                .map(|b| bloc_slint(b, Some(&images)))
+                .collect()
+        })
         .unwrap_or_default();
     LigneMessage {
         cle: d.cle.as_str().into(),
@@ -822,8 +831,9 @@ impl SourceMedias for SourceIndisponible {
     }
     fn emojis(
         &self,
-    ) -> Futur<Result<Vec<estompe_client::appels::EmojiPersonnalise>, estompe_client::http::ErreurApi>>
-    {
+    ) -> Futur<
+        Result<Vec<estompe_client::appels::EmojiPersonnalise>, estompe_client::http::ErreurApi>,
+    > {
         Box::pin(async { Err(estompe_client::http::ErreurApi::DelaiDepasse) })
     }
     fn apercu(
@@ -897,11 +907,17 @@ impl PontMessagerie {
     }
 
     pub fn definir_presse_papiers(&self, presse: Presse) {
-        *self.presse_papiers.lock().unwrap_or_else(|e| e.into_inner()) = presse;
+        *self
+            .presse_papiers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = presse;
     }
 
     pub fn definir_dossier_par_defaut(&self, dossier: DossierParDefaut) {
-        *self.dossier_par_defaut.lock().unwrap_or_else(|e| e.into_inner()) = dossier;
+        *self
+            .dossier_par_defaut
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = dossier;
     }
 
     pub fn definir_apercus(&self, apercus: bool) {
@@ -1914,12 +1930,10 @@ impl PontMessagerie {
             {
                 continue;
             }
-            let image = medias
-                .emoji(&segment.cible, serveur)
-                .map(|e| CleImage {
-                    source: Source::Emoji(e.id),
-                    format: Format::Emoji,
-                });
+            let image = medias.emoji(&segment.cible, serveur).map(|e| CleImage {
+                source: Source::Emoji(e.id),
+                format: Format::Emoji,
+            });
             let chargee = image.as_ref().is_some_and(|c| medias.image(c).is_some());
             if let Some(c) = &image {
                 if !chargee && !medias.en_echec(c) && i.demandes_images.insert(c.clone()) {
@@ -1939,9 +1953,11 @@ impl PontMessagerie {
             Some(lien) => match medias.apercu(lien, Some(&m.id)) {
                 Some(apercu) => carte_affichee(lien, apercu.as_ref()),
                 None => {
-                    if i
-                        .demandes_apercus
-                        .insert(estompe_client::apercu_liens::cle_de_cache(Some(&m.id), lien))
+                    if i.demandes_apercus
+                        .insert(estompe_client::apercu_liens::cle_de_cache(
+                            Some(&m.id),
+                            lien,
+                        ))
                     {
                         d.apercus.push((lien.clone(), m.id.clone()));
                     }
@@ -1987,12 +2003,13 @@ impl PontMessagerie {
         self.runtime.spawn(async move {
             medias.charger_apercu(&lien, Some(&message)).await;
             let p = pont.clone();
-            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
-                p.verrou()
-                    .demandes_apercus
-                    .remove(&estompe_client::apercu_liens::cle_de_cache(Some(&message), &lien));
-                p.rafraichir(&f);
-            });
+            let _ =
+                pont.fenetre.upgrade_in_event_loop(move |f| {
+                    p.verrou().demandes_apercus.remove(
+                        &estompe_client::apercu_liens::cle_de_cache(Some(&message), &lien),
+                    );
+                    p.rafraichir(&f);
+                });
         });
     }
 
@@ -2041,11 +2058,17 @@ impl PontMessagerie {
                     .filter(|(_, p)| p.chargee && p.donnees.anime)
                     .map(|(n, p)| (Emplacement::Piece(n), cle_vignette(&p.donnees.id)))
                     .collect();
-                cibles.extend(l.medias.emojis.iter().filter(|e| e.chargee).filter_map(|e| {
-                    e.image
-                        .clone()
-                        .map(|c| (Emplacement::Emoji(e.nom.clone()), c))
-                }));
+                cibles.extend(
+                    l.medias
+                        .emojis
+                        .iter()
+                        .filter(|e| e.chargee)
+                        .filter_map(|e| {
+                            e.image
+                                .clone()
+                                .map(|c| (Emplacement::Emoji(e.nom.clone()), c))
+                        }),
+                );
                 for (emplacement, cle) in cibles {
                     let Some(Decodee::Animee(a)) = medias.image(&cle) else {
                         continue;
@@ -2205,7 +2228,12 @@ impl PontMessagerie {
     }
 
     pub fn visionneuse_voisine(&self, f: &Principale, sens: i32) {
-        let Some(message) = self.verrou().visionneuse.as_ref().map(|v| v.message.clone()) else {
+        let Some(message) = self
+            .verrou()
+            .visionneuse
+            .as_ref()
+            .map(|v| v.message.clone())
+        else {
             return;
         };
         let total = self.images_du_message(&message).len();

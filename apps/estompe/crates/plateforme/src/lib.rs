@@ -16,8 +16,8 @@ pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use traits::{
     ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, Fichiers, Image,
-    Notification, Notifications, OuvertureUrl, Overlay, PremierPlan, RaccourcisGlobaux,
-    PressePapiers, RecepteurSon, SourceCapture, TypeSource,
+    Notification, Notifications, OuvertureUrl, Overlay, PremierPlan, PressePapiers,
+    RaccourcisGlobaux, RecepteurSon, SourceCapture, TypeSource,
 };
 pub use url::NavigateurSysteme;
 

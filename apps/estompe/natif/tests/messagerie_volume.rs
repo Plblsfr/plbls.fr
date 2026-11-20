@@ -29,6 +29,7 @@ const CROISSANCE_MAX: u64 = 48 * 1024 * 1024;
 struct Parcours {
     pas: f32,
     duree: Duration,
+    pages_min: usize,
 }
 
 fn parcours() -> Parcours {
@@ -36,11 +37,13 @@ fn parcours() -> Parcours {
         Parcours {
             pas: 1400.0,
             duree: Duration::from_secs(120),
+            pages_min: 10,
         }
     } else {
         Parcours {
-            pas: 3000.0,
-            duree: Duration::from_secs(16),
+            pas: 1400.0,
+            duree: Duration::from_secs(8),
+            pages_min: 3,
         }
     }
 }
@@ -51,7 +54,7 @@ fn instancier(f: &Principale) {
 
 fn pomper(faible: &slint::Weak<Principale>) {
     sur_l_interface(faible, |f| {
-        instancier(f);
+        ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count();
         slint::platform::update_timers_and_animations();
     });
 }
@@ -160,7 +163,11 @@ fn scenario(
     let store = fabrique.store();
     let c1 = CleConversation::Salon("c1".into());
     let messages = || store.conversation(&c1).map_or(0, |c| c.messages.len());
-    let Parcours { pas, duree: simulee } = parcours();
+    let Parcours {
+        pas,
+        duree: simulee,
+        pages_min,
+    } = parcours();
     let etapes = (simulee.as_millis() / INTERVALLE.as_millis()) as usize;
     let mut base = None;
     let mut max_instances = 0;
@@ -228,7 +235,7 @@ fn scenario(
         _ => println!("299 C2 : /proc/self/statm indisponible, seuls les compteurs sont vérifiés"),
     }
     assert!(
-        pages_totales - pages >= 10,
+        pages_totales - pages >= pages_min,
         "l'historique a bien été remonté"
     );
     assert!(

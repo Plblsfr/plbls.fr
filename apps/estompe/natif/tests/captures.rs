@@ -1,20 +1,20 @@
 mod commun;
 
 use chrono::NaiveDate;
+use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::store::messages::ChangementMessages;
 use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::temps_reel::EtatReseau;
+use estompe_client::types::LinkPreview;
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
 };
 use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
-use estompe_client::appels::EmojiPersonnalise;
-use estompe_client::types::LinkPreview;
 use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
 use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::{
@@ -678,7 +678,12 @@ fn medias_des_captures() -> Arc<Medias> {
         ("g1", photo(480, 360, [150, 210, 160], [90, 120, 80])),
     ];
     for (id, octets) in &photos {
-        installer(&medias, Source::Fichier((*id).into()), Format::Vignette, octets);
+        installer(
+            &medias,
+            Source::Fichier((*id).into()),
+            Format::Vignette,
+            octets,
+        );
     }
     installer(
         &medias,
@@ -760,10 +765,7 @@ fn medias_des_captures() -> Arc<Medias> {
     medias
 }
 
-fn messagerie_avec(
-    f: &Principale,
-    messages: Vec<estompe_client::types::Message>,
-) -> Pont {
+fn messagerie_avec(f: &Principale, messages: Vec<estompe_client::types::Message>) -> Pont {
     let pont = coquille_complete(
         f,
         commun::coquille::etat_avec_membres(),
@@ -782,12 +784,8 @@ fn messagerie_emoji(f: &Principale) {
 
 fn messagerie_pieces(f: &Principale) {
     let pont = messagerie_avec(f, commun::coquille::conversation_pieces());
-    pont.messagerie().noter_telechargement(
-        "f2",
-        Telechargement::EnCours,
-        42,
-        "",
-    );
+    pont.messagerie()
+        .noter_telechargement("f2", Telechargement::EnCours, 42, "");
     pont.messagerie().noter_telechargement(
         "f1",
         Telechargement::Termine,

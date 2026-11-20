@@ -194,6 +194,7 @@ pub mod coquille {
     use std::sync::{Arc, Mutex};
 
     use estompe_client::appels::Badge;
+    use estompe_client::appels::EmojiPersonnalise;
     use estompe_client::http::{Client, ErreurApi};
     use estompe_client::sections::Section;
     use estompe_client::store::{CleConversation, Etat, ParticipantVocal, Store};
@@ -201,7 +202,6 @@ pub mod coquille {
     use estompe_natif::coquille::{
         CleAvatar, EchecOuverture, Fabrique, Ouverture, Profils, SourceProfils,
     };
-    use estompe_client::appels::EmojiPersonnalise;
     use estompe_natif::entree::Futur;
     use estompe_natif::messagerie::medias::{Medias, Progres, Source, SourceMedias};
     use estompe_plateforme::Fichiers;
@@ -373,7 +373,13 @@ pub mod coquille {
                 "2026-11-19T08:12:30Z",
                 "Les emoji du serveur : :chaton: et :fete: dans une phrase.",
             ),
-            ecrit("504", c1, ("ines", "Inès"), "2026-11-19T08:13:00Z", ":chaton:"),
+            ecrit(
+                "504",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:13:00Z",
+                ":chaton:",
+            ),
             ecrit(
                 "505",
                 c1,

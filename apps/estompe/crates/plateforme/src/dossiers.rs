@@ -155,7 +155,10 @@ mod tests {
             Some(PathBuf::from("/data/dl"))
         );
         assert_eq!(dossier_declare("XDG_DOWNLOAD_DIR=\"$HOME/\"", maison), None);
-        assert_eq!(dossier_declare("XDG_DOWNLOAD_DIR=\"relatif\"", maison), None);
+        assert_eq!(
+            dossier_declare("XDG_DOWNLOAD_DIR=\"relatif\"", maison),
+            None
+        );
         assert_eq!(dossier_declare("XDG_MUSIC_DIR=\"$HOME/M\"", maison), None);
     }
 

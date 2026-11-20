@@ -50,7 +50,7 @@ const sequences = new Map()
 for (const e of donnees) {
   for (const v of [e, ...Object.values(e.skin_variations ?? {})]) {
     const cles = [texte(v.unified)]
-    if (v.non_qualified && v.non_qualified.includes('-')) cles.push(texte(v.non_qualified))
+    if (v.non_qualified?.includes('-')) cles.push(texte(v.non_qualified))
     sequences.set(v.unified.toLowerCase(), { cles, candidats: candidats(v.unified) })
   }
 }

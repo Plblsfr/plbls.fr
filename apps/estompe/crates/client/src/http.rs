@@ -834,7 +834,9 @@ mod tests {
         let mut etapes = Vec::new();
         let recus = serveur
             .client()
-            .telecharger("/files/f1", &destination, |n, total| etapes.push((n, total)))
+            .telecharger("/files/f1", &destination, |n, total| {
+                etapes.push((n, total))
+            })
             .await
             .unwrap();
         assert_eq!(recus, 200_000);
@@ -862,7 +864,10 @@ mod tests {
             ServeurFactice::demarrer([Reponse::brute(200, "image/png", &[1u8; 1000])]).await;
         let client = serveur.client().avec_jeton(|| Some("secret".to_string()));
         let url = format!("{}/image.png", serveur.adresse());
-        assert_eq!(client.octets_externes(&url, 4096).await.unwrap().len(), 1000);
+        assert_eq!(
+            client.octets_externes(&url, 4096).await.unwrap().len(),
+            1000
+        );
         assert_eq!(serveur.requetes()[0].entete("authorization"), None);
         serveur.programmer([Reponse::brute(200, "image/png", &[1u8; 5000])]);
         assert!(client.octets_externes(&url, 4096).await.is_err());

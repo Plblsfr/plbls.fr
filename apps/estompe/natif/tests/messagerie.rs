@@ -15,8 +15,8 @@ use estompe_client::preferences::Preferences;
 use estompe_client::store::CleConversation;
 use estompe_natif::coquille::modeles::Operation;
 use estompe_natif::coquille::{Coquille, Pont};
-use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::entree::{self, Entree, Machine};
+use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, LigneMessage, Page, Principale,
@@ -584,7 +584,11 @@ fn pieces_jointes_sondage_et_telechargement(
         faible,
         |f| {
             let v = f.global::<DonneesMessagerie>().get_visionneuse();
-            v.index == 0 && v.nom == "geante.png" && v.zoom == 2.0 && v.chargee && v.largeur == 2048.0
+            v.index == 0
+                && v.nom == "geante.png"
+                && v.zoom == 2.0
+                && v.chargee
+                && v.largeur == 2048.0
         },
         "image précédente zoomée",
     );
@@ -638,7 +642,6 @@ fn pieces_jointes_sondage_et_telechargement(
         "réaction reçue en temps réel",
     );
     println!("302 : réaction 🍕 reçue en temps réel, dessinée en image");
-
 }
 
 #[test]

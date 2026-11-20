@@ -546,7 +546,12 @@ pub fn seulement_des_emoji(blocs: &[BlocAffiche]) -> bool {
             return false;
         }
         if !bloc.en_segments() {
-            if bloc.balisage.trim_matches(SEPARATEUR_INVISIBLE).trim().is_empty() {
+            if bloc
+                .balisage
+                .trim_matches(SEPARATEUR_INVISIBLE)
+                .trim()
+                .is_empty()
+            {
                 continue;
             }
             return false;
@@ -592,7 +597,9 @@ pub fn blocs_affiches(
     if modifie {
         let marque = couleur(echapper("(modifié)"), &palette.discret);
         match sortie.last_mut() {
-            Some(dernier) if dernier.genre == GenreBlocAffiche::Paragraphe && dernier.en_segments() => {
+            Some(dernier)
+                if dernier.genre == GenreBlocAffiche::Paragraphe && dernier.en_segments() =>
+            {
                 if let Some(precedent) = dernier.segments.last_mut() {
                     precedent.espace = true;
                 }
@@ -822,7 +829,9 @@ mod tests {
                 (GenreSegmentAffiche::Texte, ":inconnu:"),
             ]
         );
-        assert!(phrase[0].segments[2].balisage.contains("u:https://plbls.fr"));
+        assert!(phrase[0].segments[2]
+            .balisage
+            .contains("u:https://plbls.fr"));
         assert!(!phrase[0].grand);
         let seuls = blocs("🇫🇷 👩🏾‍💻\n:chat:");
         assert_eq!(seuls.len(), 2);

@@ -10,9 +10,9 @@ use crate::store::CleConversation;
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, GetChannelsCidReadsReponseElement, GetMeReponse, GetServersIdReponse,
-    GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, MessagePage, Name50, NotifySettings,
-    Person, PostActivateRequete, PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete,
-    PostNotificationsReadRequete, PutMeStatusRequete, Server, DM,
+    GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, MessagePage, Name50,
+    NotifySettings, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
+    PostAdminBadgesRequete, PostNotificationsReadRequete, PutMeStatusRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -801,7 +801,11 @@ mod tests {
             name: nom.into(),
             created_by: String::new(),
         };
-        let liste = [e("1", "s1", "chat"), e("2", "s2", "chat"), e("3", "s2", "chien")];
+        let liste = [
+            e("1", "s1", "chat"),
+            e("2", "s2", "chat"),
+            e("3", "s2", "chien"),
+        ];
         assert_eq!(resoudre_emoji(&liste, "chat", Some("s2")).unwrap().id, "2");
         assert_eq!(resoudre_emoji(&liste, "CHAT", Some("s3")).unwrap().id, "1");
         assert_eq!(resoudre_emoji(&liste, "chat", None).unwrap().id, "1");

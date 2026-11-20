@@ -211,7 +211,7 @@ fn reduire(image: image::DynamicImage, format: Format) -> image::RgbaImage {
 
 fn delai(d: image::Delay) -> Duration {
     let (n, dd) = d.numer_denom_ms();
-    let ms = if dd == 0 { 0 } else { n / dd };
+    let ms = n.checked_div(dd).unwrap_or(0);
     let duree = Duration::from_millis(u64::from(ms));
     if duree < DELAI_IMAGE_MIN {
         DELAI_IMAGE_PAR_DEFAUT
@@ -353,7 +353,7 @@ impl SourceMedias for Client {
         );
         Box::pin(async move {
             client
-                .telecharger(&chemin, &destination, |n, total| progres(n, total))
+                .telecharger(&chemin, &destination, &mut progres)
                 .await
         })
     }
@@ -669,7 +669,10 @@ mod tests {
         let (miniature, _) = decoder(&png(1200, 1200), Format::Miniature, usize::MAX).unwrap();
         assert_eq!(miniature.dimensions(), (520, 293));
         assert!(decoder(b"pas une image", Format::Vignette, usize::MAX).is_err());
-        assert_eq!(decoder_original(&png(1200, 600)).unwrap().dimensions(), (1200, 600));
+        assert_eq!(
+            decoder_original(&png(1200, 600)).unwrap().dimensions(),
+            (1200, 600)
+        );
     }
 
     #[test]
@@ -680,7 +683,10 @@ mod tests {
             panic!("animation attendue");
         };
         assert_eq!(a.images.len(), 4);
-        assert!(a.images.iter().all(|(_, d)| *d == Duration::from_millis(80)));
+        assert!(a
+            .images
+            .iter()
+            .all(|(_, d)| *d == Duration::from_millis(80)));
         let (fixe, _) = decoder(&gif(4), Format::Visionneuse, usize::MAX).unwrap();
         assert!(matches!(fixe, Decodee::Fixe(_)));
         let (seule, _) = decoder(&gif(1), Format::Vignette, usize::MAX).unwrap();
@@ -694,7 +700,11 @@ mod tests {
 
     #[test]
     fn une_image_demesuree_est_refusee_au_lieu_d_etre_allouee() {
-        let erreur = decoder(&png(COTE_DECODABLE_MAX + 1, 1), Format::Vignette, usize::MAX);
+        let erreur = decoder(
+            &png(COTE_DECODABLE_MAX + 1, 1),
+            Format::Vignette,
+            usize::MAX,
+        );
         assert!(erreur.is_err());
     }
 
@@ -711,8 +721,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn c2_une_image_de_8000_pixels_est_decodee_hors_de_l_interface_et_reste_sous_le_plafond(
-    ) {
+    async fn c2_une_image_de_8000_pixels_est_decodee_hors_de_l_interface_et_reste_sous_le_plafond()
+    {
         let source = Arc::new(SourceEssai::default());
         *verrou(&source.contenu) = png(8000, 8000);
         let dossier = tempfile::tempdir().unwrap();
@@ -773,8 +783,14 @@ mod tests {
             .await
             .is_none());
         assert!(medias.en_echec(&cle("x", Format::Vignette)));
-        assert!(medias.charger_apercu("https://a.fr", Some("1")).await.is_none());
-        assert!(medias.charger_apercu("https://a.fr", Some("1")).await.is_none());
+        assert!(medias
+            .charger_apercu("https://a.fr", Some("1"))
+            .await
+            .is_none());
+        assert!(medias
+            .charger_apercu("https://a.fr", Some("1"))
+            .await
+            .is_none());
         assert_eq!(medias.apercu("https://a.fr", Some("1")), Some(None));
         assert_eq!(source.requetes.load(Ordering::SeqCst), 2);
     }
