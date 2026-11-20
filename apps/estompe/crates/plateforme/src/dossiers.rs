@@ -70,7 +70,8 @@ fn telechargements_de_l_os() -> Option<PathBuf> {
     Some(declare.unwrap_or_else(|| maison.join("Downloads")))
 }
 
-pub fn dossier_declare(texte: &str, maison: &Path) -> Option<PathBuf> {
+#[cfg(not(windows))]
+fn dossier_declare(texte: &str, maison: &Path) -> Option<PathBuf> {
     let valeur = texte
         .lines()
         .filter_map(|l| l.trim().strip_prefix("XDG_DOWNLOAD_DIR="))
@@ -143,6 +144,7 @@ mod tests {
         assert!(d.cache.starts_with(&d.donnees) && d.journaux.starts_with(&d.donnees));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn le_dossier_des_telechargements_suit_user_dirs() {
         let maison = Path::new("/home/u");

@@ -8,8 +8,7 @@ mod url;
 
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use dossiers::{
-    dossier_declare, dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT,
-    VARIABLE_DOSSIER,
+    dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
 };
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
