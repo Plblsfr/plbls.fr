@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,8 +17,10 @@ use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
 use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
+use crate::messagerie::medias::Medias;
+use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::session::Memoire;
-use crate::{DonneesCoquille, Principale};
+use crate::{DonneesCoquille, DonneesMessagerie, Principale};
 
 const RAFRAICHIR_ACCUEIL: Duration = Duration::from_secs(60);
 const ATTENTE_MAX: Duration = Duration::from_secs(30);
@@ -41,6 +44,18 @@ pub trait Fabrique: Send + Sync + 'static {
     fn ouvrir(&self, ordre_serveurs: Vec<String>) -> Futur<Result<Ouverture, EchecOuverture>>;
     fn sections(&self) -> Futur<Vec<Section>>;
     fn profils(&self) -> Arc<Profils>;
+    fn medias(&self) -> Option<Arc<Medias>> {
+        None
+    }
+    fn navigateur(&self) -> Navigateur {
+        Arc::new(estompe_plateforme::NavigateurSysteme)
+    }
+    fn fichiers(&self) -> SystemeFichiers {
+        Arc::new(estompe_plateforme::FichiersSysteme)
+    }
+    fn presse_papiers(&self) -> Presse {
+        Arc::new(estompe_plateforme::PressePapiersSysteme)
+    }
 }
 
 pub struct FabriqueReelle {
@@ -49,6 +64,8 @@ pub struct FabriqueReelle {
     pub adresses_sections: Vec<(Section, String)>,
     pub journal: Option<Arc<Journal>>,
     pub profils: Arc<Profils>,
+    pub medias: Arc<Medias>,
+    pub navigateur: Navigateur,
 }
 
 fn noter(journal: &Option<Arc<Journal>>, niveau: Niveau, message: &str) {
@@ -123,6 +140,14 @@ impl Fabrique for FabriqueReelle {
     fn profils(&self) -> Arc<Profils> {
         self.profils.clone()
     }
+
+    fn medias(&self) -> Option<Arc<Medias>> {
+        Some(self.medias.clone())
+    }
+
+    fn navigateur(&self) -> Navigateur {
+        self.navigateur.clone()
+    }
 }
 
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
@@ -137,6 +162,7 @@ fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
 
 pub struct Coquille {
     emplacement: Emplacement,
+    focus: Arc<AtomicBool>,
     tache: JoinHandle<()>,
 }
 
@@ -149,6 +175,7 @@ impl Coquille {
         horloge: Horloge,
     ) -> Self {
         let emplacement: Emplacement = Arc::new(Mutex::new((0, None)));
+        let focus = Arc::new(AtomicBool::new(true));
         brancher_rappels(f, &emplacement, &memoire);
         let contexte = Contexte {
             emetteur: entree.emetteur(),
@@ -158,13 +185,35 @@ impl Coquille {
             fenetre: f.as_weak(),
             emplacement: emplacement.clone(),
             runtime: entree.runtime(),
+            focus: focus.clone(),
         };
         let tache = entree.runtime().spawn(cycle(entree.observer(), contexte));
-        Self { emplacement, tache }
+        Self {
+            emplacement,
+            focus,
+            tache,
+        }
     }
 
     pub fn pont(&self) -> Option<Pont> {
         pont_courant(&self.emplacement)
+    }
+
+    pub fn suivi_du_focus(&self) -> impl Fn(bool) + Send + Sync + 'static {
+        let emplacement = self.emplacement.clone();
+        let focus = self.focus.clone();
+        move |actif| {
+            if focus.swap(actif, Ordering::SeqCst) == actif {
+                return;
+            }
+            if let Some(pont) = pont_courant(&emplacement) {
+                pont.messagerie().fenetre_active(actif);
+            }
+        }
+    }
+
+    pub fn fenetre_active(&self, actif: bool) {
+        (self.suivi_du_focus())(actif);
     }
 }
 
@@ -172,6 +221,71 @@ impl Drop for Coquille {
     fn drop(&mut self) {
         self.tache.abort();
     }
+}
+
+pub type SourcePont = Arc<dyn Fn() -> Option<Pont> + Send + Sync>;
+
+pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
+    let m = f.global::<DonneesMessagerie>();
+    macro_rules! rappel_messagerie {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            m.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_messagerie!(on_defilee, |p, f, position, vue, largeur| p
+        .messagerie()
+        .defilee(&f, position, vue, largeur));
+    rappel_messagerie!(on_ligne_mesuree, |p, f, cle, hauteur| p
+        .messagerie()
+        .ligne_mesuree(&f, &cle, hauteur));
+    rappel_messagerie!(on_lien_clique, |p, f, id, cible| {
+        if let Some(utilisateur) = p.messagerie().lien_clique(&f, &id, &cible) {
+            p.ouvrir_membre(&f, &utilisateur);
+        }
+    });
+    rappel_messagerie!(on_reponse_cliquee, |p, _f, id| p
+        .messagerie()
+        .reponse_cliquee(&id));
+    rappel_messagerie!(on_auteur_clique, |p, f, utilisateur| p
+        .ouvrir_membre(&f, &utilisateur));
+    rappel_messagerie!(on_aller_en_bas, |p, f| p.messagerie().aller_en_bas(&f));
+    rappel_messagerie!(on_reessayer, |p, f| p.messagerie().reessayer(&f));
+    rappel_messagerie!(on_theme_change, |p, f, _sombre| p
+        .messagerie()
+        .theme_change(&f));
+    rappel_messagerie!(on_image_cliquee, |p, f, message, index| p
+        .messagerie()
+        .image_cliquee(&f, &message, index));
+    rappel_messagerie!(on_telecharger, |p, f, message, piece| p
+        .messagerie()
+        .telecharger_piece(&f, &message, &piece));
+    rappel_messagerie!(on_ouvrir_fichier, |p, f, _message, piece| p
+        .messagerie()
+        .ouvrir_fichier(&f, &piece));
+    rappel_messagerie!(on_carte_cliquee, |p, _f, _message, url| p
+        .messagerie()
+        .carte_cliquee(&url));
+    rappel_messagerie!(on_visionneuse_voisine, |p, f, sens| p
+        .messagerie()
+        .visionneuse_voisine(&f, sens));
+    rappel_messagerie!(on_visionneuse_zoom, |p, f, facteur| p
+        .messagerie()
+        .visionneuse_zoom(&f, facteur));
+    rappel_messagerie!(on_visionneuse_copier, |p, _f| p
+        .messagerie()
+        .visionneuse_copier());
+    rappel_messagerie!(on_visionneuse_enregistrer, |p, f| p
+        .messagerie()
+        .visionneuse_enregistrer(&f));
+    rappel_messagerie!(on_fermer_visionneuse, |p, f| p
+        .messagerie()
+        .fermer_visionneuse(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -208,6 +322,8 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel!(on_ouvrir_membre, |p, f, utilisateur| p
         .ouvrir_membre(&f, &utilisateur));
     rappel!(on_fermer_carte, |p, f| p.fermer_carte(&f));
+    let source = emplacement.clone();
+    brancher_messagerie(f, Arc::new(move || pont_courant(&source)));
     let faible = f.as_weak();
     let memoire_panneau = memoire.clone();
     g.on_panneau_bascule(move |replie| {
@@ -239,6 +355,7 @@ struct Contexte {
     fenetre: slint::Weak<Principale>,
     emplacement: Emplacement,
     runtime: tokio::runtime::Handle,
+    focus: Arc<AtomicBool>,
 }
 
 impl Contexte {
@@ -340,6 +457,13 @@ pub fn evenement_de_fin(fin: FinFlux) -> Option<Evenement> {
     }
 }
 
+async fn expiration_des_saisies(store: &Store) {
+    match store.prochaine_expiration() {
+        Some(instant) => tokio::time::sleep_until(instant).await,
+        None => std::future::pending().await,
+    }
+}
+
 async fn session(
     contexte: Contexte,
     generation: u64,
@@ -377,6 +501,20 @@ async fn session(
         Navigation::nouvelle(route),
         contexte.fabrique.profils(),
     );
+    pont.messagerie()
+        .definir_navigateur(contexte.fabrique.navigateur());
+    if let Some(medias) = contexte.fabrique.medias() {
+        pont.messagerie().definir_medias(medias);
+    }
+    pont.messagerie()
+        .definir_fichiers(contexte.fabrique.fichiers());
+    pont.messagerie()
+        .definir_presse_papiers(contexte.fabrique.presse_papiers());
+    pont.messagerie()
+        .definir_apercus(contexte.memoire.lire(|p| p.apercus));
+    if !contexte.focus.load(Ordering::SeqCst) {
+        pont.messagerie().fenetre_active(false);
+    }
     let installe = {
         let mut emplacement = contexte
             .emplacement
@@ -448,6 +586,11 @@ async fn session(
             _ = horloge.tick() => {
                 let p = pont.clone();
                 contexte.sur_l_interface(move |f| p.rafraichir_accueil(f));
+            }
+            _ = expiration_des_saisies(&store) => {
+                store.expirer_saisies();
+                let p = pont.clone();
+                contexte.sur_l_interface(move |f| p.messagerie().expirer_saisies(f));
             }
         }
     }

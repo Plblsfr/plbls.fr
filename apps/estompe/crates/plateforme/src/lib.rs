@@ -1,18 +1,22 @@
 mod coffre;
 mod dossiers;
 mod erreur;
+mod fichiers;
 mod indisponible;
 mod traits;
 mod url;
 
 pub use coffre::{CoffreMemoire, CoffreSysteme};
-pub use dossiers::{Dossiers, IDENTIFIANT, VARIABLE_DOSSIER};
+pub use dossiers::{
+    dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
+};
 pub use erreur::{Erreur, Resultat};
+pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use traits::{
-    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, Image,
-    Notification, Notifications, OuvertureUrl, Overlay, PremierPlan, RaccourcisGlobaux,
-    RecepteurSon, SourceCapture, TypeSource,
+    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, Fichiers, Image,
+    Notification, Notifications, OuvertureUrl, Overlay, PremierPlan, PressePapiers,
+    RaccourcisGlobaux, RecepteurSon, SourceCapture, TypeSource,
 };
 pub use url::NavigateurSysteme;
 
@@ -21,6 +25,8 @@ pub struct Plateforme {
     pub notifications: Box<dyn Notifications>,
     pub raccourcis: Box<dyn RaccourcisGlobaux>,
     pub url: Box<dyn OuvertureUrl>,
+    pub fichiers: Box<dyn Fichiers + Send + Sync>,
+    pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
     pub capture_ecran: Box<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
     pub overlay: Box<dyn Overlay>,
@@ -33,6 +39,8 @@ impl Plateforme {
         Self {
             coffre: Box::new(CoffreSysteme::new(IDENTIFIANT)),
             url: Box::new(NavigateurSysteme),
+            fichiers: Box::new(FichiersSysteme),
+            presse_papiers: Box::new(PressePapiersSysteme),
             ..Self::indisponible()
         }
     }
@@ -43,6 +51,8 @@ impl Plateforme {
             notifications: Box::new(Indisponible),
             raccourcis: Box::new(Indisponible),
             url: Box::new(Indisponible),
+            fichiers: Box::new(Indisponible),
+            presse_papiers: Box::new(Indisponible),
             capture_ecran: Box::new(Indisponible),
             capture_son: Box::new(Indisponible),
             overlay: Box::new(Indisponible),
@@ -60,6 +70,7 @@ mod tests {
     fn la_plateforme_de_l_os_annonce_le_coffre_et_l_ouverture_d_url() {
         let p = Plateforme::de_l_os();
         assert!(p.url.disponible());
+        assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
         for (nom, disponible) in [
             ("notifications", p.notifications.disponible()),
             ("raccourcis", p.raccourcis.disponible()),
@@ -129,6 +140,19 @@ mod tests {
         let p = Plateforme::indisponible();
         assert!(!p.coffre.disponible());
         assert!(!p.url.disponible());
+        assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
+        assert!(matches!(
+            p.fichiers.choisir_dossier(None),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.fichiers.ouvrir(std::path::Path::new("x")),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.presse_papiers.copier_image(&Image::default()),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(p.coffre.lire("cle"), Err(Erreur::Indisponible(_))));
         assert!(matches!(
             p.coffre.ecrire("cle", "valeur"),

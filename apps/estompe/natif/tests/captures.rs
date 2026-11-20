@@ -1,17 +1,27 @@
 mod commun;
 
 use chrono::NaiveDate;
+use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
+use estompe_client::store::messages::ChangementMessages;
+use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::temps_reel::EtatReseau;
+use estompe_client::types::LinkPreview;
 use estompe_natif::coquille::pont::vider_modeles;
-use estompe_natif::coquille::{avatars, CleAvatar, Icone, Navigation, Pont, Profils};
+use estompe_natif::coquille::{
+    avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
+};
 use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
-use estompe_natif::{creer_fenetre, DonneesCoquille, ModeTheme, Mouvement, Principale, Theme};
+use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
+use estompe_natif::messagerie::pont::Telechargement;
+use estompe_natif::{
+    creer_fenetre, DonneesCoquille, DonneesMessagerie, ModeTheme, Mouvement, Principale, Theme,
+};
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -79,6 +89,21 @@ const ECRANS: &[Ecran] = ecrans![
     "carte-profil-clair", Clair, carte_profil;
     "carte-profil-sombre", Sombre, carte_profil;
     "carte-profil-moi-clair", Clair, carte_profil_moi;
+    "messagerie-variantes-clair", Clair, messagerie_variantes;
+    "messagerie-variantes-sombre", Sombre, messagerie_variantes;
+    "messagerie-markdown-clair", Clair, messagerie_markdown;
+    "messagerie-markdown-sombre", Sombre, messagerie_markdown;
+    "messages-prives-clair", Clair, messages_prives;
+    "messages-prives-sombre", Sombre, messages_prives;
+    "messagerie-emoji-clair", Clair, messagerie_emoji;
+    "messagerie-emoji-sombre", Sombre, messagerie_emoji;
+    "messagerie-pieces-clair", Clair, messagerie_pieces;
+    "messagerie-pieces-sombre", Sombre, messagerie_pieces;
+    "messagerie-visionneuse-clair", Clair, messagerie_visionneuse;
+    "messagerie-cartes-clair", Clair, messagerie_cartes;
+    "messagerie-cartes-sombre", Sombre, messagerie_cartes;
+    "messagerie-sondages-clair", Clair, messagerie_sondages;
+    "messagerie-sondages-sombre", Sombre, messagerie_sondages;
 ];
 
 fn bob() -> Compte {
@@ -274,13 +299,74 @@ fn coquille_avec(
     route: Route,
     profils: Arc<Profils>,
 ) -> Pont {
+    coquille_preparee(f, etat, route, profils, |_| {})
+}
+
+fn installer_conversations(store: &Store) {
+    use commun::coquille::{conversation_courte, conversation_privee};
+    for salon in ["c1", "c3", "t1"] {
+        store.installer_conversation(
+            &CleConversation::Salon(salon.into()),
+            conversation_courte(salon),
+            false,
+        );
+    }
+    store.installer_conversation(
+        &CleConversation::Prive("d1".into()),
+        conversation_privee(),
+        false,
+    );
+}
+
+fn stabiliser(f: &Principale) {
+    let mut precedent = None;
+    for _ in 0..40 {
+        let _ = f.window().take_snapshot();
+        slint::platform::update_timers_and_animations();
+        let m = f.global::<DonneesMessagerie>();
+        let etat = (
+            m.get_defilement(),
+            m.get_haut(),
+            m.get_bas(),
+            m.get_lignes().row_count(),
+        );
+        if precedent == Some(etat) {
+            break;
+        }
+        precedent = Some(etat);
+    }
+}
+
+fn coquille_preparee(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    route: Route,
+    profils: Arc<Profils>,
+    preparer: impl FnOnce(&Store),
+) -> Pont {
+    coquille_complete(f, etat, route, profils, None, preparer)
+}
+
+const MAINTENANT_MS: i64 = 1_795_077_000_000;
+
+fn coquille_complete(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    route: Route,
+    profils: Arc<Profils>,
+    medias: Option<Arc<Medias>>,
+    preparer: impl FnOnce(&Store),
+) -> Pont {
     connecte(f);
     let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()
         .and_hms_opt(9, 30, 0)
         .unwrap();
+    let store = commun::coquille::store(etat);
+    installer_conversations(&store);
+    preparer(&store);
     let pont = Pont::nouveau(
-        commun::coquille::store(etat),
+        store,
         f.as_weak(),
         runtime(),
         None,
@@ -294,7 +380,16 @@ fn coquille_avec(
         f,
         vec![Section::Entracte, Section::Sillon, Section::Sablier],
     );
+    pont.messagerie().definir_fuseau(Arc::new(|_| 60));
+    pont.messagerie()
+        .definir_horloge(Arc::new(|| MAINTENANT_MS));
+    if let Some(medias) = medias {
+        pont.messagerie().definir_medias(medias);
+    }
+    let source = pont.clone();
+    brancher_messagerie(f, Arc::new(move || Some(source.clone())));
     pont.demarrer(f);
+    stabiliser(f);
     pont
 }
 
@@ -422,6 +517,298 @@ fn carte_profil(f: &Principale) {
 fn carte_profil_moi(f: &Principale) {
     let pont = membres_ouverts(f);
     pont.ouvrir_membre(f, "u1");
+}
+
+fn salon_c1() -> CleConversation {
+    CleConversation::Salon("c1".into())
+}
+
+fn messagerie_variantes(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_variantes(),
+                false,
+            )
+        },
+    );
+    pont.appliquer(
+        f,
+        &[
+            Changement::Messages(ChangementMessages::Supprime {
+                conversation: salon_c1(),
+                message: "99".into(),
+            }),
+            Changement::Messages(ChangementMessages::MiseEnEvidence {
+                conversation: salon_c1(),
+                message: "109".into(),
+            }),
+        ],
+    );
+    stabiliser(f);
+}
+
+fn messagerie_markdown(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            store.installer_conversation(&salon_c1(), commun::coquille::galerie_markdown(), true)
+        },
+    );
+    pont.messagerie().lien_clique(f, "201", "s:1");
+    stabiliser(f);
+}
+
+fn messages_prives(f: &Principale) {
+    let mut etat = commun::coquille::etat();
+    etat.en_ligne.insert("dave".into());
+    etat.statuts.insert(
+        "dave".into(),
+        serde_json::from_value(serde_json::json!("dnd")).unwrap(),
+    );
+    etat.non_lus.insert(CleConversation::Prive("d3".into()), 5);
+    let pont = coquille_preparee(
+        f,
+        etat,
+        Route::MessagePrive {
+            id: "d1".into(),
+            message: None,
+        },
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+        |store| {
+            for (id, prive, auteur) in [("500", "d3", "elise"), ("501", "d2", "dave")] {
+                let mut message = commun::coquille::message(id, "", auteur);
+                message["channel_id"] = serde_json::Value::Null;
+                message["dm_id"] = serde_json::json!(prive);
+                if let estompe_client::temps_reel::Signal::Evenement(e) =
+                    commun::coquille::evenement("message.created", message)
+                {
+                    store.appliquer(&e);
+                }
+            }
+        },
+    );
+    lire_comme_a_l_ouverture(f, &pont, CleConversation::Prive("d1".into()), "303");
+}
+
+fn lire_comme_a_l_ouverture(f: &Principale, pont: &Pont, cle: CleConversation, dernier: &str) {
+    let store = pont.store().clone();
+    let mut abonne = store.abonner();
+    let (champ, id) = match &cle {
+        CleConversation::Prive(id) => ("dm_id", id.clone()),
+        CleConversation::Salon(id) => ("channel_id", id.clone()),
+    };
+    let mut lecture = serde_json::json!({"user_id": "u1", "pseudo": "bob", "last_id": dernier, "read_at": "2026-11-19T08:30:00Z"});
+    lecture[champ] = serde_json::json!(id);
+    if let estompe_client::temps_reel::Signal::Evenement(e) =
+        commun::coquille::evenement("read.updated", lecture)
+    {
+        store.appliquer(&e);
+    }
+    while let Ok(lot) = abonne.try_recv() {
+        pont.appliquer(f, &lot);
+    }
+    stabiliser(f);
+}
+
+fn photo(largeur: u32, hauteur: u32, ciel: [u8; 3], sol: [u8; 3]) -> Vec<u8> {
+    let image = image::RgbImage::from_fn(largeur, hauteur, |x, y| {
+        let (fx, fy) = (x as f32 / largeur as f32, y as f32 / hauteur as f32);
+        let horizon = 0.62 + 0.05 * (fx * 9.0).sin();
+        let soleil = ((fx - 0.72).powi(2) + (fy - 0.3).powi(2) * 0.6).sqrt() < 0.09;
+        let melange = |a: [u8; 3], b: [u8; 3], t: f32| {
+            image::Rgb([0, 1, 2].map(|i| (f32::from(a[i]) * (1.0 - t) + f32::from(b[i]) * t) as u8))
+        };
+        if soleil {
+            image::Rgb([255, 214, 120])
+        } else if fy < horizon {
+            melange(ciel, [250, 236, 220], fy / horizon)
+        } else {
+            melange(sol, [40, 30, 25], (fy - horizon) / (1.0 - horizon))
+        }
+    });
+    let mut octets = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut octets, image::ImageFormat::Png)
+        .unwrap();
+    octets.into_inner()
+}
+
+fn visage(fond: [u8; 3]) -> Vec<u8> {
+    let image = image::RgbaImage::from_fn(64, 64, |x, y| {
+        let (x, y) = (x as f32 - 31.5, y as f32 - 33.5);
+        let tete = (x * x + y * y).sqrt() < 24.0;
+        let oreille = y < -10.0 && (x.abs() - 16.0).abs() < (y + 30.0) * 0.5 && y > -30.0;
+        let oeil = ((x.abs() - 9.0).powi(2) + (y + 4.0).powi(2)).sqrt() < 4.0;
+        let bouche = (y - 9.0).abs() < 1.5 && x.abs() < 7.0;
+        if oeil || bouche {
+            image::Rgba([40, 30, 25, 255])
+        } else if tete || oreille {
+            image::Rgba([fond[0], fond[1], fond[2], 255])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        }
+    });
+    let mut octets = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut octets, image::ImageFormat::Png)
+        .unwrap();
+    octets.into_inner()
+}
+
+fn installer(medias: &Medias, source: Source, format: Format, octets: &[u8]) {
+    let (image, origine) = medias::decoder(octets, format, usize::MAX).expect("image décodée");
+    medias.installer_image(CleImage { source, format }, image, origine);
+}
+
+fn medias_des_captures() -> Arc<Medias> {
+    let medias = Medias::nouveaux(Arc::new(commun::coquille::SourceMediasFactice), None);
+    let photos = [
+        ("a1", photo(1600, 1066, [120, 170, 220], [214, 180, 120])),
+        ("a2", photo(900, 1200, [240, 170, 120], [200, 150, 90])),
+        ("a3", photo(1200, 800, [208, 104, 138], [60, 70, 90])),
+        ("g1", photo(480, 360, [150, 210, 160], [90, 120, 80])),
+    ];
+    for (id, octets) in &photos {
+        installer(
+            &medias,
+            Source::Fichier((*id).into()),
+            Format::Vignette,
+            octets,
+        );
+    }
+    installer(
+        &medias,
+        Source::Fichier("a2".into()),
+        Format::Visionneuse,
+        &photos[1].1,
+    );
+    medias.installer_emojis(vec![
+        EmojiPersonnalise {
+            id: "e1".into(),
+            server_id: "s1".into(),
+            name: "chaton".into(),
+            created_by: "eve".into(),
+        },
+        EmojiPersonnalise {
+            id: "e2".into(),
+            server_id: "s1".into(),
+            name: "fete".into(),
+            created_by: "eve".into(),
+        },
+    ]);
+    installer(
+        &medias,
+        Source::Emoji("e1".into()),
+        Format::Emoji,
+        &visage([242, 166, 90]),
+    );
+    installer(
+        &medias,
+        Source::Emoji("e2".into()),
+        Format::Emoji,
+        &visage([208, 104, 138]),
+    );
+    let apercu = |valeur: serde_json::Value| -> Option<LinkPreview> {
+        Some(serde_json::from_value(valeur).unwrap())
+    };
+    medias.installer_apercu(
+        "https://plbls.fr/journal/estompe-natif",
+        Some("700"),
+        apercu(serde_json::json!({
+            "url": "https://plbls.fr/journal/estompe-natif",
+            "title": "Estompe natif : la messagerie sans webview",
+            "description": "Comment l'app de bureau affiche emoji, images et sondages avec Slint, sans navigateur embarqué.",
+            "site_name": "plbls.fr",
+            "image": "https://plbls.fr/journal/estompe-natif.png"
+        })),
+    );
+    installer(
+        &medias,
+        Source::Externe("https://plbls.fr/journal/estompe-natif.png".into()),
+        Format::Carte,
+        &photo(400, 300, [47, 93, 138], [246, 198, 214]),
+    );
+    medias.installer_apercu(
+        "https://exemple.fr/article",
+        Some("701"),
+        apercu(serde_json::json!({
+            "url": "https://exemple.fr/article",
+            "title": "Un article sans illustration",
+            "description": "La carte garde le site, le titre et la description sur deux lignes au plus.",
+            "site_name": "exemple.fr"
+        })),
+    );
+    medias.installer_apercu(
+        "https://youtu.be/dQw4w9WgXcQ",
+        Some("702"),
+        apercu(serde_json::json!({
+            "url": "https://youtu.be/dQw4w9WgXcQ",
+            "title": "Rick Astley - Never Gonna Give You Up",
+            "site_name": "YouTube"
+        })),
+    );
+    installer(
+        &medias,
+        Source::Externe("https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg".into()),
+        Format::Miniature,
+        &photo(480, 360, [30, 30, 40], [180, 60, 60]),
+    );
+    medias
+}
+
+fn messagerie_avec(f: &Principale, messages: Vec<estompe_client::types::Message>) -> Pont {
+    let pont = coquille_complete(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        Some(medias_des_captures()),
+        move |store| store.installer_conversation(&salon_c1(), messages, false),
+    );
+    stabiliser(f);
+    pont
+}
+
+fn messagerie_emoji(f: &Principale) {
+    messagerie_avec(f, commun::coquille::conversation_emoji());
+}
+
+fn messagerie_pieces(f: &Principale) {
+    let pont = messagerie_avec(f, commun::coquille::conversation_pieces());
+    pont.messagerie()
+        .noter_telechargement("f2", Telechargement::EnCours, 42, "");
+    pont.messagerie().noter_telechargement(
+        "f1",
+        Telechargement::Termine,
+        100,
+        "Enregistré dans /home/bob/Téléchargements",
+    );
+    pont.messagerie().rafraichir_maintenant(f);
+    stabiliser(f);
+}
+
+fn messagerie_visionneuse(f: &Principale) {
+    let pont = messagerie_avec(f, commun::coquille::conversation_pieces());
+    pont.messagerie().image_cliquee(f, "600", 1);
+    pont.messagerie().visionneuse_zoom(f, 1.25);
+    stabiliser(f);
+}
+
+fn messagerie_cartes(f: &Principale) {
+    messagerie_avec(f, commun::coquille::conversation_cartes());
+}
+
+fn messagerie_sondages(f: &Principale) {
+    messagerie_avec(f, commun::coquille::conversation_sondages());
 }
 
 fn remettre_a_zero(f: &Principale) {

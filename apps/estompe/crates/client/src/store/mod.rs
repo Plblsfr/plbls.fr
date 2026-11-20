@@ -1,5 +1,6 @@
 mod chargement;
 mod etat;
+pub mod messages;
 mod reconciliation;
 mod reducteur;
 
@@ -20,8 +21,8 @@ pub use etat::{
 };
 pub use reconciliation::reconcilier;
 pub use reducteur::{
-    appliquer, appliquer_avec_effets, definir_focus, lire_conversation, ouvrir_conversation,
-    Application, Avis, Changement, Effet,
+    appliquer, appliquer_avec_effets, decision_lecture, definir_bas_de_liste, definir_focus,
+    lire_conversation, ouvrir_conversation, Application, Avis, Changement, Effet,
 };
 
 use crate::derniere_vue::{adresse_a_rouvrir, conversation_de_la_derniere_vue, DerniereVue};
@@ -42,6 +43,7 @@ pub enum FinFlux {
 struct Interne {
     client: Client,
     etat: RwLock<Etat>,
+    messages: RwLock<messages::EtatMessages>,
     abonnes: Mutex<Vec<mpsc::UnboundedSender<Vec<Changement>>>>,
 }
 
@@ -56,6 +58,7 @@ impl Store {
             interne: Arc::new(Interne {
                 client,
                 etat: RwLock::new(Etat::avec_ordre_serveurs(ordre_serveurs)),
+                messages: RwLock::new(messages::EtatMessages::default()),
                 abonnes: Mutex::new(Vec::new()),
             }),
         }
@@ -134,7 +137,9 @@ impl Store {
     }
 
     pub fn appliquer(&self, evenement: &Evenement) -> Vec<Effet> {
-        self.appliquer_application(|etat| appliquer_avec_effets(etat, evenement))
+        let effets = self.appliquer_application(|etat| appliquer_avec_effets(etat, evenement));
+        self.appliquer_aux_messages(evenement);
+        effets
     }
 
     pub async fn executer(&self, effets: Vec<Effet>) {
@@ -229,8 +234,12 @@ impl Store {
     }
 
     pub async fn ouvrir(&self, conversation: Option<CleConversation>) {
-        let effets = self.appliquer_application(|etat| ouvrir_conversation(etat, conversation));
+        let effets =
+            self.appliquer_application(|etat| ouvrir_conversation(etat, conversation.clone()));
         self.executer(effets).await;
+        if let Some(cle) = conversation {
+            let _ = self.charger_conversation(&cle).await;
+        }
     }
 
     pub async fn lire_conversation(&self, conversation: &CleConversation) {
@@ -368,7 +377,17 @@ impl Store {
 
     pub async fn suivre(&self, mut flux: FluxTempsReel) -> FinFlux {
         loop {
-            let Some(premier) = flux.suivant().await else {
+            let premier = match self.prochaine_expiration() {
+                Some(echeance) => tokio::select! {
+                    signal = flux.suivant() => signal,
+                    _ = tokio::time::sleep_until(echeance) => {
+                        self.expirer_saisies();
+                        continue;
+                    }
+                },
+                None => flux.suivant().await,
+            };
+            let Some(premier) = premier else {
                 return FinFlux::Termine;
             };
             let mut lot = vec![premier];
@@ -388,6 +407,7 @@ impl Store {
                     }
                     Signal::Reconnecte => {
                         let _ = self.charger().await;
+                        self.rattraper_messages().await;
                     }
                     Signal::SessionExpiree => {
                         fin = Some(FinFlux::SessionExpiree);
@@ -479,6 +499,43 @@ mod tests {
         assert!(!recus
             .iter()
             .any(|c| matches!(c, Changement::SalonAjoute { .. })));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn l_indicateur_de_saisie_expire_au_bout_de_sa_duree_en_temps_simule() {
+        let store = Store::nouveau(Client::nouveau("http://127.0.0.1:9").unwrap(), &[]);
+        store.installer(Etat {
+            compte: serde_json::from_value(json!({"id": "me", "pseudo": "moi"})).unwrap(),
+            ..Etat::default()
+        });
+        let mut abonne = store.abonner();
+        let (signaux, flux) = FluxTempsReel::factice();
+        let suivi = store.brancher(flux);
+        let c1 = cle("c:c1");
+        let saisie = crate::temps_reel::decoder(
+            &json!({"type": "typing", "data": {"channel_id": "c1", "user_id": "bob", "pseudo": "bob"}})
+                .to_string(),
+        );
+        let crate::temps_reel::Trame::Evenement(e) = saisie else {
+            panic!("trame de saisie");
+        };
+        let depart = tokio::time::Instant::now();
+        signaux.send(Signal::Evenement(e)).unwrap();
+        let attendu = vec![Changement::Messages(
+            crate::store::messages::ChangementMessages::Saisie {
+                conversation: c1.clone(),
+            },
+        )];
+        assert_eq!(abonne.recv().await.unwrap(), attendu);
+        assert_eq!(store.saisies(&c1), ["bob"]);
+        tokio::time::advance(messages::DUREE_SAISIE / 2).await;
+        tokio::task::yield_now().await;
+        assert_eq!(store.saisies(&c1), ["bob"], "pas encore expirée");
+        assert_eq!(abonne.recv().await.unwrap(), attendu);
+        assert!(store.saisies(&c1).is_empty());
+        assert_eq!(depart.elapsed(), messages::DUREE_SAISIE);
+        drop(signaux);
+        assert_eq!(suivi.await.unwrap(), FinFlux::Termine);
     }
 
     #[tokio::test]
@@ -754,7 +811,8 @@ mod tests {
             lignes,
             [
                 ("/notifications/read", "POST"),
-                ("/channels/c1/read", "POST")
+                ("/channels/c1/read", "POST"),
+                ("/channels/c1/messages?limit=50", "GET")
             ]
         );
         assert_eq!(requetes[0].json(), json!({"message_ids": ["5"]}));

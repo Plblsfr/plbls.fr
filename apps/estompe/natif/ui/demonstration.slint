@@ -1,6 +1,6 @@
 import { Theme, Typo, Rayon, Espace } from "jetons.slint";
 import { Icones } from "genere/icones.slint";
-import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement, Compteur, Etiquette, ElementListe, Vide, EtatPresence } from "composants.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement, Compteur, Etiquette, ElementListe, Vide, EtatPresence, TexteRiche, BlocTexte, GenreBloc, Separateur } from "composants.slint";
 
 component Section {
     in property <string> titre;
@@ -233,6 +233,31 @@ export component Demonstration {
                             titre: "Les messages arrivent avec le lot 2";
                             texte: "L'état vide d'une zone pas encore livrée.";
                         }
+                    }
+                }
+            }
+            Section {
+                titre: "TEXTE RICHE ET SÉPARATEURS";
+                VerticalLayout {
+                    spacing: Espace.e2;
+                    alignment: start;
+                    Separateur {
+                        texte: "Jeudi 19 novembre 2026";
+                        retrait: 0;
+                    }
+                    TexteRiche {
+                        blocs: [
+                            { genre: GenreBloc.titre, texte: @markdown("Un titre"), niveau: 2 },
+                            { genre: GenreBloc.paragraphe, texte: @markdown("**Gras**, ~~barré~~, `code` et [un lien](u:https://plbls.fr).") },
+                            { genre: GenreBloc.paragraphe, texte: @markdown("Une citation"), citation: 1 },
+                            { genre: GenreBloc.paragraphe, texte: @markdown("Un point de liste"), retrait: 1, puce: "•" },
+                            { genre: GenreBloc.code, code: "let x = 1;" },
+                        ];
+                    }
+                    Separateur {
+                        texte: "Nouveaux messages";
+                        accent: true;
+                        retrait: 0;
                     }
                 }
             }

@@ -53,6 +53,27 @@ impl OuvertureUrl for Indisponible {
     }
 }
 
+impl Fichiers for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn choisir_dossier(&self, _: Option<&std::path::Path>) -> Resultat<Option<std::path::PathBuf>> {
+        refus("choix d'un dossier")
+    }
+    fn ouvrir(&self, _: &std::path::Path) -> Resultat<()> {
+        refus("ouverture d'un fichier")
+    }
+}
+
+impl PressePapiers for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn copier_image(&self, _: &Image) -> Resultat<()> {
+        refus("copie d'une image")
+    }
+}
+
 impl CaptureEcran for Indisponible {
     fn disponible(&self) -> bool {
         false

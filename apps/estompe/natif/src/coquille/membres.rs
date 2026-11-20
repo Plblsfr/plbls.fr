@@ -5,6 +5,8 @@ use estompe_client::roles::{
     couleur_du_pseudo, grouper_membres, membre_exclu, nom_du_membre, roles_du_membre, Membre,
 };
 use estompe_client::store::{Etat, Presence};
+use estompe_client::virtualisation::fenetre_de_hauteurs;
+pub use estompe_client::virtualisation::Fenetre;
 
 use super::avatars::CleAvatar;
 use super::projection::{initiales, teinte, MOIS};
@@ -383,65 +385,13 @@ pub fn donnees_carte(
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Fenetre {
-    pub debut: usize,
-    pub fin: usize,
-    pub haut: f32,
-    pub bas: f32,
-}
-
-pub fn fenetre_de(
-    nombre: usize,
-    hauteur: impl Fn(usize) -> f32,
-    defilement: f32,
-    vue: f32,
-    marge: f32,
-) -> Fenetre {
-    let bas_vise = defilement - marge;
-    let haut_vise = defilement + vue + marge;
-    let mut y = 0.0;
-    let mut debut = None;
-    let mut fin = nombre;
-    let mut haut = 0.0;
-    let mut y_fin = 0.0;
-    for i in 0..nombre {
-        let h = hauteur(i);
-        if debut.is_none() && y + h > bas_vise {
-            debut = Some(i);
-            haut = y;
-        }
-        if fin == nombre && y > haut_vise {
-            fin = i;
-            y_fin = y;
-        }
-        y += h;
-    }
-    let debut = match debut {
-        Some(debut) => debut,
-        None => {
-            haut = y - if nombre > 0 { hauteur(nombre - 1) } else { 0.0 };
-            nombre.saturating_sub(1)
-        }
-    };
-    if fin == nombre {
-        y_fin = y;
-    }
-    Fenetre {
-        debut,
-        fin,
-        haut,
-        bas: y - y_fin,
-    }
-}
-
 pub fn fenetre_des_membres(nombre: usize, defilement: f32, vue: f32) -> Fenetre {
-    fenetre_de(
+    fenetre_de_hauteurs(
         nombre,
-        |_| HAUTEUR_LIGNE,
-        defilement.max(0.0),
-        vue.max(0.0),
-        MARGE_FENETRE,
+        |_| f64::from(HAUTEUR_LIGNE),
+        f64::from(defilement.max(0.0)),
+        f64::from(vue.max(0.0)),
+        f64::from(MARGE_FENETRE),
     )
 }
 
@@ -658,54 +608,6 @@ mod tests {
         }
         assert_eq!(replier("Élise À Ça"), "elise a ca");
         assert_eq!(libelle_presence(Presence::NePasDeranger), "Ne pas déranger");
-    }
-
-    const CINQUANTE: fn(usize) -> f32 = |_| 50.0;
-
-    #[test]
-    fn fenetre_ne_garde_que_les_lignes_visibles_et_leur_marge() {
-        let w = fenetre_de(1000, CINQUANTE, 10_000.0, 600.0, 500.0);
-        assert_eq!((w.debut, w.fin), (190, 223));
-        assert_eq!(w.haut, 190.0 * 50.0);
-        assert_eq!(
-            w.haut + (w.fin - w.debut) as f32 * 50.0 + w.bas,
-            1000.0 * 50.0
-        );
-    }
-
-    #[test]
-    fn fenetre_au_debut_de_la_liste() {
-        let w = fenetre_de(1000, CINQUANTE, 0.0, 600.0, 500.0);
-        assert_eq!((w.debut, w.haut), (0, 0.0));
-        assert!(w.fin < 30);
-    }
-
-    #[test]
-    fn fenetre_en_fin_de_liste() {
-        let w = fenetre_de(1000, CINQUANTE, 1000.0 * 50.0 - 600.0, 600.0, 500.0);
-        assert_eq!((w.fin, w.bas), (1000, 0.0));
-    }
-
-    #[test]
-    fn fenetre_avec_des_hauteurs_differentes() {
-        let grande = |i: usize| if i == 0 { 5000.0 } else { 50.0 };
-        let w = fenetre_de(1000, grande, 5200.0, 600.0, 100.0);
-        assert_eq!((w.debut, w.haut), (3, 5000.0 + 2.0 * 50.0));
-    }
-
-    #[test]
-    fn fenetre_d_une_liste_vide_ou_defilee_au_dela_de_la_fin() {
-        assert_eq!(
-            fenetre_de(0, CINQUANTE, 0.0, 600.0, 1000.0),
-            Fenetre {
-                debut: 0,
-                fin: 0,
-                haut: 0.0,
-                bas: 0.0
-            }
-        );
-        let w = fenetre_de(3, CINQUANTE, 99_999.0, 600.0, 1000.0);
-        assert_eq!((w.debut, w.fin), (2, 3));
     }
 
     #[test]

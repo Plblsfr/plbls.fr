@@ -99,12 +99,26 @@ impl Requete {
     pub fn ligne(&self) -> (&str, &str) {
         (self.chemin.as_str(), self.methode.as_str())
     }
+
+    pub fn chemin_seul(&self) -> &str {
+        self.chemin.split('?').next().unwrap_or_default()
+    }
+
+    pub fn parametre(&self, nom: &str) -> Option<String> {
+        let requete = self.chemin.split_once('?')?.1;
+        form_urlencoded::parse(requete.as_bytes())
+            .find(|(n, _)| n == nom)
+            .map(|(_, v)| v.into_owned())
+    }
 }
+
+pub type Gestionnaire = Arc<dyn Fn(&Requete) -> Reponse + Send + Sync>;
 
 #[derive(Default)]
 struct Etat {
     file: VecDeque<Comportement>,
     routes: HashMap<(String, String), Reponse>,
+    gestionnaires: HashMap<(String, String), Gestionnaire>,
     requetes: Vec<Requete>,
 }
 
@@ -144,6 +158,18 @@ impl ServeurFactice {
             .unwrap()
             .routes
             .insert((methode.to_string(), chemin.to_string()), reponse);
+    }
+
+    pub fn router_dynamique(
+        &self,
+        methode: &str,
+        chemin: &str,
+        gestionnaire: impl Fn(&Requete) -> Reponse + Send + Sync + 'static,
+    ) {
+        self.etat.lock().unwrap().gestionnaires.insert(
+            (methode.to_string(), chemin.to_string()),
+            Arc::new(gestionnaire),
+        );
     }
 
     pub fn adresse(&self) -> &str {
@@ -237,6 +263,11 @@ async fn servir(mut flux: TcpStream, etat: Arc<Mutex<Etat>>) {
             .routes
             .get(&(requete.methode.clone(), requete.chemin.clone()))
             .cloned()
+            .or_else(|| {
+                etat.gestionnaires
+                    .get(&(requete.methode.clone(), requete.chemin_seul().to_string()))
+                    .map(|gestionnaire| gestionnaire(&requete))
+            })
             .map(Comportement::Repondre);
         etat.requetes.push(requete);
         if route.is_some() {

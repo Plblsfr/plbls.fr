@@ -1,4 +1,7 @@
 use std::fmt;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -15,6 +18,8 @@ use crate::journal::{Journal, Niveau};
 
 pub const DELAI: Duration = Duration::from_secs(30);
 pub const DELAI_ENVOI: Duration = Duration::from_secs(300);
+pub const DELAI_TELECHARGEMENT: Duration = Duration::from_secs(1800);
+pub const EXTENSION_PARTIELLE: &str = "partiel";
 pub const ATTENTE_429_MAX: Duration = Duration::from_secs(30);
 pub const ENTETE_PLATEFORME: &str = "X-Estompe-Platform";
 pub const ENTETE_VERSION: &str = "X-Estompe-Version";
@@ -599,6 +604,84 @@ impl Client {
             .await
             .map(|f| f.octets)
     }
+
+    pub async fn telecharger(
+        &self,
+        chemin: &str,
+        destination: &Path,
+        mut progres: impl FnMut(u64, Option<u64>),
+    ) -> Result<u64, ErreurApi> {
+        let options = OptionsAppel {
+            discret: false,
+            delai: Some(DELAI_TELECHARGEMENT),
+        };
+        let mut reponse = self
+            .appeler(Method::GET, chemin, &Corps::Aucun, options)
+            .await?;
+        let total = reponse.content_length();
+        let mut nom_temporaire = destination.as_os_str().to_owned();
+        nom_temporaire.push(".");
+        nom_temporaire.push(EXTENSION_PARTIELLE);
+        let temporaire = std::path::PathBuf::from(nom_temporaire);
+        let ecrire = |e: std::io::Error| ErreurApi::RequeteInvalide(e.to_string());
+        let mut fichier = File::create(&temporaire).map_err(ecrire)?;
+        let mut recus = 0u64;
+        progres(0, total);
+        let resultat = loop {
+            match reponse.chunk().await {
+                Ok(Some(morceau)) => {
+                    if let Err(e) = fichier.write_all(&morceau) {
+                        break Err(ecrire(e));
+                    }
+                    recus += morceau.len() as u64;
+                    progres(recus, total);
+                }
+                Ok(None) => break fichier.sync_all().map_err(ecrire),
+                Err(e) => break Err(self.transport(&Method::GET, chemin, e)),
+            }
+        };
+        drop(fichier);
+        match resultat.and_then(|()| std::fs::rename(&temporaire, destination).map_err(ecrire)) {
+            Ok(()) => Ok(recus),
+            Err(erreur) => {
+                let _ = std::fs::remove_file(&temporaire);
+                Err(erreur)
+            }
+        }
+    }
+
+    pub async fn octets_externes(&self, url: &str, maximum: u64) -> Result<Bytes, ErreurApi> {
+        let mut reponse = self
+            .http
+            .get(url)
+            .timeout(self.reglages.delai)
+            .send()
+            .await
+            .map_err(|e| self.transport(&Method::GET, url, e))?;
+        if !reponse.status().is_success() {
+            return Err(ErreurApi::depuis_refus(Refus {
+                statut: reponse.status().as_u16(),
+                code: format!("http_{}", reponse.status().as_u16()),
+                message: String::new(),
+                donnees: Map::new(),
+            }));
+        }
+        if reponse.content_length().is_some_and(|n| n > maximum) {
+            return Err(ErreurApi::ReponseInvalide("réponse trop grande".into()));
+        }
+        let mut octets = Vec::new();
+        while let Some(morceau) = reponse
+            .chunk()
+            .await
+            .map_err(|e| self.transport(&Method::GET, url, e))?
+        {
+            octets.extend_from_slice(&morceau);
+            if octets.len() as u64 > maximum {
+                return Err(ErreurApi::ReponseInvalide("réponse trop grande".into()));
+            }
+        }
+        Ok(octets.into())
+    }
 }
 
 fn type_mime(reponse: &Response) -> Option<String> {
@@ -738,6 +821,58 @@ mod tests {
             "x.json"
         );
         assert_eq!(nom_de_fichier(Some("inline"), "x.json"), "x.json");
+    }
+
+    #[tokio::test]
+    async fn le_telechargement_suit_sa_progression_et_ne_laisse_aucun_fichier_partiel() {
+        let contenu = vec![7u8; 200_000];
+        let serveur =
+            ServeurFactice::demarrer([Reponse::brute(200, "application/octet-stream", &contenu)])
+                .await;
+        let dossier = tempfile::tempdir().unwrap();
+        let destination = dossier.path().join("rapport.pdf");
+        let mut etapes = Vec::new();
+        let recus = serveur
+            .client()
+            .telecharger("/files/f1", &destination, |n, total| {
+                etapes.push((n, total))
+            })
+            .await
+            .unwrap();
+        assert_eq!(recus, 200_000);
+        assert_eq!(std::fs::read(&destination).unwrap(), contenu);
+        assert_eq!(etapes.first(), Some(&(0, Some(200_000))));
+        assert_eq!(etapes.last(), Some(&(200_000, Some(200_000))));
+        assert!(etapes.windows(2).all(|p| p[0].0 <= p[1].0));
+        serveur.programmer([Reponse::json(404, json!({"error": "not_found"}))]);
+        let manquant = dossier.path().join("absent.bin");
+        assert!(serveur
+            .client()
+            .telecharger("/files/f2", &manquant, |_, _| {})
+            .await
+            .is_err());
+        let restants: Vec<_> = std::fs::read_dir(dossier.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(restants, ["rapport.pdf"]);
+    }
+
+    #[tokio::test]
+    async fn une_ressource_externe_est_bornee_et_ne_porte_pas_le_jeton() {
+        let serveur =
+            ServeurFactice::demarrer([Reponse::brute(200, "image/png", &[1u8; 1000])]).await;
+        let client = serveur.client().avec_jeton(|| Some("secret".to_string()));
+        let url = format!("{}/image.png", serveur.adresse());
+        assert_eq!(
+            client.octets_externes(&url, 4096).await.unwrap().len(),
+            1000
+        );
+        assert_eq!(serveur.requetes()[0].entete("authorization"), None);
+        serveur.programmer([Reponse::brute(200, "image/png", &[1u8; 5000])]);
+        assert!(client.octets_externes(&url, 4096).await.is_err());
+        serveur.programmer([Reponse::vide(404)]);
+        assert!(client.octets_externes(&url, 4096).await.is_err());
     }
 
     #[tokio::test]

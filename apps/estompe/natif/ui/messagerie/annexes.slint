@@ -1,0 +1,536 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone, Infobulle, Etiquette, BadgeRole, GenreBadgeRole, TexteRiche, BlocTexte } from "../composants.slint";
+import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, ReactionMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
+
+component Puce inherits Rectangle {
+    in property <bool> active: true;
+    callback clique();
+    out property <bool> survole: zone.has-hover;
+    min-height: 36px;
+    border-radius: Rayon.s;
+    background: zone.has-hover && root.active ? Theme.papier-2 : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait-fort;
+    @children
+    zone := TouchArea {
+        enabled: root.active;
+        mouse-cursor: root.active ? pointer : default;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component VignetteImage inherits Rectangle {
+    in property <PieceJointe> piece;
+    in property <string> message;
+    width: root.piece.largeur;
+    height: root.piece.hauteur;
+    border-radius: Rayon.s;
+    background: root.piece.chargee ? transparent : Theme.papier-2;
+    accessible-role: button;
+    accessible-label: "Agrandir l'image " + root.piece.nom;
+    accessible-action-default => {
+        DonneesMessagerie.image-cliquee(root.message, root.piece.index-image);
+    }
+    if root.piece.chargee: Image {
+        width: 100%;
+        height: 100%;
+        source: root.piece.image;
+        image-fit: contain;
+    }
+    if !root.piece.chargee: Icone {
+        nom: "image";
+        taille: 22px;
+        couleur: Theme.gris-2;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesMessagerie.image-cliquee(root.message, root.piece.index-image);
+        }
+    }
+}
+
+component PuceFichier {
+    in property <PieceJointe> piece;
+    in property <string> message;
+    property <bool> fini: root.piece.telechargement == EtatTelechargement.termine;
+    property <bool> en-cours: root.piece.telechargement == EtatTelechargement.en-cours;
+    accessible-role: button;
+    accessible-label: (root.fini ? "Ouvrir " : "Télécharger ") + root.piece.nom + ", " + root.piece.taille;
+    accessible-description: root.piece.note;
+    accessible-action-default => {
+        if (root.fini) {
+            DonneesMessagerie.ouvrir-fichier(root.message, root.piece.id);
+        } else if (!root.en-cours) {
+            DonneesMessagerie.telecharger(root.message, root.piece.id);
+        }
+    }
+    VerticalLayout {
+        spacing: 3px;
+        Puce {
+            active: !root.en-cours;
+            clique => {
+                if (root.fini) {
+                    DonneesMessagerie.ouvrir-fichier(root.message, root.piece.id);
+                } else {
+                    DonneesMessagerie.telecharger(root.message, root.piece.id);
+                }
+            }
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: root.fini ? "ok" : root.piece.telechargement == EtatTelechargement.echec ? "alerte" : "telecharge";
+                        taille: 15px;
+                        couleur: Theme.encre-2;
+                    }
+                }
+                Text {
+                    max-width: 320px;
+                    text: root.piece.nom;
+                    color: Theme.encre-2;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.en-cours ? Math.round(root.piece.progression * 100) + " %" : root.piece.taille;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 11.5px;
+                    vertical-alignment: center;
+                }
+            }
+            if root.en-cours: Rectangle {
+                x: 1px;
+                y: parent.height - 4px;
+                height: 3px;
+                width: (parent.width - 2px) * root.piece.progression;
+                border-radius: 1.5px;
+                background: Theme.rose-fonce;
+            }
+        }
+        if root.piece.note != "": Text {
+            text: root.piece.note;
+            color: root.piece.telechargement == EtatTelechargement.echec ? Theme.danger : Theme.gris;
+            font-size: 11.5px;
+            overflow: elide;
+        }
+    }
+}
+
+component PuceInactive inherits Rectangle {
+    in property <PieceJointe> piece;
+    min-height: 36px;
+    border-radius: Rayon.s;
+    background: Theme.papier-2;
+    opacity: root.piece.genre == GenrePieceJointe.expiree ? 0.75 : 1;
+    accessible-role: text;
+    accessible-label: root.piece.nom + (root.piece.genre == GenrePieceJointe.expiree ? " (fichier expiré)" : root.piece.echec ? " (indisponible)" : " : bientôt dans l'app native");
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.piece.genre == GenrePieceJointe.media ? (root.piece.vocal ? "onde" : "film") : root.piece.genre == GenrePieceJointe.image ? "image" : "trombone";
+                taille: 15px;
+                couleur: Theme.gris;
+            }
+        }
+        Rectangle {
+            max-width: 300px;
+            preferred-width: nom.preferred-width;
+            nom := Text {
+                width: 100%;
+                text: root.piece.nom;
+                color: Theme.gris;
+                font-size: 13px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if root.piece.genre == GenrePieceJointe.expiree: Rectangle {
+                y: (parent.height - self.height) / 2;
+                height: 1px;
+                background: Theme.gris;
+            }
+        }
+        if root.piece.genre == GenrePieceJointe.expiree: Text {
+            text: "(fichier expiré)";
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: 11.5px;
+            vertical-alignment: center;
+        }
+        if root.piece.genre == GenrePieceJointe.image: Text {
+            text: "(indisponible)";
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: 11.5px;
+            vertical-alignment: center;
+        }
+        if root.piece.genre == GenrePieceJointe.media: VerticalLayout {
+            alignment: center;
+            Etiquette {
+                texte: "bientôt dans l'app native";
+            }
+        }
+    }
+}
+
+component PieceJointeVue inherits HorizontalLayout {
+    in property <PieceJointe> piece;
+    in property <string> message;
+    if root.piece.genre == GenrePieceJointe.image && !root.piece.echec: VignetteImage {
+        piece: root.piece;
+        message: root.message;
+    }
+    if root.piece.genre == GenrePieceJointe.fichier: PuceFichier {
+        piece: root.piece;
+        message: root.message;
+    }
+    if root.piece.genre == GenrePieceJointe.media || root.piece.genre == GenrePieceJointe.expiree || (root.piece.genre == GenrePieceJointe.image && root.piece.echec): PuceInactive {
+        piece: root.piece;
+    }
+}
+
+component ReactionVue inherits Rectangle {
+    in property <ReactionMessage> reaction;
+    height: 28px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: root.reaction.moi ? Theme.rose : bulle.visible-maintenant ? Theme.rose-doux : Theme.surface;
+    border-width: root.reaction.moi ? 1.5px : 1px;
+    border-color: root.reaction.moi ? Theme.rose-fonce : Theme.trait;
+    accessible-role: text;
+    accessible-label: root.reaction.emoji + " " + root.reaction.nombre;
+    accessible-description: root.reaction.titre;
+    bulle := Infobulle {
+        texte: root.reaction.infobulle;
+        contenu := HorizontalLayout {
+            padding-left: 9px;
+            padding-right: 9px;
+            spacing: 6px;
+            if root.reaction.image.width > 0: VerticalLayout {
+                alignment: center;
+                Image {
+                    width: 18px;
+                    height: 18px;
+                    source: root.reaction.image;
+                    image-fit: contain;
+                }
+            }
+            if root.reaction.image.width == 0: Text {
+                text: root.reaction.emoji;
+                color: Theme.encre;
+                font-size: 15px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.reaction.nombre;
+                color: Theme.encre;
+                font-family: Typo.mono;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component CarteVue inherits Rectangle {
+    in property <CarteLien> carte;
+    in property <string> message;
+    property <bool> cliquable: root.carte.genre != GenreCarte.sillon;
+    max-width: 520px;
+    border-radius: Rayon.m;
+    background: zone.has-hover && root.cliquable ? Theme.surface-2 : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: button;
+    accessible-enabled: root.cliquable;
+    accessible-label: root.carte.titre;
+    accessible-description: root.carte.description;
+    accessible-action-default => {
+        if (root.cliquable) {
+            DonneesMessagerie.carte-cliquee(root.message, root.carte.url);
+        }
+    }
+    zone := TouchArea {
+        enabled: root.cliquable;
+        mouse-cursor: root.cliquable ? pointer : default;
+        clicked => {
+            DonneesMessagerie.carte-cliquee(root.message, root.carte.url);
+        }
+    }
+    Rectangle {
+        x: 1px;
+        y: Rayon.m / 2;
+        width: 3px;
+        height: parent.height - Rayon.m;
+        background: Theme.rose-fonce;
+        visible: root.carte.genre != GenreCarte.youtube;
+    }
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 17px;
+            padding-right: root.carte.avec-image && root.carte.genre != GenreCarte.youtube ? 10px : 14px;
+            padding-top: 12px;
+            padding-bottom: root.carte.genre == GenreCarte.youtube ? 10px : 12px;
+            spacing: 12px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                alignment: center;
+                if root.carte.site != "": Text {
+                    text: root.carte.site;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 11.5px;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.carte.titre;
+                    color: Theme.encre;
+                    font-weight: Typo.gras;
+                    font-size: 14px;
+                    wrap: word-wrap;
+                    max-height: 40px;
+                    overflow: elide;
+                }
+                if root.carte.description != "": Text {
+                    text: root.carte.description;
+                    color: Theme.gris;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    max-height: 36px;
+                    overflow: elide;
+                }
+            }
+            if root.carte.avec-image && root.carte.genre != GenreCarte.youtube: VerticalLayout {
+                alignment: center;
+                Image {
+                    width: 84px;
+                    height: 84px;
+                    source: root.carte.image;
+                    image-fit: cover;
+                }
+            }
+        }
+        if root.carte.genre == GenreCarte.youtube: HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            padding-bottom: 10px;
+            Rectangle {
+                height: self.width * 9 / 16;
+                border-radius: Rayon.s;
+                background: #111111;
+                if root.carte.avec-image: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.carte.image;
+                    image-fit: cover;
+                }
+                Rectangle {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: Rayon.pilule;
+                    background: Theme.rose;
+                    Icone {
+                        nom: "lecture";
+                        taille: 22px;
+                        couleur: Theme.encre;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component OptionVue inherits Rectangle {
+    in property <OptionSondage> option;
+    in property <bool> clos;
+    property <bool> marquee: root.option.moi || root.option.gagnant;
+    min-height: 40px;
+    border-radius: Rayon.s;
+    background: transparent;
+    border-width: root.marquee ? 1.5px : 1px;
+    border-color: root.marquee ? Theme.encre : Theme.trait-fort;
+    opacity: root.clos && !root.option.gagnant ? 0.75 : 1;
+    accessible-role: text;
+    accessible-label: (root.option.gagnant ? "Gagnant : " : "") + root.option.libelle + ", " + root.option.pourcentage + " %, " + root.option.votes + " votes" + (root.option.moi ? ", ton choix" : "");
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        height: parent.height - 2px;
+        width: (parent.width - 2px) * root.option.pourcentage / 100;
+        border-radius: Rayon.s - 1px;
+        background: root.option.gagnant ? Theme.rose : root.option.moi ? Theme.rose-doux : Theme.papier-2;
+        animate width { duration: Mouvement.d-l; easing: Courbes.sortie; }
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        if root.option.moi: VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "ok";
+                taille: 15px;
+                couleur: Theme.encre;
+            }
+        }
+        if root.option.gagnant: VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "trophee";
+                taille: 15px;
+                couleur: Theme.encre;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.option.libelle;
+            color: Theme.encre;
+            font-size: 14px;
+            font-weight: root.option.gagnant ? Typo.gras : root.option.moi ? Typo.demi-gras : Typo.normal;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.option.pourcentage + " % · " + root.option.votes;
+            color: Theme.encre;
+            font-family: Typo.mono;
+            font-size: 12.5px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component SondageVue inherits Rectangle {
+    in property <SondageMessage> sondage;
+    in property <[BlocTexte]> question;
+    in property <string> heure;
+    in property <string> message;
+    max-width: 460px;
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: groupbox;
+    accessible-label: "Sondage";
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "sondage";
+                    taille: 15px;
+                    couleur: Theme.gris;
+                }
+            }
+            Text {
+                text: "Sondage lancé par";
+                color: Theme.gris;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.sondage.auteur;
+                color: Theme.encre;
+                font-size: 13px;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+            }
+            if root.sondage.auteur-bot: VerticalLayout {
+                alignment: center;
+                BadgeRole {
+                    genre: GenreBadgeRole.bot;
+                }
+            }
+            Text {
+                text: "· " + root.heure;
+                color: Theme.gris;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+            if root.sondage.clos: VerticalLayout {
+                alignment: center;
+                Etiquette {
+                    texte: "Clos";
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+        TexteRiche {
+            blocs: root.question;
+            taille: 16px;
+            encre: Theme.encre;
+            lien(cible) => {
+                DonneesMessagerie.lien-clique(root.message, cible);
+            }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            for option in root.sondage.options: OptionVue {
+                option: option;
+                clos: root.sondage.clos;
+            }
+        }
+        Text {
+            text: root.sondage.pied;
+            color: Theme.gris;
+            font-size: 13px;
+            font-weight: root.sondage.clos ? Typo.demi-gras : Typo.normal;
+        }
+    }
+}
+
+export component AnnexesMessageVue {
+    in property <AnnexesMessage> annexes;
+    in property <string> message;
+    accessible-role: groupbox;
+    accessible-label: annexes.resume;
+    VerticalLayout {
+        spacing: 6px;
+        padding-top: 4px;
+        if root.annexes.pieces-jointes.length > 0: FlexboxLayout {
+            alignment: start;
+            cross-axis-alignment: start;
+            spacing: 8px;
+            for piece in root.annexes.pieces-jointes: PieceJointeVue {
+                piece: piece;
+                message: root.message;
+            }
+        }
+        if root.annexes.carte.genre != GenreCarte.aucune: HorizontalLayout {
+            CarteVue {
+                horizontal-stretch: 1;
+                preferred-width: 520px;
+                carte: root.annexes.carte;
+                message: root.message;
+            }
+            Rectangle {
+                horizontal-stretch: 0;
+            }
+        }
+        if root.annexes.reactions.length > 0: FlexboxLayout {
+            alignment: start;
+            cross-axis-alignment: start;
+            spacing: 6px;
+            for reaction in root.annexes.reactions: ReactionVue {
+                reaction: reaction;
+            }
+        }
+    }
+}

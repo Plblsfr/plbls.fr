@@ -205,6 +205,7 @@ pub fn etat_depuis(chargement: Chargement, precedent: &Etat) -> Etat {
             .unwrap_or_else(|| precedent.avatars.clone()),
         courante: precedent.courante.clone(),
         focus: precedent.focus,
+        en_bas: precedent.en_bas,
         activite_locale: precedent.activite_locale.clone(),
         ordre_serveurs: precedent.ordre_serveurs.clone(),
         ..Etat::default()

@@ -261,6 +261,10 @@ pub struct Message {
     pub reply_to: Option<MessageReplyTo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poll: Option<MessagePoll>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -271,6 +275,30 @@ pub struct MessageReplyTo {
     pub author: Option<Person>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MessagePoll {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multiple: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closes_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<Person>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<MessagePollOptionsElement>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct MessagePollOptionsElement {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub votes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub me: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

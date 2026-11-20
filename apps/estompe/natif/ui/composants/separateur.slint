@@ -1,0 +1,42 @@
+import { Theme, Typo } from "../jetons.slint";
+
+export component Separateur {
+    in property <string> texte;
+    in property <bool> accent: false;
+    in property <length> retrait: 72px;
+    accessible-role: text;
+    accessible-label: texte;
+    min-height: accent ? 32px : 40px;
+    HorizontalLayout {
+        padding-left: root.retrait;
+        padding-right: 24px;
+        padding-top: root.accent ? 8px : 16px;
+        padding-bottom: 8px;
+        spacing: 12px;
+        if root.accent: VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Rectangle {
+                height: 2px;
+                border-radius: 1px;
+                background: Theme.rose-fonce;
+            }
+        }
+        Text {
+            text: root.texte;
+            color: root.accent ? Theme.rose-texte : Theme.gris;
+            font-family: Typo.mono;
+            font-size: 11px;
+            font-weight: root.accent ? Typo.gras : Typo.normal;
+            vertical-alignment: center;
+        }
+        if !root.accent: VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Rectangle {
+                height: 1px;
+                background: Theme.trait;
+            }
+        }
+    }
+}

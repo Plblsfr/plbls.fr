@@ -9,12 +9,21 @@ pub mod preferences;
 #[cfg(test)]
 mod serveur_factice;
 
+pub mod apercu_liens;
 pub mod derniere_vue;
+pub mod emoji;
+pub mod fichiers;
+pub mod format;
+pub mod lru;
+pub mod markdown;
+pub mod mention;
 pub mod ordre_serveurs;
 pub mod roles;
 pub mod route;
 pub mod sections;
+pub mod sondage;
 pub mod store;
 pub mod temps_reel;
 pub mod version;
+pub mod virtualisation;
 pub use genere::types;

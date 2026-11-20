@@ -1,0 +1,243 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+
+export enum GenreBloc { paragraphe, titre, code }
+
+export enum GenreSegment { texte, code, emoji, masque }
+
+export struct SegmentTexte {
+    genre: GenreSegment,
+    texte: styled-text,
+    brut: string,
+    image: image,
+    espace: bool,
+    joint: bool,
+    cible: string,
+}
+
+export struct BlocTexte {
+    genre: GenreBloc,
+    texte: styled-text,
+    code: string,
+    niveau: int,
+    citation: int,
+    retrait: int,
+    puce: string,
+    segments: [SegmentTexte],
+    en-segments: bool,
+    grand: bool,
+    espace-avant: bool,
+}
+
+component SegmentVue inherits HorizontalLayout {
+    in property <SegmentTexte> segment;
+    in property <length> taille;
+    in property <string> famille;
+    in property <color> encre;
+    in property <bool> grand;
+    callback lien(string);
+    property <length> espace: root.segment.espace ? root.taille * 0.27 : 0;
+    property <length> cote-emoji: root.grand ? 48px : root.taille * 1.375;
+    padding-right: root.segment.joint ? 0 : root.espace;
+    if root.segment.genre == GenreSegment.texte: StyledText {
+        text: root.segment.texte;
+        default-color: root.encre;
+        default-font-size: root.taille;
+        default-font-family: root.famille;
+        link-color: Theme.rose-texte;
+        vertical-alignment: center;
+        link-clicked(cible) => {
+            root.lien(cible);
+        }
+    }
+    if root.segment.genre == GenreSegment.code: Rectangle {
+        border-radius: 4px;
+        background: Theme.papier-2;
+        border-width: 1px;
+        border-color: Theme.trait;
+        HorizontalLayout {
+            padding-left: 4px;
+            padding-right: 4px;
+            Text {
+                text: root.segment.brut;
+                color: Theme.encre;
+                font-family: Typo.mono;
+                font-size: root.taille * 0.87;
+                vertical-alignment: center;
+            }
+        }
+    }
+    if root.segment.genre == GenreSegment.emoji: Image {
+        width: root.cote-emoji;
+        height: root.cote-emoji;
+        source: root.segment.image;
+        image-fit: contain;
+        accessible-role: image;
+        accessible-label: root.segment.brut;
+    }
+    if root.segment.genre == GenreSegment.masque: Rectangle {
+        border-radius: 4px;
+        background: Theme.encre;
+        accessible-role: button;
+        accessible-label: "Passage masqué";
+        accessible-action-default => {
+            root.lien(root.segment.cible);
+        }
+        HorizontalLayout {
+            padding-left: 3px;
+            padding-right: root.segment.joint ? root.espace : 3px;
+            Text {
+                text: root.segment.brut;
+                color: transparent;
+                font-family: root.famille;
+                font-size: root.taille;
+                vertical-alignment: center;
+            }
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                root.lien(root.segment.cible);
+            }
+        }
+    }
+}
+
+component TexteEnSegments {
+    in property <[SegmentTexte]> segments;
+    in property <length> taille;
+    in property <string> famille;
+    in property <color> encre;
+    in property <bool> grand;
+    callback lien(string);
+    FlexboxLayout {
+        alignment: start;
+        cross-axis-alignment: center;
+        spacing-horizontal: 0;
+        spacing-vertical: root.grand ? 4px : 1px;
+        for segment in root.segments: SegmentVue {
+            segment: segment;
+            taille: root.taille;
+            famille: root.famille;
+            encre: root.encre;
+            grand: root.grand;
+            lien(cible) => {
+                root.lien(cible);
+            }
+        }
+    }
+}
+
+component Barres {
+    in property <int> nombre;
+    width: nombre * 15px;
+    for i in nombre: Rectangle {
+        x: i * 15px;
+        width: 3px;
+        border-radius: 1.5px;
+        background: Theme.trait-fort;
+    }
+}
+
+export component BlocTexteVue {
+    in property <BlocTexte> bloc;
+    in property <length> taille: Typo.corps;
+    in property <color> encre: Theme.encre-2;
+    callback lien(string);
+    property <bool> cite: bloc.citation > 0;
+    property <length> taille-titre: root.bloc.niveau == 1 ? 22px : root.bloc.niveau == 2 ? 19px : 17px;
+    HorizontalLayout {
+        spacing: 0;
+        padding-top: root.bloc.espace-avant ? Espace.e1 : 0;
+        if root.bloc.citation > 0: Barres {
+            nombre: root.bloc.citation;
+        }
+        Rectangle {
+            width: root.bloc.retrait > 1 ? (root.bloc.retrait - 1) * 24px : 0;
+        }
+        if root.bloc.retrait > 0: Text {
+            width: 24px;
+            text: root.bloc.puce;
+            color: root.cite ? Theme.gris : root.encre;
+            font-size: root.taille;
+            horizontal-alignment: right;
+            vertical-alignment: top;
+        }
+        Rectangle {
+            width: root.bloc.retrait > 0 ? 8px : 0;
+        }
+        if root.bloc.en-segments && root.bloc.genre != GenreBloc.code: TexteEnSegments {
+            horizontal-stretch: 1;
+            segments: root.bloc.segments;
+            taille: root.bloc.genre == GenreBloc.titre ? root.taille-titre : root.taille;
+            famille: root.bloc.genre == GenreBloc.titre ? Typo.titre : Typo.texte;
+            encre: root.cite ? Theme.gris : root.bloc.genre == GenreBloc.titre ? Theme.encre : root.encre;
+            grand: root.bloc.grand;
+            lien(cible) => {
+                root.lien(cible);
+            }
+        }
+        if !root.bloc.en-segments && root.bloc.genre == GenreBloc.paragraphe: StyledText {
+            horizontal-stretch: 1;
+            text: root.bloc.texte;
+            default-color: root.cite ? Theme.gris : root.encre;
+            default-font-size: root.taille;
+            link-color: Theme.rose-texte;
+            vertical-alignment: top;
+            link-clicked(cible) => {
+                root.lien(cible);
+            }
+        }
+        if !root.bloc.en-segments && root.bloc.genre == GenreBloc.titre: StyledText {
+            horizontal-stretch: 1;
+            text: root.bloc.texte;
+            default-color: root.cite ? Theme.gris : Theme.encre;
+            default-font-family: Typo.titre;
+            default-font-size: root.taille-titre;
+            link-color: Theme.rose-texte;
+            vertical-alignment: top;
+            link-clicked(cible) => {
+                root.lien(cible);
+            }
+        }
+        if root.bloc.genre == GenreBloc.code: Rectangle {
+            horizontal-stretch: 1;
+            max-width: 720px;
+            border-radius: Rayon.s;
+            background: Theme.papier-2;
+            border-width: 1px;
+            border-color: Theme.trait;
+            HorizontalLayout {
+                padding-top: Espace.e3;
+                padding-bottom: Espace.e3;
+                padding-left: 14px;
+                padding-right: 14px;
+                Text {
+                    text: root.bloc.code;
+                    color: Theme.encre-2;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    wrap: char-wrap;
+                    accessible-role: text;
+                }
+            }
+        }
+    }
+}
+
+export component TexteRiche {
+    in property <[BlocTexte]> blocs;
+    in property <length> taille: Typo.corps;
+    in property <color> encre: Theme.encre-2;
+    callback lien(string);
+    VerticalLayout {
+        spacing: 0;
+        for bloc in root.blocs: BlocTexteVue {
+            bloc: bloc;
+            taille: root.taille;
+            encre: root.encre;
+            lien(cible) => {
+                root.lien(cible);
+            }
+        }
+    }
+}

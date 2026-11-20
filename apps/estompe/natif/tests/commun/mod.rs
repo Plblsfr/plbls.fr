@@ -194,6 +194,7 @@ pub mod coquille {
     use std::sync::{Arc, Mutex};
 
     use estompe_client::appels::Badge;
+    use estompe_client::appels::EmojiPersonnalise;
     use estompe_client::http::{Client, ErreurApi};
     use estompe_client::sections::Section;
     use estompe_client::store::{CleConversation, Etat, ParticipantVocal, Store};
@@ -202,6 +203,8 @@ pub mod coquille {
         CleAvatar, EchecOuverture, Fabrique, Ouverture, Profils, SourceProfils,
     };
     use estompe_natif::entree::Futur;
+    use estompe_natif::messagerie::medias::{Medias, Progres, Source, SourceMedias};
+    use estompe_plateforme::Fichiers;
     use serde_json::{json, Value};
     use tokio::sync::{mpsc, watch};
 
@@ -218,6 +221,348 @@ pub mod coquille {
 
     pub fn message(id: &str, salon: &str, auteur: &str) -> Value {
         json!({"id": id, "channel_id": salon, "author": {"id": auteur, "pseudo": auteur}, "content": "salut", "created_at": "2026-11-19T10:00:00Z", "attachments": [], "reactions": [], "mentions": []})
+    }
+
+    pub fn message_de(valeur: Value) -> estompe_client::types::Message {
+        depuis(valeur)
+    }
+
+    fn ecrit(
+        id: &str,
+        lieu: (&str, &str),
+        auteur: (&str, &str),
+        quand: &str,
+        contenu: &str,
+    ) -> Value {
+        let mut valeur = json!({"id": id, "author": {"id": auteur.0, "pseudo": auteur.1}, "content": contenu, "created_at": quand, "attachments": [], "reactions": [], "mentions": []});
+        valeur[lieu.0] = json!(lieu.1);
+        valeur
+    }
+
+    pub const ESTOMPE: &str = "00000000-0000-0000-0000-000000000001";
+
+    pub fn conversation_variantes() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit(
+                "100",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-18T21:40:00Z",
+                "Bonne nuit tout le monde, à demain !",
+            ),
+            ecrit(
+                "101",
+                c1,
+                (ESTOMPE, "Estompe"),
+                "2026-11-19T07:58:00Z",
+                "Inès a rejoint le serveur.",
+            ),
+            ecrit(
+                "102",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:00:00Z",
+                "Salut ! Quelqu'un a vu le **planning** de demain ?",
+            ),
+            ecrit(
+                "103",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:01:00Z",
+                "Je l'avais posé ici mais je ne le retrouve plus.",
+            ),
+            ecrit(
+                "104",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:02:00Z",
+                "Oui, il est dans le dossier partagé, je l'ai mis à jour.",
+            ),
+            ecrit(
+                "105",
+                c1,
+                ("elise", "Élise"),
+                "2026-11-19T08:03:00Z",
+                "Je ne vois plus le message auquel je répondais.",
+            ),
+            ecrit(
+                "106",
+                c1,
+                (ESTOMPE, "Estompe"),
+                "2026-11-19T08:05:00Z",
+                "Nouvelle version disponible : 0.42 apporte la messagerie native.",
+            ),
+            ecrit(
+                "107",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:06:00Z",
+                "@bob tu peux valider le planning avant midi ?",
+            ),
+            ecrit(
+                "108",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:07:00Z",
+                "Les photos du week-end :",
+            ),
+            ecrit(
+                "109",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:09:00Z",
+                "Et ce message est mis en évidence après un saut.",
+            ),
+        ];
+        v[1]["system"] = json!(true);
+        v[2]["pinned_at"] = json!("2026-11-19T08:10:00Z");
+        v[4]["reply_to"] = json!({"id": "102", "author": {"id": "carol", "pseudo": "carol"}, "content": "Salut ! Quelqu'un a vu le **planning** de demain ?"});
+        v[4]["edited_at"] = json!("2026-11-19T08:04:00Z");
+        v[5]["reply_to"] = json!({"id": "99", "author": {"id": "hugo", "pseudo": "hugo"}, "content": "message retiré"});
+        v[7]["mentions"] = json!(["u1"]);
+        v[8]["attachments"] = json!([{"id": "a1", "name": "plage.jpg", "mime": "image/jpeg", "size": 812345}, {"id": "a2", "name": "dune.jpg", "mime": "image/jpeg", "size": 645000}]);
+        v[8]["reactions"] = json!([{"emoji": "👍", "count": 3, "me": true}, {"emoji": "🎉", "count": 1, "me": false}]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub const GALERIE: &str = "# Titre de niveau 1\n**Gras**, *italique*, ~~barré~~, `code en ligne`, [un lien](https://plbls.fr) et une mention de @carol.\nUn passage ||masqué|| à révéler d'un clic.\n> Une citation\n> > et une citation imbriquée\n- premier point\n- second point\n  - sous-point\n1. étape une\n2. étape deux\n```\nfn main() {\n    println!(\"Bonjour\");\n}\n```\n## Titre de niveau 2\nUn texte assez long pour passer à la ligne : la liste conserve la position du message sous le curseur quand l'historique arrive au-dessus.";
+
+    pub fn galerie_markdown() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        vec![
+            depuis(ecrit(
+                "200",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:30:00Z",
+                GALERIE,
+            )),
+            depuis(ecrit(
+                "201",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:31:00Z",
+                "Révélé : ||la fin du film|| et ### pas un titre en ligne",
+            )),
+        ]
+    }
+
+    pub fn conversation_emoji() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit(
+                "500",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:10:00Z",
+                "Bravo pour la démo 🎉🎉 ! On fête ça vendredi 🍕🍺 ?",
+            ),
+            ecrit(
+                "501",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:11:00Z",
+                "Drapeaux du tournoi : 🇫🇷 🇧🇪 🇨🇦 🇯🇵, et l'équipe 👩🏽‍💻👨🏿‍💻🧑🏻‍🎨 au complet 👋🏾",
+            ),
+            ecrit("502", c1, ("eve", "Ève"), "2026-11-19T08:12:00Z", "🥳🎂"),
+            ecrit(
+                "503",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:12:30Z",
+                "Les emoji du serveur : :chaton: et :fete: dans une phrase.",
+            ),
+            ecrit(
+                "504",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:13:00Z",
+                ":chaton:",
+            ),
+            ecrit(
+                "505",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:14:00Z",
+                "Famille 👨‍👩‍👧‍👦, drapeau 🏳️‍🌈, `code` et © en texte simple.",
+            ),
+        ];
+        v[0]["reactions"] = json!([
+            {"emoji": "👍", "count": 4, "me": true, "users": [{"id": "u1", "pseudo": "bob"}, {"id": "dave", "pseudo": "dave"}, {"id": "eve", "pseudo": "Ève"}, {"id": "ines", "pseudo": "Inès"}]},
+            {"emoji": "❤️", "count": 2, "me": false, "users": [{"id": "dave", "pseudo": "dave"}, {"id": "eve", "pseudo": "Ève"}]},
+            {"emoji": "😂", "count": 1, "me": false, "users": [{"id": "ines", "pseudo": "Inès"}]}
+        ]);
+        v[5]["reactions"] = json!([
+            {"emoji": "🇫🇷", "count": 1, "me": false, "users": [{"id": "dave", "pseudo": "dave"}]},
+            {"emoji": "👍🏽", "count": 2, "me": true, "users": [{"id": "u1", "pseudo": "bob"}, {"id": "carol", "pseudo": "carol"}]}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub fn conversation_pieces() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit(
+                "600",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:20:00Z",
+                "Les photos du week-end :",
+            ),
+            ecrit(
+                "601",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:22:00Z",
+                "Le compte rendu, l'enregistrement et l'ancienne archive :",
+            ),
+            ecrit("602", c1, ("carol", "carol"), "2026-11-19T08:23:00Z", ""),
+        ];
+        v[0]["attachments"] = json!([
+            {"id": "a1", "name": "plage.jpg", "mime": "image/jpeg", "size": 812345},
+            {"id": "a2", "name": "dune.jpg", "mime": "image/jpeg", "size": 645000},
+            {"id": "a3", "name": "coucher.png", "mime": "image/png", "size": 1203000}
+        ]);
+        v[1]["attachments"] = json!([
+            {"id": "f1", "name": "compte-rendu de la réunion.pdf", "mime": "application/pdf", "size": 245760},
+            {"id": "f2", "name": "budget.ods", "mime": "application/vnd.oasis.opendocument.spreadsheet", "size": 18432},
+            {"id": "v1", "name": "reunion.mp4", "mime": "video/mp4", "size": 52428800},
+            {"id": "x1", "name": "vieille-archive.zip", "mime": "application/zip", "size": 1024, "expired": true}
+        ]);
+        v[2]["attachments"] = json!([
+            {"id": "g1", "name": "danse.gif", "mime": "image/gif", "size": 32000},
+            {"id": "m1", "name": "message vocal", "kind": "voice", "duration_ms": 4000}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
+    pub fn conversation_cartes() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        [
+            ecrit(
+                "700",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:30:00Z",
+                "L'article dont je parlais : https://plbls.fr/journal/estompe-natif",
+            ),
+            ecrit(
+                "701",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:31:00Z",
+                "Et sans image : https://exemple.fr/article",
+            ),
+            ecrit(
+                "702",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:32:00Z",
+                "https://youtu.be/dQw4w9WgXcQ",
+            ),
+        ]
+        .into_iter()
+        .map(depuis)
+        .collect()
+    }
+
+    pub fn sondage(id: &str, question: &str, clos_a: &str, options: Value) -> Value {
+        let mut m = ecrit(
+            id,
+            ("channel_id", "c1"),
+            ("ines", "Inès"),
+            "2026-11-19T08:33:00Z",
+            question,
+        );
+        m["poll"] = json!({"multiple": false, "closes_at": clos_a, "created_by": {"id": "ines", "pseudo": "Inès"}, "options": options});
+        m
+    }
+
+    pub fn conversation_sondages() -> Vec<estompe_client::types::Message> {
+        let mut clos = sondage(
+            "703",
+            "Film de dimanche ?",
+            "2026-11-19T07:00:00Z",
+            json!([{"id": "o1", "label": "Dune", "votes": 5}, {"id": "o2", "label": "Alien", "votes": 2, "me": true}]),
+        );
+        clos["created_at"] = json!("2026-11-18T20:00:00Z");
+        vec![
+            depuis(clos),
+            depuis(sondage(
+                "704",
+                "On mange où **vendredi** ?",
+                "2026-11-19T10:30:00Z",
+                json!([{"id": "o1", "label": "Pizza", "votes": 3, "me": true}, {"id": "o2", "label": "Sushi", "votes": 1}, {"id": "o3", "label": "Crêpes", "votes": 2}]),
+            )),
+        ]
+    }
+
+    pub fn conversation_privee() -> Vec<estompe_client::types::Message> {
+        let d1 = ("dm_id", "d1");
+        [
+            ecrit(
+                "300",
+                d1,
+                ("u1", "bob"),
+                "2026-11-19T07:50:00Z",
+                "On se voit toujours ce soir ?",
+            ),
+            ecrit(
+                "301",
+                d1,
+                ("carol", "carol"),
+                "2026-11-19T07:52:00Z",
+                "Oui ! 19 h devant le cinéma.",
+            ),
+            ecrit(
+                "302",
+                d1,
+                ("carol", "carol"),
+                "2026-11-19T08:20:00Z",
+                "Petit changement : on se retrouve plutôt au café d'à côté.",
+            ),
+            ecrit(
+                "303",
+                d1,
+                ("carol", "carol"),
+                "2026-11-19T08:21:00Z",
+                "Ça te va ?",
+            ),
+        ]
+        .into_iter()
+        .map(depuis)
+        .collect()
+    }
+
+    pub fn conversation_courte(salon: &str) -> Vec<estompe_client::types::Message> {
+        let lieu = ("channel_id", salon);
+        [
+            ecrit(
+                "400",
+                lieu,
+                ("carol", "carol"),
+                "2026-11-19T08:00:00Z",
+                "Bonjour à toutes et à tous !",
+            ),
+            ecrit(
+                "401",
+                lieu,
+                ("dave", "dave"),
+                "2026-11-19T08:05:00Z",
+                "Salut, prêt pour la réunion de **10 h** ?",
+            ),
+            ecrit(
+                "402",
+                lieu,
+                ("dave", "dave"),
+                "2026-11-19T08:06:00Z",
+                "L'ordre du jour : [plbls.fr/agenda](https://plbls.fr/agenda)",
+            ),
+        ]
+        .into_iter()
+        .map(depuis)
+        .collect()
     }
 
     pub fn etat() -> Etat {
@@ -433,9 +778,201 @@ pub mod coquille {
     }
 
     pub fn store(etat: Etat) -> Store {
-        let store = Store::nouveau(Client::nouveau("http://127.0.0.1:9").unwrap(), &[]);
+        store_sur(etat, "http://127.0.0.1:9")
+    }
+
+    pub fn store_sur(etat: Etat, adresse: &str) -> Store {
+        let reglages = estompe_client::http::Reglages {
+            mandataire_systeme: false,
+            ..estompe_client::http::Reglages::default()
+        };
+        let store = Store::nouveau(Client::avec_reglages(adresse, reglages).unwrap(), &[]);
         store.installer(etat);
         store
+    }
+
+    pub struct ServeurMessages {
+        pub adresse: String,
+        pub nombre: u64,
+        pub requetes: Mutex<Vec<String>>,
+        bloque: Mutex<bool>,
+        reveil: std::sync::Condvar,
+        fichiers: Mutex<BTreeMap<String, (String, Vec<u8>)>>,
+        messages: Mutex<BTreeMap<u64, Value>>,
+    }
+
+    pub fn contenu_de(n: u64) -> String {
+        if n.is_multiple_of(7) {
+            format!("message n°{n}\nUne deuxième ligne pour varier la hauteur, avec assez de mots pour passer à la ligne dans une fenêtre étroite.\nEt une troisième.")
+        } else {
+            format!("message n°{n}")
+        }
+    }
+
+    pub fn message_numero(n: u64, nombre: u64) -> Value {
+        let auteur = if (n / 3).is_multiple_of(2) {
+            "carol"
+        } else {
+            "dave"
+        };
+        let mut m = json!({
+            "id": n.to_string(), "channel_id": "c1",
+            "author": {"id": auteur, "pseudo": auteur},
+            "content": contenu_de(n),
+            "created_at": format!("2026-11-{:02}T{:02}:{:02}:{:02}Z", 1 + (n / 4000).min(17), (n / 240) % 24, (n / 4) % 60, (n * 15) % 60),
+            "attachments": [], "reactions": [], "mentions": []
+        });
+        if n == nombre {
+            m["reply_to"] = json!({"id": "3", "author": {"id": "carol", "pseudo": "carol"}, "content": contenu_de(3)});
+        }
+        m
+    }
+
+    fn parametre(requete: &str, nom: &str) -> Option<u64> {
+        let (_, requete) = requete.split_once('?')?;
+        requete.split('&').find_map(|p| {
+            let (cle, valeur) = p.split_once('=')?;
+            (cle == nom).then(|| valeur.parse().ok()).flatten()
+        })
+    }
+
+    impl ServeurMessages {
+        pub fn demarrer(nombre: u64) -> Arc<Self> {
+            use std::io::{BufRead, BufReader, Write};
+            let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let serveur = Arc::new(Self {
+                adresse: format!("http://{}", ecoute.local_addr().unwrap()),
+                nombre,
+                requetes: Mutex::new(Vec::new()),
+                bloque: Mutex::new(false),
+                reveil: std::sync::Condvar::new(),
+                fichiers: Mutex::new(BTreeMap::new()),
+                messages: Mutex::new(BTreeMap::new()),
+            });
+            let s = serveur.clone();
+            std::thread::spawn(move || {
+                for flux in ecoute.incoming() {
+                    let Ok(mut flux) = flux else { return };
+                    let s = s.clone();
+                    std::thread::spawn(move || {
+                        let mut lecteur = BufReader::new(flux.try_clone().unwrap());
+                        let mut premiere = String::new();
+                        if lecteur.read_line(&mut premiere).unwrap_or(0) == 0 {
+                            return;
+                        }
+                        loop {
+                            let mut ligne = String::new();
+                            if lecteur.read_line(&mut ligne).unwrap_or(0) == 0 || ligne == "\r\n" {
+                                break;
+                            }
+                        }
+                        let mut morceaux = premiere.split_whitespace();
+                        let methode = morceaux.next().unwrap_or_default().to_string();
+                        let chemin = morceaux.next().unwrap_or_default().to_string();
+                        let (statut, type_mime, corps) = match s.fichier(&chemin) {
+                            Some((type_mime, octets)) => (200, type_mime, octets),
+                            None => {
+                                let (statut, corps) = s.repondre(&methode, &chemin);
+                                (statut, "application/json".to_string(), corps.into_bytes())
+                            }
+                        };
+                        let _ = write!(
+                            flux,
+                            "HTTP/1.1 {statut} OK\r\ncontent-type: {type_mime}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                            corps.len()
+                        );
+                        let _ = flux.write_all(&corps);
+                    });
+                }
+            });
+            serveur
+        }
+
+        pub fn servir_fichier(&self, chemin: &str, type_mime: &str, octets: Vec<u8>) {
+            self.fichiers
+                .lock()
+                .unwrap()
+                .insert(chemin.to_string(), (type_mime.to_string(), octets));
+        }
+
+        pub fn remplacer_message(&self, n: u64, message: Value) {
+            self.messages.lock().unwrap().insert(n, message);
+        }
+
+        fn fichier(&self, chemin: &str) -> Option<(String, Vec<u8>)> {
+            let sans_parametres = chemin.split('?').next().unwrap_or(chemin);
+            let trouve = self.fichiers.lock().unwrap().get(sans_parametres).cloned();
+            if trouve.is_some() {
+                self.requetes.lock().unwrap().push(format!("GET {chemin}"));
+            }
+            trouve
+        }
+
+        pub fn bloquer(&self, bloque: bool) {
+            *self.bloque.lock().unwrap() = bloque;
+            self.reveil.notify_all();
+        }
+
+        pub fn nombre_de(&self, debut: &str) -> usize {
+            self.requetes
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.starts_with(debut))
+                .count()
+        }
+
+        fn repondre(&self, methode: &str, chemin: &str) -> (u16, String) {
+            self.requetes
+                .lock()
+                .unwrap()
+                .push(format!("{methode} {chemin}"));
+            if methode == "POST" {
+                return (200, "{}".into());
+            }
+            if chemin.ends_with("/reads") || chemin == "/emojis" {
+                return (200, "[]".into());
+            }
+            if !chemin.starts_with("/channels/c1/messages") {
+                return (404, r#"{"error":"introuvable"}"#.into());
+            }
+            let limite = parametre(chemin, "limit").unwrap_or(50);
+            let (debut, fin, encore) =
+                match (parametre(chemin, "before"), parametre(chemin, "after")) {
+                    (Some(avant), _) => {
+                        let mut bloque = self.bloque.lock().unwrap();
+                        while *bloque {
+                            bloque = self.reveil.wait(bloque).unwrap();
+                        }
+                        let fin = avant.saturating_sub(1).min(self.nombre);
+                        let debut = fin.saturating_sub(limite) + 1;
+                        (debut, fin, debut > 1)
+                    }
+                    (None, Some(apres)) => {
+                        let debut = apres + 1;
+                        let fin = (apres + limite).min(self.nombre);
+                        (debut, fin, fin < self.nombre)
+                    }
+                    (None, None) => {
+                        let debut = self.nombre.saturating_sub(limite) + 1;
+                        (debut, self.nombre, debut > 1)
+                    }
+                };
+            let remplaces = self.messages.lock().unwrap().clone();
+            let messages: Vec<Value> = (debut..=fin)
+                .filter(|n| *n >= 1)
+                .map(|n| {
+                    remplaces
+                        .get(&n)
+                        .cloned()
+                        .unwrap_or_else(|| message_numero(n, self.nombre))
+                })
+                .collect();
+            (
+                200,
+                json!({"messages": messages, "has_more": encore}).to_string(),
+            )
+        }
     }
 
     pub struct FausseFabrique {
@@ -447,12 +984,81 @@ pub mod coquille {
         pub reseau: watch::Sender<EtatReseau>,
         pub source: Arc<SourceFactice>,
         pub profils: Arc<Profils>,
+        pub adresse: String,
+        pub navigateur: Arc<super::FauxNavigateur>,
+        pub medias: Arc<Medias>,
+        pub fichiers: Arc<FauxFichiers>,
+    }
+
+    #[derive(Default)]
+    pub struct FauxFichiers {
+        pub dossier: Mutex<Option<std::path::PathBuf>>,
+        pub ouverts: Mutex<Vec<std::path::PathBuf>>,
+    }
+
+    impl Fichiers for FauxFichiers {
+        fn disponible(&self) -> bool {
+            true
+        }
+
+        fn choisir_dossier(
+            &self,
+            _: Option<&std::path::Path>,
+        ) -> estompe_plateforme::Resultat<Option<std::path::PathBuf>> {
+            Ok(self.dossier.lock().unwrap().clone())
+        }
+
+        fn ouvrir(&self, chemin: &std::path::Path) -> estompe_plateforme::Resultat<()> {
+            self.ouverts.lock().unwrap().push(chemin.to_path_buf());
+            Ok(())
+        }
+    }
+
+    pub struct SourceMediasFactice;
+
+    impl SourceMedias for SourceMediasFactice {
+        fn octets(&self, _: &Source) -> Futur<Result<Vec<u8>, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
+        fn emojis(&self) -> Futur<Result<Vec<EmojiPersonnalise>, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
+        fn apercu(
+            &self,
+            _: &str,
+            _: Option<&str>,
+        ) -> Futur<Result<Option<estompe_client::types::LinkPreview>, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
+        fn telecharger(
+            &self,
+            _: &str,
+            _: std::path::PathBuf,
+            _: Progres,
+        ) -> Futur<Result<u64, ErreurApi>> {
+            Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+        }
     }
 
     impl FausseFabrique {
         pub fn nouvelle(etat: Etat, sections: Vec<Section>) -> Arc<Self> {
+            Self::sur(etat, sections, "http://127.0.0.1:9")
+        }
+
+        pub fn sur(etat: Etat, sections: Vec<Section>, adresse: &str) -> Arc<Self> {
             let source = Arc::new(SourceFactice::default());
+            let reglages = estompe_client::http::Reglages {
+                mandataire_systeme: false,
+                ..estompe_client::http::Reglages::default()
+            };
             Arc::new(Self {
+                medias: Medias::nouveaux(
+                    Arc::new(Client::avec_reglages(adresse, reglages).unwrap()),
+                    None,
+                ),
+                fichiers: Arc::new(FauxFichiers::default()),
+                adresse: adresse.to_string(),
+                navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
                 sections,
                 ouvertures: AtomicUsize::new(0),
@@ -484,7 +1090,7 @@ pub mod coquille {
             self.ouvertures.fetch_add(1, Ordering::SeqCst);
             let mut etat = self.etat.clone();
             etat.ordre_serveurs = ordre;
-            let store = store(etat);
+            let store = store_sur(etat, &self.adresse);
             let (signaux, flux) = FluxTempsReel::factice();
             *self.signaux.lock().unwrap() = Some(signaux);
             *self.store.lock().unwrap() = Some(store.clone());
@@ -506,6 +1112,22 @@ pub mod coquille {
 
         fn profils(&self) -> Arc<Profils> {
             self.profils.clone()
+        }
+
+        fn navigateur(&self) -> estompe_natif::messagerie::pont::Navigateur {
+            self.navigateur.clone()
+        }
+
+        fn medias(&self) -> Option<Arc<Medias>> {
+            Some(self.medias.clone())
+        }
+
+        fn fichiers(&self) -> estompe_natif::messagerie::pont::SystemeFichiers {
+            self.fichiers.clone()
+        }
+
+        fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
+            Arc::new(estompe_plateforme::Indisponible)
         }
     }
 }

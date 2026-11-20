@@ -1,0 +1,361 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone, Avatar, BadgeRole, GenreBadgeRole, Chargement, Separateur, TexteRiche } from "../composants.slint";
+import { Medaille } from "../coquille/membres.slint";
+import { DonneesMessagerie, LigneMessage, GenreLigneMessage, AnnexesMessage, ReponseMessage, GenreCarte } from "donnees.slint";
+import { AnnexesMessageVue, SondageVue } from "annexes.slint";
+
+component EnTeteReponse {
+    in property <ReponseMessage> reponse;
+    accessible-role: button;
+    accessible-enabled: !root.reponse.supprimee;
+    accessible-label: root.reponse.supprimee ? "Message d'origine supprimé" : "Aller au message de " + root.reponse.auteur;
+    accessible-description: root.reponse.texte;
+    accessible-action-default => {
+        if (!root.reponse.supprimee) {
+            DonneesMessagerie.reponse-cliquee(root.reponse.id);
+        }
+    }
+    min-height: 22px;
+    zone := TouchArea {
+        enabled: !root.reponse.supprimee;
+        mouse-cursor: root.reponse.supprimee ? default : pointer;
+        clicked => {
+            DonneesMessagerie.reponse-cliquee(root.reponse.id);
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "repondre";
+                    taille: 14px;
+                    couleur: Theme.gris;
+                }
+            }
+            if !root.reponse.supprimee: Text {
+                text: root.reponse.auteur;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.reponse.supprimee ? "Message d'origine supprimé" : root.reponse.texte;
+                color: zone.has-hover ? Theme.encre-2 : Theme.gris;
+                font-size: Typo.petit;
+                font-italic: root.reponse.supprimee;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component BoutonCopier {
+    callback clique();
+    width: 28px;
+    height: 28px;
+    accessible-role: button;
+    accessible-label: "Copier le message";
+    accessible-action-default => {
+        root.clique();
+    }
+    Rectangle {
+        border-radius: Rayon.xs;
+        background: zone.has-hover ? Theme.rose-doux : Theme.surface;
+        border-width: 1px;
+        border-color: Theme.trait;
+    }
+    Icone {
+        nom: "copie";
+        taille: 15px;
+        couleur: Theme.encre;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component Debut {
+    accessible-role: text;
+    accessible-label: "Début de la conversation";
+    VerticalLayout {
+        padding-left: 72px;
+        padding-right: 24px;
+        padding-top: Espace.e8;
+        padding-bottom: Espace.e4;
+        spacing: Espace.e2;
+        alignment: start;
+        HorizontalLayout {
+            alignment: start;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: Rayon.m;
+                background: Theme.papier-2;
+                border-width: 1px;
+                border-color: Theme.trait;
+                Icone {
+                    nom: "bulle";
+                    taille: 22px;
+                    couleur: Theme.gris;
+                }
+            }
+        }
+        Text {
+            text: "Début de la conversation";
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: 18px;
+            font-weight: Typo.gras;
+        }
+    }
+}
+
+component ChargementLigne {
+    accessible-role: text;
+    accessible-label: "Chargement des messages";
+    HorizontalLayout {
+        alignment: center;
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        Chargement {
+            taille: 18px;
+        }
+        Text {
+            text: "Chargement des messages…";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component CorpsMessage inherits Rectangle {
+    in property <LigneMessage> ligne;
+    callback copier(string);
+    property <bool> actif: zone.has-hover || portee.has-focus;
+    background: ligne.mis-en-evidence ? Theme.rose : ligne.mention ? Theme.rose.with-alpha(root.actif ? 0.38 : 0.28) : root.actif ? Theme.encre.with-alpha(0.03) : transparent;
+    animate background { duration: Mouvement.d-l; easing: Courbes.sortie; }
+    accessible-role: text;
+    accessible-label: (ligne.systeme ? "Message système" : ligne.auteur) + ", " + ligne.heure;
+    accessible-description: ligne.texte-brut;
+    if root.ligne.mention: Rectangle {
+        x: 0;
+        width: 3px;
+        background: Theme.rose-fonce;
+    }
+    zone := TouchArea {
+        portee := FocusScope {
+            key-pressed(e) => {
+                if (e.modifiers.control && (e.text == "c" || e.text == "C")) {
+                    root.copier(root.ligne.texte-brut);
+                    return accept;
+                }
+                return reject;
+            }
+            HorizontalLayout {
+                padding-top: root.ligne.suite ? 2px : root.ligne.systeme ? 6px : 14px;
+                padding-bottom: 2px;
+                padding-right: 24px;
+                Rectangle {
+                    width: 72px;
+                    if !root.ligne.suite && !root.ligne.systeme: Rectangle {
+                        x: 22px;
+                        y: 0;
+                        width: 36px;
+                        height: 36px;
+                        accessible-role: button;
+                        accessible-label: "Profil de " + root.ligne.auteur;
+                        accessible-action-default => {
+                            DonneesMessagerie.auteur-clique(root.ligne.utilisateur);
+                        }
+                        Avatar {
+                            nom: root.ligne.auteur;
+                            initiales: root.ligne.initiales;
+                            teinte: root.ligne.teinte;
+                            portrait: root.ligne.portrait;
+                            taille: 36px;
+                        }
+                        TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                DonneesMessagerie.auteur-clique(root.ligne.utilisateur);
+                            }
+                        }
+                    }
+                    if root.ligne.suite || root.ligne.systeme: HorizontalLayout {
+                        y: 0;
+                        height: 20px;
+                        padding-right: 14px;
+                        spacing: 4px;
+                        alignment: end;
+                        if root.ligne.epingle: VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 13px;
+                                height: 13px;
+                                accessible-role: image;
+                                accessible-label: "Message épinglé";
+                                Icone {
+                                    nom: "epingle";
+                                    taille: 13px;
+                                    couleur: Theme.rose-texte;
+                                }
+                            }
+                        }
+                        Text {
+                            text: root.ligne.heure;
+                            color: Theme.gris-2;
+                            font-family: Typo.mono;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            opacity: root.ligne.systeme || root.actif ? 1 : 0;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    alignment: start;
+                    if root.ligne.reponse.presente: EnTeteReponse {
+                        reponse: root.ligne.reponse;
+                    }
+                    if !root.ligne.suite && !root.ligne.systeme: HorizontalLayout {
+                        spacing: Espace.e2;
+                        height: 20px;
+                        auteur := Text {
+                            text: root.ligne.auteur;
+                            color: root.ligne.a-couleur ? root.ligne.couleur : Theme.encre;
+                            font-size: Typo.corps;
+                            font-weight: Typo.gras;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    DonneesMessagerie.auteur-clique(root.ligne.utilisateur);
+                                }
+                            }
+                        }
+                        if root.ligne.bot: VerticalLayout {
+                            alignment: center;
+                            BadgeRole {
+                                genre: GenreBadgeRole.bot;
+                            }
+                        }
+                        if root.ligne.nombre-badges > 0: VerticalLayout {
+                            alignment: center;
+                            Medaille {
+                                badge: root.ligne.badge-1;
+                                taille: 15px;
+                            }
+                        }
+                        if root.ligne.nombre-badges > 1: VerticalLayout {
+                            alignment: center;
+                            Medaille {
+                                badge: root.ligne.badge-2;
+                                taille: 15px;
+                            }
+                        }
+                        if root.ligne.epingle: VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 13px;
+                                height: 13px;
+                                accessible-role: image;
+                                accessible-label: "Message épinglé";
+                                Icone {
+                                    nom: "epingle";
+                                    taille: 13px;
+                                    couleur: Theme.rose-texte;
+                                }
+                            }
+                        }
+                        Text {
+                            text: root.ligne.heure;
+                            color: Theme.gris-2;
+                            font-family: Typo.mono;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    if root.ligne.annexes.sondage.present: HorizontalLayout {
+                        SondageVue {
+                            horizontal-stretch: 1;
+                            preferred-width: 460px;
+                            sondage: root.ligne.annexes.sondage;
+                            question: root.ligne.blocs;
+                            heure: root.ligne.heure;
+                            message: root.ligne.id;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 0;
+                        }
+                    }
+                    if root.ligne.blocs.length > 0 && !root.ligne.annexes.sondage.present: TexteRiche {
+                        blocs: root.ligne.blocs;
+                        taille: root.ligne.systeme ? 14px : Typo.corps;
+                        encre: root.ligne.systeme ? Theme.gris : Theme.encre-2;
+                        lien(cible) => {
+                            DonneesMessagerie.lien-clique(root.ligne.id, cible);
+                        }
+                    }
+                    if root.ligne.annexes.pieces-jointes.length > 0 || root.ligne.annexes.reactions.length > 0 || root.ligne.annexes.carte.genre != GenreCarte.aucune: AnnexesMessageVue {
+                        annexes: root.ligne.annexes;
+                        message: root.ligne.id;
+                    }
+                    if root.ligne.etat-envoi != "": Text {
+                        text: root.ligne.etat-envoi;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                    }
+                }
+            }
+        }
+    }
+    if root.actif && !root.ligne.systeme && root.ligne.texte-brut != "": BoutonCopier {
+        x: parent.width - self.width - 24px;
+        y: root.ligne.suite ? 0 : 6px;
+        clique => {
+            root.copier(root.ligne.texte-brut);
+        }
+    }
+}
+
+export component LigneMessageVue inherits VerticalLayout {
+    in property <LigneMessage> ligne;
+    callback copier(string);
+    property <int> mesure: DonneesMessagerie.mesure;
+    init => {
+        DonneesMessagerie.ligne-mesuree(self.ligne.cle, self.height);
+    }
+    changed mesure => {
+        DonneesMessagerie.ligne-mesuree(self.ligne.cle, self.height);
+    }
+    changed height => {
+        DonneesMessagerie.ligne-mesuree(self.ligne.cle, self.height);
+    }
+    if root.ligne.genre == GenreLigneMessage.debut: Debut { }
+    if root.ligne.genre == GenreLigneMessage.chargement: ChargementLigne { }
+    if root.ligne.genre == GenreLigneMessage.jour: Separateur {
+        texte: root.ligne.libelle;
+    }
+    if root.ligne.genre == GenreLigneMessage.nouveau: Separateur {
+        texte: root.ligne.libelle;
+        accent: true;
+    }
+    if root.ligne.genre == GenreLigneMessage.message: CorpsMessage {
+        ligne: root.ligne;
+        copier(texte) => {
+            root.copier(texte);
+        }
+    }
+}

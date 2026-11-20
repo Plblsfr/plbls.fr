@@ -173,7 +173,7 @@ export component Panneau inherits Rectangle {
                         actif: prive.actif;
                         non-lus: prive.non-lus;
                         mentions: prive.mentions;
-                        description: prive.en-ligne ? "en ligne" : "hors ligne";
+                        description: prive.libelle-presence;
                         clique => {
                             DonneesCoquille.ouvrir-prive(prive.id);
                         }
@@ -187,16 +187,8 @@ export component Panneau inherits Rectangle {
                                     initiales: prive.initiales;
                                     teinte: prive.teinte;
                                     taille: 26px;
-                                }
-                                if prive.en-ligne: Rectangle {
-                                    x: parent.width - 8px;
-                                    y: parent.height - 8px;
-                                    width: 10px;
-                                    height: 10px;
-                                    border-radius: 5px;
-                                    background: Theme.ok;
-                                    border-width: 2px;
-                                    border-color: Theme.papier-2;
+                                    presence: prive.presence;
+                                    fond: Theme.papier-2;
                                 }
                             }
                         }

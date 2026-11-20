@@ -1,0 +1,166 @@
+import { BlocTexte, GenreBloc, SegmentTexte, GenreSegment } from "../composants/texte-riche.slint";
+import { LigneBadge } from "../coquille/donnees.slint";
+
+export { BlocTexte, GenreBloc, SegmentTexte, GenreSegment }
+
+export enum GenreLigneMessage { debut, chargement, jour, nouveau, message }
+
+export struct ReactionMessage {
+    emoji: string,
+    image: image,
+    nombre: int,
+    moi: bool,
+    titre: string,
+    infobulle: string,
+}
+
+export enum GenrePieceJointe { image, fichier, media, expiree }
+
+export enum EtatTelechargement { aucun, en-cours, termine, echec }
+
+export struct PieceJointe {
+    id: string,
+    genre: GenrePieceJointe,
+    nom: string,
+    taille: string,
+    largeur: length,
+    hauteur: length,
+    image: image,
+    chargee: bool,
+    echec: bool,
+    anime: bool,
+    vocal: bool,
+    index-image: int,
+    telechargement: EtatTelechargement,
+    progression: float,
+    note: string,
+}
+
+export struct OptionSondage {
+    libelle: string,
+    pourcentage: int,
+    votes: int,
+    moi: bool,
+    gagnant: bool,
+}
+
+export struct SondageMessage {
+    present: bool,
+    auteur: string,
+    auteur-bot: bool,
+    clos: bool,
+    options: [OptionSondage],
+    pied: string,
+}
+
+export enum GenreCarte { aucune, lien, youtube, sillon }
+
+export struct CarteLien {
+    genre: GenreCarte,
+    url: string,
+    titre: string,
+    description: string,
+    site: string,
+    image: image,
+    avec-image: bool,
+}
+
+export struct AnnexesMessage {
+    pieces-jointes: [PieceJointe],
+    images: int,
+    sondage: SondageMessage,
+    reactions: [ReactionMessage],
+    carte: CarteLien,
+    resume: string,
+}
+
+export struct Visionneuse {
+    ouverte: bool,
+    message: string,
+    index: int,
+    total: int,
+    nom: string,
+    image: image,
+    largeur: length,
+    hauteur: length,
+    chargee: bool,
+    echec: bool,
+    zoom: float,
+    copie-possible: bool,
+    note: string,
+}
+
+export struct ReponseMessage {
+    presente: bool,
+    id: string,
+    auteur: string,
+    texte: string,
+    supprimee: bool,
+}
+
+export struct LigneMessage {
+    cle: string,
+    genre: GenreLigneMessage,
+    libelle: string,
+    id: string,
+    suite: bool,
+    utilisateur: string,
+    auteur: string,
+    initiales: string,
+    teinte: int,
+    portrait: image,
+    couleur: color,
+    a-couleur: bool,
+    bot: bool,
+    badge-1: LigneBadge,
+    badge-2: LigneBadge,
+    nombre-badges: int,
+    heure: string,
+    date-complete: string,
+    systeme: bool,
+    epingle: bool,
+    modifie: bool,
+    date-modification: string,
+    mention: bool,
+    mis-en-evidence: bool,
+    reponse: ReponseMessage,
+    blocs: [BlocTexte],
+    texte-brut: string,
+    annexes: AnnexesMessage,
+    etat-envoi: string,
+}
+
+export enum EtatConversation { chargement, erreur, prete }
+
+export global DonneesMessagerie {
+    in property <bool> active: false;
+    in property <[LigneMessage]> lignes;
+    in property <length> haut;
+    in property <length> bas;
+    in-out property <length> defilement;
+    in property <EtatConversation> etat: EtatConversation.chargement;
+    in property <bool> bouton-bas: false;
+    in property <int> nouveaux: 0;
+    in property <string> saisie;
+    in property <bool> lecture-seule: false;
+    in property <string> lecture-seule-texte;
+    in property <Visionneuse> visionneuse;
+    in property <int> mesure: 0;
+    callback defilee(length, length, length);
+    callback ligne-mesuree(string, length);
+    callback lien-clique(string, string);
+    callback reponse-cliquee(string);
+    callback auteur-clique(string);
+    callback aller-en-bas();
+    callback reessayer();
+    callback theme-change(bool);
+    callback image-cliquee(string, int);
+    callback telecharger(string, string);
+    callback ouvrir-fichier(string, string);
+    callback carte-cliquee(string, string);
+    callback visionneuse-voisine(int);
+    callback visionneuse-zoom(float);
+    callback visionneuse-copier();
+    callback visionneuse-enregistrer();
+    callback fermer-visionneuse();
+}

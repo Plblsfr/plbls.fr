@@ -7,15 +7,36 @@ use serde_json::Value;
 
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
 use crate::store::CleConversation;
-use crate::temps_reel::evenements::StatutPresence;
+use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
-    Attachment, GetMeReponse, GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse,
-    Mention, MessagePage, Name50, NotifySettings, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostNotificationsReadRequete,
-    PutMeStatusRequete, Server, DM,
+    Attachment, GetChannelsCidReadsReponseElement, GetMeReponse, GetServersIdReponse,
+    GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, MessagePage, Name50,
+    NotifySettings, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
+    PostAdminBadgesRequete, PostNotificationsReadRequete, PutMeStatusRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EmojiPersonnalise {
+    pub id: String,
+    pub server_id: String,
+    pub name: String,
+    pub created_by: String,
+}
+
+pub fn resoudre_emoji<'a>(
+    emojis: &'a [EmojiPersonnalise],
+    nom: &str,
+    serveur: Option<&str>,
+) -> Option<&'a EmojiPersonnalise> {
+    let nom = nom.to_lowercase();
+    emojis
+        .iter()
+        .find(|e| e.name == nom && Some(e.server_id.as_str()) == serveur)
+        .or_else(|| emojis.iter().find(|e| e.name == nom))
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -242,6 +263,42 @@ impl Client {
         .await
     }
 
+    pub async fn messages_de(
+        &self,
+        conversation: &CleConversation,
+        page: &Page,
+    ) -> Result<MessagePage, ErreurApi> {
+        match conversation {
+            CleConversation::Salon(id) => self.messages_du_salon(id, page).await,
+            CleConversation::Prive(id) => self.messages_prives(id, page).await,
+        }
+    }
+
+    pub async fn lectures(
+        &self,
+        conversation: &CleConversation,
+    ) -> Result<Vec<Lecture>, ErreurApi> {
+        let chemin = match conversation {
+            CleConversation::Salon(id) => format!("/channels/{id}/reads"),
+            CleConversation::Prive(id) => format!("/dms/{id}/reads"),
+        };
+        let liste: Vec<GetChannelsCidReadsReponseElement> = self.get(&chemin).await?;
+        Ok(liste
+            .into_iter()
+            .map(|l| Lecture {
+                channel_id: conversation.salon().map(str::to_string),
+                dm_id: match conversation {
+                    CleConversation::Prive(id) => Some(id.clone()),
+                    CleConversation::Salon(_) => None,
+                },
+                user_id: l.user_id.unwrap_or_default(),
+                pseudo: l.pseudo.unwrap_or_default(),
+                last_id: l.last_id.unwrap_or_default(),
+                read_at: l.read_at.unwrap_or_default(),
+            })
+            .collect())
+    }
+
     pub async fn reagir(&self, message: &str, emoji: &str) -> Result<(), ErreurApi> {
         let chemin = format!("/messages/{message}/reactions/{}", encoder_composant(emoji));
         self.envoyer(Method::PUT, &chemin, &Corps::Aucun).await
@@ -299,6 +356,36 @@ impl Client {
         let prefixe = serveur.map(|s| format!("/servers/{s}")).unwrap_or_default();
         self.octets(&format!("{prefixe}/users/{utilisateur}/avatar"))
             .await
+    }
+
+    pub async fn emojis_personnalises(&self) -> Result<Vec<EmojiPersonnalise>, ErreurApi> {
+        self.get("/emojis").await
+    }
+
+    pub async fn image_d_emoji(&self, emoji: &str) -> Result<Bytes, ErreurApi> {
+        self.octets(&format!("/emojis/{}/image", encoder_composant(emoji)))
+            .await
+    }
+
+    pub async fn contenu_de_fichier(&self, fichier: &str) -> Result<Bytes, ErreurApi> {
+        self.octets(&format!("/files/{}", encoder_composant(fichier)))
+            .await
+    }
+
+    pub async fn apercu_de_lien(
+        &self,
+        url: &str,
+        message: Option<&str>,
+    ) -> Result<Option<LinkPreview>, ErreurApi> {
+        let mut chemin = format!("/link-preview?url={}", encoder_composant(url));
+        if let Some(message) = message.filter(|m| !m.is_empty()) {
+            chemin.push_str(&format!("&message={}", encoder_composant(message)));
+        }
+        match self.get::<LinkPreview>(&chemin).await {
+            Ok(apercu) => Ok(Some(apercu)),
+            Err(ErreurApi::Introuvable(_)) => Ok(None),
+            Err(erreur) => Err(erreur),
+        }
     }
 
     pub async fn badges_de(&self, utilisateur: &str) -> Result<Vec<Badge>, ErreurApi> {
@@ -605,6 +692,124 @@ mod tests {
                 ligne("/dms/d1/messages?limit=50&after=7", "GET"),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn lit_les_pages_et_les_accuses_de_lecture_d_une_conversation() {
+        let serveur = ServeurFactice::demarrer([Reponse::json(
+            200,
+            json!({"messages": [], "has_more": false}),
+        )])
+        .await;
+        serveur.router(
+            "GET",
+            "/dms/d1/reads",
+            Reponse::json(
+                200,
+                json!([{"user_id": "bob", "pseudo": "bob", "last_id": "7", "read_at": "x"}]),
+            ),
+        );
+        let client = serveur.client();
+        let page = Page {
+            apres: Some("4".to_string()),
+            ..Page::default()
+        };
+        client
+            .messages_de(&CleConversation::Salon("c1".into()), &page)
+            .await
+            .unwrap();
+        client
+            .messages_de(&CleConversation::Prive("d1".into()), &Page::default())
+            .await
+            .unwrap();
+        let lectures = client
+            .lectures(&CleConversation::Prive("d1".into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                lectures[0].dm_id.as_deref(),
+                lectures[0].user_id.as_str(),
+                lectures[0].last_id.as_str()
+            ),
+            (Some("d1"), "bob", "7")
+        );
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/channels/c1/messages?limit=50&after=4", "GET"),
+                ligne("/dms/d1/messages?limit=50", "GET"),
+                ligne("/dms/d1/reads", "GET"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn apercu_de_lien_emojis_et_fichiers() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(
+                200,
+                json!({"url": "https://plbls.fr/", "title": "plbls", "site_name": "plbls.fr"}),
+            ),
+            Reponse::json(404, json!({"error": "no_preview"})),
+            Reponse::json(
+                200,
+                json!([{"id": "e1", "server_id": "s1", "name": "chat", "created_by": "u"}]),
+            ),
+            Reponse::brute(200, "image/png", b"png"),
+            Reponse::brute(200, "image/png", b"img"),
+        ])
+        .await;
+        let client = serveur.client();
+        let apercu = client
+            .apercu_de_lien("https://plbls.fr/?a=1&b", Some("m 1"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(apercu.title.as_deref(), Some("plbls"));
+        assert_eq!(
+            client
+                .apercu_de_lien("https://plbls.fr/x", None)
+                .await
+                .unwrap(),
+            None
+        );
+        let emojis = client.emojis_personnalises().await.unwrap();
+        assert_eq!(emojis[0].name, "chat");
+        assert_eq!(&client.image_d_emoji("e1").await.unwrap()[..], b"png");
+        assert_eq!(&client.contenu_de_fichier("f/1").await.unwrap()[..], b"img");
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne(
+                    "/link-preview?url=https%3A%2F%2Fplbls.fr%2F%3Fa%3D1%26b&message=m%201",
+                    "GET"
+                ),
+                ligne("/link-preview?url=https%3A%2F%2Fplbls.fr%2Fx", "GET"),
+                ligne("/emojis", "GET"),
+                ligne("/emojis/e1/image", "GET"),
+                ligne("/files/f%2F1", "GET"),
+            ]
+        );
+    }
+
+    #[test]
+    fn un_emoji_personnalise_du_serveur_courant_passe_avant_les_homonymes() {
+        let e = |id: &str, serveur: &str, nom: &str| EmojiPersonnalise {
+            id: id.into(),
+            server_id: serveur.into(),
+            name: nom.into(),
+            created_by: String::new(),
+        };
+        let liste = [
+            e("1", "s1", "chat"),
+            e("2", "s2", "chat"),
+            e("3", "s2", "chien"),
+        ];
+        assert_eq!(resoudre_emoji(&liste, "chat", Some("s2")).unwrap().id, "2");
+        assert_eq!(resoudre_emoji(&liste, "CHAT", Some("s3")).unwrap().id, "1");
+        assert_eq!(resoudre_emoji(&liste, "chat", None).unwrap().id, "1");
+        assert!(resoudre_emoji(&liste, "loup", Some("s1")).is_none());
     }
 
     #[tokio::test]

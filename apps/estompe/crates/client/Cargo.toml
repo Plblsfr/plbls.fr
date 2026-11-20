@@ -23,6 +23,7 @@ serde_json.workspace = true
 sha2 = "0.10"
 tokio = { version = "1", default-features = false, features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
+url = "2"
 
 [dev-dependencies]
 tempfile = "3"
