@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use estompe_client::fichiers::{refus_de_piece, Limites};
@@ -13,7 +13,25 @@ use super::super::saisie::SourcePiece;
 use super::{verrou_de, PontMessagerie};
 use crate::{DonneesSaisie, Principale};
 
+struct Annulation(Arc<AtomicBool>);
+
+impl Drop for Annulation {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
 impl PontMessagerie {
+    fn suivre_la_conversion(&self, cle: u64, fraction: f32, dernier: &AtomicU64) {
+        let pourcentage = (fraction * 100.0) as u8;
+        if dernier.swap(u64::from(pourcentage), Ordering::SeqCst) == u64::from(pourcentage) {
+            return;
+        }
+        self.saisie
+            .avec_etat(|e| e.liste_de(cle).map(|l| l.conversion(cle, pourcentage)));
+        self.afficher_pieces_plus_tard();
+    }
+
     fn limites_des_pieces(&self) -> Limites {
         self.store
             .lire(|etat| Limites::du_compte(etat.compte.max_video_size))
@@ -62,11 +80,26 @@ impl PontMessagerie {
 
     fn preparer_piece(&self, cle: u64, ajout: Ajout, limites: Limites) {
         let pont = self.clone();
+        let conversions = verrou_de(&self.conversions);
         let tache = self.runtime.spawn(async move {
-            let preparee = tokio::task::spawn_blocking(move || preparer(ajout))
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r);
+            let annule = Arc::new(AtomicBool::new(false));
+            let _annulation = Annulation(annule.clone());
+            let suivi = pont.clone();
+            let preparee = tokio::task::spawn_blocking(move || {
+                let dernier = AtomicU64::new(u64::MAX);
+                preparer(ajout, &|source| {
+                    let convertisseur = conversions.convertisseur()?;
+                    suivi.suivre_la_conversion(cle, 0.0, &dernier);
+                    convertisseur
+                        .convertir(source, &annule, &|f| {
+                            suivi.suivre_la_conversion(cle, f, &dernier)
+                        })
+                        .ok()
+                })
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r);
             let acceptee = preparee.and_then(|p| {
                 match refus_de_piece(&p.source.nom, p.taille, &p.source.type_mime, &limites) {
                     Some(refus) => Err(refus),

@@ -188,6 +188,33 @@ pub fn services(
     }
 }
 
+pub fn video_hevc(dossier: &std::path::Path) -> Option<std::path::PathBuf> {
+    let encodeurs = std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    if !(encodeurs.contains("libx264") && encodeurs.contains("libx265")) {
+        assert!(
+            std::env::var_os("ESTOMPE_FFMPEG_EXIGE").is_none(),
+            "ffmpeg avec libx264 et libx265 exigé (ESTOMPE_FFMPEG_EXIGE)"
+        );
+        println!("ignoré : ffmpeg avec libx264 et libx265 indisponible");
+        return None;
+    }
+    let chemin = dossier.join("hevc.mp4");
+    let statut = std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-v", "error", "-f", "lavfi", "-i"])
+        .arg("testsrc=size=320x240:rate=25:duration=3")
+        .args(["-c:v", "libx265", "-preset", "ultrafast", "-x265-params"])
+        .args(["log-level=error", "-tag:v", "hvc1", "-y"])
+        .arg(&chemin)
+        .status()
+        .ok()?;
+    assert!(statut.success(), "vidéo HEVC de test");
+    Some(chemin)
+}
+
 pub mod coquille {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -804,6 +831,7 @@ pub mod coquille {
         pub refus_de_fichier: Mutex<Option<u16>>,
         pub fichiers_bloques: Mutex<bool>,
         pieces: Mutex<BTreeMap<String, Value>>,
+        pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         envoyes: AtomicUsize,
     }
 
@@ -859,6 +887,7 @@ pub mod coquille {
                 refus_de_fichier: Mutex::new(None),
                 fichiers_bloques: Mutex::new(false),
                 pieces: Mutex::new(BTreeMap::new()),
+                contenus: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -1021,7 +1050,16 @@ pub mod coquille {
             };
             let mut pieces = self.pieces.lock().unwrap();
             let id = format!("f{}", pieces.len() + 1);
-            let piece = json!({"id": id, "name": champ("filename=\"", "\""), "mime": champ("Content-Type: ", "\r\n"), "size": longueur, "kind": "file"});
+            let genre = if corps.contains("name=\"kind\"\r\n\r\nvideo") {
+                "video"
+            } else {
+                "file"
+            };
+            let piece = json!({"id": id, "name": champ("filename=\"", "\""), "mime": champ("Content-Type: ", "\r\n"), "size": longueur, "kind": genre});
+            self.contenus
+                .lock()
+                .unwrap()
+                .insert(id.clone(), octets[debut..debut + longueur].to_vec());
             pieces.insert(id, piece.clone());
             (201, piece.to_string())
         }
@@ -1172,6 +1210,7 @@ pub mod coquille {
         pub fichiers: Arc<FauxFichiers>,
         pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
+        pub conversions: Mutex<Option<Arc<estompe_client::video::Conversions>>>,
     }
 
     #[derive(Default)]
@@ -1270,6 +1309,7 @@ pub mod coquille {
                 fichiers: Arc::new(FauxFichiers::default()),
                 presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
+                conversions: Mutex::new(None),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
@@ -1341,6 +1381,14 @@ pub mod coquille {
 
         fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
             self.presse_papiers.clone()
+        }
+
+        fn conversions(&self) -> Arc<estompe_client::video::Conversions> {
+            self.conversions
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| Arc::new(estompe_client::video::Conversions::aucune()))
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

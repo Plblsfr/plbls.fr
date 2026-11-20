@@ -65,6 +65,12 @@ pub fn demarrer(
         journal: Some(session.journal.clone()),
         navigateur,
         dossier_donnees: Some(session.dossiers.donnees.clone()),
+        conversions: std::sync::Arc::new(estompe_client::video::Conversions::du_systeme(
+            session
+                .dossiers
+                .cache
+                .join(estompe_client::video::DOSSIER_CONVERSIONS),
+        )),
         medias: messagerie::medias::Medias::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(

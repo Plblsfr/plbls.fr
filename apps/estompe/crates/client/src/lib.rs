@@ -29,5 +29,6 @@ pub mod store;
 pub mod televersement;
 pub mod temps_reel;
 pub mod version;
+pub mod video;
 pub mod virtualisation;
 pub use genere::types;

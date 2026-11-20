@@ -12,6 +12,7 @@ use estompe_client::brouillons::Brouillons;
 use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::pieces::{ATTENDRE_LES_FICHIERS, FICHIERS_EN_ECHEC};
 use estompe_client::preferences::Preferences;
+use estompe_client::video::{codec_mp4, Conversions, Convertisseur, DOSSIER_CONVERSIONS};
 use estompe_natif::coquille::{Coquille, Depot};
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
@@ -557,6 +558,91 @@ fn pieces_jointes(
         "message modifié avec une seule pièce",
     );
     println!("316 : pièces jointes d'un message modifiées (EditAttachments)");
+    conversion_video(faible, serveur, fabrique, dossier);
+}
+
+fn fichiers_de(dossier: &std::path::Path) -> usize {
+    std::fs::read_dir(dossier).map_or(0, |d| d.count())
+}
+
+fn conversion_video(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    fabrique: &FausseFabrique,
+    dossier: &std::path::Path,
+) {
+    let hevc = dossier.join("hevc.mp4");
+    if fabrique.conversions.lock().unwrap().is_none() {
+        println!("317 : conversion ignorée, ffmpeg indisponible");
+        return;
+    }
+    let conversions = dossier.join(DOSSIER_CONVERSIONS);
+    let avant = serveur.nombre_de("POST /files");
+    *fabrique.fichiers.choix.lock().unwrap() = vec![hevc.clone()];
+    cliquer(faible, "Joindre un fichier");
+    attendre_l_interface(
+        faible,
+        |f| {
+            pieces(f)
+                .first()
+                .is_some_and(|p| p.nom == "hevc.mp4" && !p.en_cours && !p.echec)
+        },
+        "vidéo convertie puis envoyée",
+    );
+    assert_eq!(serveur.nombre_de("POST /files"), avant + 1);
+    let (id, contenu) = serveur
+        .contenus
+        .lock()
+        .unwrap()
+        .last_key_value()
+        .map(|(id, c)| (id.clone(), c.clone()))
+        .unwrap();
+    assert_eq!(serveur.nom_de_piece(&id), "hevc.mp4");
+    assert_eq!(
+        codec_mp4(&mut std::io::Cursor::new(&contenu)).unwrap(),
+        Some("avc1".into()),
+        "vidéo reçue en H.264"
+    );
+    assert_eq!(
+        fichiers_de(&conversions),
+        1,
+        "fichier converti gardé pour l'envoi"
+    );
+    cliquer_le_champ(faible, "Écrire dans #général");
+    taper(faible, "une vidéo");
+    touche(faible, Key::Return);
+    attendre(
+        || serveur.envois().last().map(String::as_str) == Some("une vidéo"),
+        "message envoyé avec la vidéo",
+    );
+    attendre_l_interface(faible, |f| pieces(f).is_empty(), "vidéo retirée du champ");
+    attendre(
+        || fichiers_de(&conversions) == 0,
+        "fichier converti supprimé après l'envoi",
+    );
+    println!(
+        "317 C1 : vidéo HEVC jointe, envoyée en H.264 (kind=video), fichier temporaire supprimé"
+    );
+
+    let messages = serveur.envois().len();
+    *serveur.fichiers_bloques.lock().unwrap() = true;
+    *fabrique.fichiers.choix.lock().unwrap() = vec![hevc.clone()];
+    cliquer(faible, "Joindre un fichier");
+    attendre_l_interface(
+        faible,
+        |f| pieces(f).first().is_some_and(|p| p.en_cours),
+        "vidéo en cours de conversion ou d'envoi",
+    );
+    cliquer(faible, "Annuler l'envoi de hevc.mp4");
+    attendre_l_interface(faible, |f| pieces(f).is_empty(), "vidéo annulée retirée");
+    attendre(
+        || fichiers_de(&conversions) == 0,
+        "aucun fichier temporaire après l'annulation",
+    );
+    assert_eq!(serveur.envois().len(), messages, "aucun message envoyé");
+    *serveur.fichiers_bloques.lock().unwrap() = false;
+    assert!(hevc.is_file(), "l'original n'est pas touché");
+    println!("317 C3 : conversion ou envoi annulé, aucun fichier temporaire");
 }
 
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
@@ -744,6 +830,13 @@ fn saisie_envoi_modification_et_brouillons() {
     .unwrap();
     let fabrique = FausseFabrique::sur(etat_avec_membres(), Vec::new(), &serveur.adresse);
     *fabrique.dossier_brouillons.lock().unwrap() = Some(dossier.path().to_path_buf());
+    if commun::video_hevc(dossier.path()).is_some() {
+        *fabrique.conversions.lock().unwrap() = Some(Arc::new(Conversions::avec(Convertisseur {
+            ffmpeg: "ffmpeg".into(),
+            encodeurs: vec!["libx264".into()],
+            dossier: dossier.path().join(DOSSIER_CONVERSIONS),
+        })));
+    }
     let midi = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()
         .and_hms_opt(12, 0, 0)

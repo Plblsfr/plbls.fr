@@ -13,6 +13,7 @@ use estompe_client::store::messages::{
 };
 use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::types::LinkPreview;
+use estompe_client::video::Conversions;
 use estompe_plateforme::{Fichiers, Indisponible, OuvertureUrl, PressePapiers};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 
@@ -898,6 +899,7 @@ pub struct PontMessagerie {
     horloge: Arc<Mutex<HorlogeMs>>,
     fichiers: Arc<Mutex<SystemeFichiers>>,
     presse_papiers: Arc<Mutex<Presse>>,
+    conversions: Arc<Mutex<Arc<Conversions>>>,
     dossier_par_defaut: Arc<Mutex<DossierParDefaut>>,
     saisie: Saisie,
     selecteur: Selecteur,
@@ -964,6 +966,7 @@ impl PontMessagerie {
             horloge: Arc::new(Mutex::new(maintenant_ms())),
             fichiers: Arc::new(Mutex::new(Arc::new(Indisponible))),
             presse_papiers: Arc::new(Mutex::new(Arc::new(Indisponible))),
+            conversions: Arc::new(Mutex::new(Arc::new(Conversions::aucune()))),
             dossier_par_defaut: Arc::new(Mutex::new(Arc::new(
                 estompe_plateforme::dossier_telechargements,
             ))),
@@ -1318,6 +1321,10 @@ impl PontMessagerie {
             .presse_papiers
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = presse;
+    }
+
+    pub fn definir_conversions(&self, conversions: Arc<Conversions>) {
+        *self.conversions.lock().unwrap_or_else(|e| e.into_inner()) = conversions;
     }
 
     pub fn definir_dossier_par_defaut(&self, dossier: DossierParDefaut) {

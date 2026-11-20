@@ -12,6 +12,7 @@ use estompe_client::store::messages::{compteur, id_message, Brouillon};
 use estompe_client::store::{CleConversation, Store};
 use estompe_client::televersement::SourceEnvoi;
 use estompe_client::types::Message;
+use estompe_client::video::FichierTemporaire;
 use slint::{ComponentHandle, Model};
 
 use crate::{
@@ -25,6 +26,7 @@ pub struct SourcePiece {
     pub nom: String,
     pub type_mime: String,
     pub source: SourceEnvoi,
+    pub temporaire: Option<Arc<FichierTemporaire>>,
 }
 
 pub const DELAI_ENREGISTREMENT: Duration = Duration::from_millis(300);
@@ -367,6 +369,7 @@ fn genre_slint(genre: GenreProposition) -> crate::GenreProposition {
 pub fn detail_de_piece(piece: &Piece) -> String {
     match &piece.etat {
         EtatPiece::Preparation => "préparation…".to_string(),
+        EtatPiece::Conversion { pourcentage } => format!("conversion… {pourcentage} %"),
         EtatPiece::Envoi { envoyes, total } => {
             format!(
                 "envoi… {} %",
@@ -381,6 +384,7 @@ pub fn detail_de_piece(piece: &Piece) -> String {
 fn piece_slint(piece: &Piece, vignette: Option<&Vignette>) -> PieceSaisie {
     let (progression, en_cours) = match &piece.etat {
         EtatPiece::Preparation => (0.0, true),
+        EtatPiece::Conversion { pourcentage } => (f32::from(*pourcentage) / 100.0, true),
         EtatPiece::Envoi { envoyes, total } => (
             if *total == 0 {
                 1.0

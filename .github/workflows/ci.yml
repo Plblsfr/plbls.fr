@@ -313,6 +313,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ESTOMPE_COFFRE_EXIGE: 1
+      ESTOMPE_FFMPEG_EXIGE: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -322,7 +323,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring ffmpeg
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy

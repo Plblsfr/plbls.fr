@@ -3,6 +3,7 @@ mod dossiers;
 mod erreur;
 mod fichiers;
 mod indisponible;
+mod processus;
 mod traits;
 mod url;
 
@@ -13,6 +14,7 @@ pub use dossiers::{
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
+pub use processus::commande_d_arriere_plan;
 pub use traits::{
     ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, ContenuPressePapiers,
     DemarrageSession, Fichiers, Image, Notification, Notifications, OuvertureUrl, Overlay,

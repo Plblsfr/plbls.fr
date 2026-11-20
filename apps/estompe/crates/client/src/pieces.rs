@@ -7,6 +7,7 @@ pub const FICHIERS_EN_ECHEC: &str = "Retire ou réessaie les fichiers en échec.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EtatPiece {
     Preparation,
+    Conversion { pourcentage: u8 },
     Envoi { envoyes: u64, total: u64 },
     Envoyee(Attachment),
     Echec(String),
@@ -73,6 +74,23 @@ impl ListePieces {
     pub fn retirer(&mut self, cle: u64) -> Option<Piece> {
         let i = self.pieces.iter().position(|p| p.cle == cle)?;
         Some(self.pieces.remove(i))
+    }
+
+    pub fn conversion(&mut self, cle: u64, pourcentage: u8) -> bool {
+        match self.piece_mut(cle) {
+            Some(p)
+                if matches!(
+                    p.etat,
+                    EtatPiece::Preparation | EtatPiece::Conversion { .. }
+                ) =>
+            {
+                p.etat = EtatPiece::Conversion {
+                    pourcentage: pourcentage.min(100),
+                };
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn progression(&mut self, cle: u64, envoyes: u64, total: u64) -> bool {
@@ -163,7 +181,14 @@ mod tests {
         let limites = Limites::default();
         l.ajouter(1, "a.txt", &limites).unwrap();
         assert_eq!(l.bloquant(), Some(ATTENDRE_LES_FICHIERS));
+        assert!(l.conversion(1, 140));
+        assert_eq!(l.pieces[0].etat, EtatPiece::Conversion { pourcentage: 100 });
+        assert_eq!(l.bloquant(), Some(ATTENDRE_LES_FICHIERS));
         assert!(l.progression(1, 5, 10));
+        assert!(
+            !l.conversion(1, 50),
+            "l'envoi ne revient pas à la conversion"
+        );
         assert_eq!(
             l.pieces[0].etat,
             EtatPiece::Envoi {

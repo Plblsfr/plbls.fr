@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -387,8 +387,20 @@ deux moteurs et sur les deux OS :
   la zone « Dépose pour joindre · 10 Mo max par fichier » couvre le champ pendant le survol), Ctrl+V dans le champ (`PressePapiers::lire_pieces` : une liste de fichiers, sinon une
   image, collée en `capture.png` ; un texte garde le collage normal du `TextInput`).
 - Préparation (`src/messagerie/pieces.rs`, `preparer`, hors du fil d'interface) : nom, type déduit de l'extension (`type_mime_du_nom`), taille ; vignette carrée de 128 px pour une
-  image ; une image JPEG, PNG ou WebP plus grande que 1 920 px ou plus lourde que 300 Ko est réduite (`dimensions_a_envoyer`) puis réencodée, gardée si elle est plus légère. C'est
-  là que la conversion d'une vidéo (#317) se branchera.
+  image ; une image JPEG, PNG ou WebP plus grande que 1 920 px ou plus lourde que 300 Ko est réduite (`dimensions_a_envoyer`) puis réencodée, gardée si elle est plus légère ; une vidéo est convertie (ci-dessous).
+- Conversion d'une vidéo (`estompe_client::video`, appelée par `preparer`), même règle que l'app Tauri et le front (`uploadVideoFile`) : seul un MP4 dont la piste vidéo
+  n'est pas en H.264 (`codec_mp4` lit le type d'échantillon du `moov`, en tête ou en fin de fichier ; `hvc1`, `hev1`, `av01`, ou piste introuvable) est réencodé, en MP4
+  H.264 `yuv420p` avec son AAC et `moov` en tête (`+faststart`), au débit de l'original × 1,4 borné entre 2 et 12 Mbit/s (`debit_kbps`). Un MP4 déjà en H.264, un WebM ou tout
+  autre fichier part tel quel. Encodeurs essayés dans l'ordre, seulement s'ils sont dans `ffmpeg -encoders` : `h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_mf` (comme l'app
+  Tauri, aucun encodeur logiciel : le ffmpeg LGPL embarqué n'a pas `libx264`) ; sans ffmpeg, sans encodeur ou si tous échouent, l'original part (le front fait de même).
+  La limite `max_video_size` s'applique au fichier converti.
+- ffmpeg (`ffmpeg_du_systeme`) : `ffmpeg` (`ffmpeg.exe`) à côté de l'exécutable, sinon celui du `PATH` ; même code sous Linux et Windows, lancé par
+  `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Le binaire à embarquer est celui de l'app Tauri
+  (`apps/estompe/windows/scripts/fetch-ffmpeg.mjs`, build LGPL de BtbN) : 130 Mo installé, environ 40 Mo dans un installeur compressé en LZMA ; l'installeur natif
+  ([#278](https://github.com/Plblsfr/plbls.fr/issues/278)) devra le copier à côté d'`estompe-natif.exe` et citer sa licence. La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
+- Pendant la conversion, la pièce affiche « conversion… 42 % » et sa barre (`EtatPiece::Conversion`, lu dans `-progress pipe:1` rapporté à la durée de `ffmpeg -i`). La croix
+  l'annule : la tâche interrompue lève le drapeau d'annulation, ffmpeg est tué puis attendu, et le fichier de sortie supprimé. Le fichier converti est écrit dans
+  `<cache>/conversions/` (`FichierTemporaire`, supprimé quand la dernière copie de la source de la pièce disparaît : pièce retirée ou annulée, message envoyé) ; « Réessayer » renvoie ce même fichier. Le dossier est vidé au lancement, pour ce qu'un arrêt brutal aurait laissé.
 - Limites (`fichiers::Limites`, `refus_de_piece`, `refus_du_nombre`) : 10 Mo par fichier, `max_video_size` de `GET /me` pour un MP4 (envoyé en `kind=video`), 10 pièces par
   message. Un refus s'affiche sous le champ avec la limite (« Fichier trop gros : « gros.bin » fait 11.0 Mo, 10 Mo maximum. ») et rien ne part.
 - Envoi (`televersement.rs` de la crate client, `Client::televerser_en_flux`, `Client::envoyer_piece`) : corps multipart produit par morceaux de 64 Ko lus sur le disque par un fil
@@ -402,7 +414,8 @@ deux moteurs et sur les deux OS :
   `file_ids` seulement si elle diffère.
 - Écarts : pas de marquage « masqué » (le front ne le propose pas pour une pièce jointe) ; pas de réordonnancement des pièces d'un message modifié (glisser dans le front) ; une
   image JPEG réduite reste en JPEG (qualité 82) et une PNG ou WebP devient du WebP sans perte, le front produit du WebP avec perte (l'encodeur WebP de `image` est sans perte) ;
-  pas de miniature pour une vidéo MP4 (le front en calcule une dans le navigateur) ; dépôt de fichiers non pris en charge par winit sous Wayland, collage par le presse-papiers
+  pas de miniature pour une vidéo MP4 (le front en calcule une dans le navigateur) ; sous Linux, seuls `h264_nvenc` et `h264_qsv` peuvent convertir une vidéo (VAAPI
+  demanderait un filtre propre à l'appareil) ; dépôt de fichiers non pris en charge par winit sous Wayland, collage par le presse-papiers
   X11 d'`arboard` (XWayland) : à vérifier sur machine réelle.
 
 ## Portabilité
@@ -415,7 +428,8 @@ et de fenêtre, capture du son, overlay, application au premier plan, démarrage
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`). Le reste arrive avec son lot, Windows d'abord.
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), le lancement d'un processus d'arrière-plan
+(`commande_d_arriere_plan`, utilisé pour ffmpeg). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 
@@ -426,7 +440,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | | Windows | Linux |
 |---|---|---|
 | Données (`preferences.json`) | `%APPDATA%\fr.plbls.estompe.natif` | `$XDG_DATA_HOME/fr.plbls.estompe.natif` (défaut `~/.local/share`) |
-| Cache (avatars dans `avatars/`, images dans `medias/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
+| Cache (avatars dans `avatars/`, images dans `medias/`, vidéos converties dans `conversions/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
 
@@ -480,7 +494,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque ;
   puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,
   échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
-  texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale).
+  texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
+  jointe, envoyée en `kind=video` et reçue en H.264, fichier converti supprimé après l'envoi, puis une conversion (ou son envoi bloqué) annulée sans laisser de fichier.
+  Les tests de `estompe_client::video` convertissent aussi une vidéo HEVC (`libx264` à la place des encodeurs matériels, absents du runner) et l'annulent pendant l'encodage.
+  Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.

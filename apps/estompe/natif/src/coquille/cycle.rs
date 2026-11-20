@@ -23,6 +23,7 @@ use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::session::Memoire;
 use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur, Principale};
 use estompe_client::brouillons::Brouillons;
+use estompe_client::video::Conversions;
 
 const RAFRAICHIR_ACCUEIL: Duration = Duration::from_secs(60);
 const ATTENTE_MAX: Duration = Duration::from_secs(30);
@@ -61,6 +62,9 @@ pub trait Fabrique: Send + Sync + 'static {
     fn brouillons(&self) -> Brouillons {
         Brouillons::en_memoire()
     }
+    fn conversions(&self) -> Arc<Conversions> {
+        Arc::new(Conversions::aucune())
+    }
 }
 
 pub struct FabriqueReelle {
@@ -72,6 +76,7 @@ pub struct FabriqueReelle {
     pub medias: Arc<Medias>,
     pub navigateur: Navigateur,
     pub dossier_donnees: Option<std::path::PathBuf>,
+    pub conversions: Arc<Conversions>,
 }
 
 fn noter(journal: &Option<Arc<Journal>>, niveau: Niveau, message: &str) {
@@ -160,6 +165,10 @@ impl Fabrique for FabriqueReelle {
             .as_deref()
             .map(Brouillons::charger)
             .unwrap_or_default()
+    }
+
+    fn conversions(&self) -> Arc<Conversions> {
+        self.conversions.clone()
     }
 }
 
@@ -663,6 +672,8 @@ async fn session(
         .definir_fichiers(contexte.fabrique.fichiers());
     pont.messagerie()
         .definir_presse_papiers(contexte.fabrique.presse_papiers());
+    pont.messagerie()
+        .definir_conversions(contexte.fabrique.conversions());
     pont.messagerie()
         .saisie()
         .definir_brouillons(contexte.fabrique.brouillons());
