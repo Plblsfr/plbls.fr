@@ -9,7 +9,7 @@ install:
     npm ci
 
 # Lint de tout le code non Rust : Biome (JS, TS, CSS, JSON), shellcheck (scripts shell), ruff (Python), liens Markdown internes
-lint: lint-js lint-shell lint-python lint-links
+lint: lint-js lint-shell lint-python lint-links estompe-natif-parite
 
 lint-js:
     npm run lint
@@ -55,6 +55,33 @@ test-ui:
 
 test-estompe-api:
     cargo test --locked $(scripts/estompe/paquets-cargo.sh)
+
+# Estompe : chaque composant de web/estompe/src, bloc et section a sa ligne dans docs/estompe/natif-parite.md
+estompe-natif-parite:
+    node scripts/estompe/natif-parite.mjs
+
+# Estompe natif (apps/estompe/natif, workspace Cargo à part, toolchain stable) : voir docs/estompe/natif.md
+estompe-natif-run *ARGS:
+    cd apps/estompe/natif && cargo run -- {{ARGS}}
+
+estompe-natif-build PROFIL="release":
+    cd apps/estompe/natif && cargo build --locked --profile {{PROFIL}}
+
+estompe-natif-test:
+    cd apps/estompe/natif && cargo test --workspace --locked
+
+# Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests, build
+estompe-natif-check:
+    scripts/estompe/natif-check.sh
+
+# Régénère les jetons de couleur et les icônes Slint (depuis le CSS et Icon.svelte) et les types de l'API (depuis openapi.yaml)
+estompe-natif-generer:
+    node scripts/estompe/natif-da.mjs
+    node scripts/estompe/gen-types-client.mjs
+
+# Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
+estompe-natif-captures:
+    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures
 
 # Demande aussi ffmpeg et ffprobe dans le PATH
 test-entracte:

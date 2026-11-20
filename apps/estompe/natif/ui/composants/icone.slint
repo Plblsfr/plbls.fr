@@ -1,0 +1,25 @@
+import { Theme } from "../jetons.slint";
+import { Icones } from "../genere/icones.slint";
+
+export component Icone {
+    in property <string> nom;
+    in property <length> taille: 18px;
+    in property <brush> couleur: Theme.encre;
+    property <string> cle: Icones.cle(nom);
+    property <bool> pleine: Icones.pleine(cle);
+    width: taille;
+    height: taille;
+    accessible-role: none;
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: Icones.trace(root.cle);
+        fill: root.pleine ? root.couleur : transparent;
+        stroke: root.pleine ? transparent : root.couleur;
+        stroke-width: (Icones.epaisse(root.cle) ? 2 : 1.8) * root.taille / 24;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+    }
+}

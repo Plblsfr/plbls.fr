@@ -14,6 +14,7 @@ describe('éléments concernés', () => {
   it('web/estompe/ : web, windows et android ; crates/ : windows et android', () => {
     expect(concerned(['web/estompe/src/a.ts']).sort()).toEqual(['android', 'web', 'windows'])
     expect(concerned(['apps/estompe/crates/core/src/lib.rs']).sort()).toEqual(['android', 'windows'])
+    expect(concerned(['apps/estompe/crates/client/src/lib.rs', 'apps/estompe/crates/plateforme/src/lib.rs', 'apps/estompe/natif/src/main.rs'])).toEqual([])
   })
   it('docs, CI, autres projets et .version : aucun', () => expect(concerned(['docs/estompe/a.md', '.github/workflows/x.yml', '.version', 'web/autre/src/a.ts', 'api/autre/src/main.rs'])).toEqual([]))
 })

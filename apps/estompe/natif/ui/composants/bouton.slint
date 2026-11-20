@@ -1,0 +1,92 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone } from "icone.slint";
+import { Anneau } from "focus.slint";
+
+export enum VarianteBouton { primaire, secondaire, fantome, danger }
+
+export component Bouton {
+    in property <string> texte;
+    in property <string> icone;
+    in property <VarianteBouton> variante: VarianteBouton.secondaire;
+    in property <bool> actif: true;
+    in property <int> calque: 0;
+    in property <string> description;
+    out property <bool> a-le-focus: portee.has-focus;
+    out property <bool> survole: zone.has-hover;
+    callback clique();
+    property <bool> utilisable: actif && calque >= Calques.ouverts;
+    property <color> fond: variante == VarianteBouton.primaire ? Theme.encre : variante == VarianteBouton.danger ? Theme.danger : variante == VarianteBouton.fantome ? transparent : Theme.calque;
+    property <color> encre: variante == VarianteBouton.primaire ? Theme.papier : variante == VarianteBouton.danger ? Theme.sur-danger : Theme.encre;
+    min-height: 40px;
+    min-width: texte == "" ? 40px : contenu.preferred-width;
+    preferred-width: self.min-width;
+    preferred-height: self.min-height;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    opacity: actif ? 1 : 0.5;
+    accessible-role: button;
+    accessible-label: texte != "" ? texte : description;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.clique();
+        }
+    }
+    forward-focus: portee;
+    public function prendre-focus() {
+        portee.focus();
+    }
+    fond-rect := Rectangle {
+        border-radius: Rayon.s;
+        background: zone.pressed && root.utilisable ? root.fond.mix(Theme.rose-fonce, 0.8) : zone.has-hover && root.utilisable ? (root.variante == VarianteBouton.secondaire || root.variante == VarianteBouton.fantome ? Theme.rose : root.fond.mix(Theme.rose-fonce, 0.88)) : root.fond;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
+        }
+    }
+    contenu := HorizontalLayout {
+        alignment: center;
+        spacing: Espace.e2;
+        padding-left: root.texte == "" ? 0 : Espace.e4;
+        padding-right: root.texte == "" ? 0 : Espace.e4;
+        if root.icone != "": VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                couleur: root.encre;
+            }
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: root.encre;
+            font-family: Typo.texte;
+            font-size: Typo.corps;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+    }
+}

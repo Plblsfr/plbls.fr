@@ -1,0 +1,49 @@
+import { Theme, Mouvement, Courbes } from "../jetons.slint";
+
+export component Defilement {
+    in-out property <length> decalage <=> zone.content-y;
+    in property <length> hauteur-contenu;
+    property <bool> utile: zone.content-height > zone.height;
+    property <bool> montree: utile && (survol.has-hover || poignee-zone.pressed || poignee-zone.has-hover);
+    preferred-height: 100%;
+    preferred-width: 100%;
+    survol := TouchArea {
+        mouse-cursor: default;
+    }
+    zone := Flickable {
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: Math.max(self.height, root.hauteur-contenu);
+        @children
+    }
+    Rectangle {
+        visible: root.utile;
+        x: parent.width - 10px;
+        y: 2px;
+        width: 8px;
+        height: parent.height - 4px;
+        poignee := Rectangle {
+            property <length> course: parent.height - self.height;
+            y: zone.content-height > zone.height ? -zone.content-y / (zone.content-height - zone.height) * self.course : 0;
+            height: Math.max(32px, parent.height * zone.height / zone.content-height);
+            border-radius: 4px;
+            background: Theme.gris.with-alpha(0.45);
+            opacity: root.montree ? 1 : 0;
+            animate opacity { duration: Mouvement.d; easing: Courbes.sortie; }
+        }
+        poignee-zone := TouchArea {
+            property <length> depart;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down) {
+                    self.depart = zone.content-y;
+                }
+            }
+            moved => {
+                if (self.pressed && poignee.course > 0) {
+                    zone.content-y = Math.clamp(self.depart - (self.mouse-y - self.pressed-y) / poignee.course * (zone.content-height - zone.height), zone.height - zone.content-height, 0);
+                }
+            }
+        }
+    }
+}

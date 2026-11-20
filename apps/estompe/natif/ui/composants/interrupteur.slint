@@ -1,0 +1,89 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Anneau } from "focus.slint";
+
+export component Interrupteur {
+    in property <string> texte;
+    in property <bool> actif: true;
+    in property <int> calque: 0;
+    in-out property <bool> allume;
+    out property <bool> a-le-focus: portee.has-focus;
+    callback bascule(bool);
+    property <bool> utilisable: actif && calque >= Calques.ouverts;
+    min-height: 28px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    opacity: actif ? 1 : 0.5;
+    accessible-role: switch;
+    accessible-label: texte;
+    accessible-checkable: true;
+    accessible-checked: allume;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        root.basculer();
+    }
+    forward-focus: portee;
+    function basculer() {
+        if (root.utilisable) {
+            root.allume = !root.allume;
+            root.bascule(root.allume);
+        }
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) {
+                root.basculer();
+                return accept;
+            }
+            return reject;
+        }
+        TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.basculer();
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e3;
+        alignment: start;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 40px;
+                height: 24px;
+                border-radius: self.height / 2;
+                background: root.allume ? Theme.rose-fonce : Theme.trait-fort;
+                animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+                Anneau {
+                    width: parent.width + 8px;
+                    height: parent.height + 8px;
+                    actif: portee.has-focus && portee.clavier;
+                    rayon: 12px;
+                }
+                Rectangle {
+                    x: root.allume ? parent.width - self.width - 3px : 3px;
+                    y: 3px;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: Theme.surface;
+                    animate x { duration: Mouvement.d; easing: Courbes.ressort; }
+                }
+            }
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: Theme.encre;
+            font-family: Typo.texte;
+            font-size: Typo.corps;
+            vertical-alignment: center;
+        }
+    }
+}

@@ -20,6 +20,7 @@ allowed-tools: Bash(git *), Bash(gh *), Bash(*/scripts/estompe/check.sh*), Read,
 - `verify.md` existe et ne contient aucun critère « non vérifié » sans raison notée.
 - `<worktree>/scripts/estompe/check.sh` passe sur le `HEAD` actuel (c'est lui, pas le commit de `verify.md`, qui fait foi).
 - `plan.md` contient au moins une revue, la dernière a le verdict « prêt pour la PR », et les commits depuis son sha ne sont que les corrections qu'elle demandait (`git log <sha>..HEAD`). Sinon, renvoyer vers `/estompe-code-review <n>`.
+- Parité de l'app native (`docs/estompe/AGENTS.md`, « Vérifier avant de livrer ») : si la branche ajoute une fonction visible au front web, sa ligne est dans `docs/estompe/natif-parite.md` et l'issue native correspondante est ouverte (`gh issue create --repo Plblsfr/plbls.fr --label natif`), citée dans la ligne. Sinon, le faire avant la PR.
 - `git fetch origin` : si `origin/main` a avancé, demander avec AskUserQuestion s'il faut rebaser (puis relancer `check.sh`) ou ouvrir la PR telle quelle.
 
 ## 2. Changelog technique

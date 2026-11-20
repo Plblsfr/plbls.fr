@@ -69,7 +69,8 @@ par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version
 
 Détails :
 - Éléments concernés = dossiers modifiés par la fusion : `api/estompe/` → api ; `web/estompe/plateforme/` → web ; `apps/estompe/windows/` → windows ;
-  `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android.
+  `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android,
+  sauf `crates/client` et `crates/plateforme` qui, comme `apps/estompe/natif/`, ne changent aucune version (l'app native n'en a pas encore).
   Une fusion qui ne touche que `docs/`, `scripts/`, la CI… ne change rien.
 - À chaque fusion, la CI recalcule `.version` (toutes les fusions depuis la dernière modification de `.version` sur `main`) et met à jour une PR
   unique `ci/version` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Cette PR ne modifie que `.version` : dans `ci.yml`, seul le job
@@ -109,7 +110,7 @@ Depuis la racine du worktree, sans `cd … &&` :
 scripts/estompe/check.sh
 ```
 
-Le script lance, dans l'ordre : `TEST_DATABASE_URL` défini, `cargo fmt --check`, `clippy -D warnings` (tout le workspace racine), `cargo test` des crates d'Estompe, `cargo deny check`, `npm --prefix web/estompe run check`, `npm --prefix web/estompe test`. Il est la seule liste de contrôles : skills et CI s'y réfèrent.
+Le script lance, dans l'ordre : `TEST_DATABASE_URL` défini, `node scripts/estompe/natif-parite.mjs`, `cargo fmt --check`, `clippy -D warnings` (tout le workspace racine), `cargo test` des crates d'Estompe, `cargo deny check`, `npm --prefix web/estompe run check`, `npm --prefix web/estompe test`, puis `scripts/estompe/natif-check.sh` (app native : portabilité, fichiers générés, fmt, clippy, `cargo deny`, tests, build). Il est la seule liste de contrôles : skills et CI s'y réfèrent.
 
 Pendant le développement, du plus rapide au plus complet : `cargo check $(scripts/estompe/paquets-cargo.sh) --all-targets`, `cargo build $(scripts/estompe/paquets-cargo.sh)`, `cargo test $(scripts/estompe/paquets-cargo.sh) --no-run`, `cargo test $(scripts/estompe/paquets-cargo.sh)`. En local, `blaze` (indexable-inc) remplace `cargo` pour `build`, `check`, `run` et `test` (recompilation incrémentale en mémoire, voir `api/estompe/README.md`) ; `scripts/estompe/check.sh` et la CI restent sur `cargo` et la toolchain épinglée, qui font foi. Aucun linker à configurer : mesuré, mold n'apporte rien sur le linker par défaut (`api/estompe/README.md`, « Développement »).
 
@@ -125,6 +126,8 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - Dans un nouveau worktree, installer d'abord les dépendances front : `npm ci` (workspace npm à la racine du dépôt, un seul `package-lock.json`, Node du `.nvmrc` racine).
 - Chaque PR ajoute un fichier `changelog.d/<slug-court>.md` (voir `changelog.d/README.md`) qui cite l'issue `(#<n>)`, sauf branches `ci/`, `docs/`,
   `release/` : la CI échoue sinon. Elle lance les tests de tout (backend, front, Rust).
+- Parité de l'app native : une PR qui ajoute une fonction visible au front web (composant, bloc, section, fonction de l'app Windows) ajoute sa ligne à
+  `docs/estompe/natif-parite.md` et ouvre l'issue native correspondante (label `natif`) ; `scripts/estompe/natif-parite.mjs` échoue si un composant `.svelte` n'a pas sa ligne.
 - Dire clairement ce qui n'a **pas** été vérifié (rendu visuel, build Tauri/Windows, vrai partage d'écran…) dans la réponse et dans la PR.
 
 ## Tests
@@ -150,6 +153,8 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - Une plateforme = un dossier : `web/estompe/plateforme/` (image nginx, `docker/`), `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri : `src/platform.ts`,
   `src-tauri/`, `scripts/`). `apps/estompe/crates/core/` : code Rust et TS commun aux deux apps Tauri. Le frontend ne teste jamais la plateforme
   (`isDesktop`, agent) : il appelle `platform` ; un comportement propre à une plateforme s'ajoute dans son dossier (voir `web/estompe/README.md`).
+- `apps/estompe/natif/` : app de bureau native en Slint, sans webview, en beta à côté de l'app Tauri ; `apps/estompe/crates/client/` (logique sans
+  interface) et `apps/estompe/crates/plateforme/` (seul endroit où du code propre à un OS est permis). Workspace Cargo à part. Voir `docs/estompe/natif.md`.
 - `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
 - Permissions : toute nouvelle route est rattachée à une permission de `api/estompe/core/src/catalogue.rs` (ou, avec un motif, à `HORS_PERMISSION`), et tout nouveau droit de serveur est plafonné par une permission ; les tests `estompe-api` et `estompe-core` l'imposent. Après un changement du catalogue : `AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour` régénère `docs/aegis/fonctionnalites.md`.
@@ -219,5 +224,9 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   opaque sur un fond transparent sans `replace=1`. Une sortie au rapport imposé se calcule en multiples pairs du rapport, pas en arrondissant largeur et hauteur.
   Dans la vue, seule la vidéo du segment lu est « active » : les évènements des autres vidéos (pause au changement de clip) sont ignorés.
 - **Plein écran dans l'app Android** : le `WebChromeClient` de wry (`RustWebChromeClient`) annule tout passage en plein écran (`onShowCustomView` rend la main aussitôt) et wry l'installe après `onWebViewCreate`. `FullscreenChrome` (`Fullscreen.kt`) l'enveloppe au tour suivant de la boucle principale : il affiche la vue plein écran, masque les barres système et délègue au client de wry les méthodes que celui-ci redéfinit. À chaque montée de wry, vérifier que cette liste de méthodes déléguées est toujours complète.
+- **App native** (`docs/estompe/natif.md`) : `ui/genere/*.slint` et `crates/client/src/genere/types.rs` sont générés (`just estompe-natif-generer`), ne pas
+  les modifier à la main. Un changement visuel voulu régénère les captures de référence (`just estompe-natif-captures`). Le backend de test de Slint
+  ne s'installe qu'une fois par processus : un fichier de `tests/` par backend (rendu logiciel pour les captures, sans rendu pour le clavier).
+  Une tabulation qui arrive sur un champ sélectionne tout son texte. Lancer l'app sous Linux demande `libxkbcommon-x11-0`.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.

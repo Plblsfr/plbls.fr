@@ -1,0 +1,79 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton } from "bouton.slint";
+
+export component Modal {
+    in property <string> titre;
+    in property <bool> ouvert: false;
+    in property <length> largeur: 440px;
+    callback ferme();
+    width: 100%;
+    height: 100%;
+    visible: ouvert;
+    accessible-role: none;
+    changed ouvert => {
+        Calques.ouverts = Math.max(0, Calques.ouverts + (ouvert ? 1 : -1));
+        if (ouvert) {
+            croix.prendre-focus();
+        }
+    }
+    Rectangle {
+        background: #16130f80;
+        TouchArea {
+            clicked => {
+                root.ferme();
+            }
+        }
+    }
+    portee := FocusScope {
+        enabled: false;
+        capture-key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                root.ferme();
+                return accept;
+            }
+            return reject;
+        }
+        fenetre := Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: Math.min(root.largeur, parent.width - 2 * Espace.e4);
+            height: Math.min(disposition.preferred-height, parent.height - 2 * Espace.e4);
+            border-radius: Rayon.l;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.trait;
+            drop-shadow-blur: 28px;
+            drop-shadow-offset-y: 10px;
+            drop-shadow-color: Theme.sombre ? #00000099 : #16130f2e;
+            TouchArea { }
+            disposition := VerticalLayout {
+                padding: Espace.e5;
+                spacing: Espace.e4;
+                HorizontalLayout {
+                    spacing: Espace.e3;
+                    Text {
+                        text: root.titre;
+                        color: Theme.encre;
+                        font-family: Typo.titre;
+                        font-size: Typo.titre-section;
+                        font-weight: Typo.demi-gras;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        accessible-role: text;
+                    }
+                    croix := Bouton {
+                        icone: "x";
+                        variante: VarianteBouton.fantome;
+                        description: "Fermer";
+                        calque: Calques.ouverts;
+                        clique => {
+                            root.ferme();
+                        }
+                    }
+                }
+                @children
+            }
+        }
+    }
+}

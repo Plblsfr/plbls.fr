@@ -16,7 +16,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 ## CI
 - Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à
   `scripts/ci-changements.sh`), puis des jobs conditionnés à ces sorties (`front` générique pour les projets npm, `rust-lint` une fois pour tout
-  le workspace, `rust-test`, `estompe-tauri`, images), et le job final `ci`, contrôle obligatoire. Nouveau projet : un groupe de chemins dans
+  le workspace, `rust-test`, `estompe-tauri`, `estompe-natif-linux` et `estompe-natif-windows`, images), et le job final `ci`, contrôle obligatoire. Nouveau projet : un groupe de chemins dans
   `_changements.yml`, un job (ou un espace npm pour `front`) dans `ci.yml`, ajouté aux `needs` de `ci` ; le ruleset ne change pas.
 - Pas de tests sur `main` : `livraison.yml` (push `main`, tags `<composant>-vX.Y.Z`) publie seulement ce que la fusion a changé (images `:edge`,
   PR de version d'Estompe, caches partagés). Les apps natives d'Estompe (`estompe-livraison-app.yml`) partent de leur tag ou d'un lancement manuel.
@@ -32,7 +32,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - Versions et features communes dans `[workspace.dependencies]` ; un membre écrit `dep.workspace = true` (features en plus si besoin) et `[lints] workspace = true`.
 - Nouveau backend : `api/<nom>`, ajouté à `members`. `.dockerignore` racine et le `Dockerfile.dockerignore` d'aegis envoient déjà tout `api/` ; le groupe `rust` de `.github/workflows/_changements.yml`
   couvre `api/**`, lui ajouter ses groupes d'image et de tests.
-- Exception : les apps Tauri d'Estompe (`apps/estompe/{crates,windows,android}`) restent hors du workspace, avec leur `Cargo.lock` et la toolchain stable.
+- Exception : les apps Tauri d'Estompe (`apps/estompe/{crates/core,windows,android}`) et son app native (`apps/estompe/natif` avec `apps/estompe/crates/{client,plateforme}`, un workspace à part) restent hors du workspace, avec leur `Cargo.lock` et la toolchain stable.
 - Contrôles : `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo deny check`.
 
 Chaque projet peut avoir son propre `AGENTS.md` dans `docs/<projet>/` (par exemple `docs/estompe/AGENTS.md`) : il complète celui-ci pour tous les dossiers du projet.

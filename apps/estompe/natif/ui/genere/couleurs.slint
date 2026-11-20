@@ -1,0 +1,51 @@
+import { Palette } from "std-widgets.slint";
+
+export enum ModeTheme { auto, clair, sombre }
+
+export global Theme {
+    in-out property <ModeTheme> mode: ModeTheme.auto;
+    in-out property <bool> systeme-sombre: Palette.color-scheme == ColorScheme.dark;
+    out property <bool> sombre: mode == ModeTheme.sombre || (mode == ModeTheme.auto && systeme-sombre);
+    out property <color> papier: sombre ? #131110 : #f7f3ee;
+    out property <color> papier-2: sombre ? #1b1816 : #efe9e3;
+    out property <color> papier-3: sombre ? #252220 : #e6dfd8;
+    out property <color> surface: sombre ? #1e1b19 : #fffdfb;
+    out property <color> surface-2: sombre ? #24211e : #fbf8f5;
+    out property <color> dock-fond: sombre ? #2c2724 : #16130f;
+    out property <color> dock-texte: sombre ? #f1ece6 : #f7f3ee;
+    out property <color> dock-trait: sombre ? #ffffff17 : transparent;
+    out property <color> encre: sombre ? #f1ece6 : #16130f;
+    out property <color> encre-2: sombre ? #d5cec6 : #3d3833;
+    out property <color> gris: sombre ? #a9a097 : #6a635c;
+    out property <color> gris-2: sombre ? #968c83 : #6f675f;
+    out property <color> trait: sombre ? #2f2b28 : #e2dad2;
+    out property <color> trait-fort: sombre ? #433d38 : #cfc5bb;
+    out property <color> rose: sombre ? #5e2b40 : #f6c6d6;
+    out property <color> rose-doux: sombre ? #3a2029 : #fbe3eb;
+    out property <color> rose-fonce: sombre ? #e9849f : #d0688a;
+    out property <color> rose-texte: sombre ? #f5aec4 : #a3304f;
+    out property <color> ok: sombre ? #7fd1a2 : #276b4a;
+    out property <color> ok-fond: sombre ? #183126 : #dcefe3;
+    out property <color> attention: sombre ? #f0bf62 : #855400;
+    out property <color> attention-fond: sombre ? #33280f : #f8ebcf;
+    out property <color> danger: sombre ? #f08a80 : #b4322b;
+    out property <color> danger-fond: sombre ? #3a1a17 : #f8dcd8;
+    out property <color> info: sombre ? #8fb8e3 : #2f5d8a;
+    out property <color> info-fond: sombre ? #17263a : #dde8f3;
+    out property <color> voix: sombre ? #e9849f : #d0688a;
+    out property <color> role-bleu: sombre ? #8fb0dc : #305a8c;
+    out property <color> sur-danger: sombre ? #131110 : #ffffff;
+    out property <color> av-1: sombre ? #5e2b40 : #f6c6d6;
+    out property <color> av-2: sombre ? #20402f : #cfe3d6;
+    out property <color> av-3: sombre ? #28304d : #d6dcef;
+    out property <color> av-4: sombre ? #45351a : #f1dfc0;
+    out property <color> av-5: sombre ? #3c2a4a : #e3d3ec;
+    out property <color> av-6: sombre ? #1f3e43 : #d3e7ea;
+    out property <color> av-1-t: sombre ? #f5d8e2 : #16130f;
+    out property <color> av-2-t: sombre ? #cdeedb : #16130f;
+    out property <color> av-3-t: sombre ? #d9e0f6 : #16130f;
+    out property <color> av-4-t: sombre ? #f5e3c2 : #16130f;
+    out property <color> av-5-t: sombre ? #ead9f3 : #16130f;
+    out property <color> av-6-t: sombre ? #d4eef1 : #16130f;
+    out property <color> calque: encre.mix(surface, 0.07);
+}

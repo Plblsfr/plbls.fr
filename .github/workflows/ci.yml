@@ -305,6 +305,101 @@ jobs:
             apps/estompe/android/src-tauri/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
+  # App native (Slint, sans webview) : workspace Cargo à part (apps/estompe/natif), toolchain stable. Mêmes contrôles que
+  # scripts/estompe/natif-check.sh, puis lancement réel de l'app sous Xvfb.
+  estompe-natif-linux:
+    needs: changements
+    if: needs.changements.outputs.estompe_natif == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ESTOMPE_COFFRE_EXIGE: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-deny
+            apps/estompe/natif/target
+          key: natif-linux-v1-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
+          restore-keys: natif-linux-v1-
+      - name: cargo-deny
+        run: command -v cargo-deny || cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
+      - name: Portabilité, fichiers générés, fmt, clippy, cargo deny, tests (coffre de secrets réel, captures de rendu) et build
+        run: dbus-run-session -- bash -c 'echo -n ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && scripts/estompe/natif-check.sh'
+      - name: Lancement de l'app (fenêtre réelle sous Xvfb, moteur Skia)
+        working-directory: apps/estompe/natif
+        run: ESTOMPE_NATIF_DOSSIER="$RUNNER_TEMP/estompe-natif" timeout 120 xvfb-run -a -s "-screen 0 1400x900x24" target/debug/estompe-natif --essai-de-lancement
+      - name: Captures obtenues, références et différences
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: estompe-natif-captures
+          path: apps/estompe/natif/target/tmp/captures
+          if-no-files-found: ignore
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-deny
+            apps/estompe/natif/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+  # Cible Windows MSVC (imposée par le SDK Rust LiveKit du lot vocal) : build et tests sur un runner Windows.
+  # Les captures de rendu ne sont comparées que sous Linux.
+  estompe-natif-windows:
+    needs: changements
+    if: needs.changements.outputs.estompe_natif == 'true'
+    runs-on: windows-latest
+    env:
+      ESTOMPE_COFFRE_EXIGE: 1
+      ESTOMPE_CAPTURES: ignorer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/natif/target
+          key: natif-windows-v1-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
+          restore-keys: natif-windows-v1-
+      - name: Build (x86_64-pc-windows-msvc)
+        working-directory: apps/estompe/natif
+        run: cargo build --locked --target x86_64-pc-windows-msvc
+      - name: Tests, dont le coffre de secrets (Credential Manager)
+        working-directory: apps/estompe/natif
+        run: cargo test --workspace --locked --target x86_64-pc-windows-msvc
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/natif/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
   estompe-api-image:
     needs: changements
     if: needs.changements.outputs.estompe_api == 'true'
@@ -499,7 +594,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, image-aegis, image-security, image-ui]
+    needs: [changements, version-seule, changelog, front, rust-lint, rust-test, estompe-tauri, estompe-natif-linux, estompe-natif-windows, estompe-api-image, entracte-image, sillon-image, sablier-image, regie-image, image-aegis, image-security, image-ui]
     runs-on: ubuntu-latest
     steps:
       - name: Aucun job en échec ni annulé

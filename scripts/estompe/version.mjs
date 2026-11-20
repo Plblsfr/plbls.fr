@@ -5,11 +5,13 @@
 // Les fusions en attente (depuis le dernier commit de main qui a modifié .version) sont recalculées ensemble à chaque fusion.
 // Pour une version majeure (ou pour repartir d'un autre numéro), il suffit de modifier la valeur dans .version à la main.
 
-/** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/ dans les apps natives. */
+/** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/core dans les apps Tauri ; l'app native (natif/, crates/client, crates/plateforme) n'a pas encore de version. */
 const ELEMENTS = [
   ['api/estompe/', ['api']],
   ['web/estompe/plateforme/', ['web']],
   ['web/estompe/', ['web', 'windows', 'android']],
+  ['apps/estompe/crates/client/', []],
+  ['apps/estompe/crates/plateforme/', []],
   ['apps/estompe/crates/', ['windows', 'android']],
   ['apps/estompe/windows/', ['windows']],
   ['apps/estompe/android/', ['android']],

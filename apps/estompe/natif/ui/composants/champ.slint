@@ -1,0 +1,87 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+
+export component Champ {
+    in property <string> etiquette;
+    in property <string> indice;
+    in property <string> erreur;
+    in property <bool> actif: true;
+    in property <bool> secret: false;
+    in property <int> calque: 0;
+    in-out property <string> valeur <=> saisie.text;
+    out property <bool> a-le-focus: saisie.has-focus;
+    callback valide(string);
+    callback modifie(string);
+    property <bool> utilisable: actif && calque >= Calques.ouverts;
+    preferred-width: 280px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    opacity: actif ? 1 : 0.5;
+    forward-focus: saisie;
+    accessible-role: text-input;
+    accessible-label: etiquette;
+    accessible-value: valeur;
+    accessible-enabled: utilisable;
+    VerticalLayout {
+        spacing: Espace.e1;
+        alignment: start;
+        if root.etiquette != "": Text {
+            text: root.etiquette;
+            color: Theme.encre-2;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        Rectangle {
+            height: 40px;
+            border-radius: Rayon.s;
+            background: Theme.surface;
+            border-width: saisie.has-focus ? 2px : 1px;
+            border-color: root.erreur != "" ? Theme.danger : saisie.has-focus ? Theme.encre : Theme.trait-fort;
+            animate border-color { duration: Mouvement.d; easing: Courbes.sortie; }
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e3;
+                Rectangle {
+                    clip: true;
+                    if saisie.text == "" && root.indice != "": Text {
+                        x: 0;
+                        width: parent.width;
+                        height: parent.height;
+                        text: root.indice;
+                        color: Theme.gris-2;
+                        font-family: Typo.texte;
+                        font-size: Typo.corps;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    saisie := TextInput {
+                        width: parent.width;
+                        height: parent.height;
+                        enabled: root.utilisable;
+                        single-line: true;
+                        input-type: root.secret ? InputType.password : InputType.text;
+                        color: Theme.encre;
+                        selection-background-color: Theme.rose;
+                        selection-foreground-color: Theme.encre;
+                        font-family: Typo.texte;
+                        font-size: Typo.corps;
+                        vertical-alignment: center;
+                        accepted => {
+                            root.valide(self.text);
+                        }
+                        edited => {
+                            root.modifie(self.text);
+                        }
+                    }
+                }
+            }
+        }
+        if root.erreur != "": Text {
+            text: root.erreur;
+            color: Theme.danger;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}

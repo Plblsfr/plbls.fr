@@ -1,0 +1,57 @@
+import "../polices/BricolageGrotesque.ttf";
+import "../polices/InstrumentSans.ttf";
+import "../polices/JetBrainsMono.ttf";
+import { Theme, ModeTheme } from "genere/couleurs.slint";
+export { Theme, ModeTheme }
+
+export global Typo {
+    out property <string> titre: "Bricolage Grotesque";
+    out property <string> texte: "Instrument Sans";
+    out property <string> mono: "JetBrains Mono";
+    out property <length> corps: 15px;
+    out property <length> compact: 14px;
+    out property <length> petit: 13px;
+    out property <length> minuscule: 12px;
+    out property <length> titre-ecran: 36px;
+    out property <length> titre-section: 20px;
+    out property <int> normal: 400;
+    out property <int> moyen: 500;
+    out property <int> demi-gras: 600;
+    out property <int> gras: 700;
+}
+
+export global Rayon {
+    out property <length> xs: 6px;
+    out property <length> s: 10px;
+    out property <length> m: 14px;
+    out property <length> l: 20px;
+    out property <length> xl: 28px;
+    out property <length> pilule: 999px;
+}
+
+export global Espace {
+    out property <length> e1: 4px;
+    out property <length> e2: 8px;
+    out property <length> e3: 12px;
+    out property <length> e4: 16px;
+    out property <length> e5: 20px;
+    out property <length> e6: 24px;
+    out property <length> e8: 32px;
+    out property <length> e12: 48px;
+    out property <length> e16: 64px;
+}
+
+export global Mouvement {
+    in-out property <bool> reduit: false;
+    out property <duration> d: reduit ? 0ms : 160ms;
+    out property <duration> d-l: reduit ? 0ms : 280ms;
+}
+
+export global Courbes {
+    out property <easing> sortie: cubic-bezier(0.2, 0, 0, 1);
+    out property <easing> ressort: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+export global Calques {
+    in-out property <int> ouverts: 0;
+}
