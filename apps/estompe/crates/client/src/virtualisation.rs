@@ -141,7 +141,10 @@ mod tests {
         let par_hauteurs = fenetre_de_hauteurs(1000, |_| 50.0, 10_000.0, 600.0, 500.0);
         assert_eq!(par_cles, par_hauteurs);
         let vide = fenetre_de_hauteurs(0, |_| 50.0, 0.0, 600.0, 500.0);
-        assert_eq!((vide.debut, vide.fin, vide.haut, vide.bas), (0, 0, 0.0, 0.0));
+        assert_eq!(
+            (vide.debut, vide.fin, vide.haut, vide.bas),
+            (0, 0, 0.0, 0.0)
+        );
     }
 
     #[test]

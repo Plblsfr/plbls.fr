@@ -191,7 +191,13 @@ fn balisage_du_segment(segment: &Segment, reveles: &BTreeSet<u32>, palette: &Pal
     }
     if let Contenu::Mention { texte: nom, genre } = &segment.contenu {
         let corps = couleur(
-            styler(echapper(&texte), Styles { gras: true, ..segment.styles }),
+            styler(
+                echapper(&texte),
+                Styles {
+                    gras: true,
+                    ..segment.styles
+                },
+            ),
             &palette.mention,
         );
         return match genre {
@@ -227,7 +233,13 @@ pub fn balisage(segments: &[Segment], reveles: &BTreeSet<u32>, palette: &Palette
     }
     lignes
         .into_iter()
-        .map(|l| if l.trim().is_empty() { SEPARATEUR_INVISIBLE.to_string() } else { l })
+        .map(|l| {
+            if l.trim().is_empty() {
+                SEPARATEUR_INVISIBLE.to_string()
+            } else {
+                l
+            }
+        })
         .collect::<Vec<_>>()
         .join("\\\n")
 }
@@ -387,7 +399,10 @@ mod tests {
         let brut = "a*b_c `d` [e](f) <g> & # 1. ~h~ \\";
         let rendu = styled(&echapper(brut));
         let affiche = texte_de(&rendu);
-        assert!(affiche.contains("a*b_c `d` [e](f) <g> & # 1. ~h~ \\\\"), "{affiche}");
+        assert!(
+            affiche.contains("a*b_c `d` [e](f) <g> & # 1. ~h~ \\\\"),
+            "{affiche}"
+        );
         assert!(!affiche.contains("Strong") && !affiche.contains("Link"));
     }
 
@@ -407,7 +422,10 @@ mod tests {
             assert_eq!(blocs.len(), 1, "{texte}");
             let rendu = texte_de(&styled(&blocs[0].balisage));
             assert!(rendu.contains(style), "{texte} : {rendu}");
-            assert!(!rendu.contains("**") && !rendu.contains("~~"), "{texte} : {rendu}");
+            assert!(
+                !rendu.contains("**") && !rendu.contains("~~"),
+                "{texte} : {rendu}"
+            );
         }
     }
 
@@ -417,9 +435,16 @@ mod tests {
         segment.styles.gras = true;
         segment.styles.italique = true;
         let suite = Segment::texte("fin");
-        let balise = balisage(&[Segment::texte("x"), segment, suite], &BTreeSet::new(), &Palette::default());
+        let balise = balisage(
+            &[Segment::texte("x"), segment, suite],
+            &BTreeSet::new(),
+            &Palette::default(),
+        );
         let rendu = texte_de(&styled(&balise));
-        assert!(rendu.contains("Strong") && rendu.contains("Emphasis"), "{rendu}");
+        assert!(
+            rendu.contains("Strong") && rendu.contains("Emphasis"),
+            "{rendu}"
+        );
         assert!(!rendu.contains('*'), "{rendu}");
     }
 
@@ -460,10 +485,16 @@ mod tests {
         let rendu = analyser("avant ||secret|| après", &contexte);
         let cache = blocs_affiches(&rendu, &BTreeSet::new(), &Palette::default(), false);
         let texte = texte_de(&styled(&cache[0].balisage));
-        assert!(!texte.contains("secret") && texte.contains("s:1"), "{texte}");
+        assert!(
+            !texte.contains("secret") && texte.contains("s:1"),
+            "{texte}"
+        );
         let revele = blocs_affiches(&rendu, &BTreeSet::from([1]), &Palette::default(), false);
         let texte = texte_de(&styled(&revele[0].balisage));
-        assert!(texte.contains("secret") && !texte.contains("s:1"), "{texte}");
+        assert!(
+            texte.contains("secret") && !texte.contains("s:1"),
+            "{texte}"
+        );
         assert_eq!(analyser_cible("s:1"), Some(Cible::Masque(1)));
     }
 
@@ -501,7 +532,10 @@ mod tests {
         let blocs = blocs_affiches(&rendu, &BTreeSet::new(), &Palette::default(), true);
         assert_eq!(blocs.len(), 1);
         let texte = texte_de(&styled(&blocs[0].balisage));
-        assert!(texte.contains("ligne 1") && texte.contains("ligne 2"), "{texte}");
+        assert!(
+            texte.contains("ligne 1") && texte.contains("ligne 2"),
+            "{texte}"
+        );
         assert!(texte.contains("(modifié)"), "{texte}");
         let code = analyser("```\nx\n```", &contexte);
         let blocs = blocs_affiches(&code, &BTreeSet::new(), &Palette::default(), true);

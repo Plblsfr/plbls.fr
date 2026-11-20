@@ -22,9 +22,10 @@ use super::projection::*;
 use crate::messagerie::pont::PontMessagerie;
 use crate::session::Memoire;
 use crate::{
-    Accueil, CarteProfil, DonneesCoquille, EnTeteMarge, EnTetePanneau, EtatPresence, LigneBadge,
-    DonneesMessagerie, EtatConversation, LigneMembre, LigneMessage, LignePrive, LigneRattrapage,
-    LigneSalon, LigneSection, LigneServeur, LigneVocal, Principale, RoleProfil, VueContenu,
+    Accueil, CarteProfil, DonneesCoquille, DonneesMessagerie, EnTeteMarge, EnTetePanneau,
+    EtatConversation, EtatPresence, LigneBadge, LigneMembre, LigneMessage, LignePrive,
+    LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal, Principale, RoleProfil,
+    VueContenu,
 };
 
 pub type Horloge = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
@@ -288,6 +289,7 @@ pub fn vider_modeles(f: &Principale) {
     g.set_pret(false);
     g.set_pseudo("".into());
     g.set_initiales("".into());
+    crate::messagerie::pont::liberer_modele();
     let m = f.global::<DonneesMessagerie>();
     vec_de(&m.get_lignes()).set_vec(Vec::new());
     m.set_active(false);
@@ -444,8 +446,12 @@ impl Pont {
         navigation: Navigation,
         profils: Arc<Profils>,
     ) -> Self {
-        let messagerie =
-            PontMessagerie::nouveau(store.clone(), fenetre.clone(), runtime.clone(), profils.clone());
+        let messagerie = PontMessagerie::nouveau(
+            store.clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            profils.clone(),
+        );
         Self {
             interne: Arc::new(Mutex::new(Interne {
                 navigation,

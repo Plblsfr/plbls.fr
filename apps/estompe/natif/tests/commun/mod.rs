@@ -224,7 +224,13 @@ pub mod coquille {
         depuis(valeur)
     }
 
-    fn ecrit(id: &str, lieu: (&str, &str), auteur: (&str, &str), quand: &str, contenu: &str) -> Value {
+    fn ecrit(
+        id: &str,
+        lieu: (&str, &str),
+        auteur: (&str, &str),
+        quand: &str,
+        contenu: &str,
+    ) -> Value {
         let mut valeur = json!({"id": id, "author": {"id": auteur.0, "pseudo": auteur.1}, "content": contenu, "created_at": quand, "attachments": [], "reactions": [], "mentions": []});
         valeur[lieu.0] = json!(lieu.1);
         valeur
@@ -235,16 +241,76 @@ pub mod coquille {
     pub fn conversation_variantes() -> Vec<estompe_client::types::Message> {
         let c1 = ("channel_id", "c1");
         let mut v = vec![
-            ecrit("100", c1, ("eve", "Ève"), "2026-11-18T21:40:00Z", "Bonne nuit tout le monde, à demain !"),
-            ecrit("101", c1, (ESTOMPE, "Estompe"), "2026-11-19T07:58:00Z", "Inès a rejoint le serveur."),
-            ecrit("102", c1, ("carol", "carol"), "2026-11-19T08:00:00Z", "Salut ! Quelqu'un a vu le **planning** de demain ?"),
-            ecrit("103", c1, ("carol", "carol"), "2026-11-19T08:01:00Z", "Je l'avais posé ici mais je ne le retrouve plus."),
-            ecrit("104", c1, ("dave", "dave"), "2026-11-19T08:02:00Z", "Oui, il est dans le dossier partagé, je l'ai mis à jour."),
-            ecrit("105", c1, ("elise", "Élise"), "2026-11-19T08:03:00Z", "Je ne vois plus le message auquel je répondais."),
-            ecrit("106", c1, (ESTOMPE, "Estompe"), "2026-11-19T08:05:00Z", "Nouvelle version disponible : 0.42 apporte la messagerie native."),
-            ecrit("107", c1, ("eve", "Ève"), "2026-11-19T08:06:00Z", "@bob tu peux valider le planning avant midi ?"),
-            ecrit("108", c1, ("ines", "Inès"), "2026-11-19T08:07:00Z", "Les photos du week-end :"),
-            ecrit("109", c1, ("carol", "carol"), "2026-11-19T08:09:00Z", "Et ce message est mis en évidence après un saut."),
+            ecrit(
+                "100",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-18T21:40:00Z",
+                "Bonne nuit tout le monde, à demain !",
+            ),
+            ecrit(
+                "101",
+                c1,
+                (ESTOMPE, "Estompe"),
+                "2026-11-19T07:58:00Z",
+                "Inès a rejoint le serveur.",
+            ),
+            ecrit(
+                "102",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:00:00Z",
+                "Salut ! Quelqu'un a vu le **planning** de demain ?",
+            ),
+            ecrit(
+                "103",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:01:00Z",
+                "Je l'avais posé ici mais je ne le retrouve plus.",
+            ),
+            ecrit(
+                "104",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:02:00Z",
+                "Oui, il est dans le dossier partagé, je l'ai mis à jour.",
+            ),
+            ecrit(
+                "105",
+                c1,
+                ("elise", "Élise"),
+                "2026-11-19T08:03:00Z",
+                "Je ne vois plus le message auquel je répondais.",
+            ),
+            ecrit(
+                "106",
+                c1,
+                (ESTOMPE, "Estompe"),
+                "2026-11-19T08:05:00Z",
+                "Nouvelle version disponible : 0.42 apporte la messagerie native.",
+            ),
+            ecrit(
+                "107",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:06:00Z",
+                "@bob tu peux valider le planning avant midi ?",
+            ),
+            ecrit(
+                "108",
+                c1,
+                ("ines", "Inès"),
+                "2026-11-19T08:07:00Z",
+                "Les photos du week-end :",
+            ),
+            ecrit(
+                "109",
+                c1,
+                ("carol", "carol"),
+                "2026-11-19T08:09:00Z",
+                "Et ce message est mis en évidence après un saut.",
+            ),
         ];
         v[1]["system"] = json!(true);
         v[2]["pinned_at"] = json!("2026-11-19T08:10:00Z");
@@ -252,7 +318,8 @@ pub mod coquille {
         v[4]["edited_at"] = json!("2026-11-19T08:04:00Z");
         v[5]["reply_to"] = json!({"id": "99", "author": {"id": "hugo", "pseudo": "hugo"}, "content": "message retiré"});
         v[7]["mentions"] = json!(["u1"]);
-        v[8]["attachments"] = json!([{"id": "a1", "name": "plage.jpg"}, {"id": "a2", "name": "dune.jpg"}]);
+        v[8]["attachments"] =
+            json!([{"id": "a1", "name": "plage.jpg"}, {"id": "a2", "name": "dune.jpg"}]);
         v[8]["reactions"] = json!([{"emoji": "👍", "count": 3, "me": true}, {"emoji": "🎉", "count": 1, "me": false}]);
         v.into_iter().map(depuis).collect()
     }
@@ -262,18 +329,54 @@ pub mod coquille {
     pub fn galerie_markdown() -> Vec<estompe_client::types::Message> {
         let c1 = ("channel_id", "c1");
         vec![
-            depuis(ecrit("200", c1, ("eve", "Ève"), "2026-11-19T08:30:00Z", GALERIE)),
-            depuis(ecrit("201", c1, ("dave", "dave"), "2026-11-19T08:31:00Z", "Révélé : ||la fin du film|| et ### pas un titre en ligne")),
+            depuis(ecrit(
+                "200",
+                c1,
+                ("eve", "Ève"),
+                "2026-11-19T08:30:00Z",
+                GALERIE,
+            )),
+            depuis(ecrit(
+                "201",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:31:00Z",
+                "Révélé : ||la fin du film|| et ### pas un titre en ligne",
+            )),
         ]
     }
 
     pub fn conversation_privee() -> Vec<estompe_client::types::Message> {
         let d1 = ("dm_id", "d1");
         [
-            ecrit("300", d1, ("u1", "bob"), "2026-11-19T07:50:00Z", "On se voit toujours ce soir ?"),
-            ecrit("301", d1, ("carol", "carol"), "2026-11-19T07:52:00Z", "Oui ! 19 h devant le cinéma."),
-            ecrit("302", d1, ("carol", "carol"), "2026-11-19T08:20:00Z", "Petit changement : on se retrouve plutôt au café d'à côté."),
-            ecrit("303", d1, ("carol", "carol"), "2026-11-19T08:21:00Z", "Ça te va ?"),
+            ecrit(
+                "300",
+                d1,
+                ("u1", "bob"),
+                "2026-11-19T07:50:00Z",
+                "On se voit toujours ce soir ?",
+            ),
+            ecrit(
+                "301",
+                d1,
+                ("carol", "carol"),
+                "2026-11-19T07:52:00Z",
+                "Oui ! 19 h devant le cinéma.",
+            ),
+            ecrit(
+                "302",
+                d1,
+                ("carol", "carol"),
+                "2026-11-19T08:20:00Z",
+                "Petit changement : on se retrouve plutôt au café d'à côté.",
+            ),
+            ecrit(
+                "303",
+                d1,
+                ("carol", "carol"),
+                "2026-11-19T08:21:00Z",
+                "Ça te va ?",
+            ),
         ]
         .into_iter()
         .map(depuis)
@@ -283,9 +386,27 @@ pub mod coquille {
     pub fn conversation_courte(salon: &str) -> Vec<estompe_client::types::Message> {
         let lieu = ("channel_id", salon);
         [
-            ecrit("400", lieu, ("carol", "carol"), "2026-11-19T08:00:00Z", "Bonjour à toutes et à tous !"),
-            ecrit("401", lieu, ("dave", "dave"), "2026-11-19T08:05:00Z", "Salut, prêt pour la réunion de **10 h** ?"),
-            ecrit("402", lieu, ("dave", "dave"), "2026-11-19T08:06:00Z", "L'ordre du jour : [plbls.fr/agenda](https://plbls.fr/agenda)"),
+            ecrit(
+                "400",
+                lieu,
+                ("carol", "carol"),
+                "2026-11-19T08:00:00Z",
+                "Bonjour à toutes et à tous !",
+            ),
+            ecrit(
+                "401",
+                lieu,
+                ("dave", "dave"),
+                "2026-11-19T08:05:00Z",
+                "Salut, prêt pour la réunion de **10 h** ?",
+            ),
+            ecrit(
+                "402",
+                lieu,
+                ("dave", "dave"),
+                "2026-11-19T08:06:00Z",
+                "L'ordre du jour : [plbls.fr/agenda](https://plbls.fr/agenda)",
+            ),
         ]
         .into_iter()
         .map(depuis)
@@ -505,9 +626,164 @@ pub mod coquille {
     }
 
     pub fn store(etat: Etat) -> Store {
-        let store = Store::nouveau(Client::nouveau("http://127.0.0.1:9").unwrap(), &[]);
+        store_sur(etat, "http://127.0.0.1:9")
+    }
+
+    pub fn store_sur(etat: Etat, adresse: &str) -> Store {
+        let reglages = estompe_client::http::Reglages {
+            mandataire_systeme: false,
+            ..estompe_client::http::Reglages::default()
+        };
+        let store = Store::nouveau(Client::avec_reglages(adresse, reglages).unwrap(), &[]);
         store.installer(etat);
         store
+    }
+
+    pub struct ServeurMessages {
+        pub adresse: String,
+        pub nombre: u64,
+        pub requetes: Mutex<Vec<String>>,
+        bloque: Mutex<bool>,
+        reveil: std::sync::Condvar,
+    }
+
+    pub fn contenu_de(n: u64) -> String {
+        if n.is_multiple_of(7) {
+            format!("message n°{n}\nUne deuxième ligne pour varier la hauteur, avec assez de mots pour passer à la ligne dans une fenêtre étroite.\nEt une troisième.")
+        } else {
+            format!("message n°{n}")
+        }
+    }
+
+    pub fn message_numero(n: u64, nombre: u64) -> Value {
+        let auteur = if (n / 3).is_multiple_of(2) {
+            "carol"
+        } else {
+            "dave"
+        };
+        let mut m = json!({
+            "id": n.to_string(), "channel_id": "c1",
+            "author": {"id": auteur, "pseudo": auteur},
+            "content": contenu_de(n),
+            "created_at": format!("2026-11-{:02}T{:02}:{:02}:{:02}Z", 1 + (n / 4000).min(17), (n / 240) % 24, (n / 4) % 60, (n * 15) % 60),
+            "attachments": [], "reactions": [], "mentions": []
+        });
+        if n == nombre {
+            m["reply_to"] = json!({"id": "3", "author": {"id": "carol", "pseudo": "carol"}, "content": contenu_de(3)});
+        }
+        m
+    }
+
+    fn parametre(requete: &str, nom: &str) -> Option<u64> {
+        let (_, requete) = requete.split_once('?')?;
+        requete.split('&').find_map(|p| {
+            let (cle, valeur) = p.split_once('=')?;
+            (cle == nom).then(|| valeur.parse().ok()).flatten()
+        })
+    }
+
+    impl ServeurMessages {
+        pub fn demarrer(nombre: u64) -> Arc<Self> {
+            use std::io::{BufRead, BufReader, Write};
+            let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let serveur = Arc::new(Self {
+                adresse: format!("http://{}", ecoute.local_addr().unwrap()),
+                nombre,
+                requetes: Mutex::new(Vec::new()),
+                bloque: Mutex::new(false),
+                reveil: std::sync::Condvar::new(),
+            });
+            let s = serveur.clone();
+            std::thread::spawn(move || {
+                for flux in ecoute.incoming() {
+                    let Ok(mut flux) = flux else { return };
+                    let s = s.clone();
+                    std::thread::spawn(move || {
+                        let mut lecteur = BufReader::new(flux.try_clone().unwrap());
+                        let mut premiere = String::new();
+                        if lecteur.read_line(&mut premiere).unwrap_or(0) == 0 {
+                            return;
+                        }
+                        loop {
+                            let mut ligne = String::new();
+                            if lecteur.read_line(&mut ligne).unwrap_or(0) == 0 || ligne == "\r\n" {
+                                break;
+                            }
+                        }
+                        let mut morceaux = premiere.split_whitespace();
+                        let methode = morceaux.next().unwrap_or_default().to_string();
+                        let chemin = morceaux.next().unwrap_or_default().to_string();
+                        let (statut, corps) = s.repondre(&methode, &chemin);
+                        let _ = write!(
+                            flux,
+                            "HTTP/1.1 {statut} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{corps}",
+                            corps.len()
+                        );
+                    });
+                }
+            });
+            serveur
+        }
+
+        pub fn bloquer(&self, bloque: bool) {
+            *self.bloque.lock().unwrap() = bloque;
+            self.reveil.notify_all();
+        }
+
+        pub fn nombre_de(&self, debut: &str) -> usize {
+            self.requetes
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.starts_with(debut))
+                .count()
+        }
+
+        fn repondre(&self, methode: &str, chemin: &str) -> (u16, String) {
+            self.requetes
+                .lock()
+                .unwrap()
+                .push(format!("{methode} {chemin}"));
+            if methode == "POST" {
+                return (200, "{}".into());
+            }
+            if chemin.ends_with("/reads") {
+                return (200, "[]".into());
+            }
+            if !chemin.starts_with("/channels/c1/messages") {
+                return (404, r#"{"error":"introuvable"}"#.into());
+            }
+            let limite = parametre(chemin, "limit").unwrap_or(50);
+            let (debut, fin, encore) =
+                match (parametre(chemin, "before"), parametre(chemin, "after")) {
+                    (Some(avant), _) => {
+                        let mut bloque = self.bloque.lock().unwrap();
+                        while *bloque {
+                            bloque = self.reveil.wait(bloque).unwrap();
+                        }
+                        let fin = avant.saturating_sub(1).min(self.nombre);
+                        let debut = fin.saturating_sub(limite) + 1;
+                        (debut, fin, debut > 1)
+                    }
+                    (None, Some(apres)) => {
+                        let debut = apres + 1;
+                        let fin = (apres + limite).min(self.nombre);
+                        (debut, fin, fin < self.nombre)
+                    }
+                    (None, None) => {
+                        let debut = self.nombre.saturating_sub(limite) + 1;
+                        (debut, self.nombre, debut > 1)
+                    }
+                };
+            let messages: Vec<Value> = (debut..=fin)
+                .filter(|n| *n >= 1)
+                .map(|n| message_numero(n, self.nombre))
+                .collect();
+            (
+                200,
+                json!({"messages": messages, "has_more": encore}).to_string(),
+            )
+        }
     }
 
     pub struct FausseFabrique {
@@ -519,12 +795,20 @@ pub mod coquille {
         pub reseau: watch::Sender<EtatReseau>,
         pub source: Arc<SourceFactice>,
         pub profils: Arc<Profils>,
+        pub adresse: String,
+        pub navigateur: Arc<super::FauxNavigateur>,
     }
 
     impl FausseFabrique {
         pub fn nouvelle(etat: Etat, sections: Vec<Section>) -> Arc<Self> {
+            Self::sur(etat, sections, "http://127.0.0.1:9")
+        }
+
+        pub fn sur(etat: Etat, sections: Vec<Section>, adresse: &str) -> Arc<Self> {
             let source = Arc::new(SourceFactice::default());
             Arc::new(Self {
+                adresse: adresse.to_string(),
+                navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
                 sections,
                 ouvertures: AtomicUsize::new(0),
@@ -556,7 +840,7 @@ pub mod coquille {
             self.ouvertures.fetch_add(1, Ordering::SeqCst);
             let mut etat = self.etat.clone();
             etat.ordre_serveurs = ordre;
-            let store = store(etat);
+            let store = store_sur(etat, &self.adresse);
             let (signaux, flux) = FluxTempsReel::factice();
             *self.signaux.lock().unwrap() = Some(signaux);
             *self.store.lock().unwrap() = Some(store.clone());
@@ -578,6 +862,10 @@ pub mod coquille {
 
         fn profils(&self) -> Arc<Profils> {
             self.profils.clone()
+        }
+
+        fn navigateur(&self) -> estompe_natif::messagerie::pont::Navigateur {
+            self.navigateur.clone()
         }
     }
 }

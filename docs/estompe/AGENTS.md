@@ -230,5 +230,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   Une tabulation qui arrive sur un champ sélectionne tout son texte. Lancer l'app sous Linux demande `libxkbcommon-x11-0`.
   Slint ne virtualise un `for` que dans un composant nommé `ListView` (`ui/composants/liste-virtuelle.slint`, exporté en `ListeVirtuelle`) ; avec le temps simulé du backend de test,
   les gestionnaires `changed` ne tournent que si le test appelle `slint::platform::update_timers_and_animations()`.
+  Un rappel `init` d'une ligne répétée ne doit jamais modifier le modèle de son répéteur (panique dans `repeater.rs`) : la messagerie planifie son rafraîchissement par un `slint::Timer` de durée nulle.
+  Ni `Text` ni `StyledText` ne sélectionnent du texte en Slint 1.18 : la copie d'un message passe par `texte_brut` et un `TextInput` caché.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements.

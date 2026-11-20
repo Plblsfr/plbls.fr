@@ -602,7 +602,14 @@ pub fn donnees_vue(etat: &Etat, route: &Route) -> DonneesVue {
                         .filter(|p| !p.is_empty())
                         .collect::<Vec<_>>()
                         .join(" · ");
-                        vue(GenreVue::Salon, nom, sujet, icone, CONVERSATION, String::new())
+                        vue(
+                            GenreVue::Salon,
+                            nom,
+                            sujet,
+                            icone,
+                            CONVERSATION,
+                            String::new(),
+                        )
                     }
                 }
             }
@@ -672,9 +679,9 @@ pub fn bandeau(reseau: EtatReseau, deja_connecte: bool) -> EtatBandeau {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use estompe_client::store::messages::{lignes_privees, EtatMessages};
     use crate::coquille::essais::etat;
     use chrono::NaiveDate;
+    use estompe_client::store::messages::{lignes_privees, EtatMessages};
 
     fn salon(serveur: &str, salon: Option<&str>) -> Route {
         Route::Salon {

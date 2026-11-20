@@ -214,7 +214,13 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
                     .as_ref()
                     .map(|p| texte(&p.pseudo).to_string())
                     .unwrap_or_default(),
-                texte: une_ligne(texte(&r.content)),
+                texte: une_ligne(&estompe_client::markdown::texte_brut(
+                    &estompe_client::markdown::analyser(
+                        texte(&r.content),
+                        &Mentionnables::default(),
+                    )
+                    .blocs,
+                )),
                 id: cible,
             }
         }),
@@ -408,8 +414,10 @@ mod tests {
     fn chaque_variante_du_message_est_projetee() {
         let mut e = etat();
         e.details.get_mut("s1").unwrap().roles = Some(
-            serde_json::from_value(json!([{"id": "r1", "name": "Art", "color": "#b0413e", "position": 1}]))
-                .unwrap(),
+            serde_json::from_value(
+                json!([{"id": "r1", "name": "Art", "color": "#b0413e", "position": 1}]),
+            )
+            .unwrap(),
         );
         e.details.get_mut("s1").unwrap().members = Some(
             serde_json::from_value(json!([{"id": "carol", "pseudo": "carol", "roles": ["r1"]}]))
@@ -436,12 +444,19 @@ mod tests {
         assert_eq!(d.date_modification, "19/11/2026 10:05:00");
         let reponse = d.reponse.unwrap();
         assert_eq!(
-            (reponse.auteur.as_str(), reponse.texte.as_str(), reponse.supprimee),
+            (
+                reponse.auteur.as_str(),
+                reponse.texte.as_str(),
+                reponse.supprimee
+            ),
             ("dave", "texte sur deux lignes", true)
         );
         assert_eq!(d.annexes.resume(), "2 pièces jointes · 👍 3");
         m.system = Some(true);
-        m.author = serde_json::from_value(json!({"id": estompe_client::store::messages::ID_COMPTE_ESTOMPE, "pseudo": "Estompe"})).unwrap();
+        m.author = serde_json::from_value(
+            json!({"id": estompe_client::store::messages::ID_COMPTE_ESTOMPE, "pseudo": "Estompe"}),
+        )
+        .unwrap();
         let systeme = donnees_message(&m, true, &c);
         assert!(systeme.systeme && systeme.bot && !systeme.suite && !systeme.mention);
         let mut evidence = contexte(&e, &supprimes);
@@ -460,8 +475,14 @@ mod tests {
         let contexte = mentionnables(&e, &cle);
         let rendu = estompe_client::markdown::analyser("@Caro @everyone", &contexte);
         assert_eq!(rendu.blocs.len(), 1);
-        assert_eq!(utilisateur_mentionne(&e, &cle, "caro").as_deref(), Some("carol"));
-        assert_eq!(utilisateur_mentionne(&e, &cle, "CAROL").as_deref(), Some("carol"));
+        assert_eq!(
+            utilisateur_mentionne(&e, &cle, "caro").as_deref(),
+            Some("carol")
+        );
+        assert_eq!(
+            utilisateur_mentionne(&e, &cle, "CAROL").as_deref(),
+            Some("carol")
+        );
         assert_eq!(utilisateur_mentionne(&e, &cle, "personne"), None);
     }
 }

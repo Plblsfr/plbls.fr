@@ -43,6 +43,14 @@ const GOUTTIERE: f64 = 96.0;
 
 thread_local! {
     static MINUTERIE: RefCell<Option<slint::Timer>> = const { RefCell::new(None) };
+    static PLANIFIE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PROPRIETAIRE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+static IDENTIFIANTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub fn liberer_modele() {
+    PROPRIETAIRE.with(|p| p.set(0));
 }
 
 pub fn fuseau_local() -> Fuseau {
@@ -429,6 +437,7 @@ fn cles_des_operations(
 
 #[derive(Clone)]
 pub struct PontMessagerie {
+    identifiant: u64,
     interne: Arc<Mutex<Interne>>,
     store: Store,
     fenetre: slint::Weak<Principale>,
@@ -446,6 +455,7 @@ impl PontMessagerie {
         profils: Arc<Profils>,
     ) -> Self {
         Self {
+            identifiant: IDENTIFIANTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             interne: Arc::new(Mutex::new(Interne::nouveau())),
             store,
             fenetre,
@@ -496,6 +506,23 @@ impl PontMessagerie {
         self.verrou().defilement.colle()
     }
 
+    pub fn chargement_en_cours(&self) -> bool {
+        let i = self.verrou();
+        i.chargement_haut || i.chargement_bas
+    }
+
+    pub fn fin_atteinte(&self) -> bool {
+        self.verrou().fin_atteinte
+    }
+
+    pub fn en_bas(&self) -> bool {
+        self.verrou().defilement.en_bas()
+    }
+
+    pub fn mesures(&self) -> usize {
+        self.verrou().defilement.mesures()
+    }
+
     pub fn nouveau_depuis(&self) -> Option<String> {
         self.verrou().nouveau_depuis.clone()
     }
@@ -513,7 +540,7 @@ impl PontMessagerie {
     ) {
         {
             let mut i = self.verrou();
-            if i.cle == cle {
+            if i.cle == cle && PROPRIETAIRE.with(|p| p.get()) == self.identifiant {
                 return;
             }
             i.reinitialiser();
@@ -525,9 +552,10 @@ impl PontMessagerie {
                 Some(CleConversation::Prive(id)) => self.store.lire(|etat| {
                     etat.messages_prives.iter().any(|d| {
                         d.id.as_deref() == Some(id.as_str())
-                            && d.other.as_ref().and_then(|o| o.id.as_deref()).is_some_and(
-                                estompe_client::store::messages::est_compte_estompe,
-                            )
+                            && d.other
+                                .as_ref()
+                                .and_then(|o| o.id.as_deref())
+                                .is_some_and(estompe_client::store::messages::est_compte_estompe)
                     })
                 }),
                 _ => false,
@@ -536,6 +564,7 @@ impl PontMessagerie {
         let g = f.global::<DonneesMessagerie>();
         vec_de(&g.get_lignes()).set_vec(Vec::new());
         g.set_defilement(0.0);
+        PROPRIETAIRE.with(|p| p.set(self.identifiant));
         self.reprojeter(f);
     }
 
@@ -687,7 +716,11 @@ impl PontMessagerie {
         };
         let conversation = self.store.conversation(&cle).filter(|c| c.chargee);
         let decalage = {
-            let fuseau = self.fuseau.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let fuseau = self
+                .fuseau
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             fuseau(chrono::Utc::now().timestamp_millis())
         };
         let moi = self.store.lire(|e| e.moi().to_string());
@@ -705,7 +738,7 @@ impl PontMessagerie {
             }
         }
         let lignes = match &conversation {
-            Some(c) => self.lignes_de(c, &cle, serveur.as_deref(), decalage),
+            Some(c) => self.lignes_de(c, serveur.as_deref(), decalage),
             None => Vec::new(),
         };
         let mut a_positionner = false;
@@ -751,8 +784,7 @@ impl PontMessagerie {
             let mut i = self.verrou();
             match i.nouveau_depuis.clone() {
                 Some(id) => {
-                    i.defilement
-                        .aller_a(&format!("new-{id}"), Alignement::Haut);
+                    i.defilement.aller_a(&format!("new-{id}"), Alignement::Haut);
                 }
                 None => i.defilement.aller_en_bas(),
             }
@@ -763,7 +795,6 @@ impl PontMessagerie {
     fn lignes_de(
         &self,
         c: &Conversation,
-        cle: &CleConversation,
         serveur: Option<&str>,
         decalage: i32,
     ) -> Vec<DonneesLigne> {
@@ -772,7 +803,6 @@ impl PontMessagerie {
         let evidence = i.mis_en_evidence.clone();
         let supprimes = i.supprimes.clone();
         drop(i);
-        let _ = cle;
         self.store.lire(|etat| {
             lignes_de_conversation(
                 &c.messages,
@@ -796,7 +826,11 @@ impl PontMessagerie {
             return;
         };
         let decalage = {
-            let fuseau = self.fuseau.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let fuseau = self
+                .fuseau
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             fuseau(chrono::Utc::now().timestamp_millis())
         };
         let (serveur, evidence, supprimes, indice, suite) = {
@@ -884,6 +918,9 @@ impl PontMessagerie {
     }
 
     fn rafraichir(&self, f: &Principale) {
+        if PROPRIETAIRE.with(|p| p.get()) != self.identifiant {
+            return;
+        }
         let g = f.global::<DonneesMessagerie>();
         let (fenetre, lignes_fenetre) = {
             let i = self.verrou();
@@ -922,7 +959,11 @@ impl PontMessagerie {
                             Vec::new()
                         }
                     };
-                    (Some(rendus), portrait, if m.suite { Vec::new() } else { badges_ligne })
+                    (
+                        Some(rendus),
+                        portrait,
+                        if m.suite { Vec::new() } else { badges_ligne },
+                    )
                 }
                 None => (None, false, Vec::new()),
             };
@@ -937,7 +978,11 @@ impl PontMessagerie {
         let modele = vec_de(&modele_rc);
         let profils = self.profils.clone();
         let mut i = self.verrou();
-        let anciennes: Vec<String> = i.ombre_fenetre.iter().map(|l| l.donnees.cle.clone()).collect();
+        let anciennes: Vec<String> = i
+            .ombre_fenetre
+            .iter()
+            .map(|l| l.donnees.cle.clone())
+            .collect();
         let faites = synchroniser(
             modele,
             &mut i.ombre_fenetre,
@@ -1037,7 +1082,9 @@ impl PontMessagerie {
         }
         if ancienne.lecture_seule != proprietes.lecture_seule {
             g.set_lecture_seule(proprietes.lecture_seule);
-            g.set_lecture_seule_texte("Conversation en lecture seule : Estompe y publie ses nouveautés.".into());
+            g.set_lecture_seule_texte(
+                "Conversation en lecture seule : Estompe y publie ses nouveautés.".into(),
+            );
         }
         let Some(cle) = cle else {
             return;
@@ -1118,11 +1165,25 @@ impl PontMessagerie {
         });
     }
 
-    pub fn defilee(&self, f: &Principale, position: f32, vue: f32, largeur: f32) {
+    fn planifier(&self) {
+        if PLANIFIE.with(|p| p.replace(true)) {
+            return;
+        }
+        let pont = self.clone();
+        slint::Timer::single_shot(Duration::ZERO, move || {
+            PLANIFIE.with(|p| p.set(false));
+            if let Some(f) = pont.fenetre.upgrade() {
+                pont.rafraichir(&f);
+            }
+        });
+    }
+
+    pub fn defilee(&self, _f: &Principale, position: f32, vue: f32, largeur: f32) {
         {
             let mut i = self.verrou();
+            let echo = (position + i.proprietes.defilement).abs() < 0.5;
             let position = f64::from(position);
-            if (position - i.defilement.position()).abs() >= 0.5 {
+            if !echo && (position - i.defilement.position()).abs() >= 0.5 {
                 i.defilement.defiler(position);
                 i.echec_page = false;
             }
@@ -1131,13 +1192,13 @@ impl PontMessagerie {
                     .redimensionner(f64::from(largeur), f64::from(vue));
             }
         }
-        self.rafraichir(f);
+        self.planifier();
     }
 
-    pub fn ligne_mesuree(&self, f: &Principale, cle: &str, hauteur: f32) {
+    pub fn ligne_mesuree(&self, _f: &Principale, cle: &str, hauteur: f32) {
         let change = self.verrou().defilement.mesurer(cle, f64::from(hauteur));
         if change {
-            self.rafraichir(f);
+            self.planifier();
         }
     }
 

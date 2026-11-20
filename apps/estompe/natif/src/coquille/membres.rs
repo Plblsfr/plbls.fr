@@ -5,8 +5,8 @@ use estompe_client::roles::{
     couleur_du_pseudo, grouper_membres, membre_exclu, nom_du_membre, roles_du_membre, Membre,
 };
 use estompe_client::store::{Etat, Presence};
-pub use estompe_client::virtualisation::Fenetre;
 use estompe_client::virtualisation::fenetre_de_hauteurs;
+pub use estompe_client::virtualisation::Fenetre;
 
 use super::avatars::CleAvatar;
 use super::projection::{initiales, teinte, MOIS};

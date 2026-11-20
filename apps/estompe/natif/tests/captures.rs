@@ -4,9 +4,9 @@ use chrono::NaiveDate;
 use estompe_client::auth::ErreurAuth;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
-use estompe_client::temps_reel::EtatReseau;
 use estompe_client::store::messages::ChangementMessages;
 use estompe_client::store::{Changement, CleConversation, Store};
+use estompe_client::temps_reel::EtatReseau;
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -539,8 +539,10 @@ fn messagerie_markdown(f: &Principale) {
 fn messages_prives(f: &Principale) {
     let mut etat = commun::coquille::etat();
     etat.en_ligne.insert("dave".into());
-    etat.statuts
-        .insert("dave".into(), serde_json::from_value(serde_json::json!("dnd")).unwrap());
+    etat.statuts.insert(
+        "dave".into(),
+        serde_json::from_value(serde_json::json!("dnd")).unwrap(),
+    );
     etat.non_lus.insert(CleConversation::Prive("d3".into()), 5);
     coquille_preparee(
         f,

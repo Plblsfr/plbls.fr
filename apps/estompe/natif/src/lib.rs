@@ -94,12 +94,10 @@ pub fn demarrer(
 
 fn suivre_le_focus(fenetre: &Principale, suivi: impl Fn(bool) + 'static) {
     use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
-    fenetre
-        .window()
-        .on_winit_window_event(move |_, evenement| {
-            if let winit::event::WindowEvent::Focused(actif) = evenement {
-                suivi(*actif);
-            }
-            EventResult::Propagate
-        });
+    fenetre.window().on_winit_window_event(move |_, evenement| {
+        if let winit::event::WindowEvent::Focused(actif) = evenement {
+            suivi(*actif);
+        }
+        EventResult::Propagate
+    });
 }

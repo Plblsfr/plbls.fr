@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation) et la marge « Membres » (liste des membres, présence, activité, carte de profil) ; le contenu des salons arrive avec les lots suivants.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, temps réel, marquage comme lu) ; l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -37,7 +37,7 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
   l'un ou de l'autre : `just estompe-natif-generer`. La CI échoue si les fichiers versionnés ne correspondent plus (`--check`).
 - `ui/jetons.slint` : typographie, rayons, espacements et durées de [la direction artistique](direction-artistique.md) ; les trois polices
   variables (`polices/`, licence OFL) sont embarquées dans le binaire.
-- `ui/composants/` : bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
+- `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image.
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
 - L'écran « À propos » affiche la version et l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`).
@@ -127,7 +127,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 - Sections : Entracte, Sillon, Stats (Sablier) et Régie apparaissent sur le rail si le `GET /me` de leur service les ouvre (`permissions.access`,
   `permissions.admin` pour Régie), comme le front. Adresses : `ESTOMPE_ENTRACTE_URL`, `ESTOMPE_SILLON_URL`, `ESTOMPE_SABLIER_URL`, `ESTOMPE_REGIE_URL`
   (vide : section coupée) ; sans variable, celles de production pour le serveur de production (Régie n'en a pas). Leur contenu arrive au lot 10.
-- Salons vocaux, cinéma, vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon texte ou un message privé montre son nom et l'état vide « Les messages arrivent avec le lot 2 ».
+- Salons vocaux, cinéma, vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
+- Messages privés du panneau : triés par activité (`lignes_privees` du store, une conversation qui reçoit un message remonte), avec non-lus, mentions et présence par formes sur l'avatar.
 
 ### Membres
 
@@ -167,6 +168,78 @@ un avatar en échec n'est pas redemandé pendant la session.
   temporaire renommé ; un fichier temporaire restant est supprimé à l'ouverture, un fichier qui ne se décode pas est supprimé et redemandé, un nom de fichier invalide est ignoré.
 - Une image est recadrée en carré, réduite à 96 px et arrondie dans ses pixels (`arrondir`) : les deux moteurs de rendu l'affichent de la même façon.
 - Sans image, les initiales restent affichées. Les images et emojis des badges ne sont pas encore chargés : une médaille de la couleur du badge les remplace.
+
+## Messagerie
+
+Lecture des salons texte et des conversations privées (`src/messagerie/`, `ui/messagerie/`). La logique sans interface est celle de la crate client :
+store des messages (`store/messages/`, pagination, fenêtre de 600 messages par conversation, 8 conversations en cache), markdown (`markdown/`),
+mentions, regroupement et séparateurs (`format::lignes_de_messages`).
+
+| Fichier | Rôle |
+|---|---|
+| `src/messagerie/lignes.rs` | projection pure : conversation du store → lignes (séparateurs de jour, « Nouveaux messages », message avec auteur, couleur du rôle, avatar, heure, réponse citée, modifié, épinglé, système, bot, mention, mise en évidence, annexes) ; premier non-lu, mentionnables d'une conversation |
+| `src/messagerie/rendu.rs` | markdown aplati pour Slint : chaque `Bloc` devient un `BlocAffiche` (paragraphe, titre, code ; profondeur de citation, retrait et puce de liste), les segments d'un paragraphe un balisage `StyledText` ; cibles des liens (`u:`, `m:`, `s:`) |
+| `src/messagerie/defilement.rs` | virtualisation : hauteurs mesurées ou estimées, ancre, collage en bas, saut à une ligne |
+| `src/messagerie/pont.rs` (`PontMessagerie`) | applique les `Changement::Messages` aux modèles, cache borné des rendus (512, LRU), chargement des pages, avatars et badges des auteurs, marquage comme lu, saisie en cours |
+| `ui/messagerie/vue.slint`, `element.slint`, `donnees.slint` | liste, élément de message, global `DonneesMessagerie` |
+
+### Virtualisation
+
+`ListView` de Slint 1.18 instancie les lignes visibles et accepte des hauteurs différentes, mais estime la position par la hauteur moyenne des
+lignes instanciées (`update_visible_instances`, `i-slint-core/model/repeater.rs`) : la hauteur du contenu et la barre de défilement changent à
+chaque pas, et des lignes ajoutées au-dessus de la première instance (cas d'une page plus ancienne quand on est près du haut) décalent la vue.
+L'app virtualise donc elle-même, avec `virtualisation::fenetre_de_hauteurs` de la crate client :
+
+- le modèle `DonneesMessagerie.lignes` ne contient que les lignes de la fenêtre (l'écran et 600 px au-dessus et au-dessous) ; deux espaces
+  (`haut`, `bas`) remplacent les autres dans un `Flickable` ;
+- chaque ligne signale sa hauteur (`init` et `changed height` → `ligne-mesuree`) ; avant la mesure, une estimation tirée du texte et de la largeur ;
+  un changement de largeur oublie les mesures ;
+- une ancre (ligne sous le haut de l'écran et décalage) est rétablie après chaque changement : ajout en tête, mesure d'une ligne au-dessus,
+  retrait par la borne du store. Collée en bas, la liste suit les nouveaux messages ; en lecture de l'historique, un message reçu ne la déplace pas
+  et le bouton « N nouveaux messages » apparaît ;
+- les pages plus anciennes ou plus récentes sont demandées à moins de 1 500 px d'un bord ; une ligne « Chargement des messages… » ou
+  « Début de la conversation » occupe le bord ;
+- à l'ouverture, la vue se place sur le premier non-lu (nombre de non-lus lu avant que le store ne les efface) ; sans non-lu, en bas ;
+- les rappels de mesure et de défilement planifient un rafraîchissement au tour suivant (`slint::Timer` de durée nulle) : un rappel `init` qui
+  modifierait le modèle pendant l'instanciation de ses lignes ferait paniquer le répéteur.
+
+Mises à jour fines : `synchroniser` compare la fenêtre à son ombre ; une modification, un épinglage ou une réaction ne remplacent que la ligne du message,
+une suppression la retire. La conversation entière est reprojetée côté Rust (au plus 600 messages), jamais le modèle Slint.
+
+### Rendu du markdown, sélection et copie
+
+Un paragraphe est un `StyledText` (Slint 1.18) : gras, italique, barré, code en ligne, liens. Le balisage est produit depuis le `Rendu` de la crate
+client, texte échappé et délimiteurs entourés d'une espace sans chasse pour que les bords d'un style (espace, ponctuation) ne le cassent pas.
+Titres, blocs de code, citations (barres) et listes (puces, retraits) sont des éléments Slint autour. Les mentions de personne sont des liens
+(`m:` → carte de profil), celles de rôle ou de groupe sont colorées ; un passage masqué est un pavé cliquable (`s:` → révélé pour ce message) ;
+un lien (`u:`) n'est ouvert par `OuvertureUrl` que si `lien_ouvrable` l'accepte, au clic comme à l'analyse.
+
+Sélection : ni `Text` ni `StyledText` ne permettent de sélectionner du texte en 1.18 (seul `TextInput`, d'un seul style, le fait). La copie se fait
+donc par message entier : bouton « Copier le message » au survol, ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
+au presse-papiers par un `TextInput` caché (`select-all()`, `copy()`).
+
+Écarts : la police de texte embarquée n'a pas d'italique (l'italique n'est pas distinguable) ; le code en ligne utilise la police à chasse fixe générique
+du système ; un lien est toujours souligné ; les emojis personnalisés restent `:nom:`.
+
+### Élément de message et emplacements à venir
+
+`CorpsMessage` (`ui/messagerie/element.slint`) : gouttière (avatar 36 px, ou heure au survol pour une suite groupée), réponse citée (clic :
+`sauter_a`, chargement autour du message si besoin, puis mise en évidence 1,5 s), en-tête (pseudo à la couleur du rôle, « Bot », deux badges,
+épingle, heure), corps (`TexteRiche`, 15 px), annexes, état d'envoi.
+
+- Annexes : la structure `AnnexesMessage` (`pieces-jointes`, `sondage`, `reactions: [ReactionMessage]`, `lien`, `resume`) est remplie par
+  `annexes()` (`lignes.rs`, `DonneesAnnexes`) et convertie par `annexes_slint()` (`pont.rs`). `AnnexesMessageVue` n'affiche pour l'instant que
+  `resume` (« 2 pièces jointes · 👍 3 ») ; pièces jointes, sondages, réactions et aperçus de liens y remplaceront cette ligne.
+- État d'envoi : champ `etat-envoi` de `LigneMessage`, vide en lecture ; l'écriture (lot 3) le remplira.
+- Accusés de lecture (avatars « Vu par ») : pas encore affichés (`Store::lecteurs` est prêt).
+
+### Temps réel et lecture
+
+- Nouveau message, modification, suppression, épinglage, saisie (« carol est en train d'écrire… », expirée par la boucle de la session) : appliqués par `PontMessagerie::appliquer`.
+- Lu : `signaler_lecture(en_bas, ancre)` quand le bas de la liste est atteint ou quitté, `definir_focus` quand la fenêtre gagne ou perd le focus.
+  Le focus vient de l'évènement `Focused` de winit (`on_winit_window_event`, feature `unstable-winit-030` de Slint), sans code propre à un OS ;
+  `Coquille::fenetre_active` est le même chemin, utilisé par les tests. Une lecture sur un autre appareil (`read.updated` à mon nom) retire la pastille.
+- Le compte « Estompe » (notes de version) ouvre une conversation en lecture seule.
 
 ## Portabilité
 
@@ -232,6 +305,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `membres.rs` (même backend) ouvre un serveur de 5 000 membres sur une fausse source de profils qui compte les requêtes : seules les lignes de la fenêtre
   sont instanciées et demandent leur avatar, un défilement ne demande que les nouvelles, un retour en arrière aucune ; un statut ou un passage en ligne reçus en temps réel
   ne remplacent ou ne déplacent que la ligne du membre. Sans rendu, le test fait tourner lui-même les gestionnaires `changed` (`update_timers_and_animations`).
+`messagerie.rs` (même backend, faux serveur HTTP de 300 messages, `ServeurMessages` de `tests/commun/`) : ouverture sur le premier non-lu, saisie, message reçu en lisant l'historique sans défilement, modification, épinglage et suppression par une seule opération sur le modèle, liens refusés, saut vers un message cité non chargé, non-lu fenêtre inactive puis lu au retour, lecture sur un autre appareil.
+`messagerie_volume.rs` : salon de 50 000 messages remonté pendant 2 minutes simulées (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 
 ## CI

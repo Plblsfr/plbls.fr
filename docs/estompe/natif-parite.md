@@ -93,7 +93,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 |---|---|---|---|---|
 | `components/ServerRail.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | accueil, serveurs dans l'ordre retenu (glisser, Ctrl+Alt+↑/↓), trait de non-lus, pastille de mentions, entrées des sections (`apps/estompe/natif/ui/coquille/rail.slint`) ; « + » ne fait que rejoindre ; restent la recherche, l'administration (lot 8) et l'indicateur du vocal (lot 4) |
 | `components/ServerIcon.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | fait | image du serveur téléchargée par le client (`apps/estompe/natif/src/coquille/pont.rs`), sinon initiales ; rail et en-tête du panneau |
-| `components/SidePanel.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | salons texte, esquisses et vocaux (« bientôt ») avec non-lus et mentions, messages privés avec présence, barre de l'utilisateur avec déconnexion (`apps/estompe/natif/ui/coquille/panneau.slint`) ; restent les menus contextuels, la création de salon, les participants vocaux, les séances à venir, les brouillons et le menu de statut ; commandes du vocal au lot 4 |
+| `components/SidePanel.svelte` | 1 | [#296](https://github.com/Plblsfr/plbls.fr/issues/296) | en cours | salons texte, esquisses et vocaux (« bientôt ») avec non-lus et mentions, messages privés triés par activité avec présence par formes, barre de l'utilisateur avec déconnexion (`apps/estompe/natif/ui/coquille/panneau.slint`) ; restent les menus contextuels, la création de salon, les participants vocaux, les séances à venir, les brouillons et le menu de statut ; commandes du vocal au lot 4 |
 | `components/Marge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | onglet « Membres » sur un serveur, bouton de l'en-tête, Ctrl+. et bouton « Fermer la marge », ouverture retenue dans les préférences (`apps/estompe/natif/ui/coquille/membres.slint`) ; pas encore : onglet « Épinglés » (lot 2), redimensionnement, marge superposée sous 1200 px |
 | `components/MembersPanel.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | liste virtualisée groupée par rôle affiché puis en ligne / hors ligne, compteur, filtre au-delà de 8 membres, couleur du rôle, exclusion, « Bot » et « Créateur », badges, jeu en cours, carte de profil au clic ; pas encore : menu contextuel (message privé, copie, rôles, modération), temps passé en vocal, « Écoute » (musique), repli de la liste |
 | `components/RoleBadge.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | fait | étiquette « Bot » ou « Créateur » (`apps/estompe/natif/ui/composants/badge-role.slint`) |
@@ -103,14 +103,14 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `components/ChatView.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | absent | en-tête, liste et zone de saisie d'une conversation ; saisie au lot 3 |
-| `components/MessageList.svelte` | 2 | [#299](https://github.com/Plblsfr/plbls.fr/issues/299) | absent | liste virtualisée, accusés de lecture |
-| `components/MessageItem.svelte` | 2 | [#301](https://github.com/Plblsfr/plbls.fr/issues/301) | absent | lecture ; édition, réponse et actions au lot 3 |
+| `components/ChatView.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | en cours | en-tête, liste, « est en train d'écrire », lecture seule de la conversation Estompe (`apps/estompe/natif/ui/messagerie/vue.slint`) ; pas encore : bouton des épinglés, recherche, zone de saisie (lot 3) |
+| `components/MessageList.svelte` | 2 | [#299](https://github.com/Plblsfr/plbls.fr/issues/299) | en cours | liste virtualisée à hauteurs mesurées, position gardée à l'ajout en tête, pages vers le haut et le bas, collage en bas, bouton « nouveaux messages », saut au premier non-lu, séparateurs de jour et de non-lus, saut vers un message cité (`apps/estompe/natif/src/messagerie/defilement.rs`) ; pas encore : accusés de lecture (« Vu par »), adresse `#/…/<message>` d'une notification, sélection de texte (copie par message entier) |
+| `components/MessageItem.svelte` | 2 | [#301](https://github.com/Plblsfr/plbls.fr/issues/301) | en cours | auteur, avatar, couleur du rôle, « Bot », badges, heure, regroupement, réponse citée, modifié, épinglé, système, mention, mise en évidence, markdown et mentions, masqués, copie du message (`apps/estompe/natif/ui/messagerie/element.slint`) ; pièces jointes, sondages, réactions et aperçus résumés en une ligne provisoire ; édition, réponse, réactions et menu au lot 3 |
 | `components/AttachmentView.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | images, GIF, fichiers ; vidéos au lot 9 |
 | `components/Lightbox.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | visionneuse plein écran |
 | `components/VoiceMessage.svelte` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | lecture d'un message vocal, vitesse, transcription |
 | `components/PollCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent | sondage affiché ; le vote est une écriture (lot 3) |
-| `components/ConvPanel.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | absent | messages épinglés d'une conversation |
+| `components/ConvPanel.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | absent | messages épinglés d'une conversation ; l'épingle d'un message est affichée dans la liste, pas encore le panneau |
 | `components/SearchModal.svelte` | 2 | [#274](https://github.com/Plblsfr/plbls.fr/issues/274) | absent | recherche de messages et palette « aller à » (Ctrl+K) |
 
 ### Messagerie, écriture
@@ -208,7 +208,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 |---|---|---|---|---|
 | `blocks/apercu-liens/LinkCard.svelte` | 2 | [#304](https://github.com/Plblsfr/plbls.fr/issues/304) | absent | aperçu d'un lien, carte Sillon |
 | `blocks/badges/BadgeIcon.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | médaille de la couleur du badge, nom en libellé accessible ; l'image (SVG, WebP, PNG, JPEG) et l'emoji du badge ne sont pas encore affichés |
-| `blocks/badges/BadgeInline.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | deux badges puis « +N » à côté du pseudo dans la liste des membres ; dans les messages au lot 2 |
+| `blocks/badges/BadgeInline.svelte` | 1 | [#297](https://github.com/Plblsfr/plbls.fr/issues/297) | en cours | deux badges puis « +N » à côté du pseudo dans la liste des membres ; dans les messages, deux badges à côté du pseudo (#301) |
 | `blocks/badges/BadgeRow.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | en cours | rangée de badges de la carte de profil (#297), sans l'infobulle du nom et de la description |
 | `blocks/badges/BadgeAdmin.svelte` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent |  |
 | `blocks/draw2gether/Draw2Gether.svelte` | 11 | [#283](https://github.com/Plblsfr/plbls.fr/issues/283) | absent |  |
