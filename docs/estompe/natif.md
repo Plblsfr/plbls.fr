@@ -99,8 +99,8 @@ et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil,
 Le client déclare `X-Estompe-Platform: natif` et `X-Estompe-Version: <version du paquet>` ; l'API applique `platforms.natif` de
 `api/estompe/core/updates.json`. Un refus 426 (`upgrade_required`), à n'importe quel appel, mène à l'écran bloquant « Mise à jour requise »
 (message du serveur, version installée et minimale) : la machine n'émet plus aucune requête, seul le bouton de téléchargement agit. Il ouvre
-dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`) : l'installeur natif n'existe pas encore, ni le
-téléchargement dans l'app.
+dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`) ; le téléchargement et l'installation dans l'app
+(installeur de la [Livraison](#livraison)) ne sont pas encore branchés.
 
 ## Coquille
 
@@ -509,6 +509,36 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   (le journal de débogage ne contient pas son contenu), « Marquer comme lu » envoie la lecture au faux serveur et efface la pastille, « Répondre » envoie
   le texte, le clic ramène la fenêtre sur la conversation, et rien n'est affiché pour la conversation ouverte dans la fenêtre active.
 `instance.rs` (sans backend) : le test tient la première instance, lance le vrai binaire avec `--invitation` : il sort avec succès sans fenêtre et le message reçu porte ses arguments.
+
+## Livraison
+
+- Version : clé `natif` de `.version`, montée par la CI à la fusion d'une PR qui touche `apps/estompe/natif/`, `crates/client` ou
+  `crates/plateforme` (`scripts/estompe/version.mjs`) ; `bump-version.mjs --apply` la recopie dans `Cargo.toml` et `Cargo.lock`, d'où
+  `VERSION` (« À propos », en-tête `X-Estompe-Version`) et la version de l'installeur.
+- Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)).
+- Installeur NSIS `apps/estompe/natif/installeur/estompe-natif.nsi` → `Estompe-natif-beta-X.Y.Z-setup.exe` :
+  - « Estompe natif (bêta) », par utilisateur sans droits d'administrateur (`RequestExecutionLevel user`), dans `%LOCALAPPDATA%\Programs\Estompe natif` :
+    `estompe-natif.exe`, `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
+  - raccourci du menu Démarrer, et sur le bureau (case cochée par défaut, sautée en mode silencieux) ;
+  - registre (`HKCU`) : `Software\EstompeNatif` (dossier), désinstallation `Software\Microsoft\Windows\CurrentVersion\Uninstall\EstompeNatif`,
+    identité des toasts `Software\Classes\AppUserModelId\fr.plbls.estompe.natif` (`DisplayName`, `IconUri`, mêmes valeurs que l'app).
+    L'app Tauri garde son dossier, sa clé de désinstallation et l'identifiant `fr.plbls.estompe` : les deux cohabitent.
+  - mode silencieux de mise à jour, `/S /RELANCER` : attend que `estompe-natif.exe` soit libre (l'app a quitté ; 120 × 500 ms au plus, en
+    interactif un message « Fermez Estompe natif » avec Réessayer), installe, puis relance l'app si `/RELANCER` est passé ; en cas d'échec, relance l'exe en place.
+  - désinstallation (refusée tant que l'app tourne) : programme, icône, raccourcis, clés ci-dessus, valeur `EstompeNatif` de `Run` (démarrage
+    avec la session) et cache `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` (mises à jour téléchargées comprises) ; garde les préférences et
+    brouillons (`%APPDATA%\fr.plbls.estompe.natif`), les journaux et le coffre de secrets.
+  - non signé Authenticode pendant la bêta : SmartScreen avertit à la première installation.
+- Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 45 Mo), contenu
+  listé par `7z` (exe, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
+- Manifeste de mise à jour `natif.json` (`scripts/estompe/natif-manifeste.mjs`), servi par la release fixe `estompe-natif-beta` :
+  `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json`. Format de `latest.json` de Tauri plus la taille :
+  `{ version, notes, pub_date, mandatory, force, minVersion, message, platforms: { "windows-x86_64": { url, signature, taille } } }` ;
+  `url` vise l'installeur de la release versionnée (`…/releases/download/estompe-natif-vX.Y.Z/Estompe-natif-beta-X.Y.Z-setup.exe`, redirigé
+  vers `objects.githubusercontent.com` ou `release-assets.githubusercontent.com`), `signature` est le fichier `.minisig` en base64 (clé
+  `apps/estompe/crates/client/src/mise_a_jour/cle.pub`, commentaire de confiance `estompe-natif X.Y.Z`), `taille` en octets.
+- Essai local de l'installeur sous Linux : `apt-get install nsis p7zip-full`, puis dans `apps/estompe/natif/installeur/`
+  `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` et le contrôle sur le résultat.
 
 ## CI
 

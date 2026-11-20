@@ -10,7 +10,7 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 | `livraison.yml` | push sur `main`, tags `aegis-v*`, `entracte-v*`, `sillon-v*`, `sablier-v*`, `regie-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
 | `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel (case `beta` : appelle `estompe-beta.yml`) | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
 | `estompe-beta.yml` | lancement manuel sur la branche d'une PR | check, tests et build du front de la PR, puis image `ghcr.io/plblsfr/estompe-web:beta` (et `beta-pr<n>`, `beta-<sha>`) ; ni `latest`, ni tag, ni release |
-| `estompe-natif-installeur.yml` | lancement manuel sur la branche de son choix, ou push sur `ci/installeur-natif-windows` | build release de l'app native pour Windows (MSVC), installeur NSIS non signé (`apps/estompe/natif/installeur/estompe-natif.nsi`), artefact `estompe-natif-installeur` ; ni tag, ni release, ni mise à jour automatique |
+| `estompe-livraison-natif.yml` | tag `estompe-natif-v*`, ou lancement manuel sur la branche de son choix | app native : build release Windows (MSVC), installeur NSIS non signé Authenticode (`apps/estompe/natif/installeur/estompe-natif.nsi`), contrôle (`scripts/estompe/natif-installeur-check.sh`), artefact `estompe-natif-installeur` ; sur le tag seulement, signature minisign, `natif.json` et releases GitHub (voir [release.md](release.md)) |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
 | `_changements.yml`, `_image.yml` | appelés par les autres | ce qu'un évènement touche ; build, publication et release d'une image |
 
@@ -49,7 +49,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 ## `ci.yml` (PR)
 
 - `version-seule` : seul job de la PR de version (branche `ci/version`, `changements` et donc tous les autres jobs sont ignorés) ; échoue si un
-  autre fichier que `.version` change ou si `.version` n'a pas les quatre éléments au format `x.y.z`.
+  autre fichier que `.version` change ou si `.version` n'a pas les quatre éléments `api`, `web`, `windows`, `android` (plus `natif`, facultatif) au format `x.y.z`.
 - `changelog` : exige un nouveau `changelog.d/*.md` ; exempté pour `ci/`, `docs/`, `release/` et Dependabot.
 - `front` : job générique des projets npm (un seul `npm ci` du `package-lock.json` racine) : version de Node, copies de `@plbls/ui`,
   tests des scripts communs, liens Markdown internes (`scripts/check-links.mjs`), `just lint` si le groupe `lint` est touché, `npm audit` d'Estompe, puis `check`, `test` et `build` de chaque
@@ -97,7 +97,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   modifié `.version` (nom de branche lu dans le message du commit de fusion, voir `docs/estompe/AGENTS.md`), le pousse sur la branche unique
   `ci/version` et ouvre ou met à jour la PR « chore(version) » (secret `CI_PAT` : avec `GITHUB_TOKEN`, la PR ne déclencherait aucune CI).
   Une seule PR de version à la fois : des fusions rapprochées, ou un run annulé par la file d'attente, ne perdent aucune montée.
-  Fusionner cette PR avant de poser un tag `estompe-api-v*` / `estompe-app-v*`. Relancé, il ne fait rien de plus. Ignoré si le message du commit contient `[skip ci]`.
+  Fusionner cette PR avant de poser un tag `estompe-api-v*` / `estompe-app-v*` / `estompe-natif-v*`. Relancé, il ne fait rien de plus. Ignoré si le message du commit contient `[skip ci]`.
 - `estompe-ci-image` : image de job `ghcr.io/plblsfr/estompe-ci` ; incrémenter `:4` dans `livraison.yml`, `deploy/estompe/ci/Dockerfile` et `estompe-livraison-app.yml`.
 - `cache-rust`, `cache-npm` : écrivent sur `main` les caches lus par les PR (voir plus bas).
 
@@ -119,7 +119,7 @@ Un tag ne déclenche que son composant. Lancé à la main sur `main`, tout est r
 |---|---|---|---|
 | `packages` | `main`, tags `*-v*` | `build` de `_image.yml` hors PR, `estompe-api-image` et `estompe-ci-image` de `livraison.yml`, `image` d'`estompe-livraison-app.yml`, `packages-cleanup.yml` | `write:packages` et `delete:packages` |
 | `beta` | toutes, chaque lancement approuvé par le propriétaire | `image` d'`estompe-beta.yml` | jeton distinct, `write:packages` seulement |
-| `livraison` | `main`, tags `*-v*` | `windows` d'`estompe-livraison-app.yml` (image de job `estompe-ci`), `deploiement` de `_image.yml`, `android` | `read:packages` (avec les secrets de signature et `DOKPLOY_WEBHOOK_URL`) |
+| `livraison` | `main`, tags `*-v*` | `windows` d'`estompe-livraison-app.yml` (image de job `estompe-ci`), `deploiement` de `_image.yml`, `android`, `publier` d'`estompe-livraison-natif.yml` | `read:packages` (avec les secrets de signature, dont `ESTOMPE_NATIF_CLE_MAJ`, et `DOKPLOY_WEBHOOK_URL`) |
 
 `scripts/configurer-github.sh` crée les trois environnements et leurs règles de branche (et le relecteur de `beta`). Reste à la main
 (Settings › Environments) : y créer les secrets `PACKAGES_PAT`, puis supprimer le secret `PACKAGES_PAT` du dépôt (Settings › Secrets and
@@ -127,6 +127,11 @@ variables › Actions). Jetons : un jeton fine-grained limité aux paquets utile
 du propriétaire des paquets, un par environnement avec les seules portées du tableau. Sans `PACKAGES_PAT`, `build` de `_image.yml` ne
 peut pas publier ; les autres jobs se rabattent sur `GITHUB_TOKEN`, qui n'écrit que dans les paquets dont l'accès Actions inclut
 `plbls.fr` en écriture : les paquets créés par les anciens dépôts le refusent (`denied: permission_denied: read_package`).
+
+`ESTOMPE_NATIF_CLE_MAJ` (environnement `livraison`) : le contenu du fichier de clé secrète minisign de l'app native, sans mot de passe
+(`minisign -G -W`), dont la clé publique est `apps/estompe/crates/client/src/mise_a_jour/cle.pub`. Une autre paire impose de remplacer
+`cle.pub` dans une PR : les apps déjà installées ne connaissent que l'ancienne clé et refuseront les mises à jour signées par la nouvelle
+(réinstallation à la main). Le job `publier` refuse de publier si la clé du secret ne correspond pas à `cle.pub`.
 
 ## Caches
 
@@ -136,6 +141,7 @@ peut pas publier ; les autres jobs se rabattent sur `GITHUB_TOKEN`, qui n'écrit
   `rust-toolchain.toml`, repli sur le préfixe. `actions/cache/restore` puis `save` explicites ; une PR n'écrit que si la clé exacte manque.
   `CARGO_INCREMENTAL=0` et sans infos de débogage pour réduire la taille. `cargo-deny` a son propre cache par version.
 - Cargo (apps Tauri) : `tauri-test-v1-`, clé sur leurs `Cargo.lock`, écrit par les PR seulement.
+- Cargo (app native) : `natif-windows-v1-` (job `estompe-natif-windows`, débogage) et `natif-windows-release-v1-` (`estompe-livraison-natif.yml`), clé sur `apps/estompe/natif/Cargo.lock`.
 - npm : `actions/setup-node` avec `node-version-file: .nvmrc` et `cache: npm` (un seul `package-lock.json`).
 - Docker : `type=gha` par image pour `_image.yml`, `:buildcache` dans le registre pour l'API Estompe. Le `Dockerfile` Rust compile les
   dépendances dans leur couche (`cargo-chef`).

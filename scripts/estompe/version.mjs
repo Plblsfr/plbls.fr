@@ -1,17 +1,19 @@
-// Versions de chaque élément (api, web, windows, android), stockées dans .version à la racine et mises à jour par la CI à chaque fusion dans main :
+// Versions de chaque élément (api, web, windows, android, natif), stockées dans .version à la racine et mises à jour par la CI à chaque fusion dans main :
 //  - les éléments concernés sont ceux dont un dossier a changé dans la fusion (ELEMENTS) ;
 //  - fusion d'une branche feat/… = minor +1 (patch remis à 0), tout autre = patch +1, sauf release/… (notes de version) qui ne change rien.
 // Le nom de la branche est lu dans le sujet du commit de fusion de GitHub (« Merge pull request #1 from <compte>/feat/x »).
 // Les fusions en attente (depuis le dernier commit de main qui a modifié .version) sont recalculées ensemble à chaque fusion.
 // Pour une version majeure (ou pour repartir d'un autre numéro), il suffit de modifier la valeur dans .version à la main.
+// Un élément absent de .version part de 0.0.0 : sa première fusion feat/ lui donne 0.1.0.
 
-/** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/core dans les apps Tauri ; l'app native (natif/, crates/client, crates/plateforme) n'a pas encore de version. */
+/** Éléments embarquant chaque dossier (chemins depuis la racine du dépôt, le premier qui correspond l'emporte) : le front est dans les trois interfaces, crates/core dans les apps Tauri, crates/client et crates/plateforme dans l'app native. */
 const ELEMENTS = [
   ['api/estompe/', ['api']],
   ['web/estompe/plateforme/', ['web']],
   ['web/estompe/', ['web', 'windows', 'android']],
-  ['apps/estompe/crates/client/', []],
-  ['apps/estompe/crates/plateforme/', []],
+  ['apps/estompe/natif/', ['natif']],
+  ['apps/estompe/crates/client/', ['natif']],
+  ['apps/estompe/crates/plateforme/', ['natif']],
   ['apps/estompe/crates/', ['windows', 'android']],
   ['apps/estompe/windows/', ['windows']],
   ['apps/estompe/android/', ['android']],
@@ -34,11 +36,18 @@ export function bump(v, subject) {
 /** @param {Record<string, string>} versions contenu de .version @param {string} subject @param {string[]} files */
 export function nextVersions(versions, subject, files) {
   const next = { ...versions }
-  for (const e of concerned(files)) next[e] = bump(versions[e], subject)
+  for (const e of concerned(files)) next[e] = bump(versions[e] ?? '0.0.0', subject)
   return next
 }
 
 /** @param {Record<string, string>} versions contenu de .version sur main @param {{ subject: string, files: string[] }[]} fusions de la plus ancienne à la plus récente */
 export function pendingVersions(versions, fusions) {
   return fusions.reduce((v, { subject, files }) => nextVersions(v, subject, files), versions)
+}
+
+/** @param {string} texte Cargo.toml ou Cargo.lock @param {string} paquet @param {string} version */
+export function remplacerVersionCargo(texte, paquet, version) {
+  const re = new RegExp(`(name = "${paquet}"\r?\nversion = )"[^"]*"`)
+  if (!re.test(texte)) throw new Error(`paquet ${paquet} introuvable`)
+  return texte.replace(re, (_, pre) => `${pre}"${version}"`)
 }

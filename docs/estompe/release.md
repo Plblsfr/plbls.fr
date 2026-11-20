@@ -10,7 +10,7 @@
   - Ne jamais modifier une entrée déjà publiée (elle a déjà été envoyée) : en ajouter une nouvelle.
   - Ne se modifie que dans la PR de release, jamais dans celle d'un ticket.
 - `CHANGELOG.md` : les entrées de `changelog.d/` y sont regroupées à la release (voir `changelog.d/README.md`).
-- Mise à jour forcée : `api/estompe/core/updates.json` (`mandatory`, `minVersion`, `message`, surcharge par `platforms.web|android|windows|natif`).
+- Mise à jour forcée : `api/estompe/core/updates.json` (`mandatory`, `minVersion`, `message`, surcharge par `platforms.web|android|windows|natif` ; `natif` est recopiée dans `natif.json` de l'app native).
   L'API refuse (426) les clients sous `minVersion` dès son déploiement. Sans forçage, le fichier revient à `mandatory: false`, `minVersion: ""`, `message: ""`.
 
 Avant toute release, l'agent vérifie la chaîne de livraison (workflows, Dockerfile, caches, contenu produit) et pas seulement les tests : un tag ne se rejoue pas.
@@ -22,7 +22,27 @@ Un tag annoté, créé sur `main` après la fusion de la PR `release/…`, livre
 |---|---|---|
 | `estompe-api-vX.Y.Z` | image Docker de l'API (`ghcr.io/plblsfr/estompe`, `latest` + `X.Y.Z`) | `api` |
 | `estompe-app-vX.Y.Z` | web (image `ghcr.io/plblsfr/estompe-web`), installeur Windows, APK Android | `web`, `windows`, `android` |
+| `estompe-natif-vX.Y.Z` | app native (bêta) : installeur Windows NSIS, signature de mise à jour, manifeste `natif.json`, release GitHub en pré-version | `natif` |
 
 Livrer l'un, l'autre ou les deux = poser le ou les tags voulus (les deux sur le même commit pour tout livrer). Il n'y a plus de tag `v*`.
 Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push origin <tag>`), jamais `--tags`.
+
+## App native (`estompe-natif-vX.Y.Z`)
+
+Workflow `.github/workflows/estompe-livraison-natif.yml`. Le tag se pose comme les autres, après la fusion de la PR `release/…`, et seulement
+si `natif` a monté depuis le dernier tag `estompe-natif-v*` : le workflow échoue si le tag ne correspond pas à `natif` de `.version` (PR `ci/version` pas encore fusionnée).
+
+- Notes de version : le message du tag annoté, `git tag -a estompe-natif-vX.Y.Z -m "<notes courtes, en français simple>"` ; un message
+  égal au nom du tag donne des notes vides. Elles vont dans la release et dans `natif.json` (affichées par l'app).
+- Le job `windows` construit l'app (MSVC, profil release), l'installeur (`apps/estompe/natif/installeur/estompe-natif.nsi`) et le contrôle
+  (`scripts/estompe/natif-installeur-check.sh` : taille plafonnée, contenu, aucune référence à WebView2). Lancé à la main, il s'arrête là :
+  l'installeur est un artefact, rien n'est publié.
+- Sur le tag, le job `publier` (environnement `livraison`) signe l'installeur avec minisign (secret `ESTOMPE_NATIF_CLE_MAJ`, commentaire de
+  confiance `estompe-natif X.Y.Z`), vérifie la signature avec la clé publique de l'app (`apps/estompe/crates/client/src/mise_a_jour/cle.pub`)
+  avant toute publication, écrit `natif.json` (`scripts/estompe/natif-manifeste.mjs`, politique `platforms.natif` de `updates.json`), puis :
+  - crée la release `estompe-natif-vX.Y.Z` (pré-version, jamais « latest ») avec `Estompe-natif-beta-X.Y.Z-setup.exe`, son `.minisig` et `natif.json` ;
+  - remplace `natif.json` et `Estompe-natif-beta-setup.exe` dans la release fixe `estompe-natif-beta` (créée au premier tag, son tag n'est jamais
+    déplacé ; seuls ses fichiers changent). L'app lit `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json`.
+- Ne pas créer la release à la main : le workflow la crée (et ne fait que remplacer ses fichiers s'il est relancé).
+- L'installeur n'est pas signé Authenticode : Windows SmartScreen avertit à la première installation (dit dans la release).
 
