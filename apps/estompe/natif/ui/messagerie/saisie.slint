@@ -10,6 +10,15 @@ export struct BandeauSaisie {
     texte: string,
 }
 
+export enum GenreProposition { personne, groupe, role, salon, emoji }
+
+export struct PropositionSaisie {
+    genre: GenreProposition,
+    libelle: string,
+    detail: string,
+    image: image,
+}
+
 export global DonneesSaisie {
     in property <bool> visible: false;
     in-out property <string> texte;
@@ -22,7 +31,20 @@ export global DonneesSaisie {
     in property <string> erreur;
     in property <int> demande-focus: 0;
     in property <length> hauteur-max: 220px;
+    in property <[PropositionSaisie]> propositions;
+    in property <string> titre-propositions;
+    in property <int> proposition-choisie: 0;
+    in-out property <int> curseur: 0;
+    in-out property <int> ancre: 0;
+    in property <int> curseur-demande: 0;
+    in property <int> demande-curseur: 0;
+    in property <bool> selecteur-ouvert: false;
     callback modifie(string);
+    callback curseur-deplace(string, int);
+    callback naviguer(int);
+    callback choisir(int);
+    callback fermer-propositions();
+    callback ouvrir-selecteur();
     callback envoyer(string);
     callback annuler-bandeau();
     callback fleche-haut();
@@ -39,6 +61,8 @@ component BoutonIcone inherits Rectangle {
     height: 34px;
     border-radius: Rayon.s;
     background: zone.has-hover && root.actif ? Theme.encre.with-alpha(0.06) : transparent;
+    border-width: portee.has-focus ? 2px : 0;
+    border-color: Theme.encre;
     opacity: root.actif ? 1 : 0.45;
     accessible-role: button;
     accessible-label: root.libelle;
@@ -53,11 +77,22 @@ component BoutonIcone inherits Rectangle {
         taille: root.taille;
         couleur: zone.has-hover && root.actif ? Theme.encre : root.encre;
     }
-    zone := TouchArea {
+    portee := FocusScope {
         enabled: root.actif;
-        mouse-cursor: pointer;
-        clicked => {
-            root.clique();
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.actif;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
         }
     }
 }
@@ -127,6 +162,10 @@ component ChampSaisie inherits Rectangle {
     changed demande => {
         saisie.focus();
     }
+    property <int> demande-curseur: DonneesSaisie.demande-curseur;
+    changed demande-curseur => {
+        saisie.set-selection-offsets(DonneesSaisie.curseur-demande, DonneesSaisie.curseur-demande);
+    }
     init => {
         if (DonneesSaisie.demande-focus > 0) {
             saisie.focus();
@@ -182,9 +221,14 @@ component ChampSaisie inherits Rectangle {
                         accessible-label: DonneesSaisie.indice;
                         accessible-value: self.text;
                         edited => {
+                            DonneesSaisie.curseur = self.cursor-position-byte-offset;
+                            DonneesSaisie.ancre = self.anchor-position-byte-offset;
                             DonneesSaisie.modifie(self.text);
                         }
                         cursor-position-changed(position) => {
+                            DonneesSaisie.curseur = self.cursor-position-byte-offset;
+                            DonneesSaisie.ancre = self.anchor-position-byte-offset;
+                            DonneesSaisie.curseur-deplace(self.text, self.cursor-position-byte-offset);
                             if (position.y + defile.content-y < 0) {
                                 defile.content-y = -position.y;
                             } else if (position.y + root.hauteur-ligne + defile.content-y > defile.height) {
@@ -194,6 +238,24 @@ component ChampSaisie inherits Rectangle {
                         key-pressed(e) => {
                             if (self.preedit-text != "") {
                                 return reject;
+                            }
+                            if (DonneesSaisie.propositions.length > 0) {
+                                if (e.text == Key.DownArrow) {
+                                    DonneesSaisie.naviguer(1);
+                                    return accept;
+                                }
+                                if (e.text == Key.UpArrow) {
+                                    DonneesSaisie.naviguer(-1);
+                                    return accept;
+                                }
+                                if ((e.text == Key.Return || e.text == Key.Tab) && !e.modifiers.shift) {
+                                    DonneesSaisie.choisir(DonneesSaisie.proposition-choisie);
+                                    return accept;
+                                }
+                                if (e.text == Key.Escape) {
+                                    DonneesSaisie.fermer-propositions();
+                                    return accept;
+                                }
                             }
                             if (e.text == Key.Return && !e.modifiers.shift) {
                                 DonneesSaisie.envoyer(self.text);
@@ -222,6 +284,17 @@ component ChampSaisie inherits Rectangle {
                     font-size: 11px;
                     accessible-role: text;
                     accessible-label: "Longueur : " + DonneesSaisie.compteur;
+                }
+            }
+            VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "sourire";
+                    libelle: "Emojis";
+                    encre: DonneesSaisie.selecteur-ouvert ? Theme.encre : Theme.gris;
+                    clique => {
+                        DonneesSaisie.ouvrir-selecteur();
+                    }
                 }
             }
             VerticalLayout {
@@ -299,4 +372,98 @@ export component ZoneSaisie inherits VerticalLayout {
         }
     }
     if !root.bloquee: ChampSaisie { }
+}
+
+export component ListePropositions inherits Rectangle {
+    property <length> hauteur-ligne: 34px;
+    height: DonneesSaisie.propositions.length == 0 ? 0 : 30px + DonneesSaisie.propositions.length * root.hauteur-ligne + Espace.e2;
+    visible: DonneesSaisie.propositions.length > 0;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait-fort;
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: Theme.sombre ? #00000099 : #16130f2e;
+    accessible-role: list;
+    accessible-label: DonneesSaisie.titre-propositions;
+    VerticalLayout {
+        padding: Espace.e1;
+        padding-bottom: Espace.e1 + 2px;
+        HorizontalLayout {
+            height: 26px;
+            padding-left: Espace.e2;
+            Text {
+                text: DonneesSaisie.titre-propositions;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        for p[i] in DonneesSaisie.propositions: Rectangle {
+            height: root.hauteur-ligne;
+            border-radius: Rayon.xs;
+            background: i == DonneesSaisie.proposition-choisie ? Theme.rose-doux : zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
+            accessible-role: list-item;
+            accessible-label: p.detail == "" ? p.libelle : p.libelle + ", " + p.detail;
+            accessible-item-selected: i == DonneesSaisie.proposition-choisie;
+            accessible-action-default => {
+                DonneesSaisie.choisir(i);
+            }
+            HorizontalLayout {
+                padding-left: Espace.e2;
+                padding-right: Espace.e2;
+                spacing: Espace.e2;
+                if p.genre == GenreProposition.emoji: VerticalLayout {
+                    alignment: center;
+                    Image {
+                        width: 20px;
+                        height: 20px;
+                        source: p.image;
+                        image-fit: contain;
+                    }
+                }
+                if p.genre == GenreProposition.salon: VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "hash";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                }
+                if p.genre != GenreProposition.emoji && p.genre != GenreProposition.salon: VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: p.genre == GenreProposition.personne ? "perso" : p.genre == GenreProposition.role ? "medaille" : "gens";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    text: p.libelle;
+                    color: Theme.encre;
+                    font-size: Typo.compact;
+                    font-weight: Typo.moyen;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: p.detail;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            zone := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    DonneesSaisie.choisir(i);
+                }
+            }
+        }
+    }
 }

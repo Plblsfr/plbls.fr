@@ -10,6 +10,7 @@ pub mod preferences;
 mod serveur_factice;
 
 pub mod apercu_liens;
+pub mod autocompletion;
 pub mod brouillons;
 pub mod derniere_vue;
 pub mod emoji;

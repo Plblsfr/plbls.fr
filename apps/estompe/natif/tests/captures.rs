@@ -17,9 +17,10 @@ use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
 use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
 use estompe_natif::messagerie::pont::Telechargement;
+use estompe_natif::messagerie::selecteur::Cible;
 use estompe_natif::{
-    creer_fenetre, DonneesCoquille, DonneesMessagerie, DonneesSaisie, ModeTheme, Mouvement,
-    Principale, Theme,
+    creer_fenetre, DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur, ModeTheme,
+    Mouvement, Principale, Theme,
 };
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
@@ -118,6 +119,11 @@ const ECRANS: &[Ecran] = ecrans![
     "saisie-lecture-seule-clair", Clair, saisie_lecture_seule;
     "saisie-non-envoye-clair", Clair, saisie_non_envoye;
     "saisie-non-envoye-sombre", Sombre, saisie_non_envoye;
+    "saisie-mentions-clair", Clair, saisie_mentions;
+    "saisie-mentions-sombre", Sombre, saisie_mentions;
+    "selecteur-emoji-clair", Clair, selecteur_emoji;
+    "selecteur-emoji-sombre", Sombre, selecteur_emoji;
+    "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
 ];
 
 fn bob() -> Compte {
@@ -1172,5 +1178,34 @@ fn saisie_non_envoye(f: &Principale) {
             ));
         },
     );
+    stabiliser(f);
+}
+
+fn saisie_mentions(f: &Principale) {
+    let pont = saisie_courte(f);
+    let texte = "On se retrouve ce soir avec @e";
+    pont.messagerie().saisie().placer(f, texte, texte.len());
+    pont.messagerie().saisie_modifiee(f, texte);
+    stabiliser(f);
+}
+
+fn selecteur_ouvert(f: &Principale) -> Pont {
+    let pont = saisie_courte(f);
+    pont.messagerie().ouvrir_selecteur(f, Cible::Saisie);
+    pont
+}
+
+fn selecteur_emoji(f: &Principale) {
+    let pont = selecteur_ouvert(f);
+    pont.messagerie().selecteur().deplacer(f, 0, 1);
+    pont.messagerie().selecteur().deplacer(f, 1, 0);
+    stabiliser(f);
+}
+
+fn selecteur_sans_resultat(f: &Principale) {
+    let pont = selecteur_ouvert(f);
+    f.global::<DonneesSelecteur>()
+        .set_recherche("zzzzzz".into());
+    pont.messagerie().selecteur().chercher(f, "zzzzzz");
     stabiliser(f);
 }

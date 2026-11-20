@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use estompe_client::autocompletion::{Autocompletion, GenreProposition, Proposition};
 use estompe_client::brouillons::Brouillons;
 use estompe_client::markdown::{analyser, texte_brut};
 use estompe_client::mention::Mentionnables;
@@ -10,7 +11,7 @@ use estompe_client::store::{CleConversation, Store};
 use estompe_client::types::Message;
 use slint::ComponentHandle;
 
-use crate::{BandeauSaisie, DonneesSaisie, GenreBandeau, Principale};
+use crate::{BandeauSaisie, DonneesSaisie, GenreBandeau, Principale, PropositionSaisie};
 
 pub const DELAI_ENREGISTREMENT: Duration = Duration::from_millis(300);
 pub const LONGUEUR_APERCU: usize = 80;
@@ -74,6 +75,9 @@ pub struct EtatSaisie {
     pub mode: Mode,
     pub indice: String,
     pub erreur: String,
+    pub curseur: usize,
+    pub auto: Option<Autocompletion>,
+    pub choisie: usize,
 }
 
 impl EtatSaisie {
@@ -201,6 +205,32 @@ impl EtatSaisie {
         self.erreur.clear();
     }
 
+    pub fn proposer(&mut self, auto: Option<Autocompletion>) -> bool {
+        let change = self.auto != auto;
+        if change {
+            self.choisie = 0;
+        }
+        self.auto = auto;
+        change
+    }
+
+    pub fn naviguer(&mut self, pas: i32) {
+        let n = self.auto.as_ref().map_or(0, |a| a.propositions.len()) as i32;
+        if n > 0 {
+            self.choisie = (self.choisie as i32 + pas).rem_euclid(n) as usize;
+        }
+    }
+
+    pub fn choisir(&mut self, index: usize) -> Option<(String, usize)> {
+        let auto = self.auto.as_ref()?;
+        auto.appliquer(&self.texte, self.curseur.min(self.texte.len()), index)
+    }
+
+    pub fn inserer(&mut self, insere: &str, ancre: usize) -> Option<(String, usize)> {
+        let (a, b) = (ancre.min(self.curseur), ancre.max(self.curseur));
+        estompe_client::mention::remplacer(&self.texte, a, b.min(self.texte.len()), insere)
+    }
+
     pub fn annuler(&mut self, brouillons: &Brouillons) -> bool {
         match std::mem::take(&mut self.mode) {
             Mode::Normal => false,
@@ -227,6 +257,16 @@ pub struct Saisie {
 impl Default for Saisie {
     fn default() -> Self {
         Self::nouvelle(Brouillons::en_memoire())
+    }
+}
+
+fn genre_slint(genre: GenreProposition) -> crate::GenreProposition {
+    match genre {
+        GenreProposition::Personne => crate::GenreProposition::Personne,
+        GenreProposition::Groupe => crate::GenreProposition::Groupe,
+        GenreProposition::Role => crate::GenreProposition::Role,
+        GenreProposition::Salon => crate::GenreProposition::Salon,
+        GenreProposition::Emoji | GenreProposition::EmojiServeur => crate::GenreProposition::Emoji,
     }
 }
 
@@ -302,15 +342,23 @@ impl Saisie {
     }
 
     pub fn ouvrir(&self, f: &Principale, cle: Option<CleConversation>, indice: String) -> bool {
-        let change = {
+        let (change, autre) = {
             let mut brouillons = self.brouillons();
             let mut etat = self.etat();
             let avant = brouillons.cles().count();
             let ancien = etat.cle.clone();
             etat.ouvrir(&mut brouillons, cle.clone(), indice);
-            ancien != cle && brouillons.cles().count() != avant
+            let autre = ancien != cle;
+            if autre {
+                etat.auto = None;
+            }
+            (autre && brouillons.cles().count() != avant, autre)
         };
-        f.global::<DonneesSaisie>().set_visible(cle.is_some());
+        let g = f.global::<DonneesSaisie>();
+        g.set_visible(cle.is_some());
+        if autre {
+            g.set_propositions(slint::ModelRc::default());
+        }
         self.afficher(f);
         change
     }
@@ -375,6 +423,76 @@ impl Saisie {
             self.afficher(f);
         }
         annule
+    }
+
+    pub fn texte(&self) -> String {
+        self.etat().texte.clone()
+    }
+
+    pub fn definir_curseur(&self, curseur: usize) {
+        self.etat().curseur = curseur;
+    }
+
+    pub fn placer(&self, f: &Principale, texte: &str, curseur: usize) {
+        let g = f.global::<DonneesSaisie>();
+        g.set_texte(texte.into());
+        g.set_curseur(curseur as i32);
+        g.set_ancre(curseur as i32);
+        g.set_curseur_demande(curseur as i32);
+        g.set_demande_curseur(g.get_demande_curseur().wrapping_add(1));
+        self.etat().curseur = curseur;
+    }
+
+    pub fn proposer(
+        &self,
+        f: &Principale,
+        auto: Option<Autocompletion>,
+        image: impl Fn(&Proposition) -> slint::Image,
+    ) {
+        if !self.etat().proposer(auto) {
+            return;
+        }
+        let (titre, lignes) = match &self.etat().auto {
+            Some(a) => (
+                a.declencheur.titre(),
+                a.propositions
+                    .iter()
+                    .map(|p| PropositionSaisie {
+                        genre: genre_slint(p.genre),
+                        libelle: p.libelle.as_str().into(),
+                        detail: p.detail.as_str().into(),
+                        image: image(p),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            None => ("", Vec::new()),
+        };
+        let g = f.global::<DonneesSaisie>();
+        g.set_titre_propositions(titre.into());
+        g.set_propositions(slint::ModelRc::new(slint::VecModel::from(lignes)));
+        g.set_proposition_choisie(0);
+    }
+
+    pub fn propositions(&self) -> Option<Autocompletion> {
+        self.etat().auto.clone()
+    }
+
+    pub fn naviguer(&self, f: &Principale, pas: i32) {
+        let choisie = {
+            let mut e = self.etat();
+            e.naviguer(pas);
+            e.choisie
+        };
+        f.global::<DonneesSaisie>()
+            .set_proposition_choisie(choisie as i32);
+    }
+
+    pub fn choisir(&self, index: usize) -> Option<(String, usize)> {
+        self.etat().choisir(index)
+    }
+
+    pub fn inserer(&self, insere: &str, ancre: usize) -> Option<(String, usize)> {
+        self.etat().inserer(insere, ancre)
     }
 
     pub fn signaler_erreur(&self, f: &Principale, erreur: &str) {
@@ -540,6 +658,36 @@ mod tests {
         assert!(e.affichage().alerte);
         e.texte = "a".into();
         assert_eq!(e.affichage().compteur, "");
+    }
+
+    #[test]
+    fn les_propositions_se_parcourent_en_boucle_et_s_appliquent_au_curseur() {
+        let mut e = EtatSaisie {
+            texte: "salut @al ok".into(),
+            curseur: 9,
+            ..EtatSaisie::default()
+        };
+        let proposition = |nom: &str| Proposition {
+            genre: GenreProposition::Personne,
+            libelle: format!("@{nom}"),
+            detail: String::new(),
+            emoji: String::new(),
+            insertion: format!("@{nom} "),
+        };
+        assert!(e.proposer(Some(Autocompletion {
+            declencheur: estompe_client::autocompletion::Declencheur::Mention,
+            debut: 6,
+            propositions: vec![proposition("alice"), proposition("malik")],
+        })));
+        e.naviguer(-1);
+        assert_eq!(e.choisie, 1);
+        e.naviguer(1);
+        assert_eq!(e.choisie, 0);
+        assert_eq!(e.choisir(1), Some(("salut @malik  ok".to_string(), 13)));
+        assert!(e.proposer(None));
+        assert_eq!(e.choisir(0), None);
+        e.curseur = 5;
+        assert_eq!(e.inserer("😂", 0), Some(("😂 @al ok".to_string(), 4)));
     }
 
     #[test]

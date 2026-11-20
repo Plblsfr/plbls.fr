@@ -4,7 +4,7 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use chrono::NaiveDate;
-use commun::coquille::{etat, FausseFabrique, ServeurMessages};
+use commun::coquille::{etat_avec_membres, FausseFabrique, ServeurMessages};
 use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
 };
@@ -15,8 +15,8 @@ use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, DonneesSaisie, GenreBandeau,
-    LigneMessage, Page, Principale,
+    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur,
+    GenreBandeau, LigneMessage, Page, Principale,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use slint::platform::{Key, PointerEventButton, WindowEvent};
@@ -82,6 +82,192 @@ fn cliquer_le_champ(faible: &slint::Weak<Principale>, indice: &'static str) {
             .expect("champ de saisie")
             .mock_single_click(PointerEventButton::Left);
     });
+}
+
+fn propositions(f: &Principale) -> Vec<String> {
+    f.global::<DonneesSaisie>()
+        .get_propositions()
+        .iter()
+        .map(|p| p.libelle.to_string())
+        .collect()
+}
+
+fn ouvrir_le_selecteur_au_clavier(faible: &slint::Weak<Principale>) {
+    touche(faible, Key::Tab);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesSelecteur>();
+            g.get_ouvert() && g.get_rangees().row_count() > 0
+        },
+        "sélecteur ouvert par Tab puis Entrée",
+    );
+}
+
+fn mentions_et_selecteur(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    dossier: &std::path::Path,
+) {
+    taper(faible, "Salut @ca");
+    attendre_l_interface(
+        faible,
+        |f| propositions(f) == ["@carol"],
+        "@ propose les personnes",
+    );
+    assert_eq!(
+        sur_l_interface(faible, |f| f
+            .global::<DonneesSaisie>()
+            .get_titre_propositions()
+            .to_string()),
+        "Mentionner"
+    );
+    touche(faible, Key::Tab);
+    attendre_l_interface(
+        faible,
+        |f| {
+            propositions(f).is_empty() && f.global::<DonneesSaisie>().get_texte() == "Salut @carol "
+        },
+        "Tab insère la mention",
+    );
+    taper(faible, "#gé");
+    attendre_l_interface(
+        faible,
+        |f| propositions(f) == ["#général"],
+        "# propose les salons",
+    );
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| propositions(f).is_empty(),
+        "Échap ferme la liste",
+    );
+    assert_eq!(texte(faible), "Salut @carol #gé");
+    taper(faible, " :jo");
+    attendre_l_interface(
+        faible,
+        |f| propositions(f).iter().any(|p| p == ":joy:"),
+        ": propose les smileys",
+    );
+    let rang = sur_l_interface(faible, |f| {
+        propositions(f).iter().position(|p| p == ":joy:").unwrap()
+    });
+    for _ in 0..rang {
+        touche(faible, Key::DownArrow);
+    }
+    attendre_l_interface(
+        faible,
+        move |f| f.global::<DonneesSaisie>().get_proposition_choisie() == rang as i32,
+        "flèche bas parcourt la liste",
+    );
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_texte() == "Salut @carol #gé 😂",
+        "Entrée insère le smiley",
+    );
+    taper(faible, " :thumbsup:");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_texte() == "Salut @carol #gé 😂 👍",
+        "conversion de :thumbsup: à la saisie",
+    );
+    println!("315 : @, # et : proposés, flèches, Tab, Entrée, Échap ; :thumbsup: converti");
+
+    ouvrir_le_selecteur_au_clavier(faible);
+    taper(faible, "joy");
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesSelecteur>();
+            g.get_rangees()
+                .row_data(0)
+                .and_then(|r| r.cellules.row_data(0))
+                .is_some_and(|c| c.libelle == "visage riant aux larmes")
+        },
+        "recherche par code",
+    );
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::RightArrow);
+    touche(faible, Key::LeftArrow);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesSelecteur>();
+            g.get_actif() == 0 && g.get_pied_code() == ":joy:"
+        },
+        "flèches dans la grille, nom et code en pied",
+    );
+    maj_entree(faible);
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesSelecteur>().get_ouvert()
+                && f.global::<DonneesSaisie>().get_texte().ends_with("👍😂")
+        },
+        "Maj+Entrée insère sans fermer",
+    );
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesSelecteur>().get_ouvert()
+                && f.global::<DonneesSaisie>().get_texte() == "Salut @carol #gé 😂 👍😂😂"
+        },
+        "Entrée insère et ferme",
+    );
+    attendre(
+        || {
+            estompe_client::preferences::Preferences::charger(dossier)
+                .preferences
+                .emoji_recents
+                == ["😂"]
+        },
+        "récents enregistrés dans les préférences",
+    );
+
+    ouvrir_le_selecteur_au_clavier(faible);
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesSelecteur>()
+                .get_onglets()
+                .row_data(0)
+                .is_some_and(|o| o.libelle == "Récents")
+        },
+        "onglet des récents en tête",
+    );
+    touche(faible, Key::Tab);
+    touche(faible, Key::RightArrow);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesSelecteur>();
+            g.get_onglet_actif() == 1 && g.get_pied_nom() == "visage rieur"
+        },
+        "Tab, flèche et Entrée vont à une catégorie",
+    );
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesSelecteur>().get_ouvert(),
+        "Échap ferme le sélecteur",
+    );
+    taper(faible, "!");
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesSaisie>().get_texte() == "Salut @carol #gé 😂 👍😂😂!",
+        "le focus revient au champ",
+    );
+    touche(faible, Key::Return);
+    attendre(
+        || serveur.envois().last().map(String::as_str) == Some("Salut @carol #gé 😂 👍😂😂!"),
+        "message envoyé",
+    );
+    println!("315 C3 : sélecteur ouvert, parcouru et refermé au clavier, récents gardés");
 }
 
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
@@ -198,6 +384,8 @@ fn scenario(
         "réessayer envoie le message",
     );
 
+    mentions_et_selecteur(&faible, &serveur, &dossier);
+
     taper(&faible, "brouillon à garder");
     attendre_l_interface(
         &faible,
@@ -260,7 +448,7 @@ fn saisie_envoi_modification_et_brouillons() {
         ecrans::publieur(&fenetre),
     )
     .unwrap();
-    let fabrique = FausseFabrique::sur(etat(), Vec::new(), &serveur.adresse);
+    let fabrique = FausseFabrique::sur(etat_avec_membres(), Vec::new(), &serveur.adresse);
     *fabrique.dossier_brouillons.lock().unwrap() = Some(dossier.path().to_path_buf());
     let midi = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()

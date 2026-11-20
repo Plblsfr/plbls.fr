@@ -19,8 +19,9 @@ use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
 use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
+use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::session::Memoire;
-use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, Principale};
+use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, DonneesSelecteur, Principale};
 use estompe_client::brouillons::Brouillons;
 
 const RAFRAICHIR_ACCUEIL: Duration = Duration::from_secs(60);
@@ -336,6 +337,68 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
         .messagerie()
         .annuler_bandeau(&f));
     rappel_saisie!(on_fleche_haut, |p, f| p.messagerie().fleche_haut(&f));
+    rappel_saisie!(on_curseur_deplace, |p, f, texte, curseur| p
+        .messagerie()
+        .curseur_deplace(&f, &texte, curseur));
+    rappel_saisie!(on_naviguer, |p, f, pas| p
+        .messagerie()
+        .naviguer_propositions(&f, pas));
+    rappel_saisie!(on_choisir, |p, f, index| {
+        if p.messagerie().choisir_proposition(&f, index) {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_saisie!(on_fermer_propositions, |p, f| p
+        .messagerie()
+        .fermer_propositions(&f));
+    rappel_saisie!(on_ouvrir_selecteur, |p, f| p
+        .messagerie()
+        .ouvrir_selecteur(&f, CibleSelecteur::Saisie));
+    let selecteur = f.global::<DonneesSelecteur>();
+    macro_rules! rappel_selecteur {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            selecteur.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_selecteur!(on_chercher, |p, f, texte| p
+        .messagerie()
+        .selecteur()
+        .chercher(&f, &texte));
+    rappel_selecteur!(on_deplacer, |p, f, dx, dy| p
+        .messagerie()
+        .selecteur()
+        .deplacer(&f, dx, dy));
+    rappel_selecteur!(on_choisir, |p, f, index, garder| {
+        if p.messagerie()
+            .choisir_emoji(&f, usize::try_from(index).ok(), garder)
+        {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_selecteur!(on_choisir_actif, |p, f, garder| {
+        if p.messagerie().choisir_emoji(&f, None, garder) {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_selecteur!(on_survoler, |p, f, index| p
+        .messagerie()
+        .selecteur()
+        .survoler(&f, index));
+    rappel_selecteur!(on_aller_a, |p, f, onglet| p
+        .messagerie()
+        .selecteur()
+        .aller_a(&f, onglet.max(0) as usize));
+    rappel_selecteur!(on_defile, |p, f, haut, hauteur| p
+        .messagerie()
+        .selecteur()
+        .defile(&f, haut, hauteur));
+    rappel_selecteur!(on_fermer, |p, f| p.messagerie().fermer_selecteur(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -568,6 +631,11 @@ async fn session(
         .definir_brouillons(contexte.fabrique.brouillons());
     pont.messagerie()
         .definir_apercus(contexte.memoire.lire(|p| p.apercus));
+    let memoire = contexte.memoire.clone();
+    pont.messagerie().selecteur().definir_recents(
+        contexte.memoire.lire(|p| p.emoji_recents.clone()),
+        Arc::new(move |recents| memoire.modifier(|p| p.emoji_recents = recents)),
+    );
     if !contexte.focus.load(Ordering::SeqCst) {
         pont.messagerie().fenetre_active(false);
     }

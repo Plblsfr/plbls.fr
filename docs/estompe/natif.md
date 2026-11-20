@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -361,6 +361,25 @@ deux moteurs et sur les deux OS :
 - Écarts : pas de correction orthographique (le `TextInput` de Slint 1.18 n'en a pas, le front web a celle du navigateur) ; la méthode de saisie et les touches mortes passent par
   winit, à vérifier sur machine réelle.
 
+### Mentions et emoji à la saisie
+
+- Autocomplétion (`estompe_client::autocompletion`, sans interface) : `@` propose les personnes de la conversation puis `@everyone`, `@here` (avec le nombre de personnes
+  touchées) et les rôles si `mention_everyone` est permis ; `#` les salons texte du serveur ; `:` suivi de deux caractères les smileys (`emoji::rechercher`, 8 au plus), précédés
+  des emoji de serveur dont le nom commence par la saisie. Même tri que `suggest` du front (débuts, puis contenus, 6 au plus), soi-même exclu. 5 000 membres : environ 1 ms (test mesuré).
+- Clavier dans le champ (`ui/messagerie/saisie.slint`, `ListePropositions` au-dessus du champ) : flèches haut et bas (en boucle), Entrée ou Tab pour choisir, Échap pour fermer ;
+  la liste revient au prochain déplacement du curseur. Le curseur vient du `TextInput` (`cursor-position-byte-offset`, mis à jour avant `edited`) ; Rust le replace par
+  `curseur-demande` et `demande-curseur` (`Saisie::placer`).
+- Conversion (`convertir_code`) : `:nom:` devient le smiley dès le second `:`, sauf dans du code ou une URL, et sauf si un emoji de serveur porte ce nom (il reste en code, affiché en image).
+- Sélecteur (`ui/messagerie/selecteur.slint`, global `DonneesSelecteur` ; `src/messagerie/selecteur.rs`, machine pure `EtatSelecteur` et `Selecteur`) : bouton « Emojis » du champ
+  (atteignable par Tab), recherche (nom français, code avec ou sans `:`, mot-clé), récents (32 au plus, `emoji_recents` des préférences), neuf catégories, « Smileys des serveurs »
+  (images chargées à l'ouverture), nom et code en pied. Grille de 8 colonnes en rangées de 36 px dans une `ListeVirtuelle` : seules les rangées visibles sont instanciées et leurs
+  images rendues (`ModeleRangees`, modèle paresseux). Clavier : la recherche garde le focus ; flèches dans la grille (haut sur la première ligne : retour à la recherche),
+  Entrée insère et ferme, Maj+Entrée ou Maj+clic insère sans fermer, Tab passe aux catégories (flèches, Entrée), Échap ferme et rend le focus au champ.
+- Cible du sélecteur (`Cible`) : la saisie (insertion au curseur, sélection remplacée) ou une réaction (`Cible::Reaction`, `PUT /messages/{id}/reactions/{emoji}`) ; le bouton
+  d'ajout d'une réaction sur un message arrive avec #318 (`PontMessagerie::ouvrir_selecteur`).
+- Écarts : pas de teinte de peau (le front n'en propose pas non plus) ; `#` (salons) et les emoji de serveur dans la liste de `:` n'existent pas dans le front ; un `#salon`
+  inséré reste du texte (le markdown n'a pas de lien de salon).
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -389,7 +408,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -432,7 +451,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   hors de l'écran (aucun réveil ni image en 10 s simulées), le téléchargement d'un fichier au nom hostile dans un dossier temporaire puis son ouverture, la
   visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
 `saisie.rs` (même backend, `ServeurMessages` qui accepte aussi `POST …/messages` et `PATCH /messages/{id}`) : saisie au clavier, Maj+Entrée, envoi par Entrée et message du serveur
-  en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », brouillon retrouvé en changeant de salon et relu depuis le disque.
+  en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », mentions (`@`, Tab), salons (`#`, Échap), smileys (`:`, flèches, Entrée), conversion de `:thumbsup:`,
+  sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.

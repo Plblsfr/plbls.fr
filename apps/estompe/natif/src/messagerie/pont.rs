@@ -30,6 +30,7 @@ use super::rendu::{
     Palette,
 };
 use super::saisie::{executer, indice_de, Action, Mode, Saisie};
+use super::selecteur::{Cible as CibleSelecteur, Selecteur};
 use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
@@ -39,6 +40,9 @@ use crate::{
     EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe,
     GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe, Principale,
     ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
+};
+use estompe_client::autocompletion::{
+    autocompletion, convertir_code, GenreProposition, Proposition,
 };
 
 pub type Fuseau = Arc<dyn Fn(i64) -> i32 + Send + Sync>;
@@ -894,6 +898,7 @@ pub struct PontMessagerie {
     presse_papiers: Arc<Mutex<Presse>>,
     dossier_par_defaut: Arc<Mutex<DossierParDefaut>>,
     saisie: Saisie,
+    selecteur: Selecteur,
 }
 
 struct SourceIndisponible;
@@ -961,6 +966,7 @@ impl PontMessagerie {
                 estompe_plateforme::dossier_telechargements,
             ))),
             saisie: Saisie::default(),
+            selecteur: Selecteur::default(),
         }
     }
 
@@ -1014,18 +1020,184 @@ impl PontMessagerie {
         })
     }
 
+    pub fn selecteur(&self) -> &Selecteur {
+        &self.selecteur
+    }
+
+    fn image_de_proposition(&self, p: &Proposition) -> Image {
+        match p.genre {
+            GenreProposition::Emoji => emoji::image(&p.emoji).unwrap_or_default(),
+            GenreProposition::EmojiServeur => self
+                .medias()
+                .image(&CleImage {
+                    source: Source::Emoji(p.emoji.clone()),
+                    format: Format::Emoji,
+                })
+                .map(|d| Image::from_rgba8(d.premiere().clone()))
+                .unwrap_or_default(),
+            _ => Image::default(),
+        }
+    }
+
+    fn proposer(&self, f: &Principale) {
+        let auto = match self.saisie.cle() {
+            Some(cle) => {
+                let emojis = self.medias().emojis().unwrap_or_default();
+                let texte = self.saisie.texte();
+                let curseur = f.global::<crate::DonneesSaisie>().get_curseur().max(0) as usize;
+                self.store
+                    .lire(|etat| autocompletion(etat, &cle, &emojis, &texte, curseur))
+            }
+            None => None,
+        };
+        self.saisie
+            .proposer(f, auto, |p| self.image_de_proposition(p));
+    }
+
     pub fn saisie_modifiee(&self, f: &Principale, texte: &str) -> bool {
-        let change = self.saisie.modifie(f, texte, &self.runtime);
+        let curseur = f.global::<crate::DonneesSaisie>().get_curseur().max(0) as usize;
+        let emojis = self.medias().emojis().unwrap_or_default();
+        let (texte, curseur) = match convertir_code(&emojis, texte, curseur) {
+            Some(r) => {
+                self.saisie.placer(f, &r.texte, r.curseur);
+                (r.texte, r.curseur)
+            }
+            None => (texte.to_string(), curseur),
+        };
+        self.saisie.definir_curseur(curseur);
+        let change = self.saisie.modifie(f, &texte, &self.runtime);
+        self.proposer(f);
         if matches!(self.saisie.mode(), Mode::Modification { .. }) {
             return change;
         }
         if let Some(cle) = self.saisie.cle() {
             let store = self.store.clone();
-            let texte = texte.to_string();
             self.runtime
                 .spawn(async move { store.signaler_saisie(&cle, &texte).await });
         }
         change
+    }
+
+    pub fn curseur_deplace(&self, f: &Principale, texte: &str, curseur: i32) {
+        if self.saisie.texte() != texte {
+            return;
+        }
+        self.saisie.definir_curseur(curseur.max(0) as usize);
+        self.proposer(f);
+    }
+
+    pub fn naviguer_propositions(&self, f: &Principale, pas: i32) {
+        self.saisie.naviguer(f, pas);
+    }
+
+    pub fn fermer_propositions(&self, f: &Principale) {
+        self.saisie.proposer(f, None, |_| Image::default());
+    }
+
+    fn remplacer_saisie(&self, f: &Principale, remplacement: Option<(String, usize)>) -> bool {
+        let Some((texte, curseur)) = remplacement else {
+            return false;
+        };
+        self.saisie.placer(f, &texte, curseur);
+        let change = self.saisie.modifie(f, &texte, &self.runtime);
+        self.fermer_propositions(f);
+        change
+    }
+
+    pub fn choisir_proposition(&self, f: &Principale, index: i32) -> bool {
+        let choix = usize::try_from(index)
+            .ok()
+            .and_then(|i| self.saisie.choisir(i));
+        self.remplacer_saisie(f, choix)
+    }
+
+    pub fn ouvrir_selecteur(&self, f: &Principale, cible: CibleSelecteur) {
+        if self.selecteur.ouvert() {
+            self.fermer_selecteur(f);
+            return;
+        }
+        let medias = self.medias();
+        let emojis = medias.emojis().unwrap_or_default();
+        if medias.emojis().is_none() {
+            self.charger_emojis(true);
+        }
+        self.fermer_propositions(f);
+        self.selecteur.ouvrir(f, cible, emojis);
+        f.global::<crate::DonneesSaisie>()
+            .set_selecteur_ouvert(true);
+        self.charger_images_du_selecteur(f);
+    }
+
+    fn charger_images_du_selecteur(&self, f: &Principale) {
+        let medias = self.medias();
+        let emojis = medias.emojis().unwrap_or_default();
+        self.selecteur.emojis_serveur(f, emojis.clone());
+        for e in emojis {
+            if self.selecteur.a_l_image(&e.id) {
+                continue;
+            }
+            let cle = CleImage {
+                source: Source::Emoji(e.id.clone()),
+                format: Format::Emoji,
+            };
+            if let Some(d) = medias.image(&cle) {
+                self.selecteur
+                    .installer_image(f, &e.id, d.premiere().clone());
+                continue;
+            }
+            let medias = medias.clone();
+            let selecteur = self.selecteur.clone();
+            let faible = self.fenetre.clone();
+            self.runtime.spawn(async move {
+                if let Some(d) = medias.charger_image(cle).await {
+                    let image = d.premiere().clone();
+                    let _ = faible.upgrade_in_event_loop(move |f| {
+                        selecteur.installer_image(&f, &e.id, image)
+                    });
+                }
+            });
+        }
+    }
+
+    pub fn fermer_selecteur(&self, f: &Principale) {
+        let saisie = self.selecteur.cible() == CibleSelecteur::Saisie;
+        self.selecteur.fermer(f);
+        f.global::<crate::DonneesSaisie>()
+            .set_selecteur_ouvert(false);
+        if saisie {
+            self.saisie.demander_focus(f);
+        }
+    }
+
+    pub fn choisir_emoji(&self, f: &Principale, index: Option<usize>, garder: bool) -> bool {
+        let Some(choix) = self.selecteur.choisir(f, index, garder) else {
+            return false;
+        };
+        if !garder {
+            f.global::<crate::DonneesSaisie>()
+                .set_selecteur_ouvert(false);
+        }
+        match choix.cible {
+            CibleSelecteur::Saisie => {
+                let g = f.global::<crate::DonneesSaisie>();
+                self.saisie.definir_curseur(g.get_curseur().max(0) as usize);
+                let insere = self
+                    .saisie
+                    .inserer(&choix.insertion, g.get_ancre().max(0) as usize);
+                let change = self.remplacer_saisie(f, insere);
+                if !garder {
+                    self.saisie.demander_focus(f);
+                }
+                change
+            }
+            CibleSelecteur::Reaction(message) => {
+                let store = self.store.clone();
+                self.runtime.spawn(async move {
+                    let _ = store.client().reagir(&message, &choix.insertion).await;
+                });
+                false
+            }
+        }
     }
 
     pub fn envoyer_saisie(&self, f: &Principale, texte: &str) -> bool {
@@ -1273,7 +1445,13 @@ impl PontMessagerie {
         PROPRIETAIRE.with(|p| p.set(self.identifiant));
         ANIMATION.with(|a| *a.borrow_mut() = None);
         let indice = self.indice_de_saisie(cle.as_ref());
+        let ancienne = self.saisie.cle();
         self.saisie.ouvrir(f, cle.clone(), indice);
+        if ancienne != cle {
+            self.selecteur.fermer(f);
+            f.global::<crate::DonneesSaisie>()
+                .set_selecteur_ouvert(false);
+        }
         self.medias().noter_fil_interface();
         self.charger_emojis(false);
         self.reprojeter(f);
@@ -2438,6 +2616,9 @@ impl PontMessagerie {
                     i.generation += 1;
                 }
                 p.reprojeter(&f);
+                if p.selecteur.ouvert() {
+                    p.charger_images_du_selecteur(&f);
+                }
             });
         });
     }
