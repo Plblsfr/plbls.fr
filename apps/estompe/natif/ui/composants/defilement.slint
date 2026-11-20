@@ -1,10 +1,46 @@
 import { Theme, Mouvement, Courbes } from "../jetons.slint";
 
+export component BarreDefilement inherits Rectangle {
+    in-out property <length> content-y;
+    in property <length> content-height;
+    in property <length> vue;
+    in property <bool> survol: false;
+    in property <bool> en-mouvement: false;
+    out property <bool> utile: root.content-height > root.vue + 0.5px;
+    property <bool> montree: root.utile && (root.survol || root.en-mouvement || zone.has-hover || zone.pressed);
+    width: 8px;
+    visible: root.utile;
+    accessible-role: none;
+    poignee := Rectangle {
+        property <length> course: parent.height - self.height;
+        property <length> etendue: Math.max(1px, root.content-height - root.vue);
+        y: root.utile ? Math.clamp(-root.content-y / self.etendue, 0, 1) * self.course : 0;
+        height: Math.min(parent.height, Math.max(32px, parent.height * root.vue / Math.max(1px, root.content-height)));
+        border-radius: 4px;
+        background: zone.pressed ? Theme.gris.with-alpha(0.7) : Theme.gris.with-alpha(0.45);
+        opacity: root.montree ? 1 : 0;
+        animate opacity { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    zone := TouchArea {
+        property <length> depart;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                self.depart = root.content-y;
+            }
+        }
+        moved => {
+            if (self.pressed && poignee.course > 0) {
+                root.content-y = Math.clamp(self.depart - (self.mouse-y - self.pressed-y) / poignee.course * (root.content-height - root.vue), root.vue - root.content-height, 0);
+            }
+        }
+    }
+}
+
 export component Defilement {
     in-out property <length> decalage <=> zone.content-y;
     in property <length> hauteur-contenu;
-    property <bool> utile: zone.content-height > zone.height;
-    property <bool> montree: utile && (survol.has-hover || poignee-zone.pressed || poignee-zone.has-hover);
+    property <duration> dernier-geste;
+    property <bool> en-mouvement: false;
     preferred-height: 100%;
     preferred-width: 100%;
     survol := TouchArea {
@@ -13,37 +49,32 @@ export component Defilement {
     zone := Flickable {
         width: 100%;
         height: 100%;
+        mouse-drag-pan-enabled: false;
         content-width: self.width;
         content-height: Math.max(self.height, root.hauteur-contenu);
+        flicked => {
+            root.dernier-geste = animation-tick();
+            root.en-mouvement = true;
+        }
         @children
     }
-    Rectangle {
-        visible: root.utile;
+    Timer {
+        interval: 150ms;
+        running: root.en-mouvement;
+        triggered => {
+            if (animation-tick() - root.dernier-geste > 600ms) {
+                root.en-mouvement = false;
+            }
+        }
+    }
+    BarreDefilement {
         x: parent.width - 10px;
         y: 2px;
-        width: 8px;
         height: parent.height - 4px;
-        poignee := Rectangle {
-            property <length> course: parent.height - self.height;
-            y: zone.content-height > zone.height ? -zone.content-y / (zone.content-height - zone.height) * self.course : 0;
-            height: Math.max(32px, parent.height * zone.height / zone.content-height);
-            border-radius: 4px;
-            background: Theme.gris.with-alpha(0.45);
-            opacity: root.montree ? 1 : 0;
-            animate opacity { duration: Mouvement.d; easing: Courbes.sortie; }
-        }
-        poignee-zone := TouchArea {
-            property <length> depart;
-            pointer-event(e) => {
-                if (e.kind == PointerEventKind.down) {
-                    self.depart = zone.content-y;
-                }
-            }
-            moved => {
-                if (self.pressed && poignee.course > 0) {
-                    zone.content-y = Math.clamp(self.depart - (self.mouse-y - self.pressed-y) / poignee.course * (zone.content-height - zone.height), zone.height - zone.content-height, 0);
-                }
-            }
-        }
+        content-y <=> zone.content-y;
+        content-height: zone.content-height;
+        vue: zone.height;
+        survol: survol.has-hover;
+        en-mouvement: root.en-mouvement;
     }
 }

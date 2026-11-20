@@ -19,7 +19,8 @@ use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, LigneMessage, Page, Principale,
+    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, EtatEpingles, LigneMessage,
+    OngletMarge, Page, Principale,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
@@ -365,6 +366,188 @@ fn scenario(
     println!("305 C3 : pastille de c4 retirée après read.updated");
 
     pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
+    epingles_dans_la_marge(&faible, &fabrique, &serveur);
+    molette_sans_a_coup(&faible, &pont);
+}
+
+fn image_suivante(faible: &slint::Weak<Principale>) {
+    sur_l_interface(faible, |f| {
+        i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(16));
+        slint::platform::update_timers_and_animations();
+        ElementHandle::find_by_element_type_name(f, "LigneMessageVue").count();
+    });
+}
+
+fn repere_au_milieu(faible: &slint::Weak<Principale>) -> (u64, f32) {
+    sur_l_interface(faible, |f| {
+        let liste = ElementHandle::find_by_accessible_label(f, "Messages")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::List))
+            .unwrap();
+        let haut = liste.absolute_position().y;
+        let milieu = haut + liste.size().height / 2.0;
+        ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+            .filter_map(|e| {
+                let y = e.absolute_position().y;
+                let n = e
+                    .accessible_description()?
+                    .strip_prefix("message n°")?
+                    .split('\n')
+                    .next()?
+                    .parse()
+                    .ok()?;
+                (y >= haut && y < milieu).then_some((n, y))
+            })
+            .next()
+            .expect("un message au milieu de la liste")
+    })
+}
+
+fn molette_sans_a_coup(faible: &slint::Weak<Principale>, pont: &Pont) {
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas();
+        f.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
+    });
+    stabiliser(faible, pont);
+    let mesures_avant = pont.messagerie().mesures();
+    let (repere, depart) = repere_au_milieu(faible);
+    let (x, y) = sur_l_interface(faible, |f| {
+        let liste = ElementHandle::find_by_accessible_label(f, "Messages")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::List))
+            .unwrap();
+        let p = liste.absolute_position();
+        let t = liste.size();
+        (p.x + t.width / 2.0, p.y + t.height / 2.0)
+    });
+    const CRAN: f32 = 90.0;
+    const CRANS: usize = 8;
+    for _ in 0..CRANS {
+        sur_l_interface(faible, move |f| {
+            f.window()
+                .dispatch_event(slint::platform::WindowEvent::PointerMoved {
+                    position: slint::LogicalPosition::new(x, y),
+                });
+            f.window()
+                .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+                    position: slint::LogicalPosition::new(x, y),
+                    delta_x: 0.0,
+                    delta_y: CRAN,
+                })
+        });
+        for _ in 0..4 {
+            image_suivante(faible);
+        }
+    }
+    for _ in 0..20 {
+        image_suivante(faible);
+    }
+    let pendant = ecran_de(faible, repere).expect("repère encore affiché");
+    let attendu = depart + CRAN * CRANS as f32;
+    println!(
+        "molette : repère n°{repere} de {depart} à {pendant} px (attendu {attendu}), lignes mesurées {} puis {}",
+        mesures_avant,
+        pont.messagerie().mesures()
+    );
+    assert!(
+        (pendant - attendu).abs() < 1.0,
+        "chaque cran de molette déplace la liste de toute sa distance : {pendant} au lieu de {attendu}"
+    );
+    for _ in 0..40 {
+        image_suivante(faible);
+    }
+    stabiliser(faible, pont);
+    let apres = ecran_de(faible, repere).expect("repère encore affiché après l'arrêt");
+    assert!(
+        (apres - pendant).abs() < 1.0,
+        "rien ne bouge une fois le geste fini : {pendant} puis {apres}"
+    );
+}
+
+fn pomper_fenetre(f: &Principale) {
+    let _ = f.window().take_snapshot();
+    slint::platform::update_timers_and_animations();
+}
+
+fn epingles_de(f: &Principale) -> Vec<String> {
+    f.global::<DonneesMessagerie>()
+        .get_epingles()
+        .iter()
+        .map(|e| e.id.to_string())
+        .collect()
+}
+
+fn epingles_dans_la_marge(
+    faible: &slint::Weak<Principale>,
+    fabrique: &FausseFabrique,
+    serveur: &ServeurMessages,
+) {
+    let mut ancien = message_numero(5, NOMBRE);
+    ancien["pinned_at"] = json!("2026-11-19T09:00:00Z");
+    serveur.servir_fichier(
+        "/channels/c1/pins",
+        "application/json",
+        json!({"messages": [ancien]}).to_string().into_bytes(),
+    );
+    assert!(sur_l_interface(faible, |f| f
+        .global::<DonneesCoquille>()
+        .get_epingles_disponibles()));
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesCoquille>().invoke_epingles_bascule()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            epingles_de(f) == ["5"]
+                && f.global::<DonneesMessagerie>().get_etat_epingles() == EtatEpingles::Pret
+        },
+        "épinglés chargés à l'ouverture de l'onglet",
+    );
+    assert!(sur_l_interface(faible, |f| {
+        let g = f.global::<DonneesCoquille>();
+        g.get_marge_ouverte() && g.get_onglet_marge() == OngletMarge::Epingles
+    }));
+    assert_eq!(serveur.nombre_de("GET /channels/c1/pins"), 1);
+    println!("C4 : onglet « Épinglés » ouvert par le bouton de l'en-tête, liste chargée");
+
+    let recent = (NOMBRE - 1).to_string();
+    let mut epingle = message_numero(NOMBRE - 1, NOMBRE);
+    epingle["pinned_at"] = json!("2026-11-19T10:00:00Z");
+    fabrique.envoyer(evenement("message.updated", epingle));
+    let attendus = [recent.clone(), "5".to_string()];
+    attendre_l_interface(
+        faible,
+        move |f| epingles_de(f) == attendus,
+        "épingle reçue en temps réel, en tête de liste",
+    );
+    fabrique.envoyer(evenement(
+        "message.updated",
+        message_numero(NOMBRE - 1, NOMBRE),
+    ));
+    attendre_l_interface(
+        faible,
+        |f| epingles_de(f) == ["5"],
+        "désépinglé en temps réel",
+    );
+    println!("C4 : épingle et désépingle reçues en temps réel");
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>()
+            .invoke_voir_epingle("5".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| lignes(f).iter().any(|l| l.id == "5" && l.mis_en_evidence),
+        "message épinglé hors de la fenêtre chargé et mis en évidence",
+    );
+    println!("C4 : « Voir dans la conversation » charge le message 5 et le met en évidence");
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesCoquille>().invoke_epingles_bascule()
+    });
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesCoquille>().get_onglet_marge() == OngletMarge::Membres,
+        "un second clic revient à l'onglet précédent",
+    );
 }
 
 fn png_gris(cote: u32) -> Vec<u8> {
@@ -642,6 +825,64 @@ fn pieces_jointes_sondage_et_telechargement(
         "réaction reçue en temps réel",
     );
     println!("302 : réaction 🍕 reçue en temps réel, dessinée en image");
+
+    let vus = |f: &Principale, id: &str| -> Vec<(String, String)> {
+        lignes(f)
+            .into_iter()
+            .find(|l| l.id == id)
+            .map(|l| {
+                l.annexes
+                    .lecteurs
+                    .iter()
+                    .map(|r| (r.pseudo.to_string(), r.heure.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    fabrique.envoyer(evenement(
+        "read.updated",
+        json!({"channel_id": "c1", "user_id": "dave", "pseudo": "dave", "last_id": "304", "read_at": "2026-11-19T11:05:00Z"}),
+    ));
+    attendre_l_interface(
+        faible,
+        move |f| matches!(vus(f, "304").as_slice(), [(p, h)] if p == "dave" && h.contains(':')),
+        "« Vu par dave » sous le dernier message lu",
+    );
+    assert!(sur_l_interface(faible, |f| lignes(f)
+        .into_iter()
+        .find(|l| l.id == "304")
+        .is_some_and(|l| l.annexes.vu_par == "Vu par dave"
+            && l.annexes.apercu_lecteurs.row_count() == 1
+            && l.annexes.lecteurs_en_plus == 0)));
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            pomper_fenetre(f);
+            ElementHandle::find_by_element_type_name(f, "LecteursVue").count() > 0
+        },
+        "ligne de 304 instanciée en bas de la liste",
+    );
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "Vu par dave")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::Button))
+            .expect("bouton « Vu par »")
+            .invoke_accessible_default_action()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            pomper_fenetre(f);
+            ElementHandle::find_by_accessible_label(f, "Vu par dave").any(|e| {
+                e.accessible_role() == Some(AccessibleRole::Button)
+                    && e.accessible_expanded() == Some(true)
+            })
+        },
+        "liste « Vu par » dépliée",
+    );
+    println!("C3 : accusé de lecture de dave affiché sous 304, liste dépliée");
 }
 
 #[test]

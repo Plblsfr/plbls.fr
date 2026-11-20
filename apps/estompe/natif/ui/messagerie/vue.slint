@@ -1,5 +1,5 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
-import { Icone, Bouton, VarianteBouton, Vide, Chargement } from "../composants.slint";
+import { Icone, Bouton, VarianteBouton, Vide, Chargement, BarreDefilement } from "../composants.slint";
 import { DonneesMessagerie, EtatConversation } from "donnees.slint";
 import { LigneMessageVue } from "element.slint";
 
@@ -47,6 +47,8 @@ export component VueMessages inherits Rectangle {
     changed sombre => {
         DonneesMessagerie.theme-change(self.sombre);
     }
+    property <duration> dernier-geste;
+    property <bool> en-mouvement: false;
     function signaler() {
         DonneesMessagerie.defilee(-flick.content-y, flick.height, flick.width);
     }
@@ -60,7 +62,11 @@ export component VueMessages inherits Rectangle {
     VerticalLayout {
         Rectangle {
             vertical-stretch: 1;
+            survol := TouchArea {
+                mouse-cursor: default;
+            }
             flick := Flickable {
+                mouse-drag-pan-enabled: false;
                 content-width: self.width;
                 content-height: DonneesMessagerie.haut + colonne.preferred-height + DonneesMessagerie.bas;
                 content-y <=> DonneesMessagerie.defilement;
@@ -78,6 +84,10 @@ export component VueMessages inherits Rectangle {
                 changed width => {
                     root.signaler();
                 }
+                flicked => {
+                    root.dernier-geste = animation-tick();
+                    root.en-mouvement = true;
+                }
                 colonne := VerticalLayout {
                     y: DonneesMessagerie.haut;
                     width: flick.width;
@@ -92,6 +102,25 @@ export component VueMessages inherits Rectangle {
                         }
                     }
                 }
+            }
+            Timer {
+                interval: 150ms;
+                running: root.en-mouvement;
+                triggered => {
+                    if (animation-tick() - root.dernier-geste > 600ms) {
+                        root.en-mouvement = false;
+                    }
+                }
+            }
+            BarreDefilement {
+                x: parent.width - 10px;
+                y: 2px;
+                height: parent.height - 4px;
+                content-y <=> flick.content-y;
+                content-height: flick.content-height;
+                vue: flick.height;
+                survol: survol.has-hover;
+                en-mouvement: root.en-mouvement;
             }
             if DonneesMessagerie.etat == EtatConversation.chargement && DonneesMessagerie.lignes.length == 0: VerticalLayout {
                 alignment: center;

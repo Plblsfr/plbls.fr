@@ -10,7 +10,7 @@ use crate::store::CleConversation;
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, GetChannelsCidReadsReponseElement, GetMeReponse, GetServersIdReponse,
-    GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, MessagePage, Name50,
+    GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message, MessagePage, Name50,
     NotifySettings, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
     PostAdminBadgesRequete, PostNotificationsReadRequete, PutMeStatusRequete, Server, DM,
 };
@@ -272,6 +272,18 @@ impl Client {
             CleConversation::Salon(id) => self.messages_du_salon(id, page).await,
             CleConversation::Prive(id) => self.messages_prives(id, page).await,
         }
+    }
+
+    pub async fn epingles(
+        &self,
+        conversation: &CleConversation,
+    ) -> Result<Vec<Message>, ErreurApi> {
+        let chemin = match conversation {
+            CleConversation::Salon(id) => format!("/channels/{id}/pins"),
+            CleConversation::Prive(id) => format!("/dms/{id}/pins"),
+        };
+        let page: MessagePage = self.get(&chemin).await?;
+        Ok(page.messages.unwrap_or_default())
     }
 
     pub async fn lectures(

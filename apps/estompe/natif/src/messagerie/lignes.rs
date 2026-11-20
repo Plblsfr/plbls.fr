@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use estompe_client::emoji::titre_de_reaction;
 use estompe_client::fichiers::{categorie, nom_de_fichier_sur, CategoriePiece};
@@ -9,6 +9,7 @@ use estompe_client::roles::{couleur_du_pseudo, Membre};
 use estompe_client::sondage::{est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total};
 use estompe_client::store::messages::{auteur, est_compte_estompe, id_message};
 use estompe_client::store::{CleConversation, Etat};
+use estompe_client::temps_reel::evenements::Lecture;
 use estompe_client::types::{Attachment, Message, MessagePoll};
 
 pub const TITRE_REACTION_MAX: usize = 3;
@@ -79,12 +80,23 @@ pub struct DonneesSondage {
     pub fin_ms: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DonneesLecteur {
+    pub utilisateur: String,
+    pub pseudo: String,
+    pub initiales: String,
+    pub teinte: i32,
+    pub avatar: Option<CleAvatar>,
+    pub heure: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DonneesAnnexes {
     pub pieces: Vec<DonneesPiece>,
     pub sondage: Option<DonneesSondage>,
     pub reactions: Vec<DonneesReaction>,
     pub lien: Option<String>,
+    pub lecteurs: Vec<DonneesLecteur>,
 }
 
 impl DonneesAnnexes {
@@ -93,6 +105,7 @@ impl DonneesAnnexes {
             && self.sondage.is_none()
             && self.reactions.is_empty()
             && self.lien.is_none()
+            && self.lecteurs.is_empty()
     }
 
     pub fn images(&self) -> impl Iterator<Item = &DonneesPiece> {
@@ -117,6 +130,9 @@ impl DonneesAnnexes {
                     .collect::<Vec<_>>()
                     .join("  "),
             );
+        }
+        if !self.lecteurs.is_empty() {
+            parties.push(libelle_vu_par(&self.lecteurs));
         }
         parties.join(" · ")
     }
@@ -163,6 +179,7 @@ pub struct ContexteLignes<'a> {
     pub decalage_minutes: i32,
     pub maintenant_ms: i64,
     pub apercus: bool,
+    pub lecteurs: &'a BTreeMap<String, Vec<Lecture>>,
 }
 
 fn texte(valeur: &Option<String>) -> &str {
@@ -280,7 +297,34 @@ pub fn annexes(message: &Message, moi: &str, maintenant_ms: i64, apercus: bool) 
             estompe_client::markdown::premier_lien(texte(&message.content))
         },
         sondage,
+        lecteurs: Vec::new(),
     }
+}
+
+pub fn libelle_vu_par(lecteurs: &[DonneesLecteur]) -> String {
+    if lecteurs.is_empty() {
+        return String::new();
+    }
+    let noms: Vec<&str> = lecteurs.iter().map(|l| l.pseudo.as_str()).collect();
+    format!("Vu par {}", noms.join(", "))
+}
+
+pub fn lecteurs(lectures: &[Lecture], c: &ContexteLignes) -> Vec<DonneesLecteur> {
+    lectures
+        .iter()
+        .map(|l| DonneesLecteur {
+            initiales: initiales(&l.pseudo),
+            teinte: teinte(if l.user_id.is_empty() {
+                &l.pseudo
+            } else {
+                &l.user_id
+            }),
+            avatar: cle_avatar_du_message(c.etat, c.serveur, &l.user_id),
+            heure: heure_de(&l.read_at, c.decalage_minutes).unwrap_or_default(),
+            pseudo: l.pseudo.clone(),
+            utilisateur: l.user_id.clone(),
+        })
+        .collect()
 }
 
 pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> DonneesMessage {
@@ -344,7 +388,14 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
             }
         }),
         contenu: texte(&message.content).to_string(),
-        annexes: annexes(message, moi, c.maintenant_ms, c.apercus),
+        annexes: DonneesAnnexes {
+            lecteurs: c
+                .lecteurs
+                .get(&id)
+                .map(|l| lecteurs(l, c))
+                .unwrap_or_default(),
+            ..annexes(message, moi, c.maintenant_ms, c.apercus)
+        },
         auteur: pseudo,
         utilisateur,
         id,
@@ -473,10 +524,57 @@ mod tests {
             decalage_minutes: 60,
             maintenant_ms: MAINTENANT,
             apercus: true,
+            lecteurs: &AUCUN_LECTEUR,
         }
     }
 
+    static AUCUN_LECTEUR: BTreeMap<String, Vec<Lecture>> = BTreeMap::new();
+
     const MAINTENANT: i64 = 1_795_600_000_000;
+
+    #[test]
+    fn vu_par_s_attache_au_dernier_message_lu_avec_l_heure_de_lecture() {
+        let e = etat();
+        let supprimes = HashSet::new();
+        let lecture = |u: &str, p: &str| Lecture {
+            channel_id: Some("c1".into()),
+            dm_id: None,
+            user_id: u.into(),
+            pseudo: p.into(),
+            last_id: "2".into(),
+            read_at: "2026-11-19T09:05:00Z".into(),
+        };
+        let lus = BTreeMap::from([(
+            "2".to_string(),
+            vec![lecture("dave", "dave"), lecture("eve", "Ève")],
+        )]);
+        let c = ContexteLignes {
+            lecteurs: &lus,
+            ..contexte(&e, &supprimes)
+        };
+        let messages = vec![
+            message("1", "carol", "09:00", "a"),
+            message("2", "carol", "09:01", "b"),
+        ];
+        let lignes = lignes_de_conversation(&messages, &c);
+        let m = |id: &str| {
+            lignes
+                .iter()
+                .filter_map(|l| l.message.as_ref())
+                .find(|m| m.id == id)
+                .unwrap()
+                .clone()
+        };
+        assert!(m("1").annexes.lecteurs.is_empty());
+        let vus = m("2").annexes.lecteurs;
+        let resume: Vec<(&str, &str, &str)> = vus
+            .iter()
+            .map(|l| (l.pseudo.as_str(), l.initiales.as_str(), l.heure.as_str()))
+            .collect();
+        assert_eq!(resume, [("dave", "DA", "10:05"), ("Ève", "ÈV", "10:05")]);
+        assert!(!m("2").annexes.est_vide());
+        assert_eq!(m("2").annexes.resume(), "Vu par dave, Ève");
+    }
 
     #[test]
     fn regroupe_les_messages_consecutifs_et_separe_les_jours() {

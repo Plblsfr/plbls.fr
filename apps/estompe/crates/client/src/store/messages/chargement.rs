@@ -1,5 +1,6 @@
 use super::etat::{
-    id_message, LIMITE_PAGE, LIMITE_PAGE_LONGUE, MESSAGES_SAUT_MAX, PAGES_RATTRAPAGE_MAX,
+    comparer_ids, id_message, LIMITE_PAGE, LIMITE_PAGE_LONGUE, MESSAGES_PAR_CONVERSATION,
+    MESSAGES_SAUT_MAX, PAGES_RATTRAPAGE_MAX,
 };
 use super::reducteur::{installer, installer_lectures, mettre_en_evidence, Installation};
 use crate::appels::Page;
@@ -14,6 +15,12 @@ fn decouper(page: MessagePage) -> (Vec<Message>, bool) {
         page.messages.unwrap_or_default(),
         page.has_more == Some(true),
     )
+}
+
+struct Fenetre {
+    premier: String,
+    dernier: String,
+    fin_atteinte: bool,
 }
 
 fn page_avant(avant: &str, limite: u32) -> Page {
@@ -50,11 +57,11 @@ impl Store {
         });
     }
 
-    fn reserver_chargement(
+    fn reserver_chargement<T>(
         &self,
         cle: &CleConversation,
-        borne: impl FnOnce(&super::Conversation) -> Option<String>,
-    ) -> Option<String> {
+        borne: impl FnOnce(&super::Conversation) -> Option<T>,
+    ) -> Option<T> {
         self.modifier_messages(|m, _| {
             let borne = match m.conversations.get_mut(cle) {
                 Some(c) if c.chargee && !c.en_chargement => borne(c),
@@ -248,25 +255,87 @@ impl Store {
             let cles = m
                 .conversations
                 .iter()
-                .filter(|(_, c)| c.chargee && c.fin_atteinte && !c.en_chargement)
+                .filter(|(_, c)| c.chargee && !c.en_chargement)
                 .map(|(cle, _)| cle.clone())
                 .collect();
             (cles, a)
         });
+        let epingles = self.lire_messages(|m| m.epingles.as_ref().map(|(c, _)| c.clone()));
+        if let Some(cle) = epingles {
+            let _ = self.charger_epingles(&cle).await;
+        }
         for cle in cles {
-            let _ = self.rattraper(&cle).await;
+            if self.rattraper(&cle).await.is_ok() {
+                if let Ok(lectures) = self.client().lectures(&cle).await {
+                    self.modifier_messages(|m, _| ((), installer_lectures(m, &cle, lectures)));
+                }
+            }
         }
     }
 
     async fn rattraper(&self, cle: &CleConversation) -> Result<(), ErreurApi> {
-        let Some(depart) = self.reserver_chargement(cle, |c| {
-            Some(c.dernier_id().unwrap_or_default().to_string())
+        let Some(fenetre) = self.reserver_chargement(cle, |c| {
+            Some(Fenetre {
+                premier: c.premier_id().unwrap_or_default().to_string(),
+                dernier: c.dernier_id().unwrap_or_default().to_string(),
+                fin_atteinte: c.fin_atteinte,
+            })
         }) else {
             return Ok(());
         };
-        let resultat = self.rattraper_depuis(cle, &depart).await;
+        let mut resultat = self.relire_fenetre(cle, &fenetre).await;
+        if resultat.is_ok() && fenetre.fin_atteinte {
+            resultat = self.rattraper_depuis(cle, &fenetre.dernier).await;
+        }
         self.liberer(cle);
         resultat
+    }
+
+    async fn relire_fenetre(&self, cle: &CleConversation, f: &Fenetre) -> Result<(), ErreurApi> {
+        let Some(precedent) = f.premier.parse::<i64>().ok().and_then(|n| n.checked_sub(1)) else {
+            return Ok(());
+        };
+        let mut apres = precedent.to_string();
+        let mut relus: Vec<Message> = Vec::new();
+        let pages = MESSAGES_PAR_CONVERSATION / LIMITE_PAGE_LONGUE as usize + 1;
+        for _ in 0..pages {
+            let (messages, encore) = decouper(
+                self.client()
+                    .messages_de(cle, &page_apres(&apres, LIMITE_PAGE_LONGUE))
+                    .await?,
+            );
+            relus.extend(messages);
+            match relus.last() {
+                Some(d) if encore && comparer_ids(id_message(d), &f.dernier).is_lt() => {
+                    apres = id_message(d).to_string()
+                }
+                _ => {
+                    apres.clear();
+                    break;
+                }
+            }
+        }
+        let jusqu_a = if apres.is_empty() {
+            f.dernier.clone()
+        } else {
+            apres
+        };
+        relus.retain(|m| comparer_ids(id_message(m), &jusqu_a).is_le());
+        self.installer_messages(
+            cle,
+            Installation::Relecture {
+                de: f.premier.clone(),
+                jusqu_a,
+                messages: relus,
+            },
+        );
+        self.modifier_messages(|m, _| {
+            if let Some(c) = m.conversations.get_mut(cle) {
+                c.en_chargement = true;
+            }
+            ((), Application::default())
+        });
+        Ok(())
     }
 
     async fn rattraper_depuis(&self, cle: &CleConversation, depart: &str) -> Result<(), ErreurApi> {
@@ -357,6 +426,15 @@ mod tests {
     }
 
     fn page(salon: &str, requete: &Requete, ids: &[u64]) -> Reponse {
+        page_retouchee(salon, requete, ids, |_| {})
+    }
+
+    fn page_retouchee(
+        salon: &str,
+        requete: &Requete,
+        ids: &[u64],
+        retouche: impl Fn(&mut Value),
+    ) -> Reponse {
         let limite: usize = requete
             .parametre("limit")
             .and_then(|l| l.parse().ok())
@@ -377,7 +455,14 @@ mod tests {
                 (anciens[debut..].to_vec(), debut > 0)
             }
         };
-        let messages: Vec<Value> = choisis.iter().map(|i| json_message(salon, *i)).collect();
+        let messages: Vec<Value> = choisis
+            .iter()
+            .map(|i| {
+                let mut m = json_message(salon, *i);
+                retouche(&mut m);
+                m
+            })
+            .collect();
         Reponse::json(200, json!({"messages": messages, "has_more": plus}))
     }
 
@@ -542,12 +627,179 @@ mod tests {
         assert_eq!(
             rattrapage,
             [
+                "/channels/c1/messages?limit=100&after=1069",
                 "/channels/c1/messages?limit=100&after=1124",
                 "/channels/c1/messages?limit=100&after=1224"
             ]
         );
         drop(signaux);
         assert_eq!(boucle.await.unwrap(), crate::store::FinFlux::Termine);
+    }
+
+    #[tokio::test]
+    async fn apres_une_coupure_les_modifications_suppressions_et_reactions_manquees_sont_relues() {
+        let (serveur, historique, store) = monde(&(1000..1120).collect::<Vec<_>>()).await;
+        store.ouvrir(Some(c1())).await;
+        assert!(store.charger_plus_anciens(&c1()).await.unwrap());
+        assert_eq!(ids(&store, &c1()), (1020..1120).collect::<Vec<_>>());
+        let mut abonne = store.abonner();
+        let (signaux, flux) = FluxTempsReel::factice();
+        let boucle = store.brancher(flux);
+
+        historique.lock().unwrap().retain(|i| *i != 1050);
+        historique.lock().unwrap().push(1120);
+        let partage = historique.clone();
+        serveur.router_dynamique("GET", "/channels/c1/messages", move |requete| {
+            page_retouchee("c1", requete, &partage.lock().unwrap(), |m| {
+                match m["id"].as_str() {
+                    Some("1030") => {
+                        m["content"] = json!("corrigé pendant la coupure");
+                        m["edited_at"] = json!("2026-10-13T11:00:00Z");
+                    }
+                    Some("1100") => {
+                        m["reactions"] = json!([{"emoji": "👍", "count": 2, "me": true}]);
+                        m["pinned_at"] = json!("2026-10-13T11:05:00Z");
+                    }
+                    _ => {}
+                }
+            })
+        });
+        serveur.router(
+            "GET",
+            "/channels/c1/reads",
+            Reponse::json(
+                200,
+                json!([{"user_id": "bob", "pseudo": "bob", "last_id": "1119", "read_at": "y"}]),
+            ),
+        );
+
+        let mut recus = Vec::new();
+        signaux.send(Signal::Reconnecte).unwrap();
+        attendre(&store, &mut abonne, &mut recus, |s| {
+            s.conversation(&c1())
+                .is_some_and(|c| c.lectures["bob"].last_id == "1119")
+        })
+        .await;
+
+        let attendus: Vec<u64> = (1020..1121).filter(|i| *i != 1050).collect();
+        assert_eq!(ids(&store, &c1()), attendus);
+        let c = store.conversation(&c1()).unwrap();
+        let corrige = c.message("1030").unwrap();
+        assert_eq!(
+            corrige.content.as_deref(),
+            Some("corrigé pendant la coupure")
+        );
+        assert!(corrige.edited_at.is_some());
+        let reagi = c.message("1100").unwrap();
+        assert_eq!(reagi.reactions.as_ref().unwrap()[0].count, Some(2));
+        assert!(reagi.pinned_at.is_some());
+        let changes = messages(&recus);
+        for attendu in [
+            ChangementMessages::Modifie {
+                conversation: c1(),
+                message: "1030".into(),
+            },
+            ChangementMessages::Modifie {
+                conversation: c1(),
+                message: "1100".into(),
+            },
+            ChangementMessages::Supprime {
+                conversation: c1(),
+                message: "1050".into(),
+            },
+            ChangementMessages::AjoutesEnFin {
+                conversation: c1(),
+                nombre: 1,
+            },
+            ChangementMessages::Lectures { conversation: c1() },
+        ] {
+            assert!(
+                changes.contains(&attendu),
+                "{attendu:?} absent de {changes:?}"
+            );
+        }
+        assert!(!changes
+            .iter()
+            .any(|c| matches!(c, ChangementMessages::Rechargee { .. })));
+        assert!(!store.conversation(&c1()).unwrap().en_chargement);
+        drop(signaux);
+        assert_eq!(boucle.await.unwrap(), crate::store::FinFlux::Termine);
+    }
+
+    #[tokio::test]
+    async fn la_relecture_d_un_historique_lu_au_milieu_ne_touche_pas_au_present() {
+        let (serveur, historique, store) = monde(&(1000..1600).collect::<Vec<_>>()).await;
+        assert!(store.sauter_a(&c1(), "1100").await.unwrap());
+        let avant = ids(&store, &c1());
+        assert!(!store.conversation(&c1()).unwrap().fin_atteinte);
+        historique.lock().unwrap().retain(|i| *i != 1110);
+        historique.lock().unwrap().extend(1600..1650);
+        let lignes = serveur.lignes().len();
+        store.rattraper_messages().await;
+        let attendus: Vec<u64> = avant.iter().copied().filter(|i| *i != 1110).collect();
+        assert_eq!(ids(&store, &c1()), attendus);
+        let c = store.conversation(&c1()).unwrap();
+        assert!(!c.fin_atteinte && !c.en_chargement);
+        assert!(serveur
+            .lignes()
+            .iter()
+            .skip(lignes)
+            .filter(|(chemin, _)| chemin.contains("/messages"))
+            .all(|(chemin, _)| chemin.contains("after=")));
+    }
+
+    #[tokio::test]
+    async fn les_epingles_se_chargent_suivent_le_temps_reel_et_se_rechargent_a_la_reconnexion() {
+        let (serveur, _, store) = monde(&(1000..1010).collect::<Vec<_>>()).await;
+        let epingle = |id: u64, quand: &str| {
+            let mut m = json_message("c1", id);
+            m["pinned_at"] = json!(quand);
+            m
+        };
+        serveur.router(
+            "GET",
+            "/channels/c1/pins",
+            Reponse::json(
+                200,
+                json!({"messages": [epingle(1005, "2026-10-13T12:00:00Z"), epingle(400, "2026-10-13T11:00:00Z")]}),
+            ),
+        );
+        let ids_epingles = |s: &Store| -> Vec<String> {
+            s.epingles(&c1())
+                .unwrap_or_default()
+                .iter()
+                .map(|m| id_message(m).to_string())
+                .collect()
+        };
+        assert!(store.epingles(&c1()).is_none());
+        let mut abonne = store.abonner();
+        store.charger_epingles(&c1()).await.unwrap();
+        assert_eq!(ids_epingles(&store), ["1005", "400"]);
+        assert!(messages(&abonne.try_recv().unwrap())
+            .contains(&ChangementMessages::Epingles { conversation: c1() }));
+
+        store.appliquer(&evenement(
+            "message.updated",
+            epingle(300, "2026-10-13T13:00:00Z"),
+        ));
+        assert_eq!(ids_epingles(&store), ["300", "1005", "400"]);
+        store.appliquer(&evenement("message.updated", json_message("c1", 1005)));
+        assert_eq!(ids_epingles(&store), ["300", "400"]);
+        store.appliquer(&evenement(
+            "message.deleted",
+            json!({"id": "400", "channel_id": "c1"}),
+        ));
+        assert_eq!(ids_epingles(&store), ["300"]);
+        store.appliquer(&evenement("message.updated", json_message("c2", 1)));
+        assert_eq!(ids_epingles(&store), ["300"]);
+        assert!(store
+            .epingles(&CleConversation::Salon("c2".into()))
+            .is_none());
+
+        store.rattraper_messages().await;
+        assert_eq!(ids_epingles(&store), ["1005", "400"]);
+        store.oublier_epingles();
+        assert!(store.epingles(&c1()).is_none());
     }
 
     #[tokio::test]

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use tokio::time::Instant;
 
 use super::etat::{
@@ -56,6 +58,9 @@ pub enum ChangementMessages {
     Lectures {
         conversation: CleConversation,
     },
+    Epingles {
+        conversation: CleConversation,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -98,6 +103,11 @@ pub enum Installation {
     },
     Rattrapage {
         apres: String,
+        messages: Vec<Message>,
+    },
+    Relecture {
+        de: String,
+        jusqu_a: String,
         messages: Vec<Message>,
     },
     Autour {
@@ -276,6 +286,57 @@ fn ajouter_au_present(
     borner(conversation, cle, Cote::Tete, a);
 }
 
+fn relire(
+    conversation: &mut Conversation,
+    cle: &CleConversation,
+    de: &str,
+    jusqu_a: &str,
+    messages: Vec<Message>,
+    a: &mut Application,
+) {
+    let dans = |id: &str| comparer_ids(id, de).is_ge() && comparer_ids(id, jusqu_a).is_le();
+    let mut relus: BTreeMap<String, Message> = messages
+        .into_iter()
+        .filter(|m| dans(id_message(m)))
+        .map(|m| (id_message(&m).to_string(), m))
+        .collect();
+    let mut supprimes: Vec<String> = Vec::new();
+    let mut modifies: Vec<String> = Vec::new();
+    conversation.messages.retain_mut(|m| {
+        let id = id_message(m).to_string();
+        if !dans(&id) {
+            return true;
+        }
+        match relus.remove(&id) {
+            Some(relu) => {
+                if *m != relu {
+                    *m = relu;
+                    modifies.push(id);
+                }
+                true
+            }
+            None => {
+                supprimes.push(id);
+                false
+            }
+        }
+    });
+    for message in modifies {
+        modifie(a, cle.clone(), &message);
+    }
+    for message in supprimes {
+        changer(
+            a,
+            ChangementMessages::Supprime {
+                conversation: cle.clone(),
+                message,
+            },
+        );
+    }
+    let fusion = fusionner(conversation, relus.into_values().collect());
+    annoncer(a, cle, fusion);
+}
+
 pub fn installer(
     etat: &mut EtatMessages,
     contexte: &Contexte,
@@ -356,6 +417,15 @@ pub fn installer(
                 .collect();
             ajouter_au_present(conversation, cle, recents, contexte, &mut a);
         }
+        Installation::Relecture {
+            de,
+            jusqu_a,
+            messages,
+        } => {
+            if conversation.chargee {
+                relire(conversation, cle, &de, &jusqu_a, messages, &mut a);
+            }
+        }
         Installation::Autour {
             message,
             messages,
@@ -421,6 +491,7 @@ pub fn appliquer_evenement(
             if let Some(conversation) = etat.conversations.get_mut(&cle) {
                 modifier(conversation, &cle, m, &mut a);
             }
+            epingle_modifiee(etat, &cle, m, &mut a);
         }
         Evenement::MessageSupprime(d) => {
             if let Some(cle) = CleConversation::de(d.channel_id.as_deref(), d.dm_id.as_deref()) {
@@ -482,7 +553,11 @@ pub fn appliquer_evenement(
             }
         }
         Evenement::SalonSupprime(d) => {
-            etat.oublier(&CleConversation::Salon(d.id.clone()));
+            let cle = CleConversation::Salon(d.id.clone());
+            etat.oublier(&cle);
+            if etat.epingles_de(&cle).is_some() {
+                etat.epingles = None;
+            }
         }
         _ => {}
     }
@@ -646,7 +721,73 @@ fn modifie(a: &mut Application, conversation: CleConversation, message: &str) {
     );
 }
 
+pub fn installer_epingles(
+    etat: &mut EtatMessages,
+    cle: &CleConversation,
+    messages: Vec<Message>,
+) -> Application {
+    let mut a = Application::default();
+    if etat.epingles_de(cle) != Some(messages.as_slice()) {
+        etat.epingles = Some((cle.clone(), messages));
+        epingles_changees(&mut a, cle);
+    }
+    a
+}
+
+fn epingles_changees(a: &mut Application, cle: &CleConversation) {
+    changer(
+        a,
+        ChangementMessages::Epingles {
+            conversation: cle.clone(),
+        },
+    );
+}
+
+fn epingle_modifiee(
+    etat: &mut EtatMessages,
+    cle: &CleConversation,
+    m: &Message,
+    a: &mut Application,
+) {
+    let Some((c, liste)) = etat.epingles.as_mut() else {
+        return;
+    };
+    if c != cle {
+        return;
+    }
+    let id = id_message(m);
+    let place = liste.iter().position(|x| id_message(x) == id);
+    let avant = liste.clone();
+    match (place, m.pinned_at.is_some()) {
+        (Some(i), true) => liste[i] = m.clone(),
+        (Some(i), false) => {
+            liste.remove(i);
+        }
+        (None, true) => {
+            let quand = m.pinned_at.as_deref();
+            let i = liste
+                .iter()
+                .position(|x| x.pinned_at.as_deref() < quand)
+                .unwrap_or(liste.len());
+            liste.insert(i, m.clone());
+        }
+        (None, false) => {}
+    }
+    if *liste != avant {
+        epingles_changees(a, cle);
+    }
+}
+
 fn supprimer(etat: &mut EtatMessages, cle: &CleConversation, ids: &[String], a: &mut Application) {
+    if let Some((c, liste)) = etat.epingles.as_mut() {
+        if c == cle {
+            let avant = liste.len();
+            liste.retain(|m| !ids.iter().any(|id| id == id_message(m)));
+            if liste.len() != avant {
+                epingles_changees(a, cle);
+            }
+        }
+    }
     let Some(conversation) = etat.conversations.get_mut(cle) else {
         return;
     };

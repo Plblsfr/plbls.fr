@@ -1,0 +1,152 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Chargement, Defilement, TexteRiche } from "../composants.slint";
+import { DonneesMessagerie, EpingleMessage, EtatEpingles } from "donnees.slint";
+
+component CarteEpingle inherits Rectangle {
+    in property <EpingleMessage> epingle;
+    border-radius: Rayon.m;
+    border-width: 1px;
+    border-color: Theme.trait;
+    background: Theme.surface;
+    accessible-role: groupbox;
+    accessible-label: "Message épinglé de " + root.epingle.auteur + ", " + root.epingle.date;
+    VerticalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "epingle";
+                    taille: 13px;
+                    couleur: Theme.gris;
+                }
+            }
+            Text {
+                text: root.epingle.auteur;
+                color: root.epingle.a-couleur ? root.epingle.couleur : Theme.encre;
+                font-family: Typo.texte;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.epingle.date;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: 11px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        if root.epingle.blocs.length > 0: TexteRiche {
+            blocs: root.epingle.blocs;
+            taille: Typo.compact;
+            encre: Theme.encre-2;
+            lien(cible) => {
+                DonneesMessagerie.lien-clique(root.epingle.id, cible);
+            }
+        }
+        if root.epingle.fichiers != "": HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "trombone";
+                    taille: 14px;
+                    couleur: Theme.gris;
+                }
+            }
+            Text {
+                text: root.epingle.fichiers;
+                color: Theme.gris;
+                font-family: Typo.texte;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Voir dans la conversation";
+                variante: VarianteBouton.secondaire;
+                clique => {
+                    DonneesMessagerie.voir-epingle(root.epingle.id);
+                }
+            }
+        }
+    }
+}
+
+export component MargeEpingles inherits VerticalLayout {
+    accessible-role: list;
+    accessible-label: "Messages épinglés";
+    if DonneesMessagerie.etat-epingles == EtatEpingles.chargement && DonneesMessagerie.epingles.length == 0: VerticalLayout {
+        vertical-stretch: 1;
+        alignment: start;
+        padding: Espace.e5;
+        HorizontalLayout {
+            alignment: center;
+            Chargement { }
+        }
+    }
+    if DonneesMessagerie.etat-epingles == EtatEpingles.erreur && DonneesMessagerie.epingles.length == 0: VerticalLayout {
+        vertical-stretch: 1;
+        alignment: start;
+        padding: Espace.e4;
+        spacing: Espace.e3;
+        Text {
+            text: "Impossible de charger les messages épinglés.";
+            color: Theme.gris;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Réessayer";
+                clique => {
+                    DonneesMessagerie.recharger-epingles();
+                }
+            }
+        }
+    }
+    if DonneesMessagerie.etat-epingles == EtatEpingles.pret && DonneesMessagerie.epingles.length == 0: VerticalLayout {
+        vertical-stretch: 1;
+        alignment: start;
+        padding: Espace.e5;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            alignment: center;
+            Icone {
+                nom: "epingle";
+                taille: 20px;
+                couleur: Theme.gris;
+            }
+        }
+        Text {
+            text: "Aucun message épinglé.";
+            color: Theme.gris;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            horizontal-alignment: center;
+        }
+    }
+    if DonneesMessagerie.epingles.length > 0: Defilement {
+        vertical-stretch: 1;
+        hauteur-contenu: colonne.preferred-height;
+        colonne := VerticalLayout {
+            padding: Espace.e2;
+            spacing: Espace.e2;
+            alignment: start;
+            for epingle in DonneesMessagerie.epingles: CarteEpingle {
+                epingle: epingle;
+            }
+        }
+    }
+}
