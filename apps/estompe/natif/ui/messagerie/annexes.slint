@@ -1,4 +1,5 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Anneau } from "../composants/focus.slint";
 import { Icone, Infobulle, Etiquette, BadgeRole, GenreBadgeRole, TexteRiche, BlocTexte, Avatar, Bouton, VarianteBouton } from "../composants.slint";
 import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, ReactionMessage, LecteurMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
 
@@ -511,12 +512,39 @@ component LecteursVue {
                 background: zone.has-hover || root.ouvert ? Theme.surface : transparent;
                 accessible-role: button;
                 accessible-label: root.annexes.vu-par;
+                accessible-expandable: true;
+                accessible-expanded: root.ouvert;
                 accessible-action-default => {
                     root.ouvert = !root.ouvert;
                 }
-                zone := TouchArea {
-                    clicked => {
-                        root.ouvert = !root.ouvert;
+                Anneau {
+                    width: parent.width + 8px;
+                    height: parent.height + 8px;
+                    rayon: 14px;
+                    actif: portee.has-focus && portee.clavier;
+                }
+                portee := FocusScope {
+                    property <bool> clavier: false;
+                    focus-on-click: false;
+                    focus-gained(raison) => {
+                        self.clavier = raison != FocusReason.pointer-click;
+                    }
+                    key-pressed(e) => {
+                        if (e.text == Key.Return || e.text == " ") {
+                            root.ouvert = !root.ouvert;
+                            return accept;
+                        }
+                        if (e.text == Key.Escape && root.ouvert) {
+                            root.ouvert = false;
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    zone := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.ouvert = !root.ouvert;
+                        }
                     }
                 }
                 rangee := HorizontalLayout {

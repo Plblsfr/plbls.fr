@@ -104,14 +104,14 @@ téléchargement dans l'app.
 ## Coquille
 
 Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : rail des serveurs, panneau de navigation, zone de contenu et,
-à droite, l'emplacement de la marge (vide pour l'instant).
+à droite, la marge.
 
 | Élément | Interface (`ui/coquille/`) | Contenu |
 |---|---|---|
 | Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Rejoindre un serveur », entrées des sections ouvertes |
 | Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés, ou section ; barre du compte avec « Se déconnecter » ; repliable |
 | Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper, vocaux en cours) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
-| Marge | `marge.slint`, `membres.slint`, `carte-profil.slint` | `EmplacementMarge` ; sur un serveur, la marge « Membres » (voir [Membres](#membres)) et la carte de profil |
+| Marge | `marge.slint`, `membres.slint`, `carte-profil.slint`, `../messagerie/epingles.slint` | `EmplacementMarge` ; onglets « Membres » sur un serveur (voir [Membres](#membres)) et « Épinglés » dans une conversation (voir [Épinglés](#épinglés)), carte de profil |
 
 - Données : global `DonneesCoquille` (`ui/coquille/donnees.slint`) : modèles des lignes (`serveurs`, `salons`, `prives`, `sections`, `rattrapage`,
   `vocaux`), en-tête du panneau, vue, accueil, bandeau, et les rappels de navigation (`ouvrir-serveur`, `ouvrir-salon`, `deplacer-serveur`…).
@@ -186,7 +186,7 @@ mentions, regroupement et séparateurs (`format::lignes_de_messages`).
 | `src/messagerie/emoji.rs` | paquet d'emoji embarqué, découpe du texte en texte et emoji (séquences composées comprises), images des emoji |
 | `src/messagerie/medias.rs` (`Medias`) | téléchargement, décodage hors du fil d'interface et caches des images (pièces jointes, emoji de serveur, images d'aperçu), liste des emoji de serveur, aperçus de liens |
 | `src/messagerie/annexes.rs` | projections pures : carte d'aperçu d'un lien, taille d'une vignette avant chargement, chemin sûr d'un fichier enregistré |
-| `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage et réactions, visionneuse, global `DonneesMessagerie` |
+| `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `epingles.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage, réactions et « Vu par », visionneuse, messages épinglés, global `DonneesMessagerie` |
 
 ### Virtualisation
 
@@ -226,7 +226,7 @@ Sélection : ni `Text` ni `StyledText` ne permettent de sélectionner du texte e
 donc par message entier : bouton « Copier le message » au survol, ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
 au presse-papiers par un `TextInput` caché (`select-all()`, `copy()`).
 
-Écarts : la police de texte embarquée n'a pas d'italique (l'italique n'est pas distinguable) ; un lien est toujours souligné ; dans un paragraphe
+L'italique vient de la face italique d'Instrument Sans (`polices/InstrumentSans-Italic.ttf`, même source et même licence que la face droite). Écarts : un lien est toujours souligné ; dans un paragraphe
 en segments, un mot plus long que la ligne est coupé dans son segment au lieu de passer à la ligne entier, et un bloc de code en ligne ne se coupe pas.
 
 ### Élément de message et emplacements à venir
@@ -240,7 +240,9 @@ en segments, un mot plus long que la ligne est coupé dans son segment au lieu d
   `AnnexesMessageVue` (`ui/messagerie/annexes.slint`) ; `resume` sert au lecteur d'écran. Un message avec sondage affiche la carte du sondage à la place
   du corps, des pièces jointes et de l'aperçu, comme `MessageItem.svelte`. Une image chargée, un aperçu reçu ou un téléchargement qui avance ne remplacent que la ligne du message.
 - État d'envoi : champ `etat-envoi` de `LigneMessage`, vide en lecture ; l'écriture (lot 3) le remplira.
-- Accusés de lecture (avatars « Vu par ») : pas encore affichés (`Store::lecteurs` est prêt).
+- Accusés de lecture : `Store::lecteurs` rattache chaque lecture au dernier message lu de la fenêtre ; `ContexteLignes::lecteurs` les ajoute aux annexes
+  (`DonneesLecteur` : pseudo, initiales, avatar, heure de lecture). `LecteursVue` (`annexes.slint`) montre cinq avatars et « +N » à droite des réactions ;
+  un clic déplie « Vu par » avec chaque personne et son heure, « Fermer » la replie. Un `read.updated` reprojette la conversation ouverte.
 
 ### Emoji
 
@@ -313,7 +315,23 @@ deux moteurs et sur les deux OS :
 - Lu : `signaler_lecture(en_bas, ancre)` quand le bas de la liste est atteint ou quitté, `definir_focus` quand la fenêtre gagne ou perd le focus.
   Le focus vient de l'évènement `Focused` de winit (`on_winit_window_event`, feature `unstable-winit-030` de Slint), sans code propre à un OS ;
   `Coquille::fenetre_active` est le même chemin, utilisé par les tests. Une lecture sur un autre appareil (`read.updated` à mon nom) retire la pastille.
+- Après une coupure (`Signal::Reconnecte`), `rattraper_messages` relit chaque conversation chargée : la fenêtre entière (`[premier, dernier]`,
+  pages de 100 depuis `premier − 1`) est comparée au serveur (`Installation::Relecture`) : un message changé (modification, réaction, vote, épingle)
+  est remplacé, un message absent est retiré, un message manquant inséré. Puis, si la fenêtre touche le présent, les messages arrivés depuis
+  `dernier` sont ajoutés comme avant (au-delà de 500, la conversation est rechargée). Les accusés de lecture et la liste des épinglés ouverte sont rechargés aussi.
 - Le compte « Estompe » (notes de version) ouvre une conversation en lecture seule.
+
+### Épinglés
+
+- La liste vit dans le store (`EtatMessages::epingles`, une seule conversation à la fois) : `charger_epingles` (`GET /channels/{id}/pins` ou
+  `/dms/{id}/pins`, les plus récemment épinglés d'abord), puis chaque `message.updated` l'ajoute en tête, la remplace ou la retire selon
+  `pinned_at`, et `message.deleted` la retire, même pour un message hors de la fenêtre chargée. `ChangementMessages::Epingles` prévient l'interface.
+- Onglet de la marge : bouton épingle de l'en-tête (`basculer_epingles` : ouvre l'onglet, un second clic revient à l'onglet et à l'ouverture d'avant,
+  comme `basculerEpingles` du web) ou onglet « Épinglés ». Dans un message privé, la marge ne s'ouvre que sur cet onglet (`onglet_effectif`).
+- `PontMessagerie::montrer_epingles` charge la liste quand l'onglet devient visible ou que la conversation change, et l'oublie quand il se ferme ;
+  chaque carte (`CarteEpingle`, `ui/messagerie/epingles.slint`) donne l'auteur à la couleur de son rôle, la date, le markdown et le nombre de fichiers ;
+  « Voir dans la conversation » passe par `sauter_a` (chargement autour du message s'il n'est pas dans la fenêtre, puis mise en évidence).
+- Désépingler est une écriture : lot 3.
 
 ## Portabilité
 

@@ -369,6 +369,11 @@ fn scenario(
     epingles_dans_la_marge(&faible, &fabrique, &serveur);
 }
 
+fn pomper_fenetre(f: &Principale) {
+    let _ = f.window().take_snapshot();
+    slint::platform::update_timers_and_animations();
+}
+
 fn epingles_de(f: &Principale) -> Vec<String> {
     f.global::<DonneesMessagerie>()
         .get_epingles()
@@ -756,7 +761,35 @@ fn pieces_jointes_sondage_et_telechargement(
         .is_some_and(|l| l.annexes.vu_par == "Vu par dave"
             && l.annexes.apercu_lecteurs.row_count() == 1
             && l.annexes.lecteurs_en_plus == 0)));
-    println!("C3 : accusé de lecture de dave affiché sous 304");
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>().invoke_aller_en_bas()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            pomper_fenetre(f);
+            ElementHandle::find_by_element_type_name(f, "LecteursVue").count() > 0
+        },
+        "ligne de 304 instanciée en bas de la liste",
+    );
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "Vu par dave")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::Button))
+            .expect("bouton « Vu par »")
+            .invoke_accessible_default_action()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            pomper_fenetre(f);
+            ElementHandle::find_by_accessible_label(f, "Vu par dave").any(|e| {
+                e.accessible_role() == Some(AccessibleRole::Button)
+                    && e.accessible_expanded() == Some(true)
+            })
+        },
+        "liste « Vu par » dépliée",
+    );
+    println!("C3 : accusé de lecture de dave affiché sous 304, liste dépliée");
 }
 
 #[test]
