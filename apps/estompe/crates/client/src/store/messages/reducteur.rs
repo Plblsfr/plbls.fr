@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use tokio::time::Instant;
 
 use super::etat::{
@@ -98,6 +100,11 @@ pub enum Installation {
     },
     Rattrapage {
         apres: String,
+        messages: Vec<Message>,
+    },
+    Relecture {
+        de: String,
+        jusqu_a: String,
         messages: Vec<Message>,
     },
     Autour {
@@ -276,6 +283,57 @@ fn ajouter_au_present(
     borner(conversation, cle, Cote::Tete, a);
 }
 
+fn relire(
+    conversation: &mut Conversation,
+    cle: &CleConversation,
+    de: &str,
+    jusqu_a: &str,
+    messages: Vec<Message>,
+    a: &mut Application,
+) {
+    let dans = |id: &str| comparer_ids(id, de).is_ge() && comparer_ids(id, jusqu_a).is_le();
+    let mut relus: BTreeMap<String, Message> = messages
+        .into_iter()
+        .filter(|m| dans(id_message(m)))
+        .map(|m| (id_message(&m).to_string(), m))
+        .collect();
+    let mut supprimes: Vec<String> = Vec::new();
+    let mut modifies: Vec<String> = Vec::new();
+    conversation.messages.retain_mut(|m| {
+        let id = id_message(m).to_string();
+        if !dans(&id) {
+            return true;
+        }
+        match relus.remove(&id) {
+            Some(relu) => {
+                if *m != relu {
+                    *m = relu;
+                    modifies.push(id);
+                }
+                true
+            }
+            None => {
+                supprimes.push(id);
+                false
+            }
+        }
+    });
+    for message in modifies {
+        modifie(a, cle.clone(), &message);
+    }
+    for message in supprimes {
+        changer(
+            a,
+            ChangementMessages::Supprime {
+                conversation: cle.clone(),
+                message,
+            },
+        );
+    }
+    let fusion = fusionner(conversation, relus.into_values().collect());
+    annoncer(a, cle, fusion);
+}
+
 pub fn installer(
     etat: &mut EtatMessages,
     contexte: &Contexte,
@@ -355,6 +413,15 @@ pub fn installer(
                 .filter(|m| comparer_ids(id_message(m), &apres).is_gt())
                 .collect();
             ajouter_au_present(conversation, cle, recents, contexte, &mut a);
+        }
+        Installation::Relecture {
+            de,
+            jusqu_a,
+            messages,
+        } => {
+            if conversation.chargee {
+                relire(conversation, cle, &de, &jusqu_a, messages, &mut a);
+            }
         }
         Installation::Autour {
             message,

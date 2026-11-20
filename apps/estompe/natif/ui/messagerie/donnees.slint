@@ -65,11 +65,24 @@ export struct CarteLien {
     avec-image: bool,
 }
 
+export struct LecteurMessage {
+    utilisateur: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+    portrait: image,
+    heure: string,
+}
+
 export struct AnnexesMessage {
     pieces-jointes: [PieceJointe],
     images: int,
     sondage: SondageMessage,
     reactions: [ReactionMessage],
+    lecteurs: [LecteurMessage],
+    apercu-lecteurs: [LecteurMessage],
+    lecteurs-en-plus: int,
+    vu-par: string,
     carte: CarteLien,
     resume: string,
 }

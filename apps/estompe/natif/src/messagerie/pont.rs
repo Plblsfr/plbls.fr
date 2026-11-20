@@ -18,9 +18,9 @@ use super::annexes::{carte_affichee, chemin_libre, taille_de_vignette, CarteAffi
 use super::defilement::{Alignement, Defilement};
 use super::emoji;
 use super::lignes::{
-    donnees_message, lignes_de_conversation, mentionnables, premier_non_lu, utilisateur_mentionne,
-    ContexteLignes, DonneesAnnexes, DonneesLigne, DonneesMessage, DonneesPiece, GenreLigne,
-    GenrePiece,
+    donnees_message, libelle_vu_par, lignes_de_conversation, mentionnables, premier_non_lu,
+    utilisateur_mentionne, ContexteLignes, DonneesAnnexes, DonneesLecteur, DonneesLigne,
+    DonneesMessage, DonneesPiece, GenreLigne, GenrePiece,
 };
 use super::medias::{CleImage, Decodee, Format, Medias, Progres, Source, SourceMedias};
 use super::rendu::{
@@ -33,9 +33,9 @@ use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
 use crate::{
     AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EtatConversation, EtatTelechargement,
-    GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe, GenreSegment, LigneMessage,
-    OptionSondage, PieceJointe, Principale, ReactionMessage, ReponseMessage, SegmentTexte,
-    SondageMessage, Theme, Visionneuse,
+    GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe, GenreSegment, LecteurMessage,
+    LigneMessage, OptionSondage, PieceJointe, Principale, ReactionMessage, ReponseMessage,
+    SegmentTexte, SondageMessage, Theme, Visionneuse,
 };
 
 pub type Fuseau = Arc<dyn Fn(i64) -> i32 + Send + Sync>;
@@ -181,6 +181,7 @@ struct LigneFenetre {
     donnees: DonneesLigne,
     rendus: Option<Arc<Rendus>>,
     portrait: bool,
+    portraits_lecteurs: usize,
     badges: Vec<Badge>,
     medias: MediasLigne,
 }
@@ -378,7 +379,7 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
     if m.annexes.lien.is_some() {
         h += 90.0;
     }
-    if !m.annexes.reactions.is_empty() {
+    if !m.annexes.reactions.is_empty() || !m.annexes.lecteurs.is_empty() {
         h += 34.0;
     }
     h.max(if m.suite { 26.0 } else { 58.0 })
@@ -618,7 +619,36 @@ fn carte_slint(m: &MediasLigne, medias: &Medias) -> CarteLien {
     }
 }
 
-fn annexes_slint(a: &DonneesAnnexes, m: &MediasLigne, images: &Images) -> AnnexesMessage {
+pub const LECTEURS_EN_APERCU: usize = 5;
+
+fn lecteur_slint(l: &DonneesLecteur, profils: &Profils) -> LecteurMessage {
+    LecteurMessage {
+        utilisateur: l.utilisateur.as_str().into(),
+        pseudo: l.pseudo.as_str().into(),
+        initiales: l.initiales.as_str().into(),
+        teinte: l.teinte,
+        portrait: l
+            .avatar
+            .as_ref()
+            .and_then(|c| profils.avatar(c))
+            .map(Image::from_rgba8)
+            .unwrap_or_default(),
+        heure: l.heure.as_str().into(),
+    }
+}
+
+fn annexes_slint(
+    a: &DonneesAnnexes,
+    m: &MediasLigne,
+    images: &Images,
+    profils: &Profils,
+) -> AnnexesMessage {
+    let lecteurs: Vec<LecteurMessage> = a
+        .lecteurs
+        .iter()
+        .map(|l| lecteur_slint(l, profils))
+        .collect();
+    let apercu: Vec<LecteurMessage> = lecteurs.iter().take(LECTEURS_EN_APERCU).cloned().collect();
     let reactions: Vec<ReactionMessage> = a
         .reactions
         .iter()
@@ -665,6 +695,13 @@ fn annexes_slint(a: &DonneesAnnexes, m: &MediasLigne, images: &Images) -> Annexe
         pieces_jointes: ModelRc::new(VecModel::from(pieces)),
         sondage,
         reactions: ModelRc::new(VecModel::from(reactions)),
+        lecteurs_en_plus: lecteurs
+            .len()
+            .saturating_sub(LECTEURS_EN_APERCU)
+            .min(i32::MAX as usize) as i32,
+        vu_par: libelle_vu_par(&a.lecteurs).into(),
+        lecteurs: ModelRc::new(VecModel::from(lecteurs)),
+        apercu_lecteurs: ModelRc::new(VecModel::from(apercu)),
         carte: carte_slint(m, images.medias),
         resume: a.resume().into(),
     }
@@ -779,7 +816,7 @@ fn ligne_slint(
             .map(|r| r.texte_brut.as_str())
             .unwrap_or_default()
             .into(),
-        annexes: annexes_slint(&m.annexes, &l.medias, &images),
+        annexes: annexes_slint(&m.annexes, &l.medias, &images, profils),
         etat_envoi: SharedString::default(),
     }
 }
@@ -1104,6 +1141,7 @@ impl PontMessagerie {
                     | ChangementMessages::RetiresEnFin { conversation, .. }
                     | ChangementMessages::Bornes { conversation }
                     | ChangementMessages::Rechargee { conversation }
+                    | ChangementMessages::Lectures { conversation }
                         if *conversation == cle =>
                     {
                         reprojeter = true
@@ -1282,7 +1320,9 @@ impl PontMessagerie {
         let evidence = i.mis_en_evidence.clone();
         let supprimes = i.supprimes.clone();
         let apercus = i.apercus;
+        let cle = i.cle.clone();
         drop(i);
+        let lecteurs = cle.map(|c| self.store.lecteurs(&c)).unwrap_or_default();
         let maintenant = self.maintenant();
         self.store.lire(|etat| {
             lignes_de_conversation(
@@ -1296,6 +1336,7 @@ impl PontMessagerie {
                     decalage_minutes: decalage,
                     maintenant_ms: maintenant,
                     apercus,
+                    lecteurs: &lecteurs,
                 },
             )
         })
@@ -1332,6 +1373,7 @@ impl PontMessagerie {
             )
         };
         let maintenant = self.maintenant();
+        let lecteurs = self.store.lecteurs(cle);
         let donnees = self.store.lire(|etat| {
             donnees_message(
                 &message,
@@ -1345,6 +1387,7 @@ impl PontMessagerie {
                     decalage_minutes: decalage,
                     maintenant_ms: maintenant,
                     apercus,
+                    lecteurs: &lecteurs,
                 },
             )
         });
@@ -1437,10 +1480,10 @@ impl PontMessagerie {
                 }
                 None => MediasLigne::default(),
             };
-            let (rendus, portrait, badges_ligne) = match &donnees.message {
+            let (rendus, portrait, portraits_lecteurs, badges_ligne) = match &donnees.message {
                 Some(m) => {
                     let rendus = self.rendus_de(m);
-                    let portrait = m.avatar.as_ref().is_some_and(|c| {
+                    let mut present = |c: &CleAvatar| {
                         let present = self.profils.avatar(c).is_some();
                         if !present {
                             let mut i = self.verrou();
@@ -1450,7 +1493,15 @@ impl PontMessagerie {
                             }
                         }
                         present
-                    });
+                    };
+                    let portrait = m.avatar.as_ref().is_some_and(&mut present);
+                    let portraits_lecteurs = m
+                        .annexes
+                        .lecteurs
+                        .iter()
+                        .filter_map(|l| l.avatar.as_ref())
+                        .filter(|c| present(c))
+                        .count();
                     let badges_ligne = match self.profils.badges(&m.utilisateur) {
                         Some(b) => b,
                         None => {
@@ -1466,15 +1517,17 @@ impl PontMessagerie {
                     (
                         Some(rendus),
                         portrait,
+                        portraits_lecteurs,
                         if m.suite { Vec::new() } else { badges_ligne },
                     )
                 }
-                None => (None, false, Vec::new()),
+                None => (None, false, 0, Vec::new()),
             };
             nouvelles.push(LigneFenetre {
                 donnees,
                 rendus,
                 portrait,
+                portraits_lecteurs,
                 badges: badges_ligne,
                 medias: medias_ligne,
             });

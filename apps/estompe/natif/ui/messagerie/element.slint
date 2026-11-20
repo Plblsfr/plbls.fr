@@ -308,7 +308,7 @@ component CorpsMessage inherits Rectangle {
                             DonneesMessagerie.lien-clique(root.ligne.id, cible);
                         }
                     }
-                    if root.ligne.annexes.pieces-jointes.length > 0 || root.ligne.annexes.reactions.length > 0 || root.ligne.annexes.carte.genre != GenreCarte.aucune: AnnexesMessageVue {
+                    if root.ligne.annexes.pieces-jointes.length > 0 || root.ligne.annexes.reactions.length > 0 || root.ligne.annexes.lecteurs.length > 0 || root.ligne.annexes.carte.genre != GenreCarte.aucune: AnnexesMessageVue {
                         annexes: root.ligne.annexes;
                         message: root.ligne.id;
                     }

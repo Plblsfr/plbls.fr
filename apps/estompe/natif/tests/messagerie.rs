@@ -642,6 +642,36 @@ fn pieces_jointes_sondage_et_telechargement(
         "réaction reçue en temps réel",
     );
     println!("302 : réaction 🍕 reçue en temps réel, dessinée en image");
+
+    let vus = |f: &Principale, id: &str| -> Vec<(String, String)> {
+        lignes(f)
+            .into_iter()
+            .find(|l| l.id == id)
+            .map(|l| {
+                l.annexes
+                    .lecteurs
+                    .iter()
+                    .map(|r| (r.pseudo.to_string(), r.heure.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    fabrique.envoyer(evenement(
+        "read.updated",
+        json!({"channel_id": "c1", "user_id": "dave", "pseudo": "dave", "last_id": "304", "read_at": "2026-11-19T11:05:00Z"}),
+    ));
+    attendre_l_interface(
+        faible,
+        move |f| matches!(vus(f, "304").as_slice(), [(p, h)] if p == "dave" && h.contains(':')),
+        "« Vu par dave » sous le dernier message lu",
+    );
+    assert!(sur_l_interface(faible, |f| lignes(f)
+        .into_iter()
+        .find(|l| l.id == "304")
+        .is_some_and(|l| l.annexes.vu_par == "Vu par dave"
+            && l.annexes.apercu_lecteurs.row_count() == 1
+            && l.annexes.lecteurs_en_plus == 0)));
+    println!("C3 : accusé de lecture de dave affiché sous 304");
 }
 
 #[test]

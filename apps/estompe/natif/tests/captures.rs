@@ -91,6 +91,8 @@ const ECRANS: &[Ecran] = ecrans![
     "carte-profil-moi-clair", Clair, carte_profil_moi;
     "messagerie-variantes-clair", Clair, messagerie_variantes;
     "messagerie-variantes-sombre", Sombre, messagerie_variantes;
+    "messagerie-lecteurs-clair", Clair, messagerie_lecteurs;
+    "messagerie-lecteurs-sombre", Sombre, messagerie_lecteurs;
     "messagerie-markdown-clair", Clair, messagerie_markdown;
     "messagerie-markdown-sombre", Sombre, messagerie_markdown;
     "messages-prives-clair", Clair, messages_prives;
@@ -550,6 +552,46 @@ fn messagerie_variantes(f: &Principale) {
             }),
         ],
     );
+    stabiliser(f);
+}
+
+fn messagerie_lecteurs(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_variantes(),
+                false,
+            );
+            for (n, (id, pseudo)) in [
+                ("carol", "carol"),
+                ("dave", "dave"),
+                ("eve", "Ève"),
+                ("u4", "Hugo"),
+                ("u5", "Inès"),
+                ("u6", "Jade"),
+                ("u7", "Karim"),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let signal = commun::coquille::evenement(
+                    "read.updated",
+                    serde_json::json!({"channel_id": "c1", "user_id": id, "pseudo": pseudo,
+                        "last_id": if n < 6 { "109" } else { "107" },
+                        "read_at": format!("2026-11-19T09:{:02}:00Z", 10 + n)}),
+                );
+                if let estompe_client::temps_reel::Signal::Evenement(e) = signal {
+                    store.appliquer(&e);
+                }
+            }
+        },
+    );
+    let _ = pont;
     stabiliser(f);
 }
 
