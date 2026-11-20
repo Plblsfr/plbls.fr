@@ -104,10 +104,12 @@ pub fn demarrer(
         fenetre,
         bureau::OptionsBureau {
             zone: plateforme.zone,
+            pastille: plateforme.pastille,
             demarrage: plateforme.demarrage,
             memoire: session.memoire.clone(),
             entree: std::sync::Arc::new(move |evenement| emetteur.envoyer(evenement)),
             journal: Some(session.journal.clone()),
+            suivi_du_focus: Some(Box::new(coquille.suivi_du_focus())),
         },
     );
     let arret = coquille.arret();
@@ -116,6 +118,16 @@ pub fn demarrer(
         .avant_de_quitter(bureau::EtapeFermeture::Coquille, move || {
             arret.arreter(bureau::DELAI_ARRET);
         });
+    coquille.observer(bureau::notifications::Notifieur::nouveau(
+        bureau::notifications::OptionsNotifieur {
+            systeme: plateforme.notifications,
+            memoire: session.memoire.clone(),
+            fenetre_active: coquille.fenetre_active_partagee(),
+            source: coquille.source_pont(),
+            runtime: entree.runtime(),
+            journal: Some(session.journal.clone()),
+        },
+    ));
     Ok(Application {
         bureau,
         coquille,

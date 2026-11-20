@@ -84,18 +84,28 @@ pub fn zone_presente() -> bool {
     true
 }
 
+#[cfg(not(any(windows, target_os = "linux")))]
+pub fn zone_presente() -> bool {
+    false
+}
+
 #[cfg(target_os = "linux")]
 pub const NOM_OBSERVATEUR: &str = "org.kde.StatusNotifierWatcher";
 
 #[cfg(target_os = "linux")]
 pub fn zone_presente() -> bool {
+    nom_tenu_sur_le_bus(NOM_OBSERVATEUR)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn nom_tenu_sur_le_bus(nom_bus: &str) -> bool {
     let Ok(connexion) = zbus::blocking::Connection::session() else {
         return false;
     };
     let Ok(bus) = zbus::blocking::fdo::DBusProxy::new(&connexion) else {
         return false;
     };
-    let Ok(nom) = zbus::names::BusName::try_from(NOM_OBSERVATEUR) else {
+    let Ok(nom) = zbus::names::BusName::try_from(nom_bus) else {
         return false;
     };
     bus.name_has_owner(nom).unwrap_or(false)

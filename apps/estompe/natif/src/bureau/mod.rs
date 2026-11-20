@@ -1,5 +1,6 @@
 pub mod fermeture;
 pub mod instance;
+pub mod notifications;
 pub mod zone;
 
 pub use fermeture::{EtapeFermeture, Fermeture};
@@ -8,8 +9,9 @@ use crate::entree::Evenement;
 use crate::session::{retenir_geometrie, Memoire};
 use crate::Principale;
 use estompe_client::journal::{Journal, Niveau};
+use estompe_client::pastille::{description_pastille, icone_avec_pastille, image_pastille};
 use estompe_plateforme::instance::{MessageInstance, RecepteurInstance};
-use estompe_plateforme::{DemarrageSession, EvenementZone, ZoneNotification};
+use estompe_plateforme::{DemarrageSession, EvenementZone, Image, Pastille, ZoneNotification};
 use slint::ComponentHandle;
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -23,20 +25,25 @@ pub type EntreeBureau = Arc<dyn Fn(Evenement) + Send + Sync>;
 
 pub struct OptionsBureau {
     pub zone: Box<dyn ZoneNotification>,
+    pub pastille: Box<dyn Pastille>,
     pub demarrage: Box<dyn DemarrageSession>,
     pub memoire: Memoire,
     pub entree: EntreeBureau,
     pub journal: Option<Arc<Journal>>,
+    pub suivi_du_focus: Option<Box<dyn Fn(bool)>>,
 }
 
 struct Interne {
     fenetre: slint::Weak<Principale>,
     zone: Box<dyn ZoneNotification>,
     zone_installee: Cell<bool>,
+    icone: Image,
+    pastille: Box<dyn Pastille>,
     demarrage: Box<dyn DemarrageSession>,
     memoire: Memoire,
     entree: EntreeBureau,
     journal: Option<Arc<Journal>>,
+    suivi_du_focus: Option<Box<dyn Fn(bool)>>,
     fermeture: Fermeture,
 }
 
@@ -64,10 +71,13 @@ impl Bureau {
             fenetre: fenetre.as_weak(),
             zone: options.zone,
             zone_installee: Cell::new(false),
+            icone: zone::icone_de_l_app(),
+            pastille: options.pastille,
             demarrage: options.demarrage,
             memoire: options.memoire,
             entree: options.entree,
             journal: options.journal,
+            suivi_du_focus: options.suivi_du_focus,
             fermeture,
         });
         BUREAU.with(|b| *b.borrow_mut() = Rc::downgrade(&interne));
@@ -117,6 +127,9 @@ impl Bureau {
             if let Some(f) = self.interne.fenetre.upgrade() {
                 retenir_geometrie(&self.interne.memoire, &f);
             }
+            if let Some(suivi) = &self.interne.suivi_du_focus {
+                suivi(false);
+            }
             return;
         }
         self.interne.fermeture.quitter();
@@ -132,7 +145,7 @@ impl Bureau {
         match self
             .interne
             .zone
-            .installer(&zone::icone_de_l_app(), zone::INFO_ZONE, recepteur)
+            .installer(&self.interne.icone, zone::INFO_ZONE, recepteur)
         {
             Ok(()) => self.interne.zone_installee.set(true),
             Err(e) => self.noter(
@@ -178,6 +191,41 @@ impl Bureau {
 
     pub fn fermeture(&self) -> Fermeture {
         self.interne.fermeture.clone()
+    }
+
+    pub fn fenetre(&self) -> Option<Principale> {
+        self.interne.fenetre.upgrade()
+    }
+
+    pub fn definir_pastille(&self, mentions: usize) {
+        if self.interne.zone_installee.get() {
+            let icone = icone_avec_pastille(&self.interne.icone, mentions);
+            if let Err(e) = self.interne.zone.definir_icone(&icone) {
+                self.noter(Niveau::Avertissement, &format!("icône de la zone : {e}"));
+            }
+        }
+        let pastille = &self.interne.pastille;
+        if !pastille.disponible() {
+            return;
+        }
+        if let Some(poignee) = self.poignee_de_fenetre() {
+            let _ = pastille.attacher(poignee);
+        }
+        if let Err(e) = pastille.definir(
+            image_pastille(mentions).as_ref(),
+            &description_pastille(mentions),
+        ) {
+            self.noter(Niveau::Avertissement, &format!("pastille : {e}"));
+        }
+    }
+
+    fn poignee_de_fenetre(&self) -> Option<estompe_plateforme::RawWindowHandle> {
+        use slint::winit_030::winit::raw_window_handle::HasWindowHandle;
+        use slint::winit_030::WinitWindowAccessor;
+        let f = self.interne.fenetre.upgrade()?;
+        f.window()
+            .with_winit_window(|w| w.window_handle().ok().map(|p| p.as_raw()))
+            .flatten()
     }
 
     pub fn zone_presente(&self) -> bool {

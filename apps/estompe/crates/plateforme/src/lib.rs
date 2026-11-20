@@ -5,8 +5,15 @@ mod erreur;
 mod fichiers;
 mod indisponible;
 pub mod instance;
+#[cfg(target_os = "linux")]
+mod notifications_linux;
+#[cfg(windows)]
+mod pastille_windows;
 #[cfg(windows)]
 mod registre_windows;
+pub mod toast;
+#[cfg(windows)]
+mod toast_windows;
 mod traits;
 mod url;
 mod zone;
@@ -61,6 +68,8 @@ impl Plateforme {
             presse_papiers: Box::new(PressePapiersSysteme),
             zone: Box::new(ZoneSysteme::default()),
             demarrage: demarrage_de_l_os(),
+            notifications: notifications_de_l_os(),
+            pastille: pastille_de_l_os(),
             ..Self::indisponible()
         }
     }
@@ -85,6 +94,36 @@ impl Plateforme {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn notifications_de_l_os() -> std::sync::Arc<dyn Notifications> {
+    let notifications = notifications_linux::NotificationsLinux::nouvelles();
+    if notifications.disponible() {
+        std::sync::Arc::new(notifications)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
+#[cfg(windows)]
+fn notifications_de_l_os() -> std::sync::Arc<dyn Notifications> {
+    std::sync::Arc::new(toast_windows::ToastsWindows::nouveaux())
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn notifications_de_l_os() -> std::sync::Arc<dyn Notifications> {
+    std::sync::Arc::new(Indisponible)
+}
+
+#[cfg(windows)]
+fn pastille_de_l_os() -> Box<dyn Pastille> {
+    Box::new(pastille_windows::PastilleWindows::default())
+}
+
+#[cfg(not(windows))]
+fn pastille_de_l_os() -> Box<dyn Pastille> {
+    Box::new(Indisponible)
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -103,9 +142,8 @@ mod tests {
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
         assert!(p.zone.disponible());
         assert_eq!(p.demarrage.disponible(), cfg!(windows));
+        assert_eq!(p.pastille.disponible(), cfg!(windows));
         for (nom, disponible) in [
-            ("notifications", p.notifications.disponible()),
-            ("pastille", p.pastille.disponible()),
             ("installation", p.installation.disponible()),
             ("raccourcis", p.raccourcis.disponible()),
             ("capture_ecran", p.capture_ecran.disponible()),

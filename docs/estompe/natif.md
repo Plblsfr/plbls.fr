@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -394,6 +394,36 @@ deux moteurs et sur les deux OS :
 - Non vérifié sur machine réelle : icône et menu sous Windows, retour depuis un autre bureau virtuel, rendu dans une zone StatusNotifierItem (KDE,
   GNOME avec l'extension AppIndicator) ; sous Wayland, le jeton d'activation n'est pas transmis à winit (seul `focus_window()` est tenté).
 
+## Notifications
+
+Règles dans la crate client (`notifications.rs`, sans code d'OS), reprises du front (`showNotification` de `blocks/notifications/notify.ts` et de `store.svelte.ts`) :
+
+- L'app ne notifie que sur l'évènement temps réel `notification` (`Changement::Notification` du store), jamais sur `message.created` : sourdine
+  d'un salon ou d'un serveur, « ne pas déranger », mentions et types de notification sont décidés par le serveur (`blocks/notifications`).
+- `decider` : rien pour l'activité vocale de mon propre salon ; rien si la conversation de la notification est affichée **et** la fenêtre active
+  (focus de winit) ; sinon une notification du système si la préférence « Notifications du bureau » est active.
+- Regroupement : l'étiquette (`tag` du serveur) remplace une notification de même étiquette (toast de même `Tag`, `replaces_id` sous Linux).
+- Son : celui du système avec la notification (audio par défaut du toast, indice `sound-name=message-new-instant` sous Linux), muet si le serveur la dit
+  silencieuse. Écart assumé : le front joue un bip même quand les notifications du bureau sont coupées ; l'app native n'a pas de sortie audio avant le lot vocal.
+- Actions (`effet_de_l_action`) : un clic ramène la fenêtre et ouvre la conversation au message (adresse du serveur sans « / » initial, `#/s/…/<message>`
+  ou `#/dm/…`, puis `sauter_a`) ; « Marquer comme lu » lit la conversation (`Store::lire_conversation` : `POST …/read` et lecture des mentions) sans
+  naviguer ; « Répondre » avec un texte l'envoie par la file d'envoi (`Store::envoyer`, message simple de la conversation), sans texte ouvre la conversation.
+  Les actions ne sont proposées que si la notification porte un message et une conversation.
+
+| | Windows | Linux |
+|---|---|---|
+| Affichage | toast WinRT (`toast_windows.rs`, XML de `toast.rs`), AUMID `fr.plbls.estompe.natif` enregistré dans `HKCU\Software\Classes\AppUserModelId\fr.plbls.estompe.natif` (`DisplayName` « Estompe natif (bêta) », `IconUri` = `estompe.ico` à côté de l'exe) au lancement | `notify-rust` (D-Bus, `org.freedesktop.Notifications`, `notifications_linux.rs`) |
+| Actions | clic, champ « Répondre » et bouton « Marquer comme lu » | clic (`default`) et « Marquer comme lu » si le serveur annonce `actions` ; pas de réponse en ligne (la spécification n'en a pas) ; 8 notifications attendues au plus, la plus ancienne est fermée |
+| Pastille de mentions | barre des tâches (`ITaskbarList3::SetOverlayIcon`, `pastille_windows.rs`) et icône de la zone | icône de la zone ; barre des tâches au lot 11 (pas de standard sans `.desktop`) |
+
+- Natif : `src/bureau/notifications.rs` (`Notifieur`) observe la session de la coquille (`Coquille::observer`, trait `ObservateurSession`) : décision,
+  affichage, table des 64 dernières notifications pour retrouver une action par son étiquette. La pastille suit `total_mentions()` à chaque lot de
+  changements, et n'est redessinée que si le nombre change : disque `#d9342b` et chiffres blancs d'une police bitmap embarquée, « 9+ » au-delà de 9
+  (`pastille.rs` de la crate client), aussi posé dans un coin de l'icône de la zone ; effacée à la fin de la session.
+- Journal : seulement `notification affichée (genre, conversation)` ; ni titre, ni corps, ni texte de réponse.
+- Sans activateur COM, un clic sur un toast resté dans le centre de notifications peut ne rien rappeler quand l'app tourne : à vérifier sur machine réelle,
+  comme le toast avec ses boutons (app installée), la réponse et la pastille de la barre des tâches ; sous Linux, l'affichage et le clic sous un vrai bureau.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -405,11 +435,11 @@ premier plan, démarrage avec la session. Chaque trait a une méthode `disponibl
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), la zone de notification (`ZoneNotification`, `tray-icon`) et l'instance unique (fonctions de
-`instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session. Le reste arrive avec son lot, Windows d'abord.
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
+l'instance unique (fonctions de `instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session et la pastille de la barre des tâches. Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
-De même, les tests qui ont besoin du bus de session D-Bus (zone de notification sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
+De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
 
 ## Données locales
 
@@ -474,7 +504,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `bureau.rs` (même backend, la boucle lancée deux fois) : fausse zone de notification (`tests/commun/`, module `bureau`) ; un message d'instance ramène la fenêtre masquée et
   transmet l'invitation, fermer masque la fenêtre en gardant la connexion temps réel (un message reçu arrive encore), clic et « Ouvrir » la ramènent,
-  « Quitter » arrête la coquille, ferme le flux et retire l'icône ; sans zone, la demande de fermeture quitte.
+  « Quitter » arrête la coquille, ferme le flux et retire l'icône ; sans zone, la demande de fermeture quitte. Entre les deux, avec de fausses
+  notifications et une fausse pastille : une mention reçue met la pastille à 1 (barre des tâches et icône de la zone), une notification est affichée
+  (le journal de débogage ne contient pas son contenu), « Marquer comme lu » envoie la lecture au faux serveur et efface la pastille, « Répondre » envoie
+  le texte, le clic ramène la fenêtre sur la conversation, et rien n'est affiché pour la conversation ouverte dans la fenêtre active.
 `instance.rs` (sans backend) : le test tient la première instance, lance le vrai binaire avec `--invitation` : il sort avec succès sans fenêtre et le message reçu porte ses arguments.
 
 ## CI

@@ -162,6 +162,22 @@ impl Fabrique for FabriqueReelle {
     }
 }
 
+pub trait ObservateurSession: Send + Sync {
+    fn ouverte(&self, store: &Store);
+    fn changements(&self, store: &Store, lot: &[estompe_client::store::Changement]);
+    fn fermee(&self);
+}
+
+type Observateur = Arc<Mutex<Option<Arc<dyn ObservateurSession>>>>;
+
+fn observateur(contexte: &Contexte) -> Option<Arc<dyn ObservateurSession>> {
+    contexte
+        .observateur
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
 
 fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
@@ -175,6 +191,7 @@ fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
 pub struct Coquille {
     emplacement: Emplacement,
     focus: Arc<AtomicBool>,
+    observateur: Observateur,
     tache: JoinHandle<()>,
     arret: ArretCoquille,
 }
@@ -215,6 +232,7 @@ impl Coquille {
     ) -> Self {
         let emplacement: Emplacement = Arc::new(Mutex::new((0, None)));
         let focus = Arc::new(AtomicBool::new(true));
+        let observateur: Observateur = Arc::new(Mutex::new(None));
         brancher_rappels(f, &emplacement, &memoire);
         let contexte = Contexte {
             emetteur: entree.emetteur(),
@@ -225,6 +243,7 @@ impl Coquille {
             emplacement: emplacement.clone(),
             runtime: entree.runtime(),
             focus: focus.clone(),
+            observateur: observateur.clone(),
         };
         let (envoi_arret, arret) = oneshot::channel();
         let (envoi_fini, fini) = std::sync::mpsc::channel();
@@ -234,6 +253,7 @@ impl Coquille {
         Self {
             emplacement,
             focus,
+            observateur,
             tache,
             arret: ArretCoquille {
                 interne: Arc::new(Mutex::new((Some(envoi_arret), Some(fini)))),
@@ -243,6 +263,19 @@ impl Coquille {
 
     pub fn arret(&self) -> ArretCoquille {
         self.arret.clone()
+    }
+
+    pub fn observer(&self, observateur: Arc<dyn ObservateurSession>) {
+        *self.observateur.lock().unwrap_or_else(|e| e.into_inner()) = Some(observateur);
+    }
+
+    pub fn source_pont(&self) -> SourcePont {
+        let emplacement = self.emplacement.clone();
+        Arc::new(move || pont_courant(&emplacement))
+    }
+
+    pub fn fenetre_active_partagee(&self) -> Arc<AtomicBool> {
+        self.focus.clone()
     }
 
     pub fn pont(&self) -> Option<Pont> {
@@ -447,6 +480,7 @@ struct Contexte {
     emplacement: Emplacement,
     runtime: tokio::runtime::Handle,
     focus: Arc<AtomicBool>,
+    observateur: Observateur,
 }
 
 impl Contexte {
@@ -638,6 +672,9 @@ async fn session(
         }
         return;
     }
+    if let Some(o) = observateur(&contexte) {
+        o.ouverte(&store);
+    }
     let reseau_initial = *reseau.borrow_and_update();
     let p = pont.clone();
     contexte.sur_l_interface(move |f| {
@@ -662,6 +699,9 @@ async fn session(
             _ = &mut arret => break,
             lot = abonne.recv() => match lot {
                 Some(lot) => {
+                    if let Some(o) = observateur(&contexte) {
+                        o.changements(&store, &lot);
+                    }
                     let p = pont.clone();
                     contexte.sur_l_interface(move |f| p.appliquer(f, &lot));
                 }
@@ -701,6 +741,9 @@ async fn session(
         }
     }
     pont.messagerie().saisie().enregistrer_maintenant();
+    if let Some(o) = observateur(&contexte) {
+        o.fermee();
+    }
     sections.abort();
     suivi.abort();
     if let Some(temps_reel) = temps_reel {
