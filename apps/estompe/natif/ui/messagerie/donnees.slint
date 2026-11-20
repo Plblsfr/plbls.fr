@@ -153,6 +153,7 @@ export struct LigneMessage {
     texte-brut: string,
     annexes: AnnexesMessage,
     etat-envoi: string,
+    envoi-echec: bool,
 }
 
 export enum EtatConversation { chargement, erreur, prete }
@@ -192,4 +193,6 @@ export global DonneesMessagerie {
     callback fermer-visionneuse();
     callback voir-epingle(string);
     callback recharger-epingles();
+    callback reessayer-envoi(string);
+    callback abandonner-envoi(string);
 }

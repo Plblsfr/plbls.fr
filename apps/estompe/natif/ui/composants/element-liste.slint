@@ -13,6 +13,7 @@ export component ElementListe {
     in property <int> mentions: 0;
     in property <string> etiquette;
     in property <string> description;
+    in property <bool> brouillon: false;
     in property <int> calque: 0;
     out property <bool> a-le-focus: portee.has-focus;
     callback clique();
@@ -92,6 +93,20 @@ export component ElementListe {
             alignment: center;
             Etiquette {
                 texte: root.etiquette;
+            }
+        }
+        if root.brouillon: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 13px;
+                height: 13px;
+                accessible-role: image;
+                accessible-label: "Brouillon";
+                Icone {
+                    nom: "edit";
+                    taille: 13px;
+                    couleur: Theme.gris;
+                }
             }
         }
         if root.mentions > 0 || root.non-lus > 0: VerticalLayout {

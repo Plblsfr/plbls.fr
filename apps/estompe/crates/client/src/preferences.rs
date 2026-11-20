@@ -159,21 +159,25 @@ impl Preferences {
 
     pub fn enregistrer(&self, dossier: &Path) -> io::Result<()> {
         fs::create_dir_all(dossier)?;
-        let chemin = Self::chemin(dossier);
-        let provisoire = avec_suffixe(&chemin, &format!("{}.tmp", std::process::id()));
-        let ecriture = (|| {
-            let mut fichier = File::create(&provisoire)?;
-            fichier.write_all(&serde_json::to_vec_pretty(self)?)?;
-            fichier.write_all(b"\n")?;
-            fichier.sync_all()?;
-            drop(fichier);
-            fs::rename(&provisoire, &chemin)
-        })();
-        if ecriture.is_err() {
-            let _ = fs::remove_file(&provisoire);
-        }
-        ecriture
+        let mut octets = serde_json::to_vec_pretty(self)?;
+        octets.push(b'\n');
+        ecrire_atomiquement(&Self::chemin(dossier), &octets)
     }
+}
+
+pub fn ecrire_atomiquement(chemin: &Path, octets: &[u8]) -> io::Result<()> {
+    let provisoire = avec_suffixe(chemin, &format!("{}.tmp", std::process::id()));
+    let ecriture = (|| {
+        let mut fichier = File::create(&provisoire)?;
+        fichier.write_all(octets)?;
+        fichier.sync_all()?;
+        drop(fichier);
+        fs::rename(&provisoire, chemin)
+    })();
+    if ecriture.is_err() {
+        let _ = fs::remove_file(&provisoire);
+    }
+    ecriture
 }
 
 #[cfg(test)]

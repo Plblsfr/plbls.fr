@@ -18,7 +18,8 @@ use estompe_natif::entree::{self, Compte, Etat};
 use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
 use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::{
-    creer_fenetre, DonneesCoquille, DonneesMessagerie, ModeTheme, Mouvement, Principale, Theme,
+    creer_fenetre, DonneesCoquille, DonneesMessagerie, DonneesSaisie, ModeTheme, Mouvement,
+    Principale, Theme,
 };
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
@@ -110,6 +111,13 @@ const ECRANS: &[Ecran] = ecrans![
     "messagerie-sondages-sombre", Sombre, messagerie_sondages;
     "messagerie-defilement-clair", Clair, messagerie_defilement;
     "messagerie-defilement-sombre", Sombre, messagerie_defilement;
+    "saisie-lignes-clair", Clair, saisie_lignes;
+    "saisie-lignes-sombre", Sombre, saisie_lignes;
+    "saisie-reponse-clair", Clair, saisie_reponse;
+    "saisie-modification-sombre", Sombre, saisie_modification;
+    "saisie-lecture-seule-clair", Clair, saisie_lecture_seule;
+    "saisie-non-envoye-clair", Clair, saisie_non_envoye;
+    "saisie-non-envoye-sombre", Sombre, saisie_non_envoye;
 ];
 
 fn bob() -> Compte {
@@ -363,12 +371,27 @@ fn coquille_complete(
     medias: Option<Arc<Medias>>,
     preparer: impl FnOnce(&Store),
 ) -> Pont {
+    coquille_complete_sur(f, etat, route, profils, medias, None, preparer)
+}
+
+fn coquille_complete_sur(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    route: Route,
+    profils: Arc<Profils>,
+    medias: Option<Arc<Medias>>,
+    adresse: Option<&str>,
+    preparer: impl FnOnce(&Store),
+) -> Pont {
     connecte(f);
     let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()
         .and_hms_opt(9, 30, 0)
         .unwrap();
-    let store = commun::coquille::store(etat);
+    let store = match adresse {
+        Some(adresse) => commun::coquille::store_sur(etat, adresse),
+        None => commun::coquille::store(etat),
+    };
     installer_conversations(&store);
     preparer(&store);
     let pont = Pont::nouveau(
@@ -1057,4 +1080,97 @@ fn la_comparaison_tolere_le_bruit_et_signale_un_changement_de_couleur() {
     assert_eq!(difference.get_pixel(0, 0).0, [220, 0, 60, 255]);
     let autre_taille = image::RgbaImage::new(50, 100);
     assert_eq!(comparer(&autre_taille, &reference).0, 1.0);
+}
+
+fn saisie_courte(f: &Principale) -> Pont {
+    messagerie_avec(f, commun::coquille::conversation_courte("c1"))
+}
+
+fn saisie_lignes(f: &Principale) {
+    let pont = saisie_courte(f);
+    let texte = "Une première ligne\nune deuxième\net une troisième, assez longue pour montrer que le champ grandit avec son contenu.";
+    f.global::<DonneesSaisie>().set_texte(texte.into());
+    pont.messagerie().saisie_modifiee(f, texte);
+    stabiliser(f);
+}
+
+fn saisie_reponse(f: &Principale) {
+    let pont = saisie_courte(f);
+    let id = pont
+        .store()
+        .conversation(&salon_c1())
+        .and_then(|c| c.messages.first().and_then(|m| m.id.clone()))
+        .unwrap();
+    pont.messagerie().repondre_a(f, &id);
+    stabiliser(f);
+}
+
+fn saisie_modification(f: &Principale) {
+    let pont = saisie_courte(f);
+    let id = pont
+        .store()
+        .conversation(&salon_c1())
+        .and_then(|c| c.messages.last().and_then(|m| m.id.clone()))
+        .unwrap();
+    pont.messagerie().modifier_message(f, &id);
+    stabiliser(f);
+}
+
+fn saisie_lecture_seule(f: &Principale) {
+    let mut etat = commun::coquille::etat_avec_membres();
+    if let Some(detail) = etat.details.get_mut("s1") {
+        for salon in detail.channels.iter_mut().flatten() {
+            if salon.id.as_deref() == Some("c1") {
+                salon.permissions = Some(vec!["view_channel".into()]);
+            }
+        }
+    }
+    coquille_complete(
+        f,
+        etat,
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        Some(medias_des_captures()),
+        |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_courte("c1"),
+                false,
+            )
+        },
+    );
+    stabiliser(f);
+}
+
+fn saisie_non_envoye(f: &Principale) {
+    let serveur = commun::coquille::ServeurMessages::demarrer(10);
+    *serveur.refus_d_envoi.lock().unwrap() = Some(429);
+    let adresse = serveur.adresse.clone();
+    coquille_complete_sur(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        Some(medias_des_captures()),
+        Some(&adresse),
+        |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_courte("c1"),
+                false,
+            );
+            store.definir_horloge(Arc::new(|| MAINTENANT_MS));
+            let reseau = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            reseau.block_on(store.envoyer(
+                &salon_c1(),
+                estompe_client::store::messages::Brouillon::texte(
+                    "Ce message a été refusé par le serveur.",
+                ),
+            ));
+        },
+    );
+    stabiliser(f);
 }

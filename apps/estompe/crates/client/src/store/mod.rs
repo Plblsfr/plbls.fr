@@ -48,7 +48,10 @@ struct Interne {
     expedition: tokio::sync::Mutex<()>,
     relance: std::sync::atomic::AtomicBool,
     rythme: Mutex<messages::RythmeSaisie>,
+    horloge: RwLock<Option<Horloge>>,
 }
+
+pub type Horloge = Arc<dyn Fn() -> i64 + Send + Sync>;
 
 #[derive(Clone)]
 pub struct Store {
@@ -66,8 +69,26 @@ impl Store {
                 expedition: tokio::sync::Mutex::new(()),
                 relance: std::sync::atomic::AtomicBool::new(false),
                 rythme: Mutex::new(messages::RythmeSaisie::default()),
+                horloge: RwLock::new(None),
             }),
         }
+    }
+
+    pub fn definir_horloge(&self, horloge: Horloge) {
+        *self
+            .interne
+            .horloge
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(horloge);
+    }
+
+    pub fn maintenant_ms(&self) -> Option<i64> {
+        self.interne
+            .horloge
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|h| h())
     }
 
     pub fn client(&self) -> &Client {

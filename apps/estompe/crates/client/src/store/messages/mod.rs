@@ -46,7 +46,10 @@ impl Store {
             id: Some(e.moi().to_string()),
             pseudo: Some(e.pseudo().to_string()),
         });
-        let cree_a = maintenant_iso();
+        let cree_a = self
+            .maintenant_ms()
+            .map(crate::format::iso_de_ms)
+            .unwrap_or_else(maintenant_iso);
         Some(self.modifier_messages(|m, _| ajouter_envoi(m, cle, brouillon, auteur, cree_a)))
     }
 
