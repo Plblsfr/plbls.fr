@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton, Avatar, Champ, ListeVirtuelle, BadgeRole, GenreBadgeRole, EtatPresence } from "../composants.slint";
-import { DonneesCoquille, LigneMembre, LigneBadge } from "donnees.slint";
+import { DonneesCoquille, LigneMembre, LigneBadge, OngletMarge } from "donnees.slint";
+import { MargeEpingles } from "../messagerie/epingles.slint";
 
 export component Medaille {
     in property <LigneBadge> badge;
@@ -166,7 +167,39 @@ component LigneMembreVue {
     }
 }
 
+component OngletMargeVue inherits Rectangle {
+    in property <string> texte;
+    in property <bool> choisi;
+    callback clique();
+    horizontal-stretch: 1;
+    border-radius: Rayon.xs;
+    background: root.choisi ? Theme.surface : zone.has-hover ? Theme.papier-2 : transparent;
+    border-width: root.choisi ? 1px : 0;
+    border-color: Theme.trait;
+    accessible-role: tab;
+    accessible-label: root.texte;
+    accessible-item-selected: root.choisi;
+    accessible-action-default => {
+        root.clique();
+    }
+    zone := TouchArea {
+        clicked => {
+            root.clique();
+        }
+    }
+    Text {
+        text: root.texte;
+        color: root.choisi ? Theme.encre : Theme.gris;
+        font-family: Typo.texte;
+        font-size: Typo.petit;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
 export component MargeMembres inherits Rectangle {
+    property <bool> sur-epingles: DonneesCoquille.epingles-disponibles && DonneesCoquille.onglet-marge == OngletMarge.epingles;
     VerticalLayout {
         Rectangle {
             height: 60px;
@@ -183,25 +216,22 @@ export component MargeMembres inherits Rectangle {
                         background: Theme.papier-3;
                         accessible-role: tab-list;
                         accessible-label: "Contenu de la marge";
-                        Rectangle {
-                            x: 3px;
-                            y: 3px;
-                            width: parent.width - 6px;
-                            height: parent.height - 6px;
-                            border-radius: Rayon.xs;
-                            background: Theme.surface;
-                            border-width: 1px;
-                            border-color: Theme.trait;
-                            accessible-role: tab;
-                            accessible-label: "Membres";
-                            Text {
-                                text: "Membres";
-                                color: Theme.encre;
-                                font-family: Typo.texte;
-                                font-size: Typo.petit;
-                                font-weight: Typo.demi-gras;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
+                        HorizontalLayout {
+                            padding: 3px;
+                            spacing: 3px;
+                            if DonneesCoquille.membres-disponibles: OngletMargeVue {
+                                texte: "Membres";
+                                choisi: !root.sur-epingles;
+                                clique => {
+                                    DonneesCoquille.onglet-marge-choisi(OngletMarge.membres);
+                                }
+                            }
+                            if DonneesCoquille.epingles-disponibles: OngletMargeVue {
+                                texte: "Épinglés";
+                                choisi: root.sur-epingles;
+                                clique => {
+                                    DonneesCoquille.onglet-marge-choisi(OngletMarge.epingles);
+                                }
                             }
                         }
                     }
@@ -224,7 +254,10 @@ export component MargeMembres inherits Rectangle {
                 background: Theme.trait;
             }
         }
-        VerticalLayout {
+        if root.sur-epingles: MargeEpingles {
+            vertical-stretch: 1;
+        }
+        if !root.sur-epingles: VerticalLayout {
             padding-top: Espace.e2;
             padding-left: Espace.e2;
             padding-right: Espace.e2;
@@ -269,7 +302,7 @@ export component MargeMembres inherits Rectangle {
                 }
             }
         }
-        liste := ListeVirtuelle {
+        if !root.sur-epingles: liste := ListeVirtuelle {
             vertical-stretch: 1;
             content-y <=> DonneesCoquille.defilement-membres;
             init => {

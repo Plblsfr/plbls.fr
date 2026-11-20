@@ -124,6 +124,8 @@ export struct LigneMembre {
     nombre-badges: int,
 }
 
+export enum OngletMarge { membres, epingles }
+
 export struct EnTeteMarge {
     titre: string,
     filtrable: bool,
@@ -176,6 +178,9 @@ export global DonneesCoquille {
     in-out property <bool> panneau-replie: false;
     in property <bool> marge-disponible: false;
     in-out property <bool> marge-ouverte: false;
+    in property <bool> membres-disponibles: false;
+    in property <bool> epingles-disponibles: false;
+    in property <OngletMarge> onglet-marge: OngletMarge.membres;
     in property <length> largeur-marge: 320px;
     in property <[LigneMembre]> membres;
     in property <EnTeteMarge> marge;
@@ -193,6 +198,8 @@ export global DonneesCoquille {
     callback serveur-voisin(bool);
     callback panneau-bascule(bool);
     callback marge-bascule(bool);
+    callback onglet-marge-choisi(OngletMarge);
+    callback epingles-bascule();
     callback membres-defiles(length, length);
     callback filtrer-membres(string);
     callback ouvrir-membre(string);

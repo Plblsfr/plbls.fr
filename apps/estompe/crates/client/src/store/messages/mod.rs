@@ -13,13 +13,14 @@ pub use etat::{
     MESSAGES_SAUT_MAX, PAGES_RATTRAPAGE_MAX,
 };
 pub use reducteur::{
-    appliquer_evenement, expirer_saisies, installer, installer_lectures, mettre_en_evidence,
-    ChangementMessages, Contexte, Installation,
+    appliquer_evenement, expirer_saisies, installer, installer_epingles, installer_lectures,
+    mettre_en_evidence, ChangementMessages, Contexte, Installation,
 };
 
 use super::etat::CleConversation;
 use super::reducteur::{definir_bas_de_liste, Application};
 use super::Store;
+use crate::http::ErreurApi;
 use crate::temps_reel::evenements::Lecture;
 use crate::temps_reel::Evenement;
 use crate::types::Message;
@@ -53,6 +54,27 @@ impl Store {
                 rechargee: false,
             };
             ((), installer(m, contexte, cle, installation))
+        });
+    }
+
+    pub fn epingles(&self, cle: &CleConversation) -> Option<Vec<Message>> {
+        self.lire_messages(|m| m.epingles_de(cle).map(<[Message]>::to_vec))
+    }
+
+    pub async fn charger_epingles(&self, cle: &CleConversation) -> Result<(), ErreurApi> {
+        let messages = self.client().epingles(cle).await?;
+        self.installer_epingles(cle, messages);
+        Ok(())
+    }
+
+    pub fn installer_epingles(&self, cle: &CleConversation, messages: Vec<Message>) {
+        self.modifier_messages(|m, _| ((), installer_epingles(m, cle, messages)));
+    }
+
+    pub fn oublier_epingles(&self) {
+        self.modifier_messages(|m, _| {
+            m.epingles = None;
+            ((), Application::default())
         });
     }
 

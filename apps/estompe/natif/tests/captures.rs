@@ -86,11 +86,15 @@ const ECRANS: &[Ecran] = ecrans![
     "membres-clair", Clair, membres;
     "membres-sombre", Sombre, membres;
     "membres-filtre-clair", Clair, membres_filtre;
+    "marge-epingles-clair", Clair, marge_epingles;
+    "marge-epingles-sombre", Sombre, marge_epingles;
     "carte-profil-clair", Clair, carte_profil;
     "carte-profil-sombre", Sombre, carte_profil;
     "carte-profil-moi-clair", Clair, carte_profil_moi;
     "messagerie-variantes-clair", Clair, messagerie_variantes;
     "messagerie-variantes-sombre", Sombre, messagerie_variantes;
+    "messagerie-lecteurs-clair", Clair, messagerie_lecteurs;
+    "messagerie-lecteurs-sombre", Sombre, messagerie_lecteurs;
     "messagerie-markdown-clair", Clair, messagerie_markdown;
     "messagerie-markdown-sombre", Sombre, messagerie_markdown;
     "messages-prives-clair", Clair, messages_prives;
@@ -104,6 +108,8 @@ const ECRANS: &[Ecran] = ecrans![
     "messagerie-cartes-sombre", Sombre, messagerie_cartes;
     "messagerie-sondages-clair", Clair, messagerie_sondages;
     "messagerie-sondages-sombre", Sombre, messagerie_sondages;
+    "messagerie-defilement-clair", Clair, messagerie_defilement;
+    "messagerie-defilement-sombre", Sombre, messagerie_defilement;
 ];
 
 fn bob() -> Compte {
@@ -502,6 +508,29 @@ fn membres(f: &Principale) {
     membres_ouverts(f);
 }
 
+fn marge_epingles(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            installer_conversations(store);
+            let mut epingles = commun::coquille::conversation_variantes();
+            epingles.retain(|m| {
+                m.id.as_deref()
+                    .is_some_and(|id| ["100", "102", "107"].contains(&id))
+            });
+            for m in &mut epingles {
+                m.pinned_at = Some("2026-11-19T10:00:00Z".into());
+            }
+            store.installer_epingles(&salon_c1(), epingles);
+        },
+    );
+    pont.basculer_epingles(f);
+    stabiliser(f);
+}
+
 fn membres_filtre(f: &Principale) {
     let pont = membres_ouverts(f);
     f.global::<DonneesCoquille>()
@@ -550,6 +579,73 @@ fn messagerie_variantes(f: &Principale) {
             }),
         ],
     );
+    stabiliser(f);
+}
+
+fn messagerie_defilement(f: &Principale) {
+    let _pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            let mut messages = Vec::new();
+            for _ in 0..4 {
+                messages.extend(commun::coquille::conversation_variantes());
+            }
+            for (n, m) in messages.iter_mut().enumerate() {
+                m.id = Some((1000 + n).to_string());
+            }
+            store.installer_conversation(&salon_c1(), messages, false)
+        },
+    );
+    stabiliser(f);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+            position: slint::LogicalPosition::new(700.0, 500.0),
+            delta_x: 0.0,
+            delta_y: 120.0,
+        });
+    stabiliser(f);
+}
+
+fn messagerie_lecteurs(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            store.installer_conversation(
+                &salon_c1(),
+                commun::coquille::conversation_variantes(),
+                false,
+            );
+            for (n, (id, pseudo)) in [
+                ("carol", "carol"),
+                ("dave", "dave"),
+                ("eve", "Ève"),
+                ("u4", "Hugo"),
+                ("u5", "Inès"),
+                ("u6", "Jade"),
+                ("u7", "Karim"),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let signal = commun::coquille::evenement(
+                    "read.updated",
+                    serde_json::json!({"channel_id": "c1", "user_id": id, "pseudo": pseudo,
+                        "last_id": if n < 6 { "109" } else { "107" },
+                        "read_at": format!("2026-11-19T09:{:02}:00Z", 10 + n)}),
+                );
+                if let estompe_client::temps_reel::Signal::Evenement(e) = signal {
+                    store.appliquer(&e);
+                }
+            }
+        },
+    );
+    let _ = pont;
     stabiliser(f);
 }
 

@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
-import { Icone, Infobulle, Etiquette, BadgeRole, GenreBadgeRole, TexteRiche, BlocTexte } from "../composants.slint";
-import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, ReactionMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
+import { Anneau } from "../composants/focus.slint";
+import { Icone, Infobulle, Etiquette, BadgeRole, GenreBadgeRole, TexteRiche, BlocTexte, Avatar, Bouton, VarianteBouton } from "../composants.slint";
+import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, ReactionMessage, LecteurMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
 
 component Puce inherits Rectangle {
     in property <bool> active: true;
@@ -496,6 +497,142 @@ export component SondageVue inherits Rectangle {
     }
 }
 
+component LecteursVue {
+    in property <AnnexesMessage> annexes;
+    in-out property <bool> ouvert: false;
+    horizontal-stretch: 0;
+    VerticalLayout {
+        spacing: 6px;
+        HorizontalLayout {
+            alignment: end;
+            bouton := Rectangle {
+                height: 28px;
+                width: rangee.preferred-width;
+                border-radius: Rayon.pilule;
+                background: zone.has-hover || root.ouvert ? Theme.surface : transparent;
+                accessible-role: button;
+                accessible-label: root.annexes.vu-par;
+                accessible-expandable: true;
+                accessible-expanded: root.ouvert;
+                accessible-action-default => {
+                    root.ouvert = !root.ouvert;
+                }
+                Anneau {
+                    width: parent.width + 8px;
+                    height: parent.height + 8px;
+                    rayon: 14px;
+                    actif: portee.has-focus && portee.clavier;
+                }
+                portee := FocusScope {
+                    property <bool> clavier: false;
+                    focus-on-click: false;
+                    focus-gained(raison) => {
+                        self.clavier = raison != FocusReason.pointer-click;
+                    }
+                    key-pressed(e) => {
+                        if (e.text == Key.Return || e.text == " ") {
+                            root.ouvert = !root.ouvert;
+                            return accept;
+                        }
+                        if (e.text == Key.Escape && root.ouvert) {
+                            root.ouvert = false;
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    zone := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.ouvert = !root.ouvert;
+                        }
+                    }
+                }
+                rangee := HorizontalLayout {
+                    padding-left: 5px;
+                    padding-right: 5px;
+                    spacing: 3px;
+                    alignment: end;
+                    for l in root.annexes.apercu-lecteurs: VerticalLayout {
+                        alignment: center;
+                        Avatar {
+                            taille: 20px;
+                            nom: l.pseudo;
+                            initiales: l.initiales;
+                            teinte: l.teinte;
+                            portrait: l.portrait;
+                        }
+                    }
+                    if root.annexes.lecteurs-en-plus > 0: Text {
+                        text: "+" + root.annexes.lecteurs-en-plus;
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: Typo.minuscule;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        if root.ouvert: Rectangle {
+            width: 240px;
+            border-radius: Rayon.s;
+            border-width: 1px;
+            border-color: Theme.trait;
+            background: Theme.surface;
+            accessible-role: list;
+            accessible-label: root.annexes.vu-par;
+            VerticalLayout {
+                padding: Espace.e2;
+                spacing: Espace.e1;
+                Text {
+                    text: "Vu par";
+                    color: Theme.gris;
+                    font-family: Typo.texte;
+                    font-size: Typo.minuscule;
+                    font-weight: Typo.demi-gras;
+                }
+                for l in root.annexes.lecteurs: HorizontalLayout {
+                    spacing: Espace.e2;
+                    accessible-role: list-item;
+                    accessible-label: l.pseudo + " · " + l.heure;
+                    Avatar {
+                        taille: 22px;
+                        nom: l.pseudo;
+                        initiales: l.initiales;
+                        teinte: l.teinte;
+                        portrait: l.portrait;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: l.pseudo;
+                        color: Theme.encre;
+                        font-family: Typo.texte;
+                        font-size: Typo.compact;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: l.heure;
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: Typo.minuscule;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    Bouton {
+                        texte: "Fermer";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            root.ouvert = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component AnnexesMessageVue {
     in property <AnnexesMessage> annexes;
     in property <string> message;
@@ -524,12 +661,19 @@ export component AnnexesMessageVue {
                 horizontal-stretch: 0;
             }
         }
-        if root.annexes.reactions.length > 0: FlexboxLayout {
-            alignment: start;
-            cross-axis-alignment: start;
+        if root.annexes.reactions.length > 0 || root.annexes.lecteurs.length > 0: HorizontalLayout {
             spacing: 6px;
-            for reaction in root.annexes.reactions: ReactionVue {
-                reaction: reaction;
+            FlexboxLayout {
+                horizontal-stretch: 1;
+                alignment: start;
+                cross-axis-alignment: start;
+                spacing: 6px;
+                for reaction in root.annexes.reactions: ReactionVue {
+                    reaction: reaction;
+                }
+            }
+            if root.annexes.lecteurs.length > 0: LecteursVue {
+                annexes: root.annexes;
             }
         }
     }
