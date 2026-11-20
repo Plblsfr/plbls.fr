@@ -13,15 +13,16 @@ use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::gifs::TROP_DE_RECHERCHES;
 use estompe_client::pieces::{ATTENDRE_LES_FICHIERS, FICHIERS_EN_ECHEC};
 use estompe_client::preferences::Preferences;
+use estompe_client::route::Route;
 use estompe_client::video::{codec_mp4, Conversions, Convertisseur, DOSSIER_CONVERSIONS};
 use estompe_natif::coquille::{Coquille, Depot, Pont};
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesConfirmation, DonneesCopie, DonneesCoquille,
-    DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessagerie, DonneesSaisie,
-    DonneesSelecteur, GenreBandeau, GenreLigneMessage, LigneMessage, Page, PieceSaisie, Principale,
-    SondageMessage,
+    DonneesCreationSondage, DonneesGifs, DonneesMenu, DonneesMessagerie, DonneesRecherche,
+    DonneesSaisie, DonneesSelecteur, GenreBandeau, GenreLigneMessage, LigneMessage, Page,
+    PieceSaisie, Principale, SondageMessage,
 };
 use estompe_plateforme::ContenuPressePapiers;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
@@ -1387,6 +1388,245 @@ fn selecteur_de_gifs(faible: &slint::Weak<Principale>, serveur: &ServeurMessages
     cliquer_le_champ(faible, "Écrire dans #général");
 }
 
+fn ctrl_k(faible: &slint::Weak<Principale>) {
+    traiter_les_changements(faible);
+    sur_l_interface(faible, |f| {
+        f.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Control.into(),
+        });
+        appuyer(f, "k");
+        f.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Control.into(),
+        });
+    });
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesRecherche>().get_ouvert(),
+        "recherche ouverte par Ctrl+K",
+    );
+    traiter_les_changements(faible);
+}
+
+fn entrees_de_la_palette(f: &Principale) -> Vec<String> {
+    f.global::<DonneesRecherche>()
+        .get_entrees()
+        .iter()
+        .map(|e| e.libelle.to_string())
+        .collect()
+}
+
+fn recherche_et_palette(
+    faible: &slint::Weak<Principale>,
+    serveur: &ServeurMessages,
+    pont: &Pont,
+    dossier: &std::path::Path,
+) {
+    serveur.remplacer_message(5, {
+        let mut m = commun::coquille::message_numero(5, NOMBRE);
+        m["content"] = "Rendez-vous pour le pique-nique de printemps".into();
+        m
+    });
+    cliquer_le_champ(faible, "Écrire dans #général");
+    ctrl_k(faible);
+    sur_l_interface(faible, |f| {
+        let g = f.global::<DonneesRecherche>();
+        let courts: Vec<String> = g
+            .get_portees()
+            .iter()
+            .map(|p| p.court.to_string())
+            .collect();
+        assert_eq!(courts, ["Partout", "Les amis", "#général"]);
+        assert_eq!(g.get_portee(), 2, "portée par défaut : le salon ouvert");
+    });
+    taper(faible, "printemps");
+    touche(faible, Key::Return);
+    attendre(
+        || serveur.nombre_de("GET /search?q=printemps&sort=relevance&offset=0&channel_id=c1") == 1,
+        "recherche limitée au salon envoyée",
+    );
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesRecherche>();
+            g.get_resultats().row_count() == 1 && g.get_en_tete() == "MESSAGES · 1 RÉSULTAT"
+        },
+        "un résultat affiché",
+    );
+    sur_l_interface(faible, |f| {
+        let r = f
+            .global::<DonneesRecherche>()
+            .get_resultats()
+            .row_data(0)
+            .unwrap();
+        assert_eq!(r.titre_groupe, "Les amis › # général");
+        let surlignes: Vec<String> = r
+            .morceaux
+            .iter()
+            .filter(|m| m.trouve)
+            .map(|m| m.texte.to_string())
+            .collect();
+        assert_eq!(surlignes, ["printemp"], "racine du terme surlignée");
+    });
+    let charge = |pont: &Pont| {
+        pont.store()
+            .conversation(&estompe_client::store::CleConversation::Salon("c1".into()))
+            .is_some_and(|c| c.messages.iter().any(|m| m.id.as_deref() == Some("5")))
+    };
+    assert!(!charge(pont), "le message 5 n'est pas encore chargé");
+    sur_l_interface(faible, |f| {
+        ElementHandle::find_by_element_type_name(f, "LigneResultat")
+            .next()
+            .expect("résultat affiché")
+            .mock_single_click(PointerEventButton::Left);
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesRecherche>().get_ouvert()
+                && lignes(f).iter().any(|l| l.id == "5" && l.mis_en_evidence)
+        },
+        "message ancien chargé autour et mis en évidence",
+    );
+    assert_eq!(pont.messagerie().mis_en_evidence().as_deref(), Some("5"));
+    assert!(
+        serveur
+            .requetes
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|r| r.starts_with("GET /channels/c1/messages") && r.contains("after=4")),
+        "page chargée autour du message"
+    );
+    attendre(
+        || {
+            Preferences::charger(dossier)
+                .preferences
+                .recherches_recentes
+                == ["printemps"]
+        },
+        "recherche retenue dans les préférences",
+    );
+    println!("321 C2 : recherche, résultat ancien ouvert, chargé autour et mis en évidence");
+
+    ctrl_k(faible);
+    attendre_l_interface(
+        faible,
+        |f| {
+            let g = f.global::<DonneesRecherche>();
+            g.get_recentes()
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                == ["printemps"]
+        },
+        "dernière recherche proposée",
+    );
+    taper(faible, "phot");
+    attendre_l_interface(
+        faible,
+        |f| entrees_de_la_palette(f) == ["photos"],
+        "salon proposé par la palette",
+    );
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            !f.global::<DonneesRecherche>().get_ouvert()
+                && f.global::<DonneesSaisie>().get_indice() == "Écrire dans #photos"
+        },
+        "salon ouvert depuis la palette",
+    );
+
+    ctrl_k(faible);
+    taper(faible, "@");
+    attendre_l_interface(
+        faible,
+        |f| entrees_de_la_palette(f) == ["carol", "dave", "Élise"],
+        "conversations privées proposées par @",
+    );
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::DownArrow);
+    assert_eq!(
+        sur_l_interface(faible, |f| f.global::<DonneesRecherche>().get_active()),
+        1
+    );
+    touche(faible, Key::UpArrow);
+    touche(faible, Key::UpArrow);
+    assert_eq!(
+        sur_l_interface(faible, |f| f.global::<DonneesRecherche>().get_active()),
+        2,
+        "les flèches bouclent"
+    );
+    touche(faible, Key::Return);
+    attendre(
+        || {
+            pont.route()
+                == Route::MessagePrive {
+                    id: "d3".into(),
+                    message: None,
+                }
+        },
+        "conversation privée ouverte depuis la palette",
+    );
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesRecherche>().get_ouvert(),
+        "palette fermée",
+    );
+
+    ctrl_k(faible);
+    taper(faible, "salut a:im");
+    attendre_l_interface(
+        faible,
+        |f| entrees_de_la_palette(f) == ["image"],
+        "valeur de filtre proposée",
+    );
+    touche(faible, Key::DownArrow);
+    touche(faible, Key::Tab);
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesRecherche>().get_saisie() == "salut a:image ",
+        "Tab complète le filtre",
+    );
+    taper(faible, "x");
+    assert_eq!(
+        sur_l_interface(faible, |f| f
+            .global::<DonneesRecherche>()
+            .get_saisie()
+            .to_string()),
+        "salut a:image x",
+        "le curseur est en fin de saisie et le champ garde le focus"
+    );
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesRecherche>().get_ouvert(),
+        "Échap ferme la palette",
+    );
+    ctrl_k(faible);
+    println!("321 C4 : palette au clavier (Ctrl+K, flèches en boucle, Entrée, Tab, Échap)");
+
+    *serveur.refus_de_recherche.lock().unwrap() = Some(400);
+    taper(faible, "pique");
+    touche(faible, Key::Return);
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesRecherche>().get_erreur()
+                == "Recherche impossible : Recherche refusée"
+        },
+        "erreur du serveur affichée",
+    );
+    *serveur.refus_de_recherche.lock().unwrap() = None;
+    touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesRecherche>().get_ouvert(),
+        "recherche fermée",
+    );
+}
+
 fn brouillon_du_salon(f: &Principale, salon: &str) -> bool {
     f.global::<DonneesCoquille>()
         .get_salons()
@@ -1541,6 +1781,7 @@ fn scenario(
         f.global::<DonneesSaisie>().set_texte("".into());
     });
     pieces_jointes(&faible, &serveur, &fabrique, &coquille, &dossier);
+    recherche_et_palette(&faible, &serveur, &pont, &dossier);
 }
 
 #[test]

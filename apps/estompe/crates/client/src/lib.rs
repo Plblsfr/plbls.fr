@@ -22,6 +22,7 @@ pub mod markdown;
 pub mod mention;
 pub mod ordre_serveurs;
 pub mod pieces;
+pub mod recherche;
 pub mod roles;
 pub mod route;
 pub mod sections;

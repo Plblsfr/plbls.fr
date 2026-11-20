@@ -51,6 +51,7 @@ pub struct Preferences {
     pub panneau_replie: bool,
     pub marge_ouverte: bool,
     pub emoji_recents: Vec<String>,
+    pub recherches_recentes: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -69,6 +70,7 @@ impl Default for Preferences {
             panneau_replie: false,
             marge_ouverte: true,
             emoji_recents: Vec::new(),
+            recherches_recentes: Vec::new(),
         }
     }
 }
@@ -130,6 +132,13 @@ impl Preferences {
                 .get("emoji_recents")
                 .map(|v| crate::emoji::charger_recents(&v.to_string()))
                 .unwrap_or_default(),
+            recherches_recentes: objet
+                .get("recherches_recentes")
+                .map(|v| crate::emoji::charger_recents(&v.to_string()))
+                .unwrap_or_default()
+                .into_iter()
+                .take(crate::recherche::RECENTES_MAX)
+                .collect(),
         })
     }
 
@@ -281,6 +290,7 @@ mod tests {
             panneau_replie: true,
             marge_ouverte: false,
             emoji_recents: vec!["😂".to_string(), "👍".to_string()],
+            recherches_recentes: vec!["de:carol vacances".to_string()],
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -365,6 +375,12 @@ mod tests {
                 .emoji_recents,
             ["😂", "👍"]
         );
+        let recherches: Vec<String> = (0..12).map(|i| format!("q{i}")).collect();
+        let lu = Preferences::depuis_json(
+            &serde_json::json!({"recherches_recentes": recherches}).to_string(),
+        )
+        .unwrap();
+        assert_eq!(lu.recherches_recentes, recherches[..10]);
         for incomplete in [
             r#"{"derniere_vue": {"compte": "", "adresse": "x"}}"#,
             r#"{"derniere_vue": {"compte": "u1"}}"#,

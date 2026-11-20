@@ -23,8 +23,8 @@ use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::messagerie::selecteur::Cible as CibleSelecteur;
 use crate::session::Memoire;
 use crate::{
-    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessagerie, DonneesSaisie,
-    DonneesSelecteur, Principale,
+    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessagerie, DonneesRecherche,
+    DonneesSaisie, DonneesSelecteur, Principale,
 };
 use estompe_client::brouillons::Brouillons;
 use estompe_client::video::Conversions;
@@ -588,6 +588,33 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         &id,
         Ancre::Point { x, y }
     ));
+    let recherche = f.global::<DonneesRecherche>();
+    macro_rules! rappel_recherche {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            recherche.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_recherche!(on_ouvrir, |p, f| p.ouvrir_recherche(&f));
+    rappel_recherche!(on_modifie, |p, f, texte| p.recherche_modifiee(&f, &texte));
+    rappel_recherche!(on_naviguer, |p, f, pas| p.naviguer_recherche(&f, pas));
+    rappel_recherche!(on_completer, |p, f| p.completer_recherche(&f));
+    rappel_recherche!(on_valider, |p, f| p.valider_recherche(&f));
+    rappel_recherche!(on_choisir_entree, |p, f, index| p.choisir_entree(&f, index));
+    rappel_recherche!(on_choisir_portee, |p, f, index| p.choisir_portee(&f, index));
+    rappel_recherche!(on_choisir_tri, |p, f, par_date| p.choisir_tri(&f, par_date));
+    rappel_recherche!(on_ouvrir_resultat, |p, f, id| p.ouvrir_resultat(&f, &id));
+    rappel_recherche!(on_chercher_recente, |p, f, texte| p
+        .chercher_recente(&f, &texte));
+    rappel_recherche!(on_effacer_recentes, |p, f| p.effacer_recentes(&f));
+    rappel_recherche!(on_defile, |p, f, haut, vue, contenu| p
+        .defile_recherche(&f, haut, vue, contenu));
+    rappel_recherche!(on_fermer, |p, f| p.fermer_recherche(&f));
     let source = emplacement.clone();
     brancher_messagerie(f, Arc::new(move || pont_courant(&source)));
     let faible = f.as_weak();

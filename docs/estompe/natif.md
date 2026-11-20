@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -189,6 +189,29 @@ un avatar en échec n'est pas redemandé pendant la session.
   temporaire renommé ; un fichier temporaire restant est supprimé à l'ouverture, un fichier qui ne se décode pas est supprimé et redemandé, un nom de fichier invalide est ignoré.
 - Une image est recadrée en carré, réduite à 96 px et arrondie dans ses pixels (`arrondir`) : les deux moteurs de rendu l'affichent de la même façon.
 - Sans image, les initiales restent affichées. Les images et emojis des badges ne sont pas encore chargés : une médaille de la couleur du badge les remplace.
+
+### Recherche et palette
+
+Une seule fenêtre, comme `SearchModal.svelte` : Ctrl+K (depuis la coquille, aucun modal ouvert), le bouton « Recherche globale » du rail ou la loupe de l'en-tête
+(« Rechercher ou aller à… »). Interface `ui/coquille/recherche.slint` (global `DonneesRecherche`), état `EtatRecherche` et projections pures dans `src/coquille/recherche.rs`,
+actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estompe_client::recherche` (tests repris de `search.test.ts`).
+
+- Saisie : filtres de l'API (`de:`, `dans:#`, `serveur:`, `mentionne:`, `avant:`, `après:`, `pendant:`, `a:`, `épinglé:`, `"expression"`, `-exclu`), proposés pour le dernier mot
+  (`suggestions` : clés, puis pseudos, salons texte, serveurs ou valeurs de `a:` selon la portée, sans accents ni casse) ; flèches haut et bas (en boucle) pour parcourir, Tab
+  complète le filtre actif (curseur en fin de saisie), Entrée ouvre l'entrée active ou lance la recherche, Échap ferme et rend le focus au champ de saisie (sinon à la coquille).
+- Palette « Aller à » (`aller_a`, mêmes règles que le front) : accueil, serveurs (dernier salon vu), sections ouvertes, salons de tous les serveurs, conversations privées ;
+  `#` limite aux salons, `@` aux personnes (conversations privées) ; 8 entrées pour un texte, 50 pour un préfixe seul ; rien si la saisie contient un filtre. L'entrée active reste
+  visible (défilement calculé en Rust). Pas d'actions (`>`) : elles dépendent des lots du vocal, des réglages et du profil.
+- Recherche (`RechercheMessages`, `Client::chercher_messages`) : `GET /search?q=&sort=&offset=` avec `server_id`, `channel_id` ou `dm_id` ; portées « Partout », le serveur courant et
+  la conversation ouverte (choisie par défaut), tri « Pertinence » ou « Plus récents » ; changer l'une ou l'autre relance la recherche. Une réponse d'une recherche remplacée est
+  ignorée ; la page suivante est demandée à 200 px du bas (`MARGE_DE_SUITE`) tant que `has_more`.
+- Résultats groupés par conversation (« Serveur › # salon » ou « @ pseudo », dans l'ordre de première apparition), auteur, jour et heure, extrait de 180 caractères centré sur le
+  premier terme (`extrait`, termes sans filtres ni exclusions, racines : « réunions » surligne « réunion »), termes sur fond rose, nombre de fichiers. Un clic ou Entrée sur un
+  résultat ferme la fenêtre, ouvre la conversation puis `Store::sauter_a` : chargement autour du message s'il est hors de la fenêtre chargée, mise en évidence 1,5 s.
+- États : « Aucun résultat pour « … ». » (et « Essaie d'élargir à « Partout ». » hors de « Partout »), erreur du serveur affichée dans la fenêtre (« Recherche impossible : … »),
+  dernières recherches (10, `recherches_recentes` des préférences, « Effacer »), sinon l'aide des filtres.
+- Écarts : le front affiche une erreur dans une notification, l'app native dans la fenêtre ; un extrait s'affiche sur une ligne continue (retours à la ligne du message remplacés
+  par des espaces) ; le pied liste les raccourcis sans `>`.
 
 ## Messagerie
 
@@ -529,7 +552,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -578,6 +601,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   après défilement, suite au défilement, choix au clavier, import puis envoi en réponse, 429 sans nouvelle tentative, sélecteur gardé dans une vue étroite) ;
   actions sur un message (clic droit sur un message, menu par la touche Menu et Maj+F10, répondre, épingler, réaction ajoutée par le sélecteur puis retirée par Entrée, copier le texte
   et le lien, marquer comme non lu, supprimer confirmé au clavier, modifier), menu d'un salon (« Marquer comme lu ») et d'un membre (« Mentionner ») ;
+  recherche et palette (Ctrl+K, portée du salon ouvert, `GET /search` vérifié, terme surligné, résultat ancien ouvert : page chargée autour et message mis en évidence, dernière
+  recherche retenue ; palette : salon et conversation privée ouverts au clavier, flèches en boucle, Tab qui complète un filtre, Échap, erreur du serveur affichée) ;
   sondage (bouton « Créer un sondage », erreurs de validation au clavier, choix ajouté puis retiré, échéance passée refusée, corps du `POST` vérifié, vote affiché tout de suite
   puis totaux de `poll.voted`, votants affichés puis masqués, clôture, suppression confirmée) ;
   puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,

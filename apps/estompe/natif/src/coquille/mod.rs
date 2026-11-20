@@ -5,6 +5,7 @@ pub mod modeles;
 pub mod navigation;
 pub mod pont;
 pub mod projection;
+pub mod recherche;
 
 pub use avatars::{CleAvatar, Profils, SourceProfils};
 pub use cycle::{

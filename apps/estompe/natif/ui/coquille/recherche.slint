@@ -1,0 +1,658 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Modal, Icone, Bouton, VarianteBouton, Defilement, Chargement } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+
+export struct EntreePalette {
+    titre-groupe: string,
+    icone: string,
+    libelle: string,
+    detail: string,
+}
+
+export struct MorceauExtrait {
+    texte: string,
+    trouve: bool,
+    espace: bool,
+}
+
+export struct ResultatRecherche {
+    titre-groupe: string,
+    id: string,
+    auteur: string,
+    date: string,
+    morceaux: [MorceauExtrait],
+    fichiers: string,
+}
+
+export struct PorteeRecherche {
+    libelle: string,
+    court: string,
+}
+
+export global DonneesRecherche {
+    in property <bool> ouvert: false;
+    in-out property <string> saisie;
+    in property <int> demande-focus: 0;
+    in property <int> curseur: 0;
+    in property <int> demande-curseur: 0;
+    in property <[PorteeRecherche]> portees;
+    in property <int> portee: 0;
+    in property <bool> par-date: false;
+    in property <[EntreePalette]> entrees;
+    in property <int> active: -1;
+    in property <bool> active-filtre: false;
+    in property <string> en-tete;
+    in property <[ResultatRecherche]> resultats;
+    in property <bool> en-cours: false;
+    in property <bool> encore: false;
+    in property <string> vide;
+    in property <string> conseil;
+    in property <string> erreur;
+    in property <[string]> recentes;
+    in property <string> aide;
+    in-out property <length> decalage: 0px;
+    callback ouvrir();
+    callback modifie(string);
+    callback naviguer(int);
+    callback completer();
+    callback valider();
+    callback choisir-entree(int);
+    callback choisir-portee(int);
+    callback choisir-tri(bool);
+    callback ouvrir-resultat(string);
+    callback chercher-recente(string);
+    callback effacer-recentes();
+    callback defile(length, length, length);
+    callback fermer();
+}
+
+component Segment inherits Rectangle {
+    in property <string> libelle;
+    in property <bool> choisi;
+    callback clique();
+    property <bool> utilisable: Calques.ouverts <= 1;
+    height: 30px;
+    width: Math.min(texte.preferred-width + 20px, 240px);
+    border-radius: Rayon.pilule;
+    background: root.choisi ? Theme.encre : zone.has-hover ? Theme.papier-2 : transparent;
+    accessible-role: button;
+    accessible-label: root.libelle;
+    accessible-checkable: true;
+    accessible-checked: root.choisi;
+    accessible-action-default => {
+        root.clique();
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    texte := Text {
+        x: 10px;
+        width: parent.width - 20px;
+        text: root.libelle;
+        color: root.choisi ? Theme.papier : Theme.encre;
+        font-size: 13px;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component Groupe inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 11px;
+    font-weight: Typo.demi-gras;
+    vertical-alignment: center;
+    accessible-role: text;
+}
+
+component LigneEntree inherits Rectangle {
+    in property <EntreePalette> entree;
+    in property <int> index;
+    property <bool> active: DonneesRecherche.active == root.index;
+    height: 36px;
+    border-radius: Rayon.s;
+    background: root.active ? Theme.rose-doux : zone.has-hover ? Theme.papier-2 : transparent;
+    accessible-role: list-item;
+    accessible-label: root.entree.libelle;
+    accessible-description: root.entree.detail;
+    accessible-item-selected: root.active;
+    accessible-action-default => {
+        DonneesRecherche.choisir-entree(root.index);
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.entree.icone;
+                taille: 16px;
+                couleur: Theme.encre-2;
+            }
+        }
+        Text {
+            text: root.entree.libelle;
+            color: Theme.encre;
+            font-size: Typo.compact;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.entree.detail;
+            color: Theme.gris;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.active: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 20px;
+                width: touche.preferred-width + 10px;
+                border-radius: 5px;
+                border-width: 1px;
+                border-color: Theme.trait-fort;
+                touche := Text {
+                    text: "Entrée";
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 11px;
+                }
+            }
+        }
+    }
+    zone := TouchArea {
+        enabled: Calques.ouverts <= 1;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesRecherche.choisir-entree(root.index);
+        }
+    }
+}
+
+component Extrait {
+    in property <[MorceauExtrait]> morceaux;
+    FlexboxLayout {
+        alignment: start;
+        spacing-horizontal: 0;
+        spacing-vertical: 2px;
+        for m in root.morceaux: Rectangle {
+            width: mot.preferred-width + (m.trouve ? 2px : 0) + (m.espace ? 4px : 0);
+            height: mot.preferred-height;
+            if m.trouve: Rectangle {
+                x: 0;
+                width: mot.preferred-width + 2px;
+                height: parent.height;
+                border-radius: 3px;
+                background: Theme.rose;
+            }
+            mot := Text {
+                x: m.trouve ? 1px : 0;
+                text: m.texte;
+                color: Theme.encre;
+                font-size: Typo.compact;
+            }
+        }
+    }
+}
+
+component LigneResultat inherits Rectangle {
+    in property <ResultatRecherche> resultat;
+    property <bool> utilisable: Calques.ouverts <= 1;
+    border-radius: Rayon.s;
+    background: zone.has-hover ? Theme.rose-doux : transparent;
+    accessible-role: button;
+    accessible-label: root.resultat.auteur + ", " + root.resultat.date;
+    accessible-action-default => {
+        DonneesRecherche.ouvrir-resultat(root.resultat.id);
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesRecherche.ouvrir-resultat(root.resultat.id);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesRecherche.ouvrir-resultat(root.resultat.id);
+        }
+    }
+    VerticalLayout {
+        padding: 10px;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Text {
+                text: root.resultat.auteur;
+                color: Theme.encre;
+                font-size: Typo.compact;
+                font-weight: Typo.gras;
+                vertical-alignment: center;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.resultat.date;
+                color: Theme.gris-2;
+                font-family: Typo.mono;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+        Extrait {
+            morceaux: root.resultat.morceaux;
+        }
+        if root.resultat.fichiers != "": HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "trombone";
+                    taille: 14px;
+                    couleur: Theme.gris;
+                }
+            }
+            Text {
+                text: root.resultat.fichiers;
+                color: Theme.gris;
+                font-size: 12px;
+            }
+        }
+    }
+}
+
+export component Recherche {
+    property <int> demande: DonneesRecherche.demande-focus;
+    property <int> demande-curseur: DonneesRecherche.demande-curseur;
+    property <bool> resultats-vides: DonneesRecherche.resultats.length == 0 && !DonneesRecherche.en-cours;
+    changed demande => {
+        champ.focus();
+    }
+    changed demande-curseur => {
+        champ.set-selection-offsets(DonneesRecherche.curseur, DonneesRecherche.curseur);
+    }
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: "Rechercher";
+        ouvert: DonneesRecherche.ouvert;
+        largeur: 720px;
+        focus-croix: false;
+        ouverture => {
+            champ.focus();
+        }
+        ferme => {
+            DonneesRecherche.fermer();
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            Rectangle {
+                height: 44px;
+                horizontal-stretch: 1;
+                border-radius: Rayon.s;
+                background: Theme.papier;
+                border-width: champ.has-focus ? 2px : 1px;
+                border-color: champ.has-focus ? Theme.encre : Theme.trait-fort;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 6px;
+                    spacing: Espace.e2;
+                    VerticalLayout {
+                        alignment: center;
+                        Icone {
+                            nom: "cherche";
+                            taille: 20px;
+                            couleur: Theme.gris;
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        clip: true;
+                        if champ.text == "": Text {
+                            width: 100%;
+                            text: "Aller à, agir ou chercher : « expression », -exclu, de:pseudo…";
+                            color: Theme.gris-2;
+                            font-size: 16px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        champ := TextInput {
+                            width: 100%;
+                            height: 100%;
+                            enabled: Calques.ouverts <= 1;
+                            vertical-alignment: center;
+                            single-line: true;
+                            text <=> DonneesRecherche.saisie;
+                            color: Theme.encre;
+                            font-size: 16px;
+                            selection-background-color: Theme.rose;
+                            selection-foreground-color: Theme.encre;
+                            accessible-role: text-input;
+                            accessible-label: "Rechercher";
+                            accessible-value: self.text;
+                            edited => {
+                                DonneesRecherche.modifie(self.text);
+                            }
+                            key-pressed(e) => {
+                                if (e.text == Key.DownArrow) {
+                                    DonneesRecherche.naviguer(1);
+                                    return accept;
+                                }
+                                if (e.text == Key.UpArrow) {
+                                    DonneesRecherche.naviguer(-1);
+                                    return accept;
+                                }
+                                if (e.text == Key.Tab && !e.modifiers.shift && DonneesRecherche.active-filtre) {
+                                    DonneesRecherche.completer();
+                                    return accept;
+                                }
+                                if (e.text == Key.Return) {
+                                    DonneesRecherche.valider();
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                        }
+                    }
+                    if champ.text != "": VerticalLayout {
+                        alignment: center;
+                        Bouton {
+                            icone: "x";
+                            variante: VarianteBouton.fantome;
+                            description: "Effacer la saisie";
+                            calque: 1;
+                            clique => {
+                                DonneesRecherche.saisie = "";
+                                DonneesRecherche.modifie("");
+                                champ.focus();
+                            }
+                        }
+                    }
+                }
+            }
+            Bouton {
+                texte: "Chercher";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                actif: DonneesRecherche.saisie != "";
+                en-cours: DonneesRecherche.en-cours;
+                clique => {
+                    DonneesRecherche.valider();
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            HorizontalLayout {
+                spacing: 2px;
+                accessible-role: groupbox;
+                accessible-label: "Où";
+                for p[i] in DonneesRecherche.portees: Segment {
+                    libelle: p.court;
+                    choisi: DonneesRecherche.portee == i;
+                    accessible-label: p.libelle;
+                    clique => {
+                        DonneesRecherche.choisir-portee(i);
+                    }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: "Tri";
+                color: Theme.gris;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            HorizontalLayout {
+                spacing: 2px;
+                accessible-role: groupbox;
+                accessible-label: "Tri";
+                Segment {
+                    libelle: "Pertinence";
+                    choisi: !DonneesRecherche.par-date;
+                    clique => {
+                        DonneesRecherche.choisir-tri(false);
+                    }
+                }
+                Segment {
+                    libelle: "Plus récents";
+                    choisi: DonneesRecherche.par-date;
+                    clique => {
+                        DonneesRecherche.choisir-tri(true);
+                    }
+                }
+            }
+        }
+        corps := Rectangle {
+            height: 440px;
+            border-radius: Rayon.s;
+            border-width: 1px;
+            border-color: Theme.trait;
+            init => {
+                DonneesRecherche.defile(-DonneesRecherche.decalage, self.height, contenu.preferred-height);
+            }
+            changed height => {
+                DonneesRecherche.defile(-DonneesRecherche.decalage, self.height, contenu.preferred-height);
+            }
+            zone := Defilement {
+                decalage <=> DonneesRecherche.decalage;
+                hauteur-contenu: contenu.preferred-height;
+                changed decalage => {
+                    DonneesRecherche.defile(-self.decalage, corps.height, contenu.preferred-height);
+                }
+                contenu := VerticalLayout {
+                    width: corps.width - 12px;
+                    alignment: start;
+                    padding: Espace.e2;
+                    spacing: 2px;
+                    if DonneesRecherche.entrees.length > 0: VerticalLayout {
+                        accessible-role: list;
+                        accessible-label: "Suggestions";
+                        for e[i] in DonneesRecherche.entrees: VerticalLayout {
+                            if e.titre-groupe != "": HorizontalLayout {
+                                padding-left: 10px;
+                                Groupe {
+                                    height: 26px;
+                                    text: e.titre-groupe;
+                                }
+                            }
+                            LigneEntree {
+                                entree: e;
+                                index: i;
+                            }
+                        }
+                    }
+                    if DonneesRecherche.en-tete != "": HorizontalLayout {
+                        padding-left: 10px;
+                        Groupe {
+                            height: 26px;
+                            text: DonneesRecherche.en-tete;
+                        }
+                    }
+                    for r in DonneesRecherche.resultats: VerticalLayout {
+                        if r.titre-groupe != "": HorizontalLayout {
+                            padding-left: 10px;
+                            Text {
+                                height: 28px;
+                                text: r.titre-groupe;
+                                color: Theme.gris;
+                                font-size: 12px;
+                                font-weight: Typo.demi-gras;
+                                vertical-alignment: bottom;
+                                accessible-role: text;
+                            }
+                        }
+                        LigneResultat {
+                            resultat: r;
+                        }
+                    }
+                    if DonneesRecherche.en-cours || DonneesRecherche.encore: HorizontalLayout {
+                        alignment: center;
+                        padding: Espace.e3;
+                        Chargement {
+                            taille: 20px;
+                            description: "Recherche en cours";
+                        }
+                    }
+                    if root.resultats-vides && DonneesRecherche.erreur != "": VerticalLayout {
+                        padding: Espace.e8;
+                        spacing: Espace.e2;
+                        HorizontalLayout {
+                            alignment: center;
+                            Icone {
+                                nom: "alerte";
+                                taille: 28px;
+                                couleur: Theme.danger;
+                            }
+                        }
+                        Text {
+                            text: DonneesRecherche.erreur;
+                            color: Theme.danger;
+                            font-size: Typo.compact;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                        }
+                    }
+                    if root.resultats-vides && DonneesRecherche.erreur == "" && DonneesRecherche.vide != "": VerticalLayout {
+                        padding: Espace.e8;
+                        spacing: Espace.e2;
+                        HorizontalLayout {
+                            alignment: center;
+                            Icone {
+                                nom: "cherche";
+                                taille: 28px;
+                                couleur: Theme.gris;
+                            }
+                        }
+                        Text {
+                            text: DonneesRecherche.vide;
+                            color: Theme.encre;
+                            font-size: Typo.compact;
+                            font-weight: Typo.gras;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                        }
+                        if DonneesRecherche.conseil != "": Text {
+                            text: DonneesRecherche.conseil;
+                            color: Theme.gris;
+                            font-size: 12px;
+                            horizontal-alignment: center;
+                            accessible-role: text;
+                        }
+                    }
+                    if root.resultats-vides && DonneesRecherche.vide == "" && DonneesRecherche.erreur == "" && DonneesRecherche.recentes.length > 0: VerticalLayout {
+                        spacing: 2px;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            Groupe {
+                                horizontal-stretch: 1;
+                                text: "DERNIÈRES RECHERCHES";
+                            }
+                            Bouton {
+                                texte: "Effacer";
+                                variante: VarianteBouton.fantome;
+                                calque: 1;
+                                clique => {
+                                    DonneesRecherche.effacer-recentes();
+                                }
+                            }
+                        }
+                        for r in DonneesRecherche.recentes: Rectangle {
+                            height: 34px;
+                            border-radius: Rayon.s;
+                            background: recente.has-hover ? Theme.papier-2 : transparent;
+                            accessible-role: button;
+                            accessible-label: r;
+                            accessible-action-default => {
+                                DonneesRecherche.chercher-recente(r);
+                            }
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                spacing: Espace.e2;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icone {
+                                        nom: "horloge";
+                                        taille: 14px;
+                                        couleur: Theme.gris;
+                                    }
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: r;
+                                    color: Theme.gris;
+                                    font-size: Typo.compact;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            recente := TouchArea {
+                                enabled: Calques.ouverts <= 1;
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    DonneesRecherche.chercher-recente(r);
+                                }
+                            }
+                        }
+                    }
+                    if root.resultats-vides && DonneesRecherche.vide == "" && DonneesRecherche.erreur == "" && DonneesRecherche.recentes.length == 0 && DonneesRecherche.entrees.length == 0: HorizontalLayout {
+                        padding: 10px;
+                        Text {
+                            text: DonneesRecherche.aide;
+                            color: Theme.gris;
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            accessible-role: text;
+                        }
+                    }
+                }
+            }
+        }
+        Text {
+            text: "↑ ↓ parcourir · Entrée ouvrir, ou chercher dans les messages · Tab compléter un filtre · Échap fermer · @ personnes · # salons";
+            color: Theme.gris;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+}

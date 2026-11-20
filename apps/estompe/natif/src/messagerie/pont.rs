@@ -1407,6 +1407,19 @@ impl PontMessagerie {
         *self.fuseau.lock().unwrap_or_else(|e| e.into_inner()) = fuseau;
     }
 
+    pub fn decalage_minutes(&self) -> i32 {
+        let fuseau = self
+            .fuseau
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        fuseau(chrono::Utc::now().timestamp_millis())
+    }
+
+    pub fn peut_ecrire(&self) -> bool {
+        self.conversation().is_some() && self.raison_lecture_seule().is_none()
+    }
+
     pub fn definir_navigateur(&self, navigateur: Navigateur) {
         *self.navigateur.lock().unwrap_or_else(|e| e.into_inner()) = navigateur;
     }

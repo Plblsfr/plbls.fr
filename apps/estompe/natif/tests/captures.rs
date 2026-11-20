@@ -141,6 +141,13 @@ const ECRANS: &[Ecran] = ecrans![
     "sondage-erreur-clair", Clair, sondage_erreur;
     "sondage-votants-clair", Clair, sondage_votants;
     "sondage-votants-sombre", Sombre, sondage_votants;
+    "recherche-resultats-clair", Clair, recherche_resultats;
+    "recherche-resultats-sombre", Sombre, recherche_resultats;
+    "recherche-sans-resultat-clair", Clair, recherche_sans_resultat;
+    "recherche-erreur-clair", Clair, recherche_erreur;
+    "recherche-erreur-sombre", Sombre, recherche_erreur;
+    "palette-clair", Clair, palette;
+    "palette-sombre", Sombre, palette;
 ];
 
 fn bob() -> Compte {
@@ -1015,10 +1022,70 @@ fn sondage_votants(f: &Principale) {
     stabiliser(f);
 }
 
+fn recherche_lancee(f: &Principale, saisie: &str) -> (Pont, u64) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    pont.messagerie().definir_fuseau(Arc::new(|_| 60));
+    pont.ouvrir_recherche(f);
+    f.global::<estompe_natif::DonneesRecherche>()
+        .set_saisie(saisie.into());
+    pont.recherche_modifiee(f, saisie);
+    pont.lancer_recherche(f);
+    let sequence = pont.recherche().unwrap().messages.sequence();
+    (pont, sequence)
+}
+
+fn recherche_resultats(f: &Principale) {
+    let (pont, sequence) = recherche_lancee(f, "réunion -demain de:carol");
+    let page = serde_json::from_value(serde_json::json!({
+        "messages": [
+            {"id": "41", "channel_id": "c1", "author": {"id": "carol", "pseudo": "carol"}, "created_at": "2026-11-18T17:42:00Z", "content": "La réunion de samedi est déplacée à 15 h, pensez à prévenir ceux qui ne lisent pas ce salon.", "attachments": []},
+            {"id": "38", "channel_id": "c1", "author": {"id": "carol", "pseudo": "carol"}, "created_at": "2026-11-12T09:05:00Z", "content": "Compte rendu des réunions du mois en pièce jointe.", "attachments": [{"id": "f1"}, {"id": "f2"}]},
+            {"id": "12", "dm_id": "d1", "author": {"id": "carol", "pseudo": "carol"}, "created_at": "2026-11-02T20:15:00Z", "content": "Tu viens à la RÉUNION de jeudi ?", "attachments": []}
+        ],
+        "has_more": false
+    }))
+    .unwrap();
+    pont.recherche_recue(f, sequence, Ok(page));
+    stabiliser(f);
+}
+
+fn recherche_sans_resultat(f: &Principale) {
+    let (pont, sequence) = recherche_lancee(f, "pique-nique");
+    pont.recherche_recue(f, sequence, Ok(Default::default()));
+    stabiliser(f);
+}
+
+fn recherche_erreur(f: &Principale) {
+    let (pont, sequence) = recherche_lancee(f, "a:inconnu");
+    let refus = estompe_client::http::ErreurApi::Autre(estompe_client::http::Refus {
+        statut: 400,
+        code: "invalid_query".into(),
+        message: "Filtre « a: » inconnu.".into(),
+        donnees: Default::default(),
+    });
+    pont.recherche_recue(f, sequence, Err(refus));
+    stabiliser(f);
+}
+
+fn palette(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    pont.ouvrir_recherche(f);
+    f.global::<estompe_natif::DonneesRecherche>()
+        .set_saisie("a".into());
+    pont.recherche_modifiee(f, "a");
+    pont.naviguer_recherche(f, 1);
+    pont.naviguer_recherche(f, 1);
+    pont.naviguer_recherche(f, 1);
+    pont.naviguer_recherche(f, 1);
+    stabiliser(f);
+}
+
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
     f.global::<DonneesCreationSondage>().set_ouvert(false);
     f.global::<estompe_natif::DonneesGifs>().set_ouvert(false);
+    f.global::<estompe_natif::DonneesRecherche>()
+        .set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);
     f.window()

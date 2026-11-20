@@ -19,6 +19,7 @@ use super::membres::{
 use super::modeles::{cibles, remplacer_ligne, synchroniser, Cibles, Ensemble, Operation};
 use super::navigation::Navigation;
 use super::projection::*;
+use super::recherche::EtatRecherche;
 use crate::messagerie::pont::PontMessagerie;
 use crate::session::Memoire;
 use crate::{
@@ -34,6 +35,7 @@ pub type Icone = SharedPixelBuffer<Rgba8Pixel>;
 const COTE_ICONE: u32 = 128;
 
 mod menus;
+mod recherche;
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
@@ -238,6 +240,7 @@ struct Interne {
     membres: EtatMembres,
     onglet_voulu: OngletMarge,
     avant_epingles: Option<(bool, OngletMarge)>,
+    recherche: Option<EtatRecherche>,
 }
 
 #[derive(Clone)]
@@ -317,6 +320,7 @@ pub fn vider_modeles(f: &Principale) {
     m.set_nouveaux(0);
     m.set_saisie("".into());
     m.set_lecture_seule(false);
+    f.global::<crate::DonneesRecherche>().set_ouvert(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -482,6 +486,7 @@ impl Pont {
                 membres: EtatMembres::default(),
                 onglet_voulu: OngletMarge::Membres,
                 avant_epingles: None,
+                recherche: None,
             })),
             store,
             fenetre,
@@ -536,7 +541,7 @@ impl Pont {
         self.projeter(f, &c, false);
         if corrigee {
             self.suivre_conversation(f);
-            self.ouvrir_conversation_courante();
+            self.ouvrir_conversation_courante(None);
         }
         self.messagerie.appliquer(f, changements);
     }
@@ -758,6 +763,10 @@ impl Pont {
     }
 
     pub fn naviguer(&self, f: &Principale, route: Route) {
+        self.aller(f, route, None);
+    }
+
+    fn aller(&self, f: &Principale, route: Route, message: Option<String>) {
         let adresse = self.store.lire(|etat| {
             let mut interne = self.verrou();
             interne.navigation.aller(route, etat);
@@ -770,26 +779,36 @@ impl Pont {
             let vue = self.store.memoriser_vue(&adresse);
             memoire.modifier(|p| p.derniere_vue = Some(vue));
         }
-        self.ouvrir_conversation_courante();
+        self.ouvrir_conversation_courante(message);
     }
 
-    fn ouvrir_conversation_courante(&self) {
+    fn ouvrir_conversation_courante(&self, message: Option<String>) {
         let route = self.route();
         let cle = self
             .store
             .lire(|etat| conversation_de_la_route(etat, &route));
         let store = self.store.clone();
-        if store.lire(|etat| etat.courante == cle) {
+        let deja = store.lire(|etat| etat.courante == cle);
+        if deja && message.is_none() {
             return;
         }
         let messagerie = self.messagerie.clone();
         let fenetre = self.fenetre.clone();
         self.runtime.spawn(async move {
-            store.ouvrir(cle.clone()).await;
-            if let Some(cle) = cle {
+            if !deja {
+                store.ouvrir(cle.clone()).await;
+            }
+            let Some(cle) = cle else {
+                return;
+            };
+            if !deja {
                 let reussi = store.conversation(&cle).is_some_and(|c| c.chargee);
+                let c = cle.clone();
                 let _ = fenetre
-                    .upgrade_in_event_loop(move |f| messagerie.etat_chargement(&f, &cle, reussi));
+                    .upgrade_in_event_loop(move |f| messagerie.etat_chargement(&f, &c, reussi));
+            }
+            if let Some(message) = message {
+                let _ = store.sauter_a(&cle, &message).await;
             }
         });
     }

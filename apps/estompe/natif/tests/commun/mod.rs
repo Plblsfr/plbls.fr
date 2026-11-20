@@ -850,6 +850,7 @@ pub mod coquille {
         pub refus_de_fichier: Mutex<Option<u16>>,
         pub fichiers_bloques: Mutex<bool>,
         pub refus_de_gifs: Mutex<Option<u16>>,
+        pub refus_de_recherche: Mutex<Option<u16>>,
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         envoyes: AtomicUsize,
@@ -907,6 +908,7 @@ pub mod coquille {
                 refus_de_fichier: Mutex::new(None),
                 fichiers_bloques: Mutex::new(false),
                 refus_de_gifs: Mutex::new(None),
+                refus_de_recherche: Mutex::new(None),
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
@@ -1171,7 +1173,59 @@ pub mod coquille {
             if chemin.starts_with("/gifs/") {
                 return self.repondre_gifs(methode, chemin, corps);
             }
+            if chemin.starts_with("/search?") {
+                return self.repondre_recherche(chemin);
+            }
             self.repondre(methode, chemin)
+        }
+
+        fn repondre_recherche(&self, chemin: &str) -> (u16, String) {
+            self.requetes.lock().unwrap().push(format!("GET {chemin}"));
+            if let Some(statut) = *self.refus_de_recherche.lock().unwrap() {
+                return (
+                    statut,
+                    r#"{"error":"invalid_query","message":"Recherche refusée"}"#.into(),
+                );
+            }
+            let encode = chemin
+                .split_once("q=")
+                .map_or("", |(_, reste)| reste.split('&').next().unwrap_or_default());
+            let mut octets = Vec::new();
+            let mut i = 0;
+            while i < encode.len() {
+                if encode.as_bytes()[i] == b'%' {
+                    octets.push(u8::from_str_radix(&encode[i + 1..i + 3], 16).unwrap());
+                    i += 3;
+                } else {
+                    octets.push(encode.as_bytes()[i]);
+                    i += 1;
+                }
+            }
+            let terme = String::from_utf8(octets).unwrap().to_lowercase();
+            let remplaces = self.messages.lock().unwrap().clone();
+            let trouves: Vec<Value> = (1..=self.nombre)
+                .rev()
+                .map(|n| {
+                    remplaces
+                        .get(&n)
+                        .cloned()
+                        .unwrap_or_else(|| message_numero(n, self.nombre))
+                })
+                .filter(|m| {
+                    m["content"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .split_whitespace()
+                        .any(|mot| mot.contains(&terme))
+                })
+                .collect();
+            let decalage = parametre(chemin, "offset").unwrap_or(0) as usize;
+            let page: Vec<Value> = trouves.iter().skip(decalage).take(25).cloned().collect();
+            (
+                200,
+                json!({"messages": page, "has_more": decalage + 25 < trouves.len()}).to_string(),
+            )
         }
 
         fn repondre_gifs(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
