@@ -4,6 +4,11 @@ use reqwest::Url;
 
 pub const ADRESSE_PRODUCTION: &str = "https://chat.plbls.fr";
 pub const VARIABLE_ADRESSE: &str = "ESTOMPE_API_URL";
+pub const EMETTEUR_KEYCLOAK: &str = "https://auth.plbls.fr/realms/default";
+pub const VARIABLE_EMETTEUR: &str = "ESTOMPE_KEYCLOAK_ISSUER";
+pub const CLIENT_KEYCLOAK: &str = "plbls-desktop";
+pub const PORTEES_OIDC: &str = "openid";
+pub const PASSERELLE_PRODUCTION: &str = "https://security.plbls.fr";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Origine {
@@ -95,6 +100,16 @@ pub fn choisir_adresse(environnement: Option<&str>, preference: Option<&str>) ->
 
 pub fn adresse_serveur(preference: Option<&str>) -> AdresseServeur {
     choisir_adresse(std::env::var(VARIABLE_ADRESSE).ok().as_deref(), preference)
+}
+
+pub fn choisir_emetteur(environnement: Option<&str>) -> String {
+    environnement
+        .and_then(|valeur| valider_adresse(valeur).ok())
+        .unwrap_or_else(|| EMETTEUR_KEYCLOAK.to_string())
+}
+
+pub fn emetteur_keycloak() -> String {
+    choisir_emetteur(std::env::var(VARIABLE_EMETTEUR).ok().as_deref())
 }
 
 #[cfg(test)]

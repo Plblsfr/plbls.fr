@@ -1,0 +1,98 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton } from "../composants.slint";
+import { FondAcces, Carte, AGauche, TitreCarte, TexteCarte, Note } from "commun.slint";
+
+export component MiseAJour inherits Rectangle {
+    in property <string> version;
+    in property <string> version-minimale;
+    in property <string> message;
+    callback telecharger();
+    accessible-role: none;
+    FondAcces {
+        Carte {
+            AGauche {
+                Rectangle {
+                    height: 20px;
+                    width: etiquette.preferred-width + 14px;
+                    border-radius: Rayon.xs;
+                    background: Theme.attention-fond;
+                    etiquette := HorizontalLayout {
+                        alignment: center;
+                        spacing: Espace.e1;
+                        VerticalLayout {
+                            alignment: center;
+                            Icone {
+                                nom: "alerte";
+                                taille: 12px;
+                                couleur: Theme.attention;
+                            }
+                        }
+                        Text {
+                            text: "Obligatoire";
+                            color: Theme.attention;
+                            font-size: 11px;
+                            font-weight: Typo.demi-gras;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+            TitreCarte {
+                text: "Mise à jour requise";
+                font-size: 22px;
+            }
+            TexteCarte {
+                text: "Cette version d'Estompe ne peut plus être utilisée.";
+            }
+            HorizontalLayout {
+                spacing: Espace.e6;
+                VerticalLayout {
+                    spacing: 2px;
+                    Note {
+                        text: "Installée";
+                    }
+                    Text {
+                        text: root.version;
+                        color: Theme.encre;
+                        font-family: Typo.mono;
+                        font-size: Typo.petit;
+                    }
+                }
+                if root.version-minimale != "": VerticalLayout {
+                    spacing: 2px;
+                    Note {
+                        text: "Minimale";
+                    }
+                    Text {
+                        text: root.version-minimale;
+                        color: Theme.encre;
+                        font-family: Typo.mono;
+                        font-size: Typo.petit;
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            if root.message != "": TexteCarte {
+                text: root.message;
+                font-size: Typo.compact;
+            }
+            Rectangle {
+                height: 1px;
+                background: Theme.trait;
+            }
+            Bouton {
+                texte: "Télécharger la mise à jour";
+                icone: "telecharge";
+                variante: VarianteBouton.primaire;
+                clique => {
+                    root.telecharger();
+                }
+            }
+            Note {
+                text: "La page de téléchargement s'ouvre dans ton navigateur. Installe la nouvelle version, puis relance Estompe.";
+            }
+        }
+    }
+}

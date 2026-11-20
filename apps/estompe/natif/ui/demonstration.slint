@@ -1,6 +1,6 @@
 import { Theme, Typo, Rayon, Espace } from "jetons.slint";
 import { Icones } from "genere/icones.slint";
-import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement } from "composants.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Case, Interrupteur, Avatar, Chargement, Infobulle, Defilement, Compteur, Etiquette, ElementListe, Vide, EtatPresence } from "composants.slint";
 
 component Section {
     in property <string> titre;
@@ -189,15 +189,50 @@ export component Demonstration {
                 HorizontalLayout {
                     spacing: Espace.e3;
                     alignment: start;
-                    Avatar { nom: "Ada Lovelace"; initiales: "AL"; teinte: 1; }
-                    Avatar { nom: "Blaise Pascal"; initiales: "BP"; teinte: 2; }
+                    Avatar { nom: "Ada Lovelace"; initiales: "AL"; teinte: 1; presence: EtatPresence.en-ligne; fond: Theme.papier; }
+                    Avatar { nom: "Blaise Pascal"; initiales: "BP"; teinte: 2; presence: EtatPresence.absent; fond: Theme.papier; }
                     Avatar { nom: "Camille"; initiales: "C"; teinte: 3; parle: true; }
                     Avatar { nom: "Denis"; initiales: "D"; teinte: 4; taille: 28px; }
-                    Avatar { nom: "Émilie"; initiales: "É"; teinte: 5; taille: 56px; }
-                    Avatar { nom: "Fatou"; initiales: "F"; teinte: 6; }
+                    Avatar { nom: "Émilie"; initiales: "É"; teinte: 5; taille: 56px; presence: EtatPresence.ne-pas-deranger; fond: Theme.papier; }
+                    Avatar { nom: "Fatou"; initiales: "F"; teinte: 6; presence: EtatPresence.hors-ligne; fond: Theme.papier; }
                     VerticalLayout {
                         alignment: center;
                         Chargement { }
+                    }
+                }
+            }
+            Section {
+                titre: "LISTES ET COMPTEURS";
+                HorizontalLayout {
+                    spacing: Espace.e6;
+                    alignment: start;
+                    VerticalLayout {
+                        width: 252px;
+                        alignment: start;
+                        spacing: 1px;
+                        ElementListe { texte: "général"; icone: "hash"; actif: true; }
+                        ElementListe { texte: "annonces"; icone: "hash"; non-lus: 3; }
+                        ElementListe { texte: "entraide"; icone: "lock"; mentions: 2; }
+                        ElementListe { texte: "Salon vocal"; icone: "volume"; etiquette: "bientôt"; }
+                        ElementListe { texte: "un salon au nom bien trop long pour la colonne"; icone: "hash"; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: Espace.e3;
+                        HorizontalLayout {
+                            alignment: start;
+                            spacing: Espace.e2;
+                            Compteur { nombre: 1; }
+                            Compteur { nombre: 12; }
+                            Compteur { nombre: 3; mention: true; }
+                            Compteur { nombre: 250; }
+                            Etiquette { texte: "bientôt"; }
+                        }
+                        Vide {
+                            width: 400px;
+                            titre: "Les messages arrivent avec le lot 2";
+                            texte: "L'état vide d'une zone pas encore livrée.";
+                        }
                     }
                 }
             }

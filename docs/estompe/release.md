@@ -10,7 +10,7 @@
   - Ne jamais modifier une entrée déjà publiée (elle a déjà été envoyée) : en ajouter une nouvelle.
   - Ne se modifie que dans la PR de release, jamais dans celle d'un ticket.
 - `CHANGELOG.md` : les entrées de `changelog.d/` y sont regroupées à la release (voir `changelog.d/README.md`).
-- Mise à jour forcée : `api/estompe/core/updates.json` (`mandatory`, `minVersion`, `message`, surcharge par `platforms.web|android|windows`).
+- Mise à jour forcée : `api/estompe/core/updates.json` (`mandatory`, `minVersion`, `message`, surcharge par `platforms.web|android|windows|natif`).
   L'API refuse (426) les clients sous `minVersion` dès son déploiement. Sans forçage, le fichier revient à `mandatory: false`, `minVersion: ""`, `message: ""`.
 
 Avant toute release, l'agent vérifie la chaîne de livraison (workflows, Dockerfile, caches, contenu produit) et pas seulement les tests : un tag ne se rejoue pas.

@@ -1,0 +1,42 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone } from "icone.slint";
+
+export component Vide inherits Rectangle {
+    in property <string> icone: "bulle";
+    in property <string> titre;
+    in property <string> texte;
+    border-radius: Rayon.xl;
+    border-width: 1.5px;
+    border-color: Theme.trait-fort;
+    VerticalLayout {
+        padding: 40px;
+        spacing: 10px;
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                taille: 28px;
+                couleur: Theme.gris;
+            }
+        }
+        if root.titre != "": Text {
+            text: root.titre;
+            color: Theme.encre;
+            font-family: Typo.texte;
+            font-size: Typo.corps;
+            font-weight: Typo.gras;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: Theme.gris;
+            font-family: Typo.texte;
+            font-size: Typo.petit;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+        @children
+    }
+}

@@ -1,4 +1,6 @@
 pub mod appels;
+pub mod auth;
+pub mod cache;
 pub mod config;
 mod genere;
 pub mod http;
@@ -7,4 +9,12 @@ pub mod preferences;
 #[cfg(test)]
 mod serveur_factice;
 
+pub mod derniere_vue;
+pub mod ordre_serveurs;
+pub mod roles;
+pub mod route;
+pub mod sections;
+pub mod store;
+pub mod temps_reel;
+pub mod version;
 pub use genere::types;

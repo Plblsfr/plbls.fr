@@ -1,0 +1,33 @@
+import { Theme, Typo, Espace } from "../jetons.slint";
+import { Icone } from "../composants.slint";
+import { EtatBandeau } from "donnees.slint";
+
+export component Bandeau inherits Rectangle {
+    in property <EtatBandeau> etat;
+    property <bool> hors-ligne: etat == EtatBandeau.hors-ligne;
+    height: etat == EtatBandeau.aucun ? 0 : 32px;
+    visible: etat != EtatBandeau.aucun;
+    background: hors-ligne ? Theme.danger-fond : Theme.encre;
+    accessible-role: text;
+    accessible-label: libelle.text;
+    HorizontalLayout {
+        alignment: center;
+        spacing: Espace.e2;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.hors-ligne ? "alerte" : "actualise";
+                taille: 14px;
+                couleur: root.hors-ligne ? Theme.danger : Theme.papier;
+            }
+        }
+        libelle := Text {
+            text: root.hors-ligne ? "Hors ligne : les nouveaux messages arriveront au retour de la connexion." : "Reconnexion en cours…";
+            color: root.hors-ligne ? Theme.danger : Theme.papier;
+            font-size: Typo.petit;
+            font-weight: Typo.moyen;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

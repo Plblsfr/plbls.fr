@@ -1,0 +1,206 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Champ, Chargement } from "../composants.slint";
+import { FondAcces, Carte, Logo, Pastille, TonPastille, AGauche, AuCentre, TitreCarte, TexteCarte, Note, Alerte, Attente } from "commun.slint";
+
+export component Refus inherits Rectangle {
+    callback reessayer();
+    callback se-deconnecter();
+    FondAcces {
+        Carte {
+            AGauche {
+                Pastille {
+                    icone: "cadenas";
+                    ton: TonPastille.attention;
+                }
+            }
+            TitreCarte {
+                text: "Accès non accordé";
+            }
+            TexteCarte {
+                text: "Ton compte est connecté, mais il n'a pas la permission d'utiliser Estompe. Demande à l'administrateur de te l'accorder, puis réessaie.";
+            }
+            Bouton {
+                texte: "Réessayer";
+                icone: "actualise";
+                variante: VarianteBouton.primaire;
+                clique => {
+                    root.reessayer();
+                }
+            }
+            AuCentre {
+                Bouton {
+                    texte: "Se déconnecter";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        root.se-deconnecter();
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component Activation inherits Rectangle {
+    in property <string> erreur;
+    in property <bool> champ-en-faute: false;
+    in property <bool> en-cours: false;
+    in-out property <string> pseudo <=> champ.valeur;
+    callback activer(string);
+    callback se-deconnecter();
+    FondAcces {
+        Carte {
+            AGauche {
+                Logo { }
+            }
+            AGauche {
+                Rectangle {
+                    width: bienvenue.preferred-width + 10px;
+                    Rectangle {
+                        y: parent.height * 0.14;
+                        height: parent.height * 0.72;
+                        border-radius: 3px;
+                        background: Theme.rose;
+                    }
+                    bienvenue := TitreCarte {
+                        x: 5px;
+                        text: "Bienvenue";
+                        wrap: no-wrap;
+                    }
+                }
+                TitreCarte {
+                    text: ".";
+                    wrap: no-wrap;
+                }
+            }
+            TexteCarte {
+                text: "Tu es connecté. Pour activer ton compte Estompe, choisis un pseudo.";
+            }
+            if root.erreur != "": Alerte {
+                texte: root.erreur;
+            }
+            champ := Champ {
+                etiquette: "Pseudo";
+                aide: "3 à 20 caractères : lettres, chiffres, _ . -";
+                en-faute: root.champ-en-faute;
+                actif: !root.en-cours;
+                valide(texte) => {
+                    root.activer(texte);
+                }
+            }
+            Bouton {
+                texte: "Activer mon compte";
+                variante: VarianteBouton.primaire;
+                en-cours: root.en-cours;
+                clique => {
+                    root.activer(champ.valeur);
+                }
+            }
+            AuCentre {
+                Bouton {
+                    texte: "Se déconnecter";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        root.se-deconnecter();
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component Invitation inherits Rectangle {
+    in property <string> erreur;
+    in property <bool> en-cours: false;
+    in-out property <string> saisie <=> champ.valeur;
+    callback rejoindre(string);
+    callback retour();
+    if root.en-cours: Attente {
+        texte: "Tu rejoins le serveur…";
+    }
+    FondAcces {
+        visible: !root.en-cours;
+        Carte {
+            AGauche {
+                Pastille {
+                    icone: "lien";
+                }
+            }
+            TitreCarte {
+                text: "Invitation";
+            }
+            if root.erreur != "": Alerte {
+                texte: root.erreur;
+            }
+            Note {
+                text: root.erreur != "" ? "Demande un nouveau lien à la personne qui t'a invité·e, ou colle un lien ou un code ci-dessous." : "Colle le lien ou le code d'invitation que tu as reçu.";
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                champ := Champ {
+                    indice: "ABCDE-23456";
+                    accessible-label: "Lien ou code d'invitation";
+                    actif: !root.en-cours;
+                    valide(texte) => {
+                        root.rejoindre(texte);
+                    }
+                }
+                VerticalLayout {
+                    alignment: end;
+                    Bouton {
+                        texte: "Rejoindre";
+                        variante: VarianteBouton.primaire;
+                        actif: champ.valeur != "";
+                        clique => {
+                            root.rejoindre(champ.valeur);
+                        }
+                    }
+                }
+            }
+            Bouton {
+                texte: "Retour à l'accueil";
+                clique => {
+                    root.retour();
+                }
+            }
+        }
+    }
+}
+
+export component Injoignable inherits Rectangle {
+    in property <string> message;
+    callback reessayer();
+    callback se-deconnecter();
+    FondAcces {
+        Carte {
+            AGauche {
+                Pastille {
+                    icone: "alerte";
+                    ton: TonPastille.danger;
+                }
+            }
+            TitreCarte {
+                text: "Oups.";
+            }
+            Alerte {
+                texte: root.message != "" ? root.message : "Le serveur est injoignable.";
+            }
+            Bouton {
+                texte: "Réessayer";
+                icone: "actualise";
+                variante: VarianteBouton.primaire;
+                clique => {
+                    root.reessayer();
+                }
+            }
+            AuCentre {
+                Bouton {
+                    texte: "Se déconnecter";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        root.se-deconnecter();
+                    }
+                }
+            }
+        }
+    }
+}

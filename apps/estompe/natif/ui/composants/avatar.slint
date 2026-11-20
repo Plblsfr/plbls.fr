@@ -1,15 +1,54 @@
 import { Theme, Typo } from "../jetons.slint";
 
+export enum EtatPresence { aucune, en-ligne, absent, ne-pas-deranger, hors-ligne }
+
+export component Pastille {
+    in property <EtatPresence> presence: EtatPresence.en-ligne;
+    in property <length> taille: 10px;
+    in property <color> fond: Theme.surface;
+    property <length> trait: Math.max(1.5px, root.taille * 0.18);
+    width: taille;
+    height: taille;
+    accessible-role: image;
+    accessible-label: presence == EtatPresence.en-ligne ? "En ligne" : presence == EtatPresence.absent ? "Absent" : presence == EtatPresence.ne-pas-deranger ? "Ne pas déranger" : "Hors ligne";
+    Rectangle {
+        border-radius: self.width / 2;
+        background: root.presence == EtatPresence.en-ligne ? Theme.ok : root.presence == EtatPresence.ne-pas-deranger ? Theme.danger : root.fond;
+        border-width: root.presence == EtatPresence.hors-ligne ? root.trait : root.presence == EtatPresence.absent ? root.trait * 0.8 : 0;
+        border-color: root.presence == EtatPresence.absent ? Theme.attention : Theme.gris-2;
+    }
+    if root.presence == EtatPresence.absent: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        fill: Theme.attention;
+        commands: "M 50 0 A 50 50 0 0 1 50 100 Z";
+    }
+    if root.presence == EtatPresence.ne-pas-deranger: Rectangle {
+        x: parent.width * 0.2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width * 0.6;
+        height: Math.max(2px, root.taille * 0.18);
+        border-radius: self.height / 2;
+        background: Theme.sur-danger;
+    }
+}
+
 export component Avatar {
     in property <string> nom;
     in property <image> portrait;
     in property <length> taille: 36px;
     in property <int> teinte: 1;
     in property <bool> parle: false;
+    in property <EtatPresence> presence: EtatPresence.aucune;
+    in property <color> fond: Theme.papier-2;
     property <int> t: Math.mod(Math.max(teinte, 1) - 1, 6) + 1;
-    property <color> fond: t == 1 ? Theme.av-1 : t == 2 ? Theme.av-2 : t == 3 ? Theme.av-3 : t == 4 ? Theme.av-4 : t == 5 ? Theme.av-5 : Theme.av-6;
+    property <color> fond-initiales: t == 1 ? Theme.av-1 : t == 2 ? Theme.av-2 : t == 3 ? Theme.av-3 : t == 4 ? Theme.av-4 : t == 5 ? Theme.av-5 : Theme.av-6;
     property <color> encre: t == 1 ? Theme.av-1-t : t == 2 ? Theme.av-2-t : t == 3 ? Theme.av-3-t : t == 4 ? Theme.av-4-t : t == 5 ? Theme.av-5-t : Theme.av-6-t;
     property <bool> a-portrait: portrait.width > 0;
+    property <length> cote-pastille: Math.max(10px, root.taille * 0.22);
+    property <length> anneau: Math.max(2px, root.taille * 0.035);
     in property <string> initiales;
     width: taille;
     height: taille;
@@ -17,15 +56,12 @@ export component Avatar {
     accessible-label: nom;
     Rectangle {
         border-radius: root.taille * 0.3;
-        background: root.fond;
-        border-width: root.parle ? 2px : 0;
-        border-color: Theme.voix;
-        clip: true;
+        background: root.a-portrait ? transparent : root.fond-initiales;
         if root.a-portrait: Image {
             width: 100%;
             height: 100%;
             source: root.portrait;
-            image-fit: cover;
+            image-fit: fill;
         }
         if !root.a-portrait: Text {
             text: root.initiales;
@@ -35,6 +71,26 @@ export component Avatar {
             font-weight: Typo.demi-gras;
             horizontal-alignment: center;
             vertical-alignment: center;
+        }
+    }
+    if root.parle: Rectangle {
+        border-radius: root.taille * 0.3;
+        border-width: 2px;
+        border-color: Theme.voix;
+    }
+    if root.presence != EtatPresence.aucune: Rectangle {
+        x: root.taille - root.cote-pastille - root.anneau;
+        y: root.taille - root.cote-pastille - root.anneau;
+        width: root.cote-pastille + 2 * root.anneau;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.fond;
+        Pastille {
+            x: root.anneau;
+            y: root.anneau;
+            presence: root.presence;
+            taille: root.cote-pastille;
+            fond: root.fond;
         }
     }
 }

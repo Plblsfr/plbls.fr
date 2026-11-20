@@ -4,6 +4,8 @@ export component Champ {
     in property <string> etiquette;
     in property <string> indice;
     in property <string> erreur;
+    in property <string> aide;
+    in property <bool> en-faute: false;
     in property <bool> actif: true;
     in property <bool> secret: false;
     in property <int> calque: 0;
@@ -36,7 +38,7 @@ export component Champ {
             border-radius: Rayon.s;
             background: Theme.surface;
             border-width: saisie.has-focus ? 2px : 1px;
-            border-color: root.erreur != "" ? Theme.danger : saisie.has-focus ? Theme.encre : Theme.trait-fort;
+            border-color: root.erreur != "" || root.en-faute ? Theme.danger : saisie.has-focus ? Theme.encre : Theme.trait-fort;
             animate border-color { duration: Mouvement.d; easing: Courbes.sortie; }
             HorizontalLayout {
                 padding-left: Espace.e3;
@@ -75,6 +77,13 @@ export component Champ {
                     }
                 }
             }
+        }
+        if root.erreur == "" && root.aide != "": Text {
+            text: root.aide;
+            color: Theme.gris;
+            font-family: Typo.texte;
+            font-size: Typo.minuscule;
+            wrap: word-wrap;
         }
         if root.erreur != "": Text {
             text: root.erreur;

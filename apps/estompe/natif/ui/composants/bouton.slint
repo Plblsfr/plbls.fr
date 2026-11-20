@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
 import { Icone } from "icone.slint";
 import { Anneau } from "focus.slint";
+import { Chargement } from "chargement.slint";
 
 export enum VarianteBouton { primaire, secondaire, fantome, danger }
 
@@ -9,12 +10,13 @@ export component Bouton {
     in property <string> icone;
     in property <VarianteBouton> variante: VarianteBouton.secondaire;
     in property <bool> actif: true;
+    in property <bool> en-cours: false;
     in property <int> calque: 0;
     in property <string> description;
     out property <bool> a-le-focus: portee.has-focus;
     out property <bool> survole: zone.has-hover;
     callback clique();
-    property <bool> utilisable: actif && calque >= Calques.ouverts;
+    property <bool> utilisable: actif && !en-cours && calque >= Calques.ouverts;
     property <color> fond: variante == VarianteBouton.primaire ? Theme.encre : variante == VarianteBouton.danger ? Theme.danger : variante == VarianteBouton.fantome ? transparent : Theme.calque;
     property <color> encre: variante == VarianteBouton.primaire ? Theme.papier : variante == VarianteBouton.danger ? Theme.sur-danger : Theme.encre;
     min-height: 40px;
@@ -73,7 +75,15 @@ export component Bouton {
         spacing: Espace.e2;
         padding-left: root.texte == "" ? 0 : Espace.e4;
         padding-right: root.texte == "" ? 0 : Espace.e4;
-        if root.icone != "": VerticalLayout {
+        if root.en-cours: VerticalLayout {
+            alignment: center;
+            Chargement {
+                taille: 16px;
+                couleur: root.encre;
+                description: root.texte;
+            }
+        }
+        if root.icone != "" && !root.en-cours: VerticalLayout {
             alignment: center;
             Icone {
                 nom: root.icone;
