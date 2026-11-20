@@ -1,8 +1,14 @@
 import { AboutSlint } from "std-widgets.slint";
 import { Theme, Typo, Espace } from "jetons.slint";
+import { Interrupteur } from "composants/interrupteur.slint";
 
 export component APropos {
     in property <string> version;
+    in property <bool> demarrage-disponible: false;
+    in-out property <bool> demarrage-actif: false;
+    in-out property <bool> notifications-bureau: true;
+    callback demarrage-change(bool);
+    callback notifications-change(bool);
     VerticalLayout {
         spacing: Espace.e3;
         alignment: start;
@@ -53,6 +59,29 @@ export component APropos {
             font-family: Typo.texte;
             font-size: Typo.petit;
             wrap: word-wrap;
+        }
+        Text {
+            text: "Bureau";
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: Typo.corps;
+            font-weight: Typo.demi-gras;
+        }
+        Interrupteur {
+            texte: "Notifications du bureau";
+            calque: 1;
+            allume <=> root.notifications-bureau;
+            bascule(actif) => {
+                root.notifications-change(actif);
+            }
+        }
+        if root.demarrage-disponible: Interrupteur {
+            texte: "Lancer Estompe natif à l'ouverture de la session";
+            calque: 1;
+            allume <=> root.demarrage-actif;
+            bascule(actif) => {
+                root.demarrage-change(actif);
+            }
         }
         Rectangle {
             height: 128px;

@@ -2,13 +2,13 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
-| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`) |
+| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur |
 
@@ -29,6 +29,7 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
 ```
 
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
+`estompe-natif --arriere-plan` démarre sans montrer la fenêtre si l'icône de la zone de notification est en place (lancement à l'ouverture de la session), sinon la montre.
 
 ## Interface
 
@@ -361,19 +362,54 @@ deux moteurs et sur les deux OS :
 - Écarts : pas de correction orthographique (le `TextInput` de Slint 1.18 n'en a pas, le front web a celle du navigateur) ; la méthode de saisie et les touches mortes passent par
   winit, à vérifier sur machine réelle.
 
+## Intégration au bureau
+
+`src/bureau/` (`Bureau`), sur les traits de la crate plateforme ; les rappels qui viennent d'un autre fil (instance, zone) reviennent au fil de l'interface par `slint::invoke_from_event_loop`.
+
+- Instance unique (`instance.rs` de la crate plateforme, `interprocess`) : au lancement, avant toute fenêtre, l'app se connecte au socket de l'instance
+  déjà lancée. Si elle répond, elle lui envoie ses arguments (`MessageInstance` : arguments, jeton d'activation `XDG_ACTIVATION_TOKEN` ou
+  `DESKTOP_STARTUP_ID` ; JSON d'une ligne, 64 Kio au plus, 2 s au plus) et sort avec le code 0. Sinon elle devient la première instance et écoute
+  (fil `estompe-instance`).
+  - Linux : socket de fichier `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (dossier en 0700 ; sans `XDG_RUNTIME_DIR`, `<données>/instance.sock`),
+    jamais dans l'espace abstrait (ouvert à tous les comptes). Un socket resté d'un plantage (connexion refusée) est retiré puis recréé.
+  - Windows : tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte du dossier de données>` (le chemin porte le compte) ; la seconde instance
+    appelle `AllowSetForegroundWindow` avant d'écrire, pour que la première puisse passer au premier plan.
+  - `ESTOMPE_NATIF_DOSSIER` donne une autre instance (`<dossier>/instance.sock` sous Linux) : deux dossiers, deux instances.
+  - La première instance ramène la fenêtre (`show()`, puis par winit : visible, non réduite, `focus_window()`), sauf si les arguments portent
+    `--arriere-plan` ; `--invitation <code>` mène à « Rejoindre un serveur » avec ce code (`Evenement::OuvrirInvitation` puis `Evenement::Rejoindre`).
+  - L'app Tauri utilise le greffon single-instance sous l'identifiant `fr.plbls.estompe` : les deux apps ne se ramènent jamais l'une l'autre.
+- Zone de notification (`zone.rs` de la crate plateforme, `tray-icon` ; sous Linux, son moteur `ksni`, StatusNotifierItem par D-Bus, sans GTK) :
+  icône de l'app (64 px), info-bulle « Estompe natif (bêta) », menu « Ouvrir Estompe natif » et « Quitter » ; un clic ou « Ouvrir » ramène la fenêtre.
+  L'icône est créée sur le fil de l'interface (boucle de messages de winit sous Windows).
+- Fermeture : la demande de fermeture de la fenêtre la masque (la géométrie est retenue avant) et garde la session et la connexion temps réel,
+  si la zone est présente : toujours sous Windows, sous Linux si le nom `org.kde.StatusNotifierWatcher` a un propriétaire sur le bus de session
+  (vérifié à chaque demande : une zone apparue après le lancement compte). Sans zone, fermer quitte.
+- Quitter (`Fermeture::quitter`, seule façon de quitter proprement ; « Quitter » de la zone, fermeture sans zone, fin de la boucle) : retient la
+  géométrie, arrête la coquille et attend la fin de sa session (3 s au plus : flux temps réel fermé, brouillons écrits), étape « vocal » (vide jusqu'au
+  lot 4), retire l'icône, puis quitte la boucle d'évènements (`run_event_loop_until_quit` : masquer la fenêtre ne quitte plus l'app).
+- Démarrage avec la session (`demarrage.rs`, `DemarrageSysteme`) : sous Windows, valeur `EstompeNatif` de
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" --arriere-plan` ; l'interrupteur « Lancer Estompe natif à l'ouverture de la
+  session » (section « Bureau » de « À propos ») lit et écrit le registre, désactivé par défaut. Sous Linux, indisponible et masqué jusqu'au paquet (lot 11).
+- Section « Bureau » de « À propos » : « Notifications du bureau » (préférence `notifications`) et, sous Windows, le démarrage avec la session.
+- Non vérifié sur machine réelle : icône et menu sous Windows, retour depuis un autre bureau virtuel, rendu dans une zone StatusNotifierItem (KDE,
+  GNOME avec l'extension AppIndicator) ; sous Wayland, le jeton d'activation n'est pas transmis à winit (seul `focus_window()` est tenté).
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
 (seul `windows_subsystem = "windows"` est admis, pour ne pas ouvrir de console sous Windows).
 
-La crate plateforme expose un trait par fonction : coffre de secrets, notifications, raccourcis globaux, ouverture d'une URL, capture d'écran
-et de fenêtre, capture du son, overlay, application au premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
+La crate plateforme expose un trait par fonction : coffre de secrets, notifications, pastille de la barre des tâches, zone de notification,
+installation d'une mise à jour, raccourcis globaux, ouverture d'une URL, capture d'écran et de fenêtre, capture du son, overlay, application au
+premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`). Le reste arrive avec son lot, Windows d'abord.
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), la zone de notification (`ZoneNotification`, `tray-icon`) et l'instance unique (fonctions de
+`instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session. Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
+De même, les tests qui ont besoin du bus de session D-Bus (zone de notification sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
 
 ## Données locales
 
@@ -385,11 +421,11 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | Cache (avatars dans `avatars/`, images dans `medias/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
+| Instance unique | tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte>` | `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (sinon `<données>/instance.sock`) |
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -436,6 +472,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
+`bureau.rs` (même backend, la boucle lancée deux fois) : fausse zone de notification (`tests/commun/`, module `bureau`) ; un message d'instance ramène la fenêtre masquée et
+  transmet l'invitation, fermer masque la fenêtre en gardant la connexion temps réel (un message reçu arrive encore), clic et « Ouvrir » la ramènent,
+  « Quitter » arrête la coquille, ferme le flux et retire l'icône ; sans zone, la demande de fermeture quitte.
+`instance.rs` (sans backend) : le test tient la première instance, lance le vrai binaire avec `--invitation` : il sort avec succès sans fenêtre et le message reçu porte ses arguments.
 
 ## CI
 

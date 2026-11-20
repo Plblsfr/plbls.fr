@@ -176,6 +176,33 @@ pub struct Coquille {
     emplacement: Emplacement,
     focus: Arc<AtomicBool>,
     tache: JoinHandle<()>,
+    arret: ArretCoquille,
+}
+
+type DemandeArret = (
+    Option<oneshot::Sender<()>>,
+    Option<std::sync::mpsc::Receiver<()>>,
+);
+
+#[derive(Clone)]
+pub struct ArretCoquille {
+    interne: Arc<Mutex<DemandeArret>>,
+}
+
+impl ArretCoquille {
+    pub fn arreter(&self, delai: Duration) -> bool {
+        let (arret, fini) = {
+            let mut interne = self.interne.lock().unwrap_or_else(|e| e.into_inner());
+            (interne.0.take(), interne.1.take())
+        };
+        let Some(fini) = fini else {
+            return true;
+        };
+        if let Some(arret) = arret {
+            let _ = arret.send(());
+        }
+        fini.recv_timeout(delai).is_ok()
+    }
 }
 
 impl Coquille {
@@ -199,12 +226,23 @@ impl Coquille {
             runtime: entree.runtime(),
             focus: focus.clone(),
         };
-        let tache = entree.runtime().spawn(cycle(entree.observer(), contexte));
+        let (envoi_arret, arret) = oneshot::channel();
+        let (envoi_fini, fini) = std::sync::mpsc::channel();
+        let tache = entree
+            .runtime()
+            .spawn(cycle(entree.observer(), contexte, arret, envoi_fini));
         Self {
             emplacement,
             focus,
             tache,
+            arret: ArretCoquille {
+                interne: Arc::new(Mutex::new((Some(envoi_arret), Some(fini)))),
+            },
         }
+    }
+
+    pub fn arret(&self) -> ArretCoquille {
+        self.arret.clone()
     }
 
     pub fn pont(&self) -> Option<Pont> {
@@ -421,10 +459,11 @@ struct SessionActive {
     compte: String,
     arret: Option<oneshot::Sender<()>>,
     rejoints: mpsc::UnboundedSender<String>,
+    tache: JoinHandle<()>,
 }
 
 impl SessionActive {
-    fn arreter(mut self, contexte: &Contexte) {
+    fn arreter(mut self, contexte: &Contexte) -> JoinHandle<()> {
         if let Some(arret) = self.arret.take() {
             let _ = arret.send(());
         }
@@ -436,10 +475,16 @@ impl SessionActive {
         emplacement.1 = None;
         drop(emplacement);
         contexte.sur_l_interface(vider_modeles);
+        self.tache
     }
 }
 
-async fn cycle(mut etats: watch::Receiver<Etat>, contexte: Contexte) {
+async fn cycle(
+    mut etats: watch::Receiver<Etat>,
+    contexte: Contexte,
+    mut arret: oneshot::Receiver<()>,
+    fini: std::sync::mpsc::Sender<()>,
+) {
     let mut session: Option<SessionActive> = None;
     let mut dernier_rejoint: Option<String> = None;
     loop {
@@ -448,7 +493,7 @@ async fn cycle(mut etats: watch::Receiver<Etat>, contexte: Contexte) {
             Etat::Connecte { compte, serveur } => {
                 if session.as_ref().map(|s| s.compte.as_str()) != Some(compte.id.as_str()) {
                     if let Some(ancienne) = session.take() {
-                        ancienne.arreter(&contexte);
+                        drop(ancienne.arreter(&contexte));
                     }
                     session = Some(demarrer_session(&contexte, compte.id.clone()));
                 }
@@ -463,17 +508,21 @@ async fn cycle(mut etats: watch::Receiver<Etat>, contexte: Contexte) {
             _ => {
                 dernier_rejoint = None;
                 if let Some(ancienne) = session.take() {
-                    ancienne.arreter(&contexte);
+                    drop(ancienne.arreter(&contexte));
                 }
             }
         }
-        if etats.changed().await.is_err() {
-            break;
+        tokio::select! {
+            changement = etats.changed() => if changement.is_err() {
+                break;
+            },
+            _ = &mut arret => break,
         }
     }
     if let Some(ancienne) = session.take() {
-        ancienne.arreter(&contexte);
+        let _ = ancienne.arreter(&contexte).await;
     }
+    let _ = fini.send(());
 }
 
 fn demarrer_session(contexte: &Contexte, compte: String) -> SessionActive {
@@ -484,13 +533,14 @@ fn demarrer_session(contexte: &Contexte, compte: String) -> SessionActive {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .0;
-    contexte
+    let tache = contexte
         .runtime
         .spawn(session(contexte.clone(), generation, attente_arret, recus));
     SessionActive {
         compte,
         arret: Some(arret),
         rejoints,
+        tache,
     }
 }
 

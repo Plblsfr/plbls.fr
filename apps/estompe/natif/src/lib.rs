@@ -1,5 +1,6 @@
 slint::include_modules!();
 
+pub mod bureau;
 pub mod coquille;
 pub mod ecrans;
 pub mod entree;
@@ -31,6 +32,7 @@ pub fn invitation_des_arguments(arguments: impl IntoIterator<Item = String>) -> 
 }
 
 pub struct Application {
+    pub bureau: bureau::Bureau,
     pub coquille: coquille::Coquille,
     pub entree: entree::Entree,
     pub client: estompe_client::http::Client,
@@ -96,7 +98,26 @@ pub fn demarrer(
         coquille::horloge_locale(),
     );
     suivre_le_focus(fenetre, coquille.suivi_du_focus());
+    let plateforme = estompe_plateforme::Plateforme::de_l_os();
+    let emetteur = entree.emetteur();
+    let bureau = bureau::Bureau::installer(
+        fenetre,
+        bureau::OptionsBureau {
+            zone: plateforme.zone,
+            demarrage: plateforme.demarrage,
+            memoire: session.memoire.clone(),
+            entree: std::sync::Arc::new(move |evenement| emetteur.envoyer(evenement)),
+            journal: Some(session.journal.clone()),
+        },
+    );
+    let arret = coquille.arret();
+    bureau
+        .fermeture()
+        .avant_de_quitter(bureau::EtapeFermeture::Coquille, move || {
+            arret.arreter(bureau::DELAI_ARRET);
+        });
     Ok(Application {
+        bureau,
         coquille,
         entree,
         client: reels.client,

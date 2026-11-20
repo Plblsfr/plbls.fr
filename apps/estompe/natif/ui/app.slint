@@ -37,6 +37,9 @@ export component Principale inherits Window {
     in property <string> mise-a-jour-version-minimale;
     in property <string> pseudo;
     in-out property <bool> a-propos-ouvert: false;
+    in property <bool> demarrage-disponible: false;
+    in-out property <bool> demarrage-actif: false;
+    in-out property <bool> notifications-bureau: true;
     in-out property <bool> modal-demo-ouvert: false;
     in property <bool> infobulle-forcee: false;
     out property <int> clics-demo: demo.clics;
@@ -55,6 +58,8 @@ export component Principale inherits Window {
     callback rejoindre(string);
     callback retour-accueil();
     callback telecharger-mise-a-jour();
+    callback demarrage-change(bool);
+    callback notifications-change(bool);
     public function focus-demo() {
         demo.focus-initial();
     }
@@ -244,6 +249,15 @@ export component Principale inherits Window {
         APropos {
             min-height: 320px;
             version: root.version;
+            demarrage-disponible: root.demarrage-disponible;
+            demarrage-actif <=> root.demarrage-actif;
+            notifications-bureau <=> root.notifications-bureau;
+            demarrage-change(actif) => {
+                root.demarrage-change(actif);
+            }
+            notifications-change(actif) => {
+                root.notifications-change(actif);
+            }
         }
     }
     Modal {

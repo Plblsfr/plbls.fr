@@ -161,13 +161,17 @@ impl Session {
     }
 
     pub fn retenir_geometrie(&self, fenetre: &Principale) {
-        let window = fenetre.window();
-        if !window.is_visible() || window.is_minimized() {
-            return;
-        }
-        let geometrie = geometrie(fenetre);
-        self.memoire.modifier(|p| p.fenetre = Some(geometrie));
+        retenir_geometrie(&self.memoire, fenetre);
     }
+}
+
+pub fn retenir_geometrie(memoire: &Memoire, fenetre: &Principale) {
+    let window = fenetre.window();
+    if !window.is_visible() || window.is_minimized() {
+        return;
+    }
+    let geometrie = geometrie(fenetre);
+    memoire.modifier(|p| p.fenetre = Some(geometrie));
 }
 
 pub fn mode_theme(theme: preferences::Theme) -> ModeTheme {

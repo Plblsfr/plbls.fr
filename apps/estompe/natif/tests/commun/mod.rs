@@ -1217,3 +1217,59 @@ pub mod coquille {
         }
     }
 }
+
+pub mod bureau {
+    use estompe_plateforme::{EvenementZone, Image, RecepteurZone, Resultat, ZoneNotification};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    pub struct EtatZone {
+        pub presente: AtomicBool,
+        pub retiree: AtomicBool,
+        pub icones: Mutex<Vec<Image>>,
+        recepteur: Mutex<Option<RecepteurZone>>,
+    }
+
+    impl EtatZone {
+        pub fn declencher(&self, evenement: EvenementZone) {
+            let recepteur = self.recepteur.lock().unwrap();
+            (recepteur.as_ref().expect("zone installée"))(evenement);
+        }
+
+        pub fn installee(&self) -> bool {
+            self.recepteur.lock().unwrap().is_some()
+        }
+    }
+
+    pub struct FausseZone(pub Arc<EtatZone>);
+
+    impl FausseZone {
+        pub fn nouvelle(presente: bool) -> (Box<Self>, Arc<EtatZone>) {
+            let etat = Arc::new(EtatZone::default());
+            etat.presente.store(presente, Ordering::SeqCst);
+            (Box::new(Self(etat.clone())), etat)
+        }
+    }
+
+    impl ZoneNotification for FausseZone {
+        fn disponible(&self) -> bool {
+            true
+        }
+        fn presente(&self) -> bool {
+            self.0.presente.load(Ordering::SeqCst)
+        }
+        fn installer(&self, icone: &Image, _: &str, evenements: RecepteurZone) -> Resultat<()> {
+            self.0.icones.lock().unwrap().push(icone.clone());
+            *self.0.recepteur.lock().unwrap() = Some(evenements);
+            Ok(())
+        }
+        fn definir_icone(&self, icone: &Image) -> Resultat<()> {
+            self.0.icones.lock().unwrap().push(icone.clone());
+            Ok(())
+        }
+        fn retirer(&self) {
+            self.0.retiree.store(true, Ordering::SeqCst);
+        }
+    }
+}
