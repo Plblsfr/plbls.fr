@@ -8,7 +8,9 @@ use estompe_client::appels::Badge;
 use estompe_client::lru::Lru;
 use estompe_client::markdown::{analyser, texte_brut};
 use estompe_client::mention::Mentionnables;
-use estompe_client::store::messages::{auteur, ChangementMessages, Conversation};
+use estompe_client::store::messages::{
+    auteur, ChangementMessages, Conversation, EtatEnvoi, PREFIXE_LOCAL,
+};
 use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::types::LinkPreview;
 use estompe_plateforme::{Fichiers, Indisponible, OuvertureUrl, PressePapiers};
@@ -27,6 +29,7 @@ use super::rendu::{
     analyser_cible, blocs_affiches, BlocAffiche, Cible, GenreBlocAffiche, GenreSegmentAffiche,
     Palette,
 };
+use super::saisie::{executer, indice_de, Action, Mode, Saisie};
 use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
@@ -46,6 +49,9 @@ pub type Presse = Arc<dyn PressePapiers + Send + Sync>;
 pub type DossierParDefaut = Arc<dyn Fn() -> Option<PathBuf> + Send + Sync>;
 
 pub const ZOOM_MAX: f32 = 8.0;
+pub const TEXTE_LECTURE_SEULE_ESTOMPE: &str =
+    "Conversation en lecture seule : Estompe y publie ses nouveautés.";
+pub const TEXTE_SANS_DROIT_D_ECRIRE: &str = "Tu n'as pas la permission d'écrire dans ce salon.";
 pub const PAS_DE_PROGRESSION: u8 = 1;
 
 pub const CAPACITE_RENDUS: usize = 512;
@@ -197,6 +203,7 @@ struct Proprietes {
     nouveaux: i32,
     saisie: String,
     lecture_seule: bool,
+    lecture_seule_texte: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -237,6 +244,8 @@ struct Interne {
     nouveaux: usize,
     saisie: String,
     lecture_seule: bool,
+    lecture_seule_texte: String,
+    compte_estompe: bool,
     avec_portrait: HashSet<String>,
     demandes_avatars: HashSet<CleAvatar>,
     echecs_avatars: HashSet<CleAvatar>,
@@ -291,6 +300,8 @@ impl Interne {
             nouveaux: 0,
             saisie: String::new(),
             lecture_seule: false,
+            lecture_seule_texte: String::new(),
+            compte_estompe: false,
             avec_portrait: HashSet::new(),
             demandes_avatars: HashSet::new(),
             echecs_avatars: HashSet::new(),
@@ -721,6 +732,15 @@ fn annexes_slint(
     }
 }
 
+pub fn libelle_d_envoi(etat: Option<&EtatEnvoi>) -> String {
+    match etat {
+        None => String::new(),
+        Some(EtatEnvoi::EnCours) => "Envoi…".to_string(),
+        Some(EtatEnvoi::EnAttente) => "En attente du réseau…".to_string(),
+        Some(EtatEnvoi::Echec(raison)) => format!("Non envoyé · {}", raison.libelle()),
+    }
+}
+
 pub fn infobulle_de_reaction(titre: &str, emoji: &str) -> String {
     titre
         .strip_suffix(emoji)
@@ -831,7 +851,8 @@ fn ligne_slint(
             .unwrap_or_default()
             .into(),
         annexes: annexes_slint(&m.annexes, &l.medias, &images, profils),
-        etat_envoi: SharedString::default(),
+        etat_envoi: libelle_d_envoi(m.envoi.as_ref()).into(),
+        envoi_echec: matches!(m.envoi, Some(EtatEnvoi::Echec(_))),
     }
 }
 
@@ -872,6 +893,7 @@ pub struct PontMessagerie {
     fichiers: Arc<Mutex<SystemeFichiers>>,
     presse_papiers: Arc<Mutex<Presse>>,
     dossier_par_defaut: Arc<Mutex<DossierParDefaut>>,
+    saisie: Saisie,
 }
 
 struct SourceIndisponible;
@@ -938,6 +960,164 @@ impl PontMessagerie {
             dossier_par_defaut: Arc::new(Mutex::new(Arc::new(
                 estompe_plateforme::dossier_telechargements,
             ))),
+            saisie: Saisie::default(),
+        }
+    }
+
+    fn raison_lecture_seule(&self) -> Option<&'static str> {
+        let (cle, estompe) = {
+            let i = self.verrou();
+            (i.cle.clone()?, i.compte_estompe)
+        };
+        if estompe {
+            return Some(TEXTE_LECTURE_SEULE_ESTOMPE);
+        }
+        (!self
+            .store
+            .lire(|etat| etat.peut_dans(Some(&cle), "send_messages")))
+        .then_some(TEXTE_SANS_DROIT_D_ECRIRE)
+    }
+
+    pub fn saisie(&self) -> &Saisie {
+        &self.saisie
+    }
+
+    pub fn conversations_en_brouillon(&self) -> HashSet<String> {
+        self.saisie.conversations_en_brouillon()
+    }
+
+    fn indice_de_saisie(&self, cle: Option<&CleConversation>) -> String {
+        let Some(cle) = cle else {
+            return String::new();
+        };
+        self.store.lire(|etat| match cle {
+            CleConversation::Salon(id) => {
+                let nom = etat
+                    .details
+                    .values()
+                    .flat_map(|d| d.channels.iter().flatten())
+                    .find(|s| s.id.as_deref() == Some(id.as_str()))
+                    .and_then(|s| s.name.clone())
+                    .unwrap_or_default();
+                indice_de(&nom, false)
+            }
+            CleConversation::Prive(id) => {
+                let nom = etat
+                    .messages_prives
+                    .iter()
+                    .find(|d| d.id.as_deref() == Some(id.as_str()))
+                    .and_then(|d| d.other.as_ref())
+                    .and_then(|o| o.pseudo.clone())
+                    .unwrap_or_default();
+                indice_de(&nom, true)
+            }
+        })
+    }
+
+    pub fn saisie_modifiee(&self, f: &Principale, texte: &str) -> bool {
+        let change = self.saisie.modifie(f, texte, &self.runtime);
+        if matches!(self.saisie.mode(), Mode::Modification { .. }) {
+            return change;
+        }
+        if let Some(cle) = self.saisie.cle() {
+            let store = self.store.clone();
+            let texte = texte.to_string();
+            self.runtime
+                .spawn(async move { store.signaler_saisie(&cle, &texte).await });
+        }
+        change
+    }
+
+    pub fn envoyer_saisie(&self, f: &Principale, texte: &str) -> bool {
+        if self.verrou().lecture_seule {
+            return false;
+        }
+        let Some(action) = self.saisie.envoyer(f, texte) else {
+            return false;
+        };
+        let envoi = matches!(action, Action::Envoyer(..));
+        if envoi {
+            self.store.oublier_saisie();
+            {
+                let mut i = self.verrou();
+                i.nouveau_depuis = None;
+                i.defilement.aller_en_bas();
+            }
+        }
+        self.lancer(action);
+        envoi
+    }
+
+    fn lancer(&self, action: Action) {
+        let futur = executer(&self.store, action);
+        let faible = self.fenetre.clone();
+        let saisie = self.saisie.clone();
+        self.runtime.spawn(async move {
+            if let Err(erreur) = futur.await {
+                let _ = faible.upgrade_in_event_loop(move |f| saisie.signaler_erreur(&f, &erreur));
+            }
+        });
+    }
+
+    pub fn annuler_bandeau(&self, f: &Principale) {
+        self.saisie.annuler(f);
+    }
+
+    pub fn fleche_haut(&self, f: &Principale) {
+        let Some(cle) = self.conversation() else {
+            return;
+        };
+        if let Some(message) = self.store.dernier_de_moi(&cle) {
+            self.saisie.modifier(f, &message);
+        }
+    }
+
+    pub fn repondre_a(&self, f: &Principale, id: &str) {
+        let Some(cle) = self.conversation() else {
+            return;
+        };
+        if let Some(message) = self
+            .store
+            .conversation(&cle)
+            .and_then(|c| c.message(id).cloned())
+        {
+            self.saisie.repondre(f, &message);
+        }
+    }
+
+    pub fn modifier_message(&self, f: &Principale, id: &str) {
+        let Some(cle) = self.conversation() else {
+            return;
+        };
+        if let Some(message) = self
+            .store
+            .conversation(&cle)
+            .and_then(|c| c.message(id).cloned())
+        {
+            self.saisie.modifier(f, &message);
+        }
+    }
+
+    pub fn supprimer_message(&self, id: &str) {
+        if let Some(cle) = self.conversation() {
+            self.lancer(Action::Supprimer {
+                cle,
+                id: id.to_string(),
+            });
+        }
+    }
+
+    pub fn reessayer_envoi(&self, id: &str) {
+        let Some(n) = id.strip_prefix(PREFIXE_LOCAL).and_then(|n| n.parse().ok()) else {
+            return;
+        };
+        let store = self.store.clone();
+        self.runtime.spawn(async move { store.reessayer(n).await });
+    }
+
+    pub fn abandonner_envoi(&self, id: &str) {
+        if let Some(n) = id.strip_prefix(PREFIXE_LOCAL).and_then(|n| n.parse().ok()) {
+            self.store.abandonner(n);
         }
     }
 
@@ -1073,7 +1253,7 @@ impl PontMessagerie {
             i.cle = cle.clone();
             i.serveur = serveur;
             i.non_lus_ouverture = non_lus;
-            i.lecture_seule = match &cle {
+            i.compte_estompe = match &cle {
                 Some(CleConversation::Prive(id)) => self.store.lire(|etat| {
                     etat.messages_prives.iter().any(|d| {
                         d.id.as_deref() == Some(id.as_str())
@@ -1092,6 +1272,8 @@ impl PontMessagerie {
         g.set_visionneuse(Visionneuse::default());
         PROPRIETAIRE.with(|p| p.set(self.identifiant));
         ANIMATION.with(|a| *a.borrow_mut() = None);
+        let indice = self.indice_de_saisie(cle.as_ref());
+        self.saisie.ouvrir(f, cle.clone(), indice);
         self.medias().noter_fil_interface();
         self.charger_emojis(false);
         self.reprojeter(f);
@@ -1188,6 +1370,7 @@ impl PontMessagerie {
                 maintenant_ms: maintenant,
                 apercus,
                 lecteurs: &aucun,
+                envois: &[],
             };
             messages
                 .iter()
@@ -1285,6 +1468,7 @@ impl PontMessagerie {
                     | ChangementMessages::Bornes { conversation }
                     | ChangementMessages::Rechargee { conversation }
                     | ChangementMessages::Lectures { conversation }
+                    | ChangementMessages::Envois { conversation }
                         if *conversation == cle =>
                     {
                         reprojeter = true
@@ -1471,11 +1655,22 @@ impl PontMessagerie {
         let apercus = i.apercus;
         let cle = i.cle.clone();
         drop(i);
-        let lecteurs = cle.map(|c| self.store.lecteurs(&c)).unwrap_or_default();
+        let lecteurs = cle
+            .as_ref()
+            .map(|c| self.store.lecteurs(c))
+            .unwrap_or_default();
+        let envois = cle.map(|c| self.store.envois(&c)).unwrap_or_default();
+        let messages: std::borrow::Cow<[estompe_client::types::Message]> = if envois.is_empty() {
+            std::borrow::Cow::Borrowed(&c.messages)
+        } else {
+            let mut tous = c.messages.clone();
+            tous.extend(envois.iter().map(|e| e.message()));
+            std::borrow::Cow::Owned(tous)
+        };
         let maintenant = self.maintenant();
         self.store.lire(|etat| {
             lignes_de_conversation(
-                &c.messages,
+                &messages,
                 &ContexteLignes {
                     etat,
                     serveur,
@@ -1486,6 +1681,7 @@ impl PontMessagerie {
                     maintenant_ms: maintenant,
                     apercus,
                     lecteurs: &lecteurs,
+                    envois: &envois,
                 },
             )
         })
@@ -1537,6 +1733,7 @@ impl PontMessagerie {
                     maintenant_ms: maintenant,
                     apercus,
                     lecteurs: &lecteurs,
+                    envois: &[],
                 },
             )
         });
@@ -1608,8 +1805,11 @@ impl PontMessagerie {
             return;
         }
         let g = f.global::<DonneesMessagerie>();
+        let raison = self.raison_lecture_seule();
         let (fenetre, lignes_fenetre) = {
-            let i = self.verrou();
+            let mut i = self.verrou();
+            i.lecture_seule = raison.is_some();
+            i.lecture_seule_texte = raison.unwrap_or_default().to_string();
             let fenetre = i.defilement.fenetre();
             let fin = fenetre.fin.min(i.lignes.len());
             let debut = fenetre.debut.min(fin);
@@ -1738,6 +1938,7 @@ impl PontMessagerie {
             nouveaux: i.nouveaux.min(i32::MAX as usize) as i32,
             saisie: i.saisie.clone(),
             lecture_seule: i.lecture_seule,
+            lecture_seule_texte: i.lecture_seule_texte.clone(),
         };
         let ancienne = std::mem::replace(&mut i.proprietes, proprietes.clone());
         let charger_haut = i.chargee
@@ -1794,11 +1995,11 @@ impl PontMessagerie {
         if ancienne.saisie != proprietes.saisie {
             g.set_saisie(proprietes.saisie.as_str().into());
         }
-        if ancienne.lecture_seule != proprietes.lecture_seule {
+        if ancienne.lecture_seule != proprietes.lecture_seule
+            || ancienne.lecture_seule_texte != proprietes.lecture_seule_texte
+        {
             g.set_lecture_seule(proprietes.lecture_seule);
-            g.set_lecture_seule_texte(
-                "Conversation en lecture seule : Estompe y publie ses nouveautés.".into(),
-            );
+            g.set_lecture_seule_texte(proprietes.lecture_seule_texte.as_str().into());
         }
         let Some(cle) = cle else {
             return;
@@ -2813,6 +3014,7 @@ mod tests {
                 reponse: None,
                 contenu: contenu.into(),
                 annexes: DonneesAnnexes::default(),
+                envoi: None,
             }),
         }
     }

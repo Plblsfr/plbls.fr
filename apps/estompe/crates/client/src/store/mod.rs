@@ -45,7 +45,13 @@ struct Interne {
     etat: RwLock<Etat>,
     messages: RwLock<messages::EtatMessages>,
     abonnes: Mutex<Vec<mpsc::UnboundedSender<Vec<Changement>>>>,
+    expedition: tokio::sync::Mutex<()>,
+    relance: std::sync::atomic::AtomicBool,
+    rythme: Mutex<messages::RythmeSaisie>,
+    horloge: RwLock<Option<Horloge>>,
 }
+
+pub type Horloge = Arc<dyn Fn() -> i64 + Send + Sync>;
 
 #[derive(Clone)]
 pub struct Store {
@@ -60,8 +66,29 @@ impl Store {
                 etat: RwLock::new(Etat::avec_ordre_serveurs(ordre_serveurs)),
                 messages: RwLock::new(messages::EtatMessages::default()),
                 abonnes: Mutex::new(Vec::new()),
+                expedition: tokio::sync::Mutex::new(()),
+                relance: std::sync::atomic::AtomicBool::new(false),
+                rythme: Mutex::new(messages::RythmeSaisie::default()),
+                horloge: RwLock::new(None),
             }),
         }
+    }
+
+    pub fn definir_horloge(&self, horloge: Horloge) {
+        *self
+            .interne
+            .horloge
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(horloge);
+    }
+
+    pub fn maintenant_ms(&self) -> Option<i64> {
+        self.interne
+            .horloge
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|h| h())
     }
 
     pub fn client(&self) -> &Client {
@@ -408,6 +435,7 @@ impl Store {
                     Signal::Reconnecte => {
                         let _ = self.charger().await;
                         self.rattraper_messages().await;
+                        self.expedier().await;
                     }
                     Signal::SessionExpiree => {
                         fin = Some(FinFlux::SessionExpiree);

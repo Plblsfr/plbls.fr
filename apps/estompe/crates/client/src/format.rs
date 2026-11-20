@@ -63,6 +63,20 @@ pub fn date_locale_de_ms(ms: i64, decalage_minutes: i32) -> DateLocale {
     }
 }
 
+pub fn iso_de_ms(ms: i64) -> String {
+    let d = date_locale_de_ms(ms, 0);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        d.annee,
+        d.mois,
+        d.jour,
+        d.heure,
+        d.minute,
+        d.seconde,
+        ms.rem_euclid(1000)
+    )
+}
+
 pub fn date_locale(iso: &str, decalage_minutes: i32) -> Option<DateLocale> {
     date_en_millisecondes(iso).map(|ms| date_locale_de_ms(ms, decalage_minutes))
 }

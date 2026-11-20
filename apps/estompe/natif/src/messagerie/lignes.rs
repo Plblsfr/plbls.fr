@@ -7,7 +7,9 @@ use estompe_client::format::{date_heure_complete, heure_de, lignes_de_messages, 
 use estompe_client::mention::Mentionnables;
 use estompe_client::roles::{couleur_du_pseudo, Membre};
 use estompe_client::sondage::{est_clos, fin_en_ms, gagnants, libelle_du_pied, pourcentage, total};
-use estompe_client::store::messages::{auteur, est_compte_estompe, id_message};
+use estompe_client::store::messages::{
+    auteur, est_compte_estompe, id_message, EnvoiLocal, EtatEnvoi,
+};
 use estompe_client::store::{CleConversation, Etat};
 use estompe_client::temps_reel::evenements::Lecture;
 use estompe_client::types::{Attachment, Message, MessagePoll};
@@ -160,6 +162,7 @@ pub struct DonneesMessage {
     pub reponse: Option<DonneesReponse>,
     pub contenu: String,
     pub annexes: DonneesAnnexes,
+    pub envoi: Option<EtatEnvoi>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +183,7 @@ pub struct ContexteLignes<'a> {
     pub maintenant_ms: i64,
     pub apercus: bool,
     pub lecteurs: &'a BTreeMap<String, Vec<Lecture>>,
+    pub envois: &'a [EnvoiLocal],
 }
 
 fn texte(valeur: &Option<String>) -> &str {
@@ -396,6 +400,11 @@ pub fn donnees_message(message: &Message, suite: bool, c: &ContexteLignes) -> Do
                 .unwrap_or_default(),
             ..annexes(message, moi, c.maintenant_ms, c.apercus)
         },
+        envoi: c
+            .envois
+            .iter()
+            .find(|e| e.id_local() == id)
+            .map(|e| e.etat.clone()),
         auteur: pseudo,
         utilisateur,
         id,
@@ -525,6 +534,7 @@ mod tests {
             maintenant_ms: MAINTENANT,
             apercus: true,
             lecteurs: &AUCUN_LECTEUR,
+            envois: &[],
         }
     }
 

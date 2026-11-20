@@ -31,6 +31,7 @@ pub struct DonneesSalon {
     pub mentions: usize,
     pub bientot: bool,
     pub occupants: usize,
+    pub brouillon: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +44,7 @@ pub struct DonneesPrive {
     pub non_lus: i64,
     pub mentions: usize,
     pub presence: Presence,
+    pub brouillon: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -290,6 +292,7 @@ fn ligne_de_salon(
         },
         bientot: est_vocal(salon.kind) || est_esquisse(salon.kind),
         occupants: etat.participants(&identifiant).len(),
+        brouillon: false,
         id: identifiant,
     }
 }
@@ -338,9 +341,23 @@ pub fn lignes_prives(privees: &[LignePrivee], route: &Route) -> Vec<DonneesPrive
             }),
             initiales: initiales(&l.pseudo),
             pseudo: l.pseudo.clone(),
+            brouillon: false,
             id: l.id.clone(),
         })
         .collect()
+}
+
+pub fn marquer_brouillons(
+    salons: &mut [DonneesSalon],
+    prives: &mut [DonneesPrive],
+    a_un_brouillon: impl Fn(&str) -> bool,
+) {
+    for s in salons {
+        s.brouillon = a_un_brouillon(&format!("c:{}", s.id));
+    }
+    for p in prives {
+        p.brouillon = a_un_brouillon(&format!("d:{}", p.id));
+    }
 }
 
 pub fn lignes_sections(sections: &[Section], route: &Route) -> Vec<DonneesSection> {
@@ -804,6 +821,7 @@ mod tests {
                 non_lus: 2,
                 mentions: 0,
                 presence: Presence::EnLigne,
+                brouillon: false,
             }
         );
         assert!(lignes[1].actif && lignes[1].presence == Presence::HorsLigne);

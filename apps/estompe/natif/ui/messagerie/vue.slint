@@ -2,6 +2,7 @@ import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint"
 import { Icone, Bouton, VarianteBouton, Vide, Chargement, BarreDefilement } from "../composants.slint";
 import { DonneesMessagerie, EtatConversation } from "donnees.slint";
 import { LigneMessageVue } from "element.slint";
+import { ZoneSaisie } from "saisie.slint";
 
 component BoutonNouveaux inherits Rectangle {
     in property <int> nombre;
@@ -207,29 +208,9 @@ export component VueMessages inherits Rectangle {
                 }
             }
         }
-        if DonneesMessagerie.lecture-seule: Rectangle {
-            height: 44px;
-            border-width: 0;
-            HorizontalLayout {
-                padding-left: 72px;
-                padding-right: 24px;
-                spacing: Espace.e2;
-                VerticalLayout {
-                    alignment: center;
-                    Icone {
-                        nom: "cadenas";
-                        taille: 15px;
-                        couleur: Theme.gris;
-                    }
-                }
-                Text {
-                    text: DonneesMessagerie.lecture-seule-texte;
-                    color: Theme.gris;
-                    font-size: Typo.petit;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
-            }
+        ZoneSaisie {
+            lecture-seule-externe: DonneesMessagerie.lecture-seule;
+            lecture-seule-externe-texte: DonneesMessagerie.lecture-seule-texte;
         }
     }
 }

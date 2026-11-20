@@ -136,6 +136,27 @@ component ChargementLigne {
     }
 }
 
+component LienAction inherits Text {
+    in property <string> texte;
+    callback clique();
+    text: root.texte;
+    color: zone-lien.has-hover ? Theme.encre : Theme.rose-texte;
+    font-size: Typo.minuscule;
+    font-weight: Typo.demi-gras;
+    vertical-alignment: center;
+    accessible-role: button;
+    accessible-label: root.texte;
+    accessible-action-default => {
+        root.clique();
+    }
+    zone-lien := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
 component CorpsMessage inherits Rectangle {
     in property <LigneMessage> ligne;
     callback copier(string);
@@ -314,10 +335,32 @@ component CorpsMessage inherits Rectangle {
                         annexes: root.ligne.annexes;
                         message: root.ligne.id;
                     }
-                    if root.ligne.etat-envoi != "": Text {
-                        text: root.ligne.etat-envoi;
-                        color: Theme.gris;
-                        font-size: Typo.minuscule;
+                    if root.ligne.etat-envoi != "": HorizontalLayout {
+                        spacing: Espace.e3;
+                        accessible-role: text;
+                        accessible-label: root.ligne.etat-envoi;
+                        Text {
+                            text: root.ligne.etat-envoi;
+                            color: root.ligne.envoi-echec ? Theme.danger : Theme.gris;
+                            font-size: Typo.minuscule;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        if root.ligne.envoi-echec: LienAction {
+                            texte: "Réessayer";
+                            clique => {
+                                DonneesMessagerie.reessayer-envoi(root.ligne.id);
+                            }
+                        }
+                        if root.ligne.envoi-echec: LienAction {
+                            texte: "Supprimer";
+                            clique => {
+                                DonneesMessagerie.abandonner-envoi(root.ligne.id);
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
                     }
                 }
             }

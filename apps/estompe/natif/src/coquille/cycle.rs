@@ -20,7 +20,8 @@ use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
 use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::session::Memoire;
-use crate::{DonneesCoquille, DonneesMessagerie, Principale};
+use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, Principale};
+use estompe_client::brouillons::Brouillons;
 
 const RAFRAICHIR_ACCUEIL: Duration = Duration::from_secs(60);
 const ATTENTE_MAX: Duration = Duration::from_secs(30);
@@ -56,6 +57,9 @@ pub trait Fabrique: Send + Sync + 'static {
     fn presse_papiers(&self) -> Presse {
         Arc::new(estompe_plateforme::PressePapiersSysteme)
     }
+    fn brouillons(&self) -> Brouillons {
+        Brouillons::en_memoire()
+    }
 }
 
 pub struct FabriqueReelle {
@@ -66,6 +70,7 @@ pub struct FabriqueReelle {
     pub profils: Arc<Profils>,
     pub medias: Arc<Medias>,
     pub navigateur: Navigateur,
+    pub dossier_donnees: Option<std::path::PathBuf>,
 }
 
 fn noter(journal: &Option<Arc<Journal>>, niveau: Niveau, message: &str) {
@@ -147,6 +152,13 @@ impl Fabrique for FabriqueReelle {
 
     fn navigateur(&self) -> Navigateur {
         self.navigateur.clone()
+    }
+
+    fn brouillons(&self) -> Brouillons {
+        self.dossier_donnees
+            .as_deref()
+            .map(Brouillons::charger)
+            .unwrap_or_default()
     }
 }
 
@@ -292,6 +304,38 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_fermer_visionneuse, |p, f| p
         .messagerie()
         .fermer_visionneuse(&f));
+    rappel_messagerie!(on_reessayer_envoi, |p, _f, id| p
+        .messagerie()
+        .reessayer_envoi(&id));
+    rappel_messagerie!(on_abandonner_envoi, |p, _f, id| p
+        .messagerie()
+        .abandonner_envoi(&id));
+    let s = f.global::<DonneesSaisie>();
+    macro_rules! rappel_saisie {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            s.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_saisie!(on_modifie, |p, f, texte| {
+        if p.messagerie().saisie_modifiee(&f, &texte) {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_saisie!(on_envoyer, |p, f, texte| {
+        if p.messagerie().envoyer_saisie(&f, &texte) {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_saisie!(on_annuler_bandeau, |p, f| p
+        .messagerie()
+        .annuler_bandeau(&f));
+    rappel_saisie!(on_fleche_haut, |p, f| p.messagerie().fleche_haut(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -520,6 +564,9 @@ async fn session(
     pont.messagerie()
         .definir_presse_papiers(contexte.fabrique.presse_papiers());
     pont.messagerie()
+        .saisie()
+        .definir_brouillons(contexte.fabrique.brouillons());
+    pont.messagerie()
         .definir_apercus(contexte.memoire.lire(|p| p.apercus));
     if !contexte.focus.load(Ordering::SeqCst) {
         pont.messagerie().fenetre_active(false);
@@ -603,6 +650,7 @@ async fn session(
             }
         }
     }
+    pont.messagerie().saisie().enregistrer_maintenant();
     sections.abort();
     suivi.abort();
     if let Some(temps_reel) = temps_reel {

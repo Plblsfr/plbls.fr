@@ -1,0 +1,302 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Icone } from "../composants.slint";
+import { DonneesCoquille, EtatBandeau } from "../coquille/donnees.slint";
+
+export enum GenreBandeau { aucun, reponse, modification }
+
+export struct BandeauSaisie {
+    genre: GenreBandeau,
+    auteur: string,
+    texte: string,
+}
+
+export global DonneesSaisie {
+    in property <bool> visible: false;
+    in-out property <string> texte;
+    in property <string> indice;
+    in property <bool> lecture-seule: false;
+    in property <string> lecture-seule-texte;
+    in property <BandeauSaisie> bandeau;
+    in property <string> compteur;
+    in property <bool> compteur-alerte: false;
+    in property <string> erreur;
+    in property <int> demande-focus: 0;
+    in property <length> hauteur-max: 220px;
+    callback modifie(string);
+    callback envoyer(string);
+    callback annuler-bandeau();
+    callback fleche-haut();
+}
+
+component BoutonIcone inherits Rectangle {
+    in property <string> icone;
+    in property <string> libelle;
+    in property <bool> actif: true;
+    in property <color> encre: Theme.gris;
+    in property <length> taille: 18px;
+    callback clique();
+    width: 34px;
+    height: 34px;
+    border-radius: Rayon.s;
+    background: zone.has-hover && root.actif ? Theme.encre.with-alpha(0.06) : transparent;
+    opacity: root.actif ? 1 : 0.45;
+    accessible-role: button;
+    accessible-label: root.libelle;
+    accessible-enabled: root.actif;
+    accessible-action-default => {
+        if (root.actif) {
+            root.clique();
+        }
+    }
+    Icone {
+        nom: root.icone;
+        taille: root.taille;
+        couleur: zone.has-hover && root.actif ? Theme.encre : root.encre;
+    }
+    zone := TouchArea {
+        enabled: root.actif;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component Bandeau inherits Rectangle {
+    in property <BandeauSaisie> bandeau;
+    height: 34px;
+    border-radius: Rayon.s;
+    background: Theme.papier-2;
+    accessible-role: text;
+    accessible-label: root.bandeau.genre == GenreBandeau.reponse ? "Réponse à " + root.bandeau.auteur + " : " + root.bandeau.texte : "Modification du message : " + root.bandeau.texte;
+    HorizontalLayout {
+        padding-left: Espace.e3;
+        padding-right: 2px;
+        spacing: Espace.e2;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.bandeau.genre == GenreBandeau.reponse ? "repondre" : "edit";
+                taille: 15px;
+                couleur: Theme.rose-texte;
+            }
+        }
+        if root.bandeau.genre == GenreBandeau.reponse: Text {
+            text: "Réponse à";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+        if root.bandeau.genre == GenreBandeau.reponse: Text {
+            text: root.bandeau.auteur;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+        if root.bandeau.genre == GenreBandeau.modification: Text {
+            text: "Modification du message";
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.bandeau.genre == GenreBandeau.reponse ? root.bandeau.texte : "Échap pour annuler · Entrée pour enregistrer";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        BoutonIcone {
+            icone: "x";
+            taille: 15px;
+            libelle: root.bandeau.genre == GenreBandeau.reponse ? "Annuler la réponse" : "Annuler la modification";
+            clique => {
+                DonneesSaisie.annuler-bandeau();
+            }
+        }
+    }
+}
+
+component ChampSaisie inherits Rectangle {
+    property <length> hauteur-ligne: 22px;
+    property <length> hauteur-champ: max(root.hauteur-ligne, min(saisie.preferred-height, DonneesSaisie.hauteur-max));
+    property <int> demande: DonneesSaisie.demande-focus;
+    changed demande => {
+        saisie.focus();
+    }
+    init => {
+        if (DonneesSaisie.demande-focus > 0) {
+            saisie.focus();
+        }
+    }
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: saisie.has-focus ? 2px : 1px;
+    border-color: saisie.has-focus ? Theme.encre : Theme.trait-fort;
+    animate border-color { duration: Mouvement.d; easing: Courbes.sortie; }
+    VerticalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e2;
+        if DonneesSaisie.bandeau.genre != GenreBandeau.aucun: Bandeau {
+            bandeau: DonneesSaisie.bandeau;
+        }
+        HorizontalLayout {
+            spacing: Espace.e1;
+            Rectangle {
+                horizontal-stretch: 1;
+                height: root.hauteur-champ + 12px;
+                clip: true;
+                if saisie.text == "" && saisie.preedit-text == "": Text {
+                    x: Espace.e2;
+                    y: 6px;
+                    width: parent.width - 2 * Espace.e2;
+                    height: root.hauteur-ligne;
+                    text: DonneesSaisie.indice;
+                    color: Theme.gris-2;
+                    font-size: Typo.corps;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                defile := Flickable {
+                    x: Espace.e2;
+                    y: 6px;
+                    width: parent.width - 2 * Espace.e2;
+                    height: root.hauteur-champ;
+                    mouse-drag-pan-enabled: false;
+                    content-height: max(self.height, saisie.preferred-height);
+                    saisie := TextInput {
+                        width: defile.width;
+                        height: max(defile.height, self.preferred-height);
+                        single-line: false;
+                        wrap: word-wrap;
+                        text <=> DonneesSaisie.texte;
+                        color: Theme.encre;
+                        selection-background-color: Theme.rose;
+                        selection-foreground-color: Theme.encre;
+                        font-family: Typo.texte;
+                        font-size: Typo.corps;
+                        accessible-role: text-input;
+                        accessible-label: DonneesSaisie.indice;
+                        accessible-value: self.text;
+                        edited => {
+                            DonneesSaisie.modifie(self.text);
+                        }
+                        cursor-position-changed(position) => {
+                            if (position.y + defile.content-y < 0) {
+                                defile.content-y = -position.y;
+                            } else if (position.y + root.hauteur-ligne + defile.content-y > defile.height) {
+                                defile.content-y = defile.height - position.y - root.hauteur-ligne;
+                            }
+                        }
+                        key-pressed(e) => {
+                            if (self.preedit-text != "") {
+                                return reject;
+                            }
+                            if (e.text == Key.Return && !e.modifiers.shift) {
+                                DonneesSaisie.envoyer(self.text);
+                                return accept;
+                            }
+                            if (e.text == Key.Escape && DonneesSaisie.bandeau.genre != GenreBandeau.aucun) {
+                                DonneesSaisie.annuler-bandeau();
+                                return accept;
+                            }
+                            if (e.text == Key.UpArrow && self.text == "") {
+                                DonneesSaisie.fleche-haut();
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                }
+            }
+            if DonneesSaisie.compteur != "": VerticalLayout {
+                alignment: end;
+                padding-bottom: 8px;
+                Text {
+                    text: DonneesSaisie.compteur;
+                    color: DonneesSaisie.compteur-alerte ? Theme.danger : Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: 11px;
+                    accessible-role: text;
+                    accessible-label: "Longueur : " + DonneesSaisie.compteur;
+                }
+            }
+            VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "envoi";
+                    libelle: DonneesSaisie.bandeau.genre == GenreBandeau.modification ? "Enregistrer" : "Envoyer";
+                    actif: saisie.text != "";
+                    encre: Theme.rose-texte;
+                    clique => {
+                        DonneesSaisie.envoyer(saisie.text);
+                        saisie.focus();
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ZoneSaisie inherits VerticalLayout {
+    in property <bool> lecture-seule-externe: false;
+    in property <string> lecture-seule-externe-texte;
+    property <bool> bloquee: root.lecture-seule-externe || DonneesSaisie.lecture-seule;
+    padding-left: Espace.e4;
+    padding-right: Espace.e4;
+    padding-bottom: Espace.e4;
+    spacing: Espace.e1;
+    if root.bloquee: Rectangle {
+        height: 44px;
+        border-radius: Rayon.m;
+        background: Theme.papier-2;
+        accessible-role: text;
+        accessible-label: root.lecture-seule-externe ? root.lecture-seule-externe-texte : DonneesSaisie.lecture-seule-texte;
+        HorizontalLayout {
+            padding-left: Espace.e4;
+            padding-right: Espace.e4;
+            spacing: Espace.e2;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "cadenas";
+                    taille: 15px;
+                    couleur: Theme.gris;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.lecture-seule-externe ? root.lecture-seule-externe-texte : DonneesSaisie.lecture-seule-texte;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+    if !root.bloquee && DonneesSaisie.erreur != "": Text {
+        text: DonneesSaisie.erreur;
+        color: Theme.danger;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+        accessible-role: text;
+    }
+    if !root.bloquee && DonneesCoquille.bandeau != EtatBandeau.aucun: HorizontalLayout {
+        spacing: Espace.e2;
+        Icone {
+            nom: "alerte";
+            taille: 14px;
+            couleur: Theme.gris;
+        }
+        Text {
+            text: "Hors ligne : tes messages partiront au retour du réseau.";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+    }
+    if !root.bloquee: ChampSaisie { }
+}
