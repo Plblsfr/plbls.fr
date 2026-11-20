@@ -2,15 +2,15 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3. Le vocal a son socle sans interface (session LiveKit, périphériques audio, voir [Vocal](#vocal)) ; son interface arrive avec la suite du lot 4.
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections |
-| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`) et audio (`audio/`) |
+| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
 hors du workspace racine comme les apps Tauri. Slint est figé en `=1.18.1`, comme dans l'overlay natif de l'app Tauri.
@@ -18,8 +18,11 @@ L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `d
 
 ## Construire et lancer
 
-Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0` et un pilote OpenGL (Mesa). Sous Windows : la
-toolchain MSVC. Les binaires de Skia sont téléchargés à la première compilation.
+Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev`, un pilote OpenGL (Mesa)
+et clang 21 ou plus récent, désigné par `CXX` (par exemple `CXX=clang++-21`) : libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium,
+que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sys` le refuse). Sous Windows : la toolchain MSVC, LLVM, Python 3 et
+`ninja` (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
+`cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible).
 
 ```sh
 just estompe-natif-run            # build de débogage : le bouton « Composants » ouvre la page de démonstration
@@ -361,6 +364,80 @@ deux moteurs et sur les deux OS :
 - Écarts : pas de correction orthographique (le `TextInput` de Slint 1.18 n'en a pas, le front web a celle du navigateur) ; la méthode de saisie et les touches mortes passent par
   winit, à vérifier sur machine réelle.
 
+## Vocal
+
+Socle sans interface du lot 4 ([#276](https://github.com/Plblsfr/plbls.fr/issues/276)) : SDK Rust LiveKit, périphériques audio et session vocale.
+L'interface du salon vocal, la chaîne du micro (suppression de bruit, gain, détection de voix), l'écoute par participant et l'appuyer pour parler arrivent avec la suite du lot.
+
+### Emplacement et décision
+
+Le SDK (`livekit` 0.12, libwebrtc précompilé) n'impose aucune dépendance d'interface : le vocal est un module de la crate client, `apps/estompe/crates/client/src/vocal/`,
+derrière la feature `livekit` de `estompe-client`. L'app l'active par défaut (feature `livekit` de `estompe-natif`) ; sans elle, `ConnecteurIndisponible` refuse toute connexion.
+Le reste du module (état, session, mixage, faux serveur) compile et se teste sans le SDK. Les périphériques passent par `cpal`, dans la crate plateforme.
+
+| Fichier | Rôle |
+|---|---|
+| `crates/plateforme/src/audio.rs` | `AudioSysteme` (trait `SystemeAudio`) : liste des entrées et sorties, périphérique par défaut, ouverture d'un flux d'entrée ou de sortie en `f32` entrelacé ; débranchement signalé par `ErreurFluxAudio::Debranche` |
+| `crates/client/src/audio/format.rs` | format de LiveKit (48 kHz mono, trames de 10 ms, 480 échantillons `i16`) : passage en mono, rééchantillonnage linéaire sans dérive (pas entiers), découpe en trames (`ConversionEntree`), conversion vers la sortie (`ConversionSortie`), tampon de lecture amorcé et borné (`TamponLecture`) |
+| `crates/client/src/audio/peripheriques.rs` | `Capture` et `Lecture` : périphérique choisi, sinon celui par défaut ; changement à chaud (`choisir`) ; `surveiller` bascule sur celui par défaut quand le choisi est débranché et y revient quand il réapparaît (`Bascule`) |
+| `crates/client/src/audio/factice.rs` | `SystemeFactice` : périphériques factices pilotés par les tests (`brancher`, `debrancher`, `pousser`, `tirer`) |
+| `crates/client/src/vocal/salle.rs` | traits `Connecteur`, `Salle`, `SortieMicro` et `EvenementSalle` : ce que la session attend d'une salle, LiveKit ou fausse |
+| `crates/client/src/vocal/livekit.rs` | `ConnecteurLiveKit` (feature `livekit`) : connexion, attributs, publication du micro (`NativeAudioSource`), réception des pistes audio (`NativeAudioStream`), traduction des évènements |
+| `crates/client/src/vocal/etat.rs` | `EtatVocal`, pur : phase, salon, micro et casque coupés, coupures imposées, porte du micro, micro indisponible, participants (attributs, qualité), qui parle ; `etats_affiches` (équivalent de `voiceStates`) |
+| `crates/client/src/vocal/session.rs` | `SessionVocale` : acteur sur un runtime tokio, commandes, reconnexion, audio |
+| `crates/client/src/vocal/mixage.rs` | `Mixeur` : une file par participant et par source (micro, son du partage), gain de 0 à 300 %, sourdine globale, écrêtage |
+| `crates/client/src/vocal/erreurs.rs` | `ErreurVocal` (salon plein, droit manquant…) et `CauseMicro` (équivalents de `micCause` et `micError`) |
+| `crates/client/src/vocal/factice.rs` | `ServeurVocalFactice` (connecteur et salles en mémoire, coupure du réseau, exclusion) et `ApiVocaleFactice` |
+
+### Session vocale
+
+`SessionVocale::demarrer(runtime, Dependances { api, connecteur, audio, reglages })` lance un acteur sur le runtime donné (dans l'app : celui de l'entrée,
+`Application::vocal`). Commandes : `rejoindre`, `deplacer` (sans coupure : l'ancienne salle n'est quittée qu'une fois la nouvelle connectée), `deplace_par_moderation(de, vers)`
+(évènement `voice.moved`, accepté si l'on est dans `de` ou si on l'a quitté depuis moins de 5 s), `quitter`, `basculer_micro`, `basculer_casque`, `imposer(micro, son)`
+(`mic_off`, `sound_off` d'un modérateur), `definir_porte(ouverte)` (appuyer pour parler, détection de voix), `choisir_micro`, `choisir_sortie`, `definir_volume(identité, source, gain)`,
+`definir_traitement(Box<dyn TraitementMicro>)` (chaîne du micro), `fermer().await` ou `fermer_bloquant(délai)` (sortie propre, appelée par `main` après la boucle de la fenêtre).
+L'état se lit par `etat()` (`watch` de `EtatVocal`) ; `abonner_avis()` donne les `AvisVocal` (rejoint, quitté, arrivée, départ, déplacé, bascule de périphérique).
+
+- Un seul vocal à la fois : l'identité LiveKit est l'utilisateur ; rejoindre ailleurs (app Tauri, web) déconnecte avec `DuplicateIdentity`, la session revient à « inactif » sans se reconnecter.
+- Jeton : `Client::jeton_vocal` (`POST /voice/{salon}/token`) ; `voice_full`, 403, `not_voice_channel`, 502 deviennent un message (`ErreurVocal::message`), la session reste inactive.
+- Micro : `Capture` → trames de 10 ms → `TraitementMicro` éventuel → `SortieMicro` (piste `microphone`, DTX et RED) seulement si `EtatVocal::micro_emet()` ; sinon la piste est coupée (`mute`).
+  Micro introuvable ou refusé : connecté en écoute seule (`micro_indisponible`, message suivi de « Vous êtes en écoute seule. »).
+- Écoute : chaque piste audio reçue alimente le `Mixeur`, lu par `Lecture` sur la sortie choisie ; casque coupé ou `sound_off` : sourdine globale.
+- Coupé par un modérateur (`imposer`, ou permission de publier retirée par le serveur) : le micro ne se réactive pas tant que la coupure dure.
+- Attributs publiés à chaque changement et après une reconnexion : `muted`, `deaf` (mêmes clés que le front).
+- Reconnexion : le SDK reprend seul une coupure courte (`Reconnexion`, `Reconnecte`, jusqu'à 60 s). S'il abandonne, la session redemande un jeton et se reconnecte
+  (1, 2, 4, 8 puis 10 s, 12 essais) en gardant micro et casque ; une déconnexion voulue par le serveur (exclusion, salle fermée, doublon d'identité) ne se reconnecte pas.
+- Fils : l'acteur et les tâches de LiveKit sur le runtime ; capture et lecture sur les fils de `cpal`, qui ne touchent que des verrous courts (`RouteMicro`, `Mixeur`) ; libwebrtc a ses propres fils.
+
+### Ce que le SDK Rust offre par rapport à `livekit-client`
+
+| Fonction | `livekit-client` (web) | SDK Rust 0.12 |
+|---|---|---|
+| Capture et lecture | navigateur | à la charge de l'app (`NativeAudioSource`, `NativeAudioStream`) ; ou `PlatformAudio` (ADM de WebRTC : WASAPI, PulseAudio/ALSA), non retenu : pas de périphérique factice, pas de volume par participant, pas de point d'insertion pour `nnnoiseless` |
+| Écho, gain, bruit | contraintes `getUserMedia` | `AudioProcessingModule` exposé (`webrtc::native::apm` : annulation d'écho, gain automatique, passe-haut, suppression de bruit) sur des trames de 10 ms `i16`, micro (`process_stream`) et son joué (`process_reverse_stream`) |
+| Volume par piste | `setVolume` (jusqu'à 100 %, au-delà avec `webAudioMix`) | absent : mixage de l'app (`Mixeur`, 0 à 300 %) |
+| Qualité de connexion | `ConnectionQualityChanged`, `connectionQuality` | idem (`ConnectionQualityChanged`, `connection_quality()`) |
+| Qui parle | `ActiveSpeakersChanged` | idem |
+| Reconnexion | reprise puis reconnexion complète | idem (10 essais, 60 s au plus), puis `Disconnected` |
+| Simulcast, dynacast, flux adaptatif | oui | oui (`TrackPublishOptions::simulcast`, `RoomOptions::dynacast`, `adaptive_stream`), utiles au lot 5 |
+| Attributs du participant | `setAttributes` | `set_attributes` |
+
+### CRT statique sous Windows
+
+libwebrtc est précompilé avec la bibliothèque standard de MSVC en `/MT` (`RuntimeLibrary=MT_StaticRelease`), les binaires précompilés de Skia en `/MD` :
+l'éditeur de liens refuse de les réunir. `apps/estompe/natif/.cargo/config.toml` passe tout le binaire en CRT statique (`+crt-static`, comme l'app Tauri) ;
+Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, long au premier build, puis en cache).
+
+### Tests
+
+- `audio::tests` (périphériques factices) : capture à 44,1 kHz stéréo puis lecture à 48 kHz pendant 10 minutes simulées, sans perte ni latence croissante ;
+  micro et sortie débranchés : bascule sur le périphérique par défaut, retour du choisi.
+- `vocal::tests` (faux serveur, temps simulé) : deux participants se voient et s'entendent, quitter, refus du jeton, écoute seule, micro et casque publiés,
+  coupure imposée, coupure du réseau de 20 s (retour sans action, micro conservé), reconnexion du SDK, doublon d'identité, déplacement par un modérateur, passage d'un salon à l'autre, fermeture, changement de micro à chaud.
+- `crates/client/tests/livekit.rs` (feature `livekit`) : contre le serveur LiveKit de `deploy/docker-compose.dev.yml` (`ESTOMPE_LIVEKIT_URL`, clé `devkey` du mode `--dev`),
+  deux clients se voient, s'entendent, et la fermeture de l'un le retire de la salle chez l'autre en moins de 5 s. Sans la variable, il est ignoré et le dit.
+  `just estompe-natif-vocal` le lance ; la CI Linux démarre ce serveur.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -371,7 +448,7 @@ et de fenêtre, capture du son, overlay, application au premier plan, démarrage
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`). Le reste arrive avec son lot, Windows d'abord.
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), et les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 
@@ -389,7 +466,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et

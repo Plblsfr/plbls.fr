@@ -127,7 +127,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 
 | Élément | Lot | Issue | État | Note |
 |---|---|---|---|---|
-| `components/Quality.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | qualité de la connexion vocale |
+| `components/Quality.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | en cours | qualité de la connexion de chaque participant tenue par la session vocale (#326, `apps/estompe/crates/client/src/vocal/etat.rs`) ; affichage avec l'interface du salon vocal (#329) |
 | `components/VoiceTimer.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | durée passée en vocal |
 | `components/MediaPicker.svelte` | 5 | [#277](https://github.com/Plblsfr/plbls.fr/issues/277) | absent | choix de la source, de la qualité et de la caméra avant un partage |
 | `components/CameraPreview.svelte` | 5 | [#277](https://github.com/Plblsfr/plbls.fr/issues/277) | absent | aperçu de la caméra |
@@ -200,7 +200,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `blocks/signalements/` | 8 | [#280](https://github.com/Plblsfr/plbls.fr/issues/280) | absent |  |
 | `blocks/transcription/` | 2 | [#303](https://github.com/Plblsfr/plbls.fr/issues/303) | absent | transcription des messages vocaux, sans composant propre |
 | `blocks/videos/` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
-| `blocks/vocal/` | 5 | [#277](https://github.com/Plblsfr/plbls.fr/issues/277) | absent | audio au lot 4, caméra et partage au lot 5 |
+| `blocks/vocal/` | 5 | [#277](https://github.com/Plblsfr/plbls.fr/issues/277) | en cours | socle sans interface : SDK Rust LiveKit (#324), périphériques audio avec repli et changement à chaud (#325), session vocale (rejoindre, quitter, déplacer, micro et casque, coupures imposées, reconnexion, sortie à la fermeture, #326) dans `apps/estompe/crates/client/src/vocal/` ; restent l'interface, la chaîne du micro, l'écoute par participant et l'appuyer pour parler (lot 4), caméra et partage (lot 5) |
 
 ### Composants des blocs
 
@@ -235,7 +235,7 @@ Sinon il affiche le nombre de composants et leur répartition par état.
 | `blocks/videos/SoloDock.svelte` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
 | `blocks/videos/SoloMini.svelte` | 9 | [#281](https://github.com/Plblsfr/plbls.fr/issues/281) | absent |  |
 | `blocks/vocal/VoiceChannelView.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | salon vocal ; scène vidéo au lot 5 |
-| `blocks/vocal/VoiceControls.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | micro, casque, raccrocher ; boutons caméra et partage au lot 5 |
+| `blocks/vocal/VoiceControls.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | en cours | micro, casque et raccrocher dans la session vocale (`SessionVocale::basculer_micro`, `basculer_casque`, `quitter`, #326) ; boutons avec l'interface du salon vocal (#329), caméra et partage au lot 5 |
 | `blocks/vocal/StageTile.svelte` | 4 | [#276](https://github.com/Plblsfr/plbls.fr/issues/276) | absent | tuile d'un participant ; flux caméra et écran au lot 5 |
 
 ## Sections
