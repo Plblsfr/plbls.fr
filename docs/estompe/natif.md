@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) ; l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -227,7 +227,8 @@ Titres, blocs de code, citations (barres) et listes (puces, retraits) sont des �
 un lien (`u:`) n'est ouvert par `OuvertureUrl` que si `lien_ouvrable` l'accepte, au clic comme à l'analyse.
 
 Sélection : ni `Text` ni `StyledText` ne permettent de sélectionner du texte en 1.18 (seul `TextInput`, d'un seul style, le fait). La copie se fait
-donc par message entier : bouton « Copier le message » au survol, ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
+donc par message entier : bouton « Copier le message » au survol (toujours instancié, affiché si la ligne est survolée, a le focus ou si le bouton
+lui-même est survolé : il est dessiné au-dessus de la zone de la ligne, qui perd alors le survol), ou Ctrl+C sur le message qui a le focus ; le texte copié est `texte_brut`, passé
 au presse-papiers par un `TextInput` caché (`select-all()`, `copy()`).
 
 L'italique vient de la face italique d'Instrument Sans (`polices/InstrumentSans-Italic.ttf`, même source et même licence que la face droite). Écarts : un lien est toujours souligné ; dans un paragraphe
@@ -243,7 +244,7 @@ en segments, un mot plus long que la ligne est coupé dans son segment au lieu d
   des médias de la ligne (image chargée, aperçu reçu, téléchargement) et `annexes_slint()` en fait un `AnnexesMessage`, affiché par
   `AnnexesMessageVue` (`ui/messagerie/annexes.slint`) ; `resume` sert au lecteur d'écran. Un message avec sondage affiche la carte du sondage à la place
   du corps, des pièces jointes et de l'aperçu, comme `MessageItem.svelte`. Une image chargée, un aperçu reçu ou un téléchargement qui avance ne remplacent que la ligne du message.
-- État d'envoi : champ `etat-envoi` de `LigneMessage`, vide en lecture ; l'écriture (lot 3) le remplira.
+- État d'envoi : champs `etat-envoi` (« Envoi… », « En attente du réseau… », « Non envoyé · raison ») et `envoi-echec` de `LigneMessage`, vides pour un message du serveur ; « Réessayer » et « Supprimer » sous un message refusé (voir [Écriture](#écriture)).
 - Accusés de lecture : `Store::lecteurs` rattache chaque lecture au dernier message lu de la fenêtre ; `ContexteLignes::lecteurs` les ajoute aux annexes
   (`DonneesLecteur` : pseudo, initiales, avatar, heure de lecture). `LecteursVue` (`annexes.slint`) montre cinq avatars et « +N » à droite des réactions ;
   un clic déplie « Vu par » avec chaque personne et son heure, « Fermer » la replie. Un `read.updated` reprojette la conversation ouverte.
@@ -337,6 +338,29 @@ deux moteurs et sur les deux OS :
   « Voir dans la conversation » passe par `sauter_a` (chargement autour du message s'il n'est pas dans la fenêtre, puis mise en évidence).
 - Désépingler est une écriture : lot 3.
 
+### Écriture
+
+- Envoi optimiste (`store/messages/envois.rs`, crate client) : `Store::envoyer` dépose le brouillon dans `EtatMessages::envois` (file unique, gardée même si la conversation sort du cache),
+  puis l'expédie dans l'ordre de saisie, un message à la fois (`expedier`, un seul en cours grâce à un verrou). Un envoi local s'affiche aussitôt en fin de conversation
+  sous l'identifiant `local:<n>` ; la réponse HTTP le remplace par le message du serveur. Si l'évènement `message.created` arrive avant la réponse, il remplace l'envoi en cours de
+  même texte et même réponse ; la réponse HTTP arrivée ensuite ne crée pas de doublon (même identifiant). `ChangementMessages::Envois` prévient l'interface.
+- Échec réseau (`Reseau`, délai dépassé) : l'envoi reste « en attente » et la file s'arrête ; elle repart à la reconnexion du temps réel (`Signal::Reconnecte`). Refus du serveur :
+  « non envoyé » avec la raison (`RaisonEchec` : droit manquant 403, trop long 413 ou `invalid_message`, limite de débit 429, conversation disparue 404, réponse introuvable,
+  pièce jointe invalide), « Réessayer » (`Store::reessayer`) ou « Supprimer » (`Store::abandonner`) ; les envois suivants partent quand même.
+- Modification (`PATCH /messages/{id}`, `Store::modifier_message`, réponse appliquée sans attendre l'évènement, réactions gardées), suppression (`DELETE`, retirée à la confirmation,
+  gardée en cas d'erreur), « est en train d'écrire » (`POST …/typing`, au plus une fois toutes les 3 s par conversation et seulement pour un texte non vide, comme `Composer.svelte`).
+- Zone de saisie (`ui/messagerie/saisie.slint`, global `DonneesSaisie` ; `src/messagerie/saisie.rs`, `Saisie` et la machine pure `EtatSaisie`) : `TextInput` sur plusieurs lignes,
+  qui grandit jusqu'à 220 px puis défile ; Entrée envoie, Maj+Entrée va à la ligne (rien n'est intercepté pendant une composition de la méthode de saisie, `preedit-text`) ;
+  compteur au-delà de 3 500 caractères, en rouge à partir de 3 900 (limite de 4 000). Bandeau « Réponse à … » (`repondre_a`) et bandeau de modification (`modifier_message`),
+  annulables par Échap ou la croix ; flèche haut dans un champ vide modifie mon dernier message (`Store::dernier_de_moi`). Un texte inchangé n'est pas renvoyé.
+- Lecture seule : conversation Estompe, ou salon sans `send_messages` (« Tu n'as pas la permission d'écrire dans ce salon. »), recalculé à chaque rafraîchissement ; hors ligne
+  (bandeau de la coquille), une ligne l'annonce au-dessus du champ et les messages attendent.
+- Brouillons (`estompe_client::brouillons`) : un texte par conversation (`c:<salon>`, `d:<conversation>`), gardé en quittant la conversation, écrit dans `<données>/brouillons.json`
+  300 ms après la dernière frappe (écriture atomique) et à la fin de la session, relu au lancement ; un fichier illisible donne des brouillons vides. Le texte d'une modification
+  n'écrase pas le brouillon. Une conversation avec un brouillon porte un crayon dans le panneau (`brouillon` de `LigneSalon` et `LignePrive`).
+- Écarts : pas de correction orthographique (le `TextInput` de Slint 1.18 n'en a pas, le front web a celle du navigateur) ; la méthode de saisie et les touches mortes passent par
+  winit, à vérifier sur machine réelle.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -364,7 +388,8 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre, adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -406,6 +431,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   puis une image de 8 000 × 8 000 (décodée hors du fil d'interface, qui répond pendant ce temps, plafond mémoire respecté), un GIF animé à l'écran puis
   hors de l'écran (aucun réveil ni image en 10 s simulées), le téléchargement d'un fichier au nom hostile dans un dossier temporaire puis son ouverture, la
   visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
+`saisie.rs` (même backend, `ServeurMessages` qui accepte aussi `POST …/messages` et `PATCH /messages/{id}`) : saisie au clavier, Maj+Entrée, envoi par Entrée et message du serveur
+  en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », brouillon retrouvé en changeant de salon et relu depuis le disque.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.

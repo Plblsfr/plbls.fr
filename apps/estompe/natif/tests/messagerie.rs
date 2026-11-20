@@ -368,6 +368,70 @@ fn scenario(
     pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
     epingles_dans_la_marge(&faible, &fabrique, &serveur);
     molette_sans_a_coup(&faible, &pont);
+    copie_au_survol_sans_clic(&faible, &pont);
+}
+
+fn copie_au_survol_sans_clic(faible: &slint::Weak<Principale>, pont: &Pont) {
+    use slint::platform::WindowEvent;
+    stabiliser(faible, pont);
+    let (texte, x, y) = sur_l_interface(faible, |f| {
+        ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+            .filter_map(|e| {
+                let d = e.accessible_description()?;
+                d.starts_with("message n°").then(|| {
+                    let p = e.absolute_position();
+                    let t = e.size();
+                    (d.to_string(), p.x + t.width / 2.0, p.y + t.height / 2.0)
+                })
+            })
+            .nth(1)
+            .expect("un message à survoler")
+    });
+    let deplacer = move |x: f32, y: f32| {
+        sur_l_interface(faible, move |f| {
+            f.window().dispatch_event(WindowEvent::PointerMoved {
+                position: slint::LogicalPosition::new(x, y),
+            })
+        });
+        for _ in 0..3 {
+            image_suivante(faible);
+        }
+    };
+    deplacer(x, y);
+    let bouton = sur_l_interface(faible, move |f| {
+        ElementHandle::find_by_accessible_label(f, "Copier le message")
+            .map(|e| {
+                let p = e.absolute_position();
+                let t = e.size();
+                (p.x + t.width / 2.0, p.y + t.height / 2.0)
+            })
+            .find(|(_, by)| (by - y).abs() < 200.0)
+    });
+    let (bx, by) = bouton.expect("bouton « Copier le message » au survol");
+    let present = move || {
+        sur_l_interface(faible, move |f| {
+            ElementHandle::find_by_accessible_label(f, "Copier le message").any(|e| {
+                let p = e.absolute_position();
+                let t = e.size();
+                bx >= p.x && bx <= p.x + t.width && by >= p.y && by <= p.y + t.height
+            })
+        })
+    };
+    let mut images = Vec::new();
+    for _ in 0..6 {
+        sur_l_interface(faible, move |f| {
+            f.window().dispatch_event(WindowEvent::PointerMoved {
+                position: slint::LogicalPosition::new(bx, by),
+            })
+        });
+        image_suivante(faible);
+        images.push(present());
+    }
+    assert!(
+        images.iter().all(|p| *p),
+        "le bouton reste affiché sous la souris sans clic préalable : {images:?}"
+    );
+    println!("copie : bouton stable sous la souris pour « {texte} » : {images:?}");
 }
 
 fn image_suivante(faible: &slint::Weak<Principale>) {
@@ -378,13 +442,13 @@ fn image_suivante(faible: &slint::Weak<Principale>) {
     });
 }
 
-fn repere_au_milieu(faible: &slint::Weak<Principale>) -> (u64, f32) {
+fn repere_en_haut(faible: &slint::Weak<Principale>) -> (u64, f32) {
     sur_l_interface(faible, |f| {
         let liste = ElementHandle::find_by_accessible_label(f, "Messages")
             .find(|e| e.accessible_role() == Some(AccessibleRole::List))
             .unwrap();
         let haut = liste.absolute_position().y;
-        let milieu = haut + liste.size().height / 2.0;
+        let tiers = haut + liste.size().height / 3.0;
         ElementHandle::find_by_element_type_name(f, "CorpsMessage")
             .filter_map(|e| {
                 let y = e.absolute_position().y;
@@ -395,10 +459,10 @@ fn repere_au_milieu(faible: &slint::Weak<Principale>) -> (u64, f32) {
                     .next()?
                     .parse()
                     .ok()?;
-                (y >= haut && y < milieu).then_some((n, y))
+                (y >= haut && y < tiers).then_some((n, y))
             })
             .next()
-            .expect("un message au milieu de la liste")
+            .expect("un message dans le tiers haut de la liste")
     })
 }
 
@@ -408,8 +472,6 @@ fn molette_sans_a_coup(faible: &slint::Weak<Principale>, pont: &Pont) {
         f.window().set_size(slint::LogicalSize::new(1100.0, 900.0));
     });
     stabiliser(faible, pont);
-    let mesures_avant = pont.messagerie().mesures();
-    let (repere, depart) = repere_au_milieu(faible);
     let (x, y) = sur_l_interface(faible, |f| {
         let liste = ElementHandle::find_by_accessible_label(f, "Messages")
             .find(|e| e.accessible_role() == Some(AccessibleRole::List))
@@ -418,14 +480,10 @@ fn molette_sans_a_coup(faible: &slint::Weak<Principale>, pont: &Pont) {
         let t = liste.size();
         (p.x + t.width / 2.0, p.y + t.height / 2.0)
     });
-    const CRAN: f32 = 90.0;
-    const CRANS: usize = 8;
-    for _ in 0..CRANS {
+    const CRAN: f32 = 60.0;
+    const CRANS: usize = 6;
+    let cran = || {
         sur_l_interface(faible, move |f| {
-            f.window()
-                .dispatch_event(slint::platform::WindowEvent::PointerMoved {
-                    position: slint::LogicalPosition::new(x, y),
-                });
             f.window()
                 .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
                     position: slint::LogicalPosition::new(x, y),
@@ -436,6 +494,12 @@ fn molette_sans_a_coup(faible: &slint::Weak<Principale>, pont: &Pont) {
         for _ in 0..4 {
             image_suivante(faible);
         }
+    };
+    cran();
+    let mesures_avant = pont.messagerie().mesures();
+    let (repere, depart) = repere_en_haut(faible);
+    for _ in 0..CRANS {
+        cran();
     }
     for _ in 0..20 {
         image_suivante(faible);

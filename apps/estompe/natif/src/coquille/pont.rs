@@ -352,6 +352,7 @@ fn ligne_salon_slint(d: &DonneesSalon) -> LigneSalon {
         mentions: d.mentions.min(i32::MAX as usize) as i32,
         bientot: d.bientot,
         occupants: d.occupants.min(i32::MAX as usize) as i32,
+        brouillon: d.brouillon,
     }
 }
 
@@ -366,6 +367,7 @@ fn ligne_prive_slint(d: &DonneesPrive) -> LignePrive {
         mentions: d.mentions.min(i32::MAX as usize) as i32,
         presence: presence_slint(d.presence),
         libelle_presence: super::membres::libelle_presence(d.presence).into(),
+        brouillon: d.brouillon,
     }
 }
 
@@ -537,6 +539,15 @@ impl Pont {
         self.messagerie.appliquer(f, changements);
     }
 
+    pub fn rafraichir_brouillons(&self, f: &Principale) {
+        let c = Cibles {
+            salons: Ensemble::Tous,
+            prives: Ensemble::Tous,
+            ..Cibles::default()
+        };
+        self.projeter(f, &c, false);
+    }
+
     fn suivre_conversation(&self, f: &Principale) {
         let route = self.route();
         let (cle, non_lus) = self.store.lire(|etat| {
@@ -545,7 +556,11 @@ impl Pont {
             (cle, non_lus)
         });
         let serveur = serveur_courant(&route).map(str::to_string);
+        let avant = self.messagerie.conversations_en_brouillon();
         self.messagerie.ouvrir(f, cle, serveur, non_lus);
+        if self.messagerie.conversations_en_brouillon() != avant {
+            self.rafraichir_brouillons(f);
+        }
         self.actualiser_marge(f);
     }
 
@@ -561,6 +576,7 @@ impl Pont {
             sections: liste_sections,
             ..
         } = interne;
+        let brouillons = self.messagerie.conversations_en_brouillon();
         let privees = if c.prives.est_vide() {
             Vec::new()
         } else {
@@ -594,19 +610,23 @@ impl Pont {
                 );
             }
             if !c.salons.est_vide() {
+                let mut salons = lignes_salons(etat, &route);
+                marquer_brouillons(&mut salons, &mut [], |c| brouillons.contains(c));
                 synchroniser(
                     vec_de(&g.get_salons()),
                     &mut ombres.salons,
-                    lignes_salons(etat, &route),
+                    salons,
                     |d| d.id.clone(),
                     ligne_salon_slint,
                 );
             }
             if !c.prives.est_vide() {
+                let mut prives = lignes_prives(&privees, &route);
+                marquer_brouillons(&mut [], &mut prives, |c| brouillons.contains(c));
                 synchroniser(
                     vec_de(&g.get_prives()),
                     &mut ombres.prives,
-                    lignes_prives(&privees, &route),
+                    prives,
                     |d| d.id.clone(),
                     ligne_prive_slint,
                 );

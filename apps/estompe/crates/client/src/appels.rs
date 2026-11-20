@@ -9,10 +9,11 @@ use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Par
 use crate::store::CleConversation;
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
-    Attachment, GetChannelsCidReadsReponseElement, GetMeReponse, GetServersIdReponse,
-    GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message, MessagePage, Name50,
-    NotifySettings, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
-    PostAdminBadgesRequete, PostNotificationsReadRequete, PutMeStatusRequete, Server, DM,
+    Attachment, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement, GetMeReponse,
+    GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
+    MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostNotificationsReadRequete,
+    PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -100,6 +101,31 @@ impl Page {
             borne("before", &self.avant),
             borne("after", &self.apres)
         )
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NouveauSondage {
+    pub options: Vec<String>,
+    pub multiple: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closes_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NouveauMessage {
+    pub content: String,
+    pub file_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub poll: Option<NouveauSondage>,
+}
+
+fn chemin_de(conversation: &CleConversation, suite: &str) -> String {
+    match conversation {
+        CleConversation::Salon(id) => format!("/channels/{id}/{suite}"),
+        CleConversation::Prive(id) => format!("/dms/{id}/{suite}"),
     }
 }
 
@@ -314,6 +340,84 @@ impl Client {
     pub async fn reagir(&self, message: &str, emoji: &str) -> Result<(), ErreurApi> {
         let chemin = format!("/messages/{message}/reactions/{}", encoder_composant(emoji));
         self.envoyer(Method::PUT, &chemin, &Corps::Aucun).await
+    }
+
+    pub async fn retirer_reaction(&self, message: &str, emoji: &str) -> Result<(), ErreurApi> {
+        let chemin = format!("/messages/{message}/reactions/{}", encoder_composant(emoji));
+        self.delete(&chemin).await
+    }
+
+    pub async fn envoyer_message(
+        &self,
+        conversation: &CleConversation,
+        message: &NouveauMessage,
+    ) -> Result<Message, ErreurApi> {
+        self.post(&chemin_de(conversation, "messages"), message)
+            .await
+    }
+
+    pub async fn modifier_message(
+        &self,
+        message: &str,
+        contenu: &str,
+        fichiers: Option<Vec<String>>,
+    ) -> Result<Message, ErreurApi> {
+        self.patch(
+            &format!("/messages/{message}"),
+            &PatchMessagesIdRequete {
+                content: contenu.to_string(),
+                file_ids: fichiers,
+            },
+        )
+        .await
+    }
+
+    pub async fn supprimer_message(&self, message: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/messages/{message}")).await
+    }
+
+    pub async fn signaler_saisie(&self, conversation: &CleConversation) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &chemin_de(conversation, "typing"),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
+    pub async fn epingler(&self, message: &str, epingle: bool) -> Result<(), ErreurApi> {
+        let methode = if epingle { Method::PUT } else { Method::DELETE };
+        self.envoyer(methode, &format!("/messages/{message}/pin"), &Corps::Aucun)
+            .await
+    }
+
+    pub async fn voter(&self, message: &str, choix: &str) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutMessagesIdVoteRequete {
+            option_id: choix.to_string(),
+        })?;
+        self.envoyer(Method::PUT, &format!("/messages/{message}/vote"), &corps)
+            .await
+    }
+
+    pub async fn retirer_vote(&self, message: &str, choix: Option<&str>) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&DeleteMessagesIdVoteRequete {
+            option_id: choix.map(str::to_string),
+        })?;
+        self.envoyer(Method::DELETE, &format!("/messages/{message}/vote"), &corps)
+            .await
+    }
+
+    pub async fn clore_sondage(&self, message: &str) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!("/messages/{message}/poll/close"),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
+    pub async fn votants(&self, message: &str) -> Result<BTreeMap<String, Vec<Person>>, ErreurApi> {
+        self.get(&format!("/messages/{message}/poll/votes")).await
     }
 
     pub async fn envoyer_fichier(&self, envoi: &Envoi) -> Result<Attachment, ErreurApi> {

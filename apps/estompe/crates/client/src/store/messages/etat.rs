@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 use tokio::time::{Duration, Instant};
 
+use super::envois::EnvoiLocal;
 use crate::store::etat::{id_de, CleConversation, Etat, Presence};
 use crate::temps_reel::evenements::Lecture;
 use crate::types::Message;
@@ -111,11 +112,24 @@ pub struct EtatMessages {
     pub saisies: BTreeMap<CleConversation, Vec<SaisieEnCours>>,
     pub remontees_privees: Vec<String>,
     pub epingles: Option<(CleConversation, Vec<Message>)>,
+    pub envois: Vec<EnvoiLocal>,
+    pub prochain_envoi: u64,
 }
 
 impl EtatMessages {
     pub fn conversation(&self, cle: &CleConversation) -> Option<&Conversation> {
         self.conversations.get(cle)
+    }
+
+    pub fn envois_de(&self, cle: &CleConversation) -> Vec<&EnvoiLocal> {
+        self.envois
+            .iter()
+            .filter(|e| e.conversation == *cle)
+            .collect()
+    }
+
+    pub fn envoi(&self, id: u64) -> Option<&EnvoiLocal> {
+        self.envois.iter().find(|e| e.id == id)
     }
 
     pub fn epingles_de(&self, cle: &CleConversation) -> Option<&[Message]> {

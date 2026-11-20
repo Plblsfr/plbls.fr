@@ -799,6 +799,9 @@ pub mod coquille {
         reveil: std::sync::Condvar,
         fichiers: Mutex<BTreeMap<String, (String, Vec<u8>)>>,
         messages: Mutex<BTreeMap<u64, Value>>,
+        pub corps: Mutex<Vec<(String, String)>>,
+        pub refus_d_envoi: Mutex<Option<u16>>,
+        envoyes: AtomicUsize,
     }
 
     pub fn contenu_de(n: u64) -> String {
@@ -848,6 +851,9 @@ pub mod coquille {
                 reveil: std::sync::Condvar::new(),
                 fichiers: Mutex::new(BTreeMap::new()),
                 messages: Mutex::new(BTreeMap::new()),
+                corps: Mutex::new(Vec::new()),
+                refus_d_envoi: Mutex::new(None),
+                envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
             std::thread::spawn(move || {
@@ -860,19 +866,40 @@ pub mod coquille {
                         if lecteur.read_line(&mut premiere).unwrap_or(0) == 0 {
                             return;
                         }
+                        let mut longueur = 0usize;
                         loop {
                             let mut ligne = String::new();
                             if lecteur.read_line(&mut ligne).unwrap_or(0) == 0 || ligne == "\r\n" {
                                 break;
                             }
+                            if let Some((nom, valeur)) = ligne.split_once(':') {
+                                if nom.trim().eq_ignore_ascii_case("content-length") {
+                                    longueur = valeur.trim().parse().unwrap_or(0);
+                                }
+                            }
                         }
+                        let mut octets = vec![0u8; longueur];
+                        if longueur > 0 {
+                            use std::io::Read;
+                            if lecteur.read_exact(&mut octets).is_err() {
+                                return;
+                            }
+                        }
+                        let corps_recu = String::from_utf8_lossy(&octets).into_owned();
                         let mut morceaux = premiere.split_whitespace();
                         let methode = morceaux.next().unwrap_or_default().to_string();
                         let chemin = morceaux.next().unwrap_or_default().to_string();
+                        if longueur > 0 {
+                            s.corps
+                                .lock()
+                                .unwrap()
+                                .push((format!("{methode} {chemin}"), corps_recu.clone()));
+                        }
                         let (statut, type_mime, corps) = match s.fichier(&chemin) {
                             Some((type_mime, octets)) => (200, type_mime, octets),
                             None => {
-                                let (statut, corps) = s.repondre(&methode, &chemin);
+                                let (statut, corps) =
+                                    s.repondre_avec(&methode, &chemin, &corps_recu);
                                 (statut, "application/json".to_string(), corps.into_bytes())
                             }
                         };
@@ -920,6 +947,56 @@ pub mod coquille {
                 .iter()
                 .filter(|r| r.starts_with(debut))
                 .count()
+        }
+
+        pub fn envois(&self) -> Vec<String> {
+            self.corps
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(r, _)| r == "POST /channels/c1/messages")
+                .map(|(_, c)| {
+                    serde_json::from_str::<Value>(c).unwrap()["content"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect()
+        }
+
+        fn repondre_avec(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
+            if methode == "POST" && chemin == "/channels/c1/messages" {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"));
+                if let Some(statut) = *self.refus_d_envoi.lock().unwrap() {
+                    return (statut, r#"{"error":"refus","message":"refusé"}"#.into());
+                }
+                let n = self.nombre + 1 + self.envoyes.fetch_add(1, Ordering::SeqCst) as u64;
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let mut m = message_numero(n, 0);
+                m["author"] = json!({"id": "u1", "pseudo": "moi"});
+                m["content"] = recu["content"].clone();
+                if let Some(r) = recu["reply_to"].as_str() {
+                    m["reply_to"] = json!({"id": r, "author": {"id": "carol", "pseudo": "carol"}, "content": "cité"});
+                }
+                return (201, m.to_string());
+            }
+            if methode == "PATCH" {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"));
+                let n: u64 = chemin.trim_start_matches("/messages/").parse().unwrap_or(0);
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let mut m = message_numero(n, 0);
+                m["author"] = json!({"id": "u1", "pseudo": "moi"});
+                m["content"] = recu["content"].clone();
+                m["edited_at"] = json!("2026-11-19T12:00:00Z");
+                return (200, m.to_string());
+            }
+            self.repondre(methode, chemin)
         }
 
         fn repondre(&self, methode: &str, chemin: &str) -> (u16, String) {
@@ -988,6 +1065,7 @@ pub mod coquille {
         pub navigateur: Arc<super::FauxNavigateur>,
         pub medias: Arc<Medias>,
         pub fichiers: Arc<FauxFichiers>,
+        pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
     }
 
     #[derive(Default)]
@@ -1057,6 +1135,7 @@ pub mod coquille {
                     None,
                 ),
                 fichiers: Arc::new(FauxFichiers::default()),
+                dossier_brouillons: Mutex::new(None),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
@@ -1128,6 +1207,13 @@ pub mod coquille {
 
         fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
             Arc::new(estompe_plateforme::Indisponible)
+        }
+
+        fn brouillons(&self) -> estompe_client::brouillons::Brouillons {
+            match self.dossier_brouillons.lock().unwrap().as_deref() {
+                Some(dossier) => estompe_client::brouillons::Brouillons::charger(dossier),
+                None => estompe_client::brouillons::Brouillons::en_memoire(),
+            }
         }
     }
 }

@@ -130,7 +130,14 @@ pub struct ServeurFactice {
 
 impl ServeurFactice {
     pub async fn demarrer<C: Into<Comportement>>(reponses: impl IntoIterator<Item = C>) -> Self {
-        let ecoute = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        Self::demarrer_sur("127.0.0.1:0", reponses).await
+    }
+
+    pub async fn demarrer_sur<C: Into<Comportement>>(
+        lieu: &str,
+        reponses: impl IntoIterator<Item = C>,
+    ) -> Self {
+        let ecoute = TcpListener::bind(lieu).await.unwrap();
         let adresse = format!("http://{}", ecoute.local_addr().unwrap());
         let etat = Arc::new(Mutex::new(Etat::default()));
         let partage = etat.clone();
