@@ -87,6 +87,18 @@ export struct AnnexesMessage {
     resume: string,
 }
 
+export enum EtatEpingles { chargement, pret, erreur }
+
+export struct EpingleMessage {
+    id: string,
+    auteur: string,
+    couleur: color,
+    a-couleur: bool,
+    date: string,
+    blocs: [BlocTexte],
+    fichiers: string,
+}
+
 export struct Visionneuse {
     ouverte: bool,
     message: string,
@@ -159,6 +171,8 @@ export global DonneesMessagerie {
     in property <string> lecture-seule-texte;
     in property <Visionneuse> visionneuse;
     in property <int> mesure: 0;
+    in property <[EpingleMessage]> epingles;
+    in property <EtatEpingles> etat-epingles: EtatEpingles.chargement;
     callback defilee(length, length, length);
     callback ligne-mesuree(string, length);
     callback lien-clique(string, string);
@@ -176,4 +190,6 @@ export global DonneesMessagerie {
     callback visionneuse-copier();
     callback visionneuse-enregistrer();
     callback fermer-visionneuse();
+    callback voir-epingle(string);
+    callback recharger-epingles();
 }

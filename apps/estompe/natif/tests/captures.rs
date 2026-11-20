@@ -86,6 +86,8 @@ const ECRANS: &[Ecran] = ecrans![
     "membres-clair", Clair, membres;
     "membres-sombre", Sombre, membres;
     "membres-filtre-clair", Clair, membres_filtre;
+    "marge-epingles-clair", Clair, marge_epingles;
+    "marge-epingles-sombre", Sombre, marge_epingles;
     "carte-profil-clair", Clair, carte_profil;
     "carte-profil-sombre", Sombre, carte_profil;
     "carte-profil-moi-clair", Clair, carte_profil_moi;
@@ -502,6 +504,29 @@ fn membres_ouverts(f: &Principale) -> Pont {
 
 fn membres(f: &Principale) {
     membres_ouverts(f);
+}
+
+fn marge_epingles(f: &Principale) {
+    let pont = coquille_preparee(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils_des_membres(),
+        |store| {
+            installer_conversations(store);
+            let mut epingles = commun::coquille::conversation_variantes();
+            epingles.retain(|m| {
+                m.id.as_deref()
+                    .is_some_and(|id| ["100", "102", "107"].contains(&id))
+            });
+            for m in &mut epingles {
+                m.pinned_at = Some("2026-11-19T10:00:00Z".into());
+            }
+            store.installer_epingles(&salon_c1(), epingles);
+        },
+    );
+    pont.basculer_epingles(f);
+    stabiliser(f);
 }
 
 fn membres_filtre(f: &Principale) {

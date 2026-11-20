@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -32,10 +32,10 @@ use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
 use crate::{
-    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EtatConversation, EtatTelechargement,
-    GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe, GenreSegment, LecteurMessage,
-    LigneMessage, OptionSondage, PieceJointe, Principale, ReactionMessage, ReponseMessage,
-    SegmentTexte, SondageMessage, Theme, Visionneuse,
+    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EpingleMessage, EtatConversation,
+    EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe,
+    GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe, Principale,
+    ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
 };
 
 pub type Fuseau = Arc<dyn Fn(i64) -> i32 + Send + Sync>;
@@ -254,6 +254,8 @@ struct Interne {
     dossier: Option<PathBuf>,
     reveil_sondage: Option<i64>,
     minuterie_active: bool,
+    epingles_visibles: bool,
+    etat_epingles: EtatEpingles,
 }
 
 impl Interne {
@@ -306,6 +308,8 @@ impl Interne {
             dossier: None,
             reveil_sondage: None,
             minuterie_active: false,
+            epingles_visibles: false,
+            etat_epingles: EtatEpingles::Chargement,
         }
     }
 
@@ -321,7 +325,9 @@ impl Interne {
         let pieces = std::mem::take(&mut self.pieces);
         let (emojis_demandes, apercus, dossier) =
             (self.emojis_demandes, self.apercus, self.dossier.take());
+        let epingles_visibles = self.epingles_visibles;
         *self = Self::nouveau();
+        self.epingles_visibles = epingles_visibles;
         self.pieces = pieces;
         self.emojis_demandes = emojis_demandes;
         self.apercus = apercus;
@@ -383,6 +389,14 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
         h += 34.0;
     }
     h.max(if m.suite { 26.0 } else { 58.0 })
+}
+
+pub fn libelle_fichiers(nombre: usize) -> String {
+    match nombre {
+        0 => String::new(),
+        1 => "1 fichier".to_string(),
+        n => format!("{n} fichiers"),
+    }
 }
 
 pub fn texte_de_saisie(noms: &[String]) -> String {
@@ -1081,6 +1095,134 @@ impl PontMessagerie {
         self.medias().noter_fil_interface();
         self.charger_emojis(false);
         self.reprojeter(f);
+        if self.verrou().epingles_visibles {
+            self.charger_epingles(f);
+        } else {
+            self.projeter_epingles(f);
+        }
+    }
+
+    pub fn montrer_epingles(&self, f: &Principale, visibles: bool) {
+        let avant = std::mem::replace(&mut self.verrou().epingles_visibles, visibles);
+        if visibles && !avant {
+            self.charger_epingles(f);
+        } else if !visibles && avant {
+            self.store.oublier_epingles();
+            self.projeter_epingles(f);
+        }
+    }
+
+    pub fn epingles_visibles(&self) -> bool {
+        self.verrou().epingles_visibles
+    }
+
+    pub fn charger_epingles(&self, f: &Principale) {
+        let Some(cle) = self.conversation() else {
+            self.projeter_epingles(f);
+            return;
+        };
+        self.verrou().etat_epingles = EtatEpingles::Chargement;
+        self.projeter_epingles(f);
+        let pont = self.clone();
+        self.runtime.spawn(async move {
+            let reussi = pont.store.charger_epingles(&cle).await.is_ok();
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                {
+                    let mut i = p.verrou();
+                    if i.cle.as_ref() != Some(&cle) || !i.epingles_visibles {
+                        return;
+                    }
+                    i.etat_epingles = if reussi {
+                        EtatEpingles::Pret
+                    } else {
+                        EtatEpingles::Erreur
+                    };
+                }
+                p.projeter_epingles(&f);
+            });
+        });
+    }
+
+    pub fn voir_epingle(&self, id: &str) {
+        self.reponse_cliquee(id);
+    }
+
+    fn projeter_epingles(&self, f: &Principale) {
+        let (cle, serveur, etat, visibles) = {
+            let i = self.verrou();
+            (
+                i.cle.clone(),
+                i.serveur.clone(),
+                i.etat_epingles,
+                i.epingles_visibles,
+            )
+        };
+        let messages = cle
+            .as_ref()
+            .filter(|_| visibles)
+            .and_then(|c| self.store.epingles(c))
+            .unwrap_or_default();
+        let decalage = {
+            let fuseau = self
+                .fuseau
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            fuseau(chrono::Utc::now().timestamp_millis())
+        };
+        let (supprimes, apercus) = {
+            let i = self.verrou();
+            (i.supprimes.clone(), i.apercus)
+        };
+        let aucun = BTreeMap::new();
+        let maintenant = self.maintenant();
+        let donnees: Vec<DonneesMessage> = self.store.lire(|etat| {
+            let contexte = ContexteLignes {
+                etat,
+                serveur: serveur.as_deref(),
+                nouveau_depuis: None,
+                mis_en_evidence: None,
+                supprimes: &supprimes,
+                decalage_minutes: decalage,
+                maintenant_ms: maintenant,
+                apercus,
+                lecteurs: &aucun,
+            };
+            messages
+                .iter()
+                .map(|m| donnees_message(m, false, &contexte))
+                .collect()
+        });
+        let epingles: Vec<EpingleMessage> = donnees
+            .iter()
+            .map(|m| {
+                let rendus = self.rendus_de(m);
+                let couleur = couleur_slint(m.couleur.as_deref());
+                EpingleMessage {
+                    id: m.id.as_str().into(),
+                    auteur: m.auteur.as_str().into(),
+                    a_couleur: couleur.is_some(),
+                    couleur: couleur.unwrap_or_default(),
+                    date: m.date_complete.as_str().into(),
+                    blocs: ModelRc::new(VecModel::from(
+                        rendus
+                            .blocs
+                            .iter()
+                            .map(|b| bloc_slint(b, None))
+                            .collect::<Vec<_>>(),
+                    )),
+                    fichiers: libelle_fichiers(m.annexes.pieces.len()).into(),
+                }
+            })
+            .collect();
+        let g = f.global::<DonneesMessagerie>();
+        g.set_epingles(ModelRc::new(VecModel::from(epingles)));
+        g.set_etat_epingles(if cle.is_some() {
+            etat
+        } else {
+            EtatEpingles::Pret
+        });
     }
 
     pub fn fermer(&self, f: &Principale) {
@@ -1107,6 +1249,7 @@ impl PontMessagerie {
         let mut modifies: Vec<String> = Vec::new();
         let mut evidence: Option<String> = None;
         let mut saisie = false;
+        let mut epingles = false;
         for changement in changements {
             match changement {
                 Changement::Messages(m) => match m {
@@ -1146,6 +1289,9 @@ impl PontMessagerie {
                     {
                         reprojeter = true
                     }
+                    ChangementMessages::Epingles { conversation } if *conversation == cle => {
+                        epingles = true
+                    }
                     _ => {}
                 },
                 Changement::Roles { serveur: s }
@@ -1179,6 +1325,9 @@ impl PontMessagerie {
         }
         if let Some(id) = evidence {
             self.mettre_en_evidence(f, &id);
+        }
+        if epingles {
+            self.projeter_epingles(f);
         }
     }
 

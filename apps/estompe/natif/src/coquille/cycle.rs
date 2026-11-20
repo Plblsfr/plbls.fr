@@ -255,6 +255,12 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_auteur_clique, |p, f, utilisateur| p
         .ouvrir_membre(&f, &utilisateur));
     rappel_messagerie!(on_aller_en_bas, |p, f| p.messagerie().aller_en_bas(&f));
+    rappel_messagerie!(on_voir_epingle, |p, _f, id| p
+        .messagerie()
+        .voir_epingle(&id));
+    rappel_messagerie!(on_recharger_epingles, |p, f| p
+        .messagerie()
+        .charger_epingles(&f));
     rappel_messagerie!(on_reessayer, |p, f| p.messagerie().reessayer(&f));
     rappel_messagerie!(on_theme_change, |p, f, _sombre| p
         .messagerie()
@@ -322,6 +328,9 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel!(on_ouvrir_membre, |p, f, utilisateur| p
         .ouvrir_membre(&f, &utilisateur));
     rappel!(on_fermer_carte, |p, f| p.fermer_carte(&f));
+    rappel!(on_onglet_marge_choisi, |p, f, onglet| p
+        .choisir_onglet_marge(&f, onglet));
+    rappel!(on_epingles_bascule, |p, f| p.basculer_epingles(&f));
     let source = emplacement.clone();
     brancher_messagerie(f, Arc::new(move || pont_courant(&source)));
     let faible = f.as_weak();

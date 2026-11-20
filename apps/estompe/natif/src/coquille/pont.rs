@@ -24,8 +24,8 @@ use crate::session::Memoire;
 use crate::{
     Accueil, CarteProfil, DonneesCoquille, DonneesMessagerie, EnTeteMarge, EnTetePanneau,
     EtatConversation, EtatPresence, LigneBadge, LigneMembre, LigneMessage, LignePrive,
-    LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal, Principale, RoleProfil,
-    VueContenu,
+    LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal, OngletMarge, Principale,
+    RoleProfil, VueContenu,
 };
 
 pub type Horloge = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
@@ -234,6 +234,8 @@ struct Interne {
     icones: BTreeMap<String, (i64, Icone)>,
     demandes: BTreeSet<(String, i64)>,
     membres: EtatMembres,
+    onglet_voulu: OngletMarge,
+    avant_epingles: Option<(bool, OngletMarge)>,
 }
 
 #[derive(Clone)]
@@ -268,6 +270,16 @@ pub fn installer_modeles(f: &Principale) {
         .set_lignes(ModelRc::new(VecModel::<LigneMessage>::default()));
 }
 
+pub fn onglet_effectif(voulu: OngletMarge, membres: bool, epingles: bool) -> Option<OngletMarge> {
+    if voulu == OngletMarge::Epingles && epingles {
+        Some(OngletMarge::Epingles)
+    } else if membres {
+        Some(OngletMarge::Membres)
+    } else {
+        None
+    }
+}
+
 pub fn vider_modeles(f: &Principale) {
     let g = f.global::<DonneesCoquille>();
     vec_de(&g.get_serveurs()).set_vec(Vec::new());
@@ -279,6 +291,8 @@ pub fn vider_modeles(f: &Principale) {
     vec_de(&g.get_membres()).set_vec(Vec::new());
     g.set_marge(EnTeteMarge::default());
     g.set_marge_disponible(false);
+    g.set_membres_disponibles(false);
+    g.set_epingles_disponibles(false);
     g.set_carte_ouverte(false);
     g.set_filtre_membres("".into());
     g.set_defilement_membres(0.0);
@@ -462,6 +476,8 @@ impl Pont {
                 icones: BTreeMap::new(),
                 demandes: BTreeSet::new(),
                 membres: EtatMembres::default(),
+                onglet_voulu: OngletMarge::Membres,
+                avant_epingles: None,
             })),
             store,
             fenetre,
@@ -530,6 +546,7 @@ impl Pont {
         });
         let serveur = serveur_courant(&route).map(str::to_string);
         self.messagerie.ouvrir(f, cle, serveur, non_lus);
+        self.actualiser_marge(f);
     }
 
     fn projeter(&self, f: &Principale, c: &Cibles, sections: bool) {
@@ -891,10 +908,6 @@ impl Pont {
                 .filter(|s| etat.serveur(s).is_some())
                 .map(str::to_string)
         });
-        let disponible = serveur.is_some();
-        if g.get_marge_disponible() != disponible {
-            g.set_marge_disponible(disponible);
-        }
         if m.serveur != serveur {
             m.serveur = serveur.clone();
             m.filtre.clear();
@@ -971,8 +984,72 @@ impl Pont {
             *operations = cles_des_operations(anciennes, ombre, &faites);
         }
         drop(guard);
+        self.actualiser_marge(f);
         self.rafraichir_fenetre(f);
         self.projeter_carte(f);
+    }
+
+    fn actualiser_marge(&self, f: &Principale) {
+        let g = f.global::<DonneesCoquille>();
+        let (membres, voulu) = {
+            let i = self.verrou();
+            (i.membres.serveur.is_some(), i.onglet_voulu)
+        };
+        let epingles = self.messagerie.conversation().is_some();
+        let onglet = onglet_effectif(voulu, membres, epingles);
+        if g.get_membres_disponibles() != membres {
+            g.set_membres_disponibles(membres);
+        }
+        if g.get_epingles_disponibles() != epingles {
+            g.set_epingles_disponibles(epingles);
+        }
+        if g.get_marge_disponible() != onglet.is_some() {
+            g.set_marge_disponible(onglet.is_some());
+        }
+        if let Some(onglet) = onglet.filter(|o| *o != g.get_onglet_marge()) {
+            g.set_onglet_marge(onglet);
+        }
+        let visibles = g.get_marge_ouverte() && onglet == Some(OngletMarge::Epingles);
+        self.messagerie.montrer_epingles(f, visibles);
+    }
+
+    fn regler_marge(&self, f: &Principale, ouverte: bool) {
+        f.global::<DonneesCoquille>().set_marge_ouverte(ouverte);
+        if let Some(memoire) = &self.memoire {
+            memoire.modifier(|p| p.marge_ouverte = ouverte);
+        }
+    }
+
+    pub fn choisir_onglet_marge(&self, f: &Principale, onglet: OngletMarge) {
+        {
+            let mut i = self.verrou();
+            i.onglet_voulu = onglet;
+            i.avant_epingles = None;
+        }
+        self.regler_marge(f, true);
+        self.actualiser_marge(f);
+        self.rafraichir_fenetre(f);
+    }
+
+    pub fn basculer_epingles(&self, f: &Principale) {
+        let g = f.global::<DonneesCoquille>();
+        let visible = g.get_marge_disponible() && g.get_marge_ouverte();
+        let actuel = g.get_onglet_marge();
+        let ouvrir = {
+            let mut i = self.verrou();
+            if visible && actuel == OngletMarge::Epingles {
+                let avant = i.avant_epingles.take();
+                i.onglet_voulu = avant.map_or(OngletMarge::Membres, |(_, o)| o);
+                avant.is_some_and(|(v, _)| v)
+            } else {
+                i.avant_epingles = Some((visible, actuel));
+                i.onglet_voulu = OngletMarge::Epingles;
+                true
+            }
+        };
+        self.regler_marge(f, ouvrir);
+        self.actualiser_marge(f);
+        self.rafraichir_fenetre(f);
     }
 
     fn rafraichir_fenetre(&self, f: &Principale) {
@@ -1134,6 +1211,8 @@ impl Pont {
     }
 
     pub fn marge_basculee(&self, f: &Principale) {
+        self.verrou().avant_epingles = None;
+        self.actualiser_marge(f);
         self.rafraichir_fenetre(f);
     }
 
@@ -1210,6 +1289,17 @@ impl Pont {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn l_onglet_de_la_marge_suit_le_web() {
+        use OngletMarge::{Epingles, Membres};
+        assert_eq!(onglet_effectif(Epingles, true, true), Some(Epingles));
+        assert_eq!(onglet_effectif(Epingles, true, false), Some(Membres));
+        assert_eq!(onglet_effectif(Membres, true, true), Some(Membres));
+        assert_eq!(onglet_effectif(Epingles, false, true), Some(Epingles));
+        assert_eq!(onglet_effectif(Membres, false, true), None);
+        assert_eq!(onglet_effectif(Membres, false, false), None);
+    }
 
     fn png(largeur: u32, hauteur: u32) -> Vec<u8> {
         let image =

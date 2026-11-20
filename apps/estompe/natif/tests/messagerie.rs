@@ -19,7 +19,8 @@ use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, LigneMessage, Page, Principale,
+    creer_fenetre, ecrans, DonneesCoquille, DonneesMessagerie, EtatEpingles, LigneMessage,
+    OngletMarge, Page, Principale,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
@@ -365,6 +366,90 @@ fn scenario(
     println!("305 C3 : pastille de c4 retirée après read.updated");
 
     pieces_jointes_sondage_et_telechargement(&faible, &fabrique, &pont, &serveur);
+    epingles_dans_la_marge(&faible, &fabrique, &serveur);
+}
+
+fn epingles_de(f: &Principale) -> Vec<String> {
+    f.global::<DonneesMessagerie>()
+        .get_epingles()
+        .iter()
+        .map(|e| e.id.to_string())
+        .collect()
+}
+
+fn epingles_dans_la_marge(
+    faible: &slint::Weak<Principale>,
+    fabrique: &FausseFabrique,
+    serveur: &ServeurMessages,
+) {
+    let mut ancien = message_numero(5, NOMBRE);
+    ancien["pinned_at"] = json!("2026-11-19T09:00:00Z");
+    serveur.servir_fichier(
+        "/channels/c1/pins",
+        "application/json",
+        json!({"messages": [ancien]}).to_string().into_bytes(),
+    );
+    assert!(sur_l_interface(faible, |f| f
+        .global::<DonneesCoquille>()
+        .get_epingles_disponibles()));
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesCoquille>().invoke_epingles_bascule()
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            epingles_de(f) == ["5"]
+                && f.global::<DonneesMessagerie>().get_etat_epingles() == EtatEpingles::Pret
+        },
+        "épinglés chargés à l'ouverture de l'onglet",
+    );
+    assert!(sur_l_interface(faible, |f| {
+        let g = f.global::<DonneesCoquille>();
+        g.get_marge_ouverte() && g.get_onglet_marge() == OngletMarge::Epingles
+    }));
+    assert_eq!(serveur.nombre_de("GET /channels/c1/pins"), 1);
+    println!("C4 : onglet « Épinglés » ouvert par le bouton de l'en-tête, liste chargée");
+
+    let recent = (NOMBRE - 1).to_string();
+    let mut epingle = message_numero(NOMBRE - 1, NOMBRE);
+    epingle["pinned_at"] = json!("2026-11-19T10:00:00Z");
+    fabrique.envoyer(evenement("message.updated", epingle));
+    let attendus = [recent.clone(), "5".to_string()];
+    attendre_l_interface(
+        faible,
+        move |f| epingles_de(f) == attendus,
+        "épingle reçue en temps réel, en tête de liste",
+    );
+    fabrique.envoyer(evenement(
+        "message.updated",
+        message_numero(NOMBRE - 1, NOMBRE),
+    ));
+    attendre_l_interface(
+        faible,
+        |f| epingles_de(f) == ["5"],
+        "désépinglé en temps réel",
+    );
+    println!("C4 : épingle et désépingle reçues en temps réel");
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesMessagerie>()
+            .invoke_voir_epingle("5".into())
+    });
+    attendre_l_interface(
+        faible,
+        |f| lignes(f).iter().any(|l| l.id == "5" && l.mis_en_evidence),
+        "message épinglé hors de la fenêtre chargé et mis en évidence",
+    );
+    println!("C4 : « Voir dans la conversation » charge le message 5 et le met en évidence");
+
+    sur_l_interface(faible, |f| {
+        f.global::<DonneesCoquille>().invoke_epingles_bascule()
+    });
+    attendre_l_interface(
+        faible,
+        |f| f.global::<DonneesCoquille>().get_onglet_marge() == OngletMarge::Membres,
+        "un second clic revient à l'onglet précédent",
+    );
 }
 
 fn png_gris(cote: u32) -> Vec<u8> {

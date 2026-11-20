@@ -260,6 +260,10 @@ impl Store {
                 .collect();
             (cles, a)
         });
+        let epingles = self.lire_messages(|m| m.epingles.as_ref().map(|(c, _)| c.clone()));
+        if let Some(cle) = epingles {
+            let _ = self.charger_epingles(&cle).await;
+        }
         for cle in cles {
             if self.rattraper(&cle).await.is_ok() {
                 if let Ok(lectures) = self.client().lectures(&cle).await {
@@ -742,6 +746,60 @@ mod tests {
             .skip(lignes)
             .filter(|(chemin, _)| chemin.contains("/messages"))
             .all(|(chemin, _)| chemin.contains("after=")));
+    }
+
+    #[tokio::test]
+    async fn les_epingles_se_chargent_suivent_le_temps_reel_et_se_rechargent_a_la_reconnexion() {
+        let (serveur, _, store) = monde(&(1000..1010).collect::<Vec<_>>()).await;
+        let epingle = |id: u64, quand: &str| {
+            let mut m = json_message("c1", id);
+            m["pinned_at"] = json!(quand);
+            m
+        };
+        serveur.router(
+            "GET",
+            "/channels/c1/pins",
+            Reponse::json(
+                200,
+                json!({"messages": [epingle(1005, "2026-10-13T12:00:00Z"), epingle(400, "2026-10-13T11:00:00Z")]}),
+            ),
+        );
+        let ids_epingles = |s: &Store| -> Vec<String> {
+            s.epingles(&c1())
+                .unwrap_or_default()
+                .iter()
+                .map(|m| id_message(m).to_string())
+                .collect()
+        };
+        assert!(store.epingles(&c1()).is_none());
+        let mut abonne = store.abonner();
+        store.charger_epingles(&c1()).await.unwrap();
+        assert_eq!(ids_epingles(&store), ["1005", "400"]);
+        assert!(messages(&abonne.try_recv().unwrap())
+            .contains(&ChangementMessages::Epingles { conversation: c1() }));
+
+        store.appliquer(&evenement(
+            "message.updated",
+            epingle(300, "2026-10-13T13:00:00Z"),
+        ));
+        assert_eq!(ids_epingles(&store), ["300", "1005", "400"]);
+        store.appliquer(&evenement("message.updated", json_message("c1", 1005)));
+        assert_eq!(ids_epingles(&store), ["300", "400"]);
+        store.appliquer(&evenement(
+            "message.deleted",
+            json!({"id": "400", "channel_id": "c1"}),
+        ));
+        assert_eq!(ids_epingles(&store), ["300"]);
+        store.appliquer(&evenement("message.updated", json_message("c2", 1)));
+        assert_eq!(ids_epingles(&store), ["300"]);
+        assert!(store
+            .epingles(&CleConversation::Salon("c2".into()))
+            .is_none());
+
+        store.rattraper_messages().await;
+        assert_eq!(ids_epingles(&store), ["1005", "400"]);
+        store.oublier_epingles();
+        assert!(store.epingles(&c1()).is_none());
     }
 
     #[tokio::test]

@@ -110,11 +110,19 @@ pub struct EtatMessages {
     pub recentes: Vec<CleConversation>,
     pub saisies: BTreeMap<CleConversation, Vec<SaisieEnCours>>,
     pub remontees_privees: Vec<String>,
+    pub epingles: Option<(CleConversation, Vec<Message>)>,
 }
 
 impl EtatMessages {
     pub fn conversation(&self, cle: &CleConversation) -> Option<&Conversation> {
         self.conversations.get(cle)
+    }
+
+    pub fn epingles_de(&self, cle: &CleConversation) -> Option<&[Message]> {
+        match &self.epingles {
+            Some((c, liste)) if c == cle => Some(liste),
+            _ => None,
+        }
     }
 
     pub fn saisies_de(&self, cle: &CleConversation) -> Vec<String> {
