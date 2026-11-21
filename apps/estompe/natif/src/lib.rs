@@ -5,6 +5,7 @@ pub mod ecrans;
 pub mod entree;
 pub mod messagerie;
 pub mod session;
+pub mod vocal;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const OPTION_INVITATION: &str = "--invitation";
@@ -35,7 +36,7 @@ pub struct Application {
     pub entree: entree::Entree,
     pub client: estompe_client::http::Client,
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
-    pub vocal: estompe_client::vocal::SessionVocale,
+    pub vocal: std::sync::Arc<estompe_client::vocal::SessionVocale>,
 }
 
 #[cfg(feature = "livekit")]
@@ -74,6 +75,39 @@ pub fn demarrer(
         ecrans::publieur(fenetre),
     )
     .map_err(|e| format!("fil de l'entrée : {e}"))?;
+    let (micro, sortie, traitement, ecoute) = session.memoire.lire(|p| {
+        (
+            p.micro.clone(),
+            p.sortie_audio.clone(),
+            p.traitement_micro,
+            p.ecoute.clone(),
+        )
+    });
+    let audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio> =
+        std::sync::Arc::new(estompe_plateforme::AudioSysteme);
+    let apm = apm_vocal();
+    let vocal = std::sync::Arc::new(estompe_client::vocal::SessionVocale::demarrer(
+        &entree.runtime(),
+        estompe_client::vocal::Dependances {
+            api: std::sync::Arc::new(reels.client.clone()),
+            connecteur: connecteur_vocal(),
+            audio: audio.clone(),
+            apm: apm.clone(),
+            reglages: estompe_client::vocal::Reglages {
+                micro,
+                sortie,
+                traitement,
+                ecoute,
+                ..estompe_client::vocal::Reglages::default()
+            },
+        },
+    ));
+    let outils_vocaux = vocal::OutilsVocaux {
+        session: vocal.clone(),
+        audio,
+        raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+        apm,
+    };
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -86,6 +120,7 @@ pub fn demarrer(
         journal: Some(session.journal.clone()),
         navigateur,
         dossier_donnees: Some(session.dossiers.donnees.clone()),
+        vocal: Some(outils_vocaux),
         medias: messagerie::medias::Medias::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(
@@ -117,30 +152,6 @@ pub fn demarrer(
         coquille::horloge_locale(),
     );
     suivre_le_focus(fenetre, coquille.suivi_du_focus());
-    let (micro, sortie, traitement, ecoute) = session.memoire.lire(|p| {
-        (
-            p.micro.clone(),
-            p.sortie_audio.clone(),
-            p.traitement_micro,
-            p.ecoute.clone(),
-        )
-    });
-    let vocal = estompe_client::vocal::SessionVocale::demarrer(
-        &entree.runtime(),
-        estompe_client::vocal::Dependances {
-            api: std::sync::Arc::new(reels.client.clone()),
-            connecteur: connecteur_vocal(),
-            audio: std::sync::Arc::new(estompe_plateforme::AudioSysteme),
-            apm: apm_vocal(),
-            reglages: estompe_client::vocal::Reglages {
-                micro,
-                sortie,
-                traitement,
-                ecoute,
-                ..estompe_client::vocal::Reglages::default()
-            },
-        },
-    );
     Ok(Application {
         coquille,
         entree,

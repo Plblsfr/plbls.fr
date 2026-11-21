@@ -6,9 +6,10 @@ use estompe_client::auth::ErreurAuth;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::store::messages::ChangementMessages;
-use estompe_client::store::{Changement, CleConversation, Store};
+use estompe_client::store::{Changement, CleConversation, ParticipantVocal, Store};
 use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
+use estompe_client::vocal::{EtatVocal, InfoParticipant, Phase, Qualite};
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -82,6 +83,14 @@ const ECRANS: &[Ecran] = ecrans![
     "coquille-accueil-sombre", Sombre, coquille_accueil;
     "coquille-vocal-clair", Clair, coquille_vocal;
     "coquille-prive-sombre", Sombre, coquille_prive;
+    "vocal-1-clair", Clair, vocal_seul;
+    "vocal-4-sombre", Sombre, vocal_quatre;
+    "vocal-4-clair", Clair, vocal_quatre;
+    "vocal-12-clair", Clair, vocal_douze;
+    "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
+    "vocal-menu-clair", Clair, vocal_menu;
+    "vocal-reglages-clair", Clair, vocal_reglages;
+    "vocal-reglages-sombre", Sombre, vocal_reglages;
     "coquille-vide-clair", Clair, coquille_vide;
     "coquille-chargement-clair", Clair, connecte;
     "membres-clair", Clair, membres;
@@ -447,6 +456,122 @@ fn coquille_accueil(f: &Principale) {
 
 fn coquille_vocal(f: &Principale) {
     coquille(f, commun::coquille::etat(), salon("s1", Some("v1")));
+}
+
+const PRENOMS: [&str; 11] = [
+    "carol", "dave", "Élise", "farid", "gaëlle", "hugo", "inès", "jules", "karim", "léa", "malo",
+];
+
+fn etat_vocal(salon: &str, autres: &[&str], preparer: impl FnOnce(&mut EtatVocal)) -> EtatVocal {
+    let mut v = EtatVocal::default();
+    v.rejoindre(salon);
+    let mut infos = vec![InfoParticipant {
+        identite: "u1".into(),
+        nom: "bob".into(),
+        local: true,
+        qualite: Qualite::Excellente,
+        ..InfoParticipant::default()
+    }];
+    infos.extend(autres.iter().map(|id| InfoParticipant {
+        identite: id.to_string(),
+        nom: id.to_string(),
+        qualite: Qualite::Bonne,
+        ..InfoParticipant::default()
+    }));
+    v.connecte("u1".into(), infos);
+    preparer(&mut v);
+    v
+}
+
+fn attribut(v: &mut EtatVocal, identite: &str, cle: &str) {
+    if let Some(p) = v.participants.get_mut(identite) {
+        p.attributs.insert(cle.to_string(), "1".to_string());
+    }
+}
+
+fn vocal_avec(
+    f: &Principale,
+    nombre: usize,
+    preparer_store: impl FnOnce(&mut estompe_client::store::Etat),
+    preparer: impl FnOnce(&mut EtatVocal),
+) -> Pont {
+    let autres: Vec<&str> = PRENOMS
+        .iter()
+        .take(nombre.saturating_sub(1))
+        .copied()
+        .collect();
+    let mut etat = commun::coquille::etat();
+    etat.vocal.insert(
+        "v1".into(),
+        autres
+            .iter()
+            .map(|id| ParticipantVocal {
+                utilisateur: id.to_string(),
+                pseudo: id.to_string(),
+                ..ParticipantVocal::default()
+            })
+            .collect(),
+    );
+    preparer_store(&mut etat);
+    let pont = coquille(f, etat, salon("s1", Some("v1")));
+    pont.vocal()
+        .definir_etat(f, etat_vocal("v1", &autres, preparer));
+    stabiliser(f);
+    pont
+}
+
+fn vocal_seul(f: &Principale) {
+    vocal_avec(f, 1, |_| {}, |_| {});
+}
+
+fn vocal_quatre(f: &Principale) {
+    vocal_avec(
+        f,
+        4,
+        |_| {},
+        |v| {
+            v.parlent.insert("carol".into());
+            attribut(v, "dave", "muted");
+            attribut(v, "Élise", "deaf");
+            if let Some(p) = v.participants.get_mut("Élise") {
+                p.qualite = Qualite::Faible;
+            }
+        },
+    );
+}
+
+fn vocal_douze(f: &Principale) {
+    vocal_avec(
+        f,
+        12,
+        |e| {
+            if let Some(liste) = e.vocal.get_mut("v1") {
+                liste[3].micro_coupe = true;
+                liste[4].son_coupe = true;
+            }
+        },
+        |v| {
+            v.basculer_micro();
+            v.parlent.insert("hugo".into());
+            attribut(v, "jules", "muted");
+        },
+    );
+}
+
+fn vocal_reconnexion(f: &Principale) {
+    vocal_avec(f, 3, |_| {}, |v| v.phase = Phase::Reconnexion);
+}
+
+fn vocal_menu(f: &Principale) {
+    let pont = vocal_avec(f, 4, |_| {}, |_| {});
+    pont.vocal().ouvrir_menu(f, "carol", "v1");
+    stabiliser(f);
+}
+
+fn vocal_reglages(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_reglages(f);
+    stabiliser(f);
 }
 
 fn coquille_prive(f: &Principale) {
@@ -941,6 +1066,10 @@ fn remettre_a_zero(f: &Principale) {
     connecte(f);
     f.set_activation_pseudo("".into());
     f.set_invitation_saisie("".into());
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_menu_ouvert(false);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_reglages_ouverts(false);
 }
 
 fn references() -> PathBuf {

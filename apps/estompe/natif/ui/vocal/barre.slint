@@ -1,0 +1,75 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { DonneesVocal } from "donnees.slint";
+import { BarresQualite } from "commun.slint";
+import { CommandesVocal, AvisVocal } from "commandes.slint";
+
+export component BarreVocalPanneau inherits Rectangle {
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: groupbox;
+    accessible-label: "Vocal";
+    vertical-stretch: 0;
+    height: contenu.preferred-height;
+    contenu := VerticalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: DonneesVocal.barre.connexion || DonneesVocal.barre.reconnexion ? Theme.gris : Theme.voix;
+                }
+            }
+            lieu := VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                Text {
+                    text: DonneesVocal.barre.titre;
+                    color: Theme.encre;
+                    font-size: Typo.petit;
+                    font-weight: Typo.gras;
+                    overflow: elide;
+                }
+                Text {
+                    text: DonneesVocal.barre.lieu;
+                    color: Theme.gris;
+                    font-size: Typo.minuscule;
+                    overflow: elide;
+                }
+                TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        DonneesVocal.ouvrir-vocal(DonneesVocal.barre.salon);
+                    }
+                }
+            }
+            if DonneesVocal.barre.duree != "": Text {
+                text: DonneesVocal.barre.duree;
+                color: Theme.encre-2;
+                font-family: Typo.mono;
+                font-size: 11.5px;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: "Présence dans le salon : \{DonneesVocal.barre.duree}";
+            }
+            VerticalLayout {
+                alignment: center;
+                BarresQualite {
+                    barres: DonneesVocal.barre.barres;
+                    libelle: DonneesVocal.barre.qualite;
+                }
+            }
+        }
+        CommandesVocal {
+            compact: true;
+            alignment: space-between;
+        }
+        AvisVocal { }
+    }
+}

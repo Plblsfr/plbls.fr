@@ -5,6 +5,8 @@ import { Bandeau } from "bandeau.slint";
 import { VueAccueil } from "accueil.slint";
 import { DonneesMessagerie } from "../messagerie/donnees.slint";
 import { VueMessages } from "../messagerie/vue.slint";
+import { DonneesVocal } from "../vocal/donnees.slint";
+import { VueSalonVocal } from "../vocal/vue.slint";
 
 export component Contenu inherits Rectangle {
     callback rejoindre();
@@ -57,6 +59,15 @@ export component Contenu inherits Rectangle {
                     vertical-alignment: center;
                     overflow: elide;
                 }
+                if DonneesCoquille.vue.genre == GenreVue.vocal && DonneesVocal.vue.ici: Text {
+                    text: DonneesVocal.vue.compte;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    accessible-role: text;
+                    accessible-label: "Participants : \{DonneesVocal.vue.compte}";
+                }
                 if DonneesCoquille.epingles-disponibles: VerticalLayout {
                     alignment: center;
                     Bouton {
@@ -99,7 +110,10 @@ export component Contenu inherits Rectangle {
         if (DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active: VueMessages {
             vertical-stretch: 1;
         }
-        if DonneesCoquille.vue.genre != GenreVue.accueil && !((DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active): VerticalLayout {
+        if DonneesCoquille.vue.genre == GenreVue.vocal: VueSalonVocal {
+            vertical-stretch: 1;
+        }
+        if DonneesCoquille.vue.genre != GenreVue.accueil && DonneesCoquille.vue.genre != GenreVue.vocal && !((DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active): VerticalLayout {
             vertical-stretch: 1;
             alignment: center;
             padding: Espace.e8;

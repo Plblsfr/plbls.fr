@@ -290,7 +290,7 @@ fn ligne_de_salon(
         } else {
             0
         },
-        bientot: est_vocal(salon.kind) || est_esquisse(salon.kind),
+        bientot: est_esquisse(salon.kind),
         occupants: etat.participants(&identifiant).len(),
         brouillon: false,
         id: identifiant,
@@ -591,12 +591,8 @@ pub fn donnees_vue(etat: &Etat, route: &Route) -> DonneesVue {
                         nom,
                         String::new(),
                         icone,
-                        BIENTOT,
-                        if salon.kind == Some(GenreSalon::Cinema) {
-                            "Le salon cinéma arrive avec le vocal (lot 4) et les médias (lot 9). Il reste ouvert dans l'app Estompe.".to_string()
-                        } else {
-                            "Le vocal arrive avec le lot 4. En attendant, rejoins ce salon depuis l'app Estompe.".to_string()
-                        },
+                        "",
+                        String::new(),
                     ),
                     Some(GenreSalon::Videos | GenreSalon::Music) => vue(
                         GenreVue::Esquisse,
@@ -762,8 +758,8 @@ mod tests {
                 ("c1", "hash", "SALONS TEXTE", true, false),
                 ("c2", "lock", "", false, false),
                 ("m1", "headphones", "ESQUISSES", false, true),
-                ("v1", "volume", "SALONS VOCAUX", false, true),
-                ("k1", "film", "", false, true),
+                ("v1", "volume", "SALONS VOCAUX", false, false),
+                ("k1", "film", "", false, false),
             ]
         );
         assert_eq!((lignes[0].mentions, lignes[1].non_lus), (1, 3));
@@ -904,10 +900,9 @@ mod tests {
         );
         let vocal = donnees_vue(&e, &salon("s1", Some("v1")));
         assert_eq!(
-            (vocal.genre, vocal.message.as_str()),
-            (GenreVue::Vocal, "Bientôt dans l'app native")
+            (vocal.genre, vocal.titre.as_str(), vocal.message.as_str()),
+            (GenreVue::Vocal, "Salon vocal", "")
         );
-        assert!(vocal.detail.contains("lot 4"));
         assert_eq!(
             donnees_vue(&e, &salon("s1", Some("m1"))).genre,
             GenreVue::Esquisse

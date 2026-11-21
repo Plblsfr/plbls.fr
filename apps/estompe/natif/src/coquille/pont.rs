@@ -21,6 +21,7 @@ use super::navigation::Navigation;
 use super::projection::*;
 use crate::messagerie::pont::PontMessagerie;
 use crate::session::Memoire;
+use crate::vocal::PontVocal;
 use crate::{
     Accueil, CarteProfil, DonneesCoquille, DonneesMessagerie, EnTeteMarge, EnTetePanneau,
     EtatConversation, EtatPresence, LigneBadge, LigneMembre, LigneMessage, LignePrive,
@@ -32,6 +33,14 @@ pub type Horloge = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
 pub type Icone = SharedPixelBuffer<Rgba8Pixel>;
 
 const COTE_ICONE: u32 = 128;
+
+fn millisecondes(maintenant: NaiveDateTime) -> i64 {
+    chrono::Local
+        .from_local_datetime(&maintenant)
+        .earliest()
+        .map(|d| d.timestamp_millis())
+        .unwrap_or_else(|| maintenant.and_utc().timestamp_millis())
+}
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
@@ -248,6 +257,7 @@ pub struct Pont {
     horloge: Horloge,
     profils: Arc<Profils>,
     messagerie: PontMessagerie,
+    vocal: PontVocal,
 }
 
 pub(crate) fn vec_de<S: Clone + 'static>(modele: &ModelRc<S>) -> &VecModel<S> {
@@ -268,6 +278,7 @@ pub fn installer_modeles(f: &Principale) {
     g.set_membres(ModelRc::new(VecModel::<LigneMembre>::default()));
     f.global::<DonneesMessagerie>()
         .set_lignes(ModelRc::new(VecModel::<LigneMessage>::default()));
+    crate::vocal::pont::installer_modeles(f);
 }
 
 pub fn onglet_effectif(voulu: OngletMarge, membres: bool, epingles: bool) -> Option<OngletMarge> {
@@ -315,6 +326,7 @@ pub fn vider_modeles(f: &Principale) {
     m.set_nouveaux(0);
     m.set_saisie("".into());
     m.set_lecture_seule(false);
+    crate::vocal::pont::vider_modeles(f);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -468,6 +480,14 @@ impl Pont {
             runtime.clone(),
             profils.clone(),
         );
+        let horloge_vocal = horloge.clone();
+        let vocal = PontVocal::nouveau(
+            store.clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            memoire.clone(),
+            Arc::new(move || millisecondes(horloge_vocal())),
+        );
         Self {
             interne: Arc::new(Mutex::new(Interne {
                 navigation,
@@ -488,11 +508,16 @@ impl Pont {
             horloge,
             profils,
             messagerie,
+            vocal,
         }
     }
 
     pub fn messagerie(&self) -> &PontMessagerie {
         &self.messagerie
+    }
+
+    pub fn vocal(&self) -> &PontVocal {
+        &self.vocal
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
@@ -537,6 +562,7 @@ impl Pont {
             self.ouvrir_conversation_courante();
         }
         self.messagerie.appliquer(f, changements);
+        self.vocal.changements(f, changements);
     }
 
     pub fn rafraichir_brouillons(&self, f: &Principale) {
@@ -570,6 +596,7 @@ impl Pont {
         let mut guard = self.verrou();
         let interne = &mut *guard;
         let route = interne.navigation.route().clone();
+        let route_vocal = route.clone();
         let Interne {
             ombres,
             icones,
@@ -705,6 +732,8 @@ impl Pont {
         if c.membres {
             self.projeter_membres(f);
         }
+        self.vocal.definir_route(&route_vocal);
+        self.vocal.projeter(f);
     }
 
     fn telecharger_icone(&self, serveur: String, version: i64) {
@@ -815,6 +844,30 @@ impl Pont {
                 message: None,
             },
         );
+        let vocal = self.store.lire(|etat| {
+            etat.salon(salon)
+                .is_some_and(|(_, s)| estompe_client::store::est_vocal(s.kind))
+        });
+        if vocal {
+            self.vocal.rejoindre(salon);
+        }
+    }
+
+    pub fn ouvrir_salon_de_son_serveur(&self, f: &Principale, salon: &str) {
+        let Some(serveur) = self.store.lire(|etat| etat.serveur_du_salon(salon)) else {
+            return;
+        };
+        if matches!(self.route(), Route::Salon { salon: Some(courant), .. } if courant == salon) {
+            return;
+        }
+        self.naviguer(
+            f,
+            Route::Salon {
+                serveur,
+                salon: Some(salon.to_string()),
+                message: None,
+            },
+        );
     }
 
     pub fn ouvrir_prive(&self, f: &Principale, prive: &str) {
@@ -909,12 +962,7 @@ impl Pont {
     }
 
     fn maintenant_ms(&self) -> i64 {
-        let maintenant = (self.horloge)();
-        chrono::Local
-            .from_local_datetime(&maintenant)
-            .earliest()
-            .map(|d| d.timestamp_millis())
-            .unwrap_or_else(|| maintenant.and_utc().timestamp_millis())
+        millisecondes((self.horloge)())
     }
 
     fn projeter_membres(&self, f: &Principale) {

@@ -20,6 +20,7 @@ use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
 use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
 use crate::session::Memoire;
+use crate::vocal::{OutilsVocaux, PERIODE_MESURE};
 use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, Principale};
 use estompe_client::brouillons::Brouillons;
 
@@ -60,6 +61,9 @@ pub trait Fabrique: Send + Sync + 'static {
     fn brouillons(&self) -> Brouillons {
         Brouillons::en_memoire()
     }
+    fn vocal(&self) -> Option<OutilsVocaux> {
+        None
+    }
 }
 
 pub struct FabriqueReelle {
@@ -71,6 +75,7 @@ pub struct FabriqueReelle {
     pub medias: Arc<Medias>,
     pub navigateur: Navigateur,
     pub dossier_donnees: Option<std::path::PathBuf>,
+    pub vocal: Option<OutilsVocaux>,
 }
 
 fn noter(journal: &Option<Arc<Journal>>, niveau: Niveau, message: &str) {
@@ -160,6 +165,10 @@ impl Fabrique for FabriqueReelle {
             .map(Brouillons::charger)
             .unwrap_or_default()
     }
+
+    fn vocal(&self) -> Option<OutilsVocaux> {
+        self.vocal.clone()
+    }
 }
 
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
@@ -220,6 +229,7 @@ impl Coquille {
             }
             if let Some(pont) = pont_courant(&emplacement) {
                 pont.messagerie().fenetre_active(actif);
+                pont.vocal().fenetre_active(actif);
             }
         }
     }
@@ -377,6 +387,17 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel!(on_epingles_bascule, |p, f| p.basculer_epingles(&f));
     let source = emplacement.clone();
     brancher_messagerie(f, Arc::new(move || pont_courant(&source)));
+    let source = emplacement.clone();
+    let ouverture = emplacement.clone();
+    crate::vocal::pont::brancher_rappels(
+        f,
+        Arc::new(move || pont_courant(&source).map(|p| p.vocal().clone())),
+        Arc::new(move |f, salon| {
+            if let Some(pont) = pont_courant(&ouverture) {
+                pont.ouvrir_salon_de_son_serveur(f, salon);
+            }
+        }),
+    );
     let faible = f.as_weak();
     let memoire_panneau = memoire.clone();
     g.on_panneau_bascule(move |replie| {
@@ -571,6 +592,17 @@ async fn session(
     if !contexte.focus.load(Ordering::SeqCst) {
         pont.messagerie().fenetre_active(false);
     }
+    let outils = contexte.fabrique.vocal();
+    if let Some(outils) = &outils {
+        pont.vocal().brancher(outils.clone());
+        if !contexte.focus.load(Ordering::SeqCst) {
+            pont.vocal().fenetre_active(false);
+        }
+    }
+    let mut etat_vocal = outils.as_ref().map(|o| o.session.etat());
+    let mut avis_vocal = outils.as_ref().map(|o| o.session.abonner_avis());
+    let mut mesure = tokio::time::interval(PERIODE_MESURE);
+    mesure.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let installe = {
         let mut emplacement = contexte
             .emplacement
@@ -590,9 +622,13 @@ async fn session(
     }
     let reseau_initial = *reseau.borrow_and_update();
     let p = pont.clone();
+    let etat_vocal_initial = etat_vocal.as_mut().map(|e| e.borrow_and_update().clone());
     contexte.sur_l_interface(move |f| {
         p.definir_reseau(f, reseau_initial);
         p.demarrer(f);
+        if let Some(etat) = etat_vocal_initial {
+            p.vocal().definir_etat(f, etat);
+        }
     });
     let sections = {
         let fabrique = contexte.fabrique.clone();
@@ -643,6 +679,27 @@ async fn session(
                 let p = pont.clone();
                 contexte.sur_l_interface(move |f| p.rafraichir_accueil(f));
             }
+            changement = async { etat_vocal.as_mut().expect("suivi du vocal").changed().await }, if etat_vocal.is_some() => {
+                match changement {
+                    Ok(()) => {
+                        let etat = etat_vocal.as_mut().expect("suivi du vocal").borrow_and_update().clone();
+                        let p = pont.clone();
+                        contexte.sur_l_interface(move |f| p.vocal().definir_etat(f, etat));
+                    }
+                    Err(_) => etat_vocal = None,
+                }
+            }
+            avis = async { avis_vocal.as_mut().expect("avis du vocal").recv().await }, if avis_vocal.is_some() => {
+                match avis {
+                    Ok(avis) => pont.vocal().avis(&avis),
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => avis_vocal = None,
+                }
+            }
+            _ = mesure.tick(), if pont.vocal().mesure_active() => {
+                let p = pont.clone();
+                contexte.sur_l_interface(move |f| p.vocal().mesurer(f));
+            }
             _ = expiration_des_saisies(&store) => {
                 store.expirer_saisies();
                 let p = pont.clone();
@@ -651,6 +708,7 @@ async fn session(
         }
     }
     pont.messagerie().saisie().enregistrer_maintenant();
+    pont.vocal().arreter();
     sections.abort();
     suivi.abort();
     if let Some(temps_reel) = temps_reel {

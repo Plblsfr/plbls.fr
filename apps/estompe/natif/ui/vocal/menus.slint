@@ -1,0 +1,105 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Interrupteur, Curseur, Icone } from "../composants.slint";
+import { DonneesVocal, ListePeripheriques } from "donnees.slint";
+
+export component MenuParticipant inherits Modal {
+    titre: DonneesVocal.menu.nom;
+    ouvert: DonneesVocal.menu-ouvert;
+    largeur: 420px;
+    ferme => {
+        DonneesVocal.menu-ouvert = false;
+    }
+    if DonneesVocal.menu-ouvert: VerticalLayout {
+        spacing: Espace.e4;
+        Interrupteur {
+            texte: "Muet pour moi";
+            allume: DonneesVocal.menu.muet;
+            calque: 1;
+            bascule(muet) => {
+                DonneesVocal.muet-pour-moi(muet);
+            }
+        }
+        VerticalLayout {
+            spacing: Espace.e1;
+            HorizontalLayout {
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Volume";
+                    color: Theme.encre-2;
+                    font-size: Typo.petit;
+                }
+                Text {
+                    text: "\{Math.round(volume.valeur)} %";
+                    color: Theme.encre-2;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                }
+            }
+            volume := Curseur {
+                libelle: "Volume de \{DonneesVocal.menu.nom}";
+                unite: " %";
+                minimum: 0;
+                maximum: 300;
+                pas: 5;
+                valeur: DonneesVocal.menu.volume;
+                calque: 1;
+                change(v) => {
+                    DonneesVocal.volume(Math.round(v), false);
+                }
+                fini(v) => {
+                    DonneesVocal.volume(Math.round(v), true);
+                }
+            }
+        }
+        if DonneesVocal.menu.peut-couper-micro || DonneesVocal.menu.peut-couper-son: VerticalLayout {
+            spacing: Espace.e2;
+            if DonneesVocal.menu.peut-couper-micro: Bouton {
+                texte: DonneesVocal.menu.micro-impose ? "Rétablir le micro du serveur" : "Couper le micro du serveur";
+                icone: "mic-off";
+                calque: 1;
+                clique => {
+                    DonneesVocal.moderer(!DonneesVocal.menu.micro-impose, DonneesVocal.menu.son-impose);
+                }
+            }
+            if DonneesVocal.menu.peut-couper-son: Bouton {
+                texte: DonneesVocal.menu.son-impose ? "Rétablir le son du serveur" : "Couper le son du serveur";
+                icone: "headphones-off";
+                calque: 1;
+                clique => {
+                    DonneesVocal.moderer(DonneesVocal.menu.micro-impose, !DonneesVocal.menu.son-impose);
+                }
+            }
+        }
+    }
+}
+
+export component ListePeripheriquesVocal inherits Modal {
+    titre: DonneesVocal.liste == ListePeripheriques.micros ? "Choisir le micro" : "Choisir la sortie audio";
+    ouvert: DonneesVocal.liste != ListePeripheriques.aucune;
+    largeur: 420px;
+    ferme => {
+        DonneesVocal.liste = ListePeripheriques.aucune;
+    }
+    VerticalLayout {
+        spacing: Espace.e1;
+        for d in DonneesVocal.liste == ListePeripheriques.micros ? DonneesVocal.micros : DonneesVocal.sorties: Bouton {
+            texte: d.nom;
+            icone: d.choisi ? "check" : "";
+            variante: d.choisi ? VarianteBouton.secondaire : VarianteBouton.fantome;
+            calque: 1;
+            clique => {
+                DonneesVocal.choisir-peripherique(d.id);
+            }
+        }
+    }
+    Bouton {
+        texte: DonneesVocal.liste == ListePeripheriques.micros ? "Seuil de voix et réglages audio…" : "Réglages audio…";
+        icone: "sliders";
+        variante: VarianteBouton.fantome;
+        calque: 1;
+        clique => {
+            DonneesVocal.liste = ListePeripheriques.aucune;
+            DonneesVocal.ouvrir-reglages();
+        }
+    }
+}

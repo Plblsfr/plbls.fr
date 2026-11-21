@@ -1066,6 +1066,7 @@ pub mod coquille {
         pub medias: Arc<Medias>,
         pub fichiers: Arc<FauxFichiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
+        pub vocal: Mutex<Option<estompe_natif::vocal::OutilsVocaux>>,
     }
 
     #[derive(Default)]
@@ -1136,6 +1137,7 @@ pub mod coquille {
                 ),
                 fichiers: Arc::new(FauxFichiers::default()),
                 dossier_brouillons: Mutex::new(None),
+                vocal: Mutex::new(None),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
@@ -1207,6 +1209,10 @@ pub mod coquille {
 
         fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
             Arc::new(estompe_plateforme::Indisponible)
+        }
+
+        fn vocal(&self) -> Option<estompe_natif::vocal::OutilsVocaux> {
+            self.vocal.lock().unwrap().clone()
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

@@ -1,0 +1,329 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Interrupteur, Curseur, Defilement } from "../composants.slint";
+import { DonneesVocal, ReglagesVocal } from "donnees.slint";
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+component Reglage inherits VerticalLayout {
+    in property <string> libelle;
+    in property <string> valeur;
+    spacing: Espace.e1;
+    HorizontalLayout {
+        Text {
+            horizontal-stretch: 1;
+            text: root.libelle;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+        }
+        Text {
+            text: root.valeur;
+            color: Theme.encre-2;
+            font-family: Typo.mono;
+            font-size: Typo.petit;
+        }
+    }
+    @children
+}
+
+export component ReglagesAudio inherits Modal {
+    titre: "Réglages audio";
+    ouvert: DonneesVocal.reglages-ouverts;
+    largeur: 560px;
+    ferme => {
+        DonneesVocal.capture-touche = false;
+        DonneesVocal.fermer-reglages();
+    }
+    if DonneesVocal.reglages-ouverts: Defilement {
+        min-height: 360px;
+        preferred-height: 640px;
+        hauteur-contenu: contenu.preferred-height;
+        contenu := VerticalLayout {
+            alignment: start;
+            spacing: Espace.e4;
+            padding-right: Espace.e3;
+            property <ReglagesVocal> r: DonneesVocal.reglages;
+            function envoyer(fini: bool) {
+                DonneesVocal.regler({
+                    bruit: self.r.bruit,
+                    gain: Math.round(gain.valeur),
+                    detection: detection.allume,
+                    seuil: Math.round(seuil.valeur),
+                    general: Math.round(general.valeur),
+                    sons: sons.allume,
+                    ptt: ptt.allume,
+                    touche: self.r.touche,
+                    delai: Math.round(delai.valeur),
+                    ptt-message: self.r.ptt-message,
+                    ptt-global: self.r.ptt-global,
+                }, fini);
+            }
+            function bruit(niveau: int) {
+                DonneesVocal.regler({
+                    bruit: niveau,
+                    gain: Math.round(gain.valeur),
+                    detection: detection.allume,
+                    seuil: Math.round(seuil.valeur),
+                    general: Math.round(general.valeur),
+                    sons: sons.allume,
+                    ptt: ptt.allume,
+                    touche: self.r.touche,
+                    delai: Math.round(delai.valeur),
+                    ptt-message: self.r.ptt-message,
+                    ptt-global: self.r.ptt-global,
+                }, true);
+            }
+            Titre {
+                text: "MICRO";
+            }
+            VerticalLayout {
+                spacing: 2px;
+                for d in DonneesVocal.micros: Bouton {
+                    texte: d.nom;
+                    icone: d.choisi ? "check" : "";
+                    variante: d.choisi ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesVocal.choisir-micro-depuis-reglages(d.id);
+                    }
+                }
+            }
+            Reglage {
+                libelle: "Niveau du micro";
+                valeur: DonneesVocal.voix ? "voix détectée" : "";
+                Rectangle {
+                    height: 8px;
+                    border-radius: 4px;
+                    background: Theme.papier-3;
+                    accessible-role: progress-indicator;
+                    accessible-label: "Niveau du micro";
+                    accessible-value: "\{Math.round(DonneesVocal.niveau * 100)} %";
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * DonneesVocal.niveau;
+                        border-radius: 4px;
+                        background: DonneesVocal.voix ? Theme.rose-fonce : Theme.trait-fort;
+                    }
+                    if detection.allume: Rectangle {
+                        x: parent.width * (seuil.valeur + 80) / 80 - 1px;
+                        width: 2px;
+                        background: Theme.encre;
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: DonneesVocal.essai ? "Arrêter le test" : "Tester le micro";
+                    icone: "mic";
+                    calque: 1;
+                    actif: !DonneesVocal.barre.visible;
+                    description: DonneesVocal.barre.visible ? "En appel, la jauge suit déjà ton micro" : "";
+                    clique => {
+                        DonneesVocal.essai-micro(!DonneesVocal.essai);
+                    }
+                }
+            }
+            Reglage {
+                libelle: "Réduction du bruit";
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    alignment: start;
+                    Bouton {
+                        texte: "Aucune";
+                        variante: contenu.r.bruit == 0 ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                        calque: 1;
+                        clique => {
+                            contenu.bruit(0);
+                        }
+                    }
+                    Bouton {
+                        texte: "Standard";
+                        variante: contenu.r.bruit == 1 ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                        calque: 1;
+                        clique => {
+                            contenu.bruit(1);
+                        }
+                    }
+                    Bouton {
+                        texte: "Renforcée";
+                        variante: contenu.r.bruit == 2 ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                        calque: 1;
+                        clique => {
+                            contenu.bruit(2);
+                        }
+                    }
+                }
+            }
+            Reglage {
+                libelle: "Gain du micro";
+                valeur: "\{Math.round(gain.valeur)} %";
+                gain := Curseur {
+                    libelle: "Gain du micro";
+                    unite: " %";
+                    minimum: 0;
+                    maximum: 300;
+                    pas: 5;
+                    valeur: contenu.r.gain;
+                    calque: 1;
+                    change => {
+                        contenu.envoyer(false);
+                    }
+                    fini => {
+                        contenu.envoyer(true);
+                    }
+                }
+            }
+            detection := Interrupteur {
+                texte: "Détection de la voix";
+                allume: contenu.r.detection;
+                calque: 1;
+                actif: !ptt.allume;
+                bascule => {
+                    contenu.envoyer(true);
+                }
+            }
+            Reglage {
+                libelle: "Seuil de voix";
+                valeur: "\{Math.round(seuil.valeur)} dB";
+                seuil := Curseur {
+                    libelle: "Seuil de voix";
+                    unite: " dB";
+                    minimum: -75;
+                    maximum: -15;
+                    pas: 1;
+                    valeur: contenu.r.seuil;
+                    calque: 1;
+                    actif: detection.allume && !ptt.allume;
+                    change => {
+                        contenu.envoyer(false);
+                    }
+                    fini => {
+                        contenu.envoyer(true);
+                    }
+                }
+            }
+            Titre {
+                text: "APPUYER POUR PARLER";
+            }
+            ptt := Interrupteur {
+                texte: "Parler seulement en maintenant une touche";
+                allume: contenu.r.ptt;
+                calque: 1;
+                bascule => {
+                    contenu.envoyer(true);
+                }
+            }
+            HorizontalLayout {
+                spacing: Espace.e3;
+                alignment: start;
+                Bouton {
+                    texte: DonneesVocal.capture-touche ? "Appuie sur une touche…" : "Touche : \{contenu.r.touche}";
+                    icone: "commande";
+                    calque: 1;
+                    actif: ptt.allume;
+                    clique => {
+                        DonneesVocal.capture-touche = true;
+                        capture.focus();
+                    }
+                }
+                capture := FocusScope {
+                    width: 0px;
+                    enabled: DonneesVocal.capture-touche;
+                    key-pressed(e) => {
+                        if (!DonneesVocal.capture-touche) {
+                            return reject;
+                        }
+                        if (e.text == Key.Escape) {
+                            DonneesVocal.capture-touche = false;
+                            return accept;
+                        }
+                        if (DonneesVocal.touche-choisie(e.text)) {
+                            DonneesVocal.capture-touche = false;
+                        }
+                        return accept;
+                    }
+                }
+            }
+            if DonneesVocal.capture-erreur != "": Text {
+                text: DonneesVocal.capture-erreur;
+                color: Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+            Reglage {
+                libelle: "Délai de relâchement";
+                valeur: "\{Math.round(delai.valeur)} ms";
+                delai := Curseur {
+                    libelle: "Délai de relâchement";
+                    unite: " ms";
+                    minimum: 0;
+                    maximum: 2000;
+                    pas: 50;
+                    valeur: contenu.r.delai;
+                    calque: 1;
+                    actif: ptt.allume;
+                    change => {
+                        contenu.envoyer(false);
+                    }
+                    fini => {
+                        contenu.envoyer(true);
+                    }
+                }
+            }
+            if contenu.r.ptt-message != "": Text {
+                text: contenu.r.ptt-message;
+                color: contenu.r.ptt-global ? Theme.gris : Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+            Titre {
+                text: "ÉCOUTE";
+            }
+            VerticalLayout {
+                spacing: 2px;
+                for d in DonneesVocal.sorties: Bouton {
+                    texte: d.nom;
+                    icone: d.choisi ? "check" : "";
+                    variante: d.choisi ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesVocal.choisir-sortie-depuis-reglages(d.id);
+                    }
+                }
+            }
+            Reglage {
+                libelle: "Volume général du vocal";
+                valeur: "\{Math.round(general.valeur)} %";
+                general := Curseur {
+                    libelle: "Volume général du vocal";
+                    unite: " %";
+                    minimum: 0;
+                    maximum: 100;
+                    pas: 5;
+                    valeur: contenu.r.general;
+                    calque: 1;
+                    change => {
+                        contenu.envoyer(false);
+                    }
+                    fini => {
+                        contenu.envoyer(true);
+                    }
+                }
+            }
+            sons := Interrupteur {
+                texte: "Sons d'arrivée et de départ";
+                allume: contenu.r.sons;
+                calque: 1;
+                bascule => {
+                    contenu.envoyer(true);
+                }
+            }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-import { Theme, Espace } from "../jetons.slint";
+import { Theme, Espace, Calques } from "../jetons.slint";
 import { Bouton, VarianteBouton } from "../composants.slint";
 import { Attente } from "../entree/commun.slint";
 import { DonneesCoquille } from "donnees.slint";
@@ -6,13 +6,20 @@ import { Rail } from "rail.slint";
 import { Panneau } from "panneau.slint";
 import { Contenu } from "contenu.slint";
 import { EmplacementMarge } from "marge.slint";
+import { DonneesVocal } from "../vocal/donnees.slint";
 
 export component Coquille inherits Rectangle {
     callback ouvrir-invitation();
     callback se-deconnecter();
     background: Theme.papier;
+    property <int> calques: Calques.ouverts;
     init => {
         clavier.focus();
+    }
+    changed calques => {
+        if (root.calques == 0) {
+            clavier.focus();
+        }
     }
     clavier := FocusScope {
         key-pressed(e) => {
@@ -26,6 +33,23 @@ export component Coquille inherits Rectangle {
             }
             if (e.modifiers.control && !e.modifiers.alt && e.text == "." && DonneesCoquille.marge-disponible) {
                 DonneesCoquille.marge-bascule(!DonneesCoquille.marge-ouverte);
+                return accept;
+            }
+            if (e.modifiers.alt && e.modifiers.shift && !e.modifiers.control && !e.modifiers.meta && (e.text == "m" || e.text == "M")) {
+                DonneesVocal.basculer-micro();
+                return accept;
+            }
+            if (e.modifiers.alt && e.modifiers.shift && !e.modifiers.control && !e.modifiers.meta && (e.text == "d" || e.text == "D")) {
+                DonneesVocal.basculer-casque();
+                return accept;
+            }
+            if (!e.modifiers.control && !e.modifiers.alt && !e.modifiers.meta && DonneesVocal.touche(e.text, true)) {
+                return accept;
+            }
+            return reject;
+        }
+        key-released(e) => {
+            if (DonneesVocal.touche(e.text, false)) {
                 return accept;
             }
             return reject;

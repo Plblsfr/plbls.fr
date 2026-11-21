@@ -1,0 +1,125 @@
+export struct ParticipantVocal {
+    salon: string,
+    utilisateur: string,
+    nom: string,
+    initiales: string,
+    teinte: int,
+    moi: bool,
+    parle: bool,
+    muet: bool,
+    sourd: bool,
+    micro-impose: bool,
+    son-impose: bool,
+    barres: int,
+    qualite: string,
+}
+
+export struct VueVocal {
+    salon: string,
+    nom: string,
+    cinema: bool,
+    ici: bool,
+    connexion: bool,
+    reconnexion: bool,
+    peut-rejoindre: bool,
+    erreur: string,
+    compte: string,
+    resume: string,
+    seul: bool,
+    colonnes: int,
+    rangees: int,
+}
+
+export struct BarreVocal {
+    visible: bool,
+    connexion: bool,
+    reconnexion: bool,
+    titre: string,
+    salon: string,
+    serveur: string,
+    lieu: string,
+    duree: string,
+    barres: int,
+    qualite: string,
+    micro-coupe: bool,
+    casque-coupe: bool,
+    micro-impose: bool,
+    son-impose: bool,
+    peut-parler: bool,
+    message: string,
+}
+
+export struct MenuVocal {
+    utilisateur: string,
+    nom: string,
+    muet: bool,
+    volume: int,
+    peut-couper-micro: bool,
+    peut-couper-son: bool,
+    micro-impose: bool,
+    son-impose: bool,
+}
+
+export struct PeripheriqueVocal {
+    id: string,
+    nom: string,
+    choisi: bool,
+}
+
+export enum ListePeripheriques { aucune, micros, sorties }
+
+export struct ReglagesVocal {
+    bruit: int,
+    gain: int,
+    detection: bool,
+    seuil: int,
+    general: int,
+    sons: bool,
+    ptt: bool,
+    touche: string,
+    delai: int,
+    ptt-message: string,
+    ptt-global: bool,
+}
+
+export global DonneesVocal {
+    in property <[ParticipantVocal]> tuiles;
+    in property <[ParticipantVocal]> participants;
+    in property <VueVocal> vue;
+    in property <BarreVocal> barre;
+    in property <float> niveau: 0;
+    in property <bool> voix: false;
+    in property <bool> parle-micro-coupe: false;
+    in property <bool> ptt: false;
+    in property <string> touche-ptt;
+    in property <bool> ptt-parle: false;
+    in-out property <bool> menu-ouvert: false;
+    in property <MenuVocal> menu;
+    in-out property <ListePeripheriques> liste: ListePeripheriques.aucune;
+    in property <[PeripheriqueVocal]> micros;
+    in property <[PeripheriqueVocal]> sorties;
+    in-out property <bool> reglages-ouverts: false;
+    in property <ReglagesVocal> reglages;
+    in property <bool> essai: false;
+    in-out property <bool> capture-touche: false;
+    in property <string> capture-erreur;
+    callback rejoindre(string);
+    callback ouvrir-vocal(string);
+    callback quitter();
+    callback basculer-micro();
+    callback basculer-casque();
+    callback ouvrir-liste(ListePeripheriques);
+    callback choisir-peripherique(string);
+    callback choisir-micro-depuis-reglages(string);
+    callback choisir-sortie-depuis-reglages(string);
+    callback ouvrir-menu(string, string);
+    callback muet-pour-moi(bool);
+    callback volume(int, bool);
+    callback moderer(bool, bool);
+    callback ouvrir-reglages();
+    callback fermer-reglages();
+    callback regler(ReglagesVocal, bool);
+    callback essai-micro(bool);
+    callback touche(string, bool) -> bool;
+    callback touche-choisie(string) -> bool;
+}

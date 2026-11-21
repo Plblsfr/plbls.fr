@@ -13,8 +13,11 @@ import { Attente } from "entree/commun.slint";
 import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
 import { MiseAJour } from "entree/mise-a-jour.slint";
+import { DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal } from "vocal/donnees.slint";
+import { MenuParticipant, ListePeripheriquesVocal } from "vocal/menus.slint";
+import { ReglagesAudio } from "vocal/reglages.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -284,4 +287,7 @@ export component Principale inherits Window {
     VisionneuseVue {
         ouverte: root.page == Page.coquille && DonneesMessagerie.visionneuse.ouverte;
     }
+    MenuParticipant { }
+    ListePeripheriquesVocal { }
+    ReglagesAudio { }
 }

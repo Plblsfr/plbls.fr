@@ -1,6 +1,9 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton, Avatar, ElementListe, Compteur, Defilement, Coins } from "../composants.slint";
 import { DonneesCoquille, GenrePanneau, GenreVue, EtatBandeau } from "donnees.slint";
+import { DonneesVocal } from "../vocal/donnees.slint";
+import { LigneParticipant } from "../vocal/tuile.slint";
+import { BarreVocalPanneau } from "../vocal/barre.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -226,6 +229,13 @@ export component Panneau inherits Rectangle {
                                 DonneesCoquille.ouvrir-salon(salon.id);
                             }
                         }
+                        if salon.occupants > 0 || DonneesVocal.barre.salon == salon.id: VerticalLayout {
+                            for p in DonneesVocal.participants: LigneParticipant {
+                                visible: p.salon == salon.id;
+                                height: self.visible ? 30px : 0px;
+                                p: p;
+                            }
+                        }
                     }
                     if DonneesCoquille.salons.length == 0: HorizontalLayout {
                         padding-left: 10px;
@@ -249,6 +259,8 @@ export component Panneau inherits Rectangle {
         }
         VerticalLayout {
             padding: Espace.e2;
+            spacing: Espace.e2;
+            if DonneesVocal.barre.visible: BarreVocalPanneau { }
             BarreMoi {
                 se-deconnecter => {
                     root.se-deconnecter();
