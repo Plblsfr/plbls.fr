@@ -289,6 +289,41 @@ impl Client {
         .await
     }
 
+    pub async fn deplacer_participant_vocal(
+        &self,
+        salon: &str,
+        utilisateur: &str,
+        vers: &str,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/voice/{}/participants/{}/move",
+                encoder_composant(salon),
+                encoder_composant(utilisateur)
+            ),
+            &Corps::json(&serde_json::json!({"channel_id": vers}))?,
+        )
+        .await
+    }
+
+    pub async fn deconnecter_participant_vocal(
+        &self,
+        salon: &str,
+        utilisateur: &str,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!(
+                "/voice/{}/participants/{}/disconnect",
+                encoder_composant(salon),
+                encoder_composant(utilisateur)
+            ),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
     pub async fn creer_serveur(&self, nom: &str) -> Result<Server, ErreurApi> {
         self.post(
             "/servers",
@@ -789,6 +824,8 @@ mod tests {
             ),
             Reponse::json(409, json!({"error": "voice_full", "message": "complet"})),
             Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(409, json!({"error": "not_in_voice", "message": "absent"})),
         ])
         .await;
         let client = serveur.client();
@@ -809,6 +846,28 @@ mod tests {
         assert_eq!(
             requetes[2].json(),
             json!({"mic_off": true, "sound_off": false})
+        );
+        client
+            .deplacer_participant_vocal("v1", "u2", "v2")
+            .await
+            .unwrap();
+        assert_eq!(
+            client
+                .deconnecter_participant_vocal("v1", "u2")
+                .await
+                .unwrap_err()
+                .code(),
+            "not_in_voice"
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(
+            requetes[3].ligne(),
+            ("/voice/v1/participants/u2/move", "PUT")
+        );
+        assert_eq!(requetes[3].json(), json!({"channel_id": "v2"}));
+        assert_eq!(
+            requetes[4].ligne(),
+            ("/voice/v1/participants/u2/disconnect", "POST")
         );
     }
 

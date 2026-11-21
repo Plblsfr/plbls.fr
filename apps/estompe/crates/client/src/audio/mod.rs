@@ -16,7 +16,7 @@ pub use micro::{
     NiveauMicro, ReglagesMicro,
 };
 pub use peripheriques::{resoudre, Bascule, Capture, Lecture, RenduTrame};
-pub use tonalite::{SonVocal, Tonalite};
+pub use tonalite::{ChoixSon, ReglagesSons, SonVocal, Tonalite};
 
 #[cfg(test)]
 mod tests {

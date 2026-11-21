@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::audio::ReglagesMicro;
+use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
 use crate::vocal::{Ecoute, ReglagesPtt};
 
@@ -58,6 +58,7 @@ pub struct Preferences {
     pub ecoute: Ecoute,
     pub ptt: ReglagesPtt,
     pub sons_vocal: bool,
+    pub sons: ReglagesSons,
     pub emoji_recents: Vec<String>,
     pub recherches_recentes: Vec<String>,
     pub vocaux_ecoutes: Vec<String>,
@@ -84,6 +85,7 @@ impl Default for Preferences {
             ecoute: Ecoute::default(),
             ptt: ReglagesPtt::default(),
             sons_vocal: true,
+            sons: ReglagesSons::default(),
             emoji_recents: Vec::new(),
             recherches_recentes: Vec::new(),
             vocaux_ecoutes: Vec::new(),
@@ -151,6 +153,7 @@ impl Preferences {
             ecoute: champ(&objet, "ecoute", d.ecoute).bornee(),
             ptt: champ(&objet, "ptt", d.ptt).borne(),
             sons_vocal: champ(&objet, "sons_vocal", d.sons_vocal),
+            sons: champ(&objet, "sons", d.sons).borne(),
             emoji_recents: objet
                 .get("emoji_recents")
                 .map(|v| crate::emoji::charger_recents(&v.to_string()))
@@ -340,6 +343,11 @@ mod tests {
                 delai_ms: 250,
             },
             sons_vocal: false,
+            sons: ReglagesSons {
+                arrivee: crate::audio::ChoixSon::Carillon,
+                depart: crate::audio::ChoixSon::Aucun,
+                volume: 35,
+            },
             emoji_recents: vec!["😂".to_string(), "👍".to_string()],
             recherches_recentes: vec!["de:carol vacances".to_string()],
             vocaux_ecoutes: vec!["f1".to_string()],
