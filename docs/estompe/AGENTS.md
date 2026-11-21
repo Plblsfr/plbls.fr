@@ -57,7 +57,7 @@ Règles du cycle :
 
 ## Nom de la branche = numéro de version
 
-Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android`), stockée dans `.version` et mise à jour
+Le préfixe de la branche pilote la version de chaque élément (`api`, `web`, `windows`, `android`, `natif`), stockée dans `.version` et mise à jour
 par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version` de `livraison.yml`) :
 
 | Branche | Effet à la fusion dans `main` |
@@ -70,26 +70,27 @@ par la CI à la fusion (`scripts/estompe/bump-version.mjs`, job `estompe-version
 Détails :
 - Éléments concernés = dossiers modifiés par la fusion : `api/estompe/` → api ; `web/estompe/plateforme/` → web ; `apps/estompe/windows/` → windows ;
   `apps/estompe/android/` → android ; le reste de `web/estompe/` → web, windows et android ; `apps/estompe/crates/` → windows et android,
-  sauf `crates/client` et `crates/plateforme` qui, comme `apps/estompe/natif/`, ne changent aucune version (l'app native n'en a pas encore).
+  sauf `crates/client` et `crates/plateforme` qui, comme `apps/estompe/natif/`, montent natif (l'app native). Un élément absent de `.version`
+  part de 0.0.0 : la première fusion `feat/` de l'app native ajoute `"natif": "0.1.0"` par la PR `ci/version`.
   Une fusion qui ne touche que `docs/`, `scripts/`, la CI… ne change rien.
 - À chaque fusion, la CI recalcule `.version` (toutes les fusions depuis la dernière modification de `.version` sur `main`) et met à jour une PR
   unique `ci/version` (« chore(version) ») : `main` est protégée, la CI n'y pousse pas. Cette PR ne modifie que `.version` : dans `ci.yml`, seul le job
   `version-seule` tourne et vérifie qu'aucun autre fichier ne change. Fusionner cette PR (« merge ») avant de poser un tag de livraison.
   Ne pas modifier `.version` dans une autre PR, sauf pour une version majeure (les fusions pas encore comptées repartent alors de cette valeur).
   Au build, `bump-version.mjs --apply` recopie les versions de `windows` et `android` dans `tauri.conf.json`, `Cargo.toml` et `Cargo.lock`
-  (l'espace de travail seulement) ; l'app ne propose la mise à jour que si la version publiée a augmenté.
+  (l'espace de travail seulement), et celle de `natif` dans `apps/estompe/natif/Cargo.toml` et son `Cargo.lock` ; l'app ne propose la mise à jour que si la version publiée a augmenté.
 - Le nom de la branche est lu dans le message du commit de fusion de GitHub (« … from feat/x into main »). **Fusionner en
   « merge » classique** : en squash ou rebase, le nom est perdu et la version monte en patch.
 - Choisir le préfixe selon l'effet voulu : une fonctionnalité visible par les utilisateurs → `feat/`.
 
 ## Release et livraison
 
-Branche `release/…`, `changelog.json`, forçage de mise à jour, tags `estompe-api-v*` et `estompe-app-v*` : voir `docs/estompe/release.md` (lu par `/estompe-release`).
+Branche `release/…`, `changelog.json`, forçage de mise à jour, tags `estompe-api-v*`, `estompe-app-v*` et `estompe-natif-v*` (app native) : voir `docs/estompe/release.md` (lu par `/estompe-release`).
 Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push origin <tag>`), jamais `--tags`.
 
 ## Git et GitHub
 
-- Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe est réparti entre `api/estompe/`, `web/estompe/`, `apps/estompe/`, `docs/estompe/`, `deploy/estompe/` et `scripts/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`.
+- Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe est réparti entre `api/estompe/`, `web/estompe/`, `apps/estompe/`, `docs/estompe/`, `deploy/estompe/` et `scripts/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`, `estompe-natif-v*`.
 - **Seul `gh` parle à GitHub** (PR, issues, releases…), ou à défaut les outils MCP GitHub de la session pour lire et commenter une issue (`issue_read`, `add_issue_comment`). Interdits : `curl`/`wget` vers `api.github.com`, appel à l'API à la main,
   bibliothèque HTTP. Les règles `deny` de `.claude/settings.json` le font respecter.
 - `gh` doit être connecté : `gh auth status` doit répondre. Sinon, s'arrêter et le dire à l'utilisateur.
@@ -155,7 +156,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   (`isDesktop`, agent) : il appelle `platform` ; un comportement propre à une plateforme s'ajoute dans son dossier (voir `web/estompe/README.md`).
 - `apps/estompe/natif/` : app de bureau native en Slint, sans webview, en beta à côté de l'app Tauri ; `apps/estompe/crates/client/` (logique sans
   interface) et `apps/estompe/crates/plateforme/` (seul endroit où du code propre à un OS est permis). Workspace Cargo à part. Voir `docs/estompe/natif.md`.
-- `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android).
+- `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android, natif).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
 - Permissions : toute nouvelle route est rattachée à une permission de `api/estompe/core/src/catalogue.rs` (ou, avec un motif, à `HORS_PERMISSION`), et tout nouveau droit de serveur est plafonné par une permission ; les tests `estompe-api` et `estompe-core` l'imposent. Après un changement du catalogue : `AEGIS_DOC=1 cargo test -p estompe-core catalogue::tests::documentation_a_jour` régénère `docs/aegis/fonctionnalites.md`.
 - Déploiement : services `estompe-*` et `livekit` de `deploy/docker-compose.yml` (voir `deploy/README.md`, « Variables ») : `estompe-api` charge tout le `.env`, `estompe-web` et `livekit` ne reçoivent que les variables de leur section `environment` (interpolées `${VAR}`) ; la base est `estompe` sur le PostgreSQL partagé (`postgres-main`), le Redis est le service `redis` commun. Nouvelle variable : valeur non secrète dans `plbls.env` (section Estompe), secret dans `deploy/estompe/.env.example` (valeur dans `secret/estompe` de Vault, référence `${{vault.plbls.estompe:CLE}}`), jamais en valeur dans le compose ; une variable lue par `estompe-web` ou `livekit` s'ajoute aussi à sa section `environment` ; aucun nom déjà utilisé par un autre projet de la stack, sauf les communes (`DATABASE_*`, `REDIS_*`, `VAPID_*`…).
@@ -163,7 +164,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`
   (entrée `changelog.d/` exigée), chacun seulement si la PR touche ses chemins. Après fusion, `livraison.yml` calcule `.version` (`estompe-version`),
   publie l'image `:edge` de l'API si `api/estompe/` a changé et l'image de job de `deploy/estompe/ci/` ; tag `estompe-api-v*` : image versionnée de l'API.
-  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK.
+  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK. `estompe-livraison-natif.yml` (tag `estompe-natif-v*` ou lancement manuel) : installeur de l'app native.
 
 ## Conventions
 

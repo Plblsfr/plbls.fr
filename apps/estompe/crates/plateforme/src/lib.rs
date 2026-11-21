@@ -1,33 +1,60 @@
 mod coffre;
+mod demarrage;
 mod dossiers;
 mod erreur;
 mod fichiers;
 mod indisponible;
+mod installation;
+pub mod instance;
+#[cfg(target_os = "linux")]
+mod notifications_linux;
+#[cfg(windows)]
+mod pastille_windows;
 mod processus;
+#[cfg(windows)]
+mod registre_windows;
 mod son;
+pub mod toast;
+#[cfg(windows)]
+mod toast_windows;
 mod traits;
 mod url;
+mod zone;
 
 pub use coffre::{CoffreMemoire, CoffreSysteme};
+pub use demarrage::{
+    commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,
+};
 pub use dossiers::{
     dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
 };
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
+pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
 pub use processus::commande_d_arriere_plan;
+pub use raw_window_handle::RawWindowHandle;
 pub use son::SonSysteme;
 pub use traits::{
-    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, ContenuPressePapiers,
-    DemarrageSession, Fichiers, FluxSon, Image, Micro, Notification, Notifications, OuvertureUrl,
-    Overlay, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurSon, SortieSon,
-    SourceCapture, TypeSource,
+    ActionNotification, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre,
+    ContenuPressePapiers, DemarrageSession, EvenementZone, Fichiers, FluxSon, Image, Installation,
+    Micro, Notification, Notifications, OuvertureUrl, Overlay, Pastille, PremierPlan,
+    PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurActions, RecepteurSon, RecepteurZone,
+    SortieSon, SourceCapture, TypeSource, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
+pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
+
+pub const NOM_EXECUTABLE: &str = "estompe-natif.exe";
+pub const NOM_AFFICHE: &str = "Estompe natif (bêta)";
+pub const ICONE_INSTALLEE: &str = "estompe.ico";
 
 pub struct Plateforme {
     pub coffre: Box<dyn Coffre>,
-    pub notifications: Box<dyn Notifications>,
+    pub notifications: std::sync::Arc<dyn Notifications>,
+    pub zone: Box<dyn ZoneNotification>,
+    pub pastille: Box<dyn Pastille>,
+    pub installation: std::sync::Arc<dyn Installation>,
     pub raccourcis: Box<dyn RaccourcisGlobaux>,
     pub url: Box<dyn OuvertureUrl>,
     pub fichiers: Box<dyn Fichiers + Send + Sync>,
@@ -50,6 +77,11 @@ impl Plateforme {
             presse_papiers: Box::new(PressePapiersSysteme),
             micro: Box::new(SonSysteme),
             sortie_son: Box::new(SonSysteme),
+            zone: Box::new(ZoneSysteme::default()),
+            demarrage: demarrage_de_l_os(),
+            notifications: notifications_de_l_os(),
+            pastille: pastille_de_l_os(),
+            installation: installation_de_l_os(),
             ..Self::indisponible()
         }
     }
@@ -57,7 +89,10 @@ impl Plateforme {
     pub fn indisponible() -> Self {
         Self {
             coffre: Box::new(Indisponible),
-            notifications: Box::new(Indisponible),
+            notifications: std::sync::Arc::new(Indisponible),
+            zone: Box::new(Indisponible),
+            pastille: Box::new(Indisponible),
+            installation: std::sync::Arc::new(Indisponible),
             raccourcis: Box::new(Indisponible),
             url: Box::new(Indisponible),
             fichiers: Box::new(Indisponible),
@@ -73,24 +108,75 @@ impl Plateforme {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn notifications_de_l_os() -> std::sync::Arc<dyn Notifications> {
+    let notifications = notifications_linux::NotificationsLinux::nouvelles();
+    if notifications.disponible() {
+        std::sync::Arc::new(notifications)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
+#[cfg(windows)]
+fn notifications_de_l_os() -> std::sync::Arc<dyn Notifications> {
+    std::sync::Arc::new(toast_windows::ToastsWindows::nouveaux())
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn notifications_de_l_os() -> std::sync::Arc<dyn Notifications> {
+    std::sync::Arc::new(Indisponible)
+}
+
+#[cfg(windows)]
+fn pastille_de_l_os() -> Box<dyn Pastille> {
+    Box::new(pastille_windows::PastilleWindows::default())
+}
+
+#[cfg(not(windows))]
+fn pastille_de_l_os() -> Box<dyn Pastille> {
+    Box::new(Indisponible)
+}
+
+fn installation_de_l_os() -> std::sync::Arc<dyn Installation> {
+    if InstallationSysteme.disponible() {
+        std::sync::Arc::new(InstallationSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
+fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
+    match DemarrageSysteme::de_l_executable() {
+        Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
+        _ => Box::new(Indisponible),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn la_plateforme_de_l_os_annonce_le_coffre_et_l_ouverture_d_url() {
+    fn la_plateforme_de_l_os_annonce_ce_qu_elle_sait_faire() {
         let p = Plateforme::de_l_os();
         assert!(p.url.disponible());
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
         assert!(p.micro.disponible() && p.sortie_son.disponible());
+        assert!(p.zone.disponible());
+        assert_eq!(p.demarrage.disponible(), cfg!(windows));
+        assert_eq!(p.pastille.disponible(), cfg!(windows));
+        assert_eq!(p.installation.disponible(), cfg!(windows));
+        assert_eq!(
+            p.installation.cible(),
+            cfg!(windows).then_some(CIBLE_WINDOWS)
+        );
         for (nom, disponible) in [
-            ("notifications", p.notifications.disponible()),
             ("raccourcis", p.raccourcis.disponible()),
             ("capture_ecran", p.capture_ecran.disponible()),
             ("capture_son", p.capture_son.disponible()),
             ("overlay", p.overlay.disponible()),
             ("premier_plan", p.premier_plan.disponible()),
-            ("demarrage", p.demarrage.disponible()),
         ] {
             assert!(!disponible, "{nom} n'est pas encore implémenté");
         }
@@ -98,10 +184,11 @@ mod tests {
 
     #[test]
     fn une_fonction_non_implementee_repond_indisponible_sans_panique() {
-        let p = Plateforme::de_l_os();
+        let p = Plateforme::indisponible();
         let notification = Notification {
             titre: "Titre".into(),
             corps: "Corps".into(),
+            ..Notification::default()
         };
         assert!(matches!(
             p.notifications.notifier(&notification),
@@ -141,6 +228,24 @@ mod tests {
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(p.demarrage.actif(), Err(Erreur::Indisponible(_))));
+        assert!(matches!(
+            p.notifications.retirer("t"),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.zone.installer(&Image::default(), "", Box::new(|_| {})),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(!p.zone.presente());
+        assert!(matches!(
+            p.pastille.definir(None, ""),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.installation.lancer(std::path::Path::new("x")),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert_eq!(p.installation.cible(), None);
         assert!(matches!(
             p.demarrage.definir(true),
             Err(Erreur::Indisponible(_))

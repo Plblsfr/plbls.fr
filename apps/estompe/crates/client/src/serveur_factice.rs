@@ -13,6 +13,7 @@ pub struct Reponse {
     statut: u16,
     entetes: Vec<(String, String)>,
     corps: Vec<u8>,
+    coupure: Option<usize>,
 }
 
 impl Reponse {
@@ -21,7 +22,13 @@ impl Reponse {
             statut,
             entetes: Vec::new(),
             corps: Vec::new(),
+            coupure: None,
         }
+    }
+
+    pub fn coupee_apres(mut self, octets: usize) -> Self {
+        self.coupure = Some(octets);
+        self
     }
 
     pub fn json(statut: u16, corps: serde_json::Value) -> Self {
@@ -56,7 +63,11 @@ impl Reponse {
         if self.statut != 204 {
             tete += &format!("content-length: {}\r\n", self.corps.len());
         }
-        [tete.as_bytes(), b"\r\n", &self.corps].concat()
+        let corps = &self.corps[..self
+            .coupure
+            .unwrap_or(self.corps.len())
+            .min(self.corps.len())];
+        [tete.as_bytes(), b"\r\n", corps].concat()
     }
 }
 

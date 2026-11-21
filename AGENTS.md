@@ -11,7 +11,7 @@ L'infrastructure (Keycloak, PostgreSQL, stack média) est dans le dépôt privé
 - **Ne jamais ajouter de ligne `Co-Authored-By: Claude …` dans les messages de commit.**
 - Ne pas ajouter non plus de mention « Generated with Claude Code » dans les commits.
 - Ne jamais forcer un push ; ne pas pousser directement sur `main`, passer par une PR.
-- Tags de livraison : `<composant>-vX.Y.Z` (`security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `ui`, `estompe-api`, `estompe-app` ; `keycloak` dans `plbls.fr-infra`).
+- Tags de livraison : `<composant>-vX.Y.Z` (`security`, `aegis`, `entracte`, `sillon`, `sablier`, `regie`, `ui`, `estompe-api`, `estompe-app`, `estompe-natif` ; `keycloak` dans `plbls.fr-infra`).
 
 ## CI
 - Un seul workflow de PR, `ci.yml`, sans filtre `paths` : `changements` (`_changements.yml`, une sortie par groupe de chemins passés à

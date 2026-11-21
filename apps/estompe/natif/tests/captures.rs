@@ -3,12 +3,14 @@ mod commun;
 use chrono::NaiveDate;
 use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
+use estompe_client::mise_a_jour::{ErreurMiseAJour, EtatMaj, Phase};
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::store::messages::ChangementMessages;
 use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
+use estompe_client::version::MiseAJourDisponible;
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -18,6 +20,7 @@ use estompe_natif::entree::{self, Compte, Etat};
 use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
 use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::messagerie::selecteur::Cible;
+use estompe_natif::mise_a_jour;
 use estompe_natif::{
     creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie,
     DonneesSelecteur, DonneesVocal, EtapeVocal, ModeTheme, Mouvement, Principale, Theme,
@@ -74,6 +77,14 @@ const ECRANS: &[Ecran] = ecrans![
     "injoignable-clair", Clair, injoignable;
     "mise-a-jour-clair", Clair, mise_a_jour;
     "mise-a-jour-sombre", Sombre, mise_a_jour;
+    "mise-a-jour-bandeau-clair", Clair, mise_a_jour_bandeau;
+    "mise-a-jour-bandeau-sombre", Sombre, mise_a_jour_bandeau;
+    "mise-a-jour-panneau-a-jour-clair", Clair, mise_a_jour_panneau_a_jour;
+    "mise-a-jour-telechargement-clair", Clair, mise_a_jour_telechargement;
+    "mise-a-jour-telechargement-sombre", Sombre, mise_a_jour_telechargement;
+    "mise-a-jour-erreur-clair", Clair, mise_a_jour_erreur;
+    "mise-a-jour-forcee-clair", Clair, mise_a_jour_forcee;
+    "mise-a-jour-forcee-sombre", Sombre, mise_a_jour_forcee;
     "coquille-clair", Clair, coquille_salon;
     "coquille-sombre", Sombre, coquille_salon;
     "coquille-panneau-replie-clair", Clair, coquille_panneau_replie;
@@ -290,6 +301,79 @@ fn mise_a_jour(f: &Principale) {
             message: "Une faille de sécurité a été corrigée : installe la nouvelle version.".into(),
             version_minimale: "0.2.0".into(),
         },
+    );
+}
+
+fn version_proposee(imposee: bool) -> Option<MiseAJourDisponible> {
+    Some(MiseAJourDisponible {
+        version: "0.2.0".into(),
+        notes: "Notifications du système avec « Répondre » et « Marquer comme lu », pastille de mentions sur la barre des tâches, icône dans la zone de notification et démarrage avec la session.".into(),
+        imposee,
+        ..MiseAJourDisponible::default()
+    })
+}
+
+fn etat_maj(phase: Phase, disponible: Option<MiseAJourDisponible>) -> EtatMaj {
+    EtatMaj {
+        automatique: true,
+        phase,
+        disponible,
+        ..EtatMaj::default()
+    }
+}
+
+fn afficher_maj(f: &Principale, etat: &EtatMaj) {
+    mise_a_jour::afficher(f, etat);
+    let _ = f.window().take_snapshot();
+    slint::platform::update_timers_and_animations();
+}
+
+fn mise_a_jour_bandeau(f: &Principale) {
+    coquille_accueil(f);
+    afficher_maj(f, &etat_maj(Phase::Disponible, version_proposee(false)));
+}
+
+fn mise_a_jour_panneau_a_jour(f: &Principale) {
+    a_propos(f);
+    afficher_maj(f, &etat_maj(Phase::AJour, None));
+}
+
+fn mise_a_jour_telechargement(f: &Principale) {
+    a_propos(f);
+    afficher_maj(
+        f,
+        &etat_maj(
+            Phase::Telechargement {
+                fait: 40,
+                total: 100,
+            },
+            version_proposee(false),
+        ),
+    );
+}
+
+fn mise_a_jour_erreur(f: &Principale) {
+    a_propos(f);
+    afficher_maj(
+        f,
+        &EtatMaj {
+            erreur: ErreurMiseAJour::Reseau("délai dépassé".into()).to_string(),
+            ..etat_maj(Phase::Inactif, None)
+        },
+    );
+}
+
+fn mise_a_jour_forcee(f: &Principale) {
+    mise_a_jour(f);
+    afficher_maj(
+        f,
+        &etat_maj(
+            Phase::Telechargement {
+                fait: 62,
+                total: 100,
+            },
+            version_proposee(true),
+        ),
     );
 }
 
@@ -1188,6 +1272,7 @@ fn remettre_a_zero(f: &Principale) {
     connecte(f);
     f.set_activation_pseudo("".into());
     f.set_invitation_saisie("".into());
+    mise_a_jour::afficher(f, &EtatMaj::default());
 }
 
 fn references() -> PathBuf {

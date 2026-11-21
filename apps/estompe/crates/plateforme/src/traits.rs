@@ -11,11 +11,57 @@ pub trait Coffre {
 pub struct Notification {
     pub titre: String,
     pub corps: String,
+    pub etiquette: String,
+    pub actions: bool,
+    pub reponse: bool,
+    pub silencieuse: bool,
 }
 
-pub trait Notifications {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionNotification {
+    Ouvrir,
+    Repondre(String),
+    MarquerLu,
+}
+
+pub type RecepteurActions = Box<dyn Fn(String, ActionNotification) + Send + Sync>;
+
+pub trait Notifications: Send + Sync {
     fn disponible(&self) -> bool;
+    fn accepte_les_actions(&self) -> bool;
+    fn accepte_la_reponse(&self) -> bool;
+    fn ecouter(&self, actions: RecepteurActions);
     fn notifier(&self, notification: &Notification) -> Resultat<()>;
+    fn retirer(&self, etiquette: &str) -> Resultat<()>;
+}
+
+pub trait Pastille {
+    fn disponible(&self) -> bool;
+    fn attacher(&self, fenetre: raw_window_handle::RawWindowHandle) -> Resultat<()>;
+    fn definir(&self, image: Option<&Image>, description: &str) -> Resultat<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvenementZone {
+    Clic,
+    Ouvrir,
+    Quitter,
+}
+
+pub type RecepteurZone = Box<dyn Fn(EvenementZone) + Send + Sync>;
+
+pub trait ZoneNotification {
+    fn disponible(&self) -> bool;
+    fn presente(&self) -> bool;
+    fn installer(&self, icone: &Image, info: &str, evenements: RecepteurZone) -> Resultat<()>;
+    fn definir_icone(&self, icone: &Image) -> Resultat<()>;
+    fn retirer(&self);
+}
+
+pub trait Installation: Send + Sync {
+    fn disponible(&self) -> bool;
+    fn cible(&self) -> Option<&'static str>;
+    fn lancer(&self, installeur: &std::path::Path) -> Resultat<()>;
 }
 
 pub trait RaccourcisGlobaux {

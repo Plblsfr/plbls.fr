@@ -183,6 +183,22 @@ impl Fabrique for FabriqueReelle {
     }
 }
 
+pub trait ObservateurSession: Send + Sync {
+    fn ouverte(&self, store: &Store);
+    fn changements(&self, store: &Store, lot: &[estompe_client::store::Changement]);
+    fn fermee(&self);
+}
+
+type Observateur = Arc<Mutex<Option<Arc<dyn ObservateurSession>>>>;
+
+fn observateur(contexte: &Contexte) -> Option<Arc<dyn ObservateurSession>> {
+    contexte
+        .observateur
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
 
 fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
@@ -202,7 +218,35 @@ pub enum Depot {
 pub struct Coquille {
     emplacement: Emplacement,
     focus: Arc<AtomicBool>,
+    observateur: Observateur,
     tache: JoinHandle<()>,
+    arret: ArretCoquille,
+}
+
+type DemandeArret = (
+    Option<oneshot::Sender<()>>,
+    Option<std::sync::mpsc::Receiver<()>>,
+);
+
+#[derive(Clone)]
+pub struct ArretCoquille {
+    interne: Arc<Mutex<DemandeArret>>,
+}
+
+impl ArretCoquille {
+    pub fn arreter(&self, delai: Duration) -> bool {
+        let (arret, fini) = {
+            let mut interne = self.interne.lock().unwrap_or_else(|e| e.into_inner());
+            (interne.0.take(), interne.1.take())
+        };
+        let Some(fini) = fini else {
+            return true;
+        };
+        if let Some(arret) = arret {
+            let _ = arret.send(());
+        }
+        fini.recv_timeout(delai).is_ok()
+    }
 }
 
 impl Coquille {
@@ -215,6 +259,7 @@ impl Coquille {
     ) -> Self {
         let emplacement: Emplacement = Arc::new(Mutex::new((0, None)));
         let focus = Arc::new(AtomicBool::new(true));
+        let observateur: Observateur = Arc::new(Mutex::new(None));
         brancher_rappels(f, &emplacement, &memoire);
         let contexte = Contexte {
             emetteur: entree.emetteur(),
@@ -225,13 +270,39 @@ impl Coquille {
             emplacement: emplacement.clone(),
             runtime: entree.runtime(),
             focus: focus.clone(),
+            observateur: observateur.clone(),
         };
-        let tache = entree.runtime().spawn(cycle(entree.observer(), contexte));
+        let (envoi_arret, arret) = oneshot::channel();
+        let (envoi_fini, fini) = std::sync::mpsc::channel();
+        let tache = entree
+            .runtime()
+            .spawn(cycle(entree.observer(), contexte, arret, envoi_fini));
         Self {
             emplacement,
             focus,
+            observateur,
             tache,
+            arret: ArretCoquille {
+                interne: Arc::new(Mutex::new((Some(envoi_arret), Some(fini)))),
+            },
         }
+    }
+
+    pub fn arret(&self) -> ArretCoquille {
+        self.arret.clone()
+    }
+
+    pub fn observer(&self, observateur: Arc<dyn ObservateurSession>) {
+        *self.observateur.lock().unwrap_or_else(|e| e.into_inner()) = Some(observateur);
+    }
+
+    pub fn source_pont(&self) -> SourcePont {
+        let emplacement = self.emplacement.clone();
+        Arc::new(move || pont_courant(&emplacement))
+    }
+
+    pub fn fenetre_active_partagee(&self) -> Arc<AtomicBool> {
+        self.focus.clone()
     }
 
     pub fn pont(&self) -> Option<Pont> {
@@ -704,6 +775,7 @@ struct Contexte {
     emplacement: Emplacement,
     runtime: tokio::runtime::Handle,
     focus: Arc<AtomicBool>,
+    observateur: Observateur,
 }
 
 impl Contexte {
@@ -716,10 +788,11 @@ struct SessionActive {
     compte: String,
     arret: Option<oneshot::Sender<()>>,
     rejoints: mpsc::UnboundedSender<String>,
+    tache: JoinHandle<()>,
 }
 
 impl SessionActive {
-    fn arreter(mut self, contexte: &Contexte) {
+    fn arreter(mut self, contexte: &Contexte) -> JoinHandle<()> {
         if let Some(arret) = self.arret.take() {
             let _ = arret.send(());
         }
@@ -731,10 +804,16 @@ impl SessionActive {
         emplacement.1 = None;
         drop(emplacement);
         contexte.sur_l_interface(vider_modeles);
+        self.tache
     }
 }
 
-async fn cycle(mut etats: watch::Receiver<Etat>, contexte: Contexte) {
+async fn cycle(
+    mut etats: watch::Receiver<Etat>,
+    contexte: Contexte,
+    mut arret: oneshot::Receiver<()>,
+    fini: std::sync::mpsc::Sender<()>,
+) {
     let mut session: Option<SessionActive> = None;
     let mut dernier_rejoint: Option<String> = None;
     loop {
@@ -743,7 +822,7 @@ async fn cycle(mut etats: watch::Receiver<Etat>, contexte: Contexte) {
             Etat::Connecte { compte, serveur } => {
                 if session.as_ref().map(|s| s.compte.as_str()) != Some(compte.id.as_str()) {
                     if let Some(ancienne) = session.take() {
-                        ancienne.arreter(&contexte);
+                        drop(ancienne.arreter(&contexte));
                     }
                     session = Some(demarrer_session(&contexte, compte.id.clone()));
                 }
@@ -758,17 +837,21 @@ async fn cycle(mut etats: watch::Receiver<Etat>, contexte: Contexte) {
             _ => {
                 dernier_rejoint = None;
                 if let Some(ancienne) = session.take() {
-                    ancienne.arreter(&contexte);
+                    drop(ancienne.arreter(&contexte));
                 }
             }
         }
-        if etats.changed().await.is_err() {
-            break;
+        tokio::select! {
+            changement = etats.changed() => if changement.is_err() {
+                break;
+            },
+            _ = &mut arret => break,
         }
     }
     if let Some(ancienne) = session.take() {
-        ancienne.arreter(&contexte);
+        let _ = ancienne.arreter(&contexte).await;
     }
+    let _ = fini.send(());
 }
 
 fn demarrer_session(contexte: &Contexte, compte: String) -> SessionActive {
@@ -779,13 +862,14 @@ fn demarrer_session(contexte: &Contexte, compte: String) -> SessionActive {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .0;
-    contexte
+    let tache = contexte
         .runtime
         .spawn(session(contexte.clone(), generation, attente_arret, recus));
     SessionActive {
         compte,
         arret: Some(arret),
         rejoints,
+        tache,
     }
 }
 
@@ -897,6 +981,9 @@ async fn session(
         }
         return;
     }
+    if let Some(o) = observateur(&contexte) {
+        o.ouverte(&store);
+    }
     let reseau_initial = *reseau.borrow_and_update();
     let p = pont.clone();
     contexte.sur_l_interface(move |f| {
@@ -921,6 +1008,9 @@ async fn session(
             _ = &mut arret => break,
             lot = abonne.recv() => match lot {
                 Some(lot) => {
+                    if let Some(o) = observateur(&contexte) {
+                        o.changements(&store, &lot);
+                    }
                     let p = pont.clone();
                     contexte.sur_l_interface(move |f| p.appliquer(f, &lot));
                 }
@@ -960,6 +1050,9 @@ async fn session(
         }
     }
     pont.messagerie().saisie().enregistrer_maintenant();
+    if let Some(o) = observateur(&contexte) {
+        o.fermee();
+    }
     sections.abort();
     suivi.abort();
     if let Some(temps_reel) = temps_reel {

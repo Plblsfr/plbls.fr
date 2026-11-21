@@ -27,8 +27,58 @@ impl Notifications for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
+    fn accepte_les_actions(&self) -> bool {
+        false
+    }
+    fn accepte_la_reponse(&self) -> bool {
+        false
+    }
+    fn ecouter(&self, _: RecepteurActions) {}
     fn notifier(&self, _: &Notification) -> Resultat<()> {
         refus("notifications")
+    }
+    fn retirer(&self, _: &str) -> Resultat<()> {
+        refus("notifications")
+    }
+}
+
+impl Pastille for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn attacher(&self, _: raw_window_handle::RawWindowHandle) -> Resultat<()> {
+        refus("pastille de la barre des tâches")
+    }
+    fn definir(&self, _: Option<&Image>, _: &str) -> Resultat<()> {
+        refus("pastille de la barre des tâches")
+    }
+}
+
+impl ZoneNotification for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn presente(&self) -> bool {
+        false
+    }
+    fn installer(&self, _: &Image, _: &str, _: RecepteurZone) -> Resultat<()> {
+        refus("zone de notification")
+    }
+    fn definir_icone(&self, _: &Image) -> Resultat<()> {
+        refus("zone de notification")
+    }
+    fn retirer(&self) {}
+}
+
+impl Installation for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn cible(&self) -> Option<&'static str> {
+        None
+    }
+    fn lancer(&self, _: &std::path::Path) -> Resultat<()> {
+        refus("installation d'une mise à jour")
     }
 }
 

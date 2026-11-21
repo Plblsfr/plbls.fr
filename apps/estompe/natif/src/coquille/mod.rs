@@ -9,8 +9,8 @@ pub mod recherche;
 
 pub use avatars::{CleAvatar, Profils, SourceProfils};
 pub use cycle::{
-    brancher_messagerie, Coquille, Depot, EchecOuverture, Fabrique, FabriqueReelle, Ouverture,
-    SourcePont,
+    brancher_messagerie, ArretCoquille, Coquille, Depot, EchecOuverture, Fabrique, FabriqueReelle,
+    ObservateurSession, Ouverture, SourcePont,
 };
 pub use navigation::Navigation;
 pub use pont::{decoder_icone, horloge_locale, installer_modeles, Horloge, Icone, Pont};

@@ -2,13 +2,13 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
-| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`) |
+| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur |
 
@@ -29,6 +29,7 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
 ```
 
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
+`estompe-natif --arriere-plan` démarre sans montrer la fenêtre si l'icône de la zone de notification est en place (lancement à l'ouverture de la session), sinon la montre.
 
 ## Interface
 
@@ -43,7 +44,7 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
   menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
-- L'écran « À propos » affiche la version et l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`).
+- L'écran « À propos » affiche la version, l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`) et celle de FFmpeg (LGPL, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)).
 
 ### Menus contextuels et confirmation
 
@@ -113,9 +114,14 @@ et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil,
 
 Le client déclare `X-Estompe-Platform: natif` et `X-Estompe-Version: <version du paquet>` ; l'API applique `platforms.natif` de
 `api/estompe/core/updates.json`. Un refus 426 (`upgrade_required`), à n'importe quel appel, mène à l'écran bloquant « Mise à jour requise »
-(message du serveur, version installée et minimale) : la machine n'émet plus aucune requête, seul le bouton de téléchargement agit. Il ouvre
-dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`) : l'installeur natif n'existe pas encore, ni le
-téléchargement dans l'app.
+(message du serveur, version installée et minimale) : la machine n'émet plus aucune requête vers l'API. Une mise à jour imposée par le manifeste
+(`mandatory`, `minVersion`, voir [Mises à jour](#mises-à-jour)) y mène aussi (`Evenement::MiseAJourSignalee`), après un compte à rebours de 120 s
+si l'utilisateur écrit.
+
+- Installation disponible (Windows, `Machine::avec_installation`) : « Installer la mise à jour » (`Evenement::Telecharger` → `Effet::Installer`)
+  télécharge, vérifie et lance l'installeur depuis l'écran (progression, puis redémarrage) ; en cas d'échec, l'erreur s'affiche avec « Réessayer » et
+  « Ouvrir la page de téléchargement » (`Evenement::OuvrirPageTelechargement`).
+- Sinon (Linux) : le bouton ouvre dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`).
 
 ## Coquille
 
@@ -459,9 +465,12 @@ deux moteurs et sur les deux OS :
   Tauri, aucun encodeur logiciel : le ffmpeg LGPL embarqué n'a pas `libx264`) ; sans ffmpeg, sans encodeur ou si tous échouent, l'original part (le front fait de même).
   La limite `max_video_size` s'applique au fichier converti.
 - ffmpeg (`ffmpeg_du_systeme`) : `ffmpeg` (`ffmpeg.exe`) à côté de l'exécutable, sinon celui du `PATH` ; même code sous Linux et Windows, lancé par
-  `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Le binaire à embarquer est celui de l'app Tauri
-  (`apps/estompe/windows/scripts/fetch-ffmpeg.mjs`, build LGPL de BtbN) : 130 Mo installé, environ 40 Mo dans un installeur compressé en LZMA ; l'installeur natif
-  ([#278](https://github.com/Plblsfr/plbls.fr/issues/278)) devra le copier à côté d'`estompe-natif.exe` et citer sa licence. La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
+  `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Sous Windows, l'installeur
+  (`installeur/estompe-natif.nsi`) le copie à côté d'`estompe-natif.exe` : c'est le binaire de l'app Tauri, téléchargé par
+  `apps/estompe/windows/scripts/fetch-ffmpeg.mjs` (build `win64-lgpl` de [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), autobuild épinglé
+  `autobuild-2026-11-09-12-42`, FFmpeg `N-128718-gb2b543c079`, archive vérifiée par sa somme SHA-256 épinglée dans le script), sous licence LGPL version 3 ou
+  ultérieure (`--enable-version3`, sans `libx264`), cité dans « À propos » : 130 Mo installé, 41 Mo dans l'installeur compressé en LZMA. Sous Linux, celui du `PATH`.
+  La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
 - Pendant la conversion, la pièce affiche « conversion… 42 % » et sa barre (`EtatPiece::Conversion`, lu dans `-progress pipe:1` rapporté à la durée de `ffmpeg -i`). La croix
   l'annule : la tâche interrompue lève le drapeau d'annulation, ffmpeg est tué puis attendu, et le fichier de sortie supprimé. Le fichier converti est écrit dans
   `<cache>/conversions/` (`FichierTemporaire`, supprimé quand la dernière copie de la source de la pièce disparaît : pièce retirée ou annulée, message envoyé) ; « Réessayer » renvoie ce même fichier. Le dossier est vidé au lancement, pour ce qu'un arrêt brutal aurait laissé.
@@ -576,20 +585,128 @@ deux moteurs et sur les deux OS :
 - À vérifier sur une vraie machine (Windows et Linux) : micro et haut-parleurs réels, refus du micro par les réglages de confidentialité de Windows, message
   enregistré lu par le front web et l'inverse.
 
+## Intégration au bureau
+
+`src/bureau/` (`Bureau`), sur les traits de la crate plateforme ; les rappels qui viennent d'un autre fil (instance, zone) reviennent au fil de l'interface par `slint::invoke_from_event_loop`.
+
+- Instance unique (`instance.rs` de la crate plateforme, `interprocess`) : au lancement, avant toute fenêtre, l'app se connecte au socket de l'instance
+  déjà lancée. Si elle répond, elle lui envoie ses arguments (`MessageInstance` : arguments, jeton d'activation `XDG_ACTIVATION_TOKEN` ou
+  `DESKTOP_STARTUP_ID` ; JSON d'une ligne, 64 Kio au plus, 2 s au plus) et sort avec le code 0. Sinon elle devient la première instance et écoute
+  (fil `estompe-instance`).
+  - Linux : socket de fichier `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (dossier en 0700 ; sans `XDG_RUNTIME_DIR`, `<données>/instance.sock`),
+    jamais dans l'espace abstrait (ouvert à tous les comptes). Un socket resté d'un plantage (connexion refusée) est retiré puis recréé.
+  - Windows : tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte du dossier de données>` (le chemin porte le compte) ; la seconde instance
+    appelle `AllowSetForegroundWindow` avant d'écrire, pour que la première puisse passer au premier plan.
+  - `ESTOMPE_NATIF_DOSSIER` donne une autre instance (`<dossier>/instance.sock` sous Linux) : deux dossiers, deux instances.
+  - La première instance ramène la fenêtre (`show()`, puis par winit : visible, non réduite, `focus_window()`), sauf si les arguments portent
+    `--arriere-plan` ; `--invitation <code>` mène à « Rejoindre un serveur » avec ce code (`Evenement::OuvrirInvitation` puis `Evenement::Rejoindre`).
+  - L'app Tauri utilise le greffon single-instance sous l'identifiant `fr.plbls.estompe` : les deux apps ne se ramènent jamais l'une l'autre.
+- Zone de notification (`zone.rs` de la crate plateforme, `tray-icon` ; sous Linux, son moteur `ksni`, StatusNotifierItem par D-Bus, sans GTK) :
+  icône de l'app (64 px), info-bulle « Estompe natif (bêta) », menu « Ouvrir Estompe natif » et « Quitter » ; un clic ou « Ouvrir » ramène la fenêtre.
+  L'icône est créée sur le fil de l'interface (boucle de messages de winit sous Windows).
+- Fermeture : la demande de fermeture de la fenêtre la masque (la géométrie est retenue avant) et garde la session et la connexion temps réel,
+  si la zone est présente : toujours sous Windows, sous Linux si le nom `org.kde.StatusNotifierWatcher` a un propriétaire sur le bus de session
+  (vérifié à chaque demande : une zone apparue après le lancement compte). Sans zone, fermer quitte.
+- Quitter (`Fermeture::quitter`, seule façon de quitter proprement ; « Quitter » de la zone, fermeture sans zone, fin de la boucle) : retient la
+  géométrie, arrête la coquille et attend la fin de sa session (3 s au plus : flux temps réel fermé, brouillons écrits), étape « vocal » (vide jusqu'au
+  lot 4), retire l'icône, puis quitte la boucle d'évènements (`run_event_loop_until_quit` : masquer la fenêtre ne quitte plus l'app).
+- Démarrage avec la session (`demarrage.rs`, `DemarrageSysteme`) : sous Windows, valeur `EstompeNatif` de
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, `"<exe>" --arriere-plan` ; l'interrupteur « Lancer Estompe natif à l'ouverture de la
+  session » (section « Bureau » de « À propos ») lit et écrit le registre, désactivé par défaut. Sous Linux, indisponible et masqué jusqu'au paquet (lot 11).
+- Section « Bureau » de « À propos » : « Notifications du bureau » (préférence `notifications`) et, sous Windows, le démarrage avec la session.
+- Non vérifié sur machine réelle : icône et menu sous Windows, retour depuis un autre bureau virtuel, rendu dans une zone StatusNotifierItem (KDE,
+  GNOME avec l'extension AppIndicator) ; sous Wayland, le jeton d'activation n'est pas transmis à winit (seul `focus_window()` est tenté).
+
+## Notifications
+
+Règles dans la crate client (`notifications.rs`, sans code d'OS), reprises du front (`showNotification` de `blocks/notifications/notify.ts` et de `store.svelte.ts`) :
+
+- L'app ne notifie que sur l'évènement temps réel `notification` (`Changement::Notification` du store), jamais sur `message.created` : sourdine
+  d'un salon ou d'un serveur, « ne pas déranger », mentions et types de notification sont décidés par le serveur (`blocks/notifications`).
+- `decider` : rien pour l'activité vocale de mon propre salon ; rien si la conversation de la notification est affichée **et** la fenêtre active
+  (focus de winit) ; sinon une notification du système si la préférence « Notifications du bureau » est active.
+- Regroupement : l'étiquette (`tag` du serveur) remplace une notification de même étiquette (toast de même `Tag`, `replaces_id` sous Linux).
+- Son : celui du système avec la notification (audio par défaut du toast, indice `sound-name=message-new-instant` sous Linux), muet si le serveur la dit
+  silencieuse. Écart assumé : le front joue un bip même quand les notifications du bureau sont coupées ; l'app native n'en joue pas (la sortie du son, `SortieSon`, ne sert encore qu'aux messages vocaux).
+- Actions (`effet_de_l_action`) : un clic ramène la fenêtre et ouvre la conversation au message (adresse du serveur sans « / » initial, `#/s/…/<message>`
+  ou `#/dm/…`, puis `sauter_a`) ; « Marquer comme lu » lit la conversation (`Store::lire_conversation` : `POST …/read` et lecture des mentions) sans
+  naviguer ; « Répondre » avec un texte l'envoie par la file d'envoi (`Store::envoyer`, message simple de la conversation), sans texte ouvre la conversation.
+  Les actions ne sont proposées que si la notification porte un message et une conversation.
+
+| | Windows | Linux |
+|---|---|---|
+| Affichage | toast WinRT (`toast_windows.rs`, XML de `toast.rs`), AUMID `fr.plbls.estompe.natif` enregistré dans `HKCU\Software\Classes\AppUserModelId\fr.plbls.estompe.natif` (`DisplayName` « Estompe natif (bêta) », `IconUri` = `estompe.ico` à côté de l'exe) au lancement | `notify-rust` (D-Bus, `org.freedesktop.Notifications`, `notifications_linux.rs`) |
+| Actions | clic, champ « Répondre » et bouton « Marquer comme lu » | clic (`default`) et « Marquer comme lu » si le serveur annonce `actions` ; pas de réponse en ligne (la spécification n'en a pas) ; 8 notifications attendues au plus, la plus ancienne est fermée |
+| Pastille de mentions | barre des tâches (`ITaskbarList3::SetOverlayIcon`, `pastille_windows.rs`) et icône de la zone | icône de la zone ; barre des tâches au lot 11 (pas de standard sans `.desktop`) |
+
+- Natif : `src/bureau/notifications.rs` (`Notifieur`) observe la session de la coquille (`Coquille::observer`, trait `ObservateurSession`) : décision,
+  affichage, table des 64 dernières notifications pour retrouver une action par son étiquette. La pastille suit `total_mentions()` à chaque lot de
+  changements, et n'est redessinée que si le nombre change : disque `#d9342b` et chiffres blancs d'une police bitmap embarquée, « 9+ » au-delà de 9
+  (`pastille.rs` de la crate client), aussi posé dans un coin de l'icône de la zone ; effacée à la fin de la session.
+- Journal : seulement `notification affichée (genre, conversation)` ; ni titre, ni corps, ni texte de réponse.
+- Sans activateur COM, un clic sur un toast resté dans le centre de notifications peut ne rien rappeler quand l'app tourne : à vérifier sur machine réelle,
+  comme le toast avec ses boutons (app installée), la réponse et la pastille de la barre des tâches ; sous Linux, l'affichage et le clic sous un vrai bureau.
+
+## Mises à jour
+
+Logique dans la crate client (`mise_a_jour/`, sans code d'OS), lancement de l'installeur par la crate plateforme (`Installation`), service
+démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
+
+- Manifeste : `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json` (format dans [Livraison](#livraison)),
+  lu par `Manifeste` (champs de tête de `version::Publication`, paquet par cible : `windows-x86_64`). Une mise à jour n'est proposée que si la
+  version publiée est plus récente que `VERSION` et que le manifeste a un paquet pour la cible ; `mandatory`, `force` et `minVersion` l'imposent
+  (`version::disponibilite`). `ESTOMPE_NATIF_MANIFESTE` remplace l'adresse pour un essai, seulement si elle passe la politique ci-dessous.
+- Adresses (`politique.rs`, `PolitiqueAdresses::production`) : HTTPS seulement, hôte exactement `github.com`, `objects.githubusercontent.com` ou
+  `release-assets.githubusercontent.com`, sans identifiants ni port explicite ; la même règle est réappliquée à chaque redirection (5 au plus) :
+  une redirection hors de la liste arrête le téléchargement.
+- Téléchargement (`telechargement.rs`, client `reqwest` dédié) dans `<cache>/mises-a-jour/Estompe-natif-beta-<version>-setup.exe.partiel` :
+  reprise par `Range: bytes=<n>-` (206 : suite ajoutée ; 200 : repart de zéro ; 416 : partiel effacé, nouvel essai), trois essais quand le réseau coupe,
+  taille plafonnée par `taille` du manifeste (200 Mo sans elle). Une coupure garde le partiel pour reprendre ; une erreur de disque (plein, droits)
+  le supprime avec un message lisible ; un fichier plus court que `taille` est supprimé.
+- Signature (`signature.rs`, `minisign-verify`, clé publique `mise_a_jour/cle.pub` embarquée) : `signature` du manifeste (fichier `.minisig` en
+  base64), signature préhachée seulement, et commentaire de confiance exactement `estompe-natif <version>` : un installeur signé d'une autre
+  version ne peut pas être resservi sous un autre numéro. Fichier vérifié : renommé sans `.partiel` ; refusé : supprimé, rien n'est exécuté et
+  l'erreur le dit. L'installeur est revérifié juste avant d'être lancé.
+- Installation (Windows, `installation.rs` de la crate plateforme) : `Estompe-natif-beta-<version>-setup.exe /S /RELANCER`, processus détaché ;
+  si le lancement réussit, l'app quitte proprement (`Fermeture::quitter`) ; l'installeur attend sa sortie, installe et la relance, la session
+  reprend par le refresh token du coffre. Un installeur qui ne démarre pas laisse l'app en place avec l'erreur.
+- Machine (`machine.rs`, sans effet de bord, comme `entree.rs`) et service (`service.rs`, état publié par `tokio::sync::watch`) : vérification
+  15 s après le lancement, puis toutes les 30 minutes, et au retour de la fenêtre au premier plan (au plus une fois par 5 minutes) ; une
+  vérification ou une installation à la fois ; l'erreur d'une vérification n'est montrée que si elle a été demandée, celle d'une installation toujours.
+  Une mise à jour imposée bloque l'app (écran « Mise à jour requise » de l'entrée), ou après 120 s si l'utilisateur est occupé (texte ou pièces jointes
+  dans la zone de saisie, message vocal en cours, ou en appel). En appel, l'installation attend la fin de l'appel ou une confirmation (aucun vocal avant le lot 4 : jamais en appel aujourd'hui).
+- Au démarrage, les installeurs de `mises-a-jour/` d'une version inférieure ou égale à la version installée sont supprimés.
+- Journal : version disponible, téléchargement vérifié ou refusé, lancement ; jamais de jeton.
+- Linux : `Installation` indisponible, aucune vérification (le paquet Linux arrive au lot 11).
+- Interface (`ui/mise-a-jour/`, `src/mise_a_jour.rs`) : l'état du service est recopié dans le global `DonneesMiseAJour` (`afficher`, par
+  `upgrade_in_event_loop`), ses rappels renvoient au service (`brancher`).
+  - Bandeau (`bandeau.slint`, en bas du panneau de la coquille, comme `UpdateNotice.svelte`) : « Nouvelle version disponible : Estompe natif X.Y.Z »,
+    notes de version sur deux lignes puis « Plus », « Mettre à jour » (devient « NN % » puis « Installation… », barre de progression) et « Plus tard »
+    (la version est écartée jusqu'à la suivante) ; pendant le compte à rebours d'une mise à jour imposée, « Mise à jour obligatoire dans M:SS ».
+  - Panneau (`panneau.slint`, section « Mises à jour » de « À propos », rangé dans les réglages au lot 8) : version installée, « Rechercher une mise à
+    jour » (vérification manuelle : son erreur est montrée), « Tu as la dernière version », version disponible et ses notes, « Installer et
+    redémarrer » avec la progression, « Installer maintenant » en appel, erreur lisible en `Theme.danger`. Sous Linux : lecture seule, « Les mises à
+    jour automatiques arriveront avec le paquet Linux ».
+  - Écran forcé : voir [Mise à jour forcée](#mise-à-jour-forcée).
+- Non vérifié sur machine réelle : passage d'une version publiée à la suivante (deux tags), relance par l'installeur et session conservée.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
 (seul `windows_subsystem = "windows"` est admis, pour ne pas ouvrir de console sous Windows).
 
-La crate plateforme expose un trait par fonction : coffre de secrets, notifications, raccourcis globaux, ouverture d'une URL, capture d'écran
-et de fenêtre, capture du son, overlay, application au premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
+La crate plateforme expose un trait par fonction : coffre de secrets, notifications, pastille de la barre des tâches, zone de notification,
+installation d'une mise à jour, raccourcis globaux, ouverture d'une URL, capture d'écran et de fenêtre, capture du son, overlay, application au
+premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), le micro et la sortie du son (`Micro`, `SortieSon`, `cpal`), le lancement d'un processus d'arrière-plan
-(`commande_d_arriere_plan`, utilisé pour ffmpeg). Le reste arrive avec son lot, Windows d'abord.
+(`commande_d_arriere_plan`, utilisé pour ffmpeg), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
+l'instance unique (fonctions de `instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
+De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
 
 ## Données locales
 
@@ -598,14 +715,14 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | | Windows | Linux |
 |---|---|---|
 | Données (`preferences.json`) | `%APPDATA%\fr.plbls.estompe.natif` | `$XDG_DATA_HOME/fr.plbls.estompe.natif` (défaut `~/.local/share`) |
-| Cache (avatars dans `avatars/`, images dans `medias/`, vidéos converties dans `conversions/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
+| Cache (avatars dans `avatars/`, images dans `medias/`, vidéos converties dans `conversions/`, installeurs téléchargés dans `mises-a-jour/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
+| Instance unique | tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte>` | `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (sinon `<données>/instance.sock`) |
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -624,6 +741,8 @@ compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0
 référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
+- Mises à jour : `mise-a-jour-bandeau`, `mise-a-jour-panneau-a-jour`, `mise-a-jour-telechargement` (40 %), `mise-a-jour-erreur` et `mise-a-jour-forcee`
+  (installation en cours) sont préparés par `mise_a_jour::afficher` avec un `EtatMaj` fixe.
   Les écrans d'entrée sont préparés par `ecrans::afficher` avec un `Etat` fixe ; la coquille par un `Pont` sur un store rempli par `Store::installer`
   (`tests/commun/mod.rs`, module `coquille`), l'heure figée et une icône de serveur dessinée dans le test.
 - Régénérer après un changement voulu : `just estompe-natif-captures`, relire les images, les versionner dans la même PR.
@@ -671,6 +790,53 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
+`mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
+  le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,
+  rien n'est lancé avant la fin du téléchargement, puis l'installeur est lancé une fois et l'app quitte par `Fermeture` ; ensuite l'erreur d'une
+  vérification manuelle dans le panneau, une mise à jour imposée qui mène à l'écran bloquant, un échec d'installation qui propose la page de
+  téléchargement, et « Réessayer » qui installe sans ouvrir le navigateur.
+`bureau.rs` (même backend, la boucle lancée deux fois) : fausse zone de notification (`tests/commun/`, module `bureau`) ; un message d'instance ramène la fenêtre masquée et
+  transmet l'invitation, fermer masque la fenêtre en gardant la connexion temps réel (un message reçu arrive encore), clic et « Ouvrir » la ramènent,
+  « Quitter » arrête la coquille, ferme le flux et retire l'icône ; sans zone, la demande de fermeture quitte. Entre les deux, avec de fausses
+  notifications et une fausse pastille : une mention reçue met la pastille à 1 (barre des tâches et icône de la zone), une notification est affichée
+  (le journal de débogage ne contient pas son contenu), « Marquer comme lu » envoie la lecture au faux serveur et efface la pastille, « Répondre » envoie
+  le texte, le clic ramène la fenêtre sur la conversation, et rien n'est affiché pour la conversation ouverte dans la fenêtre active.
+`instance.rs` (sans backend) : le test tient la première instance, lance le vrai binaire avec `--invitation` : il sort avec succès sans fenêtre et le message reçu porte ses arguments.
+
+## Livraison
+
+- Version : clé `natif` de `.version`, montée par la CI à la fusion d'une PR qui touche `apps/estompe/natif/`, `crates/client` ou
+  `crates/plateforme` (`scripts/estompe/version.mjs`) ; `bump-version.mjs --apply` la recopie dans `Cargo.toml` et `Cargo.lock`, d'où
+  `VERSION` (« À propos », en-tête `X-Estompe-Version`) et la version de l'installeur.
+- Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)).
+- Installeur NSIS `apps/estompe/natif/installeur/estompe-natif.nsi` → `Estompe-natif-beta-X.Y.Z-setup.exe` :
+  - « Estompe natif (bêta) », par utilisateur sans droits d'administrateur (`RequestExecutionLevel user`), dans `%LOCALAPPDATA%\Programs\Estompe natif` :
+    `estompe-natif.exe`, `ffmpeg.exe` (conversion des vidéos et lecture des messages vocaux AAC, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)), `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
+  - raccourci du menu Démarrer, et sur le bureau (case cochée par défaut, sautée en mode silencieux) ;
+  - registre (`HKCU`) : `Software\EstompeNatif` (dossier), désinstallation `Software\Microsoft\Windows\CurrentVersion\Uninstall\EstompeNatif`,
+    identité des toasts `Software\Classes\AppUserModelId\fr.plbls.estompe.natif` (`DisplayName`, `IconUri`, mêmes valeurs que l'app).
+    L'app Tauri garde son dossier, sa clé de désinstallation et l'identifiant `fr.plbls.estompe` : les deux cohabitent.
+  - mode silencieux de mise à jour, `/S /RELANCER` : attend que `estompe-natif.exe` soit libre (l'app a quitté ; 120 × 500 ms au plus, en
+    interactif un message « Fermez Estompe natif » avec Réessayer), installe, puis relance l'app si `/RELANCER` est passé ; en cas d'échec, relance l'exe en place.
+  - désinstallation (refusée tant que l'app tourne) : programme, `ffmpeg.exe`, icône, raccourcis, clés ci-dessus, valeur `EstompeNatif` de `Run` (démarrage
+    avec la session) et cache `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` (mises à jour téléchargées comprises) ; garde les préférences et
+    brouillons (`%APPDATA%\fr.plbls.estompe.natif`), les journaux et le coffre de secrets.
+  - non signé Authenticode pendant la bêta : SmartScreen avertit à la première installation.
+- ffmpeg : le workflow lance `fetch-ffmpeg.mjs` (`TAURI_ENV_PLATFORM=windows`) avant `makensis`, qui prend
+  `apps/estompe/windows/src-tauri/binaries/ffmpeg.exe` (autre chemin : `-DFFMPEG=<chemin>`). Sous Windows, le script lit l'archive avec le `tar`
+  du système (bsdtar), `unzip` n'y étant pas garanti.
+- Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 90 Mo : 41 Mo pour
+  ffmpeg compressé, mesurés, plus les 45 Mo prévus pour l'app, pas encore mesurée sur un build release), contenu
+  listé par `7z` (exe, `ffmpeg.exe`, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
+- Manifeste de mise à jour `natif.json` (`scripts/estompe/natif-manifeste.mjs`), servi par la release fixe `estompe-natif-beta` :
+  `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json`. Format de `latest.json` de Tauri plus la taille :
+  `{ version, notes, pub_date, mandatory, force, minVersion, message, platforms: { "windows-x86_64": { url, signature, taille } } }` ;
+  `url` vise l'installeur de la release versionnée (`…/releases/download/estompe-natif-vX.Y.Z/Estompe-natif-beta-X.Y.Z-setup.exe`, redirigé
+  vers `objects.githubusercontent.com` ou `release-assets.githubusercontent.com`), `signature` est le fichier `.minisig` en base64 (clé
+  `apps/estompe/crates/client/src/mise_a_jour/cle.pub`, commentaire de confiance `estompe-natif X.Y.Z`), `taille` en octets.
+- Essai local de l'installeur sous Linux : `apt-get install nsis p7zip-full`, puis dans `apps/estompe/natif/installeur/`
+  `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` (après `TAURI_ENV_PLATFORM=windows node ../../windows/scripts/fetch-ffmpeg.mjs`)
+  et le contrôle sur le résultat.
 
 ## CI
 

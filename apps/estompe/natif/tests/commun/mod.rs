@@ -184,6 +184,7 @@ pub fn services(
         api,
         navigateur,
         lien_telechargement: "https://chat.example/".into(),
+        installer: None,
         journal: None,
     }
 }
@@ -1001,7 +1002,7 @@ pub mod coquille {
                         let mut morceaux = premiere.split_whitespace();
                         let methode = morceaux.next().unwrap_or_default().to_string();
                         let chemin = morceaux.next().unwrap_or_default().to_string();
-                        if longueur > 0 {
+                        if longueur > 0 || methode != "GET" {
                             s.corps
                                 .lock()
                                 .unwrap()
@@ -1698,6 +1699,148 @@ pub mod coquille {
                 Some(dossier) => estompe_client::brouillons::Brouillons::charger(dossier),
                 None => estompe_client::brouillons::Brouillons::en_memoire(),
             }
+        }
+    }
+}
+
+pub mod bureau {
+    use estompe_plateforme::{EvenementZone, Image, RecepteurZone, Resultat, ZoneNotification};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    pub struct EtatZone {
+        pub presente: AtomicBool,
+        pub retiree: AtomicBool,
+        pub icones: Mutex<Vec<Image>>,
+        recepteur: Mutex<Option<RecepteurZone>>,
+    }
+
+    impl EtatZone {
+        pub fn declencher(&self, evenement: EvenementZone) {
+            let recepteur = self.recepteur.lock().unwrap();
+            (recepteur.as_ref().expect("zone installée"))(evenement);
+        }
+
+        pub fn installee(&self) -> bool {
+            self.recepteur.lock().unwrap().is_some()
+        }
+    }
+
+    pub struct FausseZone(pub Arc<EtatZone>);
+
+    impl FausseZone {
+        pub fn nouvelle(presente: bool) -> (Box<Self>, Arc<EtatZone>) {
+            let etat = Arc::new(EtatZone::default());
+            etat.presente.store(presente, Ordering::SeqCst);
+            (Box::new(Self(etat.clone())), etat)
+        }
+    }
+
+    impl ZoneNotification for FausseZone {
+        fn disponible(&self) -> bool {
+            true
+        }
+        fn presente(&self) -> bool {
+            self.0.presente.load(Ordering::SeqCst)
+        }
+        fn installer(&self, icone: &Image, _: &str, evenements: RecepteurZone) -> Resultat<()> {
+            self.0.icones.lock().unwrap().push(icone.clone());
+            *self.0.recepteur.lock().unwrap() = Some(evenements);
+            Ok(())
+        }
+        fn definir_icone(&self, icone: &Image) -> Resultat<()> {
+            self.0.icones.lock().unwrap().push(icone.clone());
+            Ok(())
+        }
+        fn retirer(&self) {
+            self.0.retiree.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+pub mod notifications {
+    use estompe_plateforme::{
+        ActionNotification, Image, Notification, Notifications, Pastille, RawWindowHandle,
+        RecepteurActions, Resultat,
+    };
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    pub struct NotificationsFactices {
+        pub affichees: Mutex<Vec<Notification>>,
+        pub retirees: Mutex<Vec<String>>,
+        recepteur: Mutex<Option<RecepteurActions>>,
+    }
+
+    impl NotificationsFactices {
+        pub fn declencher(&self, etiquette: &str, action: ActionNotification) {
+            let recepteur = self.recepteur.lock().unwrap();
+            (recepteur.as_ref().expect("actions écoutées"))(etiquette.to_string(), action);
+        }
+
+        pub fn nombre(&self) -> usize {
+            self.affichees.lock().unwrap().len()
+        }
+    }
+
+    impl Notifications for NotificationsFactices {
+        fn disponible(&self) -> bool {
+            true
+        }
+        fn accepte_les_actions(&self) -> bool {
+            true
+        }
+        fn accepte_la_reponse(&self) -> bool {
+            true
+        }
+        fn ecouter(&self, actions: RecepteurActions) {
+            *self.recepteur.lock().unwrap() = Some(actions);
+        }
+        fn notifier(&self, notification: &Notification) -> Resultat<()> {
+            self.affichees.lock().unwrap().push(notification.clone());
+            Ok(())
+        }
+        fn retirer(&self, etiquette: &str) -> Resultat<()> {
+            self.retirees.lock().unwrap().push(etiquette.to_string());
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    pub struct EtatPastille {
+        pub definitions: Mutex<Vec<(Option<Image>, String)>>,
+    }
+
+    impl EtatPastille {
+        pub fn derniere(&self) -> Option<(Option<Image>, String)> {
+            self.definitions.lock().unwrap().last().cloned()
+        }
+    }
+
+    pub struct PastilleFactice(pub Arc<EtatPastille>);
+
+    impl PastilleFactice {
+        pub fn nouvelle() -> (Box<Self>, Arc<EtatPastille>) {
+            let etat = Arc::new(EtatPastille::default());
+            (Box::new(Self(etat.clone())), etat)
+        }
+    }
+
+    impl Pastille for PastilleFactice {
+        fn disponible(&self) -> bool {
+            true
+        }
+        fn attacher(&self, _: RawWindowHandle) -> Resultat<()> {
+            Ok(())
+        }
+        fn definir(&self, image: Option<&Image>, description: &str) -> Resultat<()> {
+            self.0
+                .definitions
+                .lock()
+                .unwrap()
+                .push((image.cloned(), description.to_string()));
+            Ok(())
         }
     }
 }
