@@ -116,7 +116,7 @@ jobs:
           notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^-----BEGIN/,$d')
           if [ "$(printf '%s' "$notes" | tr -d '[:space:]')" = "$GITHUB_REF_NAME" ]; then notes=""; fi
           printf '%s' "$notes" > "$RUNNER_TEMP/notes.txt"
-          node scripts/estompe/natif-manifeste.mjs --version "$VERSION" --notes "$notes" \
+          node scripts/estompe/natif-manifeste.mjs --version "$VERSION" --notes="$notes" \
             --installeur "dist/Estompe-natif-beta-$VERSION-setup.exe" \
             --base "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME" > dist/natif.json
           cat dist/natif.json

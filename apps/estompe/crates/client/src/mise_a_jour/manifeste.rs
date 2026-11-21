@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use super::ErreurMiseAJour;
+use super::{nom_de_fichier, version_du_fichier, ErreurMiseAJour};
 use crate::version::{disponibilite, MiseAJourDisponible, Publication};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -23,7 +23,15 @@ pub struct Manifeste {
 
 impl Manifeste {
     pub fn lire(texte: &str) -> Result<Self, ErreurMiseAJour> {
-        serde_json::from_str(texte).map_err(|e| ErreurMiseAJour::Manifeste(e.to_string()))
+        let manifeste: Self =
+            serde_json::from_str(texte).map_err(|e| ErreurMiseAJour::Manifeste(e.to_string()))?;
+        let version = manifeste.publication.version.as_str();
+        if version_du_fichier(&nom_de_fichier(version)) != Some(version) {
+            return Err(ErreurMiseAJour::Manifeste(format!(
+                "version « {version} » illisible"
+            )));
+        }
+        Ok(manifeste)
     }
 
     pub fn paquet_pour(&self, cible: &str) -> Option<&Paquet> {
@@ -104,5 +112,19 @@ mod tests {
             Manifeste::lire("<html>"),
             Err(ErreurMiseAJour::Manifeste(_))
         ));
+    }
+
+    #[test]
+    fn refuse_une_version_qui_ne_donne_pas_un_nom_de_fichier_sur() {
+        for version in ["9.0.0\\..\\..\\x", "9.0.0/../x", "", "1.2.3-beta", "1..2"] {
+            let texte = JSON_MANIFESTE.replace(
+                r#""version": "0.2.0""#,
+                &format!(r#""version": {}"#, serde_json::to_string(version).unwrap()),
+            );
+            assert!(
+                matches!(Manifeste::lire(&texte), Err(ErreurMiseAJour::Manifeste(_))),
+                "{version}"
+            );
+        }
     }
 }
