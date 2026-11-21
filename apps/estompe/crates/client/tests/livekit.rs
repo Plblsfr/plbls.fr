@@ -101,9 +101,10 @@ fn poste_complet(
     (session, audio, cameras, ecrans)
 }
 
-fn salle_d_essai() -> String {
+fn salle_d_essai(essai: &str) -> String {
     format!(
-        "essai-{}",
+        "essai-{essai}-{}-{}",
+        std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -119,7 +120,7 @@ async fn la_camera_est_publiee_changee_puis_retiree() {
         );
         return;
     };
-    let salle = salle_d_essai();
+    let salle = salle_d_essai("camera");
     let (alice, _, cameras) = poste_avec_camera(&url, "alice");
     let (bob, _, _) = poste_avec_camera(&url, "bob");
     alice.rejoindre(&salle);
@@ -180,7 +181,7 @@ async fn le_partage_est_publie_change_de_source_et_de_qualite_puis_retire() {
         );
         return;
     };
-    let salle = salle_d_essai();
+    let salle = salle_d_essai("partage");
     let (alice, _, _, ecrans) = poste_complet(&url, "alice");
     let (bob, _, _, _) = poste_complet(&url, "bob");
     alice.rejoindre(&salle);
@@ -274,7 +275,12 @@ async fn attendre(
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("état attendu jamais atteint : {:?}", session.instantane()))
+    .unwrap_or_else(|_| {
+        panic!(
+            "état attendu jamais atteint en {delai:?} : {:?}",
+            session.instantane()
+        )
+    })
 }
 
 #[test]
@@ -301,7 +307,7 @@ async fn deux_clients_se_voient_s_entendent_et_la_fermeture_retire_le_participan
         );
         return;
     };
-    let salle = salle_d_essai();
+    let salle = salle_d_essai("voix");
     let (alice, micro_alice) = poste(&url, "alice");
     let (bob, sortie_bob) = poste(&url, "bob");
     alice.rejoindre(&salle);
