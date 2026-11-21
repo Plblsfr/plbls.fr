@@ -140,6 +140,17 @@ impl CaptureEcran for Indisponible {
     fn capturer(&self, _: &str) -> Resultat<Image> {
         refus("capture d'écran")
     }
+    fn miniature(&self, _: &str, _: u32) -> Resultat<Image> {
+        refus("capture d'écran")
+    }
+    fn demarrer(
+        &self,
+        _: &str,
+        _: OptionsCapture,
+        _: RecepteurCapture,
+    ) -> Resultat<crate::capture::FluxCapture> {
+        refus("capture d'écran")
+    }
 }
 
 impl CaptureSon for Indisponible {

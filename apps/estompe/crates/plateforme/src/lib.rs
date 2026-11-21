@@ -1,4 +1,5 @@
 mod audio;
+pub mod capture;
 mod coffre;
 mod demarrage;
 mod dossiers;
@@ -23,6 +24,7 @@ mod url;
 mod zone;
 
 pub use audio::{AudioSysteme, ChoixPeripherique, SonPeripheriques};
+pub use capture::{CaptureSysteme, FluxCapture, IdSource};
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use demarrage::{
     commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,
@@ -43,11 +45,12 @@ pub use raw_window_handle::RawWindowHandle;
 pub use traits::{
     ActionNotification, ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre,
     CompteursProcessus, ContenuPressePapiers, DemarrageSession, ErreurFluxAudio, EtatTouche,
-    EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon, FormatAudio, FournisseurAudio,
-    Image, InfosMachine, Installation, MesureProcessus, Micro, Notification, Notifications,
-    OuvertureUrl, Overlay, Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon,
-    RaccourcisGlobaux, RecepteurActions, RecepteurAudio, RecepteurSon, RecepteurZone, SensAudio,
-    SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio, TypeSource, ZoneNotification,
+    EvenementCapture, EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon, FormatAudio,
+    FournisseurAudio, Image, InfosMachine, Installation, MesureProcessus, Micro, Notification,
+    Notifications, OptionsCapture, OuvertureUrl, Overlay, Pastille, PeripheriqueAudio, PremierPlan,
+    PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurActions, RecepteurAudio,
+    RecepteurCapture, RecepteurSon, RecepteurZone, SensAudio, SignalErreurAudio, SortieSon,
+    SourceCapture, SystemeAudio, TypeSource, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
@@ -68,7 +71,7 @@ pub struct Plateforme {
     pub url: Box<dyn OuvertureUrl>,
     pub fichiers: Box<dyn Fichiers + Send + Sync>,
     pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
-    pub capture_ecran: Box<dyn CaptureEcran>,
+    pub capture_ecran: Arc<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
     pub audio: Arc<dyn SystemeAudio>,
     pub mesure: Arc<dyn MesureProcessus>,
@@ -92,6 +95,7 @@ impl Plateforme {
             notifications: notifications_de_l_os(),
             pastille: pastille_de_l_os(),
             installation: installation_de_l_os(),
+            capture_ecran: capture_de_l_os(),
             ..Self::indisponible()
         }
     }
@@ -107,7 +111,7 @@ impl Plateforme {
             url: Box::new(Indisponible),
             fichiers: Box::new(Indisponible),
             presse_papiers: Box::new(Indisponible),
-            capture_ecran: Box::new(Indisponible),
+            capture_ecran: Arc::new(Indisponible),
             capture_son: Box::new(Indisponible),
             audio: Arc::new(Indisponible),
             mesure: Arc::new(Indisponible),
@@ -156,6 +160,14 @@ fn installation_de_l_os() -> std::sync::Arc<dyn Installation> {
     }
 }
 
+fn capture_de_l_os() -> std::sync::Arc<dyn CaptureEcran> {
+    if CaptureSysteme.disponible() {
+        std::sync::Arc::new(CaptureSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -175,6 +187,7 @@ mod tests {
         assert!(p.audio.disponible());
         assert!(p.mesure.disponible());
         assert!(p.zone.disponible());
+        assert_eq!(p.capture_ecran.disponible(), CaptureSysteme.disponible());
         assert_eq!(p.demarrage.disponible(), cfg!(windows));
         assert_eq!(p.pastille.disponible(), cfg!(windows));
         assert_eq!(p.installation.disponible(), cfg!(windows));
@@ -183,7 +196,6 @@ mod tests {
             cfg!(windows).then_some(CIBLE_WINDOWS)
         );
         for (nom, disponible) in [
-            ("capture_ecran", p.capture_ecran.disponible()),
             ("capture_son", p.capture_son.disponible()),
             ("overlay", p.overlay.disponible()),
             ("premier_plan", p.premier_plan.disponible()),
@@ -208,8 +220,19 @@ mod tests {
             p.capture_ecran.sources(),
             Err(Erreur::Indisponible(_))
         ));
+        assert!(!p.capture_ecran.disponible());
         assert!(matches!(
             p.capture_ecran.capturer("ecran:0"),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.capture_ecran.miniature("fenetre:1", 180),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.capture_ecran
+                .demarrer("ecran:0", OptionsCapture::default(), Box::new(|_| true))
+                .map(|_| ()),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(
