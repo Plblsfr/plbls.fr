@@ -105,6 +105,10 @@ impl FluxCapture {
     }
 
     pub fn arreter(self) {}
+
+    pub(crate) fn commande(&self) -> Arc<Commande> {
+        self.commande.clone()
+    }
 }
 
 impl Drop for FluxCapture {

@@ -18,7 +18,7 @@ use estompe_client::vocal::{
     SessionVocale, SourceAudio, SourceTouche, SourceVideo, TrameVideo, Videos,
 };
 use estompe_plateforme::{
-    libelle_touche, ErreurCamera, InfoCamera, RaccourcisGlobaux, SystemeCamera,
+    libelle_touche, CaptureEcran, ErreurCamera, InfoCamera, RaccourcisGlobaux, SystemeCamera,
 };
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
@@ -31,9 +31,14 @@ use crate::messagerie::pont::SystemeFichiers;
 use crate::session::Memoire;
 use crate::video::{self, FluxVoulu, GestionVideo};
 use crate::{
-    BarreVocal, ChoixCameraVocal, DonneesVideo, DonneesVocal, ListePeripheriques, MenuVocal,
-    ParticipantVocal, PeripheriqueVocal, Principale, ReglagesVocal, SalonDestination, VueVocal,
+    BarreVocal, ChoixCameraVocal, ChoixPartageVocal, DonneesVideo, DonneesVocal,
+    ListePeripheriques, MenuVocal, ParticipantVocal, PeripheriqueVocal, Principale, ReglagesVocal,
+    SalonDestination, SourcePartageVocal, VueVocal,
 };
+
+mod partage;
+
+pub use partage::{cle_apercu_partage, options_de_qualite, PERIODE_MINIATURES};
 
 pub const PERIODE_MESURE: Duration = Duration::from_millis(50);
 const MARGE_SON: Duration = Duration::from_millis(150);
@@ -85,6 +90,7 @@ pub struct OutilsVocaux {
     pub audio: Arc<dyn SystemeAudio>,
     pub raccourcis: Arc<dyn RaccourcisGlobaux>,
     pub cameras: Arc<dyn SystemeCamera>,
+    pub ecrans: Arc<dyn CaptureEcran>,
     pub apm: Option<Arc<Apm>>,
 }
 
@@ -134,6 +140,7 @@ struct Ombres {
     niveau: Option<(i32, bool, bool)>,
     je_parle: bool,
     camera: Option<OmbreCamera>,
+    partage: Option<partage::OmbrePartage>,
 }
 
 type OmbreCamera = (bool, String, i32, String, QualiteCamera, Vec<InfoCamera>);
@@ -167,6 +174,7 @@ struct Interne {
     fenetre_visible: bool,
     affichage: BTreeMap<CleVideo, DemandeVideo>,
     camera: ChoixCamera,
+    partage: partage::ChoixPartage,
     epinglage: Epinglage,
     plein_ecran: Option<String>,
     zone_vedette: (f32, f32),
@@ -192,6 +200,7 @@ pub fn installer_modeles(f: &Principale) {
     v.set_micros(ModelRc::new(VecModel::<PeripheriqueVocal>::default()));
     v.set_sorties(ModelRc::new(VecModel::<PeripheriqueVocal>::default()));
     v.set_cameras(ModelRc::new(VecModel::<PeripheriqueVocal>::default()));
+    v.set_sources_partage(ModelRc::new(VecModel::<SourcePartageVocal>::default()));
     video::installer_modeles(f);
 }
 
@@ -215,6 +224,8 @@ pub fn vider_modeles(f: &Principale) {
     v.set_erreur_depot("".into());
     v.set_camera(ChoixCameraVocal::default());
     vec_de(&v.get_cameras()).set_vec(Vec::new());
+    v.set_partage(ChoixPartageVocal::default());
+    vec_de(&v.get_sources_partage()).set_vec(Vec::new());
 }
 
 fn participant_slint(p: &Participant, profils: &Profils) -> ParticipantVocal {
@@ -296,6 +307,10 @@ fn barre_slint(b: &Barre) -> BarreVocal {
         message: b.message.as_str().into(),
         camera_active: b.camera_active,
         camera_demarrage: b.camera_demarrage,
+        partage: b.partage,
+        partage_demarrage: b.partage_demarrage,
+        partage_source: b.partage_source.as_str().into(),
+        spectateurs_partage: b.spectateurs_partage.as_str().into(),
     }
 }
 
@@ -466,6 +481,7 @@ impl PontVocal {
                 fenetre_visible: true,
                 affichage: BTreeMap::new(),
                 camera: ChoixCamera::default(),
+                partage: partage::ChoixPartage::default(),
                 epinglage: Epinglage::default(),
                 plein_ecran: None,
                 zone_vedette: (0.0, 0.0),
@@ -554,12 +570,14 @@ impl PontVocal {
             let mut i = self.verrou();
             i.affichage.clear();
             i.camera.ouvert = false;
+            i.partage.ouvert = false;
+            i.partage.generation += 1;
             let apercu = i.camera.apercu.take();
             (
                 i.outils.clone(),
                 i.ptt.take(),
                 i.essai.take(),
-                (i.video.take(), apercu),
+                (i.video.take(), apercu, i.partage.apercu.take()),
             )
         };
         drop(video);
@@ -651,8 +669,17 @@ impl PontVocal {
             AvisVocal::Quitte(_) | AvisVocal::Depart(_) => Some(SonVocal::Depart),
             _ => None,
         };
-        if let AvisVocal::Peripherique(sens, bascule) = avis {
-            if let Some(texte) = texte_bascule(*sens, bascule) {
+        let texte = match avis {
+            AvisVocal::Peripherique(sens, bascule) => texte_bascule(*sens, bascule),
+            AvisVocal::PartageReduit(q) => Some(format!(
+                "Connexion ou ordinateur limités : partage réduit à {} · {} images/s.",
+                q.resolution.libelle(),
+                q.ips
+            )),
+            _ => None,
+        };
+        {
+            if let Some(texte) = texte {
                 self.verrou().avis = texte;
                 let moi = self.clone();
                 let _ = self
@@ -999,6 +1026,7 @@ impl PontVocal {
             .collect();
         self.projeter_niveau(f, i);
         self.projeter_camera(f, i);
+        self.projeter_partage(f, i);
         drop(guard);
         for cle in demandes {
             self.telecharger_avatar(cle);
@@ -1057,6 +1085,14 @@ impl PontVocal {
                 recepteur: self.videos_hors_session.recepteur(&cle_apercu()),
                 zone: ZONE_APERCU,
                 miroir: true,
+            });
+        }
+        if i.partage.ouvert && i.partage.etape == partage::Etape::Apercu && i.fenetre_visible {
+            voulus.push(FluxVoulu {
+                cle: cle_apercu_partage(),
+                recepteur: self.videos_hors_session.recepteur(&cle_apercu_partage()),
+                zone: ZONE_APERCU,
+                miroir: false,
             });
         }
         let gestion = i.video.get_or_insert_with(|| {
@@ -1311,10 +1347,13 @@ impl PontVocal {
         };
         let (zone, miroir) = if *cle == cle_apercu() {
             (ZONE_APERCU, true)
+        } else if *cle == cle_apercu_partage() {
+            (ZONE_APERCU, false)
         } else {
             (
                 zone,
-                self.etat().identite.as_deref() == Some(cle.identite.as_str()),
+                cle.source == SourceVideo::Camera
+                    && self.etat().identite.as_deref() == Some(cle.identite.as_str()),
             )
         };
         video::poser_pixels(f, &cle.texte(), video::convertir(image, zone, miroir));
@@ -2107,6 +2146,24 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
     rappel!(on_choisir_qualite_camera, |p, f, rang| p
         .choisir_qualite_camera(&f, rang));
     rappel!(on_activer_camera, |p, f| p.activer_camera(&f));
+    rappel!(on_ouvrir_partage, |p, f| p.ouvrir_partage(&f));
+    rappel!(on_fermer_partage, |p, f| p.fermer_partage(&f));
+    rappel!(on_onglet_partage, |p, f, fenetres| p
+        .onglet_partage(&f, fenetres));
+    rappel!(on_actualiser_partage, |p, f| p.actualiser_partage(&f));
+    rappel!(on_choisir_source, |p, f, id| p.choisir_source(&f, &id));
+    rappel!(on_revenir_aux_sources, |p, f| p.revenir_aux_sources(&f));
+    rappel!(on_prereglage_partage, |p, f, rang| p
+        .prereglage_partage(&f, rang));
+    rappel!(on_resolution_partage, |p, f, rang| p
+        .resolution_partage(&f, rang));
+    rappel!(on_cadence_partage, |p, f, rang| p.cadence_partage(&f, rang));
+    rappel!(on_fluidite_partage, |p, f, c| p.fluidite_partage(&f, c));
+    rappel!(on_auto_partage, |p, f, c| p.auto_partage(&f, c));
+    rappel!(on_partager, |p, f| p.partager(&f));
+    rappel!(on_arreter_partage, |p, _f| p.arreter_partage());
+    rappel!(on_qualite_partage, |p, f| p.ouvrir_qualite_partage(&f));
+    rappel!(on_changer_source_partage, |p, f| p.ouvrir_partage(&f));
     {
         let source = source.clone();
         let faible = f.as_weak();

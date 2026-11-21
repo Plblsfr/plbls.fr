@@ -29,7 +29,7 @@ pub use camera::{
     erreur_de_texte, CamerasIndisponibles, CamerasSysteme, DemandeCamera, ErreurCamera, FluxCamera,
     FormatPixels, ImageCamera, InfoCamera, RappelCamera, SystemeCamera,
 };
-pub use capture::{CaptureSysteme, FluxCapture, IdSource};
+pub use capture::{CaptureSysteme, EcransFactices, FluxCapture, IdSource};
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use demarrage::{
     commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,

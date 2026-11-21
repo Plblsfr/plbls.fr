@@ -5,6 +5,7 @@ pub mod factice;
 #[cfg(feature = "livekit")]
 pub mod livekit;
 pub mod mixage;
+pub mod partage;
 pub mod ptt;
 pub mod salle;
 pub mod scene;
@@ -17,16 +18,24 @@ pub use camera::{
 pub use erreurs::{CauseMicro, ErreurVocal};
 pub use etat::{etats_affiches, EtatAffiche, EtatVocal, Phase};
 pub use mixage::{Ecoute, Limiteur, Mixeur};
+pub use partage::{
+    borner, debit_partage, mbits, mode_partage, note_resolution, palier_inferieur, resume_partage,
+    Degradation, ImagePartage, IndiceContenu, PartageLocal, PlafondPartage, Prereglage,
+    QualitePartage, ReglagesPartage, ResolutionPartage, CADENCES_PARTAGE, PREREGLAGES,
+};
 pub use ptt::{EtatPtt, PousserPourParler, ReglagesPtt, SourceTouche};
 pub use salle::{
     Connecteur, ConnecteurIndisponible, Connexion, ErreurSalle, EvenementSalle, InfoParticipant,
-    JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
+    JetonSalle, Limitation, Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo,
+    SourceAudio,
 };
 pub use scene::{
     construire_elements, dimensions_grille, doit_recevoir, rassembler_spectateurs, ElementScene,
     Epinglage, QualiteRecue, SourcePiste, Spectateurs, TuileVideo,
 };
-pub use session::{ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, DELAI_FERMETURE};
+pub use session::{
+    ApiVocale, AvisVocal, Dependances, Incrustation, Reglages, SessionVocale, DELAI_FERMETURE,
+};
 pub use video::{
     CleVideo, DemandeVideo, FluxVideo, ImageI420, ImageVideo, Mire, RecepteurVideo, SourceVideo,
     TrameVideo, Videos,
@@ -38,7 +47,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use estompe_plateforme::{FormatAudio, SensAudio};
+    use estompe_plateforme::{EcransFactices, FormatAudio, SensAudio, SourceCapture, TypeSource};
     use tokio::runtime::Handle;
 
     use super::factice::{ApiVocaleFactice, ServeurVocalFactice};
@@ -49,6 +58,7 @@ mod tests {
     struct Poste {
         audio: SystemeFactice,
         cameras: CamerasFactices,
+        ecrans: EcransFactices,
         api: Arc<ApiVocaleFactice>,
         session: SessionVocale,
     }
@@ -112,6 +122,9 @@ mod tests {
         cameras.brancher("c1", "Caméra intégrée");
         cameras.brancher("c2", "Webcam USB");
         let api = Arc::new(ApiVocaleFactice::nouvelle(identite));
+        let ecrans = EcransFactices::nouveaux();
+        ecrans.brancher(source_capture("ecran:0", TypeSource::Ecran, 2560, 1440));
+        ecrans.brancher(source_capture("fenetre:7", TypeSource::Fenetre, 1280, 800));
         let session = SessionVocale::demarrer(
             &Handle::current(),
             Dependances {
@@ -119,6 +132,7 @@ mod tests {
                 connecteur: Arc::new(serveur.clone()),
                 audio: Arc::new(audio.clone()),
                 cameras: Arc::new(cameras.clone()),
+                ecrans: Arc::new(ecrans.clone()),
                 apm: None,
                 reglages,
             },
@@ -126,8 +140,23 @@ mod tests {
         Poste {
             audio,
             cameras,
+            ecrans,
             api,
             session,
+        }
+    }
+
+    fn source_capture(id: &str, genre: TypeSource, largeur: u32, hauteur: u32) -> SourceCapture {
+        SourceCapture {
+            id: id.to_string(),
+            nom: format!("Source {id}"),
+            application: String::new(),
+            genre,
+            largeur,
+            hauteur,
+            principale: false,
+            processus: None,
+            estompe: false,
         }
     }
 
@@ -974,5 +1003,294 @@ mod tests {
             alice.session.niveau_micro().db,
             crate::audio::micro::SILENCE_DB
         );
+    }
+
+    fn source_de(poste: &Poste, id: &str) -> SourceCapture {
+        use estompe_plateforme::CaptureEcran;
+        poste
+            .ecrans
+            .sources()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap()
+    }
+
+    async fn partage_pret(serveur: &ServeurVocalFactice) -> (Poste, Poste, CleVideo) {
+        let alice = poste(serveur, "alice", true);
+        let bob = poste(serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        bob.session.rejoindre("v1");
+        attendre(&bob.session, |e| e.participants.contains_key("alice")).await;
+        (alice, bob, CleVideo::partage("alice"))
+    }
+
+    #[tokio::test]
+    async fn publier_changer_de_source_et_de_qualite_puis_arreter_un_partage() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let (alice, bob, cle) = partage_pret(&serveur).await;
+        alice.session.partager(source_de(&alice, "ecran:0"));
+        let etat = attendre(&alice.session, |e| e.partage.is_some()).await;
+        let partage = etat.partage.unwrap();
+        assert_eq!(partage.qualite.resolution, ResolutionPartage::R1080);
+        assert_eq!(partage.qualite.ips, 30);
+        let format = serveur
+            .format_publie("v1", "alice", SourceVideo::Partage)
+            .unwrap();
+        assert_eq!(
+            (format.hauteur, format.images_par_seconde, format.debit),
+            (1080, 30, 3_000_000)
+        );
+        assert!(format.degradation == Degradation::GarderCadence && !format.simulcast);
+        assert_eq!(alice.ecrans.ouverts(), vec![("ecran:0".to_string(), 30)]);
+        assert_eq!(
+            etat.pistes.get(&cle).map(String::as_str),
+            Some("TR_alice_ecran")
+        );
+        bob.session.regarder("alice", Some(true));
+        bob.session.definir_affichage(
+            [(
+                cle.clone(),
+                DemandeVideo {
+                    largeur: 640,
+                    hauteur: 360,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        attendre(&bob.session, |e| e.video(&cle)).await;
+        let chez_bob = bob.session.videos().recepteur(&cle);
+        let chez_moi = alice.session.videos().recepteur(&cle);
+        attendre_que(|| {
+            !serveur
+                .abonnes_video("v1", "alice", SourceVideo::Partage)
+                .is_empty()
+        })
+        .await;
+        alice.ecrans.pousser("ecran:0");
+        attendre_que(|| chez_bob.images_recues() >= 1 && chez_moi.images_recues() >= 1).await;
+        assert_eq!(
+            serveur.dimensions_publiees("v1", "alice", SourceVideo::Partage),
+            Some((1920, 1080))
+        );
+
+        alice.session.changer_source(source_de(&alice, "fenetre:7"));
+        attendre(&alice.session, |e| {
+            e.partage
+                .as_ref()
+                .is_some_and(|p| p.source.id == "fenetre:7")
+        })
+        .await;
+        assert_eq!(alice.ecrans.ouverts(), vec![("fenetre:7".to_string(), 30)]);
+        alice.ecrans.pousser("fenetre:7");
+        attendre_que(|| chez_bob.images_recues() >= 2).await;
+        assert_eq!(
+            serveur.dimensions_publiees("v1", "alice", SourceVideo::Partage),
+            Some((1152, 720))
+        );
+        assert!(serveur.video_publiee("v1", "alice", SourceVideo::Partage));
+
+        alice.session.changer_source(source_de(&alice, "ecran:0"));
+        attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| p.source.id == "ecran:0")
+        })
+        .await;
+        alice.session.regler_partage(ReglagesPartage {
+            resolution: ResolutionPartage::R720,
+            ips: 60,
+            ..ReglagesPartage::default()
+        });
+        attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| p.qualite.ips == 60)
+        })
+        .await;
+        assert_eq!(alice.ecrans.ouverts(), vec![("ecran:0".to_string(), 60)]);
+        let avant = chez_bob.images_recues();
+        alice.ecrans.pousser("ecran:0");
+        attendre_que(|| chez_bob.images_recues() > avant).await;
+        assert_eq!(
+            serveur.dimensions_publiees("v1", "alice", SourceVideo::Partage),
+            Some((1280, 720))
+        );
+
+        alice.session.arreter_partage();
+        attendre(&alice.session, |e| {
+            e.partage.is_none() && !e.pistes.contains_key(&cle)
+        })
+        .await;
+        assert!(alice.ecrans.ouverts().is_empty());
+        assert!(!serveur.video_publiee("v1", "alice", SourceVideo::Partage));
+        attendre(&bob.session, |e| !e.video(&cle)).await;
+        assert!(chez_moi.derniere().is_none());
+        alice.session.fermer().await;
+        bob.session.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn la_source_qui_disparait_arrete_le_partage_avec_un_message() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let (alice, bob, cle) = partage_pret(&serveur).await;
+        alice.session.partager(source_de(&alice, "fenetre:7"));
+        attendre(&alice.session, |e| e.partage.is_some()).await;
+        attendre(&bob.session, |e| e.video(&cle)).await;
+        alice.ecrans.reduire("fenetre:7");
+        attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| p.reduite)
+        })
+        .await;
+        alice.ecrans.retirer("fenetre:7");
+        let etat = attendre(&alice.session, |e| e.partage.is_none()).await;
+        assert_eq!(
+            etat.partage_erreur.as_deref(),
+            Some("Partage arrêté : la fenêtre partagée a été fermée.")
+        );
+        assert!(!serveur.video_publiee("v1", "alice", SourceVideo::Partage));
+        attendre(&bob.session, |e| !e.video(&cle)).await;
+        alice.session.partager(source_de(&alice, "ecran:0"));
+        let etat = attendre(&alice.session, |e| e.partage.is_some()).await;
+        assert_eq!(etat.partage_erreur, None);
+        alice.ecrans.echouer("ecran:0", "périphérique perdu");
+        let etat = attendre(&alice.session, |e| e.partage.is_none()).await;
+        assert_eq!(
+            etat.partage_erreur.as_deref(),
+            Some("Partage arrêté : la capture de l'écran a échoué.")
+        );
+        alice.session.fermer().await;
+        bob.session.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn le_plafond_du_serveur_et_la_taille_de_la_source_bornent_le_partage() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        alice.api.plafonner(Some(PlafondPartage {
+            ips: 30,
+            hauteur: 1440,
+        }));
+        alice.session.regler_partage(ReglagesPartage {
+            resolution: ResolutionPartage::R2160,
+            ips: 120,
+            ..ReglagesPartage::default()
+        });
+        alice.session.partager(source_de(&alice, "ecran:0"));
+        let etat = attendre(&alice.session, |e| e.reglages_partage.ips == 120).await;
+        assert!(etat.partage.is_none(), "rien ne se partage hors d'un salon");
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        alice.session.partager(source_de(&alice, "fenetre:7"));
+        let etat = attendre(&alice.session, |e| e.partage.is_some()).await;
+        assert_eq!(
+            etat.plafond_partage,
+            PlafondPartage {
+                ips: 30,
+                hauteur: 1440
+            }
+        );
+        let q = etat.partage.unwrap().qualite;
+        assert_eq!((q.resolution, q.ips), (ResolutionPartage::R720, 30));
+        alice.session.changer_source(source_de(&alice, "ecran:0"));
+        let etat = attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| p.source.id == "ecran:0")
+        })
+        .await;
+        assert_eq!(
+            etat.partage.unwrap().qualite.resolution,
+            ResolutionPartage::R1440
+        );
+        alice.session.quitter();
+        let etat = attendre(&alice.session, |e| !e.actif()).await;
+        assert!(etat.partage.is_none());
+        assert!(alice.ecrans.ouverts().is_empty());
+        alice.session.fermer().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn le_partage_baisse_d_un_palier_quand_la_connexion_ne_suit_pas() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        let mut avis = alice.session.abonner_avis();
+        alice.session.regler_partage(ReglagesPartage {
+            resolution: ResolutionPartage::R1440,
+            ips: 60,
+            fluidite: true,
+            ..ReglagesPartage::default()
+        });
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        alice.session.partager(source_de(&alice, "ecran:0"));
+        attendre(&alice.session, |e| e.partage.is_some()).await;
+        serveur.limiter("alice", Limitation::Debit);
+        let etat = attendre(&alice.session, |e| {
+            e.partage
+                .as_ref()
+                .is_some_and(|p| p.qualite.resolution == ResolutionPartage::R1080)
+        })
+        .await;
+        assert_eq!(etat.partage.unwrap().qualite.ips, 60);
+        loop {
+            if let AvisVocal::PartageReduit(q) = avis.recv().await.unwrap() {
+                assert_eq!(q.resolution, ResolutionPartage::R1080);
+                break;
+            }
+        }
+        serveur.limiter("alice", Limitation::Aucune);
+        alice.session.regler_partage(ReglagesPartage {
+            resolution: ResolutionPartage::R1440,
+            ips: 60,
+            fluidite: true,
+            auto: false,
+            ..ReglagesPartage::default()
+        });
+        attendre(&alice.session, |e| {
+            e.partage
+                .as_ref()
+                .is_some_and(|p| p.qualite.resolution == ResolutionPartage::R1440)
+        })
+        .await;
+        serveur.limiter("alice", Limitation::Processeur);
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        assert_eq!(
+            alice
+                .session
+                .instantane()
+                .partage
+                .unwrap()
+                .qualite
+                .resolution,
+            ResolutionPartage::R1440,
+            "sans réduction automatique, la qualité choisie est gardée"
+        );
+        alice.session.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn l_incrustation_s_applique_a_chaque_image_du_partage() {
+        struct Coin;
+        impl Incrustation for Coin {
+            fn incruster(&self, image: &mut estompe_plateforme::Image) {
+                for pixel in image.rgba.chunks_exact_mut(4) {
+                    pixel.copy_from_slice(&[1, 2, 3, 255]);
+                }
+            }
+        }
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        alice.session.definir_incrustation(Some(Arc::new(Coin)));
+        alice.session.partager(source_de(&alice, "fenetre:7"));
+        attendre(&alice.session, |e| e.partage.is_some()).await;
+        let chez_moi = alice
+            .session
+            .videos()
+            .recepteur(&CleVideo::partage("alice"));
+        alice.ecrans.pousser("fenetre:7");
+        attendre_que(|| chez_moi.images_recues() >= 1).await;
+        let mut pixel = [0u8; 4];
+        chez_moi.derniere().unwrap().vers_rgba(1, 1, &mut pixel);
+        assert_eq!(pixel, [1, 2, 3, 255]);
+        alice.session.fermer().await;
     }
 }

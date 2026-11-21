@@ -64,6 +64,47 @@ export struct BarreVocal {
     message: string,
     camera-active: bool,
     camera-demarrage: bool,
+    partage: bool,
+    partage-demarrage: bool,
+    partage-source: string,
+    spectateurs-partage: string,
+}
+
+export struct OptionPartage {
+    libelle: string,
+    indice: string,
+    choisi: bool,
+    actif: bool,
+}
+
+export struct SourcePartageVocal {
+    id: string,
+    nom: string,
+    detail: string,
+    miniature: image,
+    prete: bool,
+}
+
+export enum EtapePartage { source, apercu, qualite }
+
+export struct ChoixPartageVocal {
+    ouvert: bool,
+    etape: EtapePartage,
+    fenetres: bool,
+    chargement: bool,
+    erreur: string,
+    indisponible: bool,
+    vide: string,
+    source: string,
+    detail: string,
+    apercu: int,
+    prereglages: [OptionPartage],
+    resolutions: [OptionPartage],
+    cadences: [OptionPartage],
+    fluidite: bool,
+    auto: bool,
+    resume: string,
+    changer: bool,
 }
 
 export struct ChoixCameraVocal {
@@ -156,6 +197,8 @@ export global DonneesVocal {
     in property <string> erreur-depot;
     in property <ChoixCameraVocal> camera;
     in property <[PeripheriqueVocal]> cameras;
+    in property <ChoixPartageVocal> partage;
+    in property <[SourcePartageVocal]> sources-partage;
     callback rejoindre(string);
     callback ouvrir-vocal(string);
     callback quitter();
@@ -190,6 +233,21 @@ export global DonneesVocal {
     callback choisir-qualite-camera(int);
     callback activer-camera();
     callback rejoindre-avec-camera(string);
+    callback ouvrir-partage();
+    callback fermer-partage();
+    callback onglet-partage(bool);
+    callback actualiser-partage();
+    callback choisir-source(string);
+    callback revenir-aux-sources();
+    callback prereglage-partage(int);
+    callback resolution-partage(int);
+    callback cadence-partage(int);
+    callback fluidite-partage(bool);
+    callback auto-partage(bool);
+    callback partager();
+    callback arreter-partage();
+    callback qualite-partage();
+    callback changer-source-partage();
     callback ouvrir-reglages();
     callback fermer-reglages();
     callback regler(ReglagesVocal, bool);

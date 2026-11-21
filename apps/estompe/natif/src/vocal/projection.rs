@@ -87,6 +87,10 @@ pub struct Barre {
     pub message: String,
     pub camera_active: bool,
     pub camera_demarrage: bool,
+    pub partage: bool,
+    pub partage_demarrage: bool,
+    pub partage_source: String,
+    pub spectateurs_partage: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -271,6 +275,15 @@ pub fn scene(
             })
         })
         .collect();
+    if ici && vocal.partage.is_some() {
+        tuiles.push(TuileVideo {
+            piste: CleVideo::partage(moi).texte(),
+            utilisateur: moi.to_string(),
+            nom: nom_de(moi),
+            partage: true,
+            recue: true,
+        });
+    }
     if ici {
         tuiles.extend(
             vocal
@@ -473,6 +486,10 @@ pub fn barre(
             message: vocal.erreur.clone().unwrap_or_default(),
             camera_active: false,
             camera_demarrage: false,
+            partage: false,
+            partage_demarrage: false,
+            partage_source: String::new(),
+            spectateurs_partage: String::new(),
         };
     };
     let (serveur, nom_serveur, nom_salon) = etat
@@ -505,6 +522,7 @@ pub fn barre(
     let message = vocal
         .camera_erreur
         .clone()
+        .or_else(|| vocal.partage_erreur.clone())
         .or_else(|| vocal.micro_indisponible.map(|c| c.erreur()))
         .or_else(|| vocal.erreur.clone())
         .unwrap_or_default();
@@ -535,6 +553,22 @@ pub fn barre(
         message,
         camera_active: vocal.camera_active,
         camera_demarrage: vocal.camera_demarrage,
+        partage: vocal.partage.is_some(),
+        partage_demarrage: vocal.partage_demarrage,
+        partage_source: vocal
+            .partage
+            .as_ref()
+            .map(|p| p.source.nom.clone())
+            .unwrap_or_default(),
+        spectateurs_partage: if vocal.partage.is_some() {
+            let n = vocal
+                .spectateurs()
+                .get(&CleVideo::partage(moi))
+                .map_or(0, Vec::len);
+            format!("{n} spectateur{}", pluriel(n))
+        } else {
+            String::new()
+        },
     }
 }
 
@@ -904,6 +938,62 @@ mod tests {
         assert!(scene(&e, &v, "v1", "me", false, &mut epinglage)
             .vedette
             .is_none());
+    }
+
+    #[test]
+    fn mon_partage_a_sa_tuile_en_grand_et_la_barre_l_annonce_avec_ses_spectateurs() {
+        use estompe_client::vocal::{PartageLocal, QualitePartage, ResolutionPartage};
+        use estompe_plateforme::{SourceCapture, TypeSource};
+        let e = avec_vocal(&[("carol", "carol")]);
+        let mut v = connecte("v1");
+        v.partage = Some(PartageLocal {
+            source: SourceCapture {
+                id: "fenetre:7".into(),
+                nom: "Notes".into(),
+                application: String::new(),
+                genre: TypeSource::Fenetre,
+                largeur: 1280,
+                hauteur: 800,
+                principale: false,
+                processus: None,
+                estompe: false,
+            },
+            qualite: QualitePartage {
+                resolution: ResolutionPartage::R720,
+                ips: 30,
+            },
+            reduite: false,
+            son: false,
+        });
+        let cle = CleVideo::partage("me");
+        v.pistes.insert(cle.clone(), "TR_moi".into());
+        v.participants
+            .get_mut("carol")
+            .unwrap()
+            .attributs
+            .insert("watching".into(), "TR_moi".into());
+        let mut epinglage = Epinglage::default();
+        let s = scene(&e, &v, "v1", "me", false, &mut epinglage);
+        assert_eq!(s.vedette.as_deref(), Some("me#screen"));
+        let mien = s.tuiles.iter().find(|p| p.cle == "me#screen").unwrap();
+        assert!(mien.moi && mien.partage && mien.regarde && mien.video == Some(cle));
+        assert!(!mien.son_partage);
+        assert_eq!(mien.spectateurs, ["carol"]);
+        let b = barre(&e, &v, "me", 0, None);
+        assert!(b.partage && b.partage_source == "Notes");
+        assert_eq!(b.spectateurs_partage, "1 spectateur");
+        v.partage = None;
+        v.partage_erreur = Some("Partage arrêté : la fenêtre partagée a été fermée.".into());
+        let b = barre(&e, &v, "me", 0, None);
+        assert!(!b.partage && b.spectateurs_partage.is_empty());
+        assert_eq!(
+            b.message,
+            "Partage arrêté : la fenêtre partagée a été fermée."
+        );
+        assert!(scene(&e, &v, "v1", "me", false, &mut epinglage)
+            .tuiles
+            .iter()
+            .all(|p| !p.partage));
     }
 
     #[test]

@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
-use crate::vocal::{Ecoute, QualiteCamera, QualiteRecue, ReglagesPtt};
+use crate::vocal::{Ecoute, QualiteCamera, QualiteRecue, ReglagesPartage, ReglagesPtt};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -65,6 +65,7 @@ pub struct Preferences {
     pub camera: Option<String>,
     pub qualite_camera: QualiteCamera,
     pub qualite_partage: QualiteRecue,
+    pub partage: ReglagesPartage,
 }
 
 impl Default for Preferences {
@@ -95,6 +96,7 @@ impl Default for Preferences {
             camera: None,
             qualite_camera: QualiteCamera::default(),
             qualite_partage: QualiteRecue::default(),
+            partage: ReglagesPartage::default(),
         }
     }
 }
@@ -180,6 +182,7 @@ impl Preferences {
             camera: champ(&objet, "camera", d.camera).filter(|c: &String| !c.is_empty()),
             qualite_camera: champ(&objet, "qualite_camera", d.qualite_camera),
             qualite_partage: champ(&objet, "qualite_partage", d.qualite_partage),
+            partage: champ(&objet, "partage", d.partage).borne(),
         })
     }
 
@@ -363,6 +366,13 @@ mod tests {
             camera: Some("/dev/video2".to_string()),
             qualite_camera: crate::vocal::QualiteCamera::Q1080,
             qualite_partage: QualiteRecue::Moyenne,
+            partage: ReglagesPartage {
+                resolution: crate::vocal::ResolutionPartage::R1440,
+                ips: 60,
+                fluidite: false,
+                auto: false,
+                son: false,
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);

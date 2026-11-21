@@ -15,9 +15,12 @@ use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::native::apm::AudioProcessingModule;
+use livekit::webrtc::native::yuv_helper::abgr_to_i420;
 use livekit::webrtc::prelude::{
-    I420Buffer, VideoBuffer, VideoFormatType, VideoFrame, VideoResolution, VideoRotation,
+    DegradationPreference, I420Buffer, VideoBuffer, VideoFormatType, VideoFrame, VideoResolution,
+    VideoRotation,
 };
+use livekit::webrtc::stats::{QualityLimitationReason, RtcStats};
 use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::RtcVideoSource;
@@ -28,10 +31,13 @@ use tokio::sync::mpsc;
 
 use crate::audio::{Apm, MoteurApm, FREQUENCE};
 
+use estompe_plateforme::Image;
+
 use super::camera::FormatVideo;
+use super::partage::{taille_reduite, Degradation};
 use super::salle::{
     est_partage, Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle,
-    Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
+    Limitation, Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
 use super::video::{DemandeVideo, ImageI420, ImageVideo, SourceVideo, TrameVideo};
 
@@ -72,6 +78,15 @@ struct SortieLiveKit {
 struct SortieVideoLiveKit {
     source: NativeVideoSource,
     debut: std::time::Instant,
+    piste: String,
+}
+
+impl SortieVideoLiveKit {
+    fn capturer(&self, tampon: I420Buffer) {
+        let mut trame = VideoFrame::new(VideoRotation::VideoRotation0, tampon);
+        trame.timestamp_us = self.debut.elapsed().as_micros() as i64;
+        self.source.capture_frame(&trame);
+    }
 }
 
 fn copier_plan(source: &[u8], largeur: usize, hauteur: usize, cible: &mut [u8], pas: usize) {
@@ -96,9 +111,65 @@ impl SortieVideo for SortieVideoLiveKit {
         copier_plan(&image.y, l, h, y, pas_y as usize);
         copier_plan(&image.u, cl, ch, u, pas_u as usize);
         copier_plan(&image.v, cl, ch, v, pas_v as usize);
-        let mut trame = VideoFrame::new(VideoRotation::VideoRotation0, tampon);
-        trame.timestamp_us = self.debut.elapsed().as_micros() as i64;
-        self.source.capture_frame(&trame);
+        self.capturer(tampon);
+    }
+
+    fn envoyer_rgba(&self, image: &Image, hauteur_max: u32) {
+        let (l, h) = (image.largeur & !1, image.hauteur & !1);
+        if l < 2 || h < 2 || image.rgba.len() < (image.largeur * image.hauteur * 4) as usize {
+            return;
+        }
+        let mut tampon = I420Buffer::new(l, h);
+        let (pas_y, pas_u, pas_v) = tampon.strides();
+        let (y, u, v) = tampon.data_mut();
+        abgr_to_i420(
+            &image.rgba,
+            image.largeur * 4,
+            y,
+            pas_y,
+            u,
+            pas_u,
+            v,
+            pas_v,
+            l as i32,
+            h as i32,
+        );
+        let (cl, ch) = taille_reduite(l, h, hauteur_max);
+        if (cl, ch) != (l, h) {
+            tampon = tampon.scale(cl as i32, ch as i32);
+        }
+        self.capturer(tampon);
+    }
+
+    fn piste(&self) -> String {
+        self.piste.clone()
+    }
+}
+
+fn degradation(d: Degradation) -> Option<DegradationPreference> {
+    match d {
+        Degradation::Auto => None,
+        Degradation::GarderCadence => Some(DegradationPreference::MaintainFramerate),
+        Degradation::GarderResolution => Some(DegradationPreference::MaintainResolution),
+    }
+}
+
+fn limitation(stats: &[RtcStats]) -> Limitation {
+    let raisons: Vec<QualityLimitationReason> = stats
+        .iter()
+        .filter_map(|s| match s {
+            RtcStats::OutboundRtp(o) => Some(o.outbound.quality_limitation_reason),
+            _ => None,
+        })
+        .collect();
+    if raisons.contains(&QualityLimitationReason::Bandwidth) {
+        Limitation::Debit
+    } else if raisons.contains(&QualityLimitationReason::Cpu) {
+        Limitation::Processeur
+    } else if raisons.contains(&QualityLimitationReason::Other) {
+        Limitation::Autre
+    } else {
+        Limitation::Aucune
     }
 }
 
@@ -499,7 +570,7 @@ impl Salle for SalleLiveKit {
                     width: format.largeur,
                     height: format.hauteur,
                 },
-                source == SourceVideo::Partage,
+                source == SourceVideo::Partage && format.ecran,
             );
             let nom = match source {
                 SourceVideo::Camera => "camera",
@@ -507,7 +578,8 @@ impl Salle for SalleLiveKit {
             };
             let piste =
                 LocalVideoTrack::create_video_track(nom, RtcVideoSource::Native(video.clone()));
-            self.salle
+            let publication = self
+                .salle
                 .local_participant()
                 .publish_track(
                     LocalTrack::Video(piste),
@@ -518,6 +590,7 @@ impl Salle for SalleLiveKit {
                             max_bitrate: format.debit,
                             max_framerate: f64::from(format.images_par_seconde),
                         }),
+                        degradation_preference: degradation(format.degradation),
                         ..TrackPublishOptions::default()
                     },
                 )
@@ -526,6 +599,7 @@ impl Salle for SalleLiveKit {
             let sortie: Arc<dyn SortieVideo> = Arc::new(SortieVideoLiveKit {
                 source: video,
                 debut: std::time::Instant::now(),
+                piste: publication.sid().to_string(),
             });
             Ok(sortie)
         })
@@ -543,6 +617,27 @@ impl Salle for SalleLiveKit {
             for sid in sids {
                 let _ = local.unpublish_track(&sid).await;
             }
+        })
+    }
+
+    fn limitation_video(&self, source: SourceVideo) -> BoxFuture<'_, Limitation> {
+        Box::pin(async move {
+            let pistes: Vec<LocalVideoTrack> = self
+                .salle
+                .local_participant()
+                .track_publications()
+                .into_values()
+                .filter(|p| p.source() == piste_de(source))
+                .filter_map(|p| match p.track() {
+                    Some(LocalTrack::Video(piste)) => Some(piste),
+                    _ => None,
+                })
+                .collect();
+            let mut stats = Vec::new();
+            for piste in pistes {
+                stats.extend(piste.get_stats().await.unwrap_or_default());
+            }
+            limitation(&stats)
         })
     }
 

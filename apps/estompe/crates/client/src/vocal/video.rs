@@ -121,7 +121,7 @@ pub fn rgb_vers_yuv(r: u8, g: u8, b: u8) -> [u8; 3] {
     ]
 }
 
-fn correspondance(source: u32, cible: u32) -> Vec<u32> {
+pub(crate) fn correspondance(source: u32, cible: u32) -> Vec<u32> {
     let pas = (u64::from(source) << 16) / u64::from(cible.max(1));
     (0..cible)
         .map(|i| (((u64::from(i) * pas + (pas >> 1)) >> 16) as u32).min(source - 1))

@@ -11,6 +11,7 @@ use zune_core::bytestream::ZCursor;
 use zune_core::colorspace::ColorSpace;
 use zune_core::options::DecoderOptions;
 
+use super::partage::Degradation;
 use super::video::{ImageI420, Mire, RecepteurVideo};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -31,6 +32,8 @@ pub struct FormatVideo {
     pub images_par_seconde: u32,
     pub debit: u64,
     pub simulcast: bool,
+    pub degradation: Degradation,
+    pub ecran: bool,
 }
 
 impl QualiteCamera {
@@ -48,6 +51,8 @@ impl QualiteCamera {
             images_par_seconde: 30,
             debit,
             simulcast: true,
+            degradation: Degradation::Auto,
+            ecran: false,
         }
     }
 

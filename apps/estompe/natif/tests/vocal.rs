@@ -25,7 +25,7 @@ use estompe_natif::vocal::OutilsVocaux;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesVideo, DonneesVocal, Page, ParticipantVocal, Principale,
 };
-use estompe_plateforme::RaccourcisFactices;
+use estompe_plateforme::{EcransFactices, RaccourcisFactices, SourceCapture, TypeSource};
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
 use slint::platform::{Key, PointerEventButton, WindowEvent};
@@ -89,6 +89,7 @@ struct Banc {
     session: Arc<SessionVocale>,
     visibilite: Visibilite,
     cameras: CamerasFactices,
+    ecrans: EcransFactices,
 }
 
 type Visibilite = Arc<dyn Fn(&Principale, bool) + Send + Sync>;
@@ -659,6 +660,223 @@ fn scenario(
         },
         "durée du salon sous son nom dans le panneau",
     );
+
+    cliquer(&faible, "Partager l'écran");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_partage().ouvert
+                && v.get_sources_partage()
+                    .iter()
+                    .map(|s| s.nom.to_string())
+                    .collect::<Vec<_>>()
+                    == ["Écran 1"]
+                && v.get_sources_partage().iter().all(|s| s.prete)
+        },
+        "c338 : le sélecteur liste les écrans avec leur miniature",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_onglet_partage(true);
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            f.global::<DonneesVocal>()
+                .get_sources_partage()
+                .iter()
+                .map(|s| (s.nom.to_string(), s.detail.to_string()))
+                .collect::<Vec<_>>()
+                == [("Notes de réunion".to_string(), "Éditeur".to_string())]
+        },
+        "c338 : les fenêtres, sans celles d'Estompe",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_choisir_source("fenetre:7".into());
+    });
+    let ecrans = banc.ecrans.clone();
+    attendre_l_interface(
+        &faible,
+        move |f| {
+            ecrans.pousser("fenetre:7");
+            let p = f.global::<DonneesVocal>().get_partage();
+            p.apercu >= 0
+                && f.global::<DonneesVideo>()
+                    .get_flux()
+                    .row_data(p.apercu as usize)
+                    .is_some_and(|l| l.pret)
+        },
+        "c338 : l'aperçu de la source s'affiche avant de partager",
+    );
+    assert_eq!(banc.ecrans.ouverts(), vec![("fenetre:7".to_string(), 30)]);
+    assert!(!banc.serveur.video_publiee("v1", "u1", SourceVideo::Partage));
+    let (resolutions, detail) = sur_l_interface(&faible, |f| {
+        let p = f.global::<DonneesVocal>().get_partage();
+        (
+            p.resolutions
+                .iter()
+                .map(|r| (r.libelle.to_string(), r.actif))
+                .collect::<Vec<_>>(),
+            p.detail.to_string(),
+        )
+    });
+    assert_eq!(detail, "1280 × 800");
+    assert_eq!(
+        resolutions[1],
+        ("1080p (au-delà de ton écran)".to_string(), false)
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_cadence_partage(1);
+    });
+    attendre(
+        || banc.ecrans.ouverts() == [("fenetre:7".to_string(), 30)],
+        "c338 : l'aperçu reste plafonné à 30 images par seconde",
+    );
+    assert_eq!(memoire.lire(|p| p.partage.ips), 60);
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_partager();
+    });
+    attendre(
+        || banc.serveur.video_publiee("v1", "u1", SourceVideo::Partage),
+        "c338 : le partage est publié dans le salon",
+    );
+    let format = banc
+        .serveur
+        .format_publie("v1", "u1", SourceVideo::Partage)
+        .unwrap();
+    assert_eq!((format.hauteur, format.images_par_seconde), (720, 60));
+    let ecrans = banc.ecrans.clone();
+    attendre_l_interface(
+        &faible,
+        move |f| {
+            ecrans.pousser("fenetre:7");
+            let barre = f.global::<DonneesVocal>().get_barre();
+            !f.global::<DonneesVocal>().get_partage().ouvert
+                && barre.partage
+                && barre.partage_source == "Notes de réunion"
+                && barre.spectateurs_partage == "0 spectateur"
+                && tuiles(f)
+                    .iter()
+                    .any(|t| t.partage && t.moi && t.video >= 0 && t.vedette)
+        },
+        "c338 : « Tu partages ton écran » et ma tuile de partage en grand",
+    );
+    assert!(sur_l_interface(&faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "Tu partages ton écran : Notes de réunion")
+            .any(|e| e.size().height > 0.0)
+            && ["Qualité", "Changer de source", "Arrêter"]
+                .iter()
+                .all(|libelle| {
+                    ElementHandle::find_by_accessible_label(f, libelle).any(|e| {
+                        e.accessible_role() == Some(AccessibleRole::Button) && e.size().height > 0.0
+                    })
+                })
+    }));
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_changer_source_partage();
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let p = f.global::<DonneesVocal>().get_partage();
+            p.ouvert
+                && p.changer
+                && !p.fenetres
+                && f.global::<DonneesVocal>().get_sources_partage().row_count() == 1
+        },
+        "c338 : changer de source rouvre la liste sans arrêter le partage",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_choisir_source("ecran:0".into());
+        f.global::<DonneesVocal>().invoke_partager();
+    });
+    attendre(
+        || {
+            banc.session
+                .instantane()
+                .partage
+                .is_some_and(|p| p.source.id == "ecran:0")
+        },
+        "c338 : la nouvelle source est partagée",
+    );
+    assert!(banc.serveur.video_publiee("v1", "u1", SourceVideo::Partage));
+    attendre(
+        || banc.ecrans.ouverts() == [("ecran:0".to_string(), 60)],
+        "c338 : seule la nouvelle source est capturée",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_qualite_partage()
+    });
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_partage().etape == estompe_natif::EtapePartage::Qualite,
+        "c338 : la qualité se règle pendant le partage",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_prereglage_partage(2);
+        f.global::<DonneesVocal>().invoke_fermer_partage();
+    });
+    attendre(
+        || banc.ecrans.ouverts() == [("ecran:0".to_string(), 30)],
+        "c338 : « Économie de données » appliquée sans arrêter le partage",
+    );
+    banc.ecrans.retirer("ecran:0");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let barre = f.global::<DonneesVocal>().get_barre();
+            !barre.partage
+                && barre.message == "Partage arrêté : l'écran partagé n'est plus disponible."
+        },
+        "c338 : la source qui disparaît arrête le partage avec un message",
+    );
+    assert!(!banc.serveur.video_publiee("v1", "u1", SourceVideo::Partage));
+    banc.ecrans.brancher(SourceCapture {
+        id: "ecran:0".into(),
+        nom: "Écran 1".into(),
+        application: String::new(),
+        genre: TypeSource::Ecran,
+        largeur: 2560,
+        hauteur: 1440,
+        principale: true,
+        processus: None,
+        estompe: false,
+    });
+    raccourci(&faible, "s");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            f.global::<DonneesVocal>().get_partage().ouvert
+                && f.global::<DonneesVocal>().get_sources_partage().row_count() == 1
+        },
+        "c338 : Alt+Maj+S ouvre le sélecteur",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_choisir_source("ecran:0".into());
+        f.global::<DonneesVocal>().invoke_partager();
+    });
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_barre().partage,
+        "partage relancé",
+    );
+    cliquer(&faible, "Arrêter le partage");
+    attendre(
+        || !banc.serveur.video_publiee("v1", "u1", SourceVideo::Partage),
+        "c338 : « Arrêter le partage » retire le partage",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| {
+            !f.global::<DonneesVocal>().get_barre().partage
+                && !tuiles(f).iter().any(|t| t.partage && t.moi)
+        },
+        "c338 : partage arrêté, sa tuile disparaît",
+    );
+    assert!(banc.ecrans.ouverts().is_empty());
 
     cliquer(&faible, "Mode plein cadre");
     attendre_l_interface(
@@ -1251,6 +1469,38 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
     let cameras = CamerasFactices::nouvelles();
     cameras.brancher("c1", "Caméra intégrée");
     cameras.brancher("c2", "Webcam USB");
+    let ecrans = EcransFactices::nouveaux();
+    for (id, nom, genre, largeur, hauteur, application) in [
+        ("ecran:0", "Écran 1", TypeSource::Ecran, 2560, 1440, ""),
+        (
+            "fenetre:7",
+            "Notes de réunion",
+            TypeSource::Fenetre,
+            1280,
+            800,
+            "Éditeur",
+        ),
+        (
+            "fenetre:9",
+            "Estompe",
+            TypeSource::Fenetre,
+            1280,
+            800,
+            "Estompe",
+        ),
+    ] {
+        ecrans.brancher(SourceCapture {
+            id: id.into(),
+            nom: nom.into(),
+            application: application.into(),
+            genre,
+            largeur,
+            hauteur,
+            principale: id == "ecran:0",
+            processus: None,
+            estompe: id == "fenetre:9",
+        });
+    }
     let session = Arc::new(SessionVocale::demarrer(
         &entree.runtime(),
         Dependances {
@@ -1258,6 +1508,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
             connecteur: Arc::new(serveur.clone()),
             audio: Arc::new(audio.clone()),
             cameras: Arc::new(cameras.clone()),
+            ecrans: Arc::new(ecrans.clone()),
             apm: None,
             reglages: estompe_client::vocal::Reglages::default(),
         },
@@ -1287,6 +1538,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         audio: Arc::new(audio.clone()),
         raccourcis: Arc::new(RaccourcisFactices::nouveaux(false)),
         cameras: Arc::new(cameras.clone()),
+        ecrans: Arc::new(ecrans.clone()),
         apm: None,
     });
     let coquille = Coquille::brancher(
@@ -1305,6 +1557,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         session: session.clone(),
         visibilite: Arc::new(coquille.suivi_de_la_visibilite()),
         cameras,
+        ecrans,
     };
     let faible = fenetre.as_weak();
     let pilote = std::thread::spawn(move || {

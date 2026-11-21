@@ -5,6 +5,7 @@ use crate::audio::ReglagesMicro;
 use super::camera::QualiteCamera;
 use super::erreurs::CauseMicro;
 use super::mixage::Ecoute;
+use super::partage::{PartageLocal, PlafondPartage, ReglagesPartage};
 use super::salle::{est_partage, InfoParticipant, Qualite};
 use super::scene::{doit_recevoir, rassembler_spectateurs, SourcePiste, ATTRIBUT_SPECTATEUR};
 use super::video::{CleVideo, SourceVideo};
@@ -57,6 +58,11 @@ pub struct EtatVocal {
     pub camera: Option<String>,
     pub qualite_camera: QualiteCamera,
     pub camera_erreur: Option<String>,
+    pub partage: Option<PartageLocal>,
+    pub partage_demarrage: bool,
+    pub partage_erreur: Option<String>,
+    pub reglages_partage: ReglagesPartage,
+    pub plafond_partage: PlafondPartage,
 }
 
 impl Default for EtatVocal {
@@ -90,6 +96,11 @@ impl Default for EtatVocal {
             camera: None,
             qualite_camera: QualiteCamera::default(),
             camera_erreur: None,
+            partage: None,
+            partage_demarrage: false,
+            partage_erreur: None,
+            reglages_partage: ReglagesPartage::default(),
+            plafond_partage: PlafondPartage::default(),
         }
     }
 }
@@ -280,6 +291,8 @@ impl EtatVocal {
             camera: self.camera.take(),
             qualite_camera: self.qualite_camera,
             camera_erreur: self.camera_erreur.take(),
+            partage_erreur: self.partage_erreur.take(),
+            reglages_partage: self.reglages_partage,
             regarder_auto: self.regarder_auto,
             ..Self::default()
         };

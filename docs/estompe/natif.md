@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres et la caméra (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages) et [Caméra](#caméra)) ; publier son propre partage d'écran arrive au lot 5.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -705,7 +705,7 @@ Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/v
 - Rail : pastille « Connecté en vocal » sur le serveur du vocal. Accueil : « Rejoindre » ou « Ouvrir » sur chaque vocal en cours.
 - Vue du salon : hors du salon, l'écran pour rejoindre (participants, « n / 10 participants », erreur du serveur, permission `connect`, réglages audio) ; dans le salon,
   une grille de tuiles (même calcul que `gridDims` : 1, 2×1, 2×2, 3×n, 4×n), « Tu es seul·e ici », bandeau de reconnexion, et en bas les commandes :
-  micro (jauge, seuil franchi en rose), choix du micro, casque, choix de la sortie, caméra et partage « bientôt » (lot 5), réglages audio, raccrocher. « Ton micro est coupé » quand on parle micro coupé.
+  micro (jauge, seuil franchi en rose), choix du micro, casque, choix de la sortie, caméra, partage d'écran, réglages audio, raccrocher. « Ton micro est coupé » quand on parle micro coupé.
 - Mode plein cadre (bouton de l'en-tête, comme `VoiceChannelView.svelte`) : rail, panneau, en-tête et marge disparaissent, la fenêtre passe en plein écran, les commandes
   restent en barre flottante avec « Quitter le mode plein cadre » ; Échap ou quitter le salon en sort. Le front n'agrandit une tuile (« Mettre en grand ») que pour un flux
   vidéo : il arrivera avec la caméra et le partage d'écran (lot 5).
@@ -781,8 +781,7 @@ Disposition de la scène et visionnage d'un partage d'écran d'un autre particip
 - Tests : `scene::tests` (un test par cas de `stage.test.ts`), `vocal::tests::sans_regarder_aucune_image_ni_son_du_partage_n_est_recu`,
   `le_son_d_un_partage_regarde_est_mixe_avec_son_volume_propre`, `regarder_automatiquement_et_ne_jamais_rejouer_son_propre_partage` (serveur factice, mire),
   tests d'interface de `natif/tests/vocal.rs` et captures `vocal-partage-*`.
-- Écarts : la résolution reçue (« · 720p ») n'est pas affichée ; pas de menu contextuel sur la tuile d'un partage (le clic ouvre le menu du partage) ; la publication
-  de son propre partage et son bandeau « Tu partages ton écran » arrivent avec le sélecteur (#338).
+- Écarts : la résolution reçue (« · 720p ») n'est pas affichée ; pas de menu contextuel sur la tuile d'un partage (le clic ouvre le menu du partage).
 
 ### Caméra
 
@@ -802,6 +801,41 @@ Capture par nokhwa dans la crate plateforme (`CamerasSysteme`, seule partie prop
   dans la barre du vocal (`camera_erreur`) ou dans la fenêtre d'aperçu (« Caméra déjà utilisée par une autre application. », « Caméra débranchée. »…).
 - Écarts : pas d'effets d'arrière-plan (lot 11) ni de choix du codec (`videoCodec`) ; le message d'un refus d'accès ne distingue pas un refus du système d'une caméra
   occupée quand le pilote ne le dit pas ; sous Linux seules les caméras V4L2 sont proposées (pas de portail caméra de PipeWire).
+
+### Partage d'écran
+
+Sélecteur de source, publication et réglage du partage (`MediaPicker.svelte`, `pickScreen`, `publishScreen`, `changeSource`, `setScreenQuality` du front).
+Logique dans la crate client (`vocal/partage.rs` : qualités et plafonds ; `vocal/session/partage.rs` : capture et publication par la session), capture par le trait
+`CaptureEcran` de la crate plateforme (voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)), interface dans `natif/src/vocal/pont/partage.rs` et `natif/ui/vocal/partage.slint`.
+
+- Identité : le partage est publié par la connexion du vocal (piste `screen_share`), comme le front web, et non par un second participant `<id>#screen`
+  comme le prototype de l'app Tauri. Le web, l'app Tauri (qui affiche les pistes avec le code du front) et l'app native le voient chez son auteur, avec ses spectateurs.
+- Sélecteur (bouton « Partager l'écran » des commandes, Alt+Maj+S comme le front) : onglets « Écrans » et « Fenêtres », une carte par source avec sa miniature
+  (`miniature`, 180 px de haut), son titre et l'application ou la taille ; les miniatures sont recalculées toutes les 2 s tant que la liste est affichée
+  (`PERIODE_MINIATURES`), sur un fil à part ; les fenêtres d'Estompe ne sont pas proposées ; « Actualiser », « Annuler », « Aucun écran trouvé. »,
+  « Impossible de lister les écrans et fenêtres. ». Sous Wayland ou sans serveur X : « Le partage d'écran n'est pas disponible sur ce système ».
+- Aperçu : la source choisie est capturée (au plus 30 images par seconde, `IPS_APERCU_MAX`) et affichée avant de partager, avec son titre et sa taille ; « Changer de source »
+  revient à la liste ; une source qui disparaît pendant l'aperçu l'indique.
+- Qualité (mêmes valeurs que le front : `SCREEN_RES`, `SCREEN_FPS`, `screenBitrate`, `clampScreen`, `stepDown`, `screenMode`) : préréglages « Fluide » (1080p, 60 i/s,
+  fluidité), « Net » (1440p, 30 i/s, netteté), « Économie de données » (720p, 30 i/s) ; résolution (720p à 4K) et images par seconde (30, 60, 120), grisées au-delà
+  du plafond du serveur (`screen_max_fps`, `screen_max_height` du jeton vocal, 60 et 2160 par défaut) ou de la hauteur de la source (« (au-delà de ton écran) ») ;
+  débit montant estimé et rappels du front ; « Privilégier la fluidité » (indice de contenu et préférence de dégradation de l'encodeur) et « Réduire automatiquement ».
+  Réglages retenus (`partage` des préférences : résolution, images par seconde, fluidité, réduction automatique).
+- Publication (`SessionVocale::partager`) : capture continue de la source (`CaptureEcran::demarrer`, cadence de la qualité, curseur), image RGBA convertie en I420 et
+  réduite à la hauteur de la qualité (libyuv par le SDK : `abgr_to_i420`, `I420Buffer::scale`), piste `Screenshare` publiée avec le débit et la cadence de la qualité,
+  le simulcast au-delà de 1080p et la dégradation choisie (`TrackPublishOptions::degradation_preference`, source « écran » de WebRTC en mode netteté).
+- Pendant le partage : bandeau « Tu partages ton écran » au-dessus des commandes de la scène (nombre de spectateurs, « Qualité », « Changer de source », « Arrêter »),
+  rappel permanent « Tu partages : <source> » dans la barre du vocal du panneau, ma tuile de partage (l'image capturée) mise en avant comme un partage regardé.
+  Changer de source remplace la capture sans retirer la piste ; changer la qualité règle la cadence de la capture et la hauteur envoyée sans relancer le partage.
+- Réduction automatique (`watchScreen` du front) : toutes les 3 s la session lit la raison de limitation de l'encodeur (`get_stats`, `qualityLimitationReason`) ;
+  freiné par le débit ou le processeur trois mesures de suite, le partage descend d'un palier (`palier_inferieur`) et l'avis « Connexion ou ordinateur limités : partage
+  réduit à … » s'affiche dans la barre ; on ne remonte pas seul.
+- Fin : « Arrêter », le bouton des commandes ou Alt+Maj+S retirent la piste et libèrent la capture ; quitter ou changer de salon arrête le partage ; une reconnexion le republie.
+  Fenêtre fermée ou écran perdu : « Partage arrêté : la fenêtre partagée a été fermée. » (ou « l'écran partagé n'est plus disponible ») ; fenêtre réduite : rien n'est envoyé jusqu'à sa restauration.
+- Incrustation de la caméra (#340) : `SessionVocale::definir_incrustation` reçoit un `Incrustation` qui modifie chaque image du partage avant l'envoi et l'affichage ; aucun n'est encore fourni.
+- Écarts : le plafond de débit de l'encodeur est celui du début du partage (le SDK Rust 0.12 n'expose pas `setParameters` : changer la qualité règle la capture,
+  pas le débit maximal) ; pas d'« Autre méthode » (sélecteur du système) ni de portail Wayland (lot 11) ; « Afficher le jeu en cours aux autres » (`SettingsShare` de l'app Windows)
+  arrive avec la détection du jeu (lot 7) ; pas d'avis « Le système limite la capture à … images/s ».
 
 ### Appuyer pour parler
 
@@ -862,6 +896,12 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
   `vocal::tests` : caméra publiée au format de la qualité, images reçues par l'autre participant, changement de caméra sans retrait, changement de qualité, retrait ;
   caméra occupée, débranchée pendant l'appel ou absente (retour à « désactivée » avec la raison) ; rejoindre caméra activée ; `crates/plateforme/src/camera.rs` : messages du système en cause.
 - `crates/client/tests/livekit.rs::la_camera_est_publiee_changee_puis_retiree` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) : caméra factice publiée, images reçues par l'autre client, changement de caméra, retrait vu par l'autre client.
+- Partage d'écran : `vocal::partage::tests` (cas de `screen.test.ts` : plafonds du serveur, paliers, fluidité et netteté, débit, préréglages, conversion RGBA vers I420) ;
+  `vocal::tests` (faux serveur, sources factices `EcransFactices` de la crate plateforme) : publication au format de la qualité, images reçues par l'autre participant et ma tuile,
+  changement de source sans retrait, changement de qualité, arrêt, source fermée ou en échec (message), plafond du serveur et taille de la source, réduction automatique par palier,
+  incrustation appliquée ; `crates/client/tests/livekit.rs::le_partage_est_publie_change_de_source_et_de_qualite_puis_retire` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) ;
+  `natif/tests/vocal.rs` : sélecteur (écrans, fenêtres sans celles d'Estompe, miniatures), aperçu, qualité grisée au-delà de la source, publication, bandeau et rappel de la barre,
+  ma tuile en grand, changement de source et de qualité pendant le partage, source perdue, Alt+Maj+S, « Arrêter ».
 - `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
   perte du focus, raccourci indisponible (message, touche fenêtre active) ; `audio::tonalite::tests` ; `store::reducteur::tests::transmet_le_deplacement_par_un_moderateur`.
 - `crates/plateforme/src/raccourcis/` : table des touches, appui et relâchement sans répétition ; sous X11 (`DISPLAY`, ignoré sinon) une touche simulée par XTest est signalée
@@ -879,7 +919,7 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
   déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
 - `audio::son_perso::tests` : WAV stéréo à 44,1 kHz, flottant, 8 et 24 bits, Ogg Opus sans ffmpeg, MP3 par ffmpeg (ignoré sans ffmpeg, exigé par `ESTOMPE_FFMPEG_EXIGE`),
   refus au-delà de 150 Ko ou d'un fichier illisible, fichier gardé et remplacé, lecture au volume des sons ; `vocal::projection::tests` : qui peut glisser un participant.
-- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-video` (tuile avec l'image de la mire), `vocal-camera-apercu` (fenêtre « Activer la caméra » avec l'aperçu), `vocal-camera-erreur` (caméra occupée), `vocal-camera-active` (ma caméra en miroir dans ma tuile), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
+- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-video` (tuile avec l'image de la mire), `vocal-camera-apercu` (fenêtre « Activer la caméra » avec l'aperçu), `vocal-camera-erreur` (caméra occupée), `vocal-camera-active` (ma caméra en miroir dans ma tuile), `vocal-partage-sources` (sélecteur), `vocal-partage-apercu`, `vocal-partage-aucune-source`, `vocal-partage-en-cours` (bandeau, ma tuile, barre), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
   `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`, `vocal-sons-perso` (« Mon fichier » choisi, refus d'un fichier),
   `vocal-glisser` (salons proposés pendant le glisser), `vocal-glisser-refus`.
 
@@ -991,7 +1031,8 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
-publication dans le salon, incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (lot 8). Il ne fait ni interface
+publication dans le salon (voir [Partage d'écran](#partage-décran)), incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (lot 8).
+`EcransFactices` (même module) donne des sources factices aux tests : images poussées à la demande, fenêtre réduite, fermée ou en échec. Il ne fait ni interface
 ni publication, ni son : celui du partage aura son propre trait (`CaptureSon`), qui recevra le processus de la fenêtre (`SourceCapture::processus`).
 
 - `sources()` : écrans puis fenêtres, chacun avec un identifiant (`ecran:<n>` ou `fenetre:<n>`, `IdSource`), un titre, l'application (nom de

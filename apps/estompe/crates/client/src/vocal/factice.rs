@@ -10,9 +10,10 @@ use tokio::sync::mpsc;
 use crate::http::{ErreurApi, Refus};
 
 use super::camera::FormatVideo;
+use super::partage::PlafondPartage;
 use super::salle::{
     Connecteur, Connexion, ErreurSalle, EvenementSalle, FluxTrames, InfoParticipant, JetonSalle,
-    RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
+    Limitation, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
 use super::session::ApiVocale;
 use super::video::{DemandeVideo, FluxVideo, ImageI420, ImageVideo, SourceVideo};
@@ -66,6 +67,8 @@ struct EtatServeur {
     formats: BTreeMap<CleFactice, FormatVideo>,
     publiees: BTreeMap<CleFactice, usize>,
     sons_partage: BTreeMap<(String, String), SonsPartage>,
+    dimensions: BTreeMap<CleFactice, (u32, u32)>,
+    limitations: BTreeMap<String, Limitation>,
 }
 
 #[derive(Clone, Default)]
@@ -311,6 +314,24 @@ impl ServeurVocalFactice {
             .unwrap_or(0)
     }
 
+    pub fn dimensions_publiees(
+        &self,
+        salle: &str,
+        identite: &str,
+        source: SourceVideo,
+    ) -> Option<(u32, u32)> {
+        self.etat()
+            .dimensions
+            .get(&(salle.to_string(), identite.to_string(), source))
+            .copied()
+    }
+
+    pub fn limiter(&self, identite: &str, limitation: Limitation) {
+        self.etat()
+            .limitations
+            .insert(identite.to_string(), limitation);
+    }
+
     pub fn images_envoyees(&self, abonne: &str) -> usize {
         self.etat().images.get(abonne).copied().unwrap_or(0)
     }
@@ -541,13 +562,22 @@ impl SortieVideo for SortieVideoFactice {
         if !self.serveur.etat().videos.contains_key(&cle) {
             return;
         }
-        *self.serveur.etat().publiees.entry(cle).or_default() += 1;
+        {
+            let mut etat = self.serveur.etat();
+            etat.dimensions
+                .insert(cle.clone(), (image.largeur, image.hauteur));
+            *etat.publiees.entry(cle).or_default() += 1;
+        }
         self.serveur.pousser_image(
             &self.salle,
             &self.identite,
             self.source,
             Arc::new(image.clone()),
         );
+    }
+
+    fn piste(&self) -> String {
+        piste_factice(&self.identite, self.source)
     }
 }
 
@@ -694,6 +724,17 @@ impl Salle for SalleFactice {
         })
     }
 
+    fn limitation_video(&self, _source: SourceVideo) -> BoxFuture<'_, Limitation> {
+        Box::pin(async move {
+            self.serveur
+                .etat()
+                .limitations
+                .get(&self.identite)
+                .copied()
+                .unwrap_or_default()
+        })
+    }
+
     fn fermer(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
             if self.fermee.swap(true, Ordering::SeqCst) {
@@ -729,6 +770,7 @@ pub struct ApiVocaleFactice {
     pub refus: Mutex<BTreeMap<String, (u16, String)>>,
     pub appels: AtomicUsize,
     delai: Mutex<Duration>,
+    plafond: Mutex<Option<PlafondPartage>>,
 }
 
 impl ApiVocaleFactice {
@@ -739,6 +781,13 @@ impl ApiVocaleFactice {
             refus: Mutex::new(BTreeMap::new()),
             appels: AtomicUsize::new(0),
             delai: Mutex::new(Duration::ZERO),
+            plafond: Mutex::new(None),
+        }
+    }
+
+    pub fn plafonner(&self, plafond: Option<PlafondPartage>) {
+        if let Ok(mut p) = self.plafond.lock() {
+            *p = plafond;
         }
     }
 
@@ -787,6 +836,7 @@ impl ApiVocale for ApiVocaleFactice {
                 jeton: format!("{}@{salon}", self.identite),
                 salle: salon,
                 max_participants: Some(10),
+                plafond_partage: self.plafond.lock().ok().and_then(|p| *p),
             })
         })
     }

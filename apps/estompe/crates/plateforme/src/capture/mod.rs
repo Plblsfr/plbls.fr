@@ -1,4 +1,5 @@
 mod cadence;
+mod factice;
 mod flux;
 mod pixels;
 mod source;
@@ -13,6 +14,7 @@ use windows as os;
 use x11 as os;
 
 pub use cadence::{Cadence, IPS_MAX};
+pub use factice::{image_unie, EcransFactices};
 pub use flux::FluxCapture;
 pub use pixels::{bgra_vers_rgba, incruster_curseur, melanger_curseur, reduire};
 pub use source::IdSource;

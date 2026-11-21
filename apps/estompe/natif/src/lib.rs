@@ -92,16 +92,18 @@ pub fn demarrer(
         ecrans::publieur(fenetre),
     )
     .map_err(|e| format!("fil de l'entrée : {e}"))?;
-    let (micro, sortie, traitement, ecoute, camera, qualite_camera) = session.memoire.lire(|p| {
-        (
-            p.micro.clone(),
-            p.sortie_audio.clone(),
-            p.traitement_micro,
-            p.ecoute.clone(),
-            p.camera.clone(),
-            p.qualite_camera,
-        )
-    });
+    let (micro, sortie, traitement, ecoute, camera, qualite_camera, partage) =
+        session.memoire.lire(|p| {
+            (
+                p.micro.clone(),
+                p.sortie_audio.clone(),
+                p.traitement_micro,
+                p.ecoute.clone(),
+                p.camera.clone(),
+                p.qualite_camera,
+                p.partage,
+            )
+        });
     let audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio> =
         std::sync::Arc::new(estompe_plateforme::AudioSysteme);
     let apm = apm_vocal();
@@ -114,6 +116,7 @@ pub fn demarrer(
             connecteur: connecteur_vocal(),
             audio: audio.clone(),
             cameras: cameras.clone(),
+            ecrans: plateforme.capture_ecran.clone(),
             apm: apm.clone(),
             reglages: estompe_client::vocal::Reglages {
                 micro,
@@ -122,6 +125,7 @@ pub fn demarrer(
                 ecoute,
                 camera,
                 qualite_camera,
+                partage,
                 ..estompe_client::vocal::Reglages::default()
             },
         },
@@ -132,6 +136,7 @@ pub fn demarrer(
         audio,
         raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
         cameras,
+        ecrans: plateforme.capture_ecran.clone(),
         apm,
     };
     let jeton = reels.auth.fournisseur_jeton();

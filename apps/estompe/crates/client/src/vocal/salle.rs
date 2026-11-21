@@ -6,7 +6,10 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use tokio::sync::mpsc;
 
+use estompe_plateforme::Image;
+
 use super::camera::FormatVideo;
+use super::partage::{i420_de_rgba, PlafondPartage};
 use super::video::{DemandeVideo, FluxVideo, ImageI420, SourceVideo};
 
 pub const SUFFIXE_PARTAGE: &str = "#screen";
@@ -17,6 +20,22 @@ pub struct JetonSalle {
     pub jeton: String,
     pub salle: String,
     pub max_participants: Option<u32>,
+    pub plafond_partage: Option<PlafondPartage>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Limitation {
+    #[default]
+    Aucune,
+    Processeur,
+    Debit,
+    Autre,
+}
+
+impl Limitation {
+    pub fn freine(self) -> bool {
+        matches!(self, Self::Processeur | Self::Debit)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -228,6 +247,14 @@ pub trait SortieMicro: Send + Sync {
 
 pub trait SortieVideo: Send + Sync {
     fn envoyer(&self, image: &ImageI420);
+    fn envoyer_rgba(&self, image: &Image, hauteur_max: u32) {
+        if let Some(i420) = i420_de_rgba(image, hauteur_max) {
+            self.envoyer(&i420);
+        }
+    }
+    fn piste(&self) -> String {
+        String::new()
+    }
 }
 
 pub struct Connexion {
@@ -251,6 +278,9 @@ pub trait Salle: Send + Sync {
         format: FormatVideo,
     ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>>;
     fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()>;
+    fn limitation_video(&self, _source: SourceVideo) -> BoxFuture<'_, Limitation> {
+        Box::pin(async { Limitation::Aucune })
+    }
     fn fermer(&self) -> BoxFuture<'_, ()>;
 }
 

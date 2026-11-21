@@ -4,6 +4,7 @@ import { DonneesVocal } from "donnees.slint";
 import { Tuile } from "tuile.slint";
 import { CommandesVocal, AvisVocal } from "commandes.slint";
 import { DonneesVideo } from "../video/flux.slint";
+import { BandeauPartage } from "partage.slint";
 
 component Rejoindre inherits VerticalLayout {
     alignment: center;
@@ -125,7 +126,7 @@ component Rejoindre inherits VerticalLayout {
         }
     }
     Text {
-        text: "L'audio et la vidéo passent par le serveur vocal. Partager ton écran arrive bientôt dans l'app native.";
+        text: "L'audio et la vidéo passent par le serveur vocal.";
         color: Theme.gris;
         font-size: Typo.petit;
         horizontal-alignment: center;
@@ -135,7 +136,7 @@ component Rejoindre inherits VerticalLayout {
 
 component Scene inherits Rectangle {
     property <length> ecart: 12px;
-    property <length> marge-bas: 92px;
+    property <length> marge-bas: DonneesVocal.barre.partage ? 148px : 92px;
     property <int> colonnes: Math.max(1, DonneesVocal.vue.colonnes);
     property <int> rangees: Math.max(1, DonneesVocal.vue.rangees);
     property <length> largeur-grille: colonnes == 1 && rangees == 1 ? Math.min(self.width - 48px, 960px) : self.width - 48px;
@@ -209,6 +210,10 @@ component Scene inherits Rectangle {
         color: Theme.gris;
         font-size: Typo.petit;
         horizontal-alignment: center;
+    }
+    if !root.plein && DonneesVocal.barre.partage: BandeauPartage {
+        x: (parent.width - self.width) / 2;
+        y: barre.y - self.height - 12px;
     }
     barre := Rectangle {
         x: (parent.width - self.width) / 2;

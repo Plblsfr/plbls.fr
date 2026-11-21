@@ -1,0 +1,433 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Chargement, Case, Icone } from "../composants.slint";
+import { DonneesVocal, EtapePartage, OptionPartage } from "donnees.slint";
+import { ImageFlux } from "../video/flux.slint";
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+component Onglet inherits Rectangle {
+    in property <string> texte;
+    in property <bool> choisi;
+    callback clique();
+    height: 32px;
+    horizontal-stretch: 1;
+    border-radius: Rayon.s;
+    background: choisi ? Theme.surface : transparent;
+    accessible-role: tab;
+    accessible-label: texte;
+    accessible-checked: choisi;
+    accessible-action-default => {
+        root.clique();
+    }
+    Text {
+        text: root.texte;
+        color: root.choisi ? Theme.encre : Theme.gris;
+        font-weight: root.choisi ? Typo.demi-gras : Typo.normal;
+        font-size: Typo.petit;
+    }
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component CarteSource inherits Rectangle {
+    in property <string> nom;
+    in property <string> detail;
+    in property <image> miniature;
+    in property <bool> prete;
+    callback clique();
+    border-radius: Rayon.m;
+    border-width: 1px;
+    border-color: zone.has-hover || portee.has-focus ? Theme.rose : Theme.trait;
+    background: Theme.surface;
+    accessible-role: button;
+    accessible-label: "Partager « \{nom} »";
+    accessible-action-default => {
+        root.clique();
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+    portee := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    VerticalLayout {
+        padding: Espace.e2;
+        spacing: 4px;
+        Rectangle {
+            height: self.width * 9 / 16;
+            border-radius: Rayon.s;
+            background: #0e0c0b;
+            clip: true;
+            if root.prete: Image {
+                width: 100%;
+                height: 100%;
+                source: root.miniature;
+                image-fit: contain;
+            }
+            if !root.prete: Chargement {
+                couleur: #ffffff;
+            }
+        }
+        Text {
+            text: root.nom;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+            overflow: elide;
+        }
+        Text {
+            text: root.detail;
+            color: Theme.gris;
+            font-size: Typo.minuscule;
+            overflow: elide;
+        }
+    }
+}
+
+component Options inherits HorizontalLayout {
+    in property <[OptionPartage]> options;
+    callback choisi(int);
+    spacing: Espace.e1;
+    for o[i] in root.options: Bouton {
+        texte: o.libelle;
+        description: o.indice;
+        actif: o.actif;
+        variante: o.choisi ? VarianteBouton.primaire : VarianteBouton.secondaire;
+        calque: 1;
+        clique => {
+            root.choisi(i);
+        }
+    }
+}
+
+component Qualite inherits VerticalLayout {
+    spacing: Espace.e3;
+    VerticalLayout {
+        spacing: Espace.e2;
+        Titre {
+            text: "QUALITÉ DU PARTAGE";
+        }
+        HorizontalLayout {
+            spacing: Espace.e1;
+            for p[i] in DonneesVocal.partage.prereglages: Bouton {
+                texte: p.libelle;
+                description: p.indice;
+                variante: p.choisi ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.prereglage-partage(i);
+                }
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: Espace.e2;
+        Titre {
+            text: "RÉSOLUTION";
+        }
+        Options {
+            options: DonneesVocal.partage.resolutions;
+            choisi(i) => {
+                DonneesVocal.resolution-partage(i);
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: Espace.e2;
+        Titre {
+            text: "IMAGES PAR SECONDE";
+        }
+        Options {
+            options: DonneesVocal.partage.cadences;
+            choisi(i) => {
+                DonneesVocal.cadence-partage(i);
+            }
+        }
+        Text {
+            text: DonneesVocal.partage.resume;
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+    Case {
+        texte: "Privilégier la fluidité (jeux, vidéos) plutôt que la netteté du texte";
+        cochee: DonneesVocal.partage.fluidite;
+        calque: 1;
+        bascule(c) => {
+            DonneesVocal.fluidite-partage(c);
+        }
+    }
+    Case {
+        texte: "Réduire automatiquement si la connexion ne suit pas";
+        cochee: DonneesVocal.partage.auto;
+        calque: 1;
+        bascule(c) => {
+            DonneesVocal.auto-partage(c);
+        }
+    }
+}
+
+export component ApercuPartage inherits Rectangle {
+    height: self.width * 9 / 16;
+    border-radius: Rayon.l;
+    background: #0e0c0b;
+    clip: true;
+    accessible-role: image;
+    accessible-label: "Aperçu du partage";
+    flux := ImageFlux {
+        width: 100%;
+        height: 100%;
+        indice: DonneesVocal.partage.apercu;
+        rayon: Rayon.l;
+        coins: Theme.surface;
+        contenir: true;
+    }
+    if !flux.pret: HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Chargement {
+                couleur: #ffffff;
+            }
+        }
+    }
+}
+
+export component ChoixPartage inherits Modal {
+    titre: DonneesVocal.partage.etape == EtapePartage.qualite ? "Qualité du partage" : DonneesVocal.partage.changer ? "Changer de source" : "Partager l'écran";
+    ouvert: DonneesVocal.partage.ouvert;
+    largeur: DonneesVocal.partage.etape == EtapePartage.source ? 720px : 560px;
+    ferme => {
+        DonneesVocal.fermer-partage();
+    }
+    if DonneesVocal.partage.ouvert && DonneesVocal.partage.etape == EtapePartage.source: VerticalLayout {
+        spacing: Espace.e3;
+        if DonneesVocal.partage.indisponible: Text {
+            text: "Le partage d'écran n'est pas disponible sur ce système (session Wayland ou sans serveur X).";
+            color: Theme.encre-2;
+            wrap: word-wrap;
+        }
+        if !DonneesVocal.partage.indisponible: Rectangle {
+            height: 40px;
+            border-radius: Rayon.m;
+            background: Theme.papier;
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                Onglet {
+                    texte: "Écrans";
+                    choisi: !DonneesVocal.partage.fenetres;
+                    clique => {
+                        DonneesVocal.onglet-partage(false);
+                    }
+                }
+                Onglet {
+                    texte: "Fenêtres";
+                    choisi: DonneesVocal.partage.fenetres;
+                    clique => {
+                        DonneesVocal.onglet-partage(true);
+                    }
+                }
+            }
+        }
+        if !DonneesVocal.partage.indisponible && DonneesVocal.sources-partage.length > 0: Rectangle {
+            property <int> colonnes: 3;
+            property <length> ecart: Espace.e2;
+            property <length> largeur-carte: (self.width - (colonnes - 1) * ecart) / colonnes;
+            property <length> hauteur-carte: largeur-carte * 9 / 16 + 56px;
+            height: Math.min(3, Math.ceil(DonneesVocal.sources-partage.length / colonnes)) * (hauteur-carte + ecart);
+            clip: true;
+            for s[i] in DonneesVocal.sources-partage: CarteSource {
+                x: Math.mod(i, parent.colonnes) * (parent.largeur-carte + parent.ecart);
+                y: Math.floor(i / parent.colonnes) * (parent.hauteur-carte + parent.ecart);
+                width: parent.largeur-carte;
+                height: parent.hauteur-carte;
+                nom: s.nom;
+                detail: s.detail;
+                miniature: s.miniature;
+                prete: s.prete;
+                clique => {
+                    DonneesVocal.choisir-source(s.id);
+                }
+            }
+        }
+        if !DonneesVocal.partage.indisponible && DonneesVocal.sources-partage.length == 0 && DonneesVocal.partage.chargement: HorizontalLayout {
+            alignment: center;
+            Chargement { }
+        }
+        if !DonneesVocal.partage.indisponible && DonneesVocal.sources-partage.length == 0 && !DonneesVocal.partage.chargement: Text {
+            text: DonneesVocal.partage.vide;
+            color: Theme.gris;
+            font-size: Typo.petit;
+        }
+        if DonneesVocal.partage.erreur != "": Text {
+            text: DonneesVocal.partage.erreur;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            if !DonneesVocal.partage.indisponible: Bouton {
+                texte: "Actualiser";
+                variante: VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.actualiser-partage();
+                }
+            }
+            Bouton {
+                texte: "Annuler";
+                variante: VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.fermer-partage();
+                }
+            }
+        }
+    }
+    if DonneesVocal.partage.ouvert && DonneesVocal.partage.etape != EtapePartage.source: VerticalLayout {
+        spacing: Espace.e4;
+        if DonneesVocal.partage.etape == EtapePartage.apercu: ApercuPartage { }
+        if DonneesVocal.partage.etape == EtapePartage.apercu: Text {
+            text: DonneesVocal.partage.source + " · " + DonneesVocal.partage.detail;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            overflow: elide;
+        }
+        Qualite { }
+        if DonneesVocal.partage.erreur != "": Text {
+            text: DonneesVocal.partage.erreur;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            if DonneesVocal.partage.etape == EtapePartage.qualite: Bouton {
+                texte: "Terminé";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.fermer-partage();
+                }
+            }
+            if DonneesVocal.partage.etape == EtapePartage.apercu: Bouton {
+                texte: "Annuler";
+                variante: VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.fermer-partage();
+                }
+            }
+            if DonneesVocal.partage.etape == EtapePartage.apercu: Bouton {
+                texte: "Changer de source";
+                variante: VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.revenir-aux-sources();
+                }
+            }
+            if DonneesVocal.partage.etape == EtapePartage.apercu: Bouton {
+                texte: DonneesVocal.partage.changer ? "Partager cette source" : "Partager";
+                icone: "monitor";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.partager();
+                }
+            }
+        }
+    }
+}
+
+export component BandeauPartage inherits Rectangle {
+    height: 40px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.rose;
+    accessible-role: groupbox;
+    accessible-label: "Tu partages ton écran, \{DonneesVocal.barre.spectateurs-partage}";
+    contenu := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 6px;
+        spacing: Espace.e2;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "monitor";
+                taille: 16px;
+                couleur: Theme.rose;
+            }
+        }
+        Text {
+            text: "Tu partages ton écran";
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.gras;
+            vertical-alignment: center;
+        }
+        Text {
+            text: DonneesVocal.barre.spectateurs-partage;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: 11.5px;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Qualité";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesVocal.qualite-partage();
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Changer de source";
+                variante: VarianteBouton.secondaire;
+                clique => {
+                    DonneesVocal.changer-source-partage();
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Arrêter";
+                variante: VarianteBouton.danger;
+                clique => {
+                    DonneesVocal.arreter-partage();
+                }
+            }
+        }
+    }
+}

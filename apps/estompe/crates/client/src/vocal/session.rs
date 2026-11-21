@@ -3,7 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use estompe_plateforme::{ErreurCamera, SensAudio, SystemeAudio, SystemeCamera};
+use estompe_plateforme::{
+    CaptureEcran, ErreurCamera, FluxCapture, SensAudio, SourceCapture, SystemeAudio, SystemeCamera,
+};
 use futures_util::future::BoxFuture;
 use futures_util::StreamExt;
 use tokio::runtime::Handle;
@@ -20,11 +22,16 @@ use super::camera::{message_camera, CaptureCamera, QualiteCamera, SignalCamera, 
 use super::erreurs::{CauseMicro, ErreurVocal};
 use super::etat::{EtatVocal, Phase};
 use super::mixage::{Ecoute, Mixeur};
+use super::partage::{PlafondPartage, QualitePartage, ReglagesPartage};
 use super::salle::{
     est_partage, proprietaire, Connecteur, Connexion, EvenementSalle, JetonSalle,
     RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
 use super::video::{CleVideo, DemandeVideo, ImageI420, RecepteurVideo, SourceVideo, Videos};
+
+mod partage;
+
+pub use partage::Incrustation;
 
 pub const DELAI_FERMETURE: Duration = Duration::from_secs(3);
 pub const MESSAGE_CONNEXION_PERDUE: &str = "Connexion au vocal perdue.";
@@ -32,6 +39,15 @@ pub const MESSAGE_PUBLICATION_CAMERA: &str = "Impossible de publier la caméra d
 
 pub trait ApiVocale: Send + Sync {
     fn jeton(&self, salon: &str) -> BoxFuture<'_, Result<JetonSalle, ErreurApi>>;
+}
+
+pub fn plafond_de_reponse(ips: Option<i64>, hauteur: Option<i64>) -> Option<PlafondPartage> {
+    let defaut = PlafondPartage::default();
+    let positif = |v: Option<i64>| v.and_then(|v| u32::try_from(v).ok()).filter(|v| *v > 0);
+    (ips.is_some() || hauteur.is_some()).then(|| PlafondPartage {
+        ips: positif(ips).unwrap_or(defaut.ips),
+        hauteur: positif(hauteur).unwrap_or(defaut.hauteur),
+    })
 }
 
 impl ApiVocale for Client {
@@ -48,6 +64,10 @@ impl ApiVocale for Client {
                         max_participants: reponse
                             .max_participants
                             .and_then(|m| u32::try_from(m).ok()),
+                        plafond_partage: plafond_de_reponse(
+                            reponse.screen_max_fps,
+                            reponse.screen_max_height,
+                        ),
                     })
                 }
                 _ => Err(ErreurApi::ReponseInvalide(
@@ -70,6 +90,7 @@ pub struct Reglages {
     pub camera: Option<String>,
     pub qualite_camera: QualiteCamera,
     pub regarder_auto: bool,
+    pub partage: ReglagesPartage,
 }
 
 impl Default for Reglages {
@@ -88,6 +109,7 @@ impl Default for Reglages {
             camera: None,
             qualite_camera: QualiteCamera::default(),
             regarder_auto: false,
+            partage: ReglagesPartage::default(),
         }
     }
 }
@@ -97,6 +119,7 @@ pub struct Dependances {
     pub connecteur: Arc<dyn Connecteur>,
     pub audio: Arc<dyn SystemeAudio>,
     pub cameras: Arc<dyn SystemeCamera>,
+    pub ecrans: Arc<dyn CaptureEcran>,
     pub apm: Option<Arc<Apm>>,
     pub reglages: Reglages,
 }
@@ -109,6 +132,7 @@ pub enum AvisVocal {
     Depart(String),
     Deplace(String),
     Peripherique(SensAudio, Bascule),
+    PartageReduit(QualitePartage),
 }
 
 enum Commande {
@@ -118,6 +142,11 @@ enum Commande {
     ChoisirCamera(Option<String>),
     QualiteCamera(QualiteCamera),
     CameraPerdue(ErreurCamera, u64),
+    Partager(SourceCapture),
+    ChangerSource(SourceCapture),
+    ReglerPartage(ReglagesPartage),
+    ArreterPartage,
+    SignalPartage(u64, partage::SignalPartage),
     Deplacer(String),
     DeplaceParModeration {
         de: String,
@@ -176,6 +205,7 @@ impl EchecConnexion {
 struct Tentative {
     generation: u64,
     resultat: Result<Connexion, EchecConnexion>,
+    plafond: Option<PlafondPartage>,
 }
 
 struct RouteMicro {
@@ -265,6 +295,7 @@ pub struct SessionVocale {
     avis: broadcast::Sender<AvisVocal>,
     mesure: Arc<MesureMicro>,
     videos: Arc<Videos>,
+    route_partage: Arc<partage::RoutePartage>,
     runtime: Handle,
 }
 
@@ -279,11 +310,13 @@ impl SessionVocale {
         etat_initial.traitement = dependances.reglages.traitement.borne();
         etat_initial.ecoute = dependances.reglages.ecoute.clone().bornee();
         etat_initial.regarder_auto = dependances.reglages.regarder_auto;
+        etat_initial.reglages_partage = dependances.reglages.partage.borne();
         let (diffusion, etat) = watch::channel(etat_initial.clone());
         let (avis, _) = broadcast::channel(64);
         let mesure = Arc::new(MesureMicro::default());
         let videos = Videos::nouvelles();
-        let acteur = Acteur::nouveau(
+        let route_partage = Arc::new(partage::RoutePartage::default());
+        let mut acteur = Acteur::nouveau(
             dependances,
             etat_initial,
             diffusion,
@@ -292,6 +325,7 @@ impl SessionVocale {
             videos.clone(),
             commandes.clone(),
         );
+        acteur.route_partage = route_partage.clone();
         runtime.spawn(acteur.tourner(reception));
         Self {
             commandes,
@@ -299,6 +333,7 @@ impl SessionVocale {
             avis,
             mesure,
             videos,
+            route_partage,
             runtime: runtime.clone(),
         }
     }
@@ -337,6 +372,26 @@ impl SessionVocale {
 
     pub fn definir_qualite_camera(&self, qualite: QualiteCamera) {
         self.envoyer(Commande::QualiteCamera(qualite));
+    }
+
+    pub fn partager(&self, source: SourceCapture) {
+        self.envoyer(Commande::Partager(source));
+    }
+
+    pub fn changer_source(&self, source: SourceCapture) {
+        self.envoyer(Commande::ChangerSource(source));
+    }
+
+    pub fn regler_partage(&self, reglages: ReglagesPartage) {
+        self.envoyer(Commande::ReglerPartage(reglages));
+    }
+
+    pub fn arreter_partage(&self) {
+        self.envoyer(Commande::ArreterPartage);
+    }
+
+    pub fn definir_incrustation(&self, incrustation: Option<Arc<dyn Incrustation>>) {
+        self.route_partage.definir_incrustation(incrustation);
     }
 
     pub fn deplacer(&self, salon: &str) {
@@ -476,6 +531,12 @@ struct Acteur {
     route_camera: Arc<RouteCamera>,
     camera_voulue: bool,
     generation_camera: u64,
+    ecrans: Arc<dyn CaptureEcran>,
+    capture_partage: Option<FluxCapture>,
+    route_partage: Arc<partage::RoutePartage>,
+    generation_partage: u64,
+    adaptation: Option<Instant>,
+    coups: u32,
     retour: mpsc::UnboundedSender<Commande>,
     tentatives: (
         mpsc::UnboundedSender<Tentative>,
@@ -545,6 +606,12 @@ impl Acteur {
             route_camera: Arc::new(RouteCamera::default()),
             camera_voulue: false,
             generation_camera: 0,
+            ecrans: dependances.ecrans,
+            capture_partage: None,
+            route_partage: Arc::default(),
+            generation_partage: 0,
+            adaptation: None,
+            coups: 0,
             retour,
             tentatives: mpsc::unbounded_channel(),
             essais: 0,
@@ -579,6 +646,7 @@ impl Acteur {
                     self.reconnexion = None;
                     self.connecter();
                 },
+                _ = attendre(self.adaptation) => self.adapter_partage().await,
                 _ = surveillance.tick() => self.surveiller(),
             }
         }
@@ -666,6 +734,16 @@ impl Acteur {
                     self.etat.camera_erreur = Some(message_camera(&erreur));
                     self.publier();
                 }
+            }
+            Commande::Partager(source) => self.demarrer_partage(source).await,
+            Commande::ChangerSource(source) => self.changer_source(source).await,
+            Commande::ReglerPartage(reglages) => self.regler_partage(reglages).await,
+            Commande::ArreterPartage => {
+                self.etat.partage_erreur = None;
+                self.arreter_partage().await;
+            }
+            Commande::SignalPartage(generation, signal) => {
+                self.signal_partage(generation, signal).await
             }
             Commande::Deplacer(salon) => self.rejoindre(salon, true).await,
             Commande::DeplaceParModeration { de, vers } => {
@@ -931,6 +1009,7 @@ impl Acteur {
         }
         if echange && self.salle.is_some() {
             self.couper_camera();
+            self.couper_partage();
             self.ancienne = self.salle.take();
             self.evenements = None;
             self.route.brancher(None);
@@ -955,16 +1034,23 @@ impl Acteur {
         let connecteur = self.connecteur.clone();
         let retour = self.tentatives.0.clone();
         tokio::spawn(async move {
-            let resultat = match api.jeton(&salon).await {
-                Ok(jeton) => connecteur
-                    .connecter(jeton)
-                    .await
-                    .map_err(|_| EchecConnexion::Salle),
-                Err(e) => Err(EchecConnexion::Api(ErreurVocal::depuis_api(&e))),
+            let (resultat, plafond) = match api.jeton(&salon).await {
+                Ok(jeton) => {
+                    let plafond = jeton.plafond_partage;
+                    (
+                        connecteur
+                            .connecter(jeton)
+                            .await
+                            .map_err(|_| EchecConnexion::Salle),
+                        plafond,
+                    )
+                }
+                Err(e) => (Err(EchecConnexion::Api(ErreurVocal::depuis_api(&e))), None),
             };
             let _ = retour.send(Tentative {
                 generation,
                 resultat,
+                plafond,
             });
         });
     }
@@ -977,7 +1063,10 @@ impl Acteur {
             return;
         }
         match tentative.resultat {
-            Ok(connexion) => self.connecte(connexion).await,
+            Ok(connexion) => {
+                self.etat.plafond_partage = tentative.plafond.unwrap_or_default();
+                self.connecte(connexion).await
+            }
             Err(echec) if self.essais > 0 && echec.reessayable() => self.programmer_reconnexion(),
             Err(echec) => {
                 let message = echec.message();
@@ -1042,6 +1131,9 @@ impl Acteur {
         self.publier_attributs().await;
         if self.camera_voulue {
             self.demarrer_camera().await;
+        }
+        if self.capture_partage.is_some() {
+            self.republier_partage().await;
         }
         if !reprise {
             if let Some(salon) = self.etat.salon.clone() {
@@ -1144,6 +1236,7 @@ impl Acteur {
             }
             EvenementSalle::Deconnecte(_) => {
                 self.couper_camera();
+                self.suspendre_partage();
                 if let Some(salle) = self.salle.take() {
                     salle.fermer().await;
                 }
@@ -1304,6 +1397,7 @@ impl Acteur {
         self.mesure.reinitialiser();
         self.couper_camera();
         self.camera_voulue = false;
+        self.couper_partage();
     }
 
     async fn quitter(&mut self) {

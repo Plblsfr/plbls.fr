@@ -12,7 +12,8 @@ use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
 use estompe_client::version::MiseAJourDisponible;
 use estompe_client::vocal::{
-    CleVideo, EtatVocal, InfoParticipant, Mire, Phase as PhaseVocal, Qualite,
+    CleVideo, EtatVocal, InfoParticipant, Mire, PartageLocal, Phase as PhaseVocal, Qualite,
+    QualitePartage, ResolutionPartage, TrameVideo,
 };
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
@@ -28,6 +29,7 @@ use estompe_natif::{
     creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessageVocal, DonneesMessagerie,
     DonneesSaisie, DonneesSelecteur, EtapeVocal, ModeTheme, Mouvement, Principale, Theme,
 };
+use estompe_plateforme::{Image, SourceCapture, TypeSource};
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
 use std::path::{Path, PathBuf};
@@ -115,6 +117,13 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-partage-plein-ecran-clair", Clair, vocal_partage_plein_ecran;
     "vocal-partage-spectateurs-clair", Clair, vocal_partage_spectateurs;
     "vocal-partage-spectateurs-sombre", Sombre, vocal_partage_spectateurs;
+    "vocal-partage-sources-clair", Clair, vocal_partage_sources;
+    "vocal-partage-sources-sombre", Sombre, vocal_partage_sources;
+    "vocal-partage-aucune-source-clair", Clair, vocal_partage_aucune_source;
+    "vocal-partage-apercu-clair", Clair, vocal_partage_apercu;
+    "vocal-partage-apercu-sombre", Sombre, vocal_partage_apercu;
+    "vocal-partage-en-cours-clair", Clair, vocal_partage_en_cours;
+    "vocal-partage-en-cours-sombre", Sombre, vocal_partage_en_cours;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
     "vocal-menu-clair", Clair, vocal_menu;
     "vocal-moderation-clair", Clair, vocal_moderation;
@@ -874,6 +883,117 @@ fn vocal_partage_spectateurs(f: &Principale) {
     let pont = vocal_avec(f, 4, |_| {}, |v| avec_partage(v, true));
     partage_affiche(f, &pont);
     pont.vocal().ouvrir_menu_partage(f, "carol");
+    stabiliser(f);
+}
+
+fn source_du_poste(id: &str, nom: &str, largeur: u32, hauteur: u32) -> SourceCapture {
+    SourceCapture {
+        id: id.into(),
+        nom: nom.into(),
+        application: if id.starts_with("fenetre") {
+            "Éditeur".into()
+        } else {
+            String::new()
+        },
+        genre: if id.starts_with("fenetre") {
+            TypeSource::Fenetre
+        } else {
+            TypeSource::Ecran
+        },
+        largeur,
+        hauteur,
+        principale: id == "ecran:0",
+        processus: None,
+        estompe: false,
+    }
+}
+
+fn sources_du_poste() -> (Vec<SourceCapture>, Vec<(String, Image)>) {
+    let sources = vec![
+        source_du_poste("ecran:0", "Écran 1", 2560, 1440),
+        source_du_poste("ecran:1", "Écran 2", 1920, 1080),
+        source_du_poste("fenetre:7", "Notes de réunion", 1280, 800),
+    ];
+    let miniatures = sources
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let mire = Mire::nouvelle(320, 180).image(i as u64 * 7);
+            let mut rgba = vec![0u8; 320 * 180 * 4];
+            mire.vers_rgba(320, 180, &mut rgba);
+            (
+                s.id.clone(),
+                Image {
+                    largeur: 320,
+                    hauteur: 180,
+                    rgba,
+                },
+            )
+        })
+        .collect();
+    (sources, miniatures)
+}
+
+fn vocal_partage_sources(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_partage(f);
+    let (sources, miniatures) = sources_du_poste();
+    pont.vocal().presenter_partage(f, sources, miniatures, None);
+    stabiliser(f);
+}
+
+fn vocal_partage_aucune_source(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_partage(f);
+    pont.vocal().onglet_partage(f, true);
+    pont.vocal().presenter_partage(
+        f,
+        vec![source_du_poste("ecran:0", "Écran 1", 2560, 1440)],
+        Vec::new(),
+        Some("Impossible de lister les écrans et fenêtres."),
+    );
+    stabiliser(f);
+}
+
+fn vocal_partage_apercu(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_partage(f);
+    let (sources, miniatures) = sources_du_poste();
+    pont.vocal().presenter_partage(f, sources, miniatures, None);
+    pont.vocal().choisir_source(f, "ecran:1");
+    let mire = Mire::nouvelle(1920, 1080).image(12);
+    pont.vocal()
+        .poser_image_video(f, &estompe_natif::vocal::pont::cle_apercu_partage(), &mire);
+    stabiliser(f);
+}
+
+fn vocal_partage_en_cours(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        3,
+        |_| {},
+        |v| {
+            let source = source_du_poste("fenetre:7", "Notes de réunion", 1280, 800);
+            v.partage = Some(PartageLocal {
+                source,
+                qualite: QualitePartage {
+                    resolution: ResolutionPartage::R720,
+                    ips: 30,
+                },
+                reduite: false,
+                son: false,
+            });
+            let cle = CleVideo::partage("u1");
+            v.pistes.insert(cle, "TR_u1_ecran".into());
+            if let Some(p) = v.participants.get_mut("carol") {
+                p.attributs
+                    .insert("watching".to_string(), "TR_u1_ecran".to_string());
+            }
+        },
+    );
+    let mire = Mire::nouvelle(1280, 800).image(5);
+    pont.vocal()
+        .poser_image_video(f, &CleVideo::partage("u1"), &mire);
     stabiliser(f);
 }
 
