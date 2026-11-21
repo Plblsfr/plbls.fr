@@ -8,7 +8,9 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
-use crate::vocal::{Ecoute, QualiteCamera, QualiteRecue, ReglagesPartage, ReglagesPtt};
+use crate::vocal::{
+    Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
+};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -66,6 +68,7 @@ pub struct Preferences {
     pub qualite_camera: QualiteCamera,
     pub qualite_partage: QualiteRecue,
     pub partage: ReglagesPartage,
+    pub incrustation: ReglagesIncrustation,
 }
 
 impl Default for Preferences {
@@ -97,6 +100,7 @@ impl Default for Preferences {
             qualite_camera: QualiteCamera::default(),
             qualite_partage: QualiteRecue::default(),
             partage: ReglagesPartage::default(),
+            incrustation: ReglagesIncrustation::default(),
         }
     }
 }
@@ -183,6 +187,7 @@ impl Preferences {
             qualite_camera: champ(&objet, "qualite_camera", d.qualite_camera),
             qualite_partage: champ(&objet, "qualite_partage", d.qualite_partage),
             partage: champ(&objet, "partage", d.partage).borne(),
+            incrustation: champ(&objet, "incrustation", d.incrustation).borne(),
         })
     }
 
@@ -372,6 +377,17 @@ mod tests {
                 fluidite: false,
                 auto: false,
                 son: false,
+            },
+            incrustation: crate::vocal::ReglagesIncrustation {
+                active: true,
+                x: 0,
+                y: 250,
+                taille: 30,
+                forme: crate::vocal::FormeIncrustation::Cercle,
+                marge: 8,
+                bordure: true,
+                ombre: false,
+                miroir: true,
             },
         };
         preferences.enregistrer(&dossier).unwrap();

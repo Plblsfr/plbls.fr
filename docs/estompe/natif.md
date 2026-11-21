@@ -843,7 +843,25 @@ Logique dans la crate client (`vocal/partage.rs` : qualités et plafonds ; `voca
   dont le processus est inconnu. Changer de source relance la capture du son sur la nouvelle cible ; l'option se change pendant le partage (piste ajoutée ou retirée).
   Si la capture du son échoue, le partage continue sans le son et la barre l'indique (« Partage sans le son : capture du son impossible. »).
   Non vérifié ici (machine Linux) : capture réelle sous Windows, absence d'écho, synchronisation du son et de l'image (moins de 100 ms visés).
-- Incrustation de la caméra (#340) : `SessionVocale::definir_incrustation` reçoit un `Incrustation` qui modifie chaque image du partage avant l'envoi et l'affichage ; aucun n'est encore fourni.
+- Incrustation de la caméra (#340, `camoverlay.ts` et `applyOverlay` du front ; `vocal/incrustation.rs` de la crate client) : ma caméra est composée en médaillon
+  sur chaque image du partage avant l'encodage, les spectateurs la voient sans traitement de leur côté.
+  - Réglages (`ReglagesIncrustation`, préférence `incrustation`, mêmes valeurs par défaut que `camOverlay`) : section « Incrustation de la caméra » de l'aperçu
+    du sélecteur et de « Qualité du partage » ; interrupteur, coins, taille (10 à 50 % de la largeur), marge (0 à 120 px), rectangle arrondi ou cercle, bordure,
+    ombre, miroir. Position en millièmes, taille et marge comme le front (`zone_incrustation` reprend `overlayRect`, `position_depuis_pointeur` le glisser de l'aperçu).
+    Un changement s'applique tout de suite au partage en cours (`SessionVocale::regler_incrustation`) ; la préférence est écrite à la fin d'un glisser.
+  - Aperçu : l'image de la source choisie est composée comme le partage (`ApercuIncruste`), recomposée à chaque réglage même si la source ne change pas ;
+    glisser dans l'aperçu déplace le médaillon. Caméra coupée, une silhouette tient sa place. Pendant le partage, « Qualité du partage » montre ma tuile de partage.
+  - Composition (`Compositeur`) : recadrage centré de la caméra (le cercle prend le carré central), coins arrondis (12 % du petit côté) ou cercle, bordure blanche,
+    ombre portée et miroir comme le front ; le gabarit (formes, ombre, échantillonnage) n'est recalculé qu'au changement de réglage ou de taille, la vignette à chaque
+    image de la caméra, puis elle est fondue sur l'image du partage. Coût mesuré (`cout_de_l_incrustation_a_1080p`, crate client en opt-level 3 sur la machine de dev) :
+    1,6 ms par image en 1080p avec une nouvelle image de la caméra à chaque fois, soit 5 % d'un cœur à 30 images par seconde.
+  - Active seulement avec la caméra et le partage en cours (`EtatVocal::incrustation`) : la session publie alors l'attribut `overlay`, comme le front. Une caméra
+    incrustée (la mienne, ou celle d'un participant avec `overlay`) n'a pas de tuile et n'est pas reçue (`EtatVocal::camera_incrustee`).
+  - Écran fixe : une capture qui n'envoie une image qu'au changement figerait la caméra ; la dernière image est gardée et recomposée toutes les 33 ms quand rien
+    n'arrive depuis 45 ms (`Relance`, fil `estompe-incrustation`), comme le relais du front.
+  - Caméra coupée pendant le partage : le médaillon disparaît (la dernière image est renvoyée sans lui) et le partage continue ; `overlay` revient à vide.
+  - Écarts : pas de « Détourage libre » (il dépend de « Fond supprimé », lot 11) ni de réduction automatique par paliers ; sur une source qui ne change pas (Windows),
+    la caméra de l'aperçu du sélecteur ne bouge qu'aux réglages.
 - Écarts : le plafond de débit de l'encodeur est celui du début du partage (le SDK Rust 0.12 n'expose pas `setParameters` : changer la qualité règle la capture,
   pas le débit maximal) ; pas d'« Autre méthode » (sélecteur du système) ni de portail Wayland (lot 11) ; « Afficher le jeu en cours aux autres » (`SettingsShare` de l'app Windows)
   arrive avec la détection du jeu (lot 7) ; pas d'avis « Le système limite la capture à … images/s ».
@@ -910,11 +928,15 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - Partage d'écran : `vocal::partage::tests` (cas de `screen.test.ts` : plafonds du serveur, paliers, fluidité et netteté, débit, préréglages, conversion RGBA vers I420) ;
   `vocal::tests` (faux serveur, sources factices `EcransFactices` de la crate plateforme) : publication au format de la qualité, images reçues par l'autre participant et ma tuile,
   changement de source sans retrait, changement de qualité, arrêt, source fermée ou en échec (message), plafond du serveur et taille de la source, réduction automatique par palier,
-  incrustation appliquée, son de la fenêtre publié et entendu (cible du processus), son du système sans Estompe pour un écran, son retiré puis rendu, partage sans le son
+  incrustation (`la_camera_est_incrustee_dans_le_partage_puis_disparait_quand_elle_est_coupee` : médaillon composé, `overlay` publié, caméra plus reçue par l'autre,
+  image recomposée sur écran fixe, médaillon retiré sans arrêter le partage), son de la fenêtre publié et entendu (cible du processus), son du système sans Estompe pour un écran, son retiré puis rendu, partage sans le son
   quand le trait est indisponible ou échoue ; `capture::son::tests` (conversions de `son_wasapi.rs`, cible du son, son indisponible hors Windows, flux factice) ;
-  `natif/src/vocal/pont/partage.rs` : option du son masquée sans capture du son ; `crates/client/tests/livekit.rs::le_partage_est_publie_change_de_source_et_de_qualite_puis_retire` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) ;
+  `natif/src/vocal/pont/partage.rs` : option du son masquée sans capture du son, pointeur de l'aperçu ramené dans la source, projection de l'incrustation ;
+  `vocal::incrustation::tests` (calculs de `overlayRect` et du glisser, pixels attendus dans et hors du médaillon sur des images de synthèse, cercle, miroir, bordure,
+  ombre, caméra coupée, aperçu recomposé) ; `crates/client/tests/livekit.rs::le_partage_est_publie_change_de_source_et_de_qualite_puis_retire` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) ;
   `natif/tests/vocal.rs` : sélecteur (écrans, fenêtres sans celles d'Estompe, miniatures), aperçu, qualité grisée au-delà de la source, publication, bandeau et rappel de la barre,
-  ma tuile en grand, changement de source et de qualité pendant le partage, source perdue, Alt+Maj+S, « Arrêter ».
+  ma tuile en grand, changement de source et de qualité pendant le partage, source perdue, Alt+Maj+S, « Arrêter », incrustation réglée dans le sélecteur
+  (interrupteur, coin, médaillon visible dans l'aperçu, préférence retenue).
 - `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
   perte du focus, raccourci indisponible (message, touche fenêtre active) ; `audio::tonalite::tests` ; `store::reducteur::tests::transmet_le_deplacement_par_un_moderateur`.
 - `crates/plateforme/src/raccourcis/` : table des touches, appui et relâchement sans répétition ; sous X11 (`DISPLAY`, ignoré sinon) une touche simulée par XTest est signalée

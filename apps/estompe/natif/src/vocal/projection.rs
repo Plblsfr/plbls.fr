@@ -230,7 +230,7 @@ pub fn video_de(
     } else {
         vocal.video(&cle)
     };
-    (ici && publiee).then_some(cle)
+    (ici && publiee && !vocal.camera_incrustee(utilisateur)).then_some(cle)
 }
 
 pub struct Scene {
@@ -702,6 +702,21 @@ mod tests {
             ],
         );
         v
+    }
+
+    #[test]
+    fn une_camera_incrustee_dans_un_partage_n_a_pas_de_tuile() {
+        let mut v = connecte("v1");
+        v.camera_active = true;
+        v.videos.insert(CleVideo::camera("carol"));
+        assert!(video_de(&v, true, true, "me").is_some());
+        assert!(video_de(&v, true, false, "carol").is_some());
+        v.incrustation = true;
+        if let Some(p) = v.participants.get_mut("carol") {
+            p.attributs.insert("overlay".into(), "1".into());
+        }
+        assert_eq!(video_de(&v, true, true, "me"), None);
+        assert_eq!(video_de(&v, true, false, "carol"), None);
     }
 
     fn avec_vocal(liste: &[(&str, &str)]) -> Etat {

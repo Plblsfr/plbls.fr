@@ -3,8 +3,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use estompe_client::vocal::{
-    note_resolution, resume_partage, CleVideo, ImagePartage, PlafondPartage, ReglagesPartage,
-    ResolutionPartage, CADENCES_PARTAGE, PREREGLAGES,
+    note_resolution, position_depuis_pointeur, resume_partage, ApercuIncruste, CleVideo,
+    FormeIncrustation, PlafondPartage, ReglagesIncrustation, ReglagesPartage, ResolutionPartage,
+    CADENCES_PARTAGE, COINS, PREREGLAGES,
 };
 use estompe_plateforme::capture::HAUTEUR_MINIATURE;
 use estompe_plateforme::{
@@ -15,7 +16,8 @@ use slint::{ComponentHandle, ModelRc, SharedPixelBuffer, VecModel};
 use super::{Interne, PontVocal};
 use crate::coquille::pont::vec_de;
 use crate::{
-    ChoixPartageVocal, DonneesVocal, EtapePartage, OptionPartage, Principale, SourcePartageVocal,
+    ChoixPartageVocal, DonneesVocal, EtapePartage, IncrustationVocal, OptionPartage, Principale,
+    SourcePartageVocal,
 };
 
 pub const PERIODE_MINIATURES: Duration = Duration::from_secs(2);
@@ -46,6 +48,7 @@ pub struct ChoixPartage {
     pub apercu: Option<FluxCapture>,
     pub generation: u64,
     pub generation_apercu: u64,
+    pub apercu_incruste: Arc<ApercuIncruste>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +67,8 @@ pub struct OmbrePartage {
     changer: bool,
     apercu: i32,
     son: Option<&'static str>,
+    incrustation: ReglagesIncrustation,
+    camera: bool,
 }
 
 pub fn cle_apercu_partage() -> CleVideo {
@@ -94,6 +99,34 @@ pub fn option_son(disponible: bool, source: Option<&SourceCapture>) -> Option<&'
         TypeSource::Fenetre => "Partager le son de cette fenêtre",
         TypeSource::Ecran => "Partager le son de l'ordinateur (sans la voix des participants)",
     })
+}
+
+pub fn pointeur_dans_la_source(pointeur: (f32, f32), source: (u32, u32)) -> (f32, f32) {
+    const BOITE: (f32, f32) = (16.0, 9.0);
+    let (sl, sh) = (source.0.max(1) as f32, source.1.max(1) as f32);
+    let echelle = (BOITE.0 / sl).min(BOITE.1 / sh);
+    let (ox, oy) = (
+        (BOITE.0 - sl * echelle) / 2.0,
+        (BOITE.1 - sh * echelle) / 2.0,
+    );
+    (
+        (pointeur.0 * BOITE.0 - ox) / echelle,
+        (pointeur.1 * BOITE.1 - oy) / echelle,
+    )
+}
+
+pub fn incrustation_vocal(r: &ReglagesIncrustation, camera: bool) -> IncrustationVocal {
+    IncrustationVocal {
+        active: r.active,
+        coin: r.coin().map_or(-1, |c| c as i32),
+        taille: f32::from(r.taille),
+        marge: f32::from(r.marge),
+        cercle: r.forme == FormeIncrustation::Cercle,
+        bordure: r.bordure,
+        ombre: r.ombre,
+        miroir: r.miroir,
+        camera,
+    }
 }
 
 fn image_slint(image: &Image) -> slint::Image {
@@ -379,16 +412,18 @@ impl PontVocal {
     }
 
     fn demarrer_apercu_partage(&self) {
-        let (outils, source, generation, ips, ancien) = {
+        let (outils, source, generation, ips, ancien, incruste) = {
             let mut i = self.verrou();
             i.partage.generation_apercu += 1;
             let ancien = i.partage.apercu.take();
+            i.partage.apercu_incruste.oublier();
             (
                 i.outils.clone(),
                 i.partage.choisie.clone(),
                 i.partage.generation_apercu,
                 i.etat.reglages_partage.ips.min(IPS_APERCU_MAX),
                 ancien,
+                i.partage.apercu_incruste.clone(),
             )
         };
         drop(ancien);
@@ -398,6 +433,7 @@ impl PontVocal {
             return;
         };
         let pont = self.clone();
+        let compositeur = outils.session.compositeur();
         self.runtime.spawn_blocking(move || {
             let perte = pont.clone();
             let resultat = outils.ecrans.demarrer(
@@ -405,7 +441,7 @@ impl PontVocal {
                 OptionsCapture { ips, curseur: true },
                 Box::new(move |evenement| match evenement {
                     EvenementCapture::Trame(image) => {
-                        recepteur.pousser(Arc::new(ImagePartage(image)));
+                        incruste.pousser(image, Some(&compositeur), &recepteur);
                         true
                     }
                     EvenementCapture::Fermee | EvenementCapture::Echec(_) => {
@@ -520,6 +556,119 @@ impl PontVocal {
         self.appliquer_reglages_partage(f, r);
     }
 
+    fn reglages_incrustation(&self) -> ReglagesIncrustation {
+        self.verrou().etat.reglages_incrustation
+    }
+
+    fn appliquer_incrustation(&self, f: &Principale, reglages: ReglagesIncrustation, fini: bool) {
+        let reglages = reglages.borne();
+        if fini {
+            self.retenir(|p| p.incrustation = reglages);
+        }
+        let (session, incruste) = {
+            let mut i = self.verrou();
+            i.etat.reglages_incrustation = reglages;
+            (
+                i.outils.as_ref().map(|o| o.session.clone()),
+                i.partage.apercu_incruste.clone(),
+            )
+        };
+        if let Some(session) = session {
+            session.regler_incrustation(reglages);
+            incruste.recomposer(
+                Some(&session.compositeur()),
+                &self.videos_hors_session.recepteur(&cle_apercu_partage()),
+            );
+        }
+        self.projeter(f);
+    }
+
+    pub fn incrustation_active(&self, f: &Principale, active: bool) {
+        let r = ReglagesIncrustation {
+            active,
+            ..self.reglages_incrustation()
+        };
+        self.appliquer_incrustation(f, r, true);
+    }
+
+    pub fn coin_incrustation(&self, f: &Principale, rang: i32) {
+        let Some((x, y, _)) = COINS.get(rang.max(0) as usize) else {
+            return;
+        };
+        let r = ReglagesIncrustation {
+            x: *x,
+            y: *y,
+            ..self.reglages_incrustation()
+        };
+        self.appliquer_incrustation(f, r, true);
+    }
+
+    pub fn taille_incrustation(&self, f: &Principale, taille: f32, fini: bool) {
+        let r = ReglagesIncrustation {
+            taille: taille.round().clamp(0.0, 255.0) as u8,
+            ..self.reglages_incrustation()
+        };
+        self.appliquer_incrustation(f, r, fini);
+    }
+
+    pub fn marge_incrustation(&self, f: &Principale, marge: f32, fini: bool) {
+        let r = ReglagesIncrustation {
+            marge: marge.round().clamp(0.0, f32::from(u16::MAX)) as u16,
+            ..self.reglages_incrustation()
+        };
+        self.appliquer_incrustation(f, r, fini);
+    }
+
+    pub fn forme_incrustation(&self, f: &Principale, cercle: bool) {
+        let r = ReglagesIncrustation {
+            forme: if cercle {
+                FormeIncrustation::Cercle
+            } else {
+                FormeIncrustation::Rectangle
+            },
+            ..self.reglages_incrustation()
+        };
+        self.appliquer_incrustation(f, r, true);
+    }
+
+    pub fn option_incrustation(&self, f: &Principale, option: i32, active: bool) {
+        let mut r = self.reglages_incrustation();
+        match option {
+            0 => r.bordure = active,
+            1 => r.ombre = active,
+            2 => r.miroir = active,
+            _ => return,
+        }
+        self.appliquer_incrustation(f, r, true);
+    }
+
+    pub fn deplacer_incrustation(&self, f: &Principale, x: f32, y: f32, fini: bool) {
+        let (source, compositeur) = {
+            let i = self.verrou();
+            let source = i
+                .partage
+                .choisie
+                .as_ref()
+                .filter(|_| i.partage.etape == Etape::Apercu)
+                .or(i.etat.partage.as_ref().map(|p| &p.source))
+                .map(|s| (s.largeur, s.hauteur));
+            (source, i.outils.as_ref().map(|o| o.session.compositeur()))
+        };
+        let Some(source) = source else {
+            return;
+        };
+        let ratio = compositeur.map_or(estompe_client::vocal::RATIO_APERCU, |c| c.ratio());
+        let r = self.reglages_incrustation();
+        let (x, y) = position_depuis_pointeur(
+            &r,
+            source.0,
+            source.1,
+            ratio,
+            pointeur_dans_la_source((x, y), source),
+        );
+        self.appliquer_incrustation(f, ReglagesIncrustation { x, y, ..r }, fini);
+    }
+
     pub fn partager(&self, f: &Principale) {
         let (source, en_cours) = {
             let i = self.verrou();
@@ -552,7 +701,10 @@ impl PontVocal {
             .iter()
             .filter(|s| proposee(s, p.fenetres))
             .collect();
-        let apercu = crate::video::indice(f, &cle_apercu_partage());
+        let apercu = match (p.etape, i.etat.identite.as_deref()) {
+            (Etape::Qualite, Some(moi)) => crate::video::indice(f, &CleVideo::partage(moi)),
+            _ => crate::video::indice(f, &cle_apercu_partage()),
+        };
         let source_son = p
             .choisie
             .as_ref()
@@ -576,6 +728,8 @@ impl PontVocal {
             changer: i.etat.partage.is_some(),
             apercu,
             son,
+            incrustation: i.etat.reglages_incrustation,
+            camera: i.etat.camera_active,
         };
         if i.ombres.partage.as_ref() == Some(&ombre) {
             return;
@@ -630,6 +784,7 @@ impl PontVocal {
             son_disponible: son.is_some(),
             son: i.etat.reglages_partage.son,
             libelle_son: son.unwrap_or_default().into(),
+            incrustation: incrustation_vocal(&i.etat.reglages_incrustation, i.etat.camera_active),
         });
         let changement_de_sources = i
             .ombres
@@ -719,6 +874,44 @@ mod tests {
             option_son(true, Some(&ecran)),
             Some("Partager le son de l'ordinateur (sans la voix des participants)")
         );
+    }
+
+    #[test]
+    fn le_pointeur_de_l_apercu_est_ramene_dans_la_source_affichee_en_entier() {
+        let proche =
+            |a: (f32, f32), b: (f32, f32)| (a.0 - b.0).abs() < 0.01 && (a.1 - b.1).abs() < 0.01;
+        assert!(proche(
+            pointeur_dans_la_source((0.5, 0.5), (1920, 1080)),
+            (960.0, 540.0)
+        ));
+        assert!(proche(
+            pointeur_dans_la_source((0.0, 1.0), (1920, 1080)),
+            (0.0, 1080.0)
+        ));
+        assert!(proche(
+            pointeur_dans_la_source((0.5, 0.0), (1280, 1024)),
+            (640.0, 0.0)
+        ));
+        let (bord, _) = pointeur_dans_la_source((0.0, 0.5), (1280, 1024));
+        assert!(bord < 0.0, "hors de l'image affichée, à gauche : {bord}");
+    }
+
+    #[test]
+    fn l_incrustation_est_projetee_avec_son_coin() {
+        let r = ReglagesIncrustation::default();
+        let v = incrustation_vocal(&r, true);
+        assert!(!v.active && v.camera && v.ombre && !v.cercle);
+        assert_eq!((v.coin, v.taille, v.marge), (3, 22.0, 24.0));
+        let libre = incrustation_vocal(
+            &ReglagesIncrustation {
+                x: 300,
+                forme: FormeIncrustation::Cercle,
+                ..r
+            },
+            false,
+        );
+        assert_eq!(libre.coin, -1);
+        assert!(libre.cercle && !libre.camera);
     }
 
     #[test]

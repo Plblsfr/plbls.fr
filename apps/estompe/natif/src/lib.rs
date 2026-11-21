@@ -92,7 +92,7 @@ pub fn demarrer(
         ecrans::publieur(fenetre),
     )
     .map_err(|e| format!("fil de l'entrée : {e}"))?;
-    let (micro, sortie, traitement, ecoute, camera, qualite_camera, partage) =
+    let (micro, sortie, traitement, ecoute, camera, qualite_camera, partage, incrustation) =
         session.memoire.lire(|p| {
             (
                 p.micro.clone(),
@@ -102,6 +102,7 @@ pub fn demarrer(
                 p.camera.clone(),
                 p.qualite_camera,
                 p.partage,
+                p.incrustation,
             )
         });
     let audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio> =
@@ -127,6 +128,7 @@ pub fn demarrer(
                 camera,
                 qualite_camera,
                 partage,
+                incrustation,
                 ..estompe_client::vocal::Reglages::default()
             },
         },

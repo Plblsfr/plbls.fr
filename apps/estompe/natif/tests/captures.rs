@@ -12,8 +12,9 @@ use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
 use estompe_client::version::MiseAJourDisponible;
 use estompe_client::vocal::{
-    CleVideo, EtatVocal, InfoParticipant, Mire, PartageLocal, Phase as PhaseVocal, Qualite,
-    QualitePartage, ResolutionPartage, TrameVideo,
+    CleVideo, Compositeur, EtatVocal, FormeIncrustation, ImagePartage, InfoParticipant, Mire,
+    PartageLocal, Phase as PhaseVocal, Qualite, QualitePartage, ReglagesIncrustation,
+    ResolutionPartage, TrameVideo,
 };
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
@@ -122,6 +123,8 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-partage-aucune-source-clair", Clair, vocal_partage_aucune_source;
     "vocal-partage-apercu-clair", Clair, vocal_partage_apercu;
     "vocal-partage-apercu-sombre", Sombre, vocal_partage_apercu;
+    "vocal-partage-incrustation-clair", Clair, vocal_partage_incrustation;
+    "vocal-partage-incrustation-sombre", Sombre, vocal_partage_incrustation;
     "vocal-partage-en-cours-clair", Clair, vocal_partage_en_cours;
     "vocal-partage-en-cours-sombre", Sombre, vocal_partage_en_cours;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
@@ -964,6 +967,45 @@ fn vocal_partage_apercu(f: &Principale) {
     let mire = Mire::nouvelle(1920, 1080).image(12);
     pont.vocal()
         .poser_image_video(f, &estompe_natif::vocal::pont::cle_apercu_partage(), &mire);
+    stabiliser(f);
+}
+
+fn vocal_partage_incrustation(f: &Principale) {
+    let reglages = ReglagesIncrustation {
+        active: true,
+        x: 0,
+        forme: FormeIncrustation::Cercle,
+        bordure: true,
+        ..ReglagesIncrustation::default()
+    };
+    let pont = vocal_avec(
+        f,
+        2,
+        |_| {},
+        |v| {
+            v.camera_active = true;
+            v.reglages_incrustation = reglages;
+        },
+    );
+    pont.vocal().ouvrir_partage(f);
+    let (sources, miniatures) = sources_du_poste();
+    pont.vocal().presenter_partage(f, sources, miniatures, None);
+    pont.vocal().choisir_source(f, "ecran:1");
+    let compositeur = Compositeur::nouveau(reglages);
+    compositeur.camera(Some(Arc::new(Mire::nouvelle(640, 360).image(3))));
+    let mire = Mire::nouvelle(1920, 1080).image(12);
+    let mut ecran = Image {
+        largeur: 1920,
+        hauteur: 1080,
+        rgba: vec![0u8; 1920 * 1080 * 4],
+    };
+    mire.vers_rgba(1920, 1080, &mut ecran.rgba);
+    compositeur.incruster_apercu(&mut ecran);
+    pont.vocal().poser_image_video(
+        f,
+        &estompe_natif::vocal::pont::cle_apercu_partage(),
+        &ImagePartage(ecran),
+    );
     stabiliser(f);
 }
 

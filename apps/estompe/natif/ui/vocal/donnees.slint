@@ -87,6 +87,18 @@ export struct SourcePartageVocal {
 
 export enum EtapePartage { source, apercu, qualite }
 
+export struct IncrustationVocal {
+    active: bool,
+    coin: int,
+    taille: float,
+    marge: float,
+    cercle: bool,
+    bordure: bool,
+    ombre: bool,
+    miroir: bool,
+    camera: bool,
+}
+
 export struct ChoixPartageVocal {
     ouvert: bool,
     etape: EtapePartage,
@@ -108,6 +120,7 @@ export struct ChoixPartageVocal {
     son-disponible: bool,
     son: bool,
     libelle-son: string,
+    incrustation: IncrustationVocal,
 }
 
 export struct ChoixCameraVocal {
@@ -252,6 +265,13 @@ export global DonneesVocal {
     callback arreter-partage();
     callback qualite-partage();
     callback changer-source-partage();
+    callback incrustation-active(bool);
+    callback coin-incrustation(int);
+    callback taille-incrustation(float, bool);
+    callback marge-incrustation(float, bool);
+    callback forme-incrustation(bool);
+    callback option-incrustation(int, bool);
+    callback deplacer-incrustation(float, float, bool);
     callback ouvrir-reglages();
     callback fermer-reglages();
     callback regler(ReglagesVocal, bool);

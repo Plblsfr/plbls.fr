@@ -22,6 +22,7 @@ use crate::http::{Client, ErreurApi};
 use super::camera::{message_camera, CaptureCamera, QualiteCamera, SignalCamera, SortieImages};
 use super::erreurs::{CauseMicro, ErreurVocal};
 use super::etat::{EtatVocal, Phase};
+use super::incrustation::{Compositeur, ReglagesIncrustation};
 use super::mixage::{Ecoute, Mixeur};
 use super::partage::{PlafondPartage, QualitePartage, ReglagesPartage};
 use super::salle::{
@@ -31,8 +32,6 @@ use super::salle::{
 use super::video::{CleVideo, DemandeVideo, ImageI420, RecepteurVideo, SourceVideo, Videos};
 
 mod partage;
-
-pub use partage::Incrustation;
 
 pub const DELAI_FERMETURE: Duration = Duration::from_secs(3);
 pub const MESSAGE_CONNEXION_PERDUE: &str = "Connexion au vocal perdue.";
@@ -92,6 +91,7 @@ pub struct Reglages {
     pub qualite_camera: QualiteCamera,
     pub regarder_auto: bool,
     pub partage: ReglagesPartage,
+    pub incrustation: ReglagesIncrustation,
 }
 
 impl Default for Reglages {
@@ -111,6 +111,7 @@ impl Default for Reglages {
             qualite_camera: QualiteCamera::default(),
             regarder_auto: false,
             partage: ReglagesPartage::default(),
+            incrustation: ReglagesIncrustation::default(),
         }
     }
 }
@@ -147,6 +148,7 @@ enum Commande {
     Partager(SourceCapture),
     ChangerSource(SourceCapture),
     ReglerPartage(ReglagesPartage),
+    ReglerIncrustation(ReglagesIncrustation),
     ArreterPartage,
     SignalPartage(u64, partage::SignalPartage),
     Deplacer(String),
@@ -216,17 +218,26 @@ struct RouteMicro {
     chaine: Mutex<ChaineMicro>,
 }
 
-#[derive(Default)]
 struct RouteCamera {
     sortie: Mutex<Option<Arc<dyn SortieVideo>>>,
     recepteur: Mutex<Option<Arc<RecepteurVideo>>>,
+    compositeur: Arc<Compositeur>,
 }
 
 impl RouteCamera {
+    fn nouvelle(compositeur: Arc<Compositeur>) -> Self {
+        Self {
+            sortie: Mutex::new(None),
+            recepteur: Mutex::new(None),
+            compositeur,
+        }
+    }
+
     fn envoyer(&self, image: Arc<ImageI420>) {
         if let Some(sortie) = self.sortie.lock().ok().and_then(|s| s.clone()) {
             sortie.envoyer(&image);
         }
+        self.compositeur.camera(Some(image.clone()));
         if let Some(recepteur) = self.recepteur.lock().ok().and_then(|r| r.clone()) {
             recepteur.pousser(image);
         }
@@ -297,7 +308,7 @@ pub struct SessionVocale {
     avis: broadcast::Sender<AvisVocal>,
     mesure: Arc<MesureMicro>,
     videos: Arc<Videos>,
-    route_partage: Arc<partage::RoutePartage>,
+    compositeur: Arc<Compositeur>,
     runtime: Handle,
 }
 
@@ -313,6 +324,7 @@ impl SessionVocale {
         etat_initial.ecoute = dependances.reglages.ecoute.clone().bornee();
         etat_initial.regarder_auto = dependances.reglages.regarder_auto;
         etat_initial.reglages_partage = dependances.reglages.partage.borne();
+        etat_initial.reglages_incrustation = dependances.reglages.incrustation.borne();
         let (diffusion, etat) = watch::channel(etat_initial.clone());
         let (avis, _) = broadcast::channel(64);
         let mesure = Arc::new(MesureMicro::default());
@@ -327,7 +339,8 @@ impl SessionVocale {
             videos.clone(),
             commandes.clone(),
         );
-        acteur.route_partage = route_partage.clone();
+        acteur.route_partage = route_partage;
+        let compositeur = acteur.compositeur.clone();
         runtime.spawn(acteur.tourner(reception));
         Self {
             commandes,
@@ -335,7 +348,7 @@ impl SessionVocale {
             avis,
             mesure,
             videos,
-            route_partage,
+            compositeur,
             runtime: runtime.clone(),
         }
     }
@@ -392,8 +405,13 @@ impl SessionVocale {
         self.envoyer(Commande::ArreterPartage);
     }
 
-    pub fn definir_incrustation(&self, incrustation: Option<Arc<dyn Incrustation>>) {
-        self.route_partage.definir_incrustation(incrustation);
+    pub fn regler_incrustation(&self, reglages: ReglagesIncrustation) {
+        self.compositeur.regler(reglages);
+        self.envoyer(Commande::ReglerIncrustation(reglages));
+    }
+
+    pub fn compositeur(&self) -> Arc<Compositeur> {
+        self.compositeur.clone()
     }
 
     pub fn deplacer(&self, salon: &str) {
@@ -531,6 +549,9 @@ struct Acteur {
     cameras: Arc<dyn SystemeCamera>,
     capture_camera: Option<CaptureCamera>,
     route_camera: Arc<RouteCamera>,
+    compositeur: Arc<Compositeur>,
+    relance: Option<partage::Relance>,
+    incrustation_a_annoncer: bool,
     camera_voulue: bool,
     generation_camera: u64,
     ecrans: Arc<dyn CaptureEcran>,
@@ -578,6 +599,7 @@ impl Acteur {
         videos: Arc<Videos>,
         retour: mpsc::UnboundedSender<Commande>,
     ) -> Self {
+        let compositeur = Compositeur::nouveau(etat.reglages_incrustation);
         let chaine =
             ChaineMicro::nouvelle(etat.traitement, dependances.apm.clone(), mesure.clone());
         let mixeur = Mixeur::nouveau(etat.ecoute.clone(), dependances.apm);
@@ -608,7 +630,10 @@ impl Acteur {
             sons_abonnes: BTreeSet::new(),
             cameras: dependances.cameras,
             capture_camera: None,
-            route_camera: Arc::new(RouteCamera::default()),
+            route_camera: Arc::new(RouteCamera::nouvelle(compositeur.clone())),
+            compositeur,
+            relance: None,
+            incrustation_a_annoncer: false,
             camera_voulue: false,
             generation_camera: 0,
             ecrans: dependances.ecrans,
@@ -746,6 +771,7 @@ impl Acteur {
             Commande::Partager(source) => self.demarrer_partage(source).await,
             Commande::ChangerSource(source) => self.changer_source(source).await,
             Commande::ReglerPartage(reglages) => self.regler_partage(reglages).await,
+            Commande::ReglerIncrustation(reglages) => self.regler_incrustation(reglages).await,
             Commande::ArreterPartage => {
                 self.etat.partage_erreur = None;
                 self.arreter_partage().await;
@@ -959,7 +985,10 @@ impl Acteur {
         };
         self.etat.camera_demarrage = false;
         match resultat {
-            Ok(()) => self.etat.camera_active = true,
+            Ok(()) => {
+                self.etat.camera_active = true;
+                self.suivre_incrustation();
+            }
             Err(message) => {
                 self.couper_camera();
                 self.camera_voulue = false;
@@ -968,6 +997,7 @@ impl Acteur {
                 }
             }
         }
+        self.annoncer_incrustation().await;
         self.publier();
     }
 
@@ -976,8 +1006,10 @@ impl Acteur {
         self.capture_camera = None;
         self.route_camera.brancher(None);
         self.route_camera.afficher(None);
+        self.compositeur.camera(None);
         self.etat.camera_active = false;
         self.etat.camera_demarrage = false;
+        self.suivre_incrustation();
     }
 
     async fn arreter_camera(&mut self) {
@@ -986,6 +1018,40 @@ impl Acteur {
         if let (true, Some(salle)) = (publiee, self.salle.clone()) {
             salle.retirer_video(SourceVideo::Camera).await;
         }
+        self.annoncer_incrustation().await;
+        self.publier();
+    }
+
+    fn suivre_incrustation(&mut self) {
+        let active = self.etat.reglages_incrustation.active
+            && self.etat.camera_active
+            && self.etat.partage.is_some();
+        if active == self.relance.is_some() && active == self.etat.incrustation {
+            return;
+        }
+        self.etat.incrustation = active;
+        self.relance = None;
+        self.route_partage
+            .definir_incrustation(active.then(|| self.compositeur.clone()));
+        if active {
+            self.relance = partage::Relance::demarrer(self.route_partage.clone());
+        }
+        self.incrustation_a_annoncer = true;
+    }
+
+    async fn annoncer_incrustation(&mut self) {
+        if std::mem::take(&mut self.incrustation_a_annoncer) {
+            self.publier_attributs().await;
+        }
+    }
+
+    async fn regler_incrustation(&mut self, reglages: ReglagesIncrustation) {
+        let reglages = reglages.borne();
+        self.etat.reglages_incrustation = reglages;
+        self.reglages.incrustation = reglages;
+        self.compositeur.regler(reglages);
+        self.suivre_incrustation();
+        self.annoncer_incrustation().await;
         self.publier();
     }
 
@@ -1203,8 +1269,12 @@ impl Acteur {
                 identite,
                 attributs,
             } => {
+                let avant = self.etat.camera_incrustee(&identite);
                 if let Some(p) = self.etat.participants.get_mut(&identite) {
                     p.attributs = attributs;
+                }
+                if avant != self.etat.camera_incrustee(&identite) {
+                    self.reabonner().await;
                 }
             }
             EvenementSalle::Qualite { identite, qualite } => {

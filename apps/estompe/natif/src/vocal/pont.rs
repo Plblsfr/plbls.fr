@@ -2167,6 +2167,20 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
     rappel!(on_arreter_partage, |p, _f| p.arreter_partage());
     rappel!(on_qualite_partage, |p, f| p.ouvrir_qualite_partage(&f));
     rappel!(on_changer_source_partage, |p, f| p.ouvrir_partage(&f));
+    rappel!(on_incrustation_active, |p, f, a| p
+        .incrustation_active(&f, a));
+    rappel!(on_coin_incrustation, |p, f, rang| p
+        .coin_incrustation(&f, rang));
+    rappel!(on_taille_incrustation, |p, f, v, fini| p
+        .taille_incrustation(&f, v, fini));
+    rappel!(on_marge_incrustation, |p, f, v, fini| p
+        .marge_incrustation(&f, v, fini));
+    rappel!(on_forme_incrustation, |p, f, cercle| p
+        .forme_incrustation(&f, cercle));
+    rappel!(on_option_incrustation, |p, f, option, a| p
+        .option_incrustation(&f, option, a));
+    rappel!(on_deplacer_incrustation, |p, f, x, y, fini| p
+        .deplacer_incrustation(&f, x, y, fini));
     {
         let source = source.clone();
         let faible = f.as_weak();

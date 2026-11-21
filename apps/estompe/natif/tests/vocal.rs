@@ -50,6 +50,31 @@ fn cliquer(faible: &slint::Weak<Principale>, libelle: &'static str) {
     });
 }
 
+fn basculer(faible: &slint::Weak<Principale>, libelle: &'static str) {
+    sur_l_interface(faible, move |f| {
+        let element = ElementHandle::find_by_accessible_label(f, libelle)
+            .find(|e| e.size().height > 0.0)
+            .unwrap_or_else(|| panic!("« {libelle} » introuvable"));
+        assert_ne!(
+            element.accessible_enabled(),
+            Some(false),
+            "« {libelle} » désactivé"
+        );
+        element.mock_single_click(PointerEventButton::Left);
+    });
+}
+
+fn pixel_de_l_apercu(f: &Principale, x: u32, y: u32) -> Option<[u8; 4]> {
+    let p = f.global::<DonneesVocal>().get_partage();
+    let flux = f
+        .global::<DonneesVideo>()
+        .get_flux()
+        .row_data(usize::try_from(p.apercu).ok()?)?;
+    let image = flux.image.to_rgba8()?;
+    let pixel = image.as_slice().get((y * image.width() + x) as usize)?;
+    Some([pixel.r, pixel.g, pixel.b, pixel.a])
+}
+
 fn tuiles(f: &Principale) -> Vec<ParticipantVocal> {
     f.global::<DonneesVocal>().get_tuiles().iter().collect()
 }
@@ -732,6 +757,32 @@ fn scenario(
     );
     assert_eq!(banc.ecrans.ouverts(), vec![("fenetre:7".to_string(), 30)]);
     assert!(!banc.serveur.video_publiee("v1", "u1", SourceVideo::Partage));
+    basculer(&faible, "Incruster ma caméra dans mon partage d'écran");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let o = f.global::<DonneesVocal>().get_partage().incrustation;
+            o.active && !o.camera && o.coin == 3
+        },
+        "c340 : l'incrustation se règle dans le sélecteur",
+    );
+    cliquer(&faible, "Bas gauche");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let silhouette = pixel_de_l_apercu(f, 124, 522);
+            let ecran = pixel_de_l_apercu(f, 900, 50);
+            f.global::<DonneesVocal>().get_partage().incrustation.coin == 2
+                && ecran.is_some_and(|p| p[1] == 128)
+                && silhouette.is_some_and(|p| p[1].abs_diff(195) < 24 && p[2].abs_diff(216) < 24)
+        },
+        "c340 : l'aperçu montre le médaillon (silhouette sans caméra) en bas à gauche",
+    );
+    assert_eq!(
+        memoire.lire(|p| (p.incrustation.active, p.incrustation.x, p.incrustation.y)),
+        (true, 0, 1000)
+    );
+    assert!(banc.session.instantane().reglages_incrustation.active);
     let (resolutions, detail) = sur_l_interface(&faible, |f| {
         let p = f.global::<DonneesVocal>().get_partage();
         (

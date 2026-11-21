@@ -2,6 +2,7 @@ pub mod camera;
 pub mod erreurs;
 pub mod etat;
 pub mod factice;
+pub mod incrustation;
 #[cfg(feature = "livekit")]
 pub mod livekit;
 pub mod mixage;
@@ -17,6 +18,10 @@ pub use camera::{
 };
 pub use erreurs::{CauseMicro, ErreurVocal};
 pub use etat::{etats_affiches, EtatAffiche, EtatVocal, Phase};
+pub use incrustation::{
+    position_depuis_pointeur, zone_incrustation, ApercuIncruste, Compositeur, FormeIncrustation,
+    ReglagesIncrustation, COINS, MARGE_MAX, PAS_MARGE, RATIO_APERCU, TAILLE_MAX, TAILLE_MIN,
+};
 pub use mixage::{Ecoute, Limiteur, Mixeur};
 pub use partage::{
     borner, debit_partage, mbits, mode_partage, note_resolution, palier_inferieur, resume_partage,
@@ -33,9 +38,7 @@ pub use scene::{
     construire_elements, dimensions_grille, doit_recevoir, rassembler_spectateurs, ElementScene,
     Epinglage, QualiteRecue, SourcePiste, Spectateurs, TuileVideo,
 };
-pub use session::{
-    ApiVocale, AvisVocal, Dependances, Incrustation, Reglages, SessionVocale, DELAI_FERMETURE,
-};
+pub use session::{ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, DELAI_FERMETURE};
 pub use video::{
     CleVideo, DemandeVideo, FluxVideo, ImageI420, ImageVideo, Mire, RecepteurVideo, SourceVideo,
     TrameVideo, Videos,
@@ -1287,33 +1290,82 @@ mod tests {
         alice.session.fermer().await;
     }
 
+    fn pixel_du_partage(recepteur: &RecepteurVideo, x: u32, y: u32) -> [u8; 4] {
+        let image = recepteur.derniere().unwrap();
+        let (l, h) = (image.largeur(), image.hauteur());
+        let mut rgba = vec![0u8; (l * h * 4) as usize];
+        image.vers_rgba(l, h, &mut rgba);
+        let i = ((y * l + x) * 4) as usize;
+        rgba[i..i + 4].try_into().unwrap()
+    }
+
     #[tokio::test]
-    async fn l_incrustation_s_applique_a_chaque_image_du_partage() {
-        struct Coin;
-        impl Incrustation for Coin {
-            fn incruster(&self, image: &mut estompe_plateforme::Image) {
-                for pixel in image.rgba.chunks_exact_mut(4) {
-                    pixel.copy_from_slice(&[1, 2, 3, 255]);
-                }
-            }
-        }
+    async fn la_camera_est_incrustee_dans_le_partage_puis_disparait_quand_elle_est_coupee() {
         let serveur = ServeurVocalFactice::nouveau();
-        let alice = poste(&serveur, "alice", true);
-        alice.session.rejoindre("v1");
-        attendre(&alice.session, connecte_a("v1")).await;
-        alice.session.definir_incrustation(Some(Arc::new(Coin)));
+        let (alice, bob, cle) = partage_pret(&serveur).await;
+        let camera_alice = CleVideo::camera("alice");
+        alice.session.activer_camera(true);
+        attendre(&alice.session, |e| e.camera_active).await;
+        attendre(&bob.session, |e| e.video(&camera_alice)).await;
+        let demande = DemandeVideo {
+            largeur: 640,
+            hauteur: 360,
+        };
+        bob.session
+            .definir_affichage([(camera_alice.clone(), demande)].into_iter().collect());
+        attendre_que(|| {
+            serveur
+                .abonnes_video("v1", "alice", SourceVideo::Camera)
+                .contains_key("bob")
+        })
+        .await;
+        let reglages = ReglagesIncrustation {
+            active: true,
+            ..ReglagesIncrustation::default()
+        };
+        alice.session.regler_incrustation(reglages);
         alice.session.partager(source_de(&alice, "fenetre:7"));
-        attendre(&alice.session, |e| e.partage.is_some()).await;
-        let chez_moi = alice
-            .session
-            .videos()
-            .recepteur(&CleVideo::partage("alice"));
+        attendre(&alice.session, |e| e.partage.is_some() && e.incrustation).await;
+        assert_eq!(serveur.attributs("v1", "alice")["overlay"], "1");
+        attendre(&bob.session, |e| e.camera_incrustee("alice")).await;
+        attendre_que(|| {
+            !serveur
+                .abonnes_video("v1", "alice", SourceVideo::Camera)
+                .contains_key("bob")
+        })
+        .await;
+
+        alice.cameras.pousser(1);
+        attendre_que(|| alice.session.compositeur().a_une_camera()).await;
+        let chez_moi = alice.session.videos().recepteur(&cle);
+        let avant = chez_moi.images_recues();
         alice.ecrans.pousser("fenetre:7");
-        attendre_que(|| chez_moi.images_recues() >= 1).await;
-        let mut pixel = [0u8; 4];
-        chez_moi.derniere().unwrap().vers_rgba(1, 1, &mut pixel);
-        assert_eq!(pixel, [1, 2, 3, 255]);
+        attendre_que(|| chez_moi.images_recues() > avant).await;
+        let zone = zone_incrustation(&reglages, 1280, 800, 16.0 / 9.0);
+        let (cx, cy) = (
+            (zone.x + zone.largeur as i32 / 2) as u32,
+            (zone.y + zone.hauteur as i32 / 2) as u32,
+        );
+        let ecran = pixel_du_partage(&chez_moi, 10, 10);
+        assert_eq!(ecran[1], 128, "hors du médaillon, l'écran : {ecran:?}");
+        let medaillon = pixel_du_partage(&chez_moi, cx, cy);
+        assert!(
+            medaillon[0] < 20 && medaillon[1] > 170 && medaillon[2] < 20,
+            "dans le médaillon, la barre verte de la mire : {medaillon:?}"
+        );
+
+        alice.cameras.pousser(1);
+        let figee = chez_moi.images_recues();
+        attendre_que(|| chez_moi.images_recues() > figee + 2).await;
+
+        alice.session.activer_camera(false);
+        let etat = attendre(&alice.session, |e| !e.camera_active && !e.incrustation).await;
+        assert!(etat.partage.is_some(), "le partage continue sans la caméra");
+        attendre_que(|| pixel_du_partage(&chez_moi, cx, cy) == ecran).await;
+        assert_eq!(serveur.attributs("v1", "alice")["overlay"], "");
+        assert!(serveur.video_publiee("v1", "alice", SourceVideo::Partage));
         alice.session.fermer().await;
+        bob.session.fermer().await;
     }
 
     #[tokio::test]

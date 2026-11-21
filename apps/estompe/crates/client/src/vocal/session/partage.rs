@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -8,6 +8,7 @@ use estompe_plateforme::{
 };
 use tokio::time::Instant;
 
+use super::super::incrustation::{Compositeur, Piece};
 use super::super::partage::{
     message_source_perdue, palier_inferieur, ImagePartage, PartageLocal, QualitePartage,
     ReglagesPartage, MESSAGE_PARTAGE_IMPOSSIBLE,
@@ -21,6 +22,42 @@ pub const PERIODE_ADAPTATION: Duration = Duration::from_secs(3);
 pub const COUPS_AVANT_REDUCTION: u32 = 3;
 pub const MESSAGE_PUBLICATION_PARTAGE: &str = "Impossible de publier le partage dans le salon.";
 pub const MESSAGE_SON_PARTAGE: &str = "Partage sans le son : capture du son impossible.";
+pub const PERIODE_RELANCE: Duration = Duration::from_millis(33);
+pub const INACTIVITE_RELANCE: Duration = Duration::from_millis(45);
+
+pub struct Relance {
+    arret: Arc<AtomicBool>,
+    fil: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Relance {
+    pub fn demarrer(route: Arc<RoutePartage>) -> Option<Self> {
+        let arret = Arc::new(AtomicBool::new(false));
+        let drapeau = arret.clone();
+        let fil = std::thread::Builder::new()
+            .name("estompe-incrustation".into())
+            .spawn(move || {
+                while !drapeau.load(Ordering::Acquire) {
+                    std::thread::sleep(PERIODE_RELANCE);
+                    route.relancer(INACTIVITE_RELANCE);
+                }
+            })
+            .ok()?;
+        Some(Self {
+            arret,
+            fil: Some(fil),
+        })
+    }
+}
+
+impl Drop for Relance {
+    fn drop(&mut self) {
+        self.arret.store(true, Ordering::Release);
+        if let Some(fil) = self.fil.take() {
+            let _ = fil.join();
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct RouteSonPartage {
@@ -54,40 +91,91 @@ impl RouteSonPartage {
     }
 }
 
-pub trait Incrustation: Send + Sync {
-    fn incruster(&self, image: &mut Image);
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignalPartage {
     Reduite(bool),
     Perdue(Option<String>),
 }
 
+struct DerniereImage {
+    image: Arc<ImagePartage>,
+    piece: Option<Piece>,
+    quand: std::time::Instant,
+}
+
 #[derive(Default)]
 pub struct RoutePartage {
     sortie: Mutex<Option<Arc<dyn SortieVideo>>>,
     recepteur: Mutex<Option<Arc<RecepteurVideo>>>,
-    incrustation: Mutex<Option<Arc<dyn Incrustation>>>,
+    incrustation: Mutex<Option<Arc<Compositeur>>>,
+    derniere: Mutex<Option<DerniereImage>>,
+    emission: Mutex<()>,
     hauteur: AtomicU32,
 }
 
 impl RoutePartage {
-    pub fn envoyer(&self, mut image: Image) {
-        if let Some(incrustation) = self.incrustation.lock().ok().and_then(|i| i.clone()) {
-            incrustation.incruster(&mut image);
-        }
+    pub fn envoyer(&self, image: Image) {
+        let _emission = self.emission.lock();
+        self.emettre(image);
+    }
+
+    fn emettre(&self, mut image: Image) {
+        let compositeur = self.incrustation.lock().ok().and_then(|i| i.clone());
+        let piece = compositeur.as_ref().and_then(|c| c.incruster(&mut image));
+        let image = Arc::new(ImagePartage(image));
         if let Some(sortie) = self.sortie.lock().ok().and_then(|s| s.clone()) {
-            sortie.envoyer_rgba(&image, self.hauteur.load(Ordering::Relaxed));
+            sortie.envoyer_rgba(&image.0, self.hauteur.load(Ordering::Relaxed));
         }
         if let Some(recepteur) = self.recepteur.lock().ok().and_then(|r| r.clone()) {
-            recepteur.pousser(Arc::new(ImagePartage(image)));
+            recepteur.pousser(image.clone());
+        }
+        if let Ok(mut derniere) = self.derniere.lock() {
+            *derniere = (compositeur.is_some() || piece.is_some()).then(|| DerniereImage {
+                image,
+                piece,
+                quand: std::time::Instant::now(),
+            });
         }
     }
 
-    pub fn definir_incrustation(&self, incrustation: Option<Arc<dyn Incrustation>>) {
+    pub fn relancer(&self, inactivite: Duration) -> bool {
+        let _emission = self.emission.lock();
+        let camera = self
+            .incrustation
+            .lock()
+            .ok()
+            .and_then(|i| i.clone())
+            .is_some_and(|c| c.a_une_camera());
+        let base = match self.derniere.lock() {
+            Ok(d) => match d.as_ref() {
+                Some(d) if d.quand.elapsed() >= inactivite && (camera || d.piece.is_some()) => {
+                    let mut image = d.image.0.clone();
+                    if let Some(piece) = &d.piece {
+                        piece.restaurer(&mut image);
+                    }
+                    image
+                }
+                _ => return false,
+            },
+            Err(_) => return false,
+        };
+        self.emettre(base);
+        true
+    }
+
+    pub fn definir_incrustation(&self, incrustation: Option<Arc<Compositeur>>) {
+        let retiree = incrustation.is_none();
         if let Ok(mut i) = self.incrustation.lock() {
             *i = incrustation;
+        }
+        if retiree {
+            self.relancer(Duration::ZERO);
+        }
+    }
+
+    fn oublier(&self) {
+        if let Ok(mut d) = self.derniere.lock() {
+            *d = None;
         }
     }
 
@@ -222,6 +310,7 @@ impl Acteur {
                     son: false,
                 });
                 self.programmer_adaptation();
+                self.suivre_incrustation();
                 self.demarrer_son().await;
             }
             Err(message) => {
@@ -229,6 +318,7 @@ impl Acteur {
                 self.etat.partage_erreur = Some(message);
             }
         }
+        self.annoncer_incrustation().await;
         self.publier();
     }
 
@@ -410,6 +500,7 @@ impl Acteur {
         self.route_son.brancher(None);
         self.route_partage.brancher(None);
         self.route_partage.afficher(None);
+        self.route_partage.oublier();
         self.adaptation = None;
         self.coups = 0;
         self.etat.partage = None;
@@ -417,6 +508,7 @@ impl Acteur {
         if let Some(cle) = self.cle_partage_locale() {
             self.etat.pistes.remove(&cle);
         }
+        self.suivre_incrustation();
     }
 
     pub(super) fn suspendre_partage(&mut self) {
@@ -456,6 +548,7 @@ impl Acteur {
             }
             salle.retirer_video(SourceVideo::Partage).await;
         }
+        self.annoncer_incrustation().await;
         self.publier();
     }
 }

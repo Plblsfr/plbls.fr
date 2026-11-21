@@ -1,6 +1,6 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
-import { Bouton, VarianteBouton, Modal, Chargement, Case, Icone, Interrupteur } from "../composants.slint";
-import { DonneesVocal, EtapePartage, OptionPartage } from "donnees.slint";
+import { Bouton, VarianteBouton, Modal, Chargement, Case, Icone, Interrupteur, Curseur, Defilement } from "../composants.slint";
+import { DonneesVocal, EtapePartage, OptionPartage, IncrustationVocal } from "donnees.slint";
 import { ImageFlux } from "../video/flux.slint";
 
 component Titre inherits Text {
@@ -187,6 +187,135 @@ component Qualite inherits VerticalLayout {
     }
 }
 
+component Incrustation inherits VerticalLayout {
+    property <IncrustationVocal> o: DonneesVocal.partage.incrustation;
+    spacing: Espace.e2;
+    Titre {
+        text: "INCRUSTATION DE LA CAMÉRA";
+    }
+    Interrupteur {
+        texte: "Incruster ma caméra dans mon partage d'écran";
+        allume: root.o.active;
+        calque: 1;
+        bascule(a) => {
+            DonneesVocal.incrustation-active(a);
+        }
+    }
+    if root.o.active: Text {
+        text: root.o.camera ? "Calculée sur ton ordinateur avant l'envoi : les spectateurs la voient sans rien régler. Glisse-la dans l'aperçu pour la déplacer." : "Active ta caméra pour qu'elle apparaisse dans ton partage : l'aperçu montre une silhouette à sa place.";
+        color: Theme.gris;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if root.o.active: HorizontalLayout {
+        spacing: Espace.e1;
+        for c[i] in ["Haut gauche", "Haut droite", "Bas gauche", "Bas droite"]: Bouton {
+            texte: c;
+            variante: root.o.coin == i ? VarianteBouton.primaire : VarianteBouton.secondaire;
+            calque: 1;
+            clique => {
+                DonneesVocal.coin-incrustation(i);
+            }
+        }
+    }
+    if root.o.active: HorizontalLayout {
+        spacing: Espace.e4;
+        VerticalLayout {
+            spacing: 2px;
+            Text {
+                text: "Taille : \{Math.round(taille.valeur)} % de la largeur";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+            }
+            taille := Curseur {
+                libelle: "Taille de l'incrustation";
+                unite: " %";
+                minimum: 10;
+                maximum: 50;
+                pas: 1;
+                valeur: root.o.taille;
+                calque: 1;
+                change(v) => {
+                    DonneesVocal.taille-incrustation(v, false);
+                }
+                fini(v) => {
+                    DonneesVocal.taille-incrustation(v, true);
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 2px;
+            Text {
+                text: "Marge : \{Math.round(marge.valeur)} px";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+            }
+            marge := Curseur {
+                libelle: "Marge de l'incrustation";
+                unite: " px";
+                minimum: 0;
+                maximum: 120;
+                pas: 4;
+                valeur: root.o.marge;
+                calque: 1;
+                change(v) => {
+                    DonneesVocal.marge-incrustation(v, false);
+                }
+                fini(v) => {
+                    DonneesVocal.marge-incrustation(v, true);
+                }
+            }
+        }
+    }
+    if root.o.active: HorizontalLayout {
+        spacing: Espace.e1;
+        Bouton {
+            texte: "Rectangle arrondi";
+            variante: root.o.cercle ? VarianteBouton.secondaire : VarianteBouton.primaire;
+            calque: 1;
+            clique => {
+                DonneesVocal.forme-incrustation(false);
+            }
+        }
+        Bouton {
+            texte: "Cercle";
+            variante: root.o.cercle ? VarianteBouton.primaire : VarianteBouton.secondaire;
+            calque: 1;
+            clique => {
+                DonneesVocal.forme-incrustation(true);
+            }
+        }
+    }
+    if root.o.active: HorizontalLayout {
+        spacing: Espace.e4;
+        alignment: start;
+        Case {
+            texte: "Bordure";
+            cochee: root.o.bordure;
+            calque: 1;
+            bascule(c) => {
+                DonneesVocal.option-incrustation(0, c);
+            }
+        }
+        Case {
+            texte: "Ombre";
+            cochee: root.o.ombre;
+            calque: 1;
+            bascule(c) => {
+                DonneesVocal.option-incrustation(1, c);
+            }
+        }
+        Case {
+            texte: "Miroir";
+            cochee: root.o.miroir;
+            calque: 1;
+            bascule(c) => {
+                DonneesVocal.option-incrustation(2, c);
+            }
+        }
+    }
+}
+
 export component ApercuPartage inherits Rectangle {
     height: self.width * 9 / 16;
     border-radius: Rayon.l;
@@ -208,6 +337,23 @@ export component ApercuPartage inherits Rectangle {
             alignment: center;
             Chargement {
                 couleur: #ffffff;
+            }
+        }
+    }
+    if DonneesVocal.partage.incrustation.active: TouchArea {
+        mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+        accessible-role: none;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                DonneesVocal.deplacer-incrustation(self.mouse-x / self.width, self.mouse-y / self.height, false);
+            }
+            if (e.kind == PointerEventKind.up) {
+                DonneesVocal.deplacer-incrustation(self.mouse-x / self.width, self.mouse-y / self.height, true);
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                DonneesVocal.deplacer-incrustation(self.mouse-x / self.width, self.mouse-y / self.height, false);
             }
         }
     }
@@ -310,27 +456,38 @@ export component ChoixPartage inherits Modal {
     }
     if DonneesVocal.partage.ouvert && DonneesVocal.partage.etape != EtapePartage.source: VerticalLayout {
         spacing: Espace.e4;
-        if DonneesVocal.partage.etape == EtapePartage.apercu: ApercuPartage { }
-        if DonneesVocal.partage.etape == EtapePartage.apercu: Text {
-            text: DonneesVocal.partage.source + " · " + DonneesVocal.partage.detail + (DonneesVocal.partage.son-disponible ? (DonneesVocal.partage.son ? " · avec le son" : " · sans le son") : "");
-            color: Theme.encre-2;
-            font-size: Typo.petit;
-            overflow: elide;
-        }
-        if DonneesVocal.partage.etape != EtapePartage.source && DonneesVocal.partage.son-disponible: Interrupteur {
-            texte: DonneesVocal.partage.libelle-son;
-            allume: DonneesVocal.partage.son;
-            calque: 1;
-            bascule(a) => {
-                DonneesVocal.son-partage(a);
+        Defilement {
+            min-height: 200px;
+            preferred-height: contenu.preferred-height;
+            hauteur-contenu: contenu.preferred-height;
+            contenu := VerticalLayout {
+                alignment: start;
+                spacing: Espace.e4;
+                padding-right: Espace.e3;
+                if DonneesVocal.partage.etape == EtapePartage.apercu || DonneesVocal.partage.incrustation.active: ApercuPartage { }
+                if DonneesVocal.partage.etape == EtapePartage.apercu: Text {
+                    text: DonneesVocal.partage.source + " · " + DonneesVocal.partage.detail + (DonneesVocal.partage.son-disponible ? (DonneesVocal.partage.son ? " · avec le son" : " · sans le son") : "");
+                    color: Theme.encre-2;
+                    font-size: Typo.petit;
+                    overflow: elide;
+                }
+                if DonneesVocal.partage.son-disponible: Interrupteur {
+                    texte: DonneesVocal.partage.libelle-son;
+                    allume: DonneesVocal.partage.son;
+                    calque: 1;
+                    bascule(a) => {
+                        DonneesVocal.son-partage(a);
+                    }
+                }
+                Incrustation { }
+                Qualite { }
+                if DonneesVocal.partage.erreur != "": Text {
+                    text: DonneesVocal.partage.erreur;
+                    color: Theme.danger;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                }
             }
-        }
-        Qualite { }
-        if DonneesVocal.partage.erreur != "": Text {
-            text: DonneesVocal.partage.erreur;
-            color: Theme.danger;
-            font-size: Typo.petit;
-            wrap: word-wrap;
         }
         HorizontalLayout {
             alignment: end;
