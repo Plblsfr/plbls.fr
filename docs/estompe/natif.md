@@ -690,6 +690,11 @@ Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/v
   (photo de profil, sinon initiales, avec halo, micro et casque coupés quand on est dans ce salon, coupures du serveur) ; à droite du nom du salon, sa durée depuis
   l'arrivée du plus ancien participant (`since`, comme `oldestSince` et `VoiceTimer.svelte`), rafraîchie chaque seconde tant qu'un salon affiché est occupé. Au-dessus de la barre du compte, la barre du vocal : état
   (« Vocal connecté », « Connexion… », « Reconnexion… »), salon et serveur (clic : ouvre le salon), durée de présence (`since` du serveur, sinon la connexion), qualité, commandes, avis.
+- Glisser un participant (comme `SidePanel.svelte`) : seulement sur un membre que l'on domine, avec `move_members`, quand le serveur a un autre salon vocal ou cinéma
+  (`Participant::deplacable`, mêmes conditions que `canDrag`). `DragArea` sur la ligne du participant (curseur « saisir », ligne estompée pendant le glisser), `DropArea` sur
+  chaque salon vocal (`ElementListe::depot-actif`) : pendant le glisser, les autres salons vocaux sont bordés de rose (`glisse-depuis`, comme `.nav-item.drop`), celui
+  survolé se remplit ; le dépôt envoie `PUT /voice/{salon}/participants/{id}/move`, la route de « Déplacer vers ». La donnée glissée (`DataTransfer` de Slint, salon et
+  participant dans `user_data`) reste dans la fenêtre. Un refus du serveur s'affiche sous le salon visé (« Action impossible : … », notification dans le front) jusqu'au dépôt suivant.
 - Rail : pastille « Connecté en vocal » sur le serveur du vocal. Accueil : « Rejoindre » ou « Ouvrir » sur chaque vocal en cours.
 - Vue du salon : hors du salon, l'écran pour rejoindre (participants, « n / 10 participants », erreur du serveur, permission `connect`, réglages audio) ; dans le salon,
   une grille de tuiles (même calcul que `gridDims` : 1, 2×1, 2×2, 3×n, 4×n), « Tu es seul·e ici », bandeau de reconnexion, et en bas les commandes :
@@ -711,7 +716,15 @@ Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/v
 - Sons : à soi et aux autres, préférence `sons_vocal` ; choix du son d'arrivée et de départ parmi ceux du front (`SOUND_PRESETS` : Montée 660 puis 880 Hz, Descente,
   Carillon, Pop, Double bip, Aucun ; notes de 100 ms) et volume des sons de 0 à 100 % (60 % par défaut), préférence `sons` (`ReglagesSons`, `audio/tonalite.rs`, mêmes
   identifiants que `joinSound`, `leaveSound`) ; « Écouter » et un nouveau choix jouent le son sur la sortie choisie.
-- Écarts : pas de fichier de son personnalisé (« Mon fichier… » du front) ; le glisser d'un participant vers un autre salon du panneau n'est pas repris (le menu le remplace).
+- Son personnalisé (`pickSound` de `SettingsModal.svelte`) : « Mon fichier… » sur chaque son ouvre le sélecteur du système filtré sur les fichiers audio
+  (`Fichiers::choisir_fichier` de la crate plateforme, `rfd`, sur un fil à part). Le fichier est refusé au-delà de 150 Ko ou s'il ne se décode pas (« Choisis un fichier
+  audio de 150 Ko au plus. », sous les sons) ; sinon il est copié tel quel sur l'appareil (`<données>/sons/arrivee` ou `depart`, `SonsPersonnalises`, au lieu du
+  `data:` des préférences du front), devient le son choisi (`custom`, `ChoixSon::Personnalise`) et joue aussitôt en aperçu. « Mon fichier » apparaît alors parmi les sons ;
+  un son prédéfini ramène au son par défaut sans effacer le fichier, qui reste proposé. Décodage (`audio/son_perso.rs`) : WAV (PCM 8 à 32 bits, flottant) et Ogg ou WebM Opus
+  dans l'app, autres formats (MP3, AAC, FLAC, Vorbis…) par ffmpeg s'il est présent (`ffmpeg_du_systeme`), ramenés en mono 48 kHz ; joué au volume des sons comme
+  l'élément `Audio` du front (gain linéaire), décodé une fois puis gardé en mémoire ; un nouvel aperçu coupe le précédent.
+- Écarts : le refus d'un fichier s'affiche dans les réglages et celui d'un dépôt sous le salon, pas dans une notification ; le choix du fichier est filtré sur des extensions
+  audio (`accept="audio/*"` dans le front) et un fichier que ni l'app ni ffmpeg ne décode est refusé dès le choix (le front le garderait sans pouvoir le jouer).
 
 ### Appuyer pour parler
 
@@ -774,9 +787,14 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - `natif/tests/vocal.rs` (backend de test Slint, faux serveur vocal, périphériques factices) : rejoindre depuis le panneau, tuiles et participants du panneau, indicateur de parole
   (mesuré : voir ci-dessous), photo de profil dans la tuile et le panneau, durée du salon, mode plein cadre (bouton, Échap, bouton de sortie), couper le micro, Alt+Maj+M et Alt+Maj+D,
   menu d'un participant (volume, muet, « Déplacer vers » et « Déconnecter du vocal » envoyés au faux serveur HTTP), coupure d'un modérateur, appuyer pour parler sans raccourci global,
-  choix du son et volume des sons retenus, déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
+  glisser un participant sur un autre salon (salons proposés pendant le glisser, déplacement envoyé, refus du serveur affiché puis effacé),
+  choix du son et volume des sons retenus, son personnalisé (fichier trop gros refusé, fichier gardé, aperçu joué, retour au son prédéfini puis au fichier),
+  déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
+- `audio::son_perso::tests` : WAV stéréo à 44,1 kHz, flottant, 8 et 24 bits, Ogg Opus sans ffmpeg, MP3 par ffmpeg (ignoré sans ffmpeg, exigé par `ESTOMPE_FFMPEG_EXIGE`),
+  refus au-delà de 150 Ko ou d'un fichier illisible, fichier gardé et remplacé, lecture au volume des sons ; `vocal::projection::tests` : qui peut glisser un participant.
 - Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
-  `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`.
+  `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`, `vocal-sons-perso` (« Mon fichier » choisi, refus d'un fichier),
+  `vocal-glisser` (salons proposés pendant le glisser), `vocal-glisser-refus`.
 
 ## Intégration au bureau
 
@@ -915,7 +933,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume ; les fichiers personnalisés sont à part, dans `<données>/sons/`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
