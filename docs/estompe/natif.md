@@ -10,7 +10,7 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
-| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) |
+| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) ; capture d'écran et de fenêtre (`capture/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
 hors du workspace racine comme les apps Tauri. Slint est figé en `=1.18.1`, comme dans l'overlay natif de l'app Tauri.
@@ -961,6 +961,45 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
   - Écran forcé : voir [Mise à jour forcée](#mise-à-jour-forcée).
 - Non vérifié sur machine réelle : passage d'une version publiée à la suivante (deux tags), relance par l'installeur et session conservée.
 
+## Capture d'écran et de fenêtre
+
+Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
+publication dans le salon, incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (lot 8). Il ne fait ni interface
+ni publication, ni son : celui du partage aura son propre trait (`CaptureSon`), qui recevra le processus de la fenêtre (`SourceCapture::processus`).
+
+- `sources()` : écrans puis fenêtres, chacun avec un identifiant (`ecran:<n>` ou `fenetre:<n>`, `IdSource`), un titre, l'application (nom de
+  l'exécutable sous Windows, classe `WM_CLASS` sous X11), la taille, l'écran principal, le processus et `estompe` (fenêtre d'Estompe elle-même,
+  reconnue à son processus, que le sélecteur peut écarter). Les fenêtres sans titre, réduites ou plus petites que 120 × 80 sont écartées, comme
+  dans l'app Tauri. Les miniatures ne sont pas dans la liste : `miniature(source, hauteur)` les calcule une par une (`HAUTEUR_MINIATURE` = 180),
+  pour que le sélecteur affiche la liste tout de suite.
+- `capturer(source)` : une image RGBA, sans curseur.
+- `demarrer(source, OptionsCapture { ips, curseur }, recepteur)` : flux continu sur un fil à part. Le récepteur reçoit `EvenementCapture` :
+  `Trame(Image)` (RGBA, alpha à 255), `Reduite` puis `Restauree` (une fois chacun, rien n'est envoyé entre les deux), `Fermee` ou `Echec`
+  (dix échecs de suite), qui terminent le flux ; il renvoie `false` pour l'arrêter. Le `FluxCapture` rendu change la cadence
+  (`definir_cadence`, de 1 à 240 images par seconde) et le curseur (`definir_curseur`) pendant le flux, et l'arrête quand il est lâché ou par
+  `arreter()`, y compris depuis le récepteur.
+- Cadence : `Cadence` (reprise de `capture_fenetre.rs`) laisse passer une image par intervalle, tolère une image en avance d'un quart
+  d'intervalle et borne le rattrapage après un silence. Les parties pures (cadence, conversion BGRA vers RGBA, réduction des miniatures,
+  superposition du curseur) sont testées sur toutes les plateformes.
+
+| | Windows | Linux X11 | Wayland, macOS |
+|---|---|---|---|
+| Liste | `xcap` | `_NET_CLIENT_LIST`, RandR (`x11rb`) | indisponible (portails au lot 11) |
+| Écran en continu | Windows Graphics Capture (`xcap`, enregistreur vidéo), curseur dessiné par GDI | `GetImage` sur la racine, curseur par XFixes | |
+| Fenêtre en continu | Windows Graphics Capture (fenêtres accélérées par le GPU comprises), curseur par WGC ; repli image par image (`xcap`) | Composite (`NameWindowPixmap`), sinon `GetImage` sur la fenêtre ; curseur par XFixes | |
+| Fenêtre réduite, fermée | `IsIconic`, `IsWindow` | état `_NET_WM_STATE_HIDDEN` ou fenêtre non affichée ; fenêtre détruite | |
+
+- Linux : `xcap` n'est pas utilisé, il impose PipeWire (bibliothèque du système à la compilation) et passe par Wayland ou les portails ; `x11rb`,
+  déjà là pour les raccourcis globaux, suffit sous X11 sans dépendance du système. `disponible()` est faux sous Wayland, sans `DISPLAY`, ou si le
+  serveur X n'a pas de pixels de 32 bits en ordre little-endian.
+- Tests sous X11 (`capture::x11::tests`, ignorés sans serveur X, par exemple `xvfb-run -a cargo test -p estompe-plateforme capture`) : liste et
+  capture de l'écran, flux de l'écran à 30 images par seconde, fenêtre d'essai (titre, application, processus, pixels), flux à 30 images par
+  seconde, puis réduction, restauration et fermeture signalées ; la partie fenêtre n'est jouée que sans gestionnaire de fenêtres (le test tient
+  lui-même `_NET_CLIENT_LIST`).
+- Tests sous Windows (`capture::windows::tests`) : liste et capture du premier écran, flux de l'écran ; ignorés si le poste n'a pas d'écran
+  capturable, obligatoires avec `ESTOMPE_CAPTURE_EXIGE=1`.
+- Non vérifié sur machine réelle : capture d'un écran, d'un navigateur et d'un jeu fenêtré sous Windows à 30 et 60 images par seconde, cadence mesurée.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -974,7 +1013,7 @@ l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Ind
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour le micro et la sortie des messages vocaux), le lancement d'un processus d'arrière-plan
 (`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
-l'instance unique (fonctions de `instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
+l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).

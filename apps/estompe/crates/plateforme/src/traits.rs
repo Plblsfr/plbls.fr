@@ -122,7 +122,7 @@ pub trait PressePapiers {
     fn lire_pieces(&self) -> Resultat<Option<ContenuPressePapiers>>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeSource {
     Ecran,
     Fenetre,
@@ -132,7 +132,13 @@ pub enum TypeSource {
 pub struct SourceCapture {
     pub id: String,
     pub nom: String,
+    pub application: String,
     pub genre: TypeSource,
+    pub largeur: u32,
+    pub hauteur: u32,
+    pub principale: bool,
+    pub processus: Option<u32>,
+    pub estompe: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -142,10 +148,46 @@ pub struct Image {
     pub rgba: Vec<u8>,
 }
 
-pub trait CaptureEcran {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OptionsCapture {
+    pub ips: u32,
+    pub curseur: bool,
+}
+
+impl Default for OptionsCapture {
+    fn default() -> Self {
+        Self {
+            ips: 30,
+            curseur: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvenementCapture {
+    Trame(Image),
+    Reduite,
+    Restauree,
+    Fermee,
+    Echec(String),
+}
+
+pub type RecepteurCapture = Box<dyn FnMut(EvenementCapture) -> bool + Send>;
+
+pub trait CaptureEcran: Send + Sync {
     fn disponible(&self) -> bool;
     fn sources(&self) -> Resultat<Vec<SourceCapture>>;
     fn capturer(&self, source: &str) -> Resultat<Image>;
+    fn miniature(&self, source: &str, hauteur_max: u32) -> Resultat<Image> {
+        self.capturer(source)
+            .map(|image| crate::capture::reduire(&image, hauteur_max))
+    }
+    fn demarrer(
+        &self,
+        source: &str,
+        options: OptionsCapture,
+        recepteur: RecepteurCapture,
+    ) -> Resultat<crate::capture::FluxCapture>;
 }
 
 pub type RecepteurSon = Box<dyn FnMut(&[f32], u32) + Send>;
