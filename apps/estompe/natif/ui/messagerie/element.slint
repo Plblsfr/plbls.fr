@@ -290,6 +290,12 @@ component CorpsMessage inherits Rectangle {
         width: 3px;
         background: Theme.rose-fonce;
     }
+    function clic-droit(e: PointerEvent, x: length, y: length) {
+        if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+            portee.focus();
+            root.ouvrir-menu(x, y);
+        }
+    }
     zone := TouchArea {
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
@@ -339,6 +345,9 @@ component CorpsMessage inherits Rectangle {
                             mouse-cursor: pointer;
                             clicked => {
                                 DonneesMessagerie.auteur-clique(root.ligne.utilisateur);
+                            }
+                            pointer-event(e) => {
+                                root.clic-droit(e, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
                             }
                         }
                     }
@@ -393,6 +402,9 @@ component CorpsMessage inherits Rectangle {
                                 mouse-cursor: pointer;
                                 clicked => {
                                     DonneesMessagerie.auteur-clique(root.ligne.utilisateur);
+                                }
+                                pointer-event(e) => {
+                                    root.clic-droit(e, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
                                 }
                             }
                         }

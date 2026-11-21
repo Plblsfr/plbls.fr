@@ -172,6 +172,100 @@ fn glisser(faible: &slint::Weak<Principale>, qui: &'static str, vers: &'static s
     );
 }
 
+fn clic_droit(
+    faible: &slint::Weak<Principale>,
+    libelle: &'static str,
+    tuile: bool,
+    decalage: (f32, f32),
+) -> LogicalPosition {
+    sur_l_interface(faible, move |f| {
+        let e = ElementHandle::find_by_accessible_label(f, libelle)
+            .find(|e| {
+                e.accessible_role() == Some(AccessibleRole::Button)
+                    && if tuile {
+                        e.size().height > 60.0
+                    } else {
+                        (e.size().height - 30.0).abs() < 0.5
+                    }
+            })
+            .unwrap_or_else(|| panic!("« {libelle} » introuvable"));
+        let (position, taille) = (e.absolute_position(), e.size());
+        let point = LogicalPosition::new(
+            position.x + taille.width * decalage.0,
+            position.y + taille.height * decalage.1,
+        );
+        f.window()
+            .dispatch_event(WindowEvent::PointerMoved { position: point });
+        f.window().dispatch_event(WindowEvent::PointerPressed {
+            position: point,
+            button: PointerEventButton::Right,
+        });
+        f.window().dispatch_event(WindowEvent::PointerReleased {
+            position: point,
+            button: PointerEventButton::Right,
+        });
+        point
+    })
+}
+
+fn cadre_du_menu(f: &Principale) -> (LogicalPosition, slint::LogicalSize) {
+    let e = ElementHandle::find_by_accessible_label(f, "Muet pour moi")
+        .find(|e| e.accessible_role() == Some(AccessibleRole::Switch) && e.size().height > 0.0)
+        .expect("interrupteur « Muet pour moi » du menu");
+    (e.absolute_position(), e.size())
+}
+
+fn menu_au_pointeur(
+    faible: &slint::Weak<Principale>,
+    point: LogicalPosition,
+    attendu: &'static str,
+) {
+    attendre_l_interface(
+        faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_menu_ouvert() && v.get_menu_au_pointeur() && v.get_menu().nom == "carol"
+        },
+        attendu,
+    );
+    sur_l_interface(faible, move |f| {
+        let fenetre = f.window().size().to_logical(f.window().scale_factor());
+        let (position, taille) = cadre_du_menu(f);
+        let largeur = 420.0_f32.min(fenetre.width - 32.0);
+        let gauche = 8.0_f32.max(point.x.min(fenetre.width - largeur - 8.0));
+        assert!(
+            (position.x - (gauche + 20.0)).abs() < 1.0,
+            "{attendu} : menu à gauche {gauche}, interrupteur à {}",
+            position.x
+        );
+        assert!(
+            position.y >= 8.0 && position.y + taille.height <= fenetre.height - 8.0,
+            "{attendu} : menu gardé dans la fenêtre"
+        );
+        if point.y + 300.0 < fenetre.height {
+            assert!(
+                position.y > point.y && position.y < point.y + 120.0,
+                "{attendu} : menu sous le pointeur"
+            );
+        }
+    });
+}
+
+fn fermer_le_menu(faible: &slint::Weak<Principale>) {
+    sur_l_interface(faible, |f| {
+        presser(f, Key::Escape);
+        relacher(f, Key::Escape);
+    });
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesVocal>().get_menu_ouvert(),
+        "menu fermé par Échap",
+    );
+    for _ in 0..3 {
+        sur_l_interface(faible, |_| slint::platform::update_timers_and_animations());
+    }
+}
+
 fn voix_forte() -> Vec<f32> {
     (0..4_800)
         .map(|n| 0.5 * (2.0 * std::f32::consts::PI * 220.0 * n as f32 / 48_000.0).sin())
@@ -421,10 +515,52 @@ fn scenario(
         "menu fermé par Échap",
     );
 
+    let point = clic_droit(&faible, "carol", false, (0.5, 0.5));
+    menu_au_pointeur(&faible, point, "clic droit sur carol dans le panneau");
+    let muet = sur_l_interface(&faible, |f| f.global::<DonneesVocal>().get_menu().muet);
+    assert!(muet, "même contenu qu'au clic gauche");
+    fermer_le_menu(&faible);
+    sur_l_interface(&faible, |f| {
+        presser(f, Key::Shift);
+        presser(f, Key::F10);
+        relacher(f, Key::F10);
+        relacher(f, Key::Shift);
+    });
+    let ligne = sur_l_interface(&faible, |f| {
+        let e = ElementHandle::find_by_accessible_label(f, "carol")
+            .find(|e| {
+                e.accessible_role() == Some(AccessibleRole::Button)
+                    && (e.size().height - 30.0).abs() < 0.5
+            })
+            .expect("carol dans le panneau");
+        LogicalPosition::new(
+            e.absolute_position().x + 30.0,
+            e.absolute_position().y + e.size().height,
+        )
+    });
+    menu_au_pointeur(&faible, ligne, "Maj+F10 sur carol, focus rendu après Échap");
+    fermer_le_menu(&faible);
+    sur_l_interface(&faible, |f| {
+        presser(f, Key::Menu);
+        relacher(f, Key::Menu);
+    });
+    menu_au_pointeur(&faible, ligne, "touche Menu sur carol");
+    fermer_le_menu(&faible);
+    let point = clic_droit(&faible, "carol", true, (0.95, 0.95));
+    menu_au_pointeur(
+        &faible,
+        point,
+        "clic droit en bas à droite de la tuile de carol",
+    );
+    fermer_le_menu(&faible);
+
     cliquer(&faible, "carol");
     attendre_l_interface(
         &faible,
-        |f| f.global::<DonneesVocal>().get_menu_ouvert(),
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_menu_ouvert() && !v.get_menu_au_pointeur()
+        },
         "menu de carol rouvert",
     );
     let (destinations, deconnecter) = sur_l_interface(&faible, |f| {

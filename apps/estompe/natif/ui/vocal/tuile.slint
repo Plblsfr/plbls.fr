@@ -16,8 +16,27 @@ export component Tuile inherits Rectangle {
     accessible-enabled: utilisable;
     accessible-action-default => {
         if (root.utilisable) {
-            DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+            root.ouvrir(false, 0, 0);
         }
+    }
+    property <bool> a-ouvert-menu: false;
+    changed utilisable => {
+        if (self.utilisable && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            rendre-focus.running = true;
+        }
+    }
+    rendre-focus := Timer {
+        interval: 0ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            portee.focus();
+        }
+    }
+    function ouvrir(au-pointeur: bool, x: length, y: length) {
+        DonneesVocal.ouvrir-menu-a(root.p.utilisateur, root.p.salon, au-pointeur, x, y);
+        root.a-ouvert-menu = DonneesVocal.menu-ouvert;
     }
     forward-focus: portee;
     Avatar {
@@ -93,7 +112,11 @@ export component Tuile inherits Rectangle {
         }
         key-pressed(e) => {
             if (e.text == Key.Return || e.text == " ") {
-                DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                root.ouvrir(false, 0, 0);
+                return accept;
+            }
+            if (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                root.ouvrir(true, root.absolute-position.x + root.width / 2, root.absolute-position.y + root.height / 2);
                 return accept;
             }
             return reject;
@@ -102,7 +125,12 @@ export component Tuile inherits Rectangle {
             enabled: root.utilisable;
             mouse-cursor: root.utilisable ? pointer : default;
             clicked => {
-                DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                root.ouvrir(false, 0, 0);
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                    root.ouvrir(true, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
             }
         }
     }
@@ -128,8 +156,27 @@ export component LigneParticipant inherits Rectangle {
     accessible-enabled: utilisable;
     accessible-action-default => {
         if (root.utilisable) {
-            DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+            root.ouvrir(false, 0, 0);
         }
+    }
+    property <bool> a-ouvert-menu: false;
+    changed utilisable => {
+        if (self.utilisable && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            rendre-focus.running = true;
+        }
+    }
+    rendre-focus := Timer {
+        interval: 0ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            portee.focus();
+        }
+    }
+    function ouvrir(au-pointeur: bool, x: length, y: length) {
+        DonneesVocal.ouvrir-menu-a(root.p.utilisateur, root.p.salon, au-pointeur, x, y);
+        root.a-ouvert-menu = DonneesVocal.menu-ouvert;
     }
     forward-focus: portee;
     HorizontalLayout {
@@ -181,7 +228,11 @@ export component LigneParticipant inherits Rectangle {
         }
         key-pressed(e) => {
             if (e.text == Key.Return || e.text == " ") {
-                DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                root.ouvrir(false, 0, 0);
+                return accept;
+            }
+            if (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                root.ouvrir(true, root.absolute-position.x + 30px, root.absolute-position.y + root.height);
                 return accept;
             }
             return reject;
@@ -194,7 +245,12 @@ export component LigneParticipant inherits Rectangle {
                 enabled: root.utilisable;
                 mouse-cursor: !root.utilisable ? default : root.p.deplacable ? MouseCursor.grab : pointer;
                 clicked => {
-                    DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                    root.ouvrir(false, 0, 0);
+                }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                        root.ouvrir(true, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                    }
                 }
             }
         }

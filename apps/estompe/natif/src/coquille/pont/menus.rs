@@ -59,7 +59,10 @@ pub fn entrees_du_salon(salon: &DonneesSalon) -> Vec<Entree> {
 pub fn entrees_du_prive(prive: &DonneesPrive) -> Vec<Entree> {
     lu(prive.non_lus, prive.mentions)
         .into_iter()
-        .chain([lien()])
+        .chain([
+            lien(),
+            Entree::nouvelle(COPIER_PSEUDO, "Copier le pseudo", "copie"),
+        ])
         .collect()
 }
 
@@ -134,9 +137,10 @@ impl Pont {
             return false;
         };
         let pont = self.clone();
+        let titre = prive.pseudo.clone();
         menu::ouvrir(
             f,
-            &prive.pseudo,
+            &titre,
             ancre,
             entrees_du_prive(&prive),
             move |f, action| {
@@ -145,6 +149,7 @@ impl Pont {
                     COPIER_LIEN => {
                         menu::copier_texte(f, &pont.lien_absolu(&lien_message_prive(&prive.id)))
                     }
+                    COPIER_PSEUDO => menu::copier_texte(f, &prive.pseudo),
                     _ => {}
                 }
                 false
@@ -282,6 +287,29 @@ mod tests {
         );
         assert_eq!(ids(&entrees_du_salon(&salon(0, false))), [COPIER_LIEN]);
         assert_eq!(ids(&entrees_du_salon(&salon(3, true))), [COPIER_LIEN]);
+    }
+
+    #[test]
+    fn le_menu_d_une_conversation_privee_copie_le_pseudo_comme_le_front() {
+        let prive = |non_lus| DonneesPrive {
+            id: "d1".into(),
+            pseudo: "bob".into(),
+            initiales: "B".into(),
+            teinte: 0,
+            actif: false,
+            non_lus,
+            mentions: 0,
+            presence: Presence::EnLigne,
+            brouillon: false,
+        };
+        assert_eq!(
+            ids(&entrees_du_prive(&prive(2))),
+            [MARQUER_LU, COPIER_LIEN, COPIER_PSEUDO]
+        );
+        assert_eq!(
+            ids(&entrees_du_prive(&prive(0))),
+            [COPIER_LIEN, COPIER_PSEUDO]
+        );
     }
 
     #[test]
