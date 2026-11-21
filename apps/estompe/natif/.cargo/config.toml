@@ -1,5 +1,6 @@
 # Cible MSVC : libwebrtc (SDK LiveKit) est précompilé en /MT (RuntimeLibrary=MT_StaticRelease), donc CRT statique pour tout le binaire ;
 # Skia n'a pas de binaires précompilés en CRT statique et se compile alors depuis ses sources (voir docs/estompe/natif.md, « Vocal »).
-# ucrt.lib explicite : webrtc-sys exclut libucrt tout en laissant rustc exclure ucrt, ce qui laisse strlen, pow… non résolus.
+# UCRT hybride : webrtc-sys exclut libucrt tout en laissant rustc exclure ucrt (strlen, pow… non résolus) et Skia compilé en /MT
+# réclame libucrt, d'où des symboles définis deux fois ; libucrt est exclu partout et ucrt.lib lié explicitement.
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=ucrt.lib"]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=/NODEFAULTLIB:libucrt.lib", "-C", "link-arg=ucrt.lib"]
