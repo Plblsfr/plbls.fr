@@ -14,6 +14,7 @@ use estompe_client::audio::{ChoixSon, FormatAudio, SensAudio};
 use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::preferences::Preferences;
 use estompe_client::vocal::factice::{ApiVocaleFactice, ServeurVocalFactice};
+use estompe_client::vocal::video::taille_de_conversion;
 use estompe_client::vocal::{
     CamerasFactices, CleVideo, Dependances, EvenementSalle, Mire, ReglagesPtt, SessionVocale,
     SourceAudio, SourceVideo,
@@ -23,7 +24,7 @@ use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::vocal::OutilsVocaux;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesVideo, DonneesVocal, Page, ParticipantVocal, Principale,
+    creer_fenetre, ecrans, Calques, DonneesVideo, DonneesVocal, Page, ParticipantVocal, Principale,
 };
 use estompe_plateforme::{
     EcransFactices, RaccourcisFactices, SonsFactices, SourceCapture, TypeSource,
@@ -40,6 +41,11 @@ fn cliquer(faible: &slint::Weak<Principale>, libelle: &'static str) {
         let element = ElementHandle::find_by_accessible_label(f, libelle)
             .find(|e| e.accessible_role() == Some(AccessibleRole::Button) && e.size().height > 0.0)
             .unwrap_or_else(|| panic!("« {libelle} » introuvable"));
+        assert_ne!(
+            element.accessible_enabled(),
+            Some(false),
+            "« {libelle} » désactivé"
+        );
         element.mock_single_click(PointerEventButton::Left);
     });
 }
@@ -317,24 +323,31 @@ fn scenario(
         |f| video_affichee(f, "carol"),
         "c334 : la caméra de carol s'affiche dans sa tuile",
     );
-    let demande = banc
-        .serveur
-        .abonnes_video("v1", "carol", SourceVideo::Camera)["u1"];
-    assert!(
-        demande.largeur < 1920 && demande.hauteur < 1080,
-        "{demande:?}"
+    let image_a_la_taille_demandee = || {
+        let demande = banc
+            .serveur
+            .abonnes_video("v1", "carol", SourceVideo::Camera)["u1"];
+        assert!(
+            demande.largeur < 1920 && demande.hauteur < 1080,
+            "{demande:?}"
+        );
+        let (taille, libelle) = sur_l_interface(&faible, |f| {
+            let t = tuile(f, "carol").unwrap();
+            let l = f
+                .global::<DonneesVideo>()
+                .get_flux()
+                .row_data(t.video as usize)
+                .unwrap();
+            ((l.largeur, l.hauteur), t.libelle_video.to_string())
+        });
+        assert_eq!(libelle, "caméra");
+        let attendue = taille_de_conversion((1920, 1080), (demande.largeur, demande.hauteur));
+        taille == (attendue.0 as i32, attendue.1 as i32)
+    };
+    attendre(
+        image_a_la_taille_demandee,
+        "c334 : l'image est réduite à la taille de la tuile demandée au serveur",
     );
-    let (largeur, libelle) = sur_l_interface(&faible, |f| {
-        let t = tuile(f, "carol").unwrap();
-        let l = f
-            .global::<DonneesVideo>()
-            .get_flux()
-            .row_data(t.video as usize)
-            .unwrap();
-        (l.largeur, t.libelle_video.to_string())
-    });
-    assert!(largeur > 0 && largeur as u32 <= demande.largeur.max(1));
-    assert_eq!(libelle, "caméra");
     let visibilite = banc.visibilite.clone();
     sur_l_interface(&faible, move |f| visibilite(f, false));
     attendre(
@@ -647,6 +660,11 @@ fn scenario(
         |f| !f.global::<DonneesVocal>().get_camera().ouvert,
         "fenêtre de la caméra fermée",
     );
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<Calques>().get_ouverts() == 0,
+        "plus aucune fenêtre comptée ouverte après la caméra en erreur",
+    );
     assert!(sur_l_interface(&faible, |f| {
         f.global::<DonneesVocal>()
             .get_participants()
@@ -757,9 +775,9 @@ fn scenario(
         || banc.serveur.son_partage_publie("v1", "u1"),
         "c339 : le son de la fenêtre est publié avec le partage",
     );
-    assert_eq!(
-        banc.sons.ouverts(),
-        vec![estompe_plateforme::CibleSon::Application(4242)]
+    attendre(
+        || banc.sons.ouverts() == [estompe_plateforme::CibleSon::Application(4242)],
+        "c339 : le son capturé est celui du processus de la fenêtre",
     );
     let ecrans = banc.ecrans.clone();
     attendre_l_interface(
@@ -788,9 +806,7 @@ fn scenario(
                     })
                 })
     }));
-    sur_l_interface(&faible, |f| {
-        f.global::<DonneesVocal>().invoke_changer_source_partage();
-    });
+    cliquer(&faible, "Changer de source");
     attendre_l_interface(
         &faible,
         |f| {
@@ -821,9 +837,7 @@ fn scenario(
         || banc.ecrans.ouverts() == [("ecran:0".to_string(), 60)],
         "c338 : seule la nouvelle source est capturée",
     );
-    sur_l_interface(&faible, |f| {
-        f.global::<DonneesVocal>().invoke_qualite_partage()
-    });
+    cliquer(&faible, "Qualité");
     attendre_l_interface(
         &faible,
         |f| f.global::<DonneesVocal>().get_partage().etape == estompe_natif::EtapePartage::Qualite,

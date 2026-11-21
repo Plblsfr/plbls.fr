@@ -31,7 +31,9 @@ pub fn sur_l_interface<R: Send + 'static>(
     let (envoi, reception) = mpsc::channel();
     faible
         .upgrade_in_event_loop(move |f| {
-            let _ = envoi.send(action(&f));
+            let resultat = action(&f);
+            i_slint_backend_testing::mock_elapsed_time(Duration::ZERO);
+            let _ = envoi.send(resultat);
         })
         .expect("boucle d'évènements");
     reception
