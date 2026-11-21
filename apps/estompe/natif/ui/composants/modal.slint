@@ -5,15 +5,20 @@ export component Modal {
     in property <string> titre;
     in property <bool> ouvert: false;
     in property <length> largeur: 440px;
+    in property <bool> focus-croix: true;
     callback ferme();
+    callback ouverture();
     width: 100%;
     height: 100%;
     visible: ouvert;
     accessible-role: none;
     changed ouvert => {
         Calques.ouverts = Math.max(0, Calques.ouverts + (ouvert ? 1 : -1));
-        if (ouvert) {
+        if (ouvert && root.focus-croix) {
             croix.prendre-focus();
+        }
+        if (ouvert) {
+            root.ouverture();
         }
     }
     Rectangle {

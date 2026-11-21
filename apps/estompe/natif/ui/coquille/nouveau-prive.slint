@@ -1,0 +1,223 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Modal, Icone, Bouton, VarianteBouton, Avatar } from "../composants.slint";
+import { EtatPresence } from "../composants/avatar.slint";
+
+export struct PersonneProposee {
+    pseudo: string,
+    ou: string,
+    initiales: string,
+    teinte: int,
+    presence: EtatPresence,
+}
+
+export global DonneesNouveauPrive {
+    in property <bool> ouvert: false;
+    in-out property <string> saisie;
+    in property <int> demande-focus: 0;
+    in property <int> curseur: 0;
+    in property <int> demande-curseur: 0;
+    in property <[PersonneProposee]> proposes;
+    in property <int> active: -1;
+    in property <bool> peut-valider: false;
+    in property <bool> en-cours: false;
+    in property <string> erreur;
+    callback modifie(string);
+    callback naviguer(int);
+    callback choisir(int);
+    callback valider();
+    callback fermer-liste();
+    callback fermer();
+}
+
+component LignePersonne inherits Rectangle {
+    in property <PersonneProposee> personne;
+    in property <int> index;
+    property <bool> active: DonneesNouveauPrive.active == root.index;
+    height: 40px;
+    border-radius: Rayon.s;
+    background: root.active ? Theme.rose-doux : zone.has-hover ? Theme.papier-2 : transparent;
+    accessible-role: list-item;
+    accessible-label: root.personne.pseudo;
+    accessible-description: root.personne.ou;
+    accessible-item-selected: root.active;
+    accessible-action-default => {
+        DonneesNouveauPrive.choisir(root.index);
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.personne.pseudo;
+                initiales: root.personne.initiales;
+                teinte: root.personne.teinte;
+                presence: root.personne.presence;
+                taille: 26px;
+                fond: Theme.surface;
+            }
+        }
+        Text {
+            text: root.personne.pseudo;
+            color: Theme.encre;
+            font-size: Typo.compact;
+            font-weight: Typo.gras;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.personne.ou;
+            color: Theme.gris;
+            font-size: 12px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    zone := TouchArea {
+        enabled: Calques.ouverts <= 1;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesNouveauPrive.choisir(root.index);
+        }
+    }
+}
+
+export component NouveauPrive {
+    property <int> demande: DonneesNouveauPrive.demande-focus;
+    property <int> demande-curseur: DonneesNouveauPrive.demande-curseur;
+    changed demande => {
+        champ.focus();
+    }
+    changed demande-curseur => {
+        champ.set-selection-offsets(DonneesNouveauPrive.curseur, DonneesNouveauPrive.curseur);
+    }
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: "Nouveau message privé";
+        ouvert: DonneesNouveauPrive.ouvert;
+        largeur: 440px;
+        focus-croix: false;
+        ouverture => {
+            champ.focus();
+        }
+        ferme => {
+            if (DonneesNouveauPrive.proposes.length > 0) {
+                DonneesNouveauPrive.fermer-liste();
+            } else {
+                DonneesNouveauPrive.fermer();
+            }
+        }
+        if DonneesNouveauPrive.erreur != "": Rectangle {
+            border-radius: Rayon.s;
+            background: Theme.danger.with-alpha(0.1);
+            border-width: 1px;
+            border-color: Theme.danger;
+            HorizontalLayout {
+                padding: Espace.e3;
+                Text {
+                    text: DonneesNouveauPrive.erreur;
+                    color: Theme.danger;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: Espace.e1;
+            Text {
+                text: "Pseudo";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+            }
+            Rectangle {
+                height: 40px;
+                border-radius: Rayon.s;
+                background: Theme.surface;
+                border-width: champ.has-focus ? 2px : 1px;
+                border-color: champ.has-focus ? Theme.encre : Theme.trait-fort;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: Espace.e3;
+                    spacing: Espace.e2;
+                    VerticalLayout {
+                        alignment: center;
+                        Icone {
+                            nom: "arobase";
+                            taille: 16px;
+                            couleur: Theme.gris;
+                        }
+                    }
+                    champ := TextInput {
+                        horizontal-stretch: 1;
+                        enabled: Calques.ouverts <= 1;
+                        vertical-alignment: center;
+                        single-line: true;
+                        text <=> DonneesNouveauPrive.saisie;
+                        color: Theme.encre;
+                        font-size: Typo.corps;
+                        selection-background-color: Theme.rose;
+                        selection-foreground-color: Theme.encre;
+                        accessible-role: combobox;
+                        accessible-label: "Pseudo";
+                        accessible-value: self.text;
+                        accessible-expanded: DonneesNouveauPrive.proposes.length > 0;
+                        edited => {
+                            DonneesNouveauPrive.modifie(self.text);
+                        }
+                        key-pressed(e) => {
+                            if (e.text == Key.DownArrow) {
+                                DonneesNouveauPrive.naviguer(1);
+                                return accept;
+                            }
+                            if (e.text == Key.UpArrow) {
+                                DonneesNouveauPrive.naviguer(-1);
+                                return accept;
+                            }
+                            if (e.text == Key.Return) {
+                                DonneesNouveauPrive.valider();
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesNouveauPrive.proposes.length > 0: VerticalLayout {
+            spacing: 2px;
+            accessible-role: list;
+            accessible-label: "Pseudos connus";
+            for p[i] in DonneesNouveauPrive.proposes: LignePersonne {
+                personne: p;
+                index: i;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Annuler";
+                calque: 1;
+                clique => {
+                    DonneesNouveauPrive.fermer();
+                }
+            }
+            Bouton {
+                texte: "Ouvrir la conversation";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                actif: DonneesNouveauPrive.peut-valider;
+                en-cours: DonneesNouveauPrive.en-cours;
+                clique => {
+                    DonneesNouveauPrive.valider();
+                }
+            }
+        }
+    }
+}

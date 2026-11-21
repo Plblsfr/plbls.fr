@@ -1,0 +1,323 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, ListeVirtuelle } from "../composants.slint";
+
+export struct CelluleEmoji {
+    index: int,
+    libelle: string,
+    image: image,
+}
+
+export struct RangeeEmoji {
+    titre: string,
+    cellules: [CelluleEmoji],
+}
+
+export struct OngletEmoji {
+    libelle: string,
+    image: image,
+}
+
+export global DonneesSelecteur {
+    in property <bool> ouvert: false;
+    in-out property <string> recherche;
+    in property <[OngletEmoji]> onglets;
+    in property <int> onglet-actif: 0;
+    in property <[RangeeEmoji]> rangees;
+    in property <int> actif: -1;
+    in property <string> message;
+    in property <image> pied-image;
+    in property <string> pied-nom;
+    in property <string> pied-code;
+    in property <string> aide;
+    in-out property <length> defilement: 0px;
+    in property <int> demande-focus: 0;
+    callback chercher(string);
+    callback deplacer(int, int);
+    callback choisir(int, bool);
+    callback choisir-actif(bool);
+    callback survoler(int);
+    callback aller-a(int);
+    callback defile(length, length);
+    callback fermer();
+}
+
+component CaseEmoji inherits Rectangle {
+    in property <CelluleEmoji> cellule;
+    width: 38px;
+    height: 36px;
+    border-radius: Rayon.xs;
+    background: root.cellule.index == DonneesSelecteur.actif ? Theme.rose-doux : zone.has-hover ? Theme.encre.with-alpha(0.06) : transparent;
+    border-width: root.cellule.index == DonneesSelecteur.actif ? 2px : 0;
+    border-color: Theme.encre;
+    accessible-role: button;
+    accessible-label: root.cellule.libelle;
+    accessible-action-default => {
+        DonneesSelecteur.choisir(root.cellule.index, false);
+    }
+    Image {
+        width: 24px;
+        height: 24px;
+        source: root.cellule.image;
+        image-fit: contain;
+    }
+    if root.cellule.image.width == 0: Text {
+        text: ":";
+        color: Theme.gris;
+        font-size: Typo.corps;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        changed has-hover => {
+            DonneesSelecteur.survoler(self.has-hover ? root.cellule.index : -1);
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.up && e.button == PointerEventButton.left && self.has-hover) {
+                DonneesSelecteur.choisir(root.cellule.index, e.modifiers.shift);
+            }
+        }
+    }
+}
+
+export component SelecteurEmoji inherits Rectangle {
+    property <int> demande: DonneesSelecteur.demande-focus;
+    property <int> onglet-focus: DonneesSelecteur.onglet-actif;
+    changed demande => {
+        recherche.focus();
+    }
+    init => {
+        recherche.focus();
+    }
+    width: 352px;
+    height: 420px;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait-fort;
+    drop-shadow-blur: 28px;
+    drop-shadow-offset-y: 10px;
+    drop-shadow-color: Theme.sombre ? #00000099 : #16130f2e;
+    accessible-role: groupbox;
+    accessible-label: "Choisir un smiley";
+    TouchArea { }
+    VerticalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e2;
+        Rectangle {
+            height: 36px;
+            border-radius: Rayon.s;
+            background: Theme.papier-2;
+            border-width: recherche.has-focus ? 2px : 0;
+            border-color: Theme.encre;
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e3;
+                spacing: Espace.e2;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "cherche";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    if recherche.text == "": Text {
+                        width: 100%;
+                        text: "Rechercher un smiley";
+                        color: Theme.gris-2;
+                        font-size: Typo.compact;
+                        vertical-alignment: center;
+                    }
+                    recherche := TextInput {
+                        width: 100%;
+                        height: 100%;
+                        vertical-alignment: center;
+                        single-line: true;
+                        text <=> DonneesSelecteur.recherche;
+                        color: Theme.encre;
+                        font-size: Typo.compact;
+                        selection-background-color: Theme.rose;
+                        accessible-role: text-input;
+                        accessible-label: "Rechercher un smiley";
+                        accessible-value: self.text;
+                        edited => {
+                            DonneesSelecteur.chercher(self.text);
+                        }
+                        key-pressed(e) => {
+                            if (e.text == Key.Escape) {
+                                DonneesSelecteur.fermer();
+                                return accept;
+                            }
+                            if (e.text == Key.Tab && !e.modifiers.shift && DonneesSelecteur.onglets.length > 0) {
+                                onglets.focus();
+                                return accept;
+                            }
+                            if (e.text == Key.DownArrow) {
+                                DonneesSelecteur.deplacer(0, 1);
+                                return accept;
+                            }
+                            if (e.text == Key.UpArrow) {
+                                DonneesSelecteur.deplacer(0, -1);
+                                return accept;
+                            }
+                            if (DonneesSelecteur.actif >= 0 && e.text == Key.LeftArrow) {
+                                DonneesSelecteur.deplacer(-1, 0);
+                                return accept;
+                            }
+                            if (DonneesSelecteur.actif >= 0 && e.text == Key.RightArrow) {
+                                DonneesSelecteur.deplacer(1, 0);
+                                return accept;
+                            }
+                            if (e.text == Key.Return) {
+                                DonneesSelecteur.choisir-actif(e.modifiers.shift);
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                }
+            }
+        }
+        onglets := FocusScope {
+            height: DonneesSelecteur.onglets.length > 0 ? 34px : 0px;
+            visible: DonneesSelecteur.onglets.length > 0;
+            accessible-role: tab-list;
+            accessible-label: "Catégories";
+            key-pressed(e) => {
+                if (e.text == Key.LeftArrow) {
+                    root.onglet-focus = Math.max(0, root.onglet-focus - 1);
+                    return accept;
+                }
+                if (e.text == Key.RightArrow) {
+                    root.onglet-focus = Math.min(DonneesSelecteur.onglets.length - 1, root.onglet-focus + 1);
+                    return accept;
+                }
+                if (e.text == Key.Return || e.text == " ") {
+                    DonneesSelecteur.aller-a(root.onglet-focus);
+                    recherche.focus();
+                    return accept;
+                }
+                if (e.text == Key.Tab || e.text == Key.Backtab) {
+                    recherche.focus();
+                    return accept;
+                }
+                if (e.text == Key.Escape) {
+                    DonneesSelecteur.fermer();
+                    return accept;
+                }
+                return reject;
+            }
+            HorizontalLayout {
+                alignment: space-between;
+                for o[i] in DonneesSelecteur.onglets: Rectangle {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: Rayon.xs;
+                    background: i == DonneesSelecteur.onglet-actif ? Theme.papier-3 : onglet.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
+                    border-width: onglets.has-focus && i == root.onglet-focus ? 2px : 0;
+                    border-color: Theme.encre;
+                    accessible-role: tab;
+                    accessible-label: o.libelle;
+                    accessible-item-selected: i == DonneesSelecteur.onglet-actif;
+                    accessible-action-default => {
+                        DonneesSelecteur.aller-a(i);
+                    }
+                    Image {
+                        width: 20px;
+                        height: 20px;
+                        source: o.image;
+                        image-fit: contain;
+                    }
+                    onglet := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            DonneesSelecteur.aller-a(i);
+                            recherche.focus();
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            if DonneesSelecteur.message != "": Text {
+                y: Espace.e3;
+                width: 100%;
+                horizontal-alignment: center;
+                text: DonneesSelecteur.message;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                accessible-role: text;
+            }
+            liste := ListeVirtuelle {
+                content-y <=> DonneesSelecteur.defilement;
+                changed content-y => {
+                    DonneesSelecteur.defile(-self.content-y, self.visible-height);
+                }
+                changed visible-height => {
+                    DonneesSelecteur.defile(-self.content-y, self.visible-height);
+                }
+                for r in DonneesSelecteur.rangees: Rectangle {
+                    width: liste.visible-width;
+                    height: 36px;
+                    if r.titre != "": Text {
+                        x: 4px;
+                        width: parent.width - 8px;
+                        text: r.titre;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                        font-weight: Typo.demi-gras;
+                        vertical-alignment: bottom;
+                        accessible-role: text;
+                    }
+                    if r.titre == "": HorizontalLayout {
+                        alignment: start;
+                        padding-left: 4px;
+                        for c in r.cellules: CaseEmoji {
+                            cellule: c;
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            height: 40px;
+            border-radius: Rayon.s;
+            background: Theme.papier-2;
+            accessible-role: text;
+            accessible-label: DonneesSelecteur.pied-nom == "" ? DonneesSelecteur.aide : DonneesSelecteur.pied-nom + " " + DonneesSelecteur.pied-code;
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e3;
+                spacing: Espace.e2;
+                if DonneesSelecteur.pied-nom != "": VerticalLayout {
+                    alignment: center;
+                    Image {
+                        width: 26px;
+                        height: 26px;
+                        source: DonneesSelecteur.pied-image;
+                        image-fit: contain;
+                    }
+                }
+                if DonneesSelecteur.pied-nom != "": Text {
+                    text: DonneesSelecteur.pied-nom;
+                    color: Theme.encre;
+                    font-size: Typo.petit;
+                    font-weight: Typo.demi-gras;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: DonneesSelecteur.pied-nom == "" ? DonneesSelecteur.aide : DonneesSelecteur.pied-code;
+                    color: Theme.gris;
+                    font-family: DonneesSelecteur.pied-nom == "" ? Typo.texte : Typo.mono;
+                    font-size: DonneesSelecteur.pied-nom == "" ? Typo.petit : 12px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

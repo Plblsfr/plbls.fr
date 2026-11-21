@@ -10,8 +10,10 @@ pub mod instance;
 mod notifications_linux;
 #[cfg(windows)]
 mod pastille_windows;
+mod processus;
 #[cfg(windows)]
 mod registre_windows;
+mod son;
 pub mod toast;
 #[cfg(windows)]
 mod toast_windows;
@@ -30,12 +32,15 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
+pub use processus::commande_d_arriere_plan;
 pub use raw_window_handle::RawWindowHandle;
+pub use son::SonSysteme;
 pub use traits::{
-    ActionNotification, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession,
-    EvenementZone, Fichiers, Image, Installation, Notification, Notifications, OuvertureUrl,
-    Overlay, Pastille, PremierPlan, PressePapiers, RaccourcisGlobaux, RecepteurActions,
-    RecepteurSon, RecepteurZone, SourceCapture, TypeSource, ZoneNotification,
+    ActionNotification, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre,
+    ContenuPressePapiers, DemarrageSession, EvenementZone, Fichiers, FluxSon, Image, Installation,
+    Micro, Notification, Notifications, OuvertureUrl, Overlay, Pastille, PremierPlan,
+    PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurActions, RecepteurSon, RecepteurZone,
+    SortieSon, SourceCapture, TypeSource, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
@@ -56,6 +61,8 @@ pub struct Plateforme {
     pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
     pub capture_ecran: Box<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
+    pub micro: Box<dyn Micro + Send + Sync>,
+    pub sortie_son: Box<dyn SortieSon + Send + Sync>,
     pub overlay: Box<dyn Overlay>,
     pub premier_plan: Box<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
@@ -68,6 +75,8 @@ impl Plateforme {
             url: Box::new(NavigateurSysteme),
             fichiers: Box::new(FichiersSysteme),
             presse_papiers: Box::new(PressePapiersSysteme),
+            micro: Box::new(SonSysteme),
+            sortie_son: Box::new(SonSysteme),
             zone: Box::new(ZoneSysteme::default()),
             demarrage: demarrage_de_l_os(),
             notifications: notifications_de_l_os(),
@@ -90,6 +99,8 @@ impl Plateforme {
             presse_papiers: Box::new(Indisponible),
             capture_ecran: Box::new(Indisponible),
             capture_son: Box::new(Indisponible),
+            micro: Box::new(Indisponible),
+            sortie_son: Box::new(Indisponible),
             overlay: Box::new(Indisponible),
             premier_plan: Box::new(Indisponible),
             demarrage: Box::new(Indisponible),
@@ -151,6 +162,7 @@ mod tests {
         let p = Plateforme::de_l_os();
         assert!(p.url.disponible());
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
+        assert!(p.micro.disponible() && p.sortie_son.disponible());
         assert!(p.zone.disponible());
         assert_eq!(p.demarrage.disponible(), cfg!(windows));
         assert_eq!(p.pastille.disponible(), cfg!(windows));
@@ -246,6 +258,15 @@ mod tests {
         assert!(!p.coffre.disponible());
         assert!(!p.url.disponible());
         assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
+        assert!(!p.micro.disponible() && !p.sortie_son.disponible());
+        assert!(matches!(
+            p.micro.ecouter(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible("micro"))
+        ));
+        assert!(matches!(
+            p.sortie_son.jouer(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.fichiers.choisir_dossier(None),
             Err(Erreur::Indisponible(_))
@@ -256,6 +277,14 @@ mod tests {
         ));
         assert!(matches!(
             p.presse_papiers.copier_image(&Image::default()),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.fichiers.choisir_fichiers(None),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.presse_papiers.lire_pieces(),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(p.coffre.lire("cle"), Err(Erreur::Indisponible(_))));

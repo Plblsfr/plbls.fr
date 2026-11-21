@@ -235,6 +235,8 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
             }
             Changement::Presence { .. } => {
                 c.prives.tous();
+                c.accueil = true;
+                c.compte = true;
                 c.membres |= courant.is_some();
             }
             Changement::Roles { serveur }
@@ -478,6 +480,7 @@ mod tests {
             &salon("s2"),
         );
         assert_eq!((presence.membres, presence.prives), (true, Ensemble::Tous));
+        assert!(presence.accueil && presence.compte);
     }
 
     #[test]

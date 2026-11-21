@@ -5,10 +5,11 @@ pub mod modeles;
 pub mod navigation;
 pub mod pont;
 pub mod projection;
+pub mod recherche;
 
 pub use avatars::{CleAvatar, Profils, SourceProfils};
 pub use cycle::{
-    brancher_messagerie, ArretCoquille, Coquille, EchecOuverture, Fabrique, FabriqueReelle,
+    brancher_messagerie, ArretCoquille, Coquille, Depot, EchecOuverture, Fabrique, FabriqueReelle,
     ObservateurSession, Ouverture, SourcePont,
 };
 pub use navigation::Navigation;

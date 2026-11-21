@@ -129,6 +129,7 @@ impl std::error::Error for ErreurApi {}
 pub struct OptionsAppel {
     pub discret: bool,
     pub delai: Option<Duration>,
+    pub sans_relance: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +181,20 @@ fn entre_guillemets(valeur: &str) -> String {
         .replace('\n', "%0A")
 }
 
+pub(crate) fn tete_de_partie(frontiere: &str, partie: &Partie) -> String {
+    let mut tete = format!(
+        "--{frontiere}\r\nContent-Disposition: form-data; name=\"{}\"",
+        entre_guillemets(&partie.nom)
+    );
+    if let Some(fichier) = &partie.fichier {
+        tete += &format!("; filename=\"{}\"", entre_guillemets(fichier));
+    }
+    if let Some(type_mime) = &partie.type_mime {
+        tete += &format!("\r\nContent-Type: {type_mime}");
+    }
+    tete + "\r\n\r\n"
+}
+
 impl Corps {
     pub fn json<C: Serialize + ?Sized>(corps: &C) -> Result<Self, ErreurApi> {
         serde_json::to_vec(corps)
@@ -213,18 +228,7 @@ impl Corps {
         };
         let mut octets = Vec::new();
         for partie in parties {
-            let mut tete = format!(
-                "--{frontiere}\r\nContent-Disposition: form-data; name=\"{}\"",
-                entre_guillemets(&partie.nom)
-            );
-            if let Some(fichier) = &partie.fichier {
-                tete += &format!("; filename=\"{}\"", entre_guillemets(fichier));
-            }
-            if let Some(type_mime) = &partie.type_mime {
-                tete += &format!("\r\nContent-Type: {type_mime}");
-            }
-            octets.extend_from_slice(tete.as_bytes());
-            octets.extend_from_slice(b"\r\n\r\n");
+            octets.extend_from_slice(tete_de_partie(&frontiere, partie).as_bytes());
             octets.extend_from_slice(&partie.contenu);
             octets.extend_from_slice(b"\r\n");
         }
@@ -354,7 +358,12 @@ impl Client {
         }
     }
 
-    fn transport(&self, methode: &Method, chemin: &str, erreur: reqwest::Error) -> ErreurApi {
+    pub(crate) fn transport(
+        &self,
+        methode: &Method,
+        chemin: &str,
+        erreur: reqwest::Error,
+    ) -> ErreurApi {
         let erreur = ErreurApi::depuis_transport(erreur);
         self.noter(
             Niveau::Erreur,
@@ -375,24 +384,8 @@ impl Client {
         } else {
             self.reglages.delai
         };
-        let mut requete = self
-            .http
-            .request(methode.clone(), format!("{}{chemin}", self.base))
-            .timeout(options.delai.unwrap_or(defaut));
-        if let Some((plateforme, version)) = &self.plateforme {
-            requete = requete
-                .header(ENTETE_PLATEFORME, plateforme)
-                .header(ENTETE_VERSION, version);
-        }
-        if let Some(jeton) = self
-            .jeton
-            .as_ref()
-            .and_then(|f| f())
-            .filter(|j| !j.is_empty())
-        {
-            requete = requete.header(AUTHORIZATION, format!("Bearer {jeton}"));
-        }
-        requete = match corps {
+        let requete = self.preparer(methode, chemin, options.delai.unwrap_or(defaut));
+        let requete = match corps {
             Corps::Aucun => requete,
             Corps::Json(octets) => requete
                 .header(CONTENT_TYPE, "application/json")
@@ -413,6 +406,32 @@ impl Client {
             .map_err(|e| self.transport(methode, chemin, e))
     }
 
+    pub(crate) fn preparer(
+        &self,
+        methode: &Method,
+        chemin: &str,
+        delai: Duration,
+    ) -> reqwest::RequestBuilder {
+        let mut requete = self
+            .http
+            .request(methode.clone(), format!("{}{chemin}", self.base))
+            .timeout(delai);
+        if let Some((plateforme, version)) = &self.plateforme {
+            requete = requete
+                .header(ENTETE_PLATEFORME, plateforme)
+                .header(ENTETE_VERSION, version);
+        }
+        if let Some(jeton) = self
+            .jeton
+            .as_ref()
+            .and_then(|f| f())
+            .filter(|j| !j.is_empty())
+        {
+            requete = requete.header(AUTHORIZATION, format!("Bearer {jeton}"));
+        }
+        requete
+    }
+
     pub async fn appeler(
         &self,
         methode: Method,
@@ -424,7 +443,10 @@ impl Client {
         if reponse.status() == StatusCode::UNAUTHORIZED && !options.discret {
             reponse = self.tenter(&methode, chemin, corps, options).await?;
         }
-        if reponse.status() == StatusCode::TOO_MANY_REQUESTS && methode == Method::GET {
+        if reponse.status() == StatusCode::TOO_MANY_REQUESTS
+            && methode == Method::GET
+            && !options.sans_relance
+        {
             let annonce = reponse
                 .headers()
                 .get(RETRY_AFTER)
@@ -432,6 +454,17 @@ impl Client {
             tokio::time::sleep(attente_apres_429(annonce).min(self.reglages.attente_429_max)).await;
             reponse = self.tenter(&methode, chemin, corps, options).await?;
         }
+        self.conclure(&methode, chemin, reponse, options.discret)
+            .await
+    }
+
+    pub(crate) async fn conclure(
+        &self,
+        methode: &Method,
+        chemin: &str,
+        reponse: Response,
+        discret: bool,
+    ) -> Result<Response, ErreurApi> {
         let statut = reponse.status();
         let court = sans_parametres(chemin);
         let niveau = if statut.is_success() {
@@ -464,7 +497,7 @@ impl Client {
             Niveau::Avertissement,
             &format!("{methode} {court} ✗ {} : {}", refus.code, refus.message),
         );
-        if statut == StatusCode::UNAUTHORIZED && !options.discret {
+        if statut == StatusCode::UNAUTHORIZED && !discret {
             if let Some(signal) = &self.perte_de_session {
                 signal();
             }
@@ -487,6 +520,15 @@ impl Client {
         let reponse = self
             .appeler(methode.clone(), chemin, corps, options)
             .await?;
+        self.lire_json(&methode, chemin, reponse).await
+    }
+
+    pub(crate) async fn lire_json<T: DeserializeOwned>(
+        &self,
+        methode: &Method,
+        chemin: &str,
+        reponse: Response,
+    ) -> Result<Option<T>, ErreurApi> {
         let json = type_mime(&reponse).is_some_and(|t| t.contains("json"));
         if reponse.status() == StatusCode::NO_CONTENT || !json {
             return Ok(None);
@@ -494,7 +536,7 @@ impl Client {
         let octets = reponse
             .bytes()
             .await
-            .map_err(|e| self.transport(&methode, chemin, e))?;
+            .map_err(|e| self.transport(methode, chemin, e))?;
         serde_json::from_slice(&octets)
             .map(Some)
             .map_err(|e| ErreurApi::ReponseInvalide(e.to_string()))
@@ -612,8 +654,8 @@ impl Client {
         mut progres: impl FnMut(u64, Option<u64>),
     ) -> Result<u64, ErreurApi> {
         let options = OptionsAppel {
-            discret: false,
             delai: Some(DELAI_TELECHARGEMENT),
+            ..OptionsAppel::default()
         };
         let mut reponse = self
             .appeler(Method::GET, chemin, &Corps::Aucun, options)
@@ -888,7 +930,7 @@ mod tests {
             .a_la_perte_de_session(signal);
         let discret = OptionsAppel {
             discret: true,
-            delai: None,
+            ..OptionsAppel::default()
         };
         let fichier = client
             .fichier("/export", "defaut.json", discret)
@@ -1232,8 +1274,8 @@ mod tests {
         );
         let patient = serveur.client();
         let options = OptionsAppel {
-            discret: false,
             delai: Some(court),
+            ..OptionsAppel::default()
         };
         let erreur = patient
             .requete::<Value>(Method::GET, "/search?q=x", &Corps::Aucun, options)

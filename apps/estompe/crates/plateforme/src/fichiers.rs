@@ -1,4 +1,4 @@
-use crate::{Erreur, Fichiers, Image, PressePapiers, Resultat};
+use crate::{ContenuPressePapiers, Erreur, Fichiers, Image, PressePapiers, Resultat};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -15,6 +15,14 @@ impl Fichiers for FichiersSysteme {
             dialogue = dialogue.set_directory(depart);
         }
         Ok(dialogue.pick_folder())
+    }
+
+    fn choisir_fichiers(&self, depart: Option<&Path>) -> Resultat<Vec<PathBuf>> {
+        let mut dialogue = rfd::FileDialog::new().set_title("Joindre des fichiers");
+        if let Some(depart) = depart.filter(|d| d.is_dir()) {
+            dialogue = dialogue.set_directory(depart);
+        }
+        Ok(dialogue.pick_files().unwrap_or_default())
     }
 
     fn ouvrir(&self, chemin: &Path) -> Resultat<()> {
@@ -69,6 +77,37 @@ impl PressePapiers for PressePapiersSysteme {
             })
             .map_err(|e| Erreur::Echec(e.to_string()))
     }
+
+    fn lire_pieces(&self) -> Resultat<Option<ContenuPressePapiers>> {
+        let mut presse_papiers =
+            arboard::Clipboard::new().map_err(|e| Erreur::Echec(e.to_string()))?;
+        let fichiers = presse_papiers.get().file_list().unwrap_or_default();
+        if !fichiers.is_empty() {
+            return Ok(Some(ContenuPressePapiers::Fichiers(fichiers)));
+        }
+        match presse_papiers.get_image() {
+            Ok(image) => Ok(image_lue(
+                image.width,
+                image.height,
+                image.bytes.into_owned(),
+            )),
+            Err(arboard::Error::ContentNotAvailable) => Ok(None),
+            Err(e) => Err(Erreur::Echec(e.to_string())),
+        }
+    }
+}
+
+fn image_lue(largeur: usize, hauteur: usize, rgba: Vec<u8>) -> Option<ContenuPressePapiers> {
+    let (largeur, hauteur) = (u32::try_from(largeur).ok()?, u32::try_from(hauteur).ok()?);
+    let attendu = largeur as usize * hauteur as usize * 4;
+    if largeur == 0 || hauteur == 0 || rgba.len() != attendu {
+        return None;
+    }
+    Some(ContenuPressePapiers::Image(Image {
+        largeur,
+        hauteur,
+        rgba,
+    }))
 }
 
 #[cfg(test)]
@@ -99,5 +138,19 @@ mod tests {
             PressePapiersSysteme.copier_image(&image),
             Err(Erreur::Refuse(_))
         ));
+    }
+
+    #[test]
+    fn une_image_lue_mal_formee_est_ignoree() {
+        assert_eq!(image_lue(0, 2, Vec::new()), None);
+        assert_eq!(image_lue(2, 2, vec![0; 15]), None);
+        assert_eq!(
+            image_lue(1, 1, vec![1, 2, 3, 4]),
+            Some(ContenuPressePapiers::Image(Image {
+                largeur: 1,
+                hauteur: 1,
+                rgba: vec![1, 2, 3, 4]
+            }))
+        );
     }
 }

@@ -3,6 +3,7 @@ import { Icone } from "icone.slint";
 import { Anneau } from "focus.slint";
 import { Compteur } from "compteur.slint";
 import { Etiquette } from "etiquette.slint";
+import { DonneesMenu } from "menu.slint";
 
 export component ElementListe {
     in property <string> texte;
@@ -15,8 +16,26 @@ export component ElementListe {
     in property <string> description;
     in property <bool> brouillon: false;
     in property <int> calque: 0;
+    in property <bool> avec-menu: false;
     out property <bool> a-le-focus: portee.has-focus;
     callback clique();
+    callback menu(length, length);
+    property <bool> menu-ouvert: DonneesMenu.ouvert;
+    property <bool> a-ouvert-menu: false;
+    changed menu-ouvert => {
+        if (!self.menu-ouvert && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            if (!DonneesMenu.focus-ailleurs) {
+                portee.focus();
+            }
+        }
+    }
+    function ouvrir-menu(x: length, y: length) {
+        if (root.avec-menu && root.utilisable) {
+            root.a-ouvert-menu = true;
+            root.menu(x, y);
+        }
+    }
     property <bool> utilisable: calque >= Calques.ouverts;
     property <bool> fort: actif || non-lu || non-lus > 0 || mentions > 0;
     property <color> encre: fort || zone.has-hover ? Theme.encre : Theme.gris;
@@ -56,6 +75,10 @@ export component ElementListe {
                 root.clique();
                 return accept;
             }
+            if (root.avec-menu && (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10))) {
+                root.ouvrir-menu(root.absolute-position.x + 12px, root.absolute-position.y + root.height);
+                return accept;
+            }
             return reject;
         }
         zone := TouchArea {
@@ -63,6 +86,11 @@ export component ElementListe {
             mouse-cursor: pointer;
             clicked => {
                 root.clique();
+            }
+            pointer-event(e) => {
+                if (root.avec-menu && e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                    root.ouvrir-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
             }
         }
     }

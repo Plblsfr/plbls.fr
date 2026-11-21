@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Icone } from "../composants.slint";
 import { DonneesCoquille, EtatBandeau } from "../coquille/donnees.slint";
+import { DonneesVocal, EtapeVocal, Onde, LecteurVocal } from "vocal.slint";
 
 export enum GenreBandeau { aucun, reponse, modification }
 
@@ -8,6 +9,26 @@ export struct BandeauSaisie {
     genre: GenreBandeau,
     auteur: string,
     texte: string,
+}
+
+export enum GenreProposition { personne, groupe, role, salon, emoji }
+
+export struct PropositionSaisie {
+    genre: GenreProposition,
+    libelle: string,
+    detail: string,
+    image: image,
+}
+
+export struct PieceSaisie {
+    cle: int,
+    nom: string,
+    detail: string,
+    vignette: image,
+    a-vignette: bool,
+    progression: float,
+    en-cours: bool,
+    echec: bool,
 }
 
 export global DonneesSaisie {
@@ -22,7 +43,33 @@ export global DonneesSaisie {
     in property <string> erreur;
     in property <int> demande-focus: 0;
     in property <length> hauteur-max: 220px;
+    in property <[PropositionSaisie]> propositions;
+    in property <string> titre-propositions;
+    in property <int> proposition-choisie: 0;
+    in-out property <int> curseur: 0;
+    in-out property <int> ancre: 0;
+    in property <int> curseur-demande: 0;
+    in property <int> demande-curseur: 0;
+    in property <bool> selecteur-ouvert: false;
+    in property <bool> gifs-possibles: false;
+    in property <bool> gifs-ouvert: false;
+    in property <[PieceSaisie]> pieces;
+    in property <bool> joindre-possible: false;
+    in property <bool> sondage-possible: false;
+    in property <bool> depot-survole: false;
+    in property <string> limite-pieces: "10 Mo max par fichier";
+    callback joindre();
+    callback creer-sondage();
+    callback retirer-piece(int);
+    callback reessayer-piece(int);
+    callback coller() -> bool;
     callback modifie(string);
+    callback curseur-deplace(string, int);
+    callback naviguer(int);
+    callback choisir(int);
+    callback fermer-propositions();
+    callback ouvrir-selecteur();
+    callback ouvrir-gifs();
     callback envoyer(string);
     callback annuler-bandeau();
     callback fleche-haut();
@@ -35,10 +82,13 @@ component BoutonIcone inherits Rectangle {
     in property <color> encre: Theme.gris;
     in property <length> taille: 18px;
     callback clique();
+    forward-focus: portee;
     width: 34px;
     height: 34px;
     border-radius: Rayon.s;
     background: zone.has-hover && root.actif ? Theme.encre.with-alpha(0.06) : transparent;
+    border-width: portee.has-focus ? 2px : 0;
+    border-color: Theme.encre;
     opacity: root.actif ? 1 : 0.45;
     accessible-role: button;
     accessible-label: root.libelle;
@@ -53,11 +103,22 @@ component BoutonIcone inherits Rectangle {
         taille: root.taille;
         couleur: zone.has-hover && root.actif ? Theme.encre : root.encre;
     }
-    zone := TouchArea {
+    portee := FocusScope {
         enabled: root.actif;
-        mouse-cursor: pointer;
-        clicked => {
-            root.clique();
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.actif;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
         }
     }
 }
@@ -120,12 +181,228 @@ component Bandeau inherits Rectangle {
     }
 }
 
+component VignettePiece inherits Rectangle {
+    in property <PieceSaisie> piece;
+    width: root.piece.a-vignette ? 64px : 220px;
+    height: 64px;
+    border-radius: Rayon.s;
+    background: Theme.papier-2;
+    border-width: 1px;
+    border-color: root.piece.echec ? Theme.danger : Theme.trait;
+    accessible-role: list-item;
+    accessible-label: root.piece.nom + ", " + root.piece.detail;
+    if root.piece.a-vignette: Image {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        source: root.piece.vignette;
+        image-fit: cover;
+        opacity: root.piece.en-cours ? 0.55 : 1;
+    }
+    if !root.piece.a-vignette: HorizontalLayout {
+        padding-left: Espace.e3;
+        padding-right: 30px;
+        spacing: Espace.e2;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "trombone";
+                taille: 16px;
+                couleur: Theme.gris;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.piece.nom;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                font-weight: Typo.moyen;
+                overflow: elide;
+            }
+            Text {
+                text: root.piece.detail;
+                color: root.piece.echec ? Theme.danger : Theme.gris;
+                font-size: 11px;
+                overflow: elide;
+            }
+        }
+    }
+    if root.piece.a-vignette && (root.piece.echec || root.piece.en-cours): Rectangle {
+        x: 4px;
+        y: parent.height - 20px;
+        width: parent.width - 8px;
+        height: 16px;
+        border-radius: Rayon.xs;
+        background: Theme.papier.with-alpha(0.9);
+        Text {
+            text: root.piece.echec ? "échec" : root.piece.detail;
+            color: root.piece.echec ? Theme.danger : Theme.encre;
+            font-size: 10px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    if root.piece.en-cours: Rectangle {
+        x: 0;
+        y: parent.height - 3px;
+        width: parent.width * max(0, min(1, root.piece.progression));
+        height: 3px;
+        background: Theme.rose-fonce;
+    }
+    BoutonIcone {
+        x: parent.width - self.width + 4px;
+        y: -4px;
+        width: 26px;
+        height: 26px;
+        icone: "x";
+        taille: 13px;
+        libelle: (root.piece.en-cours ? "Annuler l'envoi de " : "Retirer ") + root.piece.nom;
+        clique => {
+            DonneesSaisie.retirer-piece(root.piece.cle);
+        }
+    }
+    if root.piece.echec: BoutonIcone {
+        x: parent.width - self.width + 4px;
+        y: 22px;
+        width: 26px;
+        height: 26px;
+        icone: "actualise";
+        taille: 13px;
+        libelle: "Réessayer " + root.piece.nom;
+        clique => {
+            DonneesSaisie.reessayer-piece(root.piece.cle);
+        }
+    }
+}
+
+component EnregistrementVocal inherits HorizontalLayout {
+    property <bool> ecoute: DonneesVocal.etape == EtapeVocal.ecoute || DonneesVocal.etape == EtapeVocal.envoi;
+    height: 40px;
+    spacing: Espace.e2;
+    accessible-role: groupbox;
+    accessible-label: "Message vocal";
+    VerticalLayout {
+        alignment: center;
+        annuler := BoutonIcone {
+            icone: "corbeille";
+            libelle: root.ecoute ? "Supprimer le message vocal" : "Annuler l'enregistrement";
+            encre: Theme.danger;
+            actif: DonneesVocal.etape != EtapeVocal.envoi;
+            clique => {
+                DonneesVocal.annuler();
+            }
+        }
+    }
+    if DonneesVocal.etape == EtapeVocal.ouverture: Text {
+        horizontal-stretch: 1;
+        text: "Ouverture du micro…";
+        color: Theme.gris;
+        font-size: Typo.petit;
+        vertical-alignment: center;
+        init => {
+            annuler.focus();
+        }
+    }
+    if DonneesVocal.etape == EtapeVocal.enregistrement || DonneesVocal.etape == EtapeVocal.finalisation: HorizontalLayout {
+        horizontal-stretch: 1;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            padding-left: Espace.e1;
+            horizontal-stretch: 0;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: Theme.danger;
+                }
+            }
+            Text {
+                text: DonneesVocal.duree;
+                color: Theme.encre;
+                font-family: Typo.mono;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: "Enregistrement : " + DonneesVocal.duree;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            Onde {
+                valeurs: DonneesVocal.niveaux;
+                avance: 1;
+                fait: Theme.rose-fonce;
+                minimum: 0.08;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            pause := BoutonIcone {
+                icone: "pause";
+                libelle: "Mettre en pause et écouter";
+                actif: DonneesVocal.etape == EtapeVocal.enregistrement;
+                clique => {
+                    DonneesVocal.arreter();
+                }
+                init => {
+                    self.focus();
+                }
+            }
+        }
+    }
+    if root.ecoute: HorizontalLayout {
+        horizontal-stretch: 1;
+        spacing: Espace.e2;
+        LecteurVocal {
+            horizontal-stretch: 1;
+            piece: "apercu";
+            duree: DonneesVocal.duree;
+            barres: DonneesVocal.forme;
+            init => {
+                envoi.focus();
+            }
+        }
+        if DonneesVocal.echec: Text {
+            text: "Envoi impossible.";
+            color: Theme.danger;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+            accessible-role: text;
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        envoi := BoutonIcone {
+            icone: "envoi";
+            libelle: DonneesVocal.echec ? "Réessayer" : "Envoyer le message vocal";
+            actif: DonneesVocal.etape == EtapeVocal.enregistrement || DonneesVocal.etape == EtapeVocal.ecoute;
+            encre: Theme.rose-texte;
+            clique => {
+                DonneesVocal.envoyer();
+            }
+        }
+    }
+}
+
 component ChampSaisie inherits Rectangle {
     property <length> hauteur-ligne: 22px;
+    property <bool> micro: DonneesVocal.possible && saisie.text == "" && saisie.preedit-text == "" && DonneesSaisie.pieces.length == 0 && DonneesSaisie.bandeau.genre != GenreBandeau.modification;
     property <length> hauteur-champ: max(root.hauteur-ligne, min(saisie.preferred-height, DonneesSaisie.hauteur-max));
     property <int> demande: DonneesSaisie.demande-focus;
     changed demande => {
         saisie.focus();
+    }
+    property <int> demande-curseur: DonneesSaisie.demande-curseur;
+    changed demande-curseur => {
+        saisie.set-selection-offsets(DonneesSaisie.curseur-demande, DonneesSaisie.curseur-demande);
     }
     init => {
         if (DonneesSaisie.demande-focus > 0) {
@@ -143,8 +420,45 @@ component ChampSaisie inherits Rectangle {
         if DonneesSaisie.bandeau.genre != GenreBandeau.aucun: Bandeau {
             bandeau: DonneesSaisie.bandeau;
         }
+        if DonneesSaisie.pieces.length > 0: Flickable {
+            height: 72px;
+            mouse-drag-pan-enabled: false;
+            content-width: max(self.width, rangee.preferred-width);
+            accessible-role: list;
+            accessible-label: "Pièces jointes";
+            rangee := HorizontalLayout {
+                padding-top: 6px;
+                padding-right: 6px;
+                spacing: Espace.e2;
+                alignment: start;
+                for p in DonneesSaisie.pieces: VignettePiece {
+                    piece: p;
+                }
+            }
+        }
         HorizontalLayout {
             spacing: Espace.e1;
+            visible: DonneesVocal.etape == EtapeVocal.aucune;
+            if DonneesSaisie.joindre-possible: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "trombone";
+                    libelle: "Joindre un fichier";
+                    clique => {
+                        DonneesSaisie.joindre();
+                    }
+                }
+            }
+            if DonneesSaisie.sondage-possible: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "sondage";
+                    libelle: "Créer un sondage";
+                    clique => {
+                        DonneesSaisie.creer-sondage();
+                    }
+                }
+            }
             Rectangle {
                 horizontal-stretch: 1;
                 height: root.hauteur-champ + 12px;
@@ -182,9 +496,14 @@ component ChampSaisie inherits Rectangle {
                         accessible-label: DonneesSaisie.indice;
                         accessible-value: self.text;
                         edited => {
+                            DonneesSaisie.curseur = self.cursor-position-byte-offset;
+                            DonneesSaisie.ancre = self.anchor-position-byte-offset;
                             DonneesSaisie.modifie(self.text);
                         }
                         cursor-position-changed(position) => {
+                            DonneesSaisie.curseur = self.cursor-position-byte-offset;
+                            DonneesSaisie.ancre = self.anchor-position-byte-offset;
+                            DonneesSaisie.curseur-deplace(self.text, self.cursor-position-byte-offset);
                             if (position.y + defile.content-y < 0) {
                                 defile.content-y = -position.y;
                             } else if (position.y + root.hauteur-ligne + defile.content-y > defile.height) {
@@ -194,6 +513,27 @@ component ChampSaisie inherits Rectangle {
                         key-pressed(e) => {
                             if (self.preedit-text != "") {
                                 return reject;
+                            }
+                            if (e.modifiers.control && (e.text == "v" || e.text == "V") && DonneesSaisie.coller()) {
+                                return accept;
+                            }
+                            if (DonneesSaisie.propositions.length > 0) {
+                                if (e.text == Key.DownArrow) {
+                                    DonneesSaisie.naviguer(1);
+                                    return accept;
+                                }
+                                if (e.text == Key.UpArrow) {
+                                    DonneesSaisie.naviguer(-1);
+                                    return accept;
+                                }
+                                if ((e.text == Key.Return || e.text == Key.Tab) && !e.modifiers.shift) {
+                                    DonneesSaisie.choisir(DonneesSaisie.proposition-choisie);
+                                    return accept;
+                                }
+                                if (e.text == Key.Escape) {
+                                    DonneesSaisie.fermer-propositions();
+                                    return accept;
+                                }
                             }
                             if (e.text == Key.Return && !e.modifiers.shift) {
                                 DonneesSaisie.envoyer(self.text);
@@ -224,18 +564,89 @@ component ChampSaisie inherits Rectangle {
                     accessible-label: "Longueur : " + DonneesSaisie.compteur;
                 }
             }
+            if DonneesSaisie.gifs-possibles: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "gif";
+                    libelle: "GIF";
+                    encre: DonneesSaisie.gifs-ouvert ? Theme.encre : Theme.gris;
+                    clique => {
+                        DonneesSaisie.ouvrir-gifs();
+                    }
+                }
+            }
             VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "sourire";
+                    libelle: "Emojis";
+                    encre: DonneesSaisie.selecteur-ouvert ? Theme.encre : Theme.gris;
+                    clique => {
+                        DonneesSaisie.ouvrir-selecteur();
+                    }
+                }
+            }
+            if root.micro: VerticalLayout {
+                alignment: end;
+                BoutonIcone {
+                    icone: "mic";
+                    libelle: "Message vocal";
+                    clique => {
+                        DonneesVocal.demarrer();
+                    }
+                }
+            }
+            if !root.micro: VerticalLayout {
                 alignment: end;
                 BoutonIcone {
                     icone: "envoi";
                     libelle: DonneesSaisie.bandeau.genre == GenreBandeau.modification ? "Enregistrer" : "Envoyer";
-                    actif: saisie.text != "";
+                    actif: saisie.text != "" || DonneesSaisie.pieces.length > 0;
                     encre: Theme.rose-texte;
                     clique => {
                         DonneesSaisie.envoyer(saisie.text);
                         saisie.focus();
                     }
                 }
+            }
+        }
+    }
+    if DonneesVocal.etape != EtapeVocal.aucune: Rectangle {
+        x: Espace.e2;
+        y: parent.height - self.height - Espace.e2 + 3px;
+        width: parent.width - 2 * Espace.e2;
+        height: 40px;
+        background: Theme.surface;
+        TouchArea { }
+        EnregistrementVocal {
+            width: 100%;
+            height: 100%;
+        }
+    }
+    if DonneesSaisie.depot-survole && DonneesSaisie.joindre-possible: Rectangle {
+        border-radius: Rayon.m;
+        background: Theme.rose-doux.with-alpha(0.92);
+        border-width: 2px;
+        border-color: Theme.rose-fonce;
+        accessible-role: text;
+        accessible-label: "Dépose pour joindre · " + DonneesSaisie.limite-pieces;
+        HorizontalLayout {
+            alignment: center;
+            spacing: Espace.e2;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "envoie";
+                    taille: 20px;
+                    couleur: Theme.rose-texte;
+                }
+            }
+            Text {
+                text: "Dépose pour joindre · " + DonneesSaisie.limite-pieces;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
             }
         }
     }
@@ -299,4 +710,98 @@ export component ZoneSaisie inherits VerticalLayout {
         }
     }
     if !root.bloquee: ChampSaisie { }
+}
+
+export component ListePropositions inherits Rectangle {
+    property <length> hauteur-ligne: 34px;
+    height: DonneesSaisie.propositions.length == 0 ? 0 : 30px + DonneesSaisie.propositions.length * root.hauteur-ligne + Espace.e2;
+    visible: DonneesSaisie.propositions.length > 0;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait-fort;
+    drop-shadow-blur: 24px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: Theme.sombre ? #00000099 : #16130f2e;
+    accessible-role: list;
+    accessible-label: DonneesSaisie.titre-propositions;
+    VerticalLayout {
+        padding: Espace.e1;
+        padding-bottom: Espace.e1 + 2px;
+        HorizontalLayout {
+            height: 26px;
+            padding-left: Espace.e2;
+            Text {
+                text: DonneesSaisie.titre-propositions;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+        for p[i] in DonneesSaisie.propositions: Rectangle {
+            height: root.hauteur-ligne;
+            border-radius: Rayon.xs;
+            background: i == DonneesSaisie.proposition-choisie ? Theme.rose-doux : zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
+            accessible-role: list-item;
+            accessible-label: p.detail == "" ? p.libelle : p.libelle + ", " + p.detail;
+            accessible-item-selected: i == DonneesSaisie.proposition-choisie;
+            accessible-action-default => {
+                DonneesSaisie.choisir(i);
+            }
+            HorizontalLayout {
+                padding-left: Espace.e2;
+                padding-right: Espace.e2;
+                spacing: Espace.e2;
+                if p.genre == GenreProposition.emoji: VerticalLayout {
+                    alignment: center;
+                    Image {
+                        width: 20px;
+                        height: 20px;
+                        source: p.image;
+                        image-fit: contain;
+                    }
+                }
+                if p.genre == GenreProposition.salon: VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "hash";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                }
+                if p.genre != GenreProposition.emoji && p.genre != GenreProposition.salon: VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: p.genre == GenreProposition.personne ? "perso" : p.genre == GenreProposition.role ? "medaille" : "gens";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    text: p.libelle;
+                    color: Theme.encre;
+                    font-size: Typo.compact;
+                    font-weight: Typo.moyen;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: p.detail;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            zone := TouchArea {
+                mouse-cursor: pointer;
+                clicked => {
+                    DonneesSaisie.choisir(i);
+                }
+            }
+        }
+    }
 }
