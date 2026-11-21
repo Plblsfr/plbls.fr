@@ -1,0 +1,143 @@
+name: estompe-livraison-natif
+
+on:
+  push:
+    tags: ["estompe-natif-v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: livraison-natif-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      CARGO_INCREMENTAL: 0
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - id: version
+        name: Version (natif de .version)
+        shell: bash
+        run: |
+          natif=$(node -p 'JSON.parse(require("fs").readFileSync(".version", "utf8")).natif || ""')
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "estompe-natif-v$natif" ]; then
+            echo "::error::le tag $GITHUB_REF_NAME ne correspond pas à natif « $natif » de .version (fusionner la PR ci/version avant de poser le tag)"
+            exit 1
+          fi
+          node scripts/estompe/bump-version.mjs --apply
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' apps/estompe/natif/Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: cargo
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/natif/target
+          key: natif-windows-release-v1-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
+          restore-keys: natif-windows-release-v1-
+      - name: ninja (Skia compilé depuis ses sources en CRT statique, voir docs/estompe/natif.md)
+        run: python -m pip install --disable-pip-version-check ninja==1.13.0
+      - name: Build release (x86_64-pc-windows-msvc)
+        working-directory: apps/estompe/natif
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+      - if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/estompe/natif/target
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+      - name: ffmpeg (build LGPL épinglé de l'app Tauri, somme SHA-256 vérifiée)
+        shell: bash
+        run: TAURI_ENV_PLATFORM=windows node apps/estompe/windows/scripts/fetch-ffmpeg.mjs && test -s apps/estompe/windows/src-tauri/binaries/ffmpeg.exe
+      - name: NSIS
+        run: choco install nsis -y --no-progress
+      - name: Installeur
+        working-directory: apps/estompe/natif/installeur
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: '"/c/Program Files (x86)/NSIS/makensis.exe" -V2 "-DVERSION=$VERSION" estompe-natif.nsi'
+      - name: Contrôle de l'installeur (taille, contenu dont ffmpeg, sans WebView2)
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/estompe/natif-installeur-check.sh "apps/estompe/natif/installeur/Estompe-natif-beta-$VERSION-setup.exe" apps/estompe/natif/target/x86_64-pc-windows-msvc/release/estompe-natif.exe
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: estompe-natif-installeur
+          path: apps/estompe/natif/installeur/Estompe-natif-beta-${{ steps.version.outputs.version }}-setup.exe
+          if-no-files-found: error
+
+  publier:
+    needs: windows
+    if: startsWith(github.ref, 'refs/tags/estompe-natif-v')
+    runs-on: ubuntu-latest
+    environment: livraison
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.windows.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: estompe-natif-installeur
+          path: dist
+      - name: minisign
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+      - name: Signature, vérifiée par la clé publique de l'app
+        env:
+          CLE: ${{ secrets.ESTOMPE_NATIF_CLE_MAJ }}
+        run: |
+          installeur="dist/Estompe-natif-beta-$VERSION-setup.exe"
+          (umask 077 && printf '%s\n' "$CLE" > "$RUNNER_TEMP/maj.key")
+          minisign -S -s "$RUNNER_TEMP/maj.key" -m "$installeur" -t "estompe-natif $VERSION"
+          rm -f "$RUNNER_TEMP/maj.key"
+          minisign -V -p apps/estompe/crates/client/src/mise_a_jour/cle.pub -m "$installeur" | grep -Fx "Trusted comment: estompe-natif $VERSION"
+      - name: Notes (message du tag) et manifeste
+        run: |
+          git fetch --no-tags --depth=1 origin "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | sed '/^-----BEGIN/,$d')
+          if [ "$(printf '%s' "$notes" | tr -d '[:space:]')" = "$GITHUB_REF_NAME" ]; then notes=""; fi
+          printf '%s' "$notes" > "$RUNNER_TEMP/notes.txt"
+          node scripts/estompe/natif-manifeste.mjs --version "$VERSION" --notes="$notes" \
+            --installeur "dist/Estompe-natif-beta-$VERSION-setup.exe" \
+            --base "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME" > dist/natif.json
+          cat dist/natif.json
+      - name: Release versionnée et release fixe estompe-natif-beta
+        run: |
+          installeur="dist/Estompe-natif-beta-$VERSION-setup.exe"
+          { cat "$RUNNER_TEMP/notes.txt"; printf '\n\nInstalleur non signé (Authenticode) : Windows SmartScreen avertit à la première installation (« Informations complémentaires », puis « Exécuter quand même »).\n'; } > "$RUNNER_TEMP/corps.md"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" --clobber "$installeur" "$installeur.minisig" dist/natif.json
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease --latest=false --title "Estompe natif (bêta) $VERSION" \
+              --notes-file "$RUNNER_TEMP/corps.md" "$installeur" "$installeur.minisig" dist/natif.json
+          fi
+          if ! gh release view estompe-natif-beta >/dev/null 2>&1; then
+            gh release create estompe-natif-beta --prerelease --latest=false --target "$GITHUB_SHA" --title "Estompe natif (bêta)" \
+              --notes "Dernière version d'Estompe natif (bêta) : natif.json est le manifeste lu par l'app, Estompe-natif-beta-setup.exe le dernier installeur. Les fichiers sont remplacés à chaque tag estompe-natif-v*."
+          fi
+          cp "$installeur" dist/Estompe-natif-beta-setup.exe
+          gh release upload estompe-natif-beta --clobber dist/natif.json dist/Estompe-natif-beta-setup.exe

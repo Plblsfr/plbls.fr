@@ -1,0 +1,86 @@
+import { Theme, Typo, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton } from "../composants.slint";
+import { DonneesMiseAJour, BarreProgression } from "donnees.slint";
+
+export component PanneauMiseAJour inherits VerticalLayout {
+    property <bool> proposee: DonneesMiseAJour.automatique && DonneesMiseAJour.disponible;
+    property <bool> a-verifier: DonneesMiseAJour.automatique && !DonneesMiseAJour.disponible;
+    spacing: Espace.e2;
+    Text {
+        text: "Mises à jour";
+        color: Theme.encre;
+        font-family: Typo.titre;
+        font-size: Typo.corps;
+        font-weight: Typo.demi-gras;
+    }
+    Text {
+        text: "Version installée : " + (DonneesMiseAJour.version-installee != "" ? DonneesMiseAJour.version-installee : "…");
+        color: Theme.gris;
+        font-size: Typo.petit;
+    }
+    if !DonneesMiseAJour.automatique: Text {
+        text: "Les mises à jour automatiques arriveront avec le paquet Linux.";
+        color: Theme.encre-2;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if root.proposee: Text {
+        text: "Estompe natif " + DonneesMiseAJour.version + " est disponible." + (DonneesMiseAJour.notes != "" ? " " + DonneesMiseAJour.notes : "");
+        color: Theme.encre;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if root.proposee && DonneesMiseAJour.attente-appel: Text {
+        text: "Tu es en appel : l'installation commencera à la fin de l'appel.";
+        color: Theme.encre-2;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if root.proposee: HorizontalLayout {
+        alignment: start;
+        Bouton {
+            texte: DonneesMiseAJour.attente-appel ? "Installer maintenant" : DonneesMiseAJour.en-cours ? DonneesMiseAJour.libelle-progression() : "Installer et redémarrer";
+            icone: "telecharge";
+            variante: VarianteBouton.primaire;
+            en-cours: DonneesMiseAJour.en-cours;
+            calque: 1;
+            clique => {
+                if (DonneesMiseAJour.attente-appel) {
+                    DonneesMiseAJour.confirmer();
+                } else {
+                    DonneesMiseAJour.installer();
+                }
+            }
+        }
+    }
+    if root.proposee && DonneesMiseAJour.en-cours: BarreProgression {
+        valeur: DonneesMiseAJour.progression;
+        couleur: Theme.rose-fonce;
+        description: "Téléchargement de la mise à jour";
+    }
+    if root.a-verifier: HorizontalLayout {
+        alignment: start;
+        Bouton {
+            texte: "Rechercher une mise à jour";
+            icone: "actualise";
+            en-cours: DonneesMiseAJour.verification;
+            calque: 1;
+            clique => {
+                DonneesMiseAJour.verifier();
+            }
+        }
+    }
+    if root.a-verifier && !DonneesMiseAJour.verification && DonneesMiseAJour.erreur == "": Text {
+        text: DonneesMiseAJour.a-jour ? "Tu as la dernière version." : "Tu as la dernière version, ou aucune vérification n'a encore abouti.";
+        color: Theme.gris;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if DonneesMiseAJour.erreur != "": Text {
+        text: DonneesMiseAJour.erreur;
+        color: Theme.danger;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+        accessible-role: text;
+    }
+}

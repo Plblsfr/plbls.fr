@@ -1,6 +1,6 @@
 # Livraison : après une fusion dans main, publie seulement ce que la fusion a changé (images :edge, PR de version d'Estompe,
 # image de job d'Estompe, caches partagés) sans rejouer les tests de la PR ; sur un tag <composant>-vX.Y.Z, publie ce composant.
-# Les apps natives d'Estompe (Windows, Android, image web) partent du tag estompe-app-v* : estompe-livraison-app.yml.
+# Les apps natives d'Estompe (Windows, Android, image web) partent du tag estompe-app-v* : estompe-livraison-app.yml ; l'app native Slint, du tag estompe-natif-v* : estompe-livraison-natif.yml.
 name: livraison
 on:
   push:

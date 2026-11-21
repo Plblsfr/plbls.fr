@@ -1,0 +1,48 @@
+export global DonneesMiseAJour {
+    in property <string> version-installee;
+    in property <bool> automatique: false;
+    in property <bool> disponible: false;
+    in property <bool> proposee: false;
+    in property <string> version;
+    in property <string> notes;
+    in property <bool> en-cours: false;
+    in property <bool> installation: false;
+    in property <float> progression: 0;
+    in property <bool> verification: false;
+    in property <bool> a-jour: false;
+    in property <string> erreur;
+    in property <bool> attente-appel: false;
+    in property <int> compte-a-rebours: 0;
+    callback verifier();
+    callback installer();
+    callback plus-tard();
+    callback confirmer();
+    public pure function pourcentage() -> string {
+        return Math.round(Math.clamp(DonneesMiseAJour.progression, 0, 1) * 100) + " %";
+    }
+    public pure function libelle-progression() -> string {
+        return DonneesMiseAJour.installation || DonneesMiseAJour.progression <= 0 ? "Installation…" : "Téléchargement " + DonneesMiseAJour.pourcentage();
+    }
+    public pure function minuteur() -> string {
+        return Math.floor(DonneesMiseAJour.compte-a-rebours / 60) + ":" + (Math.mod(DonneesMiseAJour.compte-a-rebours, 60) < 10 ? "0" : "") + Math.mod(DonneesMiseAJour.compte-a-rebours, 60);
+    }
+}
+
+export component BarreProgression inherits Rectangle {
+    in property <float> valeur;
+    in property <color> couleur;
+    in property <string> description;
+    height: 4px;
+    border-radius: 2px;
+    background: root.couleur.with-alpha(0.16);
+    accessible-role: progress-indicator;
+    accessible-label: root.description;
+    accessible-value: Math.round(Math.clamp(root.valeur, 0, 1) * 100) + " %";
+    Rectangle {
+        x: 0;
+        width: parent.width * Math.clamp(root.valeur, 0, 1);
+        height: 100%;
+        border-radius: 2px;
+        background: root.couleur;
+    }
+}

@@ -39,7 +39,7 @@ jobs:
         run: |
           autres="$(git diff --name-only "origin/$BASE_REF...HEAD" | grep -vx '.version' || true)"
           [ -z "$autres" ] || { echo "::error::la PR de version ne doit modifier que .version, pas : $autres"; exit 1; }
-          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).sort().join(); if (k !== "android,api,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
+          node -e 'const v = JSON.parse(require("fs").readFileSync(".version", "utf8")); const k = Object.keys(v).filter((e) => e !== "natif").sort().join(); if (k !== "android,api,web,windows" || !Object.values(v).every((x) => /^\d+\.\d+\.\d+$/.test(x))) { console.error(`::error::.version invalide : ${JSON.stringify(v)}`); process.exit(1) }'
 
   changelog:
     needs: changements
@@ -315,6 +315,7 @@ jobs:
       ESTOMPE_COFFRE_EXIGE: 1
       CXX: clang++-21
       ESTOMPE_LIVEKIT_URL: ws://127.0.0.1:7880
+      ESTOMPE_DBUS_EXIGE: 1
       ESTOMPE_FFMPEG_EXIGE: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

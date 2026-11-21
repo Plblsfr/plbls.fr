@@ -1,12 +1,15 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton } from "../composants.slint";
 import { FondAcces, Carte, AGauche, TitreCarte, TexteCarte, Note } from "commun.slint";
+import { DonneesMiseAJour, BarreProgression } from "../mise-a-jour/donnees.slint";
 
 export component MiseAJour inherits Rectangle {
     in property <string> version;
     in property <string> version-minimale;
     in property <string> message;
     callback telecharger();
+    callback ouvrir-page();
+    property <bool> automatique: DonneesMiseAJour.automatique;
     accessible-role: none;
     FondAcces {
         Carte {
@@ -82,16 +85,58 @@ export component MiseAJour inherits Rectangle {
                 height: 1px;
                 background: Theme.trait;
             }
+            if root.automatique && DonneesMiseAJour.en-cours: VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    Note {
+                        text: DonneesMiseAJour.installation || DonneesMiseAJour.progression <= 0 ? "Installation" : "Téléchargement";
+                        horizontal-stretch: 1;
+                    }
+                    if !DonneesMiseAJour.installation && DonneesMiseAJour.progression > 0: Text {
+                        text: DonneesMiseAJour.pourcentage();
+                        color: Theme.encre;
+                        font-family: Typo.mono;
+                        font-size: Typo.petit;
+                    }
+                }
+                BarreProgression {
+                    valeur: DonneesMiseAJour.installation ? 1 : DonneesMiseAJour.progression;
+                    couleur: Theme.rose-fonce;
+                    description: "Téléchargement de la mise à jour";
+                }
+            }
+            if root.automatique && DonneesMiseAJour.erreur != "": Rectangle {
+                border-radius: Rayon.s;
+                background: Theme.danger-fond;
+                height: erreur.preferred-height + 2 * Espace.e3;
+                erreur := Text {
+                    x: Espace.e3;
+                    width: parent.width - 2 * Espace.e3;
+                    text: DonneesMiseAJour.erreur;
+                    color: Theme.danger;
+                    font-size: Typo.petit;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                }
+            }
             Bouton {
-                texte: "Télécharger la mise à jour";
+                texte: !root.automatique ? "Télécharger la mise à jour" : DonneesMiseAJour.erreur != "" ? "Réessayer" : DonneesMiseAJour.en-cours ? DonneesMiseAJour.libelle-progression() : "Installer la mise à jour";
                 icone: "telecharge";
                 variante: VarianteBouton.primaire;
+                en-cours: root.automatique && DonneesMiseAJour.en-cours;
                 clique => {
                     root.telecharger();
                 }
             }
+            if root.automatique && DonneesMiseAJour.erreur != "": Bouton {
+                texte: "Ouvrir la page de téléchargement";
+                variante: VarianteBouton.secondaire;
+                clique => {
+                    root.ouvrir-page();
+                }
+            }
             Note {
-                text: "La page de téléchargement s'ouvre dans ton navigateur. Installe la nouvelle version, puis relance Estompe.";
+                text: root.automatique ? "La nouvelle version s'installe en arrière-plan, puis Estompe natif redémarre et ta session reprend." : "La page de téléchargement s'ouvre dans ton navigateur. Installe la nouvelle version, puis relance Estompe.";
             }
         }
     }

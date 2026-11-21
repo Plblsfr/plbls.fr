@@ -5,6 +5,8 @@ import { DonneesCoquille, GenrePanneau, GenreVue, EtatBandeau, EtatPresence } fr
 import { DonneesVocal } from "../vocal/donnees.slint";
 import { LigneParticipant } from "../vocal/tuile.slint";
 import { BarreVocalPanneau } from "../vocal/barre.slint";
+import { BandeauMiseAJour } from "../mise-a-jour/bandeau.slint";
+import { DonneesMiseAJour } from "../mise-a-jour/donnees.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -357,6 +359,7 @@ export component Panneau inherits Rectangle {
             padding: Espace.e2;
             spacing: Espace.e2;
             if DonneesVocal.barre.visible: BarreVocalPanneau { }
+            if DonneesMiseAJour.automatique && (DonneesMiseAJour.proposee || DonneesMiseAJour.compte-a-rebours > 0): BandeauMiseAJour { }
             BarreMoi {
                 se-deconnecter => {
                     root.se-deconnecter();

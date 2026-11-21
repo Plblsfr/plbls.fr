@@ -88,8 +88,11 @@ pub struct Services {
     pub api: Arc<dyn ApiEntree>,
     pub navigateur: Arc<dyn OuvertureUrl + Send + Sync>,
     pub lien_telechargement: String,
+    pub installer: Option<Installateur>,
     pub journal: Option<Arc<Journal>>,
 }
+
+pub type Installateur = Arc<dyn Fn() + Send + Sync>;
 
 impl Services {
     fn noter(&self, niveau: Niveau, message: &str) {
@@ -174,6 +177,7 @@ pub enum Evenement {
     Rejoindre(String),
     RetourAccueil,
     Telecharger,
+    OuvrirPageTelechargement,
     SessionPerdue,
     AccesPerdu,
     MiseAJourSignalee {
@@ -200,6 +204,7 @@ pub enum Effet {
     Rejoindre(String),
     Deconnecter,
     OuvrirTelechargement,
+    Installer,
 }
 
 fn refus_de_version(erreur: &ErreurApi) -> Option<(String, String)> {
@@ -274,6 +279,7 @@ pub struct Machine {
     compte: Option<Compte>,
     invitation: Option<String>,
     tentative: u64,
+    installation: bool,
 }
 
 impl Machine {
@@ -285,7 +291,13 @@ impl Machine {
                 .map(|saisie| code_d_invitation(&saisie))
                 .filter(|code| !code.is_empty()),
             tentative: 0,
+            installation: false,
         }
+    }
+
+    pub fn avec_installation(mut self, installation: bool) -> Self {
+        self.installation = installation;
+        self
     }
 
     pub fn etat(&self) -> &Etat {
@@ -327,7 +339,13 @@ impl Machine {
             return None;
         }
         if matches!(self.etat, Etat::MiseAJourRequise { .. }) {
-            return (evenement == Evenement::Telecharger).then_some(Effet::OuvrirTelechargement);
+            return match evenement {
+                Evenement::Telecharger if self.installation => Some(Effet::Installer),
+                Evenement::Telecharger | Evenement::OuvrirPageTelechargement => {
+                    Some(Effet::OuvrirTelechargement)
+                }
+                _ => None,
+            };
         }
         match (evenement, &self.etat) {
             (Evenement::Lancer, Etat::Demarrage) | (Evenement::Reessayer, Etat::Injoignable(_)) => {
@@ -743,6 +761,10 @@ fn executer(effet: Effet, services: &Arc<Services>, emetteur: &Emetteur) {
         Effet::Deconnecter => {
             tokio::spawn(services.auth.deconnecter());
         }
+        Effet::Installer => match &services.installer {
+            Some(installer) => installer(),
+            None => executer(Effet::OuvrirTelechargement, services, emetteur),
+        },
         Effet::OuvrirTelechargement => {
             let services = services.clone();
             tokio::task::spawn_blocking(move || {
@@ -1147,6 +1169,34 @@ mod tests {
         assert_eq!(
             m.traiter(Evenement::Telecharger),
             Some(Effet::OuvrirTelechargement)
+        );
+    }
+
+    #[test]
+    fn l_ecran_force_installe_directement_quand_l_installation_est_disponible() {
+        let signal = || Evenement::MiseAJourSignalee {
+            message: "obligatoire".into(),
+            version_minimale: "0.2.0".into(),
+        };
+        let mut m = connectee(None).avec_installation(true);
+        m.traiter(signal());
+        assert_eq!(m.traiter(Evenement::Telecharger), Some(Effet::Installer));
+        assert_eq!(
+            m.traiter(Evenement::OuvrirPageTelechargement),
+            Some(Effet::OuvrirTelechargement)
+        );
+        assert_eq!(m.traiter(Evenement::Lancer), None);
+        let mut sans = connectee(None);
+        sans.traiter(signal());
+        assert_eq!(
+            sans.traiter(Evenement::Telecharger),
+            Some(Effet::OuvrirTelechargement)
+        );
+        let mut hors_ecran = connectee(None).avec_installation(true);
+        assert_eq!(hors_ecran.traiter(Evenement::Telecharger), None);
+        assert_eq!(
+            hors_ecran.traiter(Evenement::OuvrirPageTelechargement),
+            None
         );
     }
 

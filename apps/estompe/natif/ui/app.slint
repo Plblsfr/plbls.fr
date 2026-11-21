@@ -23,7 +23,9 @@ import { DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, Periph
 import { MenuParticipant, ListePeripheriquesVocal } from "vocal/menus.slint";
 import { ReglagesAudio } from "vocal/reglages.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, LigneContact, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesMessageVocal, EtapeVocal, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage, DonneesGifs, CelluleGif, RangeeGif, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche, DonneesNouveauPrive, PersonneProposee, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal }
+import { DonneesMiseAJour } from "mise-a-jour/donnees.slint";
+
+export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, LigneContact, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesMessageVocal, EtapeVocal, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage, DonneesGifs, CelluleGif, RangeeGif, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche, DonneesNouveauPrive, PersonneProposee, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal, DonneesMiseAJour }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -46,6 +48,9 @@ export component Principale inherits Window {
     in property <string> mise-a-jour-version-minimale;
     in property <string> pseudo;
     in-out property <bool> a-propos-ouvert: false;
+    in property <bool> demarrage-disponible: false;
+    in-out property <bool> demarrage-actif: false;
+    in-out property <bool> notifications-bureau: true;
     in-out property <bool> modal-demo-ouvert: false;
     in property <bool> infobulle-forcee: false;
     out property <int> clics-demo: demo.clics;
@@ -64,6 +69,9 @@ export component Principale inherits Window {
     callback rejoindre(string);
     callback retour-accueil();
     callback telecharger-mise-a-jour();
+    callback ouvrir-page-mise-a-jour();
+    callback demarrage-change(bool);
+    callback notifications-change(bool);
     public function focus-demo() {
         demo.focus-initial();
     }
@@ -218,6 +226,9 @@ export component Principale inherits Window {
                     telecharger => {
                         root.telecharger-mise-a-jour();
                     }
+                    ouvrir-page => {
+                        root.ouvrir-page-mise-a-jour();
+                    }
                 }
                 if root.page == Page.coquille: Coquille {
                     ouvrir-invitation => {
@@ -253,6 +264,15 @@ export component Principale inherits Window {
         APropos {
             min-height: 320px;
             version: root.version;
+            demarrage-disponible: root.demarrage-disponible;
+            demarrage-actif <=> root.demarrage-actif;
+            notifications-bureau <=> root.notifications-bureau;
+            demarrage-change(actif) => {
+                root.demarrage-change(actif);
+            }
+            notifications-change(actif) => {
+                root.notifications-change(actif);
+            }
         }
     }
     Modal {

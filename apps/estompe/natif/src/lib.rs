@@ -1,5 +1,6 @@
 slint::include_modules!();
 
+pub mod bureau;
 pub mod confirmation;
 pub mod coquille;
 pub mod ecrans;
@@ -7,6 +8,7 @@ pub mod entree;
 pub mod menu;
 pub mod messagerie;
 pub mod mesures;
+pub mod mise_a_jour;
 pub mod session;
 pub mod vocal;
 
@@ -19,6 +21,9 @@ pub fn creer_fenetre() -> Result<Principale, slint::PlatformError> {
     menu::brancher(&fenetre);
     confirmation::brancher(&fenetre);
     fenetre.set_version(VERSION.into());
+    fenetre
+        .global::<DonneesMiseAJour>()
+        .set_version_installee(VERSION.into());
     fenetre.set_debogage(cfg!(debug_assertions));
     Ok(fenetre)
 }
@@ -37,8 +42,10 @@ pub fn invitation_des_arguments(arguments: impl IntoIterator<Item = String>) -> 
 }
 
 pub struct Application {
+    pub bureau: bureau::Bureau,
     pub coquille: coquille::Coquille,
     pub entree: entree::Entree,
+    pub mise_a_jour: estompe_client::mise_a_jour::MiseAJour,
     pub client: estompe_client::http::Client,
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
     pub vocal: std::sync::Arc<estompe_client::vocal::SessionVocale>,
@@ -70,11 +77,15 @@ pub fn demarrer(
     invitation: Option<String>,
 ) -> Result<Application, String> {
     let canal = entree::canal();
-    let reels = session.services(&canal.0)?;
+    let canal_maj = estompe_client::mise_a_jour::canal();
+    let mut reels = session.services(&canal.0)?;
+    let plateforme = estompe_plateforme::Plateforme::de_l_os();
+    reels.services.installer = Some(mise_a_jour::installateur(canal_maj.0.clone()));
     let navigateur = reels.services.navigateur.clone();
     ecrans::brancher(fenetre, &canal.0);
     let entree = entree::Entree::demarrer(
-        entree::Machine::nouvelle(invitation),
+        entree::Machine::nouvelle(invitation)
+            .avec_installation(plateforme.installation.disponible()),
         reels.services,
         canal,
         ecrans::publieur(fenetre),
@@ -172,14 +183,83 @@ pub fn demarrer(
         session.memoire.clone(),
         coquille::horloge_locale(),
     );
+    let dossier_maj = session
+        .dossiers
+        .cache
+        .join(estompe_client::mise_a_jour::DOSSIER_MISES_A_JOUR);
+    estompe_client::mise_a_jour::nettoyer(&dossier_maj, VERSION);
+    let source_maj = mise_a_jour::source_reseau(
+        plateforme.installation.as_ref(),
+        dossier_maj,
+        std::env::var(estompe_client::mise_a_jour::VARIABLE_MANIFESTE)
+            .ok()
+            .as_deref(),
+    )?;
+    let service_maj = mise_a_jour::demarrer_service(
+        &entree.runtime(),
+        mise_a_jour::OptionsService {
+            canal: canal_maj,
+            source: std::sync::Arc::new(source_maj),
+            installation: plateforme.installation.clone(),
+            fenetre: fenetre.as_weak(),
+            entree: entree.emetteur(),
+            redemarrer: mise_a_jour::redemarrage(),
+            journal: Some(session.journal.clone()),
+        },
+    );
+    mise_a_jour::brancher(fenetre, &service_maj, &entree.runtime());
+    let suivi = coquille.suivi_du_focus();
+    let premier_plan = service_maj.emetteur();
     suivre_la_fenetre(
         fenetre,
-        coquille.suivi_du_focus(),
+        move |actif| {
+            suivi(actif);
+            if actif {
+                premier_plan.envoyer(estompe_client::mise_a_jour::EvenementMaj::PremierPlan);
+            }
+        },
         coquille.suivi_du_depot(),
     );
+    let emetteur = entree.emetteur();
+    let bureau = bureau::Bureau::installer(
+        fenetre,
+        bureau::OptionsBureau {
+            zone: plateforme.zone,
+            pastille: plateforme.pastille,
+            demarrage: plateforme.demarrage,
+            memoire: session.memoire.clone(),
+            entree: std::sync::Arc::new(move |evenement| emetteur.envoyer(evenement)),
+            journal: Some(session.journal.clone()),
+            suivi_du_focus: Some(Box::new(coquille.suivi_du_focus())),
+        },
+    );
+    let arret = coquille.arret();
+    bureau
+        .fermeture()
+        .avant_de_quitter(bureau::EtapeFermeture::Coquille, move || {
+            arret.arreter(bureau::DELAI_ARRET);
+        });
+    let session_vocale = vocal.clone();
+    bureau
+        .fermeture()
+        .avant_de_quitter(bureau::EtapeFermeture::Vocal, move || {
+            session_vocale.fermer_bloquant(estompe_client::vocal::DELAI_FERMETURE);
+        });
+    coquille.observer(bureau::notifications::Notifieur::nouveau(
+        bureau::notifications::OptionsNotifieur {
+            systeme: plateforme.notifications,
+            memoire: session.memoire.clone(),
+            fenetre_active: coquille.fenetre_active_partagee(),
+            source: coquille.source_pont(),
+            runtime: entree.runtime(),
+            journal: Some(session.journal.clone()),
+        },
+    ));
     Ok(Application {
+        bureau,
         coquille,
         entree,
+        mise_a_jour: service_maj,
         client: reels.client,
         auth: reels.auth,
         vocal,

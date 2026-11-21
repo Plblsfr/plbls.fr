@@ -1,0 +1,120 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton } from "../composants.slint";
+import { DonneesMiseAJour, BarreProgression } from "donnees.slint";
+
+export component BandeauMiseAJour inherits Rectangle {
+    property <bool> compte: DonneesMiseAJour.compte-a-rebours > 0;
+    property <bool> notes-ouvertes: false;
+    property <length> deux-lignes: 2 * mesure.preferred-height;
+    property <string> notes: root.compte ? "" : DonneesMiseAJour.notes;
+    min-height: contenu.min-height;
+    preferred-height: contenu.preferred-height;
+    border-radius: Rayon.m;
+    background: Theme.rose;
+    accessible-role: groupbox;
+    accessible-label: titre.text;
+    mesure := Text {
+        visible: false;
+        text: "A";
+        font-size: 12.5px;
+    }
+    contenu := VerticalLayout {
+        padding-top: 10px;
+        padding-bottom: 10px;
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                alignment: start;
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: Rayon.s;
+                    background: Theme.encre;
+                    Icone {
+                        nom: root.compte ? "alerte" : "telecharge";
+                        taille: 16px;
+                        couleur: Theme.rose;
+                    }
+                }
+            }
+            titre := Text {
+                text: root.compte ? "Mise à jour obligatoire dans " + DonneesMiseAJour.minuteur() + ". Termine ce que tu fais, ton brouillon est conservé." : "Nouvelle version disponible : Estompe natif " + DonneesMiseAJour.version;
+                color: Theme.encre;
+                font-size: 13px;
+                font-weight: Typo.moyen;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+        if root.notes != "": VerticalLayout {
+            spacing: 2px;
+            Rectangle {
+                clip: true;
+                height: root.notes-ouvertes ? texte-notes.preferred-height : Math.min(texte-notes.preferred-height, root.deux-lignes);
+                texte-notes := Text {
+                    y: 0;
+                    width: parent.width;
+                    text: root.notes;
+                    color: Theme.encre-2;
+                    font-size: 12.5px;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                }
+            }
+            if !root.notes-ouvertes && texte-notes.preferred-height > root.deux-lignes + 1px: HorizontalLayout {
+                alignment: start;
+                plus := Text {
+                    text: "Plus";
+                    color: Theme.encre;
+                    font-size: 12.5px;
+                    font-weight: Typo.demi-gras;
+                    accessible-role: button;
+                    accessible-label: "Plus de notes de version";
+                    accessible-action-default => {
+                        root.notes-ouvertes = true;
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.notes-ouvertes = true;
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e1;
+            Bouton {
+                texte: DonneesMiseAJour.en-cours ? (DonneesMiseAJour.installation || DonneesMiseAJour.progression <= 0 ? "Installation…" : DonneesMiseAJour.pourcentage()) : "Mettre à jour";
+                variante: VarianteBouton.primaire;
+                en-cours: DonneesMiseAJour.en-cours;
+                horizontal-stretch: 1;
+                clique => {
+                    DonneesMiseAJour.installer();
+                }
+            }
+            if !DonneesMiseAJour.en-cours && !root.compte: Bouton {
+                texte: "Plus tard";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesMiseAJour.plus-tard();
+                }
+            }
+        }
+        if DonneesMiseAJour.en-cours && DonneesMiseAJour.progression > 0: BarreProgression {
+            valeur: DonneesMiseAJour.progression;
+            couleur: Theme.encre;
+            description: "Téléchargement de la mise à jour";
+        }
+        if DonneesMiseAJour.erreur != "" && !root.compte: Text {
+            text: DonneesMiseAJour.erreur;
+            color: Theme.danger;
+            font-size: 12.5px;
+            wrap: word-wrap;
+        }
+    }
+}
