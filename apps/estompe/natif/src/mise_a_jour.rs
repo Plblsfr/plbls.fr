@@ -7,11 +7,11 @@ use estompe_client::mise_a_jour::{
     SourceMaj, SourceReseau, Telechargeur,
 };
 use estompe_plateforme::Installation;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model};
 use tokio::sync::oneshot;
 
 use crate::entree::{Emetteur, Evenement, Installateur};
-use crate::{DonneesMiseAJour, DonneesSaisie, Principale};
+use crate::{DonneesMiseAJour, DonneesSaisie, DonneesVocal, EtapeVocal, Principale};
 
 pub fn contexte_de_la_fenetre(fenetre: slint::Weak<Principale>) -> SourceContexte {
     Arc::new(move || {
@@ -19,8 +19,11 @@ pub fn contexte_de_la_fenetre(fenetre: slint::Weak<Principale>) -> SourceContext
         Box::pin(async move {
             let (envoi, reception) = oneshot::channel();
             let _ = fenetre.upgrade_in_event_loop(move |f| {
+                let saisie = f.global::<DonneesSaisie>();
                 let _ = envoi.send(Contexte {
-                    saisie_en_cours: !f.global::<DonneesSaisie>().get_texte().trim().is_empty(),
+                    saisie_en_cours: !saisie.get_texte().trim().is_empty()
+                        || saisie.get_pieces().row_count() > 0
+                        || f.global::<DonneesVocal>().get_etape() != EtapeVocal::Aucune,
                     en_appel: false,
                 });
             });

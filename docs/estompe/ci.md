@@ -68,7 +68,8 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   GNOME déverrouillé (le coffre de secrets est testé pour de vrai) : portabilité, fichiers générés à jour, `cargo fmt --check`,
   `clippy -D warnings`, `cargo deny check`, absence de `tauri`, `wry` et `webview2-com`, tests (dont les captures de rendu, et la conversion d'une
   vidéo HEVC en H.264 par le ffmpeg installé par apt, rendue obligatoire par `ESTOMPE_FFMPEG_EXIGE=1`, comme le décodage d'un message vocal AAC ;
-  `libasound2-dev` pour le son par `cpal`, sans périphérique audio : micro et sortie sont simulés), build. Puis il lance
+  `libasound2-dev` pour le son par `cpal`, sans périphérique audio : micro et sortie sont simulés ; zone de notification et notifications
+  sur le bus de session, rendues obligatoires par `ESTOMPE_DBUS_EXIGE=1`), build. Puis il lance
   l'app sous Xvfb (`--essai-de-lancement`). En cas d'échec, l'artefact `estompe-natif-captures` contient captures, références et différences.
 - `estompe-natif-windows` : runner Windows, cible `x86_64-pc-windows-msvc` : build et tests (coffre de secrets : Credential Manager), sans
   comparaison des captures.

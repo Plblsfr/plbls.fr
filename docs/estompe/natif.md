@@ -467,7 +467,7 @@ deux moteurs et sur les deux OS :
 - ffmpeg (`ffmpeg_du_systeme`) : `ffmpeg` (`ffmpeg.exe`) à côté de l'exécutable, sinon celui du `PATH` ; même code sous Linux et Windows, lancé par
   `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Le binaire à embarquer est celui de l'app Tauri
   (`apps/estompe/windows/scripts/fetch-ffmpeg.mjs`, build LGPL de BtbN) : 130 Mo installé, environ 40 Mo dans un installeur compressé en LZMA ; l'installeur natif
-  ([#278](https://github.com/Plblsfr/plbls.fr/issues/278)) devra le copier à côté d'`estompe-natif.exe` et citer sa licence. La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
+  (`installeur/estompe-natif.nsi`, [#343](https://github.com/Plblsfr/plbls.fr/issues/343)) ne l'embarque pas encore : il devra le copier à côté d'`estompe-natif.exe` et citer sa licence. La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
 - Pendant la conversion, la pièce affiche « conversion… 42 % » et sa barre (`EtatPiece::Conversion`, lu dans `-progress pipe:1` rapporté à la durée de `ffmpeg -i`). La croix
   l'annule : la tâche interrompue lève le drapeau d'annulation, ffmpeg est tué puis attendu, et le fichier de sortie supprimé. Le fichier converti est écrit dans
   `<cache>/conversions/` (`FichierTemporaire`, supprimé quand la dernière copie de la source de la pièce disparaît : pièce retirée ou annulée, message envoyé) ; « Réessayer » renvoie ce même fichier. Le dossier est vidé au lancement, pour ce qu'un arrêt brutal aurait laissé.
@@ -624,7 +624,7 @@ Règles dans la crate client (`notifications.rs`, sans code d'OS), reprises du f
   (focus de winit) ; sinon une notification du système si la préférence « Notifications du bureau » est active.
 - Regroupement : l'étiquette (`tag` du serveur) remplace une notification de même étiquette (toast de même `Tag`, `replaces_id` sous Linux).
 - Son : celui du système avec la notification (audio par défaut du toast, indice `sound-name=message-new-instant` sous Linux), muet si le serveur la dit
-  silencieuse. Écart assumé : le front joue un bip même quand les notifications du bureau sont coupées ; l'app native n'a pas de sortie audio avant le lot vocal.
+  silencieuse. Écart assumé : le front joue un bip même quand les notifications du bureau sont coupées ; l'app native n'en joue pas (la sortie du son, `SortieSon`, ne sert encore qu'aux messages vocaux).
 - Actions (`effet_de_l_action`) : un clic ramène la fenêtre et ouvre la conversation au message (adresse du serveur sans « / » initial, `#/s/…/<message>`
   ou `#/dm/…`, puis `sauter_a`) ; « Marquer comme lu » lit la conversation (`Store::lire_conversation` : `POST …/read` et lecture des mentions) sans
   naviguer ; « Répondre » avec un texte l'envoie par la file d'envoi (`Store::envoyer`, message simple de la conversation), sans texte ouvre la conversation.
@@ -670,8 +670,8 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
 - Machine (`machine.rs`, sans effet de bord, comme `entree.rs`) et service (`service.rs`, état publié par `tokio::sync::watch`) : vérification
   15 s après le lancement, puis toutes les 30 minutes, et au retour de la fenêtre au premier plan (au plus une fois par 5 minutes) ; une
   vérification ou une installation à la fois ; l'erreur d'une vérification n'est montrée que si elle a été demandée, celle d'une installation toujours.
-  Une mise à jour imposée bloque l'app (écran « Mise à jour requise » de l'entrée), ou après 120 s si l'utilisateur est occupé (zone de saisie non
-  vide, ou en appel). En appel, l'installation attend la fin de l'appel ou une confirmation (aucun vocal avant le lot 4 : jamais en appel aujourd'hui).
+  Une mise à jour imposée bloque l'app (écran « Mise à jour requise » de l'entrée), ou après 120 s si l'utilisateur est occupé (texte ou pièces jointes
+  dans la zone de saisie, message vocal en cours, ou en appel). En appel, l'installation attend la fin de l'appel ou une confirmation (aucun vocal avant le lot 4 : jamais en appel aujourd'hui).
 - Au démarrage, les installeurs de `mises-a-jour/` d'une version inférieure ou égale à la version installée sont supprimés.
 - Journal : version disponible, téléchargement vérifié ou refusé, lancement ; jamais de jeton.
 - Linux : `Installation` indisponible, aucune vérification (le paquet Linux arrive au lot 11).
