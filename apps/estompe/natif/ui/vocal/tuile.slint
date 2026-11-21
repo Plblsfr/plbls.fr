@@ -67,6 +67,29 @@ export component Tuile inherits Rectangle {
     accessible-action-default => {
         root.activer();
     }
+    property <bool> a-ouvert-menu: false;
+    changed utilisable => {
+        if (self.utilisable && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            rendre-focus.running = true;
+        }
+    }
+    rendre-focus := Timer {
+        interval: 0ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            portee.focus();
+        }
+    }
+    function ouvrir(au-pointeur: bool, x: length, y: length) {
+        if (root.p.partage) {
+            DonneesVocal.ouvrir-menu-partage-a(root.p.utilisateur, au-pointeur, x, y);
+        } else {
+            DonneesVocal.ouvrir-menu-a(root.p.utilisateur, root.p.salon, au-pointeur, x, y);
+        }
+        root.a-ouvert-menu = DonneesVocal.menu-ouvert;
+    }
     forward-focus: portee;
     function activer() {
         if (!root.utilisable) {
@@ -74,10 +97,8 @@ export component Tuile inherits Rectangle {
         }
         if (root.attente) {
             DonneesVocal.regarder(root.p.utilisateur, true);
-        } else if (root.p.partage) {
-            DonneesVocal.ouvrir-menu-partage(root.p.utilisateur);
         } else {
-            DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+            root.ouvrir(false, 0, 0);
         }
     }
     video := ImageFlux {
@@ -190,6 +211,10 @@ export component Tuile inherits Rectangle {
                 DonneesVocal.plein-ecran("");
                 return accept;
             }
+            if ((e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) && root.utilisable && !root.attente) {
+                root.ouvrir(true, root.absolute-position.x + root.width / 2, root.absolute-position.y + root.height / 2);
+                return accept;
+            }
             return reject;
         }
         zone := TouchArea {
@@ -197,6 +222,11 @@ export component Tuile inherits Rectangle {
             mouse-cursor: root.utilisable ? pointer : default;
             clicked => {
                 root.activer();
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right && root.utilisable && !root.attente) {
+                    root.ouvrir(true, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
             }
             double-clicked => {
                 if (video.pret) {
@@ -291,7 +321,7 @@ export component Tuile inherits Rectangle {
                     icone: "volmax";
                     description: "Son et qualité du partage de \{root.p.nom}";
                     clique => {
-                        DonneesVocal.ouvrir-menu-partage(root.p.utilisateur);
+                        root.ouvrir(false, 0, 0);
                     }
                 }
                 if !root.plein: OutilTuile {
@@ -333,8 +363,27 @@ export component LigneParticipant inherits Rectangle {
     accessible-enabled: utilisable;
     accessible-action-default => {
         if (root.utilisable) {
-            DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+            root.ouvrir(false, 0, 0);
         }
+    }
+    property <bool> a-ouvert-menu: false;
+    changed utilisable => {
+        if (self.utilisable && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            rendre-focus.running = true;
+        }
+    }
+    rendre-focus := Timer {
+        interval: 0ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            portee.focus();
+        }
+    }
+    function ouvrir(au-pointeur: bool, x: length, y: length) {
+        DonneesVocal.ouvrir-menu-a(root.p.utilisateur, root.p.salon, au-pointeur, x, y);
+        root.a-ouvert-menu = DonneesVocal.menu-ouvert;
     }
     forward-focus: portee;
     HorizontalLayout {
@@ -386,7 +435,11 @@ export component LigneParticipant inherits Rectangle {
         }
         key-pressed(e) => {
             if (e.text == Key.Return || e.text == " ") {
-                DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                root.ouvrir(false, 0, 0);
+                return accept;
+            }
+            if (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+                root.ouvrir(true, root.absolute-position.x + 30px, root.absolute-position.y + root.height);
                 return accept;
             }
             return reject;
@@ -399,7 +452,12 @@ export component LigneParticipant inherits Rectangle {
                 enabled: root.utilisable;
                 mouse-cursor: !root.utilisable ? default : root.p.deplacable ? MouseCursor.grab : pointer;
                 clicked => {
-                    DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                    root.ouvrir(false, 0, 0);
+                }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                        root.ouvrir(true, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                    }
                 }
             }
         }

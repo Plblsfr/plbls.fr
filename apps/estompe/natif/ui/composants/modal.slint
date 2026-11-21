@@ -6,6 +6,9 @@ export component Modal {
     in property <bool> ouvert: false;
     in property <length> largeur: 440px;
     in property <bool> focus-croix: true;
+    in property <bool> au-pointeur: false;
+    in property <length> pointeur-x;
+    in property <length> pointeur-y;
     callback ferme();
     callback ouverture();
     width: 100%;
@@ -22,7 +25,7 @@ export component Modal {
         }
     }
     Rectangle {
-        background: #16130f80;
+        background: root.au-pointeur ? transparent : #16130f80;
         TouchArea {
             clicked => {
                 root.ferme();
@@ -39,8 +42,8 @@ export component Modal {
             return reject;
         }
         fenetre := Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
+            x: root.au-pointeur ? Math.max(Espace.e2, Math.min(root.pointeur-x - root.absolute-position.x, parent.width - self.width - Espace.e2)) : (parent.width - self.width) / 2;
+            y: root.au-pointeur ? Math.max(Espace.e2, Math.min(root.pointeur-y - root.absolute-position.y, parent.height - self.height - Espace.e2)) : (parent.height - self.height) / 2;
             width: Math.min(root.largeur, parent.width - 2 * Espace.e4);
             height: Math.min(disposition.preferred-height, parent.height - 2 * Espace.e4);
             border-radius: Rayon.l;

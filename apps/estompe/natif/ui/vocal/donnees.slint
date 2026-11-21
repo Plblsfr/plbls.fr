@@ -197,6 +197,9 @@ export global DonneesVocal {
     in property <bool> ptt-parle: false;
     in-out property <bool> menu-ouvert: false;
     in property <MenuVocal> menu;
+    in-out property <bool> menu-au-pointeur: false;
+    in-out property <length> menu-x;
+    in-out property <length> menu-y;
     in-out property <ListePeripheriques> liste: ListePeripheriques.aucune;
     in property <[PeripheriqueVocal]> micros;
     in property <[PeripheriqueVocal]> sorties;
@@ -230,6 +233,18 @@ export global DonneesVocal {
     callback epingler(string);
     callback plein-ecran(string);
     callback choisir-qualite-recue(int);
+    public function ouvrir-menu-a(utilisateur: string, salon: string, au-pointeur: bool, x: length, y: length) {
+        menu-au-pointeur = au-pointeur;
+        menu-x = x;
+        menu-y = y;
+        ouvrir-menu(utilisateur, salon);
+    }
+    public function ouvrir-menu-partage-a(utilisateur: string, au-pointeur: bool, x: length, y: length) {
+        menu-au-pointeur = au-pointeur;
+        menu-x = x;
+        menu-y = y;
+        ouvrir-menu-partage(utilisateur);
+    }
     callback muet-pour-moi(bool);
     callback volume(int, bool);
     callback moderer(bool, bool);

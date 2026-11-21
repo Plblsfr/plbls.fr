@@ -129,6 +129,8 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-partage-en-cours-sombre", Sombre, vocal_partage_en_cours;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
     "vocal-menu-clair", Clair, vocal_menu;
+    "vocal-menu-pointeur-clair", Clair, vocal_menu_pointeur;
+    "vocal-menu-pointeur-sombre", Sombre, vocal_menu_pointeur;
     "vocal-moderation-clair", Clair, vocal_moderation;
     "vocal-moderation-sombre", Sombre, vocal_moderation;
     "vocal-plein-cadre-clair", Clair, vocal_plein_cadre;
@@ -700,6 +702,8 @@ fn vocal_avec(
         etat.avatars.insert(utilisateur.into(), 1);
     }
     preparer_store(&mut etat);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_menu_au_pointeur(false);
     let pont = coquille_avec(f, etat, salon("s1", Some("v1")), profils_du_vocal());
     pont.vocal()
         .definir_etat(f, etat_vocal("v1", &autres, preparer));
@@ -1045,6 +1049,16 @@ fn vocal_reconnexion(f: &Principale) {
 
 fn vocal_menu(f: &Principale) {
     let pont = vocal_avec(f, 4, |_| {}, |_| {});
+    pont.vocal().ouvrir_menu(f, "carol", "v1");
+    stabiliser(f);
+}
+
+fn vocal_menu_pointeur(f: &Principale) {
+    let pont = vocal_avec(f, 4, |_| {}, |_| {});
+    let v = f.global::<estompe_natif::DonneesVocal>();
+    v.set_menu_au_pointeur(true);
+    v.set_menu_x(1100.0);
+    v.set_menu_y(700.0);
     pont.vocal().ouvrir_menu(f, "carol", "v1");
     stabiliser(f);
 }
