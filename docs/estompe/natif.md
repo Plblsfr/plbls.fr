@@ -62,6 +62,10 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   `a-ouvert-menu` et reprend le focus à la fermeture, sauf si l'action l'a donné ailleurs (l'action rend `true` : champ de saisie, sélecteur, confirmation ; `focus-ailleurs`).
 - Ouverture : clic droit, touche Menu ou Maj+F10 sur l'élément qui a le focus. Un `FocusScope` qui prend le focus au clic avale l'appui : la ligne d'un message a
   `focus-on-click: false` et se donne le focus dans `pointer-event`, sinon le premier clic droit ne ferait que la sélectionner.
+- Une `TouchArea` imbriquée prend tout appui, clic droit compris, et la zone parente ne le reçoit plus : l'avatar et le nom de l'auteur d'un message relaient le clic droit
+  au menu du message (`clic-droit` de `CorpsMessage`), comme le clic droit du front remonte jusqu'à l'article. Où le clic droit ouvre un menu sur un utilisateur :
+  liste des membres (menu ci-dessus ; le clic ouvre la carte de profil), message (menu du message), conversation privée du panneau (« Copier le pseudo » avec
+  « Marquer comme lu » et « Copier le lien »), participant d'un vocal dans le panneau et tuile du salon (menu du participant, voir [Interface du salon vocal](#interface-du-salon-vocal)).
 - Confirmation (`ui/composants/confirmation.slint`, global `DonneesConfirmation` ; `src/confirmation.rs`) : `confirmation::confirmer` et `confirmation::saisir`, sur le modal
   commun : titre, message, bouton d'action (rouge si destructive), saisie éventuelle (à recopier exactement : `exiger`) ou case à cocher ; `peut_valider` décide si le bouton est actif
   (le rappel pur reçoit la demande en argument pour que Slint le réévalue à chaque nouvelle demande). Une nouvelle demande annule la précédente (sa suite reçoit un refus), comme `confirm.svelte.ts`.
@@ -703,11 +707,13 @@ Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/v
   restent en barre flottante avec « Quitter le mode plein cadre » ; Échap ou quitter le salon en sort. Le front n'agrandit une tuile (« Mettre en grand ») que pour un flux
   vidéo : il arrivera avec la caméra et le partage d'écran (lot 5).
 - Tuile : photo de profil (même cache et mêmes clés que la liste des membres, `coquille/avatars.rs` : avatar propre au serveur, sinon global ; demandée au premier affichage), sinon initiales, pseudo, « (toi) », halo et onde quand il parle (`EtatVocal::parlent` de LiveKit, et pour soi le niveau du micro au-dessus du seuil), micro et casque coupés
-  (attributs `muted`, `deaf` : qui parle n'est jamais affiché muet), coupures du serveur, qualité. Clic ou Entrée : menu du participant (muet pour moi, volume 0 à 300 %
+  (attributs `muted`, `deaf` : qui parle n'est jamais affiché muet), coupures du serveur, qualité. Clic ou Entrée : menu du participant au centre de la fenêtre ; clic droit (comme `use:ctx` du front), touche Menu ou Maj+F10 :
+  le même menu ouvert au pointeur, ou sous l'élément au clavier, sans voile, gardé dans la fenêtre à 8 px des bords (`Modal::au-pointeur`, `DonneesVocal::ouvrir-menu-a`) ;
+  à la fermeture, le focus revient au participant. Contenu : muet pour moi, volume 0 à 300 %
   retenu au relâchement, « Couper le micro / le son du serveur » si l'on domine le membre et a `mute_members` ou `deafen_members`, `PUT /voice/{salon}/participants/{id}/mod` ;
   « Déplacer vers « … » » pour chaque autre salon vocal ou cinéma du serveur avec `move_members` et « Déconnecter du vocal » avec `disconnect_members`, toujours sur un membre
   que l'on domine, comme le menu du panneau du front : `PUT /voice/{salon}/participants/{id}/move` (`channel_id`) et `POST /voice/{salon}/participants/{id}/disconnect`).
-  Le menu se ferme quand le serveur accepte ; un refus s'affiche dans le menu (« Action impossible : … »). Le même menu s'ouvre depuis le panneau.
+  Le menu se ferme quand le serveur accepte ; un refus s'affiche dans le menu (« Action impossible : … »). Le même menu s'ouvre depuis le panneau, au clic, au clic droit et au clavier.
 - Clavier : toutes les commandes sont des boutons atteints par Tab ; Alt+Maj+M (micro) et Alt+Maj+D (casque) comme le front ; Échap ferme menus et réglages.
 - Modération : `voice.moved` devient `Changement::DeplacementVocal` dans le store puis `deplace_par_moderation` (avis « eve t'a déplacé dans … ») ; la coupure `voice.mod` du compte (store,
   `GET /servers/{id}/voice` puis `voice.mod`) est passée à `SessionVocale::imposer` ; `voice.disconnected` s'affiche dans la barre.

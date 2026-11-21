@@ -1064,6 +1064,89 @@ fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages,
     );
     traiter_les_changements(faible);
     touche(faible, Key::Escape);
+    attendre_l_interface(
+        faible,
+        |f| !f.global::<DonneesMenu>().get_ouvert(),
+        "Échap ferme le menu ouvert au clic droit",
+    );
+    for (cible, attendu) in [
+        (
+            "avatar",
+            "clic droit sur l'avatar de l'auteur : menu du message",
+        ),
+        (
+            "auteur",
+            "clic droit sur le nom de l'auteur : menu du message",
+        ),
+    ] {
+        let (point, auteur) = sur_l_interface(faible, move |f| {
+            let avatar = ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+                .filter(|e| e.size().height > 0.0)
+                .filter_map(|corps| {
+                    corps
+                        .query_descendants()
+                        .match_accessible_role(AccessibleRole::Button)
+                        .find_all()
+                        .into_iter()
+                        .find(|e| {
+                            e.size().height > 0.0
+                                && e.accessible_label()
+                                    .is_some_and(|l| l.starts_with("Profil de "))
+                        })
+                })
+                .last()
+                .expect("avatar de l'auteur d'un message");
+            let auteur = avatar.accessible_label().unwrap()["Profil de ".len()..].to_string();
+            let (p, t) = (avatar.absolute_position(), avatar.size());
+            let point = if cible == "avatar" {
+                slint::LogicalPosition::new(p.x + t.width / 2.0, p.y + t.height / 2.0)
+            } else {
+                let nom = ElementHandle::find_by_accessible_label(f, &auteur)
+                    .filter(|e| e.id().is_some_and(|i| i == "CorpsMessage::auteur"))
+                    .min_by(|a, b| {
+                        let d = |e: &ElementHandle| (e.absolute_position().y - p.y).abs();
+                        d(a).total_cmp(&d(b))
+                    })
+                    .expect("nom de l'auteur à côté de l'avatar");
+                let (q, u) = (nom.absolute_position(), nom.size());
+                slint::LogicalPosition::new(q.x + u.width.min(20.0) / 2.0, q.y + u.height / 2.0)
+            };
+            f.window()
+                .dispatch_event(WindowEvent::PointerMoved { position: point });
+            f.window().dispatch_event(WindowEvent::PointerPressed {
+                position: point,
+                button: PointerEventButton::Right,
+            });
+            f.window().dispatch_event(WindowEvent::PointerReleased {
+                position: point,
+                button: PointerEventButton::Right,
+            });
+            (point, auteur)
+        });
+        attendre_l_interface(
+            faible,
+            move |f| {
+                let g = f.global::<DonneesMenu>();
+                g.get_ouvert()
+                    && entrees_du_menu(f).iter().any(|e| e == "copier-texte")
+                    && (g.get_x() - point.x).abs() < 1.0
+                    && g.get_y() <= point.y + 1.0
+            },
+            attendu,
+        );
+        assert!(
+            !sur_l_interface(faible, |f| f
+                .global::<DonneesCoquille>()
+                .get_carte_ouverte()),
+            "le clic droit sur {auteur} n'ouvre pas la carte de profil"
+        );
+        touche(faible, Key::Escape);
+        attendre_l_interface(
+            faible,
+            |f| !f.global::<DonneesMenu>().get_ouvert(),
+            "Échap ferme le menu du message",
+        );
+    }
     menu_du_message(faible, message, false);
     let entrees = sur_l_interface(faible, entrees_du_menu);
     assert_eq!(
