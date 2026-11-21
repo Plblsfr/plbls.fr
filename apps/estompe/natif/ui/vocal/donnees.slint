@@ -12,6 +12,7 @@ export struct ParticipantVocal {
     son-impose: bool,
     barres: int,
     qualite: string,
+    portrait: image,
 }
 
 export struct VueVocal {
@@ -49,6 +50,11 @@ export struct BarreVocal {
     message: string,
 }
 
+export struct SalonDestination {
+    id: string,
+    nom: string,
+}
+
 export struct MenuVocal {
     utilisateur: string,
     nom: string,
@@ -58,6 +64,9 @@ export struct MenuVocal {
     peut-couper-son: bool,
     micro-impose: bool,
     son-impose: bool,
+    destinations: [SalonDestination],
+    peut-deconnecter: bool,
+    erreur: string,
 }
 
 export struct PeripheriqueVocal {
@@ -80,6 +89,9 @@ export struct ReglagesVocal {
     delai: int,
     ptt-message: string,
     ptt-global: bool,
+    son-arrivee: int,
+    son-depart: int,
+    volume-sons: int,
 }
 
 export global DonneesVocal {
@@ -99,10 +111,12 @@ export global DonneesVocal {
     in property <[PeripheriqueVocal]> micros;
     in property <[PeripheriqueVocal]> sorties;
     in-out property <bool> reglages-ouverts: false;
+    in-out property <length> reglages-decalage: 0;
     in property <ReglagesVocal> reglages;
     in property <bool> essai: false;
     in-out property <bool> capture-touche: false;
     in property <string> capture-erreur;
+    in property <bool> plein-cadre: false;
     callback rejoindre(string);
     callback ouvrir-vocal(string);
     callback quitter();
@@ -116,6 +130,12 @@ export global DonneesVocal {
     callback muet-pour-moi(bool);
     callback volume(int, bool);
     callback moderer(bool, bool);
+    callback deplacer(string);
+    callback deconnecter();
+    callback basculer-plein-cadre(bool);
+    callback choisir-son(bool, int);
+    callback volume-sons(int, bool);
+    callback ecouter-son(bool);
     callback ouvrir-reglages();
     callback fermer-reglages();
     callback regler(ReglagesVocal, bool);

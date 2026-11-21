@@ -269,6 +269,7 @@ mod tests {
             bientot,
             occupants: 0,
             brouillon: false,
+            duree: String::new(),
         }
     }
 

@@ -10,8 +10,8 @@ use estompe_client::store::messages::ChangementMessages;
 use estompe_client::store::{Changement, CleConversation, ParticipantVocal, Store};
 use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
-use estompe_client::vocal::{EtatVocal, InfoParticipant, Phase as PhaseVocal, Qualite};
 use estompe_client::version::MiseAJourDisponible;
+use estompe_client::vocal::{EtatVocal, InfoParticipant, Phase as PhaseVocal, Qualite};
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -101,6 +101,11 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-12-clair", Clair, vocal_douze;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
     "vocal-menu-clair", Clair, vocal_menu;
+    "vocal-moderation-clair", Clair, vocal_moderation;
+    "vocal-moderation-sombre", Sombre, vocal_moderation;
+    "vocal-plein-cadre-clair", Clair, vocal_plein_cadre;
+    "vocal-plein-cadre-sombre", Sombre, vocal_plein_cadre;
+    "vocal-sons-clair", Clair, vocal_sons;
     "vocal-reglages-clair", Clair, vocal_reglages;
     "vocal-reglages-sombre", Sombre, vocal_reglages;
     "coquille-vide-clair", Clair, coquille_vide;
@@ -583,6 +588,8 @@ fn coquille_vocal(f: &Principale) {
     coquille(f, commun::coquille::etat(), salon("s1", Some("v1")));
 }
 
+const DEBUT_DU_VOCAL: &str = "2026-11-19T08:47:00Z";
+
 const PRENOMS: [&str; 11] = [
     "carol", "dave", "Élise", "farid", "gaëlle", "hugo", "inès", "jules", "karim", "léa", "malo",
 ];
@@ -614,6 +621,24 @@ fn attribut(v: &mut EtatVocal, identite: &str, cle: &str) {
     }
 }
 
+fn profils_du_vocal() -> Arc<Profils> {
+    let profils = Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None);
+    for (utilisateur, fond, motif) in [
+        ("carol", [242, 166, 90], [90, 50, 30]),
+        ("Élise", [120, 160, 110], [250, 240, 220]),
+    ] {
+        profils.installer_avatar(
+            CleAvatar {
+                utilisateur: utilisateur.into(),
+                version: 1,
+                serveur: None,
+            },
+            avatars::arrondir(portrait(fond, motif)),
+        );
+    }
+    profils
+}
+
 fn vocal_avec(
     f: &Principale,
     nombre: usize,
@@ -633,12 +658,16 @@ fn vocal_avec(
             .map(|id| ParticipantVocal {
                 utilisateur: id.to_string(),
                 pseudo: id.to_string(),
+                depuis: Some(DEBUT_DU_VOCAL.into()),
                 ..ParticipantVocal::default()
             })
             .collect(),
     );
+    for utilisateur in ["carol", "Élise"] {
+        etat.avatars.insert(utilisateur.into(), 1);
+    }
     preparer_store(&mut etat);
-    let pont = coquille(f, etat, salon("s1", Some("v1")));
+    let pont = coquille_avec(f, etat, salon("s1", Some("v1")), profils_du_vocal());
     pont.vocal()
         .definir_etat(f, etat_vocal("v1", &autres, preparer));
     stabiliser(f);
@@ -690,6 +719,43 @@ fn vocal_reconnexion(f: &Principale) {
 fn vocal_menu(f: &Principale) {
     let pont = vocal_avec(f, 4, |_| {}, |_| {});
     pont.vocal().ouvrir_menu(f, "carol", "v1");
+    stabiliser(f);
+}
+
+fn vocal_moderation(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        4,
+        |e| {
+            if let Some(serveur) = e.details.get_mut("s1").and_then(|d| d.server.as_mut()) {
+                serveur.owner_id = Some("u1".into());
+            }
+        },
+        |_| {},
+    );
+    pont.vocal().ouvrir_menu(f, "carol", "v1");
+    stabiliser(f);
+}
+
+fn vocal_plein_cadre(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        4,
+        |_| {},
+        |v| {
+            v.parlent.insert("Élise".into());
+        },
+    );
+    pont.vocal().basculer_plein_cadre(f, true);
+    stabiliser(f);
+}
+
+fn vocal_sons(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_reglages(f);
+    stabiliser(f);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_reglages_decalage(-500.0);
     stabiliser(f);
 }
 

@@ -31,6 +31,100 @@ component Reglage inherits VerticalLayout {
     @children
 }
 
+component BoutonSon inherits Bouton {
+    in property <int> rang;
+    in property <int> choisi;
+    callback choisir(int);
+    variante: rang == choisi ? VarianteBouton.primaire : VarianteBouton.secondaire;
+    calque: 1;
+    clique => {
+        root.choisir(root.rang);
+    }
+}
+
+component ChoixDuSon inherits VerticalLayout {
+    in property <string> libelle;
+    in property <int> choisi;
+    callback choisir(int);
+    callback ecouter();
+    spacing: Espace.e1;
+    HorizontalLayout {
+        Text {
+            horizontal-stretch: 1;
+            text: root.libelle;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+        Bouton {
+            texte: "Écouter";
+            icone: "lecture";
+            variante: VarianteBouton.fantome;
+            calque: 1;
+            actif: root.choisi != 5;
+            clique => {
+                root.ecouter();
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e2;
+        alignment: start;
+        BoutonSon {
+            texte: "Montée";
+            rang: 0;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
+        BoutonSon {
+            texte: "Descente";
+            rang: 1;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
+        BoutonSon {
+            texte: "Carillon";
+            rang: 2;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e2;
+        alignment: start;
+        BoutonSon {
+            texte: "Pop";
+            rang: 3;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
+        BoutonSon {
+            texte: "Double bip";
+            rang: 4;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
+        BoutonSon {
+            texte: "Aucun";
+            rang: 5;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
+    }
+}
+
 export component ReglagesAudio inherits Modal {
     titre: "Réglages audio";
     ouvert: DonneesVocal.reglages-ouverts;
@@ -40,6 +134,7 @@ export component ReglagesAudio inherits Modal {
         DonneesVocal.fermer-reglages();
     }
     if DonneesVocal.reglages-ouverts: Defilement {
+        decalage <=> DonneesVocal.reglages-decalage;
         min-height: 360px;
         preferred-height: 640px;
         hauteur-contenu: contenu.preferred-height;
@@ -61,6 +156,9 @@ export component ReglagesAudio inherits Modal {
                     delai: Math.round(delai.valeur),
                     ptt-message: self.r.ptt-message,
                     ptt-global: self.r.ptt-global,
+                    son-arrivee: self.r.son-arrivee,
+                    son-depart: self.r.son-depart,
+                    volume-sons: self.r.volume-sons,
                 }, fini);
             }
             function bruit(niveau: int) {
@@ -76,6 +174,9 @@ export component ReglagesAudio inherits Modal {
                     delai: Math.round(delai.valeur),
                     ptt-message: self.r.ptt-message,
                     ptt-global: self.r.ptt-global,
+                    son-arrivee: self.r.son-arrivee,
+                    son-depart: self.r.son-depart,
+                    volume-sons: self.r.volume-sons,
                 }, true);
             }
             Titre {
@@ -322,6 +423,45 @@ export component ReglagesAudio inherits Modal {
                 calque: 1;
                 bascule => {
                     contenu.envoyer(true);
+                }
+            }
+            if contenu.r.sons: ChoixDuSon {
+                libelle: "Son d'arrivée";
+                choisi: contenu.r.son-arrivee;
+                choisir(i) => {
+                    DonneesVocal.choisir-son(true, i);
+                }
+                ecouter => {
+                    DonneesVocal.ecouter-son(true);
+                }
+            }
+            if contenu.r.sons: ChoixDuSon {
+                libelle: "Son de départ";
+                choisi: contenu.r.son-depart;
+                choisir(i) => {
+                    DonneesVocal.choisir-son(false, i);
+                }
+                ecouter => {
+                    DonneesVocal.ecouter-son(false);
+                }
+            }
+            if contenu.r.sons: Reglage {
+                libelle: "Volume des sons";
+                valeur: "\{Math.round(volume-sons.valeur)} %";
+                volume-sons := Curseur {
+                    libelle: "Volume des sons";
+                    unite: " %";
+                    minimum: 0;
+                    maximum: 100;
+                    pas: 5;
+                    valeur: contenu.r.volume-sons;
+                    calque: 1;
+                    change(v) => {
+                        DonneesVocal.volume-sons(Math.round(v), false);
+                    }
+                    fini(v) => {
+                        DonneesVocal.volume-sons(Math.round(v), true);
+                    }
                 }
             }
         }

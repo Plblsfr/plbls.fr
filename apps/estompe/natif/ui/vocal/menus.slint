@@ -70,6 +70,33 @@ export component MenuParticipant inherits Modal {
                 }
             }
         }
+        if DonneesVocal.menu.destinations.length > 0 || DonneesVocal.menu.peut-deconnecter: VerticalLayout {
+            spacing: Espace.e2;
+            for d in DonneesVocal.menu.destinations: Bouton {
+                texte: "Déplacer vers « \{d.nom} »";
+                icone: "droite";
+                calque: 1;
+                clique => {
+                    DonneesVocal.deplacer(d.id);
+                }
+            }
+            if DonneesVocal.menu.peut-deconnecter: Bouton {
+                texte: "Déconnecter du vocal";
+                icone: "raccroche";
+                variante: VarianteBouton.danger;
+                calque: 1;
+                clique => {
+                    DonneesVocal.deconnecter();
+                }
+            }
+        }
+        if DonneesVocal.menu.erreur != "": Text {
+            text: DonneesVocal.menu.erreur;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
     }
 }
 

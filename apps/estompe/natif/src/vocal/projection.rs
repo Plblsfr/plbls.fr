@@ -4,6 +4,8 @@ use estompe_client::store::{Etat, GenreSalon};
 use estompe_client::vocal::salle::est_partage;
 use estompe_client::vocal::{EtatVocal, Phase, Qualite};
 
+use crate::coquille::avatars::CleAvatar;
+use crate::coquille::membres::cle_avatar;
 use crate::coquille::projection::{initiales, teinte};
 
 fn id_de(valeur: &Option<String>) -> &str {
@@ -28,6 +30,8 @@ pub struct Participant {
     pub son_impose: bool,
     pub barres: i32,
     pub qualite: &'static str,
+    pub avatar: Option<CleAvatar>,
+    pub portrait: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +81,9 @@ pub struct Menu {
     pub peut_couper_son: bool,
     pub micro_impose: bool,
     pub son_impose: bool,
+    pub destinations: Vec<(String, String)>,
+    pub peut_deconnecter: bool,
+    pub erreur: String,
 }
 
 pub fn barres(qualite: Qualite) -> (i32, &'static str) {
@@ -133,6 +140,7 @@ pub fn participants(
         );
     }
     let affiches = vocal.affiches();
+    let serveur = etat.serveur_du_salon(salon);
     liste
         .into_iter()
         .map(|(utilisateur, nom, micro_impose, son_impose)| {
@@ -165,10 +173,22 @@ pub fn participants(
                 son_impose,
                 barres: n,
                 qualite: libelle,
+                avatar: serveur
+                    .as_deref()
+                    .and_then(|s| cle_avatar(etat, s, &utilisateur)),
+                portrait: false,
                 nom,
                 utilisateur,
             }
         })
+        .collect()
+}
+
+pub fn salons_vocaux(etat: &Etat, serveur: &str) -> Vec<(String, String)> {
+    etat.salons(serveur)
+        .iter()
+        .filter(|s| matches!(s.kind, Some(GenreSalon::Voice | GenreSalon::Cinema)))
+        .map(|s| (id_de(&s.id).to_string(), id_de(&s.name).to_string()))
         .collect()
 }
 
@@ -340,6 +360,17 @@ pub fn menu(
     let serveur = etat.serveur_du_salon(salon);
     let detail = serveur.as_deref().and_then(|s| etat.details.get(s));
     let modere = domine(detail, moi, utilisateur);
+    let destinations = if modere && etat.peut(serveur.as_deref(), "move_members", None) {
+        serveur
+            .as_deref()
+            .map(|s| salons_vocaux(etat, s))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(id, _)| id != salon)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let source = estompe_client::vocal::SourceAudio::Micro;
     Some(Menu {
         utilisateur: utilisateur.to_string(),
@@ -350,6 +381,11 @@ pub fn menu(
         peut_couper_son: modere && etat.peut(serveur.as_deref(), "deafen_members", Some(salon)),
         micro_impose: participant.is_some_and(|p| p.micro_coupe),
         son_impose: participant.is_some_and(|p| p.son_coupe),
+        destinations,
+        peut_deconnecter: modere
+            && participant.is_some()
+            && etat.peut(serveur.as_deref(), "disconnect_members", None),
+        erreur: String::new(),
     })
 }
 
@@ -531,8 +567,31 @@ mod tests {
             m.peut_couper_micro && m.peut_couper_son,
             "le créateur du serveur modère"
         );
+        assert_eq!(
+            m.destinations,
+            [("k1".to_string(), "Ciné".to_string())],
+            "les autres salons vocaux et cinéma du serveur"
+        );
+        assert!(m.peut_deconnecter);
         let m = menu(&e, &v, "v1", "carol", "dave").unwrap();
         assert!(!m.peut_couper_micro && !m.peut_couper_son);
+        assert!(m.destinations.is_empty() && !m.peut_deconnecter);
+    }
+
+    #[test]
+    fn la_tuile_porte_la_cle_de_l_avatar_du_serveur_sinon_globale() {
+        let mut e = avec_vocal(&[("carol", "carol")]);
+        let v = connecte("v1");
+        assert_eq!(participants(&e, &v, "v1", "me", false)[1].avatar, None);
+        e.avatars.insert("carol".into(), 4);
+        assert_eq!(
+            participants(&e, &v, "v1", "me", false)[1].avatar,
+            Some(CleAvatar {
+                utilisateur: "carol".into(),
+                version: 4,
+                serveur: None,
+            })
+        );
     }
 
     #[test]

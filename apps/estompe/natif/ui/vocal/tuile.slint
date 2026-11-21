@@ -25,6 +25,7 @@ export component Tuile inherits Rectangle {
         y: (parent.height - self.height) / 2 - 8px;
         nom: root.p.nom;
         initiales: root.p.initiales;
+        portrait: root.p.portrait;
         teinte: root.p.teinte;
         taille: root.cote;
         fond: Theme.papier-3;
@@ -131,6 +132,7 @@ export component LigneParticipant inherits Rectangle {
             Avatar {
                 nom: root.p.nom;
                 initiales: root.p.initiales;
+                portrait: root.p.portrait;
                 teinte: root.p.teinte;
                 taille: 22px;
                 parle: root.p.parle;

@@ -44,6 +44,10 @@ export component Coquille inherits Rectangle {
                 DonneesCoquille.marge-bascule(!DonneesCoquille.marge-ouverte);
                 return accept;
             }
+            if (e.text == Key.Escape && DonneesVocal.plein-cadre && Calques.ouverts == 0) {
+                DonneesVocal.basculer-plein-cadre(false);
+                return accept;
+            }
             if (e.modifiers.alt && e.modifiers.shift && !e.modifiers.control && !e.modifiers.meta && (e.text == "m" || e.text == "M")) {
                 DonneesVocal.basculer-micro();
                 return accept;
@@ -66,12 +70,12 @@ export component Coquille inherits Rectangle {
         Rectangle {
             visible: DonneesCoquille.pret;
             HorizontalLayout {
-                Rail {
+                if !DonneesVocal.plein-cadre: Rail {
                     rejoindre => {
                         root.ouvrir-invitation();
                     }
                 }
-                if !DonneesCoquille.panneau-replie: Panneau {
+                if !DonneesCoquille.panneau-replie && !DonneesVocal.plein-cadre: Panneau {
                     se-deconnecter => {
                         root.se-deconnecter();
                     }
@@ -83,7 +87,7 @@ export component Coquille inherits Rectangle {
                     }
                 }
                 EmplacementMarge {
-                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte;
+                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre;
                     largeur: DonneesCoquille.largeur-marge;
                     @children
                 }

@@ -33,6 +33,7 @@ use estompe_client::video::Conversions;
 use estompe_plateforme::SonPeripheriques;
 
 const RAFRAICHIR_ACCUEIL: Duration = Duration::from_secs(60);
+const SECONDE: Duration = Duration::from_secs(1);
 const ATTENTE_MAX: Duration = Duration::from_secs(30);
 const SOURCE_JOURNAL: &str = "coquille";
 
@@ -1009,6 +1010,8 @@ async fn session(
     let mut etat_vocal = outils.as_ref().map(|o| o.session.etat());
     let mut avis_vocal = outils.as_ref().map(|o| o.session.abonner_avis());
     let mut mesure = tokio::time::interval(PERIODE_MESURE);
+    let mut secondes = tokio::time::interval(SECONDE);
+    secondes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     mesure.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let installe = {
         let mut emplacement = contexte
@@ -1108,6 +1111,10 @@ async fn session(
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => avis_vocal = None,
                 }
+            }
+            _ = secondes.tick(), if pont.durees_vocales() => {
+                let p = pont.clone();
+                contexte.sur_l_interface(move |f| p.rafraichir_durees(f));
             }
             _ = mesure.tick(), if pont.vocal().mesure_active() => {
                 let p = pont.clone();

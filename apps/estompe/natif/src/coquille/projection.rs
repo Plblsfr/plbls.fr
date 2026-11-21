@@ -1,4 +1,6 @@
 use chrono::{Datelike, NaiveDateTime, Timelike};
+use estompe_client::format::formater_duree;
+use estompe_client::roles::date_en_millisecondes;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::store::messages::LignePrivee;
@@ -32,6 +34,7 @@ pub struct DonneesSalon {
     pub bientot: bool,
     pub occupants: usize,
     pub brouillon: bool,
+    pub duree: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -288,11 +291,25 @@ pub fn icone_du_salon(salon: &Salon) -> &'static str {
     }
 }
 
+pub fn debut_du_salon_vocal(etat: &Etat, salon: &str) -> Option<i64> {
+    etat.participants(salon)
+        .iter()
+        .filter_map(|p| p.depuis.as_deref().and_then(date_en_millisecondes))
+        .min()
+}
+
+pub fn duree_du_salon_vocal(etat: &Etat, salon: &str, maintenant_ms: i64) -> String {
+    debut_du_salon_vocal(etat, salon)
+        .map(|debut| formater_duree((maintenant_ms - debut).max(0) as f64 / 1000.0))
+        .unwrap_or_default()
+}
+
 fn ligne_de_salon(
     etat: &Etat,
     salon: &Salon,
     actif: Option<&str>,
     titre: &'static str,
+    maintenant_ms: i64,
 ) -> DonneesSalon {
     let identifiant = id(&salon.id).to_string();
     let cle = CleConversation::Salon(identifiant.clone());
@@ -311,13 +328,18 @@ fn ligne_de_salon(
         bientot: est_esquisse(salon.kind),
         occupants: etat.participants(&identifiant).len(),
         brouillon: false,
+        duree: if lisible {
+            String::new()
+        } else {
+            duree_du_salon_vocal(etat, &identifiant, maintenant_ms)
+        },
         id: identifiant,
     }
 }
 
 type GardeDeGroupe = fn(Option<GenreSalon>) -> bool;
 
-pub fn lignes_salons(etat: &Etat, route: &Route) -> Vec<DonneesSalon> {
+pub fn lignes_salons(etat: &Etat, route: &Route, maintenant_ms: i64) -> Vec<DonneesSalon> {
     let Some(serveur) = serveur_courant(route) else {
         return Vec::new();
     };
@@ -335,7 +357,15 @@ pub fn lignes_salons(etat: &Etat, route: &Route) -> Vec<DonneesSalon> {
                 .iter()
                 .filter(|s| garde(s.kind))
                 .enumerate()
-                .map(move |(i, s)| ligne_de_salon(etat, s, actif, if i == 0 { titre } else { "" }))
+                .map(move |(i, s)| {
+                    ligne_de_salon(
+                        etat,
+                        s,
+                        actif,
+                        if i == 0 { titre } else { "" },
+                        maintenant_ms,
+                    )
+                })
         })
         .collect()
 }
@@ -824,7 +854,7 @@ mod tests {
     #[test]
     fn les_salons_sont_groupes_comme_dans_le_panneau_du_front() {
         let e = etat();
-        let lignes = lignes_salons(&e, &salon("s1", None));
+        let lignes = lignes_salons(&e, &salon("s1", None), 0);
         let resume: Vec<(&str, &str, &str, bool, bool)> = lignes
             .iter()
             .map(|l| (l.id.as_str(), l.icone, l.titre_groupe, l.actif, l.bientot))
@@ -841,9 +871,30 @@ mod tests {
         );
         assert_eq!((lignes[0].mentions, lignes[1].non_lus), (1, 3));
         assert_eq!((lignes[3].occupants, lignes[3].non_lus), (1, 0));
-        let choisi = lignes_salons(&e, &salon("s1", Some("v1")));
+        let choisi = lignes_salons(&e, &salon("s1", Some("v1")), 0);
         assert!(choisi.iter().find(|l| l.id == "v1").unwrap().actif);
-        assert!(lignes_salons(&e, &Route::Accueil).is_empty());
+        assert!(lignes_salons(&e, &Route::Accueil, 0).is_empty());
+    }
+
+    #[test]
+    fn la_duree_du_salon_vocal_part_du_plus_ancien_participant_comme_le_front() {
+        let mut e = etat();
+        let debut = date_en_millisecondes("2026-11-19T09:00:00Z").unwrap();
+        assert!(lignes_salons(&e, &salon("s1", None), debut)
+            .iter()
+            .all(|l| l.duree.is_empty()));
+        let liste = e.vocal.get_mut("v1").unwrap();
+        liste[0].depuis = Some("2026-11-19T09:00:00Z".into());
+        liste.push(estompe_client::store::ParticipantVocal {
+            utilisateur: "dave".into(),
+            pseudo: "dave".into(),
+            depuis: Some("2026-11-19T09:30:00Z".into()),
+            ..Default::default()
+        });
+        let lignes = lignes_salons(&e, &salon("s1", None), debut + 3_725_000);
+        let duree = |id: &str| lignes.iter().find(|l| l.id == id).unwrap().duree.clone();
+        assert_eq!(duree("v1"), formater_duree(3725.0));
+        assert_eq!((duree("c1"), duree("k1")), (String::new(), String::new()));
     }
 
     #[test]

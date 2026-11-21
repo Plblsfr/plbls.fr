@@ -4,13 +4,13 @@ use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chrono::NaiveDate;
-use commun::coquille::{evenement, FausseFabrique};
+use chrono::{Local, NaiveDate, SecondsFormat, TimeZone, Utc};
+use commun::coquille::{evenement, FausseFabrique, ServeurMessages};
 use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
 };
 use estompe_client::audio::factice::SystemeFactice;
-use estompe_client::audio::{FormatAudio, SensAudio};
+use estompe_client::audio::{ChoixSon, FormatAudio, SensAudio};
 use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::preferences::Preferences;
 use estompe_client::vocal::factice::{ApiVocaleFactice, ServeurVocalFactice};
@@ -77,10 +77,20 @@ fn mesurer(
 }
 
 struct Banc {
+    http: Arc<ServeurMessages>,
     serveur: ServeurVocalFactice,
     audio: SystemeFactice,
     api: Arc<ApiVocaleFactice>,
     session: Arc<SessionVocale>,
+}
+
+fn requete_recue(serveur: &ServeurMessages, requete: &str, contenu: &str) -> bool {
+    serveur
+        .corps
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(r, c)| r == requete && c.contains(contenu))
 }
 
 fn voix_forte() -> Vec<f32> {
@@ -126,13 +136,72 @@ fn scenario(
     );
     let (premiere, lieu, compte) = sur_l_interface(&faible, |f| {
         let v = f.global::<DonneesVocal>();
+        let t = tuiles(f)[0].clone();
         (
-            tuiles(f)[0].clone(),
+            (t.moi, t.nom.to_string()),
             v.get_barre().lieu.to_string(),
             v.get_vue().compte.to_string(),
         )
     });
-    assert!(premiere.moi && premiere.nom == "bob");
+    assert!(premiere.0 && premiere.1 == "bob");
+    attendre_l_interface(
+        &faible,
+        |f| tuile(f, "carol").is_some_and(|t| t.portrait.size().width > 0),
+        "photo de profil de carol dans sa tuile",
+    );
+    assert!(fabrique
+        .source
+        .requetes_avatars()
+        .iter()
+        .any(|c| c.utilisateur == "carol" && c.serveur.is_none()));
+    assert!(sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .get_participants()
+            .iter()
+            .any(|p| p.utilisateur == "carol" && p.portrait.size().width > 0)
+    }));
+    attendre_l_interface(
+        &faible,
+        |f| {
+            f.global::<estompe_natif::DonneesCoquille>()
+                .get_salons()
+                .iter()
+                .any(|l| l.id == "v1" && l.duree == "4 h 00")
+        },
+        "durée du salon sous son nom dans le panneau",
+    );
+
+    cliquer(&faible, "Mode plein cadre");
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_plein_cadre(),
+        "mode plein cadre",
+    );
+    assert!(
+        sur_l_interface(&faible, |f| {
+            ElementHandle::find_by_accessible_label(f, "Mode plein cadre")
+                .all(|e| e.size().height == 0.0)
+                && ElementHandle::find_by_accessible_label(f, "Accueil")
+                    .all(|e| e.size().height == 0.0)
+        }),
+        "rail, panneau et en-tête masqués"
+    );
+    sur_l_interface(&faible, |f| {
+        presser(f, Key::Escape);
+        relacher(f, Key::Escape);
+    });
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesVocal>().get_plein_cadre(),
+        "Échap quitte le mode plein cadre",
+    );
+    cliquer(&faible, "Mode plein cadre");
+    cliquer(&faible, "Quitter le mode plein cadre (Échap)");
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesVocal>().get_plein_cadre(),
+        "le bouton quitte le mode plein cadre",
+    );
     assert_eq!(lieu, "Salon vocal · Les amis");
     assert_eq!(compte, "3 / 10");
     attendre_l_interface(
@@ -273,6 +342,66 @@ fn scenario(
         "menu fermé par Échap",
     );
 
+    cliquer(&faible, "carol");
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_menu_ouvert(),
+        "menu de carol rouvert",
+    );
+    let (destinations, deconnecter) = sur_l_interface(&faible, |f| {
+        let m = f.global::<DonneesVocal>().get_menu();
+        (
+            m.destinations
+                .iter()
+                .map(|d| (d.id.to_string(), d.nom.to_string()))
+                .collect::<Vec<_>>(),
+            m.peut_deconnecter,
+        )
+    });
+    assert_eq!(
+        destinations,
+        [("k1".to_string(), "Ciné du dimanche".to_string())]
+    );
+    assert!(deconnecter);
+    cliquer(&faible, "Déplacer vers « Ciné du dimanche »");
+    attendre(
+        || {
+            requete_recue(
+                &banc.http,
+                "PUT /voice/v1/participants/carol/move",
+                r#""channel_id":"k1""#,
+            )
+        },
+        "déplacement demandé au serveur",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesVocal>().get_menu_ouvert(),
+        "menu fermé après le déplacement",
+    );
+    cliquer(&faible, "carol");
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_menu_ouvert(),
+        "menu de carol rouvert pour la déconnecter",
+    );
+    cliquer(&faible, "Déconnecter du vocal");
+    attendre(
+        || {
+            requete_recue(
+                &banc.http,
+                "POST /voice/v1/participants/carol/disconnect",
+                "",
+            )
+        },
+        "déconnexion demandée au serveur",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesVocal>().get_menu_ouvert(),
+        "menu fermé après la déconnexion",
+    );
+
     fabrique.envoyer(evenement(
         "voice.state",
         json!({"server_id": "s1", "channel_id": "v1", "user_id": "u1", "pseudo": "bob", "joined": true}),
@@ -349,6 +478,23 @@ fn scenario(
         "relâchée, la porte se ferme",
     );
     assert!(memoire.lire(|p| p.ptt.actif));
+    sur_l_interface(&faible, |f| {
+        let v = f.global::<DonneesVocal>();
+        v.invoke_choisir_son(true, 2);
+        v.invoke_volume_sons(30, true);
+    });
+    attendre(
+        || memoire.lire(|p| p.sons.arrivee == ChoixSon::Carillon && p.sons.volume == 30),
+        "son d'arrivée et volume des sons retenus",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let r = f.global::<DonneesVocal>().get_reglages();
+            r.son_arrivee == 2 && r.son_depart == 1 && r.volume_sons == 30
+        },
+        "choix du son affiché dans les réglages",
+    );
     sur_l_interface(&faible, |f| {
         let v = f.global::<DonneesVocal>();
         let mut r = v.get_reglages();
@@ -493,17 +639,32 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
             reglages: estompe_client::vocal::Reglages::default(),
         },
     ));
-    let fabrique = FausseFabrique::nouvelle(commun::coquille::etat(), Vec::new());
+    let midi = NaiveDate::from_ymd_opt(2026, 11, 19)
+        .unwrap()
+        .and_hms_opt(12, 0, 0)
+        .unwrap();
+    let http = ServeurMessages::demarrer(0);
+    let mut etat = commun::coquille::etat();
+    etat.avatars.insert("carol".into(), 2);
+    if let Some(serveur) = etat.details.get_mut("s1").and_then(|d| d.server.as_mut()) {
+        serveur.owner_id = Some("u1".into());
+    }
+    let depuis = (Local.from_local_datetime(&midi).earliest().unwrap()
+        - chrono::Duration::hours(4))
+    .with_timezone(&Utc)
+    .to_rfc3339_opts(SecondsFormat::Secs, true);
+    if let Some(liste) = etat.vocal.get_mut("v1") {
+        for p in liste.iter_mut() {
+            p.depuis = Some(depuis.clone());
+        }
+    }
+    let fabrique = FausseFabrique::sur(etat, Vec::new(), &http.adresse);
     *fabrique.vocal.lock().unwrap() = Some(OutilsVocaux {
         session: session.clone(),
         audio: Arc::new(audio.clone()),
         raccourcis: Arc::new(RaccourcisFactices::nouveaux(false)),
         apm: None,
     });
-    let midi = NaiveDate::from_ymd_opt(2026, 11, 19)
-        .unwrap()
-        .and_hms_opt(12, 0, 0)
-        .unwrap();
     let coquille = Coquille::brancher(
         &fenetre,
         &entree,
@@ -513,6 +674,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
     );
     fenetre.show().unwrap();
     let banc = Banc {
+        http,
         serveur,
         audio,
         api,

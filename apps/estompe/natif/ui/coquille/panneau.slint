@@ -317,6 +317,7 @@ export component Panneau inherits Rectangle {
                             mentions: salon.mentions;
                             non-lu: salon.occupants > 0;
                             etiquette: salon.bientot ? "bientôt" : "";
+                            duree: salon.duree;
                             description: salon.bientot ? "bientôt dans l'app native" : "";
                             brouillon: salon.brouillon;
                             avec-menu: true;

@@ -19,6 +19,7 @@ component Rejoindre inherits VerticalLayout {
                 Avatar {
                     nom: p.nom;
                     initiales: p.initiales;
+                    portrait: p.portrait;
                     teinte: p.teinte;
                     taille: 56px;
                     parle: p.parle;
@@ -185,12 +186,26 @@ component Scene inherits Rectangle {
         drop-shadow-blur: 18px;
         drop-shadow-offset-y: 6px;
         drop-shadow-color: Theme.sombre ? #00000080 : #16130f22;
-        commandes := VerticalLayout {
+        commandes := HorizontalLayout {
             x: 12px;
             y: 8px;
-            spacing: 4px;
-            CommandesVocal { }
-            AvisVocal { }
+            spacing: Espace.e2;
+            VerticalLayout {
+                spacing: 4px;
+                CommandesVocal { }
+                AvisVocal { }
+            }
+            if DonneesVocal.plein-cadre: VerticalLayout {
+                alignment: start;
+                Bouton {
+                    icone: "reduire";
+                    description: "Quitter le mode plein cadre (Échap)";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        DonneesVocal.basculer-plein-cadre(false);
+                    }
+                }
+            }
         }
     }
 }

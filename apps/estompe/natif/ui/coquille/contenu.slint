@@ -16,7 +16,7 @@ export component Contenu inherits Rectangle {
         Bandeau {
             etat: DonneesCoquille.bandeau;
         }
-        Rectangle {
+        if !DonneesVocal.plein-cadre: Rectangle {
             height: 60px;
             HorizontalLayout {
                 padding-left: DonneesCoquille.panneau-replie ? Espace.e3 : Espace.e6;
@@ -68,6 +68,17 @@ export component Contenu inherits Rectangle {
                     vertical-alignment: center;
                     accessible-role: text;
                     accessible-label: "Participants : \{DonneesVocal.vue.compte}";
+                }
+                if DonneesCoquille.vue.genre == GenreVue.vocal && DonneesVocal.vue.ici && !DonneesVocal.vue.connexion: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "agrandir";
+                        description: "Mode plein cadre";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesVocal.basculer-plein-cadre(true);
+                        }
+                    }
                 }
                 VerticalLayout {
                     alignment: center;

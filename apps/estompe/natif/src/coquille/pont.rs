@@ -381,6 +381,7 @@ fn ligne_salon_slint(d: &DonneesSalon) -> LigneSalon {
         bientot: d.bientot,
         occupants: d.occupants.min(i32::MAX as usize) as i32,
         brouillon: d.brouillon,
+        duree: d.duree.as_str().into(),
     }
 }
 
@@ -515,6 +516,7 @@ impl Pont {
             runtime.clone(),
             memoire.clone(),
             Arc::new(move || millisecondes(horloge_vocal())),
+            profils.clone(),
         );
         Self {
             interne: Arc::new(Mutex::new(Interne {
@@ -667,7 +669,7 @@ impl Pont {
                 );
             }
             if !c.salons.est_vide() {
-                let mut salons = lignes_salons(etat, &route);
+                let mut salons = lignes_salons(etat, &route, millisecondes(maintenant));
                 marquer_brouillons(&mut salons, &mut [], |c| brouillons.contains(c));
                 synchroniser(
                     vec_de(&g.get_salons()),
@@ -996,6 +998,25 @@ impl Pont {
             f,
             &Cibles {
                 accueil: true,
+                ..Cibles::default()
+            },
+            false,
+        );
+    }
+
+    pub fn durees_vocales(&self) -> bool {
+        self.verrou()
+            .ombres
+            .salons
+            .iter()
+            .any(|d| !d.duree.is_empty())
+    }
+
+    pub fn rafraichir_durees(&self, f: &Principale) {
+        self.projeter(
+            f,
+            &Cibles {
+                salons: Ensemble::Tous,
                 ..Cibles::default()
             },
             false,

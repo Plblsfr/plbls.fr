@@ -1,9 +1,11 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
+use std::collections::HashSet;
+
 use estompe_client::audio::{
-    tonalite, Apm, Bascule, EssaiMicro, ModeBruit, NiveauMicro, ReglagesMicro, SensAudio, SonVocal,
-    SystemeAudio,
+    tonalite, Apm, Bascule, ChoixSon, EssaiMicro, ModeBruit, NiveauMicro, ReglagesMicro,
+    ReglagesSons, SensAudio, SonVocal, SystemeAudio,
 };
 use estompe_client::route::Route;
 use estompe_client::store::{Avis, Changement, GenreSalon, Store};
@@ -16,12 +18,13 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use super::projection::{self, Barre, Menu, Participant, Vue};
 use super::touches::code_de_texte;
+use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::synchroniser;
 use crate::coquille::pont::vec_de;
 use crate::session::Memoire;
 use crate::{
     BarreVocal, DonneesVocal, ListePeripheriques, MenuVocal, ParticipantVocal, PeripheriqueVocal,
-    Principale, ReglagesVocal, VueVocal,
+    Principale, ReglagesVocal, SalonDestination, VueVocal,
 };
 
 pub const PERIODE_MESURE: Duration = Duration::from_millis(50);
@@ -61,6 +64,10 @@ struct Interne {
     impose: Option<(String, bool, bool)>,
     avis: String,
     capture_erreur: String,
+    menu_erreur: String,
+    plein_cadre: bool,
+    demandes_avatars: HashSet<CleAvatar>,
+    echecs_avatars: HashSet<CleAvatar>,
     ombres: Ombres,
 }
 
@@ -72,6 +79,7 @@ pub struct PontVocal {
     runtime: tokio::runtime::Handle,
     memoire: Option<Memoire>,
     horloge: HorlogeMs,
+    profils: Arc<Profils>,
 }
 
 pub fn installer_modeles(f: &Principale) {
@@ -94,9 +102,10 @@ pub fn vider_modeles(f: &Principale) {
     v.set_niveau(0.0);
     v.set_voix(false);
     v.set_parle_micro_coupe(false);
+    v.set_plein_cadre(false);
 }
 
-fn participant_slint(p: &Participant) -> ParticipantVocal {
+fn participant_slint(p: &Participant, profils: &Profils) -> ParticipantVocal {
     ParticipantVocal {
         salon: p.salon.as_str().into(),
         utilisateur: p.utilisateur.as_str().into(),
@@ -111,6 +120,15 @@ fn participant_slint(p: &Participant) -> ParticipantVocal {
         son_impose: p.son_impose,
         barres: p.barres,
         qualite: p.qualite.into(),
+        portrait: if p.portrait {
+            p.avatar
+                .as_ref()
+                .and_then(|c| profils.avatar(c))
+                .map(slint::Image::from_rgba8)
+                .unwrap_or_default()
+        } else {
+            slint::Image::default()
+        },
     }
 }
 
@@ -163,7 +181,32 @@ fn menu_slint(m: &Menu) -> MenuVocal {
         peut_couper_son: m.peut_couper_son,
         micro_impose: m.micro_impose,
         son_impose: m.son_impose,
+        destinations: ModelRc::new(VecModel::from(
+            m.destinations
+                .iter()
+                .map(|(id, nom)| SalonDestination {
+                    id: id.as_str().into(),
+                    nom: nom.as_str().into(),
+                })
+                .collect::<Vec<_>>(),
+        )),
+        peut_deconnecter: m.peut_deconnecter,
+        erreur: m.erreur.as_str().into(),
     }
+}
+
+pub fn rang_du_son(choix: ChoixSon) -> i32 {
+    ChoixSon::PROPOSES
+        .iter()
+        .position(|c| *c == choix)
+        .unwrap_or_default() as i32
+}
+
+pub fn son_du_rang(rang: i32) -> ChoixSon {
+    usize::try_from(rang)
+        .ok()
+        .and_then(|i| ChoixSon::PROPOSES.get(i).copied())
+        .unwrap_or(ChoixSon::Aucun)
 }
 
 pub fn traitement_effectif(reglages: ReglagesMicro, ptt: bool) -> ReglagesMicro {
@@ -204,6 +247,17 @@ pub fn texte_bascule(sens: SensAudio, bascule: &Bascule) -> Option<String> {
     }
 }
 
+fn marquer_portraits(liste: &mut [Participant], profils: &Profils, manquants: &mut Vec<CleAvatar>) {
+    for p in liste.iter_mut() {
+        if let Some(cle) = &p.avatar {
+            p.portrait = profils.avatar(cle).is_some();
+            if !p.portrait && !manquants.contains(cle) {
+                manquants.push(cle.clone());
+            }
+        }
+    }
+}
+
 fn salon_vocal_de_la_route(store: &Store, route: &Route) -> Option<String> {
     let Route::Salon {
         salon: Some(salon), ..
@@ -225,6 +279,7 @@ impl PontVocal {
         runtime: tokio::runtime::Handle,
         memoire: Option<Memoire>,
         horloge: HorlogeMs,
+        profils: Arc<Profils>,
     ) -> Self {
         Self {
             interne: Arc::new(Mutex::new(Interne {
@@ -243,6 +298,10 @@ impl PontVocal {
                 impose: None,
                 avis: String::new(),
                 capture_erreur: String::new(),
+                menu_erreur: String::new(),
+                plein_cadre: false,
+                demandes_avatars: HashSet::new(),
+                echecs_avatars: HashSet::new(),
                 ombres: Ombres::default(),
             })),
             store,
@@ -250,6 +309,7 @@ impl PontVocal {
             runtime,
             memoire,
             horloge,
+            profils,
         }
     }
 
@@ -410,11 +470,18 @@ impl PontVocal {
         if !self.preferences(|p| p.sons_vocal) {
             return;
         }
+        let sons = self.preferences(|p| p.sons);
+        self.jouer_choix(sons.choix(son), sons.volume);
+    }
+
+    fn jouer_choix(&self, choix: ChoixSon, volume: u16) {
         let Some(outils) = self.outils() else {
             return;
         };
         let sortie = self.preferences(|p| p.sortie_audio.clone());
-        if let Ok((lecture, duree)) = tonalite::jouer(outils.audio.clone(), sortie, son) {
+        if let Ok(Some((lecture, duree))) =
+            tonalite::jouer(outils.audio.clone(), sortie, choix, volume)
+        {
             self.runtime.spawn(async move {
                 tokio::time::sleep(duree + MARGE_SON).await;
                 drop(lecture);
@@ -497,36 +564,46 @@ impl PontVocal {
         let je_parle = i.etat.micro_emet() && i.niveau.voix;
         i.ombres.je_parle = je_parle;
         let menu = i.menu.clone();
+        let profils = &*self.profils;
+        let mut manquants: Vec<CleAvatar> = Vec::new();
+        let ici = salon_vue.as_deref().is_some_and(|s| i.etat.dans(s));
+        if i.plein_cadre && !ici {
+            i.plein_cadre = false;
+            v.set_plein_cadre(false);
+            f.window().set_fullscreen(false);
+        }
         self.store.lire(|etat| {
             let moi = etat.moi().to_string();
-            let tuiles = salon_vue
+            let mut tuiles = salon_vue
                 .as_deref()
                 .map(|s| projection::participants(etat, &i.etat, s, &moi, je_parle))
                 .unwrap_or_default();
             let vue = salon_vue
                 .as_deref()
                 .map(|s| projection::vue(etat, &i.etat, s, tuiles.len()));
+            marquer_portraits(&mut tuiles, profils, &mut manquants);
             synchroniser(
                 vec_de(&v.get_tuiles()),
                 &mut i.ombres.tuiles,
                 tuiles,
                 |p| p.utilisateur.clone(),
-                participant_slint,
+                |p| participant_slint(p, profils),
             );
             if i.ombres.vue != vue {
                 v.set_vue(vue.as_ref().map(vue_slint).unwrap_or_default());
                 i.ombres.vue = vue;
             }
-            let participants = serveur
+            let mut participants = serveur
                 .as_deref()
                 .map(|s| projection::participants_du_serveur(etat, &i.etat, s, &moi, je_parle))
                 .unwrap_or_default();
+            marquer_portraits(&mut participants, profils, &mut manquants);
             synchroniser(
                 vec_de(&v.get_participants()),
                 &mut i.ombres.participants,
                 participants,
                 |p| (p.salon.clone(), p.utilisateur.clone()),
-                participant_slint,
+                |p| participant_slint(p, profils),
             );
             let mut barre = projection::barre(etat, &i.etat, &moi, maintenant, i.debut_ms);
             if barre.message.is_empty() {
@@ -538,7 +615,10 @@ impl PontVocal {
             }
             if let Some((utilisateur, salon)) = &menu {
                 match projection::menu(etat, &i.etat, salon, utilisateur, &moi) {
-                    Some(m) => v.set_menu(menu_slint(&m)),
+                    Some(mut m) => {
+                        m.erreur = i.menu_erreur.clone();
+                        v.set_menu(menu_slint(&m));
+                    }
                     None => {
                         i.menu = None;
                         v.set_menu_ouvert(false);
@@ -546,7 +626,49 @@ impl PontVocal {
                 }
             }
         });
+        let demandes: Vec<CleAvatar> = manquants
+            .into_iter()
+            .filter(|c| !i.echecs_avatars.contains(c) && i.demandes_avatars.insert(c.clone()))
+            .collect();
         self.projeter_niveau(f, i);
+        drop(guard);
+        for cle in demandes {
+            self.telecharger_avatar(cle);
+        }
+    }
+
+    fn telecharger_avatar(&self, cle: CleAvatar) {
+        let pont = self.clone();
+        self.runtime.spawn(async move {
+            let recu = pont.profils.charger_avatar(cle.clone()).await.is_some();
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                {
+                    let mut i = p.verrou();
+                    i.demandes_avatars.remove(&cle);
+                    if !recu {
+                        i.echecs_avatars.insert(cle);
+                    }
+                }
+                p.projeter(&f);
+            });
+        });
+    }
+
+    pub fn basculer_plein_cadre(&self, f: &Principale, plein: bool) {
+        let (route, etat) = {
+            let i = self.verrou();
+            (i.route.clone(), i.etat.clone())
+        };
+        let ici = salon_vocal_de_la_route(&self.store, &route).is_some_and(|s| etat.dans(&s));
+        let plein = plein && ici;
+        self.verrou().plein_cadre = plein;
+        f.global::<DonneesVocal>().set_plein_cadre(plein);
+        f.window().set_fullscreen(plein);
+    }
+
+    pub fn plein_cadre(&self) -> bool {
+        self.verrou().plein_cadre
     }
 
     fn projeter_niveau(&self, f: &Principale, i: &mut Interne) {
@@ -616,12 +738,13 @@ impl PontVocal {
                 i.ptt.as_ref().is_some_and(|p| p.global_disponible()),
             )
         };
-        let (traitement, ecoute, sons, ptt) = self.preferences(|p| {
+        let (traitement, ecoute, sons, ptt, choix_sons) = self.preferences(|p| {
             (
                 p.traitement_micro,
                 p.ecoute.clone(),
                 p.sons_vocal,
                 p.ptt.clone(),
+                p.sons,
             )
         });
         let message = match (&ptt_etat.erreur, ptt.actif, ptt_etat.global) {
@@ -642,6 +765,9 @@ impl PontVocal {
             delai: i32::from(ptt.delai_ms),
             ptt_message: message.into(),
             ptt_global: ptt_etat.global,
+            son_arrivee: rang_du_son(choix_sons.arrivee),
+            son_depart: rang_du_son(choix_sons.depart),
+            volume_sons: i32::from(choix_sons.volume),
         });
         v.set_ptt(ptt.actif);
         v.set_touche_ptt(ptt.libelle().into());
@@ -766,7 +892,11 @@ impl PontVocal {
         let Some(menu) = menu else {
             return;
         };
-        self.verrou().menu = Some((utilisateur.to_string(), salon.to_string()));
+        {
+            let mut i = self.verrou();
+            i.menu = Some((utilisateur.to_string(), salon.to_string()));
+            i.menu_erreur.clear();
+        }
         let v = f.global::<DonneesVocal>();
         v.set_menu(menu_slint(&menu));
         v.set_menu_ouvert(true);
@@ -818,10 +948,108 @@ impl PontVocal {
         });
     }
 
+    pub fn deplacer_participant(&self, vers: &str) {
+        let Some((utilisateur, salon)) = self.menu_courant() else {
+            return;
+        };
+        let client = self.store.client().clone();
+        let vers = vers.to_string();
+        self.action_de_moderation(async move {
+            client
+                .deplacer_participant_vocal(&salon, &utilisateur, &vers)
+                .await
+        });
+    }
+
+    pub fn deconnecter_participant(&self) {
+        let Some((utilisateur, salon)) = self.menu_courant() else {
+            return;
+        };
+        let client = self.store.client().clone();
+        self.action_de_moderation(async move {
+            client
+                .deconnecter_participant_vocal(&salon, &utilisateur)
+                .await
+        });
+    }
+
+    fn action_de_moderation(
+        &self,
+        appel: impl std::future::Future<Output = Result<(), estompe_client::http::ErreurApi>>
+            + Send
+            + 'static,
+    ) {
+        let menu = self.menu_courant();
+        let pont = self.clone();
+        self.runtime.spawn(async move {
+            let resultat = appel.await;
+            let p = pont.clone();
+            let _ = pont.fenetre.upgrade_in_event_loop(move |f| {
+                if p.menu_courant() != menu {
+                    return;
+                }
+                match resultat {
+                    Ok(()) => p.fermer_menu(&f),
+                    Err(erreur) => {
+                        p.verrou().menu_erreur =
+                            format!("Action impossible : {}", erreur.message());
+                        p.projeter(&f);
+                    }
+                }
+            });
+        });
+    }
+
+    pub fn fermer_menu(&self, f: &Principale) {
+        {
+            let mut i = self.verrou();
+            i.menu = None;
+            i.menu_erreur.clear();
+        }
+        f.global::<DonneesVocal>().set_menu_ouvert(false);
+    }
+
+    pub fn choisir_son(&self, f: &Principale, arrivee: bool, rang: i32) {
+        let choix = son_du_rang(rang);
+        self.retenir(|p| {
+            if arrivee {
+                p.sons.arrivee = choix;
+            } else {
+                p.sons.depart = choix;
+            }
+        });
+        self.projeter_reglages(f);
+        self.ecouter_son(arrivee);
+    }
+
+    pub fn volume_sons(&self, f: &Principale, pourcent: i32, fini: bool) {
+        if !fini {
+            return;
+        }
+        let volume = u16::try_from(pourcent.max(0)).unwrap_or(u16::MAX);
+        self.retenir(|p| {
+            p.sons = ReglagesSons { volume, ..p.sons }.borne();
+        });
+        self.projeter_reglages(f);
+        self.ecouter_son(true);
+    }
+
+    pub fn ecouter_son(&self, arrivee: bool) {
+        let sons = self.preferences(|p| p.sons);
+        let son = if arrivee {
+            SonVocal::Arrivee
+        } else {
+            SonVocal::Depart
+        };
+        self.jouer_choix(sons.choix(son), sons.volume);
+    }
+
     pub fn ouvrir_reglages(&self, f: &Principale) {
         self.rafraichir_peripheriques(f);
         self.projeter_reglages(f);
-        f.global::<DonneesVocal>().set_reglages_ouverts(true);
+        let v = f.global::<DonneesVocal>();
+        v.set_reglages_decalage(0.0);
+        v.set_reglages_ouverts(true);
     }
 
     pub fn fermer_reglages(&self, f: &Principale) {
@@ -1041,6 +1269,15 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
     rappel!(on_muet_pour_moi, |p, f, muet| p.muet_pour_moi(&f, muet));
     rappel!(on_volume, |p, _f, valeur, fini| p.volume(valeur, fini));
     rappel!(on_moderer, |p, _f, micro, son| p.moderer(micro, son));
+    rappel!(on_deplacer, |p, _f, vers| p.deplacer_participant(&vers));
+    rappel!(on_deconnecter, |p, _f| p.deconnecter_participant());
+    rappel!(on_basculer_plein_cadre, |p, f, plein| p
+        .basculer_plein_cadre(&f, plein));
+    rappel!(on_choisir_son, |p, f, arrivee, rang| p
+        .choisir_son(&f, arrivee, rang));
+    rappel!(on_volume_sons, |p, f, valeur, fini| p
+        .volume_sons(&f, valeur, fini));
+    rappel!(on_ecouter_son, |p, _f, arrivee| p.ecouter_son(arrivee));
     rappel!(on_ouvrir_reglages, |p, f| p.ouvrir_reglages(&f));
     rappel!(on_fermer_reglages, |p, f| p.fermer_reglages(&f));
     rappel!(on_regler, |p, f, reglages, fini| p
@@ -1079,6 +1316,16 @@ mod tests {
             bruit_de(niveau_de(ModeBruit::Standard)),
             ModeBruit::Standard
         );
+    }
+
+    #[test]
+    fn le_rang_d_un_son_suit_la_liste_proposee() {
+        for choix in ChoixSon::PROPOSES {
+            assert_eq!(son_du_rang(rang_du_son(choix)), choix);
+        }
+        assert_eq!(rang_du_son(ChoixSon::Aucun), 5);
+        assert_eq!(son_du_rang(42), ChoixSon::Aucun);
+        assert_eq!(son_du_rang(-1), ChoixSon::Aucun);
     }
 
     #[test]
