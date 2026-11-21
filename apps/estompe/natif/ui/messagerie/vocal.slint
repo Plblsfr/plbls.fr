@@ -4,7 +4,7 @@ import { DonneesMessagerie, PieceJointe } from "donnees.slint";
 
 export enum EtapeVocal { aucune, ouverture, enregistrement, finalisation, ecoute, envoi }
 
-export global DonneesVocal {
+export global DonneesMessageVocal {
     in property <bool> possible: false;
     in property <EtapeVocal> etape: EtapeVocal.aucune;
     in property <string> duree: "0:00";
@@ -101,8 +101,8 @@ export component LecteurVocal inherits HorizontalLayout {
     in property <string> piece;
     in property <string> duree;
     in property <[float]> barres;
-    property <bool> courant: DonneesVocal.piece == root.piece;
-    property <bool> joue: root.courant && DonneesVocal.en-lecture;
+    property <bool> courant: DonneesMessageVocal.piece == root.piece;
+    property <bool> joue: root.courant && DonneesMessageVocal.en-lecture;
     spacing: 10px;
     VerticalLayout {
         alignment: center;
@@ -113,9 +113,9 @@ export component LecteurVocal inherits HorizontalLayout {
             libelle: root.joue ? "Mettre en pause" : "Écouter le message vocal";
             fond: Theme.encre;
             encre: Theme.rose;
-            opacity: root.courant && DonneesVocal.chargement ? 0.6 : 1;
+            opacity: root.courant && DonneesMessageVocal.chargement ? 0.6 : 1;
             clique => {
-                DonneesVocal.basculer(root.message, root.piece);
+                DonneesMessageVocal.basculer(root.message, root.piece);
             }
         }
     }
@@ -123,20 +123,20 @@ export component LecteurVocal inherits HorizontalLayout {
         horizontal-stretch: 1;
         min-width: 80px;
         valeurs: root.barres;
-        avance: root.courant ? DonneesVocal.avance : 0;
+        avance: root.courant ? DonneesMessageVocal.avance : 0;
         accessible-role: slider;
         accessible-label: "Se placer dans le message vocal";
         accessible-value: temps.text;
         TouchArea {
             mouse-cursor: pointer;
             clicked => {
-                DonneesVocal.placer(root.message, root.piece, max(0, min(1, self.mouse-x / self.width)));
+                DonneesMessageVocal.placer(root.message, root.piece, max(0, min(1, self.mouse-x / self.width)));
             }
         }
     }
     temps := Text {
         min-width: 30px;
-        text: root.courant && (root.joue || DonneesVocal.avance > 0) ? DonneesVocal.temps : root.duree;
+        text: root.courant && (root.joue || DonneesMessageVocal.avance > 0) ? DonneesMessageVocal.temps : root.duree;
         color: Theme.encre-2;
         font-family: Typo.mono;
         font-size: 12px;
@@ -177,12 +177,12 @@ export component MessageVocal inherits Rectangle {
                 background: zone-vitesse.has-hover ? Theme.papier-3 : Theme.papier-2;
                 accessible-role: button;
                 accessible-label: "Vitesse de lecture";
-                accessible-value: DonneesVocal.vitesse;
+                accessible-value: DonneesMessageVocal.vitesse;
                 accessible-action-default => {
-                    DonneesVocal.changer-vitesse();
+                    DonneesMessageVocal.changer-vitesse();
                 }
                 vitesse := Text {
-                    text: DonneesVocal.vitesse;
+                    text: DonneesMessageVocal.vitesse;
                     color: Theme.encre-2;
                     font-family: Typo.mono;
                     font-size: 11px;
@@ -192,7 +192,7 @@ export component MessageVocal inherits Rectangle {
                 zone-vitesse := TouchArea {
                     mouse-cursor: pointer;
                     clicked => {
-                        DonneesVocal.changer-vitesse();
+                        DonneesMessageVocal.changer-vitesse();
                     }
                 }
             }

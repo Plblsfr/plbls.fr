@@ -7,10 +7,11 @@ use estompe_client::mise_a_jour::{ErreurMiseAJour, EtatMaj, Phase};
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
 use estompe_client::store::messages::ChangementMessages;
-use estompe_client::store::{Changement, CleConversation, Store};
+use estompe_client::store::{Changement, CleConversation, ParticipantVocal, Store};
 use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
 use estompe_client::version::MiseAJourDisponible;
+use estompe_client::vocal::{EtatVocal, InfoParticipant, Phase as PhaseVocal, Qualite};
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -22,8 +23,8 @@ use estompe_natif::messagerie::pont::Telechargement;
 use estompe_natif::messagerie::selecteur::Cible;
 use estompe_natif::mise_a_jour;
 use estompe_natif::{
-    creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie,
-    DonneesSelecteur, DonneesVocal, EtapeVocal, ModeTheme, Mouvement, Principale, Theme,
+    creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessageVocal, DonneesMessagerie,
+    DonneesSaisie, DonneesSelecteur, EtapeVocal, ModeTheme, Mouvement, Principale, Theme,
 };
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
@@ -94,6 +95,24 @@ const ECRANS: &[Ecran] = ecrans![
     "coquille-accueil-sombre", Sombre, coquille_accueil;
     "coquille-vocal-clair", Clair, coquille_vocal;
     "coquille-prive-sombre", Sombre, coquille_prive;
+    "vocal-1-clair", Clair, vocal_seul;
+    "vocal-4-sombre", Sombre, vocal_quatre;
+    "vocal-4-clair", Clair, vocal_quatre;
+    "vocal-12-clair", Clair, vocal_douze;
+    "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
+    "vocal-menu-clair", Clair, vocal_menu;
+    "vocal-moderation-clair", Clair, vocal_moderation;
+    "vocal-moderation-sombre", Sombre, vocal_moderation;
+    "vocal-plein-cadre-clair", Clair, vocal_plein_cadre;
+    "vocal-plein-cadre-sombre", Sombre, vocal_plein_cadre;
+    "vocal-sons-clair", Clair, vocal_sons;
+    "vocal-sons-perso-clair", Clair, vocal_sons_perso;
+    "vocal-sons-perso-sombre", Sombre, vocal_sons_perso;
+    "vocal-glisser-clair", Clair, vocal_glisser;
+    "vocal-glisser-sombre", Sombre, vocal_glisser;
+    "vocal-glisser-refus-clair", Clair, vocal_glisser_refus;
+    "vocal-reglages-clair", Clair, vocal_reglages;
+    "vocal-reglages-sombre", Sombre, vocal_reglages;
     "coquille-vide-clair", Clair, coquille_vide;
     "coquille-chargement-clair", Clair, connecte;
     "membres-clair", Clair, membres;
@@ -574,6 +593,225 @@ fn coquille_vocal(f: &Principale) {
     coquille(f, commun::coquille::etat(), salon("s1", Some("v1")));
 }
 
+const DEBUT_DU_VOCAL: &str = "2026-11-19T08:47:00Z";
+
+const PRENOMS: [&str; 11] = [
+    "carol", "dave", "Élise", "farid", "gaëlle", "hugo", "inès", "jules", "karim", "léa", "malo",
+];
+
+fn etat_vocal(salon: &str, autres: &[&str], preparer: impl FnOnce(&mut EtatVocal)) -> EtatVocal {
+    let mut v = EtatVocal::default();
+    v.rejoindre(salon);
+    let mut infos = vec![InfoParticipant {
+        identite: "u1".into(),
+        nom: "bob".into(),
+        local: true,
+        qualite: Qualite::Excellente,
+        ..InfoParticipant::default()
+    }];
+    infos.extend(autres.iter().map(|id| InfoParticipant {
+        identite: id.to_string(),
+        nom: id.to_string(),
+        qualite: Qualite::Bonne,
+        ..InfoParticipant::default()
+    }));
+    v.connecte("u1".into(), infos);
+    preparer(&mut v);
+    v
+}
+
+fn attribut(v: &mut EtatVocal, identite: &str, cle: &str) {
+    if let Some(p) = v.participants.get_mut(identite) {
+        p.attributs.insert(cle.to_string(), "1".to_string());
+    }
+}
+
+fn profils_du_vocal() -> Arc<Profils> {
+    let profils = Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None);
+    for (utilisateur, fond, motif) in [
+        ("carol", [242, 166, 90], [90, 50, 30]),
+        ("Élise", [120, 160, 110], [250, 240, 220]),
+    ] {
+        profils.installer_avatar(
+            CleAvatar {
+                utilisateur: utilisateur.into(),
+                version: 1,
+                serveur: None,
+            },
+            avatars::arrondir(portrait(fond, motif)),
+        );
+    }
+    profils
+}
+
+fn vocal_avec(
+    f: &Principale,
+    nombre: usize,
+    preparer_store: impl FnOnce(&mut estompe_client::store::Etat),
+    preparer: impl FnOnce(&mut EtatVocal),
+) -> Pont {
+    let autres: Vec<&str> = PRENOMS
+        .iter()
+        .take(nombre.saturating_sub(1))
+        .copied()
+        .collect();
+    let mut etat = commun::coquille::etat();
+    etat.vocal.insert(
+        "v1".into(),
+        autres
+            .iter()
+            .map(|id| ParticipantVocal {
+                utilisateur: id.to_string(),
+                pseudo: id.to_string(),
+                depuis: Some(DEBUT_DU_VOCAL.into()),
+                ..ParticipantVocal::default()
+            })
+            .collect(),
+    );
+    for utilisateur in ["carol", "Élise"] {
+        etat.avatars.insert(utilisateur.into(), 1);
+    }
+    preparer_store(&mut etat);
+    let pont = coquille_avec(f, etat, salon("s1", Some("v1")), profils_du_vocal());
+    pont.vocal()
+        .definir_etat(f, etat_vocal("v1", &autres, preparer));
+    stabiliser(f);
+    pont
+}
+
+fn vocal_seul(f: &Principale) {
+    vocal_avec(f, 1, |_| {}, |_| {});
+}
+
+fn vocal_quatre(f: &Principale) {
+    vocal_avec(
+        f,
+        4,
+        |_| {},
+        |v| {
+            v.parlent.insert("carol".into());
+            attribut(v, "dave", "muted");
+            attribut(v, "Élise", "deaf");
+            if let Some(p) = v.participants.get_mut("Élise") {
+                p.qualite = Qualite::Faible;
+            }
+        },
+    );
+}
+
+fn vocal_douze(f: &Principale) {
+    vocal_avec(
+        f,
+        12,
+        |e| {
+            if let Some(liste) = e.vocal.get_mut("v1") {
+                liste[3].micro_coupe = true;
+                liste[4].son_coupe = true;
+            }
+        },
+        |v| {
+            v.basculer_micro();
+            v.parlent.insert("hugo".into());
+            attribut(v, "jules", "muted");
+        },
+    );
+}
+
+fn vocal_reconnexion(f: &Principale) {
+    vocal_avec(f, 3, |_| {}, |v| v.phase = PhaseVocal::Reconnexion);
+}
+
+fn vocal_menu(f: &Principale) {
+    let pont = vocal_avec(f, 4, |_| {}, |_| {});
+    pont.vocal().ouvrir_menu(f, "carol", "v1");
+    stabiliser(f);
+}
+
+fn vocal_moderation(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        4,
+        |e| {
+            if let Some(serveur) = e.details.get_mut("s1").and_then(|d| d.server.as_mut()) {
+                serveur.owner_id = Some("u1".into());
+            }
+        },
+        |_| {},
+    );
+    pont.vocal().ouvrir_menu(f, "carol", "v1");
+    stabiliser(f);
+}
+
+fn vocal_plein_cadre(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        4,
+        |_| {},
+        |v| {
+            v.parlent.insert("Élise".into());
+        },
+    );
+    pont.vocal().basculer_plein_cadre(f, true);
+    stabiliser(f);
+}
+
+fn vocal_sons(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_reglages(f);
+    stabiliser(f);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_reglages_decalage(-500.0);
+    stabiliser(f);
+}
+
+fn vocal_sons_perso(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_reglages(f);
+    stabiliser(f);
+    let v = f.global::<estompe_natif::DonneesVocal>();
+    let mut r = v.get_reglages();
+    r.perso_arrivee = true;
+    r.son_arrivee = 6;
+    v.set_reglages(r);
+    v.set_son_erreur("Choisis un fichier audio de 150 Ko au plus.".into());
+    v.set_reglages_decalage(-560.0);
+    stabiliser(f);
+}
+
+fn vocal_moderateur(f: &Principale) -> Pont {
+    vocal_avec(
+        f,
+        4,
+        |e| {
+            if let Some(serveur) = e.details.get_mut("s1").and_then(|d| d.server.as_mut()) {
+                serveur.owner_id = Some("u1".into());
+            }
+        },
+        |_| {},
+    )
+}
+
+fn vocal_glisser(f: &Principale) {
+    vocal_moderateur(f);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_glisse_depuis("v1".into());
+    stabiliser(f);
+}
+
+fn vocal_glisser_refus(f: &Principale) {
+    vocal_moderateur(f);
+    let v = f.global::<estompe_natif::DonneesVocal>();
+    v.set_erreur_depot_salon("k1".into());
+    v.set_erreur_depot("Action impossible : Rang insuffisant".into());
+    stabiliser(f);
+}
+
+fn vocal_reglages(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_reglages(f);
+    stabiliser(f);
+}
+
 fn coquille_prive(f: &Principale) {
     coquille(
         f,
@@ -1050,13 +1288,15 @@ fn messagerie_pieces(f: &Principale) {
 
 fn messagerie_vocal(f: &Principale) {
     let pont = messagerie_avec(f, commun::coquille::conversation_vocaux());
-    let son: Arc<estompe_plateforme::SonSysteme> = Arc::new(estompe_plateforme::SonSysteme);
+    let son = Arc::new(estompe_plateforme::SonPeripheriques::par_defaut(Arc::new(
+        estompe_plateforme::AudioSysteme,
+    )));
     pont.messagerie().definir_son(son.clone(), son);
     pont.messagerie()
         .definir_ecoutes(vec!["m2".into()], Arc::new(|_| {}));
     pont.messagerie().marquer_illisible("m3");
     pont.messagerie().rafraichir_maintenant(f);
-    let v = f.global::<DonneesVocal>();
+    let v = f.global::<DonneesMessageVocal>();
     v.set_piece("m2".into());
     v.set_en_lecture(true);
     v.set_avance(0.4);
@@ -1253,7 +1493,7 @@ fn remettre_a_zero(f: &Principale) {
         .set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);
-    let v = f.global::<DonneesVocal>();
+    let v = f.global::<DonneesMessageVocal>();
     v.set_possible(false);
     v.set_etape(EtapeVocal::Aucune);
     v.set_piece("".into());
@@ -1272,6 +1512,10 @@ fn remettre_a_zero(f: &Principale) {
     connecte(f);
     f.set_activation_pseudo("".into());
     f.set_invitation_saisie("".into());
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_menu_ouvert(false);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_reglages_ouverts(false);
     mise_a_jour::afficher(f, &EtatMaj::default());
 }
 
@@ -1543,7 +1787,7 @@ fn saisie_non_envoye(f: &Principale) {
 
 fn saisie_vocal_enregistrement(f: &Principale) {
     saisie_courte(f);
-    let v = f.global::<DonneesVocal>();
+    let v = f.global::<DonneesMessageVocal>();
     v.set_etape(EtapeVocal::Enregistrement);
     v.set_duree("0:12".into());
     let niveaux: Vec<f32> = commun::coquille::forme_de_test(40)
@@ -1556,7 +1800,7 @@ fn saisie_vocal_enregistrement(f: &Principale) {
 
 fn saisie_vocal_ecoute(f: &Principale) {
     saisie_courte(f);
-    let v = f.global::<DonneesVocal>();
+    let v = f.global::<DonneesMessageVocal>();
     v.set_etape(EtapeVocal::Ecoute);
     v.set_duree("0:12".into());
     v.set_forme(slint::ModelRc::new(slint::VecModel::from(

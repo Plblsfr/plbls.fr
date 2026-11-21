@@ -1,3 +1,4 @@
+mod audio;
 mod coffre;
 mod demarrage;
 mod dossiers;
@@ -11,9 +12,9 @@ mod notifications_linux;
 #[cfg(windows)]
 mod pastille_windows;
 mod processus;
+mod raccourcis;
 #[cfg(windows)]
 mod registre_windows;
-mod son;
 pub mod toast;
 #[cfg(windows)]
 mod toast_windows;
@@ -21,6 +22,7 @@ mod traits;
 mod url;
 mod zone;
 
+pub use audio::{AudioSysteme, ChoixPeripherique, SonPeripheriques};
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use demarrage::{
     commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,
@@ -32,15 +34,20 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
-pub use processus::commande_d_arriere_plan;
+pub use processus::{commande_d_arriere_plan, MesureSysteme};
+pub use raccourcis::{
+    code_d_evdev, code_de_virtuelle, libelle_touche, touche, RaccourcisFactices, RaccourcisSysteme,
+    Touche, TOUCHES,
+};
 pub use raw_window_handle::RawWindowHandle;
-pub use son::SonSysteme;
 pub use traits::{
-    ActionNotification, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre,
-    ContenuPressePapiers, DemarrageSession, EvenementZone, Fichiers, FluxSon, Image, Installation,
-    Micro, Notification, Notifications, OuvertureUrl, Overlay, Pastille, PremierPlan,
-    PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurActions, RecepteurSon, RecepteurZone,
-    SortieSon, SourceCapture, TypeSource, ZoneNotification,
+    ActionNotification, ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre,
+    CompteursProcessus, ContenuPressePapiers, DemarrageSession, ErreurFluxAudio, EtatTouche,
+    EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon, FormatAudio, FournisseurAudio,
+    Image, InfosMachine, Installation, MesureProcessus, Micro, Notification, Notifications,
+    OuvertureUrl, Overlay, Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon,
+    RaccourcisGlobaux, RecepteurActions, RecepteurAudio, RecepteurSon, RecepteurZone, SensAudio,
+    SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio, TypeSource, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
@@ -49,20 +56,22 @@ pub const NOM_EXECUTABLE: &str = "estompe-natif.exe";
 pub const NOM_AFFICHE: &str = "Estompe natif (bêta)";
 pub const ICONE_INSTALLEE: &str = "estompe.ico";
 
+use std::sync::Arc;
+
 pub struct Plateforme {
     pub coffre: Box<dyn Coffre>,
-    pub notifications: std::sync::Arc<dyn Notifications>,
+    pub notifications: Arc<dyn Notifications>,
     pub zone: Box<dyn ZoneNotification>,
     pub pastille: Box<dyn Pastille>,
-    pub installation: std::sync::Arc<dyn Installation>,
-    pub raccourcis: Box<dyn RaccourcisGlobaux>,
+    pub installation: Arc<dyn Installation>,
+    pub raccourcis: Arc<dyn RaccourcisGlobaux>,
     pub url: Box<dyn OuvertureUrl>,
     pub fichiers: Box<dyn Fichiers + Send + Sync>,
     pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
     pub capture_ecran: Box<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
-    pub micro: Box<dyn Micro + Send + Sync>,
-    pub sortie_son: Box<dyn SortieSon + Send + Sync>,
+    pub audio: Arc<dyn SystemeAudio>,
+    pub mesure: Arc<dyn MesureProcessus>,
     pub overlay: Box<dyn Overlay>,
     pub premier_plan: Box<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
@@ -75,8 +84,9 @@ impl Plateforme {
             url: Box::new(NavigateurSysteme),
             fichiers: Box::new(FichiersSysteme),
             presse_papiers: Box::new(PressePapiersSysteme),
-            micro: Box::new(SonSysteme),
-            sortie_son: Box::new(SonSysteme),
+            audio: Arc::new(AudioSysteme),
+            raccourcis: Arc::new(RaccourcisSysteme),
+            mesure: Arc::new(MesureSysteme),
             zone: Box::new(ZoneSysteme::default()),
             demarrage: demarrage_de_l_os(),
             notifications: notifications_de_l_os(),
@@ -89,18 +99,18 @@ impl Plateforme {
     pub fn indisponible() -> Self {
         Self {
             coffre: Box::new(Indisponible),
-            notifications: std::sync::Arc::new(Indisponible),
+            notifications: Arc::new(Indisponible),
             zone: Box::new(Indisponible),
             pastille: Box::new(Indisponible),
-            installation: std::sync::Arc::new(Indisponible),
-            raccourcis: Box::new(Indisponible),
+            installation: Arc::new(Indisponible),
+            raccourcis: Arc::new(Indisponible),
             url: Box::new(Indisponible),
             fichiers: Box::new(Indisponible),
             presse_papiers: Box::new(Indisponible),
             capture_ecran: Box::new(Indisponible),
             capture_son: Box::new(Indisponible),
-            micro: Box::new(Indisponible),
-            sortie_son: Box::new(Indisponible),
+            audio: Arc::new(Indisponible),
+            mesure: Arc::new(Indisponible),
             overlay: Box::new(Indisponible),
             premier_plan: Box::new(Indisponible),
             demarrage: Box::new(Indisponible),
@@ -162,7 +172,8 @@ mod tests {
         let p = Plateforme::de_l_os();
         assert!(p.url.disponible());
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
-        assert!(p.micro.disponible() && p.sortie_son.disponible());
+        assert!(p.audio.disponible());
+        assert!(p.mesure.disponible());
         assert!(p.zone.disponible());
         assert_eq!(p.demarrage.disponible(), cfg!(windows));
         assert_eq!(p.pastille.disponible(), cfg!(windows));
@@ -172,7 +183,6 @@ mod tests {
             cfg!(windows).then_some(CIBLE_WINDOWS)
         );
         for (nom, disponible) in [
-            ("raccourcis", p.raccourcis.disponible()),
             ("capture_ecran", p.capture_ecran.disponible()),
             ("capture_son", p.capture_son.disponible()),
             ("overlay", p.overlay.disponible()),
@@ -192,14 +202,6 @@ mod tests {
         };
         assert!(matches!(
             p.notifications.notifier(&notification),
-            Err(Erreur::Indisponible(_))
-        ));
-        assert!(matches!(
-            p.raccourcis.enregistrer("Ctrl+Maj+M", Box::new(|| {})),
-            Err(Erreur::Indisponible(_))
-        ));
-        assert!(matches!(
-            p.raccourcis.retirer("Ctrl+Maj+M"),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(
@@ -258,13 +260,36 @@ mod tests {
         assert!(!p.coffre.disponible());
         assert!(!p.url.disponible());
         assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
-        assert!(!p.micro.disponible() && !p.sortie_son.disponible());
+        assert!(!p.audio.disponible());
+        assert!(!p.mesure.disponible());
+        assert!(matches!(p.mesure.compteurs(), Err(Erreur::Indisponible(_))));
+        assert!(!p.raccourcis.disponible());
         assert!(matches!(
-            p.micro.ecouter(Box::new(|_, _| {})),
-            Err(Erreur::Indisponible("micro"))
+            p.raccourcis.enregistrer("KeyV", Box::new(|_| {})),
+            Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(
-            p.sortie_son.jouer(Box::new(|_, _| {})),
+            p.raccourcis.retirer("KeyV"),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.audio.peripheriques(SensAudio::Entree),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.audio
+                .ouvrir_sortie(None, Box::new(|_| {}), Box::new(|_| {}))
+                .map(|_| ()),
+            Err(Erreur::Indisponible(_))
+        ));
+        let son = SonPeripheriques::par_defaut(p.audio.clone());
+        assert!(!Micro::disponible(&son) && !SortieSon::disponible(&son));
+        assert!(matches!(
+            son.ecouter(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            son.jouer(Box::new(|_, _| {})),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(

@@ -1,0 +1,204 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+
+export component BarresQualite {
+    in property <int> barres: 0;
+    in property <string> libelle;
+    visible: barres > 0;
+    width: barres > 0 ? 14px : 0px;
+    height: 12px;
+    accessible-role: image;
+    accessible-label: libelle;
+    for i in 3: Rectangle {
+        x: i * 5px;
+        y: parent.height - self.height;
+        width: 3px;
+        height: 4px + i * 4px;
+        border-radius: 1px;
+        background: i < root.barres ? (root.barres == 1 ? Theme.danger : root.barres == 2 ? Theme.rose-fonce : Theme.encre) : Theme.trait-fort;
+    }
+}
+
+export component Onde {
+    width: 13px;
+    height: 12px;
+    accessible-role: image;
+    accessible-label: "Parle";
+    for i in 3: Rectangle {
+        x: i * 5px;
+        y: (parent.height - self.height) / 2;
+        width: 3px;
+        height: i == 1 ? 12px : i == 0 ? 6px : 8px;
+        border-radius: 2px;
+        background: Theme.rose-fonce;
+    }
+}
+
+export component EtatsParticipant inherits HorizontalLayout {
+    in property <bool> muet;
+    in property <bool> sourd;
+    in property <bool> micro-impose;
+    in property <bool> son-impose;
+    in property <length> taille: 14px;
+    spacing: 4px;
+    if root.sourd: Icone {
+        nom: "headphones-off";
+        taille: root.taille;
+        couleur: Theme.danger;
+        accessible-role: image;
+        accessible-label: "Sourdine casque";
+    }
+    if root.muet && !root.sourd: Icone {
+        nom: "mic-off";
+        taille: root.taille;
+        couleur: Theme.danger;
+        accessible-role: image;
+        accessible-label: "Micro coupé";
+    }
+    if root.son-impose: Icone {
+        nom: "headphones-off";
+        taille: root.taille;
+        couleur: Theme.rose-fonce;
+        accessible-role: image;
+        accessible-label: "Son coupé par un modérateur";
+    }
+    if root.micro-impose: Icone {
+        nom: "mic-off";
+        taille: root.taille;
+        couleur: Theme.rose-fonce;
+        accessible-role: image;
+        accessible-label: "Micro coupé par un modérateur";
+    }
+}
+
+export component BoutonVocal {
+    in property <string> icone;
+    in property <string> libelle;
+    in property <string> raccourci;
+    in property <bool> coupe: false;
+    in property <bool> danger: false;
+    in property <bool> actif: true;
+    in property <bool> bientot: false;
+    in property <float> niveau: -1;
+    in property <bool> fort: false;
+    in property <length> cote: 40px;
+    in property <bool> attenue: false;
+    out property <bool> a-le-focus: portee.has-focus;
+    callback clique();
+    property <bool> utilisable: actif && !bientot && Calques.ouverts == 0;
+    width: cote;
+    height: cote;
+    accessible-role: button;
+    accessible-label: libelle;
+    accessible-description: bientot ? "bientôt dans l'app native" : raccourci != "" ? "Raccourci : \{raccourci}" : "";
+    accessible-checkable: coupe || !danger;
+    accessible-checked: coupe;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.clique();
+        }
+    }
+    forward-focus: portee;
+    opacity: utilisable || Calques.ouverts > 0 ? 1 : 0.45;
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.danger ? (zone.has-hover && root.utilisable ? Theme.danger.mix(Theme.encre, 0.85) : Theme.danger) : root.coupe ? Theme.rose : zone.has-hover && root.utilisable ? Theme.papier-3 : Theme.calque;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+        clip: true;
+        if root.niveau >= 0: Rectangle {
+            x: 0;
+            y: parent.height - 3px;
+            width: parent.width * root.niveau;
+            height: 3px;
+            background: root.fort ? Theme.rose-fonce : Theme.trait-fort;
+        }
+    }
+    Icone {
+        nom: root.icone;
+        taille: 20px;
+        couleur: root.danger ? Theme.sur-danger : root.coupe ? Theme.rose-texte : root.attenue ? Theme.gris : Theme.encre;
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
+        }
+    }
+}
+
+export component Chevron {
+    in property <string> libelle;
+    in property <length> hauteur: 40px;
+    callback clique();
+    property <bool> utilisable: Calques.ouverts == 0;
+    width: 18px;
+    height: hauteur;
+    accessible-role: button;
+    accessible-label: libelle;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        if (root.utilisable) {
+            root.clique();
+        }
+    }
+    forward-focus: portee;
+    Rectangle {
+        border-radius: Rayon.xs;
+        background: zone.has-hover && root.utilisable ? Theme.papier-3 : transparent;
+    }
+    Icone {
+        nom: "bas";
+        taille: 12px;
+        couleur: Theme.gris;
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " " || e.text == Key.DownArrow) {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.clique();
+            }
+        }
+    }
+}

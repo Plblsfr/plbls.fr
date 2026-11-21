@@ -7,7 +7,7 @@ use estompe_client::journal::{Journal, Niveau};
 use estompe_client::preferences::{self, EtatFichier, Fenetre, Preferences};
 use estompe_plateforme::{CoffreSysteme, Dossiers, NavigateurSysteme, OuvertureUrl, IDENTIFIANT};
 use slint::ComponentHandle;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -39,6 +39,10 @@ impl Memoire {
             dossier,
             journal,
         }
+    }
+
+    pub fn dossier(&self) -> &Path {
+        &self.dossier
     }
 
     pub fn lire<R>(&self, lecture: impl FnOnce(&Preferences) -> R) -> R {

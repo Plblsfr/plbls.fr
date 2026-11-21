@@ -1,0 +1,222 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Avatar, Bouton, VarianteBouton, Icone, Chargement } from "../composants.slint";
+import { DonneesVocal } from "donnees.slint";
+import { Tuile } from "tuile.slint";
+import { CommandesVocal, AvisVocal } from "commandes.slint";
+
+component Rejoindre inherits VerticalLayout {
+    alignment: center;
+    padding: Espace.e8;
+    spacing: Espace.e5;
+    if DonneesVocal.tuiles.length > 0: HorizontalLayout {
+        alignment: center;
+        spacing: Espace.e3;
+        for p in DonneesVocal.tuiles: VerticalLayout {
+            spacing: 6px;
+            width: 96px;
+            HorizontalLayout {
+                alignment: center;
+                Avatar {
+                    nom: p.nom;
+                    initiales: p.initiales;
+                    portrait: p.portrait;
+                    teinte: p.teinte;
+                    taille: 56px;
+                    parle: p.parle;
+                    fond: Theme.papier;
+                }
+            }
+            Text {
+                text: p.nom;
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        Text {
+            text: DonneesVocal.vue.nom;
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: 40px;
+            font-weight: Typo.gras;
+            letter-spacing: -1.5px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            accessible-role: text;
+        }
+        Text {
+            text: DonneesVocal.vue.resume;
+            color: Theme.gris;
+            horizontal-alignment: center;
+        }
+    }
+    if DonneesVocal.vue.erreur != "": HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            width: Math.min(520px, root.width - 2 * Espace.e8);
+            border-radius: Rayon.m;
+            background: Theme.danger-fond;
+            accessible-role: text;
+            accessible-label: DonneesVocal.vue.erreur;
+            HorizontalLayout {
+                padding: Espace.e3;
+                Text {
+                    text: DonneesVocal.vue.erreur;
+                    color: Theme.danger;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    if DonneesVocal.vue.connexion: HorizontalLayout {
+        alignment: center;
+        spacing: Espace.e2;
+        Chargement { }
+        Text {
+            text: "Connexion au vocal…";
+            color: Theme.gris;
+            vertical-alignment: center;
+        }
+    }
+    if !DonneesVocal.vue.connexion && DonneesVocal.vue.peut-rejoindre: HorizontalLayout {
+        alignment: center;
+        spacing: Espace.e2;
+        Bouton {
+            texte: "Rejoindre le salon";
+            icone: DonneesVocal.vue.cinema ? "film" : "vol";
+            variante: VarianteBouton.primaire;
+            clique => {
+                DonneesVocal.rejoindre(DonneesVocal.vue.salon);
+            }
+        }
+        Bouton {
+            icone: "sliders";
+            description: "Réglages audio";
+            variante: VarianteBouton.fantome;
+            clique => {
+                DonneesVocal.ouvrir-reglages();
+            }
+        }
+    }
+    if !DonneesVocal.vue.connexion && !DonneesVocal.vue.peut-rejoindre: HorizontalLayout {
+        alignment: center;
+        spacing: Espace.e2;
+        Icone {
+            nom: "cadenas";
+            taille: 16px;
+            couleur: Theme.gris;
+        }
+        Text {
+            text: "Tu n'as pas la permission de rejoindre ce salon vocal.";
+            color: Theme.encre-2;
+        }
+    }
+    Text {
+        text: "L'audio passe par le serveur vocal. La caméra et le partage d'écran arrivent bientôt dans l'app native.";
+        color: Theme.gris;
+        font-size: Typo.petit;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+component Scene inherits Rectangle {
+    property <length> ecart: 12px;
+    property <length> marge-bas: 92px;
+    property <int> colonnes: Math.max(1, DonneesVocal.vue.colonnes);
+    property <int> rangees: Math.max(1, DonneesVocal.vue.rangees);
+    property <length> largeur-grille: colonnes == 1 && rangees == 1 ? Math.min(self.width - 48px, 960px) : self.width - 48px;
+    property <length> hauteur-grille: self.height - 20px - marge-bas;
+    property <length> largeur-tuile: (largeur-grille - (colonnes - 1) * ecart) / colonnes;
+    property <length> hauteur-tuile: (hauteur-grille - (rangees - 1) * ecart) / rangees;
+    for p[i] in DonneesVocal.tuiles: Tuile {
+        x: (root.width - root.largeur-grille) / 2 + Math.mod(i, root.colonnes) * (root.largeur-tuile + root.ecart);
+        y: 20px + Math.floor(i / root.colonnes) * (root.hauteur-tuile + root.ecart);
+        width: root.largeur-tuile;
+        height: root.hauteur-tuile;
+        p: p;
+    }
+    if DonneesVocal.vue.reconnexion: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: 28px;
+        width: bandeau.preferred-width;
+        height: 32px;
+        border-radius: Rayon.pilule;
+        background: Theme.encre;
+        accessible-role: text;
+        accessible-label: "Reconnexion au vocal…";
+        bandeau := HorizontalLayout {
+            padding-left: 14px;
+            padding-right: 14px;
+            spacing: Espace.e2;
+            Chargement {
+                couleur: Theme.papier;
+            }
+            Text {
+                text: "Reconnexion au vocal…";
+                color: Theme.papier;
+                font-size: Typo.petit;
+                font-weight: Typo.moyen;
+                vertical-alignment: center;
+            }
+        }
+    }
+    if DonneesVocal.vue.seul || DonneesVocal.vue.cinema: Text {
+        x: 24px;
+        y: parent.height - root.marge-bas - 4px;
+        width: parent.width - 48px;
+        text: DonneesVocal.vue.seul ? "Tu es seul·e ici. Invite quelqu'un : tout le monde apparaîtra sur cette scène." : "La séance de film n'est pas encore dans l'app native.";
+        color: Theme.gris;
+        font-size: Typo.petit;
+        horizontal-alignment: center;
+    }
+    barre := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 16px;
+        width: commandes.preferred-width + 24px;
+        height: commandes.preferred-height + 16px;
+        border-radius: Rayon.xl;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.trait;
+        drop-shadow-blur: 18px;
+        drop-shadow-offset-y: 6px;
+        drop-shadow-color: Theme.sombre ? #00000080 : #16130f22;
+        commandes := HorizontalLayout {
+            x: 12px;
+            y: 8px;
+            spacing: Espace.e2;
+            VerticalLayout {
+                spacing: 4px;
+                CommandesVocal { }
+                AvisVocal { }
+            }
+            if DonneesVocal.plein-cadre: VerticalLayout {
+                alignment: start;
+                Bouton {
+                    icone: "reduire";
+                    description: "Quitter le mode plein cadre (Échap)";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        DonneesVocal.basculer-plein-cadre(false);
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component VueSalonVocal inherits Rectangle {
+    if !DonneesVocal.vue.ici || DonneesVocal.vue.connexion: Rejoindre {
+        width: 100%;
+        height: 100%;
+    }
+    if DonneesVocal.vue.ici && !DonneesVocal.vue.connexion: Scene {
+        width: 100%;
+        height: 100%;
+    }
+}

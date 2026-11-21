@@ -6,7 +6,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
+use crate::vocal::{Ecoute, ReglagesPtt};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -50,6 +52,13 @@ pub struct Preferences {
     pub derniere_vue: Option<DerniereVue>,
     pub panneau_replie: bool,
     pub marge_ouverte: bool,
+    pub micro: Option<String>,
+    pub sortie_audio: Option<String>,
+    pub traitement_micro: ReglagesMicro,
+    pub ecoute: Ecoute,
+    pub ptt: ReglagesPtt,
+    pub sons_vocal: bool,
+    pub sons: ReglagesSons,
     pub emoji_recents: Vec<String>,
     pub recherches_recentes: Vec<String>,
     pub vocaux_ecoutes: Vec<String>,
@@ -70,6 +79,13 @@ impl Default for Preferences {
             derniere_vue: None,
             panneau_replie: false,
             marge_ouverte: true,
+            micro: None,
+            sortie_audio: None,
+            traitement_micro: ReglagesMicro::default(),
+            ecoute: Ecoute::default(),
+            ptt: ReglagesPtt::default(),
+            sons_vocal: true,
+            sons: ReglagesSons::default(),
             emoji_recents: Vec::new(),
             recherches_recentes: Vec::new(),
             vocaux_ecoutes: Vec::new(),
@@ -130,6 +146,14 @@ impl Preferences {
                 .filter(|v: &DerniereVue| !v.compte.is_empty() && !v.adresse.is_empty()),
             panneau_replie: champ(&objet, "panneau_replie", d.panneau_replie),
             marge_ouverte: champ(&objet, "marge_ouverte", d.marge_ouverte),
+            micro: champ(&objet, "micro", d.micro).filter(|m: &String| !m.is_empty()),
+            sortie_audio: champ(&objet, "sortie_audio", d.sortie_audio)
+                .filter(|s: &String| !s.is_empty()),
+            traitement_micro: champ(&objet, "traitement_micro", d.traitement_micro).borne(),
+            ecoute: champ(&objet, "ecoute", d.ecoute).bornee(),
+            ptt: champ(&objet, "ptt", d.ptt).borne(),
+            sons_vocal: champ(&objet, "sons_vocal", d.sons_vocal),
+            sons: champ(&objet, "sons", d.sons).borne(),
             emoji_recents: objet
                 .get("emoji_recents")
                 .map(|v| crate::emoji::charger_recents(&v.to_string()))
@@ -144,7 +168,7 @@ impl Preferences {
             vocaux_ecoutes: champ(&objet, "vocaux_ecoutes", d.vocaux_ecoutes)
                 .into_iter()
                 .rev()
-                .take(crate::vocal::ECOUTES_MAX)
+                .take(crate::message_vocal::ECOUTES_MAX)
                 .rev()
                 .collect(),
         })
@@ -297,6 +321,33 @@ mod tests {
             derniere_vue: Some(DerniereVue::enregistrer("u1", "#/s/s1/c9")),
             panneau_replie: true,
             marge_ouverte: false,
+            micro: Some("wasapi:{micro}".to_string()),
+            sortie_audio: Some("alsa:casque".to_string()),
+            traitement_micro: ReglagesMicro {
+                bruit: crate::audio::ModeBruit::Standard,
+                gain: 150,
+                detection_voix: true,
+                seuil: -38,
+            },
+            ecoute: {
+                let mut e = Ecoute::default();
+                e.definir_volume("u2", crate::vocal::SourceAudio::Micro, 40);
+                e.definir_volume("u2", crate::vocal::SourceAudio::Partage, 250);
+                e.definir_muet("u3", crate::vocal::SourceAudio::Micro, true);
+                e.definir_general(70);
+                e
+            },
+            ptt: ReglagesPtt {
+                actif: true,
+                touche: "F13".to_string(),
+                delai_ms: 250,
+            },
+            sons_vocal: false,
+            sons: ReglagesSons {
+                arrivee: crate::audio::ChoixSon::Carillon,
+                depart: crate::audio::ChoixSon::Aucun,
+                volume: 35,
+            },
             emoji_recents: vec!["😂".to_string(), "👍".to_string()],
             recherches_recentes: vec!["de:carol vacances".to_string()],
             vocaux_ecoutes: vec!["f1".to_string()],
@@ -314,6 +365,42 @@ mod tests {
             Preferences::charger(&dossier).preferences,
             Preferences::default()
         );
+    }
+
+    #[test]
+    fn les_reglages_audio_relus_sont_bornes() {
+        let lu = Preferences::depuis_json(
+            r#"{"traitement_micro": {"gain": 500, "seuil": 0, "bruit": "aucun"}, "ecoute": {"volumes": {"u2": 1000}, "general": 300}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            lu.traitement_micro.gain,
+            crate::audio::micro::GAIN_MICRO_MAXIMAL
+        );
+        assert_eq!(
+            lu.traitement_micro.seuil,
+            crate::audio::micro::SEUIL_MAXIMAL
+        );
+        assert_eq!(lu.traitement_micro.bruit, crate::audio::ModeBruit::Aucun);
+        assert_eq!(
+            lu.ecoute.volume("u2", crate::vocal::SourceAudio::Micro),
+            crate::vocal::mixage::VOLUME_MAXIMAL
+        );
+        assert_eq!(
+            lu.ecoute.general,
+            crate::vocal::mixage::VOLUME_GENERAL_MAXIMAL
+        );
+        let invalide =
+            Preferences::depuis_json(r#"{"traitement_micro": {"bruit": "fort"}}"#).unwrap();
+        assert_eq!(invalide.traitement_micro, ReglagesMicro::default());
+        let ptt = Preferences::depuis_json(
+            r#"{"ptt": {"actif": true, "touche": "Souris4", "delai_ms": 60000}}"#,
+        )
+        .unwrap()
+        .ptt;
+        assert!(ptt.actif);
+        assert_eq!(ptt.touche, crate::vocal::ptt::TOUCHE_PAR_DEFAUT);
+        assert_eq!(ptt.delai_ms, crate::vocal::ptt::DELAI_MAXIMAL_MS);
     }
 
     #[test]
@@ -336,7 +423,7 @@ mod tests {
     #[test]
     fn une_valeur_invalide_ne_perd_que_son_champ() {
         let lu = Preferences::depuis_json(
-            r#"{"theme": "fluo", "densite": "compacte", "notifications": "oui", "apercus": false, "ordre_serveurs": [1], "fenetre": {"x": 0, "y": 0, "largeur": 0, "hauteur": 600}, "adresse_serveur": "  "}"#,
+            r#"{"theme": "fluo", "densite": "compacte", "notifications": "oui", "apercus": false, "ordre_serveurs": [1], "fenetre": {"x": 0, "y": 0, "largeur": 0, "hauteur": 600}, "adresse_serveur": "  ", "micro": "", "sortie_audio": 3}"#,
         )
         .unwrap();
         let attendu = Preferences {

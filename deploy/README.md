@@ -16,7 +16,7 @@ Keycloak, le PostgreSQL partagé, la stack média et Vault sont dans le dépôt 
 ## Dev
 
 ```sh
-just dev-up      # Postgres :5432, Redis :6379, Keycloak :8180, Mailpit :8025 (SMTP :1025), écho :8081
+just dev-up      # Postgres :5432, Redis :6379, Keycloak :8180, Mailpit :8025 (SMTP :1025), écho :8081, LiveKit :7880
 just dev-down
 ```
 

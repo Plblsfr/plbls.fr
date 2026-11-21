@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { synthese } from '../scripts/synthese-mesures.mjs'
+import exportNatif from '../../crates/client/tests/donnees/mesures-natif.json?raw'
 import { construireExport, echantillonsCsv, FORMAT_MESURES, quantile, SCENARIOS, statsFenetre, statsImages, statsLatences, type Echantillon, type MesureProcessus, type Systeme } from './mesures'
 
 const MO = 1024 * 1024
@@ -113,6 +114,17 @@ describe('synthèse comparative des exports', () => {
     expect(md).toContain('## Repos 5 min')
     expect(md).toMatch(/\| Mémoire privée totale, médiane \(Mo\) \| 440 \| 370 \|/)
     expect(md).toContain('| Overlays, mémoire privée médiane (Mo) | 40 | 40 |')
+    expect(md).not.toContain('Images : p95')
+  })
+
+  it('compare l’app native à partir de son export de référence', () => {
+    const md = synthese([session('0.88.0', systeme.options_webview2, 200, 1000), JSON.parse(exportNatif)])
+    expect(md).toContain('| Métrique | 0.88.0 · options par défaut (1 sessions) | natif 0.1.0 (1 sessions) |')
+    expect(md).toContain('| Lancement → première conversation affichée (ms) | 1000 | — |')
+    expect(md).toMatch(/## Repos 5 min\n\n.*\n.*\n\| Mémoire privée totale, médiane \(Mo\) \| 390 \| 42 \|/)
+    expect(md).toMatch(/## Partie de jeu avec overlays\n\n.*\n.*\n\| Mémoire privée totale, médiane \(Mo\) \| — \| 61 \|/)
+    expect(md).toContain('| CPU total (% d’un cœur) | — | 20,5 |')
+    expect(md).toContain('- AMD Ryzen 7 5800X, 32768 Mo, NVIDIA GeForce RTX 3070, Windows 11 24H2 (build 26100.2605), échelle 1.25\n')
     expect(md).not.toContain('Images : p95')
   })
 

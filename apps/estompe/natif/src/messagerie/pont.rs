@@ -607,7 +607,7 @@ fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
         echec: p.echec || p.etat.illisible,
         anime: p.donnees.anime,
         vocal: p.donnees.vocal,
-        duree: estompe_client::vocal::horloge(p.donnees.duree_ms).into(),
+        duree: estompe_client::message_vocal::horloge(p.donnees.duree_ms).into(),
         barres: ModelRc::new(VecModel::from(barres(&p.donnees.forme))),
         ecoute: p.ecoute,
         index_image: p.index_image,
@@ -2100,7 +2100,7 @@ impl PontMessagerie {
         if s.get_gifs_possibles() != gifs {
             s.set_gifs_possibles(gifs);
         }
-        let v = f.global::<crate::DonneesVocal>();
+        let v = f.global::<crate::DonneesMessageVocal>();
         let vocal = self.vocal_possible();
         if v.get_possible() != vocal {
             v.set_possible(vocal);

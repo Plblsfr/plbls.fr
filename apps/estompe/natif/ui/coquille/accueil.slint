@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton, Compteur, Etiquette, Vide, Defilement, Avatar } from "../composants.slint";
 import { DonneesCoquille, LigneRattrapage, LigneVocal, LigneContact } from "donnees.slint";
+import { DonneesVocal } from "../vocal/donnees.slint";
 
 component Carte inherits Rectangle {
     in property <string> titre;
@@ -149,8 +150,13 @@ component VocalAccueil {
         }
         VerticalLayout {
             alignment: center;
-            Etiquette {
-                texte: "bientôt";
+            Bouton {
+                texte: DonneesVocal.barre.visible && DonneesVocal.barre.salon == root.ligne.cle ? "Ouvrir" : "Rejoindre";
+                description: (DonneesVocal.barre.visible && DonneesVocal.barre.salon == root.ligne.cle ? "Ouvrir « " : "Rejoindre « ") + root.ligne.nom + " »";
+                variante: DonneesVocal.barre.visible && DonneesVocal.barre.salon == root.ligne.cle ? VarianteBouton.secondaire : VarianteBouton.primaire;
+                clique => {
+                    DonneesVocal.rejoindre(root.ligne.cle);
+                }
             }
         }
     }

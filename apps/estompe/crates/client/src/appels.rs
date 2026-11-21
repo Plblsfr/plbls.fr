@@ -15,7 +15,8 @@ use crate::types::{
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
     MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
     PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
-    PostNotificationsReadRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
+    PostNotificationsReadRequete, PostVoiceCidTokenReponse, PutMeStatusRequete,
+    PutMessagesIdVoteRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -258,6 +259,71 @@ impl Client {
         self.get(&format!("/servers/{serveur}/voice")).await
     }
 
+    pub async fn jeton_vocal(&self, salon: &str) -> Result<PostVoiceCidTokenReponse, ErreurApi> {
+        self.requete(
+            Method::POST,
+            &format!("/voice/{}/token", encoder_composant(salon)),
+            &Corps::Aucun,
+            OptionsAppel::default(),
+        )
+        .await?
+        .ok_or_else(|| ErreurApi::ReponseInvalide("réponse sans corps JSON".to_string()))
+    }
+
+    pub async fn moderer_vocal(
+        &self,
+        salon: &str,
+        utilisateur: &str,
+        micro_coupe: bool,
+        son_coupe: bool,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/voice/{}/participants/{}/mod",
+                encoder_composant(salon),
+                encoder_composant(utilisateur)
+            ),
+            &Corps::json(&serde_json::json!({"mic_off": micro_coupe, "sound_off": son_coupe}))?,
+        )
+        .await
+    }
+
+    pub async fn deplacer_participant_vocal(
+        &self,
+        salon: &str,
+        utilisateur: &str,
+        vers: &str,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/voice/{}/participants/{}/move",
+                encoder_composant(salon),
+                encoder_composant(utilisateur)
+            ),
+            &Corps::json(&serde_json::json!({"channel_id": vers}))?,
+        )
+        .await
+    }
+
+    pub async fn deconnecter_participant_vocal(
+        &self,
+        salon: &str,
+        utilisateur: &str,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!(
+                "/voice/{}/participants/{}/disconnect",
+                encoder_composant(salon),
+                encoder_composant(utilisateur)
+            ),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
     pub async fn creer_serveur(&self, nom: &str) -> Result<Server, ErreurApi> {
         self.post(
             "/servers",
@@ -482,12 +548,14 @@ impl Client {
                 Partie::texte("kind", "voice"),
                 Partie::texte(
                     "duration_ms",
-                    &duree_ms.clamp(1, crate::vocal::DUREE_MAX_MS).to_string(),
+                    &duree_ms
+                        .clamp(1, crate::message_vocal::DUREE_MAX_MS)
+                        .to_string(),
                 ),
                 Partie::texte("waveform", &forme.join(",")),
             ],
-            nom: crate::vocal::NOM_DU_FICHIER.to_string(),
-            type_mime: crate::vocal::TYPE_MIME.to_string(),
+            nom: crate::message_vocal::NOM_DU_FICHIER.to_string(),
+            type_mime: crate::message_vocal::TYPE_MIME.to_string(),
             source: SourceEnvoi::Octets(fichier.into()),
         };
         self.televerser_en_flux("/files", &envoi, std::sync::Arc::new(|_, _| {}))
@@ -745,6 +813,62 @@ mod tests {
         ] {
             assert_eq!(code_d_invitation(saisie), attendu, "{saisie:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn demande_le_jeton_vocal_et_modere_un_participant() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(
+                200,
+                json!({"url": "wss://voice.plbls.fr", "token": "t", "room": "r", "max_participants": 10}),
+            ),
+            Reponse::json(409, json!({"error": "voice_full", "message": "complet"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(409, json!({"error": "not_in_voice", "message": "absent"})),
+        ])
+        .await;
+        let client = serveur.client();
+        let jeton = client.jeton_vocal("v1").await.unwrap();
+        assert_eq!(jeton.url.as_deref(), Some("wss://voice.plbls.fr"));
+        assert_eq!(jeton.max_participants, Some(10));
+        assert_eq!(
+            client.jeton_vocal("v1").await.unwrap_err().code(),
+            "voice_full"
+        );
+        client.moderer_vocal("v1", "u2", true, false).await.unwrap();
+        let requetes = serveur.requetes();
+        assert_eq!(requetes[0].ligne(), ("/voice/v1/token", "POST"));
+        assert_eq!(
+            requetes[2].ligne(),
+            ("/voice/v1/participants/u2/mod", "PUT")
+        );
+        assert_eq!(
+            requetes[2].json(),
+            json!({"mic_off": true, "sound_off": false})
+        );
+        client
+            .deplacer_participant_vocal("v1", "u2", "v2")
+            .await
+            .unwrap();
+        assert_eq!(
+            client
+                .deconnecter_participant_vocal("v1", "u2")
+                .await
+                .unwrap_err()
+                .code(),
+            "not_in_voice"
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(
+            requetes[3].ligne(),
+            ("/voice/v1/participants/u2/move", "PUT")
+        );
+        assert_eq!(requetes[3].json(), json!({"channel_id": "v2"}));
+        assert_eq!(
+            requetes[4].ligne(),
+            ("/voice/v1/participants/u2/disconnect", "POST")
+        );
     }
 
     #[tokio::test]

@@ -1,0 +1,316 @@
+{
+  "app": "natif 0.1.0",
+  "cree": "2026-11-18T11:06:40.000Z",
+  "debut": 900,
+  "demarrage_ms": null,
+  "echantillons": [
+    {
+      "processus": [
+        {
+          "cpu_ms": 0,
+          "pic_ws": 125829120,
+          "pid": 4242,
+          "prive": 41943040,
+          "role": "hote",
+          "type": "hote",
+          "ws": 83886080
+        }
+      ],
+      "t": 1000
+    },
+    {
+      "processus": [
+        {
+          "cpu_ms": 10,
+          "pic_ws": 132120576,
+          "pid": 4242,
+          "prive": 44040192,
+          "role": "hote",
+          "type": "hote",
+          "ws": 88080384
+        }
+      ],
+      "t": 2000
+    },
+    {
+      "processus": [
+        {
+          "cpu_ms": 30,
+          "pic_ws": 138412032,
+          "pid": 4242,
+          "prive": 46137344,
+          "role": "hote",
+          "type": "hote",
+          "ws": 92274688
+        }
+      ],
+      "t": 3000
+    },
+    {
+      "processus": [
+        {
+          "cpu_ms": 230,
+          "pic_ws": 188743680,
+          "pid": 4242,
+          "prive": 62914560,
+          "role": "hote",
+          "type": "hote",
+          "ws": 125829120
+        }
+      ],
+      "t": 4000
+    },
+    {
+      "processus": [
+        {
+          "cpu_ms": 430,
+          "pic_ws": 191889408,
+          "pid": 4242,
+          "prive": 63963136,
+          "role": "hote",
+          "type": "hote",
+          "ws": 127926272
+        }
+      ],
+      "t": 5000
+    },
+    {
+      "processus": [
+        {
+          "cpu_ms": 640,
+          "pic_ws": 195035136,
+          "pid": 4242,
+          "prive": 65011712,
+          "role": "hote",
+          "type": "hote",
+          "ws": 130023424
+        }
+      ],
+      "t": 6000
+    }
+  ],
+  "fin": 6100,
+  "format": "estompe-mesures/1",
+  "intervalle_ms": 1000,
+  "marqueurs": [
+    {
+      "debut": 1000,
+      "fin": 3000,
+      "nom": "repos"
+    },
+    {
+      "debut": 4000,
+      "fin": 6000,
+      "nom": "jeu"
+    }
+  ],
+  "sonde": {
+    "images": [],
+    "messages": [],
+    "saisie": []
+  },
+  "statistiques": {
+    "scenarios": {
+      "jeu": {
+        "duree_s": 2.0,
+        "echantillons": 3,
+        "images": {
+          "moyenne_ms": 0.0,
+          "n": 0,
+          "p95_ms": 0.0,
+          "p99_ms": 0.0,
+          "perdues": 0
+        },
+        "latences": {
+          "messages": {
+            "max_ms": 0.0,
+            "mediane_ms": 0.0,
+            "n": 0,
+            "p95_ms": 0.0
+          },
+          "saisie": {
+            "max_ms": 0.0,
+            "mediane_ms": 0.0,
+            "n": 0,
+            "p95_ms": 0.0
+          }
+        },
+        "par_role": {
+          "hote": {
+            "cpu_pct": 20.5,
+            "prive": {
+              "mediane_mo": 61.0,
+              "pic_mo": 62.0
+            },
+            "ws": {
+              "mediane_mo": 122.0,
+              "pic_mo": 124.0
+            }
+          }
+        },
+        "par_type": {
+          "hote": {
+            "cpu_pct": 20.5,
+            "prive": {
+              "mediane_mo": 61.0,
+              "pic_mo": 62.0
+            },
+            "ws": {
+              "mediane_mo": 122.0,
+              "pic_mo": 124.0
+            }
+          }
+        },
+        "total": {
+          "cpu_pct": 20.5,
+          "prive": {
+            "mediane_mo": 61.0,
+            "pic_mo": 62.0
+          },
+          "ws": {
+            "mediane_mo": 122.0,
+            "pic_mo": 124.0
+          }
+        }
+      },
+      "repos": {
+        "duree_s": 2.0,
+        "echantillons": 3,
+        "images": {
+          "moyenne_ms": 0.0,
+          "n": 0,
+          "p95_ms": 0.0,
+          "p99_ms": 0.0,
+          "perdues": 0
+        },
+        "latences": {
+          "messages": {
+            "max_ms": 0.0,
+            "mediane_ms": 0.0,
+            "n": 0,
+            "p95_ms": 0.0
+          },
+          "saisie": {
+            "max_ms": 0.0,
+            "mediane_ms": 0.0,
+            "n": 0,
+            "p95_ms": 0.0
+          }
+        },
+        "par_role": {
+          "hote": {
+            "cpu_pct": 1.5,
+            "prive": {
+              "mediane_mo": 42.0,
+              "pic_mo": 44.0
+            },
+            "ws": {
+              "mediane_mo": 84.0,
+              "pic_mo": 88.0
+            }
+          }
+        },
+        "par_type": {
+          "hote": {
+            "cpu_pct": 1.5,
+            "prive": {
+              "mediane_mo": 42.0,
+              "pic_mo": 44.0
+            },
+            "ws": {
+              "mediane_mo": 84.0,
+              "pic_mo": 88.0
+            }
+          }
+        },
+        "total": {
+          "cpu_pct": 1.5,
+          "prive": {
+            "mediane_mo": 42.0,
+            "pic_mo": 44.0
+          },
+          "ws": {
+            "mediane_mo": 84.0,
+            "pic_mo": 88.0
+          }
+        }
+      }
+    },
+    "session": {
+      "duree_s": 5.2,
+      "echantillons": 6,
+      "images": {
+        "moyenne_ms": 0.0,
+        "n": 0,
+        "p95_ms": 0.0,
+        "p99_ms": 0.0,
+        "perdues": 0
+      },
+      "latences": {
+        "messages": {
+          "max_ms": 0.0,
+          "mediane_ms": 0.0,
+          "n": 0,
+          "p95_ms": 0.0
+        },
+        "saisie": {
+          "max_ms": 0.0,
+          "mediane_ms": 0.0,
+          "n": 0,
+          "p95_ms": 0.0
+        }
+      },
+      "par_role": {
+        "hote": {
+          "cpu_pct": 12.8,
+          "prive": {
+            "mediane_mo": 52.0,
+            "pic_mo": 62.0
+          },
+          "ws": {
+            "mediane_mo": 104.0,
+            "pic_mo": 124.0
+          }
+        }
+      },
+      "par_type": {
+        "hote": {
+          "cpu_pct": 12.8,
+          "prive": {
+            "mediane_mo": 52.0,
+            "pic_mo": 62.0
+          },
+          "ws": {
+            "mediane_mo": 104.0,
+            "pic_mo": 124.0
+          }
+        }
+      },
+      "total": {
+        "cpu_pct": 12.8,
+        "prive": {
+          "mediane_mo": 52.0,
+          "pic_mo": 62.0
+        },
+        "ws": {
+          "mediane_mo": 104.0,
+          "pic_mo": 124.0
+        }
+      }
+    }
+  },
+  "systeme": {
+    "coeurs": 16,
+    "cpu": "AMD Ryzen 7 5800X",
+    "demarrage_processus": null,
+    "facteur_echelle": 1.25,
+    "gpu": [
+      "NVIDIA GeForce RTX 3070"
+    ],
+    "options_webview2": [],
+    "os": "Windows 11 24H2 (build 26100.2605)",
+    "ram_mo": 32768,
+    "webview2": null,
+    "windows": "Windows 11 24H2 (build 26100.2605)"
+  }
+}

@@ -64,15 +64,29 @@ pub trait Installation: Send + Sync {
     fn lancer(&self, installeur: &std::path::Path) -> Resultat<()>;
 }
 
-pub trait RaccourcisGlobaux {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EtatTouche {
+    Appui,
+    Relache,
+}
+
+pub type ActionRaccourci = Box<dyn Fn(EtatTouche) + Send + Sync>;
+
+pub trait RaccourcisGlobaux: Send + Sync {
     fn disponible(&self) -> bool;
-    fn enregistrer(&self, raccourci: &str, action: Box<dyn Fn() + Send>) -> Resultat<()>;
-    fn retirer(&self, raccourci: &str) -> Resultat<()>;
+    fn enregistrer(&self, touche: &str, action: ActionRaccourci) -> Resultat<()>;
+    fn retirer(&self, touche: &str) -> Resultat<()>;
 }
 
 pub trait OuvertureUrl {
     fn disponible(&self) -> bool;
     fn ouvrir(&self, url: &str) -> Resultat<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FiltreFichiers {
+    pub nom: &'static str,
+    pub extensions: &'static [&'static str],
 }
 
 pub trait Fichiers {
@@ -85,6 +99,14 @@ pub trait Fichiers {
         &self,
         depart: Option<&std::path::Path>,
     ) -> Resultat<Vec<std::path::PathBuf>>;
+    fn choisir_fichier(
+        &self,
+        _titre: &str,
+        _filtre: &FiltreFichiers,
+        depart: Option<&std::path::Path>,
+    ) -> Resultat<Option<std::path::PathBuf>> {
+        Ok(self.choisir_fichiers(depart)?.into_iter().next())
+    }
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
 }
 
@@ -156,6 +178,80 @@ pub trait DemarrageSession {
     fn disponible(&self) -> bool;
     fn actif(&self) -> Resultat<bool>;
     fn definir(&self, actif: bool) -> Resultat<()>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SensAudio {
+    Entree,
+    Sortie,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeripheriqueAudio {
+    pub id: String,
+    pub nom: String,
+    pub defaut: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FormatAudio {
+    pub frequence: u32,
+    pub canaux: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ErreurFluxAudio {
+    Debranche,
+    Echec(String),
+}
+
+pub type RecepteurAudio = Box<dyn FnMut(&[f32]) + Send>;
+pub type FournisseurAudio = Box<dyn FnMut(&mut [f32]) + Send>;
+pub type SignalErreurAudio = Box<dyn FnMut(ErreurFluxAudio) + Send>;
+
+pub trait FluxAudio: Send {
+    fn format(&self) -> FormatAudio;
+    fn peripherique(&self) -> &str;
+}
+
+pub trait SystemeAudio: Send + Sync {
+    fn disponible(&self) -> bool;
+    fn peripheriques(&self, sens: SensAudio) -> Resultat<Vec<PeripheriqueAudio>>;
+    fn ouvrir_entree(
+        &self,
+        id: Option<&str>,
+        echantillons: RecepteurAudio,
+        erreur: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>>;
+    fn ouvrir_sortie(
+        &self,
+        id: Option<&str>,
+        echantillons: FournisseurAudio,
+        erreur: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>>;
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CompteursProcessus {
+    pub prive: u64,
+    pub ws: u64,
+    pub pic_ws: u64,
+    pub cpu_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InfosMachine {
+    pub os: Option<String>,
+    pub cpu: Option<String>,
+    pub coeurs: usize,
+    pub ram_mo: Option<u64>,
+    pub gpu: Vec<String>,
+}
+
+pub trait MesureProcessus: Send + Sync {
+    fn disponible(&self) -> bool;
+    fn compteurs(&self) -> Resultat<CompteursProcessus>;
+    fn machine(&self) -> InfosMachine;
 }
 
 pub type ProducteurSon = Box<dyn FnMut(&mut [f32], u32) + Send>;

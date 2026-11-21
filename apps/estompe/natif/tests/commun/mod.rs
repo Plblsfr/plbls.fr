@@ -887,6 +887,7 @@ pub mod coquille {
         pub fichiers_bloques: Mutex<bool>,
         pub refus_de_gifs: Mutex<Option<u16>>,
         pub refus_de_recherche: Mutex<Option<u16>>,
+        pub refus_vocal: Mutex<Option<u16>>,
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         envoyes: AtomicUsize,
@@ -945,6 +946,7 @@ pub mod coquille {
                 fichiers_bloques: Mutex::new(false),
                 refus_de_gifs: Mutex::new(None),
                 refus_de_recherche: Mutex::new(None),
+                refus_vocal: Mutex::new(None),
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
@@ -1179,6 +1181,14 @@ pub mod coquille {
         }
 
         fn repondre_avec(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
+            if chemin.starts_with("/voice/") {
+                if let Some(statut) = *self.refus_vocal.lock().unwrap() {
+                    return (
+                        statut,
+                        r#"{"error":"forbidden","message":"Rang insuffisant"}"#.into(),
+                    );
+                }
+            }
             if methode == "POST" && chemin == "/channels/c1/messages" {
                 self.requetes
                     .lock()
@@ -1417,6 +1427,7 @@ pub mod coquille {
         pub fichiers: Arc<FauxFichiers>,
         pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
+        pub vocal: Mutex<Option<estompe_natif::vocal::OutilsVocaux>>,
         pub conversions: Mutex<Option<Arc<estompe_client::video::Conversions>>>,
         pub micro: Arc<FauxMicro>,
         pub sortie: Arc<FausseSortie>,
@@ -1602,6 +1613,7 @@ pub mod coquille {
                 fichiers: Arc::new(FauxFichiers::default()),
                 presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
+                vocal: Mutex::new(None),
                 conversions: Mutex::new(None),
                 micro: Arc::new(FauxMicro::default()),
                 sortie: Arc::new(FausseSortie::default()),
@@ -1692,6 +1704,10 @@ pub mod coquille {
 
         fn sortie_son(&self) -> estompe_natif::messagerie::vocal::SortiePartagee {
             self.sortie.clone()
+        }
+
+        fn vocal(&self) -> Option<estompe_natif::vocal::OutilsVocaux> {
+            self.vocal.lock().unwrap().clone()
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

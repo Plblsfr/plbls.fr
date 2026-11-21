@@ -313,6 +313,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ESTOMPE_COFFRE_EXIGE: 1
+      CXX: clang++-21
+      ESTOMPE_LIVEKIT_URL: ws://127.0.0.1:7880
       ESTOMPE_DBUS_EXIGE: 1
       ESTOMPE_FFMPEG_EXIGE: 1
     steps:
@@ -324,7 +326,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libasound2-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring ffmpeg
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev ffmpeg
+      - name: clang 21 (libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium)
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list >/dev/null
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang-21
+      - name: Serveur LiveKit de dev (test d'intégration du vocal)
+        run: docker compose -f deploy/docker-compose.dev.yml up -d livekit
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
@@ -363,6 +372,7 @@ jobs:
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
   # Cible Windows MSVC (imposée par le SDK Rust LiveKit du lot vocal) : build et tests sur un runner Windows.
+  # CRT statique (apps/estompe/natif/.cargo/config.toml) : Skia n'a pas de binaires précompilés pour lui et se compile depuis ses sources.
   # Les captures de rendu ne sont comparées que sous Linux.
   estompe-natif-windows:
     needs: changements
@@ -378,6 +388,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           targets: x86_64-pc-windows-msvc
+      - name: ninja (Skia compilé depuis ses sources en CRT statique, voir docs/estompe/natif.md)
+        run: python -m pip install --disable-pip-version-check ninja==1.13.0
+      - name: Chemins longs (dépendances de Skia clonées par git-sync-deps)
+        run: git config --global core.longpaths true
+      - name: LLVM 22.1.8 (clang-cl et libclang pour Skia, le STL de MSVC refuse le clang 20 du runner)
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $installeur = Join-Path $env:RUNNER_TEMP 'LLVM-22.1.8-win64.exe'
+          Invoke-WebRequest -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-win64.exe' -OutFile $installeur
+          $empreinte = (Get-FileHash -Algorithm SHA256 -Path $installeur).Hash.ToLowerInvariant()
+          if ($empreinte -ne '16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c') { throw "empreinte inattendue de l'installeur LLVM : $empreinte" }
+          $dossier = Join-Path $env:RUNNER_TEMP 'llvm-22'
+          Start-Process -FilePath $installeur -ArgumentList '/S', "/D=$dossier" -Wait -NoNewWindow
+          if (-not (Test-Path (Join-Path $dossier 'bin\clang-cl.exe'))) { throw "clang-cl absent de $dossier" }
+          & (Join-Path $dossier 'bin\clang-cl.exe') --version
+          "LLVM_HOME=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "LIBCLANG_PATH=$(Join-Path $dossier 'bin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Join-Path $dossier 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - id: cargo
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
