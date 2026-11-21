@@ -150,8 +150,10 @@ pub fn decoder_avec_ffmpeg(ffmpeg: &Path, octets: &[u8]) -> Result<Audio, Erreur
     }
     Ok(Audio {
         echantillons: brut
-            .chunks_exact(4)
-            .map(|o| f32::from_le_bytes([o[0], o[1], o[2], o[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|o| f32::from_le_bytes(*o))
             .collect(),
     })
 }
