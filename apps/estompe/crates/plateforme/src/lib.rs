@@ -4,6 +4,7 @@ mod dossiers;
 mod erreur;
 mod fichiers;
 mod indisponible;
+mod raccourcis;
 mod traits;
 mod url;
 
@@ -15,12 +16,16 @@ pub use dossiers::{
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
+pub use raccourcis::{
+    code_d_evdev, code_de_virtuelle, libelle_touche, touche, RaccourcisFactices, RaccourcisSysteme,
+    Touche, TOUCHES,
+};
 pub use traits::{
-    ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession, ErreurFluxAudio,
-    Fichiers, FluxAudio, FormatAudio, FournisseurAudio, Image, Notification, Notifications,
-    OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan, PressePapiers, RaccourcisGlobaux,
-    RecepteurAudio, RecepteurSon, SensAudio, SignalErreurAudio, SourceCapture, SystemeAudio,
-    TypeSource,
+    ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession,
+    ErreurFluxAudio, EtatTouche, Fichiers, FluxAudio, FormatAudio, FournisseurAudio, Image,
+    Notification, Notifications, OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan,
+    PressePapiers, RaccourcisGlobaux, RecepteurAudio, RecepteurSon, SensAudio, SignalErreurAudio,
+    SourceCapture, SystemeAudio, TypeSource,
 };
 pub use url::NavigateurSysteme;
 
@@ -29,7 +34,7 @@ use std::sync::Arc;
 pub struct Plateforme {
     pub coffre: Box<dyn Coffre>,
     pub notifications: Box<dyn Notifications>,
-    pub raccourcis: Box<dyn RaccourcisGlobaux>,
+    pub raccourcis: Arc<dyn RaccourcisGlobaux>,
     pub url: Box<dyn OuvertureUrl>,
     pub fichiers: Box<dyn Fichiers + Send + Sync>,
     pub presse_papiers: Box<dyn PressePapiers + Send + Sync>,
@@ -49,6 +54,7 @@ impl Plateforme {
             fichiers: Box::new(FichiersSysteme),
             presse_papiers: Box::new(PressePapiersSysteme),
             audio: Arc::new(AudioSysteme),
+            raccourcis: Arc::new(RaccourcisSysteme),
             ..Self::indisponible()
         }
     }
@@ -57,7 +63,7 @@ impl Plateforme {
         Self {
             coffre: Box::new(Indisponible),
             notifications: Box::new(Indisponible),
-            raccourcis: Box::new(Indisponible),
+            raccourcis: Arc::new(Indisponible),
             url: Box::new(Indisponible),
             fichiers: Box::new(Indisponible),
             presse_papiers: Box::new(Indisponible),
@@ -83,7 +89,6 @@ mod tests {
         assert!(p.audio.disponible());
         for (nom, disponible) in [
             ("notifications", p.notifications.disponible()),
-            ("raccourcis", p.raccourcis.disponible()),
             ("capture_ecran", p.capture_ecran.disponible()),
             ("capture_son", p.capture_son.disponible()),
             ("overlay", p.overlay.disponible()),
@@ -103,14 +108,6 @@ mod tests {
         };
         assert!(matches!(
             p.notifications.notifier(&notification),
-            Err(Erreur::Indisponible(_))
-        ));
-        assert!(matches!(
-            p.raccourcis.enregistrer("Ctrl+Maj+M", Box::new(|| {})),
-            Err(Erreur::Indisponible(_))
-        ));
-        assert!(matches!(
-            p.raccourcis.retirer("Ctrl+Maj+M"),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(
@@ -152,6 +149,15 @@ mod tests {
         assert!(!p.url.disponible());
         assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
         assert!(!p.audio.disponible());
+        assert!(!p.raccourcis.disponible());
+        assert!(matches!(
+            p.raccourcis.enregistrer("KeyV", Box::new(|_| {})),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.raccourcis.retirer("KeyV"),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.audio.peripheriques(SensAudio::Entree),
             Err(Erreur::Indisponible(_))

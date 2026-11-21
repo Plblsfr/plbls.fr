@@ -16,5 +16,14 @@ keyring = { version = "3", default-features = false, features = ["windows-native
 rfd = { version = "0.18", default-features = false, features = ["xdg-portal"] }
 webbrowser = "1"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+x11rb = { version = "0.13", features = ["xinput"] }
+
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dev-dependencies]
+x11rb = { version = "0.13", features = ["xinput", "xtest"] }

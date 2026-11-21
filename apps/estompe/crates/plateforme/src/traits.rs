@@ -18,10 +18,18 @@ pub trait Notifications {
     fn notifier(&self, notification: &Notification) -> Resultat<()>;
 }
 
-pub trait RaccourcisGlobaux {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EtatTouche {
+    Appui,
+    Relache,
+}
+
+pub type ActionRaccourci = Box<dyn Fn(EtatTouche) + Send + Sync>;
+
+pub trait RaccourcisGlobaux: Send + Sync {
     fn disponible(&self) -> bool;
-    fn enregistrer(&self, raccourci: &str, action: Box<dyn Fn() + Send>) -> Resultat<()>;
-    fn retirer(&self, raccourci: &str) -> Resultat<()>;
+    fn enregistrer(&self, touche: &str, action: ActionRaccourci) -> Resultat<()>;
+    fn retirer(&self, touche: &str) -> Resultat<()>;
 }
 
 pub trait OuvertureUrl {

@@ -36,7 +36,7 @@ impl RaccourcisGlobaux for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
-    fn enregistrer(&self, _: &str, _: Box<dyn Fn() + Send>) -> Resultat<()> {
+    fn enregistrer(&self, _: &str, _: ActionRaccourci) -> Resultat<()> {
         refus("raccourcis globaux")
     }
     fn retirer(&self, _: &str) -> Resultat<()> {
