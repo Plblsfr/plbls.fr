@@ -159,3 +159,26 @@ pub trait SystemeAudio: Send + Sync {
         erreur: SignalErreurAudio,
     ) -> Resultat<Box<dyn FluxAudio>>;
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CompteursProcessus {
+    pub prive: u64,
+    pub ws: u64,
+    pub pic_ws: u64,
+    pub cpu_ms: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InfosMachine {
+    pub os: Option<String>,
+    pub cpu: Option<String>,
+    pub coeurs: usize,
+    pub ram_mo: Option<u64>,
+    pub gpu: Vec<String>,
+}
+
+pub trait MesureProcessus: Send + Sync {
+    fn disponible(&self) -> bool;
+    fn compteurs(&self) -> Resultat<CompteursProcessus>;
+    fn machine(&self) -> InfosMachine;
+}

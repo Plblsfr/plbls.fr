@@ -4,6 +4,7 @@ pub mod coquille;
 pub mod ecrans;
 pub mod entree;
 pub mod messagerie;
+pub mod mesures;
 pub mod session;
 pub mod vocal;
 

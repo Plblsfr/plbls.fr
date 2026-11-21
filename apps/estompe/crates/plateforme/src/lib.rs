@@ -4,6 +4,7 @@ mod dossiers;
 mod erreur;
 mod fichiers;
 mod indisponible;
+mod processus;
 mod raccourcis;
 mod traits;
 mod url;
@@ -16,16 +17,18 @@ pub use dossiers::{
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
+pub use processus::MesureSysteme;
 pub use raccourcis::{
     code_d_evdev, code_de_virtuelle, libelle_touche, touche, RaccourcisFactices, RaccourcisSysteme,
     Touche, TOUCHES,
 };
 pub use traits::{
-    ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession,
-    ErreurFluxAudio, EtatTouche, Fichiers, FluxAudio, FormatAudio, FournisseurAudio, Image,
-    Notification, Notifications, OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan,
-    PressePapiers, RaccourcisGlobaux, RecepteurAudio, RecepteurSon, SensAudio, SignalErreurAudio,
-    SourceCapture, SystemeAudio, TypeSource,
+    ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, CompteursProcessus,
+    DemarrageSession, ErreurFluxAudio, EtatTouche, Fichiers, FluxAudio, FormatAudio,
+    FournisseurAudio, Image, InfosMachine, MesureProcessus, Notification, Notifications,
+    OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan, PressePapiers, RaccourcisGlobaux,
+    RecepteurAudio, RecepteurSon, SensAudio, SignalErreurAudio, SourceCapture, SystemeAudio,
+    TypeSource,
 };
 pub use url::NavigateurSysteme;
 
@@ -41,6 +44,7 @@ pub struct Plateforme {
     pub capture_ecran: Box<dyn CaptureEcran>,
     pub capture_son: Box<dyn CaptureSon>,
     pub audio: Arc<dyn SystemeAudio>,
+    pub mesure: Arc<dyn MesureProcessus>,
     pub overlay: Box<dyn Overlay>,
     pub premier_plan: Box<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
@@ -55,6 +59,7 @@ impl Plateforme {
             presse_papiers: Box::new(PressePapiersSysteme),
             audio: Arc::new(AudioSysteme),
             raccourcis: Arc::new(RaccourcisSysteme),
+            mesure: Arc::new(MesureSysteme),
             ..Self::indisponible()
         }
     }
@@ -70,6 +75,7 @@ impl Plateforme {
             capture_ecran: Box::new(Indisponible),
             capture_son: Box::new(Indisponible),
             audio: Arc::new(Indisponible),
+            mesure: Arc::new(Indisponible),
             overlay: Box::new(Indisponible),
             premier_plan: Box::new(Indisponible),
             demarrage: Box::new(Indisponible),
@@ -87,6 +93,7 @@ mod tests {
         assert!(p.url.disponible());
         assert!(p.fichiers.disponible() && p.presse_papiers.disponible());
         assert!(p.audio.disponible());
+        assert!(p.mesure.disponible());
         for (nom, disponible) in [
             ("notifications", p.notifications.disponible()),
             ("capture_ecran", p.capture_ecran.disponible()),
@@ -149,6 +156,8 @@ mod tests {
         assert!(!p.url.disponible());
         assert!(!p.fichiers.disponible() && !p.presse_papiers.disponible());
         assert!(!p.audio.disponible());
+        assert!(!p.mesure.disponible());
+        assert!(matches!(p.mesure.compteurs(), Err(Erreur::Indisponible(_))));
         assert!(!p.raccourcis.disponible());
         assert!(matches!(
             p.raccourcis.enregistrer("KeyV", Box::new(|_| {})),

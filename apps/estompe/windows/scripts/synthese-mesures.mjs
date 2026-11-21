@@ -32,7 +32,7 @@ export function mediane(valeurs) {
 }
 
 const libelleOptions = (o) => (o.join(' ') === OPTIONS_TAURI ? 'options par défaut' : o.filter((x) => x !== OPTIONS_TAURI).join(' ') || 'options par défaut')
-export const cible = (e) => `${e.app} · ${libelleOptions(e.systeme.options_webview2 ?? [])}`
+export const cible = (e) => (e.systeme.options_webview2?.length ? `${e.app} · ${libelleOptions(e.systeme.options_webview2)}` : e.app)
 
 const nombre = (x) => (x === null ? '—' : String(Math.round(x * 10) / 10).replace('.', ','))
 
@@ -45,8 +45,8 @@ export function synthese(exports) {
   }
   const cibles = [...groupes.keys()]
   const entete = (titre) => [`| ${titre} | ${cibles.map((c) => `${c} (${groupes.get(c).length} sessions)`).join(' | ')} |`, `|---|${cibles.map(() => '---:').join('|')}|`]
-  const lignes = ['# Synthèse des mesures de l’app Windows', '', 'Chaque valeur est la médiane des sessions de la cible.', '']
-  const machines = [...new Set(exports.map((e) => [e.systeme.cpu, `${e.systeme.ram_mo} Mo`, e.systeme.gpu?.join(' + '), e.systeme.windows, `WebView2 ${e.systeme.webview2}`, `échelle ${e.systeme.facteur_echelle}`].filter(Boolean).join(', ')))]
+  const lignes = ['# Synthèse des mesures des apps de bureau', '', 'Chaque valeur est la médiane des sessions de la cible.', '']
+  const machines = [...new Set(exports.map((e) => [e.systeme.cpu, `${e.systeme.ram_mo} Mo`, e.systeme.gpu?.join(' + '), e.systeme.windows ?? e.systeme.os, e.systeme.webview2 && `WebView2 ${e.systeme.webview2}`, `échelle ${e.systeme.facteur_echelle}`].filter(Boolean).join(', ')))]
   lignes.push('## Machines', '', ...machines.map((m) => `- ${m}`), '')
   lignes.push('## Démarrage', '', ...entete('Métrique'), `| Lancement → première conversation affichée (ms) | ${cibles.map((c) => nombre(mediane(groupes.get(c).map((e) => e.demarrage_ms)))).join(' | ')} |`, '')
   const ids = ['session', ...Object.keys(SCENARIOS).filter((id) => id !== 'session' && exports.some((e) => e.statistiques.scenarios[id]))]

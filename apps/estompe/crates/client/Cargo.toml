@@ -31,6 +31,10 @@ url = "2"
 [features]
 livekit = ["dep:livekit", "dep:livekit-protocol"]
 
+[[example]]
+name = "mesure_vocal"
+required-features = ["livekit"]
+
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", default-features = false, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

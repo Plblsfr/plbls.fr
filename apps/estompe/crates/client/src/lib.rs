@@ -19,6 +19,7 @@ pub mod format;
 pub mod lru;
 pub mod markdown;
 pub mod mention;
+pub mod mesures;
 pub mod ordre_serveurs;
 pub mod roles;
 pub mod route;

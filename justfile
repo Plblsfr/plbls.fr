@@ -91,6 +91,10 @@ estompe-natif-volume:
 estompe-natif-vocal:
     cd apps/estompe/natif && ESTOMPE_LIVEKIT_URL=ws://127.0.0.1:7880 cargo test --locked -p estompe-client --features livekit --test livekit -- --nocapture
 
+# Mesure mémoire et CPU de l'app native (export au format de l'app Tauri) : voir docs/estompe/natif-mesures.md
+estompe-natif-mesures *ARGS:
+    scripts/estompe/natif-mesures.sh {{ARGS}}
+
 # Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
 estompe-natif-captures:
     cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures

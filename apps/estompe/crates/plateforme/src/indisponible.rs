@@ -131,6 +131,18 @@ impl DemarrageSession for Indisponible {
     }
 }
 
+impl MesureProcessus for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn compteurs(&self) -> Resultat<CompteursProcessus> {
+        refus("compteurs du processus")
+    }
+    fn machine(&self) -> InfosMachine {
+        InfosMachine::default()
+    }
+}
+
 impl SystemeAudio for Indisponible {
     fn disponible(&self) -> bool {
         false
