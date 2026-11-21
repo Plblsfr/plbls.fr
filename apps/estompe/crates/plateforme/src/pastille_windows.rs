@@ -27,7 +27,9 @@ fn icone(image: &Image) -> Resultat<HICON> {
     }
     let bgra: Vec<u8> = image
         .rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|p| [p[2], p[1], p[0], p[3]])
         .collect();
     let masque = vec![0u8; (image.largeur.div_ceil(16) * 2 * image.hauteur) as usize];

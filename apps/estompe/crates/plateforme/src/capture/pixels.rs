@@ -9,10 +9,9 @@ pub fn bgra_vers_rgba(source: &[u8], pas: usize, largeur: usize, hauteur: usize)
         if ligne.len() < largeur * 4 {
             break;
         }
-        for (s, c) in ligne[..largeur * 4]
-            .chunks_exact(4)
-            .zip(cible.chunks_exact_mut(4))
-        {
+        let (source, _) = ligne[..largeur * 4].as_chunks::<4>();
+        let (cible, _) = cible.as_chunks_mut::<4>();
+        for (s, c) in source.iter().zip(cible) {
             c[0] = s[2];
             c[1] = s[1];
             c[2] = s[0];
@@ -45,7 +44,7 @@ pub fn reduire(image: &Image, hauteur_max: u32) -> Image {
             let mut somme = [0u64; 4];
             for ligne in y0..y1 {
                 let debut = (ligne * l + x0) * 4;
-                for pixel in image.rgba[debut..debut + (x1 - x0) * 4].chunks_exact(4) {
+                for pixel in image.rgba[debut..debut + (x1 - x0) * 4].as_chunks::<4>().0 {
                     for (s, p) in somme.iter_mut().zip(pixel) {
                         *s += u64::from(*p);
                     }

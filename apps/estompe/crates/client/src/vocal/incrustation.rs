@@ -284,7 +284,13 @@ impl Gabarit {
                 .checked_sub(marge_y)
                 .and_then(|y| self.rangees.get(y))
                 .filter(|_| utilisable);
-            for (i, (pixel, p)) in rangee.chunks_exact_mut(4).zip(poids).enumerate() {
+            for (i, (pixel, p)) in rangee
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(poids)
+                .enumerate()
+            {
                 let mut rgb = [0u32; 3];
                 if p.camera > 0 {
                     if let (Some(sy), Some(sx)) = (
@@ -365,7 +371,12 @@ pub fn poser(vignette: &Vignette, image: &mut Image) -> Option<Piece> {
         let sj = (y0 - z.y) as usize + j;
         let si = (x0 - z.x) as usize;
         let source = &vignette.pixels[sj * pas_vignette + si * 4..][..l * 4];
-        for (c, s) in cible.chunks_exact_mut(4).zip(source.chunks_exact(4)) {
+        for (c, s) in cible
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(source.as_chunks::<4>().0)
+        {
             let a = u32::from(s[3]);
             if a == 0 {
                 continue;
@@ -759,7 +770,12 @@ mod tests {
         });
         let mut image = ecran(1920, 1080, [10, 20, 30, 255]);
         assert!(c.incruster(&mut image).is_none(), "sans caméra, rien");
-        assert!(image.rgba.chunks_exact(4).all(|p| p == [10, 20, 30, 255]));
+        assert!(image
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [10, 20, 30, 255]));
         c.camera(Some(camera_unie(1280, 720, [200, 40, 40])));
         let piece = c.incruster(&mut image).unwrap();
         let z = zone_incrustation(&c.reglages(), 1920, 1080, 16.0 / 9.0);
@@ -782,7 +798,12 @@ mod tests {
         );
         assert_eq!(pixel(&image, 1919, 1079), [10, 20, 30, 255], "marge");
         piece.restaurer(&mut image);
-        assert!(image.rgba.chunks_exact(4).all(|p| p == [10, 20, 30, 255]));
+        assert!(image
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [10, 20, 30, 255]));
     }
 
     #[test]
@@ -853,7 +874,12 @@ mod tests {
         c.camera(None);
         let mut suivante = ecran(640, 360, [0, 0, 0, 255]);
         assert!(c.incruster(&mut suivante).is_none());
-        assert!(suivante.rgba.chunks_exact(4).all(|p| p == [0, 0, 0, 255]));
+        assert!(suivante
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [0, 0, 0, 255]));
         assert!(
             c.incruster_apercu(&mut suivante).is_some(),
             "l'aperçu montre une silhouette"
