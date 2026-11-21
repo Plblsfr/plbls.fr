@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use estompe_plateforme::{SensAudio, SystemeAudio};
+use estompe_plateforme::{ErreurCamera, SensAudio, SystemeAudio, SystemeCamera};
 use futures_util::future::BoxFuture;
 use futures_util::StreamExt;
 use tokio::runtime::Handle;
@@ -16,17 +16,19 @@ use crate::audio::{
 };
 use crate::http::{Client, ErreurApi};
 
+use super::camera::{message_camera, CaptureCamera, QualiteCamera, SignalCamera, SortieImages};
 use super::erreurs::{CauseMicro, ErreurVocal};
 use super::etat::{EtatVocal, Phase};
 use super::mixage::{Ecoute, Mixeur};
 use super::salle::{
     est_partage, proprietaire, Connecteur, Connexion, EvenementSalle, JetonSalle,
-    RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
+    RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
-use super::video::{CleVideo, DemandeVideo, SourceVideo, Videos};
+use super::video::{CleVideo, DemandeVideo, ImageI420, RecepteurVideo, SourceVideo, Videos};
 
 pub const DELAI_FERMETURE: Duration = Duration::from_secs(3);
 pub const MESSAGE_CONNEXION_PERDUE: &str = "Connexion au vocal perdue.";
+pub const MESSAGE_PUBLICATION_CAMERA: &str = "Impossible de publier la caméra dans le salon.";
 
 pub trait ApiVocale: Send + Sync {
     fn jeton(&self, salon: &str) -> BoxFuture<'_, Result<JetonSalle, ErreurApi>>;
@@ -65,6 +67,8 @@ pub struct Reglages {
     pub fenetre_deplacement: Duration,
     pub traitement: ReglagesMicro,
     pub ecoute: Ecoute,
+    pub camera: Option<String>,
+    pub qualite_camera: QualiteCamera,
 }
 
 impl Default for Reglages {
@@ -80,6 +84,8 @@ impl Default for Reglages {
             fenetre_deplacement: Duration::from_secs(5),
             traitement: ReglagesMicro::default(),
             ecoute: Ecoute::default(),
+            camera: None,
+            qualite_camera: QualiteCamera::default(),
         }
     }
 }
@@ -88,6 +94,7 @@ pub struct Dependances {
     pub api: Arc<dyn ApiVocale>,
     pub connecteur: Arc<dyn Connecteur>,
     pub audio: Arc<dyn SystemeAudio>,
+    pub cameras: Arc<dyn SystemeCamera>,
     pub apm: Option<Arc<Apm>>,
     pub reglages: Reglages,
 }
@@ -104,6 +111,11 @@ pub enum AvisVocal {
 
 enum Commande {
     Rejoindre(String),
+    RejoindreAvecCamera(String),
+    Camera(bool),
+    ChoisirCamera(Option<String>),
+    QualiteCamera(QualiteCamera),
+    CameraPerdue(ErreurCamera, u64),
     Deplacer(String),
     DeplaceParModeration {
         de: String,
@@ -168,6 +180,39 @@ struct RouteMicro {
     chaine: Mutex<ChaineMicro>,
 }
 
+#[derive(Default)]
+struct RouteCamera {
+    sortie: Mutex<Option<Arc<dyn SortieVideo>>>,
+    recepteur: Mutex<Option<Arc<RecepteurVideo>>>,
+}
+
+impl RouteCamera {
+    fn envoyer(&self, image: Arc<ImageI420>) {
+        if let Some(sortie) = self.sortie.lock().ok().and_then(|s| s.clone()) {
+            sortie.envoyer(&image);
+        }
+        if let Some(recepteur) = self.recepteur.lock().ok().and_then(|r| r.clone()) {
+            recepteur.pousser(image);
+        }
+    }
+
+    fn brancher(&self, sortie: Option<Arc<dyn SortieVideo>>) {
+        if let Ok(mut s) = self.sortie.lock() {
+            *s = sortie;
+        }
+    }
+
+    fn afficher(&self, recepteur: Option<Arc<RecepteurVideo>>) {
+        let ancien = match self.recepteur.lock() {
+            Ok(mut r) => std::mem::replace(&mut *r, recepteur),
+            Err(_) => None,
+        };
+        if let Some(ancien) = ancien {
+            ancien.effacer();
+        }
+    }
+}
+
 impl RouteMicro {
     fn nouvelle(chaine: ChaineMicro) -> Self {
         Self {
@@ -223,6 +268,8 @@ impl SessionVocale {
     pub fn demarrer(runtime: &Handle, dependances: Dependances) -> Self {
         let (commandes, reception) = mpsc::unbounded_channel();
         let mut etat_initial = EtatVocal::default();
+        etat_initial.camera = dependances.reglages.camera.clone();
+        etat_initial.qualite_camera = dependances.reglages.qualite_camera;
         etat_initial.micro = dependances.reglages.micro.clone();
         etat_initial.sortie = dependances.reglages.sortie.clone();
         etat_initial.traitement = dependances.reglages.traitement.borne();
@@ -238,6 +285,7 @@ impl SessionVocale {
             avis.clone(),
             mesure.clone(),
             videos.clone(),
+            commandes.clone(),
         );
         runtime.spawn(acteur.tourner(reception));
         Self {
@@ -268,6 +316,22 @@ impl SessionVocale {
 
     pub fn rejoindre(&self, salon: &str) {
         self.envoyer(Commande::Rejoindre(salon.to_string()));
+    }
+
+    pub fn rejoindre_avec_camera(&self, salon: &str) {
+        self.envoyer(Commande::RejoindreAvecCamera(salon.to_string()));
+    }
+
+    pub fn activer_camera(&self, active: bool) {
+        self.envoyer(Commande::Camera(active));
+    }
+
+    pub fn choisir_camera(&self, id: Option<String>) {
+        self.envoyer(Commande::ChoisirCamera(id));
+    }
+
+    pub fn definir_qualite_camera(&self, qualite: QualiteCamera) {
+        self.envoyer(Commande::QualiteCamera(qualite));
     }
 
     pub fn deplacer(&self, salon: &str) {
@@ -391,6 +455,12 @@ struct Acteur {
     publications_video: BTreeMap<CleVideo, String>,
     pistes_video: BTreeMap<CleVideo, JoinHandle<()>>,
     affichage: BTreeMap<CleVideo, DemandeVideo>,
+    cameras: Arc<dyn SystemeCamera>,
+    capture_camera: Option<CaptureCamera>,
+    route_camera: Arc<RouteCamera>,
+    camera_voulue: bool,
+    generation_camera: u64,
+    retour: mpsc::UnboundedSender<Commande>,
     tentatives: (
         mpsc::UnboundedSender<Tentative>,
         mpsc::UnboundedReceiver<Tentative>,
@@ -424,6 +494,7 @@ impl Acteur {
         avis: broadcast::Sender<AvisVocal>,
         mesure: Arc<MesureMicro>,
         videos: Arc<Videos>,
+        retour: mpsc::UnboundedSender<Commande>,
     ) -> Self {
         let chaine =
             ChaineMicro::nouvelle(etat.traitement, dependances.apm.clone(), mesure.clone());
@@ -450,6 +521,12 @@ impl Acteur {
             publications_video: BTreeMap::new(),
             pistes_video: BTreeMap::new(),
             affichage: BTreeMap::new(),
+            cameras: dependances.cameras,
+            capture_camera: None,
+            route_camera: Arc::new(RouteCamera::default()),
+            camera_voulue: false,
+            generation_camera: 0,
+            retour,
             tentatives: mpsc::unbounded_channel(),
             essais: 0,
             reconnexion: None,
@@ -519,6 +596,58 @@ impl Acteur {
     async fn commande(&mut self, commande: Commande) {
         match commande {
             Commande::Rejoindre(salon) => self.rejoindre(salon, false).await,
+            Commande::RejoindreAvecCamera(salon) => {
+                self.rejoindre(salon, false).await;
+                self.camera_voulue = true;
+                self.etat.camera_erreur = None;
+                if self.etat.phase == Phase::Connecte {
+                    self.demarrer_camera().await;
+                }
+            }
+            Commande::Camera(true) => {
+                self.camera_voulue = true;
+                self.etat.camera_erreur = None;
+                if self.salle.is_some() && self.capture_camera.is_none() {
+                    self.demarrer_camera().await;
+                }
+            }
+            Commande::Camera(false) => {
+                self.camera_voulue = false;
+                self.etat.camera_erreur = None;
+                self.arreter_camera().await;
+            }
+            Commande::ChoisirCamera(id) => {
+                self.etat.camera = id.clone();
+                self.reglages.camera = id;
+                if self.capture_camera.take().is_some() {
+                    match self.ouvrir_capture().await {
+                        Ok(capture) => self.capture_camera = Some(capture),
+                        Err(message) => {
+                            self.arreter_camera().await;
+                            self.camera_voulue = false;
+                            self.etat.camera_erreur = (!message.is_empty()).then_some(message);
+                        }
+                    }
+                }
+                self.publier();
+            }
+            Commande::QualiteCamera(qualite) => {
+                self.etat.qualite_camera = qualite;
+                self.reglages.qualite_camera = qualite;
+                if self.capture_camera.is_some() {
+                    self.arreter_camera().await;
+                    self.demarrer_camera().await;
+                }
+                self.publier();
+            }
+            Commande::CameraPerdue(erreur, generation) => {
+                if generation == self.generation_camera && self.capture_camera.is_some() {
+                    self.camera_voulue = false;
+                    self.arreter_camera().await;
+                    self.etat.camera_erreur = Some(message_camera(&erreur));
+                    self.publier();
+                }
+            }
             Commande::Deplacer(salon) => self.rejoindre(salon, true).await,
             Commande::DeplaceParModeration { de, vers } => {
                 let recent = self.dernier_quitte.as_ref().is_some_and(|(salon, quand)| {
@@ -618,6 +747,91 @@ impl Acteur {
         }
     }
 
+    async fn ouvrir_capture(&mut self) -> Result<CaptureCamera, String> {
+        self.generation_camera += 1;
+        let generation = self.generation_camera;
+        let route = self.route_camera.clone();
+        let sortie: SortieImages = Arc::new(move |image| route.envoyer(image));
+        let retour = self.retour.clone();
+        let perte: SignalCamera = Arc::new(move |erreur| {
+            let _ = retour.send(Commande::CameraPerdue(erreur, generation));
+        });
+        let cameras = self.cameras.clone();
+        let id = self.etat.camera.clone();
+        let qualite = self.etat.qualite_camera;
+        let ouverture = tokio::task::spawn_blocking(move || {
+            CaptureCamera::ouvrir(&*cameras, id.as_deref(), qualite, sortie, perte)
+        })
+        .await;
+        match ouverture {
+            Ok(Ok(capture)) if generation == self.generation_camera => Ok(capture),
+            Ok(Ok(_)) => Err(String::new()),
+            Ok(Err(erreur)) => Err(message_camera(&erreur)),
+            Err(_) => Err(message_camera(&ErreurCamera::Autre(String::new()))),
+        }
+    }
+
+    async fn demarrer_camera(&mut self) {
+        let Some(salle) = self.salle.clone() else {
+            return;
+        };
+        if self.capture_camera.is_some() {
+            return;
+        }
+        self.etat.camera_demarrage = true;
+        self.etat.camera_erreur = None;
+        self.publier();
+        let local = CleVideo::camera(&salle.identite());
+        self.route_camera
+            .afficher(Some(self.videos.recepteur(&local)));
+        let resultat = match self.ouvrir_capture().await {
+            Ok(capture) => {
+                match salle
+                    .publier_video(SourceVideo::Camera, self.etat.qualite_camera.format())
+                    .await
+                {
+                    Ok(sortie) => {
+                        self.route_camera.brancher(Some(sortie));
+                        self.capture_camera = Some(capture);
+                        Ok(())
+                    }
+                    Err(_) => Err(MESSAGE_PUBLICATION_CAMERA.to_string()),
+                }
+            }
+            Err(message) => Err(message),
+        };
+        self.etat.camera_demarrage = false;
+        match resultat {
+            Ok(()) => self.etat.camera_active = true,
+            Err(message) => {
+                self.couper_camera();
+                self.camera_voulue = false;
+                if !message.is_empty() {
+                    self.etat.camera_erreur = Some(message);
+                }
+            }
+        }
+        self.publier();
+    }
+
+    fn couper_camera(&mut self) {
+        self.generation_camera += 1;
+        self.capture_camera = None;
+        self.route_camera.brancher(None);
+        self.route_camera.afficher(None);
+        self.etat.camera_active = false;
+        self.etat.camera_demarrage = false;
+    }
+
+    async fn arreter_camera(&mut self) {
+        let publiee = self.etat.camera_active;
+        self.couper_camera();
+        if let (true, Some(salle)) = (publiee, self.salle.clone()) {
+            salle.retirer_video(SourceVideo::Camera).await;
+        }
+        self.publier();
+    }
+
     fn cle_video(identite: &str, source: SourceVideo) -> CleVideo {
         CleVideo {
             identite: proprietaire(identite).to_string(),
@@ -643,6 +857,7 @@ impl Acteur {
             return;
         }
         if echange && self.salle.is_some() {
+            self.couper_camera();
             self.ancienne = self.salle.take();
             self.evenements = None;
             self.route.brancher(None);
@@ -752,6 +967,9 @@ impl Acteur {
         self.appliquer_micro();
         self.publier();
         self.publier_attributs().await;
+        if self.camera_voulue {
+            self.demarrer_camera().await;
+        }
         if !reprise {
             if let Some(salon) = self.etat.salon.clone() {
                 self.signaler(AvisVocal::Rejoint(salon));
@@ -847,6 +1065,7 @@ impl Acteur {
                 }
             }
             EvenementSalle::Deconnecte(_) => {
+                self.couper_camera();
                 if let Some(salle) = self.salle.take() {
                     salle.fermer().await;
                 }
@@ -973,6 +1192,8 @@ impl Acteur {
         self.capture = None;
         self.lecture = None;
         self.mesure.reinitialiser();
+        self.couper_camera();
+        self.camera_voulue = false;
     }
 
     async fn quitter(&mut self) {

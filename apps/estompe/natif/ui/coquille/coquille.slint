@@ -56,6 +56,10 @@ export component Coquille inherits Rectangle {
                 DonneesVocal.basculer-casque();
                 return accept;
             }
+            if (e.modifiers.alt && e.modifiers.shift && !e.modifiers.control && !e.modifiers.meta && (e.text == "v" || e.text == "V") && DonneesVocal.barre.visible) {
+                DonneesVocal.basculer-camera();
+                return accept;
+            }
             if (!e.modifiers.control && !e.modifiers.alt && !e.modifiers.meta && DonneesVocal.touche(e.text, true)) {
                 return accept;
             }

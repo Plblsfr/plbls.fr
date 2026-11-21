@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)) ; caméra et partage d'écran arrivent au lot 5.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo et la caméra (voir [Vidéo](#vidéo) et [Caméra](#caméra)) ; le partage d'écran arrive au lot 5.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
-| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; compteurs du processus pour les mesures (`processus/`) |
+| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
 hors du workspace racine comme les apps Tauri. Slint est figé en `=1.18.1`, comme dans l'overlay natif de l'app Tauri.
@@ -18,7 +18,7 @@ L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `d
 
 ## Construire et lancer
 
-Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev`, un pilote OpenGL (Mesa)
+Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev`, libclang (les en-têtes V4L2 de la capture de la caméra passent par bindgen), un pilote OpenGL (Mesa)
 et clang 21 ou plus récent, désigné par `CXX` (par exemple `CXX=clang++-21`) : libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium,
 que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sys` le refuse). Sous Windows : la toolchain MSVC, LLVM, Python 3 et
 `ninja`, LLVM 22 ou plus récent (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
@@ -621,12 +621,15 @@ Le reste du module (état, session, mixage, faux serveur) compile et se teste sa
 | `crates/client/src/vocal/erreurs.rs` | `ErreurVocal` (salon plein, droit manquant…) et `CauseMicro` (équivalents de `micCause` et `micError`) |
 | `crates/client/src/vocal/factice.rs` | `ServeurVocalFactice` (connecteur et salles en mémoire, coupure du réseau, exclusion) et `ApiVocaleFactice` |
 | `crates/client/src/vocal/video.rs` | vidéo sans interface : `CleVideo` (propriétaire et source, caméra ou partage), trait `TrameVideo` (image décodée convertie en RGBA à la taille voulue), `ImageI420` (conversions BT.601, réduction, formats YUYV, NV12, RGB et gris), `Mire` (piste factice des tests et des captures), `RecepteurVideo` (dernière image seulement, compteur d'images reçues), `Videos` (un récepteur par flux) |
+| `crates/plateforme/src/camera.rs` | trait `SystemeCamera` (liste des caméras, ouverture d'un flux avec la résolution et la cadence voulues, images rendues telles que la caméra les donne : MJPEG, YUYV, NV12, gris, RGB, BGR), `ErreurCamera` (absente, introuvable, occupée, refusée, débranchée), `CamerasSysteme` (nokhwa : V4L2 sous Linux, Media Foundation sous Windows, un fil par caméra ouverte) |
+| `crates/client/src/vocal/camera.rs` | `QualiteCamera` (360p, 720p, 1080p, mêmes résolutions et débits que `CAMERA` du front), `image_i420` (MJPEG décodé par zune-jpeg), `CaptureCamera`, `ApercuCamera`, `message_camera`, `CamerasFactices` (caméras des tests : brancher, occuper, débrancher, pousser des images de la mire) |
 | `crates/client/src/vocal/ptt.rs` | `PousserPourParler` : appuyer pour parler (touche de la fenêtre et raccourci global, délai de relâchement), `ReglagesPtt` |
 | `crates/client/src/audio/tonalite.rs` | sons d'arrivée et de départ (mêmes notes que le front), joués sur la sortie choisie |
 | `crates/plateforme/src/raccourcis/` | trait `RaccourcisGlobaux` : crochet clavier bas niveau sous Windows, XInput 2 sous X11, `RaccourcisFactices` pour les tests |
 | `natif/src/vocal/` | `projection.rs` (pur : tuiles, participants du panneau, vue, barre, menu d'un participant), `pont.rs` (`PontVocal` : état de la session vers `DonneesVocal`, commandes, réglages, test du micro, sons), `touches.rs` (touche Slint vers code de touche) |
 | `natif/src/video/` | affichage des flux, réutilisable par toute vue vidéo : `Afficheur` (un fil par flux affiché, conversion hors du fil d'interface), `GestionVideo` (flux voulus, modèle `DonneesVideo.flux`), `convertir` |
 | `natif/ui/video/flux.slint` | `DonneesVideo` (images des flux, taille d'une tuile) et `ImageFlux` (image d'un flux, recadrée ou entière, coins arrondis) |
+| `natif/ui/vocal/camera.slint` | fenêtre « Activer la caméra » : aperçu en miroir, erreur, choix de la caméra et de la qualité |
 | `natif/ui/vocal/` | vue du salon (`vue.slint`), tuile et ligne du panneau (`tuile.slint`), commandes (`commandes.slint`), barre du panneau (`barre.slint`), menus (`menus.slint`), réglages audio (`reglages.slint`) |
 
 ### Session vocale
@@ -754,6 +757,25 @@ Affichage d'une piste vidéo reçue de LiveKit, pensé pour toutes les vues vid�
 - Écarts : la résolution reçue (« · 720p » du front) n'est pas affichée ; Wayland ne signale pas toujours une fenêtre masquée (le décodage continue alors) ;
   le passage des images par la mémoire (`Image::from_rgba8`) plutôt qu'une texture partagée avec Skia, que Slint 1.18 n'expose pas pour une image de modèle.
 
+### Caméra
+
+Capture par nokhwa dans la crate plateforme (`CamerasSysteme`, seule partie propre à l'OS), conversion en I420 dans la crate client, publication par la session.
+
+- Bouton caméra des commandes (Alt+Maj+V, comme le front) : caméra coupée, il ouvre « Activer la caméra » (`MediaPicker.svelte` et `CameraPreview.svelte`) ; caméra active, il la coupe.
+  La fenêtre montre l'aperçu en miroir (« Aperçu en miroir »), la liste des caméras (« Par défaut » puis celles du système), la qualité (360p, 720p recommandé, 1080p, avec le débit montant)
+  et « Activer la caméra ». Choix et qualité sont retenus (`camera`, `qualite_camera` des préférences, comme `cameraId` et `cameraQuality`). L'aperçu (`ApercuCamera`) s'ouvre sur
+  un fil à part et se ferme avant la publication : une caméra ne s'ouvre pas deux fois.
+- Publication (`SessionVocale::activer_camera`) : capture à la qualité choisie, piste `camera` publiée avec le simulcast, le débit et la cadence de la qualité (`TrackPublishOptions` :
+  `simulcast`, `video_encoding`), images copiées dans un `I420Buffer` puis `NativeVideoSource::capture_frame`. Ma tuile montre ma caméra en miroir, comme le front.
+  Couper la caméra ferme le périphérique (voyant éteint) et retire la piste (`unpublish_track`).
+- Changement à chaud (`choisir_camera`) : la capture passe sur l'autre caméra sans retirer la piste ; un changement de qualité relance la caméra (`restartCamera` du front).
+- Rejoindre caméra activée (`rejoindre_avec_camera`, comme `join({ camera: true })`) : bouton « Rejoindre avec la caméra » de l'écran pour rejoindre ; la caméra est publiée dès la connexion.
+  Une reconnexion la republie ; quitter le salon la coupe.
+- Erreurs : caméra absente, introuvable, prise par une autre application, accès refusé ou débranchée pendant l'appel : la caméra revient à « désactivée » et la raison s'affiche
+  dans la barre du vocal (`camera_erreur`) ou dans la fenêtre d'aperçu (« Caméra déjà utilisée par une autre application. », « Caméra débranchée. »…).
+- Écarts : pas d'effets d'arrière-plan (lot 11) ni de choix du codec (`videoCodec`) ; le message d'un refus d'accès ne distingue pas un refus du système d'une caméra
+  occupée quand le pilote ne le dit pas ; sous Linux seules les caméras V4L2 sont proposées (pas de portail caméra de PipeWire).
+
 ### Appuyer pour parler
 
 `PousserPourParler` (crate client) ferme la porte du micro (`SessionVocale::definir_porte`) pendant un appel quand le réglage est actif, l'ouvre à l'appui de la touche
@@ -809,6 +831,10 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - `vocal::video::tests` : conversions (taille, couleurs, formats de caméra, miroir), mire, récepteur (dernière image, compteur, fermeture), un récepteur par flux ;
   `vocal::tests::seules_les_videos_affichees_sont_recues` (faux serveur) : abonnement à la demande avec la taille de la tuile, images reçues, désabonnement sans plus
   aucune image reçue, piste retirée, départ de son auteur ; `natif/src/video/` : conversion à la taille et en miroir, une seule image en route vers l'interface.
+- `vocal::camera::tests` : qualités du front, MJPEG décodé, image trop courte ignorée, aperçu (images reçues, caméra occupée, introuvable, débranchée), caméra libérée à la fermeture ;
+  `vocal::tests` : caméra publiée au format de la qualité, images reçues par l'autre participant, changement de caméra sans retrait, changement de qualité, retrait ;
+  caméra occupée, débranchée pendant l'appel ou absente (retour à « désactivée » avec la raison) ; rejoindre caméra activée ; `crates/plateforme/src/camera.rs` : messages du système en cause.
+- `crates/client/tests/livekit.rs::la_camera_est_publiee_changee_puis_retiree` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) : caméra factice publiée, images reçues par l'autre client, changement de caméra, retrait vu par l'autre client.
 - `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
   perte du focus, raccourci indisponible (message, touche fenêtre active) ; `audio::tonalite::tests` ; `store::reducteur::tests::transmet_le_deplacement_par_un_moderateur`.
 - `crates/plateforme/src/raccourcis/` : table des touches, appui et relâchement sans répétition ; sous X11 (`DISPLAY`, ignoré sinon) une touche simulée par XTest est signalée
@@ -819,13 +845,14 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
   (mesuré : voir ci-dessous), photo de profil dans la tuile et le panneau, durée du salon, mode plein cadre (bouton, Échap, bouton de sortie), couper le micro, Alt+Maj+M et Alt+Maj+D,
   menu d'un participant (volume, muet, « Déplacer vers » et « Déconnecter du vocal » envoyés au faux serveur HTTP), coupure d'un modérateur, appuyer pour parler sans raccourci global,
   caméra d'un participant (piste factice 1080p) affichée dans sa tuile à la taille de la tuile, fenêtre réduite : désabonnement et plus aucune image reçue,
-  fenêtre rouverte : retour des images, caméra retirée : retour à la photo,
+  fenêtre rouverte : retour des images, caméra retirée : retour à la photo, « Activer la caméra » (aperçu affiché avant publication, liste des caméras, choix de la caméra et
+  de la qualité retenus, publication au format choisi, ma caméra dans ma tuile, Alt+Maj+V qui la coupe et libère la caméra, caméra occupée signalée dans l'aperçu),
   glisser un participant sur un autre salon (salons proposés pendant le glisser, déplacement envoyé, refus du serveur affiché puis effacé),
   choix du son et volume des sons retenus, son personnalisé (fichier trop gros refusé, fichier gardé, aperçu joué, retour au son prédéfini puis au fichier),
   déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
 - `audio::son_perso::tests` : WAV stéréo à 44,1 kHz, flottant, 8 et 24 bits, Ogg Opus sans ffmpeg, MP3 par ffmpeg (ignoré sans ffmpeg, exigé par `ESTOMPE_FFMPEG_EXIGE`),
   refus au-delà de 150 Ko ou d'un fichier illisible, fichier gardé et remplacé, lecture au volume des sons ; `vocal::projection::tests` : qui peut glisser un participant.
-- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-video` (tuile avec l'image de la mire), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
+- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-video` (tuile avec l'image de la mire), `vocal-camera-apercu` (fenêtre « Activer la caméra » avec l'aperçu), `vocal-camera-erreur` (caméra occupée), `vocal-camera-active` (ma caméra en miroir dans ma tuile), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
   `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`, `vocal-sons-perso` (« Mon fichier » choisi, refus d'un fichier),
   `vocal-glisser` (salons proposés pendant le glisser), `vocal-glisser-refus`.
 

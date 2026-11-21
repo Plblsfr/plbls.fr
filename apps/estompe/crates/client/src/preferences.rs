@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
-use crate::vocal::{Ecoute, ReglagesPtt};
+use crate::vocal::{Ecoute, QualiteCamera, ReglagesPtt};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -62,6 +62,8 @@ pub struct Preferences {
     pub emoji_recents: Vec<String>,
     pub recherches_recentes: Vec<String>,
     pub vocaux_ecoutes: Vec<String>,
+    pub camera: Option<String>,
+    pub qualite_camera: QualiteCamera,
 }
 
 impl Default for Preferences {
@@ -89,6 +91,8 @@ impl Default for Preferences {
             emoji_recents: Vec::new(),
             recherches_recentes: Vec::new(),
             vocaux_ecoutes: Vec::new(),
+            camera: None,
+            qualite_camera: QualiteCamera::default(),
         }
     }
 }
@@ -171,6 +175,8 @@ impl Preferences {
                 .take(crate::message_vocal::ECOUTES_MAX)
                 .rev()
                 .collect(),
+            camera: champ(&objet, "camera", d.camera).filter(|c: &String| !c.is_empty()),
+            qualite_camera: champ(&objet, "qualite_camera", d.qualite_camera),
         })
     }
 
@@ -351,6 +357,8 @@ mod tests {
             emoji_recents: vec!["😂".to_string(), "👍".to_string()],
             recherches_recentes: vec!["de:carol vacances".to_string()],
             vocaux_ecoutes: vec!["f1".to_string()],
+            camera: Some("/dev/video2".to_string()),
+            qualite_camera: crate::vocal::QualiteCamera::Q1080,
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);

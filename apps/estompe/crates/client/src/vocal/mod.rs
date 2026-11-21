@@ -1,3 +1,4 @@
+pub mod camera;
 pub mod erreurs;
 pub mod etat;
 pub mod factice;
@@ -9,13 +10,16 @@ pub mod salle;
 pub mod session;
 pub mod video;
 
+pub use camera::{
+    message_camera, ApercuCamera, CamerasFactices, CaptureCamera, FormatVideo, QualiteCamera,
+};
 pub use erreurs::{CauseMicro, ErreurVocal};
 pub use etat::{etats_affiches, EtatAffiche, EtatVocal, Phase};
 pub use mixage::{Ecoute, Limiteur, Mixeur};
 pub use ptt::{EtatPtt, PousserPourParler, ReglagesPtt, SourceTouche};
 pub use salle::{
     Connecteur, ConnecteurIndisponible, Connexion, ErreurSalle, EvenementSalle, InfoParticipant,
-    JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
+    JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
 pub use session::{ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, DELAI_FERMETURE};
 pub use video::{
@@ -39,6 +43,7 @@ mod tests {
 
     struct Poste {
         audio: SystemeFactice,
+        cameras: CamerasFactices,
         api: Arc<ApiVocaleFactice>,
         session: SessionVocale,
     }
@@ -98,6 +103,9 @@ mod tests {
         reglages: Reglages,
     ) -> Poste {
         let audio = audio(avec_micro);
+        let cameras = CamerasFactices::nouvelles();
+        cameras.brancher("c1", "Caméra intégrée");
+        cameras.brancher("c2", "Webcam USB");
         let api = Arc::new(ApiVocaleFactice::nouvelle(identite));
         let session = SessionVocale::demarrer(
             &Handle::current(),
@@ -105,12 +113,14 @@ mod tests {
                 api: api.clone(),
                 connecteur: Arc::new(serveur.clone()),
                 audio: Arc::new(audio.clone()),
+                cameras: Arc::new(cameras.clone()),
                 apm: None,
                 reglages,
             },
         );
         Poste {
             audio,
+            cameras,
             api,
             session,
         }
@@ -235,6 +245,134 @@ mod tests {
         .await;
         alice.session.quitter();
         attendre(&bob.session, |e| !e.video(&cle)).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn la_camera_est_publiee_changee_puis_retiree() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        let bob = poste(&serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        bob.session.rejoindre("v1");
+        attendre(&bob.session, connecte_a("v1")).await;
+        let cle = CleVideo::camera("alice");
+        bob.session.definir_affichage(
+            [(
+                cle.clone(),
+                DemandeVideo {
+                    largeur: 640,
+                    hauteur: 360,
+                },
+            )]
+            .into_iter()
+            .collect(),
+        );
+        alice.session.activer_camera(true);
+        attendre(&alice.session, |e| e.camera_active && !e.camera_demarrage).await;
+        assert!(serveur.video_publiee("v1", "alice", SourceVideo::Camera));
+        assert_eq!(
+            serveur.format_publie("v1", "alice", SourceVideo::Camera),
+            Some(QualiteCamera::Q720.format())
+        );
+        assert_eq!(alice.cameras.ouvertes(), vec!["c1".to_string()]);
+        attendre(&bob.session, |e| e.video(&cle)).await;
+        attendre_que(|| {
+            !serveur
+                .abonnes_video("v1", "alice", SourceVideo::Camera)
+                .is_empty()
+        })
+        .await;
+        let locale = alice.session.videos().recepteur(&cle);
+        let distante = bob.session.videos().recepteur(&cle);
+        alice.cameras.pousser(3);
+        assert_eq!(locale.images_recues(), 3);
+        assert_eq!(
+            serveur.images_publiees("v1", "alice", SourceVideo::Camera),
+            3
+        );
+        attendre_que(|| distante.images_recues() == 3).await;
+        let image = distante.derniere().unwrap();
+        assert_eq!((image.largeur(), image.hauteur()), (1280, 720));
+        alice.session.choisir_camera(Some("c2".into()));
+        attendre(&alice.session, |e| e.camera.as_deref() == Some("c2")).await;
+        assert_eq!(alice.cameras.ouvertes(), vec!["c2".to_string()]);
+        assert!(alice.session.instantane().camera_active);
+        alice.cameras.pousser(1);
+        attendre_que(|| distante.images_recues() == 4).await;
+        alice.session.definir_qualite_camera(QualiteCamera::Q360);
+        attendre(&alice.session, |e| {
+            e.qualite_camera == QualiteCamera::Q360 && e.camera_active
+        })
+        .await;
+        attendre_que(|| {
+            serveur.format_publie("v1", "alice", SourceVideo::Camera)
+                == Some(QualiteCamera::Q360.format())
+        })
+        .await;
+        alice.session.activer_camera(false);
+        attendre(&alice.session, |e| !e.camera_active).await;
+        assert!(alice.cameras.ouvertes().is_empty());
+        assert!(!serveur.video_publiee("v1", "alice", SourceVideo::Camera));
+        assert!(locale.derniere().is_none());
+        attendre(&bob.session, |e| !e.video(&cle)).await;
+        assert!(alice.session.instantane().camera_erreur.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn une_camera_indisponible_revient_a_desactivee_avec_la_raison() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        alice.cameras.occuper("c1", true);
+        alice.session.activer_camera(true);
+        let etat = attendre(&alice.session, |e| e.camera_erreur.is_some()).await;
+        assert!(!etat.camera_active && !etat.camera_demarrage);
+        assert_eq!(
+            etat.camera_erreur.as_deref(),
+            Some("Caméra déjà utilisée par une autre application.")
+        );
+        assert!(!serveur.video_publiee("v1", "alice", SourceVideo::Camera));
+        alice.cameras.occuper("c1", false);
+        alice.session.activer_camera(true);
+        attendre(&alice.session, |e| e.camera_active).await;
+        alice.cameras.debrancher("c1");
+        let etat = attendre(&alice.session, |e| {
+            e.camera_erreur.as_deref() == Some("Caméra débranchée.")
+        })
+        .await;
+        assert!(!etat.camera_active);
+        assert_eq!(etat.camera_erreur.as_deref(), Some("Caméra débranchée."));
+        assert!(!serveur.video_publiee("v1", "alice", SourceVideo::Camera));
+        alice.cameras.debrancher("c2");
+        alice.session.activer_camera(true);
+        let etat = attendre(&alice.session, |e| {
+            e.camera_erreur.as_deref() == Some("Aucune caméra trouvée.")
+        })
+        .await;
+        assert!(!etat.camera_active);
+        assert_eq!(etat.phase, Phase::Connecte);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn rejoindre_camera_activee_la_publie_des_la_connexion() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        alice.session.rejoindre_avec_camera("v1");
+        attendre(&alice.session, |e| {
+            e.phase == Phase::Connecte && e.camera_active
+        })
+        .await;
+        assert!(serveur.video_publiee("v1", "alice", SourceVideo::Camera));
+        alice.session.quitter();
+        let etat = attendre(&alice.session, |e| !e.actif()).await;
+        assert!(!etat.camera_active);
+        assert!(alice.cameras.ouvertes().is_empty());
+        assert!(!serveur.video_publiee("v1", "alice", SourceVideo::Camera));
+        alice.session.rejoindre("v1");
+        let etat = attendre(&alice.session, connecte_a("v1")).await;
+        assert!(!etat.camera_active);
     }
 
     #[tokio::test(start_paused = true)]

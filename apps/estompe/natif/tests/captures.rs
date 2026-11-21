@@ -102,6 +102,10 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-4-clair", Clair, vocal_quatre;
     "vocal-video-clair", Clair, vocal_video;
     "vocal-video-sombre", Sombre, vocal_video;
+    "vocal-camera-apercu-clair", Clair, vocal_camera_apercu;
+    "vocal-camera-apercu-sombre", Sombre, vocal_camera_apercu;
+    "vocal-camera-erreur-clair", Clair, vocal_camera_erreur;
+    "vocal-camera-active-sombre", Sombre, vocal_camera_active;
     "vocal-12-clair", Clair, vocal_douze;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
     "vocal-menu-clair", Clair, vocal_menu;
@@ -716,6 +720,53 @@ fn vocal_video(f: &Principale) {
     let mire = Mire::nouvelle(1280, 720).image(40);
     pont.vocal()
         .poser_image_video(f, &CleVideo::camera("carol"), &mire);
+    stabiliser(f);
+}
+
+fn cameras_du_poste() -> Vec<estompe_plateforme::InfoCamera> {
+    [("c1", "Caméra intégrée"), ("c2", "Webcam USB HD")]
+        .into_iter()
+        .map(|(id, nom)| estompe_plateforme::InfoCamera {
+            id: id.into(),
+            nom: nom.into(),
+        })
+        .collect()
+}
+
+fn vocal_camera_apercu(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |v| v.camera = Some("c2".into()));
+    pont.vocal().ouvrir_camera(f);
+    pont.vocal().presenter_camera(f, cameras_du_poste(), None);
+    let mire = Mire::nouvelle(1280, 720).image(25);
+    pont.vocal()
+        .poser_image_video(f, &estompe_natif::vocal::pont::cle_apercu(), &mire);
+    stabiliser(f);
+}
+
+fn vocal_camera_erreur(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_camera(f);
+    pont.vocal().presenter_camera(
+        f,
+        cameras_du_poste(),
+        Some(&estompe_plateforme::ErreurCamera::Occupee),
+    );
+    stabiliser(f);
+}
+
+fn vocal_camera_active(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        2,
+        |_| {},
+        |v| {
+            v.camera_active = true;
+            v.camera_erreur = None;
+        },
+    );
+    let mire = Mire::nouvelle(1280, 720).image(60);
+    pont.vocal()
+        .poser_image_video(f, &CleVideo::camera("u1"), &mire);
     stabiliser(f);
 }
 

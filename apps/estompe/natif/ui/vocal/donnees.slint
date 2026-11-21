@@ -51,6 +51,18 @@ export struct BarreVocal {
     son-impose: bool,
     peut-parler: bool,
     message: string,
+    camera-active: bool,
+    camera-demarrage: bool,
+}
+
+export struct ChoixCameraVocal {
+    ouvert: bool,
+    choisie: string,
+    apercu: int,
+    erreur: string,
+    qualites: [string],
+    qualite: int,
+    debit: string,
 }
 
 export struct SalonDestination {
@@ -126,6 +138,8 @@ export global DonneesVocal {
     in-out property <string> glisse-depuis;
     in property <string> erreur-depot-salon;
     in property <string> erreur-depot;
+    in property <ChoixCameraVocal> camera;
+    in property <[PeripheriqueVocal]> cameras;
     callback rejoindre(string);
     callback ouvrir-vocal(string);
     callback quitter();
@@ -149,6 +163,12 @@ export global DonneesVocal {
     pure callback donnees-glisse(string, string) -> data-transfer;
     pure callback peut-deposer(data-transfer, string) -> bool;
     callback deposer(data-transfer, string);
+    callback basculer-camera();
+    callback fermer-camera();
+    callback choisir-camera(string);
+    callback choisir-qualite-camera(int);
+    callback activer-camera();
+    callback rejoindre-avec-camera(string);
     callback ouvrir-reglages();
     callback fermer-reglages();
     callback regler(ReglagesVocal, bool);

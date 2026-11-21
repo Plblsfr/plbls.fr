@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::audio::ReglagesMicro;
 
+use super::camera::QualiteCamera;
 use super::erreurs::CauseMicro;
 use super::mixage::Ecoute;
 use super::salle::{est_partage, InfoParticipant, Qualite};
@@ -45,6 +46,11 @@ pub struct EtatVocal {
     pub traitement: ReglagesMicro,
     pub ecoute: Ecoute,
     pub videos: BTreeSet<CleVideo>,
+    pub camera_active: bool,
+    pub camera_demarrage: bool,
+    pub camera: Option<String>,
+    pub qualite_camera: QualiteCamera,
+    pub camera_erreur: Option<String>,
 }
 
 impl Default for EtatVocal {
@@ -68,6 +74,11 @@ impl Default for EtatVocal {
             traitement: ReglagesMicro::default(),
             ecoute: Ecoute::default(),
             videos: BTreeSet::new(),
+            camera_active: false,
+            camera_demarrage: false,
+            camera: None,
+            qualite_camera: QualiteCamera::default(),
+            camera_erreur: None,
         }
     }
 }
@@ -197,6 +208,9 @@ impl EtatVocal {
             traitement: self.traitement,
             ecoute: std::mem::take(&mut self.ecoute),
             porte_ouverte: self.porte_ouverte,
+            camera: self.camera.take(),
+            qualite_camera: self.qualite_camera,
+            camera_erreur: self.camera_erreur.take(),
             ..Self::default()
         };
     }

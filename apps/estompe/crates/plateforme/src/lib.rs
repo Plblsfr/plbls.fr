@@ -1,4 +1,5 @@
 mod audio;
+mod camera;
 mod coffre;
 mod demarrage;
 mod dossiers;
@@ -23,6 +24,10 @@ mod url;
 mod zone;
 
 pub use audio::{AudioSysteme, ChoixPeripherique, SonPeripheriques};
+pub use camera::{
+    erreur_de_texte, CamerasIndisponibles, CamerasSysteme, DemandeCamera, ErreurCamera, FluxCamera,
+    FormatPixels, ImageCamera, InfoCamera, RappelCamera, SystemeCamera,
+};
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use demarrage::{
     commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,

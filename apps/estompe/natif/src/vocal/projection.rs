@@ -72,6 +72,8 @@ pub struct Barre {
     pub son_impose: bool,
     pub peut_parler: bool,
     pub message: String,
+    pub camera_active: bool,
+    pub camera_demarrage: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,7 +204,12 @@ pub fn video_de(
     utilisateur: &str,
 ) -> Option<CleVideo> {
     let cle = CleVideo::camera(utilisateur);
-    (ici && !est_moi && vocal.video(&cle)).then_some(cle)
+    let publiee = if est_moi {
+        vocal.camera_active
+    } else {
+        vocal.video(&cle)
+    };
+    (ici && publiee).then_some(cle)
 }
 
 pub fn salons_vocaux(etat: &Etat, serveur: &str) -> Vec<(String, String)> {
@@ -299,6 +306,8 @@ pub fn barre(
             son_impose: false,
             peut_parler: true,
             message: vocal.erreur.clone().unwrap_or_default(),
+            camera_active: false,
+            camera_demarrage: false,
         };
     };
     let (serveur, nom_serveur, nom_salon) = etat
@@ -329,8 +338,9 @@ pub fn barre(
         _ => String::new(),
     };
     let message = vocal
-        .micro_indisponible
-        .map(|c| c.erreur())
+        .camera_erreur
+        .clone()
+        .or_else(|| vocal.micro_indisponible.map(|c| c.erreur()))
         .or_else(|| vocal.erreur.clone())
         .unwrap_or_default();
     Barre {
@@ -358,6 +368,8 @@ pub fn barre(
             Some(salon),
         ),
         message,
+        camera_active: vocal.camera_active,
+        camera_demarrage: vocal.camera_demarrage,
     }
 }
 

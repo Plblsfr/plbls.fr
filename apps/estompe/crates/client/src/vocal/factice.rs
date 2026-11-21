@@ -9,12 +9,13 @@ use tokio::sync::mpsc;
 
 use crate::http::{ErreurApi, Refus};
 
+use super::camera::FormatVideo;
 use super::salle::{
     Connecteur, Connexion, ErreurSalle, EvenementSalle, FluxTrames, InfoParticipant, JetonSalle,
-    RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
+    RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
 use super::session::ApiVocale;
-use super::video::{DemandeVideo, FluxVideo, ImageVideo, SourceVideo};
+use super::video::{DemandeVideo, FluxVideo, ImageI420, ImageVideo, SourceVideo};
 
 type CleFactice = (String, String, SourceVideo);
 
@@ -54,6 +55,8 @@ struct EtatServeur {
     connexions: usize,
     videos: BTreeMap<CleFactice, PublicationFactice>,
     images: BTreeMap<String, usize>,
+    formats: BTreeMap<CleFactice, FormatVideo>,
+    publiees: BTreeMap<CleFactice, usize>,
 }
 
 #[derive(Clone, Default)]
@@ -189,6 +192,26 @@ impl ServeurVocalFactice {
         self.etat()
             .videos
             .contains_key(&(salle.to_string(), identite.to_string(), source))
+    }
+
+    pub fn format_publie(
+        &self,
+        salle: &str,
+        identite: &str,
+        source: SourceVideo,
+    ) -> Option<FormatVideo> {
+        self.etat()
+            .formats
+            .get(&(salle.to_string(), identite.to_string(), source))
+            .copied()
+    }
+
+    pub fn images_publiees(&self, salle: &str, identite: &str, source: SourceVideo) -> usize {
+        self.etat()
+            .publiees
+            .get(&(salle.to_string(), identite.to_string(), source))
+            .copied()
+            .unwrap_or(0)
     }
 
     pub fn images_envoyees(&self, abonne: &str) -> usize {
@@ -378,6 +401,29 @@ impl ServeurVocalFactice {
     }
 }
 
+struct SortieVideoFactice {
+    serveur: ServeurVocalFactice,
+    salle: String,
+    identite: String,
+    source: SourceVideo,
+}
+
+impl SortieVideo for SortieVideoFactice {
+    fn envoyer(&self, image: &ImageI420) {
+        let cle = (self.salle.clone(), self.identite.clone(), self.source);
+        if !self.serveur.etat().videos.contains_key(&cle) {
+            return;
+        }
+        *self.serveur.etat().publiees.entry(cle).or_default() += 1;
+        self.serveur.pousser_image(
+            &self.salle,
+            &self.identite,
+            self.source,
+            Arc::new(image.clone()),
+        );
+    }
+}
+
 struct SalleFactice {
     serveur: ServeurVocalFactice,
     salle: String,
@@ -479,6 +525,38 @@ impl Salle for SalleFactice {
         }
         self.serveur
             .regler_abonnement(&self.salle, &self.identite, identite, source, demande);
+    }
+
+    fn publier_video(
+        &self,
+        source: SourceVideo,
+        format: FormatVideo,
+    ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>> {
+        Box::pin(async move {
+            if self.fermee.load(Ordering::SeqCst) {
+                return Err(ErreurSalle::Fermee);
+            }
+            self.serveur
+                .etat()
+                .formats
+                .insert((self.salle.clone(), self.identite.clone(), source), format);
+            self.serveur
+                .publier_video(&self.salle, &self.identite, source);
+            let sortie: Arc<dyn SortieVideo> = Arc::new(SortieVideoFactice {
+                serveur: self.serveur.clone(),
+                salle: self.salle.clone(),
+                identite: self.identite.clone(),
+                source,
+            });
+            Ok(sortie)
+        })
+    }
+
+    fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            self.serveur
+                .retirer_video(&self.salle, &self.identite, source);
+        })
     }
 
     fn fermer(&self) -> BoxFuture<'_, ()> {

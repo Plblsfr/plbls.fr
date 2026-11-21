@@ -176,6 +176,7 @@ async fn main() -> Result<(), String> {
             }),
             connecteur: Arc::new(ConnecteurLiveKit),
             audio: Arc::new(audio.clone()),
+            cameras: Arc::new(estompe_client::vocal::CamerasFactices::nouvelles()),
             apm: Some(apm()),
             reglages: Reglages {
                 micro: Some(MICRO.into()),

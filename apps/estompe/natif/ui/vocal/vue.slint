@@ -95,6 +95,14 @@ component Rejoindre inherits VerticalLayout {
             }
         }
         Bouton {
+            icone: "camera";
+            description: "Rejoindre avec la caméra";
+            variante: VarianteBouton.secondaire;
+            clique => {
+                DonneesVocal.rejoindre-avec-camera(DonneesVocal.vue.salon);
+            }
+        }
+        Bouton {
             icone: "sliders";
             description: "Réglages audio";
             variante: VarianteBouton.fantome;
@@ -117,7 +125,7 @@ component Rejoindre inherits VerticalLayout {
         }
     }
     Text {
-        text: "L'audio passe par le serveur vocal. La caméra et le partage d'écran arrivent bientôt dans l'app native.";
+        text: "L'audio et la vidéo passent par le serveur vocal. Le partage d'écran arrive bientôt dans l'app native.";
         color: Theme.gris;
         font-size: Typo.petit;
         horizontal-alignment: center;

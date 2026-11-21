@@ -92,29 +92,36 @@ pub fn demarrer(
         ecrans::publieur(fenetre),
     )
     .map_err(|e| format!("fil de l'entrée : {e}"))?;
-    let (micro, sortie, traitement, ecoute) = session.memoire.lire(|p| {
+    let (micro, sortie, traitement, ecoute, camera, qualite_camera) = session.memoire.lire(|p| {
         (
             p.micro.clone(),
             p.sortie_audio.clone(),
             p.traitement_micro,
             p.ecoute.clone(),
+            p.camera.clone(),
+            p.qualite_camera,
         )
     });
     let audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio> =
         std::sync::Arc::new(estompe_plateforme::AudioSysteme);
     let apm = apm_vocal();
+    let cameras: std::sync::Arc<dyn estompe_plateforme::SystemeCamera> =
+        std::sync::Arc::new(estompe_plateforme::CamerasSysteme);
     let vocal = std::sync::Arc::new(estompe_client::vocal::SessionVocale::demarrer(
         &entree.runtime(),
         estompe_client::vocal::Dependances {
             api: std::sync::Arc::new(reels.client.clone()),
             connecteur: connecteur_vocal(),
             audio: audio.clone(),
+            cameras: cameras.clone(),
             apm: apm.clone(),
             reglages: estompe_client::vocal::Reglages {
                 micro,
                 sortie,
                 traitement,
                 ecoute,
+                camera,
+                qualite_camera,
                 ..estompe_client::vocal::Reglages::default()
             },
         },
@@ -124,6 +131,7 @@ pub fn demarrer(
         session: vocal.clone(),
         audio,
         raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+        cameras,
         apm,
     };
     let jeton = reels.auth.fournisseur_jeton();

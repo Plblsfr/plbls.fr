@@ -3,10 +3,11 @@ use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
 use futures_util::StreamExt;
+use livekit::options::VideoEncoding;
 use livekit::prelude::{
-    ConnectionQuality, LocalAudioTrack, LocalTrack, Participant, RemoteParticipant, RemoteTrack,
-    RemoteTrackPublication, Room, RoomEvent, RoomOptions, TrackKind, TrackPublication,
-    TrackPublishOptions, TrackSource,
+    ConnectionQuality, LocalAudioTrack, LocalTrack, LocalVideoTrack, Participant,
+    RemoteParticipant, RemoteTrack, RemoteTrackPublication, Room, RoomEvent, RoomOptions,
+    TrackKind, TrackPublication, TrackPublishOptions, TrackSource,
 };
 use livekit::track::TrackDimension;
 use livekit::webrtc::audio_frame::AudioFrame;
@@ -14,8 +15,12 @@ use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::native::apm::AudioProcessingModule;
-use livekit::webrtc::prelude::{I420Buffer, VideoBuffer, VideoFormatType};
+use livekit::webrtc::prelude::{
+    I420Buffer, VideoBuffer, VideoFormatType, VideoFrame, VideoResolution, VideoRotation,
+};
 use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+use livekit::webrtc::video_source::native::NativeVideoSource;
+use livekit::webrtc::video_source::RtcVideoSource;
 use livekit::webrtc::video_stream::native::NativeVideoStream;
 use livekit::DisconnectReason;
 use livekit_protocol::{ParticipantPermission, TrackSource as SourceProto};
@@ -23,11 +28,12 @@ use tokio::sync::mpsc;
 
 use crate::audio::{Apm, MoteurApm, FREQUENCE};
 
+use super::camera::FormatVideo;
 use super::salle::{
     Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle, Qualite,
-    RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
+    RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
-use super::video::{DemandeVideo, ImageVideo, SourceVideo, TrameVideo};
+use super::video::{DemandeVideo, ImageI420, ImageVideo, SourceVideo, TrameVideo};
 
 const FILE_MICRO: usize = 50;
 const TAMPON_SOURCE_MS: u32 = 100;
@@ -61,6 +67,39 @@ struct SalleLiveKit {
 struct SortieLiveKit {
     envoi: mpsc::Sender<Vec<i16>>,
     piste: LocalAudioTrack,
+}
+
+struct SortieVideoLiveKit {
+    source: NativeVideoSource,
+    debut: std::time::Instant,
+}
+
+fn copier_plan(source: &[u8], largeur: usize, hauteur: usize, cible: &mut [u8], pas: usize) {
+    for y in 0..hauteur {
+        cible[y * pas..y * pas + largeur].copy_from_slice(&source[y * largeur..(y + 1) * largeur]);
+    }
+}
+
+impl SortieVideo for SortieVideoLiveKit {
+    fn envoyer(&self, image: &ImageI420) {
+        if !image.valide() {
+            return;
+        }
+        let mut tampon = I420Buffer::new(image.largeur, image.hauteur);
+        let (pas_y, pas_u, pas_v) = tampon.strides();
+        let (l, h) = (image.largeur as usize, image.hauteur as usize);
+        let (cl, ch) = (
+            image.largeur_chroma() as usize,
+            image.hauteur_chroma() as usize,
+        );
+        let (y, u, v) = tampon.data_mut();
+        copier_plan(&image.y, l, h, y, pas_y as usize);
+        copier_plan(&image.u, cl, ch, u, pas_u as usize);
+        copier_plan(&image.v, cl, ch, v, pas_v as usize);
+        let mut trame = VideoFrame::new(VideoRotation::VideoRotation0, tampon);
+        trame.timestamp_us = self.debut.elapsed().as_micros() as i64;
+        self.source.capture_frame(&trame);
+    }
 }
 
 fn qualite(q: ConnectionQuality) -> Qualite {
@@ -418,6 +457,64 @@ impl Salle for SalleLiveKit {
             });
             let sortie: Arc<dyn SortieMicro> = Arc::new(SortieLiveKit { envoi, piste });
             Ok(sortie)
+        })
+    }
+
+    fn publier_video(
+        &self,
+        source: SourceVideo,
+        format: FormatVideo,
+    ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>> {
+        Box::pin(async move {
+            let video = NativeVideoSource::new(
+                VideoResolution {
+                    width: format.largeur,
+                    height: format.hauteur,
+                },
+                source == SourceVideo::Partage,
+            );
+            let nom = match source {
+                SourceVideo::Camera => "camera",
+                SourceVideo::Partage => "screen",
+            };
+            let piste =
+                LocalVideoTrack::create_video_track(nom, RtcVideoSource::Native(video.clone()));
+            self.salle
+                .local_participant()
+                .publish_track(
+                    LocalTrack::Video(piste),
+                    TrackPublishOptions {
+                        source: piste_de(source),
+                        simulcast: format.simulcast,
+                        video_encoding: Some(VideoEncoding {
+                            max_bitrate: format.debit,
+                            max_framerate: f64::from(format.images_par_seconde),
+                        }),
+                        ..TrackPublishOptions::default()
+                    },
+                )
+                .await
+                .map_err(|e| ErreurSalle::Publication(e.to_string()))?;
+            let sortie: Arc<dyn SortieVideo> = Arc::new(SortieVideoLiveKit {
+                source: video,
+                debut: std::time::Instant::now(),
+            });
+            Ok(sortie)
+        })
+    }
+
+    fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            let local = self.salle.local_participant();
+            let sids: Vec<_> = local
+                .track_publications()
+                .into_iter()
+                .filter(|(_, p)| p.source() == piste_de(source))
+                .map(|(sid, _)| sid)
+                .collect();
+            for sid in sids {
+                let _ = local.unpublish_track(&sid).await;
+            }
         })
     }
 

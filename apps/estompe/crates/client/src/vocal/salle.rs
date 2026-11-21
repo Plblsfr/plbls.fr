@@ -6,7 +6,8 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use tokio::sync::mpsc;
 
-use super::video::{DemandeVideo, FluxVideo, SourceVideo};
+use super::camera::FormatVideo;
+use super::video::{DemandeVideo, FluxVideo, ImageI420, SourceVideo};
 
 pub const SUFFIXE_PARTAGE: &str = "#screen";
 
@@ -201,6 +202,10 @@ pub trait SortieMicro: Send + Sync {
     fn couper(&self, coupe: bool);
 }
 
+pub trait SortieVideo: Send + Sync {
+    fn envoyer(&self, image: &ImageI420);
+}
+
 pub struct Connexion {
     pub salle: Arc<dyn Salle>,
     pub participants: Vec<InfoParticipant>,
@@ -215,6 +220,12 @@ pub trait Salle: Send + Sync {
     ) -> BoxFuture<'_, Result<(), ErreurSalle>>;
     fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>>;
     fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>);
+    fn publier_video(
+        &self,
+        source: SourceVideo,
+        format: FormatVideo,
+    ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>>;
+    fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()>;
     fn fermer(&self) -> BoxFuture<'_, ()>;
 }
 

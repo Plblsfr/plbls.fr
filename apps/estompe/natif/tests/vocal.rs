@@ -15,8 +15,8 @@ use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::preferences::Preferences;
 use estompe_client::vocal::factice::{ApiVocaleFactice, ServeurVocalFactice};
 use estompe_client::vocal::{
-    CleVideo, Dependances, EvenementSalle, Mire, ReglagesPtt, SessionVocale, SourceAudio,
-    SourceVideo,
+    CamerasFactices, CleVideo, Dependances, EvenementSalle, Mire, ReglagesPtt, SessionVocale,
+    SourceAudio, SourceVideo,
 };
 use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
@@ -88,6 +88,7 @@ struct Banc {
     api: Arc<ApiVocaleFactice>,
     session: Arc<SessionVocale>,
     visibilite: Visibilite,
+    cameras: CamerasFactices,
 }
 
 type Visibilite = Arc<dyn Fn(&Principale, bool) + Send + Sync>;
@@ -364,6 +365,110 @@ fn scenario(
         &faible,
         |f| tuile(f, "carol").is_some_and(|t| t.video < 0),
         "c334 : caméra coupée, la tuile revient à la photo de profil",
+    );
+
+    cliquer(&faible, "Activer la caméra");
+    let cameras = banc.cameras.clone();
+    attendre_l_interface(
+        &faible,
+        move |f| {
+            cameras.pousser(1);
+            let c = f.global::<DonneesVocal>().get_camera();
+            c.ouvert
+                && c.apercu >= 0
+                && f.global::<DonneesVideo>()
+                    .get_flux()
+                    .row_data(c.apercu as usize)
+                    .is_some_and(|l| l.pret)
+        },
+        "c335 : l'aperçu de la caméra s'affiche avant de l'activer",
+    );
+    assert_eq!(banc.cameras.ouvertes(), vec!["c1".to_string()]);
+    assert!(!banc.serveur.video_publiee("v1", "u1", SourceVideo::Camera));
+    let noms: Vec<String> = sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .get_cameras()
+            .iter()
+            .map(|c| c.nom.to_string())
+            .collect()
+    });
+    assert_eq!(noms, ["Caméra intégrée", "Webcam USB"]);
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_choisir_camera("c2".into());
+        f.global::<DonneesVocal>().invoke_choisir_qualite_camera(0);
+    });
+    attendre(
+        || banc.cameras.ouvertes() == ["c2".to_string()],
+        "c335 : l'aperçu passe sur la caméra choisie",
+    );
+    assert_eq!(
+        memoire.lire(|p| (p.camera.clone(), p.qualite_camera)),
+        (
+            Some("c2".to_string()),
+            estompe_client::vocal::QualiteCamera::Q360
+        )
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_activer_camera();
+    });
+    attendre(
+        || banc.serveur.video_publiee("v1", "u1", SourceVideo::Camera),
+        "c335 : la caméra est publiée dans le salon",
+    );
+    assert_eq!(
+        banc.serveur.format_publie("v1", "u1", SourceVideo::Camera),
+        Some(estompe_client::vocal::QualiteCamera::Q360.format())
+    );
+    assert_eq!(banc.cameras.ouvertes(), vec!["c2".to_string()]);
+    let cameras = banc.cameras.clone();
+    attendre_l_interface(
+        &faible,
+        move |f| {
+            cameras.pousser(1);
+            !f.global::<DonneesVocal>().get_camera().ouvert
+                && f.global::<DonneesVocal>().get_barre().camera_active
+                && video_affichee(f, "u1")
+        },
+        "c335 : ma caméra s'affiche dans ma tuile",
+    );
+    assert!(
+        banc.serveur
+            .images_publiees("v1", "u1", SourceVideo::Camera)
+            > 0
+    );
+    raccourci(&faible, "v");
+    attendre(
+        || !banc.serveur.video_publiee("v1", "u1", SourceVideo::Camera),
+        "c335 : Alt+Maj+V coupe la caméra et la retire du salon",
+    );
+    assert!(banc.cameras.ouvertes().is_empty(), "caméra libérée");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            !f.global::<DonneesVocal>().get_barre().camera_active
+                && tuile(f, "u1").is_some_and(|t| t.video < 0)
+        },
+        "c335 : caméra coupée, ma tuile revient à ma photo",
+    );
+    banc.cameras.occuper("c2", true);
+    cliquer(&faible, "Activer la caméra");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            f.global::<DonneesVocal>().get_camera().erreur
+                == "Caméra déjà utilisée par une autre application."
+        },
+        "c335 : caméra prise par une autre application, message clair",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_fermer_camera();
+    });
+    banc.cameras.occuper("c2", false);
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesVocal>().get_camera().ouvert,
+        "fenêtre de la caméra fermée",
     );
     assert!(sur_l_interface(&faible, |f| {
         f.global::<DonneesVocal>()
@@ -970,12 +1075,16 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         },
     );
     let api = Arc::new(ApiVocaleFactice::nouvelle("u1"));
+    let cameras = CamerasFactices::nouvelles();
+    cameras.brancher("c1", "Caméra intégrée");
+    cameras.brancher("c2", "Webcam USB");
     let session = Arc::new(SessionVocale::demarrer(
         &entree.runtime(),
         Dependances {
             api: api.clone(),
             connecteur: Arc::new(serveur.clone()),
             audio: Arc::new(audio.clone()),
+            cameras: Arc::new(cameras.clone()),
             apm: None,
             reglages: estompe_client::vocal::Reglages::default(),
         },
@@ -1004,6 +1113,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         session: session.clone(),
         audio: Arc::new(audio.clone()),
         raccourcis: Arc::new(RaccourcisFactices::nouveaux(false)),
+        cameras: Arc::new(cameras.clone()),
         apm: None,
     });
     let coquille = Coquille::brancher(
@@ -1021,6 +1131,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         api,
         session: session.clone(),
         visibilite: Arc::new(coquille.suivi_de_la_visibilite()),
+        cameras,
     };
     let faible = fenetre.as_weak();
     let pilote = std::thread::spawn(move || {
