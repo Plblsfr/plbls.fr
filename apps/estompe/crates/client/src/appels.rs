@@ -5,15 +5,17 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::fichiers::est_une_video;
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
 use crate::store::CleConversation;
+use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement, GetMeReponse,
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
     MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostNotificationsReadRequete,
-    PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
+    PostNotificationsReadRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -179,6 +181,16 @@ impl Client {
 
     pub async fn conversations_privees(&self) -> Result<Vec<DM>, ErreurApi> {
         self.get("/dms").await
+    }
+
+    pub async fn ouvrir_conversation_privee(&self, pseudo: &str) -> Result<DM, ErreurApi> {
+        self.post(
+            "/dms",
+            &PostDmsRequete {
+                pseudo: pseudo.to_string(),
+            },
+        )
+        .await
     }
 
     pub async fn notifications(&self) -> Result<Vec<Mention>, ErreurApi> {
@@ -435,6 +447,51 @@ impl Client {
             envoi.contenu.clone(),
         ));
         self.televerser("/files", &parties).await
+    }
+
+    pub async fn envoyer_piece(
+        &self,
+        nom: &str,
+        type_mime: &str,
+        source: SourceEnvoi,
+        progres: Progression,
+    ) -> Result<Attachment, ErreurApi> {
+        let parties = if est_une_video(type_mime) {
+            vec![Partie::texte("kind", "video")]
+        } else {
+            Vec::new()
+        };
+        let envoi = Televersement {
+            parties,
+            nom: nom.to_string(),
+            type_mime: type_mime.to_string(),
+            source,
+        };
+        self.televerser_en_flux("/files", &envoi, progres).await
+    }
+
+    pub async fn envoyer_vocal(
+        &self,
+        fichier: Vec<u8>,
+        duree_ms: u64,
+        forme: &[u8],
+    ) -> Result<Attachment, ErreurApi> {
+        let forme: Vec<String> = forme.iter().map(u8::to_string).collect();
+        let envoi = Televersement {
+            parties: vec![
+                Partie::texte("kind", "voice"),
+                Partie::texte(
+                    "duration_ms",
+                    &duree_ms.clamp(1, crate::vocal::DUREE_MAX_MS).to_string(),
+                ),
+                Partie::texte("waveform", &forme.join(",")),
+            ],
+            nom: crate::vocal::NOM_DU_FICHIER.to_string(),
+            type_mime: crate::vocal::TYPE_MIME.to_string(),
+            source: SourceEnvoi::Octets(fichier.into()),
+        };
+        self.televerser_en_flux("/files", &envoi, std::sync::Arc::new(|_, _| {}))
+            .await
     }
 
     pub async fn definir_avatar(

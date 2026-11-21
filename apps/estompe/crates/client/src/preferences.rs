@@ -50,6 +50,9 @@ pub struct Preferences {
     pub derniere_vue: Option<DerniereVue>,
     pub panneau_replie: bool,
     pub marge_ouverte: bool,
+    pub emoji_recents: Vec<String>,
+    pub recherches_recentes: Vec<String>,
+    pub vocaux_ecoutes: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -67,6 +70,9 @@ impl Default for Preferences {
             derniere_vue: None,
             panneau_replie: false,
             marge_ouverte: true,
+            emoji_recents: Vec::new(),
+            recherches_recentes: Vec::new(),
+            vocaux_ecoutes: Vec::new(),
         }
     }
 }
@@ -124,6 +130,23 @@ impl Preferences {
                 .filter(|v: &DerniereVue| !v.compte.is_empty() && !v.adresse.is_empty()),
             panneau_replie: champ(&objet, "panneau_replie", d.panneau_replie),
             marge_ouverte: champ(&objet, "marge_ouverte", d.marge_ouverte),
+            emoji_recents: objet
+                .get("emoji_recents")
+                .map(|v| crate::emoji::charger_recents(&v.to_string()))
+                .unwrap_or_default(),
+            recherches_recentes: objet
+                .get("recherches_recentes")
+                .map(|v| crate::emoji::charger_recents(&v.to_string()))
+                .unwrap_or_default()
+                .into_iter()
+                .take(crate::recherche::RECENTES_MAX)
+                .collect(),
+            vocaux_ecoutes: champ(&objet, "vocaux_ecoutes", d.vocaux_ecoutes)
+                .into_iter()
+                .rev()
+                .take(crate::vocal::ECOUTES_MAX)
+                .rev()
+                .collect(),
         })
     }
 
@@ -274,6 +297,9 @@ mod tests {
             derniere_vue: Some(DerniereVue::enregistrer("u1", "#/s/s1/c9")),
             panneau_replie: true,
             marge_ouverte: false,
+            emoji_recents: vec!["😂".to_string(), "👍".to_string()],
+            recherches_recentes: vec!["de:carol vacances".to_string()],
+            vocaux_ecoutes: vec!["f1".to_string()],
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -352,6 +378,23 @@ mod tests {
             (lu.derniere_vue, lu.panneau_replie, lu.marge_ouverte),
             (Some(DerniereVue::enregistrer("u1", "#/dm/d1")), true, false)
         );
+        assert_eq!(
+            Preferences::depuis_json(r#"{"emoji_recents": ["😂", 3, "👍"]}"#)
+                .unwrap()
+                .emoji_recents,
+            ["😂", "👍"]
+        );
+        let recherches: Vec<String> = (0..12).map(|i| format!("q{i}")).collect();
+        let lu = Preferences::depuis_json(
+            &serde_json::json!({"recherches_recentes": recherches}).to_string(),
+        )
+        .unwrap();
+        assert_eq!(lu.recherches_recentes, recherches[..10]);
+        let ecoutes: Vec<String> = (0..600).map(|i| format!("f{i}")).collect();
+        let lu =
+            Preferences::depuis_json(&serde_json::json!({"vocaux_ecoutes": ecoutes}).to_string())
+                .unwrap();
+        assert_eq!(lu.vocaux_ecoutes, ecoutes[100..]);
         for incomplete in [
             r#"{"derniere_vue": {"compte": "", "adresse": "x"}}"#,
             r#"{"derniere_vue": {"compte": "u1"}}"#,

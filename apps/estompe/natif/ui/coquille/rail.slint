@@ -2,6 +2,7 @@ import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jeto
 import { Icone, Compteur, Coins } from "../composants.slint";
 import { Anneau } from "../composants/focus.slint";
 import { DonneesCoquille, LigneServeur, LigneSection } from "donnees.slint";
+import { DonneesRecherche } from "recherche.slint";
 
 component Pave {
     in property <string> libelle;
@@ -297,7 +298,17 @@ export component Rail inherits Rectangle {
             vertical-stretch: 0;
             alignment: end;
             spacing: Espace.e1;
-            padding-top: DonneesCoquille.sections.length > 0 ? Espace.e2 : 0;
+            padding-top: Espace.e2;
+            HorizontalLayout {
+                alignment: center;
+                Outil {
+                    icone: "cherche";
+                    libelle: "Recherche globale";
+                    clique => {
+                        DonneesRecherche.ouvrir();
+                    }
+                }
+            }
             for section in DonneesCoquille.sections: HorizontalLayout {
                 alignment: center;
                 Outil {

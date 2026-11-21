@@ -70,11 +70,20 @@ component CarteEpingle inherits Rectangle {
         }
         HorizontalLayout {
             alignment: start;
+            spacing: Espace.e2;
             Bouton {
                 texte: "Voir dans la conversation";
                 variante: VarianteBouton.secondaire;
                 clique => {
                     DonneesMessagerie.voir-epingle(root.epingle.id);
+                }
+            }
+            if root.epingle.desepingler: Bouton {
+                icone: "epingle";
+                description: "Désépingler";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesMessagerie.action-message(root.epingle.id, "desepingler");
                 }
             }
         }

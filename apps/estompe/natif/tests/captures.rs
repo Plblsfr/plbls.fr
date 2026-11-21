@@ -17,9 +17,10 @@ use estompe_natif::ecrans::afficher;
 use estompe_natif::entree::{self, Compte, Etat};
 use estompe_natif::messagerie::medias::{self, CleImage, Format, Medias, Source};
 use estompe_natif::messagerie::pont::Telechargement;
+use estompe_natif::messagerie::selecteur::Cible;
 use estompe_natif::{
-    creer_fenetre, DonneesCoquille, DonneesMessagerie, DonneesSaisie, ModeTheme, Mouvement,
-    Principale, Theme,
+    creer_fenetre, DonneesCoquille, DonneesCreationSondage, DonneesMessagerie, DonneesSaisie,
+    DonneesSelecteur, DonneesVocal, EtapeVocal, ModeTheme, Mouvement, Principale, Theme,
 };
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
@@ -118,6 +119,46 @@ const ECRANS: &[Ecran] = ecrans![
     "saisie-lecture-seule-clair", Clair, saisie_lecture_seule;
     "saisie-non-envoye-clair", Clair, saisie_non_envoye;
     "saisie-non-envoye-sombre", Sombre, saisie_non_envoye;
+    "saisie-mentions-clair", Clair, saisie_mentions;
+    "saisie-mentions-sombre", Sombre, saisie_mentions;
+    "saisie-pieces-clair", Clair, saisie_pieces;
+    "saisie-pieces-sombre", Sombre, saisie_pieces;
+    "saisie-depot-clair", Clair, saisie_depot;
+    "saisie-vocal-enregistrement-clair", Clair, saisie_vocal_enregistrement;
+    "saisie-vocal-enregistrement-sombre", Sombre, saisie_vocal_enregistrement;
+    "saisie-vocal-ecoute-clair", Clair, saisie_vocal_ecoute;
+    "saisie-vocal-ecoute-sombre", Sombre, saisie_vocal_ecoute;
+    "messagerie-vocal-clair", Clair, messagerie_vocal;
+    "messagerie-vocal-sombre", Sombre, messagerie_vocal;
+    "selecteur-emoji-clair", Clair, selecteur_emoji;
+    "selecteur-emoji-sombre", Sombre, selecteur_emoji;
+    "selecteur-sans-resultat-clair", Clair, selecteur_sans_resultat;
+    "selecteur-gifs-clair", Clair, selecteur_gifs;
+    "selecteur-gifs-sombre", Sombre, selecteur_gifs;
+    "selecteur-gifs-limite-clair", Clair, selecteur_gifs_limite;
+    "messagerie-actions-clair", Clair, messagerie_actions;
+    "messagerie-actions-sombre", Sombre, messagerie_actions;
+    "messagerie-menu-clair", Clair, messagerie_menu;
+    "messagerie-menu-sombre", Sombre, messagerie_menu;
+    "confirmation-clair", Clair, confirmation_suppression;
+    "confirmation-sombre", Sombre, confirmation_suppression;
+    "sondage-creation-clair", Clair, sondage_creation;
+    "sondage-creation-sombre", Sombre, sondage_creation;
+    "sondage-erreur-clair", Clair, sondage_erreur;
+    "sondage-votants-clair", Clair, sondage_votants;
+    "sondage-votants-sombre", Sombre, sondage_votants;
+    "recherche-resultats-clair", Clair, recherche_resultats;
+    "recherche-resultats-sombre", Sombre, recherche_resultats;
+    "recherche-sans-resultat-clair", Clair, recherche_sans_resultat;
+    "recherche-erreur-clair", Clair, recherche_erreur;
+    "recherche-erreur-sombre", Sombre, recherche_erreur;
+    "palette-clair", Clair, palette;
+    "palette-sombre", Sombre, palette;
+    "nouveau-prive-clair", Clair, nouveau_prive;
+    "nouveau-prive-sombre", Sombre, nouveau_prive;
+    "nouveau-prive-erreur-clair", Clair, nouveau_prive_erreur;
+    "menu-statut-clair", Clair, menu_statut;
+    "menu-statut-sombre", Sombre, menu_statut;
 ];
 
 fn bob() -> Compte {
@@ -810,6 +851,14 @@ fn medias_des_captures() -> Arc<Medias> {
         Format::Visionneuse,
         &photos[1].1,
     );
+    for (n, (largeur, hauteur, ciel, sol)) in apercus_de_gifs().into_iter().enumerate() {
+        installer(
+            &medias,
+            Source::Externe(format!("https://media1.giphy.com/captures/{n}.gif")),
+            Format::Gif,
+            &photo(largeur, hauteur, ciel, sol),
+        );
+    }
     medias.installer_emojis(vec![
         EmojiPersonnalise {
             id: "e1".into(),
@@ -915,6 +964,23 @@ fn messagerie_pieces(f: &Principale) {
     stabiliser(f);
 }
 
+fn messagerie_vocal(f: &Principale) {
+    let pont = messagerie_avec(f, commun::coquille::conversation_vocaux());
+    let son: Arc<estompe_plateforme::SonSysteme> = Arc::new(estompe_plateforme::SonSysteme);
+    pont.messagerie().definir_son(son.clone(), son);
+    pont.messagerie()
+        .definir_ecoutes(vec!["m2".into()], Arc::new(|_| {}));
+    pont.messagerie().marquer_illisible("m3");
+    pont.messagerie().rafraichir_maintenant(f);
+    let v = f.global::<DonneesVocal>();
+    v.set_piece("m2".into());
+    v.set_en_lecture(true);
+    v.set_avance(0.4);
+    v.set_temps("0:01".into());
+    v.set_vitesse("1,5×".into());
+    stabiliser(f);
+}
+
 fn messagerie_visionneuse(f: &Principale) {
     let pont = messagerie_avec(f, commun::coquille::conversation_pieces());
     pont.messagerie().image_cliquee(f, "600", 1);
@@ -930,7 +996,188 @@ fn messagerie_sondages(f: &Principale) {
     messagerie_avec(f, commun::coquille::conversation_sondages());
 }
 
+fn sondage_rempli(f: &Principale, question: &str, choix: &[&str]) -> Pont {
+    let pont = saisie_courte(f);
+    pont.messagerie().ouvrir_creation_sondage(f);
+    f.global::<DonneesCreationSondage>()
+        .set_question(question.into());
+    pont.messagerie().creation_modifiee(f);
+    for _ in 2..choix.len() {
+        pont.messagerie().ajouter_choix(f);
+    }
+    for (i, c) in choix.iter().enumerate() {
+        pont.messagerie().choix_modifie(f, i as i32, c);
+    }
+    pont
+}
+
+fn sondage_creation(f: &Principale) {
+    let pont = sondage_rempli(f, "On mange où vendredi ?", &["Pizza", "Sushi", ""]);
+    f.global::<DonneesCreationSondage>().set_multiple(true);
+    pont.messagerie().choisir_cloture(f, 2);
+    stabiliser(f);
+}
+
+fn sondage_erreur(f: &Principale) {
+    let pont = sondage_rempli(f, "Quel jour pour la sortie ?", &["Samedi", "Dimanche"]);
+    pont.messagerie().choisir_cloture(f, 5);
+    f.global::<DonneesCreationSondage>()
+        .set_date("31/02/2026 18:00".into());
+    pont.messagerie().publier_sondage(f);
+    stabiliser(f);
+}
+
+fn sondage_votants(f: &Principale) {
+    let pont = messagerie_avec(f, commun::coquille::conversation_sondages());
+    let personnes = |noms: &[&str]| -> Vec<estompe_client::types::Person> {
+        noms.iter()
+            .map(|n| estompe_client::types::Person {
+                id: Some(n.to_lowercase()),
+                pseudo: Some(n.to_string()),
+            })
+            .collect()
+    };
+    pont.messagerie().afficher_votants(
+        f,
+        "704",
+        [
+            ("o1".to_string(), personnes(&["Bob", "Carol", "Dave"])),
+            ("o2".to_string(), personnes(&["Ève"])),
+            ("o3".to_string(), personnes(&["Inès", "Caro"])),
+        ]
+        .into(),
+    );
+    stabiliser(f);
+}
+
+fn recherche_lancee(f: &Principale, saisie: &str) -> (Pont, u64) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    pont.messagerie().definir_fuseau(Arc::new(|_| 60));
+    pont.ouvrir_recherche(f);
+    f.global::<estompe_natif::DonneesRecherche>()
+        .set_saisie(saisie.into());
+    pont.recherche_modifiee(f, saisie);
+    pont.lancer_recherche(f);
+    let sequence = pont.recherche().unwrap().messages.sequence();
+    (pont, sequence)
+}
+
+fn recherche_resultats(f: &Principale) {
+    let (pont, sequence) = recherche_lancee(f, "réunion -demain de:carol");
+    let page = serde_json::from_value(serde_json::json!({
+        "messages": [
+            {"id": "41", "channel_id": "c1", "author": {"id": "carol", "pseudo": "carol"}, "created_at": "2026-11-18T17:42:00Z", "content": "La réunion de samedi est déplacée à 15 h, pensez à prévenir ceux qui ne lisent pas ce salon.", "attachments": []},
+            {"id": "38", "channel_id": "c1", "author": {"id": "carol", "pseudo": "carol"}, "created_at": "2026-11-12T09:05:00Z", "content": "Compte rendu des réunions du mois en pièce jointe.", "attachments": [{"id": "f1"}, {"id": "f2"}]},
+            {"id": "12", "dm_id": "d1", "author": {"id": "carol", "pseudo": "carol"}, "created_at": "2026-11-02T20:15:00Z", "content": "Tu viens à la RÉUNION de jeudi ?", "attachments": []}
+        ],
+        "has_more": false
+    }))
+    .unwrap();
+    pont.recherche_recue(f, sequence, Ok(page));
+    stabiliser(f);
+}
+
+fn recherche_sans_resultat(f: &Principale) {
+    let (pont, sequence) = recherche_lancee(f, "pique-nique");
+    pont.recherche_recue(f, sequence, Ok(Default::default()));
+    stabiliser(f);
+}
+
+fn recherche_erreur(f: &Principale) {
+    let (pont, sequence) = recherche_lancee(f, "a:inconnu");
+    let refus = estompe_client::http::ErreurApi::Autre(estompe_client::http::Refus {
+        statut: 400,
+        code: "invalid_query".into(),
+        message: "Filtre « a: » inconnu.".into(),
+        donnees: Default::default(),
+    });
+    pont.recherche_recue(f, sequence, Err(refus));
+    stabiliser(f);
+}
+
+fn palette(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    pont.ouvrir_recherche(f);
+    f.global::<estompe_natif::DonneesRecherche>()
+        .set_saisie("a".into());
+    pont.recherche_modifiee(f, "a");
+    pont.naviguer_recherche(f, 1);
+    pont.naviguer_recherche(f, 1);
+    pont.naviguer_recherche(f, 1);
+    pont.naviguer_recherche(f, 1);
+    stabiliser(f);
+}
+
+fn nouveau_prive_saisi(f: &Principale, saisie: &str) -> Pont {
+    let pont = coquille(f, commun::coquille::etat(), Route::Accueil);
+    pont.ouvrir_nouveau_prive(f);
+    let g = f.global::<estompe_natif::DonneesNouveauPrive>();
+    g.set_saisie(saisie.into());
+    g.set_curseur(saisie.len() as i32);
+    g.set_demande_curseur(g.get_demande_curseur() + 1);
+    pont.nouveau_prive_modifie(f, saisie);
+    pont
+}
+
+fn nouveau_prive(f: &Principale) {
+    let pont = nouveau_prive_saisi(f, "e");
+    pont.naviguer_nouveau_prive(f, 1);
+    stabiliser(f);
+}
+
+fn nouveau_prive_erreur(f: &Principale) {
+    let pont = nouveau_prive_saisi(f, "zoe");
+    let refus = estompe_client::http::ErreurApi::Introuvable(estompe_client::http::Refus {
+        statut: 404,
+        code: "user_not_found".into(),
+        message: "introuvable".into(),
+        donnees: Default::default(),
+    });
+    pont.nouveau_prive_recu(f, Err(refus));
+    stabiliser(f);
+}
+
+fn menu_statut(f: &Principale) {
+    let mut etat = commun::coquille::etat();
+    etat.statuts.insert(
+        "u1".into(),
+        estompe_client::temps_reel::evenements::StatutPresence::Dnd,
+    );
+    let pont = coquille(f, etat, Route::Accueil);
+    let barre = i_slint_backend_testing::ElementHandle::find_by_element_type_name(f, "BoutonMoi")
+        .next()
+        .expect("barre de l'utilisateur");
+    let position = barre.absolute_position();
+    pont.menu_moi(
+        f,
+        estompe_natif::menu::Ancre::Element {
+            x: position.x,
+            haut: position.y,
+            bas: position.y + barre.size().height,
+        },
+    );
+    stabiliser(f);
+}
+
 fn remettre_a_zero(f: &Principale) {
+    estompe_natif::menu::fermer(f);
+    f.global::<DonneesCreationSondage>().set_ouvert(false);
+    f.global::<estompe_natif::DonneesGifs>().set_ouvert(false);
+    f.global::<estompe_natif::DonneesRecherche>()
+        .set_ouvert(false);
+    f.global::<estompe_natif::DonneesNouveauPrive>()
+        .set_ouvert(false);
+    estompe_natif::confirmation::repondre(f, false);
+    f.global::<DonneesSaisie>().set_depot_survole(false);
+    let v = f.global::<DonneesVocal>();
+    v.set_possible(false);
+    v.set_etape(EtapeVocal::Aucune);
+    v.set_piece("".into());
+    v.set_en_lecture(false);
+    v.set_avance(0.0);
+    v.set_vitesse("1×".into());
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerExited);
     f.set_demonstration(false);
     f.set_infobulle_forcee(false);
     f.set_modal_demo_ouvert(false);
@@ -1082,6 +1329,40 @@ fn la_comparaison_tolere_le_bruit_et_signale_un_changement_de_couleur() {
     assert_eq!(comparer(&autre_taille, &reference).0, 1.0);
 }
 
+fn survoler_le_message(f: &Principale, texte: &str) -> (f32, f32) {
+    let e = i_slint_backend_testing::ElementHandle::find_by_element_type_name(f, "CorpsMessage")
+        .find(|e| e.accessible_description().is_some_and(|d| d == texte))
+        .expect("message affiché");
+    let p = e.absolute_position();
+    let position = slint::LogicalPosition::new(p.x + 200.0, p.y + e.size().height / 2.0);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerMoved { position });
+    (position.x, position.y)
+}
+
+fn messagerie_actions(f: &Principale) {
+    let _pont = saisie_courte(f);
+    stabiliser(f);
+    survoler_le_message(f, "Salut, prêt pour la réunion de 10 h ?");
+    stabiliser(f);
+}
+
+fn messagerie_menu(f: &Principale) {
+    let pont = saisie_courte(f);
+    stabiliser(f);
+    let (x, y) = survoler_le_message(f, "Salut, prêt pour la réunion de 10 h ?");
+    pont.messagerie()
+        .ouvrir_menu_message(f, "401", estompe_natif::menu::Ancre::Point { x, y });
+    stabiliser(f);
+}
+
+fn confirmation_suppression(f: &Principale) {
+    let pont = saisie_courte(f);
+    stabiliser(f);
+    pont.messagerie().action_message(f, "401", "supprimer");
+    stabiliser(f);
+}
+
 fn saisie_courte(f: &Principale) -> Pont {
     messagerie_avec(f, commun::coquille::conversation_courte("c1"))
 }
@@ -1172,5 +1453,168 @@ fn saisie_non_envoye(f: &Principale) {
             ));
         },
     );
+    stabiliser(f);
+}
+
+fn saisie_vocal_enregistrement(f: &Principale) {
+    saisie_courte(f);
+    let v = f.global::<DonneesVocal>();
+    v.set_etape(EtapeVocal::Enregistrement);
+    v.set_duree("0:12".into());
+    let niveaux: Vec<f32> = commun::coquille::forme_de_test(40)
+        .into_iter()
+        .map(|n| f32::from(n) / 100.0)
+        .collect();
+    v.set_niveaux(slint::ModelRc::new(slint::VecModel::from(niveaux)));
+    stabiliser(f);
+}
+
+fn saisie_vocal_ecoute(f: &Principale) {
+    saisie_courte(f);
+    let v = f.global::<DonneesVocal>();
+    v.set_etape(EtapeVocal::Ecoute);
+    v.set_duree("0:12".into());
+    v.set_forme(slint::ModelRc::new(slint::VecModel::from(
+        estompe_natif::messagerie::pont::barres(&commun::coquille::forme_de_test(40)),
+    )));
+    v.set_piece("apercu".into());
+    v.set_en_lecture(true);
+    v.set_avance(0.35);
+    v.set_temps("0:04".into());
+    stabiliser(f);
+}
+
+fn saisie_mentions(f: &Principale) {
+    let pont = saisie_courte(f);
+    let texte = "On se retrouve ce soir avec @e";
+    pont.messagerie().saisie().placer(f, texte, texte.len());
+    pont.messagerie().saisie_modifiee(f, texte);
+    stabiliser(f);
+}
+
+fn saisie_pieces(f: &Principale) {
+    let pont = saisie_courte(f);
+    let saisie = pont.messagerie().saisie();
+    let limites = estompe_client::fichiers::Limites::default();
+    let cles = saisie.avec_etat(|e| {
+        let cles: Vec<u64> = (0..3).map(|_| e.nouvelle_piece()).collect();
+        let liste = e.liste_courante().unwrap();
+        for (cle, nom) in cles
+            .iter()
+            .zip(["photo.png", "rapport-annuel.pdf", "archive.zip"])
+        {
+            liste.ajouter(*cle, nom, &limites).unwrap();
+        }
+        liste.terminer(
+            cles[0],
+            Ok(estompe_client::types::Attachment {
+                id: Some("f1".into()),
+                name: Some("photo.png".into()),
+                size: Some(48_213),
+                ..Default::default()
+            }),
+        );
+        liste.progression(cles[1], 420_000, 1_000_000);
+        liste.terminer(cles[2], Err("Stockage plein".into()));
+        cles
+    });
+    let image = image::load_from_memory(&commun::coquille::png([200, 40, 90])).unwrap();
+    let reduite = estompe_natif::messagerie::medias::reduire(
+        image,
+        estompe_natif::messagerie::medias::Format::Piece,
+    );
+    saisie.definir_vignette(
+        cles[0],
+        slint::SharedPixelBuffer::clone_from_slice(
+            reduite.as_raw(),
+            reduite.width(),
+            reduite.height(),
+        ),
+    );
+    let texte = "Les documents de samedi";
+    saisie.placer(f, texte, texte.len());
+    pont.messagerie().saisie_modifiee(f, texte);
+    saisie.afficher_pieces(f);
+    stabiliser(f);
+}
+
+fn saisie_depot(f: &Principale) {
+    let _pont = saisie_courte(f);
+    f.global::<DonneesSaisie>().set_depot_survole(true);
+    stabiliser(f);
+}
+
+fn selecteur_ouvert(f: &Principale) -> Pont {
+    let pont = saisie_courte(f);
+    pont.messagerie().ouvrir_selecteur(f, Cible::Saisie);
+    pont
+}
+
+fn selecteur_emoji(f: &Principale) {
+    let pont = selecteur_ouvert(f);
+    pont.messagerie().selecteur().deplacer(f, 0, 1);
+    pont.messagerie().selecteur().deplacer(f, 1, 0);
+    stabiliser(f);
+}
+
+fn selecteur_sans_resultat(f: &Principale) {
+    let pont = selecteur_ouvert(f);
+    f.global::<DonneesSelecteur>()
+        .set_recherche("zzzzzz".into());
+    pont.messagerie().selecteur().chercher(f, "zzzzzz");
+    stabiliser(f);
+}
+
+fn apercus_de_gifs() -> Vec<(u32, u32, [u8; 3], [u8; 3])> {
+    vec![
+        (200, 150, [246, 198, 214], [208, 104, 138]),
+        (150, 200, [120, 170, 220], [47, 93, 138]),
+        (200, 112, [242, 166, 90], [120, 70, 40]),
+        (200, 200, [150, 210, 160], [90, 120, 80]),
+        (200, 120, [200, 190, 240], [100, 80, 160]),
+        (160, 200, [240, 220, 140], [180, 140, 60]),
+        (200, 150, [180, 220, 230], [60, 120, 140]),
+        (200, 180, [230, 160, 160], [140, 60, 60]),
+    ]
+}
+
+fn gifs_ouverts(f: &Principale) -> (Pont, u64) {
+    let pont = saisie_courte(f);
+    pont.messagerie().ouvrir_gifs(f);
+    let sequence = pont.messagerie().gifs().etat().recherche.sequence();
+    (pont, sequence)
+}
+
+fn selecteur_gifs(f: &Principale) {
+    let (pont, sequence) = gifs_ouverts(f);
+    let titres = [
+        "Bravo", "Merci", "Fou rire", "Ok", "Coucou", "Fête", "Pouce", "Bisou",
+    ];
+    let gifs = apercus_de_gifs()
+        .into_iter()
+        .enumerate()
+        .map(|(n, (largeur, hauteur, _, _))| estompe_client::gifs::Gif {
+            id: format!("g{n}"),
+            title: titres[n].into(),
+            preview: format!("https://media1.giphy.com/captures/{n}.gif"),
+            url: format!("https://media1.giphy.com/captures/{n}/giphy.gif"),
+            width: largeur,
+            height: hauteur,
+        })
+        .collect();
+    pont.messagerie().recevoir_gifs(f, sequence, Ok(gifs));
+    pont.messagerie().gifs().deplacer(f, 0, 1);
+    stabiliser(f);
+}
+
+fn selecteur_gifs_limite(f: &Principale) {
+    let (pont, sequence) = gifs_ouverts(f);
+    let refus = estompe_client::http::ErreurApi::Autre(estompe_client::http::Refus {
+        statut: 429,
+        code: "too_many_requests".into(),
+        message: String::new(),
+        donnees: Default::default(),
+    });
+    pont.messagerie().recevoir_gifs(f, sequence, Err(refus));
     stabiliser(f);
 }

@@ -30,6 +30,9 @@ export struct PieceJointe {
     echec: bool,
     anime: bool,
     vocal: bool,
+    duree: string,
+    barres: [float],
+    ecoute: bool,
     index-image: int,
     telechargement: EtatTelechargement,
     progression: float,
@@ -37,11 +40,13 @@ export struct PieceJointe {
 }
 
 export struct OptionSondage {
+    id: string,
     libelle: string,
     pourcentage: int,
     votes: int,
     moi: bool,
     gagnant: bool,
+    votants: string,
 }
 
 export struct SondageMessage {
@@ -51,6 +56,10 @@ export struct SondageMessage {
     clos: bool,
     options: [OptionSondage],
     pied: string,
+    total: int,
+    votable: bool,
+    gerer: bool,
+    votants-ouverts: bool,
 }
 
 export enum GenreCarte { aucune, lien, youtube, sillon }
@@ -97,6 +106,7 @@ export struct EpingleMessage {
     date: string,
     blocs: [BlocTexte],
     fichiers: string,
+    desepingler: bool,
 }
 
 export struct Visionneuse {
@@ -121,6 +131,15 @@ export struct ReponseMessage {
     auteur: string,
     texte: string,
     supprimee: bool,
+}
+
+export struct DroitsLigne {
+    repondre: bool,
+    modifier: bool,
+    epingler: bool,
+    supprimer: bool,
+    reagir: bool,
+    menu: bool,
 }
 
 export struct LigneMessage {
@@ -154,6 +173,7 @@ export struct LigneMessage {
     annexes: AnnexesMessage,
     etat-envoi: string,
     envoi-echec: bool,
+    droits: DroitsLigne,
 }
 
 export enum EtatConversation { chargement, erreur, prete }
@@ -174,6 +194,7 @@ export global DonneesMessagerie {
     in property <int> mesure: 0;
     in property <[EpingleMessage]> epingles;
     in property <EtatEpingles> etat-epingles: EtatEpingles.chargement;
+    in property <[ReactionMessage]> reactions-rapides;
     callback defilee(length, length, length);
     callback ligne-mesuree(string, length);
     callback lien-clique(string, string);
@@ -195,4 +216,12 @@ export global DonneesMessagerie {
     callback recharger-epingles();
     callback reessayer-envoi(string);
     callback abandonner-envoi(string);
+    callback action-message(string, string);
+    callback menu-message(string, length, length);
+    callback menu-message-bouton(string, length, length, length);
+    callback reagir(string, string);
+    callback voter(string, string);
+    callback clore-sondage(string);
+    callback supprimer-sondage(string);
+    callback basculer-votants(string);
 }

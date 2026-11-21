@@ -200,6 +200,18 @@ pub fn lien_espace(espace: &str, section: Option<&str>) -> String {
     format!("#/{espace}{}", suffixe(section))
 }
 
+pub fn lien_message_de_salon(serveur: &str, salon: &str, message: &str) -> String {
+    format!("#/s/{serveur}/{salon}/{message}")
+}
+
+pub fn lien_message_en_prive(id: &str, message: &str) -> String {
+    format!("#/dm/{id}/{message}")
+}
+
+pub fn adresse_web(serveur: &str, lien: &str) -> String {
+    format!("{}/{lien}", serveur.trim_end_matches('/'))
+}
+
 pub fn lien_invitation(code: &str) -> String {
     format!("#/join/{}", encoder_composant(code))
 }
@@ -325,6 +337,20 @@ mod tests {
         assert_eq!(lien_salon("a", Some("b")), "#/s/a/b");
         assert_eq!(lien_salon("a", None), "#/s/a");
         assert_eq!(lien_message_prive("x"), "#/dm/x");
+        assert_eq!(
+            adresse_web(
+                "https://chat.plbls.fr/",
+                &lien_message_de_salon("s", "c", "9")
+            ),
+            "https://chat.plbls.fr/#/s/s/c/9"
+        );
+        assert_eq!(
+            analyser_hash(&lien_message_en_prive("d", "9"), &[]),
+            Route::MessagePrive {
+                id: "d".into(),
+                message: s("9")
+            }
+        );
         assert_eq!(lien_admin(Some("roles")), "#/admin/roles");
         assert_eq!(lien_films(Some("vus"), Some("a b")), "#/films/vus/a%20b");
         assert_eq!(lien_musique(None, None), "#/musique");

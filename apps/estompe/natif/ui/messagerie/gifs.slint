@@ -1,0 +1,310 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Icone, ListeVirtuelle, Chargement } from "../composants.slint";
+
+export struct CelluleGif {
+    index: int,
+    titre: string,
+    image: image,
+    largeur: length,
+}
+
+export struct RangeeGif {
+    cellules: [CelluleGif],
+    hauteur: length,
+}
+
+export global DonneesGifs {
+    in property <bool> ouvert: false;
+    in-out property <string> recherche;
+    in property <[string]> idees-haut;
+    in property <[string]> idees-bas;
+    in property <string> idee-active;
+    in property <[RangeeGif]> rangees;
+    in property <bool> en-cours: false;
+    in property <string> message;
+    in property <string> attribution;
+    in property <int> actif: -1;
+    in-out property <length> defilement: 0px;
+    in property <int> demande-focus: 0;
+    callback chercher(string);
+    callback idee(string);
+    callback choisir(int);
+    callback choisir-actif();
+    callback deplacer(int, int);
+    callback defile(length, length, length);
+    callback fermer();
+}
+
+component CaseGif inherits Rectangle {
+    in property <CelluleGif> cellule;
+    in property <length> hauteur;
+    width: root.cellule.largeur;
+    height: root.hauteur;
+    border-radius: 8px;
+    background: Theme.papier-2;
+    accessible-role: button;
+    accessible-label: root.cellule.titre;
+    accessible-action-default => {
+        DonneesGifs.choisir(root.cellule.index);
+    }
+    Image {
+        width: 100%;
+        height: 100%;
+        source: root.cellule.image;
+        image-fit: cover;
+    }
+    Rectangle {
+        border-radius: 8px;
+        border-width: root.cellule.index == DonneesGifs.actif ? 2px : zone.has-hover ? 2px : 0;
+        border-color: root.cellule.index == DonneesGifs.actif ? Theme.encre : Theme.rose-fonce;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesGifs.choisir(root.cellule.index);
+        }
+    }
+}
+
+component PastilleIdee inherits Rectangle {
+    in property <string> libelle;
+    in property <bool> active;
+    in property <bool> focalisee;
+    height: 28px;
+    width: texte.preferred-width + 20px;
+    border-radius: Rayon.pilule;
+    background: root.active ? Theme.rose : zone.has-hover ? Theme.rose-doux : Theme.papier-2;
+    border-width: root.focalisee ? 2px : 0;
+    border-color: Theme.encre;
+    accessible-role: button;
+    accessible-label: root.libelle;
+    accessible-checked: root.active;
+    accessible-action-default => {
+        DonneesGifs.idee(root.libelle);
+    }
+    texte := Text {
+        text: root.libelle;
+        color: Theme.encre;
+        font-size: Typo.compact;
+        vertical-alignment: center;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesGifs.idee(root.libelle);
+        }
+    }
+}
+
+export component SelecteurGifs inherits Rectangle {
+    property <int> demande: DonneesGifs.demande-focus;
+    property <int> idee-focus: 0;
+    property <int> idees: DonneesGifs.idees-haut.length + DonneesGifs.idees-bas.length;
+    changed demande => {
+        recherche.focus();
+    }
+    init => {
+        recherche.focus();
+    }
+    height: 470px;
+    border-radius: Rayon.m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait-fort;
+    drop-shadow-blur: 28px;
+    drop-shadow-offset-y: 10px;
+    drop-shadow-color: Theme.sombre ? #00000099 : #16130f2e;
+    accessible-role: groupbox;
+    accessible-label: "Choisir un GIF";
+    TouchArea { }
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+        Rectangle {
+            height: 38px;
+            border-radius: Rayon.s;
+            background: Theme.papier;
+            border-width: recherche.has-focus ? 1.5px : 1px;
+            border-color: recherche.has-focus ? Theme.encre : Theme.trait-fort;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: Espace.e2;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "cherche";
+                        taille: 16px;
+                        couleur: Theme.gris-2;
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    if recherche.text == "": Text {
+                        width: 100%;
+                        text: "Rechercher un GIF";
+                        color: Theme.gris-2;
+                        font-size: Typo.compact;
+                        vertical-alignment: center;
+                    }
+                    recherche := TextInput {
+                        width: 100%;
+                        height: 100%;
+                        vertical-alignment: center;
+                        single-line: true;
+                        text <=> DonneesGifs.recherche;
+                        color: Theme.encre;
+                        font-size: Typo.compact;
+                        selection-background-color: Theme.rose;
+                        accessible-role: text-input;
+                        accessible-label: "Rechercher un GIF";
+                        accessible-value: self.text;
+                        edited => {
+                            DonneesGifs.chercher(self.text);
+                        }
+                        key-pressed(e) => {
+                            if (e.text == Key.Escape) {
+                                DonneesGifs.fermer();
+                                return accept;
+                            }
+                            if (e.text == Key.Tab && !e.modifiers.shift) {
+                                idees.focus();
+                                return accept;
+                            }
+                            if (e.text == Key.DownArrow) {
+                                DonneesGifs.deplacer(0, 1);
+                                return accept;
+                            }
+                            if (e.text == Key.UpArrow) {
+                                DonneesGifs.deplacer(0, -1);
+                                return accept;
+                            }
+                            if (DonneesGifs.actif >= 0 && e.text == Key.LeftArrow) {
+                                DonneesGifs.deplacer(-1, 0);
+                                return accept;
+                            }
+                            if (DonneesGifs.actif >= 0 && e.text == Key.RightArrow) {
+                                DonneesGifs.deplacer(1, 0);
+                                return accept;
+                            }
+                            if (e.text == Key.Return && DonneesGifs.actif >= 0) {
+                                DonneesGifs.choisir-actif();
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                }
+            }
+        }
+        idees := FocusScope {
+            accessible-role: groupbox;
+            accessible-label: "Idées de recherche";
+            key-pressed(e) => {
+                if (e.text == Key.LeftArrow) {
+                    root.idee-focus = Math.max(0, root.idee-focus - 1);
+                    return accept;
+                }
+                if (e.text == Key.RightArrow) {
+                    root.idee-focus = Math.min(root.idees - 1, root.idee-focus + 1);
+                    return accept;
+                }
+                if (e.text == Key.Return || e.text == " ") {
+                    DonneesGifs.idee(root.idee-focus < DonneesGifs.idees-haut.length ? DonneesGifs.idees-haut[root.idee-focus] : DonneesGifs.idees-bas[root.idee-focus - DonneesGifs.idees-haut.length]);
+                    recherche.focus();
+                    return accept;
+                }
+                if (e.text == Key.Tab || e.text == Key.Backtab) {
+                    recherche.focus();
+                    return accept;
+                }
+                if (e.text == Key.Escape) {
+                    DonneesGifs.fermer();
+                    return accept;
+                }
+                return reject;
+            }
+            VerticalLayout {
+                spacing: 6px;
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    for w[i] in DonneesGifs.idees-haut: PastilleIdee {
+                        libelle: w;
+                        active: w == DonneesGifs.idee-active;
+                        focalisee: idees.has-focus && i == root.idee-focus;
+                    }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    for w[i] in DonneesGifs.idees-bas: PastilleIdee {
+                        libelle: w;
+                        active: w == DonneesGifs.idee-active;
+                        focalisee: idees.has-focus && i + DonneesGifs.idees-haut.length == root.idee-focus;
+                    }
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            liste := ListeVirtuelle {
+                accessible-label: "GIF trouvés";
+                content-y <=> DonneesGifs.defilement;
+                changed content-y => {
+                    DonneesGifs.defile(-self.content-y, self.visible-height, self.visible-width);
+                }
+                changed visible-height => {
+                    DonneesGifs.defile(-self.content-y, self.visible-height, self.visible-width);
+                }
+                changed visible-width => {
+                    DonneesGifs.defile(-self.content-y, self.visible-height, self.visible-width);
+                }
+                for r in DonneesGifs.rangees: Rectangle {
+                    width: liste.visible-width;
+                    height: r.hauteur + 6px;
+                    HorizontalLayout {
+                        y: 0;
+                        height: r.hauteur;
+                        alignment: start;
+                        spacing: 6px;
+                        for c in r.cellules: CaseGif {
+                            cellule: c;
+                            hauteur: r.hauteur;
+                        }
+                    }
+                }
+            }
+            if DonneesGifs.en-cours: VerticalLayout {
+                alignment: DonneesGifs.rangees.length > 0 ? end : center;
+                padding-bottom: Espace.e3;
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: Espace.e2;
+                    Chargement {
+                        taille: 18px;
+                        description: "Chargement des GIF";
+                    }
+                }
+            }
+            if DonneesGifs.message != "": Text {
+                y: DonneesGifs.rangees.length > 0 ? parent.height - self.height - Espace.e2 : 16px;
+                width: 100%;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: DonneesGifs.message;
+                color: Theme.gris;
+                font-size: 13px;
+                accessible-role: text;
+            }
+        }
+        Text {
+            text: DonneesGifs.attribution;
+            color: Theme.gris;
+            font-size: 11.5px;
+            horizontal-alignment: center;
+            overflow: elide;
+            accessible-role: text;
+        }
+    }
+}

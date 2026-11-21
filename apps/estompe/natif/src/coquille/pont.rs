@@ -19,19 +19,26 @@ use super::membres::{
 use super::modeles::{cibles, remplacer_ligne, synchroniser, Cibles, Ensemble, Operation};
 use super::navigation::Navigation;
 use super::projection::*;
+use super::recherche::EtatRecherche;
 use crate::messagerie::pont::PontMessagerie;
 use crate::session::Memoire;
 use crate::{
     Accueil, CarteProfil, DonneesCoquille, DonneesMessagerie, EnTeteMarge, EnTetePanneau,
-    EtatConversation, EtatPresence, LigneBadge, LigneMembre, LigneMessage, LignePrive,
-    LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal, OngletMarge, Principale,
-    RoleProfil, VueContenu,
+    EtatConversation, EtatPresence, LigneBadge, LigneContact, LigneMembre, LigneMessage,
+    LignePrive, LigneRattrapage, LigneSalon, LigneSection, LigneServeur, LigneVocal, OngletMarge,
+    Principale, RoleProfil, VueContenu,
 };
 
 pub type Horloge = Arc<dyn Fn() -> NaiveDateTime + Send + Sync>;
 pub type Icone = SharedPixelBuffer<Rgba8Pixel>;
 
 const COTE_ICONE: u32 = 128;
+
+mod menus;
+mod nouveau_prive;
+mod recherche;
+
+pub use nouveau_prive::EtatNouveauPrive;
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
@@ -219,10 +226,11 @@ struct Ombres {
     sections: Vec<DonneesSection>,
     rattrapage: Vec<DonneesRattrapage>,
     vocaux: Vec<DonneesVocal>,
+    contacts: Vec<DonneesContact>,
     panneau: Option<DonneesPanneau>,
     vue: Option<DonneesVue>,
     accueil: Option<DonneesAccueil>,
-    pseudo: Option<String>,
+    compte: Option<DonneesCompte>,
 }
 
 struct Interne {
@@ -236,6 +244,8 @@ struct Interne {
     membres: EtatMembres,
     onglet_voulu: OngletMarge,
     avant_epingles: Option<(bool, OngletMarge)>,
+    recherche: Option<EtatRecherche>,
+    nouveau_prive: Option<EtatNouveauPrive>,
 }
 
 #[derive(Clone)]
@@ -265,6 +275,7 @@ pub fn installer_modeles(f: &Principale) {
     g.set_sections(ModelRc::new(VecModel::<LigneSection>::default()));
     g.set_rattrapage(ModelRc::new(VecModel::<LigneRattrapage>::default()));
     g.set_vocaux(ModelRc::new(VecModel::<LigneVocal>::default()));
+    g.set_contacts(ModelRc::new(VecModel::<LigneContact>::default()));
     g.set_membres(ModelRc::new(VecModel::<LigneMembre>::default()));
     f.global::<DonneesMessagerie>()
         .set_lignes(ModelRc::new(VecModel::<LigneMessage>::default()));
@@ -288,6 +299,7 @@ pub fn vider_modeles(f: &Principale) {
     vec_de(&g.get_sections()).set_vec(Vec::new());
     vec_de(&g.get_rattrapage()).set_vec(Vec::new());
     vec_de(&g.get_vocaux()).set_vec(Vec::new());
+    vec_de(&g.get_contacts()).set_vec(Vec::new());
     vec_de(&g.get_membres()).set_vec(Vec::new());
     g.set_marge(EnTeteMarge::default());
     g.set_marge_disponible(false);
@@ -303,6 +315,8 @@ pub fn vider_modeles(f: &Principale) {
     g.set_pret(false);
     g.set_pseudo("".into());
     g.set_initiales("".into());
+    g.set_presence(EtatPresence::EnLigne);
+    g.set_statut("En ligne".into());
     crate::messagerie::pont::liberer_modele();
     let m = f.global::<DonneesMessagerie>();
     vec_de(&m.get_lignes()).set_vec(Vec::new());
@@ -315,6 +329,8 @@ pub fn vider_modeles(f: &Principale) {
     m.set_nouveaux(0);
     m.set_saisie("".into());
     m.set_lecture_seule(false);
+    f.global::<crate::DonneesRecherche>().set_ouvert(false);
+    f.global::<crate::DonneesNouveauPrive>().set_ouvert(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -426,6 +442,17 @@ fn vue_slint(d: &DonneesVue) -> VueContenu {
     }
 }
 
+fn ligne_contact_slint(d: &DonneesContact) -> LigneContact {
+    LigneContact {
+        id: d.id.as_str().into(),
+        pseudo: d.pseudo.as_str().into(),
+        initiales: d.initiales.as_str().into(),
+        teinte: d.teinte,
+        presence: presence_slint(d.presence),
+        detail: d.detail.as_str().into(),
+    }
+}
+
 fn accueil_slint(d: &DonneesAccueil) -> Accueil {
     Accueil {
         actif: d.actif,
@@ -435,6 +462,7 @@ fn accueil_slint(d: &DonneesAccueil) -> Accueil {
         salut: d.salut.as_str().into(),
         resume: d.resume.as_str().into(),
         sans_serveur: d.sans_serveur,
+        contacts: d.contacts.as_str().into(),
     }
 }
 
@@ -480,6 +508,8 @@ impl Pont {
                 membres: EtatMembres::default(),
                 onglet_voulu: OngletMarge::Membres,
                 avant_epingles: None,
+                recherche: None,
+                nouveau_prive: None,
             })),
             store,
             fenetre,
@@ -534,7 +564,7 @@ impl Pont {
         self.projeter(f, &c, false);
         if corrigee {
             self.suivre_conversation(f);
-            self.ouvrir_conversation_courante();
+            self.ouvrir_conversation_courante(None);
         }
         self.messagerie.appliquer(f, changements);
     }
@@ -660,6 +690,13 @@ impl Pont {
                     |d| d.cle.clone(),
                     ligne_vocal_slint,
                 );
+                synchroniser(
+                    vec_de(&g.get_contacts()),
+                    &mut ombres.contacts,
+                    lignes_contacts(etat),
+                    |d| d.id.clone(),
+                    ligne_contact_slint,
+                );
             }
             if c.panneau {
                 let panneau = donnees_panneau(etat, &route);
@@ -676,11 +713,13 @@ impl Pont {
                 }
             }
             if c.compte {
-                let pseudo = etat.pseudo().to_string();
-                if ombres.pseudo.as_ref() != Some(&pseudo) {
-                    g.set_pseudo(pseudo.as_str().into());
-                    g.set_initiales(initiales(&pseudo).into());
-                    ombres.pseudo = Some(pseudo);
+                let compte = donnees_compte(etat);
+                if ombres.compte.as_ref() != Some(&compte) {
+                    g.set_pseudo(compte.pseudo.as_str().into());
+                    g.set_initiales(initiales(&compte.pseudo).into());
+                    g.set_presence(presence_slint(compte.presence));
+                    g.set_statut(compte.statut.as_str().into());
+                    ombres.compte = Some(compte);
                 }
             }
         });
@@ -756,6 +795,10 @@ impl Pont {
     }
 
     pub fn naviguer(&self, f: &Principale, route: Route) {
+        self.aller(f, route, None);
+    }
+
+    fn aller(&self, f: &Principale, route: Route, message: Option<String>) {
         let adresse = self.store.lire(|etat| {
             let mut interne = self.verrou();
             interne.navigation.aller(route, etat);
@@ -768,26 +811,36 @@ impl Pont {
             let vue = self.store.memoriser_vue(&adresse);
             memoire.modifier(|p| p.derniere_vue = Some(vue));
         }
-        self.ouvrir_conversation_courante();
+        self.ouvrir_conversation_courante(message);
     }
 
-    fn ouvrir_conversation_courante(&self) {
+    fn ouvrir_conversation_courante(&self, message: Option<String>) {
         let route = self.route();
         let cle = self
             .store
             .lire(|etat| conversation_de_la_route(etat, &route));
         let store = self.store.clone();
-        if store.lire(|etat| etat.courante == cle) {
+        let deja = store.lire(|etat| etat.courante == cle);
+        if deja && message.is_none() {
             return;
         }
         let messagerie = self.messagerie.clone();
         let fenetre = self.fenetre.clone();
         self.runtime.spawn(async move {
-            store.ouvrir(cle.clone()).await;
-            if let Some(cle) = cle {
+            if !deja {
+                store.ouvrir(cle.clone()).await;
+            }
+            let Some(cle) = cle else {
+                return;
+            };
+            if !deja {
                 let reussi = store.conversation(&cle).is_some_and(|c| c.chargee);
+                let c = cle.clone();
                 let _ = fenetre
-                    .upgrade_in_event_loop(move |f| messagerie.etat_chargement(&f, &cle, reussi));
+                    .upgrade_in_event_loop(move |f| messagerie.etat_chargement(&f, &c, reussi));
+            }
+            if let Some(message) = message {
+                let _ = store.sauter_a(&cle, &message).await;
             }
         });
     }

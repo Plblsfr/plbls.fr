@@ -153,26 +153,54 @@ pub struct MentionEnCours {
     pub requete: String,
 }
 
-pub fn mention_en_cours(texte: &str, curseur: usize) -> Option<MentionEnCours> {
+fn car_de_salon(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '.' | '-')
+}
+
+fn jeton_en_cours(
+    texte: &str,
+    curseur: usize,
+    prefixe: char,
+    car: fn(char) -> bool,
+) -> Option<MentionEnCours> {
     let avant = texte.get(..curseur)?;
     let requete_debut = avant
         .char_indices()
         .rev()
-        .take_while(|(_, c)| car_de_pseudo(*c))
+        .take_while(|(_, c)| car(*c))
         .last()
         .map_or(avant.len(), |(i, _)| i);
     let requete = &avant[requete_debut..];
-    if requete.len() > LONGUEUR_REQUETE_MAX {
+    if requete.chars().count() > LONGUEUR_REQUETE_MAX {
         return None;
     }
-    let arobase = avant[..requete_debut].strip_suffix('@')?;
-    if arobase.chars().next_back().is_some_and(car_de_pseudo) {
+    let tete = avant[..requete_debut].strip_suffix(prefixe)?;
+    if tete.chars().next_back().is_some_and(car) {
         return None;
     }
     Some(MentionEnCours {
-        debut: arobase.len(),
+        debut: tete.len(),
         requete: requete.to_string(),
     })
+}
+
+pub fn mention_en_cours(texte: &str, curseur: usize) -> Option<MentionEnCours> {
+    jeton_en_cours(texte, curseur, '@', car_de_pseudo)
+}
+
+pub fn salon_en_cours(texte: &str, curseur: usize) -> Option<MentionEnCours> {
+    jeton_en_cours(texte, curseur, '#', car_de_salon)
+}
+
+pub fn remplacer(
+    texte: &str,
+    debut: usize,
+    curseur: usize,
+    insere: &str,
+) -> Option<(String, usize)> {
+    let avant = texte.get(..debut)?;
+    let apres = texte.get(curseur..)?;
+    Some((format!("{avant}{insere}{apres}"), debut + insere.len()))
 }
 
 pub fn inserer_mention(
@@ -181,11 +209,7 @@ pub fn inserer_mention(
     debut: usize,
     pseudo: &str,
 ) -> Option<(String, usize)> {
-    let avant = texte.get(..debut)?;
-    let apres = texte.get(curseur..)?;
-    let insere = format!("@{pseudo} ");
-    let nouveau_curseur = debut + insere.len();
-    Some((format!("{avant}{insere}{apres}"), nouveau_curseur))
+    remplacer(texte, debut, curseur, &format!("@{pseudo} "))
 }
 
 pub fn suggerer(requete: &str, pseudos: &[String], moi: &str, max: usize) -> Vec<String> {
@@ -316,6 +340,16 @@ mod tests {
         assert_eq!(mention_en_cours("é@al", 1), None);
         assert_eq!(mention_en_cours("@al", 99), None);
         assert_eq!(mention_en_cours("é @al", 6), en_cours(3, "al"));
+    }
+
+    #[test]
+    fn detecte_un_salon_en_cours_avec_accents() {
+        assert_eq!(salon_en_cours("va dans #gé", 12), en_cours(8, "gé"));
+        assert_eq!(salon_en_cours("#", 1), en_cours(0, ""));
+        assert_eq!(salon_en_cours("abc#x", 5), None);
+        assert_eq!(salon_en_cours("# titre", 7), None);
+        assert_eq!(salon_en_cours("@al", 3), None);
+        assert_eq!(mention_en_cours("#al", 3), None);
     }
 
     #[test]

@@ -1,8 +1,13 @@
+pub mod actions;
 pub mod annexes;
 pub mod defilement;
 pub mod emoji;
+pub mod gifs;
 pub mod lignes;
 pub mod medias;
+pub mod pieces;
 pub mod pont;
 pub mod rendu;
 pub mod saisie;
+pub mod selecteur;
+pub mod vocal;

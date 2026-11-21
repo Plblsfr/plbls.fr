@@ -188,6 +188,33 @@ pub fn services(
     }
 }
 
+pub fn video_hevc(dossier: &std::path::Path) -> Option<std::path::PathBuf> {
+    let encodeurs = std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-encoders"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    if !(encodeurs.contains("libx264") && encodeurs.contains("libx265")) {
+        assert!(
+            std::env::var_os("ESTOMPE_FFMPEG_EXIGE").is_none(),
+            "ffmpeg avec libx264 et libx265 exigé (ESTOMPE_FFMPEG_EXIGE)"
+        );
+        println!("ignoré : ffmpeg avec libx264 et libx265 indisponible");
+        return None;
+    }
+    let chemin = dossier.join("hevc.mp4");
+    let statut = std::process::Command::new("ffmpeg")
+        .args(["-hide_banner", "-v", "error", "-f", "lavfi", "-i"])
+        .arg("testsrc=size=320x240:rate=25:duration=3")
+        .args(["-c:v", "libx265", "-preset", "ultrafast", "-x265-params"])
+        .args(["log-level=error", "-tag:v", "hvc1", "-y"])
+        .arg(&chemin)
+        .status()
+        .ok()?;
+    assert!(statut.success(), "vidéo HEVC de test");
+    Some(chemin)
+}
+
 pub mod coquille {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -204,7 +231,10 @@ pub mod coquille {
     };
     use estompe_natif::entree::Futur;
     use estompe_natif::messagerie::medias::{Medias, Progres, Source, SourceMedias};
-    use estompe_plateforme::Fichiers;
+    use estompe_plateforme::{
+        ContenuPressePapiers, Erreur, Fichiers, FluxSon, Micro, PressePapiers, ProducteurSon,
+        RecepteurSon, SortieSon,
+    };
     use serde_json::{json, Value};
     use tokio::sync::{mpsc, watch};
 
@@ -437,6 +467,38 @@ pub mod coquille {
         v.into_iter().map(depuis).collect()
     }
 
+    pub fn forme_de_test(n: usize) -> Vec<u8> {
+        (0..n)
+            .map(|i| (30 + (i * 37) % 60 + if i % 7 == 3 { 10 } else { 0 }) as u8)
+            .collect()
+    }
+
+    pub fn conversation_vocaux() -> Vec<estompe_client::types::Message> {
+        let c1 = ("channel_id", "c1");
+        let mut v = vec![
+            ecrit("700", c1, ("ines", "Inès"), "2026-11-19T08:20:00Z", ""),
+            ecrit(
+                "701",
+                c1,
+                ("dave", "dave"),
+                "2026-11-19T08:22:00Z",
+                "Je réponds en vocal :",
+            ),
+            ecrit("702", c1, ("carol", "carol"), "2026-11-19T08:23:00Z", ""),
+        ];
+        v[0]["attachments"] = json!([
+            {"id": "m1", "name": "message-vocal.webm", "mime": "audio/webm", "size": 48000, "kind": "voice", "duration_ms": 12_400, "waveform": forme_de_test(40)}
+        ]);
+        v[1]["attachments"] = json!([
+            {"id": "m2", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 9000, "kind": "voice", "duration_ms": 2_300, "waveform": forme_de_test(23)}
+        ]);
+        v[2]["attachments"] = json!([
+            {"id": "m3", "name": "message-vocal.m4a", "mime": "audio/mp4", "size": 7000, "kind": "voice", "duration_ms": 1_800, "waveform": [50]},
+            {"id": "m4", "name": "message-vocal.ogg", "mime": "audio/ogg", "size": 7000, "kind": "voice", "duration_ms": 1_800, "expired": true}
+        ]);
+        v.into_iter().map(depuis).collect()
+    }
+
     pub fn conversation_cartes() -> Vec<estompe_client::types::Message> {
         let c1 = ("channel_id", "c1");
         [
@@ -659,6 +721,25 @@ pub mod coquille {
         etat
     }
 
+    pub fn gif_anime(images: usize) -> Vec<u8> {
+        let mut octets = Vec::new();
+        {
+            let mut encodeur = image::codecs::gif::GifEncoder::new(&mut octets);
+            for i in 0..images {
+                let couleur = image::Rgba([(i * 50) as u8, 120, 200, 255]);
+                encodeur
+                    .encode_frame(image::Frame::from_parts(
+                        image::RgbaImage::from_pixel(60, 40, couleur),
+                        0,
+                        0,
+                        image::Delay::from_numer_denom_ms(100, 1),
+                    ))
+                    .unwrap();
+            }
+        }
+        octets
+    }
+
     pub fn png(couleur: [u8; 3]) -> Vec<u8> {
         let image = image::RgbaImage::from_fn(48, 48, |x, y| {
             if (x / 12 + y / 12) % 2 == 0 {
@@ -801,6 +882,12 @@ pub mod coquille {
         messages: Mutex<BTreeMap<u64, Value>>,
         pub corps: Mutex<Vec<(String, String)>>,
         pub refus_d_envoi: Mutex<Option<u16>>,
+        pub refus_de_fichier: Mutex<Option<u16>>,
+        pub fichiers_bloques: Mutex<bool>,
+        pub refus_de_gifs: Mutex<Option<u16>>,
+        pub refus_de_recherche: Mutex<Option<u16>>,
+        pieces: Mutex<BTreeMap<String, Value>>,
+        pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         envoyes: AtomicUsize,
     }
 
@@ -853,6 +940,12 @@ pub mod coquille {
                 messages: Mutex::new(BTreeMap::new()),
                 corps: Mutex::new(Vec::new()),
                 refus_d_envoi: Mutex::new(None),
+                refus_de_fichier: Mutex::new(None),
+                fichiers_bloques: Mutex::new(false),
+                refus_de_gifs: Mutex::new(None),
+                refus_de_recherche: Mutex::new(None),
+                pieces: Mutex::new(BTreeMap::new()),
+                contenus: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -878,6 +971,16 @@ pub mod coquille {
                                 }
                             }
                         }
+                        if premiere.starts_with("POST /files ")
+                            && *s.fichiers_bloques.lock().unwrap()
+                        {
+                            use std::io::Read;
+                            s.requetes.lock().unwrap().push("POST /files bloqué".into());
+                            let mut tampon = vec![0u8; 64 * 1024];
+                            while matches!(lecteur.read(&mut tampon), Ok(n) if n > 0) {}
+                            s.requetes.lock().unwrap().push("FERMÉE /files".into());
+                            return;
+                        }
                         let mut octets = vec![0u8; longueur];
                         if longueur > 0 {
                             use std::io::Read;
@@ -886,6 +989,15 @@ pub mod coquille {
                             }
                         }
                         let corps_recu = String::from_utf8_lossy(&octets).into_owned();
+                        if premiere.starts_with("POST /files ") {
+                            let (statut, corps) = s.recevoir_fichier(&octets);
+                            let _ = write!(
+                                flux,
+                                "HTTP/1.1 {statut} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{corps}",
+                                corps.len()
+                            );
+                            return;
+                        }
                         let mut morceaux = premiere.split_whitespace();
                         let methode = morceaux.next().unwrap_or_default().to_string();
                         let chemin = morceaux.next().unwrap_or_default().to_string();
@@ -964,6 +1076,107 @@ pub mod coquille {
                 .collect()
         }
 
+        fn recevoir_fichier(&self, octets: &[u8]) -> (u16, String) {
+            let corps = String::from_utf8_lossy(octets);
+            let position = |motif: &[u8], depuis: usize| {
+                octets[depuis..]
+                    .windows(motif.len())
+                    .position(|f| f == motif)
+                    .map(|p| p + depuis)
+            };
+            let debut = position(b"filename=", 0)
+                .and_then(|p| position(b"\r\n\r\n", p))
+                .map_or(0, |p| p + 4);
+            let fin = octets
+                .windows(4)
+                .rposition(|f| f == b"\r\n--")
+                .unwrap_or(octets.len());
+            let longueur = fin.saturating_sub(debut);
+            self.requetes.lock().unwrap().push("POST /files".into());
+            if let Some(statut) = *self.refus_de_fichier.lock().unwrap() {
+                return (
+                    statut,
+                    r#"{"error":"storage_full","message":"Stockage plein"}"#.into(),
+                );
+            }
+            let champ = |debut: &str, fin: &str| {
+                corps
+                    .split_once(debut)
+                    .and_then(|(_, reste)| reste.split_once(fin))
+                    .map(|(v, _)| v.to_string())
+                    .unwrap_or_default()
+            };
+            let mut pieces = self.pieces.lock().unwrap();
+            let id = format!("f{}", pieces.len() + 1);
+            let genre = if corps.contains("name=\"kind\"\r\n\r\nvideo") {
+                "video"
+            } else if corps.contains("name=\"kind\"\r\n\r\nvoice") {
+                "voice"
+            } else {
+                "file"
+            };
+            let mut piece = json!({"id": id, "name": champ("filename=\"", "\""), "mime": champ("Content-Type: ", "\r\n"), "size": longueur, "kind": genre});
+            if genre == "voice" {
+                piece["duration_ms"] = json!(champ("name=\"duration_ms\"\r\n\r\n", "\r\n")
+                    .parse::<u64>()
+                    .unwrap_or(0));
+                piece["waveform"] = champ("name=\"waveform\"\r\n\r\n", "\r\n")
+                    .split(',')
+                    .filter_map(|v| v.parse::<u8>().ok())
+                    .collect::<Vec<_>>()
+                    .into();
+            }
+            self.contenus
+                .lock()
+                .unwrap()
+                .insert(id.clone(), octets[debut..debut + longueur].to_vec());
+            pieces.insert(id, piece.clone());
+            (201, piece.to_string())
+        }
+
+        pub fn identifiants_envoyes(&self, requete: &str) -> Vec<Vec<String>> {
+            self.corps
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(r, _)| r == requete)
+                .map(|(_, c)| {
+                    serde_json::from_str::<Value>(c).unwrap()["file_ids"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|v| v.as_str().unwrap_or_default().to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                })
+                .collect()
+        }
+
+        pub fn piece(&self, id: &str) -> Value {
+            self.pieces.lock().unwrap()[id].clone()
+        }
+
+        pub fn nom_de_piece(&self, id: &str) -> String {
+            self.pieces.lock().unwrap()[id]["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        }
+
+        fn pieces_de(&self, recu: &Value) -> Value {
+            let pieces = self.pieces.lock().unwrap();
+            recu["file_ids"]
+                .as_array()
+                .map(|ids| {
+                    ids.iter()
+                        .filter_map(|id| pieces.get(id.as_str()?).cloned())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into()
+        }
+
         fn repondre_avec(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
             if methode == "POST" && chemin == "/channels/c1/messages" {
                 self.requetes
@@ -978,8 +1191,17 @@ pub mod coquille {
                 let mut m = message_numero(n, 0);
                 m["author"] = json!({"id": "u1", "pseudo": "moi"});
                 m["content"] = recu["content"].clone();
+                m["attachments"] = self.pieces_de(&recu);
                 if let Some(r) = recu["reply_to"].as_str() {
                     m["reply_to"] = json!({"id": r, "author": {"id": "carol", "pseudo": "carol"}, "content": "cité"});
+                }
+                if let Some(options) = recu["poll"]["options"].as_array() {
+                    let options: Vec<Value> = options
+                        .iter()
+                        .enumerate()
+                        .map(|(i, o)| json!({"id": format!("o{}", i + 1), "label": o, "votes": 0, "me": false}))
+                        .collect();
+                    m["poll"] = json!({"multiple": recu["poll"]["multiple"], "closes_at": recu["poll"]["closes_at"], "created_by": {"id": "u1", "pseudo": "moi"}, "options": options});
                 }
                 return (201, m.to_string());
             }
@@ -994,9 +1216,127 @@ pub mod coquille {
                 m["author"] = json!({"id": "u1", "pseudo": "moi"});
                 m["content"] = recu["content"].clone();
                 m["edited_at"] = json!("2026-11-19T12:00:00Z");
+                if recu.get("file_ids").is_some() {
+                    m["attachments"] = self.pieces_de(&recu);
+                }
                 return (200, m.to_string());
             }
+            if chemin.starts_with("/gifs/") {
+                return self.repondre_gifs(methode, chemin, corps);
+            }
+            if methode == "POST" && chemin == "/dms" {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"));
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let pseudo = recu["pseudo"].as_str().unwrap_or_default();
+                let (id, autre) = match pseudo {
+                    "carol" => ("d1", "carol"),
+                    "dave" => ("d2", "dave"),
+                    "Élise" => ("d3", "elise"),
+                    "zoe" => {
+                        return (
+                            404,
+                            r#"{"error":"user_not_found","message":"introuvable"}"#.into(),
+                        )
+                    }
+                    _ => ("d9", "nouveau"),
+                };
+                return (
+                    200,
+                    json!({"id": id, "other": {"id": autre, "pseudo": pseudo}, "online": false})
+                        .to_string(),
+                );
+            }
+            if chemin.starts_with("/search?") {
+                return self.repondre_recherche(chemin);
+            }
             self.repondre(methode, chemin)
+        }
+
+        fn repondre_recherche(&self, chemin: &str) -> (u16, String) {
+            self.requetes.lock().unwrap().push(format!("GET {chemin}"));
+            if let Some(statut) = *self.refus_de_recherche.lock().unwrap() {
+                return (
+                    statut,
+                    r#"{"error":"invalid_query","message":"Recherche refusée"}"#.into(),
+                );
+            }
+            let encode = chemin
+                .split_once("q=")
+                .map_or("", |(_, reste)| reste.split('&').next().unwrap_or_default());
+            let mut octets = Vec::new();
+            let mut i = 0;
+            while i < encode.len() {
+                if encode.as_bytes()[i] == b'%' {
+                    octets.push(u8::from_str_radix(&encode[i + 1..i + 3], 16).unwrap());
+                    i += 3;
+                } else {
+                    octets.push(encode.as_bytes()[i]);
+                    i += 1;
+                }
+            }
+            let terme = String::from_utf8(octets).unwrap().to_lowercase();
+            let remplaces = self.messages.lock().unwrap().clone();
+            let trouves: Vec<Value> = (1..=self.nombre)
+                .rev()
+                .map(|n| {
+                    remplaces
+                        .get(&n)
+                        .cloned()
+                        .unwrap_or_else(|| message_numero(n, self.nombre))
+                })
+                .filter(|m| {
+                    m["content"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_lowercase()
+                        .split_whitespace()
+                        .any(|mot| mot.contains(&terme))
+                })
+                .collect();
+            let decalage = parametre(chemin, "offset").unwrap_or(0) as usize;
+            let page: Vec<Value> = trouves.iter().skip(decalage).take(25).cloned().collect();
+            (
+                200,
+                json!({"messages": page, "has_more": decalage + 25 < trouves.len()}).to_string(),
+            )
+        }
+
+        fn repondre_gifs(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
+            self.requetes
+                .lock()
+                .unwrap()
+                .push(format!("{methode} {chemin}"));
+            if let Some(statut) = *self.refus_de_gifs.lock().unwrap() {
+                return (
+                    statut,
+                    r#"{"error":"too_many_requests","message":"doucement"}"#.into(),
+                );
+            }
+            if methode == "POST" {
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let mut pieces = self.pieces.lock().unwrap();
+                let id = format!("f{}", pieces.len() + 1);
+                let piece = json!({"id": id, "name": "giphy.gif", "mime": "image/gif", "size": 2000, "kind": "file", "url": recu["url"]});
+                pieces.insert(id, piece.clone());
+                return (201, piece.to_string());
+            }
+            let terme = chemin
+                .split_once("q=")
+                .map_or("tendances", |(_, reste)| {
+                    reste.split('&').next().unwrap_or_default()
+                })
+                .to_string();
+            let decalage = parametre(chemin, "offset").unwrap_or(0) as usize;
+            let gifs: Vec<Value> = (decalage..decalage + 24)
+                .map(|n| {
+                    let (largeur, hauteur) = [(200, 150), (150, 200), (200, 100), (200, 200)][n % 4];
+                    json!({"id": format!("{terme}-{n}"), "title": format!("{terme} {n}"), "preview": format!("{}/giphy/{}.gif", self.adresse, n % 4), "url": format!("https://media1.giphy.com/media/{terme}-{n}/giphy.gif"), "width": largeur, "height": hauteur})
+                })
+                .collect();
+            (200, Value::from(gifs).to_string())
         }
 
         fn repondre(&self, methode: &str, chemin: &str) -> (u16, String) {
@@ -1007,8 +1347,17 @@ pub mod coquille {
             if methode == "POST" {
                 return (200, "{}".into());
             }
+            if methode == "PUT" || methode == "DELETE" {
+                return (204, String::new());
+            }
             if chemin.ends_with("/reads") || chemin == "/emojis" {
                 return (200, "[]".into());
+            }
+            if chemin.ends_with("/poll/votes") {
+                return (
+                    200,
+                    json!({"o1": [{"id": "carol", "pseudo": "carol"}, {"id": "u1", "pseudo": "moi"}], "o2": [{"id": "dave", "pseudo": "dave"}]}).to_string(),
+                );
             }
             if !chemin.starts_with("/channels/c1/messages") {
                 return (404, r#"{"error":"introuvable"}"#.into());
@@ -1065,13 +1414,121 @@ pub mod coquille {
         pub navigateur: Arc<super::FauxNavigateur>,
         pub medias: Arc<Medias>,
         pub fichiers: Arc<FauxFichiers>,
+        pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
+        pub conversions: Mutex<Option<Arc<estompe_client::video::Conversions>>>,
+        pub micro: Arc<FauxMicro>,
+        pub sortie: Arc<FausseSortie>,
+    }
+
+    type Emplacement<T> = Arc<Mutex<(u64, Option<T>)>>;
+
+    struct GardeSon<T: Send>(Emplacement<T>, u64);
+
+    impl<T: Send> Drop for GardeSon<T> {
+        fn drop(&mut self) {
+            let mut e = self.0.lock().unwrap();
+            if e.0 == self.1 {
+                e.1 = None;
+            }
+        }
+    }
+
+    fn installer<T: Send + 'static>(emplacement: &Emplacement<T>, valeur: T) -> FluxSon {
+        let mut e = emplacement.lock().unwrap();
+        e.0 += 1;
+        e.1 = Some(valeur);
+        FluxSon::nouveau(GardeSon(emplacement.clone(), e.0))
+    }
+
+    #[derive(Default)]
+    pub struct FauxMicro {
+        recepteur: Emplacement<RecepteurSon>,
+        pub refus: Mutex<Option<Erreur>>,
+    }
+
+    impl FauxMicro {
+        pub fn ouvert(&self) -> bool {
+            self.recepteur.lock().unwrap().1.is_some()
+        }
+
+        pub fn parler(&self, echantillons: &[f32], taux: u32) -> bool {
+            match self.recepteur.lock().unwrap().1.as_mut() {
+                Some(recepteur) => {
+                    recepteur(echantillons, taux);
+                    true
+                }
+                None => false,
+            }
+        }
+    }
+
+    impl Micro for FauxMicro {
+        fn disponible(&self) -> bool {
+            true
+        }
+
+        fn ecouter(&self, recepteur: RecepteurSon) -> estompe_plateforme::Resultat<FluxSon> {
+            if let Some(refus) = self.refus.lock().unwrap().clone() {
+                return Err(refus);
+            }
+            Ok(installer(&self.recepteur, recepteur))
+        }
+    }
+
+    #[derive(Default)]
+    pub struct FausseSortie {
+        producteur: Emplacement<ProducteurSon>,
+        pub ouvertures: AtomicUsize,
+    }
+
+    impl FausseSortie {
+        pub fn ouverte(&self) -> bool {
+            self.producteur.lock().unwrap().1.is_some()
+        }
+
+        pub fn tirer(&self, nombre: usize, taux: u32) -> Option<Vec<f32>> {
+            let mut tampon = vec![0f32; nombre];
+            (self.producteur.lock().unwrap().1.as_mut()?)(&mut tampon, taux);
+            Some(tampon)
+        }
+    }
+
+    impl SortieSon for FausseSortie {
+        fn disponible(&self) -> bool {
+            true
+        }
+
+        fn jouer(&self, producteur: ProducteurSon) -> estompe_plateforme::Resultat<FluxSon> {
+            self.ouvertures.fetch_add(1, Ordering::SeqCst);
+            Ok(installer(&self.producteur, producteur))
+        }
     }
 
     #[derive(Default)]
     pub struct FauxFichiers {
         pub dossier: Mutex<Option<std::path::PathBuf>>,
         pub ouverts: Mutex<Vec<std::path::PathBuf>>,
+        pub choix: Mutex<Vec<std::path::PathBuf>>,
+    }
+
+    #[derive(Default)]
+    pub struct FauxPressePapiers {
+        pub contenu: Mutex<Option<ContenuPressePapiers>>,
+    }
+
+    impl PressePapiers for FauxPressePapiers {
+        fn disponible(&self) -> bool {
+            self.contenu.lock().unwrap().is_some()
+        }
+
+        fn copier_image(&self, _: &estompe_plateforme::Image) -> estompe_plateforme::Resultat<()> {
+            Ok(())
+        }
+
+        fn lire_pieces(&self) -> estompe_plateforme::Resultat<Option<ContenuPressePapiers>> {
+            Ok(self.contenu.lock().unwrap().clone())
+        }
     }
 
     impl Fichiers for FauxFichiers {
@@ -1084,6 +1541,13 @@ pub mod coquille {
             _: Option<&std::path::Path>,
         ) -> estompe_plateforme::Resultat<Option<std::path::PathBuf>> {
             Ok(self.dossier.lock().unwrap().clone())
+        }
+
+        fn choisir_fichiers(
+            &self,
+            _: Option<&std::path::Path>,
+        ) -> estompe_plateforme::Resultat<Vec<std::path::PathBuf>> {
+            Ok(std::mem::take(&mut *self.choix.lock().unwrap()))
         }
 
         fn ouvrir(&self, chemin: &std::path::Path) -> estompe_plateforme::Resultat<()> {
@@ -1135,7 +1599,11 @@ pub mod coquille {
                     None,
                 ),
                 fichiers: Arc::new(FauxFichiers::default()),
+                presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
+                conversions: Mutex::new(None),
+                micro: Arc::new(FauxMicro::default()),
+                sortie: Arc::new(FausseSortie::default()),
                 adresse: adresse.to_string(),
                 navigateur: Arc::new(super::FauxNavigateur::default()),
                 etat,
@@ -1206,7 +1674,23 @@ pub mod coquille {
         }
 
         fn presse_papiers(&self) -> estompe_natif::messagerie::pont::Presse {
-            Arc::new(estompe_plateforme::Indisponible)
+            self.presse_papiers.clone()
+        }
+
+        fn conversions(&self) -> Arc<estompe_client::video::Conversions> {
+            self.conversions
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| Arc::new(estompe_client::video::Conversions::aucune()))
+        }
+
+        fn micro(&self) -> estompe_natif::messagerie::vocal::MicroPartage {
+            self.micro.clone()
+        }
+
+        fn sortie_son(&self) -> estompe_natif::messagerie::vocal::SortiePartagee {
+            self.sortie.clone()
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

@@ -3,10 +3,15 @@ import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint"
 export component Infobulle {
     in property <string> texte;
     in property <bool> forcee: false;
+    in property <MouseCursor> curseur: MouseCursor.default;
+    callback clique();
     out property <bool> visible-maintenant: forcee || zone.has-hover;
     @children
     zone := TouchArea {
-        mouse-cursor: default;
+        mouse-cursor: root.curseur;
+        clicked => {
+            root.clique();
+        }
     }
     bulle := Rectangle {
         x: (parent.width - self.width) / 2;

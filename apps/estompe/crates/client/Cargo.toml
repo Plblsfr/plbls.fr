@@ -14,6 +14,7 @@ bytes = "1"
 estompe-plateforme.workspace = true
 form_urlencoded = "1"
 getrandom = "0.4"
+http-body = "1"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "aws-lc-rs"] }
@@ -23,6 +24,7 @@ serde_json.workspace = true
 sha2 = "0.10"
 tokio = { version = "1", default-features = false, features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
+unsafe-libopus = "0.2"
 url = "2"
 
 [dev-dependencies]
