@@ -1,7 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Icone } from "../composants.slint";
 import { DonneesCoquille, EtatBandeau } from "../coquille/donnees.slint";
-import { DonneesVocal, EtapeVocal, Onde, LecteurVocal } from "vocal.slint";
+import { DonneesMessageVocal, EtapeVocal, Onde, LecteurVocal } from "vocal.slint";
 
 export enum GenreBandeau { aucun, reponse, modification }
 
@@ -280,7 +280,7 @@ component VignettePiece inherits Rectangle {
 }
 
 component EnregistrementVocal inherits HorizontalLayout {
-    property <bool> ecoute: DonneesVocal.etape == EtapeVocal.ecoute || DonneesVocal.etape == EtapeVocal.envoi;
+    property <bool> ecoute: DonneesMessageVocal.etape == EtapeVocal.ecoute || DonneesMessageVocal.etape == EtapeVocal.envoi;
     height: 40px;
     spacing: Espace.e2;
     accessible-role: groupbox;
@@ -291,13 +291,13 @@ component EnregistrementVocal inherits HorizontalLayout {
             icone: "corbeille";
             libelle: root.ecoute ? "Supprimer le message vocal" : "Annuler l'enregistrement";
             encre: Theme.danger;
-            actif: DonneesVocal.etape != EtapeVocal.envoi;
+            actif: DonneesMessageVocal.etape != EtapeVocal.envoi;
             clique => {
-                DonneesVocal.annuler();
+                DonneesMessageVocal.annuler();
             }
         }
     }
-    if DonneesVocal.etape == EtapeVocal.ouverture: Text {
+    if DonneesMessageVocal.etape == EtapeVocal.ouverture: Text {
         horizontal-stretch: 1;
         text: "Ouverture du micro…";
         color: Theme.gris;
@@ -307,7 +307,7 @@ component EnregistrementVocal inherits HorizontalLayout {
             annuler.focus();
         }
     }
-    if DonneesVocal.etape == EtapeVocal.enregistrement || DonneesVocal.etape == EtapeVocal.finalisation: HorizontalLayout {
+    if DonneesMessageVocal.etape == EtapeVocal.enregistrement || DonneesMessageVocal.etape == EtapeVocal.finalisation: HorizontalLayout {
         horizontal-stretch: 1;
         spacing: Espace.e2;
         HorizontalLayout {
@@ -324,20 +324,20 @@ component EnregistrementVocal inherits HorizontalLayout {
                 }
             }
             Text {
-                text: DonneesVocal.duree;
+                text: DonneesMessageVocal.duree;
                 color: Theme.encre;
                 font-family: Typo.mono;
                 font-size: Typo.petit;
                 vertical-alignment: center;
                 accessible-role: text;
-                accessible-label: "Enregistrement : " + DonneesVocal.duree;
+                accessible-label: "Enregistrement : " + DonneesMessageVocal.duree;
             }
         }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
             Onde {
-                valeurs: DonneesVocal.niveaux;
+                valeurs: DonneesMessageVocal.niveaux;
                 avance: 1;
                 fait: Theme.rose-fonce;
                 minimum: 0.08;
@@ -348,9 +348,9 @@ component EnregistrementVocal inherits HorizontalLayout {
             pause := BoutonIcone {
                 icone: "pause";
                 libelle: "Mettre en pause et écouter";
-                actif: DonneesVocal.etape == EtapeVocal.enregistrement;
+                actif: DonneesMessageVocal.etape == EtapeVocal.enregistrement;
                 clique => {
-                    DonneesVocal.arreter();
+                    DonneesMessageVocal.arreter();
                 }
                 init => {
                     self.focus();
@@ -364,13 +364,13 @@ component EnregistrementVocal inherits HorizontalLayout {
         LecteurVocal {
             horizontal-stretch: 1;
             piece: "apercu";
-            duree: DonneesVocal.duree;
-            barres: DonneesVocal.forme;
+            duree: DonneesMessageVocal.duree;
+            barres: DonneesMessageVocal.forme;
             init => {
                 envoi.focus();
             }
         }
-        if DonneesVocal.echec: Text {
+        if DonneesMessageVocal.echec: Text {
             text: "Envoi impossible.";
             color: Theme.danger;
             font-size: Typo.petit;
@@ -382,11 +382,11 @@ component EnregistrementVocal inherits HorizontalLayout {
         alignment: center;
         envoi := BoutonIcone {
             icone: "envoi";
-            libelle: DonneesVocal.echec ? "Réessayer" : "Envoyer le message vocal";
-            actif: DonneesVocal.etape == EtapeVocal.enregistrement || DonneesVocal.etape == EtapeVocal.ecoute;
+            libelle: DonneesMessageVocal.echec ? "Réessayer" : "Envoyer le message vocal";
+            actif: DonneesMessageVocal.etape == EtapeVocal.enregistrement || DonneesMessageVocal.etape == EtapeVocal.ecoute;
             encre: Theme.rose-texte;
             clique => {
-                DonneesVocal.envoyer();
+                DonneesMessageVocal.envoyer();
             }
         }
     }
@@ -394,7 +394,7 @@ component EnregistrementVocal inherits HorizontalLayout {
 
 component ChampSaisie inherits Rectangle {
     property <length> hauteur-ligne: 22px;
-    property <bool> micro: DonneesVocal.possible && saisie.text == "" && saisie.preedit-text == "" && DonneesSaisie.pieces.length == 0 && DonneesSaisie.bandeau.genre != GenreBandeau.modification;
+    property <bool> micro: DonneesMessageVocal.possible && saisie.text == "" && saisie.preedit-text == "" && DonneesSaisie.pieces.length == 0 && DonneesSaisie.bandeau.genre != GenreBandeau.modification;
     property <length> hauteur-champ: max(root.hauteur-ligne, min(saisie.preferred-height, DonneesSaisie.hauteur-max));
     property <int> demande: DonneesSaisie.demande-focus;
     changed demande => {
@@ -438,7 +438,7 @@ component ChampSaisie inherits Rectangle {
         }
         HorizontalLayout {
             spacing: Espace.e1;
-            visible: DonneesVocal.etape == EtapeVocal.aucune;
+            visible: DonneesMessageVocal.etape == EtapeVocal.aucune;
             if DonneesSaisie.joindre-possible: VerticalLayout {
                 alignment: end;
                 BoutonIcone {
@@ -592,7 +592,7 @@ component ChampSaisie inherits Rectangle {
                     icone: "mic";
                     libelle: "Message vocal";
                     clique => {
-                        DonneesVocal.demarrer();
+                        DonneesMessageVocal.demarrer();
                     }
                 }
             }
@@ -611,7 +611,7 @@ component ChampSaisie inherits Rectangle {
             }
         }
     }
-    if DonneesVocal.etape != EtapeVocal.aucune: Rectangle {
+    if DonneesMessageVocal.etape != EtapeVocal.aucune: Rectangle {
         x: Espace.e2;
         y: parent.height - self.height - Espace.e2 + 3px;
         width: parent.width - 2 * Espace.e2;

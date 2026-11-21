@@ -1,0 +1,99 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { DonneesVocal, ListePeripheriques } from "donnees.slint";
+import { BoutonVocal, Chevron } from "commun.slint";
+
+export component CommandesVocal inherits HorizontalLayout {
+    in property <bool> compact: false;
+    spacing: 6px;
+    alignment: center;
+    if DonneesVocal.barre.peut-parler: HorizontalLayout {
+        spacing: 0;
+        BoutonVocal {
+            icone: DonneesVocal.barre.micro-coupe ? "mic-off" : "mic";
+            libelle: DonneesVocal.barre.micro-coupe ? "Réactiver le micro" : "Couper le micro";
+            raccourci: "Alt+Maj+M";
+            coupe: DonneesVocal.barre.micro-coupe;
+            niveau: DonneesVocal.barre.micro-coupe ? -1 : DonneesVocal.niveau;
+            fort: DonneesVocal.voix;
+            clique => {
+                DonneesVocal.basculer-micro();
+            }
+        }
+        Chevron {
+            libelle: "Choisir le micro";
+            clique => {
+                DonneesVocal.ouvrir-liste(ListePeripheriques.micros);
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 0;
+        BoutonVocal {
+            icone: DonneesVocal.barre.casque-coupe ? "headphones-off" : "headphones";
+            libelle: DonneesVocal.barre.casque-coupe ? "Réactiver le son" : "Couper le son";
+            raccourci: "Alt+Maj+D";
+            coupe: DonneesVocal.barre.casque-coupe;
+            clique => {
+                DonneesVocal.basculer-casque();
+            }
+        }
+        Chevron {
+            libelle: "Choisir la sortie audio";
+            clique => {
+                DonneesVocal.ouvrir-liste(ListePeripheriques.sorties);
+            }
+        }
+    }
+    if !root.compact: BoutonVocal {
+        icone: "camera-off";
+        libelle: "Activer la caméra";
+        bientot: true;
+    }
+    if !root.compact: BoutonVocal {
+        icone: "monitor";
+        libelle: "Partager l'écran";
+        bientot: true;
+    }
+    BoutonVocal {
+        icone: "sliders";
+        libelle: "Réglages audio";
+        clique => {
+            DonneesVocal.ouvrir-reglages();
+        }
+    }
+    if !root.compact: Rectangle {
+        width: 1px;
+        background: Theme.trait;
+    }
+    BoutonVocal {
+        icone: "phone-off";
+        libelle: "Quitter le vocal";
+        danger: true;
+        clique => {
+            DonneesVocal.quitter();
+        }
+    }
+}
+
+export component AvisVocal inherits VerticalLayout {
+    spacing: 2px;
+    if DonneesVocal.parle-micro-coupe: Text {
+        text: "Ton micro est coupé";
+        color: Theme.danger;
+        font-size: Typo.minuscule;
+        font-weight: Typo.moyen;
+        accessible-role: text;
+    }
+    if DonneesVocal.barre.message != "": Text {
+        text: DonneesVocal.barre.message;
+        color: Theme.danger;
+        font-size: Typo.minuscule;
+        wrap: word-wrap;
+    }
+    if DonneesVocal.ptt: Text {
+        text: "Appuyer pour parler : maintiens \{DonneesVocal.touche-ptt}\{DonneesVocal.ptt-parle ? " · tu parles" : ""}";
+        color: Theme.gris;
+        font-size: Typo.minuscule;
+        wrap: word-wrap;
+    }
+}

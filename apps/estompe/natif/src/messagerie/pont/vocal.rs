@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use estompe_client::store::messages::Brouillon;
-use estompe_client::video::ffmpeg_du_systeme;
-use estompe_client::vocal::{
+use estompe_client::message_vocal::{
     decoder, decoder_avec_ffmpeg, horloge, Audio, ErreurVocal, Lecture, LIBELLES_VITESSE, VITESSES,
 };
+use estompe_client::store::messages::Brouillon;
+use estompe_client::video::ffmpeg_du_systeme;
 use estompe_plateforme::{Erreur, FluxSon};
 use slint::{ComponentHandle, ModelRc, VecModel};
 
@@ -16,7 +16,7 @@ use super::super::vocal::{
     APERCU, ECHEC_D_ENVOI,
 };
 use super::{barres, verrou_de, PontMessagerie};
-use crate::{DonneesVocal, EtapeVocal, Principale};
+use crate::{DonneesMessageVocal, EtapeVocal, Principale};
 
 pub const RAFRAICHISSEMENT_LECTURE: Duration = Duration::from_millis(100);
 pub const SORTIE_INDISPONIBLE: &str =
@@ -276,7 +276,7 @@ impl PontMessagerie {
     }
 
     fn afficher_vocal(&self, f: &Principale) {
-        let v = f.global::<DonneesVocal>();
+        let v = f.global::<DonneesMessageVocal>();
         let e = self.vocal.enregistreur();
         v.set_etape(match e.etape {
             Etape::Aucune => EtapeVocal::Aucune,
@@ -569,7 +569,7 @@ impl PontMessagerie {
     }
 
     fn afficher_lecture(&self, f: &Principale) {
-        let v = f.global::<DonneesVocal>();
+        let v = f.global::<DonneesMessageVocal>();
         let l = self.vocal.lecteur();
         let (position, duree) = l.position().map(|(p, d, _)| (p, d)).unwrap_or((0, 0));
         v.set_piece(l.piece().unwrap_or_default().into());

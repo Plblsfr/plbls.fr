@@ -1,4 +1,5 @@
 pub mod appels;
+pub mod audio;
 pub mod auth;
 pub mod cache;
 pub mod config;
@@ -20,6 +21,8 @@ pub mod gifs;
 pub mod lru;
 pub mod markdown;
 pub mod mention;
+pub mod message_vocal;
+pub mod mesures;
 pub mod mise_a_jour;
 pub mod notifications;
 pub mod nouveau_prive;

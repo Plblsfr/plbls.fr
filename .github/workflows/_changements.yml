@@ -87,7 +87,7 @@ jobs:
           c catalogue_permissions api/estompe/core/src/catalogue.rs docs/aegis/fonctionnalites.md
           natif=('apps/estompe/natif/**' 'apps/estompe/crates/client/**' 'apps/estompe/crates/plateforme/**')
           c estompe_tauri 'apps/estompe/**' '!**/*.md' "${natif[@]/#/!}"
-          c estompe_natif "${natif[@]}" '!**/*.md' 'scripts/estompe/natif-*' scripts/estompe/gen-types-client.mjs docs/estompe/openapi.yaml \
+          c estompe_natif "${natif[@]}" '!**/*.md' 'scripts/estompe/natif-*' scripts/estompe/gen-types-client.mjs docs/estompe/openapi.yaml deploy/docker-compose.dev.yml \
             web/estompe/src/styles/v3-jetons.css web/estompe/src/components/Icon.svelte
           c estompe_ci_image 'deploy/estompe/ci/**'
           c aegis_server 'api/aegis/**' 'api/commun/**' "${cargo[@]}"

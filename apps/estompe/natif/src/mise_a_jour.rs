@@ -11,7 +11,9 @@ use slint::{ComponentHandle, Model};
 use tokio::sync::oneshot;
 
 use crate::entree::{Emetteur, Evenement, Installateur};
-use crate::{DonneesMiseAJour, DonneesSaisie, DonneesVocal, EtapeVocal, Principale};
+use crate::{
+    DonneesMessageVocal, DonneesMiseAJour, DonneesSaisie, DonneesVocal, EtapeVocal, Principale,
+};
 
 pub fn contexte_de_la_fenetre(fenetre: slint::Weak<Principale>) -> SourceContexte {
     Arc::new(move || {
@@ -23,8 +25,8 @@ pub fn contexte_de_la_fenetre(fenetre: slint::Weak<Principale>) -> SourceContext
                 let _ = envoi.send(Contexte {
                     saisie_en_cours: !saisie.get_texte().trim().is_empty()
                         || saisie.get_pieces().row_count() > 0
-                        || f.global::<DonneesVocal>().get_etape() != EtapeVocal::Aucune,
-                    en_appel: false,
+                        || f.global::<DonneesMessageVocal>().get_etape() != EtapeVocal::Aucune,
+                    en_appel: f.global::<DonneesVocal>().get_barre().visible,
                 });
             });
             reception.await.unwrap_or_default()

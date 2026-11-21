@@ -7,8 +7,10 @@ pub mod ecrans;
 pub mod entree;
 pub mod menu;
 pub mod messagerie;
+pub mod mesures;
 pub mod mise_a_jour;
 pub mod session;
+pub mod vocal;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const OPTION_INVITATION: &str = "--invitation";
@@ -46,6 +48,27 @@ pub struct Application {
     pub mise_a_jour: estompe_client::mise_a_jour::MiseAJour,
     pub client: estompe_client::http::Client,
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
+    pub vocal: std::sync::Arc<estompe_client::vocal::SessionVocale>,
+}
+
+#[cfg(feature = "livekit")]
+fn connecteur_vocal() -> std::sync::Arc<dyn estompe_client::vocal::Connecteur> {
+    std::sync::Arc::new(estompe_client::vocal::livekit::ConnecteurLiveKit)
+}
+
+#[cfg(not(feature = "livekit"))]
+fn connecteur_vocal() -> std::sync::Arc<dyn estompe_client::vocal::Connecteur> {
+    std::sync::Arc::new(estompe_client::vocal::ConnecteurIndisponible)
+}
+
+#[cfg(feature = "livekit")]
+fn apm_vocal() -> Option<std::sync::Arc<estompe_client::audio::Apm>> {
+    Some(estompe_client::vocal::livekit::apm())
+}
+
+#[cfg(not(feature = "livekit"))]
+fn apm_vocal() -> Option<std::sync::Arc<estompe_client::audio::Apm>> {
+    None
 }
 
 pub fn demarrer(
@@ -68,6 +91,40 @@ pub fn demarrer(
         ecrans::publieur(fenetre),
     )
     .map_err(|e| format!("fil de l'entrée : {e}"))?;
+    let (micro, sortie, traitement, ecoute) = session.memoire.lire(|p| {
+        (
+            p.micro.clone(),
+            p.sortie_audio.clone(),
+            p.traitement_micro,
+            p.ecoute.clone(),
+        )
+    });
+    let audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio> =
+        std::sync::Arc::new(estompe_plateforme::AudioSysteme);
+    let apm = apm_vocal();
+    let vocal = std::sync::Arc::new(estompe_client::vocal::SessionVocale::demarrer(
+        &entree.runtime(),
+        estompe_client::vocal::Dependances {
+            api: std::sync::Arc::new(reels.client.clone()),
+            connecteur: connecteur_vocal(),
+            audio: audio.clone(),
+            apm: apm.clone(),
+            reglages: estompe_client::vocal::Reglages {
+                micro,
+                sortie,
+                traitement,
+                ecoute,
+                ..estompe_client::vocal::Reglages::default()
+            },
+        },
+    ));
+    let audio_messages = audio.clone();
+    let outils_vocaux = vocal::OutilsVocaux {
+        session: vocal.clone(),
+        audio,
+        raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+        apm,
+    };
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -80,6 +137,16 @@ pub fn demarrer(
         journal: Some(session.journal.clone()),
         navigateur,
         dossier_donnees: Some(session.dossiers.donnees.clone()),
+        vocal: Some(outils_vocaux),
+        son: estompe_plateforme::SonPeripheriques::nouveau(audio_messages, {
+            let memoire = session.memoire.clone();
+            std::sync::Arc::new(move |sens| {
+                memoire.lire(|p| match sens {
+                    estompe_plateforme::SensAudio::Entree => p.micro.clone(),
+                    estompe_plateforme::SensAudio::Sortie => p.sortie_audio.clone(),
+                })
+            })
+        }),
         conversions: std::sync::Arc::new(estompe_client::video::Conversions::du_systeme(
             session
                 .dossiers
@@ -172,6 +239,12 @@ pub fn demarrer(
         .avant_de_quitter(bureau::EtapeFermeture::Coquille, move || {
             arret.arreter(bureau::DELAI_ARRET);
         });
+    let session_vocale = vocal.clone();
+    bureau
+        .fermeture()
+        .avant_de_quitter(bureau::EtapeFermeture::Vocal, move || {
+            session_vocale.fermer_bloquant(estompe_client::vocal::DELAI_FERMETURE);
+        });
     coquille.observer(bureau::notifications::Notifieur::nouveau(
         bureau::notifications::OptionsNotifieur {
             systeme: plateforme.notifications,
@@ -189,6 +262,7 @@ pub fn demarrer(
         mise_a_jour: service_maj,
         client: reels.client,
         auth: reels.auth,
+        vocal,
     })
 }
 

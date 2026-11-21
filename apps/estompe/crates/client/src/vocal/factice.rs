@@ -1,0 +1,394 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
+
+use futures_util::future::BoxFuture;
+use futures_util::stream::{self, StreamExt};
+use tokio::sync::mpsc;
+
+use crate::http::{ErreurApi, Refus};
+
+use super::salle::{
+    Connecteur, Connexion, ErreurSalle, EvenementSalle, FluxTrames, InfoParticipant, JetonSalle,
+    RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
+};
+use super::session::ApiVocale;
+
+fn flux(reception: mpsc::UnboundedReceiver<Vec<i16>>) -> FluxTrames {
+    stream::unfold(reception, |mut r| async move {
+        r.recv().await.map(|trame| (trame, r))
+    })
+    .boxed()
+}
+
+#[derive(Default)]
+struct Membre {
+    evenements: Option<mpsc::UnboundedSender<EvenementSalle>>,
+    attributs: BTreeMap<String, String>,
+    publie: bool,
+}
+
+#[derive(Default)]
+struct EtatServeur {
+    salles: BTreeMap<String, BTreeMap<String, Membre>>,
+    abonnes: BTreeMap<(String, String), Vec<mpsc::UnboundedSender<Vec<i16>>>>,
+    hors_ligne: bool,
+    trames: BTreeMap<String, usize>,
+    coupes: BTreeMap<String, bool>,
+    connexions: usize,
+}
+
+#[derive(Clone, Default)]
+pub struct ServeurVocalFactice {
+    etat: Arc<Mutex<EtatServeur>>,
+}
+
+fn info(identite: &str, attributs: &BTreeMap<String, String>, local: bool) -> InfoParticipant {
+    InfoParticipant {
+        identite: identite.to_string(),
+        nom: identite.to_string(),
+        attributs: attributs.clone(),
+        local,
+        ..InfoParticipant::default()
+    }
+}
+
+impl ServeurVocalFactice {
+    pub fn nouveau() -> Self {
+        Self::default()
+    }
+
+    fn etat(&self) -> MutexGuard<'_, EtatServeur> {
+        self.etat.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn participants(&self, salle: &str) -> BTreeSet<String> {
+        self.etat()
+            .salles
+            .get(salle)
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn attributs(&self, salle: &str, identite: &str) -> BTreeMap<String, String> {
+        self.etat()
+            .salles
+            .get(salle)
+            .and_then(|m| m.get(identite))
+            .map(|m| m.attributs.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn trames_recues(&self, identite: &str) -> usize {
+        self.etat().trames.get(identite).copied().unwrap_or(0)
+    }
+
+    pub fn micro_coupe(&self, identite: &str) -> Option<bool> {
+        self.etat().coupes.get(identite).copied()
+    }
+
+    pub fn connexions(&self) -> usize {
+        self.etat().connexions
+    }
+
+    pub fn hors_ligne(&self, hors_ligne: bool) {
+        self.etat().hors_ligne = hors_ligne;
+    }
+
+    pub fn envoyer(&self, salle: &str, identite: &str, evenement: EvenementSalle) -> bool {
+        self.etat()
+            .salles
+            .get(salle)
+            .and_then(|m| m.get(identite))
+            .and_then(|m| m.evenements.as_ref())
+            .is_some_and(|e| e.send(evenement).is_ok())
+    }
+
+    pub fn couper(&self, salle: &str, identite: &str, raison: RaisonDeconnexion) {
+        let retire = {
+            let mut etat = self.etat();
+            if raison == RaisonDeconnexion::Reseau {
+                etat.hors_ligne = true;
+            }
+            etat.salles.get_mut(salle).and_then(|m| m.remove(identite))
+        };
+        if let Some(membre) = retire {
+            if let Some(e) = membre.evenements {
+                let _ = e.send(EvenementSalle::Deconnecte(raison));
+            }
+            self.diffuser(salle, identite, || {
+                EvenementSalle::Depart(identite.to_string())
+            });
+        }
+    }
+
+    fn diffuser(&self, salle: &str, sauf: &str, evenement: impl Fn() -> EvenementSalle) {
+        let etat = self.etat();
+        if let Some(membres) = etat.salles.get(salle) {
+            for (identite, membre) in membres {
+                if identite != sauf {
+                    if let Some(e) = &membre.evenements {
+                        let _ = e.send(evenement());
+                    }
+                }
+            }
+        }
+    }
+
+    fn abonner(&self, salle: &str, publicateur: &str) -> EvenementSalle {
+        let (envoi, reception) = mpsc::unbounded_channel();
+        self.etat()
+            .abonnes
+            .entry((salle.to_string(), publicateur.to_string()))
+            .or_default()
+            .push(envoi);
+        EvenementSalle::PisteAudio {
+            identite: publicateur.to_string(),
+            source: SourceAudio::Micro,
+            trames: flux(reception),
+        }
+    }
+
+    fn connecter_membre(&self, jeton: &JetonSalle) -> Result<Connexion, ErreurSalle> {
+        let (identite, salle) = jeton
+            .jeton
+            .split_once('@')
+            .map(|(i, s)| (i.to_string(), s.to_string()))
+            .ok_or_else(|| ErreurSalle::Connexion("jeton invalide".into()))?;
+        let (envoi, evenements) = mpsc::unbounded_channel();
+        let (participants, publicateurs) = {
+            let mut etat = self.etat();
+            if etat.hors_ligne {
+                return Err(ErreurSalle::Connexion("réseau coupé".into()));
+            }
+            etat.connexions += 1;
+            let membres = etat.salles.entry(salle.clone()).or_default();
+            membres.insert(
+                identite.clone(),
+                Membre {
+                    evenements: Some(envoi.clone()),
+                    ..Membre::default()
+                },
+            );
+            let participants: Vec<_> = membres
+                .iter()
+                .map(|(i, m)| info(i, &m.attributs, i == &identite))
+                .collect();
+            let publicateurs: Vec<_> = membres
+                .iter()
+                .filter(|(i, m)| m.publie && *i != &identite)
+                .map(|(i, _)| i.clone())
+                .collect();
+            (participants, publicateurs)
+        };
+        self.diffuser(&salle, &identite, || {
+            EvenementSalle::Arrivee(info(&identite, &BTreeMap::new(), false))
+        });
+        for publicateur in publicateurs {
+            let _ = envoi.send(self.abonner(&salle, &publicateur));
+        }
+        Ok(Connexion {
+            salle: Arc::new(SalleFactice {
+                serveur: self.clone(),
+                salle,
+                identite,
+                fermee: AtomicBool::new(false),
+            }),
+            participants,
+            evenements,
+        })
+    }
+}
+
+struct SalleFactice {
+    serveur: ServeurVocalFactice,
+    salle: String,
+    identite: String,
+    fermee: AtomicBool,
+}
+
+struct SortieFactice {
+    serveur: ServeurVocalFactice,
+    salle: String,
+    identite: String,
+}
+
+impl SortieMicro for SortieFactice {
+    fn envoyer(&self, trame: &[i16]) {
+        let mut etat = self.serveur.etat();
+        *etat.trames.entry(self.identite.clone()).or_default() += 1;
+        if let Some(abonnes) = etat
+            .abonnes
+            .get_mut(&(self.salle.clone(), self.identite.clone()))
+        {
+            abonnes.retain(|a| a.send(trame.to_vec()).is_ok());
+        }
+    }
+
+    fn couper(&self, coupe: bool) {
+        self.serveur
+            .etat()
+            .coupes
+            .insert(self.identite.clone(), coupe);
+    }
+}
+
+impl Salle for SalleFactice {
+    fn identite(&self) -> String {
+        self.identite.clone()
+    }
+
+    fn definir_attributs(
+        &self,
+        attributs: BTreeMap<String, String>,
+    ) -> BoxFuture<'_, Result<(), ErreurSalle>> {
+        Box::pin(async move {
+            if self.fermee.load(Ordering::SeqCst) {
+                return Err(ErreurSalle::Fermee);
+            }
+            {
+                let mut etat = self.serveur.etat();
+                let membre = etat
+                    .salles
+                    .get_mut(&self.salle)
+                    .and_then(|m| m.get_mut(&self.identite))
+                    .ok_or(ErreurSalle::Fermee)?;
+                membre.attributs = attributs.clone();
+            }
+            self.serveur
+                .diffuser(&self.salle, "", || EvenementSalle::Attributs {
+                    identite: self.identite.clone(),
+                    attributs: attributs.clone(),
+                });
+            Ok(())
+        })
+    }
+
+    fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(async move {
+            let abonnes: Vec<String> = {
+                let mut etat = self.serveur.etat();
+                let membres = etat
+                    .salles
+                    .get_mut(&self.salle)
+                    .ok_or(ErreurSalle::Fermee)?;
+                membres
+                    .get_mut(&self.identite)
+                    .ok_or(ErreurSalle::Fermee)?
+                    .publie = true;
+                membres
+                    .keys()
+                    .filter(|i| *i != &self.identite)
+                    .cloned()
+                    .collect()
+            };
+            for abonne in abonnes {
+                let piste = self.serveur.abonner(&self.salle, &self.identite);
+                self.serveur.envoyer(&self.salle, &abonne, piste);
+            }
+            let sortie: Arc<dyn SortieMicro> = Arc::new(SortieFactice {
+                serveur: self.serveur.clone(),
+                salle: self.salle.clone(),
+                identite: self.identite.clone(),
+            });
+            Ok(sortie)
+        })
+    }
+
+    fn fermer(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            if self.fermee.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            let present = self
+                .serveur
+                .etat()
+                .salles
+                .get_mut(&self.salle)
+                .and_then(|m| m.remove(&self.identite))
+                .is_some();
+            if present {
+                self.serveur.diffuser(&self.salle, &self.identite, || {
+                    EvenementSalle::Depart(self.identite.clone())
+                });
+            }
+        })
+    }
+}
+
+impl Connecteur for ServeurVocalFactice {
+    fn connecter(&self, jeton: JetonSalle) -> BoxFuture<'static, Result<Connexion, ErreurSalle>> {
+        let serveur = self.clone();
+        Box::pin(async move { serveur.connecter_membre(&jeton) })
+    }
+}
+
+pub struct ApiVocaleFactice {
+    pub identite: String,
+    pub hors_ligne: AtomicBool,
+    pub refus: Mutex<BTreeMap<String, (u16, String)>>,
+    pub appels: AtomicUsize,
+    delai: Mutex<Duration>,
+}
+
+impl ApiVocaleFactice {
+    pub fn nouvelle(identite: &str) -> Self {
+        Self {
+            identite: identite.to_string(),
+            hors_ligne: AtomicBool::new(false),
+            refus: Mutex::new(BTreeMap::new()),
+            appels: AtomicUsize::new(0),
+            delai: Mutex::new(Duration::ZERO),
+        }
+    }
+
+    pub fn retarder(&self, delai: Duration) {
+        if let Ok(mut d) = self.delai.lock() {
+            *d = delai;
+        }
+    }
+
+    pub fn refuser(&self, salon: &str, statut: u16, code: &str) {
+        if let Ok(mut refus) = self.refus.lock() {
+            refus.insert(salon.to_string(), (statut, code.to_string()));
+        }
+    }
+}
+
+impl ApiVocale for ApiVocaleFactice {
+    fn jeton(&self, salon: &str) -> BoxFuture<'_, Result<JetonSalle, ErreurApi>> {
+        let salon = salon.to_string();
+        Box::pin(async move {
+            self.appels.fetch_add(1, Ordering::SeqCst);
+            let delai = self.delai.lock().map(|d| *d).unwrap_or_default();
+            if !delai.is_zero() {
+                tokio::time::sleep(delai).await;
+            }
+            if self.hors_ligne.load(Ordering::SeqCst) {
+                return Err(ErreurApi::Reseau("hors ligne".into()));
+            }
+            let refus = self.refus.lock().ok().and_then(|r| r.get(&salon).cloned());
+            if let Some((statut, code)) = refus {
+                let refus = Refus {
+                    statut,
+                    code,
+                    message: String::new(),
+                    donnees: Default::default(),
+                };
+                return Err(match statut {
+                    403 => ErreurApi::Interdit(refus),
+                    409 => ErreurApi::Conflit(refus),
+                    500..=599 => ErreurApi::Serveur(refus),
+                    _ => ErreurApi::Autre(refus),
+                });
+            }
+            Ok(JetonSalle {
+                url: "factice://vocal".to_string(),
+                jeton: format!("{}@{salon}", self.identite),
+                salle: salon,
+                max_participants: Some(10),
+            })
+        })
+    }
+}

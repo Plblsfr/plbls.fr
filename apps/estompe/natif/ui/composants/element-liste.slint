@@ -13,13 +13,19 @@ export component ElementListe {
     in property <int> non-lus: 0;
     in property <int> mentions: 0;
     in property <string> etiquette;
+    in property <string> duree;
     in property <string> description;
     in property <bool> brouillon: false;
     in property <int> calque: 0;
     in property <bool> avec-menu: false;
+    in property <bool> depot-actif: false;
+    in property <bool> depot-propose: false;
     out property <bool> a-le-focus: portee.has-focus;
+    out property <bool> survol-depot: depot.has-drag;
     callback clique();
     callback menu(length, length);
+    callback peut-deposer(data-transfer) -> bool;
+    callback depose(data-transfer);
     property <bool> menu-ouvert: DonneesMenu.ouvert;
     property <bool> a-ouvert-menu: false;
     changed menu-ouvert => {
@@ -53,9 +59,9 @@ export component ElementListe {
     forward-focus: portee;
     Rectangle {
         border-radius: Rayon.s;
-        background: root.actif ? Theme.surface : zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
-        border-width: root.actif ? 1px : 0;
-        border-color: Theme.trait;
+        background: depot.has-drag ? Theme.rose-doux : root.actif ? Theme.surface : zone.has-hover ? Theme.encre.with-alpha(0.05) : transparent;
+        border-width: root.depot-propose || depot.has-drag ? 1.5px : root.actif ? 1px : 0;
+        border-color: root.depot-propose || depot.has-drag ? Theme.rose-fonce : Theme.trait;
         animate background { duration: Mouvement.d; easing: Courbes.sortie; }
     }
     Anneau {
@@ -117,6 +123,15 @@ export component ElementListe {
             vertical-alignment: center;
             overflow: elide;
         }
+        if root.duree != "": Text {
+            text: root.duree;
+            color: Theme.encre-2;
+            font-family: Typo.mono;
+            font-size: 11.5px;
+            vertical-alignment: center;
+            accessible-role: text;
+            accessible-label: "Présence dans le salon : \{root.duree}";
+        }
         if root.etiquette != "": VerticalLayout {
             alignment: center;
             Etiquette {
@@ -143,6 +158,16 @@ export component ElementListe {
                 nombre: root.mentions > 0 ? root.mentions : root.non-lus;
                 mention: root.mentions > 0;
             }
+        }
+    }
+    depot := DropArea {
+        enabled: root.depot-actif;
+        can-drop(e) => {
+            return root.peut-deposer(e.data) ? DragAction.move : DragAction.none;
+        }
+        dropped(e) => {
+            root.depose(e.data);
+            return DragAction.move;
         }
     }
 }

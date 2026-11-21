@@ -2,11 +2,11 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use estompe_client::lru::Lru;
-use estompe_client::store::CleConversation;
-use estompe_client::vocal::{
+use estompe_client::message_vocal::{
     forme_d_onde, niveau, Audio, Encodeur, Lecture, Reechantillonneur, BARRES, DUREE_MAX_MS,
     ECHANTILLONS_PAR_NIVEAU, TAUX,
 };
+use estompe_client::store::CleConversation;
 use estompe_plateforme::{Erreur, FluxSon, Indisponible, Micro, SortieSon};
 
 pub type MicroPartage = Arc<dyn Micro + Send + Sync>;
@@ -97,7 +97,7 @@ fn encoder(
         }
         converti.clear();
         if let Some((_, r)) = reechantillonneur.as_mut() {
-            r.pousser(&echantillons, &mut converti);
+            r.traiter(&echantillons, &mut converti);
         }
         converti.truncate(maximum.saturating_sub(encodeur.echantillons()) as usize);
         encodeur.pousser(&converti);
@@ -312,7 +312,7 @@ impl Vocal {
             if e.0.iter().any(|x| x == piece) {
                 return false;
             }
-            estompe_client::vocal::marquer_ecoute(&mut e.0, piece);
+            estompe_client::message_vocal::marquer_ecoute(&mut e.0, piece);
             (e.0.clone(), e.1.clone())
         };
         if let Some(noter) = noter {
@@ -324,7 +324,7 @@ impl Vocal {
 
 #[cfg(test)]
 mod tests {
-    use estompe_client::vocal::decoder;
+    use estompe_client::message_vocal::decoder;
     use estompe_plateforme::RecepteurSon;
 
     use super::*;

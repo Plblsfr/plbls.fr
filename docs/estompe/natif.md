@@ -2,15 +2,15 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)) ; caméra et partage d'écran arrivent au lot 5.
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections |
-| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
+| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; compteurs du processus pour les mesures (`processus/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
 hors du workspace racine comme les apps Tauri. Slint est figé en `=1.18.1`, comme dans l'overlay natif de l'app Tauri.
@@ -18,8 +18,11 @@ L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `d
 
 ## Construire et lancer
 
-Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libasound2-dev libxkbcommon-x11-0` et un pilote OpenGL (Mesa). Sous Windows : la
-toolchain MSVC. Les binaires de Skia sont téléchargés à la première compilation.
+Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev`, un pilote OpenGL (Mesa)
+et clang 21 ou plus récent, désigné par `CXX` (par exemple `CXX=clang++-21`) : libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium,
+que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sys` le refuse). Sous Windows : la toolchain MSVC, LLVM, Python 3 et
+`ninja`, LLVM 22 ou plus récent (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
+`cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible). ffmpeg, s'il est présent, lit les messages vocaux en AAC.
 
 ```sh
 just estompe-natif-run            # build de débogage : le bouton « Composants » ouvre la page de démonstration
@@ -29,6 +32,9 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
 ```
 
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
+`estompe-natif --mesures <fichier.json>` relève la mémoire et le CPU de l'app pendant un scénario et écrit un export au format de l'app Tauri :
+voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résultats du point de contrôle du lot 4).
+
 `estompe-natif --arriere-plan` démarre sans montrer la fenêtre si l'icône de la zone de notification est en place (lancement à l'ouverture de la session), sinon la montre.
 
 ## Interface
@@ -151,7 +157,7 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 - Sections : Entracte, Sillon, Stats (Sablier) et Régie apparaissent sur le rail si le `GET /me` de leur service les ouvre (`permissions.access`,
   `permissions.admin` pour Régie), comme le front. Adresses : `ESTOMPE_ENTRACTE_URL`, `ESTOMPE_SILLON_URL`, `ESTOMPE_SABLIER_URL`, `ESTOMPE_REGIE_URL`
   (vide : section coupée) ; sans variable, celles de production pour le serveur de production (Régie n'en a pas). Leur contenu arrive au lot 10.
-- Salons vocaux, cinéma, vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
+- Salons vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon vocal ou cinéma ouvre la vue du vocal et le rejoint (voir [Interface du salon vocal](#interface-du-salon-vocal)). Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
 - Menu contextuel d'un salon texte ou d'une conversation privée du panneau (`src/coquille/pont/menus.rs`) : « Marquer comme lu » s'il y a des non-lus ou des mentions
   (`Store::lire_conversation`), « Copier le lien » (`https://<serveur>/#/s/…` ou `#/dm/…`) ; un salon « bientôt » n'a que le lien.
 - Messages privés du panneau : triés par activité (`lignes_privees` du store, une conversation qui reçoit un message remonte), avec non-lus, mentions et présence par formes sur l'avatar.
@@ -554,21 +560,23 @@ deux moteurs et sur les deux OS :
 
 ### Messages vocaux
 
-- Logique sans interface dans `estompe_client::vocal` (testée sans périphérique, sur des signaux de synthèse) : niveau en dBFS et forme d'onde de 40 barres
-  (`niveau`, `forme_d_onde`, mêmes calculs que `levelOf` et `toWaveform` du front), rééchantillonnage linéaire, encodage Opus (`Encodeur` : 48 kHz mono,
+- Logique sans interface dans `estompe_client::message_vocal` (testée sans périphérique, sur des signaux de synthèse) : niveau en dBFS et forme d'onde de 40 barres
+  (`niveau`, `forme_d_onde`, mêmes calculs que `levelOf` et `toWaveform` du front), rééchantillonnage linéaire (`audio::Reechantillonneur`, le même que le vocal), encodage Opus (`Encodeur` : 48 kHz mono,
   32 kbit/s comme `recorder.svelte.ts`, application VoIP, trames de 20 ms) dans un Ogg écrit à la main (`OpusHead`, `OpusTags`, une page par seconde, granule exact
   à la fin), décodage d'un Ogg Opus ou d'un WebM Opus (lecture EBML minimale, tailles inconnues de MediaRecorder comprises) ; tout autre format (AAC en MP4 de
   Safari) passe par ffmpeg s'il est présent (`decoder_avec_ffmpeg`), sinon le message est « illisible ». Opus vient de `unsafe-libopus` (libopus 1.3.1 traduit en
   Rust : aucune chaîne C à installer, ni sous Linux ni sous MSVC).
 - Fichier produit : `message-vocal.ogg` (`audio/ogg`, Opus), que le serveur accepte (`application/ogg`) et que lisent Chrome, Firefox, Safari 17 et la WebView
   d'Android ; envoyé par `Client::envoyer_vocal` (`kind=voice`, `duration_ms`, `waveform` avant le fichier) puis en message sans texte par la file d'envoi, en
-  réponse au message cité s'il y en a un. Formats de test versionnés dans `apps/estompe/crates/client/src/vocal/essais/` : `chrome.webm` (WebM à taille
+  réponse au message cité s'il y en a un. Formats de test versionnés dans `apps/estompe/crates/client/src/message_vocal/essais/` : `chrome.webm` (WebM à taille
   inconnue), `firefox.ogg`, `safari.m4a` (MP4 fragmenté, AAC), produits par ffmpeg comme les produirait MediaRecorder, et `natif.ogg`, produit par l'app ;
   les tests décodent les uns et font relire à ffmpeg (autre décodeur, celui de Chromium) ceux de l'app.
-- Son : traits `Micro` et `SortieSon` de la crate plateforme (`SonSysteme`, `cpal` : WASAPI sous Windows, ALSA sous Linux), appareils par défaut du système, flux
-  ouvert sur un fil dédié et fermé quand son `FluxSon` disparaît. Un refus d'accès (`PermissionDenied`) donne « Accès au micro refusé… », l'absence de micro
-  « Aucun micro disponible… », toute autre erreur « Le micro est inutilisable. », sous le champ. Le choix du micro arrive avec les réglages du vocal (lot 4).
-- Enregistrement (`ui/messagerie/saisie.slint`, global `DonneesVocal`) : le bouton « Envoyer » devient « Message vocal » quand le champ est vide, sans pièce ni
+- Son : traits `Micro` et `SortieSon` de la crate plateforme (flux mono avec sa fréquence, fermé quand son `FluxSon` disparaît), implémentés par
+  `SonPeripheriques` sur les mêmes périphériques que le vocal (`SystemeAudio`, `AudioSysteme`, `cpal` : WASAPI sous Windows, ALSA sous Linux) : micro et sortie
+  choisis dans les réglages audio (`micro`, `sortie_audio` des préférences, relus à chaque ouverture), périphérique par défaut si le choix a disparu ; plusieurs
+  canaux ramenés à un seul. Un refus d'accès (`PermissionDenied`) donne « Accès au micro refusé… », l'absence de micro « Aucun micro disponible… », toute autre
+  erreur « Le micro est inutilisable. », sous le champ.
+- Enregistrement (`ui/messagerie/saisie.slint`, global `DonneesMessageVocal`) : le bouton « Envoyer » devient « Message vocal » quand le champ est vide, sans pièce ni
   modification en cours, si la conversation accepte les fichiers et qu'un micro existe. Le micro rend ses échantillons sur son fil ; un fil `estompe-vocal`
   rééchantillonne à 48 kHz, encode, calcule un niveau toutes les 100 ms et prévient l'interface (durée et 40 derniers niveaux). La durée est celle des
   échantillons reçus, pas d'une horloge ; l'enregistrement s'arrête seul à 5 minutes (`DUREE_MAX_MS`). « Mettre en pause et écouter » ferme le micro et passe
@@ -580,10 +588,213 @@ deux moteurs et sur les deux OS :
   (8 messages décodés gardés) ; un seul message joue à la fois (`Lecteur`), la position est suivie toutes les 100 ms par un `slint::Timer` qui ne tourne que
   pendant la lecture ; à la fin, retour au début.
 - Écarts : pas d'enchaînement automatique sur le message vocal suivant, une vitesse commune à tous les messages, position oubliée quand un autre message est
-  lancé ; pas de geste « maintenir pour enregistrer » (tactile) ; pas d'annulation d'écho ni de réduction de bruit à l'enregistrement (le navigateur les fait,
-  `nnnoiseless` arrive avec le vocal au lot 4) ; pas de transcription (lot 9).
+  lancé ; pas de geste « maintenir pour enregistrer » (tactile) ; pas d'annulation d'écho ni de réduction de bruit à l'enregistrement (le navigateur les fait ;
+  la chaîne du micro du vocal n'y est pas branchée) ; pas de transcription (lot 9).
 - À vérifier sur une vraie machine (Windows et Linux) : micro et haut-parleurs réels, refus du micro par les réglages de confidentialité de Windows, message
   enregistré lu par le front web et l'inverse.
+
+## Vocal
+
+Socle sans interface du lot 4 ([#276](https://github.com/Plblsfr/plbls.fr/issues/276)) : SDK Rust LiveKit, périphériques audio, session vocale,
+chaîne du micro (gain, suppression de bruit, annulation d'écho, détection de voix, test du micro), écoute (volume et muet par participant, volume général, limiteur),
+interface du salon vocal et appuyer pour parler par raccourci global.
+
+### Emplacement et décision
+
+Le SDK (`livekit` 0.12, libwebrtc précompilé) n'impose aucune dépendance d'interface : le vocal est un module de la crate client, `apps/estompe/crates/client/src/vocal/`,
+derrière la feature `livekit` de `estompe-client`. L'app l'active par défaut (feature `livekit` de `estompe-natif`) ; sans elle, `ConnecteurIndisponible` refuse toute connexion.
+Le reste du module (état, session, mixage, faux serveur) compile et se teste sans le SDK. Les périphériques passent par `cpal`, dans la crate plateforme.
+
+| Fichier | Rôle |
+|---|---|
+| `crates/plateforme/src/audio.rs` | `AudioSysteme` (trait `SystemeAudio`) : liste des entrées et sorties, périphérique par défaut, ouverture d'un flux d'entrée ou de sortie en `f32` entrelacé ; débranchement signalé par `ErreurFluxAudio::Debranche` ; `SonPeripheriques` (traits `Micro`, `SortieSon`) : les mêmes flux en mono pour les messages vocaux |
+| `crates/client/src/audio/format.rs` | format de LiveKit (48 kHz mono, trames de 10 ms, 480 échantillons `i16`) : passage en mono, rééchantillonnage linéaire sans dérive (pas entiers), découpe en trames (`ConversionEntree`), conversion vers la sortie (`ConversionSortie`), tampon de lecture amorcé et borné (`TamponLecture`) |
+| `crates/client/src/audio/peripheriques.rs` | `Capture` et `Lecture` : périphérique choisi, sinon celui par défaut ; changement à chaud (`choisir`) ; `surveiller` bascule sur celui par défaut quand le choisi est débranché et y revient quand il réapparaît (`Bascule`) |
+| `crates/client/src/audio/micro.rs` | chaîne du micro, pure et sans allocation dans la boucle audio : `ReglagesMicro` (bruit, gain, détection de voix, seuil), `ChaineMicro`, `DetectionVoix`, `niveau_db` (équivalent de `rmsDb`), `MesureMicro` (niveau lu par l'interface), `Apm` (traitement de WebRTC partagé entre micro et sortie) |
+| `crates/client/src/audio/essai.rs` | `EssaiMicro` : test du micro hors appel (niveau en direct, retour de sa voix traitée) |
+| `crates/client/src/audio/factice.rs` | `SystemeFactice` : périphériques factices pilotés par les tests (`brancher`, `debrancher`, `pousser`, `tirer`) |
+| `crates/client/src/vocal/salle.rs` | traits `Connecteur`, `Salle`, `SortieMicro` et `EvenementSalle` : ce que la session attend d'une salle, LiveKit ou fausse |
+| `crates/client/src/vocal/livekit.rs` | `ConnecteurLiveKit` (feature `livekit`) : connexion, attributs, publication du micro (`NativeAudioSource`), réception des pistes audio (`NativeAudioStream`), traduction des évènements ; `apm()` : `AudioProcessingModule` de WebRTC (écho, gain automatique, passe-haut, bruit) |
+| `crates/client/src/vocal/etat.rs` | `EtatVocal`, pur : phase, salon, micro et casque coupés, coupures imposées, porte du micro, micro indisponible, participants (attributs, qualité), qui parle ; `etats_affiches` (équivalent de `voiceStates`) |
+| `crates/client/src/vocal/session.rs` | `SessionVocale` : acteur sur un runtime tokio, commandes, reconnexion, audio |
+| `crates/client/src/vocal/mixage.rs` | `Ecoute` (volumes et muets par participant, voix et son du partage à part, volume général ; équivalent de `gainOf`), `Limiteur`, `Mixeur` : une file par participant et par source, gain précalculé, sourdine, référence d'écho |
+| `crates/client/src/vocal/erreurs.rs` | `ErreurVocal` (salon plein, droit manquant…) et `CauseMicro` (équivalents de `micCause` et `micError`) |
+| `crates/client/src/vocal/factice.rs` | `ServeurVocalFactice` (connecteur et salles en mémoire, coupure du réseau, exclusion) et `ApiVocaleFactice` |
+| `crates/client/src/vocal/ptt.rs` | `PousserPourParler` : appuyer pour parler (touche de la fenêtre et raccourci global, délai de relâchement), `ReglagesPtt` |
+| `crates/client/src/audio/tonalite.rs` | sons d'arrivée et de départ (mêmes notes que le front), joués sur la sortie choisie |
+| `crates/plateforme/src/raccourcis/` | trait `RaccourcisGlobaux` : crochet clavier bas niveau sous Windows, XInput 2 sous X11, `RaccourcisFactices` pour les tests |
+| `natif/src/vocal/` | `projection.rs` (pur : tuiles, participants du panneau, vue, barre, menu d'un participant), `pont.rs` (`PontVocal` : état de la session vers `DonneesVocal`, commandes, réglages, test du micro, sons), `touches.rs` (touche Slint vers code de touche) |
+| `natif/ui/vocal/` | vue du salon (`vue.slint`), tuile et ligne du panneau (`tuile.slint`), commandes (`commandes.slint`), barre du panneau (`barre.slint`), menus (`menus.slint`), réglages audio (`reglages.slint`) |
+
+### Session vocale
+
+`SessionVocale::demarrer(runtime, Dependances { api, connecteur, audio, apm, reglages })` lance un acteur sur le runtime donné (dans l'app : celui de l'entrée,
+`Application::vocal`). Commandes : `rejoindre`, `deplacer` (sans coupure : l'ancienne salle n'est quittée qu'une fois la nouvelle connectée), `deplace_par_moderation(de, vers)`
+(évènement `voice.moved`, accepté si l'on est dans `de` ou si on l'a quitté depuis moins de 5 s), `quitter`, `basculer_micro`, `basculer_casque`, `imposer(micro, son)`
+(`mic_off`, `sound_off` d'un modérateur), `definir_porte(ouverte)` (appuyer pour parler ; la détection de voix est dans la chaîne du micro), `choisir_micro`, `choisir_sortie`,
+`definir_traitement(ReglagesMicro)`, `definir_volume(identité, source, pourcent)`, `definir_muet(identité, source, muet)`, `definir_volume_general(pourcent)`, `fermer().await` ou `fermer_bloquant(délai)` (sortie propre, étape `Vocal` de la fermeture de l'app, après l'arrêt de la coquille).
+L'état se lit par `etat()` (`watch` de `EtatVocal`, qui porte aussi `traitement` et `ecoute`) ; `niveau_micro()` lit sans attendre le niveau du micro et la voix détectée ; `abonner_avis()` donne les `AvisVocal` (rejoint, quitté, arrivée, départ, déplacé, bascule de périphérique).
+
+- Un seul vocal à la fois : l'identité LiveKit est l'utilisateur ; rejoindre ailleurs (app Tauri, web) déconnecte avec `DuplicateIdentity`, la session revient à « inactif » sans se reconnecter.
+- Jeton : `Client::jeton_vocal` (`POST /voice/{salon}/token`) ; `voice_full`, 403, `not_voice_channel`, 502 deviennent un message (`ErreurVocal::message`), la session reste inactive.
+- Micro : `Capture` → trames de 10 ms → `ChaineMicro` (toujours, pour mesurer le niveau même micro coupé) → `SortieMicro` (piste `microphone`, DTX et RED) seulement si `EtatVocal::micro_emet()` ; sinon la piste est coupée (`mute`).
+  Micro introuvable ou refusé : connecté en écoute seule (`micro_indisponible`, message suivi de « Vous êtes en écoute seule. »).
+- Écoute : chaque piste audio reçue alimente le `Mixeur`, lu par `Lecture` sur la sortie choisie ; casque coupé ou `sound_off` : plus rien n'est joué.
+- Coupé par un modérateur (`imposer`, ou permission de publier retirée par le serveur) : le micro ne se réactive pas tant que la coupure dure.
+- Attributs publiés à chaque changement et après une reconnexion : `muted`, `deaf` (mêmes clés que le front).
+- Reconnexion : le SDK reprend seul une coupure courte (`Reconnexion`, `Reconnecte`, jusqu'à 60 s). S'il abandonne, la session redemande un jeton et se reconnecte
+  (1, 2, 4, 8 puis 10 s, 12 essais) en gardant micro et casque ; une déconnexion voulue par le serveur (exclusion, salle fermée, doublon d'identité) ne se reconnecte pas.
+- Fils : l'acteur et les tâches de LiveKit sur le runtime ; capture et lecture sur les fils de `cpal`, qui ne touchent que des verrous courts (`RouteMicro`, `Mixeur`) ; libwebrtc a ses propres fils.
+
+### Chaîne du micro
+
+Mêmes réglages et valeurs par défaut que le front (`prefs.noise`, `micGain`, `vad`, `vadThreshold`), retenus dans `traitement_micro` :
+
+| Réglage | Front | Natif |
+|---|---|---|
+| Bruit `aucun` | contraintes du navigateur coupées | rien |
+| Bruit `standard` | `echoCancellation`, `noiseSuppression`, `autoGainControl` du navigateur | `AudioProcessingModule` de WebRTC (écho, gain automatique, passe-haut, bruit), référence d'écho = sortie du `Mixeur` |
+| Bruit `renforce` (défaut) | idem + RNNoise (WASM) | idem + `nnnoiseless` (RNNoise en Rust, trames de 480 échantillons) |
+| Gain | 0 à 300 % | idem, après la mesure du niveau |
+| Détection de voix | seuil de -75 à -15 dB (défaut -45), maintien 400 ms | idem, mesurée à chaque trame de 10 ms ; porte fermée : la piste envoie du silence (rampe de 1 ms à l'ouverture, 10 ms à la fermeture) |
+
+Ordre : APM, `nnnoiseless`, mesure du niveau (`niveau_db`, publié dans `MesureMicro`), détection de voix, gain, porte. Le traitement tourne sur le fil de capture de `cpal`,
+dans des tampons fixes alloués à la création (un changement de réglage se fait sur le fil de l'acteur, sous le verrou de `RouteMicro`). L'APM existe seulement avec la feature `livekit`.
+`porte_ouverte(ptt, vad, touche, voix)` reprend `gateOpen` : l'appuyer pour parler l'emporte sur la détection de voix.
+Test du micro : `EssaiMicro::ouvrir(audio, micro, sortie, reglages, apm)` (hors appel), `niveau()`, `regler`, `ecouter(true)` pour entendre sa voix traitée.
+
+Mesures (tests de `audio::micro`, voix de synthèse versionnée `crates/client/tests/donnees/voix-16k.wav` plus bruit de fond et clics générés) : en mode renforcé,
+le bruit hors parole baisse de 26,5 dB (-40,6 → -67,1 dBFS) ; sur 50 ms après chaque début de mot, la voix traitée reste à moins de 1 dB de la voix propre
+(RNNoise atténue toutefois les 10 à 20 premières millisecondes). Annulation d'écho (feature `livekit`, écho simulé linéaire, retard de 30 ms) : -52 dB.
+Coût mesuré sur une machine de développement (4 cœurs, release) : 1,0 % d'un cœur pour `nnnoiseless` et la détection de voix, 2,7 % avec l'APM et la référence d'écho.
+
+### Écoute
+
+`Ecoute` (préférence `ecoute`) reprend `volumes`, `screenVolumes`, `mutedVoice`, `mutedScreen` du front : volume de 0 à 300 % et muet par participant, la voix
+et le son du partage (`<id>#screen`, rangé sous `<id>`) à part ; comme le front, c'est par utilisateur, quel que soit le salon. Volume général du vocal de 0 à 100 %,
+qui n'existe pas dans le front. Le muet garde le volume. Gain = 0 si casque coupé ou muet, sinon volume × volume général.
+Le `Mixeur` additionne les pistes (gain précalculé à chaque changement, aucune recherche par nom dans la boucle audio), puis un limiteur à attaque immédiate
+et relâchement de 100 ms garde le signal sous 0,98 sans écrêtage dur (dix pistes à pleine échelle : sinusoïde conservée). Il n'ajoute aucun échantillon de retard
+au tampon de réception (amorce de 20 ms, `TamponLecture`). La sortie mixée sert de référence à l'annulation d'écho.
+
+L'app lit `traitement_micro` et `ecoute` au démarrage (`Reglages`) ; l'interface appelle la session pendant un réglage, et enregistre la préférence au relâchement
+(comme `prefs.save()` sur `onchange`), avec les mêmes fonctions (`Ecoute::definir_volume`, `definir_muet`, `definir_general`, `ReglagesMicro::borne`).
+
+### Interface du salon vocal
+
+Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/vocal/pont.rs`, tenu par le `Pont` de la coquille). La coquille suit l'état de la session
+(`SessionVocale::etat`), ses avis (sons d'arrivée et de départ, bascule de périphérique) et, pendant un appel ou un test du micro, lit le niveau du micro toutes les 50 ms
+(`PERIODE_MESURE`) ; hors appel, rien ne tourne.
+
+- Panneau : les salons vocaux et cinéma ne sont plus « bientôt » ; un clic ouvre le salon et le rejoint (comme `SidePanel.svelte`). Sous chaque salon, ses participants
+  (photo de profil, sinon initiales, avec halo, micro et casque coupés quand on est dans ce salon, coupures du serveur) ; à droite du nom du salon, sa durée depuis
+  l'arrivée du plus ancien participant (`since`, comme `oldestSince` et `VoiceTimer.svelte`), rafraîchie chaque seconde tant qu'un salon affiché est occupé. Au-dessus de la barre du compte, la barre du vocal : état
+  (« Vocal connecté », « Connexion… », « Reconnexion… »), salon et serveur (clic : ouvre le salon), durée de présence (`since` du serveur, sinon la connexion), qualité, commandes, avis.
+- Glisser un participant (comme `SidePanel.svelte`) : seulement sur un membre que l'on domine, avec `move_members`, quand le serveur a un autre salon vocal ou cinéma
+  (`Participant::deplacable`, mêmes conditions que `canDrag`). `DragArea` sur la ligne du participant (curseur « saisir », ligne estompée pendant le glisser), `DropArea` sur
+  chaque salon vocal (`ElementListe::depot-actif`) : pendant le glisser, les autres salons vocaux sont bordés de rose (`glisse-depuis`, comme `.nav-item.drop`), celui
+  survolé se remplit ; le dépôt envoie `PUT /voice/{salon}/participants/{id}/move`, la route de « Déplacer vers ». La donnée glissée (`DataTransfer` de Slint, salon et
+  participant dans `user_data`) reste dans la fenêtre. Un refus du serveur s'affiche sous le salon visé (« Action impossible : … », notification dans le front) jusqu'au dépôt suivant.
+- Rail : pastille « Connecté en vocal » sur le serveur du vocal. Accueil : « Rejoindre » ou « Ouvrir » sur chaque vocal en cours.
+- Vue du salon : hors du salon, l'écran pour rejoindre (participants, « n / 10 participants », erreur du serveur, permission `connect`, réglages audio) ; dans le salon,
+  une grille de tuiles (même calcul que `gridDims` : 1, 2×1, 2×2, 3×n, 4×n), « Tu es seul·e ici », bandeau de reconnexion, et en bas les commandes :
+  micro (jauge, seuil franchi en rose), choix du micro, casque, choix de la sortie, caméra et partage « bientôt » (lot 5), réglages audio, raccrocher. « Ton micro est coupé » quand on parle micro coupé.
+- Mode plein cadre (bouton de l'en-tête, comme `VoiceChannelView.svelte`) : rail, panneau, en-tête et marge disparaissent, la fenêtre passe en plein écran, les commandes
+  restent en barre flottante avec « Quitter le mode plein cadre » ; Échap ou quitter le salon en sort. Le front n'agrandit une tuile (« Mettre en grand ») que pour un flux
+  vidéo : il arrivera avec la caméra et le partage d'écran (lot 5).
+- Tuile : photo de profil (même cache et mêmes clés que la liste des membres, `coquille/avatars.rs` : avatar propre au serveur, sinon global ; demandée au premier affichage), sinon initiales, pseudo, « (toi) », halo et onde quand il parle (`EtatVocal::parlent` de LiveKit, et pour soi le niveau du micro au-dessus du seuil), micro et casque coupés
+  (attributs `muted`, `deaf` : qui parle n'est jamais affiché muet), coupures du serveur, qualité. Clic ou Entrée : menu du participant (muet pour moi, volume 0 à 300 %
+  retenu au relâchement, « Couper le micro / le son du serveur » si l'on domine le membre et a `mute_members` ou `deafen_members`, `PUT /voice/{salon}/participants/{id}/mod` ;
+  « Déplacer vers « … » » pour chaque autre salon vocal ou cinéma du serveur avec `move_members` et « Déconnecter du vocal » avec `disconnect_members`, toujours sur un membre
+  que l'on domine, comme le menu du panneau du front : `PUT /voice/{salon}/participants/{id}/move` (`channel_id`) et `POST /voice/{salon}/participants/{id}/disconnect`).
+  Le menu se ferme quand le serveur accepte ; un refus s'affiche dans le menu (« Action impossible : … »). Le même menu s'ouvre depuis le panneau.
+- Clavier : toutes les commandes sont des boutons atteints par Tab ; Alt+Maj+M (micro) et Alt+Maj+D (casque) comme le front ; Échap ferme menus et réglages.
+- Modération : `voice.moved` devient `Changement::DeplacementVocal` dans le store puis `deplace_par_moderation` (avis « eve t'a déplacé dans … ») ; la coupure `voice.mod` du compte (store,
+  `GET /servers/{id}/voice` puis `voice.mod`) est passée à `SessionVocale::imposer` ; `voice.disconnected` s'affiche dans la barre.
+- Réglages audio (modal) : micro et sortie, jauge et test du micro hors appel (`EssaiMicro`), bruit, gain, détection de voix et seuil, appuyer pour parler, volume général,
+  sons d'arrivée et de départ. Chaque réglage s'applique pendant le glisser et s'enregistre au relâchement.
+- Sons : à soi et aux autres, préférence `sons_vocal` ; choix du son d'arrivée et de départ parmi ceux du front (`SOUND_PRESETS` : Montée 660 puis 880 Hz, Descente,
+  Carillon, Pop, Double bip, Aucun ; notes de 100 ms) et volume des sons de 0 à 100 % (60 % par défaut), préférence `sons` (`ReglagesSons`, `audio/tonalite.rs`, mêmes
+  identifiants que `joinSound`, `leaveSound`) ; « Écouter » et un nouveau choix jouent le son sur la sortie choisie.
+- Son personnalisé (`pickSound` de `SettingsModal.svelte`) : « Mon fichier… » sur chaque son ouvre le sélecteur du système filtré sur les fichiers audio
+  (`Fichiers::choisir_fichier` de la crate plateforme, `rfd`, sur un fil à part). Le fichier est refusé au-delà de 150 Ko ou s'il ne se décode pas (« Choisis un fichier
+  audio de 150 Ko au plus. », sous les sons) ; sinon il est copié tel quel sur l'appareil (`<données>/sons/arrivee` ou `depart`, `SonsPersonnalises`, au lieu du
+  `data:` des préférences du front), devient le son choisi (`custom`, `ChoixSon::Personnalise`) et joue aussitôt en aperçu. « Mon fichier » apparaît alors parmi les sons ;
+  un son prédéfini ramène au son par défaut sans effacer le fichier, qui reste proposé. Décodage (`audio/son_perso.rs`) : WAV (PCM 8 à 32 bits, flottant) et Ogg ou WebM Opus
+  dans l'app, autres formats (MP3, AAC, FLAC, Vorbis…) par ffmpeg s'il est présent (`ffmpeg_du_systeme`), ramenés en mono 48 kHz ; joué au volume des sons comme
+  l'élément `Audio` du front (gain linéaire), décodé une fois puis gardé en mémoire ; un nouvel aperçu coupe le précédent.
+- Écarts : le refus d'un fichier s'affiche dans les réglages et celui d'un dépôt sous le salon, pas dans une notification ; le choix du fichier est filtré sur des extensions
+  audio (`accept="audio/*"` dans le front) et un fichier que ni l'app ni ffmpeg ne décode est refusé dès le choix (le front le garderait sans pouvoir le jouer).
+
+### Appuyer pour parler
+
+`PousserPourParler` (crate client) ferme la porte du micro (`SessionVocale::definir_porte`) pendant un appel quand le réglage est actif, l'ouvre à l'appui de la touche
+et la referme au relâchement plus le délai choisi (0 à 2 s, préférence `ptt`, défaut : `KeyV` sans délai comme le front). La détection de voix est suspendue pendant ce temps
+(`gateOpen` du front). La porte survit à un changement de salon (`EtatVocal::reinitialiser` la garde).
+
+- Fenêtre active : la touche est lue par le `FocusScope` de la coquille (sauf dans un champ de saisie, comme le front) ; le raccourci global est alors ignoré, pour ne pas doubler la touche.
+  Une perte de focus relâche la touche.
+- Fenêtre inactive : raccourci global de la crate plateforme, enregistré seulement pendant un appel avec le réglage actif. Touches seules (lettres, chiffres, F1 à F24, Espace, Tab,
+  modificateurs gauche et droite, flèches, navigation), comme l'app Tauri : pas de bouton de souris.
+  - Windows : crochet clavier bas niveau (`WH_KEYBOARD_LL`) sur un fil dédié ; il rend toujours la main (`CallNextHookEx`) : la touche continue de parvenir au jeu.
+    La touche est celle du clavier (code virtuel), comme le caractère tapé dans le réglage.
+  - Linux X11 : évènements bruts XInput 2 (`x11rb`, Rust pur) sur la fenêtre racine, sans saisie exclusive ; la lettre tapée est retrouvée par la table du clavier.
+  - Wayland (ou sans serveur X) : indisponible ; le réglage l'indique et la touche marche fenêtre active.
+- Choix de la touche : « Touche : V » puis la touche voulue (`touche-choisie`), traduite en code par `src/vocal/touches.rs`.
+
+### Ce que le SDK Rust offre par rapport à `livekit-client`
+
+| Fonction | `livekit-client` (web) | SDK Rust 0.12 |
+|---|---|---|
+| Capture et lecture | navigateur | à la charge de l'app (`NativeAudioSource`, `NativeAudioStream`) ; ou `PlatformAudio` (ADM de WebRTC : WASAPI, PulseAudio/ALSA), non retenu : pas de périphérique factice, pas de volume par participant, pas de point d'insertion pour `nnnoiseless` |
+| Écho, gain, bruit | contraintes `getUserMedia` | `AudioProcessingModule` exposé (`webrtc::native::apm` : annulation d'écho, gain automatique, passe-haut, suppression de bruit) sur des trames de 10 ms `i16`, micro (`process_stream`) et son joué (`process_reverse_stream`) ; utilisé par la chaîne du micro |
+| Volume par piste | `setVolume` (jusqu'à 100 %, au-delà avec `webAudioMix`) | absent : mixage de l'app (`Mixeur`, 0 à 300 %) |
+| Qualité de connexion | `ConnectionQualityChanged`, `connectionQuality` | idem (`ConnectionQualityChanged`, `connection_quality()`) |
+| Qui parle | `ActiveSpeakersChanged` | idem |
+| Reconnexion | reprise puis reconnexion complète | idem (10 essais, 60 s au plus), puis `Disconnected` |
+| Simulcast, dynacast, flux adaptatif | oui | oui (`TrackPublishOptions::simulcast`, `RoomOptions::dynacast`, `adaptive_stream`), utiles au lot 5 |
+| Attributs du participant | `setAttributes` | `set_attributes` |
+
+### CRT statique sous Windows
+
+libwebrtc est précompilé avec la bibliothèque standard de MSVC en `/MT` (`RuntimeLibrary=MT_StaticRelease`), les binaires précompilés de Skia en `/MD` :
+l'éditeur de liens refuse de les réunir. `apps/estompe/natif/.cargo/config.toml` passe tout le binaire en CRT statique (`+crt-static`, comme l'app Tauri) ;
+Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, long au premier build, puis en cache).
+Le STL de MSVC récent (Visual Studio 18) refuse un clang plus ancien que 22 : `LLVM_HOME` et `LIBCLANG_PATH` désignent un LLVM 22 ou plus récent (sinon `skia-bindings`
+prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` évite « Filename too long » au clonage des dépendances de Skia.
+
+### Tests
+
+- `audio::micro::tests` : cas de `micprocessor.test.ts` (`niveau_db`), porte (`gateOpen`), maintien de la détection de voix, gain borné, silence porte fermée,
+  bruit hors parole et débuts de mots sur l'enregistrement versionné ; `audio::essai::tests` : niveau et retour du test du micro.
+- `vocal::mixage::tests` : cas de `volume.test.ts` (`gainOf`), volume général, dix pistes à pleine échelle sans écrêtage dur, aucune latence ajoutée, référence d'écho.
+- Mesure du coût (ignorée par défaut) : `cargo test --release -p estompe-client --features livekit --lib -- --ignored --nocapture cout`.
+- `audio::tests` (périphériques factices) : capture à 44,1 kHz stéréo puis lecture à 48 kHz pendant 10 minutes simulées, sans perte ni latence croissante ;
+  micro et sortie débranchés : bascule sur le périphérique par défaut, retour du choisi.
+- `vocal::tests` (faux serveur, temps simulé) : deux participants se voient et s'entendent, quitter, refus du jeton, écoute seule, micro et casque publiés,
+  coupure imposée, coupure du réseau de 20 s (retour sans action, micro conservé), reconnexion du SDK, doublon d'identité, déplacement par un modérateur, passage d'un salon à l'autre, fermeture, changement de micro à chaud,
+  volume d'un participant retrouvé après avoir quitté puis rejoint, détection de voix (silence sous le seuil, niveau mesuré micro coupé).
+- `vocal::livekit::tests` (feature `livekit`) : l'annulation d'écho de l'APM retire le son joué repris par le micro.
+- `crates/client/tests/livekit.rs` (feature `livekit`) : contre le serveur LiveKit de `deploy/docker-compose.dev.yml` (`ESTOMPE_LIVEKIT_URL`, clé `devkey` du mode `--dev`),
+  deux clients se voient, s'entendent, et la fermeture de l'un le retire de la salle chez l'autre en moins de 5 s. Sans la variable, il est ignoré et le dit.
+  `just estompe-natif-vocal` le lance ; la CI Linux démarre ce serveur.
+- `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
+  perte du focus, raccourci indisponible (message, touche fenêtre active) ; `audio::tonalite::tests` ; `store::reducteur::tests::transmet_le_deplacement_par_un_moderateur`.
+- `crates/plateforme/src/raccourcis/` : table des touches, appui et relâchement sans répétition ; sous X11 (`DISPLAY`, ignoré sinon) une touche simulée par XTest est signalée
+  et parvient toujours à la fenêtre active.
+- `natif/src/vocal/projection.rs` : grille, soi-même affiché dès la connexion, halo jamais micro coupé, coupures du serveur, vue, barre, menu selon le rang (coupures,
+  destinations du déplacement, déconnexion), clé de l'avatar, jauge ; `coquille/projection.rs` : durée du salon depuis le plus ancien participant ; `audio::tonalite::tests` : sons du front, volume.
+- `natif/tests/vocal.rs` (backend de test Slint, faux serveur vocal, périphériques factices) : rejoindre depuis le panneau, tuiles et participants du panneau, indicateur de parole
+  (mesuré : voir ci-dessous), photo de profil dans la tuile et le panneau, durée du salon, mode plein cadre (bouton, Échap, bouton de sortie), couper le micro, Alt+Maj+M et Alt+Maj+D,
+  menu d'un participant (volume, muet, « Déplacer vers » et « Déconnecter du vocal » envoyés au faux serveur HTTP), coupure d'un modérateur, appuyer pour parler sans raccourci global,
+  glisser un participant sur un autre salon (salons proposés pendant le glisser, déplacement envoyé, refus du serveur affiché puis effacé),
+  choix du son et volume des sons retenus, son personnalisé (fichier trop gros refusé, fichier gardé, aperçu joué, retour au son prédéfini puis au fichier),
+  déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
+- `audio::son_perso::tests` : WAV stéréo à 44,1 kHz, flottant, 8 et 24 bits, Ogg Opus sans ffmpeg, MP3 par ffmpeg (ignoré sans ffmpeg, exigé par `ESTOMPE_FFMPEG_EXIGE`),
+  refus au-delà de 150 Ko ou d'un fichier illisible, fichier gardé et remplacé, lecture au volume des sons ; `vocal::projection::tests` : qui peut glisser un participant.
+- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
+  `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`, `vocal-sons-perso` (« Mon fichier » choisi, refus d'un fichier),
+  `vocal-glisser` (salons proposés pendant le glisser), `vocal-glisser-refus`.
 
 ## Intégration au bureau
 
@@ -699,10 +910,10 @@ La crate plateforme expose un trait par fonction : coffre de secrets, notificati
 installation d'une mise à jour, raccourcis globaux, ouverture d'une URL, capture d'écran et de fenêtre, capture du son, overlay, application au
 premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
-`Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
+`Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : les raccourcis globaux de l'appuyer pour parler (`RaccourcisSysteme` : crochet clavier sous Windows, XInput 2 sous X11, indisponible sous Wayland), le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), le micro et la sortie du son (`Micro`, `SortieSon`, `cpal`), le lancement d'un processus d'arrière-plan
-(`commande_d_arriere_plan`, utilisé pour ffmpeg), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour le micro et la sortie des messages vocaux), le lancement d'un processus d'arrière-plan
+(`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
 l'instance unique (fonctions de `instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
@@ -722,7 +933,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume ; les fichiers personnalisés sont à part, dans `<données>/sons/`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et

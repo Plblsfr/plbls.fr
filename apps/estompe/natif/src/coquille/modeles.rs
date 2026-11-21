@@ -256,6 +256,7 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
                 }
             }
             Changement::ConversationCourante
+            | Changement::DeplacementVocal { .. }
             | Changement::Notification(_)
             | Changement::Avis(_)
             | Changement::Emojis { .. }

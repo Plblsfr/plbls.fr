@@ -86,7 +86,7 @@ impl RaccourcisGlobaux for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
-    fn enregistrer(&self, _: &str, _: Box<dyn Fn() + Send>) -> Resultat<()> {
+    fn enregistrer(&self, _: &str, _: ActionRaccourci) -> Resultat<()> {
         refus("raccourcis globaux")
     }
     fn retirer(&self, _: &str) -> Resultat<()> {
@@ -184,6 +184,43 @@ impl DemarrageSession for Indisponible {
     }
     fn definir(&self, _: bool) -> Resultat<()> {
         refus("démarrage avec la session")
+    }
+}
+
+impl MesureProcessus for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn compteurs(&self) -> Resultat<CompteursProcessus> {
+        refus("compteurs du processus")
+    }
+    fn machine(&self) -> InfosMachine {
+        InfosMachine::default()
+    }
+}
+
+impl SystemeAudio for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn peripheriques(&self, _: SensAudio) -> Resultat<Vec<PeripheriqueAudio>> {
+        refus("périphériques audio")
+    }
+    fn ouvrir_entree(
+        &self,
+        _: Option<&str>,
+        _: RecepteurAudio,
+        _: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>> {
+        refus("périphériques audio")
+    }
+    fn ouvrir_sortie(
+        &self,
+        _: Option<&str>,
+        _: FournisseurAudio,
+        _: SignalErreurAudio,
+    ) -> Resultat<Box<dyn FluxAudio>> {
+        refus("périphériques audio")
     }
 }
 

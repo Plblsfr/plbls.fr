@@ -1,0 +1,126 @@
+import { Theme, Typo, Rayon, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Anneau } from "focus.slint";
+
+export component Curseur {
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> pas: 1;
+    in-out property <float> valeur: 0;
+    in property <string> libelle;
+    in property <string> unite;
+    in property <bool> actif: true;
+    in property <int> calque: 0;
+    out property <bool> a-le-focus: portee.has-focus;
+    callback change(float);
+    callback fini(float);
+    property <bool> utilisable: actif && calque >= Calques.ouverts;
+    property <float> part: root.maximum > root.minimum ? (root.valeur - root.minimum) / (root.maximum - root.minimum) : 0;
+    min-height: 28px;
+    min-width: 96px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    opacity: actif ? 1 : 0.5;
+    accessible-role: slider;
+    accessible-label: libelle;
+    accessible-value: "\{Math.round(root.valeur)}\{root.unite}";
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: root.pas;
+    accessible-enabled: utilisable;
+    accessible-action-increment => {
+        root.regler(root.valeur + root.pas, true);
+    }
+    accessible-action-decrement => {
+        root.regler(root.valeur - root.pas, true);
+    }
+    accessible-action-set-value(v) => {
+        root.regler(v.to-float(), true);
+    }
+    forward-focus: portee;
+    function regler(v: float, fin: bool) {
+        if (!root.utilisable) {
+            return;
+        }
+        let borne = Math.clamp(Math.round((v - root.minimum) / root.pas) * root.pas + root.minimum, root.minimum, root.maximum);
+        if (borne != root.valeur) {
+            root.valeur = borne;
+            root.change(borne);
+        }
+        if (fin) {
+            root.fini(borne);
+        }
+    }
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.trait-fort;
+    }
+    Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: root.part * root.width;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.rose-fonce;
+    }
+    poignee := Rectangle {
+        x: root.part * (root.width - self.width);
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: zone.has-hover || zone.pressed ? Theme.rose-fonce : Theme.encre;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+        Anneau {
+            rayon: 8px;
+            width: parent.width + 8px;
+            height: parent.height + 8px;
+            actif: portee.has-focus && portee.clavier;
+        }
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.LeftArrow || e.text == Key.DownArrow) {
+                root.regler(root.valeur - root.pas, true);
+                return accept;
+            }
+            if (e.text == Key.RightArrow || e.text == Key.UpArrow) {
+                root.regler(root.valeur + root.pas, true);
+                return accept;
+            }
+            if (e.text == Key.Home) {
+                root.regler(root.minimum, true);
+                return accept;
+            }
+            if (e.text == Key.End) {
+                root.regler(root.maximum, true);
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down) {
+                    root.regler(root.minimum + Math.clamp(self.mouse-x / self.width, 0, 1) * (root.maximum - root.minimum), false);
+                }
+                if (e.kind == PointerEventKind.up) {
+                    root.fini(root.valeur);
+                }
+            }
+            moved => {
+                if (self.pressed) {
+                    root.regler(root.minimum + Math.clamp(self.mouse-x / self.width, 0, 1) * (root.maximum - root.minimum), false);
+                }
+            }
+        }
+    }
+}
