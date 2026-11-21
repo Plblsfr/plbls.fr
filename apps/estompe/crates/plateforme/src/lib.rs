@@ -4,6 +4,7 @@ mod dossiers;
 mod erreur;
 mod fichiers;
 mod indisponible;
+mod installation;
 pub mod instance;
 #[cfg(target_os = "linux")]
 mod notifications_linux;
@@ -28,6 +29,7 @@ pub use dossiers::{
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
+pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
 pub use raw_window_handle::RawWindowHandle;
 pub use traits::{
     ActionNotification, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, DemarrageSession,
@@ -70,6 +72,7 @@ impl Plateforme {
             demarrage: demarrage_de_l_os(),
             notifications: notifications_de_l_os(),
             pastille: pastille_de_l_os(),
+            installation: installation_de_l_os(),
             ..Self::indisponible()
         }
     }
@@ -124,6 +127,14 @@ fn pastille_de_l_os() -> Box<dyn Pastille> {
     Box::new(Indisponible)
 }
 
+fn installation_de_l_os() -> std::sync::Arc<dyn Installation> {
+    if InstallationSysteme.disponible() {
+        std::sync::Arc::new(InstallationSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -143,8 +154,12 @@ mod tests {
         assert!(p.zone.disponible());
         assert_eq!(p.demarrage.disponible(), cfg!(windows));
         assert_eq!(p.pastille.disponible(), cfg!(windows));
+        assert_eq!(p.installation.disponible(), cfg!(windows));
+        assert_eq!(
+            p.installation.cible(),
+            cfg!(windows).then_some(CIBLE_WINDOWS)
+        );
         for (nom, disponible) in [
-            ("installation", p.installation.disponible()),
             ("raccourcis", p.raccourcis.disponible()),
             ("capture_ecran", p.capture_ecran.disponible()),
             ("capture_son", p.capture_son.disponible()),

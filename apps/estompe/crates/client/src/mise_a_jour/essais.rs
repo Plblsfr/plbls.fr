@@ -1,0 +1,27 @@
+use super::PolitiqueAdresses;
+
+pub const CLE_ESSAI: &str = "untrusted comment: minisign public key 7BC135C12E2006A3\nRWSjBiAuwTXBe3IiGoj8gZRXKLgKJr50Yg6DSRUO4/R1kcEmX7Sclc37\n";
+
+pub const TAILLE_ESSAI: usize = 262_144;
+
+pub const SIGNATURE_BONNE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUlVTakJpQXV3VFhCZTF3eVBnWmVSMThGWmZwZkxvcGN3N0pXV3lTOFR6ajh1ejkrdXBNK0lBTS85VG9uU3JYZ1RRWmppeThuVlk3MGQ3RFlOQVFac2RZb2JMeHphZ1FtM1FBPQp0cnVzdGVkIGNvbW1lbnQ6IGVzdG9tcGUtbmF0aWYgMC4yLjAKSTJsT0FqMzVNWVZXM3E5dnQ1cG9maUxySk9FZjZuSjFRNENVazB5Rkp4QjhRcXYxdW45eGF6dnA0dmpzSzBsRUpzaTlPL2w5MUYreG1UeHFkelNMQ3c9PQo=";
+
+pub const SIGNATURE_ANCIENNE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUlVTakJpQXV3VFhCZTF3eVBnWmVSMThGWmZwZkxvcGN3N0pXV3lTOFR6ajh1ejkrdXBNK0lBTS85VG9uU3JYZ1RRWmppeThuVlk3MGQ3RFlOQVFac2RZb2JMeHphZ1FtM1FBPQp0cnVzdGVkIGNvbW1lbnQ6IGVzdG9tcGUtbmF0aWYgMC4xLjkKZjNMRmVpOU5QZ3pYMWtHSFZGWkxSTVBtL2FMRGM0NzI5WS8rMHM3d0dsUHVuNU9zcGQzNmpBZUk1RnEyLzlCNXFWdUx0OUpCU3o4ZXo3QTZrRzFaQXc9PQo=";
+
+pub const SIGNATURE_AUTRE_CLE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUlVRL2tNZTMyVU9qT2xVVGJZKzJJS3JtaC9hcGhSZzhFU05XYklVemJqNVRTQVNncjhUMnk5bmxuK1NQeFkzWGxJck5reDZ5T1l2T1pzbHNDdjAwVXJyeVFxWDBZNElDUUFJPQp0cnVzdGVkIGNvbW1lbnQ6IGVzdG9tcGUtbmF0aWYgMC4yLjAKMk9HQjYyTnhtTDlid1FySnpydHhzVlpSdWhhWGdrNWhhUW04T3RJSXNIVU8rNXkrcVQyT2tTYjN1b3BRT3FoTGhNY0FBY210ZVdBUTUrWU5tYWd4Q1E9PQo=";
+
+pub const SIGNATURE_ANCIEN_FORMAT: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIG1pbmlzaWduIHNlY3JldCBrZXkKUldTakJpQXV3VFhCZXhPa0taV3dlTWUrdEdoNGxiNDhTOUsyM2o5S1pYdEhXUDBGNUxUM0lpcGZBNHUwMjNzTFF6dE42OWkyLy9zWTBQRFcrNE5CenNZMWhIeUFrL2tnRVFFPQp0cnVzdGVkIGNvbW1lbnQ6IGVzdG9tcGUtbmF0aWYgMC4yLjAKaFphcnY3Qnl3QjFKVTVocjY1OXp4ZXdtWFRzVERKdzJYT2hHVzlCcGR6K1FydUtpT2ZSbnIvVThGQzJGOEZ4UjJoenA0U0x0MEE3Q0UrQVl2RllrQ2c9PQo=";
+
+pub fn installeur() -> Vec<u8> {
+    (0..TAILLE_ESSAI as u32)
+        .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
+        .collect()
+}
+
+pub fn politique_locale() -> PolitiqueAdresses {
+    PolitiqueAdresses {
+        https_seulement: false,
+        ports_explicites: true,
+        hotes: vec!["127.0.0.1".into()],
+    }
+}

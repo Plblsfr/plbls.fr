@@ -18,6 +18,7 @@ pub mod format;
 pub mod lru;
 pub mod markdown;
 pub mod mention;
+pub mod mise_a_jour;
 pub mod notifications;
 pub mod ordre_serveurs;
 pub mod pastille;

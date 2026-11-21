@@ -24,6 +24,8 @@ sha2 = "0.10"
 tokio = { version = "1", default-features = false, features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
 url = "2"
+minisign-verify = "0.3"
+base64 = "0.23"
 
 [dev-dependencies]
 tempfile = "3"

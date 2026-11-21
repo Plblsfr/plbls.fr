@@ -424,6 +424,39 @@ Règles dans la crate client (`notifications.rs`, sans code d'OS), reprises du f
 - Sans activateur COM, un clic sur un toast resté dans le centre de notifications peut ne rien rappeler quand l'app tourne : à vérifier sur machine réelle,
   comme le toast avec ses boutons (app installée), la réponse et la pastille de la barre des tâches ; sous Linux, l'affichage et le clic sous un vrai bureau.
 
+## Mises à jour
+
+Logique dans la crate client (`mise_a_jour/`, sans code d'OS), lancement de l'installeur par la crate plateforme (`Installation`), service
+démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
+
+- Manifeste : `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json` (format dans [Livraison](#livraison)),
+  lu par `Manifeste` (champs de tête de `version::Publication`, paquet par cible : `windows-x86_64`). Une mise à jour n'est proposée que si la
+  version publiée est plus récente que `VERSION` et que le manifeste a un paquet pour la cible ; `mandatory`, `force` et `minVersion` l'imposent
+  (`version::disponibilite`). `ESTOMPE_NATIF_MANIFESTE` remplace l'adresse pour un essai, seulement si elle passe la politique ci-dessous.
+- Adresses (`politique.rs`, `PolitiqueAdresses::production`) : HTTPS seulement, hôte exactement `github.com`, `objects.githubusercontent.com` ou
+  `release-assets.githubusercontent.com`, sans identifiants ni port explicite ; la même règle est réappliquée à chaque redirection (5 au plus) :
+  une redirection hors de la liste arrête le téléchargement.
+- Téléchargement (`telechargement.rs`, client `reqwest` dédié) dans `<cache>/mises-a-jour/Estompe-natif-beta-<version>-setup.exe.partiel` :
+  reprise par `Range: bytes=<n>-` (206 : suite ajoutée ; 200 : repart de zéro ; 416 : partiel effacé, nouvel essai), trois essais quand le réseau coupe,
+  taille plafonnée par `taille` du manifeste (200 Mo sans elle). Une coupure garde le partiel pour reprendre ; une erreur de disque (plein, droits)
+  le supprime avec un message lisible ; un fichier plus court que `taille` est supprimé.
+- Signature (`signature.rs`, `minisign-verify`, clé publique `mise_a_jour/cle.pub` embarquée) : `signature` du manifeste (fichier `.minisig` en
+  base64), signature préhachée seulement, et commentaire de confiance exactement `estompe-natif <version>` : un installeur signé d'une autre
+  version ne peut pas être resservi sous un autre numéro. Fichier vérifié : renommé sans `.partiel` ; refusé : supprimé, rien n'est exécuté et
+  l'erreur le dit. L'installeur est revérifié juste avant d'être lancé.
+- Installation (Windows, `installation.rs` de la crate plateforme) : `Estompe-natif-beta-<version>-setup.exe /S /RELANCER`, processus détaché ;
+  si le lancement réussit, l'app quitte proprement (`Fermeture::quitter`) ; l'installeur attend sa sortie, installe et la relance, la session
+  reprend par le refresh token du coffre. Un installeur qui ne démarre pas laisse l'app en place avec l'erreur.
+- Machine (`machine.rs`, sans effet de bord, comme `entree.rs`) et service (`service.rs`, état publié par `tokio::sync::watch`) : vérification
+  15 s après le lancement, puis toutes les 30 minutes, et au retour de la fenêtre au premier plan (au plus une fois par 5 minutes) ; une
+  vérification ou une installation à la fois ; l'erreur d'une vérification n'est montrée que si elle a été demandée, celle d'une installation toujours.
+  Une mise à jour imposée bloque l'app (écran « Mise à jour requise » de l'entrée), ou après 120 s si l'utilisateur est occupé (zone de saisie non
+  vide, ou en appel). En appel, l'installation attend la fin de l'appel ou une confirmation (aucun vocal avant le lot 4 : jamais en appel aujourd'hui).
+- Au démarrage, les installeurs de `mises-a-jour/` d'une version inférieure ou égale à la version installée sont supprimés.
+- Journal : version disponible, téléchargement vérifié ou refusé, lancement ; jamais de jeton.
+- Linux : `Installation` indisponible, aucune vérification (le paquet Linux arrive au lot 11).
+- Non vérifié sur machine réelle : passage d'une version publiée à la suivante (deux tags), relance par l'installeur et session conservée.
+
 ## Portabilité
 
 Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crates/plateforme` : `scripts/estompe/natif-portabilite.sh` le vérifie
@@ -436,7 +469,7 @@ l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Ind
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
-l'instance unique (fonctions de `instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session et la pastille de la barre des tâches. Le reste arrive avec son lot, Windows d'abord.
+l'instance unique (fonctions de `instance.rs`, `interprocess`). Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
@@ -448,7 +481,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | | Windows | Linux |
 |---|---|---|
 | Données (`preferences.json`) | `%APPDATA%\fr.plbls.estompe.natif` | `$XDG_DATA_HOME/fr.plbls.estompe.natif` (défaut `~/.local/share`) |
-| Cache (avatars dans `avatars/`, images dans `medias/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
+| Cache (avatars dans `avatars/`, images dans `medias/`, installeurs téléchargés dans `mises-a-jour/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
 | Instance unique | tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte>` | `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (sinon `<données>/instance.sock`) |
