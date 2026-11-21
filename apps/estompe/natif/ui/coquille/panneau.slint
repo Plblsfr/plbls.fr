@@ -321,11 +321,32 @@ export component Panneau inherits Rectangle {
                             description: salon.bientot ? "bientôt dans l'app native" : "";
                             brouillon: salon.brouillon;
                             avec-menu: true;
+                            depot-actif: salon.vocal;
+                            depot-propose: salon.vocal && DonneesVocal.glisse-depuis != "" && DonneesVocal.glisse-depuis != salon.id;
                             clique => {
                                 DonneesCoquille.ouvrir-salon(salon.id);
                             }
                             menu(x, y) => {
                                 DonneesCoquille.menu-salon(salon.id, x, y);
+                            }
+                            peut-deposer(d) => {
+                                return DonneesVocal.peut-deposer(d, salon.id);
+                            }
+                            depose(d) => {
+                                DonneesVocal.deposer(d, salon.id);
+                            }
+                        }
+                        if DonneesVocal.erreur-depot != "" && DonneesVocal.erreur-depot-salon == salon.id: HorizontalLayout {
+                            padding-left: 30px;
+                            padding-right: 8px;
+                            padding-bottom: 4px;
+                            Text {
+                                text: DonneesVocal.erreur-depot;
+                                color: Theme.danger;
+                                font-size: Typo.minuscule;
+                                wrap: word-wrap;
+                                accessible-role: text;
+                                accessible-label: self.text;
                             }
                         }
                         if salon.occupants > 0 || DonneesVocal.barre.salon == salon.id: VerticalLayout {

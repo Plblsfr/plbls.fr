@@ -887,6 +887,7 @@ pub mod coquille {
         pub fichiers_bloques: Mutex<bool>,
         pub refus_de_gifs: Mutex<Option<u16>>,
         pub refus_de_recherche: Mutex<Option<u16>>,
+        pub refus_vocal: Mutex<Option<u16>>,
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         envoyes: AtomicUsize,
@@ -945,6 +946,7 @@ pub mod coquille {
                 fichiers_bloques: Mutex::new(false),
                 refus_de_gifs: Mutex::new(None),
                 refus_de_recherche: Mutex::new(None),
+                refus_vocal: Mutex::new(None),
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
                 envoyes: AtomicUsize::new(0),
@@ -1179,6 +1181,14 @@ pub mod coquille {
         }
 
         fn repondre_avec(&self, methode: &str, chemin: &str, corps: &str) -> (u16, String) {
+            if chemin.starts_with("/voice/") {
+                if let Some(statut) = *self.refus_vocal.lock().unwrap() {
+                    return (
+                        statut,
+                        r#"{"error":"forbidden","message":"Rang insuffisant"}"#.into(),
+                    );
+                }
+            }
             if methode == "POST" && chemin == "/channels/c1/messages" {
                 self.requetes
                     .lock()

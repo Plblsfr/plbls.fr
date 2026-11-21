@@ -83,6 +83,12 @@ pub trait OuvertureUrl {
     fn ouvrir(&self, url: &str) -> Resultat<()>;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FiltreFichiers {
+    pub nom: &'static str,
+    pub extensions: &'static [&'static str],
+}
+
 pub trait Fichiers {
     fn disponible(&self) -> bool;
     fn choisir_dossier(
@@ -93,6 +99,14 @@ pub trait Fichiers {
         &self,
         depart: Option<&std::path::Path>,
     ) -> Resultat<Vec<std::path::PathBuf>>;
+    fn choisir_fichier(
+        &self,
+        _titre: &str,
+        _filtre: &FiltreFichiers,
+        depart: Option<&std::path::Path>,
+    ) -> Resultat<Option<std::path::PathBuf>> {
+        Ok(self.choisir_fichiers(depart)?.into_iter().next())
+    }
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
 }
 

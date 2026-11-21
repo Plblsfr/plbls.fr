@@ -35,6 +35,8 @@ pub enum ChoixSon {
     Pop,
     #[serde(rename = "double")]
     DoubleBip,
+    #[serde(rename = "custom")]
+    Personnalise,
 }
 
 impl ChoixSon {
@@ -49,7 +51,7 @@ impl ChoixSon {
 
     pub fn notes(self) -> &'static [f32] {
         match self {
-            Self::Aucun => &[],
+            Self::Aucun | Self::Personnalise => &[],
             Self::Montee => &[660.0, 880.0],
             Self::Descente => &[880.0, 660.0],
             Self::Carillon => &[784.0, 988.0, 1319.0],
@@ -66,6 +68,7 @@ impl ChoixSon {
             Self::Carillon => "Carillon",
             Self::Pop => "Pop",
             Self::DoubleBip => "Double bip",
+            Self::Personnalise => "Mon fichier",
         }
     }
 }
@@ -174,7 +177,7 @@ pub fn jouer(
         volume,
         ..ReglagesSons::default()
     };
-    if choix == ChoixSon::Aucun || reglages.niveau() <= 0.0 {
+    if choix.notes().is_empty() || reglages.niveau() <= 0.0 {
         return Ok(None);
     }
     let tonalite = Tonalite::nouvelle(choix.notes(), reglages.niveau());
@@ -262,6 +265,14 @@ mod tests {
         assert!(jouer(Arc::new(s.clone()), None, ChoixSon::Pop, 0)
             .unwrap()
             .is_none());
+        assert!(jouer(Arc::new(s.clone()), None, ChoixSon::Personnalise, 60)
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            serde_json::from_str::<ChoixSon>(r#""custom""#).unwrap(),
+            ChoixSon::Personnalise
+        );
+        assert!(!ChoixSon::PROPOSES.contains(&ChoixSon::Personnalise));
         assert!(s.flux_ouverts().is_empty());
     }
 

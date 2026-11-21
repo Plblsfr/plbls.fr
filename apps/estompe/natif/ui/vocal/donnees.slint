@@ -13,6 +13,7 @@ export struct ParticipantVocal {
     barres: int,
     qualite: string,
     portrait: image,
+    deplacable: bool,
 }
 
 export struct VueVocal {
@@ -92,6 +93,8 @@ export struct ReglagesVocal {
     son-arrivee: int,
     son-depart: int,
     volume-sons: int,
+    perso-arrivee: bool,
+    perso-depart: bool,
 }
 
 export global DonneesVocal {
@@ -117,6 +120,10 @@ export global DonneesVocal {
     in-out property <bool> capture-touche: false;
     in property <string> capture-erreur;
     in property <bool> plein-cadre: false;
+    in property <string> son-erreur;
+    in-out property <string> glisse-depuis;
+    in property <string> erreur-depot-salon;
+    in property <string> erreur-depot;
     callback rejoindre(string);
     callback ouvrir-vocal(string);
     callback quitter();
@@ -136,6 +143,10 @@ export global DonneesVocal {
     callback choisir-son(bool, int);
     callback volume-sons(int, bool);
     callback ecouter-son(bool);
+    callback choisir-fichier-son(bool);
+    pure callback donnees-glisse(string, string) -> data-transfer;
+    pure callback peut-deposer(data-transfer, string) -> bool;
+    callback deposer(data-transfer, string);
     callback ouvrir-reglages();
     callback fermer-reglages();
     callback regler(ReglagesVocal, bool);

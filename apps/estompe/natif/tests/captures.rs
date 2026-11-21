@@ -106,6 +106,11 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-plein-cadre-clair", Clair, vocal_plein_cadre;
     "vocal-plein-cadre-sombre", Sombre, vocal_plein_cadre;
     "vocal-sons-clair", Clair, vocal_sons;
+    "vocal-sons-perso-clair", Clair, vocal_sons_perso;
+    "vocal-sons-perso-sombre", Sombre, vocal_sons_perso;
+    "vocal-glisser-clair", Clair, vocal_glisser;
+    "vocal-glisser-sombre", Sombre, vocal_glisser;
+    "vocal-glisser-refus-clair", Clair, vocal_glisser_refus;
     "vocal-reglages-clair", Clair, vocal_reglages;
     "vocal-reglages-sombre", Sombre, vocal_reglages;
     "coquille-vide-clair", Clair, coquille_vide;
@@ -756,6 +761,48 @@ fn vocal_sons(f: &Principale) {
     stabiliser(f);
     f.global::<estompe_natif::DonneesVocal>()
         .set_reglages_decalage(-500.0);
+    stabiliser(f);
+}
+
+fn vocal_sons_perso(f: &Principale) {
+    let pont = vocal_avec(f, 2, |_| {}, |_| {});
+    pont.vocal().ouvrir_reglages(f);
+    stabiliser(f);
+    let v = f.global::<estompe_natif::DonneesVocal>();
+    let mut r = v.get_reglages();
+    r.perso_arrivee = true;
+    r.son_arrivee = 6;
+    v.set_reglages(r);
+    v.set_son_erreur("Choisis un fichier audio de 150 Ko au plus.".into());
+    v.set_reglages_decalage(-560.0);
+    stabiliser(f);
+}
+
+fn vocal_moderateur(f: &Principale) -> Pont {
+    vocal_avec(
+        f,
+        4,
+        |e| {
+            if let Some(serveur) = e.details.get_mut("s1").and_then(|d| d.server.as_mut()) {
+                serveur.owner_id = Some("u1".into());
+            }
+        },
+        |_| {},
+    )
+}
+
+fn vocal_glisser(f: &Principale) {
+    vocal_moderateur(f);
+    f.global::<estompe_natif::DonneesVocal>()
+        .set_glisse_depuis("v1".into());
+    stabiliser(f);
+}
+
+fn vocal_glisser_refus(f: &Principale) {
+    vocal_moderateur(f);
+    let v = f.global::<estompe_natif::DonneesVocal>();
+    v.set_erreur_depot_salon("k1".into());
+    v.set_erreur_depot("Action impossible : Rang insuffisant".into());
     stabiliser(f);
 }
 

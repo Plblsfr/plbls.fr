@@ -1000,6 +1000,7 @@ async fn session(
     if !contexte.focus.load(Ordering::SeqCst) {
         pont.messagerie().fenetre_active(false);
     }
+    pont.vocal().definir_fichiers(contexte.fabrique.fichiers());
     let outils = contexte.fabrique.vocal();
     if let Some(outils) = &outils {
         pont.vocal().brancher(outils.clone());

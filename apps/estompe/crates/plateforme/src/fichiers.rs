@@ -1,4 +1,6 @@
-use crate::{ContenuPressePapiers, Erreur, Fichiers, Image, PressePapiers, Resultat};
+use crate::{
+    ContenuPressePapiers, Erreur, Fichiers, FiltreFichiers, Image, PressePapiers, Resultat,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -23,6 +25,21 @@ impl Fichiers for FichiersSysteme {
             dialogue = dialogue.set_directory(depart);
         }
         Ok(dialogue.pick_files().unwrap_or_default())
+    }
+
+    fn choisir_fichier(
+        &self,
+        titre: &str,
+        filtre: &FiltreFichiers,
+        depart: Option<&Path>,
+    ) -> Resultat<Option<PathBuf>> {
+        let mut dialogue = rfd::FileDialog::new()
+            .set_title(titre)
+            .add_filter(filtre.nom, filtre.extensions);
+        if let Some(depart) = depart.filter(|d| d.is_dir()) {
+            dialogue = dialogue.set_directory(depart);
+        }
+        Ok(dialogue.pick_file())
     }
 
     fn ouvrir(&self, chemin: &Path) -> Resultat<()> {

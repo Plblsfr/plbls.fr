@@ -45,8 +45,10 @@ component BoutonSon inherits Bouton {
 component ChoixDuSon inherits VerticalLayout {
     in property <string> libelle;
     in property <int> choisi;
+    in property <bool> perso;
     callback choisir(int);
     callback ecouter();
+    callback choisir-fichier();
     spacing: Espace.e1;
     HorizontalLayout {
         Text {
@@ -64,6 +66,14 @@ component ChoixDuSon inherits VerticalLayout {
             actif: root.choisi != 5;
             clique => {
                 root.ecouter();
+            }
+        }
+        Bouton {
+            texte: "Mon fichier…";
+            variante: VarianteBouton.fantome;
+            calque: 1;
+            clique => {
+                root.choisir-fichier();
             }
         }
     }
@@ -114,6 +124,14 @@ component ChoixDuSon inherits VerticalLayout {
                 root.choisir(i);
             }
         }
+        if root.perso: BoutonSon {
+            texte: "Mon fichier";
+            rang: 6;
+            choisi: root.choisi;
+            choisir(i) => {
+                root.choisir(i);
+            }
+        }
         BoutonSon {
             texte: "Aucun";
             rang: 5;
@@ -159,6 +177,8 @@ export component ReglagesAudio inherits Modal {
                     son-arrivee: self.r.son-arrivee,
                     son-depart: self.r.son-depart,
                     volume-sons: self.r.volume-sons,
+                    perso-arrivee: self.r.perso-arrivee,
+                    perso-depart: self.r.perso-depart,
                 }, fini);
             }
             function bruit(niveau: int) {
@@ -177,6 +197,8 @@ export component ReglagesAudio inherits Modal {
                     son-arrivee: self.r.son-arrivee,
                     son-depart: self.r.son-depart,
                     volume-sons: self.r.volume-sons,
+                    perso-arrivee: self.r.perso-arrivee,
+                    perso-depart: self.r.perso-depart,
                 }, true);
             }
             Titre {
@@ -428,22 +450,38 @@ export component ReglagesAudio inherits Modal {
             if contenu.r.sons: ChoixDuSon {
                 libelle: "Son d'arrivée";
                 choisi: contenu.r.son-arrivee;
+                perso: contenu.r.perso-arrivee;
                 choisir(i) => {
                     DonneesVocal.choisir-son(true, i);
                 }
                 ecouter => {
                     DonneesVocal.ecouter-son(true);
                 }
+                choisir-fichier => {
+                    DonneesVocal.choisir-fichier-son(true);
+                }
             }
             if contenu.r.sons: ChoixDuSon {
                 libelle: "Son de départ";
                 choisi: contenu.r.son-depart;
+                perso: contenu.r.perso-depart;
                 choisir(i) => {
                     DonneesVocal.choisir-son(false, i);
                 }
                 ecouter => {
                     DonneesVocal.ecouter-son(false);
                 }
+                choisir-fichier => {
+                    DonneesVocal.choisir-fichier-son(false);
+                }
+            }
+            if contenu.r.sons && DonneesVocal.son-erreur != "": Text {
+                text: DonneesVocal.son-erreur;
+                color: Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
             }
             if contenu.r.sons: Reglage {
                 libelle: "Volume des sons";

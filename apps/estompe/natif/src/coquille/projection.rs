@@ -35,6 +35,7 @@ pub struct DonneesSalon {
     pub occupants: usize,
     pub brouillon: bool,
     pub duree: String,
+    pub vocal: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -333,6 +334,7 @@ fn ligne_de_salon(
         } else {
             duree_du_salon_vocal(etat, &identifiant, maintenant_ms)
         },
+        vocal: !lisible,
         id: identifiant,
     }
 }

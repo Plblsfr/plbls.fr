@@ -111,6 +111,15 @@ export component Tuile inherits Rectangle {
 export component LigneParticipant inherits Rectangle {
     in property <ParticipantVocal> p;
     property <bool> utilisable: !p.moi && Calques.ouverts == 0;
+    property <bool> glisse-en-cours: glisse.dragging;
+    changed glisse-en-cours => {
+        if (self.glisse-en-cours) {
+            DonneesVocal.glisse-depuis = root.p.salon;
+        } else if (DonneesVocal.glisse-depuis == root.p.salon) {
+            DonneesVocal.glisse-depuis = "";
+        }
+    }
+    opacity: glisse.dragging ? 0.5 : 1;
     border-radius: Rayon.xs;
     background: zone.has-hover && root.utilisable ? Theme.papier-3 : transparent;
     accessible-role: button;
@@ -177,11 +186,16 @@ export component LigneParticipant inherits Rectangle {
             }
             return reject;
         }
-        zone := TouchArea {
-            enabled: root.utilisable;
-            mouse-cursor: root.utilisable ? pointer : default;
-            clicked => {
-                DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+        glisse := DragArea {
+            enabled: root.utilisable && root.p.deplacable;
+            allow-move: true;
+            data: DonneesVocal.donnees-glisse(root.p.salon, root.p.utilisateur);
+            zone := TouchArea {
+                enabled: root.utilisable;
+                mouse-cursor: !root.utilisable ? default : root.p.deplacable ? MouseCursor.grab : pointer;
+                clicked => {
+                    DonneesVocal.ouvrir-menu(root.p.utilisateur, root.p.salon);
+                }
             }
         }
     }

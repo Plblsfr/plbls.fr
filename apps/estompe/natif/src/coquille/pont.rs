@@ -382,6 +382,7 @@ fn ligne_salon_slint(d: &DonneesSalon) -> LigneSalon {
         occupants: d.occupants.min(i32::MAX as usize) as i32,
         brouillon: d.brouillon,
         duree: d.duree.as_str().into(),
+        vocal: d.vocal,
     }
 }
 

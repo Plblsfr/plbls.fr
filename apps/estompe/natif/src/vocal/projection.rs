@@ -32,6 +32,7 @@ pub struct Participant {
     pub qualite: &'static str,
     pub avatar: Option<CleAvatar>,
     pub portrait: bool,
+    pub deplacable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +142,11 @@ pub fn participants(
     }
     let affiches = vocal.affiches();
     let serveur = etat.serveur_du_salon(salon);
+    let detail = serveur.as_deref().and_then(|s| etat.details.get(s));
+    let peut_deplacer = etat.peut(serveur.as_deref(), "move_members", None)
+        && serveur
+            .as_deref()
+            .is_some_and(|s| salons_vocaux(etat, s).len() > 1);
     liste
         .into_iter()
         .map(|(utilisateur, nom, micro_impose, son_impose)| {
@@ -177,6 +183,7 @@ pub fn participants(
                     .as_deref()
                     .and_then(|s| cle_avatar(etat, s, &utilisateur)),
                 portrait: false,
+                deplacable: peut_deplacer && domine(detail, moi, &utilisateur),
                 nom,
                 utilisateur,
             }
@@ -576,6 +583,30 @@ mod tests {
         let m = menu(&e, &v, "v1", "carol", "dave").unwrap();
         assert!(!m.peut_couper_micro && !m.peut_couper_son);
         assert!(m.destinations.is_empty() && !m.peut_deconnecter);
+    }
+
+    #[test]
+    fn seul_un_moderateur_qui_domine_peut_glisser_un_participant_vers_un_autre_salon() {
+        let mut e = avec_vocal(&[("carol", "carol")]);
+        let v = connecte("v1");
+        let deplacables = |e: &Etat, moi: &str| -> Vec<(String, bool)> {
+            participants(e, &v, "v1", moi, false)
+                .into_iter()
+                .map(|p| (p.utilisateur, p.deplacable))
+                .collect()
+        };
+        assert_eq!(
+            deplacables(&e, "me"),
+            [("me".to_string(), false), ("carol".to_string(), true)]
+        );
+        assert!(deplacables(&e, "dave").iter().all(|(_, d)| !d));
+        if let Some(salons) = e.details.get_mut("s1").and_then(|d| d.channels.as_mut()) {
+            salons.retain(|s| s.id.as_deref() != Some("k1"));
+        }
+        assert!(
+            deplacables(&e, "me").iter().all(|(_, d)| !d),
+            "aucun autre salon vocal où le déposer"
+        );
     }
 
     #[test]

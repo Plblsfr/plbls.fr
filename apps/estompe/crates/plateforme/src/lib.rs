@@ -43,9 +43,9 @@ pub use raw_window_handle::RawWindowHandle;
 pub use traits::{
     ActionNotification, ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre,
     CompteursProcessus, ContenuPressePapiers, DemarrageSession, ErreurFluxAudio, EtatTouche,
-    EvenementZone, Fichiers, FluxAudio, FluxSon, FormatAudio, FournisseurAudio, Image,
-    InfosMachine, Installation, MesureProcessus, Micro, Notification, Notifications, OuvertureUrl,
-    Overlay, Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon,
+    EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon, FormatAudio, FournisseurAudio,
+    Image, InfosMachine, Installation, MesureProcessus, Micro, Notification, Notifications,
+    OuvertureUrl, Overlay, Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon,
     RaccourcisGlobaux, RecepteurActions, RecepteurAudio, RecepteurSon, RecepteurZone, SensAudio,
     SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio, TypeSource, ZoneNotification,
 };

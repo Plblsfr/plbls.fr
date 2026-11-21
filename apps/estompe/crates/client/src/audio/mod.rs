@@ -3,6 +3,7 @@ pub mod factice;
 pub mod format;
 pub mod micro;
 pub mod peripheriques;
+pub mod son_perso;
 pub mod tonalite;
 
 pub use essai::EssaiMicro;
@@ -16,6 +17,7 @@ pub use micro::{
     NiveauMicro, ReglagesMicro,
 };
 pub use peripheriques::{resoudre, Bascule, Capture, Lecture, RenduTrame};
+pub use son_perso::{ErreurSon, SonsPersonnalises};
 pub use tonalite::{ChoixSon, ReglagesSons, SonVocal, Tonalite};
 
 #[cfg(test)]

@@ -270,6 +270,7 @@ mod tests {
             occupants: 0,
             brouillon: false,
             duree: String::new(),
+            vocal: false,
         }
     }
 

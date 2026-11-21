@@ -1,14 +1,17 @@
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use std::collections::HashSet;
 
+use estompe_client::audio::son_perso::{self, FILTRE_AUDIO, TITRE_DIALOGUE};
 use estompe_client::audio::{
-    tonalite, Apm, Bascule, ChoixSon, EssaiMicro, ModeBruit, NiveauMicro, ReglagesMicro,
-    ReglagesSons, SensAudio, SonVocal, SystemeAudio,
+    tonalite, Apm, Bascule, ChoixSon, EssaiMicro, Lecture, ModeBruit, NiveauMicro, ReglagesMicro,
+    ReglagesSons, SensAudio, SonVocal, SonsPersonnalises, SystemeAudio,
 };
 use estompe_client::route::Route;
-use estompe_client::store::{Avis, Changement, GenreSalon, Store};
+use estompe_client::store::{est_vocal, Avis, Changement, GenreSalon, Store};
+use estompe_client::video::ffmpeg_du_systeme;
 use estompe_client::vocal::{
     AvisVocal, EtatPtt, EtatVocal, Phase, PousserPourParler, ReglagesPtt, SessionVocale,
     SourceAudio, SourceTouche,
@@ -21,6 +24,7 @@ use super::touches::code_de_texte;
 use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::synchroniser;
 use crate::coquille::pont::vec_de;
+use crate::messagerie::pont::SystemeFichiers;
 use crate::session::Memoire;
 use crate::{
     BarreVocal, DonneesVocal, ListePeripheriques, MenuVocal, ParticipantVocal, PeripheriqueVocal,
@@ -30,6 +34,45 @@ use crate::{
 pub const PERIODE_MESURE: Duration = Duration::from_millis(50);
 const MARGE_SON: Duration = Duration::from_millis(150);
 const PAR_DEFAUT: &str = "Par défaut";
+pub const RANG_PERSONNALISE: i32 = 6;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Glisse {
+    pub salon: String,
+    pub utilisateur: String,
+}
+
+pub fn donnees_glisse(salon: &str, utilisateur: &str) -> slint::DataTransfer {
+    let mut donnees = slint::DataTransfer::default();
+    donnees.set_user_data(Rc::new(Glisse {
+        salon: salon.to_string(),
+        utilisateur: utilisateur.to_string(),
+    }));
+    donnees
+}
+
+pub fn glisse_de(donnees: &slint::DataTransfer) -> Option<Glisse> {
+    donnees
+        .user_data()?
+        .downcast::<Glisse>()
+        .ok()
+        .map(|g| (*g).clone())
+}
+
+fn indice_du_son(son: SonVocal) -> usize {
+    match son {
+        SonVocal::Arrivee => 0,
+        SonVocal::Depart => 1,
+    }
+}
+
+fn son_de(arrivee: bool) -> SonVocal {
+    if arrivee {
+        SonVocal::Arrivee
+    } else {
+        SonVocal::Depart
+    }
+}
 
 #[derive(Clone)]
 pub struct OutilsVocaux {
@@ -69,6 +112,12 @@ struct Interne {
     demandes_avatars: HashSet<CleAvatar>,
     echecs_avatars: HashSet<CleAvatar>,
     ombres: Ombres,
+    fichiers: Option<SystemeFichiers>,
+    son_erreur: String,
+    sons_decodes: [Option<Arc<[f32]>>; 2],
+    lecture_perso: Option<(u64, Lecture)>,
+    generation_perso: u64,
+    erreur_depot: Option<(String, String)>,
 }
 
 #[derive(Clone)]
@@ -103,6 +152,10 @@ pub fn vider_modeles(f: &Principale) {
     v.set_voix(false);
     v.set_parle_micro_coupe(false);
     v.set_plein_cadre(false);
+    v.set_son_erreur("".into());
+    v.set_glisse_depuis("".into());
+    v.set_erreur_depot_salon("".into());
+    v.set_erreur_depot("".into());
 }
 
 fn participant_slint(p: &Participant, profils: &Profils) -> ParticipantVocal {
@@ -120,6 +173,7 @@ fn participant_slint(p: &Participant, profils: &Profils) -> ParticipantVocal {
         son_impose: p.son_impose,
         barres: p.barres,
         qualite: p.qualite.into(),
+        deplacable: p.deplacable,
         portrait: if p.portrait {
             p.avatar
                 .as_ref()
@@ -196,6 +250,9 @@ fn menu_slint(m: &Menu) -> MenuVocal {
 }
 
 pub fn rang_du_son(choix: ChoixSon) -> i32 {
+    if choix == ChoixSon::Personnalise {
+        return RANG_PERSONNALISE;
+    }
     ChoixSon::PROPOSES
         .iter()
         .position(|c| *c == choix)
@@ -203,6 +260,9 @@ pub fn rang_du_son(choix: ChoixSon) -> i32 {
 }
 
 pub fn son_du_rang(rang: i32) -> ChoixSon {
+    if rang == RANG_PERSONNALISE {
+        return ChoixSon::Personnalise;
+    }
     usize::try_from(rang)
         .ok()
         .and_then(|i| ChoixSon::PROPOSES.get(i).copied())
@@ -303,6 +363,12 @@ impl PontVocal {
                 demandes_avatars: HashSet::new(),
                 echecs_avatars: HashSet::new(),
                 ombres: Ombres::default(),
+                fichiers: None,
+                son_erreur: String::new(),
+                sons_decodes: [None, None],
+                lecture_perso: None,
+                generation_perso: 0,
+                erreur_depot: None,
             })),
             store,
             fenetre,
@@ -331,6 +397,28 @@ impl PontVocal {
         if let Some(m) = &self.memoire {
             m.modifier(modification);
         }
+    }
+
+    pub fn definir_fichiers(&self, fichiers: SystemeFichiers) {
+        self.verrou().fichiers = Some(fichiers);
+    }
+
+    fn sons_perso(&self) -> Option<SonsPersonnalises> {
+        self.memoire
+            .as_ref()
+            .map(|m| SonsPersonnalises::dans(m.dossier()))
+    }
+
+    fn echantillons_perso(&self, son: SonVocal) -> Option<Arc<[f32]>> {
+        if let Some(echantillons) = self.verrou().sons_decodes[indice_du_son(son)].clone() {
+            return Some(echantillons);
+        }
+        let octets = self.sons_perso()?.lire(son)?;
+        let echantillons: Arc<[f32]> = son_perso::decoder(&octets, Some(&ffmpeg_du_systeme()))
+            .ok()?
+            .into();
+        self.verrou().sons_decodes[indice_du_son(son)] = Some(echantillons.clone());
+        Some(echantillons)
     }
 
     pub fn brancher(&self, outils: OutilsVocaux) {
@@ -471,14 +559,18 @@ impl PontVocal {
             return;
         }
         let sons = self.preferences(|p| p.sons);
-        self.jouer_choix(sons.choix(son), sons.volume);
+        self.jouer_choix(son, sons.choix(son), sons.volume);
     }
 
-    fn jouer_choix(&self, choix: ChoixSon, volume: u16) {
+    fn jouer_choix(&self, son: SonVocal, choix: ChoixSon, volume: u16) {
         let Some(outils) = self.outils() else {
             return;
         };
         let sortie = self.preferences(|p| p.sortie_audio.clone());
+        if choix == ChoixSon::Personnalise {
+            self.jouer_perso(outils.audio, sortie, son, volume);
+            return;
+        }
         if let Ok(Some((lecture, duree))) =
             tonalite::jouer(outils.audio.clone(), sortie, choix, volume)
         {
@@ -487,6 +579,153 @@ impl PontVocal {
                 drop(lecture);
             });
         }
+    }
+
+    fn jouer_perso(
+        &self,
+        audio: Arc<dyn SystemeAudio>,
+        sortie: Option<String>,
+        son: SonVocal,
+        volume: u16,
+    ) {
+        let pont = self.clone();
+        self.runtime.spawn(async move {
+            let p = pont.clone();
+            let lancee = tokio::task::spawn_blocking(move || {
+                let echantillons = p.echantillons_perso(son)?;
+                son_perso::jouer(audio, sortie, echantillons, volume)
+                    .ok()
+                    .flatten()
+            })
+            .await
+            .ok()
+            .flatten();
+            let Some((lecture, duree)) = lancee else {
+                return;
+            };
+            let (generation, ancienne) = {
+                let mut i = pont.verrou();
+                i.generation_perso += 1;
+                let generation = i.generation_perso;
+                (generation, i.lecture_perso.replace((generation, lecture)))
+            };
+            drop(ancienne);
+            tokio::time::sleep(duree + MARGE_SON).await;
+            let finie = {
+                let mut i = pont.verrou();
+                match &i.lecture_perso {
+                    Some((g, _)) if *g == generation => i.lecture_perso.take(),
+                    _ => None,
+                }
+            };
+            drop(finie);
+        });
+    }
+
+    pub fn choisir_fichier_son(&self, arrivee: bool) {
+        let son = son_de(arrivee);
+        let Some(fichiers) = self.verrou().fichiers.clone() else {
+            return;
+        };
+        let Some(sons) = self.sons_perso() else {
+            return;
+        };
+        if !fichiers.disponible() {
+            return;
+        }
+        let pont = self.clone();
+        let _ = std::thread::Builder::new()
+            .name("estompe-son".into())
+            .spawn(move || {
+                let Ok(Some(chemin)) =
+                    fichiers.choisir_fichier(TITRE_DIALOGUE, &FILTRE_AUDIO, None)
+                else {
+                    return;
+                };
+                pont.retenir_fichier_son(&sons, son, &chemin);
+            });
+    }
+
+    pub fn retenir_fichier_son(
+        &self,
+        sons: &SonsPersonnalises,
+        son: SonVocal,
+        chemin: &std::path::Path,
+    ) {
+        let erreur = match son_perso::lire_fichier(chemin, Some(&ffmpeg_du_systeme())) {
+            Err(e) => Some(e.message().to_string()),
+            Ok((octets, echantillons)) => match sons.enregistrer(son, &octets) {
+                Err(e) => Some(format!("Enregistrement du son impossible : {e}")),
+                Ok(()) => {
+                    self.verrou().sons_decodes[indice_du_son(son)] = Some(echantillons.into());
+                    self.retenir(|p| match son {
+                        SonVocal::Arrivee => p.sons.arrivee = ChoixSon::Personnalise,
+                        SonVocal::Depart => p.sons.depart = ChoixSon::Personnalise,
+                    });
+                    None
+                }
+            },
+        };
+        let retenu = erreur.is_none();
+        self.verrou().son_erreur = erreur.unwrap_or_default();
+        let p = self.clone();
+        let _ = self
+            .fenetre
+            .upgrade_in_event_loop(move |f| p.projeter_reglages(&f));
+        if retenu {
+            self.ecouter_son(son == SonVocal::Arrivee);
+        }
+    }
+
+    pub fn peut_deposer(&self, glisse: &Glisse, cible: &str) -> bool {
+        if glisse.salon == cible {
+            return false;
+        }
+        let etat = self.etat();
+        self.store.lire(|e| {
+            let moi = e.moi().to_string();
+            let Some(serveur) = e.serveur_du_salon(&glisse.salon) else {
+                return false;
+            };
+            e.serveur_du_salon(cible).as_deref() == Some(serveur.as_str())
+                && e.salon(cible).is_some_and(|(_, s)| est_vocal(s.kind))
+                && projection::participants(e, &etat, &glisse.salon, &moi, false)
+                    .iter()
+                    .any(|p| p.utilisateur == glisse.utilisateur && p.deplacable)
+        })
+    }
+
+    pub fn deposer(&self, f: &Principale, glisse: Glisse, cible: &str) {
+        let v = f.global::<DonneesVocal>();
+        v.set_glisse_depuis("".into());
+        if !self.peut_deposer(&glisse, cible) {
+            return;
+        }
+        self.verrou().erreur_depot = None;
+        self.projeter_depot(f);
+        let client = self.store.client().clone();
+        let pont = self.clone();
+        let cible = cible.to_string();
+        self.runtime.spawn(async move {
+            let resultat = client
+                .deplacer_participant_vocal(&glisse.salon, &glisse.utilisateur, &cible)
+                .await;
+            if let Err(erreur) = resultat {
+                pont.verrou().erreur_depot =
+                    Some((cible, format!("Action impossible : {}", erreur.message())));
+                let p = pont.clone();
+                let _ = pont
+                    .fenetre
+                    .upgrade_in_event_loop(move |f| p.projeter_depot(&f));
+            }
+        });
+    }
+
+    pub fn projeter_depot(&self, f: &Principale) {
+        let erreur = self.verrou().erreur_depot.clone().unwrap_or_default();
+        let v = f.global::<DonneesVocal>();
+        v.set_erreur_depot_salon(erreur.0.into());
+        v.set_erreur_depot(erreur.1.into());
     }
 
     pub fn changements(&self, f: &Principale, changements: &[Changement]) {
@@ -729,15 +968,18 @@ impl PontVocal {
 
     pub fn projeter_reglages(&self, f: &Principale) {
         let v = f.global::<DonneesVocal>();
-        let (ptt_etat, essai, capture_erreur, global_disponible) = {
+        let (ptt_etat, essai, capture_erreur, global_disponible, son_erreur) = {
             let i = self.verrou();
             (
                 i.ptt_etat.clone(),
                 i.essai.is_some(),
                 i.capture_erreur.clone(),
                 i.ptt.as_ref().is_some_and(|p| p.global_disponible()),
+                i.son_erreur.clone(),
             )
         };
+        let perso = self.sons_perso();
+        let perso = perso.as_ref();
         let (traitement, ecoute, sons, ptt, choix_sons) = self.preferences(|p| {
             (
                 p.traitement_micro,
@@ -768,7 +1010,10 @@ impl PontVocal {
             son_arrivee: rang_du_son(choix_sons.arrivee),
             son_depart: rang_du_son(choix_sons.depart),
             volume_sons: i32::from(choix_sons.volume),
+            perso_arrivee: perso.is_some_and(|s| s.existe(SonVocal::Arrivee)),
+            perso_depart: perso.is_some_and(|s| s.existe(SonVocal::Depart)),
         });
+        v.set_son_erreur(son_erreur.into());
         v.set_ptt(ptt.actif);
         v.set_touche_ptt(ptt.libelle().into());
         v.set_ptt_parle(ptt_etat.parle);
@@ -1011,6 +1256,11 @@ impl PontVocal {
 
     pub fn choisir_son(&self, f: &Principale, arrivee: bool, rang: i32) {
         let choix = son_du_rang(rang);
+        if choix == ChoixSon::Personnalise
+            && !self.sons_perso().is_some_and(|s| s.existe(son_de(arrivee)))
+        {
+            return;
+        }
         self.retenir(|p| {
             if arrivee {
                 p.sons.arrivee = choix;
@@ -1036,15 +1286,12 @@ impl PontVocal {
 
     pub fn ecouter_son(&self, arrivee: bool) {
         let sons = self.preferences(|p| p.sons);
-        let son = if arrivee {
-            SonVocal::Arrivee
-        } else {
-            SonVocal::Depart
-        };
-        self.jouer_choix(sons.choix(son), sons.volume);
+        let son = son_de(arrivee);
+        self.jouer_choix(son, sons.choix(son), sons.volume);
     }
 
     pub fn ouvrir_reglages(&self, f: &Principale) {
+        self.verrou().son_erreur.clear();
         self.rafraichir_peripheriques(f);
         self.projeter_reglages(f);
         let v = f.global::<DonneesVocal>();
@@ -1054,7 +1301,11 @@ impl PontVocal {
 
     pub fn fermer_reglages(&self, f: &Principale) {
         self.arreter_essai(f);
-        self.verrou().capture_erreur.clear();
+        {
+            let mut i = self.verrou();
+            i.capture_erreur.clear();
+            i.son_erreur.clear();
+        }
         let v = f.global::<DonneesVocal>();
         v.set_reglages_ouverts(false);
         v.set_capture_touche(false);
@@ -1278,6 +1529,24 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
     rappel!(on_volume_sons, |p, f, valeur, fini| p
         .volume_sons(&f, valeur, fini));
     rappel!(on_ecouter_son, |p, _f, arrivee| p.ecouter_son(arrivee));
+    rappel!(on_choisir_fichier_son, |p, _f, arrivee| p
+        .choisir_fichier_son(arrivee));
+    v.on_donnees_glisse(|salon, utilisateur| donnees_glisse(&salon, &utilisateur));
+    {
+        let source = source.clone();
+        v.on_peut_deposer(
+            move |donnees, cible| match (source(), glisse_de(&donnees)) {
+                (Some(p), Some(glisse)) => p.peut_deposer(&glisse, &cible),
+                _ => false,
+            },
+        );
+    }
+    rappel!(
+        on_deposer,
+        |p, f, donnees, cible| if let Some(glisse) = glisse_de(&donnees) {
+            p.deposer(&f, glisse, &cible)
+        }
+    );
     rappel!(on_ouvrir_reglages, |p, f| p.ouvrir_reglages(&f));
     rappel!(on_fermer_reglages, |p, f| p.fermer_reglages(&f));
     rappel!(on_regler, |p, f, reglages, fini| p
@@ -1324,8 +1593,25 @@ mod tests {
             assert_eq!(son_du_rang(rang_du_son(choix)), choix);
         }
         assert_eq!(rang_du_son(ChoixSon::Aucun), 5);
+        assert_eq!(
+            son_du_rang(rang_du_son(ChoixSon::Personnalise)),
+            ChoixSon::Personnalise
+        );
         assert_eq!(son_du_rang(42), ChoixSon::Aucun);
         assert_eq!(son_du_rang(-1), ChoixSon::Aucun);
+    }
+
+    #[test]
+    fn le_glisser_porte_le_salon_et_le_participant() {
+        let donnees = donnees_glisse("v1", "carol");
+        assert_eq!(
+            glisse_de(&donnees),
+            Some(Glisse {
+                salon: "v1".into(),
+                utilisateur: "carol".into(),
+            })
+        );
+        assert!(glisse_de(&slint::DataTransfer::default()).is_none());
     }
 
     #[test]

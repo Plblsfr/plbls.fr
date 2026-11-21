@@ -24,7 +24,7 @@ use estompe_plateforme::RaccourcisFactices;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
 use slint::platform::{Key, PointerEventButton, WindowEvent};
-use slint::{ComponentHandle, Model, SharedString};
+use slint::{ComponentHandle, LogicalPosition, Model, SharedString};
 
 const RETARD_MAXIMAL: Duration = Duration::from_millis(150);
 
@@ -91,6 +91,85 @@ fn requete_recue(serveur: &ServeurMessages, requete: &str, contenu: &str) -> boo
         .unwrap()
         .iter()
         .any(|(r, c)| r == requete && c.contains(contenu))
+}
+
+fn wav(echantillons: &[f32]) -> Vec<u8> {
+    let donnees: Vec<u8> = echantillons
+        .iter()
+        .flat_map(|e| ((e * 32_767.0) as i16).to_le_bytes())
+        .collect();
+    let mut o = b"RIFF".to_vec();
+    o.extend_from_slice(&(36 + donnees.len() as u32).to_le_bytes());
+    o.extend_from_slice(b"WAVEfmt ");
+    for mot in [16u32, 1 | (1 << 16), 48_000, 96_000, 2 | (16 << 16)] {
+        o.extend_from_slice(&mot.to_le_bytes());
+    }
+    o.extend_from_slice(b"data");
+    o.extend_from_slice(&(donnees.len() as u32).to_le_bytes());
+    o.extend_from_slice(&donnees);
+    o
+}
+
+fn centre(
+    f: &Principale,
+    libelle: &str,
+    retenir: impl Fn(&ElementHandle) -> bool,
+) -> LogicalPosition {
+    let e = ElementHandle::find_by_accessible_label(f, libelle)
+        .find(|e| e.accessible_role() == Some(AccessibleRole::Button) && retenir(e))
+        .unwrap_or_else(|| panic!("« {libelle} » introuvable"));
+    let (position, taille) = (e.absolute_position(), e.size());
+    LogicalPosition::new(
+        position.x + taille.width / 2.0,
+        position.y + taille.height / 2.0,
+    )
+}
+
+fn glisser(faible: &slint::Weak<Principale>, qui: &'static str, vers: &'static str) {
+    let (depart, arrivee) = sur_l_interface(faible, move |f| {
+        (
+            centre(f, qui, |e| (e.size().height - 30.0).abs() < 0.5),
+            centre(f, vers, |e| e.size().height > 0.0),
+        )
+    });
+    sur_l_interface(faible, move |f| {
+        f.window().dispatch_event(WindowEvent::PointerPressed {
+            position: depart,
+            button: PointerEventButton::Left,
+        });
+        for pas in 1..=12 {
+            let t = pas as f32 / 12.0;
+            f.window().dispatch_event(WindowEvent::PointerMoved {
+                position: LogicalPosition::new(
+                    depart.x + (arrivee.x - depart.x) * t,
+                    depart.y + (arrivee.y - depart.y) * t,
+                ),
+            });
+        }
+        slint::platform::update_timers_and_animations();
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            slint::platform::update_timers_and_animations();
+            f.global::<DonneesVocal>().get_glisse_depuis() == "v1"
+        },
+        "pendant le glisser, les autres salons vocaux sont proposés",
+    );
+    sur_l_interface(faible, move |f| {
+        f.window().dispatch_event(WindowEvent::PointerReleased {
+            position: arrivee,
+            button: PointerEventButton::Left,
+        });
+    });
+    attendre_l_interface(
+        faible,
+        |f| {
+            slint::platform::update_timers_and_animations();
+            f.global::<DonneesVocal>().get_glisse_depuis().is_empty()
+        },
+        "fin du glisser",
+    );
 }
 
 fn voix_forte() -> Vec<f32> {
@@ -402,6 +481,47 @@ fn scenario(
         "menu fermé après la déconnexion",
     );
 
+    let deplacements = || {
+        banc.http
+            .corps
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(r, c)| {
+                r == "PUT /voice/v1/participants/carol/move" && c.contains(r#""channel_id":"k1""#)
+            })
+            .count()
+    };
+    let avant = deplacements();
+    glisser(&faible, "carol", "Ciné du dimanche");
+    attendre(
+        || deplacements() == avant + 1,
+        "glisser carol sur le salon cinéma la déplace par la route de « Déplacer vers »",
+    );
+    *banc.http.refus_vocal.lock().unwrap() = Some(403);
+    glisser(&faible, "carol", "Ciné du dimanche");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_erreur_depot() == "Action impossible : Rang insuffisant"
+                && v.get_erreur_depot_salon() == "k1"
+        },
+        "le refus du serveur s'affiche sous le salon visé",
+    );
+    assert_eq!(deplacements(), avant + 2);
+    *banc.http.refus_vocal.lock().unwrap() = None;
+    glisser(&faible, "carol", "Ciné du dimanche");
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_erreur_depot().is_empty(),
+        "un nouveau dépôt efface le refus",
+    );
+    attendre(
+        || deplacements() == avant + 3,
+        "troisième déplacement envoyé",
+    );
+
     fabrique.envoyer(evenement(
         "voice.state",
         json!({"server_id": "s1", "channel_id": "v1", "user_id": "u1", "pseudo": "bob", "joined": true}),
@@ -495,6 +615,95 @@ fn scenario(
         },
         "choix du son affiché dans les réglages",
     );
+
+    let dossier_sons = memoire.dossier().join("sons");
+    let essais = tempfile::tempdir().unwrap();
+    let trop_gros = essais.path().join("trop-gros.wav");
+    std::fs::write(&trop_gros, wav(&vec![0.2; 80_000])).unwrap();
+    let court = essais.path().join("court.wav");
+    std::fs::write(&court, wav(&voix_forte())).unwrap();
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_ouvrir_reglages()
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_reglages_ouverts() && !v.get_reglages().perso_arrivee
+        },
+        "réglages ouverts, sans son personnalisé",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().set_reglages_decalage(-500.0)
+    });
+    *fabrique.fichiers.choix.lock().unwrap() = vec![trop_gros];
+    cliquer(&faible, "Mon fichier…");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            f.global::<DonneesVocal>().get_son_erreur()
+                == "Choisis un fichier audio de 150 Ko au plus."
+        },
+        "un fichier de plus de 150 Ko est refusé comme sur le web",
+    );
+    assert_eq!(memoire.lire(|p| p.sons.arrivee), ChoixSon::Carillon);
+    assert!(!dossier_sons.join("arrivee").exists());
+    let sorties = |audio: &SystemeFactice| {
+        audio
+            .ouvertures()
+            .iter()
+            .filter(|(sens, _)| *sens == SensAudio::Sortie)
+            .count()
+    };
+    let lectures = sorties(&banc.audio);
+    *fabrique.fichiers.choix.lock().unwrap() = vec![court.clone()];
+    cliquer(&faible, "Mon fichier…");
+    attendre(
+        || memoire.lire(|p| p.sons.arrivee == ChoixSon::Personnalise),
+        "le fichier choisi devient le son d'arrivée",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            let r = v.get_reglages();
+            r.perso_arrivee
+                && !r.perso_depart
+                && r.son_arrivee == 6
+                && v.get_son_erreur().is_empty()
+        },
+        "« Mon fichier » proposé et choisi pour l'arrivée seulement",
+    );
+    assert_eq!(
+        std::fs::read(dossier_sons.join("arrivee")).unwrap(),
+        std::fs::read(&court).unwrap(),
+        "le fichier est gardé sur l'appareil"
+    );
+    attendre(
+        || sorties(&banc.audio) > lectures,
+        "le son choisi est joué en aperçu",
+    );
+    cliquer(&faible, "Montée");
+    attendre(
+        || memoire.lire(|p| p.sons.arrivee == ChoixSon::Montee),
+        "retour à un son prédéfini",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let r = f.global::<DonneesVocal>().get_reglages();
+            r.son_arrivee == 0 && r.perso_arrivee
+        },
+        "le fichier reste proposé après le retour au son prédéfini",
+    );
+    cliquer(&faible, "Mon fichier");
+    attendre(
+        || memoire.lire(|p| p.sons.arrivee == ChoixSon::Personnalise),
+        "le fichier se choisit à nouveau sans le recharger",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_fermer_reglages()
+    });
     sur_l_interface(&faible, |f| {
         let v = f.global::<DonneesVocal>();
         let mut r = v.get_reglages();
