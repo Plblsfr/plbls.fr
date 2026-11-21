@@ -278,6 +278,16 @@ pub trait Salle: Send + Sync {
         format: FormatVideo,
     ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>>;
     fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()>;
+    fn publier_son_partage(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(async {
+            Err(ErreurSalle::Publication(
+                "son du partage non pris en charge".to_string(),
+            ))
+        })
+    }
+    fn retirer_son_partage(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
     fn limitation_video(&self, _source: SourceVideo) -> BoxFuture<'_, Limitation> {
         Box::pin(async { Limitation::Aucune })
     }

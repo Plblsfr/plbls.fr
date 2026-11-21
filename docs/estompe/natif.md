@@ -820,7 +820,7 @@ Logique dans la crate client (`vocal/partage.rs` : qualités et plafonds ; `voca
   fluidité), « Net » (1440p, 30 i/s, netteté), « Économie de données » (720p, 30 i/s) ; résolution (720p à 4K) et images par seconde (30, 60, 120), grisées au-delà
   du plafond du serveur (`screen_max_fps`, `screen_max_height` du jeton vocal, 60 et 2160 par défaut) ou de la hauteur de la source (« (au-delà de ton écran) ») ;
   débit montant estimé et rappels du front ; « Privilégier la fluidité » (indice de contenu et préférence de dégradation de l'encodeur) et « Réduire automatiquement ».
-  Réglages retenus (`partage` des préférences : résolution, images par seconde, fluidité, réduction automatique).
+  Réglages retenus (`partage` des préférences : résolution, images par seconde, fluidité, réduction automatique, son).
 - Publication (`SessionVocale::partager`) : capture continue de la source (`CaptureEcran::demarrer`, cadence de la qualité, curseur), image RGBA convertie en I420 et
   réduite à la hauteur de la qualité (libyuv par le SDK : `abgr_to_i420`, `I420Buffer::scale`), piste `Screenshare` publiée avec le débit et la cadence de la qualité,
   le simulcast au-delà de 1080p et la dégradation choisie (`TrackPublishOptions::degradation_preference`, source « écran » de WebRTC en mode netteté).
@@ -832,6 +832,17 @@ Logique dans la crate client (`vocal/partage.rs` : qualités et plafonds ; `voca
   réduit à … » s'affiche dans la barre ; on ne remonte pas seul.
 - Fin : « Arrêter », le bouton des commandes ou Alt+Maj+S retirent la piste et libèrent la capture ; quitter ou changer de salon arrête le partage ; une reconnexion le republie.
   Fenêtre fermée ou écran perdu : « Partage arrêté : la fenêtre partagée a été fermée. » (ou « l'écran partagé n'est plus disponible ») ; fenêtre réduite : rien n'est envoyé jusqu'à sa restauration.
+- Son du partage (#339, reprise de `son_wasapi.rs` et `screen_native.rs` de l'app Tauri) : trait `CaptureSon` de la crate plateforme
+  (`capture/son.rs`, `capture/son_windows.rs`) ; `demarrer(CibleSon, recepteur)` rend un `FluxSon` qui arrête la capture quand il est lâché.
+  Sous Windows, capture WASAPI « process loopback » (crate `wasapi`, Windows 10 2004 ou plus) en 48 kHz stéréo flottant sur un fil à part :
+  une fenêtre donne le son de son processus et de ses enfants (`CibleSon::Application`, `SourceCapture::processus`), un écran tout le son du système
+  sauf celui d'Estompe (`CibleSon::SystemeSauf`, processus d'Estompe exclu avec ses enfants : pas d'écho des voix du salon). Les échantillons sont ramenés au
+  format de LiveKit par `ConversionEntree` (mono, 48 kHz, trames de 10 ms) et publiés sur une piste `ScreenshareAudio` (sans DTX), à côté de la vidéo.
+  Option « Partager le son de cette fenêtre » ou « Partager le son de l'ordinateur (sans la voix des participants) » dans l'aperçu et dans « Qualité du partage »
+  (préférence `partage.son`, activée par défaut comme `screenAudio`), masquée là où le trait est indisponible (Linux, macOS : lot 11) ou pour une fenêtre
+  dont le processus est inconnu. Changer de source relance la capture du son sur la nouvelle cible ; l'option se change pendant le partage (piste ajoutée ou retirée).
+  Si la capture du son échoue, le partage continue sans le son et la barre l'indique (« Partage sans le son : capture du son impossible. »).
+  Non vérifié ici (machine Linux) : capture réelle sous Windows, absence d'écho, synchronisation du son et de l'image (moins de 100 ms visés).
 - Incrustation de la caméra (#340) : `SessionVocale::definir_incrustation` reçoit un `Incrustation` qui modifie chaque image du partage avant l'envoi et l'affichage ; aucun n'est encore fourni.
 - Écarts : le plafond de débit de l'encodeur est celui du début du partage (le SDK Rust 0.12 n'expose pas `setParameters` : changer la qualité règle la capture,
   pas le débit maximal) ; pas d'« Autre méthode » (sélecteur du système) ni de portail Wayland (lot 11) ; « Afficher le jeu en cours aux autres » (`SettingsShare` de l'app Windows)
@@ -899,7 +910,9 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - Partage d'écran : `vocal::partage::tests` (cas de `screen.test.ts` : plafonds du serveur, paliers, fluidité et netteté, débit, préréglages, conversion RGBA vers I420) ;
   `vocal::tests` (faux serveur, sources factices `EcransFactices` de la crate plateforme) : publication au format de la qualité, images reçues par l'autre participant et ma tuile,
   changement de source sans retrait, changement de qualité, arrêt, source fermée ou en échec (message), plafond du serveur et taille de la source, réduction automatique par palier,
-  incrustation appliquée ; `crates/client/tests/livekit.rs::le_partage_est_publie_change_de_source_et_de_qualite_puis_retire` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) ;
+  incrustation appliquée, son de la fenêtre publié et entendu (cible du processus), son du système sans Estompe pour un écran, son retiré puis rendu, partage sans le son
+  quand le trait est indisponible ou échoue ; `capture::son::tests` (conversions de `son_wasapi.rs`, cible du son, son indisponible hors Windows, flux factice) ;
+  `natif/src/vocal/pont/partage.rs` : option du son masquée sans capture du son ; `crates/client/tests/livekit.rs::le_partage_est_publie_change_de_source_et_de_qualite_puis_retire` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) ;
   `natif/tests/vocal.rs` : sélecteur (écrans, fenêtres sans celles d'Estompe, miniatures), aperçu, qualité grisée au-delà de la source, publication, bandeau et rappel de la barre,
   ma tuile en grand, changement de source et de qualité pendant le partage, source perdue, Alt+Maj+S, « Arrêter ».
 - `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
@@ -1033,7 +1046,7 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
 publication dans le salon (voir [Partage d'écran](#partage-décran)), incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (lot 8).
 `EcransFactices` (même module) donne des sources factices aux tests : images poussées à la demande, fenêtre réduite, fermée ou en échec. Il ne fait ni interface
-ni publication, ni son : celui du partage aura son propre trait (`CaptureSon`), qui recevra le processus de la fenêtre (`SourceCapture::processus`).
+ni publication, ni son : celui du partage a son propre trait (`CaptureSon`, voir [Partage d'écran](#partage-décran)), qui reçoit le processus de la fenêtre (`SourceCapture::processus`).
 
 - `sources()` : écrans puis fenêtres, chacun avec un identifiant (`ecran:<n>` ou `fenetre:<n>`, `IdSource`), un titre, l'application (nom de
   l'exécutable sous Windows, classe `WM_CLASS` sous X11), la taille, l'écran principal, le processus et `estompe` (fenêtre d'Estompe elle-même,

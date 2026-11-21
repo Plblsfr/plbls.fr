@@ -2,6 +2,9 @@ mod cadence;
 mod factice;
 mod flux;
 mod pixels;
+mod son;
+#[cfg(windows)]
+mod son_windows;
 mod source;
 #[cfg(windows)]
 mod windows;
@@ -17,6 +20,9 @@ pub use cadence::{Cadence, IPS_MAX};
 pub use factice::{image_unie, EcransFactices};
 pub use flux::FluxCapture;
 pub use pixels::{bgra_vers_rgba, incruster_curseur, melanger_curseur, reduire};
+pub use son::{
+    cible_du_son, flottants, pcm16, SonSysteme, SonsFactices, CANAUX_SON, FREQUENCE_SON,
+};
 pub use source::IdSource;
 
 use crate::traits::{CaptureEcran, Image, OptionsCapture, RecepteurCapture, SourceCapture};

@@ -157,10 +157,7 @@ impl CaptureSon for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
-    fn demarrer(&self, _: Option<&str>, _: RecepteurSon) -> Resultat<()> {
-        refus("capture du son")
-    }
-    fn arreter(&self) -> Resultat<()> {
+    fn demarrer(&self, _: CibleSon, _: RecepteurSonCapture) -> Resultat<FluxSon> {
         refus("capture du son")
     }
 }

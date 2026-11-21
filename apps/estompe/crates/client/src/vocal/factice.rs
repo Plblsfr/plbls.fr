@@ -68,6 +68,7 @@ struct EtatServeur {
     publiees: BTreeMap<CleFactice, usize>,
     sons_partage: BTreeMap<(String, String), SonsPartage>,
     dimensions: BTreeMap<CleFactice, (u32, u32)>,
+    trames_partage: BTreeMap<String, usize>,
     limitations: BTreeMap<String, Limitation>,
 }
 
@@ -326,6 +327,20 @@ impl ServeurVocalFactice {
             .copied()
     }
 
+    pub fn trames_son_partage(&self, identite: &str) -> usize {
+        self.etat()
+            .trames_partage
+            .get(identite)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn son_partage_publie(&self, salle: &str, identite: &str) -> bool {
+        self.etat()
+            .sons_partage
+            .contains_key(&(salle.to_string(), identite.to_string()))
+    }
+
     pub fn limiter(&self, identite: &str, limitation: Limitation) {
         self.etat()
             .limitations
@@ -581,6 +596,27 @@ impl SortieVideo for SortieVideoFactice {
     }
 }
 
+struct SortieSonPartageFactice {
+    serveur: ServeurVocalFactice,
+    salle: String,
+    identite: String,
+}
+
+impl SortieMicro for SortieSonPartageFactice {
+    fn envoyer(&self, trame: &[i16]) {
+        *self
+            .serveur
+            .etat()
+            .trames_partage
+            .entry(self.identite.clone())
+            .or_default() += 1;
+        self.serveur
+            .pousser_son_partage(&self.salle, &self.identite, trame);
+    }
+
+    fn couper(&self, _coupe: bool) {}
+}
+
 struct SalleFactice {
     serveur: ServeurVocalFactice,
     salle: String,
@@ -721,6 +757,29 @@ impl Salle for SalleFactice {
         Box::pin(async move {
             self.serveur
                 .retirer_video(&self.salle, &self.identite, source);
+        })
+    }
+
+    fn publier_son_partage(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(async move {
+            if self.fermee.load(Ordering::SeqCst) {
+                return Err(ErreurSalle::Fermee);
+            }
+            self.serveur
+                .publier_son_partage(&self.salle, &self.identite);
+            let sortie: Arc<dyn SortieMicro> = Arc::new(SortieSonPartageFactice {
+                serveur: self.serveur.clone(),
+                salle: self.salle.clone(),
+                identite: self.identite.clone(),
+            });
+            Ok(sortie)
+        })
+    }
+
+    fn retirer_son_partage(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            self.serveur
+                .retirer_son_partage(&self.salle, &self.identite);
         })
     }
 

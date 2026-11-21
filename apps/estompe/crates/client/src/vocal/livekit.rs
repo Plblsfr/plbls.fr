@@ -497,6 +497,70 @@ impl SortieMicro for SortieLiveKit {
     }
 }
 
+impl SalleLiveKit {
+    async fn publier_audio(
+        &self,
+        origine: TrackSource,
+    ) -> Result<Arc<dyn SortieMicro>, ErreurSalle> {
+        let source = NativeAudioSource::new(
+            AudioSourceOptions::default(),
+            FREQUENCE,
+            1,
+            TAMPON_SOURCE_MS,
+        );
+        let piste = LocalAudioTrack::create_audio_track(
+            if origine == TrackSource::Microphone {
+                "micro"
+            } else {
+                "screen_audio"
+            },
+            RtcAudioSource::Native(source.clone()),
+        );
+        self.salle
+            .local_participant()
+            .publish_track(
+                LocalTrack::Audio(piste.clone()),
+                TrackPublishOptions {
+                    source: origine,
+                    dtx: origine == TrackSource::Microphone,
+                    red: true,
+                    ..TrackPublishOptions::default()
+                },
+            )
+            .await
+            .map_err(|e| ErreurSalle::Publication(e.to_string()))?;
+        let (envoi, mut reception) = mpsc::channel::<Vec<i16>>(FILE_MICRO);
+        tokio::spawn(async move {
+            while let Some(trame) = reception.recv().await {
+                let image = AudioFrame {
+                    samples_per_channel: trame.len() as u32,
+                    data: trame.into(),
+                    sample_rate: FREQUENCE,
+                    num_channels: 1,
+                };
+                if source.capture_frame(&image).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let sortie: Arc<dyn SortieMicro> = Arc::new(SortieLiveKit { envoi, piste });
+        Ok(sortie)
+    }
+
+    async fn retirer_source(&self, origine: TrackSource) {
+        let local = self.salle.local_participant();
+        let sids: Vec<_> = local
+            .track_publications()
+            .into_iter()
+            .filter(|(_, p)| p.source() == origine)
+            .map(|(sid, _)| sid)
+            .collect();
+        for sid in sids {
+            let _ = local.unpublish_track(&sid).await;
+        }
+    }
+}
+
 impl Salle for SalleLiveKit {
     fn identite(&self) -> String {
         self.identite.clone()
@@ -516,47 +580,15 @@ impl Salle for SalleLiveKit {
     }
 
     fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
-        Box::pin(async move {
-            let source = NativeAudioSource::new(
-                AudioSourceOptions::default(),
-                FREQUENCE,
-                1,
-                TAMPON_SOURCE_MS,
-            );
-            let piste = LocalAudioTrack::create_audio_track(
-                "micro",
-                RtcAudioSource::Native(source.clone()),
-            );
-            self.salle
-                .local_participant()
-                .publish_track(
-                    LocalTrack::Audio(piste.clone()),
-                    TrackPublishOptions {
-                        source: TrackSource::Microphone,
-                        dtx: true,
-                        red: true,
-                        ..TrackPublishOptions::default()
-                    },
-                )
-                .await
-                .map_err(|e| ErreurSalle::Publication(e.to_string()))?;
-            let (envoi, mut reception) = mpsc::channel::<Vec<i16>>(FILE_MICRO);
-            tokio::spawn(async move {
-                while let Some(trame) = reception.recv().await {
-                    let image = AudioFrame {
-                        samples_per_channel: trame.len() as u32,
-                        data: trame.into(),
-                        sample_rate: FREQUENCE,
-                        num_channels: 1,
-                    };
-                    if source.capture_frame(&image).await.is_err() {
-                        break;
-                    }
-                }
-            });
-            let sortie: Arc<dyn SortieMicro> = Arc::new(SortieLiveKit { envoi, piste });
-            Ok(sortie)
-        })
+        Box::pin(self.publier_audio(TrackSource::Microphone))
+    }
+
+    fn publier_son_partage(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(self.publier_audio(TrackSource::ScreenshareAudio))
+    }
+
+    fn retirer_son_partage(&self) -> BoxFuture<'_, ()> {
+        Box::pin(self.retirer_source(TrackSource::ScreenshareAudio))
     }
 
     fn publier_video(
@@ -606,18 +638,7 @@ impl Salle for SalleLiveKit {
     }
 
     fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()> {
-        Box::pin(async move {
-            let local = self.salle.local_participant();
-            let sids: Vec<_> = local
-                .track_publications()
-                .into_iter()
-                .filter(|(_, p)| p.source() == piste_de(source))
-                .map(|(sid, _)| sid)
-                .collect();
-            for sid in sids {
-                let _ = local.unpublish_track(&sid).await;
-            }
-        })
+        Box::pin(self.retirer_source(piste_de(source)))
     }
 
     fn limitation_video(&self, source: SourceVideo) -> BoxFuture<'_, Limitation> {

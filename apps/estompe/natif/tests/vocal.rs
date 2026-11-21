@@ -25,7 +25,9 @@ use estompe_natif::vocal::OutilsVocaux;
 use estompe_natif::{
     creer_fenetre, ecrans, DonneesVideo, DonneesVocal, Page, ParticipantVocal, Principale,
 };
-use estompe_plateforme::{EcransFactices, RaccourcisFactices, SourceCapture, TypeSource};
+use estompe_plateforme::{
+    EcransFactices, RaccourcisFactices, SonsFactices, SourceCapture, TypeSource,
+};
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
 use slint::platform::{Key, PointerEventButton, WindowEvent};
@@ -90,6 +92,7 @@ struct Banc {
     visibilite: Visibilite,
     cameras: CamerasFactices,
     ecrans: EcransFactices,
+    sons: SonsFactices,
 }
 
 type Visibilite = Arc<dyn Fn(&Principale, bool) + Send + Sync>;
@@ -722,6 +725,10 @@ fn scenario(
         )
     });
     assert_eq!(detail, "1280 × 800");
+    assert!(sur_l_interface(&faible, |f| {
+        let p = f.global::<DonneesVocal>().get_partage();
+        p.son_disponible && p.son && p.libelle_son == "Partager le son de cette fenêtre"
+    }));
     assert_eq!(
         resolutions[1],
         ("1080p (au-delà de ton écran)".to_string(), false)
@@ -746,6 +753,14 @@ fn scenario(
         .format_publie("v1", "u1", SourceVideo::Partage)
         .unwrap();
     assert_eq!((format.hauteur, format.images_par_seconde), (720, 60));
+    attendre(
+        || banc.serveur.son_partage_publie("v1", "u1"),
+        "c339 : le son de la fenêtre est publié avec le partage",
+    );
+    assert_eq!(
+        banc.sons.ouverts(),
+        vec![estompe_plateforme::CibleSon::Application(4242)]
+    );
     let ecrans = banc.ecrans.clone();
     attendre_l_interface(
         &faible,
@@ -1469,6 +1484,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
     let cameras = CamerasFactices::nouvelles();
     cameras.brancher("c1", "Caméra intégrée");
     cameras.brancher("c2", "Webcam USB");
+    let sons = SonsFactices::nouveaux();
     let ecrans = EcransFactices::nouveaux();
     for (id, nom, genre, largeur, hauteur, application) in [
         ("ecran:0", "Écran 1", TypeSource::Ecran, 2560, 1440, ""),
@@ -1497,7 +1513,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
             largeur,
             hauteur,
             principale: id == "ecran:0",
-            processus: None,
+            processus: id.starts_with("fenetre").then_some(4242),
             estompe: id == "fenetre:9",
         });
     }
@@ -1509,6 +1525,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
             audio: Arc::new(audio.clone()),
             cameras: Arc::new(cameras.clone()),
             ecrans: Arc::new(ecrans.clone()),
+            sons: Arc::new(sons.clone()),
             apm: None,
             reglages: estompe_client::vocal::Reglages::default(),
         },
@@ -1539,6 +1556,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         raccourcis: Arc::new(RaccourcisFactices::nouveaux(false)),
         cameras: Arc::new(cameras.clone()),
         ecrans: Arc::new(ecrans.clone()),
+        sons: Arc::new(sons.clone()),
         apm: None,
     });
     let coquille = Coquille::brancher(
@@ -1558,6 +1576,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         visibilite: Arc::new(coquille.suivi_de_la_visibilite()),
         cameras,
         ecrans,
+        sons,
     };
     let faible = fenetre.as_weak();
     let pilote = std::thread::spawn(move || {

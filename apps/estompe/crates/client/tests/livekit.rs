@@ -93,6 +93,7 @@ fn poste_complet(
             audio: Arc::new(audio.clone()),
             cameras: Arc::new(cameras.clone()),
             ecrans: Arc::new(ecrans.clone()),
+            sons: Arc::new(estompe_plateforme::Indisponible),
             apm: Some(estompe_client::vocal::livekit::apm()),
             reglages: Reglages::default(),
         },

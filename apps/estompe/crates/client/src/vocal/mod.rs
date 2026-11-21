@@ -47,7 +47,10 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use estompe_plateforme::{EcransFactices, FormatAudio, SensAudio, SourceCapture, TypeSource};
+    use estompe_plateforme::{
+        CaptureSon, CibleSon, EcransFactices, FormatAudio, Indisponible, SensAudio, SonsFactices,
+        SourceCapture, TypeSource,
+    };
     use tokio::runtime::Handle;
 
     use super::factice::{ApiVocaleFactice, ServeurVocalFactice};
@@ -59,6 +62,7 @@ mod tests {
         audio: SystemeFactice,
         cameras: CamerasFactices,
         ecrans: EcransFactices,
+        sons: SonsFactices,
         api: Arc<ApiVocaleFactice>,
         session: SessionVocale,
     }
@@ -117,6 +121,16 @@ mod tests {
         avec_micro: bool,
         reglages: Reglages,
     ) -> Poste {
+        poste_avec(serveur, identite, avec_micro, reglages, true)
+    }
+
+    fn poste_avec(
+        serveur: &ServeurVocalFactice,
+        identite: &str,
+        avec_micro: bool,
+        reglages: Reglages,
+        son: bool,
+    ) -> Poste {
         let audio = audio(avec_micro);
         let cameras = CamerasFactices::nouvelles();
         cameras.brancher("c1", "Caméra intégrée");
@@ -125,6 +139,12 @@ mod tests {
         let ecrans = EcransFactices::nouveaux();
         ecrans.brancher(source_capture("ecran:0", TypeSource::Ecran, 2560, 1440));
         ecrans.brancher(source_capture("fenetre:7", TypeSource::Fenetre, 1280, 800));
+        let sons = SonsFactices::nouveaux();
+        let capture_son: Arc<dyn CaptureSon> = if son {
+            Arc::new(sons.clone())
+        } else {
+            Arc::new(Indisponible)
+        };
         let session = SessionVocale::demarrer(
             &Handle::current(),
             Dependances {
@@ -133,6 +153,7 @@ mod tests {
                 audio: Arc::new(audio.clone()),
                 cameras: Arc::new(cameras.clone()),
                 ecrans: Arc::new(ecrans.clone()),
+                sons: capture_son,
                 apm: None,
                 reglages,
             },
@@ -141,6 +162,7 @@ mod tests {
             audio,
             cameras,
             ecrans,
+            sons,
             api,
             session,
         }
@@ -155,7 +177,7 @@ mod tests {
             largeur,
             hauteur,
             principale: false,
-            processus: None,
+            processus: (genre == TypeSource::Fenetre).then_some(4242),
             estompe: false,
         }
     }
@@ -1292,5 +1314,94 @@ mod tests {
         chez_moi.derniere().unwrap().vers_rgba(1, 1, &mut pixel);
         assert_eq!(pixel, [1, 2, 3, 255]);
         alice.session.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn le_son_de_la_fenetre_partagee_est_publie_sans_celui_d_estompe_pour_un_ecran() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let (alice, bob, _) = partage_pret(&serveur).await;
+        alice.session.partager(source_de(&alice, "fenetre:7"));
+        let etat = attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| p.son)
+        })
+        .await;
+        assert_eq!(etat.partage_erreur, None);
+        assert_eq!(alice.sons.ouverts(), vec![CibleSon::Application(4242)]);
+        assert!(serveur.son_partage_publie("v1", "alice"));
+        attendre(&bob.session, |e| e.sons_partage.contains("alice")).await;
+        bob.session.regarder("alice", Some(true));
+        attendre_que(|| serveur.abonnes_son_partage("v1", "alice").contains("bob")).await;
+        let format = FormatAudio {
+            frequence: 44_100,
+            canaux: 2,
+        };
+        alice.sons.pousser(&[0.25; 2 * 441 * 3], format);
+        assert!(serveur.trames_son_partage("alice") >= 2);
+
+        alice.session.changer_source(source_de(&alice, "ecran:0"));
+        attendre(&alice.session, |e| {
+            e.partage
+                .as_ref()
+                .is_some_and(|p| p.source.id == "ecran:0" && p.son)
+        })
+        .await;
+        assert_eq!(
+            alice.sons.ouverts(),
+            vec![CibleSon::SystemeSauf(std::process::id())]
+        );
+
+        alice.session.regler_partage(ReglagesPartage {
+            son: false,
+            ..ReglagesPartage::default()
+        });
+        attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| !p.son)
+        })
+        .await;
+        assert!(alice.sons.ouverts().is_empty());
+        assert!(!serveur.son_partage_publie("v1", "alice"));
+        attendre(&bob.session, |e| !e.sons_partage.contains("alice")).await;
+        alice.session.regler_partage(ReglagesPartage::default());
+        attendre(&alice.session, |e| {
+            e.partage.as_ref().is_some_and(|p| p.son)
+        })
+        .await;
+        alice.session.arreter_partage();
+        attendre(&alice.session, |e| e.partage.is_none()).await;
+        assert!(alice.sons.ouverts().is_empty());
+        assert!(!serveur.son_partage_publie("v1", "alice"));
+        alice.session.fermer().await;
+        bob.session.fermer().await;
+    }
+
+    #[tokio::test]
+    async fn sans_capture_du_son_le_partage_part_sans_le_son() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste_avec(&serveur, "alice", true, sans_bruit(), false);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        alice.session.partager(source_de(&alice, "fenetre:7"));
+        let etat = attendre(&alice.session, |e| e.partage.is_some()).await;
+        assert!(!etat.partage.unwrap().son && etat.partage_erreur.is_none());
+        assert!(!serveur.son_partage_publie("v1", "alice"));
+        alice.session.fermer().await;
+
+        let bob = poste(&serveur, "bob", true);
+        bob.sons.refuser(Some("Windows trop ancien"));
+        bob.session.rejoindre("v1");
+        attendre(&bob.session, connecte_a("v1")).await;
+        bob.session.partager(source_de(&bob, "ecran:0"));
+        let etat = attendre(&bob.session, |e| {
+            e.partage.is_some() && e.partage_erreur.is_some()
+        })
+        .await;
+        assert_eq!(
+            etat.partage_erreur.as_deref(),
+            Some("Partage sans le son : capture du son impossible.")
+        );
+        assert!(!etat.partage.unwrap().son);
+        assert!(!serveur.son_partage_publie("v1", "bob"));
+        assert!(serveur.video_publiee("v1", "bob", SourceVideo::Partage));
+        bob.session.fermer().await;
     }
 }

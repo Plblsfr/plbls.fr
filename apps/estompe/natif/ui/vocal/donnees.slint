@@ -105,6 +105,9 @@ export struct ChoixPartageVocal {
     auto: bool,
     resume: string,
     changer: bool,
+    son-disponible: bool,
+    son: bool,
+    libelle-son: string,
 }
 
 export struct ChoixCameraVocal {
@@ -244,6 +247,7 @@ export global DonneesVocal {
     callback cadence-partage(int);
     callback fluidite-partage(bool);
     callback auto-partage(bool);
+    callback son-partage(bool);
     callback partager();
     callback arreter-partage();
     callback qualite-partage();

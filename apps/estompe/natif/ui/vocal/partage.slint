@@ -1,5 +1,5 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
-import { Bouton, VarianteBouton, Modal, Chargement, Case, Icone } from "../composants.slint";
+import { Bouton, VarianteBouton, Modal, Chargement, Case, Icone, Interrupteur } from "../composants.slint";
 import { DonneesVocal, EtapePartage, OptionPartage } from "donnees.slint";
 import { ImageFlux } from "../video/flux.slint";
 
@@ -312,10 +312,18 @@ export component ChoixPartage inherits Modal {
         spacing: Espace.e4;
         if DonneesVocal.partage.etape == EtapePartage.apercu: ApercuPartage { }
         if DonneesVocal.partage.etape == EtapePartage.apercu: Text {
-            text: DonneesVocal.partage.source + " · " + DonneesVocal.partage.detail;
+            text: DonneesVocal.partage.source + " · " + DonneesVocal.partage.detail + (DonneesVocal.partage.son-disponible ? (DonneesVocal.partage.son ? " · avec le son" : " · sans le son") : "");
             color: Theme.encre-2;
             font-size: Typo.petit;
             overflow: elide;
+        }
+        if DonneesVocal.partage.etape != EtapePartage.source && DonneesVocal.partage.son-disponible: Interrupteur {
+            texte: DonneesVocal.partage.libelle-son;
+            allume: DonneesVocal.partage.son;
+            calque: 1;
+            bascule(a) => {
+                DonneesVocal.son-partage(a);
+            }
         }
         Qualite { }
         if DonneesVocal.partage.erreur != "": Text {

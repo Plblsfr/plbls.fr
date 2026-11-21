@@ -192,10 +192,17 @@ pub trait CaptureEcran: Send + Sync {
 
 pub type RecepteurSon = Box<dyn FnMut(&[f32], u32) + Send>;
 
-pub trait CaptureSon {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CibleSon {
+    Application(u32),
+    SystemeSauf(u32),
+}
+
+pub type RecepteurSonCapture = Box<dyn FnMut(&[f32], FormatAudio) + Send>;
+
+pub trait CaptureSon: Send + Sync {
     fn disponible(&self) -> bool;
-    fn demarrer(&self, source: Option<&str>, echantillons: RecepteurSon) -> Resultat<()>;
-    fn arreter(&self) -> Resultat<()>;
+    fn demarrer(&self, cible: CibleSon, echantillons: RecepteurSonCapture) -> Resultat<FluxSon>;
 }
 
 pub trait Overlay {

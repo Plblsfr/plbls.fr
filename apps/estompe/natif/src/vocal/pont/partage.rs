@@ -8,7 +8,7 @@ use estompe_client::vocal::{
 };
 use estompe_plateforme::capture::HAUTEUR_MINIATURE;
 use estompe_plateforme::{
-    EvenementCapture, FluxCapture, Image, OptionsCapture, SourceCapture, TypeSource,
+    cible_du_son, EvenementCapture, FluxCapture, Image, OptionsCapture, SourceCapture, TypeSource,
 };
 use slint::{ComponentHandle, ModelRc, SharedPixelBuffer, VecModel};
 
@@ -63,6 +63,7 @@ pub struct OmbrePartage {
     plafond: PlafondPartage,
     changer: bool,
     apercu: i32,
+    son: Option<&'static str>,
 }
 
 pub fn cle_apercu_partage() -> CleVideo {
@@ -82,6 +83,17 @@ fn detail(source: &SourceCapture) -> String {
     } else {
         source.application.clone()
     }
+}
+
+pub fn option_son(disponible: bool, source: Option<&SourceCapture>) -> Option<&'static str> {
+    let source = source?;
+    if !disponible || cible_du_son(source, 0).is_none() {
+        return None;
+    }
+    Some(match source.genre {
+        TypeSource::Fenetre => "Partager le son de cette fenêtre",
+        TypeSource::Ecran => "Partager le son de l'ordinateur (sans la voix des participants)",
+    })
 }
 
 fn image_slint(image: &Image) -> slint::Image {
@@ -500,6 +512,14 @@ impl PontVocal {
         self.appliquer_reglages_partage(f, r);
     }
 
+    pub fn son_partage(&self, f: &Principale, son: bool) {
+        let r = ReglagesPartage {
+            son,
+            ..self.reglages_partage()
+        };
+        self.appliquer_reglages_partage(f, r);
+    }
+
     pub fn partager(&self, f: &Principale) {
         let (source, en_cours) = {
             let i = self.verrou();
@@ -533,6 +553,14 @@ impl PontVocal {
             .filter(|s| proposee(s, p.fenetres))
             .collect();
         let apercu = crate::video::indice(f, &cle_apercu_partage());
+        let source_son = p
+            .choisie
+            .as_ref()
+            .or(i.etat.partage.as_ref().map(|l| &l.source));
+        let son = option_son(
+            i.outils.as_ref().is_some_and(|o| o.sons.disponible()),
+            source_son,
+        );
         let ombre = OmbrePartage {
             ouvert: p.ouvert,
             etape: p.etape,
@@ -547,6 +575,7 @@ impl PontVocal {
             plafond: i.etat.plafond_partage,
             changer: i.etat.partage.is_some(),
             apercu,
+            son,
         };
         if i.ombres.partage.as_ref() == Some(&ombre) {
             return;
@@ -598,6 +627,9 @@ impl PontVocal {
             auto: i.etat.reglages_partage.auto,
             resume: resume.into(),
             changer: i.etat.partage.is_some(),
+            son_disponible: son.is_some(),
+            son: i.etat.reglages_partage.son,
+            libelle_son: son.unwrap_or_default().into(),
         });
         let changement_de_sources = i
             .ombres
@@ -664,6 +696,28 @@ mod tests {
         assert_eq!(
             detail(&source("ecran:0", TypeSource::Ecran, false)),
             "1920 × 1080"
+        );
+    }
+
+    #[test]
+    fn l_option_du_son_est_masquee_sans_capture_du_son() {
+        let fenetre = source("fenetre:1", TypeSource::Fenetre, false);
+        let avec_processus = SourceCapture {
+            processus: Some(12),
+            ..fenetre.clone()
+        };
+        let ecran = source("ecran:0", TypeSource::Ecran, false);
+        assert_eq!(option_son(false, Some(&ecran)), None);
+        assert_eq!(option_son(false, Some(&avec_processus)), None);
+        assert_eq!(option_son(true, Some(&fenetre)), None);
+        assert_eq!(option_son(true, None), None);
+        assert_eq!(
+            option_son(true, Some(&avec_processus)),
+            Some("Partager le son de cette fenêtre")
+        );
+        assert_eq!(
+            option_son(true, Some(&ecran)),
+            Some("Partager le son de l'ordinateur (sans la voix des participants)")
         );
     }
 

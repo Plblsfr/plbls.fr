@@ -18,7 +18,8 @@ use estompe_client::vocal::{
     SessionVocale, SourceAudio, SourceTouche, SourceVideo, TrameVideo, Videos,
 };
 use estompe_plateforme::{
-    libelle_touche, CaptureEcran, ErreurCamera, InfoCamera, RaccourcisGlobaux, SystemeCamera,
+    libelle_touche, CaptureEcran, CaptureSon, ErreurCamera, InfoCamera, RaccourcisGlobaux,
+    SystemeCamera,
 };
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
@@ -91,6 +92,7 @@ pub struct OutilsVocaux {
     pub raccourcis: Arc<dyn RaccourcisGlobaux>,
     pub cameras: Arc<dyn SystemeCamera>,
     pub ecrans: Arc<dyn CaptureEcran>,
+    pub sons: Arc<dyn CaptureSon>,
     pub apm: Option<Arc<Apm>>,
 }
 
@@ -2160,6 +2162,7 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
     rappel!(on_cadence_partage, |p, f, rang| p.cadence_partage(&f, rang));
     rappel!(on_fluidite_partage, |p, f, c| p.fluidite_partage(&f, c));
     rappel!(on_auto_partage, |p, f, c| p.auto_partage(&f, c));
+    rappel!(on_son_partage, |p, f, c| p.son_partage(&f, c));
     rappel!(on_partager, |p, f| p.partager(&f));
     rappel!(on_arreter_partage, |p, _f| p.arreter_partage());
     rappel!(on_qualite_partage, |p, f| p.ouvrir_qualite_partage(&f));

@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use estompe_plateforme::{
-    CaptureEcran, ErreurCamera, FluxCapture, SensAudio, SourceCapture, SystemeAudio, SystemeCamera,
+    CaptureEcran, CaptureSon, ErreurCamera, FluxCapture, FluxSon, SensAudio, SourceCapture,
+    SystemeAudio, SystemeCamera,
 };
 use futures_util::future::BoxFuture;
 use futures_util::StreamExt;
@@ -120,6 +121,7 @@ pub struct Dependances {
     pub audio: Arc<dyn SystemeAudio>,
     pub cameras: Arc<dyn SystemeCamera>,
     pub ecrans: Arc<dyn CaptureEcran>,
+    pub sons: Arc<dyn CaptureSon>,
     pub apm: Option<Arc<Apm>>,
     pub reglages: Reglages,
 }
@@ -534,6 +536,9 @@ struct Acteur {
     ecrans: Arc<dyn CaptureEcran>,
     capture_partage: Option<FluxCapture>,
     route_partage: Arc<partage::RoutePartage>,
+    sons: Arc<dyn CaptureSon>,
+    capture_son: Option<FluxSon>,
+    route_son: Arc<partage::RouteSonPartage>,
     generation_partage: u64,
     adaptation: Option<Instant>,
     coups: u32,
@@ -609,6 +614,9 @@ impl Acteur {
             ecrans: dependances.ecrans,
             capture_partage: None,
             route_partage: Arc::default(),
+            sons: dependances.sons,
+            capture_son: None,
+            route_son: Arc::default(),
             generation_partage: 0,
             adaptation: None,
             coups: 0,

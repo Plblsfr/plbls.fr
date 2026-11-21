@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use estompe_plateforme::{
-    EvenementCapture, FluxCapture, Image, OptionsCapture, RecepteurCapture, SourceCapture,
+    cible_du_son, EvenementCapture, FluxCapture, FormatAudio, Image, OptionsCapture,
+    RecepteurCapture, SourceCapture,
 };
 use tokio::time::Instant;
 
@@ -11,13 +12,47 @@ use super::super::partage::{
     message_source_perdue, palier_inferieur, ImagePartage, PartageLocal, QualitePartage,
     ReglagesPartage, MESSAGE_PARTAGE_IMPOSSIBLE,
 };
-use super::super::salle::SortieVideo;
+use super::super::salle::{SortieMicro, SortieVideo};
 use super::super::video::{CleVideo, RecepteurVideo, SourceVideo};
 use super::{Acteur, AvisVocal, Commande};
+use crate::audio::ConversionEntree;
 
 pub const PERIODE_ADAPTATION: Duration = Duration::from_secs(3);
 pub const COUPS_AVANT_REDUCTION: u32 = 3;
 pub const MESSAGE_PUBLICATION_PARTAGE: &str = "Impossible de publier le partage dans le salon.";
+pub const MESSAGE_SON_PARTAGE: &str = "Partage sans le son : capture du son impossible.";
+
+#[derive(Default)]
+pub struct RouteSonPartage {
+    sortie: Mutex<Option<Arc<dyn SortieMicro>>>,
+    conversion: Mutex<Option<(FormatAudio, ConversionEntree)>>,
+}
+
+impl RouteSonPartage {
+    pub fn pousser(&self, entrelace: &[f32], format: FormatAudio) {
+        let Some(sortie) = self.sortie.lock().ok().and_then(|s| s.clone()) else {
+            return;
+        };
+        let Ok(mut conversion) = self.conversion.lock() else {
+            return;
+        };
+        if conversion.as_ref().map(|(f, _)| *f) != Some(format) {
+            *conversion = Some((format, ConversionEntree::nouvelle(format)));
+        }
+        if let Some((_, c)) = conversion.as_mut() {
+            c.pousser(entrelace, |trame| sortie.envoyer(trame));
+        }
+    }
+
+    fn brancher(&self, sortie: Option<Arc<dyn SortieMicro>>) {
+        if let Ok(mut s) = self.sortie.lock() {
+            *s = sortie;
+        }
+        if let Ok(mut c) = self.conversion.lock() {
+            *c = None;
+        }
+    }
+}
 
 pub trait Incrustation: Send + Sync {
     fn incruster(&self, image: &mut Image);
@@ -187,6 +222,7 @@ impl Acteur {
                     son: false,
                 });
                 self.programmer_adaptation();
+                self.demarrer_son().await;
             }
             Err(message) => {
                 self.couper_partage();
@@ -218,6 +254,10 @@ impl Acteur {
                 });
                 self.coups = 0;
                 drop(ancien);
+                if partage.son {
+                    self.arreter_son().await;
+                    self.demarrer_son().await;
+                }
             }
             Err(message) => self.etat.partage_erreur = Some(message),
         }
@@ -228,13 +268,70 @@ impl Acteur {
         let reglages = reglages.borne();
         self.etat.reglages_partage = reglages;
         self.reglages.partage = reglages;
-        if let Some(source) = self.etat.partage.as_ref().map(|p| p.source.clone()) {
-            let qualite = self.qualite_pour(&source);
+        if let Some(partage) = self.etat.partage.clone() {
+            let qualite = self.qualite_pour(&partage.source);
             self.appliquer_qualite(qualite);
             self.coups = 0;
             self.programmer_adaptation();
+            match (reglages.son, partage.son) {
+                (true, false) => self.demarrer_son().await,
+                (false, true) => self.arreter_son().await,
+                _ => {}
+            }
         }
         self.publier();
+    }
+
+    async fn demarrer_son(&mut self) {
+        let (Some(salle), Some(partage)) = (self.salle.clone(), self.etat.partage.clone()) else {
+            return;
+        };
+        if !self.etat.reglages_partage.son || !self.sons.disponible() || self.capture_son.is_some()
+        {
+            return;
+        }
+        let Some(cible) = cible_du_son(&partage.source, std::process::id()) else {
+            return;
+        };
+        let Ok(sortie) = salle.publier_son_partage().await else {
+            self.etat.partage_erreur = Some(MESSAGE_SON_PARTAGE.to_string());
+            return;
+        };
+        self.route_son.brancher(Some(sortie));
+        let route = self.route_son.clone();
+        let sons = self.sons.clone();
+        let ouverture = tokio::task::spawn_blocking(move || {
+            sons.demarrer(
+                cible,
+                Box::new(move |echantillons, format| route.pousser(echantillons, format)),
+            )
+        })
+        .await;
+        match ouverture {
+            Ok(Ok(flux)) => {
+                self.capture_son = Some(flux);
+                if let Some(p) = self.etat.partage.as_mut() {
+                    p.son = true;
+                }
+            }
+            _ => {
+                self.route_son.brancher(None);
+                salle.retirer_son_partage().await;
+                self.etat.partage_erreur = Some(MESSAGE_SON_PARTAGE.to_string());
+            }
+        }
+    }
+
+    async fn arreter_son(&mut self) {
+        let publie = self.etat.partage.as_ref().is_some_and(|p| p.son);
+        self.capture_son = None;
+        self.route_son.brancher(None);
+        if let Some(p) = self.etat.partage.as_mut() {
+            p.son = false;
+        }
+        if let (true, Some(salle)) = (publie, self.salle.clone()) {
+            salle.retirer_son_partage().await;
+        }
     }
 
     fn appliquer_qualite(&mut self, qualite: QualitePartage) {
@@ -309,6 +406,8 @@ impl Acteur {
     pub(super) fn couper_partage(&mut self) {
         self.generation_partage += 1;
         self.capture_partage = None;
+        self.capture_son = None;
+        self.route_son.brancher(None);
         self.route_partage.brancher(None);
         self.route_partage.afficher(None);
         self.adaptation = None;
@@ -322,6 +421,7 @@ impl Acteur {
 
     pub(super) fn suspendre_partage(&mut self) {
         self.route_partage.brancher(None);
+        self.route_son.brancher(None);
         if let Some(cle) = self.cle_partage_locale() {
             self.etat.pistes.remove(&cle);
         }
@@ -334,14 +434,26 @@ impl Acteur {
         if !self.publier_partage(partage.qualite).await {
             self.arreter_partage().await;
             self.etat.partage_erreur = Some(MESSAGE_PUBLICATION_PARTAGE.to_string());
+        } else if partage.son {
+            match self.salle.clone() {
+                Some(salle) => match salle.publier_son_partage().await {
+                    Ok(sortie) => self.route_son.brancher(Some(sortie)),
+                    Err(_) => self.arreter_son().await,
+                },
+                None => self.arreter_son().await,
+            }
         }
         self.publier();
     }
 
     pub(super) async fn arreter_partage(&mut self) {
         let publie = self.etat.partage.is_some();
+        let son = self.etat.partage.as_ref().is_some_and(|p| p.son);
         self.couper_partage();
         if let (true, Some(salle)) = (publie, self.salle.clone()) {
+            if son {
+                salle.retirer_son_partage().await;
+            }
             salle.retirer_video(SourceVideo::Partage).await;
         }
         self.publier();

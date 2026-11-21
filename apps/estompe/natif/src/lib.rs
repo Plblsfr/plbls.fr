@@ -117,6 +117,7 @@ pub fn demarrer(
             audio: audio.clone(),
             cameras: cameras.clone(),
             ecrans: plateforme.capture_ecran.clone(),
+            sons: plateforme.capture_son.clone(),
             apm: apm.clone(),
             reglages: estompe_client::vocal::Reglages {
                 micro,
@@ -137,6 +138,7 @@ pub fn demarrer(
         raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
         cameras,
         ecrans: plateforme.capture_ecran.clone(),
+        sons: plateforme.capture_son.clone(),
         apm,
     };
     let jeton = reels.auth.fournisseur_jeton();
