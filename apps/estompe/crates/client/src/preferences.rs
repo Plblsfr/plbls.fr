@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use crate::audio::ReglagesMicro;
 use crate::derniere_vue::DerniereVue;
-use crate::vocal::Ecoute;
+use crate::vocal::{Ecoute, ReglagesPtt};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -56,6 +56,8 @@ pub struct Preferences {
     pub sortie_audio: Option<String>,
     pub traitement_micro: ReglagesMicro,
     pub ecoute: Ecoute,
+    pub ptt: ReglagesPtt,
+    pub sons_vocal: bool,
 }
 
 impl Default for Preferences {
@@ -77,6 +79,8 @@ impl Default for Preferences {
             sortie_audio: None,
             traitement_micro: ReglagesMicro::default(),
             ecoute: Ecoute::default(),
+            ptt: ReglagesPtt::default(),
+            sons_vocal: true,
         }
     }
 }
@@ -139,6 +143,8 @@ impl Preferences {
                 .filter(|s: &String| !s.is_empty()),
             traitement_micro: champ(&objet, "traitement_micro", d.traitement_micro).borne(),
             ecoute: champ(&objet, "ecoute", d.ecoute).bornee(),
+            ptt: champ(&objet, "ptt", d.ptt).borne(),
+            sons_vocal: champ(&objet, "sons_vocal", d.sons_vocal),
         })
     }
 
@@ -305,6 +311,12 @@ mod tests {
                 e.definir_general(70);
                 e
             },
+            ptt: ReglagesPtt {
+                actif: true,
+                touche: "F13".to_string(),
+                delai_ms: 250,
+            },
+            sons_vocal: false,
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -347,6 +359,14 @@ mod tests {
         let invalide =
             Preferences::depuis_json(r#"{"traitement_micro": {"bruit": "fort"}}"#).unwrap();
         assert_eq!(invalide.traitement_micro, ReglagesMicro::default());
+        let ptt = Preferences::depuis_json(
+            r#"{"ptt": {"actif": true, "touche": "Souris4", "delai_ms": 60000}}"#,
+        )
+        .unwrap()
+        .ptt;
+        assert!(ptt.actif);
+        assert_eq!(ptt.touche, crate::vocal::ptt::TOUCHE_PAR_DEFAUT);
+        assert_eq!(ptt.delai_ms, crate::vocal::ptt::DELAI_MAXIMAL_MS);
     }
 
     #[test]

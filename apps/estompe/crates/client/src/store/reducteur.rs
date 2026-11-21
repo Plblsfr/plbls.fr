@@ -66,6 +66,12 @@ pub enum Changement {
     Vocal {
         salon: String,
     },
+    DeplacementVocal {
+        de: String,
+        vers: String,
+        par: String,
+        nom: String,
+    },
     Avatar {
         utilisateur: String,
         serveur: Option<String>,
@@ -530,6 +536,12 @@ pub fn appliquer_avec_effets(etat: &mut Etat, evenement: &Evenement) -> Applicat
             }
         }
         Evenement::VocalDeconnecte(_) => a.changer(Changement::Avis(Avis::DeconnexionVocale)),
+        Evenement::VocalDeplace(d) => a.changer(Changement::DeplacementVocal {
+            de: d.from.clone(),
+            vers: d.to.clone(),
+            par: d.by.clone(),
+            nom: d.to_name.clone(),
+        }),
         Evenement::EtatVocal(d) => {
             let avant = etat.vocal.get(&d.channel_id).cloned().unwrap_or_default();
             let mut liste: Vec<ParticipantVocal> = avant
@@ -599,7 +611,6 @@ pub fn appliquer_avec_effets(etat: &mut Etat, evenement: &Evenement) -> Applicat
         | Evenement::SondageVote(_)
         | Evenement::SondageClos(_)
         | Evenement::ReactionModifiee(_)
-        | Evenement::VocalDeplace(_)
         | Evenement::SeanceRegarder(_)
         | Evenement::SeanceCinema(_)
         | Evenement::SeanceMusique(_)
@@ -1379,6 +1390,25 @@ mod tests {
     }
 
     #[test]
+    fn transmet_le_deplacement_par_un_moderateur() {
+        let mut s = etat_de_depart();
+        let a = ev(
+            &mut s,
+            "voice.moved",
+            json!({"server_id": "s1", "from": "v1", "to": "v2", "by": "eve", "to_name": "Réunion"}),
+        );
+        assert_eq!(
+            a.changements,
+            [Changement::DeplacementVocal {
+                de: "v1".into(),
+                vers: "v2".into(),
+                par: "eve".into(),
+                nom: "Réunion".into(),
+            }]
+        );
+    }
+
+    #[test]
     fn suit_les_participants_du_vocal() {
         let mut s = etat_de_depart();
         let etat_vocal = |joined: bool| json!({"server_id": "s1", "channel_id": "v1", "user_id": "bob", "pseudo": "bob", "joined": joined});
@@ -1772,10 +1802,6 @@ mod tests {
                 json!({"message_id": "1", "user_id": "bob", "options": [], "counts": {}}),
             ),
             ("poll.closed", json!({"message_id": "1", "closes_at": "x"})),
-            (
-                "voice.moved",
-                json!({"server_id": "s1", "from": "v1", "to": "v2", "by": "m", "to_name": "x"}),
-            ),
             (
                 "watch.state",
                 json!({"server_id": "s1", "channel_id": "v1", "state": null}),

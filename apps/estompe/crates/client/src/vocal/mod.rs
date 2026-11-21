@@ -4,12 +4,14 @@ pub mod factice;
 #[cfg(feature = "livekit")]
 pub mod livekit;
 pub mod mixage;
+pub mod ptt;
 pub mod salle;
 pub mod session;
 
 pub use erreurs::{CauseMicro, ErreurVocal};
 pub use etat::{etats_affiches, EtatAffiche, EtatVocal, Phase};
 pub use mixage::{Ecoute, Limiteur, Mixeur};
+pub use ptt::{EtatPtt, PousserPourParler, ReglagesPtt, SourceTouche};
 pub use salle::{
     Connecteur, ConnecteurIndisponible, Connexion, ErreurSalle, EvenementSalle, InfoParticipant,
     JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SourceAudio,

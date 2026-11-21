@@ -3,6 +3,7 @@ pub mod factice;
 pub mod format;
 pub mod micro;
 pub mod peripheriques;
+pub mod tonalite;
 
 pub use essai::EssaiMicro;
 pub use estompe_plateforme::{FormatAudio, PeripheriqueAudio, SensAudio, SystemeAudio};
@@ -15,6 +16,7 @@ pub use micro::{
     NiveauMicro, ReglagesMicro,
 };
 pub use peripheriques::{resoudre, Bascule, Capture, Lecture, RenduTrame};
+pub use tonalite::{SonVocal, Tonalite};
 
 #[cfg(test)]
 mod tests {

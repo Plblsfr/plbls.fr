@@ -188,6 +188,7 @@ impl EtatVocal {
             sortie: self.sortie.take(),
             traitement: self.traitement,
             ecoute: std::mem::take(&mut self.ecoute),
+            porte_ouverte: self.porte_ouverte,
             ..Self::default()
         };
     }
