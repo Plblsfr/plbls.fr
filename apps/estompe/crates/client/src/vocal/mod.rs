@@ -7,6 +7,7 @@ pub mod livekit;
 pub mod mixage;
 pub mod ptt;
 pub mod salle;
+pub mod scene;
 pub mod session;
 pub mod video;
 
@@ -20,6 +21,10 @@ pub use ptt::{EtatPtt, PousserPourParler, ReglagesPtt, SourceTouche};
 pub use salle::{
     Connecteur, ConnecteurIndisponible, Connexion, ErreurSalle, EvenementSalle, InfoParticipant,
     JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
+};
+pub use scene::{
+    construire_elements, dimensions_grille, doit_recevoir, rassembler_spectateurs, ElementScene,
+    Epinglage, QualiteRecue, SourcePiste, Spectateurs, TuileVideo,
 };
 pub use session::{ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, DELAI_FERMETURE};
 pub use video::{
@@ -178,6 +183,206 @@ mod tests {
             bob.audio
                 .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
                 .is_some_and(|s| s.iter().any(|e| *e > 0.4))
+        })
+        .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn sans_regarder_aucune_image_ni_son_du_partage_n_est_recu() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        let bob = poste(&serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        serveur.publier_video("v1", "alice", SourceVideo::Partage);
+        serveur.publier_son_partage("v1", "alice");
+        bob.session.rejoindre("v1");
+        let cle = CleVideo::partage("alice");
+        let etat = attendre(&bob.session, |e| {
+            e.video(&cle) && e.sons_partage.contains("alice")
+        })
+        .await;
+        assert!(!etat.regarde("alice"));
+        let demande = DemandeVideo {
+            largeur: 1280,
+            hauteur: 720,
+        };
+        bob.session
+            .definir_affichage([(cle.clone(), demande)].into_iter().collect());
+        let mire = Mire::nouvelle(160, 90);
+        let image = || -> ImageVideo { Arc::new(mire.image(0)) };
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(serveur
+            .abonnes_video("v1", "alice", SourceVideo::Partage)
+            .is_empty());
+        assert!(serveur.abonnes_son_partage("v1", "alice").is_empty());
+        assert_eq!(
+            serveur.pousser_image("v1", "alice", SourceVideo::Partage, image()),
+            0
+        );
+        assert_eq!(serveur.pousser_son_partage("v1", "alice", &[1000; 480]), 0);
+        let recepteur = bob.session.videos().recepteur(&cle);
+        assert_eq!(recepteur.images_recues(), 0);
+        assert_eq!(serveur.images_envoyees("bob"), 0);
+        assert_eq!(serveur.attributs("v1", "bob")["watching"], "");
+
+        bob.session.regarder("alice", Some(true));
+        attendre_que(|| {
+            !serveur
+                .abonnes_video("v1", "alice", SourceVideo::Partage)
+                .is_empty()
+                && serveur.abonnes_son_partage("v1", "alice").contains("bob")
+        })
+        .await;
+        assert_eq!(
+            serveur.abonnes_video("v1", "alice", SourceVideo::Partage)["bob"],
+            demande
+        );
+        serveur.pousser_image("v1", "alice", SourceVideo::Partage, image());
+        attendre_que(|| recepteur.images_recues() == 1).await;
+        attendre_que(|| {
+            serveur
+                .attributs("v1", "bob")
+                .get("watching")
+                .map(String::as_str)
+                == Some("TR_alice_ecran")
+        })
+        .await;
+        let etat = attendre(&alice.session, |e| {
+            e.participants
+                .get("bob")
+                .is_some_and(|p| p.attributs.get("watching").is_some_and(|w| !w.is_empty()))
+        })
+        .await;
+        let mut alice_etat = etat;
+        alice_etat
+            .pistes
+            .insert(cle.clone(), "TR_alice_ecran".into());
+        assert_eq!(
+            alice_etat.spectateurs()[&cle],
+            [("bob".to_string(), "bob".to_string())]
+        );
+
+        bob.session.regarder("alice", Some(false));
+        attendre_que(|| {
+            serveur
+                .abonnes_video("v1", "alice", SourceVideo::Partage)
+                .is_empty()
+                && serveur.abonnes_son_partage("v1", "alice").is_empty()
+        })
+        .await;
+        attendre_que(|| recepteur.derniere().is_none()).await;
+        attendre_que(|| serveur.attributs("v1", "bob")["watching"].is_empty()).await;
+        assert_eq!(
+            serveur.pousser_image("v1", "alice", SourceVideo::Partage, image()),
+            0
+        );
+        assert_eq!(recepteur.images_recues(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn le_son_d_un_partage_regarde_est_mixe_avec_son_volume_propre() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", false);
+        let bob = poste(&serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        bob.session.rejoindre("v1");
+        attendre(&bob.session, connecte_a("v1")).await;
+        serveur.publier_son_partage("v1", "alice");
+        attendre(&bob.session, |e| e.sons_partage.contains("alice")).await;
+        bob.session.regarder("alice", Some(true));
+        attendre_que(|| serveur.abonnes_son_partage("v1", "alice").contains("bob")).await;
+        let fort = || {
+            for _ in 0..10 {
+                serveur.pousser_son_partage("v1", "alice", &[16_000; ECHANTILLONS_PAR_TRAME]);
+            }
+        };
+        fort();
+        attendre_que(|| {
+            bob.audio
+                .tirer("hp", 2 * ECHANTILLONS_PAR_TRAME)
+                .is_some_and(|s| s.iter().any(|e| *e > 0.2))
+        })
+        .await;
+        bob.session
+            .definir_muet("alice", SourceAudio::Partage, true);
+        attendre(&bob.session, |e| {
+            e.ecoute.muet("alice", SourceAudio::Partage)
+        })
+        .await;
+        assert!(!bob
+            .session
+            .instantane()
+            .ecoute
+            .muet("alice", SourceAudio::Micro));
+        bob.session.regarder("alice", Some(false));
+        attendre_que(|| serveur.abonnes_son_partage("v1", "alice").is_empty()).await;
+        serveur.retirer_son_partage("v1", "alice");
+        attendre(&bob.session, |e| !e.sons_partage.contains("alice")).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn regarder_automatiquement_et_ne_jamais_rejouer_son_propre_partage() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        let bob = poste_regle(
+            &serveur,
+            "bob",
+            true,
+            Reglages {
+                regarder_auto: true,
+                ..sans_bruit()
+            },
+        );
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        bob.session.rejoindre("v1");
+        attendre(&bob.session, connecte_a("v1")).await;
+        serveur.publier_video("v1", "bob#screen", SourceVideo::Partage);
+        serveur.publier_son_partage("v1", "bob#screen");
+        serveur.publier_video("v1", "alice", SourceVideo::Partage);
+        serveur.publier_son_partage("v1", "alice");
+        let propre = CleVideo::partage("bob");
+        let autre = CleVideo::partage("alice");
+        attendre(&bob.session, |e| {
+            e.video(&propre) && e.video(&autre) && e.sons_partage.len() == 2
+        })
+        .await;
+        let demande = DemandeVideo {
+            largeur: 640,
+            hauteur: 360,
+        };
+        bob.session.definir_affichage(
+            [(propre.clone(), demande), (autre.clone(), demande)]
+                .into_iter()
+                .collect(),
+        );
+        attendre_que(|| {
+            serveur
+                .abonnes_video("v1", "bob#screen", SourceVideo::Partage)
+                .contains_key("bob")
+                && serveur
+                    .abonnes_video("v1", "alice", SourceVideo::Partage)
+                    .contains_key("bob")
+                && serveur.abonnes_son_partage("v1", "alice").contains("bob")
+        })
+        .await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(serveur.abonnes_son_partage("v1", "bob#screen").is_empty());
+        bob.session.regarder("alice", Some(false));
+        attendre_que(|| serveur.abonnes_son_partage("v1", "alice").is_empty()).await;
+        serveur.retirer_video("v1", "alice", SourceVideo::Partage);
+        let etat = attendre(&bob.session, |e| !e.video(&autre)).await;
+        assert!(
+            !etat.regardes.contains_key("alice"),
+            "le choix est oublié avec le partage"
+        );
+        serveur.publier_video("v1", "alice", SourceVideo::Partage);
+        attendre_que(|| {
+            serveur
+                .abonnes_video("v1", "alice", SourceVideo::Partage)
+                .contains_key("bob")
         })
         .await;
     }

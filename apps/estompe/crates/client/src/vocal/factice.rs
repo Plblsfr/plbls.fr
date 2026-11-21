@@ -18,6 +18,14 @@ use super::session::ApiVocale;
 use super::video::{DemandeVideo, FluxVideo, ImageI420, ImageVideo, SourceVideo};
 
 type CleFactice = (String, String, SourceVideo);
+type SonsPartage = BTreeMap<String, mpsc::UnboundedSender<Vec<i16>>>;
+
+pub fn piste_factice(identite: &str, source: SourceVideo) -> String {
+    match source {
+        SourceVideo::Camera => format!("TR_{identite}_camera"),
+        SourceVideo::Partage => format!("TR_{identite}_ecran"),
+    }
+}
 
 #[derive(Default)]
 struct PublicationFactice {
@@ -57,6 +65,7 @@ struct EtatServeur {
     images: BTreeMap<String, usize>,
     formats: BTreeMap<CleFactice, FormatVideo>,
     publiees: BTreeMap<CleFactice, usize>,
+    sons_partage: BTreeMap<(String, String), SonsPartage>,
 }
 
 #[derive(Clone, Default)]
@@ -120,7 +129,95 @@ impl ServeurVocalFactice {
         self.diffuser(salle, identite, || EvenementSalle::VideoPubliee {
             identite: identite.to_string(),
             source,
+            piste: piste_factice(identite, source),
         });
+    }
+
+    pub fn publier_son_partage(&self, salle: &str, identite: &str) {
+        self.etat()
+            .sons_partage
+            .entry((salle.to_string(), identite.to_string()))
+            .or_default();
+        self.diffuser(salle, identite, || EvenementSalle::AudioPubliee {
+            identite: identite.to_string(),
+            source: SourceAudio::Partage,
+        });
+    }
+
+    pub fn retirer_son_partage(&self, salle: &str, identite: &str) {
+        let abonnes = self
+            .etat()
+            .sons_partage
+            .remove(&(salle.to_string(), identite.to_string()))
+            .unwrap_or_default();
+        for abonne in abonnes.into_keys() {
+            self.envoyer(
+                salle,
+                &abonne,
+                EvenementSalle::PisteRetiree {
+                    identite: identite.to_string(),
+                    source: SourceAudio::Partage,
+                },
+            );
+        }
+        self.diffuser(salle, identite, || EvenementSalle::AudioRetiree {
+            identite: identite.to_string(),
+            source: SourceAudio::Partage,
+        });
+    }
+
+    pub fn abonnes_son_partage(&self, salle: &str, identite: &str) -> BTreeSet<String> {
+        self.etat()
+            .sons_partage
+            .get(&(salle.to_string(), identite.to_string()))
+            .map(|a| a.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn pousser_son_partage(&self, salle: &str, identite: &str, trame: &[i16]) -> usize {
+        let mut etat = self.etat();
+        let Some(abonnes) = etat
+            .sons_partage
+            .get_mut(&(salle.to_string(), identite.to_string()))
+        else {
+            return 0;
+        };
+        abonnes.retain(|_, envoi| envoi.send(trame.to_vec()).is_ok());
+        abonnes.len()
+    }
+
+    fn regler_son_partage(&self, salle: &str, abonne: &str, identite: &str, recevoir: bool) {
+        let evenement = {
+            let mut etat = self.etat();
+            let Some(abonnes) = etat
+                .sons_partage
+                .get_mut(&(salle.to_string(), identite.to_string()))
+            else {
+                return;
+            };
+            match (recevoir, abonnes.contains_key(abonne)) {
+                (true, false) => {
+                    let (envoi, reception) = mpsc::unbounded_channel();
+                    abonnes.insert(abonne.to_string(), envoi);
+                    Some(EvenementSalle::PisteAudio {
+                        identite: identite.to_string(),
+                        source: SourceAudio::Partage,
+                        trames: flux(reception),
+                    })
+                }
+                (false, true) => {
+                    abonnes.remove(abonne);
+                    Some(EvenementSalle::PisteRetiree {
+                        identite: identite.to_string(),
+                        source: SourceAudio::Partage,
+                    })
+                }
+                _ => None,
+            }
+        };
+        if let Some(evenement) = evenement {
+            self.envoyer(salle, abonne, evenement);
+        }
     }
 
     pub fn retirer_video(&self, salle: &str, identite: &str, source: SourceVideo) {
@@ -296,6 +393,19 @@ impl ServeurVocalFactice {
     }
 
     fn quitter_videos(&self, salle: &str, identite: &str) {
+        let son = {
+            let mut etat = self.etat();
+            for ((s, _), abonnes) in etat.sons_partage.iter_mut() {
+                if s == salle {
+                    abonnes.remove(identite);
+                }
+            }
+            etat.sons_partage
+                .contains_key(&(salle.to_string(), identite.to_string()))
+        };
+        if son {
+            self.retirer_son_partage(salle, identite);
+        }
         let publiees: Vec<SourceVideo> = {
             let mut etat = self.etat();
             for ((s, _, _), p) in etat.videos.iter_mut() {
@@ -348,7 +458,7 @@ impl ServeurVocalFactice {
             .map(|(i, s)| (i.to_string(), s.to_string()))
             .ok_or_else(|| ErreurSalle::Connexion("jeton invalide".into()))?;
         let (envoi, evenements) = mpsc::unbounded_channel();
-        let (participants, publicateurs, videos) = {
+        let (participants, publicateurs, videos, sons) = {
             let mut etat = self.etat();
             if etat.hors_ligne {
                 return Err(ErreurSalle::Connexion("réseau coupé".into()));
@@ -377,7 +487,13 @@ impl ServeurVocalFactice {
                 .filter(|(s, i, _)| s == &salle && i != &identite)
                 .map(|(_, i, source)| (i.clone(), *source))
                 .collect();
-            (participants, publicateurs, videos)
+            let sons: Vec<String> = etat
+                .sons_partage
+                .keys()
+                .filter(|(s, i)| s == &salle && i != &identite)
+                .map(|(_, i)| i.clone())
+                .collect();
+            (participants, publicateurs, videos, sons)
         };
         self.diffuser(&salle, &identite, || {
             EvenementSalle::Arrivee(info(&identite, &BTreeMap::new(), false))
@@ -386,7 +502,18 @@ impl ServeurVocalFactice {
             let _ = envoi.send(self.abonner(&salle, &publicateur));
         }
         for (identite, source) in videos {
-            let _ = envoi.send(EvenementSalle::VideoPubliee { identite, source });
+            let piste = piste_factice(&identite, source);
+            let _ = envoi.send(EvenementSalle::VideoPubliee {
+                identite,
+                source,
+                piste,
+            });
+        }
+        for identite in sons {
+            let _ = envoi.send(EvenementSalle::AudioPubliee {
+                identite,
+                source: SourceAudio::Partage,
+            });
         }
         Ok(Connexion {
             salle: Arc::new(SalleFactice {
@@ -525,6 +652,14 @@ impl Salle for SalleFactice {
         }
         self.serveur
             .regler_abonnement(&self.salle, &self.identite, identite, source, demande);
+    }
+
+    fn regler_audio(&self, identite: &str, source: SourceAudio, recevoir: bool) {
+        if self.fermee.load(Ordering::SeqCst) || source != SourceAudio::Partage {
+            return;
+        }
+        self.serveur
+            .regler_son_partage(&self.salle, &self.identite, identite, recevoir);
     }
 
     fn publier_video(

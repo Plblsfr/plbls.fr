@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -69,6 +69,7 @@ pub struct Reglages {
     pub ecoute: Ecoute,
     pub camera: Option<String>,
     pub qualite_camera: QualiteCamera,
+    pub regarder_auto: bool,
 }
 
 impl Default for Reglages {
@@ -86,6 +87,7 @@ impl Default for Reglages {
             ecoute: Ecoute::default(),
             camera: None,
             qualite_camera: QualiteCamera::default(),
+            regarder_auto: false,
         }
     }
 }
@@ -144,6 +146,8 @@ enum Commande {
     VolumeGeneral(u16),
     Traitement(ReglagesMicro),
     Affichage(BTreeMap<CleVideo, DemandeVideo>),
+    Regarder(String, Option<bool>),
+    RegarderAuto(bool),
     Fermer(oneshot::Sender<()>),
 }
 
@@ -274,6 +278,7 @@ impl SessionVocale {
         etat_initial.sortie = dependances.reglages.sortie.clone();
         etat_initial.traitement = dependances.reglages.traitement.borne();
         etat_initial.ecoute = dependances.reglages.ecoute.clone().bornee();
+        etat_initial.regarder_auto = dependances.reglages.regarder_auto;
         let (diffusion, etat) = watch::channel(etat_initial.clone());
         let (avis, _) = broadcast::channel(64);
         let mesure = Arc::new(MesureMicro::default());
@@ -408,6 +413,14 @@ impl SessionVocale {
         self.envoyer(Commande::Affichage(demandes));
     }
 
+    pub fn regarder(&self, identite: &str, regarde: Option<bool>) {
+        self.envoyer(Commande::Regarder(identite.to_string(), regarde));
+    }
+
+    pub fn definir_regarder_auto(&self, auto: bool) {
+        self.envoyer(Commande::RegarderAuto(auto));
+    }
+
     pub fn niveau_micro(&self) -> NiveauMicro {
         self.mesure.lire()
     }
@@ -455,6 +468,9 @@ struct Acteur {
     publications_video: BTreeMap<CleVideo, String>,
     pistes_video: BTreeMap<CleVideo, JoinHandle<()>>,
     affichage: BTreeMap<CleVideo, DemandeVideo>,
+    abonnements_video: BTreeMap<CleVideo, DemandeVideo>,
+    sons_partage: BTreeMap<String, String>,
+    sons_abonnes: BTreeSet<String>,
     cameras: Arc<dyn SystemeCamera>,
     capture_camera: Option<CaptureCamera>,
     route_camera: Arc<RouteCamera>,
@@ -521,6 +537,9 @@ impl Acteur {
             publications_video: BTreeMap::new(),
             pistes_video: BTreeMap::new(),
             affichage: BTreeMap::new(),
+            abonnements_video: BTreeMap::new(),
+            sons_partage: BTreeMap::new(),
+            sons_abonnes: BTreeSet::new(),
             cameras: dependances.cameras,
             capture_camera: None,
             route_camera: Arc::new(RouteCamera::default()),
@@ -729,21 +748,73 @@ impl Acteur {
                 self.route.regler(self.etat.traitement);
                 self.publier();
             }
-            Commande::Affichage(demandes) => self.afficher(demandes),
+            Commande::Affichage(demandes) => {
+                self.affichage = demandes;
+                self.reabonner().await;
+            }
+            Commande::Regarder(identite, regarde) => {
+                match regarde {
+                    Some(r) => self.etat.regardes.insert(identite, r),
+                    None => self.etat.regardes.remove(&identite),
+                };
+                self.reabonner().await;
+                self.publier();
+            }
+            Commande::RegarderAuto(auto) => {
+                self.etat.regarder_auto = auto;
+                self.reglages.regarder_auto = auto;
+                self.reabonner().await;
+                self.publier();
+            }
             Commande::Fermer(_) => {}
         }
     }
 
-    fn afficher(&mut self, demandes: BTreeMap<CleVideo, DemandeVideo>) {
-        let avant = std::mem::replace(&mut self.affichage, demandes);
+    fn synchroniser_abonnements(&mut self) -> bool {
         let Some(salle) = self.salle.clone() else {
-            return;
+            return false;
         };
+        let voulus: BTreeMap<CleVideo, DemandeVideo> = self
+            .publications_video
+            .keys()
+            .filter(|cle| self.etat.recoit(cle))
+            .filter_map(|cle| self.affichage.get(cle).map(|d| (cle.clone(), *d)))
+            .collect();
         for (cle, brute) in &self.publications_video {
-            let demande = self.affichage.get(cle).copied();
-            if avant.get(cle).copied() != demande {
+            let demande = voulus.get(cle).copied();
+            if self.abonnements_video.get(cle).copied() != demande {
                 salle.regler_video(brute, cle.source, demande);
             }
+        }
+        self.abonnements_video = voulus;
+        let sons: BTreeSet<String> = self
+            .sons_partage
+            .keys()
+            .filter(|p| self.etat.ecoute_partage(p))
+            .cloned()
+            .collect();
+        for (proprietaire, brute) in &self.sons_partage {
+            let voulu = sons.contains(proprietaire);
+            if self.sons_abonnes.contains(proprietaire) != voulu {
+                salle.regler_audio(brute, SourceAudio::Partage, voulu);
+            }
+        }
+        self.sons_abonnes = sons;
+        let vus: BTreeSet<String> = self
+            .abonnements_video
+            .keys()
+            .filter_map(|cle| self.etat.pistes.get(cle).cloned())
+            .collect();
+        if vus == self.etat.vus {
+            return false;
+        }
+        self.etat.vus = vus;
+        true
+    }
+
+    async fn reabonner(&mut self) {
+        if self.synchroniser_abonnements() {
+            self.publier_attributs().await;
         }
     }
 
@@ -845,6 +916,8 @@ impl Acteur {
 
     fn retirer_video(&mut self, cle: &CleVideo) {
         self.publications_video.remove(cle);
+        self.abonnements_video.remove(cle);
+        self.etat.pistes.remove(cle);
         self.etat.videos.remove(cle);
         if let Some(tache) = self.pistes_video.remove(cle) {
             tache.abort();
@@ -1016,6 +1089,11 @@ impl Acteur {
                 for cle in parties {
                     self.retirer_video(&cle);
                 }
+                self.sons_partage.retain(|_, brute| *brute != identite);
+                let sons: BTreeSet<String> = self.sons_partage.keys().cloned().collect();
+                self.sons_abonnes.retain(|p| sons.contains(p));
+                self.etat.sons_partage = sons;
+                self.reabonner().await;
                 if self.etat.participants.remove(&identite).is_some() {
                     self.etat.parlent.remove(&identite);
                     self.signaler(AvisVocal::Depart(identite));
@@ -1115,17 +1193,43 @@ impl Acteur {
                     mixeur.retirer(&proprietaire, source);
                 }
             }
-            EvenementSalle::VideoPubliee { identite, source } => {
-                let cle = Self::cle_video(&identite, source);
-                if let (Some(salle), Some(demande)) = (&self.salle, self.affichage.get(&cle)) {
-                    salle.regler_video(&identite, source, Some(*demande));
+            EvenementSalle::AudioPubliee { identite, source } => {
+                if est_partage(&identite) || source == SourceAudio::Partage {
+                    let cle = proprietaire(&identite).to_string();
+                    self.etat.sons_partage.insert(cle.clone());
+                    if self.sons_partage.insert(cle.clone(), identite).is_some() {
+                        self.sons_abonnes.remove(&cle);
+                    }
+                    self.reabonner().await;
                 }
+            }
+            EvenementSalle::AudioRetiree { identite, source } => {
+                if est_partage(&identite) || source == SourceAudio::Partage {
+                    let cle = proprietaire(&identite).to_string();
+                    self.etat.sons_partage.remove(&cle);
+                    self.sons_partage.remove(&cle);
+                    self.sons_abonnes.remove(&cle);
+                }
+            }
+            EvenementSalle::VideoPubliee {
+                identite,
+                source,
+                piste,
+            } => {
+                let cle = Self::cle_video(&identite, source);
+                self.abonnements_video.remove(&cle);
                 self.etat.videos.insert(cle.clone());
+                self.etat.pistes.insert(cle.clone(), piste);
                 self.publications_video.insert(cle, identite);
+                self.reabonner().await;
             }
             EvenementSalle::VideoRetiree { identite, source } => {
                 let cle = Self::cle_video(&identite, source);
                 self.retirer_video(&cle);
+                if cle.source == SourceVideo::Partage {
+                    self.etat.regardes.remove(&cle.identite);
+                }
+                self.reabonner().await;
             }
             EvenementSalle::PisteVideo {
                 identite,
@@ -1174,6 +1278,12 @@ impl Acteur {
             self.etat.videos.remove(&cle);
             self.videos.effacer(&cle);
         }
+        self.abonnements_video.clear();
+        self.sons_partage.clear();
+        self.sons_abonnes.clear();
+        self.etat.pistes.clear();
+        self.etat.sons_partage.clear();
+        self.etat.vus.clear();
         if let Ok(mut mixeur) = self.mixeur.lock() {
             mixeur.vider();
         }

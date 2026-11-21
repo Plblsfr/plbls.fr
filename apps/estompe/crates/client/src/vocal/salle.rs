@@ -93,9 +93,18 @@ pub enum EvenementSalle {
         identite: String,
         source: SourceAudio,
     },
+    AudioPubliee {
+        identite: String,
+        source: SourceAudio,
+    },
+    AudioRetiree {
+        identite: String,
+        source: SourceAudio,
+    },
     VideoPubliee {
         identite: String,
         source: SourceVideo,
+        piste: String,
     },
     VideoRetiree {
         identite: String,
@@ -154,10 +163,25 @@ impl fmt::Debug for EvenementSalle {
                 .field("identite", identite)
                 .field("source", source)
                 .finish(),
-            Self::VideoPubliee { identite, source } => f
+            Self::AudioPubliee { identite, source } => f
+                .debug_struct("AudioPubliee")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::AudioRetiree { identite, source } => f
+                .debug_struct("AudioRetiree")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::VideoPubliee {
+                identite,
+                source,
+                piste,
+            } => f
                 .debug_struct("VideoPubliee")
                 .field("identite", identite)
                 .field("source", source)
+                .field("piste", piste)
                 .finish(),
             Self::VideoRetiree { identite, source } => f
                 .debug_struct("VideoRetiree")
@@ -220,6 +244,7 @@ pub trait Salle: Send + Sync {
     ) -> BoxFuture<'_, Result<(), ErreurSalle>>;
     fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>>;
     fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>);
+    fn regler_audio(&self, identite: &str, source: SourceAudio, recevoir: bool);
     fn publier_video(
         &self,
         source: SourceVideo,

@@ -8,7 +8,7 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
-use crate::vocal::{Ecoute, QualiteCamera, ReglagesPtt};
+use crate::vocal::{Ecoute, QualiteCamera, QualiteRecue, ReglagesPtt};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -64,6 +64,7 @@ pub struct Preferences {
     pub vocaux_ecoutes: Vec<String>,
     pub camera: Option<String>,
     pub qualite_camera: QualiteCamera,
+    pub qualite_partage: QualiteRecue,
 }
 
 impl Default for Preferences {
@@ -93,6 +94,7 @@ impl Default for Preferences {
             vocaux_ecoutes: Vec::new(),
             camera: None,
             qualite_camera: QualiteCamera::default(),
+            qualite_partage: QualiteRecue::default(),
         }
     }
 }
@@ -177,6 +179,7 @@ impl Preferences {
                 .collect(),
             camera: champ(&objet, "camera", d.camera).filter(|c: &String| !c.is_empty()),
             qualite_camera: champ(&objet, "qualite_camera", d.qualite_camera),
+            qualite_partage: champ(&objet, "qualite_partage", d.qualite_partage),
         })
     }
 
@@ -359,6 +362,7 @@ mod tests {
             vocaux_ecoutes: vec!["f1".to_string()],
             camera: Some("/dev/video2".to_string()),
             qualite_camera: crate::vocal::QualiteCamera::Q1080,
+            qualite_partage: QualiteRecue::Moyenne,
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);

@@ -30,8 +30,8 @@ use crate::audio::{Apm, MoteurApm, FREQUENCE};
 
 use super::camera::FormatVideo;
 use super::salle::{
-    Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle, Qualite,
-    RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
+    est_partage, Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle,
+    Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
 use super::video::{DemandeVideo, ImageI420, ImageVideo, SourceVideo, TrameVideo};
 
@@ -213,7 +213,31 @@ fn video_publiee(identite: String, publication: &RemoteTrackPublication) -> Opti
     Some(EvenementSalle::VideoPubliee {
         identite,
         source: source_video(publication.source())?,
+        piste: publication.sid().to_string(),
     })
+}
+
+fn son_de_partage(identite: &str, s: TrackSource) -> bool {
+    s == TrackSource::ScreenshareAudio || (est_partage(identite) && source(s).is_some())
+}
+
+fn publication_distante(
+    identite: String,
+    publication: &RemoteTrackPublication,
+) -> Option<EvenementSalle> {
+    if publication.kind() == TrackKind::Audio {
+        if son_de_partage(&identite, publication.source()) {
+            return Some(EvenementSalle::AudioPubliee {
+                identite,
+                source: SourceAudio::Partage,
+            });
+        }
+        if source(publication.source()).is_some() {
+            publication.set_subscribed(true);
+        }
+        return None;
+    }
+    video_publiee(identite, publication)
 }
 
 fn bascule_video(
@@ -232,7 +256,11 @@ fn bascule_video(
     Some(if muette {
         EvenementSalle::VideoRetiree { identite, source }
     } else {
-        EvenementSalle::VideoPubliee { identite, source }
+        EvenementSalle::VideoPubliee {
+            identite,
+            source,
+            piste: publication.sid().to_string(),
+        }
     })
 }
 
@@ -283,12 +311,6 @@ fn permissions(p: &ParticipantPermission) -> EvenementSalle {
     }
 }
 
-fn abonner(publication: &RemoteTrackPublication) {
-    if publication.kind() == TrackKind::Audio && source(publication.source()).is_some() {
-        publication.set_subscribed(true);
-    }
-}
-
 fn piste_audio(
     identite: String,
     publication: &RemoteTrackPublication,
@@ -334,10 +356,7 @@ fn traduire(evenement: RoomEvent) -> Option<EvenementSalle> {
         RoomEvent::TrackPublished {
             publication,
             participant,
-        } => {
-            abonner(&publication);
-            return video_publiee(participant.identity().to_string(), &publication);
-        }
+        } => return publication_distante(participant.identity().to_string(), &publication),
         RoomEvent::TrackUnpublished {
             publication,
             participant,
@@ -345,6 +364,15 @@ fn traduire(evenement: RoomEvent) -> Option<EvenementSalle> {
             identite: participant.identity().to_string(),
             source: source_video(publication.source())?,
         },
+        RoomEvent::TrackUnpublished {
+            publication,
+            participant,
+        } if son_de_partage(participant.identity().as_str(), publication.source()) => {
+            EvenementSalle::AudioRetiree {
+                identite: participant.identity().to_string(),
+                source: SourceAudio::Partage,
+            }
+        }
         RoomEvent::TrackMuted {
             participant,
             publication,
@@ -537,6 +565,25 @@ impl Salle for SalleLiveKit {
         }
     }
 
+    fn regler_audio(&self, identite: &str, source: SourceAudio, recevoir: bool) {
+        let participants = self.salle.remote_participants();
+        let Some(distant) = participants
+            .values()
+            .find(|p| p.identity().as_str() == identite)
+        else {
+            return;
+        };
+        for publication in distant.track_publications().values() {
+            if publication.kind() != TrackKind::Audio {
+                continue;
+            }
+            let partage = son_de_partage(identite, publication.source());
+            if partage == (source == SourceAudio::Partage) {
+                publication.set_subscribed(recevoir);
+            }
+        }
+    }
+
     fn fermer(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
             let _ = self.salle.close().await;
@@ -568,8 +615,9 @@ impl Connecteur for ConnecteurLiveKit {
             for distant in salle.remote_participants().values() {
                 participants.push(info_distant(distant));
                 for publication in distant.track_publications().values() {
-                    abonner(publication);
-                    if let Some(e) = video_publiee(distant.identity().to_string(), publication) {
+                    if let Some(e) =
+                        publication_distante(distant.identity().to_string(), publication)
+                    {
                         let _ = envoi.send(e);
                     }
                 }

@@ -6,7 +6,8 @@ use super::camera::QualiteCamera;
 use super::erreurs::CauseMicro;
 use super::mixage::Ecoute;
 use super::salle::{est_partage, InfoParticipant, Qualite};
-use super::video::CleVideo;
+use super::scene::{doit_recevoir, rassembler_spectateurs, SourcePiste, ATTRIBUT_SPECTATEUR};
+use super::video::{CleVideo, SourceVideo};
 
 pub const ATTRIBUT_MUET: &str = "muted";
 pub const ATTRIBUT_SOURD: &str = "deaf";
@@ -46,6 +47,11 @@ pub struct EtatVocal {
     pub traitement: ReglagesMicro,
     pub ecoute: Ecoute,
     pub videos: BTreeSet<CleVideo>,
+    pub pistes: BTreeMap<CleVideo, String>,
+    pub sons_partage: BTreeSet<String>,
+    pub regardes: BTreeMap<String, bool>,
+    pub regarder_auto: bool,
+    pub vus: BTreeSet<String>,
     pub camera_active: bool,
     pub camera_demarrage: bool,
     pub camera: Option<String>,
@@ -74,6 +80,11 @@ impl Default for EtatVocal {
             traitement: ReglagesMicro::default(),
             ecoute: Ecoute::default(),
             videos: BTreeSet::new(),
+            pistes: BTreeMap::new(),
+            sons_partage: BTreeSet::new(),
+            regardes: BTreeMap::new(),
+            regarder_auto: false,
+            vus: BTreeSet::new(),
             camera_active: false,
             camera_demarrage: false,
             camera: None,
@@ -138,7 +149,62 @@ impl EtatVocal {
         BTreeMap::from([
             (ATTRIBUT_MUET.to_string(), drapeau(self.micro_coupe)),
             (ATTRIBUT_SOURD.to_string(), drapeau(self.casque_coupe)),
+            (ATTRIBUT_SPECTATEUR.to_string(), self.regardees()),
         ])
+    }
+
+    pub fn regardees(&self) -> String {
+        self.vus.iter().cloned().collect::<Vec<_>>().join(",")
+    }
+
+    pub fn propre(&self, proprietaire: &str) -> bool {
+        self.identite.as_deref() == Some(proprietaire)
+    }
+
+    pub fn regarde(&self, proprietaire: &str) -> bool {
+        doit_recevoir(
+            SourcePiste::Partage,
+            self.regardes.get(proprietaire).copied(),
+            self.regarder_auto,
+            self.propre(proprietaire),
+        )
+    }
+
+    pub fn ecoute_partage(&self, proprietaire: &str) -> bool {
+        doit_recevoir(
+            SourcePiste::SonPartage,
+            self.regardes.get(proprietaire).copied(),
+            self.regarder_auto,
+            self.propre(proprietaire),
+        )
+    }
+
+    pub fn recoit(&self, cle: &CleVideo) -> bool {
+        match cle.source {
+            SourceVideo::Camera => true,
+            SourceVideo::Partage => self.regarde(&cle.identite),
+        }
+    }
+
+    pub fn spectateurs(&self) -> BTreeMap<CleVideo, Vec<(String, String)>> {
+        let personnes: Vec<(String, String, Option<String>)> = self
+            .participants
+            .values()
+            .filter(|p| !est_partage(&p.identite))
+            .map(|p| {
+                let regarde = if self.propre(&p.identite) {
+                    Some(self.regardees())
+                } else {
+                    p.attributs.get(ATTRIBUT_SPECTATEUR).cloned()
+                };
+                (p.identite.clone(), p.nom.clone(), regarde)
+            })
+            .collect();
+        let parpiste = rassembler_spectateurs(&personnes);
+        self.pistes
+            .iter()
+            .filter_map(|(cle, piste)| parpiste.get(piste).map(|s| (cle.clone(), s.clone())))
+            .collect()
     }
 
     pub fn basculer_micro(&mut self) -> bool {
@@ -195,6 +261,9 @@ impl EtatVocal {
             .collect();
         self.parlent.clear();
         self.videos.clear();
+        self.pistes.clear();
+        self.sons_partage.clear();
+        self.vus.clear();
     }
 
     pub fn video(&self, cle: &CleVideo) -> bool {
@@ -211,6 +280,7 @@ impl EtatVocal {
             camera: self.camera.take(),
             qualite_camera: self.qualite_camera,
             camera_erreur: self.camera_erreur.take(),
+            regarder_auto: self.regarder_auto,
             ..Self::default()
         };
     }
