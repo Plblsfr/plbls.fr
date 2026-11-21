@@ -9,7 +9,7 @@ mod raccourcis;
 mod traits;
 mod url;
 
-pub use audio::AudioSysteme;
+pub use audio::{AudioSysteme, ChoixPeripherique, SonPeripheriques};
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use dossiers::{
     dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
@@ -17,18 +17,18 @@ pub use dossiers::{
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
-pub use processus::MesureSysteme;
+pub use processus::{commande_d_arriere_plan, MesureSysteme};
 pub use raccourcis::{
     code_d_evdev, code_de_virtuelle, libelle_touche, touche, RaccourcisFactices, RaccourcisSysteme,
     Touche, TOUCHES,
 };
 pub use traits::{
     ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon, Coffre, CompteursProcessus,
-    DemarrageSession, ErreurFluxAudio, EtatTouche, Fichiers, FluxAudio, FormatAudio,
-    FournisseurAudio, Image, InfosMachine, MesureProcessus, Notification, Notifications,
-    OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan, PressePapiers, RaccourcisGlobaux,
-    RecepteurAudio, RecepteurSon, SensAudio, SignalErreurAudio, SourceCapture, SystemeAudio,
-    TypeSource,
+    ContenuPressePapiers, DemarrageSession, ErreurFluxAudio, EtatTouche, Fichiers, FluxAudio,
+    FluxSon, FormatAudio, FournisseurAudio, Image, InfosMachine, MesureProcessus, Micro,
+    Notification, Notifications, OuvertureUrl, Overlay, PeripheriqueAudio, PremierPlan,
+    PressePapiers, ProducteurSon, RaccourcisGlobaux, RecepteurAudio, RecepteurSon, SensAudio,
+    SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio, TypeSource,
 };
 pub use url::NavigateurSysteme;
 
@@ -177,6 +177,16 @@ mod tests {
                 .map(|_| ()),
             Err(Erreur::Indisponible(_))
         ));
+        let son = SonPeripheriques::par_defaut(p.audio.clone());
+        assert!(!Micro::disponible(&son) && !SortieSon::disponible(&son));
+        assert!(matches!(
+            son.ecouter(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            son.jouer(Box::new(|_, _| {})),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.fichiers.choisir_dossier(None),
             Err(Erreur::Indisponible(_))
@@ -187,6 +197,14 @@ mod tests {
         ));
         assert!(matches!(
             p.presse_papiers.copier_image(&Image::default()),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.fichiers.choisir_fichiers(None),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.presse_papiers.lire_pieces(),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(p.coffre.lire("cle"), Err(Erreur::Indisponible(_))));

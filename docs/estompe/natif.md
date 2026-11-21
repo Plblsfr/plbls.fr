@@ -2,14 +2,14 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)) ; caméra et partage d'écran arrivent au lot 5.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)) ; caméra et partage d'écran arrivent au lot 5.
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`) et mesures (`mesures.rs`) |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; compteurs du processus pour les mesures (`processus/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
@@ -22,7 +22,7 @@ Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev lib
 et clang 21 ou plus récent, désigné par `CXX` (par exemple `CXX=clang++-21`) : libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium,
 que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sys` le refuse). Sous Windows : la toolchain MSVC, LLVM, Python 3 et
 `ninja` (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
-`cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible).
+`cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible). ffmpeg, s'il est présent, lit les messages vocaux en AAC.
 
 ```sh
 just estompe-natif-run            # build de débogage : le bouton « Composants » ouvre la page de démonstration
@@ -45,9 +45,25 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
 - `emoji/twemoji.bin` : les emoji en couleur (voir [Emoji](#emoji)), licences `emoji/CC-BY-4.0-twemoji.txt` et `emoji/MIT-emoji-data.txt`, citées dans « À propos ».
 - `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
-  liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image.
+  liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
+  menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
 - L'écran « À propos » affiche la version et l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`).
+
+### Menus contextuels et confirmation
+
+- Menu (`ui/composants/menu.slint`, global `DonneesMenu` ; `src/menu.rs`) : une seule instance, au-dessus de tout dans `ui/app.slint`. `menu::ouvrir(f, titre, ancre, entrées, action)`
+  le remplit et le place : au curseur (`Ancre::Point`) ou sous un bouton (`Ancre::Element`, retourné au-dessus s'il manque de place en bas, `retourner`), toujours gardé dans la
+  fenêtre (`placer`, marge de 8 px), comme `placeMenu` et `flipY` du front ; la hauteur est calculée en Rust (`hauteur`). Sans entrée, rien ne s'ouvre. Une entrée (`Entree`) a
+  une icône et peut être séparée, dangereuse, cochée, porter un raccourci ou être marquée « bientôt » (affichée, sautée par les flèches, inactive).
+- Clavier : flèches (en boucle), Tab, Origine, Fin, Entrée ou Espace, Échap. Un clic hors du menu, la molette ou la perte du focus le ferment. L'élément qui l'a ouvert retient
+  `a-ouvert-menu` et reprend le focus à la fermeture, sauf si l'action l'a donné ailleurs (l'action rend `true` : champ de saisie, sélecteur, confirmation ; `focus-ailleurs`).
+- Ouverture : clic droit, touche Menu ou Maj+F10 sur l'élément qui a le focus. Un `FocusScope` qui prend le focus au clic avale l'appui : la ligne d'un message a
+  `focus-on-click: false` et se donne le focus dans `pointer-event`, sinon le premier clic droit ne ferait que la sélectionner.
+- Confirmation (`ui/composants/confirmation.slint`, global `DonneesConfirmation` ; `src/confirmation.rs`) : `confirmation::confirmer` et `confirmation::saisir`, sur le modal
+  commun : titre, message, bouton d'action (rouge si destructive), saisie éventuelle (à recopier exactement : `exiger`) ou case à cocher ; `peut_valider` décide si le bouton est actif
+  (le rappel pur reçoit la demande en argument pour que Slint le réévalue à chaque nouvelle demande). Une nouvelle demande annule la précédente (sa suite reçoit un refus), comme `confirm.svelte.ts`.
+- Copie d'un texte depuis Rust : `menu::copier_texte` passe par le `TextInput` caché de `CopieTexte` (global `DonneesCopie`).
 
 ### Jetons
 
@@ -114,8 +130,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 | Élément | Interface (`ui/coquille/`) | Contenu |
 |---|---|---|
 | Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Rejoindre un serveur », entrées des sections ouvertes |
-| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés, ou section ; barre du compte avec « Se déconnecter » ; repliable |
-| Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper, vocaux en cours) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
+| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
+| Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper avec « Tout marquer lu », vocaux en cours, contacts en ligne) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
 | Marge | `marge.slint`, `membres.slint`, `carte-profil.slint`, `../messagerie/epingles.slint` | `EmplacementMarge` ; onglets « Membres » sur un serveur (voir [Membres](#membres)) et « Épinglés » dans une conversation (voir [Épinglés](#épinglés)), carte de profil |
 
 - Données : global `DonneesCoquille` (`ui/coquille/donnees.slint`) : modèles des lignes (`serveurs`, `salons`, `prives`, `sections`, `rattrapage`,
@@ -135,6 +151,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
   `permissions.admin` pour Régie), comme le front. Adresses : `ESTOMPE_ENTRACTE_URL`, `ESTOMPE_SILLON_URL`, `ESTOMPE_SABLIER_URL`, `ESTOMPE_REGIE_URL`
   (vide : section coupée) ; sans variable, celles de production pour le serveur de production (Régie n'en a pas). Leur contenu arrive au lot 10.
 - Salons vidéos et musique sont listés avec l'étiquette « bientôt » ; leur vue l'explique. Un salon vocal ou cinéma ouvre la vue du vocal et le rejoint (voir [Interface du salon vocal](#interface-du-salon-vocal)). Un salon texte ou un message privé ouvre la vue des messages (voir [Messagerie](#messagerie)).
+- Menu contextuel d'un salon texte ou d'une conversation privée du panneau (`src/coquille/pont/menus.rs`) : « Marquer comme lu » s'il y a des non-lus ou des mentions
+  (`Store::lire_conversation`), « Copier le lien » (`https://<serveur>/#/s/…` ou `#/dm/…`) ; un salon « bientôt » n'a que le lien.
 - Messages privés du panneau : triés par activité (`lignes_privees` du store, une conversation qui reçoit un message remonte), avec non-lus, mentions et présence par formes sur l'avatar.
 
 ### Membres
@@ -146,7 +164,8 @@ bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préfé
   En tête, l'onglet « Membres », le compteur `MEMBRES · en ligne/total` et, au-delà de 8 membres, le filtre (pseudo et pseudo de serveur, sans casse ni accents).
 - Liste : groupes des rôles affichés séparément (`hoist`, du plus haut au plus bas, comme `grouper_membres`), puis « EN LIGNE » et « HORS LIGNE » pour les autres ;
   dans chaque groupe, en ligne d'abord puis par pseudo. Une ligne : avatar avec pastille de présence, pseudo de serveur à la couleur du rôle (atténué hors ligne),
-  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours. Un clic ouvre la carte de profil.
+  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours. Un clic ou Entrée ouvre la carte de profil ; clic droit, touche Menu ou Maj+F10 ouvrent le menu du membre : « Profil », « Mentionner »
+  (si une conversation de ce serveur est ouverte en écriture : `@pseudo ` inséré au curseur), « Copier le pseudo ».
 - Présence par formes, lisible sans couleur (`Pastille`, `ui/composants/avatar.slint`) : disque plein (en ligne), demi-lune (absent), disque barré (ne pas déranger), anneau (hors ligne).
 - Virtualisation : la liste est une `ListeVirtuelle`, réimplémentation de `ListView` aux couleurs de la DA (le compilateur Slint ne virtualise que les enfants d'un
   composant nommé `ListView`) ; toutes les lignes font 44 px, seules les lignes visibles sont instanciées (16 pour 5 000 membres dans une fenêtre de 900 px).
@@ -176,6 +195,47 @@ un avatar en échec n'est pas redemandé pendant la session.
 - Une image est recadrée en carré, réduite à 96 px et arrondie dans ses pixels (`arrondir`) : les deux moteurs de rendu l'affichent de la même façon.
 - Sans image, les initiales restent affichées. Les images et emojis des badges ne sont pas encore chargés : une médaille de la couleur du badge les remplace.
 
+### Recherche et palette
+
+Une seule fenêtre, comme `SearchModal.svelte` : Ctrl+K (depuis la coquille, aucun modal ouvert), le bouton « Recherche globale » du rail ou la loupe de l'en-tête
+(« Rechercher ou aller à… »). Interface `ui/coquille/recherche.slint` (global `DonneesRecherche`), état `EtatRecherche` et projections pures dans `src/coquille/recherche.rs`,
+actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estompe_client::recherche` (tests repris de `search.test.ts`).
+
+- Saisie : filtres de l'API (`de:`, `dans:#`, `serveur:`, `mentionne:`, `avant:`, `après:`, `pendant:`, `a:`, `épinglé:`, `"expression"`, `-exclu`), proposés pour le dernier mot
+  (`suggestions` : clés, puis pseudos, salons texte, serveurs ou valeurs de `a:` selon la portée, sans accents ni casse) ; flèches haut et bas (en boucle) pour parcourir, Tab
+  complète le filtre actif (curseur en fin de saisie), Entrée ouvre l'entrée active ou lance la recherche, Échap ferme et rend le focus au champ de saisie (sinon à la coquille).
+- Palette « Aller à » (`aller_a`, mêmes règles que le front) : accueil, serveurs (dernier salon vu), sections ouvertes, salons de tous les serveurs, conversations privées ;
+  `#` limite aux salons, `@` aux personnes (conversations privées) ; 8 entrées pour un texte, 50 pour un préfixe seul ; rien si la saisie contient un filtre. L'entrée active reste
+  visible (défilement calculé en Rust). Actions (`actions` de la crate client, `actions_de_la_palette`) : « Nouveau message privé » et « Statut : … » (le statut actuel porte « actuel »),
+  toutes avec `>`, 8 au plus pour un texte ; celles du vocal, du profil et des paramètres arrivent avec leurs lots.
+- Recherche (`RechercheMessages`, `Client::chercher_messages`) : `GET /search?q=&sort=&offset=` avec `server_id`, `channel_id` ou `dm_id` ; portées « Partout », le serveur courant et
+  la conversation ouverte (choisie par défaut), tri « Pertinence » ou « Plus récents » ; changer l'une ou l'autre relance la recherche. Une réponse d'une recherche remplacée est
+  ignorée ; la page suivante est demandée à 200 px du bas (`MARGE_DE_SUITE`) tant que `has_more`.
+- Résultats groupés par conversation (« Serveur › # salon » ou « @ pseudo », dans l'ordre de première apparition), auteur, jour et heure, extrait de 180 caractères centré sur le
+  premier terme (`extrait`, termes sans filtres ni exclusions, racines : « réunions » surligne « réunion »), termes sur fond rose, nombre de fichiers. Un clic ou Entrée sur un
+  résultat ferme la fenêtre, ouvre la conversation puis `Store::sauter_a` : chargement autour du message s'il est hors de la fenêtre chargée, mise en évidence 1,5 s.
+- États : « Aucun résultat pour « … ». » (et « Essaie d'élargir à « Partout ». » hors de « Partout »), erreur du serveur affichée dans la fenêtre (« Recherche impossible : … »),
+  dernières recherches (10, `recherches_recentes` des préférences, « Effacer »), sinon l'aide des filtres.
+- Écarts : le front affiche une erreur dans une notification, l'app native dans la fenêtre ; un extrait s'affiche sur une ligne continue (retours à la ligne du message remplacés
+  par des espaces) ; une saisie vide garde l'aide des filtres au lieu des six premières actions du front.
+
+### Nouvelle conversation, accueil et statut
+
+- « Nouveau message privé » (`ui/coquille/nouveau-prive.slint`, global `DonneesNouveauPrive` ; état `EtatNouveauPrive` et actions dans `src/coquille/pont/nouveau_prive.rs`),
+  ouvert par le « + » des conversations du panneau ou l'action de la palette : champ « Pseudo » qui propose 6 pseudos connus au plus (`estompe_client::nouveau_prive` :
+  conversations existantes puis membres des serveurs, sans soi, sans accents ni casse, le pseudo exact exclu) avec la présence et l'origine ; flèches, Entrée ou clic
+  choisissent, Échap ferme la liste puis la fenêtre. « Ouvrir la conversation » appelle `Store::ouvrir_message_prive` (`POST /dms`) : le serveur rend la conversation existante
+  s'il y en a une, ajoutée en tête de la liste seulement si elle n'y est pas, puis la vue l'ouvre ; `user_not_found`, `self_dm` et les autres refus s'affichent dans la fenêtre.
+  Pas de conversation de groupe : l'API ne prend qu'un pseudo, comme le front.
+- Accueil : « Tout marquer lu » (`Store::tout_lire`, `tout_lire` du réducteur) lit toutes les conversations à rattraper (mentions comptées et non-lus, sauf la conversation
+  ouverte) : pastilles et mentions retirées tout de suite, `POST …/read` par conversation et un seul `POST /notifications/read` ; les autres appareils reçoivent `read.updated`.
+  Carte « En ligne » (`lignes_contacts`) : les conversations privées dont la personne n'est pas hors ligne, avec « En vocal · salon », son jeu ou son statut, et « N sur M » ;
+  un clic ouvre la conversation.
+- Barre de l'utilisateur : pastille de présence et statut (ou jeu en cours) sous le pseudo (`donnees_compte`) ; un clic, Entrée, la touche Menu ou Maj+F10 ouvrent le menu
+  (`menu_moi`) : « En ligne », « Absent », « Ne pas déranger » (statut actuel coché, `PUT /me/status` par `Store::definir_statut`, optimiste et rétabli en cas d'erreur, que la zone
+  de saisie signale), puis « Voir mon profil », « Modifier mon profil » et « Signaler un bug » marqués « bientôt ». Le changement arrive aux autres par `status.updated`.
+  Le statut « invisible » n'existe ni dans l'API ni dans le front.
+
 ## Messagerie
 
 Lecture des salons texte et des conversations privées (`src/messagerie/`, `ui/messagerie/`). La logique sans interface est celle de la crate client :
@@ -190,7 +250,10 @@ mentions, regroupement et séparateurs (`format::lignes_de_messages`).
 | `src/messagerie/pont.rs` (`PontMessagerie`) | applique les `Changement::Messages` aux modèles, cache borné des rendus (512, LRU), chargement des pages, avatars et badges des auteurs, images, aperçus et emoji de serveur des lignes de la fenêtre, animations, visionneuse, téléchargements, marquage comme lu, saisie en cours |
 | `src/messagerie/emoji.rs` | paquet d'emoji embarqué, découpe du texte en texte et emoji (séquences composées comprises), images des emoji |
 | `src/messagerie/medias.rs` (`Medias`) | téléchargement, décodage hors du fil d'interface et caches des images (pièces jointes, emoji de serveur, images d'aperçu), liste des emoji de serveur, aperçus de liens |
+| `src/messagerie/actions.rs`, `src/messagerie/pont/actions.rs` | droits d'un message et entrées de son menu (purs) ; exécution des actions (réponse, modification, épingle, réaction, copie, non-lu, suppression confirmée) |
+| `src/messagerie/pont/sondages.rs`, `ui/messagerie/creation-sondage.slint` | création d'un sondage (formulaire, validation, publication), vote, clôture, suppression et votants |
 | `src/messagerie/annexes.rs` | projections pures : carte d'aperçu d'un lien, taille d'une vignette avant chargement, chemin sûr d'un fichier enregistré |
+| `src/messagerie/vocal.rs`, `src/messagerie/pont/vocal.rs`, `ui/messagerie/vocal.slint` | messages vocaux : enregistrement (micro, encodage hors du fil d'interface), écoute avant l'envoi, envoi, lecture d'un message reçu (voir [Messages vocaux](#messages-vocaux)) |
 | `ui/messagerie/vue.slint`, `element.slint`, `annexes.slint`, `visionneuse.slint`, `epingles.slint`, `donnees.slint` | liste, élément de message, pièces jointes, cartes, sondage, réactions et « Vu par », visionneuse, messages épinglés, global `DonneesMessagerie` |
 
 ### Virtualisation
@@ -280,7 +343,8 @@ deux moteurs et sur les deux OS :
 |---|---|
 | image (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, comme `AttachmentView.svelte` ; AVIF non affiché par le front, donc pas pris en charge) | vignette dans 360 × 300, coins arrondis dans ses pixels ; clic : visionneuse |
 | fichier | puce : nom, taille ; clic : téléchargement avec progression, puis « Ouvrir » |
-| vidéo, replay, message vocal | puce « bientôt dans l'app native » (lot 9) |
+| message vocal | lecteur (voir [Messages vocaux](#messages-vocaux)) ; « illisible sur cet appareil » avec « Télécharger » si le fichier ne se décode pas |
+| vidéo, replay | puce « bientôt dans l'app native » (lot 9) |
 | expiré | puce barrée « (fichier expiré) » |
 
 - Avant le chargement, la vignette a sa taille définitive si les dimensions d'origine sont connues (mémorisées au premier décodage, 4 096 sources,
@@ -317,7 +381,7 @@ deux moteurs et sur les deux OS :
   sans jeton, 8 Mo au plus).
 - Sondage : question (markdown), « Sondage lancé par », choix avec barre, pourcentage et votes, mon choix (coche), gagnants (trophée) une fois clos,
   pied (`libelle_du_pied`). `poll.voted` et `poll.closed` remplacent la seule ligne du sondage ; l'échéance réveille la liste (une minuterie sur la
-  prochaine clôture visible). Voter, clore et supprimer arrivent au lot 3.
+  prochaine clôture visible). Voter, clore, supprimer et « Voir les votants » : voir [Sondages](#sondages).
 
 ### Temps réel et lecture
 
@@ -341,7 +405,7 @@ deux moteurs et sur les deux OS :
 - `PontMessagerie::montrer_epingles` charge la liste quand l'onglet devient visible ou que la conversation change, et l'oublie quand il se ferme ;
   chaque carte (`CarteEpingle`, `ui/messagerie/epingles.slint`) donne l'auteur à la couleur de son rôle, la date, le markdown et le nombre de fichiers ;
   « Voir dans la conversation » passe par `sauter_a` (chargement autour du message s'il n'est pas dans la fenêtre, puis mise en évidence).
-- Désépingler est une écriture : lot 3.
+- « Désépingler » sur chaque carte si le rôle permet d'épingler ce message (`PUT`/`DELETE /messages/{id}/pin`) ; la liste suit par `message.updated`.
 
 ### Écriture
 
@@ -366,6 +430,159 @@ deux moteurs et sur les deux OS :
 - Écarts : pas de correction orthographique (le `TextInput` de Slint 1.18 n'en a pas, le front web a celle du navigateur) ; la méthode de saisie et les touches mortes passent par
   winit, à vérifier sur machine réelle.
 
+### Mentions et emoji à la saisie
+
+- Autocomplétion (`estompe_client::autocompletion`, sans interface) : `@` propose les personnes de la conversation puis `@everyone`, `@here` (avec le nombre de personnes
+  touchées) et les rôles si `mention_everyone` est permis ; `#` les salons texte du serveur ; `:` suivi de deux caractères les smileys (`emoji::rechercher`, 8 au plus), précédés
+  des emoji de serveur dont le nom commence par la saisie. Même tri que `suggest` du front (débuts, puis contenus, 6 au plus), soi-même exclu. 5 000 membres : environ 1 ms (test mesuré).
+- Clavier dans le champ (`ui/messagerie/saisie.slint`, `ListePropositions` au-dessus du champ) : flèches haut et bas (en boucle), Entrée ou Tab pour choisir, Échap pour fermer ;
+  la liste revient au prochain déplacement du curseur. Le curseur vient du `TextInput` (`cursor-position-byte-offset`, mis à jour avant `edited`) ; Rust le replace par
+  `curseur-demande` et `demande-curseur` (`Saisie::placer`).
+- Conversion (`convertir_code`) : `:nom:` devient le smiley dès le second `:`, sauf dans du code ou une URL, et sauf si un emoji de serveur porte ce nom (il reste en code, affiché en image).
+- Sélecteur (`ui/messagerie/selecteur.slint`, global `DonneesSelecteur` ; `src/messagerie/selecteur.rs`, machine pure `EtatSelecteur` et `Selecteur`) : bouton « Emojis » du champ
+  (atteignable par Tab), recherche (nom français, code avec ou sans `:`, mot-clé), récents (32 au plus, `emoji_recents` des préférences), neuf catégories, « Smileys des serveurs »
+  (images chargées à l'ouverture), nom et code en pied. Grille de 8 colonnes en rangées de 36 px dans une `ListeVirtuelle` : seules les rangées visibles sont instanciées et leurs
+  images rendues (`ModeleRangees`, modèle paresseux). Clavier : la recherche garde le focus ; flèches dans la grille (haut sur la première ligne : retour à la recherche),
+  Entrée insère et ferme, Maj+Entrée ou Maj+clic insère sans fermer, Tab passe aux catégories (flèches, Entrée), Échap ferme et rend le focus au champ.
+- Cible du sélecteur (`Cible`) : la saisie (insertion au curseur, sélection remplacée) ou une réaction (`Cible::Reaction`, ouverte par « Ajouter une réaction »
+  d'un message, voir [Actions sur un message](#actions-sur-un-message)) ; une réaction choisie compte dans les récents.
+- Écarts : pas de teinte de peau (le front n'en propose pas non plus) ; `#` (salons) et les emoji de serveur dans la liste de `:` n'existent pas dans le front ; un `#salon`
+  inséré reste du texte (le markdown n'a pas de lien de salon).
+
+### Pièces jointes à l'envoi
+
+- Trois entrées, seulement si la conversation accepte l'écriture et `attach_files` : bouton « Joindre un fichier » à gauche du champ (`Fichiers::choisir_fichiers`, sélecteur du
+  système par `rfd`, sur un fil à part), dépôt de fichiers sur la fenêtre (évènements `HoveredFile`, `HoveredFileCancelled` et `DroppedFile` de winit, `Coquille::suivi_du_depot` ;
+  la zone « Dépose pour joindre · 10 Mo max par fichier » couvre le champ pendant le survol), Ctrl+V dans le champ (`PressePapiers::lire_pieces` : une liste de fichiers, sinon une
+  image, collée en `capture.png` ; un texte garde le collage normal du `TextInput`).
+- Préparation (`src/messagerie/pieces.rs`, `preparer`, hors du fil d'interface) : nom, type déduit de l'extension (`type_mime_du_nom`), taille ; vignette carrée de 128 px pour une
+  image ; une image JPEG, PNG ou WebP plus grande que 1 920 px ou plus lourde que 300 Ko est réduite (`dimensions_a_envoyer`) puis réencodée, gardée si elle est plus légère ; une vidéo est convertie (ci-dessous).
+- Conversion d'une vidéo (`estompe_client::video`, appelée par `preparer`), même règle que l'app Tauri et le front (`uploadVideoFile`) : seul un MP4 dont la piste vidéo
+  n'est pas en H.264 (`codec_mp4` lit le type d'échantillon du `moov`, en tête ou en fin de fichier ; `hvc1`, `hev1`, `av01`, ou piste introuvable) est réencodé, en MP4
+  H.264 `yuv420p` avec son AAC et `moov` en tête (`+faststart`), au débit de l'original × 1,4 borné entre 2 et 12 Mbit/s (`debit_kbps`). Un MP4 déjà en H.264, un WebM ou tout
+  autre fichier part tel quel. Encodeurs essayés dans l'ordre, seulement s'ils sont dans `ffmpeg -encoders` : `h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_mf` (comme l'app
+  Tauri, aucun encodeur logiciel : le ffmpeg LGPL embarqué n'a pas `libx264`) ; sans ffmpeg, sans encodeur ou si tous échouent, l'original part (le front fait de même).
+  La limite `max_video_size` s'applique au fichier converti.
+- ffmpeg (`ffmpeg_du_systeme`) : `ffmpeg` (`ffmpeg.exe`) à côté de l'exécutable, sinon celui du `PATH` ; même code sous Linux et Windows, lancé par
+  `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Le binaire à embarquer est celui de l'app Tauri
+  (`apps/estompe/windows/scripts/fetch-ffmpeg.mjs`, build LGPL de BtbN) : 130 Mo installé, environ 40 Mo dans un installeur compressé en LZMA ; l'installeur natif
+  ([#278](https://github.com/Plblsfr/plbls.fr/issues/278)) devra le copier à côté d'`estompe-natif.exe` et citer sa licence. La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
+- Pendant la conversion, la pièce affiche « conversion… 42 % » et sa barre (`EtatPiece::Conversion`, lu dans `-progress pipe:1` rapporté à la durée de `ffmpeg -i`). La croix
+  l'annule : la tâche interrompue lève le drapeau d'annulation, ffmpeg est tué puis attendu, et le fichier de sortie supprimé. Le fichier converti est écrit dans
+  `<cache>/conversions/` (`FichierTemporaire`, supprimé quand la dernière copie de la source de la pièce disparaît : pièce retirée ou annulée, message envoyé) ; « Réessayer » renvoie ce même fichier. Le dossier est vidé au lancement, pour ce qu'un arrêt brutal aurait laissé.
+- Limites (`fichiers::Limites`, `refus_de_piece`, `refus_du_nombre`) : 10 Mo par fichier, `max_video_size` de `GET /me` pour un MP4 (envoyé en `kind=video`), 10 pièces par
+  message. Un refus s'affiche sous le champ avec la limite (« Fichier trop gros : « gros.bin » fait 11.0 Mo, 10 Mo maximum. ») et rien ne part.
+- Envoi (`televersement.rs` de la crate client, `Client::televerser_en_flux`, `Client::envoyer_piece`) : corps multipart produit par morceaux de 64 Ko lus sur le disque par un fil
+  bloquant, quatre morceaux en vol au plus, `Content-Length` exact, un seul nouvel essai sur un 401. Un fichier de 500 Mo ne fait grandir la mémoire résidente que de 2,4 Mo
+  (`mesure_memoire_d_un_envoi_de_500_mo`, ignoré par défaut : `cargo test -p estompe-client --release mesure_memoire -- --ignored --nocapture`).
+- État d'une pièce (`estompe_client::pieces::ListePieces`, une liste par conversation dans `EtatSaisie`, une pour le message modifié) : préparation, envoi (pourcentage et barre),
+  jointe (taille), échec (raison du serveur et « Réessayer », qui relance l'envoi depuis la source gardée). La croix retire la pièce ; pendant l'envoi, elle l'annule : la tâche est
+  interrompue et la connexion fermée. Entrée attend que toutes les pièces soient jointes (« Attends la fin de l'envoi des fichiers. ») et refuse une pièce en échec ; un message
+  peut partir sans texte. Les pièces suivent leur conversation (envoi poursuivi en changeant de salon) mais ne survivent pas au redémarrage.
+- Modification : flèche haut ou « Modifier » reprend les pièces du message (vignette de la liste si elle est chargée) ; retirer ou ajouter change la liste, envoyée en
+  `file_ids` seulement si elle diffère.
+- Écarts : pas de marquage « masqué » (le front ne le propose pas pour une pièce jointe) ; pas de réordonnancement des pièces d'un message modifié (glisser dans le front) ; une
+  image JPEG réduite reste en JPEG (qualité 82) et une PNG ou WebP devient du WebP sans perte, le front produit du WebP avec perte (l'encodeur WebP de `image` est sans perte) ;
+  pas de miniature pour une vidéo MP4 (le front en calcule une dans le navigateur) ; sous Linux, seuls `h264_nvenc` et `h264_qsv` peuvent convertir une vidéo (VAAPI
+  demanderait un filtre propre à l'appareil) ; dépôt de fichiers non pris en charge par winit sous Wayland, collage par le presse-papiers
+  X11 d'`arboard` (XWayland) : à vérifier sur machine réelle.
+
+### Actions sur un message
+
+- Droits (`src/messagerie/actions.rs`, pur) : `droits_du_message` part des droits de la conversation (`DroitsConversation` : écrire, `manage_messages`, `add_reactions`,
+  calculés par `PontMessagerie::droits_conversation`) et du message, comme `MessageItem.svelte` : répondre si l'on peut écrire ; modifier son propre message (pas un sondage) ;
+  épingler et supprimer son message ou, avec `manage_messages`, celui d'un autre ; réagir avec `add_reactions` ; rien sur un message système ni sur un envoi local. Ils sont
+  projetés dans `LigneMessage.droits` (`DroitsLigne`) et `entrees_du_message` en tire le menu.
+- Barre au survol (`BarreActions`, `ui/messagerie/element.slint`) : trois réactions rapides (👍, ❤️, 😂, en images), répondre, ajouter une réaction, modifier, épingler ou
+  désépingler, copier le message, supprimer, « Plus d'actions » (menu sous le bouton). Placée à cheval sur le haut de la ligne (16 px au-dessus, comme le front), elle reste affichée tant qu'elle est survolée.
+- Menu du message (clic droit, touche Menu ou Maj+F10 sur le message qui a le focus) : répondre, modifier, épingler ou désépingler, ajouter une réaction, copier le texte,
+  copier le lien (`https://<serveur>/#/s/<serveur>/<salon>/<message>` ou `#/dm/<conversation>/<message>`), marquer comme non lu, « Signaler » (« bientôt », lot 8),
+  supprimer (après confirmation « Supprimer ce message ? »). `PontMessagerie::action_message` exécute l'entrée choisie (`src/messagerie/pont/actions.rs`).
+- Réactions : un clic ou Entrée sur une réaction (focusable si `add_reactions`) l'ajoute ou la retire ; un bouton après les réactions ouvre le sélecteur.
+  `Store::basculer_reaction` applique le changement tout de suite (même chemin que `reaction.updated`, qui ne compte pas deux fois la mienne) puis appelle
+  `PUT` ou `DELETE /messages/{id}/reactions/{emoji}` ; un refus remet la réaction comme avant et s'affiche sous le champ.
+- Épingler (`Store::epingler`) attend le `message.updated` du serveur. Marquer comme non lu (`Store::marquer_non_lu`) est local : la conversation reprend comme non-lus les
+  messages des autres à partir de celui choisi, le séparateur « Nouveaux messages » s'y place, et la lecture n'est signalée qu'au prochain retour en bas de la liste ou à la
+  prochaine ouverture (le store passe `en_bas` à faux). L'API ne sait pas reculer la lecture : un redémarrage ou un autre appareil ne voient pas ce non-lu.
+- Écarts : la barre n'a pas de position « dessous » pour le premier message visible (elle peut y être coupée par le haut de la liste) ; « Copier le lien » et « Signaler » n'existent pas dans le front ;
+  pas de « Copier la sélection » ni « Sélectionner le texte » (Slint ne sélectionne pas un `Text`) ; le sélecteur d'une réaction s'ouvre au-dessus du champ, pas près du message.
+
+### Sondages
+
+- Création (`ui/messagerie/creation-sondage.slint`, global `DonneesCreationSondage` ; `src/messagerie/pont/sondages.rs`) : bouton « Créer un sondage » de la zone de saisie,
+  affiché avec la permission `create_polls` (`PontMessagerie::sondage_possible`). Modal « Nouveau sondage » comme `PollModal.svelte` : question, 2 à 10 choix (ajout et retrait),
+  « Autoriser plusieurs réponses », clôture 1 h, 24 h (par défaut), 3 jours, 1 semaine, sans clôture ou personnalisée. Slint n'a pas de sélecteur de date : la date
+  personnalisée se tape `JJ/MM/AAAA HH:MM`, en heure locale (`sondage::date_saisie`, date impossible refusée).
+- Validation (`estompe_client::sondage::valider`, pure et testée) : les règles du front (question non vide, au moins deux choix remplis, choix vides ignorés, échéance future)
+  et les limites que le front pose par `maxlength` (500 caractères pour la question, 100 par choix, 10 choix). `TextInput` n'ayant pas de longueur maximale, elles deviennent des
+  messages d'erreur, affichés sous le formulaire au premier « Publier le sondage » puis tenus à jour pendant la saisie.
+- Publication : le sondage part par la file d'envoi des messages (`Brouillon.sondage`), avec « Envoi… », « Non envoyé » et « Réessayer » ; l'envoi local affiche déjà la carte
+  avec ses choix (`EnvoiLocal::message`), sans vote possible.
+- Voter (clic ou Entrée sur un choix, focusable tant que le sondage est ouvert) : `Store::voter` applique le vote tout de suite par le même chemin que `poll.voted`
+  (`choix_apres_vote`, `comptes_avec` : recliquer retire son vote, en choix unique le nouveau remplace l'ancien) puis appelle `PUT` ou `DELETE /messages/{id}/vote` ; l'évènement
+  du serveur remplace ensuite les totaux. Un refus remet mes choix d'avant (sans effacer les votes des autres arrivés entre-temps) et s'affiche sous le champ.
+- « Clore » et la corbeille (lanceur, `manage_messages` : mêmes droits que la suppression du message) : `Store::clore_sondage` (`POST /messages/{id}/poll/close`, clôture
+  appliquée sans attendre `poll.closed`) ; suppression après la confirmation « Supprimer ce sondage ? ». « Voir les votants » (dès un vote) demande
+  `GET /messages/{id}/poll/votes` et affiche les pseudos sous chaque choix jusqu'à « Masquer les votants » (`PontMessagerie::afficher_votants`) ; la liste n'est pas relue à chaque vote, comme dans le front.
+
+### GIF
+
+- Sélecteur (`ui/messagerie/gifs.slint`, global `DonneesGifs` ; `src/messagerie/gifs.rs`, `src/messagerie/pont/gifs.rs`) : bouton « GIF » de la zone de saisie, avant « Emojis »
+  (atteignable par Tab), affiché si le bloc `gifs` est actif et la capacité `estompe:gifs.use` accordée (`Etat::capacite`, même règle que `autorise` du front), hors lecture seule.
+  Ouvrir l'un des deux sélecteurs ferme l'autre. Ouverture sur les tendances (`GET /gifs/trending`), recherche (`GET /gifs/search`) après 350 ms sans frappe (`slint::Timer`
+  relancé à chaque touche, `TEMPORISATION`), « Tendances » et huit idées de recherche en pastilles (lancées tout de suite). Logique sans interface dans `estompe_client::gifs`
+  (`RechercheGifs`, testée) : une réponse d'une recherche remplacée est ignorée, la suite sans doublon, arrêt sur une page vide ou au-delà du décalage 480 (le serveur repartirait de 0).
+- Grille : rangées justifiées de deux GIF (même hauteur, largeurs selon leur rapport borné entre 0,4 et 2,5, 200 px de haut au plus) dans une `ListeVirtuelle` ; suite chargée à
+  160 px du bas (`MARGE_DE_SUITE`). Aperçus `preview` (Giphy `fixed_width_small`) chargés depuis giphy.com par `Medias` (`Source::Externe`, `Format::Gif` : 200 × 200 au plus,
+  coins arrondis dans les pixels, toutes les images de l'animation décodées hors du fil d'interface).
+- Animation : une minuterie pour le sélecteur, armée seulement tant qu'un GIF animé est **à l'écran** (`rangees_visibles` sur la position de défilement) ; un GIF qui sort
+  de l'écran s'arrête, la minuterie aussi quand plus aucun ne bouge ou à la fermeture. Une image change par `set_row_data` du modèle de cellules de sa rangée.
+- Clavier : la recherche garde le focus ; flèches dans la grille (haut sur la première rangée : retour à la recherche), Entrée envoie le GIF actif, Tab passe aux idées
+  (flèches, Entrée), Échap ou un clic à côté ferme et rend le focus au champ.
+- Envoi : `POST /gifs/import` (`Client::importer_gif`) puis message sans texte avec la pièce (`Brouillon.pieces`) par la file d'envoi, en réponse au message cité s'il y en a un
+  (le bandeau se ferme) ; un échec s'affiche sous le champ (« Le GIF n'a pas pu être envoyé : … »). Attribution « Propulsé par GIPHY · les aperçus sont chargés depuis giphy.com »
+  en pied, comme le front.
+- Erreurs : 501 « La recherche de GIF n'est pas activée sur ce serveur. », 429 « Trop de recherches de GIF en peu de temps : réessaie dans une minute. », autres « Recherche de GIF
+  impossible. » ; après une erreur la suite n'est plus demandée. La recherche passe `OptionsAppel::sans_relance` : le client ne relance pas un `GET` refusé par 429 (sans
+  cette option il attend `Retry-After` et réessaie une fois).
+- Écarts : rangées justifiées au lieu de deux colonnes en maçonnerie (un GIF très large ou très haut est recadré) ; indicateur de chargement au lieu des cases grisées animées ;
+  idées sur deux lignes fixes (Slint 1.18 n'a pas de retour à la ligne automatique d'une rangée) ; le message 429 est propre à l'app native (le front affiche « Recherche de GIF impossible. »).
+
+### Messages vocaux
+
+- Logique sans interface dans `estompe_client::message_vocal` (testée sans périphérique, sur des signaux de synthèse) : niveau en dBFS et forme d'onde de 40 barres
+  (`niveau`, `forme_d_onde`, mêmes calculs que `levelOf` et `toWaveform` du front), rééchantillonnage linéaire (`audio::Reechantillonneur`, le même que le vocal), encodage Opus (`Encodeur` : 48 kHz mono,
+  32 kbit/s comme `recorder.svelte.ts`, application VoIP, trames de 20 ms) dans un Ogg écrit à la main (`OpusHead`, `OpusTags`, une page par seconde, granule exact
+  à la fin), décodage d'un Ogg Opus ou d'un WebM Opus (lecture EBML minimale, tailles inconnues de MediaRecorder comprises) ; tout autre format (AAC en MP4 de
+  Safari) passe par ffmpeg s'il est présent (`decoder_avec_ffmpeg`), sinon le message est « illisible ». Opus vient de `unsafe-libopus` (libopus 1.3.1 traduit en
+  Rust : aucune chaîne C à installer, ni sous Linux ni sous MSVC).
+- Fichier produit : `message-vocal.ogg` (`audio/ogg`, Opus), que le serveur accepte (`application/ogg`) et que lisent Chrome, Firefox, Safari 17 et la WebView
+  d'Android ; envoyé par `Client::envoyer_vocal` (`kind=voice`, `duration_ms`, `waveform` avant le fichier) puis en message sans texte par la file d'envoi, en
+  réponse au message cité s'il y en a un. Formats de test versionnés dans `apps/estompe/crates/client/src/message_vocal/essais/` : `chrome.webm` (WebM à taille
+  inconnue), `firefox.ogg`, `safari.m4a` (MP4 fragmenté, AAC), produits par ffmpeg comme les produirait MediaRecorder, et `natif.ogg`, produit par l'app ;
+  les tests décodent les uns et font relire à ffmpeg (autre décodeur, celui de Chromium) ceux de l'app.
+- Son : traits `Micro` et `SortieSon` de la crate plateforme (flux mono avec sa fréquence, fermé quand son `FluxSon` disparaît), implémentés par
+  `SonPeripheriques` sur les mêmes périphériques que le vocal (`SystemeAudio`, `AudioSysteme`, `cpal` : WASAPI sous Windows, ALSA sous Linux) : micro et sortie
+  choisis dans les réglages audio (`micro`, `sortie_audio` des préférences, relus à chaque ouverture), périphérique par défaut si le choix a disparu ; plusieurs
+  canaux ramenés à un seul. Un refus d'accès (`PermissionDenied`) donne « Accès au micro refusé… », l'absence de micro « Aucun micro disponible… », toute autre
+  erreur « Le micro est inutilisable. », sous le champ.
+- Enregistrement (`ui/messagerie/saisie.slint`, global `DonneesMessageVocal`) : le bouton « Envoyer » devient « Message vocal » quand le champ est vide, sans pièce ni
+  modification en cours, si la conversation accepte les fichiers et qu'un micro existe. Le micro rend ses échantillons sur son fil ; un fil `estompe-vocal`
+  rééchantillonne à 48 kHz, encode, calcule un niveau toutes les 100 ms et prévient l'interface (durée et 40 derniers niveaux). La durée est celle des
+  échantillons reçus, pas d'une horloge ; l'enregistrement s'arrête seul à 5 minutes (`DUREE_MAX_MS`). « Mettre en pause et écouter » ferme le micro et passe
+  à l'écoute (lecteur de l'aperçu, forme d'onde, envoi) ; « Envoyer » pendant l'enregistrement enchaîne arrêt et envoi ; la corbeille annule. Un échec d'envoi
+  laisse l'écoute avec « Envoi impossible. » et « Réessayer ». Changer de conversation annule l'enregistrement.
+- Lecture (`MessageVocal`, `ui/messagerie/vocal.slint`) : bouton lecture et pause, forme d'onde du message avec la position (un clic s'y place), temps écoulé
+  pendant la lecture et durée sinon, vitesse 1×, 1,5×, 2× (`Lecture` : WSOLA, la hauteur ne change pas), point « non écouté » (500 derniers messages écoutés
+  dans `vocaux_ecoutes` des préférences), téléchargement comme un fichier. Le fichier est demandé à la première lecture et décodé hors du fil d'interface
+  (8 messages décodés gardés) ; un seul message joue à la fois (`Lecteur`), la position est suivie toutes les 100 ms par un `slint::Timer` qui ne tourne que
+  pendant la lecture ; à la fin, retour au début.
+- Écarts : pas d'enchaînement automatique sur le message vocal suivant, une vitesse commune à tous les messages, position oubliée quand un autre message est
+  lancé ; pas de geste « maintenir pour enregistrer » (tactile) ; pas d'annulation d'écho ni de réduction de bruit à l'enregistrement (le navigateur les fait ;
+  la chaîne du micro du vocal n'y est pas branchée) ; pas de transcription (lot 9).
+- À vérifier sur une vraie machine (Windows et Linux) : micro et haut-parleurs réels, refus du micro par les réglages de confidentialité de Windows, message
+  enregistré lu par le front web et l'inverse.
+
 ## Vocal
 
 Socle sans interface du lot 4 ([#276](https://github.com/Plblsfr/plbls.fr/issues/276)) : SDK Rust LiveKit, périphériques audio, session vocale,
@@ -380,7 +597,7 @@ Le reste du module (état, session, mixage, faux serveur) compile et se teste sa
 
 | Fichier | Rôle |
 |---|---|
-| `crates/plateforme/src/audio.rs` | `AudioSysteme` (trait `SystemeAudio`) : liste des entrées et sorties, périphérique par défaut, ouverture d'un flux d'entrée ou de sortie en `f32` entrelacé ; débranchement signalé par `ErreurFluxAudio::Debranche` |
+| `crates/plateforme/src/audio.rs` | `AudioSysteme` (trait `SystemeAudio`) : liste des entrées et sorties, périphérique par défaut, ouverture d'un flux d'entrée ou de sortie en `f32` entrelacé ; débranchement signalé par `ErreurFluxAudio::Debranche` ; `SonPeripheriques` (traits `Micro`, `SortieSon`) : les mêmes flux en mono pour les messages vocaux |
 | `crates/client/src/audio/format.rs` | format de LiveKit (48 kHz mono, trames de 10 ms, 480 échantillons `i16`) : passage en mono, rééchantillonnage linéaire sans dérive (pas entiers), découpe en trames (`ConversionEntree`), conversion vers la sortie (`ConversionSortie`), tampon de lecture amorcé et borné (`TamponLecture`) |
 | `crates/client/src/audio/peripheriques.rs` | `Capture` et `Lecture` : périphérique choisi, sinon celui par défaut ; changement à chaud (`choisir`) ; `surveiller` bascule sur celui par défaut quand le choisi est débranché et y revient quand il réapparaît (`Bascule`) |
 | `crates/client/src/audio/micro.rs` | chaîne du micro, pure et sans allocation dans la boucle audio : `ReglagesMicro` (bruit, gain, détection de voix, seuil), `ChaineMicro`, `DetectionVoix`, `niveau_db` (équivalent de `rmsDb`), `MesureMicro` (niveau lu par l'interface), `Apm` (traitement de WebRTC partagé entre micro et sortie) |
@@ -546,8 +763,8 @@ La crate plateforme expose un trait par fonction : coffre de secrets, notificati
 et de fenêtre, capture du son, overlay, application au premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : les raccourcis globaux de l'appuyer pour parler (`RaccourcisSysteme` : crochet clavier sous Windows, XInput 2 sous X11, indisponible sous Wayland), le coffre de secrets (`keyring` : Credential Manager
-sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux) et les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système). Le reste arrive avec son lot, Windows d'abord.
+sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour les messages vocaux), le lancement d'un processus d'arrière-plan (`commande_d_arriere_plan`, utilisé pour ffmpeg) et les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 
@@ -558,14 +775,14 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | | Windows | Linux |
 |---|---|---|
 | Données (`preferences.json`) | `%APPDATA%\fr.plbls.estompe.natif` | `$XDG_DATA_HOME/fr.plbls.estompe.natif` (défaut `~/.local/share`) |
-| Cache (avatars dans `avatars/`, images dans `medias/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
+| Cache (avatars dans `avatars/`, images dans `medias/`, vidéos converties dans `conversions/`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` | `$XDG_CACHE_HOME/fr.plbls.estompe.natif/cache` (défaut `~/.cache`) |
 | Journaux (`estompe-debug.log`, `estompe-debug.1.log`) | `%LOCALAPPDATA%\fr.plbls.estompe.natif\journaux` | `$XDG_DATA_HOME/fr.plbls.estompe.natif/journaux` |
 | Coffre de secrets | service `fr.plbls.estompe.natif` | service `fr.plbls.estompe.natif` |
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture, tant que la fenêtre est visible et pas réduite : après `run()`, la fenêtre winit n'existe plus et sa
-  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`), bornés à la lecture. Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
@@ -608,7 +825,26 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   hors de l'écran (aucun réveil ni image en 10 s simulées), le téléchargement d'un fichier au nom hostile dans un dossier temporaire puis son ouverture, la
   visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
 `saisie.rs` (même backend, `ServeurMessages` qui accepte aussi `POST …/messages` et `PATCH /messages/{id}`) : saisie au clavier, Maj+Entrée, envoi par Entrée et message du serveur
-  en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », brouillon retrouvé en changeant de salon et relu depuis le disque.
+  en bas, flèche haut et Échap, modification, refus 403 puis « Réessayer », mentions (`@`, Tab), salons (`#`, Échap), smileys (`:`, flèches, Entrée), conversion de `:thumbsup:`,
+  sélecteur d'emoji ouvert, parcouru et refermé au clavier (récents écrits dans les préférences), brouillon retrouvé en changeant de salon et relu depuis le disque ;
+  sélecteur de GIF (tendances à l'ouverture, focus sur la recherche, 10 caractères tapés en 500 ms simulées : une seule recherche, seuls les GIF à l'écran animés et plus le premier
+  après défilement, suite au défilement, choix au clavier, import puis envoi en réponse, 429 sans nouvelle tentative, sélecteur gardé dans une vue étroite) ;
+  actions sur un message (clic droit sur un message, menu par la touche Menu et Maj+F10, répondre, épingler, réaction ajoutée par le sélecteur puis retirée par Entrée, copier le texte
+  et le lien, marquer comme non lu, supprimer confirmé au clavier, modifier), menu d'un salon (« Marquer comme lu ») et d'un membre (« Mentionner ») ;
+  recherche et palette (Ctrl+K, portée du salon ouvert, `GET /search` vérifié, terme surligné, résultat ancien ouvert : page chargée autour et message mis en évidence, dernière
+  recherche retenue ; palette : salon et conversation privée ouverts au clavier, flèches en boucle, Tab qui complète un filtre, Échap, erreur du serveur affichée) ;
+  statut choisi par la palette (`>`) puis par le menu de la barre de l'utilisateur (corps du `PUT /me/status` vérifié), nouveau message privé vers une personne déjà en conversation
+  (pseudo proposé et choisi au clavier, conversation existante ouverte sans doublon), refus `user_not_found` affiché, « Tout marquer lu » sur l'accueil (pastilles à zéro, `POST …/read`) ;
+  sondage (bouton « Créer un sondage », erreurs de validation au clavier, choix ajouté puis retiré, échéance passée refusée, corps du `POST` vérifié, vote affiché tout de suite
+  puis totaux de `poll.voted`, votants affichés puis masqués, clôture, suppression confirmée) ;
+  puis les pièces jointes (`POST /files` du même serveur, qui peut refuser ou bloquer un envoi) : choix de deux fichiers et aperçu, fichier de 11 Mo refusé sans requête, envoi avec `file_ids`,
+  échec puis « Réessayer », collage d'un fichier dont l'envoi est annulé (connexion fermée côté serveur, aucun message), collage d'une capture, dépôt sur la fenêtre, message sans
+  texte, retrait d'une pièce d'un message modifié (`PATCH` avec la liste finale) ; puis les messages vocaux (micro et sortie simulés par `FauxMicro` et
+  `FausseSortie` de la fausse fabrique : micro refusé puis absent, 1,5 s à 44,1 kHz avec durée et niveau, pause et réécoute à 440 Hz, envoi `kind=voice` relu par
+  le décodeur, puis lecture d'un WebM du web et du message envoyé, vitesse, position, un seul à la fois, fin, fichier illisible) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
+  jointe, envoyée en `kind=video` et reçue en H.264, fichier converti supprimé après l'envoi, puis une conversion (ou son envoi bloqué) annulée sans laisser de fichier.
+  Les tests de `estompe_client::video` convertissent aussi une vidéo HEVC (`libx264` à la place des encodeurs matériels, absents du runner) et l'annulent pendant l'encodage.
+  Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.

@@ -552,8 +552,10 @@ mod tests {
                 frequence = u32::from_le_bytes(corps[4..8].try_into().unwrap());
             } else if id == b"data" {
                 let echantillons = corps
-                    .chunks_exact(2)
-                    .map(|o| f32::from(i16::from_le_bytes([o[0], o[1]])) / PLEINE_ECHELLE)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|o| f32::from(i16::from_le_bytes(*o)) / PLEINE_ECHELLE)
                     .collect();
                 return (frequence, echantillons);
             }
@@ -608,7 +610,7 @@ mod tests {
 
     fn traiter_tout(c: &mut ChaineMicro, signal: &[f32]) -> Vec<f32> {
         let mut sortie = Vec::with_capacity(signal.len());
-        for trame in signal.chunks_exact(ECHANTILLONS_PAR_TRAME) {
+        for trame in signal.as_chunks::<ECHANTILLONS_PAR_TRAME>().0 {
             let traitee = c.traiter(&en_i16(trame));
             sortie.extend(traitee.iter().map(|e| f32::from(*e) / PLEINE_ECHELLE));
         }
@@ -616,14 +618,21 @@ mod tests {
     }
 
     fn trames_de_parole(voix: &[f32]) -> Vec<bool> {
-        voix.chunks_exact(ECHANTILLONS_PAR_TRAME)
+        voix.as_chunks::<ECHANTILLONS_PAR_TRAME>()
+            .0
+            .iter()
             .map(|t| energie_db(t) > -50.0)
             .collect()
     }
 
     fn hors_parole(parole: &[bool], signal: &[f32], marge: usize) -> Vec<f32> {
         let mut extrait = Vec::new();
-        for (i, trame) in signal.chunks_exact(ECHANTILLONS_PAR_TRAME).enumerate() {
+        for (i, trame) in signal
+            .as_chunks::<ECHANTILLONS_PAR_TRAME>()
+            .0
+            .iter()
+            .enumerate()
+        {
             let debut = i.saturating_sub(marge);
             let fin = (i + marge + 1).min(parole.len());
             if i >= 30 && !parole[debut..fin].iter().any(|p| *p) {
@@ -684,7 +693,7 @@ mod tests {
             mesure.clone(),
         );
         let mut ouvertes = Vec::new();
-        for trame in melange.chunks_exact(ECHANTILLONS_PAR_TRAME) {
+        for trame in melange.as_chunks::<ECHANTILLONS_PAR_TRAME>().0 {
             c.traiter(&en_i16(trame));
             ouvertes.push(mesure.lire().voix);
         }
@@ -716,7 +725,7 @@ mod tests {
         let tours = 20;
         let debut = std::time::Instant::now();
         for _ in 0..tours {
-            for trame in melange.chunks_exact(ECHANTILLONS_PAR_TRAME) {
+            for trame in melange.as_chunks::<ECHANTILLONS_PAR_TRAME>().0 {
                 std::hint::black_box(c.traiter(trame));
             }
         }

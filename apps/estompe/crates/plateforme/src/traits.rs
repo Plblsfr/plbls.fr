@@ -43,12 +43,23 @@ pub trait Fichiers {
         &self,
         depart: Option<&std::path::Path>,
     ) -> Resultat<Option<std::path::PathBuf>>;
+    fn choisir_fichiers(
+        &self,
+        depart: Option<&std::path::Path>,
+    ) -> Resultat<Vec<std::path::PathBuf>>;
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContenuPressePapiers {
+    Image(Image),
+    Fichiers(Vec<std::path::PathBuf>),
 }
 
 pub trait PressePapiers {
     fn disponible(&self) -> bool;
     fn copier_image(&self, image: &Image) -> Resultat<()>;
+    fn lire_pieces(&self) -> Resultat<Option<ContenuPressePapiers>>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,4 +192,24 @@ pub trait MesureProcessus: Send + Sync {
     fn disponible(&self) -> bool;
     fn compteurs(&self) -> Resultat<CompteursProcessus>;
     fn machine(&self) -> InfosMachine;
+}
+
+pub type ProducteurSon = Box<dyn FnMut(&mut [f32], u32) + Send>;
+
+pub struct FluxSon(#[allow(dead_code)] Box<dyn Send>);
+
+impl FluxSon {
+    pub fn nouveau(garde: impl Send + 'static) -> Self {
+        Self(Box::new(garde))
+    }
+}
+
+pub trait Micro {
+    fn disponible(&self) -> bool;
+    fn ecouter(&self, echantillons: RecepteurSon) -> Resultat<FluxSon>;
+}
+
+pub trait SortieSon {
+    fn disponible(&self) -> bool;
+    fn jouer(&self, producteur: ProducteurSon) -> Resultat<FluxSon>;
 }

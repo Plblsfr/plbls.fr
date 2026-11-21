@@ -9,7 +9,9 @@ use crate::format::iso_de_ms;
 use crate::http::ErreurApi;
 use crate::store::etat::CleConversation;
 use crate::store::reducteur::{Application, Changement};
-use crate::types::{Message, MessageReplyTo, Person};
+use crate::types::{
+    Attachment, Message, MessagePoll, MessagePollOptionsElement, MessageReplyTo, Person,
+};
 
 pub const LONGUEUR_MAX: usize = 4000;
 pub const SEUIL_COMPTEUR: usize = 3500;
@@ -17,11 +19,11 @@ pub const SEUIL_ALERTE: usize = 3900;
 pub const RYTHME_SAISIE: Duration = Duration::from_secs(3);
 pub const PREFIXE_LOCAL: &str = "local:";
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Brouillon {
     pub contenu: String,
     pub reponse_a: Option<String>,
-    pub fichiers: Vec<String>,
+    pub pieces: Vec<Attachment>,
     pub sondage: Option<NouveauSondage>,
 }
 
@@ -36,14 +38,14 @@ impl Brouillon {
     pub fn requete(&self) -> NouveauMessage {
         NouveauMessage {
             content: self.contenu.trim().to_string(),
-            file_ids: self.fichiers.clone(),
+            file_ids: self.pieces.iter().filter_map(|p| p.id.clone()).collect(),
             reply_to: self.reponse_a.clone(),
             poll: self.sondage.clone(),
         }
     }
 
     pub fn vide(&self) -> bool {
-        self.contenu.trim().is_empty() && self.fichiers.is_empty() && self.sondage.is_none()
+        self.contenu.trim().is_empty() && self.pieces.is_empty() && self.sondage.is_none()
     }
 }
 
@@ -123,10 +125,27 @@ impl EnvoiLocal {
             author: Some(self.auteur.clone()),
             content: Some(self.brouillon.contenu.trim().to_string()),
             created_at: Some(self.cree_a.clone()),
-            attachments: Some(Vec::new()),
+            attachments: Some(self.brouillon.pieces.clone()),
             reactions: Some(Vec::new()),
             mentions: Some(Vec::new()),
             reply_to: self.citation.clone(),
+            poll: self.brouillon.sondage.as_ref().map(|s| MessagePoll {
+                multiple: Some(s.multiple),
+                closes_at: s.closes_at.clone(),
+                created_by: Some(self.auteur.clone()),
+                options: Some(
+                    s.options
+                        .iter()
+                        .enumerate()
+                        .map(|(i, libelle)| MessagePollOptionsElement {
+                            id: Some(format!("{PREFIXE_LOCAL}{i}")),
+                            label: Some(libelle.clone()),
+                            votes: Some(0),
+                            me: Some(false),
+                        })
+                        .collect(),
+                ),
+            }),
             ..Message::default()
         }
     }
@@ -371,6 +390,37 @@ mod tests {
     }
 
     #[test]
+    fn un_sondage_en_cours_d_envoi_s_affiche_avec_ses_choix() {
+        let (mut etat, _, cle) = conversation_chargee();
+        let brouillon = Brouillon {
+            sondage: Some(NouveauSondage {
+                options: vec!["a".into(), "b".into()],
+                multiple: true,
+                closes_at: None,
+            }),
+            ..Brouillon::texte("Q ?")
+        };
+        assert_eq!(brouillon.requete().poll, brouillon.sondage);
+        ajouter_envoi(&mut etat, &cle, brouillon, moi(), "t".into());
+        let message = etat.envois_de(&cle)[0].message();
+        let sondage = message.poll.unwrap();
+        assert_eq!(sondage.multiple, Some(true));
+        let libelles: Vec<_> = sondage
+            .options
+            .unwrap()
+            .into_iter()
+            .map(|o| (o.id.unwrap(), o.label.unwrap(), o.votes.unwrap()))
+            .collect();
+        assert_eq!(
+            libelles,
+            [
+                ("local:0".to_string(), "a".to_string(), 0),
+                ("local:1".to_string(), "b".to_string(), 0)
+            ]
+        );
+    }
+
+    #[test]
     fn la_reponse_http_puis_le_temps_reel_donnent_un_seul_message() {
         let (mut etat, contexte, cle) = conversation_chargee();
         let (id, _) = ajouter_envoi(
@@ -563,10 +613,30 @@ mod tests {
         assert!(Brouillon::texte("  \n ").vide());
         assert!(!Brouillon::texte("salut").vide());
         let b = Brouillon {
-            fichiers: vec!["f1".into()],
+            pieces: vec![Attachment {
+                id: Some("f1".into()),
+                ..Attachment::default()
+            }],
             ..Brouillon::default()
         };
         assert!(!b.vide());
+        assert_eq!(b.requete().file_ids, ["f1"]);
+        assert_eq!(
+            EnvoiLocal {
+                id: 1,
+                conversation: CleConversation::Salon("c1".into()),
+                brouillon: b,
+                etat: EtatEnvoi::EnAttente,
+                cree_a: String::new(),
+                auteur: Person::default(),
+                citation: None,
+            }
+            .message()
+            .attachments
+            .map(|a| a.len()),
+            Some(1),
+            "le message local montre ses pièces jointes"
+        );
         assert_eq!(Brouillon::texte(" salut \n").requete().content, "salut");
     }
 }

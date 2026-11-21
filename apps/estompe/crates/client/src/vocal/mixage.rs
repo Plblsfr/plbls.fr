@@ -362,7 +362,7 @@ mod tests {
             m.ajouter(identite, SourceAudio::Micro);
         }
         let mut sortie = Vec::new();
-        for trame in signal.chunks_exact(ECHANTILLONS_PAR_TRAME) {
+        for trame in signal.as_chunks::<ECHANTILLONS_PAR_TRAME>().0 {
             for identite in &identites {
                 m.pousser(identite, SourceAudio::Micro, trame);
             }

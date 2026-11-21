@@ -13,16 +13,19 @@ use estompe_client::store::messages::{
 };
 use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::types::LinkPreview;
+use estompe_client::video::Conversions;
 use estompe_plateforme::{Fichiers, Indisponible, OuvertureUrl, PressePapiers};
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 
+use super::actions::DroitsConversation;
 use super::annexes::{carte_affichee, chemin_libre, taille_de_vignette, CarteAffichee};
 use super::defilement::{Alignement, Defilement};
 use super::emoji;
+use super::gifs::Gifs;
 use super::lignes::{
     donnees_message, libelle_vu_par, lignes_de_conversation, mentionnables, premier_non_lu,
     utilisateur_mentionne, ContexteLignes, DonneesAnnexes, DonneesLecteur, DonneesLigne,
-    DonneesMessage, DonneesPiece, GenreLigne, GenrePiece,
+    DonneesMessage, DonneesPiece, GenreLigne, GenrePiece, Votants,
 };
 use super::medias::{CleImage, Decodee, Format, Medias, Progres, Source, SourceMedias};
 use super::rendu::{
@@ -30,15 +33,20 @@ use super::rendu::{
     Palette,
 };
 use super::saisie::{executer, indice_de, Action, Mode, Saisie};
+use super::selecteur::{Cible as CibleSelecteur, Selecteur};
+use super::vocal::Vocal;
 use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::{synchroniser, Operation};
 use crate::coquille::pont::{badge_slint, couleur_slint, vec_de};
 use crate::entree::Futur;
 use crate::{
-    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, EpingleMessage, EtatConversation,
-    EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage, GenrePieceJointe,
-    GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe, Principale,
-    ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
+    AnnexesMessage, BlocTexte, CarteLien, DonneesMessagerie, DroitsLigne, EpingleMessage,
+    EtatConversation, EtatEpingles, EtatTelechargement, GenreBloc, GenreCarte, GenreLigneMessage,
+    GenrePieceJointe, GenreSegment, LecteurMessage, LigneMessage, OptionSondage, PieceJointe,
+    Principale, ReactionMessage, ReponseMessage, SegmentTexte, SondageMessage, Theme, Visionneuse,
+};
+use estompe_client::autocompletion::{
+    autocompletion, convertir_code, GenreProposition, Proposition,
 };
 
 pub type Fuseau = Arc<dyn Fn(i64) -> i32 + Send + Sync>;
@@ -73,6 +81,14 @@ thread_local! {
     static PLANIFIE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PROPRIETAIRE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
+
+mod actions;
+mod gifs;
+mod sondages;
+mod televersements;
+pub mod vocal;
+
+pub use actions::TITRE_MENU_MESSAGE;
 
 static IDENTIFIANTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
@@ -122,6 +138,7 @@ pub struct EtatPiece {
     pub progression: u8,
     pub chemin: Option<PathBuf>,
     pub note: String,
+    pub illisible: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +150,7 @@ struct PieceAffichee {
     echec: bool,
     index_image: i32,
     etat: EtatPiece,
+    ecoute: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -262,6 +280,8 @@ struct Interne {
     apercus: bool,
     dossier: Option<PathBuf>,
     reveil_sondage: Option<i64>,
+    votants: HashMap<String, Votants>,
+    creation_sondage: Option<sondages::CreationEnCours>,
     minuterie_active: bool,
     epingles_visibles: bool,
     etat_epingles: EtatEpingles,
@@ -318,6 +338,8 @@ impl Interne {
             apercus: true,
             dossier: None,
             reveil_sondage: None,
+            votants: HashMap::new(),
+            creation_sondage: None,
             minuterie_active: false,
             epingles_visibles: false,
             etat_epingles: EtatEpingles::Chargement,
@@ -381,7 +403,8 @@ fn estimer_message(m: &DonneesMessage, largeur: f64) -> f64 {
         h += 24.0;
     }
     if let Some(sondage) = &m.annexes.sondage {
-        h += 110.0 + 46.0 * sondage.options.len() as f64;
+        let votants = if sondage.votants_ouverts { 20.0 } else { 0.0 };
+        h += 110.0 + (46.0 + votants) * sondage.options.len() as f64;
     }
     if m.annexes.images().next().is_some() {
         h += 196.0;
@@ -552,6 +575,13 @@ fn bloc_slint(bloc: &BlocAffiche, images: Option<&Images>) -> BlocTexte {
     }
 }
 
+pub fn barres(forme: &[u8]) -> Vec<f32> {
+    if forme.is_empty() {
+        return vec![0.0];
+    }
+    forme.iter().map(|v| f32::from(*v) / 100.0).collect()
+}
+
 fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
     let image = if p.chargee {
         images
@@ -574,9 +604,12 @@ fn piece_slint(p: &PieceAffichee, images: &Images, i: usize) -> PieceJointe {
         hauteur: p.hauteur as f32,
         image,
         chargee: p.chargee,
-        echec: p.echec,
+        echec: p.echec || p.etat.illisible,
         anime: p.donnees.anime,
         vocal: p.donnees.vocal,
+        duree: estompe_client::message_vocal::horloge(p.donnees.duree_ms).into(),
+        barres: ModelRc::new(VecModel::from(barres(&p.donnees.forme))),
+        ecoute: p.ecoute,
         index_image: p.index_image,
         telechargement: match p.etat.telechargement {
             Telechargement::Aucun => EtatTelechargement::Aucun,
@@ -704,15 +737,21 @@ fn annexes_slint(
                 s.options
                     .iter()
                     .map(|o| OptionSondage {
+                        id: o.id.as_str().into(),
                         libelle: o.libelle.as_str().into(),
                         pourcentage: o.pourcentage.clamp(0, 100) as i32,
                         votes: o.votes.clamp(0, i64::from(i32::MAX)) as i32,
                         moi: o.moi,
                         gagnant: o.gagnant,
+                        votants: o.votants.as_deref().unwrap_or_default().into(),
                     })
                     .collect::<Vec<_>>(),
             )),
             pied: s.pied.as_str().into(),
+            total: s.total.clamp(0, i64::from(i32::MAX)) as i32,
+            votable: s.votable,
+            gerer: s.gerer,
+            votants_ouverts: s.votants_ouverts,
         })
         .unwrap_or_default();
     AnnexesMessage {
@@ -853,6 +892,14 @@ fn ligne_slint(
         annexes: annexes_slint(&m.annexes, &l.medias, &images, profils),
         etat_envoi: libelle_d_envoi(m.envoi.as_ref()).into(),
         envoi_echec: matches!(m.envoi, Some(EtatEnvoi::Echec(_))),
+        droits: DroitsLigne {
+            repondre: m.droits.repondre,
+            modifier: m.droits.modifier,
+            epingler: m.droits.epingler,
+            supprimer: m.droits.supprimer,
+            reagir: m.droits.reagir,
+            menu: m.droits.menu,
+        },
     }
 }
 
@@ -892,8 +939,12 @@ pub struct PontMessagerie {
     horloge: Arc<Mutex<HorlogeMs>>,
     fichiers: Arc<Mutex<SystemeFichiers>>,
     presse_papiers: Arc<Mutex<Presse>>,
+    conversions: Arc<Mutex<Arc<Conversions>>>,
     dossier_par_defaut: Arc<Mutex<DossierParDefaut>>,
     saisie: Saisie,
+    selecteur: Selecteur,
+    gifs: Gifs,
+    vocal: Vocal,
 }
 
 struct SourceIndisponible;
@@ -957,10 +1008,14 @@ impl PontMessagerie {
             horloge: Arc::new(Mutex::new(maintenant_ms())),
             fichiers: Arc::new(Mutex::new(Arc::new(Indisponible))),
             presse_papiers: Arc::new(Mutex::new(Arc::new(Indisponible))),
+            conversions: Arc::new(Mutex::new(Arc::new(Conversions::aucune()))),
             dossier_par_defaut: Arc::new(Mutex::new(Arc::new(
                 estompe_plateforme::dossier_telechargements,
             ))),
             saisie: Saisie::default(),
+            selecteur: Selecteur::default(),
+            gifs: Gifs::default(),
+            vocal: Vocal::default(),
         }
     }
 
@@ -976,6 +1031,18 @@ impl PontMessagerie {
             .store
             .lire(|etat| etat.peut_dans(Some(&cle), "send_messages")))
         .then_some(TEXTE_SANS_DROIT_D_ECRIRE)
+    }
+
+    fn droits_conversation(&self) -> DroitsConversation {
+        let Some(cle) = self.conversation() else {
+            return DroitsConversation::default();
+        };
+        let ecrire = self.raison_lecture_seule().is_none();
+        self.store.lire(|etat| DroitsConversation {
+            ecrire,
+            gerer: etat.peut_dans(Some(&cle), "manage_messages"),
+            reagir: etat.peut_dans(Some(&cle), "add_reactions"),
+        })
     }
 
     pub fn saisie(&self) -> &Saisie {
@@ -1014,18 +1081,189 @@ impl PontMessagerie {
         })
     }
 
+    pub fn selecteur(&self) -> &Selecteur {
+        &self.selecteur
+    }
+
+    fn image_de_proposition(&self, p: &Proposition) -> Image {
+        match p.genre {
+            GenreProposition::Emoji => emoji::image(&p.emoji).unwrap_or_default(),
+            GenreProposition::EmojiServeur => self
+                .medias()
+                .image(&CleImage {
+                    source: Source::Emoji(p.emoji.clone()),
+                    format: Format::Emoji,
+                })
+                .map(|d| Image::from_rgba8(d.premiere().clone()))
+                .unwrap_or_default(),
+            _ => Image::default(),
+        }
+    }
+
+    fn proposer(&self, f: &Principale) {
+        let auto = match self.saisie.cle() {
+            Some(cle) => {
+                let emojis = self.medias().emojis().unwrap_or_default();
+                let texte = self.saisie.texte();
+                let curseur = f.global::<crate::DonneesSaisie>().get_curseur().max(0) as usize;
+                self.store
+                    .lire(|etat| autocompletion(etat, &cle, &emojis, &texte, curseur))
+            }
+            None => None,
+        };
+        self.saisie
+            .proposer(f, auto, |p| self.image_de_proposition(p));
+    }
+
     pub fn saisie_modifiee(&self, f: &Principale, texte: &str) -> bool {
-        let change = self.saisie.modifie(f, texte, &self.runtime);
+        let curseur = f.global::<crate::DonneesSaisie>().get_curseur().max(0) as usize;
+        let emojis = self.medias().emojis().unwrap_or_default();
+        let (texte, curseur) = match convertir_code(&emojis, texte, curseur) {
+            Some(r) => {
+                self.saisie.placer(f, &r.texte, r.curseur);
+                (r.texte, r.curseur)
+            }
+            None => (texte.to_string(), curseur),
+        };
+        self.saisie.definir_curseur(curseur);
+        let change = self.saisie.modifie(f, &texte, &self.runtime);
+        self.proposer(f);
         if matches!(self.saisie.mode(), Mode::Modification { .. }) {
             return change;
         }
         if let Some(cle) = self.saisie.cle() {
             let store = self.store.clone();
-            let texte = texte.to_string();
             self.runtime
                 .spawn(async move { store.signaler_saisie(&cle, &texte).await });
         }
         change
+    }
+
+    pub fn curseur_deplace(&self, f: &Principale, texte: &str, curseur: i32) {
+        if self.saisie.texte() != texte {
+            return;
+        }
+        self.saisie.definir_curseur(curseur.max(0) as usize);
+        self.proposer(f);
+    }
+
+    pub fn naviguer_propositions(&self, f: &Principale, pas: i32) {
+        self.saisie.naviguer(f, pas);
+    }
+
+    pub fn fermer_propositions(&self, f: &Principale) {
+        self.saisie.proposer(f, None, |_| Image::default());
+    }
+
+    fn remplacer_saisie(&self, f: &Principale, remplacement: Option<(String, usize)>) -> bool {
+        let Some((texte, curseur)) = remplacement else {
+            return false;
+        };
+        self.saisie.placer(f, &texte, curseur);
+        let change = self.saisie.modifie(f, &texte, &self.runtime);
+        self.fermer_propositions(f);
+        change
+    }
+
+    pub fn choisir_proposition(&self, f: &Principale, index: i32) -> bool {
+        let choix = usize::try_from(index)
+            .ok()
+            .and_then(|i| self.saisie.choisir(i));
+        self.remplacer_saisie(f, choix)
+    }
+
+    pub fn ouvrir_selecteur(&self, f: &Principale, cible: CibleSelecteur) {
+        if self.selecteur.ouvert() {
+            self.fermer_selecteur(f);
+            return;
+        }
+        if self.gifs.ouvert() {
+            self.gifs.fermer(f);
+            f.global::<crate::DonneesSaisie>().set_gifs_ouvert(false);
+        }
+        let medias = self.medias();
+        let emojis = medias.emojis().unwrap_or_default();
+        if medias.emojis().is_none() {
+            self.charger_emojis(true);
+        }
+        self.fermer_propositions(f);
+        self.selecteur.ouvrir(f, cible, emojis);
+        f.global::<crate::DonneesSaisie>()
+            .set_selecteur_ouvert(true);
+        self.charger_images_du_selecteur(f);
+    }
+
+    fn charger_images_du_selecteur(&self, f: &Principale) {
+        let medias = self.medias();
+        let emojis = medias.emojis().unwrap_or_default();
+        self.selecteur.emojis_serveur(f, emojis.clone());
+        for e in emojis {
+            if self.selecteur.a_l_image(&e.id) {
+                continue;
+            }
+            let cle = CleImage {
+                source: Source::Emoji(e.id.clone()),
+                format: Format::Emoji,
+            };
+            if let Some(d) = medias.image(&cle) {
+                self.selecteur
+                    .installer_image(f, &e.id, d.premiere().clone());
+                continue;
+            }
+            let medias = medias.clone();
+            let selecteur = self.selecteur.clone();
+            let faible = self.fenetre.clone();
+            self.runtime.spawn(async move {
+                if let Some(d) = medias.charger_image(cle).await {
+                    let image = d.premiere().clone();
+                    let _ = faible.upgrade_in_event_loop(move |f| {
+                        selecteur.installer_image(&f, &e.id, image)
+                    });
+                }
+            });
+        }
+    }
+
+    pub fn fermer_selecteur(&self, f: &Principale) {
+        let saisie = self.selecteur.cible() == CibleSelecteur::Saisie;
+        self.selecteur.fermer(f);
+        f.global::<crate::DonneesSaisie>()
+            .set_selecteur_ouvert(false);
+        if saisie {
+            self.saisie.demander_focus(f);
+        }
+    }
+
+    pub fn choisir_emoji(&self, f: &Principale, index: Option<usize>, garder: bool) -> bool {
+        let Some(choix) = self.selecteur.choisir(f, index, garder) else {
+            return false;
+        };
+        if !garder {
+            f.global::<crate::DonneesSaisie>()
+                .set_selecteur_ouvert(false);
+        }
+        match choix.cible {
+            CibleSelecteur::Saisie => self.inserer_dans_la_saisie(f, &choix.insertion, !garder),
+            CibleSelecteur::Reaction(message) => {
+                self.reagir(&message, &choix.insertion);
+                false
+            }
+        }
+    }
+
+    pub fn inserer_dans_la_saisie(&self, f: &Principale, texte: &str, focus: bool) -> bool {
+        let g = f.global::<crate::DonneesSaisie>();
+        self.saisie.definir_curseur(g.get_curseur().max(0) as usize);
+        let insere = self.saisie.inserer(texte, g.get_ancre().max(0) as usize);
+        let change = self.remplacer_saisie(f, insere);
+        if focus {
+            self.saisie.demander_focus(f);
+        }
+        change
+    }
+
+    pub fn ecriture_permise(&self) -> bool {
+        !self.verrou().lecture_seule
     }
 
     pub fn envoyer_saisie(&self, f: &Principale, texte: &str) -> bool {
@@ -1069,6 +1307,7 @@ impl PontMessagerie {
         };
         if let Some(message) = self.store.dernier_de_moi(&cle) {
             self.saisie.modifier(f, &message);
+            self.vignettes_d_edition(f);
         }
     }
 
@@ -1095,6 +1334,7 @@ impl PontMessagerie {
             .and_then(|c| c.message(id).cloned())
         {
             self.saisie.modifier(f, &message);
+            self.vignettes_d_edition(f);
         }
     }
 
@@ -1144,6 +1384,10 @@ impl PontMessagerie {
             .unwrap_or_else(|e| e.into_inner()) = presse;
     }
 
+    pub fn definir_conversions(&self, conversions: Arc<Conversions>) {
+        *self.conversions.lock().unwrap_or_else(|e| e.into_inner()) = conversions;
+    }
+
     pub fn definir_dossier_par_defaut(&self, dossier: DossierParDefaut) {
         *self
             .dossier_par_defaut
@@ -1177,6 +1421,19 @@ impl PontMessagerie {
 
     pub fn definir_fuseau(&self, fuseau: Fuseau) {
         *self.fuseau.lock().unwrap_or_else(|e| e.into_inner()) = fuseau;
+    }
+
+    pub fn decalage_minutes(&self) -> i32 {
+        let fuseau = self
+            .fuseau
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        fuseau(chrono::Utc::now().timestamp_millis())
+    }
+
+    pub fn peut_ecrire(&self) -> bool {
+        self.conversation().is_some() && self.raison_lecture_seule().is_none()
     }
 
     pub fn definir_navigateur(&self, navigateur: Navigateur) {
@@ -1267,13 +1524,25 @@ impl PontMessagerie {
             };
         }
         let g = f.global::<DonneesMessagerie>();
+        if g.get_reactions_rapides().row_count() == 0 {
+            self.installer_reactions_rapides(f);
+        }
         vec_de(&g.get_lignes()).set_vec(Vec::new());
         g.set_defilement(0.0);
         g.set_visionneuse(Visionneuse::default());
         PROPRIETAIRE.with(|p| p.set(self.identifiant));
         ANIMATION.with(|a| *a.borrow_mut() = None);
         let indice = self.indice_de_saisie(cle.as_ref());
+        let ancienne = self.saisie.cle();
         self.saisie.ouvrir(f, cle.clone(), indice);
+        if ancienne != cle {
+            self.annuler_vocal(f);
+            self.selecteur.fermer(f);
+            f.global::<crate::DonneesSaisie>()
+                .set_selecteur_ouvert(false);
+            self.gifs.fermer(f);
+            f.global::<crate::DonneesSaisie>().set_gifs_ouvert(false);
+        }
         self.medias().noter_fil_interface();
         self.charger_emojis(false);
         self.reprojeter(f);
@@ -1359,6 +1628,7 @@ impl PontMessagerie {
         };
         let aucun = BTreeMap::new();
         let maintenant = self.maintenant();
+        let droits = self.droits_conversation();
         let donnees: Vec<DonneesMessage> = self.store.lire(|etat| {
             let contexte = ContexteLignes {
                 etat,
@@ -1371,6 +1641,8 @@ impl PontMessagerie {
                 apercus,
                 lecteurs: &aucun,
                 envois: &[],
+                droits,
+                votants: &HashMap::new(),
             };
             messages
                 .iter()
@@ -1396,6 +1668,7 @@ impl PontMessagerie {
                             .collect::<Vec<_>>(),
                     )),
                     fichiers: libelle_fichiers(m.annexes.pieces.len()).into(),
+                    desepingler: m.droits.epingler,
                 }
             })
             .collect();
@@ -1654,6 +1927,7 @@ impl PontMessagerie {
         let supprimes = i.supprimes.clone();
         let apercus = i.apercus;
         let cle = i.cle.clone();
+        let votants = i.votants.clone();
         drop(i);
         let lecteurs = cle
             .as_ref()
@@ -1668,6 +1942,7 @@ impl PontMessagerie {
             std::borrow::Cow::Owned(tous)
         };
         let maintenant = self.maintenant();
+        let droits = self.droits_conversation();
         self.store.lire(|etat| {
             lignes_de_conversation(
                 &messages,
@@ -1682,6 +1957,8 @@ impl PontMessagerie {
                     apercus,
                     lecteurs: &lecteurs,
                     envois: &envois,
+                    droits,
+                    votants: &votants,
                 },
             )
         })
@@ -1702,7 +1979,7 @@ impl PontMessagerie {
                 .clone();
             fuseau(chrono::Utc::now().timestamp_millis())
         };
-        let (serveur, evidence, supprimes, indice, suite, apercus) = {
+        let (serveur, evidence, supprimes, indice, suite, apercus, votants) = {
             let i = self.verrou();
             let Some(&n) = i.index.get(id) else {
                 return;
@@ -1715,10 +1992,12 @@ impl PontMessagerie {
                 n,
                 suite,
                 i.apercus,
+                i.votants.clone(),
             )
         };
         let maintenant = self.maintenant();
         let lecteurs = self.store.lecteurs(cle);
+        let droits = self.droits_conversation();
         let donnees = self.store.lire(|etat| {
             donnees_message(
                 &message,
@@ -1734,6 +2013,8 @@ impl PontMessagerie {
                     apercus,
                     lecteurs: &lecteurs,
                     envois: &[],
+                    droits,
+                    votants: &votants,
                 },
             )
         });
@@ -1806,6 +2087,24 @@ impl PontMessagerie {
         }
         let g = f.global::<DonneesMessagerie>();
         let raison = self.raison_lecture_seule();
+        let joindre = self.pieces_possibles();
+        let sondage = self.sondage_possible();
+        let s = f.global::<crate::DonneesSaisie>();
+        if s.get_joindre_possible() != joindre {
+            s.set_joindre_possible(joindre);
+        }
+        if s.get_sondage_possible() != sondage {
+            s.set_sondage_possible(sondage);
+        }
+        let gifs = self.gifs_possibles();
+        if s.get_gifs_possibles() != gifs {
+            s.set_gifs_possibles(gifs);
+        }
+        let v = f.global::<crate::DonneesMessageVocal>();
+        let vocal = self.vocal_possible();
+        if v.get_possible() != vocal {
+            v.set_possible(vocal);
+        }
         let (fenetre, lignes_fenetre) = {
             let mut i = self.verrou();
             i.lecture_seule = raison.is_some();
@@ -2304,6 +2603,7 @@ impl PontMessagerie {
                 echec: false,
                 index_image: -1,
                 etat: i.pieces.get(&p.id).cloned().unwrap_or_default(),
+                ecoute: p.vocal && self.vocal.ecoute(&p.id),
             };
             if p.genre == GenrePiece::Image {
                 let cle = cle_vignette(&p.id);
@@ -2438,6 +2738,9 @@ impl PontMessagerie {
                     i.generation += 1;
                 }
                 p.reprojeter(&f);
+                if p.selecteur.ouvert() {
+                    p.charger_images_du_selecteur(&f);
+                }
             });
         });
     }
@@ -2838,6 +3141,7 @@ impl PontMessagerie {
             pont.noter_piece(&piece.id, |e| {
                 *e = EtatPiece {
                     telechargement: Telechargement::EnCours,
+                    illisible: e.illisible,
                     ..EtatPiece::default()
                 };
             });
@@ -2877,12 +3181,14 @@ impl PontMessagerie {
                                 destination.parent().unwrap_or(&dossier).display()
                             ),
                             chemin: Some(destination.clone()),
+                            illisible: e.illisible,
                         }
                     }
                     Err(erreur) => {
                         *e = EtatPiece {
                             telechargement: Telechargement::Echec,
                             note: format!("Échec du téléchargement : {erreur}"),
+                            illisible: e.illisible,
                             ..EtatPiece::default()
                         }
                     }
@@ -3015,6 +3321,7 @@ mod tests {
                 contenu: contenu.into(),
                 annexes: DonneesAnnexes::default(),
                 envoi: None,
+                droits: Default::default(),
             }),
         }
     }

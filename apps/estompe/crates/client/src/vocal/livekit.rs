@@ -322,8 +322,10 @@ mod tests {
         let octets = include_bytes!("../../tests/donnees/voix-16k.wav");
         let debut = octets.windows(4).position(|f| f == b"data").unwrap() + 8;
         let voix16: Vec<f32> = octets[debut..]
-            .chunks_exact(2)
-            .map(|o| f32::from(i16::from_le_bytes([o[0], o[1]])) / f32::from(i16::MAX))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|o| f32::from(i16::from_le_bytes(*o)) / f32::from(i16::MAX))
             .collect();
         let mut voix = Vec::new();
         Reechantillonneur::nouveau(16_000, FREQUENCE).traiter(&voix16, &mut voix);
@@ -344,8 +346,10 @@ mod tests {
         let mut entree = Vec::new();
         let mut sortie = Vec::new();
         for (joue, capte) in lointain
-            .chunks_exact(ECHANTILLONS_PAR_TRAME)
-            .zip(echo.chunks_exact(ECHANTILLONS_PAR_TRAME))
+            .as_chunks::<ECHANTILLONS_PAR_TRAME>()
+            .0
+            .iter()
+            .zip(echo.as_chunks::<ECHANTILLONS_PAR_TRAME>().0)
         {
             apm.jouer(joue);
             let mut trame: Vec<i16> = capte
@@ -387,8 +391,10 @@ mod tests {
         let debut = std::time::Instant::now();
         for _ in 0..tours {
             for (joue, capte) in signal
-                .chunks_exact(ECHANTILLONS_PAR_TRAME)
-                .zip(micro.chunks_exact(ECHANTILLONS_PAR_TRAME))
+                .as_chunks::<ECHANTILLONS_PAR_TRAME>()
+                .0
+                .iter()
+                .zip(micro.as_chunks::<ECHANTILLONS_PAR_TRAME>().0)
             {
                 apm.jouer(joue);
                 std::hint::black_box(chaine.traiter(capte));

@@ -315,6 +315,7 @@ jobs:
       ESTOMPE_COFFRE_EXIGE: 1
       CXX: clang++-21
       ESTOMPE_LIVEKIT_URL: ws://127.0.0.1:7880
+      ESTOMPE_FFMPEG_EXIGE: 1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -324,7 +325,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev
+      - run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libgl1-mesa-dri libegl1 xvfb dbus gnome-keyring libasound2-dev libglib2.0-dev ffmpeg
       - name: clang 21 (libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium)
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null

@@ -8,8 +8,8 @@ pub mod tonalite;
 pub use essai::EssaiMicro;
 pub use estompe_plateforme::{FormatAudio, PeripheriqueAudio, SensAudio, SystemeAudio};
 pub use format::{
-    ConversionEntree, ConversionSortie, SourceLecture, TamponLecture, ECHANTILLONS_PAR_TRAME,
-    FREQUENCE,
+    ConversionEntree, ConversionSortie, Reechantillonneur, SourceLecture, TamponLecture,
+    ECHANTILLONS_PAR_TRAME, FREQUENCE,
 };
 pub use micro::{
     niveau_db, porte_ouverte, Apm, ChaineMicro, DetectionVoix, MesureMicro, ModeBruit, MoteurApm,

@@ -7,10 +7,12 @@ import { Panneau } from "panneau.slint";
 import { Contenu } from "contenu.slint";
 import { EmplacementMarge } from "marge.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
+import { DonneesRecherche } from "recherche.slint";
 
 export component Coquille inherits Rectangle {
     callback ouvrir-invitation();
     callback se-deconnecter();
+    property <int> demande-focus: DonneesCoquille.demande-focus;
     background: Theme.papier;
     property <int> calques: Calques.ouverts;
     init => {
@@ -21,6 +23,9 @@ export component Coquille inherits Rectangle {
             clavier.focus();
         }
     }
+    changed demande-focus => {
+        clavier.focus();
+    }
     clavier := FocusScope {
         key-pressed(e) => {
             if (e.modifiers.control && e.modifiers.alt && e.text == Key.UpArrow) {
@@ -29,6 +34,10 @@ export component Coquille inherits Rectangle {
             }
             if (e.modifiers.control && e.modifiers.alt && e.text == Key.DownArrow) {
                 DonneesCoquille.serveur-voisin(true);
+                return accept;
+            }
+            if (e.modifiers.control && !e.modifiers.alt && (e.text == "k" || e.text == "K") && DonneesCoquille.pret && Calques.ouverts == 0) {
+                DonneesRecherche.ouvrir();
                 return accept;
             }
             if (e.modifiers.control && !e.modifiers.alt && e.text == "." && DonneesCoquille.marge-disponible) {

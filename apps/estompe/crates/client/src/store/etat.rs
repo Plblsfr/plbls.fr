@@ -211,6 +211,23 @@ impl Etat {
             .is_none_or(|blocs| blocs.iter().any(|b| b == nom))
     }
 
+    pub fn capacite(&self, nom: &str) -> bool {
+        let Some(capacites) = self.compte.capabilities.as_ref() else {
+            return true;
+        };
+        let Some(c) = capacites.get(&format!("estompe:{nom}")) else {
+            return false;
+        };
+        let contient = |liste: &Option<Vec<String>>| {
+            liste
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .any(|r| r == "*")
+        };
+        !contient(&c.deny) && contient(&c.allow)
+    }
+
     pub fn serveur(&self, id: &str) -> Option<&Server> {
         self.serveurs.iter().find(|s| id_de(&s.id) == id)
     }

@@ -17,6 +17,7 @@ pub const PAS_GRILLE: f64 = 4.0;
 const DECALAGE_HORODATAGE: &str = "10";
 const MARGE_PARTAGE: f64 = 8.0;
 const MARGE_FIN: f64 = 0.5;
+const RAFALE_INITIALE: &str = "30";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Parametres {
@@ -30,6 +31,8 @@ pub struct Parametres {
     pub origine: f64,
     pub mode: ModeMateriel,
     pub peripherique: String,
+    pub vitesse: f64,
+    pub threads: u32,
 }
 
 impl Parametres {
@@ -188,6 +191,14 @@ pub fn arguments(p: &Parametres, dossier: &Path) -> Vec<String> {
     } else if p.debut > 0.0 {
         a.extend(["-ss".into(), format!("{:.6}", p.debut)]);
     }
+    if !p.copie_video && p.vitesse > 0.0 {
+        a.extend([
+            "-readrate".into(),
+            format!("{}", p.vitesse),
+            "-readrate_initial_burst".into(),
+            RAFALE_INITIALE.into(),
+        ]);
+    }
     a.extend(["-i".into(), p.source.to_string_lossy().to_string()]);
     a.extend(["-map".into(), format!("0:{}", p.index_video)]);
     if let Some(i) = p.index_audio {
@@ -200,6 +211,9 @@ pub fn arguments(p: &Parametres, dossier: &Path) -> Vec<String> {
         }
     } else {
         a.extend(encodeur(p.mode, p.hauteur, grille));
+        if p.mode == ModeMateriel::Cpu && p.threads > 0 {
+            a.extend(["-threads".into(), p.threads.to_string()]);
+        }
     }
     if p.index_audio.is_some() {
         a.extend(
@@ -719,6 +733,8 @@ mod tests {
             origine: 124.0,
             mode,
             peripherique: "/dev/dri/renderD128".into(),
+            vitesse: 0.0,
+            threads: 0,
         }
     }
 
@@ -731,6 +747,29 @@ mod tests {
 
     fn ligne(p: &Parametres) -> String {
         arguments(p, Path::new("/tmp/e/f1")).join(" ")
+    }
+
+    #[test]
+    fn vitesse_et_threads() {
+        let mut p = params(ModeMateriel::Cpu, Some(720));
+        let l = ligne(&p);
+        assert!(!l.contains("-readrate") && !l.contains("-threads"), "{l}");
+        p.vitesse = 2.0;
+        p.threads = 4;
+        let l = ligne(&p);
+        assert!(
+            l.contains("-copyts -readrate 2 -readrate_initial_burst 30 -i /medias/Film.mkv"),
+            "{l}"
+        );
+        assert!(
+            l.contains("-force_key_frames expr:gte(t,n_forced*4) -threads 4 "),
+            "{l}"
+        );
+        p.mode = ModeMateriel::Vaapi;
+        let l = ligne(&p);
+        assert!(l.contains("-readrate 2") && !l.contains("-threads"), "{l}");
+        p.copie_video = true;
+        assert!(!ligne(&p).contains("-readrate"));
     }
 
     #[test]

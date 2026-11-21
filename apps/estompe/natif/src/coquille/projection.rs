@@ -73,6 +73,23 @@ pub struct DonneesVocal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DonneesContact {
+    pub id: String,
+    pub pseudo: String,
+    pub initiales: String,
+    pub teinte: i32,
+    pub presence: Presence,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DonneesCompte {
+    pub pseudo: String,
+    pub presence: Presence,
+    pub statut: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct DonneesPanneau {
     pub genre: GenrePanneau,
     pub titre: String,
@@ -100,6 +117,7 @@ pub struct DonneesAccueil {
     pub salut: String,
     pub resume: String,
     pub sans_serveur: bool,
+    pub contacts: String,
 }
 
 const JOURS: [&str; 7] = [
@@ -476,6 +494,60 @@ pub fn lignes_vocaux(etat: &Etat) -> Vec<DonneesVocal> {
         .collect()
 }
 
+fn occupation(etat: &Etat, utilisateur: &str, presence: Presence) -> String {
+    let vocal = etat
+        .vocal
+        .iter()
+        .find(|(_, participants)| participants.iter().any(|p| p.utilisateur == utilisateur))
+        .and_then(|(salon, _)| etat.salon(salon));
+    if let Some((_, salon)) = vocal {
+        return format!("En vocal · {}", id(&salon.name));
+    }
+    match etat.activite_de(utilisateur) {
+        "" => super::membres::libelle_presence(presence).to_string(),
+        activite => activite.to_string(),
+    }
+}
+
+pub fn lignes_contacts(etat: &Etat) -> Vec<DonneesContact> {
+    etat.messages_prives
+        .iter()
+        .filter_map(|d| {
+            let autre = d.other.as_ref()?;
+            let utilisateur = id(&autre.id);
+            let presence = etat.presence_de(utilisateur);
+            (presence != Presence::HorsLigne).then(|| {
+                let pseudo = id(&autre.pseudo).to_string();
+                DonneesContact {
+                    id: id(&d.id).to_string(),
+                    initiales: initiales(&pseudo),
+                    teinte: teinte(if utilisateur.is_empty() {
+                        &pseudo
+                    } else {
+                        utilisateur
+                    }),
+                    detail: occupation(etat, utilisateur, presence),
+                    presence,
+                    pseudo,
+                }
+            })
+        })
+        .collect()
+}
+
+pub fn donnees_compte(etat: &Etat) -> DonneesCompte {
+    let presence = etat.presence_de(etat.moi());
+    let statut = match etat.activite_de(etat.moi()) {
+        "" => super::membres::libelle_presence(presence).to_string(),
+        activite => activite.to_string(),
+    };
+    DonneesCompte {
+        pseudo: etat.pseudo().to_string(),
+        presence,
+        statut,
+    }
+}
+
 pub fn date_longue(maintenant: NaiveDateTime) -> String {
     format!(
         "{} {} {}",
@@ -539,6 +611,11 @@ pub fn donnees_accueil(etat: &Etat, route: &Route, maintenant: NaiveDateTime) ->
         salut: salut.to_string(),
         resume,
         sans_serveur,
+        contacts: format!(
+            "{} sur {}",
+            lignes_contacts(etat).len(),
+            etat.messages_prives.len()
+        ),
     }
 }
 
@@ -825,6 +902,50 @@ mod tests {
         let triees = lignes_prives(&lignes_privees(&e, &activite), &Route::Accueil);
         let ordre: Vec<&str> = triees.iter().map(|l| l.id.as_str()).collect();
         assert_eq!(ordre, ["d2", "d1"]);
+    }
+
+    #[test]
+    fn les_contacts_en_ligne_disent_ce_qu_ils_font_et_le_compte_son_statut() {
+        let mut e = etat();
+        let contacts = lignes_contacts(&e);
+        let resume: Vec<(&str, Presence, &str)> = contacts
+            .iter()
+            .map(|c| (c.pseudo.as_str(), c.presence, c.detail.as_str()))
+            .collect();
+        assert_eq!(
+            resume,
+            [("carol", Presence::EnLigne, "En vocal · Salon vocal")]
+        );
+        assert_eq!(contacts[0].id, "d1");
+        e.vocal.clear();
+        e.en_ligne.insert("dave".into());
+        e.statuts.insert(
+            "dave".into(),
+            estompe_client::temps_reel::evenements::StatutPresence::Dnd,
+        );
+        e.activites.insert("carol".into(), "Tetris".into());
+        let details: Vec<String> = lignes_contacts(&e).into_iter().map(|c| c.detail).collect();
+        assert_eq!(details, ["Tetris", "Ne pas déranger"]);
+        assert_eq!(
+            donnees_accueil(&e, &Route::Accueil, NaiveDateTime::default()).contacts,
+            "2 sur 2"
+        );
+        assert_eq!(
+            donnees_compte(&e),
+            DonneesCompte {
+                pseudo: "bob".into(),
+                presence: Presence::EnLigne,
+                statut: "En ligne".into()
+            }
+        );
+        e.statuts.insert(
+            "me".into(),
+            estompe_client::temps_reel::evenements::StatutPresence::Idle,
+        );
+        assert_eq!(donnees_compte(&e).statut, "Absent");
+        e.activite_locale = "Factorio".into();
+        assert_eq!(donnees_compte(&e).presence, Presence::Absent);
+        assert_eq!(donnees_compte(&e).statut, "Factorio");
     }
 
     #[test]

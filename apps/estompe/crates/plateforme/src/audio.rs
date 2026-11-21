@@ -1,9 +1,13 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample, StreamConfig};
 
 use crate::{
-    Erreur, ErreurFluxAudio, FluxAudio, FormatAudio, FournisseurAudio, PeripheriqueAudio,
-    RecepteurAudio, Resultat, SensAudio, SignalErreurAudio, SystemeAudio,
+    Erreur, ErreurFluxAudio, FluxAudio, FluxSon, FormatAudio, FournisseurAudio, Micro,
+    PeripheriqueAudio, ProducteurSon, RecepteurAudio, RecepteurSon, Resultat, SensAudio,
+    SignalErreurAudio, SortieSon, SystemeAudio,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -26,6 +30,16 @@ impl FluxAudio for FluxCpal {
 
 fn echec(erreur: impl std::fmt::Display) -> Erreur {
     Erreur::Echec(erreur.to_string())
+}
+
+fn erreur_cpal(e: cpal::Error) -> Erreur {
+    match e.kind() {
+        cpal::ErrorKind::PermissionDenied => Erreur::Refuse(e.to_string()),
+        cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::HostUnavailable => {
+            Erreur::Indisponible("périphérique audio")
+        }
+        _ => echec(e),
+    }
 }
 
 fn identifiant(peripherique: &cpal::Device) -> Option<String> {
@@ -54,13 +68,13 @@ fn lister(hote: &cpal::Host, sens: SensAudio) -> Resultat<Vec<cpal::Device>> {
 }
 
 fn choisir(hote: &cpal::Host, sens: SensAudio, id: Option<&str>) -> Resultat<cpal::Device> {
-    let trouve = match id {
+    match id {
         Some(id) => lister(hote, sens)?
             .into_iter()
-            .find(|p| identifiant(p).as_deref() == Some(id)),
-        None => defaut(hote, sens),
-    };
-    trouve.ok_or_else(|| Erreur::Refuse("périphérique audio introuvable".to_string()))
+            .find(|p| identifiant(p).as_deref() == Some(id))
+            .ok_or_else(|| Erreur::Refuse("périphérique audio introuvable".to_string())),
+        None => defaut(hote, sens).ok_or(Erreur::Indisponible("périphérique audio")),
+    }
 }
 
 fn signal(mut erreur: SignalErreurAudio) -> impl FnMut(cpal::Error) + Send + 'static {
@@ -147,7 +161,7 @@ impl SystemeAudio for AudioSysteme {
         erreur: SignalErreurAudio,
     ) -> Resultat<Box<dyn FluxAudio>> {
         let peripherique = choisir(&cpal::default_host(), SensAudio::Entree, id)?;
-        let pris_en_charge = peripherique.default_input_config().map_err(echec)?;
+        let pris_en_charge = peripherique.default_input_config().map_err(erreur_cpal)?;
         let config = pris_en_charge.config();
         let flux = match pris_en_charge.sample_format() {
             SampleFormat::F32 => entree::<f32>(&peripherique, config, echantillons, erreur),
@@ -160,8 +174,8 @@ impl SystemeAudio for AudioSysteme {
                 )))
             }
         }
-        .map_err(echec)?;
-        flux.play().map_err(echec)?;
+        .map_err(erreur_cpal)?;
+        flux.play().map_err(erreur_cpal)?;
         Ok(Box::new(FluxCpal {
             _flux: flux,
             format: FormatAudio {
@@ -179,7 +193,7 @@ impl SystemeAudio for AudioSysteme {
         erreur: SignalErreurAudio,
     ) -> Resultat<Box<dyn FluxAudio>> {
         let peripherique = choisir(&cpal::default_host(), SensAudio::Sortie, id)?;
-        let pris_en_charge = peripherique.default_output_config().map_err(echec)?;
+        let pris_en_charge = peripherique.default_output_config().map_err(erreur_cpal)?;
         let config = pris_en_charge.config();
         let flux = match pris_en_charge.sample_format() {
             SampleFormat::F32 => sortie::<f32>(&peripherique, config, echantillons, erreur),
@@ -192,8 +206,8 @@ impl SystemeAudio for AudioSysteme {
                 )))
             }
         }
-        .map_err(echec)?;
-        flux.play().map_err(echec)?;
+        .map_err(erreur_cpal)?;
+        flux.play().map_err(erreur_cpal)?;
         Ok(Box::new(FluxCpal {
             _flux: flux,
             format: FormatAudio {
@@ -205,9 +219,221 @@ impl SystemeAudio for AudioSysteme {
     }
 }
 
+pub type ChoixPeripherique = Arc<dyn Fn(SensAudio) -> Option<String> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct SonPeripheriques {
+    audio: Arc<dyn SystemeAudio>,
+    choix: ChoixPeripherique,
+}
+
+struct FormatPartage(AtomicU64);
+
+impl FormatPartage {
+    fn nouveau() -> Arc<Self> {
+        Arc::new(Self(AtomicU64::new(0)))
+    }
+
+    fn definir(&self, format: FormatAudio) {
+        let canaux = u64::from(format.canaux.max(1));
+        self.0.store(
+            u64::from(format.frequence) << 16 | canaux,
+            Ordering::Release,
+        );
+    }
+
+    fn lire(&self) -> Option<(u32, usize)> {
+        let valeur = self.0.load(Ordering::Acquire);
+        let frequence = u32::try_from(valeur >> 16).ok()?;
+        (valeur != 0).then_some((frequence, (valeur & 0xffff) as usize))
+    }
+}
+
+impl SonPeripheriques {
+    pub fn nouveau(audio: Arc<dyn SystemeAudio>, choix: ChoixPeripherique) -> Self {
+        Self { audio, choix }
+    }
+
+    pub fn par_defaut(audio: Arc<dyn SystemeAudio>) -> Self {
+        Self::nouveau(audio, Arc::new(|_| None))
+    }
+
+    fn identifiant(&self, sens: SensAudio) -> Option<String> {
+        let id = (self.choix)(sens)?;
+        self.audio
+            .peripheriques(sens)
+            .ok()?
+            .iter()
+            .any(|p| p.id == id)
+            .then_some(id)
+    }
+}
+
+impl Micro for SonPeripheriques {
+    fn disponible(&self) -> bool {
+        self.audio.disponible()
+    }
+
+    fn ecouter(&self, mut recepteur: RecepteurSon) -> Resultat<FluxSon> {
+        let format = FormatPartage::nouveau();
+        let lu = format.clone();
+        let mut mono = Vec::new();
+        let flux = self.audio.ouvrir_entree(
+            self.identifiant(SensAudio::Entree).as_deref(),
+            Box::new(move |donnees| {
+                let Some((frequence, canaux)) = lu.lire() else {
+                    return;
+                };
+                mono.clear();
+                mono.extend(
+                    donnees
+                        .chunks(canaux)
+                        .map(|trame| trame.iter().sum::<f32>() / trame.len() as f32),
+                );
+                recepteur(&mono, frequence);
+            }),
+            Box::new(|_| {}),
+        )?;
+        format.definir(flux.format());
+        Ok(FluxSon::nouveau(flux))
+    }
+}
+
+impl SortieSon for SonPeripheriques {
+    fn disponible(&self) -> bool {
+        self.audio.disponible()
+    }
+
+    fn jouer(&self, mut producteur: ProducteurSon) -> Resultat<FluxSon> {
+        let format = FormatPartage::nouveau();
+        let lu = format.clone();
+        let mut mono = Vec::new();
+        let flux = self.audio.ouvrir_sortie(
+            self.identifiant(SensAudio::Sortie).as_deref(),
+            Box::new(move |donnees| {
+                let Some((frequence, canaux)) = lu.lire() else {
+                    donnees.fill(0.0);
+                    return;
+                };
+                mono.clear();
+                mono.resize(donnees.len() / canaux, 0.0);
+                producteur(&mut mono, frequence);
+                for (trame, e) in donnees.chunks_mut(canaux).zip(&mono) {
+                    trame.fill(*e);
+                }
+            }),
+            Box::new(|_| {}),
+        )?;
+        format.definir(flux.format());
+        Ok(FluxSon::nouveau(flux))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    #[derive(Default)]
+    struct Fac {
+        entree: Mutex<Option<RecepteurAudio>>,
+        sortie: Mutex<Option<FournisseurAudio>>,
+        demandes: Mutex<Vec<Option<String>>>,
+    }
+
+    struct FluxFac;
+
+    impl FluxAudio for FluxFac {
+        fn format(&self) -> FormatAudio {
+            FormatAudio {
+                frequence: 44_100,
+                canaux: 2,
+            }
+        }
+        fn peripherique(&self) -> &str {
+            "micro:usb"
+        }
+    }
+
+    impl SystemeAudio for Fac {
+        fn disponible(&self) -> bool {
+            true
+        }
+        fn peripheriques(&self, _: SensAudio) -> Resultat<Vec<PeripheriqueAudio>> {
+            Ok(vec![PeripheriqueAudio {
+                id: "micro:usb".into(),
+                nom: "USB".into(),
+                defaut: false,
+            }])
+        }
+        fn ouvrir_entree(
+            &self,
+            id: Option<&str>,
+            echantillons: RecepteurAudio,
+            _: SignalErreurAudio,
+        ) -> Resultat<Box<dyn FluxAudio>> {
+            self.demandes.lock().unwrap().push(id.map(str::to_string));
+            *self.entree.lock().unwrap() = Some(echantillons);
+            Ok(Box::new(FluxFac))
+        }
+        fn ouvrir_sortie(
+            &self,
+            id: Option<&str>,
+            echantillons: FournisseurAudio,
+            _: SignalErreurAudio,
+        ) -> Resultat<Box<dyn FluxAudio>> {
+            self.demandes.lock().unwrap().push(id.map(str::to_string));
+            *self.sortie.lock().unwrap() = Some(echantillons);
+            Ok(Box::new(FluxFac))
+        }
+    }
+
+    #[test]
+    fn le_son_des_messages_passe_par_le_peripherique_choisi_en_mono() {
+        let fac = Arc::new(Fac::default());
+        let son = SonPeripheriques::nouveau(
+            fac.clone(),
+            Arc::new(|sens| match sens {
+                SensAudio::Entree => Some("micro:usb".into()),
+                SensAudio::Sortie => Some("debranche".into()),
+            }),
+        );
+        let recu = Arc::new(Mutex::new(Vec::new()));
+        let copie = recu.clone();
+        let _micro = son
+            .ecouter(Box::new(move |e, taux| {
+                copie.lock().unwrap().push((e.to_vec(), taux))
+            }))
+            .unwrap();
+        (fac.entree.lock().unwrap().as_mut().unwrap())(&[1.0, 0.0, 0.5, 0.5]);
+        assert_eq!(*recu.lock().unwrap(), vec![(vec![0.5, 0.5], 44_100)]);
+        let _sortie = son
+            .jouer(Box::new(|tampon, taux| {
+                assert_eq!(taux, 44_100);
+                tampon.fill(0.25)
+            }))
+            .unwrap();
+        let mut tampon = [0.0; 4];
+        (fac.sortie.lock().unwrap().as_mut().unwrap())(&mut tampon);
+        assert_eq!(tampon, [0.25; 4]);
+        assert_eq!(
+            *fac.demandes.lock().unwrap(),
+            vec![Some("micro:usb".to_string()), None]
+        );
+    }
+
+    #[test]
+    fn sans_peripherique_le_micro_et_la_sortie_repondent_sans_paniquer() {
+        let son = SonPeripheriques::par_defaut(Arc::new(AudioSysteme));
+        let micro = son.ecouter(Box::new(|_, _| {}));
+        let sortie = son.jouer(Box::new(|tampon, _| tampon.fill(0.0)));
+        println!(
+            "micro : {:?}, sortie : {:?}",
+            micro.as_ref().err(),
+            sortie.as_ref().err()
+        );
+    }
 
     #[test]
     fn la_liste_des_peripheriques_ne_panique_pas_sans_carte_son() {

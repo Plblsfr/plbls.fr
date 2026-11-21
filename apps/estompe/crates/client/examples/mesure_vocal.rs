@@ -78,8 +78,10 @@ fn voix_48k() -> Vec<f32> {
         .position(|w| w == b"data")
         .map_or(44, |i| i + 8);
     VOIX[debut..]
-        .chunks_exact(2)
-        .map(|o| f32::from(i16::from_le_bytes([o[0], o[1]])) / 32_768.0)
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|o| f32::from(i16::from_le_bytes(*o)) / 32_768.0)
         .flat_map(|e| [e; 3])
         .collect()
 }

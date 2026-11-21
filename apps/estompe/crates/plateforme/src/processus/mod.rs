@@ -1,6 +1,7 @@
 use crate::traits::{CompteursProcessus, InfosMachine, MesureProcessus};
 use crate::{Erreur, Resultat};
 
+mod commande;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(windows)]
@@ -10,6 +11,8 @@ mod windows;
 use linux as os;
 #[cfg(windows)]
 use windows as os;
+
+pub use commande::commande_d_arriere_plan;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MesureSysteme;

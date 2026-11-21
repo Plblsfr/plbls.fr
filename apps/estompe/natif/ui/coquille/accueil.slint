@@ -1,11 +1,13 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
-import { Icone, Bouton, VarianteBouton, Compteur, Etiquette, Vide, Defilement } from "../composants.slint";
-import { DonneesCoquille, LigneRattrapage, LigneVocal } from "donnees.slint";
+import { Icone, Bouton, VarianteBouton, Compteur, Etiquette, Vide, Defilement, Avatar } from "../composants.slint";
+import { DonneesCoquille, LigneRattrapage, LigneVocal, LigneContact } from "donnees.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
 
 component Carte inherits Rectangle {
     in property <string> titre;
     in property <string> note;
+    in property <string> action;
+    callback agir();
     border-radius: Rayon.l;
     background: Theme.surface;
     border-width: 1px;
@@ -30,6 +32,13 @@ component Carte inherits Rectangle {
                 color: Theme.gris;
                 font-size: Typo.petit;
                 vertical-alignment: center;
+            }
+            if root.action != "": Bouton {
+                texte: root.action;
+                variante: VarianteBouton.fantome;
+                clique => {
+                    root.agir();
+                }
             }
         }
         @children
@@ -153,8 +162,80 @@ component VocalAccueil {
     }
 }
 
+component PersonneAccueil {
+    in property <LigneContact> ligne;
+    width: 220px;
+    height: 56px;
+    accessible-role: button;
+    accessible-label: root.ligne.pseudo;
+    accessible-description: root.ligne.detail;
+    accessible-action-default => {
+        DonneesCoquille.ouvrir-prive(root.ligne.id);
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: zone.has-hover ? Theme.papier-2 : transparent;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesCoquille.ouvrir-prive(root.ligne.id);
+        }
+    }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.ligne.pseudo;
+                initiales: root.ligne.initiales;
+                teinte: root.ligne.teinte;
+                presence: root.ligne.presence;
+                fond: Theme.surface;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: root.ligne.pseudo;
+                color: Theme.encre;
+                font-size: 14px;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            Text {
+                text: root.ligne.detail;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component EnLigne inherits Carte {
+    titre: "En ligne";
+    note: DonneesCoquille.accueil.contacts;
+    FlexboxLayout {
+        alignment: start;
+        spacing: 4px;
+        for ligne in DonneesCoquille.contacts: PersonneAccueil {
+            ligne: ligne;
+        }
+    }
+}
+
 component Rattrapage inherits Carte {
     titre: "À rattraper";
+    action: "Tout marquer lu";
+    agir => {
+        DonneesCoquille.tout-lire();
+    }
     VerticalLayout {
         spacing: 2px;
         for ligne in DonneesCoquille.rattrapage: LigneAccueil {
@@ -309,6 +390,7 @@ export component VueAccueil {
                 if DonneesCoquille.rattrapage.length > 0: Rattrapage { }
                 if DonneesCoquille.vocaux.length > 0: EnCeMoment { }
             }
+            if DonneesCoquille.contacts.length > 0: EnLigne { }
             if !DonneesCoquille.accueil.sans-serveur: Vide {
                 icone: "bulle";
                 titre: "Choisis une conversation";

@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
 import { Anneau } from "../composants/focus.slint";
 import { Icone, Infobulle, Etiquette, BadgeRole, GenreBadgeRole, TexteRiche, BlocTexte, Avatar, Bouton, VarianteBouton } from "../composants.slint";
+import { MessageVocal, VocalIllisible } from "vocal.slint";
 import { DonneesMessagerie, AnnexesMessage, PieceJointe, GenrePieceJointe, EtatTelechargement, ReactionMessage, LecteurMessage, CarteLien, GenreCarte, SondageMessage, OptionSondage } from "donnees.slint";
 
 component Puce inherits Rectangle {
@@ -140,7 +141,7 @@ component PuceInactive inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Icone {
-                nom: root.piece.genre == GenrePieceJointe.media ? (root.piece.vocal ? "onde" : "film") : root.piece.genre == GenrePieceJointe.image ? "image" : "trombone";
+                nom: root.piece.vocal ? "mic" : root.piece.genre == GenrePieceJointe.media ? "film" : root.piece.genre == GenrePieceJointe.image ? "image" : "trombone";
                 taille: 15px;
                 couleur: Theme.gris;
             }
@@ -196,24 +197,79 @@ component PieceJointeVue inherits HorizontalLayout {
         piece: root.piece;
         message: root.message;
     }
-    if root.piece.genre == GenrePieceJointe.media || root.piece.genre == GenrePieceJointe.expiree || (root.piece.genre == GenrePieceJointe.image && root.piece.echec): PuceInactive {
+    if root.piece.genre == GenrePieceJointe.media && root.piece.vocal && !root.piece.echec: VerticalLayout {
+        spacing: 3px;
+        MessageVocal {
+            piece: root.piece;
+            message: root.message;
+        }
+        if root.piece.note != "": Text {
+            text: root.piece.note;
+            color: root.piece.telechargement == EtatTelechargement.echec ? Theme.danger : Theme.gris;
+            font-size: 11.5px;
+            overflow: elide;
+        }
+    }
+    if root.piece.genre == GenrePieceJointe.media && root.piece.vocal && root.piece.echec: VocalIllisible {
+        piece: root.piece;
+        message: root.message;
+    }
+    if (root.piece.genre == GenrePieceJointe.media && !root.piece.vocal) || root.piece.genre == GenrePieceJointe.expiree || (root.piece.genre == GenrePieceJointe.image && root.piece.echec): PuceInactive {
         piece: root.piece;
     }
 }
 
 component ReactionVue inherits Rectangle {
     in property <ReactionMessage> reaction;
+    in property <string> message;
+    in property <bool> actif: false;
     height: 28px;
     width: contenu.preferred-width;
     border-radius: Rayon.pilule;
     background: root.reaction.moi ? Theme.rose : bulle.visible-maintenant ? Theme.rose-doux : Theme.surface;
     border-width: root.reaction.moi ? 1.5px : 1px;
     border-color: root.reaction.moi ? Theme.rose-fonce : Theme.trait;
-    accessible-role: text;
+    accessible-role: button;
+    accessible-enabled: root.actif;
     accessible-label: root.reaction.emoji + " " + root.reaction.nombre;
     accessible-description: root.reaction.titre;
+    accessible-checkable: root.actif;
+    accessible-checked: root.reaction.moi;
+    accessible-action-default => {
+        root.basculer();
+    }
+    function basculer() {
+        if (root.actif) {
+            DonneesMessagerie.reagir(root.message, root.reaction.emoji);
+        }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.actif;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.basculer();
+                return accept;
+            }
+            return reject;
+        }
+    }
     bulle := Infobulle {
         texte: root.reaction.infobulle;
+        curseur: root.actif ? MouseCursor.pointer : MouseCursor.default;
+        clique => {
+            root.basculer();
+        }
         contenu := HorizontalLayout {
             padding-left: 9px;
             padding-right: 9px;
@@ -353,18 +409,85 @@ component CarteVue inherits Rectangle {
     }
 }
 
+component OutilSondage inherits Rectangle {
+    in property <string> texte;
+    in property <string> icone;
+    in property <string> libelle;
+    callback clique();
+    height: 28px;
+    width: root.texte != "" ? etiquette.preferred-width + 20px : 28px;
+    border-radius: Rayon.xs;
+    background: zone.has-hover ? Theme.rose-doux : transparent;
+    border-width: root.texte != "" ? 1px : 0;
+    border-color: Theme.trait-fort;
+    accessible-role: button;
+    accessible-label: root.texte != "" ? root.texte : root.libelle;
+    accessible-action-default => {
+        root.clique();
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.xs;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if root.texte == "": Icone {
+        nom: root.icone;
+        taille: 15px;
+        couleur: Theme.encre;
+    }
+    etiquette := Text {
+        visible: root.texte != "";
+        text: root.texte;
+        color: Theme.encre;
+        font-size: 13px;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
 component OptionVue inherits Rectangle {
     in property <OptionSondage> option;
     in property <bool> clos;
+    in property <bool> votable;
+    in property <string> message;
     property <bool> marquee: root.option.moi || root.option.gagnant;
     min-height: 40px;
     border-radius: Rayon.s;
-    background: transparent;
+    background: zone.has-hover && root.votable ? Theme.papier-2 : transparent;
     border-width: root.marquee ? 1.5px : 1px;
     border-color: root.marquee ? Theme.encre : Theme.trait-fort;
     opacity: root.clos && !root.option.gagnant ? 0.75 : 1;
-    accessible-role: text;
+    accessible-role: button;
+    accessible-enabled: root.votable;
+    accessible-checkable: true;
+    accessible-checked: root.option.moi;
     accessible-label: (root.option.gagnant ? "Gagnant : " : "") + root.option.libelle + ", " + root.option.pourcentage + " %, " + root.option.votes + " votes" + (root.option.moi ? ", ton choix" : "");
+    accessible-action-default => {
+        root.voter();
+    }
+    function voter() {
+        if (root.votable) {
+            DonneesMessagerie.voter(root.message, root.option.id);
+        }
+    }
     Rectangle {
         x: 1px;
         y: 1px;
@@ -373,6 +496,34 @@ component OptionVue inherits Rectangle {
         border-radius: Rayon.s - 1px;
         background: root.option.gagnant ? Theme.rose : root.option.moi ? Theme.rose-doux : Theme.papier-2;
         animate width { duration: Mouvement.d-l; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.s;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.votable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.voter();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.votable;
+        mouse-cursor: root.votable ? pointer : default;
+        clicked => {
+            root.voter();
+        }
     }
     HorizontalLayout {
         padding-left: 12px;
@@ -472,6 +623,25 @@ export component SondageVue inherits Rectangle {
             Rectangle {
                 horizontal-stretch: 1;
             }
+            if root.sondage.gerer && !root.sondage.clos: VerticalLayout {
+                alignment: center;
+                OutilSondage {
+                    texte: "Clore";
+                    clique => {
+                        DonneesMessagerie.clore-sondage(root.message);
+                    }
+                }
+            }
+            if root.sondage.gerer: VerticalLayout {
+                alignment: center;
+                OutilSondage {
+                    icone: "corbeille";
+                    libelle: "Supprimer le sondage";
+                    clique => {
+                        DonneesMessagerie.supprimer-sondage(root.message);
+                    }
+                }
+            }
         }
         TexteRiche {
             blocs: root.question;
@@ -483,16 +653,44 @@ export component SondageVue inherits Rectangle {
         }
         VerticalLayout {
             spacing: 6px;
-            for option in root.sondage.options: OptionVue {
-                option: option;
-                clos: root.sondage.clos;
+            for option in root.sondage.options: VerticalLayout {
+                spacing: 4px;
+                OptionVue {
+                    option: option;
+                    clos: root.sondage.clos;
+                    votable: root.sondage.votable;
+                    message: root.message;
+                }
+                if root.sondage.votants-ouverts && option.votants != "": Text {
+                    text: option.votants;
+                    color: Theme.gris;
+                    font-size: 12.5px;
+                    wrap: word-wrap;
+                    accessible-role: text;
+                    accessible-label: "Votants de " + option.libelle + " : " + option.votants;
+                }
             }
         }
-        Text {
-            text: root.sondage.pied;
-            color: Theme.gris;
-            font-size: 13px;
-            font-weight: root.sondage.clos ? Typo.demi-gras : Typo.normal;
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                horizontal-stretch: 1;
+                text: root.sondage.pied;
+                color: Theme.gris;
+                font-size: 13px;
+                font-weight: root.sondage.clos ? Typo.demi-gras : Typo.normal;
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+            if root.sondage.total > 0: VerticalLayout {
+                alignment: center;
+                OutilSondage {
+                    texte: root.sondage.votants-ouverts ? "Masquer les votants" : "Voir les votants";
+                    clique => {
+                        DonneesMessagerie.basculer-votants(root.message);
+                    }
+                }
+            }
         }
     }
 }
@@ -633,9 +831,36 @@ component LecteursVue {
     }
 }
 
+component AjoutReaction inherits Rectangle {
+    in property <string> message;
+    height: 28px;
+    width: 36px;
+    border-radius: Rayon.pilule;
+    background: zone.has-hover ? Theme.rose-doux : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: button;
+    accessible-label: "Ajouter une réaction";
+    accessible-action-default => {
+        DonneesMessagerie.action-message(root.message, "reagir");
+    }
+    Icone {
+        nom: "sourire";
+        taille: 15px;
+        couleur: Theme.gris;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesMessagerie.action-message(root.message, "reagir");
+        }
+    }
+}
+
 export component AnnexesMessageVue {
     in property <AnnexesMessage> annexes;
     in property <string> message;
+    in property <bool> reagir: false;
     accessible-role: groupbox;
     accessible-label: annexes.resume;
     VerticalLayout {
@@ -670,6 +895,11 @@ export component AnnexesMessageVue {
                 spacing: 6px;
                 for reaction in root.annexes.reactions: ReactionVue {
                     reaction: reaction;
+                    message: root.message;
+                    actif: root.reagir;
+                }
+                if root.reagir && root.annexes.reactions.length > 0: AjoutReaction {
+                    message: root.message;
                 }
             }
             if root.annexes.lecteurs.length > 0: LecteursVue {

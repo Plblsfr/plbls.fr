@@ -4,6 +4,7 @@ import { DonneesCoquille, GenreVue, OngletMarge } from "donnees.slint";
 import { Bandeau } from "bandeau.slint";
 import { VueAccueil } from "accueil.slint";
 import { DonneesMessagerie } from "../messagerie/donnees.slint";
+import { DonneesRecherche } from "recherche.slint";
 import { VueMessages } from "../messagerie/vue.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
 import { VueSalonVocal } from "../vocal/vue.slint";
@@ -67,6 +68,17 @@ export component Contenu inherits Rectangle {
                     vertical-alignment: center;
                     accessible-role: text;
                     accessible-label: "Participants : \{DonneesVocal.vue.compte}";
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "cherche";
+                        description: "Rechercher ou aller à… (Ctrl+K)";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesRecherche.ouvrir();
+                        }
+                    }
                 }
                 if DonneesCoquille.epingles-disponibles: VerticalLayout {
                     alignment: center;

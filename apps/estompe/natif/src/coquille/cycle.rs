@@ -17,12 +17,20 @@ use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
 use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
+use crate::menu::Ancre;
 use crate::messagerie::medias::Medias;
 use crate::messagerie::pont::{Navigateur, Presse, SystemeFichiers};
+use crate::messagerie::selecteur::Cible as CibleSelecteur;
+use crate::messagerie::vocal::{MicroPartage, SortiePartagee};
 use crate::session::Memoire;
 use crate::vocal::{OutilsVocaux, PERIODE_MESURE};
-use crate::{DonneesCoquille, DonneesMessagerie, DonneesSaisie, Principale};
+use crate::{
+    DonneesCoquille, DonneesCreationSondage, DonneesGifs, DonneesMessageVocal, DonneesMessagerie,
+    DonneesNouveauPrive, DonneesRecherche, DonneesSaisie, DonneesSelecteur, Principale,
+};
 use estompe_client::brouillons::Brouillons;
+use estompe_client::video::Conversions;
+use estompe_plateforme::SonPeripheriques;
 
 const RAFRAICHIR_ACCUEIL: Duration = Duration::from_secs(60);
 const ATTENTE_MAX: Duration = Duration::from_secs(30);
@@ -64,6 +72,15 @@ pub trait Fabrique: Send + Sync + 'static {
     fn vocal(&self) -> Option<OutilsVocaux> {
         None
     }
+    fn conversions(&self) -> Arc<Conversions> {
+        Arc::new(Conversions::aucune())
+    }
+    fn micro(&self) -> MicroPartage {
+        Arc::new(son_par_defaut())
+    }
+    fn sortie_son(&self) -> SortiePartagee {
+        Arc::new(son_par_defaut())
+    }
 }
 
 pub struct FabriqueReelle {
@@ -76,6 +93,12 @@ pub struct FabriqueReelle {
     pub navigateur: Navigateur,
     pub dossier_donnees: Option<std::path::PathBuf>,
     pub vocal: Option<OutilsVocaux>,
+    pub conversions: Arc<Conversions>,
+    pub son: SonPeripheriques,
+}
+
+fn son_par_defaut() -> SonPeripheriques {
+    SonPeripheriques::par_defaut(Arc::new(estompe_plateforme::AudioSysteme))
 }
 
 fn noter(journal: &Option<Arc<Journal>>, niveau: Niveau, message: &str) {
@@ -169,6 +192,18 @@ impl Fabrique for FabriqueReelle {
     fn vocal(&self) -> Option<OutilsVocaux> {
         self.vocal.clone()
     }
+
+    fn conversions(&self) -> Arc<Conversions> {
+        self.conversions.clone()
+    }
+
+    fn micro(&self) -> MicroPartage {
+        Arc::new(self.son.clone())
+    }
+
+    fn sortie_son(&self) -> SortiePartagee {
+        Arc::new(self.son.clone())
+    }
 }
 
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
@@ -179,6 +214,12 @@ fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
         .unwrap_or_else(|e| e.into_inner())
         .1
         .clone()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Depot {
+    Survol(bool),
+    Fichiers(Vec<std::path::PathBuf>),
 }
 
 pub struct Coquille {
@@ -236,6 +277,22 @@ impl Coquille {
 
     pub fn fenetre_active(&self, actif: bool) {
         (self.suivi_du_focus())(actif);
+    }
+
+    pub fn suivi_du_depot(&self) -> impl Fn(&Principale, Depot) + 'static {
+        let emplacement = self.emplacement.clone();
+        move |f, depot| {
+            if let Some(pont) = pont_courant(&emplacement) {
+                match depot {
+                    Depot::Survol(survol) => pont.messagerie().survol_depot(f, survol),
+                    Depot::Fichiers(chemins) => pont.messagerie().deposer(f, chemins),
+                }
+            }
+        }
+    }
+
+    pub fn deposer(&self, f: &Principale, depot: Depot) {
+        (self.suivi_du_depot())(f, depot);
     }
 }
 
@@ -320,6 +377,30 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_abandonner_envoi, |p, _f, id| p
         .messagerie()
         .abandonner_envoi(&id));
+    rappel_messagerie!(on_action_message, |p, f, id, action| p
+        .messagerie()
+        .action_message(&f, &id, &action));
+    rappel_messagerie!(on_menu_message, |p, f, id, x, y| p
+        .messagerie()
+        .ouvrir_menu_message(&f, &id, Ancre::Point { x, y }));
+    rappel_messagerie!(on_menu_message_bouton, |p, f, id, x, haut, bas| p
+        .messagerie()
+        .ouvrir_menu_message(&f, &id, Ancre::Element { x, haut, bas }));
+    rappel_messagerie!(on_reagir, |p, _f, id, emoji| p
+        .messagerie()
+        .reagir(&id, &emoji));
+    rappel_messagerie!(on_voter, |p, _f, id, option| p
+        .messagerie()
+        .voter(&id, &option));
+    rappel_messagerie!(on_clore_sondage, |p, _f, id| p
+        .messagerie()
+        .clore_sondage(&id));
+    rappel_messagerie!(on_supprimer_sondage, |p, f, id| p
+        .messagerie()
+        .supprimer_sondage(&f, &id));
+    rappel_messagerie!(on_basculer_votants, |p, f, id| p
+        .messagerie()
+        .basculer_votants(&f, &id));
     let s = f.global::<DonneesSaisie>();
     macro_rules! rappel_saisie {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -346,6 +427,169 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
         .messagerie()
         .annuler_bandeau(&f));
     rappel_saisie!(on_fleche_haut, |p, f| p.messagerie().fleche_haut(&f));
+    rappel_saisie!(on_curseur_deplace, |p, f, texte, curseur| p
+        .messagerie()
+        .curseur_deplace(&f, &texte, curseur));
+    rappel_saisie!(on_naviguer, |p, f, pas| p
+        .messagerie()
+        .naviguer_propositions(&f, pas));
+    rappel_saisie!(on_choisir, |p, f, index| {
+        if p.messagerie().choisir_proposition(&f, index) {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_saisie!(on_fermer_propositions, |p, f| p
+        .messagerie()
+        .fermer_propositions(&f));
+    rappel_saisie!(on_joindre, |p, _f| p.messagerie().choisir_pieces());
+    rappel_saisie!(on_creer_sondage, |p, f| p
+        .messagerie()
+        .ouvrir_creation_sondage(&f));
+    rappel_saisie!(on_retirer_piece, |p, f, cle| p
+        .messagerie()
+        .retirer_piece(&f, cle));
+    rappel_saisie!(on_reessayer_piece, |p, f, cle| p
+        .messagerie()
+        .reessayer_piece(&f, cle));
+    {
+        let source = source.clone();
+        let faible = f.as_weak();
+        s.on_coller(move || match (source(), faible.upgrade()) {
+            (Some(p), Some(f)) => p.messagerie().coller(&f),
+            _ => false,
+        });
+    }
+    rappel_saisie!(on_ouvrir_selecteur, |p, f| p
+        .messagerie()
+        .ouvrir_selecteur(&f, CibleSelecteur::Saisie));
+    let vocal = f.global::<DonneesMessageVocal>();
+    macro_rules! rappel_vocal {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            vocal.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_vocal!(on_demarrer, |p, f| p.messagerie().demarrer_vocal(&f));
+    rappel_vocal!(on_annuler, |p, f| p.messagerie().annuler_vocal(&f));
+    rappel_vocal!(on_arreter, |p, f| p.messagerie().arreter_vocal(&f));
+    rappel_vocal!(on_envoyer, |p, f| p.messagerie().envoyer_vocal(&f));
+    rappel_vocal!(on_basculer, |p, f, _message, piece| p
+        .messagerie()
+        .basculer_lecture(&f, &piece));
+    rappel_vocal!(on_placer, |p, f, _message, piece, fraction| p
+        .messagerie()
+        .placer_lecture(&f, &piece, fraction));
+    rappel_vocal!(on_changer_vitesse, |p, f| p
+        .messagerie()
+        .changer_vitesse(&f));
+    let selecteur = f.global::<DonneesSelecteur>();
+    macro_rules! rappel_selecteur {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            selecteur.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_selecteur!(on_chercher, |p, f, texte| p
+        .messagerie()
+        .selecteur()
+        .chercher(&f, &texte));
+    rappel_selecteur!(on_deplacer, |p, f, dx, dy| p
+        .messagerie()
+        .selecteur()
+        .deplacer(&f, dx, dy));
+    rappel_selecteur!(on_choisir, |p, f, index, garder| {
+        if p.messagerie()
+            .choisir_emoji(&f, usize::try_from(index).ok(), garder)
+        {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_selecteur!(on_choisir_actif, |p, f, garder| {
+        if p.messagerie().choisir_emoji(&f, None, garder) {
+            p.rafraichir_brouillons(&f);
+        }
+    });
+    rappel_selecteur!(on_survoler, |p, f, index| p
+        .messagerie()
+        .selecteur()
+        .survoler(&f, index));
+    rappel_selecteur!(on_aller_a, |p, f, onglet| p
+        .messagerie()
+        .selecteur()
+        .aller_a(&f, onglet.max(0) as usize));
+    rappel_selecteur!(on_defile, |p, f, haut, hauteur| p
+        .messagerie()
+        .selecteur()
+        .defile(&f, haut, hauteur));
+    rappel_selecteur!(on_fermer, |p, f| p.messagerie().fermer_selecteur(&f));
+    rappel_saisie!(on_ouvrir_gifs, |p, f| p.messagerie().ouvrir_gifs(&f));
+    let gifs = f.global::<DonneesGifs>();
+    macro_rules! rappel_gifs {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            gifs.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_gifs!(on_chercher, |p, _f, texte| p
+        .messagerie()
+        .chercher_gifs(&texte));
+    rappel_gifs!(on_idee, |p, f, libelle| p
+        .messagerie()
+        .idee_de_gif(&f, &libelle));
+    rappel_gifs!(on_choisir, |p, f, index| p
+        .messagerie()
+        .choisir_gif(&f, usize::try_from(index).ok()));
+    rappel_gifs!(on_choisir_actif, |p, f| p
+        .messagerie()
+        .choisir_gif(&f, None));
+    rappel_gifs!(on_deplacer, |p, f, dx, dy| p
+        .messagerie()
+        .gifs()
+        .deplacer(&f, dx, dy));
+    rappel_gifs!(on_defile, |p, f, haut, hauteur, largeur| p
+        .messagerie()
+        .defile_gifs(&f, haut, hauteur, largeur));
+    rappel_gifs!(on_fermer, |p, f| p.messagerie().fermer_gifs(&f));
+    let creation = f.global::<DonneesCreationSondage>();
+    macro_rules! rappel_creation {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let source = source.clone();
+            let faible = f.as_weak();
+            creation.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (source(), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_creation!(on_modifie, |p, f| p.messagerie().creation_modifiee(&f));
+    rappel_creation!(on_choix_modifie, |p, f, index, texte| p
+        .messagerie()
+        .choix_modifie(&f, index, &texte));
+    rappel_creation!(on_ajouter_choix, |p, f| p.messagerie().ajouter_choix(&f));
+    rappel_creation!(on_retirer_choix, |p, f, index| p
+        .messagerie()
+        .retirer_choix(&f, index));
+    rappel_creation!(on_choisir_cloture, |p, f, index| p
+        .messagerie()
+        .choisir_cloture(&f, index));
+    rappel_creation!(on_publier, |p, f| p.messagerie().publier_sondage(&f));
+    rappel_creation!(on_fermer, |p, f| p.messagerie().fermer_creation_sondage(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -385,6 +629,71 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel!(on_onglet_marge_choisi, |p, f, onglet| p
         .choisir_onglet_marge(&f, onglet));
     rappel!(on_epingles_bascule, |p, f| p.basculer_epingles(&f));
+    rappel!(on_menu_salon, |p, f, id, x, y| p.menu_salon(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
+    rappel!(on_menu_prive, |p, f, id, x, y| p.menu_prive(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
+    rappel!(on_menu_membre, |p, f, id, x, y| p.menu_membre(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
+    rappel!(on_menu_moi, |p, f, x, haut, bas| p
+        .menu_moi(&f, Ancre::Element { x, haut, bas }));
+    rappel!(on_tout_lire, |p, _f| p.tout_lire());
+    rappel!(on_nouveau_prive, |p, f| p.ouvrir_nouveau_prive(&f));
+    let nouveau = f.global::<DonneesNouveauPrive>();
+    macro_rules! rappel_nouveau {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            nouveau.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_nouveau!(on_modifie, |p, f, texte| p
+        .nouveau_prive_modifie(&f, &texte));
+    rappel_nouveau!(on_naviguer, |p, f, pas| p.naviguer_nouveau_prive(&f, pas));
+    rappel_nouveau!(on_choisir, |p, f, index| p.choisir_personne(&f, index));
+    rappel_nouveau!(on_valider, |p, f| p.valider_nouveau_prive(&f));
+    rappel_nouveau!(on_fermer_liste, |p, f| p.fermer_liste_nouveau_prive(&f));
+    rappel_nouveau!(on_fermer, |p, f| p.fermer_nouveau_prive(&f));
+    let recherche = f.global::<DonneesRecherche>();
+    macro_rules! rappel_recherche {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            recherche.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_recherche!(on_ouvrir, |p, f| p.ouvrir_recherche(&f));
+    rappel_recherche!(on_modifie, |p, f, texte| p.recherche_modifiee(&f, &texte));
+    rappel_recherche!(on_naviguer, |p, f, pas| p.naviguer_recherche(&f, pas));
+    rappel_recherche!(on_completer, |p, f| p.completer_recherche(&f));
+    rappel_recherche!(on_valider, |p, f| p.valider_recherche(&f));
+    rappel_recherche!(on_choisir_entree, |p, f, index| p.choisir_entree(&f, index));
+    rappel_recherche!(on_choisir_portee, |p, f, index| p.choisir_portee(&f, index));
+    rappel_recherche!(on_choisir_tri, |p, f, par_date| p.choisir_tri(&f, par_date));
+    rappel_recherche!(on_ouvrir_resultat, |p, f, id| p.ouvrir_resultat(&f, &id));
+    rappel_recherche!(on_chercher_recente, |p, f, texte| p
+        .chercher_recente(&f, &texte));
+    rappel_recherche!(on_effacer_recentes, |p, f| p.effacer_recentes(&f));
+    rappel_recherche!(on_defile, |p, f, haut, vue, contenu| p
+        .defile_recherche(&f, haut, vue, contenu));
+    rappel_recherche!(on_fermer, |p, f| p.fermer_recherche(&f));
     let source = emplacement.clone();
     brancher_messagerie(f, Arc::new(move || pont_courant(&source)));
     let source = emplacement.clone();
@@ -585,10 +894,24 @@ async fn session(
     pont.messagerie()
         .definir_presse_papiers(contexte.fabrique.presse_papiers());
     pont.messagerie()
+        .definir_conversions(contexte.fabrique.conversions());
+    pont.messagerie()
+        .definir_son(contexte.fabrique.micro(), contexte.fabrique.sortie_son());
+    let memoire = contexte.memoire.clone();
+    pont.messagerie().definir_ecoutes(
+        contexte.memoire.lire(|p| p.vocaux_ecoutes.clone()),
+        Arc::new(move |ecoutes| memoire.modifier(|p| p.vocaux_ecoutes = ecoutes)),
+    );
+    pont.messagerie()
         .saisie()
         .definir_brouillons(contexte.fabrique.brouillons());
     pont.messagerie()
         .definir_apercus(contexte.memoire.lire(|p| p.apercus));
+    let memoire = contexte.memoire.clone();
+    pont.messagerie().selecteur().definir_recents(
+        contexte.memoire.lire(|p| p.emoji_recents.clone()),
+        Arc::new(move |recents| memoire.modifier(|p| p.emoji_recents = recents)),
+    );
     if !contexte.focus.load(Ordering::SeqCst) {
         pont.messagerie().fenetre_active(false);
     }

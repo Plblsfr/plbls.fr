@@ -22,7 +22,8 @@ pub use etat::{
 pub use reconciliation::reconcilier;
 pub use reducteur::{
     appliquer, appliquer_avec_effets, decision_lecture, definir_bas_de_liste, definir_focus,
-    lire_conversation, ouvrir_conversation, Application, Avis, Changement, Effet,
+    lire_conversation, marquer_non_lu, ouvrir_conversation, tout_lire, Application, Avis,
+    Changement, Effet,
 };
 
 use crate::derniere_vue::{adresse_a_rouvrir, conversation_de_la_derniere_vue, DerniereVue};
@@ -274,6 +275,31 @@ impl Store {
         self.executer(effets).await;
     }
 
+    pub async fn tout_lire(&self) {
+        let effets = self.appliquer_application(tout_lire);
+        self.executer(effets).await;
+    }
+
+    pub async fn ouvrir_message_prive(&self, pseudo: &str) -> Result<String, ErreurApi> {
+        let dm = self.client().ouvrir_conversation_privee(pseudo).await?;
+        let id = id_de(&dm.id).to_string();
+        self.modifier(|etat| {
+            let mut changements = Vec::new();
+            let autre = dm.other.as_ref().map(|p| id_de(&p.id).to_string());
+            if let Some(autre) = autre.filter(|_| dm.online == Some(true)) {
+                if etat.en_ligne.insert(autre.clone()) {
+                    changements.push(Changement::Presence { utilisateur: autre });
+                }
+            }
+            if !etat.messages_prives.iter().any(|d| id_de(&d.id) == id) {
+                etat.messages_prives.insert(0, dm);
+                changements.push(Changement::MessagesPrives);
+            }
+            ((), changements)
+        });
+        Ok(id)
+    }
+
     pub async fn definir_focus(&self, focus: bool) {
         let effets = self.appliquer_application(|etat| definir_focus(etat, focus));
         self.executer(effets).await;
@@ -496,6 +522,27 @@ mod tests {
 
     fn cle(texte: &str) -> CleConversation {
         CleConversation::analyser(texte).unwrap()
+    }
+
+    #[test]
+    fn une_capacite_suit_allow_et_deny_comme_le_front() {
+        let mut etat = Etat::default();
+        assert!(
+            etat.capacite("gifs.use"),
+            "sans capacités annoncées, tout est permis"
+        );
+        etat.compte.capabilities = Some(
+            serde_json::from_value(json!({
+                "estompe:gifs.use": {"allow": ["*"], "deny": []},
+                "estompe:videos.use": {"allow": ["*"], "deny": ["*"]},
+                "estompe:vocal.screen": {"allow": ["srv-2"], "deny": []}
+            }))
+            .unwrap(),
+        );
+        assert!(etat.capacite("gifs.use"));
+        assert!(!etat.capacite("videos.use"));
+        assert!(!etat.capacite("vocal.screen"));
+        assert!(!etat.capacite("admin.users"));
     }
 
     #[tokio::test]
@@ -817,6 +864,177 @@ mod tests {
         assert_eq!(store.lire(|e| e.presence_de("me")), Presence::NePasDeranger);
         store.definir_activite_locale("Tetris");
         assert_eq!(store.lire(|e| e.activite_de("me").to_string()), "Tetris");
+    }
+
+    fn relayer(
+        serveur: &ServeurFactice,
+        methode: &str,
+        chemin: &str,
+        vers: &mpsc::UnboundedSender<Signal>,
+        trame: impl Fn(&crate::serveur_factice::Requete) -> (&'static str, serde_json::Value)
+            + Send
+            + Sync
+            + 'static,
+    ) {
+        let vers = vers.clone();
+        serveur.router_dynamique(methode, chemin, move |requete| {
+            let (type_evenement, data) = trame(requete);
+            let _ = vers.send(Signal::Evenement(Box::new(evenement(type_evenement, data))));
+            Reponse::vide(204)
+        });
+    }
+
+    #[tokio::test]
+    async fn tout_marquer_lu_vide_les_pastilles_ici_et_sur_un_autre_appareil() {
+        let serveur = monde(monde_a()).await;
+        programmer(
+            &serveur,
+            vec![(
+                "/unread",
+                json!({"channels": ["c1", "c3"], "dms": ["d1"], "counts": {"c1": 3, "c3": 1, "d1": 2}}),
+            )],
+        );
+        serveur.router("POST", "/notifications/read", Reponse::vide(204));
+        let (vers_autre, flux_autre) = FluxTempsReel::factice();
+        for (chemin, salon, prive) in [
+            ("/channels/c1/read", Some("c1"), None),
+            ("/channels/c3/read", Some("c3"), None),
+            ("/dms/d1/read", None, Some("d1")),
+        ] {
+            relayer(&serveur, "POST", chemin, &vers_autre, move |_| {
+                (
+                    "read.updated",
+                    json!({"channel_id": salon, "dm_id": prive, "user_id": "me", "pseudo": "moi", "last_id": "9", "read_at": ""}),
+                )
+            });
+        }
+        let ici = Store::nouveau(serveur.client(), &[]);
+        let ailleurs = Store::nouveau(serveur.client(), &[]);
+        ici.charger().await.unwrap();
+        ailleurs.charger().await.unwrap();
+        let pastilles = |e: &Etat| (e.non_lus.values().sum::<i64>(), e.total_mentions());
+        assert_eq!(ailleurs.lire(pastilles), (6, 1));
+        let mut abonne = ailleurs.abonner();
+        let suivi = ailleurs.brancher(flux_autre);
+        let avant = serveur.requetes().len();
+        ici.tout_lire().await;
+        assert_eq!(ici.lire(pastilles), (0, 0));
+        let mut lignes: Vec<_> = serveur
+            .requetes()
+            .into_iter()
+            .skip(avant)
+            .map(|r| (r.chemin.clone(), r.methode.clone()))
+            .collect();
+        lignes.sort();
+        assert_eq!(
+            lignes,
+            [
+                ("/channels/c1/read".to_string(), "POST".to_string()),
+                ("/channels/c3/read".to_string(), "POST".to_string()),
+                ("/dms/d1/read".to_string(), "POST".to_string()),
+                ("/notifications/read".to_string(), "POST".to_string()),
+            ]
+        );
+        attendre(&ailleurs, &mut abonne, &mut Vec::new(), |e| {
+            pastilles(e) == (0, 0)
+        })
+        .await;
+        suivi.abort();
+    }
+
+    #[tokio::test]
+    async fn un_changement_de_statut_est_vu_par_un_autre_client_en_temps_reel() {
+        let serveur = monde(monde_a()).await;
+        let (vers_autre, flux_autre) = FluxTempsReel::factice();
+        relayer(&serveur, "PUT", "/me/status", &vers_autre, |requete| {
+            (
+                "status.updated",
+                json!({"user_id": "me", "status": requete.json()["status"]}),
+            )
+        });
+        let moi = Store::nouveau(serveur.client(), &[]);
+        let autre = Store::nouveau(serveur.client(), &[]);
+        moi.charger().await.unwrap();
+        autre.charger().await.unwrap();
+        let mut abonne = autre.abonner();
+        let suivi = autre.brancher(flux_autre);
+        for (statut, presence) in [
+            (StatutPresence::Dnd, Presence::NePasDeranger),
+            (StatutPresence::Idle, Presence::Absent),
+            (StatutPresence::Online, Presence::EnLigne),
+        ] {
+            moi.definir_statut(statut).await.unwrap();
+            assert_eq!(moi.lire(|e| e.presence_de("me")), presence);
+            let mut recus = Vec::new();
+            attendre(&autre, &mut abonne, &mut recus, |e| {
+                e.presence_de("me") == presence
+            })
+            .await;
+            while let Ok(lot) = abonne.try_recv() {
+                recus.extend(lot);
+            }
+            assert!(recus.contains(&Changement::Presence {
+                utilisateur: "me".into()
+            }));
+        }
+        suivi.abort();
+    }
+
+    #[tokio::test]
+    async fn ouvrir_un_message_prive_avec_une_personne_deja_en_conversation_retrouve_l_existante() {
+        let serveur = monde(monde_a()).await;
+        serveur.router(
+            "POST",
+            "/dms",
+            Reponse::json(
+                200,
+                json!({"id": "d1", "other": {"id": "dave", "pseudo": "dave"}, "online": true}),
+            ),
+        );
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        let mut abonne = store.abonner();
+        assert_eq!(store.ouvrir_message_prive("dave").await.unwrap(), "d1");
+        assert_eq!(store.lire(|e| e.messages_prives.len()), 1);
+        assert!(abonne.try_recv().is_err());
+        assert_eq!(
+            serveur.requetes().last().unwrap().json(),
+            json!({"pseudo": "dave"})
+        );
+        serveur.router(
+            "POST",
+            "/dms",
+            Reponse::json(
+                200,
+                json!({"id": "d2", "other": {"id": "carol", "pseudo": "carol"}, "online": true}),
+            ),
+        );
+        assert_eq!(store.ouvrir_message_prive("carol").await.unwrap(), "d2");
+        let ids: Vec<String> = store.lire(|e| {
+            e.messages_prives
+                .iter()
+                .map(|d| id_de(&d.id).to_string())
+                .collect()
+        });
+        assert_eq!(ids, ["d2", "d1"]);
+        assert!(abonne
+            .try_recv()
+            .unwrap()
+            .contains(&Changement::MessagesPrives));
+        serveur.router(
+            "POST",
+            "/dms",
+            Reponse::json(
+                404,
+                json!({"error": "user_not_found", "message": "introuvable"}),
+            ),
+        );
+        let erreur = store.ouvrir_message_prive("zoe").await.unwrap_err();
+        assert_eq!(
+            crate::nouveau_prive::message_d_erreur(&erreur),
+            "Aucun utilisateur avec ce pseudo."
+        );
+        assert_eq!(store.lire(|e| e.messages_prives.len()), 2);
     }
 
     #[tokio::test]
