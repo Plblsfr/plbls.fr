@@ -107,6 +107,14 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-camera-erreur-clair", Clair, vocal_camera_erreur;
     "vocal-camera-active-sombre", Sombre, vocal_camera_active;
     "vocal-12-clair", Clair, vocal_douze;
+    "vocal-2-clair", Clair, vocal_deux;
+    "vocal-6-clair", Clair, vocal_six;
+    "vocal-partage-attente-clair", Clair, vocal_partage_attente;
+    "vocal-partage-clair", Clair, vocal_partage;
+    "vocal-partage-sombre", Sombre, vocal_partage;
+    "vocal-partage-plein-ecran-clair", Clair, vocal_partage_plein_ecran;
+    "vocal-partage-spectateurs-clair", Clair, vocal_partage_spectateurs;
+    "vocal-partage-spectateurs-sombre", Sombre, vocal_partage_spectateurs;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
     "vocal-menu-clair", Clair, vocal_menu;
     "vocal-moderation-clair", Clair, vocal_moderation;
@@ -786,6 +794,87 @@ fn vocal_douze(f: &Principale) {
             attribut(v, "jules", "muted");
         },
     );
+}
+
+fn vocal_deux(f: &Principale) {
+    vocal_avec(
+        f,
+        2,
+        |_| {},
+        |v| {
+            v.parlent.insert("carol".into());
+        },
+    );
+}
+
+fn vocal_six(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        6,
+        |_| {},
+        |v| {
+            v.videos.insert(CleVideo::camera("dave"));
+            attribut(v, "farid", "muted");
+        },
+    );
+    let mire = Mire::nouvelle(1280, 720).image(10);
+    pont.vocal()
+        .poser_image_video(f, &CleVideo::camera("dave"), &mire);
+    stabiliser(f);
+}
+
+fn avec_partage(v: &mut EtatVocal, regarde: bool) {
+    let cle = CleVideo::partage("carol");
+    v.videos.insert(cle.clone());
+    v.pistes.insert(cle, "TR_carol_ecran".into());
+    v.sons_partage.insert("carol".into());
+    if regarde {
+        v.regardes.insert("carol".into(), true);
+        v.vus.insert("TR_carol_ecran".into());
+    }
+    for identite in ["dave", "Élise"] {
+        if let Some(p) = v.participants.get_mut(identite) {
+            p.attributs
+                .insert("watching".to_string(), "TR_carol_ecran".to_string());
+        }
+    }
+}
+
+fn partage_affiche(f: &Principale, pont: &Pont) {
+    let mire = Mire::nouvelle(1920, 1080).image(30);
+    pont.vocal()
+        .poser_image_video(f, &CleVideo::partage("carol"), &mire);
+    stabiliser(f);
+}
+
+fn vocal_partage_attente(f: &Principale) {
+    vocal_avec(f, 4, |_| {}, |v| avec_partage(v, false));
+}
+
+fn vocal_partage(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        4,
+        |_| {},
+        |v| {
+            avec_partage(v, true);
+            v.parlent.insert("dave".into());
+        },
+    );
+    partage_affiche(f, &pont);
+}
+
+fn vocal_partage_plein_ecran(f: &Principale) {
+    let pont = vocal_avec(f, 4, |_| {}, |v| avec_partage(v, true));
+    pont.vocal().plein_ecran(f, "carol#screen");
+    partage_affiche(f, &pont);
+}
+
+fn vocal_partage_spectateurs(f: &Principale) {
+    let pont = vocal_avec(f, 4, |_| {}, |v| avec_partage(v, true));
+    partage_affiche(f, &pont);
+    pont.vocal().ouvrir_menu_partage(f, "carol");
+    stabiliser(f);
 }
 
 fn vocal_reconnexion(f: &Principale) {

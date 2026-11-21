@@ -12,10 +12,10 @@ use estompe_client::audio::{
 use estompe_client::route::Route;
 use estompe_client::store::{est_vocal, Avis, Changement, GenreSalon, Store};
 use estompe_client::video::ffmpeg_du_systeme;
-use estompe_client::vocal::{message_camera, ApercuCamera, QualiteCamera};
+use estompe_client::vocal::{message_camera, ApercuCamera, Epinglage, QualiteCamera, QualiteRecue};
 use estompe_client::vocal::{
     AvisVocal, CleVideo, DemandeVideo, EtatPtt, EtatVocal, Phase, PousserPourParler, ReglagesPtt,
-    SessionVocale, SourceAudio, SourceTouche, TrameVideo, Videos,
+    SessionVocale, SourceAudio, SourceTouche, SourceVideo, TrameVideo, Videos,
 };
 use estompe_plateforme::{
     libelle_touche, ErreurCamera, InfoCamera, RaccourcisGlobaux, SystemeCamera,
@@ -102,6 +102,26 @@ pub fn cle_apercu() -> CleVideo {
 }
 
 const ZONE_APERCU: (u32, u32) = (960, 540);
+const ZONE_BANDE: (f32, f32) = (192.0, 108.0);
+
+fn en_pixels(zone: (f32, f32), echelle: f32, defaut: (u32, u32)) -> (u32, u32) {
+    if zone.0 >= 1.0 && zone.1 >= 1.0 {
+        (
+            (zone.0 * echelle).round() as u32,
+            (zone.1 * echelle).round() as u32,
+        )
+    } else {
+        defaut
+    }
+}
+
+fn pluriel_spectateurs(n: usize) -> String {
+    match n {
+        0 => String::new(),
+        1 => "1 spectateur".to_string(),
+        n => format!("{n} spectateurs"),
+    }
+}
 
 pub type HorlogeMs = Arc<dyn Fn() -> i64 + Send + Sync>;
 
@@ -147,6 +167,10 @@ struct Interne {
     fenetre_visible: bool,
     affichage: BTreeMap<CleVideo, DemandeVideo>,
     camera: ChoixCamera,
+    epinglage: Epinglage,
+    plein_ecran: Option<String>,
+    zone_vedette: (f32, f32),
+    menu_partage: bool,
 }
 
 #[derive(Clone)]
@@ -210,7 +234,15 @@ fn participant_slint(p: &Participant, profils: &Profils) -> ParticipantVocal {
         qualite: p.qualite.into(),
         deplacable: p.deplacable,
         video: p.indice_video,
-        libelle_video: "caméra".into(),
+        libelle_video: if p.partage { "écran" } else { "caméra" }.into(),
+        cle: p.cle.as_str().into(),
+        partage: p.partage,
+        regarde: p.regarde,
+        vedette: p.vedette,
+        rang: p.rang,
+        spectateurs: pluriel_spectateurs(p.spectateurs.len()).into(),
+        noms_spectateurs: p.spectateurs.join(", ").into(),
+        son_partage: p.son_partage,
         portrait: if p.portrait {
             p.avatar
                 .as_ref()
@@ -238,6 +270,9 @@ fn vue_slint(v: &Vue) -> VueVocal {
         seul: v.seul,
         colonnes: v.colonnes,
         rangees: v.rangees,
+        vedette: v.vedette,
+        bande: v.bande,
+        plein_ecran: v.plein_ecran.as_str().into(),
     }
 }
 
@@ -285,6 +320,24 @@ fn menu_slint(m: &Menu) -> MenuVocal {
         )),
         peut_deconnecter: m.peut_deconnecter,
         erreur: m.erreur.as_str().into(),
+        partage: m.partage,
+        son_partage: m.son_partage,
+        spectateurs: ModelRc::new(VecModel::from(
+            m.spectateurs
+                .iter()
+                .map(|n| slint::SharedString::from(n.as_str()))
+                .collect::<Vec<_>>(),
+        )),
+        qualites: ModelRc::new(VecModel::from(
+            QualiteRecue::TOUTES
+                .iter()
+                .map(|q| slint::SharedString::from(q.libelle()))
+                .collect::<Vec<_>>(),
+        )),
+        qualite: QualiteRecue::TOUTES
+            .iter()
+            .position(|q| *q == m.qualite_recue)
+            .unwrap_or(0) as i32,
     }
 }
 
@@ -413,6 +466,10 @@ impl PontVocal {
                 fenetre_visible: true,
                 affichage: BTreeMap::new(),
                 camera: ChoixCamera::default(),
+                epinglage: Epinglage::default(),
+                plein_ecran: None,
+                zone_vedette: (0.0, 0.0),
+                menu_partage: false,
             })),
             store,
             fenetre,
@@ -865,22 +922,33 @@ impl PontVocal {
             v.set_plein_cadre(false);
             f.window().set_fullscreen(false);
         }
+        let qualite_recue = self.preferences(|p| p.qualite_partage);
         self.store.lire(|etat| {
             let moi = etat.moi().to_string();
-            let mut tuiles = salon_vue
+            let scene = salon_vue
                 .as_deref()
-                .map(|s| projection::participants(etat, &i.etat, s, &moi, je_parle))
-                .unwrap_or_default();
-            let vue = salon_vue
-                .as_deref()
-                .map(|s| projection::vue(etat, &i.etat, s, tuiles.len()));
+                .map(|s| projection::scene(etat, &i.etat, s, &moi, je_parle, &mut i.epinglage));
+            let vedette = scene.as_ref().is_some_and(|s| s.vedette.is_some());
+            let mut tuiles = scene.map(|s| s.tuiles).unwrap_or_default();
+            if let Some(cle) = &i.plein_ecran {
+                if !tuiles.iter().any(|p| &p.cle == cle && p.video.is_some()) {
+                    i.plein_ecran = None;
+                }
+            }
+            let personnes = tuiles.iter().filter(|p| !p.partage).count();
+            let vue = salon_vue.as_deref().map(|s| {
+                let mut vue =
+                    projection::vue_de_scene(etat, &i.etat, s, personnes, tuiles.len(), vedette);
+                vue.plein_ecran = i.plein_ecran.clone().unwrap_or_default();
+                vue
+            });
             marquer_portraits(&mut tuiles, profils, &mut manquants);
-            self.projeter_videos(f, i, &mut tuiles, ici);
+            self.projeter_videos(f, i, &mut tuiles, ici, qualite_recue);
             synchroniser(
                 vec_de(&v.get_tuiles()),
                 &mut i.ombres.tuiles,
                 tuiles,
-                |p| p.utilisateur.clone(),
+                |p| p.cle.clone(),
                 |p| participant_slint(p, profils),
             );
             if i.ombres.vue != vue {
@@ -908,7 +976,12 @@ impl PontVocal {
                 i.ombres.barre = Some(barre);
             }
             if let Some((utilisateur, salon)) = &menu {
-                match projection::menu(etat, &i.etat, salon, utilisateur, &moi) {
+                let calcule = if i.menu_partage {
+                    projection::menu_partage(etat, &i.etat, utilisateur, &moi, qualite_recue)
+                } else {
+                    projection::menu(etat, &i.etat, salon, utilisateur, &moi)
+                };
+                match calcule {
                     Some(mut m) => {
                         m.erreur = i.menu_erreur.clone();
                         v.set_menu(menu_slint(&m));
@@ -938,16 +1011,21 @@ impl PontVocal {
         i: &mut Interne,
         tuiles: &mut [Participant],
         ici: bool,
+        qualite_recue: QualiteRecue,
     ) {
         let session = i.outils.as_ref().map(|o| o.session.clone());
         let echelle = f.window().scale_factor();
-        let zone = if i.zone_tuile.0 >= 1.0 && i.zone_tuile.1 >= 1.0 {
-            (
-                (i.zone_tuile.0 * echelle).round() as u32,
-                (i.zone_tuile.1 * echelle).round() as u32,
-            )
-        } else {
-            ZONE_PAR_DEFAUT
+        let grille = en_pixels(i.zone_tuile, echelle, ZONE_PAR_DEFAUT);
+        let grande = en_pixels(i.zone_vedette, echelle, grille);
+        let bande = en_pixels(ZONE_BANDE, echelle, ZONE_PAR_DEFAUT);
+        let vedette = tuiles.iter().any(|p| p.vedette);
+        let plein = i.plein_ecran.clone();
+        let zone_de = |p: &Participant| match &plein {
+            Some(cle) if *cle == p.cle => Some(grande),
+            Some(_) => None,
+            None if p.vedette => Some(grande),
+            None if vedette => Some(bande),
+            None => Some(grille),
         };
         let mut voulus: Vec<FluxVoulu> = match &session {
             _ if ici && i.fenetre_visible => {
@@ -956,12 +1034,12 @@ impl PontVocal {
                     .map_or_else(|| self.videos_hors_session.clone(), |s| s.videos());
                 tuiles
                     .iter()
-                    .filter_map(|p| p.video.clone().map(|cle| (cle, p.moi)))
-                    .map(|(cle, moi)| FluxVoulu {
+                    .filter_map(|p| Some((p.video.clone()?, p.moi && !p.partage, zone_de(p)?)))
+                    .map(|(cle, miroir, zone)| FluxVoulu {
                         recepteur: videos.recepteur(&cle),
                         cle,
                         zone,
-                        miroir: moi,
+                        miroir,
                     })
                     .collect()
             }
@@ -991,13 +1069,11 @@ impl PontVocal {
         let demandes: BTreeMap<CleVideo, DemandeVideo> = distants
             .iter()
             .map(|v| {
-                (
-                    v.cle.clone(),
-                    DemandeVideo {
-                        largeur: v.zone.0.max(1),
-                        hauteur: v.zone.1.max(1),
-                    },
-                )
+                let qualite = match v.cle.source {
+                    SourceVideo::Partage => qualite_recue,
+                    SourceVideo::Camera => QualiteRecue::Auto,
+                };
+                (v.cle.clone(), qualite.demande(v.zone))
             })
             .collect();
         if demandes != i.affichage {
@@ -1283,7 +1359,13 @@ impl PontVocal {
         };
         let ici = salon_vocal_de_la_route(&self.store, &route).is_some_and(|s| etat.dans(&s));
         let plein = plein && ici;
-        self.verrou().plein_cadre = plein;
+        {
+            let mut i = self.verrou();
+            i.plein_cadre = plein;
+            if !plein {
+                i.plein_ecran = None;
+            }
+        }
         f.global::<DonneesVocal>().set_plein_cadre(plein);
         f.window().set_fullscreen(plein);
     }
@@ -1537,11 +1619,118 @@ impl PontVocal {
         {
             let mut i = self.verrou();
             i.menu = Some((utilisateur.to_string(), salon.to_string()));
+            i.menu_partage = false;
             i.menu_erreur.clear();
         }
         let v = f.global::<DonneesVocal>();
         v.set_menu(menu_slint(&menu));
         v.set_menu_ouvert(true);
+    }
+
+    pub fn ouvrir_menu_partage(&self, f: &Principale, utilisateur: &str) {
+        let etat = self.etat();
+        let qualite = self.preferences(|p| p.qualite_partage);
+        let menu = self.store.lire(|e| {
+            let moi = e.moi().to_string();
+            projection::menu_partage(e, &etat, utilisateur, &moi, qualite)
+        });
+        let Some(menu) = menu else {
+            return;
+        };
+        {
+            let mut i = self.verrou();
+            i.menu = Some((
+                utilisateur.to_string(),
+                etat.salon.clone().unwrap_or_default(),
+            ));
+            i.menu_partage = true;
+            i.menu_erreur.clear();
+        }
+        let v = f.global::<DonneesVocal>();
+        v.set_menu(menu_slint(&menu));
+        v.set_menu_ouvert(true);
+    }
+
+    fn source_du_menu(&self) -> SourceAudio {
+        if self.verrou().menu_partage {
+            SourceAudio::Partage
+        } else {
+            SourceAudio::Micro
+        }
+    }
+
+    pub fn regarder(&self, f: &Principale, utilisateur: &str, regarde: bool) {
+        if let Some(session) = self.session() {
+            session.regarder(utilisateur, Some(regarde));
+        }
+        {
+            let mut i = self.verrou();
+            i.etat.regardes.insert(utilisateur.to_string(), regarde);
+            if !regarde {
+                let cle = CleVideo::partage(utilisateur).texte();
+                if i.plein_ecran.as_deref() == Some(cle.as_str()) {
+                    i.plein_ecran = None;
+                }
+                if i.menu_partage && i.menu.as_ref().is_some_and(|(u, _)| u == utilisateur) {
+                    i.menu = None;
+                    i.menu_partage = false;
+                    f.global::<DonneesVocal>().set_menu_ouvert(false);
+                }
+            }
+        }
+        self.projeter(f);
+    }
+
+    pub fn epingler(&self, f: &Principale, cle: &str) {
+        {
+            let etat = self.etat();
+            let route = self.verrou().route.clone();
+            let Some(salon) = salon_vocal_de_la_route(&self.store, &route) else {
+                return;
+            };
+            let mut i = self.verrou();
+            let mut epinglage = i.epinglage.clone();
+            self.store.lire(|e| {
+                let moi = e.moi().to_string();
+                let scene = projection::scene(e, &etat, &salon, &moi, false, &mut epinglage);
+                epinglage.basculer(&scene.elements, cle);
+            });
+            i.epinglage = epinglage;
+        }
+        self.projeter(f);
+    }
+
+    pub fn plein_ecran(&self, f: &Principale, cle: &str) {
+        if cle.is_empty() {
+            self.verrou().plein_ecran = None;
+            self.basculer_plein_cadre(f, false);
+            return;
+        }
+        self.verrou().plein_ecran = Some(cle.to_string());
+        self.basculer_plein_cadre(f, true);
+        self.projeter(f);
+    }
+
+    pub fn choisir_qualite_recue(&self, f: &Principale, rang: i32) {
+        let Some(qualite) = QualiteRecue::TOUTES.get(rang.max(0) as usize).copied() else {
+            return;
+        };
+        self.retenir(|p| p.qualite_partage = qualite);
+        let mut menu = f.global::<DonneesVocal>().get_menu();
+        menu.qualite = rang;
+        f.global::<DonneesVocal>().set_menu(menu);
+        self.projeter(f);
+    }
+
+    pub fn definir_zone_vedette(&self, f: &Principale, largeur: f32, hauteur: f32) {
+        {
+            let mut i = self.verrou();
+            if i.zone_vedette == (largeur, hauteur) {
+                return;
+            }
+            i.zone_vedette = (largeur, hauteur);
+        }
+        self.projeter(f);
     }
 
     fn menu_courant(&self) -> Option<(String, String)> {
@@ -1552,13 +1741,11 @@ impl PontVocal {
         let Some((utilisateur, _)) = self.menu_courant() else {
             return;
         };
+        let source = self.source_du_menu();
         if let Some(session) = self.session() {
-            session.definir_muet(&utilisateur, SourceAudio::Micro, muet);
+            session.definir_muet(&utilisateur, source, muet);
         }
-        self.retenir(|p| {
-            p.ecoute
-                .definir_muet(&utilisateur, SourceAudio::Micro, muet)
-        });
+        self.retenir(|p| p.ecoute.definir_muet(&utilisateur, source, muet));
         let mut menu = f.global::<DonneesVocal>().get_menu();
         menu.muet = muet;
         f.global::<DonneesVocal>().set_menu(menu);
@@ -1569,14 +1756,12 @@ impl PontVocal {
             return;
         };
         let pourcent = u16::try_from(pourcent.max(0)).unwrap_or(u16::MAX);
+        let source = self.source_du_menu();
         if let Some(session) = self.session() {
-            session.definir_volume(&utilisateur, SourceAudio::Micro, pourcent);
+            session.definir_volume(&utilisateur, source, pourcent);
         }
         if fini {
-            self.retenir(|p| {
-                p.ecoute
-                    .definir_volume(&utilisateur, SourceAudio::Micro, pourcent)
-            });
+            self.retenir(|p| p.ecoute.definir_volume(&utilisateur, source, pourcent));
         }
     }
 
@@ -1646,6 +1831,7 @@ impl PontVocal {
         {
             let mut i = self.verrou();
             i.menu = None;
+            i.menu_partage = false;
             i.menu_erreur.clear();
         }
         f.global::<DonneesVocal>().set_menu_ouvert(false);
@@ -1872,6 +2058,16 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
                 }
             });
     }
+    {
+        let source = source.clone();
+        let faible = f.as_weak();
+        f.global::<DonneesVideo>()
+            .on_zone_vedette(move |largeur, hauteur| {
+                if let (Some(p), Some(f)) = (source(), faible.upgrade()) {
+                    p.definir_zone_vedette(&f, largeur, hauteur);
+                }
+            });
+    }
     let v = f.global::<DonneesVocal>();
     macro_rules! rappel {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -1942,6 +2138,17 @@ pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: Ouvertu
         &utilisateur,
         &salon
     ));
+    rappel!(on_ouvrir_menu_partage, |p, f, utilisateur| p
+        .ouvrir_menu_partage(&f, &utilisateur));
+    rappel!(on_regarder, |p, f, utilisateur, regarde| p.regarder(
+        &f,
+        &utilisateur,
+        regarde
+    ));
+    rappel!(on_epingler, |p, f, cle| p.epingler(&f, &cle));
+    rappel!(on_plein_ecran, |p, f, cle| p.plein_ecran(&f, &cle));
+    rappel!(on_choisir_qualite_recue, |p, f, rang| p
+        .choisir_qualite_recue(&f, rang));
     rappel!(on_muet_pour_moi, |p, f, muet| p.muet_pour_moi(&f, muet));
     rappel!(on_volume, |p, _f, valeur, fini| p.volume(valeur, fini));
     rappel!(on_moderer, |p, _f, micro, son| p.moderer(micro, son));

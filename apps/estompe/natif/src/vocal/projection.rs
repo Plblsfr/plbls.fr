@@ -2,7 +2,10 @@ use estompe_client::format::formater_duree;
 use estompe_client::roles::domine;
 use estompe_client::store::{Etat, GenreSalon};
 use estompe_client::vocal::salle::est_partage;
-use estompe_client::vocal::{CleVideo, EtatVocal, Phase, Qualite};
+use estompe_client::vocal::{
+    construire_elements, dimensions_grille, CleVideo, ElementScene, Epinglage, EtatVocal, Phase,
+    Qualite, QualiteRecue, SourceAudio, SourceVideo, TuileVideo,
+};
 
 use crate::coquille::avatars::CleAvatar;
 use crate::coquille::membres::cle_avatar;
@@ -35,6 +38,13 @@ pub struct Participant {
     pub deplacable: bool,
     pub video: Option<CleVideo>,
     pub indice_video: i32,
+    pub cle: String,
+    pub partage: bool,
+    pub regarde: bool,
+    pub vedette: bool,
+    pub rang: i32,
+    pub spectateurs: Vec<String>,
+    pub son_partage: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +62,9 @@ pub struct Vue {
     pub seul: bool,
     pub colonnes: i32,
     pub rangees: i32,
+    pub vedette: bool,
+    pub bande: i32,
+    pub plein_ecran: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +102,10 @@ pub struct Menu {
     pub destinations: Vec<(String, String)>,
     pub peut_deconnecter: bool,
     pub erreur: String,
+    pub partage: bool,
+    pub son_partage: bool,
+    pub spectateurs: Vec<String>,
+    pub qualite_recue: QualiteRecue,
 }
 
 pub fn barres(qualite: Qualite) -> (i32, &'static str) {
@@ -102,15 +119,8 @@ pub fn barres(qualite: Qualite) -> (i32, &'static str) {
 }
 
 pub fn grille(nombre: usize) -> (i32, i32) {
-    if nombre <= 1 {
-        return (1, 1);
-    }
-    let colonnes = match nombre {
-        0..=4 => 2,
-        5..=9 => 3,
-        _ => 4,
-    };
-    (colonnes as i32, nombre.div_ceil(colonnes) as i32)
+    let (colonnes, rangees) = dimensions_grille(nombre, false);
+    (colonnes as i32, rangees as i32)
 }
 
 pub fn ici(vocal: &EtatVocal, salon: &str) -> bool {
@@ -190,6 +200,13 @@ pub fn participants(
                 deplacable: peut_deplacer && domine(detail, moi, &utilisateur),
                 video: video_de(vocal, ici, est_moi, &utilisateur),
                 indice_video: -1,
+                cle: utilisateur.clone(),
+                partage: false,
+                regarde: false,
+                vedette: false,
+                rang: 0,
+                spectateurs: Vec::new(),
+                son_partage: false,
                 nom,
                 utilisateur,
             }
@@ -210,6 +227,136 @@ pub fn video_de(
         vocal.video(&cle)
     };
     (ici && publiee).then_some(cle)
+}
+
+pub struct Scene {
+    pub tuiles: Vec<Participant>,
+    pub elements: Vec<ElementScene>,
+    pub vedette: Option<String>,
+}
+
+fn noms(liste: Option<&Vec<(String, String)>>) -> Vec<String> {
+    liste
+        .map(|l| l.iter().map(|(_, nom)| nom.clone()).collect())
+        .unwrap_or_default()
+}
+
+pub fn scene(
+    etat: &Etat,
+    vocal: &EtatVocal,
+    salon: &str,
+    moi: &str,
+    je_parle: bool,
+    epinglage: &mut Epinglage,
+) -> Scene {
+    let personnes = participants(etat, vocal, salon, moi, je_parle);
+    let ici = ici(vocal, salon);
+    let nom_de = |utilisateur: &str| {
+        personnes
+            .iter()
+            .find(|p| p.utilisateur == utilisateur)
+            .map(|p| p.nom.clone())
+            .or_else(|| vocal.participants.get(utilisateur).map(|p| p.nom.clone()))
+            .unwrap_or_else(|| utilisateur.to_string())
+    };
+    let mut tuiles: Vec<TuileVideo> = personnes
+        .iter()
+        .filter_map(|p| {
+            p.video.as_ref().map(|cle| TuileVideo {
+                piste: cle.texte(),
+                utilisateur: p.utilisateur.clone(),
+                nom: p.nom.clone(),
+                partage: false,
+                recue: true,
+            })
+        })
+        .collect();
+    if ici {
+        tuiles.extend(
+            vocal
+                .videos
+                .iter()
+                .filter(|c| c.source == SourceVideo::Partage)
+                .map(|c| TuileVideo {
+                    piste: c.texte(),
+                    utilisateur: c.identite.clone(),
+                    nom: nom_de(&c.identite),
+                    partage: true,
+                    recue: vocal.regarde(&c.identite),
+                }),
+        );
+    }
+    let liste: Vec<(String, String)> = personnes
+        .iter()
+        .map(|p| (p.utilisateur.clone(), p.nom.clone()))
+        .collect();
+    let elements = construire_elements(&liste, &tuiles);
+    epinglage.nettoyer(&elements);
+    let vedette = epinglage.vedette(&elements).map(|e| e.cle.clone());
+    let spectateurs = vocal.spectateurs();
+    let mut rang = 0;
+    let tuiles = elements
+        .iter()
+        .map(|e| {
+            let mut p = personnes
+                .iter()
+                .find(|p| p.utilisateur == e.utilisateur)
+                .cloned()
+                .unwrap_or_else(|| Participant {
+                    salon: salon.to_string(),
+                    utilisateur: e.utilisateur.clone(),
+                    nom: e.nom.clone(),
+                    initiales: initiales(&e.nom),
+                    teinte: teinte(&e.utilisateur),
+                    moi: e.utilisateur == moi,
+                    parle: false,
+                    muet: false,
+                    sourd: false,
+                    micro_impose: false,
+                    son_impose: false,
+                    barres: 0,
+                    qualite: "",
+                    avatar: None,
+                    portrait: false,
+                    deplacable: false,
+                    video: None,
+                    indice_video: -1,
+                    cle: String::new(),
+                    partage: false,
+                    regarde: false,
+                    vedette: false,
+                    rang: 0,
+                    spectateurs: Vec::new(),
+                    son_partage: false,
+                });
+            p.cle = e.cle.clone();
+            if e.partage() {
+                let cle = CleVideo::partage(&e.utilisateur);
+                p.partage = true;
+                p.regarde = e.recue();
+                p.parle = false;
+                p.deplacable = false;
+                p.video = e.recue().then(|| cle.clone());
+                p.son_partage = vocal.sons_partage.contains(&e.utilisateur);
+                p.spectateurs = noms(spectateurs.get(&cle));
+            } else if let Some(cle) = &p.video {
+                p.spectateurs = noms(spectateurs.get(cle));
+            }
+            p.vedette = vedette.as_deref() == Some(e.cle.as_str());
+            if p.vedette {
+                p.rang = 0;
+            } else {
+                p.rang = rang;
+                rang += 1;
+            }
+            p
+        })
+        .collect();
+    Scene {
+        tuiles,
+        elements,
+        vedette,
+    }
 }
 
 pub fn salons_vocaux(etat: &Etat, serveur: &str) -> Vec<(String, String)> {
@@ -243,6 +390,17 @@ fn pluriel(n: usize) -> &'static str {
 }
 
 pub fn vue(etat: &Etat, vocal: &EtatVocal, salon: &str, nombre: usize) -> Vue {
+    vue_de_scene(etat, vocal, salon, nombre, nombre, false)
+}
+
+pub fn vue_de_scene(
+    etat: &Etat,
+    vocal: &EtatVocal,
+    salon: &str,
+    nombre: usize,
+    tuiles: usize,
+    vedette: bool,
+) -> Vue {
     let (serveur, nom, cinema) = etat
         .salon(salon)
         .map(|(d, s)| {
@@ -255,7 +413,7 @@ pub fn vue(etat: &Etat, vocal: &EtatVocal, salon: &str, nombre: usize) -> Vue {
         .unwrap_or_default();
     let ici = ici(vocal, salon);
     let concerne = vocal.salon.as_deref() == Some(salon) || !vocal.actif();
-    let (colonnes, rangees) = grille(nombre);
+    let (colonnes, rangees) = grille(tuiles);
     Vue {
         salon: salon.to_string(),
         nom,
@@ -278,6 +436,13 @@ pub fn vue(etat: &Etat, vocal: &EtatVocal, salon: &str, nombre: usize) -> Vue {
         seul: ici && nombre == 1,
         colonnes,
         rangees,
+        vedette,
+        bande: if vedette {
+            tuiles.saturating_sub(1) as i32
+        } else {
+            0
+        },
+        plein_ecran: String::new(),
     }
 }
 
@@ -373,6 +538,45 @@ pub fn barre(
     }
 }
 
+pub fn menu_partage(
+    etat: &Etat,
+    vocal: &EtatVocal,
+    utilisateur: &str,
+    moi: &str,
+    qualite_recue: QualiteRecue,
+) -> Option<Menu> {
+    let cle = CleVideo::partage(utilisateur);
+    if utilisateur == moi || !vocal.video(&cle) {
+        return None;
+    }
+    let salon = vocal.salon.as_deref().unwrap_or_default();
+    let nom = etat
+        .participants(salon)
+        .iter()
+        .find(|p| p.utilisateur == utilisateur)
+        .map(|p| p.pseudo.clone())
+        .or_else(|| vocal.participants.get(utilisateur).map(|p| p.nom.clone()))
+        .unwrap_or_else(|| utilisateur.to_string());
+    let source = SourceAudio::Partage;
+    Some(Menu {
+        utilisateur: utilisateur.to_string(),
+        nom: format!("Partage d'écran de {nom}"),
+        muet: vocal.ecoute.muet(utilisateur, source),
+        volume: i32::from(vocal.ecoute.volume(utilisateur, source)),
+        peut_couper_micro: false,
+        peut_couper_son: false,
+        micro_impose: false,
+        son_impose: false,
+        destinations: Vec::new(),
+        peut_deconnecter: false,
+        erreur: String::new(),
+        partage: true,
+        son_partage: vocal.sons_partage.contains(utilisateur),
+        spectateurs: noms(vocal.spectateurs().get(&cle)),
+        qualite_recue,
+    })
+}
+
 pub fn menu(
     etat: &Etat,
     vocal: &EtatVocal,
@@ -404,7 +608,7 @@ pub fn menu(
     } else {
         Vec::new()
     };
-    let source = estompe_client::vocal::SourceAudio::Micro;
+    let source = SourceAudio::Micro;
     Some(Menu {
         utilisateur: utilisateur.to_string(),
         nom,
@@ -419,6 +623,10 @@ pub fn menu(
             && participant.is_some()
             && etat.peut(serveur.as_deref(), "disconnect_members", None),
         erreur: String::new(),
+        partage: false,
+        son_partage: false,
+        spectateurs: Vec::new(),
+        qualite_recue: QualiteRecue::Auto,
     })
 }
 
@@ -649,6 +857,70 @@ mod tests {
                 serveur: None,
             })
         );
+    }
+
+    #[test]
+    fn un_partage_a_sa_tuile_apres_son_auteur_et_passe_en_grand_une_fois_regarde() {
+        let e = avec_vocal(&[("carol", "carol")]);
+        let mut v = connecte("v1");
+        let cle = CleVideo::partage("carol");
+        v.videos.insert(cle.clone());
+        v.pistes.insert(cle.clone(), "TR_c".into());
+        v.parlent.insert("carol".into());
+        let mut epinglage = Epinglage::default();
+        let s = scene(&e, &v, "v1", "me", false, &mut epinglage);
+        let resume: Vec<_> = s
+            .tuiles
+            .iter()
+            .map(|p| (p.cle.as_str(), p.partage, p.regarde, p.video.is_some()))
+            .collect();
+        assert_eq!(
+            resume,
+            [
+                ("u:me", false, false, false),
+                ("u:carol", false, false, false),
+                ("carol#screen", true, false, false)
+            ]
+        );
+        assert!(s.vedette.is_none());
+        assert!(!s.tuiles[2].parle, "pas de halo sur la tuile d'un écran");
+        v.regardes.insert("carol".into(), true);
+        v.participants
+            .get_mut("me")
+            .unwrap()
+            .attributs
+            .insert("watching".into(), "TR_c".into());
+        v.vus.insert("TR_c".into());
+        let s = scene(&e, &v, "v1", "me", false, &mut epinglage);
+        assert_eq!(s.vedette.as_deref(), Some("carol#screen"));
+        let ecran = &s.tuiles[2];
+        assert!(ecran.vedette && ecran.regarde && ecran.video == Some(cle));
+        assert_eq!(ecran.spectateurs, ["bob"]);
+        let rangs: Vec<_> = s.tuiles.iter().map(|p| p.rang).collect();
+        assert_eq!(rangs, [0, 1, 0]);
+        let vue = vue_de_scene(&e, &v, "v1", 2, 3, true);
+        assert_eq!((vue.bande, vue.resume.as_str()), (2, "2 / 10 participants"));
+        epinglage.basculer(&s.elements, "carol#screen");
+        assert!(scene(&e, &v, "v1", "me", false, &mut epinglage)
+            .vedette
+            .is_none());
+    }
+
+    #[test]
+    fn le_menu_d_un_partage_regle_son_son_et_liste_ses_spectateurs() {
+        let e = avec_vocal(&[("carol", "carol")]);
+        let mut v = connecte("v1");
+        assert!(menu_partage(&e, &v, "carol", "me", QualiteRecue::Auto).is_none());
+        let cle = CleVideo::partage("carol");
+        v.videos.insert(cle.clone());
+        v.sons_partage.insert("carol".into());
+        v.ecoute.definir_volume("carol", SourceAudio::Partage, 40);
+        let m = menu_partage(&e, &v, "carol", "me", QualiteRecue::Basse).unwrap();
+        assert_eq!(
+            (m.nom.as_str(), m.volume, m.son_partage, m.qualite_recue),
+            ("Partage d'écran de carol", 40, true, QualiteRecue::Basse)
+        );
+        assert!(m.partage && m.destinations.is_empty() && !m.peut_couper_micro);
     }
 
     #[test]

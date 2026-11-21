@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo et la caméra (voir [Vidéo](#vidéo) et [Caméra](#caméra)) ; le partage d'écran arrive au lot 5.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres et la caméra (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages) et [Caméra](#caméra)) ; publier son propre partage d'écran arrive au lot 5.
 
 ## Architecture
 
@@ -620,6 +620,7 @@ Le reste du module (état, session, mixage, faux serveur) compile et se teste sa
 | `crates/client/src/vocal/mixage.rs` | `Ecoute` (volumes et muets par participant, voix et son du partage à part, volume général ; équivalent de `gainOf`), `Limiteur`, `Mixeur` : une file par participant et par source, gain précalculé, sourdine, référence d'écho |
 | `crates/client/src/vocal/erreurs.rs` | `ErreurVocal` (salon plein, droit manquant…) et `CauseMicro` (équivalents de `micCause` et `micError`) |
 | `crates/client/src/vocal/factice.rs` | `ServeurVocalFactice` (connecteur et salles en mémoire, coupure du réseau, exclusion) et `ApiVocaleFactice` |
+| `crates/client/src/vocal/scene.rs` | scène vidéo sans interface, équivalent de `stage.ts` du front : `construire_elements` (`buildItems`), `dimensions_grille` (`gridDims`), `doit_recevoir` (`shouldSubscribe`), `rassembler_spectateurs` (`collectWatchers`), `Epinglage` (tuile mise en avant, épinglée ou détachée, comme `VoiceChannelView.svelte`), `QualiteRecue` (qualité reçue d'un partage) |
 | `crates/client/src/vocal/video.rs` | vidéo sans interface : `CleVideo` (propriétaire et source, caméra ou partage), trait `TrameVideo` (image décodée convertie en RGBA à la taille voulue), `ImageI420` (conversions BT.601, réduction, formats YUYV, NV12, RGB et gris), `Mire` (piste factice des tests et des captures), `RecepteurVideo` (dernière image seulement, compteur d'images reçues), `Videos` (un récepteur par flux) |
 | `crates/plateforme/src/camera.rs` | trait `SystemeCamera` (liste des caméras, ouverture d'un flux avec la résolution et la cadence voulues, images rendues telles que la caméra les donne : MJPEG, YUYV, NV12, gris, RGB, BGR), `ErreurCamera` (absente, introuvable, occupée, refusée, débranchée), `CamerasSysteme` (nokhwa : V4L2 sous Linux, Media Foundation sous Windows, un fil par caméra ouverte) |
 | `crates/client/src/vocal/camera.rs` | `QualiteCamera` (360p, 720p, 1080p, mêmes résolutions et débits que `CAMERA` du front), `image_i420` (MJPEG décodé par zune-jpeg), `CaptureCamera`, `ApercuCamera`, `message_camera`, `CamerasFactices` (caméras des tests : brancher, occuper, débrancher, pousser des images de la mire) |
@@ -756,6 +757,32 @@ Affichage d'une piste vidéo reçue de LiveKit, pensé pour toutes les vues vid�
   de libwebrtc). `ESTOMPE_MESURE_VIDEO_S` fixe la durée (30 s par défaut).
 - Écarts : la résolution reçue (« · 720p » du front) n'est pas affichée ; Wayland ne signale pas toujours une fenêtre masquée (le décodage continue alors) ;
   le passage des images par la mémoire (`Image::from_rgba8`) plutôt qu'une texture partagée avec Skia, que Slint 1.18 n'expose pas pour une image de modèle.
+
+### Scène vidéo et partages
+
+Disposition de la scène et visionnage d'un partage d'écran d'un autre participant, avec les règles de `stage.ts` et de `VoiceChannelView.svelte` du front.
+
+- Tuiles (`projection::scene`) : une par participant, avec sa caméra ou sa photo, puis une de plus par partage d'écran publié, juste après celle de son auteur
+  (`construire_elements`) ; un flux dont l'auteur n'est pas encore listé a quand même sa tuile. Un partage publié par le participant `<id>#screen` de l'app Tauri
+  appartient à `<id>`. Grille de `dimensions_grille` (1 à 4 colonnes).
+- « Regarder » : la tuile d'un partage non regardé montre la photo de son auteur, l'étiquette « Écran » et « Regarder ». Sans ce choix, la session ne s'abonne ni à
+  l'image ni au son du partage (`EtatVocal::regarde`, `doit_recevoir`), même si la tuile est affichée ; « Arrêter de regarder » (outils de la tuile, menu du partage)
+  désabonne les deux. Le choix est oublié quand le partage s'arrête. `Reglages::regarder_auto` (faux dans l'app native : un partage ne se regarde que sur demande) garde
+  l'équivalent de `watchAuto` du front. Le son de son propre partage n'est jamais rejoué.
+- Son du partage : la salle annonce un son de partage (`AudioPubliee`, piste `screen_share_audio` ou piste audio du participant `#screen`) sans s'y abonner ; son volume
+  et sa coupure sont propres (`SourceAudio::Partage` de `Ecoute`), réglés dans le menu du partage (clic sur la tuile ou bouton du volume) et gardés dans les préférences.
+- Mise en avant : un partage regardé passe en grand, les autres tuiles en bande dessous ; « Mettre en grand » épingle une tuile, « Détacher » la remet dans la
+  grille (`Epinglage`). Plein écran d'une tuile (double-clic ou bouton) : la fenêtre passe en plein écran avec cette seule tuile, Échap en sort.
+- Spectateurs : chaque participant publie dans l'attribut `watching` les pistes qu'il affiche (`EtatVocal::vus`, identifiants de piste LiveKit, comme le front) ;
+  `EtatVocal::spectateurs` les regroupe par flux. La tuile en montre le nombre (les noms quand elle est en grand) et le menu du partage la liste.
+- Qualité reçue (menu du partage, préférence `qualite_partage`) : « Auto » demande la taille de la tuile (le serveur choisit la couche du simulcast selon la taille et
+  la connexion, `adaptive_stream`), « 1080p », « 720p » ou « 360p » demandent cette taille quelle que soit la tuile. La tuile en grand et le plein écran demandent
+  leur taille réelle (`DonneesVideo.zone-vedette`), la bande 192 × 108.
+- Tests : `scene::tests` (un test par cas de `stage.test.ts`), `vocal::tests::sans_regarder_aucune_image_ni_son_du_partage_n_est_recu`,
+  `le_son_d_un_partage_regarde_est_mixe_avec_son_volume_propre`, `regarder_automatiquement_et_ne_jamais_rejouer_son_propre_partage` (serveur factice, mire),
+  tests d'interface de `natif/tests/vocal.rs` et captures `vocal-partage-*`.
+- Écarts : la résolution reçue (« · 720p ») n'est pas affichée ; pas de menu contextuel sur la tuile d'un partage (le clic ouvre le menu du partage) ; la publication
+  de son propre partage et son bandeau « Tu partages ton écran » arrivent avec le sélecteur (#338).
 
 ### Caméra
 

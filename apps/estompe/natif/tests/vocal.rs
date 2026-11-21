@@ -100,6 +100,10 @@ struct Diffusion {
 
 impl Diffusion {
     fn camera(serveur: &ServeurVocalFactice, identite: &'static str) -> Self {
+        Self::source(serveur, identite, SourceVideo::Camera)
+    }
+
+    fn source(serveur: &ServeurVocalFactice, identite: &'static str, source: SourceVideo) -> Self {
         let arret = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let fil = {
             let arret = arret.clone();
@@ -108,12 +112,10 @@ impl Diffusion {
                 let mire = Mire::nouvelle(1920, 1080);
                 let mut n = 0;
                 while !arret.load(std::sync::atomic::Ordering::SeqCst) {
-                    serveur.pousser_image(
-                        "v1",
-                        identite,
-                        SourceVideo::Camera,
-                        Arc::new(mire.image(n)),
-                    );
+                    serveur.pousser_image("v1", identite, source, Arc::new(mire.image(n)));
+                    if source == SourceVideo::Partage {
+                        serveur.pousser_son_partage("v1", identite, &[800; 480]);
+                    }
                     n += 1;
                     std::thread::sleep(Duration::from_millis(33));
                 }
@@ -366,6 +368,177 @@ fn scenario(
         |f| tuile(f, "carol").is_some_and(|t| t.video < 0),
         "c334 : caméra coupée, la tuile revient à la photo de profil",
     );
+
+    banc.serveur
+        .publier_video("v1", "carol", SourceVideo::Partage);
+    banc.serveur.publier_son_partage("v1", "carol");
+    let diffusion = Diffusion::source(&banc.serveur, "carol", SourceVideo::Partage);
+    attendre_l_interface(
+        &faible,
+        |f| {
+            tuiles(f)
+                .iter()
+                .any(|t| t.partage && t.utilisateur == "carol" && !t.regarde && t.video < 0)
+                && !f.global::<DonneesVocal>().get_vue().vedette
+        },
+        "c336 : le partage de carol a sa tuile « Regarder », sans mise en avant",
+    );
+    let partage = CleVideo::partage("carol");
+    let recepteur = banc.session.videos().recepteur(&partage);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(
+        banc.serveur
+            .abonnes_video("v1", "carol", SourceVideo::Partage)
+            .is_empty()
+            && banc.serveur.abonnes_son_partage("v1", "carol").is_empty(),
+        "c336 C2 : sans « Regarder », ni image ni son du partage demandés"
+    );
+    assert_eq!(recepteur.images_recues(), 0, "c336 C2 : aucune image reçue");
+    cliquer(&faible, "Regarder");
+    attendre(
+        || {
+            banc.serveur
+                .abonnes_video("v1", "carol", SourceVideo::Partage)
+                .contains_key("u1")
+                && banc
+                    .serveur
+                    .abonnes_son_partage("v1", "carol")
+                    .contains("u1")
+        },
+        "c336 : après « Regarder », image et son du partage sont demandés",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| {
+            tuiles(f).iter().any(|t| {
+                t.partage
+                    && t.vedette
+                    && t.regarde
+                    && t.video >= 0
+                    && f.global::<DonneesVideo>()
+                        .get_flux()
+                        .row_data(t.video as usize)
+                        .is_some_and(|l| l.pret)
+            }) && f.global::<DonneesVocal>().get_vue().vedette
+        },
+        "c336 : le partage regardé s'affiche en grand",
+    );
+    attendre(
+        || {
+            banc.serveur
+                .attributs("v1", "u1")
+                .get("watching")
+                .is_some_and(|w| w.contains("TR_carol_ecran"))
+        },
+        "c336 : le partage regardé est annoncé dans l'attribut watching",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_epingler("carol#screen".into())
+    });
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesVocal>().get_vue().vedette,
+        "c336 : « Détacher » remet le partage dans la grille",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_epingler("carol#screen".into())
+    });
+    attendre_l_interface(
+        &faible,
+        |f| f.global::<DonneesVocal>().get_vue().vedette,
+        "c336 : « Mettre en grand » le remet en avant",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>()
+            .invoke_plein_ecran("carol#screen".into())
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_vue().plein_ecran == "carol#screen" && v.get_plein_cadre()
+        },
+        "c336 : plein écran de la tuile du partage",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_plein_ecran("".into())
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_vue().plein_ecran.is_empty() && !v.get_plein_cadre()
+        },
+        "c336 : sortie du plein écran",
+    );
+    sur_l_interface(&faible, |f| {
+        let v = f.global::<DonneesVocal>();
+        v.invoke_ouvrir_menu_partage("carol".into());
+        v.invoke_volume(40, true);
+        v.invoke_choisir_qualite_recue(3);
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let v = f.global::<DonneesVocal>();
+            v.get_menu_ouvert() && v.get_menu().partage && v.get_menu().son_partage
+        },
+        "c336 : menu du partage avec son volume",
+    );
+    let session = banc.session.clone();
+    attendre(
+        move || {
+            let e = session.instantane().ecoute;
+            e.volume("carol", SourceAudio::Partage) == 40
+                && e.volume("carol", SourceAudio::Micro) == 100
+        },
+        "c336 : le son du partage a son volume propre",
+    );
+    attendre(
+        || {
+            banc.serveur
+                .abonnes_video("v1", "carol", SourceVideo::Partage)
+                .get("u1")
+                .is_some_and(|d| d.hauteur == 360)
+        },
+        "c336 : la qualité reçue choisie est demandée au serveur",
+    );
+    assert_eq!(
+        memoire.lire(|p| p.qualite_partage),
+        estompe_client::vocal::QualiteRecue::Basse
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().set_menu_ouvert(false);
+    });
+    cliquer(&faible, "Arrêter de regarder");
+    attendre(
+        || {
+            banc.serveur
+                .abonnes_video("v1", "carol", SourceVideo::Partage)
+                .is_empty()
+                && banc.serveur.abonnes_son_partage("v1", "carol").is_empty()
+        },
+        "c336 : « Arrêter de regarder » coupe image et son",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| tuiles(f).iter().any(|t| t.partage && !t.regarde),
+        "c336 : la tuile revient à « Regarder »",
+    );
+    drop(diffusion);
+    banc.serveur.retirer_son_partage("v1", "carol");
+    banc.serveur
+        .retirer_video("v1", "carol", SourceVideo::Partage);
+    attendre_l_interface(
+        &faible,
+        |f| !tuiles(f).iter().any(|t| t.partage),
+        "c336 : partage arrêté, sa tuile disparaît",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesVocal>().invoke_choisir_qualite_recue(0);
+    });
 
     cliquer(&faible, "Activer la caméra");
     let cameras = banc.cameras.clone();

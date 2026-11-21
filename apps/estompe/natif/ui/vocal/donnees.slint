@@ -16,6 +16,14 @@ export struct ParticipantVocal {
     deplacable: bool,
     video: int,
     libelle-video: string,
+    cle: string,
+    partage: bool,
+    regarde: bool,
+    vedette: bool,
+    rang: int,
+    spectateurs: string,
+    noms-spectateurs: string,
+    son-partage: bool,
 }
 
 export struct VueVocal {
@@ -32,6 +40,9 @@ export struct VueVocal {
     seul: bool,
     colonnes: int,
     rangees: int,
+    vedette: bool,
+    bande: int,
+    plein-ecran: string,
 }
 
 export struct BarreVocal {
@@ -82,6 +93,11 @@ export struct MenuVocal {
     destinations: [SalonDestination],
     peut-deconnecter: bool,
     erreur: string,
+    partage: bool,
+    son-partage: bool,
+    spectateurs: [string],
+    qualites: [string],
+    qualite: int,
 }
 
 export struct PeripheriqueVocal {
@@ -150,6 +166,11 @@ export global DonneesVocal {
     callback choisir-micro-depuis-reglages(string);
     callback choisir-sortie-depuis-reglages(string);
     callback ouvrir-menu(string, string);
+    callback ouvrir-menu-partage(string);
+    callback regarder(string, bool);
+    callback epingler(string);
+    callback plein-ecran(string);
+    callback choisir-qualite-recue(int);
     callback muet-pour-moi(bool);
     callback volume(int, bool);
     callback moderer(bool, bool);
