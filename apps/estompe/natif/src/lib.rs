@@ -10,6 +10,7 @@ pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
 pub mod session;
+pub mod video;
 pub mod vocal;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -219,6 +220,7 @@ pub fn demarrer(
             }
         },
         coquille.suivi_du_depot(),
+        coquille.suivi_de_la_visibilite(),
     );
     let emetteur = entree.emetteur();
     let bureau = bureau::Bureau::installer(
@@ -270,12 +272,28 @@ fn suivre_la_fenetre(
     fenetre: &Principale,
     focus: impl Fn(bool) + 'static,
     depot: impl Fn(&Principale, coquille::Depot) + 'static,
+    visibilite: impl Fn(&Principale, bool) + 'static,
 ) {
     use coquille::Depot;
     use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
     use winit::event::WindowEvent;
     let faible = fenetre.as_weak();
+    let cachee = std::cell::Cell::new((false, false));
     fenetre.window().on_winit_window_event(move |_, evenement| {
+        let avant = cachee.get();
+        match evenement {
+            WindowEvent::Occluded(occultee) => cachee.set((*occultee, avant.1)),
+            WindowEvent::Resized(taille) => {
+                cachee.set((avant.0, taille.width == 0 || taille.height == 0))
+            }
+            _ => {}
+        }
+        let apres = cachee.get();
+        if (avant.0 || avant.1) != (apres.0 || apres.1) {
+            if let Some(f) = faible.upgrade() {
+                visibilite(&f, !(apres.0 || apres.1));
+            }
+        }
         let signal = match evenement {
             WindowEvent::Focused(actif) => {
                 focus(*actif);

@@ -11,7 +11,9 @@ use estompe_client::store::{Changement, CleConversation, ParticipantVocal, Store
 use estompe_client::temps_reel::EtatReseau;
 use estompe_client::types::LinkPreview;
 use estompe_client::version::MiseAJourDisponible;
-use estompe_client::vocal::{EtatVocal, InfoParticipant, Phase as PhaseVocal, Qualite};
+use estompe_client::vocal::{
+    CleVideo, EtatVocal, InfoParticipant, Mire, Phase as PhaseVocal, Qualite,
+};
 use estompe_natif::coquille::pont::vider_modeles;
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -98,6 +100,8 @@ const ECRANS: &[Ecran] = ecrans![
     "vocal-1-clair", Clair, vocal_seul;
     "vocal-4-sombre", Sombre, vocal_quatre;
     "vocal-4-clair", Clair, vocal_quatre;
+    "vocal-video-clair", Clair, vocal_video;
+    "vocal-video-sombre", Sombre, vocal_video;
     "vocal-12-clair", Clair, vocal_douze;
     "vocal-reconnexion-sombre", Sombre, vocal_reconnexion;
     "vocal-menu-clair", Clair, vocal_menu;
@@ -697,6 +701,22 @@ fn vocal_quatre(f: &Principale) {
             }
         },
     );
+}
+
+fn vocal_video(f: &Principale) {
+    let pont = vocal_avec(
+        f,
+        4,
+        |_| {},
+        |v| {
+            v.videos.insert(CleVideo::camera("carol"));
+            v.parlent.insert("carol".into());
+        },
+    );
+    let mire = Mire::nouvelle(1280, 720).image(40);
+    pont.vocal()
+        .poser_image_video(f, &CleVideo::camera("carol"), &mire);
+    stabiliser(f);
 }
 
 fn vocal_douze(f: &Principale) {

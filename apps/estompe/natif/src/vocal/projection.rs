@@ -2,7 +2,7 @@ use estompe_client::format::formater_duree;
 use estompe_client::roles::domine;
 use estompe_client::store::{Etat, GenreSalon};
 use estompe_client::vocal::salle::est_partage;
-use estompe_client::vocal::{EtatVocal, Phase, Qualite};
+use estompe_client::vocal::{CleVideo, EtatVocal, Phase, Qualite};
 
 use crate::coquille::avatars::CleAvatar;
 use crate::coquille::membres::cle_avatar;
@@ -33,6 +33,8 @@ pub struct Participant {
     pub avatar: Option<CleAvatar>,
     pub portrait: bool,
     pub deplacable: bool,
+    pub video: Option<CleVideo>,
+    pub indice_video: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,11 +186,23 @@ pub fn participants(
                     .and_then(|s| cle_avatar(etat, s, &utilisateur)),
                 portrait: false,
                 deplacable: peut_deplacer && domine(detail, moi, &utilisateur),
+                video: video_de(vocal, ici, est_moi, &utilisateur),
+                indice_video: -1,
                 nom,
                 utilisateur,
             }
         })
         .collect()
+}
+
+pub fn video_de(
+    vocal: &EtatVocal,
+    ici: bool,
+    est_moi: bool,
+    utilisateur: &str,
+) -> Option<CleVideo> {
+    let cle = CleVideo::camera(utilisateur);
+    (ici && !est_moi && vocal.video(&cle)).then_some(cle)
 }
 
 pub fn salons_vocaux(etat: &Etat, serveur: &str) -> Vec<(String, String)> {

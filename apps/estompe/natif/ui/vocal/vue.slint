@@ -3,6 +3,7 @@ import { Avatar, Bouton, VarianteBouton, Icone, Chargement } from "../composants
 import { DonneesVocal } from "donnees.slint";
 import { Tuile } from "tuile.slint";
 import { CommandesVocal, AvisVocal } from "commandes.slint";
+import { DonneesVideo } from "../video/flux.slint";
 
 component Rejoindre inherits VerticalLayout {
     alignment: center;
@@ -133,6 +134,15 @@ component Scene inherits Rectangle {
     property <length> hauteur-grille: self.height - 20px - marge-bas;
     property <length> largeur-tuile: (largeur-grille - (colonnes - 1) * ecart) / colonnes;
     property <length> hauteur-tuile: (hauteur-grille - (rangees - 1) * ecart) / rangees;
+    init => {
+        DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
+    }
+    changed largeur-tuile => {
+        DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
+    }
+    changed hauteur-tuile => {
+        DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
+    }
     for p[i] in DonneesVocal.tuiles: Tuile {
         x: (root.width - root.largeur-grille) / 2 + Math.mod(i, root.colonnes) * (root.largeur-tuile + root.ecart);
         y: 20px + Math.floor(i / root.colonnes) * (root.hauteur-tuile + root.ecart);

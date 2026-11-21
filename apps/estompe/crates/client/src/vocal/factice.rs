@@ -14,6 +14,21 @@ use super::salle::{
     RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
 };
 use super::session::ApiVocale;
+use super::video::{DemandeVideo, FluxVideo, ImageVideo, SourceVideo};
+
+type CleFactice = (String, String, SourceVideo);
+
+#[derive(Default)]
+struct PublicationFactice {
+    abonnes: BTreeMap<String, (mpsc::UnboundedSender<ImageVideo>, DemandeVideo)>,
+}
+
+fn flux_video(reception: mpsc::UnboundedReceiver<ImageVideo>) -> FluxVideo {
+    stream::unfold(reception, |mut r| async move {
+        r.recv().await.map(|image| (image, r))
+    })
+    .boxed()
+}
 
 fn flux(reception: mpsc::UnboundedReceiver<Vec<i16>>) -> FluxTrames {
     stream::unfold(reception, |mut r| async move {
@@ -37,6 +52,8 @@ struct EtatServeur {
     trames: BTreeMap<String, usize>,
     coupes: BTreeMap<String, bool>,
     connexions: usize,
+    videos: BTreeMap<CleFactice, PublicationFactice>,
+    images: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Default)]
@@ -92,6 +109,137 @@ impl ServeurVocalFactice {
         self.etat().connexions
     }
 
+    pub fn publier_video(&self, salle: &str, identite: &str, source: SourceVideo) {
+        self.etat()
+            .videos
+            .entry((salle.to_string(), identite.to_string(), source))
+            .or_default();
+        self.diffuser(salle, identite, || EvenementSalle::VideoPubliee {
+            identite: identite.to_string(),
+            source,
+        });
+    }
+
+    pub fn retirer_video(&self, salle: &str, identite: &str, source: SourceVideo) {
+        let publication =
+            self.etat()
+                .videos
+                .remove(&(salle.to_string(), identite.to_string(), source));
+        for abonne in publication
+            .map(|p| p.abonnes)
+            .unwrap_or_default()
+            .into_keys()
+        {
+            self.envoyer(
+                salle,
+                &abonne,
+                EvenementSalle::PisteVideoRetiree {
+                    identite: identite.to_string(),
+                    source,
+                },
+            );
+        }
+        self.diffuser(salle, identite, || EvenementSalle::VideoRetiree {
+            identite: identite.to_string(),
+            source,
+        });
+    }
+
+    pub fn pousser_image(
+        &self,
+        salle: &str,
+        identite: &str,
+        source: SourceVideo,
+        image: ImageVideo,
+    ) -> usize {
+        let mut etat = self.etat();
+        let EtatServeur { videos, images, .. } = &mut *etat;
+        let Some(publication) = videos.get_mut(&(salle.to_string(), identite.to_string(), source))
+        else {
+            return 0;
+        };
+        publication
+            .abonnes
+            .retain(|_, (envoi, _)| envoi.send(image.clone()).is_ok());
+        for abonne in publication.abonnes.keys() {
+            *images.entry(abonne.clone()).or_default() += 1;
+        }
+        publication.abonnes.len()
+    }
+
+    pub fn abonnes_video(
+        &self,
+        salle: &str,
+        identite: &str,
+        source: SourceVideo,
+    ) -> BTreeMap<String, DemandeVideo> {
+        self.etat()
+            .videos
+            .get(&(salle.to_string(), identite.to_string(), source))
+            .map(|p| {
+                p.abonnes
+                    .iter()
+                    .map(|(a, (_, d))| (a.clone(), *d))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn video_publiee(&self, salle: &str, identite: &str, source: SourceVideo) -> bool {
+        self.etat()
+            .videos
+            .contains_key(&(salle.to_string(), identite.to_string(), source))
+    }
+
+    pub fn images_envoyees(&self, abonne: &str) -> usize {
+        self.etat().images.get(abonne).copied().unwrap_or(0)
+    }
+
+    fn regler_abonnement(
+        &self,
+        salle: &str,
+        abonne: &str,
+        identite: &str,
+        source: SourceVideo,
+        demande: Option<DemandeVideo>,
+    ) {
+        let evenement = {
+            let mut etat = self.etat();
+            let Some(publication) =
+                etat.videos
+                    .get_mut(&(salle.to_string(), identite.to_string(), source))
+            else {
+                return;
+            };
+            match (demande, publication.abonnes.get_mut(abonne)) {
+                (Some(d), Some((_, actuelle))) => {
+                    *actuelle = d;
+                    None
+                }
+                (Some(d), None) => {
+                    let (envoi, reception) = mpsc::unbounded_channel();
+                    publication.abonnes.insert(abonne.to_string(), (envoi, d));
+                    Some(EvenementSalle::PisteVideo {
+                        identite: identite.to_string(),
+                        source,
+                        images: flux_video(reception),
+                    })
+                }
+                (None, Some(_)) => {
+                    publication.abonnes.remove(abonne);
+                    Some(EvenementSalle::PisteVideoRetiree {
+                        identite: identite.to_string(),
+                        source,
+                    })
+                }
+                (None, None) => None,
+            }
+        };
+        if let Some(evenement) = evenement {
+            self.envoyer(salle, abonne, evenement);
+        }
+    }
+
     pub fn hors_ligne(&self, hors_ligne: bool) {
         self.etat().hors_ligne = hors_ligne;
     }
@@ -117,9 +265,29 @@ impl ServeurVocalFactice {
             if let Some(e) = membre.evenements {
                 let _ = e.send(EvenementSalle::Deconnecte(raison));
             }
+            self.quitter_videos(salle, identite);
             self.diffuser(salle, identite, || {
                 EvenementSalle::Depart(identite.to_string())
             });
+        }
+    }
+
+    fn quitter_videos(&self, salle: &str, identite: &str) {
+        let publiees: Vec<SourceVideo> = {
+            let mut etat = self.etat();
+            for ((s, _, _), p) in etat.videos.iter_mut() {
+                if s == salle {
+                    p.abonnes.remove(identite);
+                }
+            }
+            etat.videos
+                .keys()
+                .filter(|(s, i, _)| s == salle && i == identite)
+                .map(|(_, _, source)| *source)
+                .collect()
+        };
+        for source in publiees {
+            self.retirer_video(salle, identite, source);
         }
     }
 
@@ -157,7 +325,7 @@ impl ServeurVocalFactice {
             .map(|(i, s)| (i.to_string(), s.to_string()))
             .ok_or_else(|| ErreurSalle::Connexion("jeton invalide".into()))?;
         let (envoi, evenements) = mpsc::unbounded_channel();
-        let (participants, publicateurs) = {
+        let (participants, publicateurs, videos) = {
             let mut etat = self.etat();
             if etat.hors_ligne {
                 return Err(ErreurSalle::Connexion("réseau coupé".into()));
@@ -180,13 +348,22 @@ impl ServeurVocalFactice {
                 .filter(|(i, m)| m.publie && *i != &identite)
                 .map(|(i, _)| i.clone())
                 .collect();
-            (participants, publicateurs)
+            let videos: Vec<(String, SourceVideo)> = etat
+                .videos
+                .keys()
+                .filter(|(s, i, _)| s == &salle && i != &identite)
+                .map(|(_, i, source)| (i.clone(), *source))
+                .collect();
+            (participants, publicateurs, videos)
         };
         self.diffuser(&salle, &identite, || {
             EvenementSalle::Arrivee(info(&identite, &BTreeMap::new(), false))
         });
         for publicateur in publicateurs {
             let _ = envoi.send(self.abonner(&salle, &publicateur));
+        }
+        for (identite, source) in videos {
+            let _ = envoi.send(EvenementSalle::VideoPubliee { identite, source });
         }
         Ok(Connexion {
             salle: Arc::new(SalleFactice {
@@ -296,11 +473,20 @@ impl Salle for SalleFactice {
         })
     }
 
+    fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>) {
+        if self.fermee.load(Ordering::SeqCst) {
+            return;
+        }
+        self.serveur
+            .regler_abonnement(&self.salle, &self.identite, identite, source, demande);
+    }
+
     fn fermer(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
             if self.fermee.swap(true, Ordering::SeqCst) {
                 return;
             }
+            self.serveur.quitter_videos(&self.salle, &self.identite);
             let present = self
                 .serveur
                 .etat()

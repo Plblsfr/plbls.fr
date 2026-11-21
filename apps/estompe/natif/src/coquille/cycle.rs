@@ -351,6 +351,15 @@ impl Coquille {
         (self.suivi_du_focus())(actif);
     }
 
+    pub fn suivi_de_la_visibilite(&self) -> impl Fn(&Principale, bool) + Send + Sync + 'static {
+        let emplacement = self.emplacement.clone();
+        move |f, visible| {
+            if let Some(pont) = pont_courant(&emplacement) {
+                pont.vocal().fenetre_visible(f, visible);
+            }
+        }
+    }
+
     pub fn suivi_du_depot(&self) -> impl Fn(&Principale, Depot) + 'static {
         let emplacement = self.emplacement.clone();
         move |f, depot| {

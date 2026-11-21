@@ -14,12 +14,17 @@ use estompe_client::audio::{ChoixSon, FormatAudio, SensAudio};
 use estompe_client::derniere_vue::DerniereVue;
 use estompe_client::preferences::Preferences;
 use estompe_client::vocal::factice::{ApiVocaleFactice, ServeurVocalFactice};
-use estompe_client::vocal::{Dependances, EvenementSalle, ReglagesPtt, SessionVocale, SourceAudio};
+use estompe_client::vocal::{
+    CleVideo, Dependances, EvenementSalle, Mire, ReglagesPtt, SessionVocale, SourceAudio,
+    SourceVideo,
+};
 use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::vocal::OutilsVocaux;
-use estompe_natif::{creer_fenetre, ecrans, DonneesVocal, Page, ParticipantVocal, Principale};
+use estompe_natif::{
+    creer_fenetre, ecrans, DonneesVideo, DonneesVocal, Page, ParticipantVocal, Principale,
+};
 use estompe_plateforme::RaccourcisFactices;
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
@@ -82,6 +87,61 @@ struct Banc {
     audio: SystemeFactice,
     api: Arc<ApiVocaleFactice>,
     session: Arc<SessionVocale>,
+    visibilite: Visibilite,
+}
+
+type Visibilite = Arc<dyn Fn(&Principale, bool) + Send + Sync>;
+
+struct Diffusion {
+    arret: Arc<std::sync::atomic::AtomicBool>,
+    fil: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Diffusion {
+    fn camera(serveur: &ServeurVocalFactice, identite: &'static str) -> Self {
+        let arret = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let fil = {
+            let arret = arret.clone();
+            let serveur = serveur.clone();
+            std::thread::spawn(move || {
+                let mire = Mire::nouvelle(1920, 1080);
+                let mut n = 0;
+                while !arret.load(std::sync::atomic::Ordering::SeqCst) {
+                    serveur.pousser_image(
+                        "v1",
+                        identite,
+                        SourceVideo::Camera,
+                        Arc::new(mire.image(n)),
+                    );
+                    n += 1;
+                    std::thread::sleep(Duration::from_millis(33));
+                }
+            })
+        };
+        Self {
+            arret,
+            fil: Some(fil),
+        }
+    }
+}
+
+impl Drop for Diffusion {
+    fn drop(&mut self) {
+        self.arret.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(fil) = self.fil.take() {
+            let _ = fil.join();
+        }
+    }
+}
+
+fn video_affichee(f: &Principale, utilisateur: &str) -> bool {
+    tuile(f, utilisateur).is_some_and(|t| {
+        t.video >= 0
+            && f.global::<DonneesVideo>()
+                .get_flux()
+                .row_data(t.video as usize)
+                .is_some_and(|l| l.pret && l.image.size().width > 0)
+    })
 }
 
 fn requete_recue(serveur: &ServeurMessages, requete: &str, contenu: &str) -> bool {
@@ -233,6 +293,78 @@ fn scenario(
         .requetes_avatars()
         .iter()
         .any(|c| c.utilisateur == "carol" && c.serveur.is_none()));
+
+    banc.serveur
+        .publier_video("v1", "carol", SourceVideo::Camera);
+    let diffusion = Diffusion::camera(&banc.serveur, "carol");
+    attendre(
+        || {
+            banc.serveur
+                .abonnes_video("v1", "carol", SourceVideo::Camera)
+                .contains_key("u1")
+        },
+        "c334 : la caméra de carol, affichée, est demandée au serveur",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| video_affichee(f, "carol"),
+        "c334 : la caméra de carol s'affiche dans sa tuile",
+    );
+    let demande = banc
+        .serveur
+        .abonnes_video("v1", "carol", SourceVideo::Camera)["u1"];
+    assert!(
+        demande.largeur < 1920 && demande.hauteur < 1080,
+        "{demande:?}"
+    );
+    let (largeur, libelle) = sur_l_interface(&faible, |f| {
+        let t = tuile(f, "carol").unwrap();
+        let l = f
+            .global::<DonneesVideo>()
+            .get_flux()
+            .row_data(t.video as usize)
+            .unwrap();
+        (l.largeur, t.libelle_video.to_string())
+    });
+    assert!(largeur > 0 && largeur as u32 <= demande.largeur.max(1));
+    assert_eq!(libelle, "caméra");
+    let visibilite = banc.visibilite.clone();
+    sur_l_interface(&faible, move |f| visibilite(f, false));
+    attendre(
+        || {
+            banc.serveur
+                .abonnes_video("v1", "carol", SourceVideo::Camera)
+                .is_empty()
+        },
+        "c334 : fenêtre réduite, la caméra n'est plus demandée",
+    );
+    let recepteur = banc.session.videos().recepteur(&CleVideo::camera("carol"));
+    let recues = recepteur.images_recues();
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(
+        recepteur.images_recues(),
+        recues,
+        "c334 : fenêtre réduite, plus aucune image reçue ni décodée"
+    );
+    let visibilite = banc.visibilite.clone();
+    sur_l_interface(&faible, move |f| visibilite(f, true));
+    attendre(
+        || recepteur.images_recues() > recues,
+        "c334 : fenêtre rouverte, les images reviennent",
+    );
+    attendre_l_interface(
+        &faible,
+        |f| video_affichee(f, "carol"),
+        "c334 : la caméra de carol s'affiche de nouveau",
+    );
+    drop(diffusion);
+    banc.serveur
+        .retirer_video("v1", "carol", SourceVideo::Camera);
+    attendre_l_interface(
+        &faible,
+        |f| tuile(f, "carol").is_some_and(|t| t.video < 0),
+        "c334 : caméra coupée, la tuile revient à la photo de profil",
+    );
     assert!(sur_l_interface(&faible, |f| {
         f.global::<DonneesVocal>()
             .get_participants()
@@ -888,6 +1020,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         audio,
         api,
         session: session.clone(),
+        visibilite: Arc::new(coquille.suivi_de_la_visibilite()),
     };
     let faible = fenetre.as_weak();
     let pilote = std::thread::spawn(move || {

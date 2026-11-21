@@ -23,6 +23,7 @@ use super::salle::{
     est_partage, proprietaire, Connecteur, Connexion, EvenementSalle, JetonSalle,
     RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
 };
+use super::video::{CleVideo, DemandeVideo, SourceVideo, Videos};
 
 pub const DELAI_FERMETURE: Duration = Duration::from_secs(3);
 pub const MESSAGE_CONNEXION_PERDUE: &str = "Connexion au vocal perdue.";
@@ -130,6 +131,7 @@ enum Commande {
     },
     VolumeGeneral(u16),
     Traitement(ReglagesMicro),
+    Affichage(BTreeMap<CleVideo, DemandeVideo>),
     Fermer(oneshot::Sender<()>),
 }
 
@@ -213,6 +215,7 @@ pub struct SessionVocale {
     etat: watch::Receiver<EtatVocal>,
     avis: broadcast::Sender<AvisVocal>,
     mesure: Arc<MesureMicro>,
+    videos: Arc<Videos>,
     runtime: Handle,
 }
 
@@ -227,12 +230,14 @@ impl SessionVocale {
         let (diffusion, etat) = watch::channel(etat_initial.clone());
         let (avis, _) = broadcast::channel(64);
         let mesure = Arc::new(MesureMicro::default());
+        let videos = Videos::nouvelles();
         let acteur = Acteur::nouveau(
             dependances,
             etat_initial,
             diffusion,
             avis.clone(),
             mesure.clone(),
+            videos.clone(),
         );
         runtime.spawn(acteur.tourner(reception));
         Self {
@@ -240,6 +245,7 @@ impl SessionVocale {
             etat,
             avis,
             mesure,
+            videos,
             runtime: runtime.clone(),
         }
     }
@@ -330,6 +336,14 @@ impl SessionVocale {
         self.envoyer(Commande::Traitement(reglages));
     }
 
+    pub fn videos(&self) -> Arc<Videos> {
+        self.videos.clone()
+    }
+
+    pub fn definir_affichage(&self, demandes: BTreeMap<CleVideo, DemandeVideo>) {
+        self.envoyer(Commande::Affichage(demandes));
+    }
+
     pub fn niveau_micro(&self) -> NiveauMicro {
         self.mesure.lire()
     }
@@ -373,6 +387,10 @@ struct Acteur {
     lecture: Option<Lecture>,
     mixeur: Arc<Mutex<Mixeur>>,
     pistes: BTreeMap<(String, SourceAudio), JoinHandle<()>>,
+    videos: Arc<Videos>,
+    publications_video: BTreeMap<CleVideo, String>,
+    pistes_video: BTreeMap<CleVideo, JoinHandle<()>>,
+    affichage: BTreeMap<CleVideo, DemandeVideo>,
     tentatives: (
         mpsc::UnboundedSender<Tentative>,
         mpsc::UnboundedReceiver<Tentative>,
@@ -405,6 +423,7 @@ impl Acteur {
         diffusion: watch::Sender<EtatVocal>,
         avis: broadcast::Sender<AvisVocal>,
         mesure: Arc<MesureMicro>,
+        videos: Arc<Videos>,
     ) -> Self {
         let chaine =
             ChaineMicro::nouvelle(etat.traitement, dependances.apm.clone(), mesure.clone());
@@ -427,6 +446,10 @@ impl Acteur {
             lecture: None,
             mixeur: Arc::new(Mutex::new(mixeur)),
             pistes: BTreeMap::new(),
+            videos,
+            publications_video: BTreeMap::new(),
+            pistes_video: BTreeMap::new(),
+            affichage: BTreeMap::new(),
             tentatives: mpsc::unbounded_channel(),
             essais: 0,
             reconnexion: None,
@@ -577,8 +600,42 @@ impl Acteur {
                 self.route.regler(self.etat.traitement);
                 self.publier();
             }
+            Commande::Affichage(demandes) => self.afficher(demandes),
             Commande::Fermer(_) => {}
         }
+    }
+
+    fn afficher(&mut self, demandes: BTreeMap<CleVideo, DemandeVideo>) {
+        let avant = std::mem::replace(&mut self.affichage, demandes);
+        let Some(salle) = self.salle.clone() else {
+            return;
+        };
+        for (cle, brute) in &self.publications_video {
+            let demande = self.affichage.get(cle).copied();
+            if avant.get(cle).copied() != demande {
+                salle.regler_video(brute, cle.source, demande);
+            }
+        }
+    }
+
+    fn cle_video(identite: &str, source: SourceVideo) -> CleVideo {
+        CleVideo {
+            identite: proprietaire(identite).to_string(),
+            source: if est_partage(identite) {
+                SourceVideo::Partage
+            } else {
+                source
+            },
+        }
+    }
+
+    fn retirer_video(&mut self, cle: &CleVideo) {
+        self.publications_video.remove(cle);
+        self.etat.videos.remove(cle);
+        if let Some(tache) = self.pistes_video.remove(cle) {
+            tache.abort();
+        }
+        self.videos.effacer(cle);
     }
 
     async fn rejoindre(&mut self, salon: String, echange: bool) {
@@ -732,6 +789,15 @@ impl Acteur {
                 self.signaler(AvisVocal::Arrivee(identite));
             }
             EvenementSalle::Depart(identite) => {
+                let parties: Vec<CleVideo> = self
+                    .publications_video
+                    .iter()
+                    .filter(|(_, brute)| **brute == identite)
+                    .map(|(cle, _)| cle.clone())
+                    .collect();
+                for cle in parties {
+                    self.retirer_video(&cle);
+                }
                 if self.etat.participants.remove(&identite).is_some() {
                     self.etat.parlent.remove(&identite);
                     self.signaler(AvisVocal::Depart(identite));
@@ -830,6 +896,41 @@ impl Acteur {
                     mixeur.retirer(&proprietaire, source);
                 }
             }
+            EvenementSalle::VideoPubliee { identite, source } => {
+                let cle = Self::cle_video(&identite, source);
+                if let (Some(salle), Some(demande)) = (&self.salle, self.affichage.get(&cle)) {
+                    salle.regler_video(&identite, source, Some(*demande));
+                }
+                self.etat.videos.insert(cle.clone());
+                self.publications_video.insert(cle, identite);
+            }
+            EvenementSalle::VideoRetiree { identite, source } => {
+                let cle = Self::cle_video(&identite, source);
+                self.retirer_video(&cle);
+            }
+            EvenementSalle::PisteVideo {
+                identite,
+                source,
+                mut images,
+            } => {
+                let cle = Self::cle_video(&identite, source);
+                let recepteur = self.videos.recepteur(&cle);
+                let tache = tokio::spawn(async move {
+                    while let Some(image) = images.next().await {
+                        recepteur.pousser(image);
+                    }
+                });
+                if let Some(precedente) = self.pistes_video.insert(cle, tache) {
+                    precedente.abort();
+                }
+            }
+            EvenementSalle::PisteVideoRetiree { identite, source } => {
+                let cle = Self::cle_video(&identite, source);
+                if let Some(tache) = self.pistes_video.remove(&cle) {
+                    tache.abort();
+                }
+                self.videos.effacer(&cle);
+            }
         }
         self.publier();
     }
@@ -846,6 +947,13 @@ impl Acteur {
     fn arreter_pistes(&mut self) {
         for (_, tache) in std::mem::take(&mut self.pistes) {
             tache.abort();
+        }
+        for (_, tache) in std::mem::take(&mut self.pistes_video) {
+            tache.abort();
+        }
+        for cle in std::mem::take(&mut self.publications_video).into_keys() {
+            self.etat.videos.remove(&cle);
+            self.videos.effacer(&cle);
         }
         if let Ok(mut mixeur) = self.mixeur.lock() {
             mixeur.vider();

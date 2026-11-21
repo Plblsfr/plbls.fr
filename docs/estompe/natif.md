@@ -620,10 +620,13 @@ Le reste du module (état, session, mixage, faux serveur) compile et se teste sa
 | `crates/client/src/vocal/mixage.rs` | `Ecoute` (volumes et muets par participant, voix et son du partage à part, volume général ; équivalent de `gainOf`), `Limiteur`, `Mixeur` : une file par participant et par source, gain précalculé, sourdine, référence d'écho |
 | `crates/client/src/vocal/erreurs.rs` | `ErreurVocal` (salon plein, droit manquant…) et `CauseMicro` (équivalents de `micCause` et `micError`) |
 | `crates/client/src/vocal/factice.rs` | `ServeurVocalFactice` (connecteur et salles en mémoire, coupure du réseau, exclusion) et `ApiVocaleFactice` |
+| `crates/client/src/vocal/video.rs` | vidéo sans interface : `CleVideo` (propriétaire et source, caméra ou partage), trait `TrameVideo` (image décodée convertie en RGBA à la taille voulue), `ImageI420` (conversions BT.601, réduction, formats YUYV, NV12, RGB et gris), `Mire` (piste factice des tests et des captures), `RecepteurVideo` (dernière image seulement, compteur d'images reçues), `Videos` (un récepteur par flux) |
 | `crates/client/src/vocal/ptt.rs` | `PousserPourParler` : appuyer pour parler (touche de la fenêtre et raccourci global, délai de relâchement), `ReglagesPtt` |
 | `crates/client/src/audio/tonalite.rs` | sons d'arrivée et de départ (mêmes notes que le front), joués sur la sortie choisie |
 | `crates/plateforme/src/raccourcis/` | trait `RaccourcisGlobaux` : crochet clavier bas niveau sous Windows, XInput 2 sous X11, `RaccourcisFactices` pour les tests |
 | `natif/src/vocal/` | `projection.rs` (pur : tuiles, participants du panneau, vue, barre, menu d'un participant), `pont.rs` (`PontVocal` : état de la session vers `DonneesVocal`, commandes, réglages, test du micro, sons), `touches.rs` (touche Slint vers code de touche) |
+| `natif/src/video/` | affichage des flux, réutilisable par toute vue vidéo : `Afficheur` (un fil par flux affiché, conversion hors du fil d'interface), `GestionVideo` (flux voulus, modèle `DonneesVideo.flux`), `convertir` |
+| `natif/ui/video/flux.slint` | `DonneesVideo` (images des flux, taille d'une tuile) et `ImageFlux` (image d'un flux, recadrée ou entière, coins arrondis) |
 | `natif/ui/vocal/` | vue du salon (`vue.slint`), tuile et ligne du panneau (`tuile.slint`), commandes (`commandes.slint`), barre du panneau (`barre.slint`), menus (`menus.slint`), réglages audio (`reglages.slint`) |
 
 ### Session vocale
@@ -726,6 +729,31 @@ Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/v
 - Écarts : le refus d'un fichier s'affiche dans les réglages et celui d'un dépôt sous le salon, pas dans une notification ; le choix du fichier est filtré sur des extensions
   audio (`accept="audio/*"` dans le front) et un fichier que ni l'app ni ffmpeg ne décode est refusé dès le choix (le front le garderait sans pouvoir le jouer).
 
+### Vidéo
+
+Affichage d'une piste vidéo reçue de LiveKit, pensé pour toutes les vues vidéo (tuiles de la scène, flux agrandi et partage d'écran, aperçu d'un partage, incrustation de la caméra).
+
+- Réception : la salle signale les pistes vidéo publiées (`VideoPubliee`, `VideoRetiree`, aussi pour une piste coupée par son auteur) sans s'y abonner. La session
+  (`SessionVocale::definir_affichage`) reçoit la liste des flux affichés avec la taille de leur tuile en pixels : elle s'abonne seulement à ceux-là
+  (`RemoteTrackPublication::set_subscribed`) et annonce la taille au serveur (`update_video_dimensions`), qui choisit la couche du simulcast (`dynacast`,
+  `adaptive_stream`). Une piste hors de la liste est désabonnée : plus rien n'arrive ni n'est décodé. `etat().videos` liste les flux publiés.
+- Images : le flux du SDK (`NativeVideoStream`, file d'une image) alimente le `RecepteurVideo` du flux, qui ne garde que la dernière image et compte les images reçues.
+  L'image reçue n'est pas convertie sur le fil du vocal : `TrameVideo::vers_rgba` la passe en I420 si besoin, la réduit puis la convertit par libyuv (`I420Buffer::scale`, `to_argb`)
+  au moment de l'afficher.
+- Affichage (`natif/src/video/`) : un `Afficheur` par flux affiché, sur son propre fil, attend une nouvelle image, la convertit à la taille de la tuile sans
+  jamais l'agrandir (`taille_de_conversion`, recadrage comme `object-fit: cover`) dans un `SharedPixelBuffer`, puis la pose dans `DonneesVideo.flux` par la boucle
+  de Slint. Une seule image est en route vers l'interface à la fois et la cadence est bornée à 60 images par seconde (`CADENCE_MAX`) : les images qui arrivent
+  entre deux affichages sont sautées, jamais mises en file.
+- Ce qui est affiché : la tuile d'un participant montre sa caméra quand il en publie une (« · caméra » dans la pastille), sinon sa photo. La scène annonce la taille
+  d'une tuile (`DonneesVideo.zone-tuile`). Hors du salon, dans une autre vue, ou fenêtre réduite ou masquée (évènements `Occluded` et `Resized` à 0 de winit,
+  `suivi_de_la_visibilite` de la coquille), la liste est vide : abonnements retirés, fils arrêtés.
+- Mesure (`video::tests::mesure_une_piste_1080p_a_30_images_par_seconde`, ignorée par défaut, release) : une piste factice 1080p à 30 images par seconde
+  affichée dans une tuile de 640 × 360, pendant 10 minutes, sur la machine de développement (4 cœurs) : 18 000 images produites, 18 000 converties, mémoire privée
+  stable à 11,4 Mo de la première à la dixième minute, 4,9 % d'un cœur en moyenne (génération de la mire comprise, conversion en Rust pur, sans le rendu Skia ni le décodage
+  de libwebrtc). `ESTOMPE_MESURE_VIDEO_S` fixe la durée (30 s par défaut).
+- Écarts : la résolution reçue (« · 720p » du front) n'est pas affichée ; Wayland ne signale pas toujours une fenêtre masquée (le décodage continue alors) ;
+  le passage des images par la mémoire (`Image::from_rgba8`) plutôt qu'une texture partagée avec Skia, que Slint 1.18 n'expose pas pour une image de modèle.
+
 ### Appuyer pour parler
 
 `PousserPourParler` (crate client) ferme la porte du micro (`SessionVocale::definir_porte`) pendant un appel quand le réglage est actif, l'ouvre à l'appui de la touche
@@ -778,6 +806,9 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - `crates/client/tests/livekit.rs` (feature `livekit`) : contre le serveur LiveKit de `deploy/docker-compose.dev.yml` (`ESTOMPE_LIVEKIT_URL`, clé `devkey` du mode `--dev`),
   deux clients se voient, s'entendent, et la fermeture de l'un le retire de la salle chez l'autre en moins de 5 s. Sans la variable, il est ignoré et le dit.
   `just estompe-natif-vocal` le lance ; la CI Linux démarre ce serveur.
+- `vocal::video::tests` : conversions (taille, couleurs, formats de caméra, miroir), mire, récepteur (dernière image, compteur, fermeture), un récepteur par flux ;
+  `vocal::tests::seules_les_videos_affichees_sont_recues` (faux serveur) : abonnement à la demande avec la taille de la tuile, images reçues, désabonnement sans plus
+  aucune image reçue, piste retirée, départ de son auteur ; `natif/src/video/` : conversion à la taille et en miroir, une seule image en route vers l'interface.
 - `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
   perte du focus, raccourci indisponible (message, touche fenêtre active) ; `audio::tonalite::tests` ; `store::reducteur::tests::transmet_le_deplacement_par_un_moderateur`.
 - `crates/plateforme/src/raccourcis/` : table des touches, appui et relâchement sans répétition ; sous X11 (`DISPLAY`, ignoré sinon) une touche simulée par XTest est signalée
@@ -787,12 +818,14 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - `natif/tests/vocal.rs` (backend de test Slint, faux serveur vocal, périphériques factices) : rejoindre depuis le panneau, tuiles et participants du panneau, indicateur de parole
   (mesuré : voir ci-dessous), photo de profil dans la tuile et le panneau, durée du salon, mode plein cadre (bouton, Échap, bouton de sortie), couper le micro, Alt+Maj+M et Alt+Maj+D,
   menu d'un participant (volume, muet, « Déplacer vers » et « Déconnecter du vocal » envoyés au faux serveur HTTP), coupure d'un modérateur, appuyer pour parler sans raccourci global,
+  caméra d'un participant (piste factice 1080p) affichée dans sa tuile à la taille de la tuile, fenêtre réduite : désabonnement et plus aucune image reçue,
+  fenêtre rouverte : retour des images, caméra retirée : retour à la photo,
   glisser un participant sur un autre salon (salons proposés pendant le glisser, déplacement envoyé, refus du serveur affiché puis effacé),
   choix du son et volume des sons retenus, son personnalisé (fichier trop gros refusé, fichier gardé, aperçu joué, retour au son prédéfini puis au fichier),
   déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
 - `audio::son_perso::tests` : WAV stéréo à 44,1 kHz, flottant, 8 et 24 bits, Ogg Opus sans ffmpeg, MP3 par ffmpeg (ignoré sans ffmpeg, exigé par `ESTOMPE_FFMPEG_EXIGE`),
   refus au-delà de 150 Ko ou d'un fichier illisible, fichier gardé et remplacé, lecture au volume des sons ; `vocal::projection::tests` : qui peut glisser un participant.
-- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
+- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-video` (tuile avec l'image de la mire), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
   `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`, `vocal-sons-perso` (« Mon fichier » choisi, refus d'un fichier),
   `vocal-glisser` (salons proposés pendant le glisser), `vocal-glisser-refus`.
 

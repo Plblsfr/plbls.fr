@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use estompe_client::audio::son_perso::{self, FILTRE_AUDIO, TITRE_DIALOGUE};
 use estompe_client::audio::{
@@ -13,8 +13,8 @@ use estompe_client::route::Route;
 use estompe_client::store::{est_vocal, Avis, Changement, GenreSalon, Store};
 use estompe_client::video::ffmpeg_du_systeme;
 use estompe_client::vocal::{
-    AvisVocal, EtatPtt, EtatVocal, Phase, PousserPourParler, ReglagesPtt, SessionVocale,
-    SourceAudio, SourceTouche,
+    AvisVocal, CleVideo, DemandeVideo, EtatPtt, EtatVocal, Phase, PousserPourParler, ReglagesPtt,
+    SessionVocale, SourceAudio, SourceTouche, TrameVideo, Videos,
 };
 use estompe_plateforme::{libelle_touche, RaccourcisGlobaux};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
@@ -26,14 +26,16 @@ use crate::coquille::modeles::synchroniser;
 use crate::coquille::pont::vec_de;
 use crate::messagerie::pont::SystemeFichiers;
 use crate::session::Memoire;
+use crate::video::{self, FluxVoulu, GestionVideo};
 use crate::{
-    BarreVocal, DonneesVocal, ListePeripheriques, MenuVocal, ParticipantVocal, PeripheriqueVocal,
-    Principale, ReglagesVocal, SalonDestination, VueVocal,
+    BarreVocal, DonneesVideo, DonneesVocal, ListePeripheriques, MenuVocal, ParticipantVocal,
+    PeripheriqueVocal, Principale, ReglagesVocal, SalonDestination, VueVocal,
 };
 
 pub const PERIODE_MESURE: Duration = Duration::from_millis(50);
 const MARGE_SON: Duration = Duration::from_millis(150);
 const PAR_DEFAUT: &str = "Par défaut";
+const ZONE_PAR_DEFAUT: (u32, u32) = (640, 360);
 pub const RANG_PERSONNALISE: i32 = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,6 +120,10 @@ struct Interne {
     lecture_perso: Option<(u64, Lecture)>,
     generation_perso: u64,
     erreur_depot: Option<(String, String)>,
+    video: Option<GestionVideo>,
+    zone_tuile: (f32, f32),
+    fenetre_visible: bool,
+    affichage: BTreeMap<CleVideo, DemandeVideo>,
 }
 
 #[derive(Clone)]
@@ -129,6 +135,7 @@ pub struct PontVocal {
     memoire: Option<Memoire>,
     horloge: HorlogeMs,
     profils: Arc<Profils>,
+    videos_hors_session: Arc<Videos>,
 }
 
 pub fn installer_modeles(f: &Principale) {
@@ -137,12 +144,14 @@ pub fn installer_modeles(f: &Principale) {
     v.set_participants(ModelRc::new(VecModel::<ParticipantVocal>::default()));
     v.set_micros(ModelRc::new(VecModel::<PeripheriqueVocal>::default()));
     v.set_sorties(ModelRc::new(VecModel::<PeripheriqueVocal>::default()));
+    video::installer_modeles(f);
 }
 
 pub fn vider_modeles(f: &Principale) {
     let v = f.global::<DonneesVocal>();
     vec_de(&v.get_tuiles()).set_vec(Vec::new());
     vec_de(&v.get_participants()).set_vec(Vec::new());
+    vec_de(&f.global::<DonneesVideo>().get_flux()).set_vec(Vec::new());
     v.set_vue(VueVocal::default());
     v.set_barre(BarreVocal::default());
     v.set_menu_ouvert(false);
@@ -174,6 +183,8 @@ fn participant_slint(p: &Participant, profils: &Profils) -> ParticipantVocal {
         barres: p.barres,
         qualite: p.qualite.into(),
         deplacable: p.deplacable,
+        video: p.indice_video,
+        libelle_video: "caméra".into(),
         portrait: if p.portrait {
             p.avatar
                 .as_ref()
@@ -369,6 +380,10 @@ impl PontVocal {
                 lecture_perso: None,
                 generation_perso: 0,
                 erreur_depot: None,
+                video: None,
+                zone_tuile: (0.0, 0.0),
+                fenetre_visible: true,
+                affichage: BTreeMap::new(),
             })),
             store,
             fenetre,
@@ -376,6 +391,7 @@ impl PontVocal {
             memoire,
             horloge,
             profils,
+            videos_hors_session: Videos::nouvelles(),
         }
     }
 
@@ -448,10 +464,17 @@ impl PontVocal {
     }
 
     pub fn arreter(&self) {
-        let (outils, ptt, essai) = {
+        let (outils, ptt, essai, video) = {
             let mut i = self.verrou();
-            (i.outils.clone(), i.ptt.take(), i.essai.take())
+            i.affichage.clear();
+            (
+                i.outils.clone(),
+                i.ptt.take(),
+                i.essai.take(),
+                i.video.take(),
+            )
         };
+        drop(video);
         drop(essai);
         if let Some(ptt) = ptt {
             ptt.en_vocal(false);
@@ -821,6 +844,7 @@ impl PontVocal {
                 .as_deref()
                 .map(|s| projection::vue(etat, &i.etat, s, tuiles.len()));
             marquer_portraits(&mut tuiles, profils, &mut manquants);
+            self.projeter_videos(f, i, &mut tuiles, ici);
             synchroniser(
                 vec_de(&v.get_tuiles()),
                 &mut i.ombres.tuiles,
@@ -874,6 +898,117 @@ impl PontVocal {
         for cle in demandes {
             self.telecharger_avatar(cle);
         }
+    }
+
+    fn projeter_videos(
+        &self,
+        f: &Principale,
+        i: &mut Interne,
+        tuiles: &mut [Participant],
+        ici: bool,
+    ) {
+        let session = i.outils.as_ref().map(|o| o.session.clone());
+        let echelle = f.window().scale_factor();
+        let zone = if i.zone_tuile.0 >= 1.0 && i.zone_tuile.1 >= 1.0 {
+            (
+                (i.zone_tuile.0 * echelle).round() as u32,
+                (i.zone_tuile.1 * echelle).round() as u32,
+            )
+        } else {
+            ZONE_PAR_DEFAUT
+        };
+        let voulus: Vec<FluxVoulu> = match &session {
+            _ if ici && i.fenetre_visible => {
+                let videos = session
+                    .as_ref()
+                    .map_or_else(|| self.videos_hors_session.clone(), |s| s.videos());
+                tuiles
+                    .iter()
+                    .filter_map(|p| p.video.clone())
+                    .map(|cle| FluxVoulu {
+                        recepteur: videos.recepteur(&cle),
+                        cle,
+                        zone,
+                        miroir: false,
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+        let gestion = i.video.get_or_insert_with(|| {
+            GestionVideo::nouvelle(video::livraison_slint(self.fenetre.clone()))
+        });
+        gestion.synchroniser(f, &voulus);
+        for p in tuiles.iter_mut() {
+            p.indice_video = p.video.as_ref().map_or(-1, |c| video::indice(f, c));
+        }
+        let demandes: BTreeMap<CleVideo, DemandeVideo> = voulus
+            .iter()
+            .map(|v| {
+                (
+                    v.cle.clone(),
+                    DemandeVideo {
+                        largeur: v.zone.0.max(1),
+                        hauteur: v.zone.1.max(1),
+                    },
+                )
+            })
+            .collect();
+        if demandes != i.affichage {
+            if let Some(session) = session {
+                session.definir_affichage(demandes.clone());
+            }
+            i.affichage = demandes;
+        }
+    }
+
+    pub fn definir_zone_tuile(&self, f: &Principale, largeur: f32, hauteur: f32) {
+        {
+            let mut i = self.verrou();
+            if i.zone_tuile == (largeur, hauteur) {
+                return;
+            }
+            i.zone_tuile = (largeur, hauteur);
+        }
+        self.projeter(f);
+    }
+
+    pub fn fenetre_visible(&self, f: &Principale, visible: bool) {
+        {
+            let mut i = self.verrou();
+            if i.fenetre_visible == visible {
+                return;
+            }
+            i.fenetre_visible = visible;
+        }
+        self.projeter(f);
+    }
+
+    pub fn images_video_converties(&self) -> u64 {
+        self.verrou()
+            .video
+            .as_ref()
+            .map_or(0, GestionVideo::images_converties)
+    }
+
+    pub fn flux_video_actifs(&self) -> usize {
+        self.verrou().video.as_ref().map_or(0, GestionVideo::actifs)
+    }
+
+    pub fn poser_image_video(&self, f: &Principale, cle: &CleVideo, image: &dyn TrameVideo) {
+        let zone = {
+            let i = self.verrou();
+            let echelle = f.window().scale_factor();
+            if i.zone_tuile.0 >= 1.0 {
+                (
+                    (i.zone_tuile.0 * echelle).round() as u32,
+                    (i.zone_tuile.1 * echelle).round() as u32,
+                )
+            } else {
+                ZONE_PAR_DEFAUT
+            }
+        };
+        video::poser_pixels(f, &cle.texte(), video::convertir(image, zone, false));
     }
 
     fn telecharger_avatar(&self, cle: CleAvatar) {
@@ -1465,6 +1600,16 @@ pub type SourcePontVocal = Arc<dyn Fn() -> Option<PontVocal> + Send + Sync>;
 pub type OuvertureSalon = Arc<dyn Fn(&Principale, &str)>;
 
 pub fn brancher_rappels(f: &Principale, source: SourcePontVocal, ouvrir: OuvertureSalon) {
+    {
+        let source = source.clone();
+        let faible = f.as_weak();
+        f.global::<DonneesVideo>()
+            .on_zone_tuile(move |largeur, hauteur| {
+                if let (Some(p), Some(f)) = (source(), faible.upgrade()) {
+                    p.definir_zone_tuile(&f, largeur, hauteur);
+                }
+            });
+    }
     let v = f.global::<DonneesVocal>();
     macro_rules! rappel {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

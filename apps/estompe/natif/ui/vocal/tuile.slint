@@ -3,15 +3,17 @@ import { Avatar } from "../composants.slint";
 import { Anneau } from "../composants/focus.slint";
 import { DonneesVocal, ParticipantVocal } from "donnees.slint";
 import { BarresQualite, Onde, EtatsParticipant } from "commun.slint";
+import { ImageFlux } from "../video/flux.slint";
 
 export component Tuile inherits Rectangle {
     in property <ParticipantVocal> p;
     property <bool> utilisable: !p.moi && Calques.ouverts == 0;
     property <length> cote: Math.clamp(Math.min(self.width, self.height) * 0.3, 32px, 128px);
     border-radius: Rayon.l;
-    background: Theme.papier-3;
+    background: video.pret ? #0e0c0b : Theme.papier-3;
+    clip: true;
     accessible-role: button;
-    accessible-label: root.p.nom + (root.p.moi ? " (toi)" : "");
+    accessible-label: root.p.nom + (root.p.moi ? " (toi)" : "") + (video.pret ? ", " + root.p.libelle-video : "");
     accessible-description: (root.p.parle ? "parle" : root.p.sourd ? "sourdine casque" : root.p.muet ? "micro coupé" : "") + (root.p.micro-impose ? ", micro coupé par un modérateur" : "") + (root.p.son-impose ? ", son coupé par un modérateur" : "");
     accessible-enabled: utilisable;
     accessible-action-default => {
@@ -20,7 +22,15 @@ export component Tuile inherits Rectangle {
         }
     }
     forward-focus: portee;
-    Avatar {
+    video := ImageFlux {
+        width: 100%;
+        height: 100%;
+        indice: root.p.video;
+        visible: self.pret;
+        rayon: Rayon.l;
+        coins: Theme.papier;
+    }
+    if !video.pret: Avatar {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2 - 8px;
         nom: root.p.nom;
@@ -53,7 +63,7 @@ export component Tuile inherits Rectangle {
                 Onde { }
             }
             Text {
-                text: root.p.nom + (root.p.moi ? " (toi)" : "");
+                text: root.p.nom + (root.p.moi ? " (toi)" : "") + (video.pret ? " · " + root.p.libelle-video : "");
                 color: Theme.encre;
                 font-size: Typo.petit;
                 font-weight: Typo.demi-gras;

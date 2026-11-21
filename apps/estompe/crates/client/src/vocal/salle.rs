@@ -6,6 +6,8 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use tokio::sync::mpsc;
 
+use super::video::{DemandeVideo, FluxVideo, SourceVideo};
+
 pub const SUFFIXE_PARTAGE: &str = "#screen";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +92,23 @@ pub enum EvenementSalle {
         identite: String,
         source: SourceAudio,
     },
+    VideoPubliee {
+        identite: String,
+        source: SourceVideo,
+    },
+    VideoRetiree {
+        identite: String,
+        source: SourceVideo,
+    },
+    PisteVideo {
+        identite: String,
+        source: SourceVideo,
+        images: FluxVideo,
+    },
+    PisteVideoRetiree {
+        identite: String,
+        source: SourceVideo,
+    },
 }
 
 impl fmt::Debug for EvenementSalle {
@@ -134,6 +153,28 @@ impl fmt::Debug for EvenementSalle {
                 .field("identite", identite)
                 .field("source", source)
                 .finish(),
+            Self::VideoPubliee { identite, source } => f
+                .debug_struct("VideoPubliee")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::VideoRetiree { identite, source } => f
+                .debug_struct("VideoRetiree")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::PisteVideo {
+                identite, source, ..
+            } => f
+                .debug_struct("PisteVideo")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::PisteVideoRetiree { identite, source } => f
+                .debug_struct("PisteVideoRetiree")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
         }
     }
 }
@@ -173,6 +214,7 @@ pub trait Salle: Send + Sync {
         attributs: BTreeMap<String, String>,
     ) -> BoxFuture<'_, Result<(), ErreurSalle>>;
     fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>>;
+    fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>);
     fn fermer(&self) -> BoxFuture<'_, ()>;
 }
 

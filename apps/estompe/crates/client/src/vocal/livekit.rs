@@ -5,14 +5,18 @@ use futures_util::future::BoxFuture;
 use futures_util::StreamExt;
 use livekit::prelude::{
     ConnectionQuality, LocalAudioTrack, LocalTrack, Participant, RemoteParticipant, RemoteTrack,
-    RemoteTrackPublication, Room, RoomEvent, RoomOptions, TrackKind, TrackPublishOptions,
-    TrackSource,
+    RemoteTrackPublication, Room, RoomEvent, RoomOptions, TrackKind, TrackPublication,
+    TrackPublishOptions, TrackSource,
 };
+use livekit::track::TrackDimension;
 use livekit::webrtc::audio_frame::AudioFrame;
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::native::apm::AudioProcessingModule;
+use livekit::webrtc::prelude::{I420Buffer, VideoBuffer, VideoFormatType};
+use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+use livekit::webrtc::video_stream::native::NativeVideoStream;
 use livekit::DisconnectReason;
 use livekit_protocol::{ParticipantPermission, TrackSource as SourceProto};
 use tokio::sync::mpsc;
@@ -23,6 +27,7 @@ use super::salle::{
     Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle, Qualite,
     RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
 };
+use super::video::{DemandeVideo, ImageVideo, SourceVideo, TrameVideo};
 
 const FILE_MICRO: usize = 50;
 const TAMPON_SOURCE_MS: u32 = 100;
@@ -90,6 +95,130 @@ fn source(s: TrackSource) -> Option<SourceAudio> {
         TrackSource::ScreenshareAudio => Some(SourceAudio::Partage),
         _ => None,
     }
+}
+
+fn source_video(s: TrackSource) -> Option<SourceVideo> {
+    match s {
+        TrackSource::Camera => Some(SourceVideo::Camera),
+        TrackSource::Screenshare => Some(SourceVideo::Partage),
+        _ => None,
+    }
+}
+
+fn piste_de(source: SourceVideo) -> TrackSource {
+    match source {
+        SourceVideo::Camera => TrackSource::Camera,
+        SourceVideo::Partage => TrackSource::Screenshare,
+    }
+}
+
+struct TrameLiveKit {
+    tampon: Box<dyn VideoBuffer>,
+}
+
+fn en_i420(tampon: &dyn VideoBuffer) -> Option<I420Buffer> {
+    if let Some(t) = tampon.as_i420() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_nv12() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i420a() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i422() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i444() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i010() {
+        return Some(t.to_i420());
+    }
+    tampon.as_native().map(|t| t.to_i420())
+}
+
+impl TrameVideo for TrameLiveKit {
+    fn largeur(&self) -> u32 {
+        self.tampon.width()
+    }
+
+    fn hauteur(&self) -> u32 {
+        self.tampon.height()
+    }
+
+    fn vers_rgba(&self, largeur: u32, hauteur: u32, sortie: &mut [u8]) {
+        let Some(mut image) = en_i420(&*self.tampon) else {
+            return;
+        };
+        if sortie.len() < (largeur * hauteur * 4) as usize || largeur == 0 || hauteur == 0 {
+            return;
+        }
+        if (largeur, hauteur) != (image.width(), image.height()) {
+            image = image.scale(largeur as i32, hauteur as i32);
+        }
+        image.to_argb(
+            VideoFormatType::ABGR,
+            sortie,
+            largeur * 4,
+            largeur as i32,
+            hauteur as i32,
+        );
+    }
+}
+
+fn video_publiee(identite: String, publication: &RemoteTrackPublication) -> Option<EvenementSalle> {
+    if publication.kind() != TrackKind::Video || publication.is_muted() {
+        return None;
+    }
+    Some(EvenementSalle::VideoPubliee {
+        identite,
+        source: source_video(publication.source())?,
+    })
+}
+
+fn bascule_video(
+    participant: &Participant,
+    publication: &TrackPublication,
+    muette: bool,
+) -> Option<EvenementSalle> {
+    let Participant::Remote(distant) = participant else {
+        return None;
+    };
+    if publication.kind() != TrackKind::Video {
+        return None;
+    }
+    let identite = distant.identity().to_string();
+    let source = source_video(publication.source())?;
+    Some(if muette {
+        EvenementSalle::VideoRetiree { identite, source }
+    } else {
+        EvenementSalle::VideoPubliee { identite, source }
+    })
+}
+
+fn piste_video(
+    identite: String,
+    publication: &RemoteTrackPublication,
+    piste: RemoteTrack,
+) -> Option<EvenementSalle> {
+    let RemoteTrack::Video(video) = piste else {
+        return None;
+    };
+    let source = source_video(publication.source())?;
+    let flux = NativeVideoStream::new(video.rtc_track());
+    Some(EvenementSalle::PisteVideo {
+        identite,
+        source,
+        images: flux
+            .map(|image| {
+                let trame: ImageVideo = Arc::new(TrameLiveKit {
+                    tampon: image.buffer,
+                });
+                trame
+            })
+            .boxed(),
+    })
 }
 
 fn attributs(a: HashMap<String, String>) -> BTreeMap<String, String> {
@@ -163,15 +292,47 @@ fn traduire(evenement: RoomEvent) -> Option<EvenementSalle> {
         RoomEvent::Reconnecting => EvenementSalle::Reconnexion,
         RoomEvent::Reconnected => EvenementSalle::Reconnecte,
         RoomEvent::Disconnected { reason } => EvenementSalle::Deconnecte(raison(reason)),
-        RoomEvent::TrackPublished { publication, .. } => {
+        RoomEvent::TrackPublished {
+            publication,
+            participant,
+        } => {
             abonner(&publication);
-            return None;
+            return video_publiee(participant.identity().to_string(), &publication);
         }
+        RoomEvent::TrackUnpublished {
+            publication,
+            participant,
+        } if publication.kind() == TrackKind::Video => EvenementSalle::VideoRetiree {
+            identite: participant.identity().to_string(),
+            source: source_video(publication.source())?,
+        },
+        RoomEvent::TrackMuted {
+            participant,
+            publication,
+        } => return bascule_video(&participant, &publication, true),
+        RoomEvent::TrackUnmuted {
+            participant,
+            publication,
+        } => return bascule_video(&participant, &publication, false),
         RoomEvent::TrackSubscribed {
             track,
             publication,
             participant,
-        } => return piste_audio(participant.identity().to_string(), &publication, track),
+        } => {
+            let identite = participant.identity().to_string();
+            return match track {
+                RemoteTrack::Video(_) => piste_video(identite, &publication, track),
+                RemoteTrack::Audio(_) => piste_audio(identite, &publication, track),
+            };
+        }
+        RoomEvent::TrackUnsubscribed {
+            publication,
+            participant,
+            ..
+        } if publication.kind() == TrackKind::Video => EvenementSalle::PisteVideoRetiree {
+            identite: participant.identity().to_string(),
+            source: source_video(publication.source())?,
+        },
         RoomEvent::TrackUnsubscribed {
             publication,
             participant,
@@ -260,6 +421,25 @@ impl Salle for SalleLiveKit {
         })
     }
 
+    fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>) {
+        let participants = self.salle.remote_participants();
+        let Some(distant) = participants
+            .values()
+            .find(|p| p.identity().as_str() == identite)
+        else {
+            return;
+        };
+        for publication in distant.track_publications().values() {
+            if publication.kind() != TrackKind::Video || publication.source() != piste_de(source) {
+                continue;
+            }
+            publication.set_subscribed(demande.is_some());
+            if let Some(d) = demande {
+                publication.update_video_dimensions(TrackDimension(d.largeur, d.hauteur));
+            }
+        }
+    }
+
     fn fermer(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
             let _ = self.salle.close().await;
@@ -287,13 +467,16 @@ impl Connecteur for ConnecteurLiveKit {
                 qualite: qualite(local.connection_quality()),
                 local: true,
             }];
+            let (envoi, evenements) = mpsc::unbounded_channel();
             for distant in salle.remote_participants().values() {
                 participants.push(info_distant(distant));
                 for publication in distant.track_publications().values() {
                     abonner(publication);
+                    if let Some(e) = video_publiee(distant.identity().to_string(), publication) {
+                        let _ = envoi.send(e);
+                    }
                 }
             }
-            let (envoi, evenements) = mpsc::unbounded_channel();
             tokio::spawn(async move {
                 while let Some(evenement) = recus.recv().await {
                     if let Some(traduit) = traduire(evenement) {

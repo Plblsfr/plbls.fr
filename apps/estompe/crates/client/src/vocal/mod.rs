@@ -7,6 +7,7 @@ pub mod mixage;
 pub mod ptt;
 pub mod salle;
 pub mod session;
+pub mod video;
 
 pub use erreurs::{CauseMicro, ErreurVocal};
 pub use etat::{etats_affiches, EtatAffiche, EtatVocal, Phase};
@@ -17,6 +18,10 @@ pub use salle::{
     JetonSalle, Qualite, RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
 };
 pub use session::{ApiVocale, AvisVocal, Dependances, Reglages, SessionVocale, DELAI_FERMETURE};
+pub use video::{
+    CleVideo, DemandeVideo, FluxVideo, ImageI420, ImageVideo, Mire, RecepteurVideo, SourceVideo,
+    TrameVideo, Videos,
+};
 
 #[cfg(test)]
 mod tests {
@@ -165,6 +170,71 @@ mod tests {
                 .is_some_and(|s| s.iter().any(|e| *e > 0.4))
         })
         .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn seules_les_videos_affichees_sont_recues() {
+        let serveur = ServeurVocalFactice::nouveau();
+        let alice = poste(&serveur, "alice", true);
+        let bob = poste(&serveur, "bob", true);
+        alice.session.rejoindre("v1");
+        attendre(&alice.session, connecte_a("v1")).await;
+        serveur.publier_video("v1", "alice", SourceVideo::Camera);
+        bob.session.rejoindre("v1");
+        let cle = CleVideo::camera("alice");
+        attendre(&bob.session, |e| e.video(&cle)).await;
+        let mire = Mire::nouvelle(160, 90);
+        let image = || -> ImageVideo { Arc::new(mire.image(0)) };
+        assert_eq!(
+            serveur.pousser_image("v1", "alice", SourceVideo::Camera, image()),
+            0
+        );
+        let demande = DemandeVideo {
+            largeur: 320,
+            hauteur: 180,
+        };
+        bob.session
+            .definir_affichage([(cle.clone(), demande)].into_iter().collect());
+        attendre_que(|| {
+            !serveur
+                .abonnes_video("v1", "alice", SourceVideo::Camera)
+                .is_empty()
+        })
+        .await;
+        assert_eq!(
+            serveur.abonnes_video("v1", "alice", SourceVideo::Camera)["bob"],
+            demande
+        );
+        let recepteur = bob.session.videos().recepteur(&cle);
+        for _ in 0..3 {
+            serveur.pousser_image("v1", "alice", SourceVideo::Camera, image());
+        }
+        attendre_que(|| recepteur.images_recues() == 3).await;
+        assert!(recepteur.derniere().is_some());
+        bob.session.definir_affichage(Default::default());
+        attendre_que(|| recepteur.derniere().is_none()).await;
+        assert!(serveur
+            .abonnes_video("v1", "alice", SourceVideo::Camera)
+            .is_empty());
+        for _ in 0..3 {
+            serveur.pousser_image("v1", "alice", SourceVideo::Camera, image());
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert_eq!(recepteur.images_recues(), 3);
+        assert_eq!(serveur.images_envoyees("bob"), 3);
+        serveur.retirer_video("v1", "alice", SourceVideo::Camera);
+        attendre(&bob.session, |e| !e.video(&cle)).await;
+        bob.session
+            .definir_affichage([(cle.clone(), demande)].into_iter().collect());
+        serveur.publier_video("v1", "alice", SourceVideo::Camera);
+        attendre_que(|| {
+            !serveur
+                .abonnes_video("v1", "alice", SourceVideo::Camera)
+                .is_empty()
+        })
+        .await;
+        alice.session.quitter();
+        attendre(&bob.session, |e| !e.video(&cle)).await;
     }
 
     #[tokio::test(start_paused = true)]

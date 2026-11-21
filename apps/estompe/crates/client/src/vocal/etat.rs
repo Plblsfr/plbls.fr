@@ -5,6 +5,7 @@ use crate::audio::ReglagesMicro;
 use super::erreurs::CauseMicro;
 use super::mixage::Ecoute;
 use super::salle::{est_partage, InfoParticipant, Qualite};
+use super::video::CleVideo;
 
 pub const ATTRIBUT_MUET: &str = "muted";
 pub const ATTRIBUT_SOURD: &str = "deaf";
@@ -43,6 +44,7 @@ pub struct EtatVocal {
     pub sortie: Option<String>,
     pub traitement: ReglagesMicro,
     pub ecoute: Ecoute,
+    pub videos: BTreeSet<CleVideo>,
 }
 
 impl Default for EtatVocal {
@@ -65,6 +67,7 @@ impl Default for EtatVocal {
             sortie: None,
             traitement: ReglagesMicro::default(),
             ecoute: Ecoute::default(),
+            videos: BTreeSet::new(),
         }
     }
 }
@@ -180,6 +183,11 @@ impl EtatVocal {
             .map(|p| (p.identite.clone(), p))
             .collect();
         self.parlent.clear();
+        self.videos.clear();
+    }
+
+    pub fn video(&self, cle: &CleVideo) -> bool {
+        self.videos.contains(cle)
     }
 
     pub fn reinitialiser(&mut self) {
