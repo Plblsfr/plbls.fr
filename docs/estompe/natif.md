@@ -21,7 +21,7 @@ L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `d
 Prérequis sous Linux (Debian, Ubuntu) : `libfontconfig1-dev libfreetype-dev libxkbcommon-x11-0 libasound2-dev libglib2.0-dev`, un pilote OpenGL (Mesa)
 et clang 21 ou plus récent, désigné par `CXX` (par exemple `CXX=clang++-21`) : libwebrtc du SDK LiveKit est compilé contre la libc++ de Chromium,
 que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sys` le refuse). Sous Windows : la toolchain MSVC, LLVM, Python 3 et
-`ninja` (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
+`ninja`, LLVM 22 ou plus récent (voir [Vocal](#vocal), « CRT statique sous Windows »). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
 `cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible). ffmpeg, s'il est présent, lit les messages vocaux en AAC.
 
 ```sh
@@ -687,22 +687,31 @@ Global `DonneesVocal` (`ui/vocal/donnees.slint`), rempli par `PontVocal` (`src/v
 (`PERIODE_MESURE`) ; hors appel, rien ne tourne.
 
 - Panneau : les salons vocaux et cinéma ne sont plus « bientôt » ; un clic ouvre le salon et le rejoint (comme `SidePanel.svelte`). Sous chaque salon, ses participants
-  (avatar à initiales avec halo, micro et casque coupés quand on est dans ce salon, coupures du serveur). Au-dessus de la barre du compte, la barre du vocal : état
+  (photo de profil, sinon initiales, avec halo, micro et casque coupés quand on est dans ce salon, coupures du serveur) ; à droite du nom du salon, sa durée depuis
+  l'arrivée du plus ancien participant (`since`, comme `oldestSince` et `VoiceTimer.svelte`), rafraîchie chaque seconde tant qu'un salon affiché est occupé. Au-dessus de la barre du compte, la barre du vocal : état
   (« Vocal connecté », « Connexion… », « Reconnexion… »), salon et serveur (clic : ouvre le salon), durée de présence (`since` du serveur, sinon la connexion), qualité, commandes, avis.
 - Rail : pastille « Connecté en vocal » sur le serveur du vocal. Accueil : « Rejoindre » ou « Ouvrir » sur chaque vocal en cours.
 - Vue du salon : hors du salon, l'écran pour rejoindre (participants, « n / 10 participants », erreur du serveur, permission `connect`, réglages audio) ; dans le salon,
   une grille de tuiles (même calcul que `gridDims` : 1, 2×1, 2×2, 3×n, 4×n), « Tu es seul·e ici », bandeau de reconnexion, et en bas les commandes :
   micro (jauge, seuil franchi en rose), choix du micro, casque, choix de la sortie, caméra et partage « bientôt » (lot 5), réglages audio, raccrocher. « Ton micro est coupé » quand on parle micro coupé.
-- Tuile : initiales, pseudo, « (toi) », halo et onde quand il parle (`EtatVocal::parlent` de LiveKit, et pour soi le niveau du micro au-dessus du seuil), micro et casque coupés
+- Mode plein cadre (bouton de l'en-tête, comme `VoiceChannelView.svelte`) : rail, panneau, en-tête et marge disparaissent, la fenêtre passe en plein écran, les commandes
+  restent en barre flottante avec « Quitter le mode plein cadre » ; Échap ou quitter le salon en sort. Le front n'agrandit une tuile (« Mettre en grand ») que pour un flux
+  vidéo : il arrivera avec la caméra et le partage d'écran (lot 5).
+- Tuile : photo de profil (même cache et mêmes clés que la liste des membres, `coquille/avatars.rs` : avatar propre au serveur, sinon global ; demandée au premier affichage), sinon initiales, pseudo, « (toi) », halo et onde quand il parle (`EtatVocal::parlent` de LiveKit, et pour soi le niveau du micro au-dessus du seuil), micro et casque coupés
   (attributs `muted`, `deaf` : qui parle n'est jamais affiché muet), coupures du serveur, qualité. Clic ou Entrée : menu du participant (muet pour moi, volume 0 à 300 %
-  retenu au relâchement, « Couper le micro / le son du serveur » si l'on domine le membre et a `mute_members` ou `deafen_members`, `PUT /voice/{salon}/participants/{id}/mod`).
+  retenu au relâchement, « Couper le micro / le son du serveur » si l'on domine le membre et a `mute_members` ou `deafen_members`, `PUT /voice/{salon}/participants/{id}/mod` ;
+  « Déplacer vers « … » » pour chaque autre salon vocal ou cinéma du serveur avec `move_members` et « Déconnecter du vocal » avec `disconnect_members`, toujours sur un membre
+  que l'on domine, comme le menu du panneau du front : `PUT /voice/{salon}/participants/{id}/move` (`channel_id`) et `POST /voice/{salon}/participants/{id}/disconnect`).
+  Le menu se ferme quand le serveur accepte ; un refus s'affiche dans le menu (« Action impossible : … »). Le même menu s'ouvre depuis le panneau.
 - Clavier : toutes les commandes sont des boutons atteints par Tab ; Alt+Maj+M (micro) et Alt+Maj+D (casque) comme le front ; Échap ferme menus et réglages.
 - Modération : `voice.moved` devient `Changement::DeplacementVocal` dans le store puis `deplace_par_moderation` (avis « eve t'a déplacé dans … ») ; la coupure `voice.mod` du compte (store,
   `GET /servers/{id}/voice` puis `voice.mod`) est passée à `SessionVocale::imposer` ; `voice.disconnected` s'affiche dans la barre.
 - Réglages audio (modal) : micro et sortie, jauge et test du micro hors appel (`EssaiMicro`), bruit, gain, détection de voix et seuil, appuyer pour parler, volume général,
   sons d'arrivée et de départ. Chaque réglage s'applique pendant le glisser et s'enregistre au relâchement.
-- Sons : deux notes (660 puis 880 Hz à l'arrivée, l'inverse au départ, 100 ms chacune, 60 % du niveau du front), à soi et aux autres ; préférence `sons_vocal`. Le choix du son et le fichier personnalisé du front ne sont pas repris.
-- Écarts : pas de photo de profil dans les tuiles (initiales), pas de mode plein cadre, pas de menu contextuel « Déplacer » ni « Déconnecter du vocal », pas de durée du salon dans le panneau.
+- Sons : à soi et aux autres, préférence `sons_vocal` ; choix du son d'arrivée et de départ parmi ceux du front (`SOUND_PRESETS` : Montée 660 puis 880 Hz, Descente,
+  Carillon, Pop, Double bip, Aucun ; notes de 100 ms) et volume des sons de 0 à 100 % (60 % par défaut), préférence `sons` (`ReglagesSons`, `audio/tonalite.rs`, mêmes
+  identifiants que `joinSound`, `leaveSound`) ; « Écouter » et un nouveau choix jouent le son sur la sortie choisie.
+- Écarts : pas de fichier de son personnalisé (« Mon fichier… » du front) ; le glisser d'un participant vers un autre salon du panneau n'est pas repris (le menu le remplace).
 
 ### Appuyer pour parler
 
@@ -738,6 +747,8 @@ et la referme au relâchement plus le délai choisi (0 à 2 s, préférence `ptt
 libwebrtc est précompilé avec la bibliothèque standard de MSVC en `/MT` (`RuntimeLibrary=MT_StaticRelease`), les binaires précompilés de Skia en `/MD` :
 l'éditeur de liens refuse de les réunir. `apps/estompe/natif/.cargo/config.toml` passe tout le binaire en CRT statique (`+crt-static`, comme l'app Tauri) ;
 Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, long au premier build, puis en cache).
+Le STL de MSVC récent (Visual Studio 18) refuse un clang plus ancien que 22 : `LLVM_HOME` et `LIBCLANG_PATH` désignent un LLVM 22 ou plus récent (sinon `skia-bindings`
+prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` évite « Filename too long » au clonage des dépendances de Skia.
 
 ### Tests
 
@@ -758,11 +769,14 @@ Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le comp
   perte du focus, raccourci indisponible (message, touche fenêtre active) ; `audio::tonalite::tests` ; `store::reducteur::tests::transmet_le_deplacement_par_un_moderateur`.
 - `crates/plateforme/src/raccourcis/` : table des touches, appui et relâchement sans répétition ; sous X11 (`DISPLAY`, ignoré sinon) une touche simulée par XTest est signalée
   et parvient toujours à la fenêtre active.
-- `natif/src/vocal/projection.rs` : grille, soi-même affiché dès la connexion, halo jamais micro coupé, coupures du serveur, vue, barre, menu selon le rang, jauge.
+- `natif/src/vocal/projection.rs` : grille, soi-même affiché dès la connexion, halo jamais micro coupé, coupures du serveur, vue, barre, menu selon le rang (coupures,
+  destinations du déplacement, déconnexion), clé de l'avatar, jauge ; `coquille/projection.rs` : durée du salon depuis le plus ancien participant ; `audio::tonalite::tests` : sons du front, volume.
 - `natif/tests/vocal.rs` (backend de test Slint, faux serveur vocal, périphériques factices) : rejoindre depuis le panneau, tuiles et participants du panneau, indicateur de parole
-  (mesuré : voir ci-dessous), couper le micro, Alt+Maj+M et Alt+Maj+D, menu d'un participant (volume, muet), coupure d'un modérateur, appuyer pour parler sans raccourci global,
-  déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
-- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4`, `vocal-12`, `vocal-reconnexion`, `vocal-menu`, `vocal-reglages`.
+  (mesuré : voir ci-dessous), photo de profil dans la tuile et le panneau, durée du salon, mode plein cadre (bouton, Échap, bouton de sortie), couper le micro, Alt+Maj+M et Alt+Maj+D,
+  menu d'un participant (volume, muet, « Déplacer vers » et « Déconnecter du vocal » envoyés au faux serveur HTTP), coupure d'un modérateur, appuyer pour parler sans raccourci global,
+  choix du son et volume des sons retenus, déplacement par un modérateur, raccrocher, rejoindre depuis le bouton, refus « salon complet ».
+- Captures : `coquille-vocal-clair` (écran pour rejoindre), `vocal-1`, `vocal-4` (photos de profil, durée du salon), `vocal-12`, `vocal-reconnexion`, `vocal-menu`,
+  `vocal-moderation` (déplacer, déconnecter), `vocal-plein-cadre`, `vocal-reglages`, `vocal-sons`.
 
 ## Intégration au bureau
 
@@ -901,7 +915,7 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
 - Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
-  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
+  fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et

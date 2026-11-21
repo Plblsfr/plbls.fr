@@ -73,7 +73,9 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   sur le bus de session, rendues obligatoires par `ESTOMPE_DBUS_EXIGE=1`), build. Puis il lance
   l'app sous Xvfb (`--essai-de-lancement`). En cas d'échec, l'artefact `estompe-natif-captures` contient captures, références et différences.
 - `estompe-natif-windows` : runner Windows, cible `x86_64-pc-windows-msvc` : build et tests (coffre de secrets : Credential Manager), sans
-  comparaison des captures. CRT statique (libwebrtc) : Skia y est compilé depuis ses sources (`ninja` installé par pip), long au premier build puis en cache.
+  comparaison des captures. CRT statique (libwebrtc) : Skia y est compilé depuis ses sources (`ninja` installé par pip, LLVM 22.1.8 installé depuis sa release GitHub, empreinte SHA-256 vérifiée,
+  désigné par `LLVM_HOME` et `LIBCLANG_PATH` car le STL de MSVC refuse le clang 20 du runner, `core.longpaths` pour le clonage de ses dépendances), long au premier build puis en cache ;
+  `estompe-livraison-natif.yml` fait de même.
 - `estompe-api-image` : construit l'image de l'API sans la publier (cache `:buildcache` du registre en lecture), la démarre à côté d'un
   PostgreSQL et attend `GET /readyz` (60 s au plus). Conteneurs et tag portent l'identifiant du run.
 - `entracte-image` : construit l'image d'Entracte sans la publier (cache GitHub Actions), la démarre avec `deploy/entracte/.env.example`
