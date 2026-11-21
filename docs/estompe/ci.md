@@ -10,6 +10,7 @@ un pour les apps natives d'Estompe. Runners GitHub (`ubuntu-latest`).
 | `livraison.yml` | push sur `main`, tags `aegis-v*`, `entracte-v*`, `sillon-v*`, `sablier-v*`, `regie-v*`, `security-v*`, `ui-v*`, `estompe-api-v*`, lancement manuel | publie ce que la fusion a changé, sans rejouer les tests |
 | `estompe-livraison-app.yml` | tag `estompe-app-v*` ou lancement manuel (case `beta` : appelle `estompe-beta.yml`) | front web, installeur Windows signé, APK, image `ghcr.io/plblsfr/estompe-web` |
 | `estompe-beta.yml` | lancement manuel sur la branche d'une PR | check, tests et build du front de la PR, puis image `ghcr.io/plblsfr/estompe-web:beta` (et `beta-pr<n>`, `beta-<sha>`) ; ni `latest`, ni tag, ni release |
+| `estompe-natif-installeur.yml` | lancement manuel sur la branche de son choix, ou push sur `ci/installeur-natif-windows` | build release de l'app native pour Windows (MSVC), installeur NSIS non signé (`apps/estompe/natif/installeur/estompe-natif.nsi`), artefact `estompe-natif-installeur` ; ni tag, ni release, ni mise à jour automatique |
 | `packages-cleanup.yml` | chaque dimanche, ou à la main | nettoyage des images de `ghcr.io/plblsfr/*` |
 | `_changements.yml`, `_image.yml` | appelés par les autres | ce qu'un évènement touche ; build, publication et release d'une image |
 

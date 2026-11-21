@@ -54,6 +54,19 @@ avec la même piste audio produisent donc les mêmes segments.
   reçoit `404` et le lecteur réessaie plus tard. Seule la lecture décide où ffmpeg travaille.
 - La recopie et les modes matériels gardent une liste écrite par ffmpeg au fil du transcodage, dont les segments dépendent du point de départ.
 
+## Charge du processeur
+
+Sans bride, ffmpeg réencode le titre aussi vite que le processeur le permet jusqu'à la fin du fichier, même si personne ne regarde si loin :
+la liste HLS est complète dès l'ouverture et le processeur reste à plus de 90 % tant que le titre n'est pas fini.
+
+- `ENTRACTE_TRANSCODE_VITESSE` (2 par défaut, `0` pour supprimer la bride) : ffmpeg lit la source à ce multiple du temps réel (`-readrate`,
+  avec 30 s lues d'emblée pour remplir le premier segment et le tampon du lecteur). Le réencodage garde de l'avance sur la lecture sans
+  occuper le processeur en continu. Une lecture qui saute plus loin repart de là, comme avant. Ne concerne ni la recopie ni les
+  segments déjà écrits ; le préchargement « Tout le film » avance donc à cette vitesse au plus.
+- `ENTRACTE_TRANSCODE_THREADS` (0 par défaut = tous les cœurs) : `-threads` de libx264, pour laisser des cœurs à Keycloak, aux API et
+  à la base. Sans effet sur les modes matériels.
+- Une limite `cpus:` sur le service `entracte-api` du compose borne en plus l'ensemble des ffmpeg.
+
 ## Transcodage partagé
 
 Un transcodage n'appartient pas à un flux : les flux qui demandent le même fichier, la même qualité et la même piste audio lisent les
