@@ -1,6 +1,7 @@
 import { AboutSlint } from "std-widgets.slint";
 import { Theme, Typo, Espace } from "jetons.slint";
 import { Interrupteur } from "composants/interrupteur.slint";
+import { PanneauMiseAJour } from "mise-a-jour/panneau.slint";
 
 export component APropos {
     in property <string> version;
@@ -83,6 +84,7 @@ export component APropos {
                 root.demarrage-change(actif);
             }
         }
+        PanneauMiseAJour { }
         Rectangle {
             height: 128px;
             border-radius: 10px;

@@ -1,6 +1,8 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton, Avatar, ElementListe, Compteur, Defilement, Coins } from "../composants.slint";
 import { DonneesCoquille, GenrePanneau, GenreVue, EtatBandeau } from "donnees.slint";
+import { BandeauMiseAJour } from "../mise-a-jour/bandeau.slint";
+import { DonneesMiseAJour } from "../mise-a-jour/donnees.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -249,6 +251,8 @@ export component Panneau inherits Rectangle {
         }
         VerticalLayout {
             padding: Espace.e2;
+            spacing: Espace.e2;
+            if DonneesMiseAJour.automatique && (DonneesMiseAJour.proposee || DonneesMiseAJour.compte-a-rebours > 0): BandeauMiseAJour { }
             BarreMoi {
                 se-deconnecter => {
                     root.se-deconnecter();

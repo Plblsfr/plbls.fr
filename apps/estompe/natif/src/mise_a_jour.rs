@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use estompe_client::journal::Journal;
 use estompe_client::mise_a_jour::{
-    self as maj, Bloqueur, Contexte, EmetteurMaj, EvenementMaj, MiseAJour, OptionsMiseAJour,
-    PolitiqueAdresses, ReceptionMaj, Redemarreur, SourceContexte, SourceMaj, SourceReseau,
-    Telechargeur,
+    self as maj, Bloqueur, Contexte, EmetteurMaj, EtatMaj, EvenementMaj, MiseAJour,
+    OptionsMiseAJour, Phase, PolitiqueAdresses, ReceptionMaj, Redemarreur, SourceContexte,
+    SourceMaj, SourceReseau, Telechargeur,
 };
 use estompe_plateforme::Installation;
 use slint::ComponentHandle;
 use tokio::sync::oneshot;
 
-use crate::entree::{Emetteur, Evenement};
-use crate::{DonneesSaisie, Principale};
+use crate::entree::{Emetteur, Evenement, Installateur};
+use crate::{DonneesMiseAJour, DonneesSaisie, Principale};
 
 pub fn contexte_de_la_fenetre(fenetre: slint::Weak<Principale>) -> SourceContexte {
     Arc::new(move || {
@@ -85,4 +85,56 @@ pub fn demarrer_service(runtime: &tokio::runtime::Handle, options: OptionsServic
     );
     service.envoyer(EvenementMaj::Demarrer);
     service
+}
+
+pub fn installateur(emetteur: EmetteurMaj) -> Installateur {
+    Arc::new(move || emetteur.envoyer(EvenementMaj::Installer))
+}
+
+pub fn afficher(f: &Principale, etat: &EtatMaj) {
+    let d = f.global::<DonneesMiseAJour>();
+    let (version, notes) = etat
+        .disponible
+        .as_ref()
+        .map(|m| (m.version.as_str(), m.notes.trim()))
+        .unwrap_or_default();
+    d.set_automatique(etat.automatique);
+    d.set_disponible(etat.disponible.is_some());
+    d.set_proposee(etat.proposee());
+    d.set_version(version.into());
+    d.set_notes(notes.into());
+    d.set_en_cours(etat.en_cours());
+    d.set_installation(etat.phase == Phase::Prete);
+    d.set_progression(etat.progression());
+    d.set_verification(etat.phase == Phase::Verification);
+    d.set_a_jour(etat.phase == Phase::AJour);
+    d.set_erreur(etat.erreur.as_str().into());
+    d.set_attente_appel(etat.phase == Phase::AttenteFinAppel);
+    d.set_compte_a_rebours(i32::try_from(etat.compte_a_rebours).unwrap_or(i32::MAX));
+}
+
+pub fn brancher(f: &Principale, service: &MiseAJour, runtime: &tokio::runtime::Handle) {
+    afficher(f, &service.etat());
+    let d = f.global::<DonneesMiseAJour>();
+    let rappel = |evenement: EvenementMaj| {
+        let emetteur = service.emetteur();
+        move || emetteur.envoyer(evenement.clone())
+    };
+    d.on_verifier(rappel(EvenementMaj::Verifier { manuelle: true }));
+    d.on_installer(rappel(EvenementMaj::Installer));
+    d.on_plus_tard(rappel(EvenementMaj::PlusTard));
+    d.on_confirmer(rappel(EvenementMaj::Confirmer));
+    let mut etat = service.observer();
+    let fenetre = f.as_weak();
+    runtime.spawn(async move {
+        while etat.changed().await.is_ok() {
+            let courant = etat.borrow_and_update().clone();
+            if fenetre
+                .upgrade_in_event_loop(move |f| afficher(&f, &courant))
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
 }

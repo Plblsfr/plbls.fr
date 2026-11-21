@@ -15,6 +15,9 @@ pub fn creer_fenetre() -> Result<Principale, slint::PlatformError> {
     let fenetre = Principale::new()?;
     coquille::installer_modeles(&fenetre);
     fenetre.set_version(VERSION.into());
+    fenetre
+        .global::<DonneesMiseAJour>()
+        .set_version_installee(VERSION.into());
     fenetre.set_debogage(cfg!(debug_assertions));
     Ok(fenetre)
 }
@@ -48,11 +51,14 @@ pub fn demarrer(
 ) -> Result<Application, String> {
     let canal = entree::canal();
     let canal_maj = estompe_client::mise_a_jour::canal();
-    let reels = session.services(&canal.0)?;
+    let mut reels = session.services(&canal.0)?;
+    let plateforme = estompe_plateforme::Plateforme::de_l_os();
+    reels.services.installer = Some(mise_a_jour::installateur(canal_maj.0.clone()));
     let navigateur = reels.services.navigateur.clone();
     ecrans::brancher(fenetre, &canal.0);
     let entree = entree::Entree::demarrer(
-        entree::Machine::nouvelle(invitation),
+        entree::Machine::nouvelle(invitation)
+            .avec_installation(plateforme.installation.disponible()),
         reels.services,
         canal,
         ecrans::publieur(fenetre),
@@ -100,7 +106,6 @@ pub fn demarrer(
         session.memoire.clone(),
         coquille::horloge_locale(),
     );
-    let plateforme = estompe_plateforme::Plateforme::de_l_os();
     let dossier_maj = session
         .dossiers
         .cache
@@ -125,6 +130,7 @@ pub fn demarrer(
             journal: Some(session.journal.clone()),
         },
     );
+    mise_a_jour::brancher(fenetre, &service_maj, &entree.runtime());
     let suivi = coquille.suivi_du_focus();
     let premier_plan = service_maj.emetteur();
     suivre_le_focus(fenetre, move |actif| {

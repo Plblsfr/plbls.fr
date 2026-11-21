@@ -135,6 +135,7 @@ impl Session {
             api: Arc::new(client.clone()),
             navigateur,
             lien_telechargement: entree::lien_telechargement(&self.adresse.url),
+            installer: None,
             journal: Some(self.journal.clone()),
         };
         Ok(ServicesReels {

@@ -227,6 +227,7 @@ impl MachineMaj {
             }
         };
         self.etat.verifications += 1;
+        self.etat.erreur.clear();
         self.etat.phase = if disponible.is_some() {
             Phase::Disponible
         } else {
@@ -514,6 +515,20 @@ mod tests {
         m.traiter(EvenementMaj::ManifesteLu(Ok(None)), LIBRE);
         assert_eq!(m.etat().phase, Phase::AJour);
         assert_eq!(m.etat().verifications, 1);
+        m.traiter(EvenementMaj::Verifier { manuelle: true }, LIBRE);
+        m.traiter(EvenementMaj::ManifesteLu(Err("injoignable".into())), LIBRE);
+        m.traiter(EvenementMaj::Verifier { manuelle: false }, LIBRE);
+        assert_eq!(
+            m.etat().erreur,
+            "injoignable",
+            "une vérification automatique ne l'efface pas d'avance"
+        );
+        m.traiter(EvenementMaj::ManifesteLu(Ok(None)), LIBRE);
+        assert_eq!(
+            m.etat().erreur,
+            "",
+            "une vérification réussie efface l'erreur"
+        );
     }
 
     #[test]

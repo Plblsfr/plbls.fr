@@ -17,8 +17,9 @@ pub use machine::{
 pub use manifeste::{Manifeste, Paquet};
 pub use politique::{PolitiqueAdresses, Refus, HOTES_PRODUCTION, REDIRECTIONS_MAX};
 pub use service::{
-    canal, Bloqueur, EmetteurMaj, MiseAJour, OptionsMiseAJour, ReceptionMaj, Redemarreur,
-    SourceContexte, SourceMaj, SourceReseau, PREMIERE_VERIFICATION, VERIFICATION_PERIODIQUE,
+    canal, Bloqueur, EmetteurMaj, Futur, MiseAJour, OptionsMiseAJour, Progres, ReceptionMaj,
+    Redemarreur, SourceContexte, SourceMaj, SourceReseau, INTERVALLE_PREMIER_PLAN,
+    PREMIERE_VERIFICATION, VERIFICATION_PERIODIQUE,
 };
 pub use signature::{verifier, verifier_fichier};
 pub use telechargement::{EcrivainDisque, Telecharge, Telechargeur};

@@ -89,6 +89,7 @@ pub fn brancher(f: &Principale, emetteur: &Emetteur) {
     f.on_ouvrir_invitation(simple(Evenement::OuvrirInvitation));
     f.on_retour_accueil(simple(Evenement::RetourAccueil));
     f.on_telecharger_mise_a_jour(simple(Evenement::Telecharger));
+    f.on_ouvrir_page_mise_a_jour(simple(Evenement::OuvrirPageTelechargement));
     let e = emetteur.clone();
     f.on_activer(move |pseudo| e.envoyer(Evenement::Activer(pseudo.into())));
     let e = emetteur.clone();

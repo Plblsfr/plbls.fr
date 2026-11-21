@@ -184,6 +184,7 @@ pub fn services(
         api,
         navigateur,
         lien_telechargement: "https://chat.example/".into(),
+        installer: None,
         journal: None,
     }
 }

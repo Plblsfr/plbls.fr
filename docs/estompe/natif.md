@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)) ; le reste de l'écriture arrive avec le lot 3.
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, voir [Écriture](#écriture)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3.
 
 ## Architecture
 
@@ -98,9 +98,14 @@ et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil,
 
 Le client déclare `X-Estompe-Platform: natif` et `X-Estompe-Version: <version du paquet>` ; l'API applique `platforms.natif` de
 `api/estompe/core/updates.json`. Un refus 426 (`upgrade_required`), à n'importe quel appel, mène à l'écran bloquant « Mise à jour requise »
-(message du serveur, version installée et minimale) : la machine n'émet plus aucune requête, seul le bouton de téléchargement agit. Il ouvre
-dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`) ; le téléchargement et l'installation dans l'app
-(installeur de la [Livraison](#livraison)) ne sont pas encore branchés.
+(message du serveur, version installée et minimale) : la machine n'émet plus aucune requête vers l'API. Une mise à jour imposée par le manifeste
+(`mandatory`, `minVersion`, voir [Mises à jour](#mises-à-jour)) y mène aussi (`Evenement::MiseAJourSignalee`), après un compte à rebours de 120 s
+si l'utilisateur écrit.
+
+- Installation disponible (Windows, `Machine::avec_installation`) : « Installer la mise à jour » (`Evenement::Telecharger` → `Effet::Installer`)
+  télécharge, vérifie et lance l'installeur depuis l'écran (progression, puis redémarrage) ; en cas d'échec, l'erreur s'affiche avec « Réessayer » et
+  « Ouvrir la page de téléchargement » (`Evenement::OuvrirPageTelechargement`).
+- Sinon (Linux) : le bouton ouvre dans le navigateur la page du serveur (`ESTOMPE_API_URL` ou `https://chat.plbls.fr`).
 
 ## Coquille
 
@@ -455,6 +460,16 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
 - Au démarrage, les installeurs de `mises-a-jour/` d'une version inférieure ou égale à la version installée sont supprimés.
 - Journal : version disponible, téléchargement vérifié ou refusé, lancement ; jamais de jeton.
 - Linux : `Installation` indisponible, aucune vérification (le paquet Linux arrive au lot 11).
+- Interface (`ui/mise-a-jour/`, `src/mise_a_jour.rs`) : l'état du service est recopié dans le global `DonneesMiseAJour` (`afficher`, par
+  `upgrade_in_event_loop`), ses rappels renvoient au service (`brancher`).
+  - Bandeau (`bandeau.slint`, en bas du panneau de la coquille, comme `UpdateNotice.svelte`) : « Nouvelle version disponible : Estompe natif X.Y.Z »,
+    notes de version sur deux lignes puis « Plus », « Mettre à jour » (devient « NN % » puis « Installation… », barre de progression) et « Plus tard »
+    (la version est écartée jusqu'à la suivante) ; pendant le compte à rebours d'une mise à jour imposée, « Mise à jour obligatoire dans M:SS ».
+  - Panneau (`panneau.slint`, section « Mises à jour » de « À propos », rangé dans les réglages au lot 8) : version installée, « Rechercher une mise à
+    jour » (vérification manuelle : son erreur est montrée), « Tu as la dernière version », version disponible et ses notes, « Installer et
+    redémarrer » avec la progression, « Installer maintenant » en appel, erreur lisible en `Theme.danger`. Sous Linux : lecture seule, « Les mises à
+    jour automatiques arriveront avec le paquet Linux ».
+  - Écran forcé : voir [Mise à jour forcée](#mise-à-jour-forcée).
 - Non vérifié sur machine réelle : passage d'une version publiée à la suivante (deux tags), relance par l'installeur et session conservée.
 
 ## Portabilité
@@ -507,6 +522,8 @@ compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0
 référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
+- Mises à jour : `mise-a-jour-bandeau`, `mise-a-jour-panneau-a-jour`, `mise-a-jour-telechargement` (40 %), `mise-a-jour-erreur` et `mise-a-jour-forcee`
+  (installation en cours) sont préparés par `mise_a_jour::afficher` avec un `EtatMaj` fixe.
   Les écrans d'entrée sont préparés par `ecrans::afficher` avec un `Etat` fixe ; la coquille par un `Pont` sur un store rempli par `Store::installer`
   (`tests/commun/mod.rs`, module `coquille`), l'heure figée et une icône de serveur dessinée dans le test.
 - Régénérer après un changement voulu : `just estompe-natif-captures`, relire les images, les versionner dans la même PR.
@@ -535,6 +552,11 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
+`mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
+  le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,
+  rien n'est lancé avant la fin du téléchargement, puis l'installeur est lancé une fois et l'app quitte par `Fermeture` ; ensuite l'erreur d'une
+  vérification manuelle dans le panneau, une mise à jour imposée qui mène à l'écran bloquant, un échec d'installation qui propose la page de
+  téléchargement, et « Réessayer » qui installe sans ouvrir le navigateur.
 `bureau.rs` (même backend, la boucle lancée deux fois) : fausse zone de notification (`tests/commun/`, module `bureau`) ; un message d'instance ramène la fenêtre masquée et
   transmet l'invitation, fermer masque la fenêtre en gardant la connexion temps réel (un message reçu arrive encore), clic et « Ouvrir » la ramènent,
   « Quitter » arrête la coquille, ferme le flux et retire l'icône ; sans zone, la demande de fermeture quitte. Entre les deux, avec de fausses

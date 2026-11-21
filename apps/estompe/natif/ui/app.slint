@@ -13,8 +13,9 @@ import { Attente } from "entree/commun.slint";
 import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
 import { MiseAJour } from "entree/mise-a-jour.slint";
+import { DonneesMiseAJour } from "mise-a-jour/donnees.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, DonneesMiseAJour }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -58,6 +59,7 @@ export component Principale inherits Window {
     callback rejoindre(string);
     callback retour-accueil();
     callback telecharger-mise-a-jour();
+    callback ouvrir-page-mise-a-jour();
     callback demarrage-change(bool);
     callback notifications-change(bool);
     public function focus-demo() {
@@ -213,6 +215,9 @@ export component Principale inherits Window {
                     message: root.mise-a-jour-message;
                     telecharger => {
                         root.telecharger-mise-a-jour();
+                    }
+                    ouvrir-page => {
+                        root.ouvrir-page-mise-a-jour();
                     }
                 }
                 if root.page == Page.coquille: Coquille {
