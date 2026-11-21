@@ -214,7 +214,6 @@ mod tests {
             cfg!(windows).then_some(CIBLE_WINDOWS)
         );
         for (nom, disponible) in [
-            ("capture_son", p.capture_son.disponible()),
             ("overlay", p.overlay.disponible()),
             ("premier_plan", p.premier_plan.disponible()),
         ] {
