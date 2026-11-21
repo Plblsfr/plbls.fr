@@ -9,8 +9,8 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`) et audio (`audio/`) |
-| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`) et mesures (`mesures.rs`) |
+| `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; compteurs du processus pour les mesures (`processus/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
 hors du workspace racine comme les apps Tauri. Slint est figé en `=1.18.1`, comme dans l'overlay natif de l'app Tauri.
@@ -32,6 +32,8 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
 ```
 
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
+`estompe-natif --mesures <fichier.json>` relève la mémoire et le CPU de l'app pendant un scénario et écrit un export au format de l'app Tauri :
+voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résultats du point de contrôle du lot 4).
 
 ## Interface
 
@@ -545,7 +547,7 @@ et de fenêtre, capture du son, overlay, application au premier plan, démarrage
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : les raccourcis globaux de l'appuyer pour parler (`RaccourcisSysteme` : crochet clavier sous Windows, XInput 2 sous X11, indisponible sous Wayland), le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
-sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), et les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux). Le reste arrive avec son lot, Windows d'abord.
+sélecteur, `explorer` ou `xdg-open` pour l'ouverture) et la copie d'une image (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux) et les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 

@@ -198,7 +198,8 @@ Paramètres › Débogage, mode debug activé : « Démarrer une session », pui
 - Hors session, rien ne tourne : pas de fil d'échantillonnage, pas d'écouteur, pas de boucle d'images.
 - L'export ne contient ni contenu de message ni identifiant ; rien n'est envoyé automatiquement.
 
-Comparer plusieurs exports (médiane des sessions de chaque version et jeu d'options WebView2, scénario par scénario) :
+Comparer plusieurs exports (médiane des sessions de chaque version et jeu d'options WebView2, scénario par scénario ; les exports de l'app native,
+[docs/estompe/natif-mesures.md](../../docs/estompe/natif-mesures.md), ont leur colonne) :
 
 ```sh
 node apps/estompe/windows/scripts/synthese-mesures.mjs mesures/ --sortie synthese.md
