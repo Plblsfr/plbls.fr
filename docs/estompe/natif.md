@@ -44,7 +44,7 @@ just estompe-natif-check          # tous les contrôles de la CI Linux
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
   menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
-- L'écran « À propos » affiche la version et l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`).
+- L'écran « À propos » affiche la version, l'attribution exigée par la licence royalty-free de Slint (`AboutSlint`) et celle de FFmpeg (LGPL, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)).
 
 ### Menus contextuels et confirmation
 
@@ -465,9 +465,12 @@ deux moteurs et sur les deux OS :
   Tauri, aucun encodeur logiciel : le ffmpeg LGPL embarqué n'a pas `libx264`) ; sans ffmpeg, sans encodeur ou si tous échouent, l'original part (le front fait de même).
   La limite `max_video_size` s'applique au fichier converti.
 - ffmpeg (`ffmpeg_du_systeme`) : `ffmpeg` (`ffmpeg.exe`) à côté de l'exécutable, sinon celui du `PATH` ; même code sous Linux et Windows, lancé par
-  `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Le binaire à embarquer est celui de l'app Tauri
-  (`apps/estompe/windows/scripts/fetch-ffmpeg.mjs`, build LGPL de BtbN) : 130 Mo installé, environ 40 Mo dans un installeur compressé en LZMA ; l'installeur natif
-  (`installeur/estompe-natif.nsi`, [#343](https://github.com/Plblsfr/plbls.fr/issues/343)) ne l'embarque pas encore : il devra le copier à côté d'`estompe-natif.exe` et citer sa licence. La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
+  `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Sous Windows, l'installeur
+  (`installeur/estompe-natif.nsi`) le copie à côté d'`estompe-natif.exe` : c'est le binaire de l'app Tauri, téléchargé par
+  `apps/estompe/windows/scripts/fetch-ffmpeg.mjs` (build `win64-lgpl` de [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), autobuild épinglé
+  `autobuild-2026-11-09-12-42`, FFmpeg `N-128718-gb2b543c079`, archive vérifiée par sa somme SHA-256 épinglée dans le script), sous licence LGPL version 3 ou
+  ultérieure (`--enable-version3`, sans `libx264`), cité dans « À propos » : 130 Mo installé, 41 Mo dans l'installeur compressé en LZMA. Sous Linux, celui du `PATH`.
+  La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
 - Pendant la conversion, la pièce affiche « conversion… 42 % » et sa barre (`EtatPiece::Conversion`, lu dans `-progress pipe:1` rapporté à la durée de `ffmpeg -i`). La croix
   l'annule : la tâche interrompue lève le drapeau d'annulation, ffmpeg est tué puis attendu, et le fichier de sortie supprimé. Le fichier converti est écrit dans
   `<cache>/conversions/` (`FichierTemporaire`, supprimé quand la dernière copie de la source de la pièce disparaît : pièce retirée ou annulée, message envoyé) ; « Réessayer » renvoie ce même fichier. Le dossier est vidé au lancement, pour ce qu'un arrêt brutal aurait laissé.
@@ -808,19 +811,23 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 - Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)).
 - Installeur NSIS `apps/estompe/natif/installeur/estompe-natif.nsi` → `Estompe-natif-beta-X.Y.Z-setup.exe` :
   - « Estompe natif (bêta) », par utilisateur sans droits d'administrateur (`RequestExecutionLevel user`), dans `%LOCALAPPDATA%\Programs\Estompe natif` :
-    `estompe-natif.exe`, `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
+    `estompe-natif.exe`, `ffmpeg.exe` (conversion des vidéos et lecture des messages vocaux AAC, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)), `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
   - raccourci du menu Démarrer, et sur le bureau (case cochée par défaut, sautée en mode silencieux) ;
   - registre (`HKCU`) : `Software\EstompeNatif` (dossier), désinstallation `Software\Microsoft\Windows\CurrentVersion\Uninstall\EstompeNatif`,
     identité des toasts `Software\Classes\AppUserModelId\fr.plbls.estompe.natif` (`DisplayName`, `IconUri`, mêmes valeurs que l'app).
     L'app Tauri garde son dossier, sa clé de désinstallation et l'identifiant `fr.plbls.estompe` : les deux cohabitent.
   - mode silencieux de mise à jour, `/S /RELANCER` : attend que `estompe-natif.exe` soit libre (l'app a quitté ; 120 × 500 ms au plus, en
     interactif un message « Fermez Estompe natif » avec Réessayer), installe, puis relance l'app si `/RELANCER` est passé ; en cas d'échec, relance l'exe en place.
-  - désinstallation (refusée tant que l'app tourne) : programme, icône, raccourcis, clés ci-dessus, valeur `EstompeNatif` de `Run` (démarrage
+  - désinstallation (refusée tant que l'app tourne) : programme, `ffmpeg.exe`, icône, raccourcis, clés ci-dessus, valeur `EstompeNatif` de `Run` (démarrage
     avec la session) et cache `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` (mises à jour téléchargées comprises) ; garde les préférences et
     brouillons (`%APPDATA%\fr.plbls.estompe.natif`), les journaux et le coffre de secrets.
   - non signé Authenticode pendant la bêta : SmartScreen avertit à la première installation.
-- Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 45 Mo), contenu
-  listé par `7z` (exe, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
+- ffmpeg : le workflow lance `fetch-ffmpeg.mjs` (`TAURI_ENV_PLATFORM=windows`) avant `makensis`, qui prend
+  `apps/estompe/windows/src-tauri/binaries/ffmpeg.exe` (autre chemin : `-DFFMPEG=<chemin>`). Sous Windows, le script lit l'archive avec le `tar`
+  du système (bsdtar), `unzip` n'y étant pas garanti.
+- Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 90 Mo : 41 Mo pour
+  ffmpeg compressé, mesurés, plus les 45 Mo prévus pour l'app, pas encore mesurée sur un build release), contenu
+  listé par `7z` (exe, `ffmpeg.exe`, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
 - Manifeste de mise à jour `natif.json` (`scripts/estompe/natif-manifeste.mjs`), servi par la release fixe `estompe-natif-beta` :
   `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json`. Format de `latest.json` de Tauri plus la taille :
   `{ version, notes, pub_date, mandatory, force, minVersion, message, platforms: { "windows-x86_64": { url, signature, taille } } }` ;
@@ -828,7 +835,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   vers `objects.githubusercontent.com` ou `release-assets.githubusercontent.com`), `signature` est le fichier `.minisig` en base64 (clé
   `apps/estompe/crates/client/src/mise_a_jour/cle.pub`, commentaire de confiance `estompe-natif X.Y.Z`), `taille` en octets.
 - Essai local de l'installeur sous Linux : `apt-get install nsis p7zip-full`, puis dans `apps/estompe/natif/installeur/`
-  `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` et le contrôle sur le résultat.
+  `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` (après `TAURI_ENV_PLATFORM=windows node ../../windows/scripts/fetch-ffmpeg.mjs`)
+  et le contrôle sur le résultat.
 
 ## CI
 

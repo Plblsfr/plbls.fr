@@ -61,6 +61,9 @@ jobs:
             ~/.cargo/git
             apps/estompe/natif/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
+      - name: ffmpeg (build LGPL épinglé de l'app Tauri, somme SHA-256 vérifiée)
+        shell: bash
+        run: TAURI_ENV_PLATFORM=windows node apps/estompe/windows/scripts/fetch-ffmpeg.mjs && test -s apps/estompe/windows/src-tauri/binaries/ffmpeg.exe
       - name: NSIS
         run: choco install nsis -y --no-progress
       - name: Installeur
@@ -69,7 +72,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: '"/c/Program Files (x86)/NSIS/makensis.exe" -V2 "-DVERSION=$VERSION" estompe-natif.nsi'
-      - name: Contrôle de l'installeur (taille, contenu, sans WebView2)
+      - name: Contrôle de l'installeur (taille, contenu dont ffmpeg, sans WebView2)
         shell: bash
         env:
           VERSION: ${{ steps.version.outputs.version }}

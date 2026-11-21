@@ -12,6 +12,9 @@ SetCompressor /SOLID lzma
 !ifndef EXE
   !define EXE "..\target\x86_64-pc-windows-msvc\release\estompe-natif.exe"
 !endif
+!ifndef FFMPEG
+  !define FFMPEG "..\..\windows\src-tauri\binaries\ffmpeg.exe"
+!endif
 !define NOM "Estompe natif (bêta)"
 !define EXECUTABLE "estompe-natif.exe"
 !define ICONE "..\icones\estompe.ico"
@@ -79,6 +82,7 @@ Section "Estompe natif" SecProgramme
   SetOutPath "$INSTDIR"
   Call AttendreFermeture
   File "/oname=${EXECUTABLE}" "${EXE}"
+  File "/oname=ffmpeg.exe" "${FFMPEG}"
   File "/oname=estompe.ico" "${ICONE}"
   WriteUninstaller "$INSTDIR\desinstaller.exe"
   Delete "$SMPROGRAMS\Estompe natif (beta).lnk"
@@ -131,6 +135,7 @@ FunctionEnd
 Section "Uninstall"
   Call un.AttendreFermeture
   Delete "$INSTDIR\${EXECUTABLE}"
+  Delete "$INSTDIR\ffmpeg.exe"
   Delete "$INSTDIR\estompe.ico"
   Delete "$INSTDIR\desinstaller.exe"
   RMDir "$INSTDIR"

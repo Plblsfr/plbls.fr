@@ -1,5 +1,6 @@
 // Télécharge ffmpeg (build LGPL de BtbN, sans libx264 : l'export réencode avec les encodeurs matériels) dans windows/src-tauri/binaries/,
-// d'où tauri.windows.conf.json l'embarque dans l'installeur. Sans effet hors build Windows ou si le fichier est déjà là.
+// d'où tauri.windows.conf.json et l'installeur de l'app native (natif/installeur/estompe-natif.nsi) l'embarquent. Sans effet hors build
+// Windows ou si le fichier est déjà là.
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -23,7 +24,12 @@ try {
   const sha = createHash('sha256').update(data).digest('hex')
   if (sha !== SHA256) throw new Error(`somme SHA-256 de ffmpeg inattendue : ${sha} (attendue ${SHA256})`)
   writeFileSync(zip, data)
-  execFileSync('unzip', ['-q', '-j', zip, '*/bin/ffmpeg.exe', '-d', tmp])
+  if (process.platform === 'win32') {
+    const tar = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+    execFileSync(tar, ['-xf', zip, '-C', tmp, '--strip-components', '2', '*/bin/ffmpeg.exe'])
+  } else {
+    execFileSync('unzip', ['-q', '-j', zip, '*/bin/ffmpeg.exe', '-d', tmp])
+  }
   mkdirSync(join(dest, '..'), { recursive: true })
   copyFileSync(join(tmp, 'ffmpeg.exe'), dest)
 } finally {

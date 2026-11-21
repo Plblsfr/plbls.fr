@@ -34,8 +34,9 @@ si `natif` a monté depuis le dernier tag `estompe-natif-v*` : le workflow écho
 
 - Notes de version : le message du tag annoté, `git tag -a estompe-natif-vX.Y.Z -m "<notes courtes, en français simple>"` ; un message
   égal au nom du tag donne des notes vides. Elles vont dans la release et dans `natif.json` (affichées par l'app).
-- Le job `windows` construit l'app (MSVC, profil release), l'installeur (`apps/estompe/natif/installeur/estompe-natif.nsi`) et le contrôle
-  (`scripts/estompe/natif-installeur-check.sh` : taille plafonnée, contenu, aucune référence à WebView2). Lancé à la main, il s'arrête là :
+- Le job `windows` construit l'app (MSVC, profil release), télécharge ffmpeg (`apps/estompe/windows/scripts/fetch-ffmpeg.mjs`, même build LGPL
+  épinglé que l'app Tauri, somme SHA-256 vérifiée), construit l'installeur (`apps/estompe/natif/installeur/estompe-natif.nsi`, qui l'embarque) et le contrôle
+  (`scripts/estompe/natif-installeur-check.sh` : taille plafonnée, contenu dont `ffmpeg.exe`, aucune référence à WebView2). Lancé à la main, il s'arrête là :
   l'installeur est un artefact, rien n'est publié.
 - Sur le tag, le job `publier` (environnement `livraison`) signe l'installeur avec minisign (secret `ESTOMPE_NATIF_CLE_MAJ`, commentaire de
   confiance `estompe-natif X.Y.Z`), vérifie la signature avec la clé publique de l'app (`apps/estompe/crates/client/src/mise_a_jour/cle.pub`)
