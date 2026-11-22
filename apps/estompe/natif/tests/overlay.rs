@@ -131,7 +131,8 @@ fn cas() -> Vec<Cas> {
 
 fn sur_fond(a: &AffichageFactice) -> image::RgbaImage {
     let mut sortie = image::RgbaImage::new(a.image.largeur, a.image.hauteur);
-    for (p, s) in a.image.rgba.chunks_exact(4).zip(sortie.pixels_mut()) {
+    let (pixels, _) = a.image.rgba.as_chunks::<4>();
+    for (p, s) in pixels.iter().zip(sortie.pixels_mut()) {
         let reste = 255 - u32::from(p[3]);
         let canal = |c: usize| (u32::from(p[c]) + u32::from(FOND[c]) * reste / 255).min(255) as u8;
         *s = image::Rgba([canal(0), canal(1), canal(2), 255]);

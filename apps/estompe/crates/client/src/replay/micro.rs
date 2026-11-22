@@ -35,8 +35,9 @@ impl Traitement {
             .extend(entree.iter().map(|v| v * PLEINE_ECHELLE));
         let mut sortie = Vec::with_capacity(self.attente.len());
         let mut trame = [0f32; TRAME];
-        let complet = self.attente.len() / TRAME * TRAME;
-        for bloc in self.attente[..complet].chunks_exact(TRAME) {
+        let (blocs, _) = self.attente.as_chunks::<TRAME>();
+        let complet = blocs.len() * TRAME;
+        for bloc in blocs {
             debruiteur.process_frame(&mut trame, bloc);
             sortie.extend(trame.iter().map(|v| fixer(*v, self.gain)));
         }

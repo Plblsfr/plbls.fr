@@ -645,8 +645,10 @@ pub(crate) mod tests {
     }
 
     fn u32s(d: &[u8]) -> Vec<u32> {
-        d.chunks_exact(4)
-            .map(|c| u32::from_be_bytes(c.try_into().unwrap()))
+        d.as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| u32::from_be_bytes(*c))
             .collect()
     }
 
@@ -778,13 +780,17 @@ pub(crate) mod tests {
             let tailles = u32s(&table("stsz")[4..]);
             assert_eq!(tailles[1] as usize, source.len());
             let positions: Vec<u64> = table("co64")[8..]
-                .chunks_exact(8)
-                .map(|c| u64::from_be_bytes(c.try_into().unwrap()))
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| u64::from_be_bytes(*c))
                 .collect();
             let series = u32s(&table("stsc")[8..]);
             let par_morceau = |m: usize| {
                 series
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .rev()
                     .find(|s| s[0] as usize <= m + 1)
                     .unwrap()[1] as usize
@@ -805,7 +811,9 @@ pub(crate) mod tests {
             assert_eq!(echantillon, source.len());
             let durees = u32s(&table("stts")[8..]);
             let total: u64 = durees
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|d| d[0] as u64 * d[1] as u64)
                 .sum();
             let echelle = u32s(&trouver(piste, &["mdia", "mdhd"])[0][4..])[2] as u64;

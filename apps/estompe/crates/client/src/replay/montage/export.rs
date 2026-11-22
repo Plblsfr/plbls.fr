@@ -498,8 +498,10 @@ pub(crate) mod tests {
             .unwrap();
         sortie
             .stdout
-            .chunks_exact(2)
-            .map(|o| i16::from_le_bytes([o[0], o[1]]).saturating_abs())
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|o| i16::from_le_bytes(*o).saturating_abs())
             .collect()
     }
 
