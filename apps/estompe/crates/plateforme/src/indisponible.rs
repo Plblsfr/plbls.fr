@@ -1,3 +1,7 @@
+use crate::encodage::{
+    EncodageMateriel, EncodeurAudio, EncodeurVideo, MaterielEncodage, ParametresAudio,
+    ParametresVideo, RecepteurPaquets, SignalArret,
+};
 use crate::traits::*;
 use crate::{Erreur, Resultat};
 
@@ -186,6 +190,26 @@ impl PremierPlan for Indisponible {
     }
     fn fenetres(&self) -> Resultat<Vec<ApplicationPremierPlan>> {
         refus("application au premier plan")
+    }
+}
+
+impl EncodageMateriel for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn materiel(&self, _: Option<u64>) -> Resultat<MaterielEncodage> {
+        refus("encodage vidéo matériel")
+    }
+    fn video(
+        &self,
+        _: ParametresVideo,
+        _: RecepteurPaquets,
+        _: SignalArret,
+    ) -> Resultat<Box<dyn EncodeurVideo>> {
+        refus("encodage vidéo matériel")
+    }
+    fn audio(&self, _: ParametresAudio, _: RecepteurPaquets) -> Resultat<Box<dyn EncodeurAudio>> {
+        refus("encodage vidéo matériel")
     }
 }
 

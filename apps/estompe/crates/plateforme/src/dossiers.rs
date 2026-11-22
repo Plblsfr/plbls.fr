@@ -55,6 +55,25 @@ pub fn dossier_telechargements() -> Option<PathBuf> {
     telechargements_de_l_os()
 }
 
+pub const DOSSIER_VIDEOS_ESSAI: &str = "videos";
+
+pub fn dossier_videos() -> Option<PathBuf> {
+    if let Some(racine) = std::env::var_os(VARIABLE_DOSSIER).filter(|v| !v.is_empty()) {
+        return Some(Path::new(&racine).join(DOSSIER_VIDEOS_ESSAI));
+    }
+    videos_de_l_os()
+}
+
+#[cfg(windows)]
+fn videos_de_l_os() -> Option<PathBuf> {
+    Some(variable("USERPROFILE")?.join("Videos"))
+}
+
+#[cfg(not(windows))]
+fn videos_de_l_os() -> Option<PathBuf> {
+    utilisateur("XDG_VIDEOS_DIR", "Videos")
+}
+
 #[cfg(windows)]
 fn telechargements_de_l_os() -> Option<PathBuf> {
     Some(variable("USERPROFILE")?.join("Downloads"))
@@ -62,19 +81,25 @@ fn telechargements_de_l_os() -> Option<PathBuf> {
 
 #[cfg(not(windows))]
 fn telechargements_de_l_os() -> Option<PathBuf> {
+    utilisateur("XDG_DOWNLOAD_DIR", "Downloads")
+}
+
+#[cfg(not(windows))]
+fn utilisateur(cle: &str, defaut: &str) -> Option<PathBuf> {
     let maison = variable("HOME")?;
     let configuration = variable("XDG_CONFIG_HOME").unwrap_or_else(|| maison.join(".config"));
     let declare = std::fs::read_to_string(configuration.join("user-dirs.dirs"))
         .ok()
-        .and_then(|texte| dossier_declare(&texte, &maison));
-    Some(declare.unwrap_or_else(|| maison.join("Downloads")))
+        .and_then(|texte| declaration(&texte, &maison, cle));
+    Some(declare.unwrap_or_else(|| maison.join(defaut)))
 }
 
 #[cfg(not(windows))]
-fn dossier_declare(texte: &str, maison: &Path) -> Option<PathBuf> {
+fn declaration(texte: &str, maison: &Path, cle: &str) -> Option<PathBuf> {
+    let prefixe = format!("{cle}=");
     let valeur = texte
         .lines()
-        .filter_map(|l| l.trim().strip_prefix("XDG_DOWNLOAD_DIR="))
+        .filter_map(|l| l.trim().strip_prefix(prefixe.as_str()))
         .next()?
         .trim()
         .trim_matches('"');
@@ -145,6 +170,11 @@ mod tests {
     }
 
     #[cfg(not(windows))]
+    fn dossier_declare(texte: &str, maison: &Path) -> Option<PathBuf> {
+        declaration(texte, maison, "XDG_DOWNLOAD_DIR")
+    }
+
+    #[cfg(not(windows))]
     #[test]
     fn le_dossier_des_telechargements_suit_user_dirs() {
         let maison = Path::new("/home/u");
@@ -162,6 +192,10 @@ mod tests {
             None
         );
         assert_eq!(dossier_declare("XDG_MUSIC_DIR=\"$HOME/M\"", maison), None);
+        assert_eq!(
+            declaration("XDG_VIDEOS_DIR=\"$HOME/Vidéos\"", maison, "XDG_VIDEOS_DIR"),
+            Some(PathBuf::from("/home/u/Vidéos"))
+        );
     }
 
     #[test]

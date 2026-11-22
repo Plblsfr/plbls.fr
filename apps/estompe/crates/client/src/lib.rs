@@ -33,6 +33,7 @@ pub mod overlay_messages;
 pub mod pastille;
 pub mod pieces;
 pub mod recherche;
+pub mod replay;
 pub mod roles;
 pub mod route;
 pub mod sections;

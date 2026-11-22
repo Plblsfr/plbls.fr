@@ -4,6 +4,7 @@ pub mod capture;
 mod coffre;
 mod demarrage;
 mod dossiers;
+mod encodage;
 mod erreur;
 mod fichiers;
 mod indisponible;
@@ -39,7 +40,14 @@ pub use demarrage::{
     commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,
 };
 pub use dossiers::{
-    dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
+    dossier_telechargements, dossier_videos, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI,
+    DOSSIER_VIDEOS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
+};
+pub use encodage::{
+    disque_plein, masquer, CapaciteEncodeur, CodecVideo, EncodageFactice, EncodageMateriel,
+    EncodageSysteme, EncodeurAudio, EncodeurVideo, ImageNv12, MaterielEncodage, Paquet,
+    ParametresAudio, ParametresVideo, RecepteurPaquets, SignalArret, ERREUR_DISQUE_PLEIN,
+    PARAMETRES_FACTICES, UNITE_TEMPS,
 };
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
@@ -91,6 +99,7 @@ pub struct Plateforme {
     pub mesure: Arc<dyn MesureProcessus>,
     pub overlay: Arc<dyn Overlay>,
     pub premier_plan: Arc<dyn PremierPlan>,
+    pub encodage: Arc<dyn EncodageMateriel>,
     pub demarrage: Box<dyn DemarrageSession>,
 }
 
@@ -113,6 +122,7 @@ impl Plateforme {
             capture_son: son_de_l_os(),
             premier_plan: premier_plan_de_l_os(),
             overlay: overlay_de_l_os(),
+            encodage: encodage_de_l_os(),
         }
     }
 
@@ -133,6 +143,7 @@ impl Plateforme {
             mesure: Arc::new(Indisponible),
             overlay: Arc::new(Indisponible),
             premier_plan: Arc::new(Indisponible),
+            encodage: Arc::new(Indisponible),
             demarrage: Box::new(Indisponible),
         }
     }
@@ -208,6 +219,14 @@ fn overlay_de_l_os() -> std::sync::Arc<dyn Overlay> {
     }
 }
 
+fn encodage_de_l_os() -> std::sync::Arc<dyn EncodageMateriel> {
+    if EncodageSysteme.disponible() {
+        std::sync::Arc::new(EncodageSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -238,6 +257,7 @@ mod tests {
         );
         assert_eq!(p.premier_plan.disponible(), cfg!(windows));
         assert_eq!(p.overlay.disponible(), cfg!(windows));
+        assert_eq!(p.encodage.disponible(), cfg!(windows));
     }
 
     #[test]
@@ -283,6 +303,11 @@ mod tests {
             Err(Erreur::Indisponible(_))
         ));
         assert_eq!(p.overlay.ecran_principal(), None);
+        assert!(!p.encodage.disponible());
+        assert!(matches!(
+            p.encodage.materiel(None),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.premier_plan.application(),
             Err(Erreur::Indisponible(_))

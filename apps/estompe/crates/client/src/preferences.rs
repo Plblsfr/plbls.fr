@@ -11,6 +11,7 @@ use crate::derniere_vue::DerniereVue;
 use crate::jeux::ReglagesJeux;
 use crate::overlay::ReglagesOverlay;
 use crate::overlay_messages::ReglagesMessages;
+use crate::replay::types::ReglagesReplay;
 use crate::vocal::{
     Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
 };
@@ -75,6 +76,7 @@ pub struct Preferences {
     pub jeux: ReglagesJeux,
     pub overlay: ReglagesOverlay,
     pub overlay_messages: ReglagesMessages,
+    pub replay: ReglagesReplay,
 }
 
 impl Default for Preferences {
@@ -110,6 +112,7 @@ impl Default for Preferences {
             jeux: ReglagesJeux::default(),
             overlay: ReglagesOverlay::default(),
             overlay_messages: ReglagesMessages::default(),
+            replay: ReglagesReplay::default(),
         }
     }
 }
@@ -200,6 +203,7 @@ impl Preferences {
             jeux: champ(&objet, "jeux", d.jeux).borne(),
             overlay: champ(&objet, "overlay", d.overlay).borne(),
             overlay_messages: champ(&objet, "overlay_messages", d.overlay_messages).borne(),
+            replay: champ(&objet, "replay", d.replay).borne(),
         })
     }
 
@@ -420,6 +424,14 @@ mod tests {
                 touche_reponse: "F9".to_string(),
                 ..ReglagesMessages::default()
             },
+            replay: ReglagesReplay {
+                actif: true,
+                duree_s: 120,
+                micro: true,
+                touche: "F11".to_string(),
+                dossier: Some("/clips".to_string()),
+                ..ReglagesReplay::default()
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -452,6 +464,21 @@ mod tests {
         );
         let invalide = Preferences::depuis_json(r#"{"jeux": {"ajoutes": "x"}}"#).unwrap();
         assert_eq!(invalide.jeux, ReglagesJeux::default());
+    }
+
+    #[test]
+    fn les_reglages_du_replay_relus_sont_bornes() {
+        let lu = Preferences::depuis_json(
+            r#"{"replay": {"actif": true, "duree_s": 9999, "ips": 75, "touche": "?"}}"#,
+        )
+        .unwrap();
+        assert!(lu.replay.actif);
+        assert_eq!(
+            (lu.replay.duree_s, lu.replay.ips, lu.replay.touche.as_str()),
+            (300, 60, "F10")
+        );
+        let invalide = Preferences::depuis_json(r#"{"replay": {"ips": "x"}}"#).unwrap();
+        assert_eq!(invalide.replay, ReglagesReplay::default());
     }
 
     #[test]

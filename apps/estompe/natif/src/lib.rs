@@ -11,6 +11,7 @@ pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
 pub mod overlay;
+pub mod replay;
 pub mod session;
 pub mod video;
 pub mod vocal;
@@ -56,6 +57,7 @@ pub struct Application {
     pub overlays: overlay::MoteurOverlay,
     pub overlay_voix: std::sync::Arc<overlay::voix::ServiceOverlayVoix>,
     pub overlay_messages: std::sync::Arc<overlay::messages::ServiceOverlayMessages>,
+    pub replay: std::sync::Arc<replay::ServiceReplay>,
 }
 
 #[cfg(feature = "livekit")]
@@ -198,6 +200,8 @@ pub fn demarrer(
         overlay_messages.clone(),
         session.memoire.clone(),
     );
+    let replay = demarrer_replay(session, &plateforme, audio_messages.clone());
+    replay.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -343,7 +347,56 @@ pub fn demarrer(
         overlays,
         overlay_voix,
         overlay_messages,
+        replay,
     })
+}
+
+pub fn reglages_replay(p: &estompe_client::preferences::Preferences) -> replay::ReglagesMoteur {
+    replay::ReglagesMoteur {
+        replay: p.replay.clone(),
+        debruiter: p.traitement_micro.bruit != estompe_client::audio::micro::ModeBruit::Aucun,
+        gain_micro: f32::from(p.traitement_micro.gain) / 100.0,
+    }
+}
+
+fn demarrer_replay(
+    session: &session::Session,
+    plateforme: &estompe_plateforme::Plateforme,
+    audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio>,
+) -> std::sync::Arc<replay::ServiceReplay> {
+    let memoire = session.memoire.clone();
+    let micro = estompe_plateforme::SonPeripheriques::nouveau(
+        audio,
+        std::sync::Arc::new(move |_| memoire.lire(|p| p.micro.clone())),
+    );
+    let memoire = session.memoire.clone();
+    replay::ServiceReplay::demarrer(
+        replay::Dependances {
+            encodage: plateforme.encodage.clone(),
+            ecrans: plateforme.capture_ecran.clone(),
+            sons: plateforme.capture_son.clone(),
+            micro: Some(std::sync::Arc::new(micro)),
+            premier_plan: plateforme.premier_plan.clone(),
+            raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+            touches_prises: std::sync::Arc::new(move || {
+                memoire.lire(|p| {
+                    let mut prises = vec![
+                        p.overlay_messages.touche_reponse.clone(),
+                        p.overlay_messages.touche_ouvrir.clone(),
+                    ];
+                    if p.ptt.actif {
+                        prises.push(p.ptt.touche.clone());
+                    }
+                    prises
+                })
+            }),
+            videos: estompe_plateforme::dossier_videos(),
+            journaux: Some(session.dossiers.journaux.clone()),
+            version: VERSION.to_string(),
+            horloge: None,
+        },
+        session.memoire.lire(reglages_replay),
+    )
 }
 
 fn suivre_la_fenetre(

@@ -1164,6 +1164,50 @@ est la première scène ; celui des messages (#354) et l'indicateur du replay (#
   (protocole de [natif-mesures.md](natif-mesures.md)) ; réponse depuis un vrai jeu (le message part, le jeu reprend le focus sans être réduit) et refus éventuel du
   premier plan par Windows.
 
+## Instant replay
+
+Garder en permanence les dernières secondes du jeu au premier plan et les enregistrer en clip MP4 (#355). Porté de `replay/` de l'app Tauri
+(voir [instant-replay.md](instant-replay.md)), puis divergé : la capture et le son viennent des traits du lot 5, l'image est convertie par le processeur.
+
+- Parties pures (`apps/estompe/crates/client/src/replay/`) : `tampon` (unités compressées en RAM, éviction par groupe d'images entier, plafonds en durée et en octets,
+  instantané sans copie), `cadence` (une image par échéance, la dernière répétée, plus de 3 images de retard comptées perdues ; `encodeur_muet` ; alertes de perte ;
+  `Alignement` comble les silences du son), `automate` (`inactif`, `arme`, `pause`, `indisponible`), `garde` (fichier `estompe-encodeur.txt` du dossier des journaux :
+  une session d'encodeur ouverte puis un arrêt de l'app avant la première image désactive le replay jusqu'à la version suivante), `micro` (RNNoise et gain), `son`
+  (stéréo ou mono à 48 kHz), `image` (RGBA vers NV12 BT.709 16-235 avec réduction), `reglages` (résolution, cadence, codec, débit, durée selon la RAM, `options` pour les
+  réglages), `mp4` (`moov` en tête, pistes entrelacées par seconde), `ecriture` (fichier `.part` puis renommage, annexe JSON, disque plein, quota, file d'écriture sur un fil),
+  `galerie` (nom des clips, dossier par défaut `Vidéos/Estompe`, annexes `.estompe/`, liste). Préférence `replay` (`ReglagesReplay` : actif, résolution, cadence, durée de
+  15 à 300 s, qualité, micro, curseur, touche, dossier, quota), désactivée par défaut ; micro, réduction de bruit et gain viennent des réglages du vocal.
+- Plateforme : trait `EncodageMateriel` (`apps/estompe/crates/plateforme/src/encodage/`) : `materiel(fenetre)` (carte, encodeurs H.264 et HEVC avec leurs limites,
+  rafraîchissement de l'écran, RAM libre), `video(parametres, sortie, arret)` (images NV12 soumises avec leur horodatage, paquets Annex B rendus au récepteur, image clé
+  par groupe, refus si saturé), `audio(parametres, sortie)` (PCM 16 bits vers AAC). Sous Windows (`EncodageSysteme`) : MFT matériel de Media Foundation (NVENC,
+  QuickSync, AMD) sur la première carte « haute performance » qui en a un, débit constant, sans images B, entrée en mémoire vive ; AAC par le MFT de Windows.
+  Linux : `Indisponible`, l'état du replay est `indisponible` (« instant replay disponible sous Windows uniquement ») et rien n'est capturé. `EncodageFactice` pour les tests.
+  `disque_plein`, `masquer` (dossier caché) et `dossier_videos` sont aussi dans la crate plateforme.
+- Service (`apps/estompe/natif/src/replay/`, `ServiceReplay`, `Application::replay`) : un fil `replay` suit `EtatJeux` (donc les jeux ajoutés et exclus de `p.jeux`) ;
+  au jeu au premier plan il capture sa fenêtre (`CaptureEcran`, `fenetre:<n>`), attend la première image (3 s), choisit dimensions, cadence et codec, ouvre l'encodeur,
+  le son du jeu (`CaptureSon`, processus du jeu) et le micro si coché (`SonPeripheriques`), puis un fil `replay-rythme` émet les images à cadence fixe. Hors du premier
+  plan : pause, tout est fermé, le tampon est gardé ; fermeture du jeu (plus aucune fenêtre de son processus, vérifié toutes les 5 s) ou changement de jeu, de réglage
+  vidéo ou audio : tampon vidé. Image du jeu qui change de taille : la session redémarre.
+- API pour les réglages, l'indicateur, la galerie et l'éditeur : `configurer(ReglagesMoteur)`, `sauvegarder()` (durée des réglages), `sauvegarder_les_dernieres(n)`,
+  `partage(actif, suspendre)`, `disponibilite()`, `options(&ReglagesReplay)`, `dossier()`, `etat()` (`watch` d'`EtatReplay` : état, jeu, format, encodeur, touche
+  enregistrée) et `evenements()` (`broadcast` d'`EvenementReplay` : `Clip(ClipEnregistre)` ou `Erreur(ErreurReplay)` avec les codes de l'app Tauri : `tampon-vide`,
+  `quota`, `disque-plein`, `dossier-inaccessible`, `capture-refusee`, `encodeur-muet`, `encodeur-arrete`, `encodeur-sature`, `capture-en-retard`, `son-indisponible`,
+  `micro-indisponible`, `image-changee`).
+- Raccourci : une touche seule (F10 par défaut) enregistrée par `RaccourcisGlobaux` tant que le replay est actif et disponible, jamais une touche déjà prise (appui pour
+  parler, touches de l'overlay des messages).
+- Garde-fous : pas d'encodeur matériel ou garde déclenchée : `indisponible` avec la raison ; encodeur qui accepte des images sans rien rendre en 2 s : `encodeur-muet` ;
+  plus d'une image sur cinq perdue sur 10 s : alerte selon la cause ; aucune image du jeu dans les 3 s qui suivent l'ouverture de la capture : `capture-refusee` ; disque plein ou quota atteint à
+  l'écriture : erreur, aucun clip existant n'est supprimé.
+- Écarts avec l'app Tauri : pas d'AMF appelé directement ni de son essai hors processus (une carte AMD passe par son MFT, que l'app Tauri jugeait muet : c'est alors
+  `encodeur-muet`) ; pas d'entrées D3D11 (réserve, textures) ni de conversion sur la carte graphique : l'image du jeu arrive en RGBA de la capture et passe en NV12 sur le
+  processeur, l'encodeur la reçoit en mémoire vive ; pas de conversion HDR vers SDR ; pas de vignette ffmpeg à l'écriture (galerie, #357) ; fil d'écriture en priorité
+  normale ; le partage d'écran ne met pas encore le replay en pause (`partage` existe, non branché).
+- Tests : modules purs (`replay::*::tests` de la crate client, dont `ecriture::tests::mp4_de_synthese_lu_par_ffmpeg` : H.264 et AAC produits par ffmpeg, MP4 écrit par
+  `ecriture`, relu par `ffmpeg -v error` sans erreur, trois pistes et 2 s ; sauté sans ffmpeg avec libx264) ; plateforme (`encodage::factice::tests`, `encodage::tests`,
+  `disque`) ; service (`replay::tests` : jeu détecté, tampon armé, clip par la touche puis par `sauvegarder_les_dernieres`, pause et fermeture, indisponible sans
+  encodeur, touche prise refusée, encodeur muet ou arrêté).
+- Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3).
+
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
@@ -1211,13 +1255,13 @@ Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crat
 
 La crate plateforme expose un trait par fonction : coffre de secrets, notifications, pastille de la barre des tâches, zone de notification,
 installation d'une mise à jour, raccourcis globaux, ouverture d'une URL, capture d'écran et de fenêtre, capture du son, overlay, application au
-premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
+premier plan, encodage vidéo matériel, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : les raccourcis globaux de l'appuyer pour parler (`RaccourcisSysteme` : crochet clavier sous Windows, XInput 2 sous X11, indisponible sous Wayland), le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour le micro et la sortie des messages vocaux), le lancement d'un processus d'arrière-plan
 (`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
-l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`), l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)) et l'overlay (`OverlaySysteme`, voir [Overlay](#overlay)). Le reste arrive avec son lot, Windows d'abord.
+l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`), l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)), l'overlay (`OverlaySysteme`, voir [Overlay](#overlay)) et l'encodage vidéo matériel (`EncodageSysteme`, voir [Instant replay](#instant-replay)). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
