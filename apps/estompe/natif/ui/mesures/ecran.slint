@@ -1,5 +1,5 @@
 import { Theme, Typo, Espace } from "../jetons.slint";
-import { Bouton, VarianteBouton, Modal } from "../composants.slint";
+import { Bouton, VarianteBouton, Modal, Defilement } from "../composants.slint";
 
 export struct LigneScenario {
     id: string,
@@ -41,87 +41,94 @@ export component FenetreMesures inherits Modal {
     ferme => {
         DonneesMesures.fermer();
     }
-    if DonneesMesures.ouvert: VerticalLayout {
-        spacing: Espace.e3;
-        alignment: start;
-        Note {
-            text: "Mémoire et CPU d'Estompe, par scénario guidé. Rien n'est envoyé : l'export est un fichier à partager si vous le souhaitez, sans contenu de message ni identifiant. Pas de webview : aucune option d'économie de mémoire à régler.";
-        }
-        if !DonneesMesures.disponible: Note {
-            text: "La mesure du processus n'est pas disponible sur ce système.";
-        }
-        HorizontalLayout {
-            spacing: Espace.e2;
+    if DonneesMesures.ouvert: Defilement {
+        min-height: 320px;
+        preferred-height: 560px;
+        hauteur-contenu: contenu.preferred-height;
+        contenu := VerticalLayout {
+            spacing: Espace.e3;
             alignment: start;
-            if !DonneesMesures.en-session: Bouton {
-                texte: "Démarrer une session";
-                calque: 1;
-                variante: VarianteBouton.primaire;
-                actif: DonneesMesures.disponible;
-                clique => {
-                    DonneesMesures.demarrer();
-                }
-            }
-            if DonneesMesures.en-session: Bouton {
-                texte: "Arrêter la session";
-                calque: 1;
-                clique => {
-                    DonneesMesures.arreter();
-                }
-            }
-            Bouton {
-                texte: "Exporter les mesures";
-                icone: "telecharge";
-                variante: VarianteBouton.fantome;
-                calque: 1;
-                actif: DonneesMesures.peut-exporter && !DonneesMesures.en-session;
-                clique => {
-                    DonneesMesures.exporter();
-                }
-            }
-        }
-        if DonneesMesures.message != "": Note {
-            text: DonneesMesures.message;
-        }
-        if DonneesMesures.erreur != "": Text {
-            text: DonneesMesures.erreur;
-            color: Theme.danger;
-            font-size: Typo.petit;
-            wrap: word-wrap;
-        }
-        if DonneesMesures.en-session && DonneesMesures.scenario-en-cours != "": VerticalLayout {
-            spacing: Espace.e2;
+            padding-right: Espace.e3;
             Note {
-                text: "En cours : " + DonneesMesures.scenario-en-cours + " (" + DonneesMesures.reste + " s). " + DonneesMesures.aide-en-cours;
+                text: "Mémoire et CPU d'Estompe, par scénario guidé. Rien n'est envoyé : l'export est un fichier à partager si vous le souhaitez, sans contenu de message ni identifiant. Pas de webview : aucune option d'économie de mémoire à régler.";
+            }
+            if !DonneesMesures.disponible: Note {
+                text: "La mesure du processus n'est pas disponible sur ce système.";
             }
             HorizontalLayout {
+                spacing: Espace.e2;
                 alignment: start;
-                Bouton {
-                    texte: "Terminer le scénario";
-                    variante: VarianteBouton.fantome;
+                if !DonneesMesures.en-session: Bouton {
+                    texte: "Démarrer une session";
+                    calque: 1;
+                    variante: VarianteBouton.primaire;
+                    actif: DonneesMesures.disponible;
+                    clique => {
+                        DonneesMesures.demarrer();
+                    }
+                }
+                if DonneesMesures.en-session: Bouton {
+                    texte: "Arrêter la session";
                     calque: 1;
                     clique => {
-                        DonneesMesures.terminer-scenario();
+                        DonneesMesures.arreter();
+                    }
+                }
+                Bouton {
+                    texte: "Exporter les mesures";
+                    icone: "telecharge";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    actif: DonneesMesures.peut-exporter && !DonneesMesures.en-session;
+                    clique => {
+                        DonneesMesures.exporter();
                     }
                 }
             }
-        }
-        if DonneesMesures.en-session && DonneesMesures.scenario-en-cours == "": Note {
-            text: "Scénarios guidés : chacun pose un marqueur, les statistiques sont calculées par scénario.";
-        }
-        if DonneesMesures.en-session: VerticalLayout {
-            spacing: Espace.e1;
-            for s in DonneesMesures.scenarios: Bouton {
-                texte: s.titre;
-                icone: s.fait ? "check" : "";
-                variante: VarianteBouton.secondaire;
-                calque: 1;
-                description: s.aide;
-                actif: DonneesMesures.scenario-en-cours == "";
-                clique => {
-                    DonneesMesures.lancer(s.id);
+            if DonneesMesures.message != "": Note {
+                text: DonneesMesures.message;
+            }
+            if DonneesMesures.erreur != "": Text {
+                text: DonneesMesures.erreur;
+                color: Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+            if DonneesMesures.en-session && DonneesMesures.scenario-en-cours != "": VerticalLayout {
+                spacing: Espace.e2;
+                Note {
+                    text: "En cours : " + DonneesMesures.scenario-en-cours + " (" + DonneesMesures.reste + " s). " + DonneesMesures.aide-en-cours;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    Bouton {
+                        texte: "Terminer le scénario";
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        clique => {
+                            DonneesMesures.terminer-scenario();
+                        }
+                    }
+                }
+            }
+            if DonneesMesures.en-session && DonneesMesures.scenario-en-cours == "": Note {
+                text: "Scénarios guidés : chacun pose un marqueur, les statistiques sont calculées par scénario.";
+            }
+            if DonneesMesures.en-session: VerticalLayout {
+                spacing: Espace.e1;
+                for s in DonneesMesures.scenarios: Bouton {
+                    texte: s.titre;
+                    icone: s.fait ? "check" : "";
+                    variante: VarianteBouton.secondaire;
+                    calque: 1;
+                    description: s.aide;
+                    actif: DonneesMesures.scenario-en-cours == "";
+                    clique => {
+                        DonneesMesures.lancer(s.id);
+                    }
                 }
             }
         }
     }
 }
+
