@@ -10,6 +10,7 @@ use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
 use crate::jeux::ReglagesJeux;
 use crate::overlay::ReglagesOverlay;
+use crate::overlay_messages::ReglagesMessages;
 use crate::vocal::{
     Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
 };
@@ -73,6 +74,7 @@ pub struct Preferences {
     pub incrustation: ReglagesIncrustation,
     pub jeux: ReglagesJeux,
     pub overlay: ReglagesOverlay,
+    pub overlay_messages: ReglagesMessages,
 }
 
 impl Default for Preferences {
@@ -107,6 +109,7 @@ impl Default for Preferences {
             incrustation: ReglagesIncrustation::default(),
             jeux: ReglagesJeux::default(),
             overlay: ReglagesOverlay::default(),
+            overlay_messages: ReglagesMessages::default(),
         }
     }
 }
@@ -196,6 +199,7 @@ impl Preferences {
             incrustation: champ(&objet, "incrustation", d.incrustation).borne(),
             jeux: champ(&objet, "jeux", d.jeux).borne(),
             overlay: champ(&objet, "overlay", d.overlay).borne(),
+            overlay_messages: champ(&objet, "overlay_messages", d.overlay_messages).borne(),
         })
     }
 
@@ -409,6 +413,13 @@ mod tests {
                 mode: crate::overlay::ModeOverlay::Parlent,
                 opacite: 60,
             },
+            overlay_messages: ReglagesMessages {
+                genres: crate::overlay_messages::GenresMessages::Mentions,
+                duree: 15,
+                masquer_contenu: true,
+                touche_reponse: "F9".to_string(),
+                ..ReglagesMessages::default()
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -450,6 +461,17 @@ mod tests {
         assert_eq!(lu.overlay.opacite, crate::overlay::OPACITE_MIN);
         let invalide = Preferences::depuis_json(r#"{"overlay": {"coin": "zz"}}"#).unwrap();
         assert_eq!(invalide.overlay, ReglagesOverlay::default());
+        let messages = Preferences::depuis_json(
+            r#"{"overlay_messages": {"duree": 1, "touche_reponse": "?"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            messages.overlay_messages,
+            ReglagesMessages {
+                duree: crate::overlay_messages::DUREE_MIN,
+                ..ReglagesMessages::default()
+            }
+        );
     }
 
     #[test]

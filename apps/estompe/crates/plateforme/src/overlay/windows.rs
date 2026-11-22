@@ -1,21 +1,100 @@
-use windows_sys::Win32::Foundation::{HWND, POINT, SIZE};
+use std::cell::Cell;
+
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
     CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, MonitorFromPoint,
     ReleaseDC, SelectObject, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
     BLENDFUNCTION, DIB_RGB_COLORS, MONITOR_DEFAULTTONEAREST,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetSystemMetrics,
-    PeekMessageW, RegisterClassW, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow,
-    HWND_TOPMOST, MSG, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    BringWindowToTop, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    GetForegroundWindow, GetSystemMetrics, GetWindowLongPtrW, GetWindowThreadProcessId, IsWindow,
+    PeekMessageW, RegisterClassW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    TranslateMessage, UpdateLayeredWindow, GWLP_USERDATA, GWL_EXSTYLE, HWND_TOPMOST, MSG,
+    PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WM_CHAR, WM_KILLFOCUS, WNDCLASSW, WS_EX_LAYERED,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
-use crate::traits::{Calque, ImagePremultipliee, ZoneEcran};
+use super::evenement_de_caractere;
+use crate::traits::{Calque, EvenementSaisie, ImagePremultipliee, RecepteurSaisie, ZoneEcran};
 use crate::{Erreur, Resultat};
+
+const INTOUCHABLE: u32 = WS_EX_TRANSPARENT | WS_EX_NOACTIVATE;
+
+struct Saisie {
+    recepteur: RecepteurSaisie,
+    haute: Cell<Option<u16>>,
+}
+
+unsafe extern "system" fn procedure(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    let saisie = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *const Saisie;
+    if let Some(saisie) = unsafe { saisie.as_ref() } {
+        match message {
+            WM_CHAR => {
+                let mut haute = saisie.haute.get();
+                let evenement = evenement_de_caractere(wparam as u16, &mut haute);
+                saisie.haute.set(haute);
+                if let Some(evenement) = evenement {
+                    (saisie.recepteur)(evenement);
+                }
+                return 0;
+            }
+            WM_KILLFOCUS => (saisie.recepteur)(EvenementSaisie::FocusPerdu),
+            _ => {}
+        }
+    }
+    unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+}
+
+unsafe fn activer(hwnd: HWND) -> bool {
+    unsafe {
+        let devant = GetForegroundWindow();
+        let fil_devant = if devant.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(devant, std::ptr::null_mut())
+        };
+        let moi = GetCurrentThreadId();
+        let attache =
+            fil_devant != 0 && fil_devant != moi && AttachThreadInput(moi, fil_devant, 1) != 0;
+        BringWindowToTop(hwnd);
+        let reussi = SetForegroundWindow(hwnd) != 0;
+        if attache {
+            AttachThreadInput(moi, fil_devant, 0);
+        }
+        reussi
+    }
+}
+
+unsafe fn styles(hwnd: HWND, intouchable: bool) {
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let nouveau = if intouchable {
+            style | INTOUCHABLE
+        } else {
+            style & !INTOUCHABLE
+        };
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, nouveau as isize);
+        SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+}
 
 const DPI_DE_BASE: f32 = 96.0;
 
@@ -27,6 +106,7 @@ pub struct CalqueWindows {
     hwnd: HWND,
     bgra: Vec<u8>,
     visible: bool,
+    precedente: Option<HWND>,
 }
 
 impl CalqueWindows {
@@ -36,7 +116,7 @@ impl CalqueWindows {
             let classe = large("EstompeNatifOverlay");
             let titre = large("Estompe — overlay");
             let mut wc: WNDCLASSW = std::mem::zeroed();
-            wc.lpfnWndProc = Some(DefWindowProcW);
+            wc.lpfnWndProc = Some(procedure);
             wc.hInstance = instance;
             wc.lpszClassName = classe.as_ptr();
             RegisterClassW(&wc);
@@ -62,8 +142,18 @@ impl CalqueWindows {
                 hwnd,
                 bgra: Vec::new(),
                 visible: false,
+                precedente: None,
             })
         }
+    }
+
+    fn liberer_saisie(&mut self) -> bool {
+        let ancienne = unsafe { SetWindowLongPtrW(self.hwnd, GWLP_USERDATA, 0) } as *mut Saisie;
+        if ancienne.is_null() {
+            return false;
+        }
+        drop(unsafe { Box::from_raw(ancienne) });
+        true
     }
 }
 
@@ -167,10 +257,50 @@ impl Calque for CalqueWindows {
         self.visible = false;
         Ok(())
     }
+
+    fn saisir(&mut self, recepteur: RecepteurSaisie) -> Resultat<()> {
+        self.liberer_saisie();
+        let boite = Box::into_raw(Box::new(Saisie {
+            recepteur,
+            haute: Cell::new(None),
+        }));
+        let active = unsafe {
+            let devant = GetForegroundWindow();
+            if !devant.is_null() && devant != self.hwnd {
+                self.precedente = Some(devant);
+            }
+            SetWindowLongPtrW(self.hwnd, GWLP_USERDATA, boite as isize);
+            styles(self.hwnd, false);
+            activer(self.hwnd)
+        };
+        if active {
+            Ok(())
+        } else {
+            let _ = self.rendre_le_focus();
+            Err(Erreur::Echec(
+                "la fenêtre de réponse n'a pas pu prendre le focus".into(),
+            ))
+        }
+    }
+
+    fn rendre_le_focus(&mut self) -> Resultat<()> {
+        self.liberer_saisie();
+        unsafe {
+            let au_premier_plan = GetForegroundWindow() == self.hwnd;
+            styles(self.hwnd, true);
+            if let Some(precedente) = self.precedente.take() {
+                if au_premier_plan && IsWindow(precedente) != 0 {
+                    activer(precedente);
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Drop for CalqueWindows {
     fn drop(&mut self) {
+        self.liberer_saisie();
         unsafe {
             DestroyWindow(self.hwnd);
         }

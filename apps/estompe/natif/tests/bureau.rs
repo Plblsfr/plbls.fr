@@ -12,16 +12,22 @@ use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
 };
 use estompe_client::journal::Journal;
+use estompe_client::overlay_messages::ReglagesMessages;
 use estompe_client::preferences::Preferences;
 use estompe_client::store::CleConversation;
 use estompe_natif::bureau::notifications::{Notifieur, OptionsNotifieur};
 use estompe_natif::bureau::{Bureau, EtapeFermeture, OptionsBureau, DELAI_ARRET};
 use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Evenement, Machine};
+use estompe_natif::overlay::messages::{Options as OptionsOverlay, ServiceOverlayMessages};
+use estompe_natif::overlay::MoteurOverlay;
 use estompe_natif::session::Memoire;
 use estompe_natif::{creer_fenetre, ecrans, DonneesCoquille, Page, Principale};
 use estompe_plateforme::instance::{MessageInstance, RecepteurInstance};
-use estompe_plateforme::{ActionNotification, EvenementZone, Indisponible};
+use estompe_plateforme::{
+    ActionNotification, EvenementSaisie, EvenementZone, Indisponible, OverlayFactice,
+    RaccourcisFactices, ZoneEcran,
+};
 use serde_json::json;
 use slint::platform::WindowEvent;
 use slint::{ComponentHandle, Model};
@@ -62,6 +68,9 @@ struct Faux {
     serveur: Arc<ServeurMessages>,
     journaux: std::path::PathBuf,
     focus: Box<dyn Fn(bool) + Send>,
+    overlay: OverlayFactice,
+    raccourcis: Arc<RaccourcisFactices>,
+    overlay_messages: Arc<ServiceOverlayMessages>,
 }
 
 fn requete_recue(serveur: &ServeurMessages, requete: &str, contenu: &str) -> bool {
@@ -206,6 +215,54 @@ fn scenario_notifications(faible: &slint::Weak<Principale>, faux: &Faux) {
         ["m-91", "m-93"],
         "rien pour la conversation affichée, fenêtre active"
     );
+
+    let derniers = || {
+        faux.overlay_messages
+            .toasts()
+            .iter()
+            .map(|t| t.id.clone())
+            .collect::<Vec<_>>()
+    };
+    attendre(
+        || derniers() == ["91", "92", "93"],
+        "c354 : chaque mention reçue passe aussi en bandeau par-dessus le jeu",
+    );
+    assert!(faux.overlay_messages.affiche());
+    assert_eq!(faux.raccourcis.enregistres(), vec!["F7", "F8"]);
+    faux.raccourcis.appuyer("F8");
+    faux.raccourcis.relacher("F8");
+    attendre(
+        || faux.overlay.en_saisie().is_some(),
+        "c354 : la réponse rapide prend le focus",
+    );
+    for e in [
+        EvenementSaisie::Texte("j'arrive".into()),
+        EvenementSaisie::Valider,
+    ] {
+        assert!(faux.overlay.taper(e));
+    }
+    attendre(
+        || requete_recue(&faux.serveur, "POST /dms/d1/messages", "j'arrive"),
+        "c354 : la réponse part dans la conversation du dernier bandeau",
+    );
+    attendre(
+        || faux.overlay.focus() == (1, 1),
+        "c354 : le focus est rendu au jeu",
+    );
+    assert_eq!(
+        derniers(),
+        ["91", "92"],
+        "la conversation répondue sort de la file"
+    );
+    faux.raccourcis.appuyer("F7");
+    attendre(
+        || {
+            store.lire(|e| e.courante == Some(CleConversation::Salon("t1".into())))
+                && derniers().is_empty()
+        },
+        "c354 : « ouvrir » ramène la conversation du dernier bandeau",
+    );
+    assert!(faux.raccourcis.enregistres().is_empty());
 }
 
 fn scenario_zone_presente(
@@ -329,6 +386,28 @@ fn c3_fermer_garde_la_connexion_quitter_la_ferme_et_les_notifications_suivent_la
     let (fausse_zone, zone) = FausseZone::nouvelle(true);
     let (fausse_pastille, pastille) = PastilleFactice::nouvelle();
     let notifications = Arc::new(NotificationsFactices::default());
+    let overlay = OverlayFactice::nouveau(
+        Some(ZoneEcran {
+            x: 0,
+            y: 0,
+            largeur: 1920,
+            hauteur: 1080,
+        }),
+        1.0,
+    );
+    let raccourcis = Arc::new(RaccourcisFactices::nouveaux(true));
+    let overlay_messages = ServiceOverlayMessages::nouveau(
+        &MoteurOverlay::nouveau(Arc::new(overlay.clone())),
+        ReglagesMessages {
+            en_jeu: false,
+            ..ReglagesMessages::default()
+        },
+        OptionsOverlay {
+            raccourcis: raccourcis.clone(),
+            touches_prises: Arc::new(Vec::new),
+            horloge: None,
+        },
+    );
     let journaux = dossier.path().join("journaux");
     let journal_debogage = Journal::ouvrir(&journaux);
     journal_debogage.activer(true);
@@ -339,6 +418,7 @@ fn c3_fermer_garde_la_connexion_quitter_la_ferme_et_les_notifications_suivent_la
         source: coquille.source_pont(),
         runtime: entree.runtime(),
         journal: Some(Arc::new(journal_debogage)),
+        overlay: Some(overlay_messages.clone()),
     }));
     let recus = Arc::new(Mutex::new(Vec::new()));
     let journal = recus.clone();
@@ -371,6 +451,9 @@ fn c3_fermer_garde_la_connexion_quitter_la_ferme_et_les_notifications_suivent_la
         serveur,
         journaux,
         focus: Box::new(coquille.suivi_du_focus()),
+        overlay,
+        raccourcis,
+        overlay_messages,
     };
     let faible = fenetre.as_weak();
     piloter(move || scenario_zone_presente(faible, faux, recepteur, recus));

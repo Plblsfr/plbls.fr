@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::traits::{Calque, ImagePremultipliee, Overlay, ZoneEcran};
+use crate::traits::{
+    Calque, EvenementSaisie, ImagePremultipliee, Overlay, RecepteurSaisie, ZoneEcran,
+};
 use crate::Resultat;
 
 #[cfg(windows)]
@@ -9,9 +11,35 @@ mod windows;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OverlaySysteme;
 
+#[cfg(any(windows, test))]
+pub(crate) fn evenement_de_caractere(
+    unite: u16,
+    haute: &mut Option<u16>,
+) -> Option<EvenementSaisie> {
+    match unite {
+        0x08 => Some(EvenementSaisie::Effacer),
+        0x0D => Some(EvenementSaisie::Valider),
+        0x1B => Some(EvenementSaisie::Annuler),
+        0xD800..=0xDBFF => {
+            *haute = Some(unite);
+            None
+        }
+        0xDC00..=0xDFFF => {
+            let h = haute.take()?;
+            let point = 0x10000 + ((u32::from(h) - 0xD800) << 10) + (u32::from(unite) - 0xDC00);
+            char::from_u32(point).map(|c| EvenementSaisie::Texte(c.to_string()))
+        }
+        u if u < 0x20 || u == 0x7F => None,
+        u => char::from_u32(u32::from(u)).map(|c| EvenementSaisie::Texte(c.to_string())),
+    }
+}
+
 #[cfg(windows)]
 impl Overlay for OverlaySysteme {
     fn disponible(&self) -> bool {
+        true
+    }
+    fn saisie_disponible(&self) -> bool {
         true
     }
     fn calque(&self) -> Resultat<Box<dyn Calque>> {
@@ -54,15 +82,20 @@ pub struct AffichageFactice {
     pub opacite: u8,
 }
 
-#[derive(Debug)]
+type SaisieFactice = Arc<Mutex<RecepteurSaisie>>;
+
 struct EtatFactice {
     calques: Vec<Option<AffichageFactice>>,
     affichages: usize,
     ecran: Option<ZoneEcran>,
     echelle: f32,
+    saisie_disponible: bool,
+    saisie: Option<(usize, SaisieFactice)>,
+    focus_pris: usize,
+    focus_rendus: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OverlayFactice {
     etat: Arc<Mutex<EtatFactice>>,
 }
@@ -75,8 +108,35 @@ impl OverlayFactice {
                 affichages: 0,
                 ecran,
                 echelle,
+                saisie_disponible: true,
+                saisie: None,
+                focus_pris: 0,
+                focus_rendus: 0,
             })),
         }
+    }
+
+    pub fn sans_saisie(self) -> Self {
+        self.etat().saisie_disponible = false;
+        self
+    }
+
+    pub fn en_saisie(&self) -> Option<usize> {
+        self.etat().saisie.as_ref().map(|(indice, _)| *indice)
+    }
+
+    pub fn focus(&self) -> (usize, usize) {
+        let etat = self.etat();
+        (etat.focus_pris, etat.focus_rendus)
+    }
+
+    pub fn taper(&self, evenement: EvenementSaisie) -> bool {
+        let Some((_, recepteur)) = self.etat().saisie.clone() else {
+            return false;
+        };
+        let recepteur = recepteur.lock().unwrap_or_else(|e| e.into_inner());
+        recepteur(evenement);
+        true
     }
 
     fn etat(&self) -> MutexGuard<'_, EtatFactice> {
@@ -131,11 +191,35 @@ impl Calque for CalqueFactice {
         self.modifier(None);
         Ok(())
     }
+    fn saisir(&mut self, recepteur: RecepteurSaisie) -> Resultat<()> {
+        let mut etat = self.etat.lock().unwrap_or_else(|e| e.into_inner());
+        if !etat.saisie_disponible {
+            return Err(crate::Erreur::Indisponible("saisie dans l'overlay"));
+        }
+        etat.saisie = Some((self.indice, Arc::new(Mutex::new(recepteur))));
+        etat.focus_pris += 1;
+        Ok(())
+    }
+    fn rendre_le_focus(&mut self) -> Resultat<()> {
+        let mut etat = self.etat.lock().unwrap_or_else(|e| e.into_inner());
+        if etat
+            .saisie
+            .as_ref()
+            .is_some_and(|(indice, _)| *indice == self.indice)
+        {
+            etat.saisie = None;
+            etat.focus_rendus += 1;
+        }
+        Ok(())
+    }
 }
 
 impl Overlay for OverlayFactice {
     fn disponible(&self) -> bool {
         true
+    }
+    fn saisie_disponible(&self) -> bool {
+        self.etat().saisie_disponible
     }
     fn calque(&self) -> Resultat<Box<dyn Calque>> {
         let indice = {
@@ -164,6 +248,7 @@ mod tests {
     #[test]
     fn l_overlay_n_existe_que_sous_windows() {
         assert_eq!(OverlaySysteme.disponible(), cfg!(windows));
+        assert_eq!(OverlaySysteme.saisie_disponible(), cfg!(windows));
         if !cfg!(windows) {
             assert!(matches!(
                 OverlaySysteme.calque().map(|_| ()),
@@ -207,5 +292,53 @@ mod tests {
         );
         assert_eq!(calques[1], None);
         assert_eq!(factice.affichages(), 2);
+    }
+
+    #[test]
+    fn les_caracteres_du_clavier_deviennent_des_evenements_de_saisie() {
+        let mut haute = None;
+        let mut lire = |u: u16| evenement_de_caractere(u, &mut haute);
+        assert_eq!(lire(0x08), Some(EvenementSaisie::Effacer));
+        assert_eq!(lire(0x0D), Some(EvenementSaisie::Valider));
+        assert_eq!(lire(0x1B), Some(EvenementSaisie::Annuler));
+        assert_eq!(lire(0x09), None);
+        assert_eq!(lire(0x7F), None);
+        assert_eq!(
+            lire(u16::from(b'a')),
+            Some(EvenementSaisie::Texte("a".into()))
+        );
+        assert_eq!(lire(0xE9), Some(EvenementSaisie::Texte("é".into())));
+        assert_eq!(lire(0xD83D), None);
+        assert_eq!(lire(0xDE00), Some(EvenementSaisie::Texte("😀".into())));
+        assert_eq!(lire(0xDE00), None, "moitié basse orpheline ignorée");
+    }
+
+    #[test]
+    fn le_faux_overlay_prend_le_focus_le_temps_de_la_saisie() {
+        let factice = OverlayFactice::nouveau(None, 1.0);
+        assert!(factice.saisie_disponible());
+        let mut calque = factice.calque().unwrap();
+        assert!(!factice.taper(EvenementSaisie::Valider));
+        let recus = Arc::new(Mutex::new(Vec::new()));
+        let copie = recus.clone();
+        calque
+            .saisir(Box::new(move |e| copie.lock().unwrap().push(e)))
+            .unwrap();
+        assert_eq!(factice.en_saisie(), Some(0));
+        assert!(factice.taper(EvenementSaisie::Texte("é".into())));
+        assert!(factice.taper(EvenementSaisie::Valider));
+        calque.rendre_le_focus().unwrap();
+        assert_eq!(factice.en_saisie(), None);
+        assert_eq!(factice.focus(), (1, 1));
+        assert_eq!(
+            *recus.lock().unwrap(),
+            vec![EvenementSaisie::Texte("é".into()), EvenementSaisie::Valider]
+        );
+        let sans = OverlayFactice::nouveau(None, 1.0).sans_saisie();
+        assert!(!sans.saisie_disponible());
+        assert!(matches!(
+            sans.calque().unwrap().saisir(Box::new(|_| {})),
+            Err(Erreur::Indisponible(_))
+        ));
     }
 }

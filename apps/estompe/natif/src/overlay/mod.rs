@@ -1,9 +1,10 @@
+pub mod messages;
 pub mod reglages;
 pub mod voix;
 
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use estompe_client::overlay::Placement;
-use estompe_plateforme::{Calque, ImagePremultipliee, Overlay};
+use estompe_plateforme::{Calque, EvenementSaisie, ImagePremultipliee, Overlay};
 use slint::platform::software_renderer::{
     MinimalSoftwareWindow, PremultipliedRgbaColor, RepaintBufferType,
 };
@@ -20,11 +21,13 @@ use slint::platform::{Platform, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, PhysicalSize};
 
 pub const POMPE: Duration = Duration::from_millis(100);
+pub const POMPE_SAISIE: Duration = Duration::from_millis(10);
 pub const NOM_DU_FIL: &str = "estompe-overlay";
 
 type Creation = Box<dyn FnOnce() -> Result<Box<dyn Any>, String> + Send>;
 type Application = Box<dyn FnOnce(&dyn Any) + Send>;
 type Preparation<E> = Arc<dyn Fn(E) -> Application + Send + Sync>;
+pub type Saisie = Arc<dyn Fn(EvenementSaisie) + Send + Sync>;
 
 enum Commande {
     Creer(u64, Creation),
@@ -35,6 +38,8 @@ enum Commande {
         opacite: u8,
     },
     Masquer(u64),
+    Saisir(u64, Saisie),
+    RendreLeFocus(u64),
 }
 
 struct PlateformeOverlay {
@@ -116,8 +121,14 @@ fn boucle(recepteur: Receiver<Commande>, overlay: Arc<dyn Overlay>, rendus: Arc<
         tampon: Vec::new(),
         image: ImagePremultipliee::default(),
     };
+    let mut en_saisie: HashSet<u64> = HashSet::new();
     loop {
-        match recepteur.recv_timeout(POMPE) {
+        let attente = if en_saisie.is_empty() {
+            POMPE
+        } else {
+            POMPE_SAISIE
+        };
+        match recepteur.recv_timeout(attente) {
             Ok(Commande::Creer(id, creer)) => {
                 let Ok(composant) = creer() else { continue };
                 let Some(fenetre) = derniere.borrow_mut().take() else {
@@ -148,7 +159,30 @@ fn boucle(recepteur: Receiver<Commande>, overlay: Arc<dyn Overlay>, rendus: Arc<
             }
             Ok(Commande::Masquer(id)) => {
                 if let Some(scene) = scenes.get_mut(&id) {
+                    if en_saisie.remove(&id) {
+                        let _ = scene.calque.rendre_le_focus();
+                    }
                     let _ = scene.calque.masquer();
+                }
+            }
+            Ok(Commande::Saisir(id, saisie)) => {
+                let Some(scene) = scenes.get_mut(&id) else {
+                    saisie(EvenementSaisie::FocusPerdu);
+                    continue;
+                };
+                let relais = saisie.clone();
+                match scene.calque.saisir(Box::new(move |e| relais(e))) {
+                    Ok(()) => {
+                        en_saisie.insert(id);
+                    }
+                    Err(_) => saisie(EvenementSaisie::FocusPerdu),
+                }
+            }
+            Ok(Commande::RendreLeFocus(id)) => {
+                if let Some(scene) = scenes.get_mut(&id) {
+                    if en_saisie.remove(&id) {
+                        let _ = scene.calque.rendre_le_focus();
+                    }
                 }
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -313,6 +347,20 @@ impl<E: Clone + PartialEq + Send + 'static> SceneOverlay<E> {
 
     pub fn affichee(&self) -> bool {
         verrou(&self.etat).dernier.is_some()
+    }
+
+    pub fn saisir(&self, saisie: Saisie) -> bool {
+        if !self.affichee() {
+            return false;
+        }
+        self.moteur.envoyer(vec![Commande::Saisir(self.id, saisie)])
+    }
+
+    pub fn rendre_le_focus(&self) -> bool {
+        if !self.moteur.demarre() {
+            return false;
+        }
+        self.moteur.envoyer(vec![Commande::RendreLeFocus(self.id)])
     }
 }
 

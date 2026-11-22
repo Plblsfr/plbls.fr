@@ -212,14 +212,34 @@ pub struct ImagePremultipliee {
     pub rgba: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvenementSaisie {
+    Texte(String),
+    Effacer,
+    Valider,
+    Annuler,
+    FocusPerdu,
+}
+
+pub type RecepteurSaisie = Box<dyn Fn(EvenementSaisie) + Send>;
+
 pub trait Calque {
     fn afficher(&mut self, image: &ImagePremultipliee, x: i32, y: i32, opacite: u8)
         -> Resultat<()>;
     fn masquer(&mut self) -> Resultat<()>;
+    fn saisir(&mut self, _recepteur: RecepteurSaisie) -> Resultat<()> {
+        Err(crate::Erreur::Indisponible("saisie dans l'overlay"))
+    }
+    fn rendre_le_focus(&mut self) -> Resultat<()> {
+        Ok(())
+    }
 }
 
 pub trait Overlay: Send + Sync {
     fn disponible(&self) -> bool;
+    fn saisie_disponible(&self) -> bool {
+        false
+    }
     fn calque(&self) -> Resultat<Box<dyn Calque>>;
     fn pomper(&self) {}
     fn ecran_principal(&self) -> Option<ZoneEcran>;

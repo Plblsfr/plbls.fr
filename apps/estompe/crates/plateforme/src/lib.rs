@@ -58,13 +58,13 @@ pub use raw_window_handle::RawWindowHandle;
 pub use traits::{
     ActionNotification, ActionRaccourci, ApplicationPremierPlan, Calque, CaptureEcran, CaptureSon,
     CibleSon, Coffre, CompteursProcessus, ContenuPressePapiers, DemarrageSession, ErreurFluxAudio,
-    EtatTouche, EvenementCapture, EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon,
-    FormatAudio, FournisseurAudio, Image, ImagePremultipliee, InfosMachine, Installation,
-    MesureProcessus, Micro, Notification, Notifications, OptionsCapture, OuvertureUrl, Overlay,
-    Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux,
-    RecepteurActions, RecepteurAudio, RecepteurCapture, RecepteurSon, RecepteurSonCapture,
-    RecepteurZone, SensAudio, SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio,
-    TypeSource, ZoneEcran, ZoneNotification,
+    EtatTouche, EvenementCapture, EvenementSaisie, EvenementZone, Fichiers, FiltreFichiers,
+    FluxAudio, FluxSon, FormatAudio, FournisseurAudio, Image, ImagePremultipliee, InfosMachine,
+    Installation, MesureProcessus, Micro, Notification, Notifications, OptionsCapture,
+    OuvertureUrl, Overlay, Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon,
+    RaccourcisGlobaux, RecepteurActions, RecepteurAudio, RecepteurCapture, RecepteurSaisie,
+    RecepteurSon, RecepteurSonCapture, RecepteurZone, SensAudio, SignalErreurAudio, SortieSon,
+    SourceCapture, SystemeAudio, TypeSource, ZoneEcran, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};

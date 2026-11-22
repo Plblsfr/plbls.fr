@@ -5,10 +5,14 @@ use std::sync::Arc;
 use commun::attendre;
 use commun::references::{controler, VARIABLE};
 use estompe_client::overlay::{taille_fenetre, Placement, TailleOverlay};
+use estompe_client::overlay_messages::taille_fenetre as taille_messages;
 use estompe_natif::coquille::CleAvatar;
+use estompe_natif::overlay::messages::{
+    appliquer as appliquer_messages, EtatMessages, LigneMessage,
+};
 use estompe_natif::overlay::voix::{appliquer, AvatarOverlay, EtatVoix, LigneVoix};
 use estompe_natif::overlay::MoteurOverlay;
-use estompe_natif::OverlayVoix;
+use estompe_natif::{OverlayMessages, OverlayVoix};
 use estompe_plateforme::{AffichageFactice, OverlayFactice};
 use slint::{Rgba8Pixel, SharedPixelBuffer};
 
@@ -175,6 +179,95 @@ fn l_overlay_des_voix_correspond_a_ses_references() {
         }
     }
     assert_eq!(moteur.rendus(), 7);
+    assert!(
+        echecs.is_empty(),
+        "overlay différent de ses références :\n{}\nSi le changement est voulu : {VARIABLE}=regenerer cargo test --test overlay",
+        echecs.join("\n")
+    );
+}
+
+fn message(titre: &str, corps: &str, avatar: Option<AvatarOverlay>) -> LigneMessage {
+    LigneMessage {
+        titre: titre.into(),
+        corps: corps.into(),
+        initiales: titre.chars().take(2).collect::<String>().to_uppercase(),
+        avatar,
+    }
+}
+
+#[test]
+fn l_overlay_des_messages_correspond_a_ses_references() {
+    let consigne = std::env::var(VARIABLE).unwrap_or_default();
+    if consigne == "ignorer" {
+        eprintln!("ignoré : {VARIABLE}=ignorer");
+        return;
+    }
+    let regenerer = consigne == "regenerer";
+    let factice = OverlayFactice::nouveau(None, 1.0);
+    let moteur = MoteurOverlay::nouveau(Arc::new(factice.clone()));
+    let scene = moteur.scene(OverlayMessages::new, appliquer_messages);
+    let cas = [
+        (
+            "overlay-messages-prive",
+            EtatMessages {
+                lignes: vec![message(
+                    "alice",
+                    "On lance une partie ce soir ?",
+                    Some(avatar("alice", [220, 60, 60])),
+                )],
+                saisie: None,
+            },
+        ),
+        (
+            "overlay-messages-mention",
+            EtatMessages {
+                lignes: vec![
+                    message("bob", "salut", None),
+                    message(
+                        "carol dans #général",
+                        "@moi tu peux regarder la carte quand tu as un moment ? Le message est long et se coupe",
+                        None,
+                    ),
+                ],
+                saisie: None,
+            },
+        ),
+        (
+            "overlay-messages-saisie-vide",
+            EtatMessages {
+                lignes: vec![message("alice", "Tu viens ?", None)],
+                saisie: Some(String::new()),
+            },
+        ),
+        (
+            "overlay-messages-saisie",
+            EtatMessages {
+                lignes: vec![message("alice", "Tu viens ?", None)],
+                saisie: Some("J'arrive dans deux minutes".into()),
+            },
+        ),
+    ];
+    let mut echecs = Vec::new();
+    for (i, (nom, etat)) in cas.into_iter().enumerate() {
+        let fenetre = taille_messages(etat.lignes.len(), etat.saisie.is_some());
+        let placement = Placement {
+            x: 0,
+            y: 0,
+            largeur: fenetre.largeur as u32,
+            hauteur: fenetre.hauteur as u32,
+            echelle: 1.0,
+        };
+        assert!(scene.afficher(etat, placement, 255));
+        attendre(|| factice.affichages() == i + 1, nom);
+        let affichage = factice.calques()[0].clone().expect("calque affiché");
+        assert_eq!(
+            (affichage.image.largeur, affichage.image.hauteur),
+            (placement.largeur, placement.hauteur)
+        );
+        if let Err(echec) = controler(nom, &sur_fond(&affichage), regenerer) {
+            echecs.push(echec);
+        }
+    }
     assert!(
         echecs.is_empty(),
         "overlay différent de ses références :\n{}\nSi le changement est voulu : {VARIABLE}=regenerer cargo test --test overlay",

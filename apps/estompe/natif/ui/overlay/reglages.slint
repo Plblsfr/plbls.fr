@@ -17,6 +17,28 @@ export global DonneesOverlay {
     callback definir-opacite(float, bool);
 }
 
+export global DonneesOverlayMessages {
+    in-out property <bool> disponible: false;
+    in-out property <bool> saisie-disponible: false;
+    in-out property <int> genres: 0;
+    in-out property <bool> en-jeu: true;
+    in-out property <string> coin: "tr";
+    in-out property <int> duree: 8;
+    in-out property <bool> masquer: false;
+    in-out property <bool> sourdine: true;
+    in-out property <string> touche-reponse: "F8";
+    in-out property <string> touche-ouvrir: "F7";
+    in-out property <int> capture: -1;
+    in-out property <string> erreur;
+    callback definir-genres(int);
+    callback definir-en-jeu(bool);
+    callback definir-coin(string);
+    callback definir-duree(float, bool);
+    callback definir-masquer(bool);
+    callback definir-sourdine(bool);
+    callback touche-choisie(int, string) -> bool;
+}
+
 component Titre inherits Text {
     color: Theme.gris;
     font-family: Typo.mono;
@@ -132,5 +154,139 @@ export component SectionOverlay inherits VerticalLayout {
     }
     if DonneesOverlay.actif: Note {
         text: "L'overlay suit l'écran du jeu. Il apparaît sur un jeu en fenêtre ou en plein écran sans bordure, pas en plein écran exclusif.";
+    }
+}
+
+component ChoixTouche inherits HorizontalLayout {
+    in property <int> rang;
+    in property <string> libelle;
+    in property <string> touche;
+    spacing: Espace.e3;
+    alignment: start;
+    Bouton {
+        texte: DonneesOverlayMessages.capture == root.rang ? "Appuie sur une touche…" : root.libelle + " : " + root.touche;
+        icone: "commande";
+        calque: 1;
+        clique => {
+            DonneesOverlayMessages.capture = root.rang;
+            capture.focus();
+        }
+    }
+    capture := FocusScope {
+        width: 0px;
+        enabled: DonneesOverlayMessages.capture == root.rang;
+        key-pressed(e) => {
+            if (DonneesOverlayMessages.capture != root.rang) {
+                return reject;
+            }
+            if (e.text == Key.Escape) {
+                DonneesOverlayMessages.capture = -1;
+                return accept;
+            }
+            if (DonneesOverlayMessages.touche-choisie(root.rang, e.text)) {
+                DonneesOverlayMessages.capture = -1;
+            }
+            return accept;
+        }
+    }
+}
+
+export component SectionMessages inherits VerticalLayout {
+    property <[string]> coins: ["tl", "tr", "ml", "mr", "bl", "br"];
+    property <bool> actif: DonneesOverlayMessages.genres != 3;
+    alignment: start;
+    spacing: Espace.e4;
+    Titre {
+        text: "MESSAGES PAR-DESSUS LE JEU";
+    }
+    VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Bandeaux affichés";
+        }
+        Choix {
+            libelles: ["Privés et mentions", "Privés", "Mentions", "Aucun"];
+            choisi: DonneesOverlayMessages.genres;
+            choisir(i) => {
+                DonneesOverlayMessages.definir-genres(i);
+            }
+        }
+    }
+    if root.actif: Interrupteur {
+        texte: "Seulement quand un jeu est au premier plan";
+        allume: DonneesOverlayMessages.en-jeu;
+        calque: 1;
+        bascule(allume) => {
+            DonneesOverlayMessages.definir-en-jeu(allume);
+        }
+    }
+    if root.actif: Interrupteur {
+        texte: "Ne rien afficher en « Ne pas déranger »";
+        allume: DonneesOverlayMessages.sourdine;
+        calque: 1;
+        bascule(allume) => {
+            DonneesOverlayMessages.definir-sourdine(allume);
+        }
+    }
+    if root.actif: Interrupteur {
+        texte: "Masquer le contenu (expéditeur seulement)";
+        allume: DonneesOverlayMessages.masquer;
+        calque: 1;
+        bascule(allume) => {
+            DonneesOverlayMessages.definir-masquer(allume);
+        }
+    }
+    if root.actif: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Emplacement";
+        }
+        for rangee[r] in [["Haut gauche", "Haut droite"], ["Centre gauche", "Centre droit"], ["Bas gauche", "Bas droite"]]: Choix {
+            libelles: rangee;
+            choisi: root.coins[r * 2] == DonneesOverlayMessages.coin ? 0 : root.coins[r * 2 + 1] == DonneesOverlayMessages.coin ? 1 : -1;
+            choisir(i) => {
+                DonneesOverlayMessages.definir-coin(root.coins[r * 2 + i]);
+            }
+        }
+    }
+    if root.actif: VerticalLayout {
+        spacing: 2px;
+        Note {
+            text: "Durée d'affichage : \{Math.round(duree.valeur)} s";
+        }
+        duree := Curseur {
+            libelle: "Durée d'affichage des messages";
+            unite: " s";
+            minimum: 2;
+            maximum: 60;
+            pas: 1;
+            valeur: DonneesOverlayMessages.duree;
+            calque: 1;
+            change(v) => {
+                DonneesOverlayMessages.definir-duree(v, false);
+            }
+            fini(v) => {
+                DonneesOverlayMessages.definir-duree(v, true);
+            }
+        }
+    }
+    if root.actif && DonneesOverlayMessages.saisie-disponible: ChoixTouche {
+        rang: 0;
+        libelle: "Répondre au dernier message";
+        touche: DonneesOverlayMessages.touche-reponse;
+    }
+    if root.actif: ChoixTouche {
+        rang: 1;
+        libelle: "Ouvrir la conversation";
+        touche: DonneesOverlayMessages.touche-ouvrir;
+    }
+    if root.actif && DonneesOverlayMessages.erreur != "": Text {
+        text: DonneesOverlayMessages.erreur;
+        color: Theme.danger;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if root.actif: Note {
+        text: DonneesOverlayMessages.saisie-disponible ? "Les touches ne servent que pendant qu'un bandeau est affiché. La réponse prend le focus le temps de la saisie (Entrée : envoyer, Échap : annuler), puis le rend au jeu." : "La réponse rapide n'est pas disponible sur ce système.";
     }
 }

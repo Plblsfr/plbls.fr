@@ -109,7 +109,7 @@ thread_local! {
     static DISQUES: RefCell<HashMap<CleAvatar, ImageSlint>> = RefCell::new(HashMap::new());
 }
 
-fn portrait(avatar: &AvatarOverlay) -> ImageSlint {
+pub fn portrait(avatar: &AvatarOverlay) -> ImageSlint {
     DISQUES.with(|disques| {
         let mut disques = disques.borrow_mut();
         if disques.len() >= DISQUES_EN_MEMOIRE && !disques.contains_key(&avatar.cle) {

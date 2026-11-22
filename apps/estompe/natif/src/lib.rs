@@ -55,6 +55,7 @@ pub struct Application {
     pub jeux: std::sync::Arc<jeux::ServiceJeux>,
     pub overlays: overlay::MoteurOverlay,
     pub overlay_voix: std::sync::Arc<overlay::voix::ServiceOverlayVoix>,
+    pub overlay_messages: std::sync::Arc<overlay::messages::ServiceOverlayMessages>,
 }
 
 #[cfg(feature = "livekit")]
@@ -142,6 +143,26 @@ pub fn demarrer(
     let overlays = overlay::MoteurOverlay::nouveau(plateforme.overlay.clone());
     let overlay_voix =
         overlay::voix::ServiceOverlayVoix::nouveau(&overlays, session.memoire.lire(|p| p.overlay));
+    let overlay_messages = overlay::messages::ServiceOverlayMessages::nouveau(
+        &overlays,
+        session.memoire.lire(|p| p.overlay_messages.clone()),
+        overlay::messages::Options {
+            raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+            touches_prises: {
+                let memoire = session.memoire.clone();
+                std::sync::Arc::new(move || {
+                    memoire.lire(|p| {
+                        if p.ptt.actif {
+                            vec![p.ptt.touche.clone()]
+                        } else {
+                            Vec::new()
+                        }
+                    })
+                })
+            },
+            horloge: None,
+        },
+    );
     let outils_vocaux = vocal::OutilsVocaux {
         session: vocal.clone(),
         audio,
@@ -170,6 +191,13 @@ pub fn demarrer(
     );
     overlay_voix.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
     overlay::reglages::brancher(fenetre, overlay_voix.clone(), session.memoire.clone());
+    overlay_messages.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    overlay_messages.demarrer_minuterie(&entree.runtime());
+    overlay::reglages::brancher_messages(
+        fenetre,
+        overlay_messages.clone(),
+        session.memoire.clone(),
+    );
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -300,6 +328,7 @@ pub fn demarrer(
             source: coquille.source_pont(),
             runtime: entree.runtime(),
             journal: Some(session.journal.clone()),
+            overlay: Some(overlay_messages.clone()),
         },
     ));
     Ok(Application {
@@ -313,6 +342,7 @@ pub fn demarrer(
         jeux: service_jeux,
         overlays,
         overlay_voix,
+        overlay_messages,
     })
 }
 

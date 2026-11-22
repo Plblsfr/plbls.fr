@@ -1114,7 +1114,7 @@ est la première scène ; celui des messages (#354) et l'indicateur du replay (#
   (`MoteurOverlay::scene(Composant::new, appliquer)`) donne une `SceneOverlay<E>` : `afficher(etat, placement, opacite)` n'envoie rien si l'affichage est identique au
   précédent ; sinon le fil applique l'état au composant, le rend à la taille demandée (facteur d'échelle de l'écran) et le passe à son calque. `masquer()` cache le calque.
   Aucun rendu sans changement : `rendus()` compte les images rendues, `demandes()` les affichages envoyés. Le fil pompe les messages après chaque
-  commande, et toutes les 100 ms sans commande.
+  commande, et toutes les 100 ms sans commande (10 ms pendant une saisie).
 - Participants du vocal (`overlay/voix.rs`, `ui/overlay/voix.slint`) : `PontVocal::projeter` calcule les participants du salon où je suis connecté
   (`projection::participants`, mêmes états que les tuiles : je parle, micro et casque coupés) et les passe à `ServiceOverlayVoix` avec leur photo de profil (chargée
   par `Profils` au besoin, recadrée en disque sur le fil de l'overlay car le moteur logiciel ne découpe pas une image par un `border-radius`). Le service suit aussi
@@ -1133,8 +1133,36 @@ est la première scène ; celui des messages (#354) et l'indicateur du replay (#
   sondage du jeu toutes les 5 s et projections répétées) ; captures `tests/overlay.rs` comparées à `tests/references/overlay-voix-*.png` (1, 4 et 8 participants,
   locuteurs, micro et casque coupés, chaque taille ; composées sur un fond sombre) ; parcours dans `tests/vocal.rs` (trois participants à l'arrivée dans le salon, overlay
   masqué en raccrochant) et `tests/jeux.rs` (écran du jeu suivi, réglages appliqués, masqué hors jeu, « toujours », désactivé).
+- Messages privés et mentions (#354, `overlay/messages.rs`, `ui/overlay/messages.slint`, calculs dans `apps/estompe/crates/client/src/overlay_messages.rs`, repris
+  de `MsgOverlay.svelte`, `msg-overlay.svelte.ts` et `overlay.ts`) : le `Notifieur` du bureau passe chaque notification du serveur à `ServiceOverlayMessages`,
+  indépendamment des notifications du bureau. Retenues selon le choix (privés, mentions, les deux, aucun) et rien en « Ne pas déranger » si la sourdine est cochée
+  (`overlay_messages::voulu`). File comme l'app Tauri (`FileMessages`) : quatre bandeaux au plus, le même message remplacé, chacun retiré après sa durée (2 à 60 s,
+  8 par défaut) ; pendant une saisie, les bandeaux échus restent et leur durée repart. Une minuterie tokio (`demarrer_minuterie`) attend la prochaine échéance ; l'heure
+  vient d'une horloge injectable pour les tests. Rendu : bandeaux de 340 × 64 px `#000000bf`, photo de profil en disque ou initiales, titre en gras, corps sur une
+  ligne (masqué si « masquer le contenu ») ; champ de réponse de 36 px sous les bandeaux, avec curseur et la fin du texte visible. Placement dans le coin choisi
+  (haut droite par défaut) sur l'écran du jeu comme les participants ; affiché seulement en jeu par défaut.
+- Réponse rapide : deux touches globales (`RaccourcisGlobaux`, une touche seule : F8 pour répondre au dernier bandeau, F7 pour ouvrir sa conversation), enregistrées
+  seulement tant qu'un bandeau est affiché, jamais celle de l'appui pour parler. Répondre ouvre le champ puis demande le focus au calque (`SceneOverlay::saisir`,
+  `Calque::saisir`) ; le fil de l'overlay pompe alors toutes les 10 ms. Sous Windows, le calque mémorise la fenêtre au premier plan (le jeu), retire
+  `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` et prend le premier plan (`AttachThreadInput` puis `SetForegroundWindow`) ; sa procédure transmet `WM_CHAR` (texte, paires
+  de substitution, Retour arrière, Entrée, Échap) et `WM_KILLFOCUS` (`EvenementSaisie`). Entrée envoie au dernier bandeau par la file d'envoi, marque la conversation
+  lue et retire ses bandeaux ; Échap ou la perte du focus annulent. Dans tous les cas `rendre_le_focus` remet les styles et rend le premier plan au jeu, sans
+  `ShowWindow` sur sa fenêtre (ni réduction ni restauration) ; si l'utilisateur est passé à une autre fenêtre (perte du focus), le premier plan n'est pas repris. « Ouvrir » ramène la fenêtre de l'app sur la conversation, comme le clic d'une notification. Linux :
+  l'overlay est indisponible (section masquée) ; un overlay sans saisie (`Overlay::saisie_disponible`) ne prend que la touche « ouvrir » et le dit dans les réglages.
+- Réglages des messages (section « Messages par-dessus le jeu » de « Jeux et activité ») : bandeaux affichés, seulement en jeu, sourdine en « Ne pas déranger »,
+  masquer le contenu, emplacement, durée, touches « répondre » et « ouvrir » (capturées comme celle de l'appui pour parler, refusées si déjà prises). Préférence
+  `overlay_messages` (`ReglagesMessages`), à côté de `overlay`.
+- Écarts des messages : les touches sont une touche seule (comme l'appui pour parler) au lieu de Ctrl+Maj+R et Ctrl+Maj+E, et le crochet du clavier ne les retire
+  pas au jeu ; emplacement et « seulement en jeu » propres aux messages (partagés avec les participants dans l'app Tauri) ; sourdine en « Ne pas déranger » vérifiée
+  aussi par l'app.
+- Tests des messages : `overlay_messages::tests` (genres, sourdine, file, durée, saisie, réponse, ouverture, taille, réglages) ; `overlay::messages::tests` (vue,
+  expiration, touches seulement pendant l'affichage, focus pris puis rendu, Échap et perte du focus, « ouvrir », sans saisie, touche de l'appui pour parler,
+  masqué hors jeu, minuterie en temps simulé) ; `plateforme::overlay::tests` (caractères de `WM_CHAR`, faux calque qui prend et rend le focus) ; captures
+  `tests/references/overlay-messages-*.png` (message privé, mention, saisie vide et en cours) ; parcours dans `tests/bureau.rs` (mentions reçues en bandeaux, réponse
+  par F8 envoyée au serveur et focus rendu, « ouvrir » par F7) et `tests/jeux.rs` (réglages des messages retenus et appliqués au bandeau).
 - Non vérifié ici (machine Linux) : affichage réel sur un jeu fenêtré sans bordure sous Windows, absence de vol de focus, mémoire et CPU comparés à l'overlay de l'app Tauri
-  (protocole de [natif-mesures.md](natif-mesures.md)).
+  (protocole de [natif-mesures.md](natif-mesures.md)) ; réponse depuis un vrai jeu (le message part, le jeu reprend le focus sans être réduit) et refus éventuel du
+  premier plan par Windows.
 
 ## Capture d'écran et de fenêtre
 
