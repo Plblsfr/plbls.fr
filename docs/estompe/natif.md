@@ -905,7 +905,7 @@ et la referme au relâchement plus le délai choisi (0 à 2 s, préférence `ptt
 
 libwebrtc est précompilé avec la bibliothèque standard de MSVC en `/MT` (`RuntimeLibrary=MT_StaticRelease`), les binaires précompilés de Skia en `/MD` :
 l'éditeur de liens refuse de les réunir. `apps/estompe/natif/.cargo/config.toml` passe tout le binaire en CRT statique (`+crt-static`, comme l'app Tauri) ;
-Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, long au premier build, puis en cache).
+Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, une vingtaine de minutes ; en CI, binaires gardés en cache par version, voir `docs/estompe/ci.md`, « Caches »).
 Le STL de MSVC récent (Visual Studio 18) refuse un clang plus ancien que 22 : `LLVM_HOME` et `LIBCLANG_PATH` désignent un LLVM 22 ou plus récent (sinon `skia-bindings`
 prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` évite « Filename too long » au clonage des dépendances de Skia.
 

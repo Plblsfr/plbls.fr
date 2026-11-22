@@ -339,6 +339,63 @@ jobs:
             target
           key: ${{ matrix.cache }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
+  # Binaires de Skia pour Windows en CRT statique (aucun binaire précompilé, une vingtaine de minutes de compilation) : écrits sur main une fois
+  # par version de skia-bindings, pour les PR (estompe-natif-windows) et les livraisons de l'app native (estompe-livraison-natif.yml).
+  cache-skia-windows:
+    needs: changements
+    if: github.ref == 'refs/heads/main' && needs.changements.outputs.estompe_natif == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: skia
+        name: Binaires de Skia (version de skia-bindings, SKIA_BINARIES_URL)
+        shell: bash
+        run: |
+          echo "version=$(sed -n '/^name = "skia-bindings"$/{n;s/^version = "\(.*\)"$/\1/p;}' apps/estompe/natif/Cargo.lock)" >> "$GITHUB_OUTPUT"
+          echo "SKIA_BINARIES_URL=file://$(cygpath -m "$HOME/skia-binaires")/skia-binaries-{key}.tar.gz" >> "$GITHUB_ENV"
+      - id: existe
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/skia-binaires
+          key: skia-windows-v1-${{ steps.skia.outputs.version }}-${{ github.run_id }}
+          restore-keys: skia-windows-v1-${{ steps.skia.outputs.version }}-
+          lookup-only: true
+      - if: steps.existe.outputs.cache-matched-key == ''
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - if: steps.existe.outputs.cache-matched-key == ''
+        name: ninja, chemins longs et LLVM 22.1.8 (voir le job estompe-natif-windows de ci.yml)
+        run: |
+          python -m pip install --disable-pip-version-check ninja==1.13.0
+          git config --global core.longpaths true
+          $ProgressPreference = 'SilentlyContinue'
+          $installeur = Join-Path $env:RUNNER_TEMP 'LLVM-22.1.8-win64.exe'
+          Invoke-WebRequest -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-win64.exe' -OutFile $installeur
+          $empreinte = (Get-FileHash -Algorithm SHA256 -Path $installeur).Hash.ToLowerInvariant()
+          if ($empreinte -ne '16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c') { throw "empreinte inattendue de l'installeur LLVM : $empreinte" }
+          $dossier = Join-Path $env:RUNNER_TEMP 'llvm-22'
+          Start-Process -FilePath $installeur -ArgumentList '/S', "/D=$dossier" -Wait -NoNewWindow
+          if (-not (Test-Path (Join-Path $dossier 'bin\clang-cl.exe'))) { throw "clang-cl absent de $dossier" }
+          "LLVM_HOME=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "LIBCLANG_PATH=$(Join-Path $dossier 'bin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Join-Path $dossier 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - if: steps.existe.outputs.cache-matched-key == ''
+        name: Skia seul, avec les features de tout le workspace de l'app native
+        working-directory: apps/estompe/natif
+        run: cargo build -p skia-bindings --release --locked --target x86_64-pc-windows-msvc
+      - if: steps.existe.outputs.cache-matched-key == ''
+        id: skia-archive
+        shell: bash
+        run: scripts/estompe/natif-skia-binaires.sh apps/estompe/natif/target/x86_64-pc-windows-msvc/release "$HOME/skia-binaires"
+      - if: steps.skia-archive.outputs.nouvelle == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/skia-binaires
+          key: skia-windows-v1-${{ steps.skia.outputs.version }}-${{ github.run_id }}
+
   cache-npm:
     needs: changements
     if: github.ref == 'refs/heads/main' && needs.changements.outputs.npm_lock == 'true'
