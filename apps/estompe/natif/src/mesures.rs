@@ -393,14 +393,13 @@ mod tests {
         let fichier = ecrire_export(&export, &dossier.path().join("mesures")).unwrap();
         let racine = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let synthese = racine.join("apps/estompe/windows/scripts/synthese-mesures.mjs");
-        let script = format!(
-            "import {{ synthese }} from {:?}; import fs from 'node:fs'; \
-             process.stdout.write(synthese([JSON.parse(fs.readFileSync({:?}, 'utf8'))]))",
-            synthese.to_string_lossy().replace('\\', "/"),
-            fichier.to_string_lossy().replace('\\', "/"),
-        );
+        let script = "import fs from 'node:fs'; import { pathToFileURL } from 'node:url'; \
+             const { synthese } = await import(pathToFileURL(process.argv[1]).href); \
+             process.stdout.write(synthese([JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))]))";
         let sortie = std::process::Command::new("node")
-            .args(["--input-type=module", "-e", &script])
+            .args(["--input-type=module", "-e", script])
+            .arg(&synthese)
+            .arg(&fichier)
             .output()
             .expect("node est requis pour la synthèse");
         assert!(
