@@ -6,6 +6,12 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use tokio::sync::mpsc;
 
+use estompe_plateforme::Image;
+
+use super::camera::FormatVideo;
+use super::partage::{i420_de_rgba, PlafondPartage};
+use super::video::{DemandeVideo, FluxVideo, ImageI420, SourceVideo};
+
 pub const SUFFIXE_PARTAGE: &str = "#screen";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,6 +20,22 @@ pub struct JetonSalle {
     pub jeton: String,
     pub salle: String,
     pub max_participants: Option<u32>,
+    pub plafond_partage: Option<PlafondPartage>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Limitation {
+    #[default]
+    Aucune,
+    Processeur,
+    Debit,
+    Autre,
+}
+
+impl Limitation {
+    pub fn freine(self) -> bool {
+        matches!(self, Self::Processeur | Self::Debit)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -90,6 +112,32 @@ pub enum EvenementSalle {
         identite: String,
         source: SourceAudio,
     },
+    AudioPubliee {
+        identite: String,
+        source: SourceAudio,
+    },
+    AudioRetiree {
+        identite: String,
+        source: SourceAudio,
+    },
+    VideoPubliee {
+        identite: String,
+        source: SourceVideo,
+        piste: String,
+    },
+    VideoRetiree {
+        identite: String,
+        source: SourceVideo,
+    },
+    PisteVideo {
+        identite: String,
+        source: SourceVideo,
+        images: FluxVideo,
+    },
+    PisteVideoRetiree {
+        identite: String,
+        source: SourceVideo,
+    },
 }
 
 impl fmt::Debug for EvenementSalle {
@@ -134,6 +182,43 @@ impl fmt::Debug for EvenementSalle {
                 .field("identite", identite)
                 .field("source", source)
                 .finish(),
+            Self::AudioPubliee { identite, source } => f
+                .debug_struct("AudioPubliee")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::AudioRetiree { identite, source } => f
+                .debug_struct("AudioRetiree")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::VideoPubliee {
+                identite,
+                source,
+                piste,
+            } => f
+                .debug_struct("VideoPubliee")
+                .field("identite", identite)
+                .field("source", source)
+                .field("piste", piste)
+                .finish(),
+            Self::VideoRetiree { identite, source } => f
+                .debug_struct("VideoRetiree")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::PisteVideo {
+                identite, source, ..
+            } => f
+                .debug_struct("PisteVideo")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
+            Self::PisteVideoRetiree { identite, source } => f
+                .debug_struct("PisteVideoRetiree")
+                .field("identite", identite)
+                .field("source", source)
+                .finish(),
         }
     }
 }
@@ -160,6 +245,18 @@ pub trait SortieMicro: Send + Sync {
     fn couper(&self, coupe: bool);
 }
 
+pub trait SortieVideo: Send + Sync {
+    fn envoyer(&self, image: &ImageI420);
+    fn envoyer_rgba(&self, image: &Image, hauteur_max: u32) {
+        if let Some(i420) = i420_de_rgba(image, hauteur_max) {
+            self.envoyer(&i420);
+        }
+    }
+    fn piste(&self) -> String {
+        String::new()
+    }
+}
+
 pub struct Connexion {
     pub salle: Arc<dyn Salle>,
     pub participants: Vec<InfoParticipant>,
@@ -173,6 +270,27 @@ pub trait Salle: Send + Sync {
         attributs: BTreeMap<String, String>,
     ) -> BoxFuture<'_, Result<(), ErreurSalle>>;
     fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>>;
+    fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>);
+    fn regler_audio(&self, identite: &str, source: SourceAudio, recevoir: bool);
+    fn publier_video(
+        &self,
+        source: SourceVideo,
+        format: FormatVideo,
+    ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>>;
+    fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()>;
+    fn publier_son_partage(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(async {
+            Err(ErreurSalle::Publication(
+                "son du partage non pris en charge".to_string(),
+            ))
+        })
+    }
+    fn retirer_son_partage(&self) -> BoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
+    fn limitation_video(&self, _source: SourceVideo) -> BoxFuture<'_, Limitation> {
+        Box::pin(async { Limitation::Aucune })
+    }
     fn fermer(&self) -> BoxFuture<'_, ()>;
 }
 

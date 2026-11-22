@@ -12,6 +12,8 @@ mod x11;
 #[cfg(windows)]
 pub use self::windows::RaccourcisSysteme;
 #[cfg(all(unix, not(target_os = "macos")))]
+pub(crate) use self::x11::session_wayland;
+#[cfg(all(unix, not(target_os = "macos")))]
 pub use self::x11::RaccourcisSysteme;
 #[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
 pub use crate::Indisponible as RaccourcisSysteme;

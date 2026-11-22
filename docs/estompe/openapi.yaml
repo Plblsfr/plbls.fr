@@ -1773,6 +1773,8 @@ paths:
                   token: {type: string}
                   room: {type: string}
                   max_participants: {type: integer, example: 10}
+                  screen_max_fps: {type: integer, example: 60, description: "plafond d'images par seconde d'un partage d'écran"}
+                  screen_max_height: {type: integer, example: 2160, description: "plafond de hauteur d'un partage d'écran, en pixels"}
         "400": {description: not_voice_channel}
         "409": {description: "voice_full : limite du salon atteinte (10 participants au plus) ; voice_not_joined (`screen=1`) : l'utilisateur n'est pas dans la salle"}
         "502": {description: voice_unavailable}

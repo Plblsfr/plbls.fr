@@ -10,6 +10,7 @@ pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
 pub mod session;
+pub mod video;
 pub mod vocal;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -91,29 +92,43 @@ pub fn demarrer(
         ecrans::publieur(fenetre),
     )
     .map_err(|e| format!("fil de l'entrée : {e}"))?;
-    let (micro, sortie, traitement, ecoute) = session.memoire.lire(|p| {
-        (
-            p.micro.clone(),
-            p.sortie_audio.clone(),
-            p.traitement_micro,
-            p.ecoute.clone(),
-        )
-    });
+    let (micro, sortie, traitement, ecoute, camera, qualite_camera, partage, incrustation) =
+        session.memoire.lire(|p| {
+            (
+                p.micro.clone(),
+                p.sortie_audio.clone(),
+                p.traitement_micro,
+                p.ecoute.clone(),
+                p.camera.clone(),
+                p.qualite_camera,
+                p.partage,
+                p.incrustation,
+            )
+        });
     let audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio> =
         std::sync::Arc::new(estompe_plateforme::AudioSysteme);
     let apm = apm_vocal();
+    let cameras: std::sync::Arc<dyn estompe_plateforme::SystemeCamera> =
+        std::sync::Arc::new(estompe_plateforme::CamerasSysteme);
     let vocal = std::sync::Arc::new(estompe_client::vocal::SessionVocale::demarrer(
         &entree.runtime(),
         estompe_client::vocal::Dependances {
             api: std::sync::Arc::new(reels.client.clone()),
             connecteur: connecteur_vocal(),
             audio: audio.clone(),
+            cameras: cameras.clone(),
+            ecrans: plateforme.capture_ecran.clone(),
+            sons: plateforme.capture_son.clone(),
             apm: apm.clone(),
             reglages: estompe_client::vocal::Reglages {
                 micro,
                 sortie,
                 traitement,
                 ecoute,
+                camera,
+                qualite_camera,
+                partage,
+                incrustation,
                 ..estompe_client::vocal::Reglages::default()
             },
         },
@@ -123,6 +138,9 @@ pub fn demarrer(
         session: vocal.clone(),
         audio,
         raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+        cameras,
+        ecrans: plateforme.capture_ecran.clone(),
+        sons: plateforme.capture_son.clone(),
         apm,
     };
     let jeton = reels.auth.fournisseur_jeton();
@@ -219,6 +237,7 @@ pub fn demarrer(
             }
         },
         coquille.suivi_du_depot(),
+        coquille.suivi_de_la_visibilite(),
     );
     let emetteur = entree.emetteur();
     let bureau = bureau::Bureau::installer(
@@ -270,12 +289,28 @@ fn suivre_la_fenetre(
     fenetre: &Principale,
     focus: impl Fn(bool) + 'static,
     depot: impl Fn(&Principale, coquille::Depot) + 'static,
+    visibilite: impl Fn(&Principale, bool) + 'static,
 ) {
     use coquille::Depot;
     use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
     use winit::event::WindowEvent;
     let faible = fenetre.as_weak();
+    let cachee = std::cell::Cell::new((false, false));
     fenetre.window().on_winit_window_event(move |_, evenement| {
+        let avant = cachee.get();
+        match evenement {
+            WindowEvent::Occluded(occultee) => cachee.set((*occultee, avant.1)),
+            WindowEvent::Resized(taille) => {
+                cachee.set((avant.0, taille.width == 0 || taille.height == 0))
+            }
+            _ => {}
+        }
+        let apres = cachee.get();
+        if (avant.0 || avant.1) != (apres.0 || apres.1) {
+            if let Some(f) = faible.upgrade() {
+                visibilite(&f, !(apres.0 || apres.1));
+            }
+        }
         let signal = match evenement {
             WindowEvent::Focused(actif) => {
                 focus(*actif);

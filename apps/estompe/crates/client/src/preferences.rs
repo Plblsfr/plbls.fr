@@ -8,7 +8,9 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
-use crate::vocal::{Ecoute, ReglagesPtt};
+use crate::vocal::{
+    Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
+};
 
 pub const NOM_FICHIER: &str = "preferences.json";
 const SUFFIXE_CORROMPU: &str = "corrompu";
@@ -62,6 +64,11 @@ pub struct Preferences {
     pub emoji_recents: Vec<String>,
     pub recherches_recentes: Vec<String>,
     pub vocaux_ecoutes: Vec<String>,
+    pub camera: Option<String>,
+    pub qualite_camera: QualiteCamera,
+    pub qualite_partage: QualiteRecue,
+    pub partage: ReglagesPartage,
+    pub incrustation: ReglagesIncrustation,
 }
 
 impl Default for Preferences {
@@ -89,6 +96,11 @@ impl Default for Preferences {
             emoji_recents: Vec::new(),
             recherches_recentes: Vec::new(),
             vocaux_ecoutes: Vec::new(),
+            camera: None,
+            qualite_camera: QualiteCamera::default(),
+            qualite_partage: QualiteRecue::default(),
+            partage: ReglagesPartage::default(),
+            incrustation: ReglagesIncrustation::default(),
         }
     }
 }
@@ -171,6 +183,11 @@ impl Preferences {
                 .take(crate::message_vocal::ECOUTES_MAX)
                 .rev()
                 .collect(),
+            camera: champ(&objet, "camera", d.camera).filter(|c: &String| !c.is_empty()),
+            qualite_camera: champ(&objet, "qualite_camera", d.qualite_camera),
+            qualite_partage: champ(&objet, "qualite_partage", d.qualite_partage),
+            partage: champ(&objet, "partage", d.partage).borne(),
+            incrustation: champ(&objet, "incrustation", d.incrustation).borne(),
         })
     }
 
@@ -351,6 +368,27 @@ mod tests {
             emoji_recents: vec!["😂".to_string(), "👍".to_string()],
             recherches_recentes: vec!["de:carol vacances".to_string()],
             vocaux_ecoutes: vec!["f1".to_string()],
+            camera: Some("/dev/video2".to_string()),
+            qualite_camera: crate::vocal::QualiteCamera::Q1080,
+            qualite_partage: QualiteRecue::Moyenne,
+            partage: ReglagesPartage {
+                resolution: crate::vocal::ResolutionPartage::R1440,
+                ips: 60,
+                fluidite: false,
+                auto: false,
+                son: false,
+            },
+            incrustation: crate::vocal::ReglagesIncrustation {
+                active: true,
+                x: 0,
+                y: 250,
+                taille: 30,
+                forme: crate::vocal::FormeIncrustation::Cercle,
+                marge: 8,
+                bordure: true,
+                ombre: false,
+                miroir: true,
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);

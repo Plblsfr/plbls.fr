@@ -3,26 +3,43 @@ use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
 use futures_util::StreamExt;
+use livekit::options::VideoEncoding;
 use livekit::prelude::{
-    ConnectionQuality, LocalAudioTrack, LocalTrack, Participant, RemoteParticipant, RemoteTrack,
-    RemoteTrackPublication, Room, RoomEvent, RoomOptions, TrackKind, TrackPublishOptions,
-    TrackSource,
+    ConnectionQuality, LocalAudioTrack, LocalTrack, LocalVideoTrack, Participant,
+    RemoteParticipant, RemoteTrack, RemoteTrackPublication, Room, RoomEvent, RoomOptions,
+    TrackKind, TrackPublication, TrackPublishOptions, TrackSource,
 };
+use livekit::track::TrackDimension;
 use livekit::webrtc::audio_frame::AudioFrame;
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::native::apm::AudioProcessingModule;
+use livekit::webrtc::native::yuv_helper::abgr_to_i420;
+use livekit::webrtc::prelude::{
+    DegradationPreference, I420Buffer, VideoBuffer, VideoFormatType, VideoFrame, VideoResolution,
+    VideoRotation,
+};
+use livekit::webrtc::stats::{QualityLimitationReason, RtcStats};
+use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+use livekit::webrtc::video_source::native::NativeVideoSource;
+use livekit::webrtc::video_source::RtcVideoSource;
+use livekit::webrtc::video_stream::native::NativeVideoStream;
 use livekit::DisconnectReason;
 use livekit_protocol::{ParticipantPermission, TrackSource as SourceProto};
 use tokio::sync::mpsc;
 
 use crate::audio::{Apm, MoteurApm, FREQUENCE};
 
+use estompe_plateforme::Image;
+
+use super::camera::FormatVideo;
+use super::partage::{taille_reduite, Degradation};
 use super::salle::{
-    Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle, Qualite,
-    RaisonDeconnexion, Salle, SortieMicro, SourceAudio,
+    est_partage, Connecteur, Connexion, ErreurSalle, EvenementSalle, InfoParticipant, JetonSalle,
+    Limitation, Qualite, RaisonDeconnexion, Salle, SortieMicro, SortieVideo, SourceAudio,
 };
+use super::video::{DemandeVideo, ImageI420, ImageVideo, SourceVideo, TrameVideo};
 
 const FILE_MICRO: usize = 50;
 const TAMPON_SOURCE_MS: u32 = 100;
@@ -56,6 +73,104 @@ struct SalleLiveKit {
 struct SortieLiveKit {
     envoi: mpsc::Sender<Vec<i16>>,
     piste: LocalAudioTrack,
+}
+
+struct SortieVideoLiveKit {
+    source: NativeVideoSource,
+    debut: std::time::Instant,
+    piste: String,
+}
+
+impl SortieVideoLiveKit {
+    fn capturer(&self, tampon: I420Buffer) {
+        let mut trame = VideoFrame::new(VideoRotation::VideoRotation0, tampon);
+        trame.timestamp_us = self.debut.elapsed().as_micros() as i64;
+        self.source.capture_frame(&trame);
+    }
+}
+
+fn copier_plan(source: &[u8], largeur: usize, hauteur: usize, cible: &mut [u8], pas: usize) {
+    for y in 0..hauteur {
+        cible[y * pas..y * pas + largeur].copy_from_slice(&source[y * largeur..(y + 1) * largeur]);
+    }
+}
+
+impl SortieVideo for SortieVideoLiveKit {
+    fn envoyer(&self, image: &ImageI420) {
+        if !image.valide() {
+            return;
+        }
+        let mut tampon = I420Buffer::new(image.largeur, image.hauteur);
+        let (pas_y, pas_u, pas_v) = tampon.strides();
+        let (l, h) = (image.largeur as usize, image.hauteur as usize);
+        let (cl, ch) = (
+            image.largeur_chroma() as usize,
+            image.hauteur_chroma() as usize,
+        );
+        let (y, u, v) = tampon.data_mut();
+        copier_plan(&image.y, l, h, y, pas_y as usize);
+        copier_plan(&image.u, cl, ch, u, pas_u as usize);
+        copier_plan(&image.v, cl, ch, v, pas_v as usize);
+        self.capturer(tampon);
+    }
+
+    fn envoyer_rgba(&self, image: &Image, hauteur_max: u32) {
+        let (l, h) = (image.largeur & !1, image.hauteur & !1);
+        if l < 2 || h < 2 || image.rgba.len() < (image.largeur * image.hauteur * 4) as usize {
+            return;
+        }
+        let mut tampon = I420Buffer::new(l, h);
+        let (pas_y, pas_u, pas_v) = tampon.strides();
+        let (y, u, v) = tampon.data_mut();
+        abgr_to_i420(
+            &image.rgba,
+            image.largeur * 4,
+            y,
+            pas_y,
+            u,
+            pas_u,
+            v,
+            pas_v,
+            l as i32,
+            h as i32,
+        );
+        let (cl, ch) = taille_reduite(l, h, hauteur_max);
+        if (cl, ch) != (l, h) {
+            tampon = tampon.scale(cl as i32, ch as i32);
+        }
+        self.capturer(tampon);
+    }
+
+    fn piste(&self) -> String {
+        self.piste.clone()
+    }
+}
+
+fn degradation(d: Degradation) -> Option<DegradationPreference> {
+    match d {
+        Degradation::Auto => None,
+        Degradation::GarderCadence => Some(DegradationPreference::MaintainFramerate),
+        Degradation::GarderResolution => Some(DegradationPreference::MaintainResolution),
+    }
+}
+
+fn limitation(stats: &[RtcStats]) -> Limitation {
+    let raisons: Vec<QualityLimitationReason> = stats
+        .iter()
+        .filter_map(|s| match s {
+            RtcStats::OutboundRtp(o) => Some(o.outbound.quality_limitation_reason),
+            _ => None,
+        })
+        .collect();
+    if raisons.contains(&QualityLimitationReason::Bandwidth) {
+        Limitation::Debit
+    } else if raisons.contains(&QualityLimitationReason::Cpu) {
+        Limitation::Processeur
+    } else if raisons.contains(&QualityLimitationReason::Other) {
+        Limitation::Autre
+    } else {
+        Limitation::Aucune
+    }
 }
 
 fn qualite(q: ConnectionQuality) -> Qualite {
@@ -92,6 +207,158 @@ fn source(s: TrackSource) -> Option<SourceAudio> {
     }
 }
 
+fn source_video(s: TrackSource) -> Option<SourceVideo> {
+    match s {
+        TrackSource::Camera => Some(SourceVideo::Camera),
+        TrackSource::Screenshare => Some(SourceVideo::Partage),
+        _ => None,
+    }
+}
+
+fn piste_de(source: SourceVideo) -> TrackSource {
+    match source {
+        SourceVideo::Camera => TrackSource::Camera,
+        SourceVideo::Partage => TrackSource::Screenshare,
+    }
+}
+
+struct TrameLiveKit {
+    tampon: Box<dyn VideoBuffer>,
+}
+
+fn en_i420(tampon: &dyn VideoBuffer) -> Option<I420Buffer> {
+    if let Some(t) = tampon.as_i420() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_nv12() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i420a() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i422() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i444() {
+        return Some(t.to_i420());
+    }
+    if let Some(t) = tampon.as_i010() {
+        return Some(t.to_i420());
+    }
+    tampon.as_native().map(|t| t.to_i420())
+}
+
+impl TrameVideo for TrameLiveKit {
+    fn largeur(&self) -> u32 {
+        self.tampon.width()
+    }
+
+    fn hauteur(&self) -> u32 {
+        self.tampon.height()
+    }
+
+    fn vers_rgba(&self, largeur: u32, hauteur: u32, sortie: &mut [u8]) {
+        let Some(mut image) = en_i420(&*self.tampon) else {
+            return;
+        };
+        if sortie.len() < (largeur * hauteur * 4) as usize || largeur == 0 || hauteur == 0 {
+            return;
+        }
+        if (largeur, hauteur) != (image.width(), image.height()) {
+            image = image.scale(largeur as i32, hauteur as i32);
+        }
+        image.to_argb(
+            VideoFormatType::ABGR,
+            sortie,
+            largeur * 4,
+            largeur as i32,
+            hauteur as i32,
+        );
+    }
+}
+
+fn video_publiee(identite: String, publication: &RemoteTrackPublication) -> Option<EvenementSalle> {
+    if publication.kind() != TrackKind::Video || publication.is_muted() {
+        return None;
+    }
+    Some(EvenementSalle::VideoPubliee {
+        identite,
+        source: source_video(publication.source())?,
+        piste: publication.sid().to_string(),
+    })
+}
+
+fn son_de_partage(identite: &str, s: TrackSource) -> bool {
+    s == TrackSource::ScreenshareAudio || (est_partage(identite) && source(s).is_some())
+}
+
+fn publication_distante(
+    identite: String,
+    publication: &RemoteTrackPublication,
+) -> Option<EvenementSalle> {
+    if publication.kind() == TrackKind::Audio {
+        if son_de_partage(&identite, publication.source()) {
+            return Some(EvenementSalle::AudioPubliee {
+                identite,
+                source: SourceAudio::Partage,
+            });
+        }
+        if source(publication.source()).is_some() {
+            publication.set_subscribed(true);
+        }
+        return None;
+    }
+    video_publiee(identite, publication)
+}
+
+fn bascule_video(
+    participant: &Participant,
+    publication: &TrackPublication,
+    muette: bool,
+) -> Option<EvenementSalle> {
+    let Participant::Remote(distant) = participant else {
+        return None;
+    };
+    if publication.kind() != TrackKind::Video {
+        return None;
+    }
+    let identite = distant.identity().to_string();
+    let source = source_video(publication.source())?;
+    Some(if muette {
+        EvenementSalle::VideoRetiree { identite, source }
+    } else {
+        EvenementSalle::VideoPubliee {
+            identite,
+            source,
+            piste: publication.sid().to_string(),
+        }
+    })
+}
+
+fn piste_video(
+    identite: String,
+    publication: &RemoteTrackPublication,
+    piste: RemoteTrack,
+) -> Option<EvenementSalle> {
+    let RemoteTrack::Video(video) = piste else {
+        return None;
+    };
+    let source = source_video(publication.source())?;
+    let flux = NativeVideoStream::new(video.rtc_track());
+    Some(EvenementSalle::PisteVideo {
+        identite,
+        source,
+        images: flux
+            .map(|image| {
+                let trame: ImageVideo = Arc::new(TrameLiveKit {
+                    tampon: image.buffer,
+                });
+                trame
+            })
+            .boxed(),
+    })
+}
+
 fn attributs(a: HashMap<String, String>) -> BTreeMap<String, String> {
     a.into_iter().collect()
 }
@@ -112,12 +379,6 @@ fn permissions(p: &ParticipantPermission) -> EvenementSalle {
         publier_micro: p.can_publish
             && (p.can_publish_sources.is_empty() || p.can_publish_sources.contains(&micro)),
         recevoir: p.can_subscribe,
-    }
-}
-
-fn abonner(publication: &RemoteTrackPublication) {
-    if publication.kind() == TrackKind::Audio && source(publication.source()).is_some() {
-        publication.set_subscribed(true);
     }
 }
 
@@ -163,15 +424,53 @@ fn traduire(evenement: RoomEvent) -> Option<EvenementSalle> {
         RoomEvent::Reconnecting => EvenementSalle::Reconnexion,
         RoomEvent::Reconnected => EvenementSalle::Reconnecte,
         RoomEvent::Disconnected { reason } => EvenementSalle::Deconnecte(raison(reason)),
-        RoomEvent::TrackPublished { publication, .. } => {
-            abonner(&publication);
-            return None;
+        RoomEvent::TrackPublished {
+            publication,
+            participant,
+        } => return publication_distante(participant.identity().to_string(), &publication),
+        RoomEvent::TrackUnpublished {
+            publication,
+            participant,
+        } if publication.kind() == TrackKind::Video => EvenementSalle::VideoRetiree {
+            identite: participant.identity().to_string(),
+            source: source_video(publication.source())?,
+        },
+        RoomEvent::TrackUnpublished {
+            publication,
+            participant,
+        } if son_de_partage(participant.identity().as_str(), publication.source()) => {
+            EvenementSalle::AudioRetiree {
+                identite: participant.identity().to_string(),
+                source: SourceAudio::Partage,
+            }
         }
+        RoomEvent::TrackMuted {
+            participant,
+            publication,
+        } => return bascule_video(&participant, &publication, true),
+        RoomEvent::TrackUnmuted {
+            participant,
+            publication,
+        } => return bascule_video(&participant, &publication, false),
         RoomEvent::TrackSubscribed {
             track,
             publication,
             participant,
-        } => return piste_audio(participant.identity().to_string(), &publication, track),
+        } => {
+            let identite = participant.identity().to_string();
+            return match track {
+                RemoteTrack::Video(_) => piste_video(identite, &publication, track),
+                RemoteTrack::Audio(_) => piste_audio(identite, &publication, track),
+            };
+        }
+        RoomEvent::TrackUnsubscribed {
+            publication,
+            participant,
+            ..
+        } if publication.kind() == TrackKind::Video => EvenementSalle::PisteVideoRetiree {
+            identite: participant.identity().to_string(),
+            source: source_video(publication.source())?,
+        },
         RoomEvent::TrackUnsubscribed {
             publication,
             participant,
@@ -198,6 +497,70 @@ impl SortieMicro for SortieLiveKit {
     }
 }
 
+impl SalleLiveKit {
+    async fn publier_audio(
+        &self,
+        origine: TrackSource,
+    ) -> Result<Arc<dyn SortieMicro>, ErreurSalle> {
+        let source = NativeAudioSource::new(
+            AudioSourceOptions::default(),
+            FREQUENCE,
+            1,
+            TAMPON_SOURCE_MS,
+        );
+        let piste = LocalAudioTrack::create_audio_track(
+            if origine == TrackSource::Microphone {
+                "micro"
+            } else {
+                "screen_audio"
+            },
+            RtcAudioSource::Native(source.clone()),
+        );
+        self.salle
+            .local_participant()
+            .publish_track(
+                LocalTrack::Audio(piste.clone()),
+                TrackPublishOptions {
+                    source: origine,
+                    dtx: origine == TrackSource::Microphone,
+                    red: true,
+                    ..TrackPublishOptions::default()
+                },
+            )
+            .await
+            .map_err(|e| ErreurSalle::Publication(e.to_string()))?;
+        let (envoi, mut reception) = mpsc::channel::<Vec<i16>>(FILE_MICRO);
+        tokio::spawn(async move {
+            while let Some(trame) = reception.recv().await {
+                let image = AudioFrame {
+                    samples_per_channel: trame.len() as u32,
+                    data: trame.into(),
+                    sample_rate: FREQUENCE,
+                    num_channels: 1,
+                };
+                if source.capture_frame(&image).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let sortie: Arc<dyn SortieMicro> = Arc::new(SortieLiveKit { envoi, piste });
+        Ok(sortie)
+    }
+
+    async fn retirer_source(&self, origine: TrackSource) {
+        let local = self.salle.local_participant();
+        let sids: Vec<_> = local
+            .track_publications()
+            .into_iter()
+            .filter(|(_, p)| p.source() == origine)
+            .map(|(sid, _)| sid)
+            .collect();
+        for sid in sids {
+            let _ = local.unpublish_track(&sid).await;
+        }
+    }
+}
+
 impl Salle for SalleLiveKit {
     fn identite(&self) -> String {
         self.identite.clone()
@@ -217,47 +580,124 @@ impl Salle for SalleLiveKit {
     }
 
     fn publier_micro(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(self.publier_audio(TrackSource::Microphone))
+    }
+
+    fn publier_son_partage(&self) -> BoxFuture<'_, Result<Arc<dyn SortieMicro>, ErreurSalle>> {
+        Box::pin(self.publier_audio(TrackSource::ScreenshareAudio))
+    }
+
+    fn retirer_son_partage(&self) -> BoxFuture<'_, ()> {
+        Box::pin(self.retirer_source(TrackSource::ScreenshareAudio))
+    }
+
+    fn publier_video(
+        &self,
+        source: SourceVideo,
+        format: FormatVideo,
+    ) -> BoxFuture<'_, Result<Arc<dyn SortieVideo>, ErreurSalle>> {
         Box::pin(async move {
-            let source = NativeAudioSource::new(
-                AudioSourceOptions::default(),
-                FREQUENCE,
-                1,
-                TAMPON_SOURCE_MS,
+            let video = NativeVideoSource::new(
+                VideoResolution {
+                    width: format.largeur,
+                    height: format.hauteur,
+                },
+                source == SourceVideo::Partage && format.ecran,
             );
-            let piste = LocalAudioTrack::create_audio_track(
-                "micro",
-                RtcAudioSource::Native(source.clone()),
-            );
-            self.salle
+            let nom = match source {
+                SourceVideo::Camera => "camera",
+                SourceVideo::Partage => "screen",
+            };
+            let piste =
+                LocalVideoTrack::create_video_track(nom, RtcVideoSource::Native(video.clone()));
+            let publication = self
+                .salle
                 .local_participant()
                 .publish_track(
-                    LocalTrack::Audio(piste.clone()),
+                    LocalTrack::Video(piste),
                     TrackPublishOptions {
-                        source: TrackSource::Microphone,
-                        dtx: true,
-                        red: true,
+                        source: piste_de(source),
+                        simulcast: format.simulcast,
+                        video_encoding: Some(VideoEncoding {
+                            max_bitrate: format.debit,
+                            max_framerate: f64::from(format.images_par_seconde),
+                        }),
+                        degradation_preference: degradation(format.degradation),
                         ..TrackPublishOptions::default()
                     },
                 )
                 .await
                 .map_err(|e| ErreurSalle::Publication(e.to_string()))?;
-            let (envoi, mut reception) = mpsc::channel::<Vec<i16>>(FILE_MICRO);
-            tokio::spawn(async move {
-                while let Some(trame) = reception.recv().await {
-                    let image = AudioFrame {
-                        samples_per_channel: trame.len() as u32,
-                        data: trame.into(),
-                        sample_rate: FREQUENCE,
-                        num_channels: 1,
-                    };
-                    if source.capture_frame(&image).await.is_err() {
-                        break;
-                    }
-                }
+            let sortie: Arc<dyn SortieVideo> = Arc::new(SortieVideoLiveKit {
+                source: video,
+                debut: std::time::Instant::now(),
+                piste: publication.sid().to_string(),
             });
-            let sortie: Arc<dyn SortieMicro> = Arc::new(SortieLiveKit { envoi, piste });
             Ok(sortie)
         })
+    }
+
+    fn retirer_video(&self, source: SourceVideo) -> BoxFuture<'_, ()> {
+        Box::pin(self.retirer_source(piste_de(source)))
+    }
+
+    fn limitation_video(&self, source: SourceVideo) -> BoxFuture<'_, Limitation> {
+        Box::pin(async move {
+            let pistes: Vec<LocalVideoTrack> = self
+                .salle
+                .local_participant()
+                .track_publications()
+                .into_values()
+                .filter(|p| p.source() == piste_de(source))
+                .filter_map(|p| match p.track() {
+                    Some(LocalTrack::Video(piste)) => Some(piste),
+                    _ => None,
+                })
+                .collect();
+            let mut stats = Vec::new();
+            for piste in pistes {
+                stats.extend(piste.get_stats().await.unwrap_or_default());
+            }
+            limitation(&stats)
+        })
+    }
+
+    fn regler_video(&self, identite: &str, source: SourceVideo, demande: Option<DemandeVideo>) {
+        let participants = self.salle.remote_participants();
+        let Some(distant) = participants
+            .values()
+            .find(|p| p.identity().as_str() == identite)
+        else {
+            return;
+        };
+        for publication in distant.track_publications().values() {
+            if publication.kind() != TrackKind::Video || publication.source() != piste_de(source) {
+                continue;
+            }
+            publication.set_subscribed(demande.is_some());
+            if let Some(d) = demande {
+                publication.update_video_dimensions(TrackDimension(d.largeur, d.hauteur));
+            }
+        }
+    }
+
+    fn regler_audio(&self, identite: &str, source: SourceAudio, recevoir: bool) {
+        let participants = self.salle.remote_participants();
+        let Some(distant) = participants
+            .values()
+            .find(|p| p.identity().as_str() == identite)
+        else {
+            return;
+        };
+        for publication in distant.track_publications().values() {
+            if publication.kind() != TrackKind::Audio {
+                continue;
+            }
+            let partage = son_de_partage(identite, publication.source());
+            if partage == (source == SourceAudio::Partage) {
+                publication.set_subscribed(recevoir);
+            }
+        }
     }
 
     fn fermer(&self) -> BoxFuture<'_, ()> {
@@ -287,13 +727,17 @@ impl Connecteur for ConnecteurLiveKit {
                 qualite: qualite(local.connection_quality()),
                 local: true,
             }];
+            let (envoi, evenements) = mpsc::unbounded_channel();
             for distant in salle.remote_participants().values() {
                 participants.push(info_distant(distant));
                 for publication in distant.track_publications().values() {
-                    abonner(publication);
+                    if let Some(e) =
+                        publication_distante(distant.identity().to_string(), publication)
+                    {
+                        let _ = envoi.send(e);
+                    }
                 }
             }
-            let (envoi, evenements) = mpsc::unbounded_channel();
             tokio::spawn(async move {
                 while let Some(evenement) = recus.recv().await {
                     if let Some(traduit) = traduire(evenement) {

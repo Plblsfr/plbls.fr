@@ -1,23 +1,71 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
-import { Avatar } from "../composants.slint";
+import { Avatar, Bouton, VarianteBouton, Icone } from "../composants.slint";
 import { Anneau } from "../composants/focus.slint";
 import { DonneesVocal, ParticipantVocal } from "donnees.slint";
 import { BarresQualite, Onde, EtatsParticipant } from "commun.slint";
+import { ImageFlux } from "../video/flux.slint";
+
+component OutilTuile inherits Rectangle {
+    in property <string> icone;
+    in property <string> texte;
+    in property <string> description;
+    callback clique();
+    height: 32px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.s;
+    background: zone.has-hover ? Theme.papier-2 : Theme.surface;
+    drop-shadow-blur: 6px;
+    drop-shadow-offset-y: 1px;
+    drop-shadow-color: #16130f33;
+    accessible-role: button;
+    accessible-label: root.texte != "" ? root.texte : root.description;
+    accessible-action-default => {
+        root.clique();
+    }
+    contenu := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                taille: 16px;
+            }
+        }
+        if root.texte != "": Text {
+            text: root.texte;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
 
 export component Tuile inherits Rectangle {
     in property <ParticipantVocal> p;
+    in property <bool> grande: false;
+    in property <bool> plein: false;
+    property <bool> attente: p.partage && !p.regarde;
     property <bool> utilisable: !p.moi && Calques.ouverts == 0;
-    property <length> cote: Math.clamp(Math.min(self.width, self.height) * 0.3, 32px, 128px);
-    border-radius: Rayon.l;
-    background: Theme.papier-3;
+    property <length> cote: Math.clamp(Math.min(self.width, self.height) * (attente ? 0.22 : 0.3), 32px, attente ? 72px : 128px);
+    property <bool> outils: video.pret && Calques.ouverts == 0 && (root.grande || zone.has-hover || portee.has-focus);
+    border-radius: root.plein ? 0 : Rayon.l;
+    background: video.pret ? #0e0c0b : Theme.papier-3;
+    clip: true;
     accessible-role: button;
-    accessible-label: root.p.nom + (root.p.moi ? " (toi)" : "");
+    accessible-label: root.p.nom + (root.p.moi ? " (toi)" : "") + (root.p.partage ? ", écran" : video.pret ? ", " + root.p.libelle-video : "") + (root.p.spectateurs != "" ? ", " + root.p.spectateurs + " : " + root.p.noms-spectateurs : "");
     accessible-description: (root.p.parle ? "parle" : root.p.sourd ? "sourdine casque" : root.p.muet ? "micro coupé" : "") + (root.p.micro-impose ? ", micro coupé par un modérateur" : "") + (root.p.son-impose ? ", son coupé par un modérateur" : "");
     accessible-enabled: utilisable;
     accessible-action-default => {
-        if (root.utilisable) {
-            root.ouvrir(false, 0, 0);
-        }
+        root.activer();
     }
     property <bool> a-ouvert-menu: false;
     changed utilisable => {
@@ -35,11 +83,34 @@ export component Tuile inherits Rectangle {
         }
     }
     function ouvrir(au-pointeur: bool, x: length, y: length) {
-        DonneesVocal.ouvrir-menu-a(root.p.utilisateur, root.p.salon, au-pointeur, x, y);
+        if (root.p.partage) {
+            DonneesVocal.ouvrir-menu-partage-a(root.p.utilisateur, au-pointeur, x, y);
+        } else {
+            DonneesVocal.ouvrir-menu-a(root.p.utilisateur, root.p.salon, au-pointeur, x, y);
+        }
         root.a-ouvert-menu = DonneesVocal.menu-ouvert;
     }
     forward-focus: portee;
-    Avatar {
+    function activer() {
+        if (!root.utilisable) {
+            return;
+        }
+        if (root.attente) {
+            DonneesVocal.regarder(root.p.utilisateur, true);
+        } else {
+            root.ouvrir(false, 0, 0);
+        }
+    }
+    video := ImageFlux {
+        width: 100%;
+        height: 100%;
+        indice: root.p.video;
+        visible: self.pret;
+        contenir: root.p.partage || root.grande;
+        rayon: root.plein ? 0 : Rayon.l;
+        coins: Theme.papier;
+    }
+    if !video.pret && !root.attente: Avatar {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2 - 8px;
         nom: root.p.nom;
@@ -49,53 +120,74 @@ export component Tuile inherits Rectangle {
         taille: root.cote;
         fond: Theme.papier-3;
     }
-    if root.p.parle: Rectangle {
-        border-radius: Rayon.l;
-        border-width: 3px;
-        border-color: Theme.voix;
-    }
-    pastille := Rectangle {
-        x: 10px;
-        y: parent.height - self.height - 10px;
-        width: Math.min(meta.preferred-width, parent.width - 20px);
-        height: 28px;
-        border-radius: Rayon.pilule;
-        background: Theme.surface.with-alpha(0.88);
-        border-width: 1px;
-        border-color: Theme.trait;
-        meta := HorizontalLayout {
-            padding-left: 10px;
-            padding-right: 10px;
-            spacing: 6px;
-            if root.p.parle: VerticalLayout {
-                alignment: center;
-                Onde { }
+    if root.attente: VerticalLayout {
+        alignment: center;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.p.nom;
+                initiales: root.p.initiales;
+                portrait: root.p.portrait;
+                teinte: root.p.teinte;
+                taille: root.cote;
+                fond: Theme.papier-3;
             }
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 6px;
             Text {
-                text: root.p.nom + (root.p.moi ? " (toi)" : "");
+                text: root.p.nom;
                 color: Theme.encre;
                 font-size: Typo.petit;
-                font-weight: Typo.demi-gras;
+                font-weight: Typo.gras;
                 vertical-alignment: center;
                 overflow: elide;
             }
-            VerticalLayout {
-                alignment: center;
-                EtatsParticipant {
-                    muet: root.p.muet;
-                    sourd: root.p.sourd;
-                    micro-impose: root.p.micro-impose;
-                    son-impose: root.p.son-impose;
-                }
-            }
-            VerticalLayout {
-                alignment: center;
-                BarresQualite {
-                    barres: root.p.barres;
-                    libelle: root.p.qualite;
+            Rectangle {
+                width: etiquette.preferred-width;
+                height: 20px;
+                border-radius: Rayon.xs;
+                background: Theme.rose;
+                etiquette := HorizontalLayout {
+                    padding-left: 7px;
+                    padding-right: 7px;
+                    spacing: 4px;
+                    VerticalLayout {
+                        alignment: center;
+                        Icone {
+                            nom: "ecran";
+                            taille: 13px;
+                        }
+                    }
+                    Text {
+                        text: "Écran";
+                        color: Theme.encre;
+                        font-size: 11px;
+                        font-weight: Typo.demi-gras;
+                        vertical-alignment: center;
+                    }
                 }
             }
         }
+        HorizontalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Regarder";
+                icone: "oeil";
+                variante: VarianteBouton.primaire;
+                actif: !root.p.moi;
+                clique => {
+                    DonneesVocal.regarder(root.p.utilisateur, true);
+                }
+            }
+        }
+    }
+    if root.p.parle && !root.p.partage: Rectangle {
+        border-radius: Rayon.l;
+        border-width: 3px;
+        border-color: Theme.voix;
     }
     Anneau {
         rayon: Rayon.l;
@@ -112,24 +204,139 @@ export component Tuile inherits Rectangle {
         }
         key-pressed(e) => {
             if (e.text == Key.Return || e.text == " ") {
-                root.ouvrir(false, 0, 0);
+                root.activer();
                 return accept;
             }
-            if (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) {
+            if (e.text == Key.Escape && root.plein) {
+                DonneesVocal.plein-ecran("");
+                return accept;
+            }
+            if ((e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10)) && root.utilisable && !root.attente) {
                 root.ouvrir(true, root.absolute-position.x + root.width / 2, root.absolute-position.y + root.height / 2);
                 return accept;
             }
             return reject;
         }
-        TouchArea {
-            enabled: root.utilisable;
+        zone := TouchArea {
+            enabled: root.utilisable || video.pret;
             mouse-cursor: root.utilisable ? pointer : default;
             clicked => {
-                root.ouvrir(false, 0, 0);
+                root.activer();
             }
             pointer-event(e) => {
-                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right && root.utilisable && !root.attente) {
                     root.ouvrir(true, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+            double-clicked => {
+                if (video.pret) {
+                    DonneesVocal.plein-ecran(root.plein ? "" : root.p.cle);
+                }
+            }
+            pastille := Rectangle {
+                x: 10px;
+                y: parent.height - self.height - 10px;
+                width: Math.min(meta.preferred-width, parent.width - 20px);
+                height: 28px;
+                border-radius: Rayon.pilule;
+                background: Theme.surface.with-alpha(0.88);
+                border-width: 1px;
+                border-color: Theme.trait;
+                meta := HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    if root.p.parle && !root.p.partage: VerticalLayout {
+                        alignment: center;
+                        Onde { }
+                    }
+                    if root.p.partage: VerticalLayout {
+                        alignment: center;
+                        Icone {
+                            nom: "ecran";
+                            taille: 14px;
+                            couleur: Theme.gris;
+                        }
+                    }
+                    Text {
+                        text: root.p.nom + (root.p.moi ? " (toi)" : "") + (root.p.partage ? " · écran" : video.pret ? " · " + root.p.libelle-video : "");
+                        color: Theme.encre;
+                        font-size: Typo.petit;
+                        font-weight: Typo.demi-gras;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    if !root.p.partage: VerticalLayout {
+                        alignment: center;
+                        EtatsParticipant {
+                            muet: root.p.muet;
+                            sourd: root.p.sourd;
+                            micro-impose: root.p.micro-impose;
+                            son-impose: root.p.son-impose;
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        BarresQualite {
+                            barres: root.p.barres;
+                            libelle: root.p.qualite;
+                        }
+                    }
+                    if root.p.spectateurs != "" && video.pret: HorizontalLayout {
+                        spacing: 4px;
+                        accessible-role: text;
+                        accessible-label: root.p.spectateurs + " : " + root.p.noms-spectateurs;
+                        VerticalLayout {
+                            alignment: center;
+                            Icone {
+                                nom: "oeil";
+                                taille: 14px;
+                                couleur: Theme.gris;
+                            }
+                        }
+                        Text {
+                            text: root.grande ? root.p.noms-spectateurs : root.p.spectateurs;
+                            color: Theme.encre-2;
+                            font-size: Typo.petit;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+            if root.outils: HorizontalLayout {
+                x: parent.width - self.width - 10px;
+                y: 10px;
+                width: self.preferred-width;
+                height: 32px;
+                spacing: 4px;
+                if root.p.partage && !root.p.moi: OutilTuile {
+                    icone: "oeil";
+                    texte: "Arrêter de regarder";
+                    clique => {
+                        DonneesVocal.regarder(root.p.utilisateur, false);
+                    }
+                }
+                if root.p.partage && !root.p.moi: OutilTuile {
+                    icone: "volmax";
+                    description: "Son et qualité du partage de \{root.p.nom}";
+                    clique => {
+                        root.ouvrir(false, 0, 0);
+                    }
+                }
+                if !root.plein: OutilTuile {
+                    icone: root.grande ? "reduire" : "focus";
+                    description: root.grande ? "Détacher" : "Mettre en grand";
+                    clique => {
+                        DonneesVocal.epingler(root.p.cle);
+                    }
+                }
+                OutilTuile {
+                    icone: root.plein ? "reduire" : "agrandir";
+                    description: root.plein ? "Quitter le plein écran (Échap)" : "Plein écran (double-clic)";
+                    clique => {
+                        DonneesVocal.plein-ecran(root.plein ? "" : root.p.cle);
+                    }
                 }
             }
         }

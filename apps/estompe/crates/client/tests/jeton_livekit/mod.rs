@@ -84,6 +84,7 @@ impl ApiVocale for ApiDeTest {
                 jeton: jeton(&self.cle, &self.secret, &self.identite, &salon),
                 salle: salon,
                 max_participants: Some(10),
+                plafond_partage: None,
             })
         })
     }

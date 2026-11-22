@@ -3,6 +3,8 @@ import { Avatar, Bouton, VarianteBouton, Icone, Chargement } from "../composants
 import { DonneesVocal } from "donnees.slint";
 import { Tuile } from "tuile.slint";
 import { CommandesVocal, AvisVocal } from "commandes.slint";
+import { DonneesVideo } from "../video/flux.slint";
+import { BandeauPartage } from "partage.slint";
 
 component Rejoindre inherits VerticalLayout {
     alignment: center;
@@ -94,6 +96,14 @@ component Rejoindre inherits VerticalLayout {
             }
         }
         Bouton {
+            icone: "camera";
+            description: "Rejoindre avec la caméra";
+            variante: VarianteBouton.secondaire;
+            clique => {
+                DonneesVocal.rejoindre-avec-camera(DonneesVocal.vue.salon);
+            }
+        }
+        Bouton {
             icone: "sliders";
             description: "Réglages audio";
             variante: VarianteBouton.fantome;
@@ -116,7 +126,7 @@ component Rejoindre inherits VerticalLayout {
         }
     }
     Text {
-        text: "L'audio passe par le serveur vocal. La caméra et le partage d'écran arrivent bientôt dans l'app native.";
+        text: "L'audio et la vidéo passent par le serveur vocal.";
         color: Theme.gris;
         font-size: Typo.petit;
         horizontal-alignment: center;
@@ -126,18 +136,45 @@ component Rejoindre inherits VerticalLayout {
 
 component Scene inherits Rectangle {
     property <length> ecart: 12px;
-    property <length> marge-bas: 92px;
+    property <length> marge-bas: DonneesVocal.barre.partage ? 148px : 92px;
     property <int> colonnes: Math.max(1, DonneesVocal.vue.colonnes);
     property <int> rangees: Math.max(1, DonneesVocal.vue.rangees);
     property <length> largeur-grille: colonnes == 1 && rangees == 1 ? Math.min(self.width - 48px, 960px) : self.width - 48px;
     property <length> hauteur-grille: self.height - 20px - marge-bas;
     property <length> largeur-tuile: (largeur-grille - (colonnes - 1) * ecart) / colonnes;
     property <length> hauteur-tuile: (hauteur-grille - (rangees - 1) * ecart) / rangees;
-    for p[i] in DonneesVocal.tuiles: Tuile {
-        x: (root.width - root.largeur-grille) / 2 + Math.mod(i, root.colonnes) * (root.largeur-tuile + root.ecart);
-        y: 20px + Math.floor(i / root.colonnes) * (root.hauteur-tuile + root.ecart);
-        width: root.largeur-tuile;
-        height: root.hauteur-tuile;
+    property <bool> plein: DonneesVocal.vue.plein-ecran != "";
+    property <bool> vedette: DonneesVocal.vue.vedette && !plein;
+    property <int> bande: Math.max(1, DonneesVocal.vue.bande);
+    property <length> hauteur-bande: DonneesVocal.vue.bande > 0 ? 108px : 0;
+    property <length> largeur-bande: Math.min(192px, (self.width - 48px - (bande - 1) * ecart) / bande);
+    property <length> debut-bande: (self.width - (bande * largeur-bande + (bande - 1) * ecart)) / 2;
+    property <length> largeur-vedette: plein ? self.width : self.width - 48px;
+    property <length> hauteur-vedette: plein ? self.height : self.height - 20px - marge-bas - (DonneesVocal.vue.bande > 0 ? hauteur-bande + ecart : 0);
+    init => {
+        DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
+        DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
+    }
+    changed largeur-tuile => {
+        DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
+    }
+    changed hauteur-tuile => {
+        DonneesVideo.zone-tuile(self.largeur-tuile, self.hauteur-tuile);
+    }
+    changed largeur-vedette => {
+        DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
+    }
+    changed hauteur-vedette => {
+        DonneesVideo.zone-vedette(self.largeur-vedette, self.hauteur-vedette);
+    }
+    for p in DonneesVocal.tuiles: Tuile {
+        visible: !root.plein || p.cle == DonneesVocal.vue.plein-ecran;
+        x: root.plein ? 0 : root.vedette ? (p.vedette ? 24px : root.debut-bande + p.rang * (root.largeur-bande + root.ecart)) : (root.width - root.largeur-grille) / 2 + Math.mod(p.rang, root.colonnes) * (root.largeur-tuile + root.ecart);
+        y: root.plein ? 0 : root.vedette ? (p.vedette ? 20px : 20px + root.hauteur-vedette + root.ecart) : 20px + Math.floor(p.rang / root.colonnes) * (root.hauteur-tuile + root.ecart);
+        width: root.plein ? root.width : root.vedette ? (p.vedette ? root.largeur-vedette : root.largeur-bande) : root.largeur-tuile;
+        height: root.plein ? root.height : root.vedette ? (p.vedette ? root.hauteur-vedette : root.hauteur-bande) : root.hauteur-tuile;
+        grande: p.vedette || root.plein;
+        plein: root.plein;
         p: p;
     }
     if DonneesVocal.vue.reconnexion: Rectangle {
@@ -165,7 +202,7 @@ component Scene inherits Rectangle {
             }
         }
     }
-    if DonneesVocal.vue.seul || DonneesVocal.vue.cinema: Text {
+    if !root.plein && (DonneesVocal.vue.seul || DonneesVocal.vue.cinema): Text {
         x: 24px;
         y: parent.height - root.marge-bas - 4px;
         width: parent.width - 48px;
@@ -173,6 +210,10 @@ component Scene inherits Rectangle {
         color: Theme.gris;
         font-size: Typo.petit;
         horizontal-alignment: center;
+    }
+    if !root.plein && DonneesVocal.barre.partage: BandeauPartage {
+        x: (parent.width - self.width) / 2;
+        y: barre.y - self.height - 12px;
     }
     barre := Rectangle {
         x: (parent.width - self.width) / 2;
