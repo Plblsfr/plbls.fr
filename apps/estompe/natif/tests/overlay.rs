@@ -274,3 +274,89 @@ fn l_overlay_des_messages_correspond_a_ses_references() {
         echecs.join("\n")
     );
 }
+
+#[test]
+fn l_indicateur_du_replay_correspond_a_ses_references() {
+    use estompe_client::replay::affichage::{
+        taille_fenetre as taille_replay, EtatIndicateur, GenreMessage, MessageReplay,
+    };
+    use estompe_natif::overlay::replay::{appliquer as appliquer_replay, EtatOverlayReplay};
+    use estompe_natif::OverlayReplay;
+
+    let consigne = std::env::var(VARIABLE).unwrap_or_default();
+    if consigne == "ignorer" {
+        eprintln!("ignoré : {VARIABLE}=ignorer");
+        return;
+    }
+    let regenerer = consigne == "regenerer";
+    let factice = OverlayFactice::nouveau(None, 1.0);
+    let moteur = MoteurOverlay::nouveau(Arc::new(factice.clone()));
+    let scene = moteur.scene(OverlayReplay::new, appliquer_replay);
+    let message = |genre, texte: &str| MessageReplay::nouveau(genre, texte);
+    let cas = [
+        ("overlay-replay-tampon", true, Vec::new(), false),
+        (
+            "overlay-replay-clip",
+            true,
+            vec![message(GenreMessage::Ok, "Clip enregistré (0:30)")],
+            false,
+        ),
+        (
+            "overlay-replay-erreur",
+            false,
+            vec![message(
+                GenreMessage::Erreur,
+                "Quota du dossier des clips atteint : supprime d'anciens clips pour continuer à enregistrer.",
+            )],
+            false,
+        ),
+        (
+            "overlay-replay-pause",
+            false,
+            vec![
+                message(GenreMessage::Ok, "Clip enregistré (1:00)"),
+                message(
+                    GenreMessage::Info,
+                    "Instant replay en pause : le partage d'écran est prioritaire",
+                ),
+            ],
+            false,
+        ),
+        (
+            "overlay-replay-clip-gauche",
+            true,
+            vec![message(GenreMessage::Ok, "Clip enregistré (0:15)")],
+            true,
+        ),
+    ];
+    let mut echecs = Vec::new();
+    for (i, (nom, indicateur, messages, a_gauche)) in cas.into_iter().enumerate() {
+        let contenu = EtatIndicateur {
+            indicateur,
+            messages,
+        };
+        let fenetre = taille_replay(&contenu);
+        let placement = Placement {
+            x: 0,
+            y: 0,
+            largeur: fenetre.largeur as u32,
+            hauteur: fenetre.hauteur as u32,
+            echelle: 1.0,
+        };
+        assert!(scene.afficher(EtatOverlayReplay { contenu, a_gauche }, placement, 255));
+        attendre(|| factice.affichages() == i + 1, nom);
+        let affichage = factice.calques()[0].clone().expect("calque affiché");
+        assert_eq!(
+            (affichage.image.largeur, affichage.image.hauteur),
+            (placement.largeur, placement.hauteur)
+        );
+        if let Err(echec) = controler(nom, &sur_fond(&affichage), regenerer) {
+            echecs.push(echec);
+        }
+    }
+    assert!(
+        echecs.is_empty(),
+        "overlay différent de ses références :\n{}\nSi le changement est voulu : {VARIABLE}=regenerer cargo test --test overlay",
+        echecs.join("\n")
+    );
+}

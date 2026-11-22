@@ -58,6 +58,7 @@ pub struct Application {
     pub overlay_voix: std::sync::Arc<overlay::voix::ServiceOverlayVoix>,
     pub overlay_messages: std::sync::Arc<overlay::messages::ServiceOverlayMessages>,
     pub replay: std::sync::Arc<replay::ServiceReplay>,
+    pub overlay_replay: std::sync::Arc<overlay::replay::ServiceOverlayReplay>,
 }
 
 #[cfg(feature = "livekit")]
@@ -154,11 +155,7 @@ pub fn demarrer(
                 let memoire = session.memoire.clone();
                 std::sync::Arc::new(move || {
                     memoire.lire(|p| {
-                        if p.ptt.actif {
-                            vec![p.ptt.touche.clone()]
-                        } else {
-                            Vec::new()
-                        }
+                        p.touches_prioritaires(estompe_client::preferences::UsageTouche::Messages)
                     })
                 })
             },
@@ -202,6 +199,29 @@ pub fn demarrer(
     );
     let replay = demarrer_replay(session, &plateforme, audio_messages.clone());
     replay.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    replay.suivre_le_partage(&entree.runtime(), vocal.etat());
+    let overlay_replay = overlay::replay::ServiceOverlayReplay::nouveau(&overlays, None, {
+        let memoire = session.memoire.clone();
+        Some(std::sync::Arc::new(move || {
+            memoire.lire(overlay::replay::voisins)
+        }))
+    });
+    overlay_replay.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    overlay_replay.suivre_le_replay(&entree.runtime(), &replay);
+    overlay_replay.demarrer_minuterie(&entree.runtime());
+    replay::reglages::brancher(
+        fenetre,
+        replay::reglages::OutilsReglages {
+            service: replay.clone(),
+            memoire: session.memoire.clone(),
+            fichiers: std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
+            overlay: Some(overlay_replay.clone()),
+            touches_globales: estompe_plateforme::RaccourcisGlobaux::disponible(
+                &estompe_plateforme::RaccourcisSysteme,
+            ),
+        },
+        &entree.runtime(),
+    );
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -348,6 +368,7 @@ pub fn demarrer(
         overlay_voix,
         overlay_messages,
         replay,
+        overlay_replay,
     })
 }
 
@@ -380,14 +401,7 @@ fn demarrer_replay(
             raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
             touches_prises: std::sync::Arc::new(move || {
                 memoire.lire(|p| {
-                    let mut prises = vec![
-                        p.overlay_messages.touche_reponse.clone(),
-                        p.overlay_messages.touche_ouvrir.clone(),
-                    ];
-                    if p.ptt.actif {
-                        prises.push(p.ptt.touche.clone());
-                    }
-                    prises
+                    p.touches_prioritaires(estompe_client::preferences::UsageTouche::Replay)
                 })
             }),
             videos: estompe_plateforme::dossier_videos(),

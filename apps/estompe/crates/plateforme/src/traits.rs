@@ -108,6 +108,9 @@ pub trait Fichiers {
         Ok(self.choisir_fichiers(depart)?.into_iter().next())
     }
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
+    fn ouvrir_dossier(&self, _chemin: &std::path::Path) -> Resultat<()> {
+        Err(crate::Erreur::Indisponible("ouverture d'un dossier"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

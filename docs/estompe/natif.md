@@ -1195,18 +1195,38 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
   `micro-indisponible`, `image-changee`).
 - Raccourci : une touche seule (F10 par défaut) enregistrée par `RaccourcisGlobaux` tant que le replay est actif et disponible, jamais une touche déjà prise (appui pour
   parler, touches de l'overlay des messages).
+- Touches globales (appui pour parler, overlay des messages, replay) : `Preferences::touches_des_autres(usage)` refuse dans chaque réglage une touche déjà prise par un
+  autre usage actif (message « Cette touche sert déjà… ») ; à l'exécution, `touches_prioritaires(usage)` départage des préférences anciennes en conflit : l'appui pour
+  parler passe avant les messages, qui passent avant le replay.
+- Partage d'écran : `suivre_le_partage` suit `EtatVocal::partage` et appelle `partage(actif, false)`, comme `replay_partage` de l'app Tauri : le tampon continue pendant
+  un partage, mais un échec de capture ou d'encodage pendant le partage met le replay en pause (« le partage d'écran est prioritaire ») au lieu de l'arrêter ; il repart à
+  la fin du partage.
+- Réglages (#356, `apps/estompe/natif/src/replay/reglages.rs`, `apps/estompe/natif/ui/replay/reglages.slint`) : fenêtre « Instant replay » ouverte depuis « Jeux et
+  activité » (résumé de l'état et bouton « Régler l'instant replay… »). Activer (seulement si un encodeur est disponible), état du tampon et encodeur, touche (capturée
+  comme celle de l'appui pour parler), résolution et images par seconde (choix hors de portée du matériel grisés, raison affichée), qualité, durée (15 s à 5 min par pas de
+  15 s, plafonnée selon la mémoire libre), curseur, micro, rappel des jeux ajoutés et exclus (réglés dans « Jeux et activité »), dossier (choisir, par défaut, ouvrir avec
+  `Fichiers::ouvrir_dossier`) et quota (1 Go au moins). Le matériel (`disponibilite`, `options`) est lu sur un fil à l'ouverture, puis relu quand un réglage de capture ou le
+  jeu change. Toute valeur passe par `ReglagesReplay::borne` ; textes et bornes de l'interface dans `estompe_client::replay::affichage` (`duree_choisie`, `quota_choisi`).
+- Indicateur sur le jeu (#356, `apps/estompe/natif/src/overlay/replay.rs`, `apps/estompe/natif/ui/overlay/replay.slint`) : une scène du moteur d'overlay, comme les
+  participants et les messages. Pastille « Replay » tant que le tampon tourne, puis jusqu'à trois messages (vert : clip enregistré, jaune : pause ou reprise, rouge :
+  erreur ou indisponible) ; chaque message reste la durée d'affichage des messages (2 à 60 s). Logique de `replay.ts` portée dans `estompe_client::replay::affichage`
+  (`message_etat`, `message_clip`, `message_erreur`, `FileReplay`, `taille_fenetre`). Placé sur l'écran du jeu, dans le premier coin du haut puis du bas qui n'est pris ni
+  par l'overlay des participants ni par celui des messages (l'app Tauri prenait le coin opposé à celui des participants).
 - Garde-fous : pas d'encodeur matériel ou garde déclenchée : `indisponible` avec la raison ; encodeur qui accepte des images sans rien rendre en 2 s : `encodeur-muet` ;
   plus d'une image sur cinq perdue sur 10 s : alerte selon la cause ; aucune image du jeu dans les 3 s qui suivent l'ouverture de la capture : `capture-refusee` ; disque plein ou quota atteint à
   l'écriture : erreur, aucun clip existant n'est supprimé.
 - Écarts avec l'app Tauri : pas d'AMF appelé directement ni de son essai hors processus (une carte AMD passe par son MFT, que l'app Tauri jugeait muet : c'est alors
   `encodeur-muet`) ; pas d'entrées D3D11 (réserve, textures) ni de conversion sur la carte graphique : l'image du jeu arrive en RGBA de la capture et passe en NV12 sur le
   processeur, l'encodeur la reçoit en mémoire vive ; pas de conversion HDR vers SDR ; pas de vignette ffmpeg à l'écriture (galerie, #357) ; fil d'écriture en priorité
-  normale ; le partage d'écran ne met pas encore le replay en pause (`partage` existe, non branché).
+  normale.
 - Tests : modules purs (`replay::*::tests` de la crate client, dont `ecriture::tests::mp4_de_synthese_lu_par_ffmpeg` : H.264 et AAC produits par ffmpeg, MP4 écrit par
   `ecriture`, relu par `ffmpeg -v error` sans erreur, trois pistes et 2 s ; sauté sans ffmpeg avec libx264) ; plateforme (`encodage::factice::tests`, `encodage::tests`,
   `disque`) ; service (`replay::tests` : jeu détecté, tampon armé, clip par la touche puis par `sauvegarder_les_dernieres`, pause et fermeture, indisponible sans
-  encodeur, touche prise refusée, encodeur muet ou arrêté).
-- Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3).
+  encodeur, touche prise refusée, encodeur muet ou arrêté, échec pendant un partage d'écran mis en pause) ; réglages (`replay::reglages::tests`, `tests/replay.rs` :
+  valeurs hors bornes ramenées, touches refusées) ; indicateur (`overlay::replay::tests` : placement, clip sauvé, erreur, expiration ; captures `overlay-replay-*`) ;
+  captures de la fenêtre (`jeux-replay-*`).
+- Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3 de
+  #355) ; indicateur « clip sauvé » sur un vrai jeu après le raccourci (C3 de #356).
 
 ## Capture d'écran et de fenêtre
 

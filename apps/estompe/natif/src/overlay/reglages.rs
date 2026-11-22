@@ -5,6 +5,7 @@ use estompe_client::overlay::{
     CoinOverlay, ModeOverlay, QuandOverlay, ReglagesOverlay, TailleOverlay,
 };
 use estompe_client::overlay_messages::{GenresMessages, ReglagesMessages};
+use estompe_client::preferences::UsageTouche;
 use estompe_plateforme::libelle_touche;
 use slint::ComponentHandle;
 
@@ -136,7 +137,7 @@ pub enum ChoixTouche {
 
 pub const TOUCHE_INVALIDE: &str = "Cette touche ne peut pas servir : choisis une lettre, un chiffre, une touche de fonction ou une touche de modification.";
 pub const TOUCHE_PRISE: &str =
-    "Cette touche sert déjà (appui pour parler ou autre raccourci de l'overlay).";
+    "Cette touche sert déjà (appui pour parler, overlay des messages ou instant replay).";
 
 pub fn choisir_touche(texte: &str, autre: &str, prises: &[String]) -> ChoixTouche {
     match code_de_texte(texte) {
@@ -164,13 +165,9 @@ impl ReglagesMsg {
 
     fn touche(&self, f: &Principale, rang: i32, texte: &str) -> bool {
         let actuels = self.memoire.lire(|p| p.overlay_messages.clone());
-        let prises = self.memoire.lire(|p| {
-            if p.ptt.actif {
-                vec![p.ptt.touche.clone()]
-            } else {
-                Vec::new()
-            }
-        });
+        let prises = self
+            .memoire
+            .lire(|p| p.touches_des_autres(UsageTouche::Messages));
         let autre = if rang == 0 {
             &actuels.touche_ouvrir
         } else {

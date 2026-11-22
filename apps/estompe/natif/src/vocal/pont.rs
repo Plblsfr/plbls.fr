@@ -9,6 +9,7 @@ use estompe_client::audio::{
     tonalite, Apm, Bascule, ChoixSon, EssaiMicro, Lecture, ModeBruit, NiveauMicro, ReglagesMicro,
     ReglagesSons, SensAudio, SonVocal, SonsPersonnalises, SystemeAudio,
 };
+use estompe_client::preferences::UsageTouche;
 use estompe_client::route::Route;
 use estompe_client::store::{est_vocal, Avis, Changement, GenreSalon, Store};
 use estompe_client::video::ffmpeg_du_systeme;
@@ -47,6 +48,7 @@ const MARGE_SON: Duration = Duration::from_millis(150);
 const PAR_DEFAUT: &str = "Par défaut";
 const ZONE_PAR_DEFAUT: (u32, u32) = (640, 360);
 pub const RANG_PERSONNALISE: i32 = 6;
+pub const TOUCHE_PRISE_PARLER: &str = "Cette touche sert déjà à l'overlay des messages ou à l'instant replay : choisis-en une autre pour parler.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Glisse {
@@ -2080,6 +2082,14 @@ impl PontVocal {
             self.projeter_reglages(f);
             return false;
         };
+        if self
+            .preferences(|p| p.touches_des_autres(UsageTouche::Parler))
+            .contains(&code)
+        {
+            self.verrou().capture_erreur = TOUCHE_PRISE_PARLER.to_string();
+            self.projeter_reglages(f);
+            return false;
+        }
         let ptt = ReglagesPtt {
             touche: code,
             ..self.preferences(|p| p.ptt.clone())

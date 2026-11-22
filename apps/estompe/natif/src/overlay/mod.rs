@@ -1,5 +1,6 @@
 pub mod messages;
 pub mod reglages;
+pub mod replay;
 pub mod voix;
 
 use std::any::Any;

@@ -1,6 +1,7 @@
 import { Theme, Typo, Espace } from "../jetons.slint";
 import { Bouton, VarianteBouton, Modal, Interrupteur, Champ, Defilement } from "../composants.slint";
 import { SectionOverlay, SectionMessages, DonneesOverlay, DonneesOverlayMessages } from "../overlay/reglages.slint";
+import { DonneesReplay } from "../replay/reglages.slint";
 
 export struct JeuAjoute {
     chemin: string,
@@ -99,6 +100,24 @@ export component FenetreJeux inherits Modal {
             }
             if DonneesOverlay.disponible: SectionOverlay { }
             if DonneesOverlayMessages.disponible: SectionMessages { }
+            Titre {
+                text: "INSTANT REPLAY";
+            }
+            Note {
+                text: DonneesReplay.resume;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Régler l'instant replay…";
+                    icone: "replay";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesReplay.ouvrir();
+                    }
+                }
+            }
             Titre {
                 text: "APPLICATION AU PREMIER PLAN";
             }

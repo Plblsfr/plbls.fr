@@ -294,3 +294,66 @@ fn un_encodeur_arrete_est_signale() {
     let options = b.service.options(&ReglagesReplay::default()).unwrap();
     assert_eq!(options.codec, estompe_client::replay::types::Codec::H264);
 }
+
+fn vocal_partageant(actif: bool) -> estompe_client::vocal::EtatVocal {
+    use estompe_client::vocal::{PartageLocal, QualitePartage, ResolutionPartage};
+    let mut etat = estompe_client::vocal::EtatVocal::default();
+    etat.partage = actif.then(|| PartageLocal {
+        source: SourceCapture {
+            id: "ecran:1".into(),
+            nom: "Écran".into(),
+            application: String::new(),
+            genre: TypeSource::Ecran,
+            largeur: 1920,
+            hauteur: 1080,
+            principale: true,
+            processus: None,
+            estompe: false,
+        },
+        qualite: QualitePartage {
+            resolution: ResolutionPartage::R1080,
+            ips: 30,
+        },
+        reduite: false,
+        son: false,
+    });
+    etat
+}
+
+#[test]
+fn pendant_un_partage_d_ecran_un_echec_met_le_replay_en_pause_au_lieu_de_l_arreter() {
+    assert!(!partage_actif(&vocal_partageant(false)));
+    assert!(partage_actif(&vocal_partageant(true)));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let encodage = EncodageFactice::nouveau();
+    encodage.rendre_muet(true);
+    let b = banc(encodage, Vec::new());
+    let (vocal, recepteur) = watch::channel(vocal_partageant(false));
+    b.service.suivre_le_partage(runtime.handle(), recepteur);
+    vocal.send_replace(vocal_partageant(true));
+    runtime.block_on(async {
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+    });
+    b.armer();
+    let fin = Instant::now() + Duration::from_secs(10);
+    while b.service.actuel().etat != Etat::Pause(Pause::Partage) {
+        assert!(
+            !matches!(b.service.actuel().etat, Etat::Indisponible(_)),
+            "le partage d'écran est prioritaire : pas d'arrêt"
+        );
+        b.filmer(Duration::from_millis(50));
+        assert!(Instant::now() < fin, "délai dépassé");
+    }
+    vocal.send_replace(vocal_partageant(false));
+    runtime.block_on(async {
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+    });
+    attendre(|| b.service.actuel().etat != Etat::Pause(Pause::Partage));
+}

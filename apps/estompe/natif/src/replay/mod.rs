@@ -1,3 +1,4 @@
+pub mod reglages;
 mod session;
 
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ use estompe_client::replay::automate::{Automate, Etat, Jeu};
 use estompe_client::replay::ecriture::{FileEcriture, Tache};
 use estompe_client::replay::galerie::{self, Horodatage};
 use estompe_client::replay::garde::Garde;
-use estompe_client::replay::reglages::{self, Materiel, Options};
+use estompe_client::replay::reglages::{options as options_replay, Materiel, Options};
 use estompe_client::replay::tampon::{Tampon, UNITE_TEMPS};
 use estompe_client::replay::types::{
     Disponibilite, ErreurReplay, EtatReplay, EvenementReplay, ReglagesReplay, DUREE_MAX_S,
@@ -65,6 +66,10 @@ pub struct Dependances {
     pub journaux: Option<PathBuf>,
     pub version: String,
     pub horloge: Option<Horloge>,
+}
+
+pub fn partage_actif(vocal: &estompe_client::vocal::EtatVocal) -> bool {
+    vocal.partage.is_some()
 }
 
 pub fn heure_locale() -> Horodatage {
@@ -200,6 +205,29 @@ impl ServiceReplay {
         self.envoyer(Message::Options(Box::new(reglages.clone().borne()), tx));
         rx.recv()
             .map_err(|_| "moteur de l'instant replay arrêté".to_string())?
+    }
+
+    pub fn suivre_le_partage(
+        self: &Arc<Self>,
+        runtime: &tokio::runtime::Handle,
+        mut vocal: watch::Receiver<estompe_client::vocal::EtatVocal>,
+    ) {
+        let mut actif = partage_actif(&vocal.borrow_and_update());
+        self.partage(actif, false);
+        let faible = Arc::downgrade(self);
+        runtime.spawn(async move {
+            while vocal.changed().await.is_ok() {
+                let nouveau = partage_actif(&vocal.borrow_and_update());
+                if nouveau == actif {
+                    continue;
+                }
+                actif = nouveau;
+                let Some(service) = faible.upgrade() else {
+                    break;
+                };
+                service.partage(actif, false);
+            }
+        });
     }
 
     pub fn suivre_les_jeux(
@@ -448,7 +476,7 @@ impl Controleur {
                 let source = self.source.unwrap_or(SOURCE_PAR_DEFAUT);
                 let options = self
                     .materiel()
-                    .map(|m| reglages::options(&voulus, &Materiel::de(&m, source)));
+                    .map(|m| options_replay(&voulus, &Materiel::de(&m, source)));
                 let _ = reponse.send(options);
             }
             Message::Disponibilite(reponse) => {

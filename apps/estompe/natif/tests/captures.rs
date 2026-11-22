@@ -62,6 +62,10 @@ const ECRANS: &[Ecran] = ecrans![
     "a-propos-sombre", Sombre, a_propos;
     "jeux-overlay-clair", Clair, jeux_overlay;
     "jeux-overlay-sombre", Sombre, jeux_overlay;
+    "jeux-replay-clair", Clair, jeux_replay;
+    "jeux-replay-sombre", Sombre, jeux_replay;
+    "jeux-replay-indisponible-clair", Clair, jeux_replay_indisponible;
+    "jeux-replay-stockage-clair", Clair, jeux_replay_stockage;
     "demarrage-clair", Clair, demarrage;
     "connexion-clair", Clair, connexion;
     "connexion-sombre", Sombre, connexion;
@@ -256,6 +260,8 @@ fn jeux_overlay(f: &Principale) {
     o.set_taille(1);
     o.set_parlent(false);
     o.set_opacite(80);
+    f.global::<estompe_natif::DonneesReplay>()
+        .set_resume("Désactivé.".into());
     j.set_ouvert(true);
 }
 
@@ -1864,6 +1870,14 @@ fn remettre_a_zero(f: &Principale) {
     jeux.set_jeu_en_cours("".into());
     f.global::<estompe_natif::DonneesOverlay>()
         .set_disponible(false);
+    let replay = f.global::<estompe_natif::DonneesReplay>();
+    replay.set_ouvert(false);
+    replay.set_materiel_lu(false);
+    replay.set_disponible(false);
+    replay.set_actif(false);
+    replay.set_tourne(false);
+    replay.set_decalage(0.0);
+    replay.set_plafond("".into());
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
@@ -2236,4 +2250,72 @@ fn selecteur_gifs_limite(f: &Principale) {
     });
     pont.messagerie().recevoir_gifs(f, sequence, Err(refus));
     stabiliser(f);
+}
+
+fn jeux_replay(f: &Principale) {
+    jeux_overlay(f);
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    let choix = |libelles: &[&str], choisi: usize, grises: &[usize]| {
+        slint::ModelRc::new(slint::VecModel::from(
+            libelles
+                .iter()
+                .enumerate()
+                .map(|(i, l)| estompe_natif::ChoixReplay {
+                    libelle: (*l).into(),
+                    disponible: !grises.contains(&i),
+                    choisi: i == choisi,
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    r.set_materiel_lu(true);
+    r.set_disponible(true);
+    r.set_actif(true);
+    r.set_tourne(true);
+    r.set_etat(
+        "Le tampon tourne sur Counter-Strike 2 : H.264, 1920 × 1080, 60 i/s. Encodeur : AMD AMF."
+            .into(),
+    );
+    r.set_resume(r.get_etat());
+    r.set_touche("F10".into());
+    r.set_resolutions(choix(
+        &["720p", "1080p", "1440p", "4K", "Native (celle du jeu)"],
+        1,
+        &[2, 3],
+    ));
+    r.set_cadences(choix(&["30", "60", "120", "144"], 1, &[2, 3]));
+    r.set_qualite(2);
+    r.set_duree_max(300);
+    r.set_duree(90);
+    r.set_codec(
+        "Codec utilisé : H.264, environ 12 Mbit/s ; mémoire du tampon : environ 200 Mo.".into(),
+    );
+    r.set_jeux("Jeux ajoutés à la main : 1 jeu, exclus : 0 jeu. Ils se règlent dans « Jeux et activité », pour la détection comme pour l'instant replay.".into());
+    r.set_dossier(r"C:\Users\alice\Videos\Estompe".into());
+    r.set_dossier_defaut(true);
+    r.set_quota(20);
+    r.set_ouvert(true);
+}
+
+fn jeux_replay_indisponible(f: &Principale) {
+    jeux_overlay(f);
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    r.set_materiel_lu(true);
+    r.set_disponible(false);
+    r.set_raison("instant replay disponible sous Windows uniquement".into());
+    r.set_etat("Désactivé.".into());
+    r.set_dossier("/home/alice/Vidéos/Estompe".into());
+    r.set_ouvert(true);
+}
+
+fn jeux_replay_stockage(f: &Principale) {
+    jeux_replay(f);
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    r.set_plafond(
+        "Durée plafonnée à 1 min 30 au lieu de 5 min : mémoire libre insuffisante (1.0 Go libres)."
+            .into(),
+    );
+    r.set_dossier_defaut(false);
+    r.set_dossier(r"D:\Clips".into());
+    r.set_decalage(-600.0);
 }

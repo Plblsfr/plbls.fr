@@ -36,6 +36,17 @@ pub enum Densite {
     Compacte,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageTouche {
+    Parler,
+    Messages,
+    Replay,
+}
+
+impl UsageTouche {
+    pub const PRIORITE: [UsageTouche; 3] = [Self::Parler, Self::Messages, Self::Replay];
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fenetre {
     pub x: i32,
@@ -237,6 +248,34 @@ impl Preferences {
         }
     }
 
+    pub fn touches_de(&self, usage: UsageTouche) -> Vec<String> {
+        match usage {
+            UsageTouche::Parler if self.ptt.actif => vec![self.ptt.touche.clone()],
+            UsageTouche::Messages if self.overlay_messages.actif() => vec![
+                self.overlay_messages.touche_reponse.clone(),
+                self.overlay_messages.touche_ouvrir.clone(),
+            ],
+            UsageTouche::Replay if self.replay.actif => vec![self.replay.touche.clone()],
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn touches_des_autres(&self, usage: UsageTouche) -> Vec<String> {
+        UsageTouche::PRIORITE
+            .into_iter()
+            .filter(|u| *u != usage)
+            .flat_map(|u| self.touches_de(u))
+            .collect()
+    }
+
+    pub fn touches_prioritaires(&self, usage: UsageTouche) -> Vec<String> {
+        UsageTouche::PRIORITE
+            .into_iter()
+            .take_while(|u| *u != usage)
+            .flat_map(|u| self.touches_de(u))
+            .collect()
+    }
+
     pub fn enregistrer(&self, dossier: &Path) -> io::Result<()> {
         fs::create_dir_all(dossier)?;
         let mut octets = serde_json::to_vec_pretty(self)?;
@@ -263,6 +302,35 @@ pub fn ecrire_atomiquement(chemin: &Path, octets: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chaque_touche_globale_a_un_seul_usage_par_ordre_de_priorite() {
+        let mut p = Preferences::default();
+        p.ptt.actif = true;
+        p.ptt.touche = "KeyV".into();
+        p.replay.actif = true;
+        p.replay.touche = "F10".into();
+        assert_eq!(p.touches_des_autres(UsageTouche::Messages), ["KeyV", "F10"]);
+        assert_eq!(
+            p.touches_des_autres(UsageTouche::Replay),
+            ["KeyV", "F8", "F7"]
+        );
+        assert_eq!(
+            p.touches_des_autres(UsageTouche::Parler),
+            ["F8", "F7", "F10"]
+        );
+        assert!(p.touches_prioritaires(UsageTouche::Parler).is_empty());
+        assert_eq!(p.touches_prioritaires(UsageTouche::Messages), ["KeyV"]);
+        assert_eq!(
+            p.touches_prioritaires(UsageTouche::Replay),
+            ["KeyV", "F8", "F7"]
+        );
+        p.ptt.actif = false;
+        p.replay.actif = false;
+        p.overlay_messages.genres = crate::overlay_messages::GenresMessages::Aucun;
+        assert!(p.touches_des_autres(UsageTouche::Parler).is_empty());
+        assert!(p.touches_des_autres(UsageTouche::Replay).is_empty());
+    }
 
     fn fichiers(dossier: &Path) -> Vec<String> {
         let mut noms: Vec<String> = fs::read_dir(dossier)
