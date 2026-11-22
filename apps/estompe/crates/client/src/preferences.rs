@@ -497,7 +497,7 @@ mod tests {
                 duree_s: 120,
                 micro: true,
                 touche: "F11".to_string(),
-                dossier: Some("/clips".to_string()),
+                dossier: Some(racine.path().join("clips").to_string_lossy().into_owned()),
                 ..ReglagesReplay::default()
             },
         };
