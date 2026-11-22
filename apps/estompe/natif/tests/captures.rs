@@ -1913,6 +1913,17 @@ fn remettre_a_zero(f: &Principale) {
     editeur.set_choix_clip(false);
     editeur.set_message("".into());
     editeur.set_projets(slint::ModelRc::default());
+    let mesures = f.global::<estompe_natif::DonneesMesures>();
+    mesures.set_ouvert(false);
+    mesures.set_disponible(true);
+    mesures.set_en_session(false);
+    mesures.set_peut_exporter(false);
+    mesures.set_scenarios(slint::ModelRc::default());
+    mesures.set_scenario_en_cours("".into());
+    mesures.set_aide_en_cours("".into());
+    mesures.set_reste(0);
+    mesures.set_message("".into());
+    mesures.set_erreur("".into());
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
