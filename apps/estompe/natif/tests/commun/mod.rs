@@ -1421,6 +1421,7 @@ pub mod coquille {
         pub signaux: Mutex<Option<mpsc::UnboundedSender<Signal>>>,
         pub store: Mutex<Option<Store>>,
         pub reseau: watch::Sender<EtatReseau>,
+        pub jeux: Mutex<Option<watch::Receiver<estompe_natif::jeux::EtatJeux>>>,
         pub source: Arc<SourceFactice>,
         pub profils: Arc<Profils>,
         pub adresse: String,
@@ -1627,6 +1628,7 @@ pub mod coquille {
                 signaux: Mutex::new(None),
                 store: Mutex::new(None),
                 reseau: watch::channel(EtatReseau::Reconnexion).0,
+                jeux: Mutex::new(None),
                 profils: Profils::nouveaux(source.clone(), None),
                 source,
             })
@@ -1710,6 +1712,10 @@ pub mod coquille {
 
         fn vocal(&self) -> Option<estompe_natif::vocal::OutilsVocaux> {
             self.vocal.lock().unwrap().clone()
+        }
+
+        fn jeux(&self) -> Option<watch::Receiver<estompe_natif::jeux::EtatJeux>> {
+            self.jeux.lock().unwrap().clone()
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

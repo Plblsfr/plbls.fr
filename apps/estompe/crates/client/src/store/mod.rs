@@ -317,6 +317,10 @@ impl Store {
         });
     }
 
+    pub async fn publier_activite(&self, nom: &str) -> Result<(), ErreurApi> {
+        self.client().definir_activite(nom).await
+    }
+
     fn poser_statut(&self, statut: Option<StatutPresence>) -> Option<StatutPresence> {
         self.modifier(|etat| {
             let moi = etat.moi().to_string();

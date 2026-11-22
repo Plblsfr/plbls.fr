@@ -17,6 +17,7 @@ pub const COPIER_PSEUDO: &str = "pseudo";
 pub const VOIR_MON_PROFIL: &str = "mon-profil";
 pub const MODIFIER_MON_PROFIL: &str = "modifier-profil";
 pub const SIGNALER_UN_BUG: &str = "bug";
+pub const JEUX_ET_ACTIVITE: &str = "jeux";
 
 fn id_du_statut(statut: StatutPresence) -> &'static str {
     match statut {
@@ -26,7 +27,7 @@ fn id_du_statut(statut: StatutPresence) -> &'static str {
     }
 }
 
-pub fn entrees_de_moi(actuel: Presence) -> Vec<Entree> {
+pub fn entrees_de_moi(actuel: Presence, jeux: bool) -> Vec<Entree> {
     let mut entrees: Vec<Entree> = STATUTS
         .iter()
         .map(|(statut, presence, libelle)| {
@@ -38,8 +39,15 @@ pub fn entrees_de_moi(actuel: Presence) -> Vec<Entree> {
             .separee()
             .bientot(),
         Entree::nouvelle(MODIFIER_MON_PROFIL, "Modifier mon profil", "reglages").bientot(),
-        Entree::nouvelle(SIGNALER_UN_BUG, "Signaler un bug", "bug").bientot(),
     ]);
+    if jeux {
+        entrees.push(Entree::nouvelle(
+            JEUX_ET_ACTIVITE,
+            "Jeux et activité",
+            "trophee",
+        ));
+    }
+    entrees.push(Entree::nouvelle(SIGNALER_UN_BUG, "Signaler un bug", "bug").bientot());
     entrees
 }
 
@@ -182,8 +190,12 @@ impl Pont {
             f,
             &pseudo,
             ancre,
-            entrees_de_moi(actuel),
-            move |_, action| {
+            entrees_de_moi(actuel, crate::jeux::reglages::disponible(f)),
+            move |f, action| {
+                if action == JEUX_ET_ACTIVITE {
+                    crate::jeux::reglages::ouvrir(f);
+                    return true;
+                }
                 if let Some((statut, _, _)) =
                     STATUTS.iter().find(|(s, _, _)| id_du_statut(*s) == action)
                 {
@@ -314,7 +326,7 @@ mod tests {
 
     #[test]
     fn le_menu_de_l_utilisateur_coche_son_statut() {
-        let entrees = entrees_de_moi(Presence::Absent);
+        let entrees = entrees_de_moi(Presence::Absent, false);
         assert_eq!(
             ids(&entrees),
             [
@@ -329,6 +341,9 @@ mod tests {
         let coches: Vec<bool> = entrees.iter().map(|e| e.coche).collect();
         assert_eq!(coches, [false, true, false, false, false, false]);
         assert!(entrees[3].separe && entrees[3].bientot);
+        let avec_jeux = entrees_de_moi(Presence::Absent, true);
+        assert_eq!(ids(&avec_jeux)[5..], [JEUX_ET_ACTIVITE, SIGNALER_UN_BUG]);
+        assert!(!avec_jeux[5].bientot);
     }
 
     #[test]

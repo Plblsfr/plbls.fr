@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -870,7 +870,7 @@ Logique dans la crate client (`vocal/partage.rs` : qualités et plafonds ; `voca
     la caméra de l'aperçu du sélecteur ne bouge qu'aux réglages.
 - Écarts : le plafond de débit de l'encodeur est celui du début du partage (le SDK Rust 0.12 n'expose pas `setParameters` : changer la qualité règle la capture,
   pas le débit maximal) ; pas d'« Autre méthode » (sélecteur du système) ni de portail Wayland (lot 11) ; « Afficher le jeu en cours aux autres » (`SettingsShare` de l'app Windows)
-  arrive avec la détection du jeu (lot 7) ; pas d'avis « Le système limite la capture à … images/s ».
+  est dans les réglages « Jeux et activité » (voir [Jeu au premier plan](#jeu-au-premier-plan)) ; pas d'avis « Le système limite la capture à … images/s ».
 
 ### Appuyer pour parler
 
@@ -1069,6 +1069,34 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
   - Écran forcé : voir [Mise à jour forcée](#mise-à-jour-forcée).
 - Non vérifié sur machine réelle : passage d'une version publiée à la suivante (deux tags), relance par l'installeur et session conservée.
 
+## Jeu au premier plan
+
+Savoir quel jeu tourne, pour l'activité montrée aux autres, puis pour les overlays et l'instant replay (lot 7). Copié de `foreground.rs` et `jeux/` de l'app Tauri, puis divergé.
+
+- Plateforme : trait `PremierPlan` (`apps/estompe/crates/plateforme/src/premier_plan/`). `application()` décrit la fenêtre au premier plan (`ApplicationPremierPlan` :
+  exécutable, chemin complet, titre, plein écran sans barre de titre, écran qui la contient, poignée de la fenêtre, processus) ; `fenetres()` les fenêtres
+  visibles, titrées, hors fenêtres d'outils, une par processus. Sous Windows : `GetForegroundWindow`, `QueryFullProcessImageNameW`, `MonitorFromWindow`, `EnumWindows`.
+  Linux : indisponible (`PremierPlanSysteme::disponible()` faux), les réglages et l'entrée du menu sont masqués. `PremierPlanFactice` sert aux tests.
+- Reconnaissance (`apps/estompe/crates/client/src/jeux/`) : liste intégrée `connus.json` (nom de l'exécutable ou morceau du chemin), dossier qui suit une bibliothèque
+  (Steam, Epic, GOG, Xbox), sinon une application plein écran sans bordure au premier plan ; jamais les outils de Windows, navigateurs, lecteurs, Estompe (`hors_jeu`).
+  Un jeu ajouté à la main (chemin complet) est toujours un jeu ; un jeu exclu (nom de l'exécutable) ne l'est jamais, ni au premier plan ni parmi les fenêtres ouvertes,
+  et n'est donc ni affiché ni publié. Sans jeu au premier plan, un jeu connu ou ajouté parmi les fenêtres ouvertes reste « en cours » (alt-tab).
+- Sondage (`ServiceJeux`, `apps/estompe/natif/src/jeux/`) : toutes les 5 s sur le runtime de l'app, et tout de suite après un changement de réglage. Il publie `EtatJeux`
+  dans un `watch` (`Application::jeux`, `ServiceJeux::abonner`) : jeu au premier plan (avec son écran et sa fenêtre, pour les overlays et le replay), activité,
+  dernière application vue au premier plan hors Estompe. Les fenêtres ne sont énumérées que si aucun jeu n'est au premier plan. Coût de la reconnaissance mesuré
+  (`cout_du_sondage`, crate client en release, machine de dev Linux, 30 fenêtres) : 33 µs par sondage, soit moins de 0,001 % d'un cœur ; les appels Windows
+  (une fenêtre, un processus ouvert, et `EnumWindows` hors jeu) ne sont pas mesurés ici.
+- Activité : le jeu détecté reste affiché une minute après sa disparition (`DELAI_DE_GRACE`, alt-tab ou redémarrage), comme `activity.svelte.ts` ; exclure le jeu en
+  cours l'efface tout de suite. Il est toujours visible sous mon pseudo (`activite_locale` du store) ; il n'est envoyé aux autres (`PUT /me/activity`, 64 caractères au plus)
+  que si « Afficher le jeu en cours aux autres » est actif (désactivé par défaut, préférence `jeux.partager`). L'envoi se fait à chaque changement et à chaque reconnexion
+  (le serveur oublie l'activité à la déconnexion) ; un échec est retenté au changement suivant (`Publication`, `Annonce` dans le cycle de la coquille).
+- Réglages « Jeux et activité » (`ui/jeux/reglages.slint`, entrée du menu de l'utilisateur) : interrupteur du partage, jeu en cours, dernière application vue au premier plan
+  avec « Ajouter comme jeu » et « Exclure » (passer sur le jeu puis revenir dans Estompe), jeux ajoutés (« Ajouter un jeu… » par le sélecteur de fichiers), jeux exclus
+  (nom saisi ou « Parcourir… »). Préférence `jeux` (`ReglagesJeux` : listes sans doublon à la casse près, 200 entrées et 260 caractères au plus).
+- Écarts : les jeux ajoutés et exclus étaient propres au replay dans l'app Tauri (`SettingsReplay`) ; ici ils servent à toute la détection (activité, overlays, replay).
+  Pas de « Écoute » (musique) dans l'activité avant le lot 10.
+- Non vérifié ici (machine Linux) : détection d'un vrai jeu sous Windows (connu et ajouté à la main), activité vue par un autre client, coût CPU réel du sondage sous Windows.
+
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
@@ -1122,7 +1150,7 @@ l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Ind
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour le micro et la sortie des messages vocaux), le lancement d'un processus d'arrière-plan
 (`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
-l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
+l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`) et l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
@@ -1209,6 +1237,9 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
+`jeux.rs` (même backend, `ServeurMessages`, `PremierPlanFactice` sondé toutes les 20 ms) : jeu détecté affiché sous mon pseudo, rien publié hors ligne, activité vide
+  publiée sans le réglage, « Jeux et activité » ouvert depuis le menu de l'utilisateur, partage activé (`PUT /me/activity` avec le jeu), jeu exclu retiré de l'affichage et de
+  l'activité publiée, application fenêtrée non détectée puis ajoutée comme jeu, exécutable exclu par « Parcourir… ».
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

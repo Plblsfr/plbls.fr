@@ -5,6 +5,7 @@ pub mod confirmation;
 pub mod coquille;
 pub mod ecrans;
 pub mod entree;
+pub mod jeux;
 pub mod menu;
 pub mod messagerie;
 pub mod mesures;
@@ -50,6 +51,7 @@ pub struct Application {
     pub client: estompe_client::http::Client,
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
     pub vocal: std::sync::Arc<estompe_client::vocal::SessionVocale>,
+    pub jeux: std::sync::Arc<jeux::ServiceJeux>,
 }
 
 #[cfg(feature = "livekit")]
@@ -143,6 +145,22 @@ pub fn demarrer(
         sons: plateforme.capture_son.clone(),
         apm,
     };
+    let service_jeux = std::sync::Arc::new(jeux::ServiceJeux::demarrer(
+        &entree.runtime(),
+        plateforme.premier_plan.clone(),
+        {
+            let memoire = session.memoire.clone();
+            std::sync::Arc::new(move || memoire.lire(|p| p.jeux.clone()))
+        },
+        estompe_client::jeux::PERIODE_SONDAGE,
+    ));
+    jeux::reglages::brancher(
+        fenetre,
+        service_jeux.clone(),
+        session.memoire.clone(),
+        std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
+        &entree.runtime(),
+    );
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -156,6 +174,7 @@ pub fn demarrer(
         navigateur,
         dossier_donnees: Some(session.dossiers.donnees.clone()),
         vocal: Some(outils_vocaux),
+        jeux: Some(service_jeux.abonner()),
         son: estompe_plateforme::SonPeripheriques::nouveau(audio_messages, {
             let memoire = session.memoire.clone();
             std::sync::Arc::new(move |sens| {
@@ -282,6 +301,7 @@ pub fn demarrer(
         client: reels.client,
         auth: reels.auth,
         vocal,
+        jeux: service_jeux,
     })
 }
 

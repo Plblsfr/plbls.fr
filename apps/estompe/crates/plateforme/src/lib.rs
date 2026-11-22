@@ -13,6 +13,7 @@ pub mod instance;
 mod notifications_linux;
 #[cfg(windows)]
 mod pastille_windows;
+mod premier_plan;
 mod processus;
 mod raccourcis;
 #[cfg(windows)]
@@ -43,6 +44,9 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
+pub use premier_plan::{
+    application_de_chemin, nom_de_fichier, PremierPlanFactice, PremierPlanSysteme,
+};
 pub use processus::{commande_d_arriere_plan, MesureSysteme};
 pub use raccourcis::{
     code_d_evdev, code_de_virtuelle, libelle_touche, touche, RaccourcisFactices, RaccourcisSysteme,
@@ -58,7 +62,7 @@ pub use traits::{
     PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux,
     RecepteurActions, RecepteurAudio, RecepteurCapture, RecepteurSon, RecepteurSonCapture,
     RecepteurZone, SensAudio, SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio,
-    TypeSource, ZoneNotification,
+    TypeSource, ZoneEcran, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
@@ -84,7 +88,7 @@ pub struct Plateforme {
     pub audio: Arc<dyn SystemeAudio>,
     pub mesure: Arc<dyn MesureProcessus>,
     pub overlay: Box<dyn Overlay>,
-    pub premier_plan: Box<dyn PremierPlan>,
+    pub premier_plan: Arc<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
 }
 
@@ -105,6 +109,7 @@ impl Plateforme {
             installation: installation_de_l_os(),
             capture_ecran: capture_de_l_os(),
             capture_son: son_de_l_os(),
+            premier_plan: premier_plan_de_l_os(),
             ..Self::indisponible()
         }
     }
@@ -125,7 +130,7 @@ impl Plateforme {
             audio: Arc::new(Indisponible),
             mesure: Arc::new(Indisponible),
             overlay: Box::new(Indisponible),
-            premier_plan: Box::new(Indisponible),
+            premier_plan: Arc::new(Indisponible),
             demarrage: Box::new(Indisponible),
         }
     }
@@ -185,6 +190,14 @@ fn son_de_l_os() -> std::sync::Arc<dyn CaptureSon> {
     }
 }
 
+fn premier_plan_de_l_os() -> std::sync::Arc<dyn PremierPlan> {
+    if PremierPlanSysteme.disponible() {
+        std::sync::Arc::new(PremierPlanSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -213,12 +226,11 @@ mod tests {
             p.installation.cible(),
             cfg!(windows).then_some(CIBLE_WINDOWS)
         );
-        for (nom, disponible) in [
-            ("overlay", p.overlay.disponible()),
-            ("premier_plan", p.premier_plan.disponible()),
-        ] {
-            assert!(!disponible, "{nom} n'est pas encore implémenté");
-        }
+        assert_eq!(p.premier_plan.disponible(), cfg!(windows));
+        assert!(
+            !p.overlay.disponible(),
+            "overlay n'est pas encore implémenté"
+        );
     }
 
     #[test]
@@ -266,6 +278,10 @@ mod tests {
         assert!(matches!(p.overlay.masquer(), Err(Erreur::Indisponible(_))));
         assert!(matches!(
             p.premier_plan.application(),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.premier_plan.fenetres(),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(p.demarrage.actif(), Err(Erreur::Indisponible(_))));

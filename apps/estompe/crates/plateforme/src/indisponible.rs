@@ -181,6 +181,9 @@ impl PremierPlan for Indisponible {
     fn application(&self) -> Resultat<Option<ApplicationPremierPlan>> {
         refus("application au premier plan")
     }
+    fn fenetres(&self) -> Resultat<Vec<ApplicationPremierPlan>> {
+        refus("application au premier plan")
+    }
 }
 
 impl DemarrageSession for Indisponible {

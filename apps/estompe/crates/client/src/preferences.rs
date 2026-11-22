@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
+use crate::jeux::ReglagesJeux;
 use crate::vocal::{
     Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
 };
@@ -69,6 +70,7 @@ pub struct Preferences {
     pub qualite_partage: QualiteRecue,
     pub partage: ReglagesPartage,
     pub incrustation: ReglagesIncrustation,
+    pub jeux: ReglagesJeux,
 }
 
 impl Default for Preferences {
@@ -101,6 +103,7 @@ impl Default for Preferences {
             qualite_partage: QualiteRecue::default(),
             partage: ReglagesPartage::default(),
             incrustation: ReglagesIncrustation::default(),
+            jeux: ReglagesJeux::default(),
         }
     }
 }
@@ -188,6 +191,7 @@ impl Preferences {
             qualite_partage: champ(&objet, "qualite_partage", d.qualite_partage),
             partage: champ(&objet, "partage", d.partage).borne(),
             incrustation: champ(&objet, "incrustation", d.incrustation).borne(),
+            jeux: champ(&objet, "jeux", d.jeux).borne(),
         })
     }
 
@@ -389,6 +393,11 @@ mod tests {
                 ombre: false,
                 miroir: true,
             },
+            jeux: ReglagesJeux {
+                partager: true,
+                ajoutes: vec![r"D:\Jeux\jeu.exe".to_string()],
+                exclus: vec!["launcher.exe".to_string()],
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -403,6 +412,24 @@ mod tests {
             Preferences::charger(&dossier).preferences,
             Preferences::default()
         );
+    }
+
+    #[test]
+    fn les_listes_de_jeux_relues_sont_nettoyees() {
+        let lu = Preferences::depuis_json(
+            r#"{"jeux": {"partager": true, "ajoutes": ["a.exe", "A.EXE", " "], "exclus": ["C:\\x\\b.exe", "b.exe"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            lu.jeux,
+            ReglagesJeux {
+                partager: true,
+                ajoutes: vec!["a.exe".to_string()],
+                exclus: vec!["b.exe".to_string()],
+            }
+        );
+        let invalide = Preferences::depuis_json(r#"{"jeux": {"ajoutes": "x"}}"#).unwrap();
+        assert_eq!(invalide.jeux, ReglagesJeux::default());
     }
 
     #[test]

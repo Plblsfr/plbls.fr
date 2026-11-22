@@ -211,16 +211,29 @@ pub trait Overlay {
     fn masquer(&self) -> Resultat<()>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ApplicationPremierPlan {
-    pub executable: String,
-    pub titre: String,
-    pub plein_ecran: bool,
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ZoneEcran {
+    pub x: i32,
+    pub y: i32,
+    pub largeur: u32,
+    pub hauteur: u32,
 }
 
-pub trait PremierPlan {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ApplicationPremierPlan {
+    pub executable: String,
+    pub chemin: String,
+    pub titre: String,
+    pub plein_ecran: bool,
+    pub ecran: Option<ZoneEcran>,
+    pub fenetre: u64,
+    pub processus: u32,
+}
+
+pub trait PremierPlan: Send + Sync {
     fn disponible(&self) -> bool;
     fn application(&self) -> Resultat<Option<ApplicationPremierPlan>>;
+    fn fenetres(&self) -> Resultat<Vec<ApplicationPremierPlan>>;
 }
 
 pub trait DemarrageSession {
