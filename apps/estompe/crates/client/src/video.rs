@@ -165,7 +165,7 @@ impl Convertisseur {
         c
     }
 
-    fn duree(&self, source: &Path) -> f64 {
+    pub fn duree(&self, source: &Path) -> f64 {
         self.commande()
             .arg("-i")
             .arg(source)
@@ -173,6 +173,31 @@ impl Convertisseur {
             .output()
             .map(|o| duree_ffmpeg(&String::from_utf8_lossy(&o.stderr)))
             .unwrap_or(0.0)
+    }
+
+    pub fn sortie_temporaire(&self) -> io::Result<FichierTemporaire> {
+        std::fs::create_dir_all(&self.dossier)?;
+        Ok(FichierTemporaire(self.dossier.join(nom_temporaire())))
+    }
+
+    pub fn executer(
+        &self,
+        arguments: &[String],
+        duree: f64,
+        annule: &AtomicBool,
+        progres: &(dyn Fn(f32) + Sync),
+    ) -> Result<(), ErreurConversion> {
+        if annule.load(Ordering::SeqCst) {
+            return Err(ErreurConversion::Annulee);
+        }
+        let enfant = self
+            .commande()
+            .args(arguments)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| ErreurConversion::Echec(e.to_string()))?;
+        suivre(enfant, duree, annule, progres)
     }
 
     pub fn convertir(
@@ -306,6 +331,10 @@ impl Conversions {
             dossier: convertisseur.dossier.clone(),
             convertisseur: OnceLock::from(Some(convertisseur)),
         }
+    }
+
+    pub fn dossier(&self) -> &Path {
+        &self.dossier
     }
 
     pub fn convertisseur(&self) -> Option<&Convertisseur> {

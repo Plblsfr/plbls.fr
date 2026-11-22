@@ -4,6 +4,7 @@ pub mod capture;
 mod coffre;
 mod demarrage;
 mod dossiers;
+mod encodage;
 mod erreur;
 mod fichiers;
 mod indisponible;
@@ -11,8 +12,10 @@ mod installation;
 pub mod instance;
 #[cfg(target_os = "linux")]
 mod notifications_linux;
+mod overlay;
 #[cfg(windows)]
 mod pastille_windows;
+mod premier_plan;
 mod processus;
 mod raccourcis;
 #[cfg(windows)]
@@ -37,12 +40,23 @@ pub use demarrage::{
     commande_de_demarrage, DemarrageSysteme, CLE_DEMARRAGE, OPTION_ARRIERE_PLAN, VALEUR_DEMARRAGE,
 };
 pub use dossiers::{
-    dossier_telechargements, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
+    dossier_telechargements, dossier_videos, Dossiers, DOSSIER_TELECHARGEMENTS_ESSAI,
+    DOSSIER_VIDEOS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
+};
+pub use encodage::{
+    disque_plein, espace_libre, masquer, CapaciteEncodeur, CodecVideo, EncodageFactice,
+    EncodageMateriel, EncodageSysteme, EncodeurAudio, EncodeurVideo, ImageNv12, MaterielEncodage,
+    Paquet, ParametresAudio, ParametresVideo, RecepteurPaquets, SignalArret, ERREUR_DISQUE_PLEIN,
+    PARAMETRES_FACTICES, UNITE_TEMPS,
 };
 pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
+pub use overlay::{AffichageFactice, OverlayFactice, OverlaySysteme};
+pub use premier_plan::{
+    application_de_chemin, nom_de_fichier, PremierPlanFactice, PremierPlanSysteme,
+};
 pub use processus::{commande_d_arriere_plan, MesureSysteme};
 pub use raccourcis::{
     code_d_evdev, code_de_virtuelle, libelle_touche, touche, RaccourcisFactices, RaccourcisSysteme,
@@ -50,15 +64,15 @@ pub use raccourcis::{
 };
 pub use raw_window_handle::RawWindowHandle;
 pub use traits::{
-    ActionNotification, ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon,
+    ActionNotification, ActionRaccourci, ApplicationPremierPlan, Calque, CaptureEcran, CaptureSon,
     CibleSon, Coffre, CompteursProcessus, ContenuPressePapiers, DemarrageSession, ErreurFluxAudio,
-    EtatTouche, EvenementCapture, EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon,
-    FormatAudio, FournisseurAudio, Image, InfosMachine, Installation, MesureProcessus, Micro,
-    Notification, Notifications, OptionsCapture, OuvertureUrl, Overlay, Pastille,
-    PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux,
-    RecepteurActions, RecepteurAudio, RecepteurCapture, RecepteurSon, RecepteurSonCapture,
-    RecepteurZone, SensAudio, SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio,
-    TypeSource, ZoneNotification,
+    EtatTouche, EvenementCapture, EvenementSaisie, EvenementZone, Fichiers, FiltreFichiers,
+    FluxAudio, FluxSon, FormatAudio, FournisseurAudio, Image, ImagePremultipliee, InfosMachine,
+    Installation, MesureProcessus, Micro, Notification, Notifications, OptionsCapture,
+    OuvertureUrl, Overlay, Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon,
+    RaccourcisGlobaux, RecepteurActions, RecepteurAudio, RecepteurCapture, RecepteurSaisie,
+    RecepteurSon, RecepteurSonCapture, RecepteurZone, SensAudio, SignalErreurAudio, SortieSon,
+    SourceCapture, SystemeAudio, TypeSource, ZoneEcran, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
@@ -83,8 +97,9 @@ pub struct Plateforme {
     pub capture_son: Arc<dyn CaptureSon>,
     pub audio: Arc<dyn SystemeAudio>,
     pub mesure: Arc<dyn MesureProcessus>,
-    pub overlay: Box<dyn Overlay>,
-    pub premier_plan: Box<dyn PremierPlan>,
+    pub overlay: Arc<dyn Overlay>,
+    pub premier_plan: Arc<dyn PremierPlan>,
+    pub encodage: Arc<dyn EncodageMateriel>,
     pub demarrage: Box<dyn DemarrageSession>,
 }
 
@@ -105,7 +120,9 @@ impl Plateforme {
             installation: installation_de_l_os(),
             capture_ecran: capture_de_l_os(),
             capture_son: son_de_l_os(),
-            ..Self::indisponible()
+            premier_plan: premier_plan_de_l_os(),
+            overlay: overlay_de_l_os(),
+            encodage: encodage_de_l_os(),
         }
     }
 
@@ -124,8 +141,9 @@ impl Plateforme {
             capture_son: Arc::new(Indisponible),
             audio: Arc::new(Indisponible),
             mesure: Arc::new(Indisponible),
-            overlay: Box::new(Indisponible),
-            premier_plan: Box::new(Indisponible),
+            overlay: Arc::new(Indisponible),
+            premier_plan: Arc::new(Indisponible),
+            encodage: Arc::new(Indisponible),
             demarrage: Box::new(Indisponible),
         }
     }
@@ -185,6 +203,30 @@ fn son_de_l_os() -> std::sync::Arc<dyn CaptureSon> {
     }
 }
 
+fn premier_plan_de_l_os() -> std::sync::Arc<dyn PremierPlan> {
+    if PremierPlanSysteme.disponible() {
+        std::sync::Arc::new(PremierPlanSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
+fn overlay_de_l_os() -> std::sync::Arc<dyn Overlay> {
+    if OverlaySysteme.disponible() {
+        std::sync::Arc::new(OverlaySysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
+fn encodage_de_l_os() -> std::sync::Arc<dyn EncodageMateriel> {
+    if EncodageSysteme.disponible() {
+        std::sync::Arc::new(EncodageSysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -213,12 +255,9 @@ mod tests {
             p.installation.cible(),
             cfg!(windows).then_some(CIBLE_WINDOWS)
         );
-        for (nom, disponible) in [
-            ("overlay", p.overlay.disponible()),
-            ("premier_plan", p.premier_plan.disponible()),
-        ] {
-            assert!(!disponible, "{nom} n'est pas encore implémenté");
-        }
+        assert_eq!(p.premier_plan.disponible(), cfg!(windows));
+        assert_eq!(p.overlay.disponible(), cfg!(windows));
+        assert_eq!(p.encodage.disponible(), cfg!(windows));
     }
 
     #[test]
@@ -260,12 +299,21 @@ mod tests {
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(
-            p.overlay.afficher(&Image::default(), 0, 0),
+            p.overlay.calque().map(|_| ()),
             Err(Erreur::Indisponible(_))
         ));
-        assert!(matches!(p.overlay.masquer(), Err(Erreur::Indisponible(_))));
+        assert_eq!(p.overlay.ecran_principal(), None);
+        assert!(!p.encodage.disponible());
+        assert!(matches!(
+            p.encodage.materiel(None),
+            Err(Erreur::Indisponible(_))
+        ));
         assert!(matches!(
             p.premier_plan.application(),
+            Err(Erreur::Indisponible(_))
+        ));
+        assert!(matches!(
+            p.premier_plan.fenetres(),
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(p.demarrage.actif(), Err(Erreur::Indisponible(_))));

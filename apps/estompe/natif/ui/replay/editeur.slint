@@ -1,0 +1,828 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Icone, Champ, Curseur, Case } from "../composants.slint";
+
+export struct SegmentEditeur {
+    debut: float,
+    largeur: float,
+    garde: bool,
+    choisi: bool,
+    libelle: string,
+    clip: string,
+    muet: bool,
+}
+
+export struct PisteEditeur {
+    nom: string,
+    volume: float,
+    muet: bool,
+    onde: string,
+}
+
+export struct ChoixEditeur {
+    libelle: string,
+    choisi: bool,
+}
+
+export struct ProjetMontage {
+    id: string,
+    nom: string,
+    infos: string,
+    manquants: string,
+}
+
+export struct ClipAjoutable {
+    chemin: string,
+    nom: string,
+}
+
+export global DonneesEditeur {
+    in-out property <bool> ouvert: false;
+    in-out property <bool> pret: false;
+    in-out property <string> preparation;
+    in-out property <string> nom;
+    in-out property <string> duree;
+    in-out property <string> temps;
+    in-out property <[SegmentEditeur]> segments;
+    in-out property <float> tete;
+    in-out property <float> entree;
+    in-out property <float> sortie;
+    in-out property <[PisteEditeur]> pistes;
+    in-out property <string> clip-choisi;
+    in-out property <bool> garde: true;
+    in-out property <bool> muet: false;
+    in-out property <[ChoixEditeur]> vitesses;
+    in-out property <bool> saccade: false;
+    in-out property <bool> peut-annuler: false;
+    in-out property <bool> peut-retablir: false;
+    in-out property <[ChoixEditeur]> rapports;
+    in-out property <bool> plusieurs: false;
+    in-out property <bool> peut-reculer: false;
+    in-out property <bool> peut-avancer: false;
+    in-out property <image> image;
+    in-out property <bool> a-image: false;
+    in-out property <bool> lecture: false;
+    in-out property <string> message;
+    in-out property <bool> message-erreur: false;
+    in-out property <string> manquants;
+    in-out property <string> textes;
+    in-out property <[ClipAjoutable]> ajoutables;
+    in-out property <bool> choix-clip: false;
+    in-out property <bool> export-ouvert: false;
+    in-out property <[ChoixEditeur]> hauteurs;
+    in-out property <[ChoixEditeur]> cadences;
+    in-out property <string> export-format;
+    in-out property <bool> export-en-cours: false;
+    in-out property <string> export-libelle;
+    in-out property <float> export-progression;
+    in-out property <[ProjetMontage]> projets;
+    callback fermer();
+    callback placer(float);
+    callback choisir(int);
+    callback poignee(bool, float);
+    callback couper();
+    callback basculer();
+    callback entree-ici();
+    callback sortie-ici();
+    callback vitesse(int);
+    callback muet-segment(bool);
+    callback volume(int, float);
+    callback muet-piste(int, bool);
+    callback annuler();
+    callback retablir();
+    callback lire();
+    callback precedente();
+    callback suivante();
+    callback renommer(string);
+    callback rapport(int);
+    callback deplacer(int);
+    callback retirer-clip();
+    callback proposer-clips();
+    callback ajouter-clip(string);
+    callback demander-export();
+    callback choisir-hauteur(int);
+    callback choisir-cadence(int);
+    callback exporter();
+    callback annuler-export();
+    callback touche(string, bool, bool, bool) -> bool;
+    callback lister-projets();
+    callback ouvrir-projet(string);
+    callback renommer-projet(string);
+    callback supprimer-projet(string);
+}
+
+component Note inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+component Choix inherits HorizontalLayout {
+    in property <[ChoixEditeur]> choix;
+    in property <int> calque: 1;
+    callback choisir(int);
+    spacing: Espace.e1;
+    alignment: start;
+    for c[i] in root.choix: Bouton {
+        texte: c.libelle;
+        variante: c.choisi ? VarianteBouton.primaire : VarianteBouton.secondaire;
+        calque: root.calque;
+        clique => {
+            root.choisir(i);
+        }
+    }
+}
+
+component Apercu inherits Rectangle {
+    background: #000000;
+    border-radius: Rayon.m;
+    clip: true;
+    if DonneesEditeur.a-image: Image {
+        width: 100%;
+        height: 100%;
+        source: DonneesEditeur.image;
+        image-fit: contain;
+    }
+    if !DonneesEditeur.a-image: Icone {
+        nom: "film";
+        taille: 36px;
+        couleur: Theme.gris;
+    }
+    Rectangle {
+        x: parent.width - self.width - Espace.e2;
+        y: parent.height - self.height - Espace.e2;
+        width: temps.preferred-width + 12px;
+        height: 22px;
+        border-radius: 4px;
+        background: #000000b3;
+        temps := Text {
+            text: DonneesEditeur.temps + " / " + DonneesEditeur.duree;
+            color: #ffffff;
+            font-family: Typo.mono;
+            font-size: 12px;
+        }
+    }
+}
+
+component Poignee inherits Rectangle {
+    in property <float> part;
+    in property <bool> debut;
+    in property <length> largeur-axe;
+    property <length> decalage: 0px;
+    x: root.largeur-axe * root.part - self.width / 2 + root.decalage;
+    y: 0;
+    width: 12px;
+    accessible-role: slider;
+    accessible-label: root.debut ? "Entrée du passage" : "Sortie du passage";
+    Rectangle {
+        width: 4px;
+        height: 100%;
+        border-radius: 2px;
+        background: zone.has-hover || zone.pressed ? Theme.rose-fonce : Theme.encre;
+    }
+    zone := TouchArea {
+        enabled: Calques.ouverts <= 1;
+        mouse-cursor: ew-resize;
+        moved => {
+            root.decalage = self.mouse-x - self.pressed-x;
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.up) {
+                DonneesEditeur.poignee(root.debut, (root.largeur-axe * root.part + root.decalage) / root.largeur-axe);
+                root.decalage = 0px;
+            }
+        }
+    }
+}
+
+component LigneDeTemps inherits Rectangle {
+    height: 64px;
+    border-radius: Rayon.s;
+    background: Theme.papier-2;
+    accessible-role: slider;
+    accessible-label: "Ligne de temps";
+    accessible-value: DonneesEditeur.temps;
+    zone := TouchArea {
+        enabled: Calques.ouverts <= 1;
+        clicked => {
+            DonneesEditeur.placer(self.mouse-x / self.width);
+        }
+    }
+    for s[i] in DonneesEditeur.segments: Rectangle {
+        x: root.width * s.debut;
+        y: 4px;
+        width: max(2px, root.width * s.largeur - 2px);
+        height: root.height - 8px;
+        border-radius: 4px;
+        background: s.garde ? (s.choisi ? Theme.rose-fonce : Theme.rose) : Theme.papier;
+        border-width: s.choisi ? 2px : 1px;
+        border-color: s.choisi ? Theme.encre : Theme.trait;
+        clip: true;
+        VerticalLayout {
+            padding: 4px;
+            spacing: 2px;
+            alignment: start;
+            Text {
+                text: s.clip;
+                color: s.garde ? Theme.encre : Theme.gris;
+                font-size: 11px;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+                if s.libelle != "": Text {
+                    text: s.libelle;
+                    color: Theme.encre;
+                    font-family: Typo.mono;
+                    font-size: 11px;
+                }
+                if s.muet: Icone {
+                    nom: "volcoupe";
+                    taille: 12px;
+                    couleur: Theme.encre-2;
+                }
+                if !s.garde: Text {
+                    text: "retiré";
+                    color: Theme.gris;
+                    font-size: 11px;
+                }
+            }
+        }
+    }
+    Poignee {
+        part: DonneesEditeur.entree;
+        debut: true;
+        largeur-axe: root.width;
+        height: root.height;
+    }
+    Poignee {
+        part: DonneesEditeur.sortie;
+        debut: false;
+        largeur-axe: root.width;
+        height: root.height;
+    }
+    Rectangle {
+        x: root.width * DonneesEditeur.tete - 1px;
+        y: 0;
+        width: 2px;
+        height: root.height;
+        background: Theme.danger;
+    }
+}
+
+component Piste inherits Rectangle {
+    in property <PisteEditeur> piste;
+    in property <int> rang;
+    height: 44px;
+    border-radius: Rayon.s;
+    background: Theme.papier;
+    border-width: 1px;
+    border-color: Theme.trait;
+    HorizontalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e3;
+        Text {
+            width: 56px;
+            text: root.piste.nom;
+            color: Theme.encre;
+            font-weight: Typo.gras;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+        Rectangle {
+            width: 400px;
+            if root.piste.onde != "": Path {
+                width: 100%;
+                height: 100%;
+                commands: root.piste.onde;
+                viewbox-width: 200;
+                viewbox-height: 14;
+                stroke: root.piste.muet ? Theme.trait : Theme.rose-fonce;
+                stroke-width: 1px;
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+        Curseur {
+            width: 160px;
+            minimum: 0;
+            maximum: 200;
+            pas: 5;
+            valeur: root.piste.volume;
+            libelle: "Volume " + root.piste.nom;
+            unite: " %";
+            actif: !root.piste.muet;
+            calque: 1;
+            fini(v) => {
+                DonneesEditeur.volume(root.rang, v / 100);
+            }
+        }
+        Text {
+            width: 44px;
+            text: Math.round(root.piste.volume) + " %";
+            color: Theme.encre-2;
+            font-family: Typo.mono;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+        Case {
+            texte: "Muet";
+            cochee: root.piste.muet;
+            calque: 1;
+            bascule(b) => {
+                DonneesEditeur.muet-piste(root.rang, b);
+            }
+        }
+    }
+}
+
+component Commandes inherits HorizontalLayout {
+    spacing: Espace.e1;
+    alignment: start;
+    Bouton {
+        icone: "precedent";
+        description: "Image précédente";
+        variante: VarianteBouton.fantome;
+        calque: 1;
+        clique => {
+            DonneesEditeur.precedente();
+        }
+    }
+    Bouton {
+        icone: DonneesEditeur.lecture ? "pause" : "lecture";
+        description: DonneesEditeur.lecture ? "Pause" : "Lire la sélection";
+        variante: VarianteBouton.primaire;
+        calque: 1;
+        clique => {
+            DonneesEditeur.lire();
+        }
+    }
+    Bouton {
+        icone: "suivant";
+        description: "Image suivante";
+        variante: VarianteBouton.fantome;
+        calque: 1;
+        clique => {
+            DonneesEditeur.suivante();
+        }
+    }
+    Rectangle {
+        width: Espace.e3;
+    }
+    Bouton {
+        texte: "Entrée";
+        description: "Entrée du passage à la tête de lecture";
+        calque: 1;
+        clique => {
+            DonneesEditeur.entree-ici();
+        }
+    }
+    Bouton {
+        texte: "Sortie";
+        description: "Sortie du passage à la tête de lecture";
+        calque: 1;
+        clique => {
+            DonneesEditeur.sortie-ici();
+        }
+    }
+    Bouton {
+        icone: "ciseaux";
+        texte: "Couper";
+        calque: 1;
+        clique => {
+            DonneesEditeur.couper();
+        }
+    }
+    Bouton {
+        texte: DonneesEditeur.garde ? "Retirer le segment" : "Restaurer le segment";
+        variante: DonneesEditeur.garde ? VarianteBouton.secondaire : VarianteBouton.primaire;
+        calque: 1;
+        clique => {
+            DonneesEditeur.basculer();
+        }
+    }
+    Rectangle {
+        horizontal-stretch: 1;
+    }
+    Bouton {
+        icone: "annule";
+        description: "Annuler";
+        variante: VarianteBouton.fantome;
+        actif: DonneesEditeur.peut-annuler;
+        calque: 1;
+        clique => {
+            DonneesEditeur.annuler();
+        }
+    }
+    Bouton {
+        icone: "retablis";
+        description: "Rétablir";
+        variante: VarianteBouton.fantome;
+        actif: DonneesEditeur.peut-retablir;
+        calque: 1;
+        clique => {
+            DonneesEditeur.retablir();
+        }
+    }
+}
+
+component Segment inherits VerticalLayout {
+    spacing: Espace.e2;
+    Titre {
+        text: "SEGMENT";
+    }
+    HorizontalLayout {
+        spacing: Espace.e3;
+        alignment: start;
+        Choix {
+            choix: DonneesEditeur.vitesses;
+            choisir(i) => {
+                DonneesEditeur.vitesse(i);
+            }
+        }
+        Case {
+            texte: "Couper le son du segment";
+            cochee: DonneesEditeur.muet;
+            calque: 1;
+            bascule(b) => {
+                DonneesEditeur.muet-segment(b);
+            }
+        }
+        if DonneesEditeur.saccade: Text {
+            text: "Saccades";
+            color: Theme.attention;
+            font-size: Typo.petit;
+            font-weight: Typo.gras;
+            vertical-alignment: center;
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e1;
+        alignment: start;
+        Bouton {
+            icone: "gauche";
+            description: "Segment vers le début";
+            variante: VarianteBouton.fantome;
+            actif: DonneesEditeur.peut-reculer;
+            calque: 1;
+            clique => {
+                DonneesEditeur.deplacer(-1);
+            }
+        }
+        Bouton {
+            icone: "droite";
+            description: "Segment vers la fin";
+            variante: VarianteBouton.fantome;
+            actif: DonneesEditeur.peut-avancer;
+            calque: 1;
+            clique => {
+                DonneesEditeur.deplacer(1);
+            }
+        }
+        Bouton {
+            icone: "plus";
+            texte: "Ajouter un clip";
+            variante: VarianteBouton.fantome;
+            calque: 1;
+            clique => {
+                DonneesEditeur.proposer-clips();
+            }
+        }
+        if DonneesEditeur.plusieurs: Bouton {
+            icone: "corbeille";
+            texte: "Retirer ce clip du montage";
+            variante: VarianteBouton.fantome;
+            calque: 1;
+            clique => {
+                DonneesEditeur.retirer-clip();
+            }
+        }
+        Rectangle {
+            width: Espace.e3;
+        }
+        Icone {
+            nom: "recadre";
+            taille: 16px;
+            couleur: Theme.encre-2;
+        }
+        Choix {
+            choix: DonneesEditeur.rapports;
+            choisir(i) => {
+                DonneesEditeur.rapport(i);
+            }
+        }
+    }
+}
+
+export component FenetreEditeur inherits Modal {
+    titre: "Éditeur de clips";
+    ouvert: DonneesEditeur.ouvert;
+    largeur: 1040px;
+    ferme => {
+        DonneesEditeur.fermer();
+    }
+    if DonneesEditeur.ouvert && !DonneesEditeur.pret: VerticalLayout {
+        spacing: Espace.e3;
+        min-height: 200px;
+        alignment: center;
+        Note {
+            text: DonneesEditeur.preparation;
+            horizontal-alignment: center;
+        }
+        if DonneesEditeur.message != "": Note {
+            text: DonneesEditeur.message;
+            color: Theme.danger;
+            horizontal-alignment: center;
+        }
+    }
+    if DonneesEditeur.ouvert && DonneesEditeur.pret: clavier := FocusScope {
+        init => {
+            self.focus();
+        }
+        key-pressed(e) => {
+            if (DonneesEditeur.touche(e.text, e.modifiers.control, e.modifiers.shift, e.modifiers.alt)) {
+                return accept;
+            }
+            reject
+        }
+        VerticalLayout {
+            spacing: Espace.e3;
+            HorizontalLayout {
+                spacing: Espace.e3;
+                Champ {
+                    etiquette: "Nom du montage";
+                    valeur: DonneesEditeur.nom;
+                    calque: 1;
+                    valide(texte) => {
+                        DonneesEditeur.renommer(texte);
+                        clavier.focus();
+                    }
+                }
+                VerticalLayout {
+                    alignment: end;
+                    Note {
+                        text: "Durée finale " + DonneesEditeur.duree;
+                        font-family: Typo.mono;
+                        wrap: no-wrap;
+                    }
+                }
+                VerticalLayout {
+                    alignment: end;
+                    Bouton {
+                        icone: "telecharge";
+                        texte: "Exporter…";
+                        variante: VarianteBouton.primaire;
+                        actif: !DonneesEditeur.export-en-cours;
+                        calque: 1;
+                        clique => {
+                            DonneesEditeur.demander-export();
+                        }
+                    }
+                }
+            }
+            if DonneesEditeur.manquants != "": Note {
+                text: DonneesEditeur.manquants;
+                color: Theme.attention;
+            }
+            if DonneesEditeur.textes != "": Note {
+                text: DonneesEditeur.textes;
+            }
+            HorizontalLayout {
+                alignment: center;
+                Apercu {
+                    width: 400px;
+                    height: 225px;
+                }
+            }
+            Commandes { }
+            LigneDeTemps { }
+            Segment { }
+            Titre {
+                text: "PISTES DE « " + DonneesEditeur.clip-choisi + " »";
+            }
+            if DonneesEditeur.pistes.length == 0: Note {
+                text: "Ce clip n'a pas de piste audio.";
+            }
+            for p[i] in DonneesEditeur.pistes: Piste {
+                piste: p;
+                rang: i;
+            }
+            if DonneesEditeur.export-en-cours: HorizontalLayout {
+                spacing: Espace.e3;
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    spacing: Espace.e1;
+                    Note {
+                        text: DonneesEditeur.export-libelle + " · " + Math.round(DonneesEditeur.export-progression * 100) + " %";
+                        color: Theme.encre;
+                    }
+                    Rectangle {
+                        height: 6px;
+                        border-radius: 3px;
+                        background: Theme.papier-2;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * max(0, min(1, DonneesEditeur.export-progression));
+                            height: parent.height;
+                            border-radius: parent.border-radius;
+                            background: Theme.rose-fonce;
+                        }
+                    }
+                }
+                Bouton {
+                    texte: "Annuler l'export";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesEditeur.annuler-export();
+                    }
+                }
+            }
+            if DonneesEditeur.message != "": Note {
+                text: DonneesEditeur.message;
+                color: DonneesEditeur.message-erreur ? Theme.danger : Theme.encre;
+            }
+            Note {
+                text: "Espace lecture · ← → image par image · I entrée · O sortie · C couper · Suppr retirer ou restaurer · Ctrl+Z annuler · Ctrl+Y rétablir";
+                color: Theme.gris;
+            }
+        }
+    }
+}
+
+export component FenetreExportMontage inherits Modal {
+    titre: "Exporter le montage";
+    ouvert: DonneesEditeur.export-ouvert;
+    largeur: 520px;
+    ferme => {
+        DonneesEditeur.export-ouvert = false;
+    }
+    if DonneesEditeur.export-ouvert: VerticalLayout {
+        spacing: Espace.e3;
+        Note {
+            text: "Un nouveau fichier est écrit dans le dossier des clips ; les clips d'origine ne sont pas modifiés.";
+        }
+        Titre {
+            text: "RÉSOLUTION";
+        }
+        Choix {
+            choix: DonneesEditeur.hauteurs;
+            calque: 2;
+            choisir(i) => {
+                DonneesEditeur.choisir-hauteur(i);
+            }
+        }
+        Titre {
+            text: "CADENCE";
+        }
+        Choix {
+            choix: DonneesEditeur.cadences;
+            calque: 2;
+            choisir(i) => {
+                DonneesEditeur.choisir-cadence(i);
+            }
+        }
+        Note {
+            text: DonneesEditeur.export-format;
+            font-family: Typo.mono;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Annuler";
+                calque: 2;
+                clique => {
+                    DonneesEditeur.export-ouvert = false;
+                }
+            }
+            Bouton {
+                texte: "Exporter";
+                icone: "telecharge";
+                variante: VarianteBouton.primaire;
+                calque: 2;
+                clique => {
+                    DonneesEditeur.exporter();
+                }
+            }
+        }
+    }
+}
+
+export component MontagesGalerie inherits VerticalLayout {
+    spacing: Espace.e2;
+    padding-right: Espace.e3;
+    init => {
+        DonneesEditeur.lister-projets();
+    }
+    if DonneesEditeur.projets.length > 0: Titre {
+        text: "MONTAGES";
+    }
+    for p in DonneesEditeur.projets: Rectangle {
+        height: ligne.preferred-height;
+        border-radius: Rayon.m;
+        background: Theme.papier;
+        border-width: 1px;
+        border-color: Theme.trait;
+        ligne := HorizontalLayout {
+            padding: Espace.e2;
+            spacing: Espace.e3;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "ciseaux";
+                    taille: 18px;
+                    couleur: Theme.encre-2;
+                }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: p.nom;
+                    color: Theme.encre;
+                    font-weight: Typo.gras;
+                    overflow: elide;
+                }
+                Note {
+                    text: p.infos;
+                    overflow: elide;
+                    wrap: no-wrap;
+                }
+                if p.manquants != "": Note {
+                    text: p.manquants;
+                    color: Theme.attention;
+                    overflow: elide;
+                    wrap: no-wrap;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    spacing: Espace.e1;
+                    Bouton {
+                        texte: "Ouvrir";
+                        calque: 1;
+                        clique => {
+                            DonneesEditeur.ouvrir-projet(p.id);
+                        }
+                    }
+                    Bouton {
+                        icone: "crayon";
+                        description: "Renommer " + p.nom;
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        clique => {
+                            DonneesEditeur.renommer-projet(p.id);
+                        }
+                    }
+                    Bouton {
+                        icone: "corbeille";
+                        description: "Supprimer " + p.nom;
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        clique => {
+                            DonneesEditeur.supprimer-projet(p.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ChoixClipMontage inherits Modal {
+    titre: "Ajouter un clip au montage";
+    ouvert: DonneesEditeur.choix-clip;
+    largeur: 440px;
+    ferme => {
+        DonneesEditeur.choix-clip = false;
+    }
+    if DonneesEditeur.choix-clip: VerticalLayout {
+        spacing: Espace.e1;
+        if DonneesEditeur.ajoutables.length == 0: Note {
+            text: "Tous les clips de la galerie sont déjà dans le montage.";
+        }
+        for c in DonneesEditeur.ajoutables: Bouton {
+            texte: c.nom;
+            icone: "film";
+            variante: VarianteBouton.fantome;
+            calque: 2;
+            clique => {
+                DonneesEditeur.choix-clip = false;
+                DonneesEditeur.ajouter-clip(c.chemin);
+            }
+        }
+    }
+}

@@ -556,10 +556,34 @@ fn sans_fuite(e: &Env, texte: &str, contexte: &str) {
         "cle-tmdb",
     ] {
         assert!(
-            !texte.contains(interdit),
+            !contient(texte, interdit),
             "{contexte} : « {interdit} » dans {texte}"
         );
     }
+}
+
+fn contient(texte: &str, interdit: &str) -> bool {
+    if !interdit.bytes().all(|o| o.is_ascii_digit()) {
+        return texte.contains(interdit);
+    }
+    texte.match_indices(interdit).any(|(i, _)| {
+        let avant = texte[..i].chars().next_back();
+        let apres = texte[i + interdit.len()..].chars().next();
+        !avant.is_some_and(|c| c.is_ascii_alphanumeric())
+            && !apres.is_some_and(|c| c.is_ascii_alphanumeric())
+    })
+}
+
+#[test]
+fn un_identifiant_numerique_ne_se_cherche_pas_dans_un_uuid() {
+    assert!(!contient(
+        r#"{"id":"c94f3a48-91ea-4cc1-ba34-b3e8f003201c"}"#,
+        "3201"
+    ));
+    assert!(contient(r#"{"tvdb_id":3201}"#, "3201"));
+    assert!(contient("/series/3201/poster", "3201"));
+    assert!(contient("3201", "3201"));
+    assert!(contient("/movies/x", "/movies/"));
 }
 
 async fn id_de(e: &Env, titre: &str) -> String {

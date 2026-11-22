@@ -12,6 +12,7 @@ use commun::{
 use estompe_client::audio::factice::SystemeFactice;
 use estompe_client::audio::{ChoixSon, FormatAudio, SensAudio};
 use estompe_client::derniere_vue::DerniereVue;
+use estompe_client::overlay::{QuandOverlay, ReglagesOverlay};
 use estompe_client::preferences::Preferences;
 use estompe_client::vocal::factice::{ApiVocaleFactice, ServeurVocalFactice};
 use estompe_client::vocal::video::taille_de_conversion;
@@ -21,13 +22,16 @@ use estompe_client::vocal::{
 };
 use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
+use estompe_natif::overlay::voix::ServiceOverlayVoix;
+use estompe_natif::overlay::MoteurOverlay;
 use estompe_natif::session::Memoire;
 use estompe_natif::vocal::OutilsVocaux;
 use estompe_natif::{
     creer_fenetre, ecrans, Calques, DonneesVideo, DonneesVocal, Page, ParticipantVocal, Principale,
 };
 use estompe_plateforme::{
-    EcransFactices, RaccourcisFactices, SonsFactices, SourceCapture, TypeSource,
+    EcransFactices, OverlayFactice, RaccourcisFactices, SonsFactices, SourceCapture, TypeSource,
+    ZoneEcran,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
@@ -124,6 +128,7 @@ struct Banc {
     cameras: CamerasFactices,
     ecrans: EcransFactices,
     sons: SonsFactices,
+    overlay: OverlayFactice,
 }
 
 type Visibilite = Arc<dyn Fn(&Principale, bool) + Send + Sync>;
@@ -425,6 +430,19 @@ fn scenario(
         .requetes_avatars()
         .iter()
         .any(|c| c.utilisateur == "carol" && c.serveur.is_none()));
+    attendre(
+        || {
+            banc.overlay
+                .calques()
+                .first()
+                .cloned()
+                .flatten()
+                .is_some_and(|a| {
+                    (a.x, a.image.largeur, a.image.hauteur, a.opacite) == (16, 260, 144, 255)
+                })
+        },
+        "c353 : l'overlay montre les trois participants du vocal",
+    );
 
     banc.serveur
         .publier_video("v1", "carol", SourceVideo::Camera);
@@ -1620,6 +1638,10 @@ fn scenario(
         "c2 : raccroché",
     );
     attendre(
+        || banc.overlay.calques().first() == Some(&None),
+        "c353 : raccroché, l'overlay disparaît",
+    );
+    attendre(
         || banc.serveur.participants("k1").is_empty(),
         "retiré de la salle",
     );
@@ -1788,6 +1810,22 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         }
     }
     let fabrique = FausseFabrique::sur(etat, Vec::new(), &http.adresse);
+    let overlay = OverlayFactice::nouveau(
+        Some(ZoneEcran {
+            x: 0,
+            y: 0,
+            largeur: 1920,
+            hauteur: 1080,
+        }),
+        1.0,
+    );
+    let overlay_voix = ServiceOverlayVoix::nouveau(
+        &MoteurOverlay::nouveau(Arc::new(overlay.clone())),
+        ReglagesOverlay {
+            quand: QuandOverlay::Toujours,
+            ..ReglagesOverlay::default()
+        },
+    );
     *fabrique.vocal.lock().unwrap() = Some(OutilsVocaux {
         session: session.clone(),
         audio: Arc::new(audio.clone()),
@@ -1796,6 +1834,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         ecrans: Arc::new(ecrans.clone()),
         sons: Arc::new(sons.clone()),
         apm: None,
+        overlay: Some(overlay_voix.clone()),
     });
     let coquille = Coquille::brancher(
         &fenetre,
@@ -1815,6 +1854,7 @@ fn c2_rejoindre_couper_le_micro_raccrocher_et_commandes_au_clavier() {
         cameras,
         ecrans,
         sons,
+        overlay,
     };
     let faible = fenetre.as_weak();
     let pilote = std::thread::spawn(move || {

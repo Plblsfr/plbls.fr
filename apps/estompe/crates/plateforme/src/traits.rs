@@ -108,6 +108,9 @@ pub trait Fichiers {
         Ok(self.choisir_fichiers(depart)?.into_iter().next())
     }
     fn ouvrir(&self, chemin: &std::path::Path) -> Resultat<()>;
+    fn ouvrir_dossier(&self, _chemin: &std::path::Path) -> Resultat<()> {
+        Err(crate::Erreur::Indisponible("ouverture d'un dossier"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,22 +208,70 @@ pub trait CaptureSon: Send + Sync {
     fn demarrer(&self, cible: CibleSon, echantillons: RecepteurSonCapture) -> Resultat<FluxSon>;
 }
 
-pub trait Overlay {
-    fn disponible(&self) -> bool;
-    fn afficher(&self, image: &Image, x: i32, y: i32) -> Resultat<()>;
-    fn masquer(&self) -> Resultat<()>;
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImagePremultipliee {
+    pub largeur: u32,
+    pub hauteur: u32,
+    pub rgba: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ApplicationPremierPlan {
-    pub executable: String,
-    pub titre: String,
-    pub plein_ecran: bool,
+pub enum EvenementSaisie {
+    Texte(String),
+    Effacer,
+    Valider,
+    Annuler,
+    FocusPerdu,
 }
 
-pub trait PremierPlan {
+pub type RecepteurSaisie = Box<dyn Fn(EvenementSaisie) + Send>;
+
+pub trait Calque {
+    fn afficher(&mut self, image: &ImagePremultipliee, x: i32, y: i32, opacite: u8)
+        -> Resultat<()>;
+    fn masquer(&mut self) -> Resultat<()>;
+    fn saisir(&mut self, _recepteur: RecepteurSaisie) -> Resultat<()> {
+        Err(crate::Erreur::Indisponible("saisie dans l'overlay"))
+    }
+    fn rendre_le_focus(&mut self) -> Resultat<()> {
+        Ok(())
+    }
+}
+
+pub trait Overlay: Send + Sync {
+    fn disponible(&self) -> bool;
+    fn saisie_disponible(&self) -> bool {
+        false
+    }
+    fn calque(&self) -> Resultat<Box<dyn Calque>>;
+    fn pomper(&self) {}
+    fn ecran_principal(&self) -> Option<ZoneEcran>;
+    fn echelle(&self, ecran: &ZoneEcran) -> f32;
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ZoneEcran {
+    pub x: i32,
+    pub y: i32,
+    pub largeur: u32,
+    pub hauteur: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ApplicationPremierPlan {
+    pub executable: String,
+    pub chemin: String,
+    pub titre: String,
+    pub plein_ecran: bool,
+    pub ecran: Option<ZoneEcran>,
+    pub fenetre: u64,
+    pub processus: u32,
+}
+
+pub trait PremierPlan: Send + Sync {
     fn disponible(&self) -> bool;
     fn application(&self) -> Resultat<Option<ApplicationPremierPlan>>;
+    fn fenetres(&self) -> Resultat<Vec<ApplicationPremierPlan>>;
 }
 
 pub trait DemarrageSession {

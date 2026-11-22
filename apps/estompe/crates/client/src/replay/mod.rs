@@ -1,0 +1,15 @@
+pub mod affichage;
+pub mod automate;
+pub mod cadence;
+pub mod clips;
+pub mod ecriture;
+pub mod galerie;
+pub mod garde;
+pub mod image;
+pub mod micro;
+pub mod montage;
+pub mod mp4;
+pub mod reglages;
+pub mod son;
+pub mod tampon;
+pub mod types;

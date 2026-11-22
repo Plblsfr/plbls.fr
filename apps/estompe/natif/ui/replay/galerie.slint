@@ -1,0 +1,650 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Defilement, Vide, Icone, Coins, Champ } from "../composants.slint";
+import { MontagesGalerie } from "editeur.slint";
+
+export struct LigneClip {
+    chemin: string,
+    nom: string,
+    infos: string,
+    details: string,
+    duree: string,
+    origine: string,
+    vignette: image,
+    a-vignette: bool,
+}
+
+export struct JeuClips {
+    jeu: string,
+    nombre: int,
+    choisi: bool,
+}
+
+export struct TravailClip {
+    id: int,
+    libelle: string,
+    progression: float,
+    a-progression: bool,
+}
+
+export struct DestinationClip {
+    cle: string,
+    nom: string,
+    ou: string,
+    choisie: bool,
+}
+
+export global DonneesClips {
+    in-out property <bool> ouvert: false;
+    in-out property <bool> visible: false;
+    in-out property <string> titre: "Tous les clips";
+    in-out property <bool> tous: true;
+    in-out property <int> total;
+    in-out property <[LigneClip]> clips;
+    in-out property <[JeuClips]> jeux;
+    in-out property <bool> stockage-lu: false;
+    in-out property <string> espace;
+    in-out property <float> part;
+    in-out property <bool> depasse: false;
+    in-out property <bool> presque: false;
+    in-out property <string> alerte;
+    in-out property <string> liberer;
+    in-out property <string> vide-titre: "Aucun clip";
+    in-out property <string> vide-texte;
+    in-out property <bool> vide-reglages: false;
+    in-out property <[TravailClip]> travaux;
+    in-out property <string> erreur;
+    in-out property <bool> envoi-disponible: false;
+    in-out property <bool> modifier-disponible: false;
+    in-out property <length> decalage;
+    in-out property <bool> envoi-ouvert: false;
+    in-out property <string> envoi-clip;
+    in-out property <bool> envoi-refus: false;
+    in-out property <string> envoi-alerte-titre;
+    in-out property <string> envoi-alerte;
+    in-out property <string> envoi-note;
+    in-out property <string> envoi-filtre;
+    in-out property <[DestinationClip]> destinations;
+    in-out property <bool> destination-choisie: false;
+    in-out property <string> envoi-erreur;
+    in-out property <string> envoi-action: "Envoyer";
+    callback ouvrir();
+    callback fermer();
+    callback filtrer(string);
+    callback lire(string);
+    callback ouvrir-dossier();
+    callback reglages();
+    callback renommer(string);
+    callback supprimer(string);
+    callback liberer-espace();
+    callback envoyer(string);
+    callback modifier(string);
+    callback annuler-travail(int);
+    callback filtrer-destinations(string);
+    callback choisir-destination(string);
+    callback confirmer-envoi();
+    callback fermer-envoi();
+}
+
+component Note inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Barre inherits Rectangle {
+    in property <float> part;
+    in property <brush> couleur: Theme.rose-fonce;
+    height: 6px;
+    border-radius: 3px;
+    background: Theme.papier-2;
+    Rectangle {
+        x: 0;
+        width: parent.width * max(0, min(1, root.part));
+        height: parent.height;
+        border-radius: parent.border-radius;
+        background: root.couleur;
+    }
+}
+
+component Stockage inherits VerticalLayout {
+    spacing: Espace.e1;
+    HorizontalLayout {
+        Note {
+            text: "Espace utilisé";
+            horizontal-stretch: 1;
+        }
+        Note {
+            text: DonneesClips.espace;
+            font-family: Typo.mono;
+            wrap: no-wrap;
+        }
+    }
+    Barre {
+        part: DonneesClips.part;
+        couleur: DonneesClips.depasse ? Theme.danger : DonneesClips.presque ? Theme.attention : Theme.rose-fonce;
+    }
+}
+
+component EntreeNav {
+    in property <string> icone;
+    in property <string> libelle;
+    in property <string> compte;
+    in property <bool> actif: false;
+    callback clique();
+    height: 34px;
+    accessible-role: button;
+    accessible-label: libelle;
+    accessible-action-default => {
+        root.clique();
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.actif ? Theme.rose : zone.has-hover ? Theme.papier-2 : transparent;
+    }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        spacing: Espace.e2;
+        alignment: stretch;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                taille: 16px;
+                couleur: root.actif ? Theme.encre : Theme.gris;
+            }
+        }
+        Text {
+            text: root.libelle;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: root.compte;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+    }
+    zone := TouchArea {
+        enabled: Calques.ouverts <= 1;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+component Navigation inherits VerticalLayout {
+    width: 210px;
+    spacing: 2px;
+    alignment: start;
+    EntreeNav {
+        icone: "clap";
+        libelle: "Tous les clips";
+        compte: DonneesClips.total > 0 ? DonneesClips.total : "";
+        actif: DonneesClips.tous;
+        clique => {
+            DonneesClips.filtrer("");
+        }
+    }
+    if DonneesClips.jeux.length > 1: Text {
+        text: "JEUX";
+        color: Theme.gris;
+        font-family: Typo.mono;
+        font-size: 10.5px;
+        font-weight: Typo.moyen;
+        letter-spacing: 0.8px;
+    }
+    if DonneesClips.jeux.length > 1: VerticalLayout {
+        spacing: 2px;
+        for j in DonneesClips.jeux: EntreeNav {
+            icone: "cible";
+            libelle: j.jeu;
+            compte: j.nombre;
+            actif: j.choisi;
+            clique => {
+                DonneesClips.filtrer(j.jeu);
+            }
+        }
+    }
+    Rectangle {
+        height: Espace.e3;
+    }
+    if DonneesClips.stockage-lu: Stockage { }
+    Rectangle {
+        height: Espace.e2;
+    }
+    EntreeNav {
+        icone: "external";
+        libelle: "Ouvrir le dossier";
+        clique => {
+            DonneesClips.ouvrir-dossier();
+        }
+    }
+    EntreeNav {
+        icone: "reglages";
+        libelle: "Réglages de l'instant replay";
+        clique => {
+            DonneesClips.reglages();
+        }
+    }
+}
+
+component CarteClip inherits Rectangle {
+    in property <LigneClip> ligne;
+    border-radius: Rayon.l;
+    background: Theme.papier;
+    border-width: 1px;
+    border-color: Theme.trait;
+    height: disposition.preferred-height;
+    disposition := HorizontalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e3;
+        vignette := Rectangle {
+            width: 160px;
+            height: 90px;
+            border-radius: Rayon.s;
+            background: Theme.papier-2;
+            accessible-role: button;
+            accessible-label: "Lire " + root.ligne.nom;
+            accessible-action-default => {
+                DonneesClips.lire(root.ligne.chemin);
+            }
+            if !root.ligne.a-vignette: Icone {
+                nom: "film";
+                taille: 28px;
+                couleur: Theme.gris;
+            }
+            if root.ligne.a-vignette: Image {
+                width: 100%;
+                height: 100%;
+                source: root.ligne.vignette;
+                image-fit: cover;
+            }
+            Coins {
+                width: 100%;
+                height: 100%;
+                rayon: Rayon.s;
+                couleur: Theme.papier;
+            }
+            if lecture.has-hover: Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 20px;
+                background: #00000088;
+                Icone {
+                    nom: "lecture";
+                    taille: 20px;
+                    couleur: #ffffff;
+                }
+            }
+            if root.ligne.duree != "": Rectangle {
+                x: parent.width - self.width - 6px;
+                y: parent.height - self.height - 6px;
+                width: duree.preferred-width + 10px;
+                height: 18px;
+                border-radius: 4px;
+                background: #000000b3;
+                duree := Text {
+                    text: root.ligne.duree;
+                    color: #ffffff;
+                    font-family: Typo.mono;
+                    font-size: 11px;
+                }
+            }
+            lecture := TouchArea {
+                enabled: Calques.ouverts <= 1;
+                mouse-cursor: pointer;
+                clicked => {
+                    DonneesClips.lire(root.ligne.chemin);
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 2px;
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.ligne.nom;
+                color: Theme.encre;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            if root.ligne.origine != "": Note {
+                text: "Montage d'après " + root.ligne.origine;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+            Note {
+                text: root.ligne.infos;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+            Note {
+                text: root.ligne.details;
+                overflow: elide;
+                wrap: no-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                spacing: Espace.e1;
+                if DonneesClips.envoi-disponible: Bouton {
+                    texte: "Envoyer";
+                    icone: "envoi";
+                    calque: 1;
+                    clique => {
+                        DonneesClips.envoyer(root.ligne.chemin);
+                    }
+                }
+                if DonneesClips.modifier-disponible: Bouton {
+                    icone: "ciseaux";
+                    description: "Modifier " + root.ligne.nom;
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesClips.modifier(root.ligne.chemin);
+                    }
+                }
+                Bouton {
+                    icone: "crayon";
+                    description: "Renommer " + root.ligne.nom;
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesClips.renommer(root.ligne.chemin);
+                    }
+                }
+                Bouton {
+                    icone: "corbeille";
+                    description: "Supprimer " + root.ligne.nom;
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesClips.supprimer(root.ligne.chemin);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Bandeau inherits Rectangle {
+    in property <string> icone;
+    in property <bool> danger: false;
+    border-radius: Rayon.m;
+    background: root.danger ? Theme.danger-fond : Theme.papier-2;
+    height: disposition.preferred-height;
+    disposition := HorizontalLayout {
+        padding: Espace.e3;
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                taille: 18px;
+                couleur: root.danger ? Theme.danger : Theme.encre-2;
+            }
+        }
+        @children
+    }
+}
+
+component Contenu inherits VerticalLayout {
+    spacing: Espace.e3;
+    horizontal-stretch: 1;
+    HorizontalLayout {
+        spacing: Espace.e2;
+        Text {
+            text: DonneesClips.titre;
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: Typo.titre-section;
+            font-weight: Typo.gras;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Bouton {
+            texte: "Ouvrir le dossier";
+            icone: "external";
+            calque: 1;
+            clique => {
+                DonneesClips.ouvrir-dossier();
+            }
+        }
+    }
+    if DonneesClips.depasse || DonneesClips.presque: Bandeau {
+        icone: "alerte";
+        danger: DonneesClips.depasse;
+        Note {
+            text: DonneesClips.alerte;
+            color: DonneesClips.depasse ? Theme.danger : Theme.encre;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        if DonneesClips.liberer != "": VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: DonneesClips.liberer;
+                variante: DonneesClips.depasse ? VarianteBouton.danger : VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesClips.liberer-espace();
+                }
+            }
+        }
+    }
+    for t in DonneesClips.travaux: Bandeau {
+        icone: "envoie";
+        VerticalLayout {
+            spacing: Espace.e1;
+            alignment: center;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                Note {
+                    text: t.libelle;
+                    color: Theme.encre;
+                    horizontal-stretch: 1;
+                }
+                if t.a-progression: Note {
+                    text: Math.round(t.progression * 100) + " %";
+                    font-family: Typo.mono;
+                    wrap: no-wrap;
+                }
+            }
+            if t.a-progression: Barre {
+                part: t.progression;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Annuler";
+                variante: VarianteBouton.fantome;
+                calque: 1;
+                clique => {
+                    DonneesClips.annuler-travail(t.id);
+                }
+            }
+        }
+    }
+    if DonneesClips.erreur != "": Note {
+        text: DonneesClips.erreur;
+        color: Theme.danger;
+    }
+    if DonneesClips.modifier-disponible: MontagesGalerie { }
+    if DonneesClips.clips.length > 0: Defilement {
+        decalage <=> DonneesClips.decalage;
+        min-height: 240px;
+        preferred-height: 520px;
+        vertical-stretch: 1;
+        hauteur-contenu: liste.preferred-height;
+        liste := VerticalLayout {
+            alignment: start;
+            spacing: Espace.e2;
+            padding-right: Espace.e3;
+            for c in DonneesClips.clips: CarteClip {
+                ligne: c;
+            }
+        }
+    }
+    if DonneesClips.clips.length == 0: Vide {
+        icone: "clap";
+        titre: DonneesClips.vide-titre;
+        texte: DonneesClips.vide-texte;
+        min-height: 240px;
+        if DonneesClips.vide-reglages: HorizontalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Ouvrir les réglages";
+                calque: 1;
+                clique => {
+                    DonneesClips.reglages();
+                }
+            }
+        }
+    }
+}
+
+export component FenetreClips inherits Modal {
+    titre: "Clips";
+    ouvert: DonneesClips.ouvert;
+    largeur: 980px;
+    ferme => {
+        DonneesClips.fermer();
+    }
+    if DonneesClips.ouvert: HorizontalLayout {
+        spacing: Espace.e5;
+        min-height: 360px;
+        preferred-height: 620px;
+        Navigation { }
+        Contenu { }
+    }
+}
+
+export component FenetreEnvoiClip inherits Modal {
+    titre: "Envoyer dans un salon";
+    ouvert: DonneesClips.envoi-ouvert;
+    largeur: 480px;
+    ferme => {
+        DonneesClips.fermer-envoi();
+    }
+    if DonneesClips.envoi-ouvert: VerticalLayout {
+        spacing: Espace.e3;
+        Note {
+            text: DonneesClips.envoi-clip;
+            color: Theme.encre;
+            overflow: elide;
+            wrap: no-wrap;
+        }
+        if DonneesClips.envoi-alerte-titre != "": Bandeau {
+            icone: "alerte";
+            danger: DonneesClips.envoi-refus;
+            VerticalLayout {
+                spacing: 2px;
+                horizontal-stretch: 1;
+                Text {
+                    text: DonneesClips.envoi-alerte-titre;
+                    color: DonneesClips.envoi-refus ? Theme.danger : Theme.encre;
+                    font-size: Typo.petit;
+                    font-weight: Typo.gras;
+                    wrap: word-wrap;
+                }
+                Note {
+                    text: DonneesClips.envoi-alerte;
+                }
+            }
+        }
+        if DonneesClips.envoi-note != "": Note {
+            text: DonneesClips.envoi-note;
+        }
+        if !DonneesClips.envoi-refus: Champ {
+            etiquette: "Salon ou conversation";
+            indice: "Chercher…";
+            valeur: DonneesClips.envoi-filtre;
+            calque: 2;
+            modifie(texte) => {
+                DonneesClips.filtrer-destinations(texte);
+            }
+        }
+        if !DonneesClips.envoi-refus: Defilement {
+            min-height: 120px;
+            preferred-height: 240px;
+            hauteur-contenu: destinations.preferred-height;
+            destinations := VerticalLayout {
+                alignment: start;
+                spacing: 2px;
+                if DonneesClips.destinations.length == 0: Note {
+                    text: "Aucun salon où tu peux joindre un fichier.";
+                }
+                for d in DonneesClips.destinations: Rectangle {
+                    height: 36px;
+                    border-radius: Rayon.s;
+                    background: d.choisie ? Theme.rose : zone.has-hover ? Theme.papier-2 : transparent;
+                    accessible-role: radio-button;
+                    accessible-checked: d.choisie;
+                    accessible-label: d.nom + ", " + d.ou;
+                    accessible-action-default => {
+                        DonneesClips.choisir-destination(d.cle);
+                    }
+                    HorizontalLayout {
+                        padding-left: Espace.e3;
+                        padding-right: Espace.e3;
+                        spacing: Espace.e3;
+                        Text {
+                            text: d.nom;
+                            color: Theme.encre;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: d.ou;
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    zone := TouchArea {
+                        enabled: Calques.ouverts <= 2;
+                        clicked => {
+                            DonneesClips.choisir-destination(d.cle);
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesClips.envoi-erreur != "": Note {
+            text: DonneesClips.envoi-erreur;
+            color: Theme.danger;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: DonneesClips.envoi-refus ? "Fermer" : "Annuler";
+                calque: 2;
+                clique => {
+                    DonneesClips.fermer-envoi();
+                }
+            }
+            if !DonneesClips.envoi-refus: Bouton {
+                texte: DonneesClips.envoi-action;
+                icone: "envoi";
+                variante: VarianteBouton.primaire;
+                actif: DonneesClips.destination-choisie;
+                calque: 2;
+                clique => {
+                    DonneesClips.confirmer-envoi();
+                }
+            }
+        }
+    }
+}

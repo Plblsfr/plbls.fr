@@ -1,12 +1,15 @@
 use super::sur_le_bureau;
 use crate::coquille::{ObservateurSession, SourcePont};
+use crate::overlay::messages::{cle_avatar, toast_de, EffetMessages, ServiceOverlayMessages};
+use crate::overlay::voix::AvatarOverlay;
 use crate::session::Memoire;
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::notifications::{
     decider, effet_de_l_action, ContexteNotification, EffetNotification, NotificationAffichee,
 };
 use estompe_client::store::messages::Brouillon;
-use estompe_client::store::{Changement, CleConversation, Store};
+use estompe_client::store::{Changement, CleConversation, Presence, Store};
+use estompe_client::temps_reel::evenements::NotificationServeur;
 use estompe_plateforme::{ActionNotification, Notifications};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +25,7 @@ pub struct OptionsNotifieur {
     pub source: SourcePont,
     pub runtime: tokio::runtime::Handle,
     pub journal: Option<Arc<Journal>>,
+    pub overlay: Option<Arc<ServiceOverlayMessages>>,
 }
 
 pub struct Notifieur {
@@ -53,7 +57,84 @@ impl Notifieur {
                     notifieur.agir(&etiquette, action);
                 }
             }));
+        if let Some(overlay) = &notifieur.options.overlay {
+            let faible: Weak<Self> = Arc::downgrade(&notifieur);
+            overlay.definir_effets(Arc::new(move |effet| {
+                if let Some(notifieur) = faible.upgrade() {
+                    notifieur.effet_de_l_overlay(effet);
+                }
+            }));
+        }
         notifieur
+    }
+
+    fn vers_l_overlay(&self, store: &Store, notification: &NotificationServeur) {
+        let Some(overlay) = &self.options.overlay else {
+            return;
+        };
+        let ne_pas_deranger =
+            store.lire(|etat| etat.presence_de(etat.moi()) == Presence::NePasDeranger);
+        if !overlay.voulu(notification, ne_pas_deranger) {
+            return;
+        }
+        let Some(toast) = toast_de(notification) else {
+            return;
+        };
+        let cle = toast
+            .auteur
+            .as_deref()
+            .and_then(|auteur| store.lire(|etat| cle_avatar(etat, auteur)));
+        let profils = (self.options.source)().map(|pont| pont.profils().clone());
+        let avatar = match (&cle, &profils) {
+            (Some(cle), Some(profils)) => profils.avatar(cle).map(|image| AvatarOverlay {
+                cle: cle.clone(),
+                image,
+            }),
+            _ => None,
+        };
+        let id = toast.id.clone();
+        let manque = avatar.is_none();
+        overlay.recevoir(toast, avatar);
+        if let (true, Some(cle), Some(profils)) = (manque, cle, profils) {
+            let overlay = overlay.clone();
+            self.options.runtime.spawn(async move {
+                if let Some(image) = profils.charger_avatar(cle.clone()).await {
+                    overlay.definir_avatar(&id, AvatarOverlay { cle, image });
+                }
+            });
+        }
+    }
+
+    fn effet_de_l_overlay(&self, effet: EffetMessages) {
+        match effet {
+            EffetMessages::Envoyer(reponse) => {
+                self.executer(
+                    EffetNotification::Envoyer {
+                        conversation: reponse.conversation.clone(),
+                        texte: reponse.texte,
+                    },
+                    None,
+                    None,
+                );
+                self.executer(EffetNotification::Lire(reponse.conversation), None, None);
+            }
+            EffetMessages::Ouvrir(toast) => {
+                let notification = NotificationAffichee {
+                    titre: toast.titre,
+                    corps: toast.corps,
+                    etiquette: String::new(),
+                    cible: toast.cible,
+                    genre: None,
+                    conversation: Some(toast.conversation),
+                    message: Some(toast.id),
+                    actions: true,
+                    silencieuse: true,
+                };
+                if let Some(effet) = effet_de_l_action(&ActionNotification::Ouvrir, &notification) {
+                    self.executer(effet, notification.conversation.clone(), None);
+                }
+            }
+        }
     }
 
     fn noter(&self, niveau: Niveau, message: &str) {
@@ -140,11 +221,24 @@ impl Notifieur {
         let Some(effet) = effet_de_l_action(&action, &notification) else {
             return;
         };
+        self.executer(effet, notification.conversation.clone(), Some(etiquette));
+    }
+
+    fn executer(
+        &self,
+        effet: EffetNotification,
+        conversation: Option<CleConversation>,
+        etiquette: Option<&str>,
+    ) {
+        let retirer = |etiquette: Option<&str>| {
+            if let Some(etiquette) = etiquette {
+                let _ = self.options.systeme.retirer(etiquette);
+            }
+        };
         let source = self.options.source.clone();
         let runtime = self.options.runtime.clone();
         match effet {
             EffetNotification::Naviguer { route, message } => {
-                let conversation = notification.conversation.clone();
                 sur_le_bureau(move |bureau| {
                     bureau.ramener_fenetre();
                     let (Some(pont), Some(f)) = (source(), bureau.fenetre()) else {
@@ -160,7 +254,7 @@ impl Notifieur {
                 });
             }
             EffetNotification::Lire(cle) => {
-                let _ = self.options.systeme.retirer(etiquette);
+                retirer(etiquette);
                 if let Some(pont) = source() {
                     let store = pont.store().clone();
                     runtime.spawn(async move { store.lire_conversation(&cle).await });
@@ -170,7 +264,7 @@ impl Notifieur {
                 conversation,
                 texte,
             } => {
-                let _ = self.options.systeme.retirer(etiquette);
+                retirer(etiquette);
                 if let Some(pont) = source() {
                     let store = pont.store().clone();
                     runtime.spawn(async move {
@@ -191,6 +285,7 @@ impl ObservateurSession for Notifieur {
         for changement in lot {
             if let Changement::Notification(notification) = changement {
                 self.recevoir(store, notification);
+                self.vers_l_overlay(store, notification);
             }
         }
         self.pastille(store.lire(|etat| etat.total_mentions()));

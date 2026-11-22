@@ -15,8 +15,8 @@ use crate::types::{
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
     MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
     PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
-    PostNotificationsReadRequete, PostVoiceCidTokenReponse, PutMeStatusRequete,
-    PutMessagesIdVoteRequete, Server, DM,
+    PostNotificationsReadRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
+    PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -227,6 +227,13 @@ impl Client {
             status: Some(statut),
         })?;
         self.envoyer(Method::PUT, "/me/status", &corps).await
+    }
+
+    pub async fn definir_activite(&self, nom: &str) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutMeActivityRequete {
+            name: Some(nom.to_string()),
+        })?;
+        self.envoyer(Method::PUT, "/me/activity", &corps).await
     }
 
     pub async fn reglages_notification(&self) -> Result<NotifySettings, ErreurApi> {
@@ -1296,6 +1303,7 @@ mod tests {
             .unwrap();
         client.lire_notifications(&["7".to_string()]).await.unwrap();
         client.definir_statut(StatutPresence::Dnd).await.unwrap();
+        client.definir_activite("Hades").await.unwrap();
         client
             .enregistrer_reglages_notification(&NotifySettings {
                 sound: Some(false),
@@ -1310,13 +1318,15 @@ mod tests {
                 ligne("/dms/d1/read", "POST"),
                 ligne("/notifications/read", "POST"),
                 ligne("/me/status", "PUT"),
+                ligne("/me/activity", "PUT"),
                 ligne("/me/notify-settings", "PUT"),
             ]
         );
         let requetes = serveur.requetes();
         assert_eq!(requetes[2].json(), json!({"message_ids": ["7"]}));
         assert_eq!(requetes[3].json(), json!({"status": "dnd"}));
-        assert_eq!(requetes[4].json(), json!({"sound": false}));
+        assert_eq!(requetes[4].json(), json!({"name": "Hades"}));
+        assert_eq!(requetes[5].json(), json!({"sound": false}));
         serveur.programmer([Reponse::json(
             200,
             json!({"u1": "idle", "u2": "dnd", "u3": "invisible"}),

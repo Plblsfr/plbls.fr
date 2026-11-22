@@ -8,6 +8,10 @@ use serde_json::{Map, Value};
 
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
+use crate::jeux::ReglagesJeux;
+use crate::overlay::ReglagesOverlay;
+use crate::overlay_messages::ReglagesMessages;
+use crate::replay::types::ReglagesReplay;
 use crate::vocal::{
     Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
 };
@@ -30,6 +34,17 @@ pub enum Densite {
     #[default]
     Confortable,
     Compacte,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageTouche {
+    Parler,
+    Messages,
+    Replay,
+}
+
+impl UsageTouche {
+    pub const PRIORITE: [UsageTouche; 3] = [Self::Parler, Self::Messages, Self::Replay];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +84,10 @@ pub struct Preferences {
     pub qualite_partage: QualiteRecue,
     pub partage: ReglagesPartage,
     pub incrustation: ReglagesIncrustation,
+    pub jeux: ReglagesJeux,
+    pub overlay: ReglagesOverlay,
+    pub overlay_messages: ReglagesMessages,
+    pub replay: ReglagesReplay,
 }
 
 impl Default for Preferences {
@@ -101,6 +120,10 @@ impl Default for Preferences {
             qualite_partage: QualiteRecue::default(),
             partage: ReglagesPartage::default(),
             incrustation: ReglagesIncrustation::default(),
+            jeux: ReglagesJeux::default(),
+            overlay: ReglagesOverlay::default(),
+            overlay_messages: ReglagesMessages::default(),
+            replay: ReglagesReplay::default(),
         }
     }
 }
@@ -188,6 +211,10 @@ impl Preferences {
             qualite_partage: champ(&objet, "qualite_partage", d.qualite_partage),
             partage: champ(&objet, "partage", d.partage).borne(),
             incrustation: champ(&objet, "incrustation", d.incrustation).borne(),
+            jeux: champ(&objet, "jeux", d.jeux).borne(),
+            overlay: champ(&objet, "overlay", d.overlay).borne(),
+            overlay_messages: champ(&objet, "overlay_messages", d.overlay_messages).borne(),
+            replay: champ(&objet, "replay", d.replay).borne(),
         })
     }
 
@@ -221,6 +248,34 @@ impl Preferences {
         }
     }
 
+    pub fn touches_de(&self, usage: UsageTouche) -> Vec<String> {
+        match usage {
+            UsageTouche::Parler if self.ptt.actif => vec![self.ptt.touche.clone()],
+            UsageTouche::Messages if self.overlay_messages.actif() => vec![
+                self.overlay_messages.touche_reponse.clone(),
+                self.overlay_messages.touche_ouvrir.clone(),
+            ],
+            UsageTouche::Replay if self.replay.actif => vec![self.replay.touche.clone()],
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn touches_des_autres(&self, usage: UsageTouche) -> Vec<String> {
+        UsageTouche::PRIORITE
+            .into_iter()
+            .filter(|u| *u != usage)
+            .flat_map(|u| self.touches_de(u))
+            .collect()
+    }
+
+    pub fn touches_prioritaires(&self, usage: UsageTouche) -> Vec<String> {
+        UsageTouche::PRIORITE
+            .into_iter()
+            .take_while(|u| *u != usage)
+            .flat_map(|u| self.touches_de(u))
+            .collect()
+    }
+
     pub fn enregistrer(&self, dossier: &Path) -> io::Result<()> {
         fs::create_dir_all(dossier)?;
         let mut octets = serde_json::to_vec_pretty(self)?;
@@ -247,6 +302,35 @@ pub fn ecrire_atomiquement(chemin: &Path, octets: &[u8]) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chaque_touche_globale_a_un_seul_usage_par_ordre_de_priorite() {
+        let mut p = Preferences::default();
+        p.ptt.actif = true;
+        p.ptt.touche = "KeyV".into();
+        p.replay.actif = true;
+        p.replay.touche = "F10".into();
+        assert_eq!(p.touches_des_autres(UsageTouche::Messages), ["KeyV", "F10"]);
+        assert_eq!(
+            p.touches_des_autres(UsageTouche::Replay),
+            ["KeyV", "F8", "F7"]
+        );
+        assert_eq!(
+            p.touches_des_autres(UsageTouche::Parler),
+            ["F8", "F7", "F10"]
+        );
+        assert!(p.touches_prioritaires(UsageTouche::Parler).is_empty());
+        assert_eq!(p.touches_prioritaires(UsageTouche::Messages), ["KeyV"]);
+        assert_eq!(
+            p.touches_prioritaires(UsageTouche::Replay),
+            ["KeyV", "F8", "F7"]
+        );
+        p.ptt.actif = false;
+        p.replay.actif = false;
+        p.overlay_messages.genres = crate::overlay_messages::GenresMessages::Aucun;
+        assert!(p.touches_des_autres(UsageTouche::Parler).is_empty());
+        assert!(p.touches_des_autres(UsageTouche::Replay).is_empty());
+    }
 
     fn fichiers(dossier: &Path) -> Vec<String> {
         let mut noms: Vec<String> = fs::read_dir(dossier)
@@ -389,6 +473,33 @@ mod tests {
                 ombre: false,
                 miroir: true,
             },
+            jeux: ReglagesJeux {
+                partager: true,
+                ajoutes: vec![r"D:\Jeux\jeu.exe".to_string()],
+                exclus: vec!["launcher.exe".to_string()],
+            },
+            overlay: ReglagesOverlay {
+                quand: crate::overlay::QuandOverlay::Toujours,
+                taille: crate::overlay::TailleOverlay::Grande,
+                coin: crate::overlay::CoinOverlay::BasDroite,
+                mode: crate::overlay::ModeOverlay::Parlent,
+                opacite: 60,
+            },
+            overlay_messages: ReglagesMessages {
+                genres: crate::overlay_messages::GenresMessages::Mentions,
+                duree: 15,
+                masquer_contenu: true,
+                touche_reponse: "F9".to_string(),
+                ..ReglagesMessages::default()
+            },
+            replay: ReglagesReplay {
+                actif: true,
+                duree_s: 120,
+                micro: true,
+                touche: "F11".to_string(),
+                dossier: Some(racine.path().join("clips").to_string_lossy().into_owned()),
+                ..ReglagesReplay::default()
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -402,6 +513,59 @@ mod tests {
         assert_eq!(
             Preferences::charger(&dossier).preferences,
             Preferences::default()
+        );
+    }
+
+    #[test]
+    fn les_listes_de_jeux_relues_sont_nettoyees() {
+        let lu = Preferences::depuis_json(
+            r#"{"jeux": {"partager": true, "ajoutes": ["a.exe", "A.EXE", " "], "exclus": ["C:\\x\\b.exe", "b.exe"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            lu.jeux,
+            ReglagesJeux {
+                partager: true,
+                ajoutes: vec!["a.exe".to_string()],
+                exclus: vec!["b.exe".to_string()],
+            }
+        );
+        let invalide = Preferences::depuis_json(r#"{"jeux": {"ajoutes": "x"}}"#).unwrap();
+        assert_eq!(invalide.jeux, ReglagesJeux::default());
+    }
+
+    #[test]
+    fn les_reglages_du_replay_relus_sont_bornes() {
+        let lu = Preferences::depuis_json(
+            r#"{"replay": {"actif": true, "duree_s": 9999, "ips": 75, "touche": "?"}}"#,
+        )
+        .unwrap();
+        assert!(lu.replay.actif);
+        assert_eq!(
+            (lu.replay.duree_s, lu.replay.ips, lu.replay.touche.as_str()),
+            (300, 60, "F10")
+        );
+        let invalide = Preferences::depuis_json(r#"{"replay": {"ips": "x"}}"#).unwrap();
+        assert_eq!(invalide.replay, ReglagesReplay::default());
+    }
+
+    #[test]
+    fn les_reglages_de_l_overlay_relus_sont_bornes() {
+        let lu = Preferences::depuis_json(r#"{"overlay": {"coin": "tr", "opacite": 3}}"#).unwrap();
+        assert_eq!(lu.overlay.coin, crate::overlay::CoinOverlay::HautDroite);
+        assert_eq!(lu.overlay.opacite, crate::overlay::OPACITE_MIN);
+        let invalide = Preferences::depuis_json(r#"{"overlay": {"coin": "zz"}}"#).unwrap();
+        assert_eq!(invalide.overlay, ReglagesOverlay::default());
+        let messages = Preferences::depuis_json(
+            r#"{"overlay_messages": {"duree": 1, "touche_reponse": "?"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            messages.overlay_messages,
+            ReglagesMessages {
+                duree: crate::overlay_messages::DUREE_MIN,
+                ..ReglagesMessages::default()
+            }
         );
     }
 

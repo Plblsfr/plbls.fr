@@ -1,5 +1,7 @@
 mod commun;
 
+use commun::references::{comparer, controler, VARIABLE};
+
 use chrono::NaiveDate;
 use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
@@ -33,15 +35,11 @@ use estompe_natif::{
 use estompe_plateforme::{Image, SourceCapture, TypeSource};
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 const LARGEUR: u32 = 1180;
 const HAUTEUR: u32 = 900;
-const ECART_PAR_CANAL: u8 = 24;
-const PART_TOLEREE: f64 = 0.001;
-const VARIABLE: &str = "ESTOMPE_CAPTURES";
 
 struct Ecran {
     nom: &'static str,
@@ -62,6 +60,24 @@ const ECRANS: &[Ecran] = ecrans![
     "modal-sombre", Sombre, modal;
     "a-propos-clair", Clair, a_propos;
     "a-propos-sombre", Sombre, a_propos;
+    "jeux-overlay-clair", Clair, jeux_overlay;
+    "jeux-overlay-sombre", Sombre, jeux_overlay;
+    "jeux-replay-clair", Clair, jeux_replay;
+    "jeux-replay-sombre", Sombre, jeux_replay;
+    "jeux-replay-indisponible-clair", Clair, jeux_replay_indisponible;
+    "jeux-replay-stockage-clair", Clair, jeux_replay_stockage;
+    "mesures-vide-clair", Clair, mesures_vide;
+    "mesures-scenario-clair", Clair, mesures_scenario;
+    "mesures-scenario-sombre", Sombre, mesures_scenario;
+    "clips-vide-clair", Clair, clips_vide;
+    "clips-remplie-clair", Clair, clips_remplie;
+    "clips-remplie-sombre", Sombre, clips_remplie;
+    "clips-quota-clair", Clair, clips_quota;
+    "clips-envoi-clair", Clair, clips_envoi;
+    "clips-montages-clair", Clair, clips_montages;
+    "editeur-clair", Clair, editeur;
+    "editeur-sombre", Sombre, editeur;
+    "editeur-export-clair", Clair, editeur_export;
     "demarrage-clair", Clair, demarrage;
     "connexion-clair", Clair, connexion;
     "connexion-sombre", Sombre, connexion;
@@ -241,6 +257,24 @@ fn modal(f: &Principale) {
 fn a_propos(f: &Principale) {
     coquille_accueil(f);
     f.set_a_propos_ouvert(true);
+}
+
+fn jeux_overlay(f: &Principale) {
+    coquille_accueil(f);
+    let j = f.global::<estompe_natif::DonneesJeux>();
+    j.set_disponible(true);
+    j.set_jeu_en_cours("Counter-Strike 2".into());
+    let o = f.global::<estompe_natif::DonneesOverlay>();
+    o.set_disponible(true);
+    o.set_actif(true);
+    o.set_en_jeu(true);
+    o.set_coin("tr".into());
+    o.set_taille(1);
+    o.set_parlent(false);
+    o.set_opacite(80);
+    f.global::<estompe_natif::DonneesReplay>()
+        .set_resume("Désactivé.".into());
+    j.set_ouvert(true);
 }
 
 fn demarrage(f: &Principale) {
@@ -1842,6 +1876,54 @@ fn remettre_a_zero(f: &Principale) {
     f.set_infobulle_forcee(false);
     f.set_modal_demo_ouvert(false);
     f.set_a_propos_ouvert(false);
+    let jeux = f.global::<estompe_natif::DonneesJeux>();
+    jeux.set_ouvert(false);
+    jeux.set_disponible(false);
+    jeux.set_jeu_en_cours("".into());
+    f.global::<estompe_natif::DonneesOverlay>()
+        .set_disponible(false);
+    let replay = f.global::<estompe_natif::DonneesReplay>();
+    replay.set_ouvert(false);
+    replay.set_materiel_lu(false);
+    replay.set_disponible(false);
+    replay.set_actif(false);
+    replay.set_tourne(false);
+    replay.set_decalage(0.0);
+    replay.set_plafond("".into());
+    let clips = f.global::<estompe_natif::DonneesClips>();
+    clips.set_ouvert(false);
+    clips.set_envoi_ouvert(false);
+    clips.set_visible(false);
+    clips.set_envoi_disponible(false);
+    clips.set_stockage_lu(false);
+    clips.set_presque(false);
+    clips.set_depasse(false);
+    clips.set_alerte("".into());
+    clips.set_vide_reglages(false);
+    clips.set_clips(slint::ModelRc::default());
+    clips.set_jeux(slint::ModelRc::default());
+    clips.set_travaux(slint::ModelRc::default());
+    clips.set_decalage(0.0);
+    clips.set_modifier_disponible(false);
+    let editeur = f.global::<estompe_natif::DonneesEditeur>();
+    editeur.set_ouvert(false);
+    editeur.set_pret(false);
+    editeur.set_export_ouvert(false);
+    editeur.set_export_en_cours(false);
+    editeur.set_choix_clip(false);
+    editeur.set_message("".into());
+    editeur.set_projets(slint::ModelRc::default());
+    let mesures = f.global::<estompe_natif::DonneesMesures>();
+    mesures.set_ouvert(false);
+    mesures.set_disponible(true);
+    mesures.set_en_session(false);
+    mesures.set_peut_exporter(false);
+    mesures.set_scenarios(slint::ModelRc::default());
+    mesures.set_scenario_en_cours("".into());
+    mesures.set_aide_en_cours("".into());
+    mesures.set_reste(0);
+    mesures.set_message("".into());
+    mesures.set_erreur("".into());
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
@@ -1853,14 +1935,6 @@ fn remettre_a_zero(f: &Principale) {
     f.global::<estompe_natif::DonneesVocal>()
         .set_reglages_ouverts(false);
     mise_a_jour::afficher(f, &EtatMaj::default());
-}
-
-fn references() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/references")
-}
-
-fn sorties() -> PathBuf {
-    Path::new(env!("CARGO_TARGET_TMPDIR")).join("captures")
 }
 
 fn rendre(f: &Principale, ecran: &Ecran) -> image::RgbaImage {
@@ -1875,33 +1949,6 @@ fn rendre(f: &Principale, ecran: &Ecran) -> image::RgbaImage {
         capture.as_bytes().to_vec(),
     )
     .expect("tampon de la capture")
-}
-
-fn comparer(obtenu: &image::RgbaImage, reference: &image::RgbaImage) -> (f64, image::RgbaImage) {
-    let mut difference = image::RgbaImage::new(obtenu.width(), obtenu.height());
-    if obtenu.dimensions() != reference.dimensions() {
-        return (1.0, difference);
-    }
-    let mut ecarts = 0u64;
-    for ((o, r), d) in obtenu
-        .pixels()
-        .zip(reference.pixels())
-        .zip(difference.pixels_mut())
-    {
-        let ecart =
-            o.0.iter()
-                .zip(r.0)
-                .any(|(a, b)| a.abs_diff(b) > ECART_PAR_CANAL);
-        let gris = ((o.0[0] as u32 + o.0[1] as u32 + o.0[2] as u32) / 3 / 4 + 190) as u8;
-        *d = if ecart {
-            ecarts += 1;
-            image::Rgba([220, 0, 60, 255])
-        } else {
-            image::Rgba([gris, gris, gris, 255])
-        };
-    }
-    let total = u64::from(obtenu.width()) * u64::from(obtenu.height());
-    (ecarts as f64 / total as f64, difference)
 }
 
 #[test]
@@ -1929,41 +1976,8 @@ fn les_ecrans_correspondent_a_leurs_references() {
     let mut echecs = Vec::new();
     for ecran in ECRANS {
         let obtenu = rendre(&f, ecran);
-        let chemin = references().join(format!("{}.png", ecran.nom));
-        if regenerer {
-            std::fs::create_dir_all(references()).expect("dossier des références");
-            obtenu.save(&chemin).expect("écriture de la référence");
-            eprintln!("référence écrite : {}", chemin.display());
-            continue;
-        }
-        let Ok(reference) = image::open(&chemin).map(|i| i.into_rgba8()) else {
-            echecs.push(format!(
-                "{} : référence absente ({})",
-                ecran.nom,
-                chemin.display()
-            ));
-            continue;
-        };
-        let (part, difference) = comparer(&obtenu, &reference);
-        if part > PART_TOLEREE {
-            let dossier = sorties();
-            std::fs::create_dir_all(&dossier).expect("dossier des sorties");
-            obtenu
-                .save(dossier.join(format!("{}.obtenu.png", ecran.nom)))
-                .expect("écriture de la capture");
-            reference
-                .save(dossier.join(format!("{}.reference.png", ecran.nom)))
-                .expect("copie de la référence");
-            difference
-                .save(dossier.join(format!("{}.difference.png", ecran.nom)))
-                .expect("écriture de la différence");
-            echecs.push(format!(
-                "{} : {:.3} % de pixels différents (seuil {:.3} %), images dans {}",
-                ecran.nom,
-                part * 100.0,
-                PART_TOLEREE * 100.0,
-                dossier.display()
-            ));
+        if let Err(echec) = controler(ecran.nom, &obtenu, regenerer) {
+            echecs.push(echec);
         }
     }
     assert!(
@@ -2282,4 +2296,394 @@ fn selecteur_gifs_limite(f: &Principale) {
     });
     pont.messagerie().recevoir_gifs(f, sequence, Err(refus));
     stabiliser(f);
+}
+
+fn jeux_replay(f: &Principale) {
+    jeux_overlay(f);
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    let choix = |libelles: &[&str], choisi: usize, grises: &[usize]| {
+        slint::ModelRc::new(slint::VecModel::from(
+            libelles
+                .iter()
+                .enumerate()
+                .map(|(i, l)| estompe_natif::ChoixReplay {
+                    libelle: (*l).into(),
+                    disponible: !grises.contains(&i),
+                    choisi: i == choisi,
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    r.set_materiel_lu(true);
+    r.set_disponible(true);
+    r.set_actif(true);
+    r.set_tourne(true);
+    r.set_etat(
+        "Le tampon tourne sur Counter-Strike 2 : H.264, 1920 × 1080, 60 i/s. Encodeur : AMD AMF."
+            .into(),
+    );
+    r.set_resume(r.get_etat());
+    r.set_touche("F10".into());
+    r.set_resolutions(choix(
+        &["720p", "1080p", "1440p", "4K", "Native (celle du jeu)"],
+        1,
+        &[2, 3],
+    ));
+    r.set_cadences(choix(&["30", "60", "120", "144"], 1, &[2, 3]));
+    r.set_qualite(2);
+    r.set_duree_max(300);
+    r.set_duree(90);
+    r.set_codec(
+        "Codec utilisé : H.264, environ 12 Mbit/s ; mémoire du tampon : environ 200 Mo.".into(),
+    );
+    r.set_jeux("Jeux ajoutés à la main : 1 jeu, exclus : 0 jeu. Ils se règlent dans « Jeux et activité », pour la détection comme pour l'instant replay.".into());
+    r.set_dossier(r"C:\Users\alice\Videos\Estompe".into());
+    r.set_dossier_defaut(true);
+    r.set_quota(20);
+    r.set_ouvert(true);
+}
+
+fn jeux_replay_indisponible(f: &Principale) {
+    jeux_overlay(f);
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    r.set_materiel_lu(true);
+    r.set_disponible(false);
+    r.set_raison("instant replay disponible sous Windows uniquement".into());
+    r.set_etat("Désactivé.".into());
+    r.set_dossier("/home/alice/Vidéos/Estompe".into());
+    r.set_ouvert(true);
+}
+
+fn jeux_replay_stockage(f: &Principale) {
+    jeux_replay(f);
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    r.set_plafond(
+        "Durée plafonnée à 1 min 30 au lieu de 5 min : mémoire libre insuffisante (1.0 Go libres)."
+            .into(),
+    );
+    r.set_dossier_defaut(false);
+    r.set_dossier(r"D:\Clips".into());
+    r.set_decalage(-600.0);
+}
+
+fn vignette(teinte: u8) -> slint::Image {
+    let mut tampon = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(160, 90);
+    for (i, p) in tampon.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((i % 160) as u8, (i / 160) as u8);
+        *p = slint::Rgba8Pixel::new(teinte, x, y.saturating_mul(2), 255);
+    }
+    slint::Image::from_rgba8(tampon)
+}
+
+fn ligne_clip(
+    nom: &str,
+    infos: &str,
+    details: &str,
+    duree: &str,
+    teinte: Option<u8>,
+) -> estompe_natif::LigneClip {
+    estompe_natif::LigneClip {
+        chemin: format!("/home/alice/Vidéos/Estompe/{nom}.mp4").into(),
+        nom: nom.into(),
+        infos: infos.into(),
+        details: details.into(),
+        duree: duree.into(),
+        origine: "".into(),
+        a_vignette: teinte.is_some(),
+        vignette: teinte.map(vignette).unwrap_or_default(),
+    }
+}
+
+fn clips_vide(f: &Principale) {
+    coquille_accueil(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_visible(true);
+    c.set_stockage_lu(true);
+    c.set_espace("0 Ko sur 20 Go".into());
+    c.set_part(0.0);
+    c.set_vide_titre("Aucun clip".into());
+    c.set_vide_texte("L'instant replay est désactivé.".into());
+    c.set_vide_reglages(true);
+    c.set_ouvert(true);
+}
+
+fn clips_remplie(f: &Principale) {
+    coquille_accueil(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_visible(true);
+    c.set_envoi_disponible(true);
+    c.set_total(4);
+    c.set_stockage_lu(true);
+    c.set_espace("1,2 Go sur 20 Go".into());
+    c.set_part(0.06);
+    let mut montage = ligne_clip(
+        "Ace au B",
+        "Valorant · 9 mars 2026 à 20:00",
+        "62 Mo · 1080p · 60 i/s",
+        "0:45",
+        Some(200),
+    );
+    montage.origine = "Valorant 2026-03-07 09-05-02".into();
+    c.set_clips(slint::ModelRc::new(slint::VecModel::from(vec![
+        montage,
+        ligne_clip(
+            "Counter-Strike 2 2026-03-08 21-14-00",
+            "Counter-Strike 2 · 8 mars 2026 à 21:14",
+            "148 Mo · 1440p · 144 i/s · HEVC · piste micro",
+            "1:30",
+            Some(40),
+        ),
+        ligne_clip(
+            "Valorant 2026-03-07 09-05-02",
+            "Valorant · 7 mars 2026 à 09:05",
+            "96 Mo · 1080p · 60 i/s",
+            "1:00",
+            Some(120),
+        ),
+        ligne_clip(
+            "copie",
+            "Autres · 2 janvier 2026 à 08:00",
+            "12 Mo",
+            "",
+            None,
+        ),
+    ])));
+    c.set_jeux(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::JeuClips {
+            jeu: "Counter-Strike 2".into(),
+            nombre: 1,
+            choisi: false,
+        },
+        estompe_natif::JeuClips {
+            jeu: "Valorant".into(),
+            nombre: 2,
+            choisi: false,
+        },
+        estompe_natif::JeuClips {
+            jeu: "Autres".into(),
+            nombre: 1,
+            choisi: false,
+        },
+    ])));
+    c.set_ouvert(true);
+}
+
+fn clips_quota(f: &Principale) {
+    clips_remplie(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_espace("19 Go sur 20 Go".into());
+    c.set_part(0.93);
+    c.set_presque(true);
+    c.set_alerte("Quota presque atteint (93 %) : supprime d'anciens clips ou augmente le quota pour continuer à enregistrer.".into());
+    c.set_travaux(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::TravailClip {
+            id: 1,
+            libelle: "Conversion de « Counter-Strike 2 2026-03-08 21-14-00 »".into(),
+            progression: 0.42,
+            a_progression: true,
+        },
+    ])));
+}
+
+fn clips_montages(f: &Principale) {
+    clips_remplie(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_modifier_disponible(true);
+    f.global::<estompe_natif::DonneesEditeur>()
+        .set_projets(slint::ModelRc::new(slint::VecModel::from(vec![
+            estompe_natif::ProjetMontage {
+                id: "2026-03-09-20-00-00-1".into(),
+                nom: "Ace au B".into(),
+                infos: "0:45,00 · 2 clips · 9 mars 2026 à 20:00".into(),
+                manquants: "".into(),
+            },
+            estompe_natif::ProjetMontage {
+                id: "2026-03-08-21-30-00-1".into(),
+                nom: "Soirée du 8".into(),
+                infos: "1:12,50 · 1 clip · 8 mars 2026 à 21:30".into(),
+                manquants: "Clip introuvable : Counter-Strike 2 2026-03-08 21-14-00.mp4".into(),
+            },
+        ])));
+}
+
+fn image_apercu() -> slint::Image {
+    let (l, h) = (640u32, 360u32);
+    let mut tampon = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(l, h);
+    for (i, p) in tampon.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = (i as u32 % l, i as u32 / l);
+        let ciel = y < h * 3 / 5;
+        *p = if ciel {
+            slint::Rgba8Pixel::new(60 + (y / 4) as u8, 110 + (y / 5) as u8, 190, 255)
+        } else {
+            slint::Rgba8Pixel::new(70 + (x / 10) as u8, 120, 60, 255)
+        };
+    }
+    slint::Image::from_rgba8(tampon)
+}
+
+fn onde(graine: usize) -> String {
+    let pics: Vec<f32> = (0..200)
+        .map(|i| {
+            (((i * 37 + graine * 11) % 23) as f32 / 23.0)
+                * if (i / 40 + graine).is_multiple_of(3) {
+                    0.3
+                } else {
+                    1.0
+                }
+        })
+        .collect();
+    estompe_client::replay::montage::trace_onde(&pics, 14.0)
+}
+
+fn editeur(f: &Principale) {
+    coquille_accueil(f);
+    let d = f.global::<estompe_natif::DonneesEditeur>();
+    let choix = |liste: &[&str], choisi: usize| {
+        slint::ModelRc::new(slint::VecModel::from(
+            liste
+                .iter()
+                .enumerate()
+                .map(|(i, l)| estompe_natif::ChoixEditeur {
+                    libelle: (*l).into(),
+                    choisi: i == choisi,
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    let segment =
+        |debut: f32, largeur: f32, garde: bool, choisi: bool, libelle: &str, muet: bool| {
+            estompe_natif::SegmentEditeur {
+                debut,
+                largeur,
+                garde,
+                choisi,
+                libelle: libelle.into(),
+                clip: "Valorant 2026-03-07 09-05-02".into(),
+                muet,
+            }
+        };
+    d.set_nom("Ace au B".into());
+    d.set_duree("0:41,50".into());
+    d.set_temps("0:12,25".into());
+    d.set_segments(slint::ModelRc::new(slint::VecModel::from(vec![
+        segment(0.0, 0.25, true, false, "", false),
+        segment(0.25, 0.15, false, false, "", false),
+        segment(0.4, 0.35, true, true, "0,5×", false),
+        segment(0.75, 0.25, true, false, "", true),
+    ])));
+    d.set_tete(0.52);
+    d.set_entree(0.0);
+    d.set_sortie(1.0);
+    d.set_pistes(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::PisteEditeur {
+            nom: "Jeu".into(),
+            volume: 100.0,
+            muet: false,
+            onde: onde(1).into(),
+        },
+        estompe_natif::PisteEditeur {
+            nom: "Micro".into(),
+            volume: 65.0,
+            muet: true,
+            onde: onde(2).into(),
+        },
+    ])));
+    d.set_clip_choisi("Valorant 2026-03-07 09-05-02".into());
+    d.set_garde(true);
+    d.set_vitesses(choix(&["0,25×", "0,5×", "1×", "1,5×", "2×", "4×"], 1));
+    d.set_saccade(true);
+    d.set_peut_annuler(true);
+    d.set_rapports(choix(&["Libre", "16:9", "1:1", "9:16", "4:5"], 0));
+    d.set_peut_reculer(true);
+    d.set_peut_avancer(true);
+    d.set_image(image_apercu());
+    d.set_a_image(true);
+    d.set_pret(true);
+    d.set_ouvert(true);
+}
+
+fn editeur_export(f: &Principale) {
+    editeur(f);
+    let d = f.global::<estompe_natif::DonneesEditeur>();
+    let choix = |liste: &[&str], choisi: usize| {
+        slint::ModelRc::new(slint::VecModel::from(
+            liste
+                .iter()
+                .enumerate()
+                .map(|(i, l)| estompe_natif::ChoixEditeur {
+                    libelle: (*l).into(),
+                    choisi: i == choisi,
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    d.set_hauteurs(choix(&["Cadre (1920 × 1080)", "720p", "480p"], 0));
+    d.set_cadences(choix(&["60 i/s", "30 i/s"], 0));
+    d.set_export_format("1920 × 1080, 60 i/s, 0:41,50".into());
+    d.set_export_en_cours(true);
+    d.set_export_libelle("Export de « Soirée du 8 » (encodeur logiciel)".into());
+    d.set_export_progression(0.37);
+    d.set_export_ouvert(true);
+}
+
+fn clips_envoi(f: &Principale) {
+    clips_remplie(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_envoi_clip("Counter-Strike 2 2026-03-08 21-14-00 · 148 Mo".into());
+    c.set_envoi_alerte_titre("Clip plus gros que la limite d'envoi (100 Mo)".into());
+    c.set_envoi_alerte("Il peut être réencodé plus léger, en H.264, pour tenir dans la limite : la qualité de la copie envoyée baisse, le clip d'origine n'est pas modifié.".into());
+    c.set_envoi_action("Réencoder et envoyer".into());
+    c.set_destinations(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::DestinationClip {
+            cle: "c:c1".into(),
+            nom: "# general".into(),
+            ou: "Les copains".into(),
+            choisie: false,
+        },
+        estompe_natif::DestinationClip {
+            cle: "c:c4".into(),
+            nom: "# clips".into(),
+            ou: "Les copains".into(),
+            choisie: true,
+        },
+        estompe_natif::DestinationClip {
+            cle: "d:d1".into(),
+            nom: "Bob".into(),
+            ou: "Message privé".into(),
+            choisie: false,
+        },
+    ])));
+    c.set_destination_choisie(true);
+    c.set_envoi_ouvert(true);
+}
+
+fn mesures_vide(f: &Principale) {
+    let g = f.global::<estompe_natif::DonneesMesures>();
+    g.set_disponible(true);
+    g.set_peut_exporter(true);
+    g.set_message("Session terminée : exporte les mesures pour les partager.".into());
+    g.set_ouvert(true);
+}
+
+fn mesures_scenario(f: &Principale) {
+    let g = f.global::<estompe_natif::DonneesMesures>();
+    let ligne = |id: &str, titre: &str, fait: bool| estompe_natif::LigneScenario {
+        id: id.into(),
+        titre: titre.into(),
+        aide: "".into(),
+        fait,
+    };
+    g.set_disponible(true);
+    g.set_en_session(true);
+    g.set_scenarios(slint::ModelRc::new(slint::VecModel::from(vec![
+        ligne("repos", "Repos 5 min", true),
+        ligne("gros-salon", "Ouverture d'un gros salon", false),
+        ligne("jeu", "Partie de jeu avec overlays", false),
+    ])));
+    g.set_scenario_en_cours("Flux de messages".into());
+    g.set_aide_en_cours(
+        "Pendant 1 minute, laissez arriver des messages dans le salon ouvert.".into(),
+    );
+    g.set_reste(42);
+    g.set_ouvert(true);
 }
