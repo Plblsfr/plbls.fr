@@ -28,6 +28,7 @@ import { OverlayVoix, LigneOverlayVoix } from "overlay/voix.slint";
 import { OverlayMessages, LigneOverlayMessage } from "overlay/messages.slint";
 import { OverlayReplay, LigneOverlayReplay } from "overlay/replay.slint";
 import { FenetreReplay, DonneesReplay, ChoixReplay } from "replay/reglages.slint";
+import { FenetreMesures, DonneesMesures, LigneScenario } from "mesures/ecran.slint";
 import { FenetreClips, FenetreEnvoiClip, DonneesClips, LigneClip, JeuClips, TravailClip, DestinationClip } from "replay/galerie.slint";
 import { FenetreEditeur, FenetreExportMontage, ChoixClipMontage, DonneesEditeur, SegmentEditeur, PisteEditeur, ChoixEditeur, ProjetMontage, ClipAjoutable } from "replay/editeur.slint";
 import { ChoixCamera } from "vocal/camera.slint";
@@ -36,7 +37,7 @@ import { DonneesVideo, FluxVideo } from "video/flux.slint";
 
 import { DonneesMiseAJour } from "mise-a-jour/donnees.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, LigneContact, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesMessageVocal, EtapeVocal, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage, DonneesGifs, CelluleGif, RangeeGif, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche, DonneesNouveauPrive, PersonneProposee, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal, ChoixCameraVocal, DonneesVideo, FluxVideo, DonneesMiseAJour, DonneesJeux, JeuAjoute, DonneesOverlay, DonneesOverlayMessages, OverlayVoix, LigneOverlayVoix, OverlayMessages, LigneOverlayMessage, OverlayReplay, LigneOverlayReplay, DonneesReplay, ChoixReplay, DonneesClips, LigneClip, JeuClips, TravailClip, DestinationClip, DonneesEditeur, SegmentEditeur, PisteEditeur, ChoixEditeur, ProjetMontage, ClipAjoutable }
+export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, LigneContact, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesMessageVocal, EtapeVocal, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage, DonneesGifs, CelluleGif, RangeeGif, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche, DonneesNouveauPrive, PersonneProposee, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal, ChoixCameraVocal, DonneesVideo, FluxVideo, DonneesMiseAJour, DonneesJeux, JeuAjoute, DonneesOverlay, DonneesOverlayMessages, OverlayVoix, LigneOverlayVoix, OverlayMessages, LigneOverlayMessage, OverlayReplay, LigneOverlayReplay, DonneesReplay, ChoixReplay, DonneesMesures, LigneScenario, DonneesClips, LigneClip, JeuClips, TravailClip, DestinationClip, DonneesEditeur, SegmentEditeur, PisteEditeur, ChoixEditeur, ProjetMontage, ClipAjoutable }
 
 export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
 
@@ -329,6 +330,7 @@ export component Principale inherits Window {
     ReglagesAudio { }
     FenetreJeux { }
     FenetreReplay { }
+    FenetreMesures { }
     FenetreClips { }
     FenetreEnvoiClip { }
     FenetreEditeur { }

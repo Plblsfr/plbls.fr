@@ -24,6 +24,10 @@ estompe-natif --mesures <fichier.json> [--scenario <id>] [--attente <s>] [--dure
   sous Linux `/proc/self/status` (mémoire privée = `RssAnon` + `VmSwap`, working set = `VmRSS`, pic = `VmHWM`) et `/proc/self/stat`.
   La mémoire privée de Linux ne compte que l'anonyme résidente, celle de Windows toute la mémoire privée engagée : ne comparer que des mesures du même OS.
 
+Écran : « Mesures de performance… » dans « Jeux et activité » (`ui/mesures/ecran.slint`, `src/ecran_mesures.rs`) : démarrer et arrêter une session,
+six scénarios guidés (un marqueur chacun, durée du protocole, fin automatique), export dans `<données>/mesures/estompe-mesures-<début>.json`.
+Pas d'options de WebView2 : l'app native n'a pas de webview (écart assumé, voir `natif-parite.md`).
+
 La synthèse de l'app Tauri lit les deux formats ; la colonne de l'app native s'appelle `natif <version>` :
 
 ```sh

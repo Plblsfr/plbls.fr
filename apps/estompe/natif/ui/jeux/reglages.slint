@@ -2,6 +2,7 @@ import { Theme, Typo, Espace } from "../jetons.slint";
 import { Bouton, VarianteBouton, Modal, Interrupteur, Champ, Defilement } from "../composants.slint";
 import { SectionOverlay, SectionMessages, DonneesOverlay, DonneesOverlayMessages } from "../overlay/reglages.slint";
 import { DonneesReplay } from "../replay/reglages.slint";
+import { DonneesMesures } from "../mesures/ecran.slint";
 
 export struct JeuAjoute {
     chemin: string,
@@ -115,6 +116,21 @@ export component FenetreJeux inherits Modal {
                     calque: 1;
                     clique => {
                         DonneesReplay.ouvrir();
+                    }
+                }
+            }
+            Titre {
+                text: "MESURES";
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Mesures de performance…";
+                    icone: "chart";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesMesures.ouvrir();
                     }
                 }
             }

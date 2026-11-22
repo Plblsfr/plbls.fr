@@ -3,6 +3,7 @@ slint::include_modules!();
 pub mod bureau;
 pub mod confirmation;
 pub mod coquille;
+pub mod ecran_mesures;
 pub mod ecrans;
 pub mod entree;
 pub mod jeux;
@@ -61,6 +62,8 @@ pub struct Application {
     pub overlay_replay: std::sync::Arc<overlay::replay::ServiceOverlayReplay>,
     pub galerie: std::sync::Arc<replay::clips::Galerie>,
     pub editeur: std::sync::Arc<replay::editeur::Editeur>,
+    pub mesures: std::sync::Arc<ecran_mesures::EcranMesures>,
+    _minuterie_mesures: slint::Timer,
 }
 
 #[cfg(feature = "livekit")]
@@ -391,6 +394,11 @@ pub fn demarrer(
             overlay: Some(overlay_messages.clone()),
         },
     ));
+    let mesures = ecran_mesures::EcranMesures::nouveau(
+        plateforme.mesure.clone(),
+        session.dossiers.donnees.join("mesures"),
+    );
+    let minuterie_mesures = ecran_mesures::brancher(fenetre, mesures.clone());
     Ok(Application {
         bureau,
         coquille,
@@ -407,6 +415,8 @@ pub fn demarrer(
         overlay_replay,
         galerie,
         editeur,
+        mesures,
+        _minuterie_mesures: minuterie_mesures,
     })
 }
 

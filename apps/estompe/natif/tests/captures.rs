@@ -66,6 +66,9 @@ const ECRANS: &[Ecran] = ecrans![
     "jeux-replay-sombre", Sombre, jeux_replay;
     "jeux-replay-indisponible-clair", Clair, jeux_replay_indisponible;
     "jeux-replay-stockage-clair", Clair, jeux_replay_stockage;
+    "mesures-vide-clair", Clair, mesures_vide;
+    "mesures-scenario-clair", Clair, mesures_scenario;
+    "mesures-scenario-sombre", Sombre, mesures_scenario;
     "clips-vide-clair", Clair, clips_vide;
     "clips-remplie-clair", Clair, clips_remplie;
     "clips-remplie-sombre", Sombre, clips_remplie;
@@ -2641,4 +2644,35 @@ fn clips_envoi(f: &Principale) {
     ])));
     c.set_destination_choisie(true);
     c.set_envoi_ouvert(true);
+}
+
+fn mesures_vide(f: &Principale) {
+    let g = f.global::<estompe_natif::DonneesMesures>();
+    g.set_disponible(true);
+    g.set_peut_exporter(true);
+    g.set_message("Session terminée : exporte les mesures pour les partager.".into());
+    g.set_ouvert(true);
+}
+
+fn mesures_scenario(f: &Principale) {
+    let g = f.global::<estompe_natif::DonneesMesures>();
+    let ligne = |id: &str, titre: &str, fait: bool| estompe_natif::LigneScenario {
+        id: id.into(),
+        titre: titre.into(),
+        aide: "".into(),
+        fait,
+    };
+    g.set_disponible(true);
+    g.set_en_session(true);
+    g.set_scenarios(slint::ModelRc::new(slint::VecModel::from(vec![
+        ligne("repos", "Repos 5 min", true),
+        ligne("gros-salon", "Ouverture d'un gros salon", false),
+        ligne("jeu", "Partie de jeu avec overlays", false),
+    ])));
+    g.set_scenario_en_cours("Flux de messages".into());
+    g.set_aide_en_cours(
+        "Pendant 1 minute, laissez arriver des messages dans le salon ouvert.".into(),
+    );
+    g.set_reste(42);
+    g.set_ouvert(true);
 }

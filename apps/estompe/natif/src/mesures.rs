@@ -3,7 +3,7 @@ use estompe_client::mesures::{
     INTERVALLE_MS,
 };
 use estompe_plateforme::MesureProcessus;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -142,6 +142,114 @@ impl MesureEnCours {
     }
 }
 
+pub const ECRAN_SCENARIOS: &[(&str, &str, &str)] = &[
+    (
+        "repos",
+        "Repos 5 min",
+        "Ne touchez à rien pendant 5 minutes, Estompe ouverte sur un salon texte.",
+    ),
+    (
+        "gros-salon",
+        "Ouverture d'un gros salon",
+        "Dans les 30 secondes, ouvrez un salon au long historique et remontez-y.",
+    ),
+    (
+        "defilement",
+        "Défilement 10 s",
+        "Pendant 10 secondes, faites défiler le salon ouvert de haut en bas.",
+    ),
+    (
+        "flux",
+        "Flux de messages",
+        "Pendant 1 minute, laissez arriver des messages dans le salon ouvert.",
+    ),
+    (
+        "jeu",
+        "Partie de jeu avec overlays",
+        "Lancez un jeu et restez dans un salon vocal 5 minutes, overlays affichés.",
+    ),
+    (
+        "reduite",
+        "Fenêtre réduite",
+        "Réduisez la fenêtre pendant 2 minutes, puis rouvrez-la.",
+    ),
+];
+
+pub struct SessionMesures {
+    source: Arc<dyn MesureProcessus>,
+    releveur: Releveur,
+    marqueurs: Vec<Marqueur>,
+    scenario: Option<(String, u64)>,
+}
+
+impl SessionMesures {
+    pub fn demarrer(source: Arc<dyn MesureProcessus>) -> Result<Self, String> {
+        if !source.disponible() {
+            return Err("mesure du processus indisponible sur cet OS".into());
+        }
+        let releveur = Releveur::demarrer(source.clone(), INTERVALLE_MS)
+            .map_err(|e| format!("fil de mesure : {e}"))?;
+        Ok(Self {
+            source,
+            releveur,
+            marqueurs: Vec::new(),
+            scenario: None,
+        })
+    }
+
+    pub fn lancer(&mut self, id: &str, maintenant: u64) -> Result<(), String> {
+        if self.scenario.is_some() {
+            return Err("un scénario est déjà en cours".into());
+        }
+        duree_scenario(id).ok_or_else(|| format!("scénario « {id} » inconnu"))?;
+        self.marqueurs.retain(|m| m.nom != id);
+        self.scenario = Some((id.to_string(), maintenant));
+        Ok(())
+    }
+
+    pub fn scenario(&self) -> Option<(&str, u64)> {
+        self.scenario.as_ref().map(|(id, d)| (id.as_str(), *d))
+    }
+
+    pub fn reste_ms(&self, maintenant: u64) -> Option<u64> {
+        let (id, debut) = self.scenario()?;
+        let fin = debut + duree_scenario(id)?;
+        Some(fin.saturating_sub(maintenant))
+    }
+
+    pub fn terminer_scenario(&mut self, maintenant: u64) {
+        if let Some((nom, debut)) = self.scenario.take() {
+            let fin = duree_scenario(&nom).map_or(maintenant, |d| maintenant.min(debut + d));
+            self.marqueurs.push(Marqueur { nom, debut, fin });
+        }
+    }
+
+    pub fn faits(&self) -> Vec<&str> {
+        self.marqueurs.iter().map(|m| m.nom.as_str()).collect()
+    }
+
+    pub fn arreter(mut self, facteur_echelle: Option<f64>) -> ExportMesures {
+        self.terminer_scenario(maintenant_ms());
+        let releve = self.releveur.arreter();
+        construire_export(
+            releve,
+            &format!("natif {}", crate::VERSION),
+            Systeme::de_la_machine(self.source.machine(), facteur_echelle),
+            self.marqueurs,
+            maintenant_ms(),
+        )
+    }
+}
+
+pub fn ecrire_export(export: &ExportMesures, dossier: &Path) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dossier).map_err(|e| format!("{}: {e}", dossier.display()))?;
+    let fichier = dossier.join(format!("estompe-mesures-{}.json", export.debut));
+    let texte = serde_json::to_string_pretty(export).map_err(|e| e.to_string())?;
+    std::fs::write(&fichier, format!("{texte}\n"))
+        .map_err(|e| format!("{}: {e}", fichier.display()))?;
+    Ok(fichier)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +368,51 @@ mod tests {
             50.0
         );
         assert!(export["statistiques"]["scenarios"]["jeu"].is_object());
+    }
+
+    #[test]
+    fn une_session_jouee_pose_un_marqueur_par_scenario_et_son_export_passe_la_synthese() {
+        let mut session = SessionMesures::demarrer(Arc::new(Source)).unwrap();
+        let debut = maintenant_ms();
+        assert!(session.lancer("inconnu", debut).is_err());
+        session.lancer("jeu", debut).unwrap();
+        assert!(session.lancer("repos", debut).is_err());
+        assert_eq!(session.scenario(), Some(("jeu", debut)));
+        assert_eq!(session.reste_ms(debut + 100_000), Some(200_000));
+        assert_eq!(session.reste_ms(debut + 400_000), Some(0));
+        std::thread::sleep(Duration::from_millis(1200));
+        session.terminer_scenario(debut + 400_000);
+        assert_eq!(session.faits(), vec!["jeu"]);
+        session.lancer("jeu", debut).unwrap();
+        session.terminer_scenario(debut + 10);
+        assert_eq!(session.faits(), vec!["jeu"]);
+        let export = session.arreter(None);
+        assert_eq!(export.marqueurs.len(), 1);
+        assert_eq!(export.marqueurs[0].fin, debut + 10);
+        let dossier = tempfile::tempdir().unwrap();
+        let fichier = ecrire_export(&export, &dossier.path().join("mesures")).unwrap();
+        let racine = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let synthese = racine.join("apps/estompe/windows/scripts/synthese-mesures.mjs");
+        let script = format!(
+            "import {{ synthese }} from {:?}; import fs from 'node:fs'; \
+             process.stdout.write(synthese([JSON.parse(fs.readFileSync({:?}, 'utf8'))]))",
+            synthese.to_string_lossy().replace('\\', "/"),
+            fichier.to_string_lossy().replace('\\', "/"),
+        );
+        let sortie = std::process::Command::new("node")
+            .args(["--input-type=module", "-e", &script])
+            .output()
+            .expect("node est requis pour la synthèse");
+        assert!(
+            sortie.status.success(),
+            "{}",
+            String::from_utf8_lossy(&sortie.stderr)
+        );
+        let texte = String::from_utf8_lossy(&sortie.stdout);
+        assert!(
+            texte.contains(&format!("natif {}", crate::VERSION)),
+            "{texte}"
+        );
+        assert!(texte.contains("jeu"), "{texte}");
     }
 }
