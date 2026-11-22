@@ -59,6 +59,7 @@ pub struct Application {
     pub overlay_messages: std::sync::Arc<overlay::messages::ServiceOverlayMessages>,
     pub replay: std::sync::Arc<replay::ServiceReplay>,
     pub overlay_replay: std::sync::Arc<overlay::replay::ServiceOverlayReplay>,
+    pub galerie: std::sync::Arc<replay::clips::Galerie>,
 }
 
 #[cfg(feature = "livekit")]
@@ -222,6 +223,12 @@ pub fn demarrer(
         },
         &entree.runtime(),
     );
+    let conversions = std::sync::Arc::new(estompe_client::video::Conversions::du_systeme(
+        session
+            .dossiers
+            .cache
+            .join(estompe_client::video::DOSSIER_CONVERSIONS),
+    ));
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -245,12 +252,7 @@ pub fn demarrer(
                 })
             })
         }),
-        conversions: std::sync::Arc::new(estompe_client::video::Conversions::du_systeme(
-            session
-                .dossiers
-                .cache
-                .join(estompe_client::video::DOSSIER_CONVERSIONS),
-        )),
+        conversions: conversions.clone(),
         medias: messagerie::medias::Medias::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(
@@ -280,6 +282,17 @@ pub fn demarrer(
         std::sync::Arc::new(fabrique),
         session.memoire.clone(),
         coquille::horloge_locale(),
+    );
+    let galerie = replay::clips::brancher(
+        fenetre,
+        replay::clips::OutilsGalerie {
+            service: replay.clone(),
+            fichiers: std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
+            conversions,
+            ffmpeg: Some(estompe_client::video::ffmpeg_du_systeme()),
+            messagerie: Some(coquille.source_pont()),
+        },
+        &entree.runtime(),
     );
     let dossier_maj = session
         .dossiers
@@ -369,6 +382,7 @@ pub fn demarrer(
         overlay_messages,
         replay,
         overlay_replay,
+        galerie,
     })
 }
 

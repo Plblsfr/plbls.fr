@@ -182,6 +182,15 @@ pub struct Clip {
     pub hauteur: u32,
     pub ips: u32,
     pub pistes_audio: u32,
+    pub origine: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Stockage {
+    pub utilise_octets: u64,
+    pub quota_octets: u64,
+    pub depasse: bool,
+    pub plus_anciens: Vec<PathBuf>,
 }
 
 #[cfg(test)]

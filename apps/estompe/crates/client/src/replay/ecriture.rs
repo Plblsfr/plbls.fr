@@ -88,7 +88,7 @@ pub fn ecrire(t: &Tache) -> Result<Ecrit, Erreur> {
         .file_stem()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let partiel = annexes.join(format!("{nom}.part"));
+    let partiel = annexes.join(format!("{nom}.{}", galerie::PARTIEL));
     let taille = ecrire_fichier(&partiel, &t.instantane)
         .and_then(|taille| fs::rename(&partiel, &chemin).map(|_| taille));
     let taille = taille.map_err(|e| {

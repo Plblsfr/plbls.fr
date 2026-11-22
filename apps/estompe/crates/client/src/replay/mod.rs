@@ -1,6 +1,7 @@
 pub mod affichage;
 pub mod automate;
 pub mod cadence;
+pub mod clips;
 pub mod ecriture;
 pub mod galerie;
 pub mod garde;

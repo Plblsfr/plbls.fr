@@ -1212,19 +1212,38 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
   erreur ou indisponible) ; chaque message reste la durée d'affichage des messages (2 à 60 s). Logique de `replay.ts` portée dans `estompe_client::replay::affichage`
   (`message_etat`, `message_clip`, `message_erreur`, `FileReplay`, `taille_fenetre`). Placé sur l'écran du jeu, dans le premier coin du haut puis du bas qui n'est pris ni
   par l'overlay des participants ni par celui des messages (l'app Tauri prenait le coin opposé à celui des participants).
+- Galerie (#357, `apps/estompe/natif/src/replay/clips.rs`, `apps/estompe/natif/ui/replay/galerie.slint`, `Application::galerie`) : fenêtre « Clips » ouverte
+  depuis le rail (bouton visible quand le replay est actif ou que le dossier contient des clips, comme l'espace de l'app Tauri) et depuis « Voir les clips » de
+  la fenêtre « Instant replay ». Navigation : tous les clips ou un jeu (« Autres » sans jeu), place occupée et quota, ouvrir le dossier, réglages. Chaque clip :
+  vignette, durée, nom, jeu et date, taille, définition, cadence, HEVC, piste micro, montage d'origine ; « Envoyer », « Renommer », « Supprimer » (confirmés),
+  clic sur la vignette : lecture dans le lecteur du système (`Fichiers::ouvrir`) jusqu'au lecteur de l'app (lot 9). Lecture du dossier et vignettes sur un fil :
+  une vignette manquante est tirée du clip par ffmpeg (`galerie::creer_vignette`, `.estompe/<clip>.mp4.jpg`), une seule tentative par clip. La galerie se relit
+  à chaque `EvenementReplay::Clip` et à l'erreur `quota`. Règles portées de `galerie.rs` dans `estompe_client::replay::galerie` (`dans_dossier` : jamais hors du
+  dossier ni à travers un lien, `renommer` et `supprimer` avec les annexes, `stockage`, `plus_anciens`, `purger`) et `estompe_client::replay::clips` (tri,
+  jeux, textes, `decision_envoi`, `plan_envoi`). Quota : alerte à 90 %, puis « Quota du dossier atteint » avec « Supprimer les plus anciens… » : après
+  confirmation, les clips les plus anciens sont supprimés jusqu'à repasser sous le quota, sauf les clips protégés (`Galerie::proteger`, pris par un envoi en
+  cours et, demain, par l'éditeur) ; le clip en cours d'écriture est un `.part` des annexes, jamais listé ni supprimé. Rien n'est supprimé sans confirmation.
+- Envoi d'un clip (#357) : « Envoyer dans un salon » liste les salons texte où l'on a `send_messages` et `attach_files` et les messages privés (recherche).
+  Décision de l'app Tauri : MP4 H.264 à une piste envoyé tel quel ; deux pistes (jeu et micro) réunies par `amix` en copiant la vidéo ; HEVC converti en H.264
+  par les encodeurs matériels des pièces jointes ; plus gros que `max_video_size` : réencodage plus léger proposé (débit et définition pour tenir dans la limite) ;
+  trop long même réencodé : refus. La conversion (`preparer_fichier`, fichier temporaire de `<cache>/conversions/`) puis l'envoi en flux (`Client::envoyer_piece`)
+  s'affichent dans la galerie avec leur pourcentage et « Annuler » ; la pièce part ensuite en message par `Store::envoyer` (échec visible et « Réessayer » dans
+  la conversation). Fichier converti encore trop gros : la fenêtre se rouvre en mode réencodage.
+- Éditeur (#358) : `Galerie::definir_editeur(f, Some(ouvrir))` affiche le bouton « Modifier » (ciseaux) de chaque clip et appelle `ouvrir(f, &clip)` ; l'éditeur
+  protège le clip ouvert avec `Galerie::proteger` et relit la galerie après un export avec `Galerie::recharger`.
 - Garde-fous : pas d'encodeur matériel ou garde déclenchée : `indisponible` avec la raison ; encodeur qui accepte des images sans rien rendre en 2 s : `encodeur-muet` ;
   plus d'une image sur cinq perdue sur 10 s : alerte selon la cause ; aucune image du jeu dans les 3 s qui suivent l'ouverture de la capture : `capture-refusee` ; disque plein ou quota atteint à
   l'écriture : erreur, aucun clip existant n'est supprimé.
 - Écarts avec l'app Tauri : pas d'AMF appelé directement ni de son essai hors processus (une carte AMD passe par son MFT, que l'app Tauri jugeait muet : c'est alors
   `encodeur-muet`) ; pas d'entrées D3D11 (réserve, textures) ni de conversion sur la carte graphique : l'image du jeu arrive en RGBA de la capture et passe en NV12 sur le
-  processeur, l'encodeur la reçoit en mémoire vive ; pas de conversion HDR vers SDR ; pas de vignette ffmpeg à l'écriture (galerie, #357) ; fil d'écriture en priorité
+  processeur, l'encodeur la reçoit en mémoire vive ; pas de conversion HDR vers SDR ; vignette tirée par la galerie à la première ouverture plutôt qu'à l'écriture ; fil d'écriture en priorité
   normale.
 - Tests : modules purs (`replay::*::tests` de la crate client, dont `ecriture::tests::mp4_de_synthese_lu_par_ffmpeg` : H.264 et AAC produits par ffmpeg, MP4 écrit par
   `ecriture`, relu par `ffmpeg -v error` sans erreur, trois pistes et 2 s ; sauté sans ffmpeg avec libx264) ; plateforme (`encodage::factice::tests`, `encodage::tests`,
   `disque`) ; service (`replay::tests` : jeu détecté, tampon armé, clip par la touche puis par `sauvegarder_les_dernieres`, pause et fermeture, indisponible sans
   encodeur, touche prise refusée, encodeur muet ou arrêté, échec pendant un partage d'écran mis en pause) ; réglages (`replay::reglages::tests`, `tests/replay.rs` :
   valeurs hors bornes ramenées, touches refusées) ; indicateur (`overlay::replay::tests` : placement, clip sauvé, erreur, expiration ; captures `overlay-replay-*`) ;
-  captures de la fenêtre (`jeux-replay-*`).
+  captures de la fenêtre (`jeux-replay-*`) ; galerie (`replay::clips::tests` : vue vide, remplie, par jeu, quota presque atteint et dépassé, fenêtre d'envoi, destinations, préparation du fichier par ffmpeg ; `replay::galerie::tests` et `replay::clips::tests` de la crate client : chemins refusés, renommage et suppression avec les annexes, purge sans les clips protégés ni le `.part`, vignette ; `tests/clips.rs` : ouverture, purge confirmée, clip protégé refusé, renommage, suppression ; captures `clips-*`).
 - Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3 de
   #355) ; indicateur « clip sauvé » sur un vrai jeu après le raccourci (C3 de #356).
 

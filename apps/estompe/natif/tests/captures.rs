@@ -66,6 +66,11 @@ const ECRANS: &[Ecran] = ecrans![
     "jeux-replay-sombre", Sombre, jeux_replay;
     "jeux-replay-indisponible-clair", Clair, jeux_replay_indisponible;
     "jeux-replay-stockage-clair", Clair, jeux_replay_stockage;
+    "clips-vide-clair", Clair, clips_vide;
+    "clips-remplie-clair", Clair, clips_remplie;
+    "clips-remplie-sombre", Sombre, clips_remplie;
+    "clips-quota-clair", Clair, clips_quota;
+    "clips-envoi-clair", Clair, clips_envoi;
     "demarrage-clair", Clair, demarrage;
     "connexion-clair", Clair, connexion;
     "connexion-sombre", Sombre, connexion;
@@ -1878,6 +1883,20 @@ fn remettre_a_zero(f: &Principale) {
     replay.set_tourne(false);
     replay.set_decalage(0.0);
     replay.set_plafond("".into());
+    let clips = f.global::<estompe_natif::DonneesClips>();
+    clips.set_ouvert(false);
+    clips.set_envoi_ouvert(false);
+    clips.set_visible(false);
+    clips.set_envoi_disponible(false);
+    clips.set_stockage_lu(false);
+    clips.set_presque(false);
+    clips.set_depasse(false);
+    clips.set_alerte("".into());
+    clips.set_vide_reglages(false);
+    clips.set_clips(slint::ModelRc::default());
+    clips.set_jeux(slint::ModelRc::default());
+    clips.set_travaux(slint::ModelRc::default());
+    clips.set_decalage(0.0);
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
@@ -2318,4 +2337,154 @@ fn jeux_replay_stockage(f: &Principale) {
     r.set_dossier_defaut(false);
     r.set_dossier(r"D:\Clips".into());
     r.set_decalage(-600.0);
+}
+
+fn vignette(teinte: u8) -> slint::Image {
+    let mut tampon = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(160, 90);
+    for (i, p) in tampon.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = ((i % 160) as u8, (i / 160) as u8);
+        *p = slint::Rgba8Pixel::new(teinte, x, y.saturating_mul(2), 255);
+    }
+    slint::Image::from_rgba8(tampon)
+}
+
+fn ligne_clip(
+    nom: &str,
+    infos: &str,
+    details: &str,
+    duree: &str,
+    teinte: Option<u8>,
+) -> estompe_natif::LigneClip {
+    estompe_natif::LigneClip {
+        chemin: format!("/home/alice/Vidéos/Estompe/{nom}.mp4").into(),
+        nom: nom.into(),
+        infos: infos.into(),
+        details: details.into(),
+        duree: duree.into(),
+        origine: "".into(),
+        a_vignette: teinte.is_some(),
+        vignette: teinte.map(vignette).unwrap_or_default(),
+    }
+}
+
+fn clips_vide(f: &Principale) {
+    coquille_accueil(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_visible(true);
+    c.set_stockage_lu(true);
+    c.set_espace("0 Ko sur 20 Go".into());
+    c.set_part(0.0);
+    c.set_vide_titre("Aucun clip".into());
+    c.set_vide_texte("L'instant replay est désactivé.".into());
+    c.set_vide_reglages(true);
+    c.set_ouvert(true);
+}
+
+fn clips_remplie(f: &Principale) {
+    coquille_accueil(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_visible(true);
+    c.set_envoi_disponible(true);
+    c.set_total(4);
+    c.set_stockage_lu(true);
+    c.set_espace("1,2 Go sur 20 Go".into());
+    c.set_part(0.06);
+    let mut montage = ligne_clip(
+        "Ace au B",
+        "Valorant · 9 mars 2026 à 20:00",
+        "62 Mo · 1080p · 60 i/s",
+        "0:45",
+        Some(200),
+    );
+    montage.origine = "Valorant 2026-03-07 09-05-02".into();
+    c.set_clips(slint::ModelRc::new(slint::VecModel::from(vec![
+        montage,
+        ligne_clip(
+            "Counter-Strike 2 2026-03-08 21-14-00",
+            "Counter-Strike 2 · 8 mars 2026 à 21:14",
+            "148 Mo · 1440p · 144 i/s · HEVC · piste micro",
+            "1:30",
+            Some(40),
+        ),
+        ligne_clip(
+            "Valorant 2026-03-07 09-05-02",
+            "Valorant · 7 mars 2026 à 09:05",
+            "96 Mo · 1080p · 60 i/s",
+            "1:00",
+            Some(120),
+        ),
+        ligne_clip(
+            "copie",
+            "Autres · 2 janvier 2026 à 08:00",
+            "12 Mo",
+            "",
+            None,
+        ),
+    ])));
+    c.set_jeux(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::JeuClips {
+            jeu: "Counter-Strike 2".into(),
+            nombre: 1,
+            choisi: false,
+        },
+        estompe_natif::JeuClips {
+            jeu: "Valorant".into(),
+            nombre: 2,
+            choisi: false,
+        },
+        estompe_natif::JeuClips {
+            jeu: "Autres".into(),
+            nombre: 1,
+            choisi: false,
+        },
+    ])));
+    c.set_ouvert(true);
+}
+
+fn clips_quota(f: &Principale) {
+    clips_remplie(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_espace("19 Go sur 20 Go".into());
+    c.set_part(0.93);
+    c.set_presque(true);
+    c.set_alerte("Quota presque atteint (93 %) : supprime d'anciens clips ou augmente le quota pour continuer à enregistrer.".into());
+    c.set_travaux(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::TravailClip {
+            id: 1,
+            libelle: "Conversion de « Counter-Strike 2 2026-03-08 21-14-00 »".into(),
+            progression: 0.42,
+            a_progression: true,
+        },
+    ])));
+}
+
+fn clips_envoi(f: &Principale) {
+    clips_remplie(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_envoi_clip("Counter-Strike 2 2026-03-08 21-14-00 · 148 Mo".into());
+    c.set_envoi_alerte_titre("Clip plus gros que la limite d'envoi (100 Mo)".into());
+    c.set_envoi_alerte("Il peut être réencodé plus léger, en H.264, pour tenir dans la limite : la qualité de la copie envoyée baisse, le clip d'origine n'est pas modifié.".into());
+    c.set_envoi_action("Réencoder et envoyer".into());
+    c.set_destinations(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::DestinationClip {
+            cle: "c:c1".into(),
+            nom: "# general".into(),
+            ou: "Les copains".into(),
+            choisie: false,
+        },
+        estompe_natif::DestinationClip {
+            cle: "c:c4".into(),
+            nom: "# clips".into(),
+            ou: "Les copains".into(),
+            choisie: true,
+        },
+        estompe_natif::DestinationClip {
+            cle: "d:d1".into(),
+            nom: "Bob".into(),
+            ou: "Message privé".into(),
+            choisie: false,
+        },
+    ])));
+    c.set_destination_choisie(true);
+    c.set_envoi_ouvert(true);
 }

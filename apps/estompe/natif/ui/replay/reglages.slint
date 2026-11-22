@@ -1,5 +1,6 @@
 import { Theme, Typo, Espace } from "../jetons.slint";
 import { Bouton, VarianteBouton, Modal, Interrupteur, Curseur, Defilement } from "../composants.slint";
+import { DonneesClips } from "galerie.slint";
 
 export struct ChoixReplay {
     libelle: string,
@@ -287,6 +288,16 @@ export component SectionReplay inherits VerticalLayout {
             calque: 2;
             clique => {
                 DonneesReplay.ouvrir-dossier();
+            }
+        }
+        Bouton {
+            texte: "Voir les clips";
+            icone: "clap";
+            variante: VarianteBouton.fantome;
+            calque: 2;
+            clique => {
+                DonneesReplay.capture = false;
+                DonneesClips.ouvrir();
             }
         }
     }
