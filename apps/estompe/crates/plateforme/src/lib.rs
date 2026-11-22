@@ -44,9 +44,9 @@ pub use dossiers::{
     DOSSIER_VIDEOS_ESSAI, IDENTIFIANT, VARIABLE_DOSSIER,
 };
 pub use encodage::{
-    disque_plein, masquer, CapaciteEncodeur, CodecVideo, EncodageFactice, EncodageMateriel,
-    EncodageSysteme, EncodeurAudio, EncodeurVideo, ImageNv12, MaterielEncodage, Paquet,
-    ParametresAudio, ParametresVideo, RecepteurPaquets, SignalArret, ERREUR_DISQUE_PLEIN,
+    disque_plein, espace_libre, masquer, CapaciteEncodeur, CodecVideo, EncodageFactice,
+    EncodageMateriel, EncodageSysteme, EncodeurAudio, EncodeurVideo, ImageNv12, MaterielEncodage,
+    Paquet, ParametresAudio, ParametresVideo, RecepteurPaquets, SignalArret, ERREUR_DISQUE_PLEIN,
     PARAMETRES_FACTICES, UNITE_TEMPS,
 };
 pub use erreur::{Erreur, Resultat};

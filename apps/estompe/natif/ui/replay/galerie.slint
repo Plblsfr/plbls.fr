@@ -1,5 +1,6 @@
 import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
 import { Bouton, VarianteBouton, Modal, Defilement, Vide, Icone, Coins, Champ } from "../composants.slint";
+import { MontagesGalerie } from "editeur.slint";
 
 export struct LigneClip {
     chemin: string,
@@ -477,6 +478,7 @@ component Contenu inherits VerticalLayout {
         text: DonneesClips.erreur;
         color: Theme.danger;
     }
+    if DonneesClips.modifier-disponible: MontagesGalerie { }
     if DonneesClips.clips.length > 0: Defilement {
         decalage <=> DonneesClips.decalage;
         min-height: 240px;

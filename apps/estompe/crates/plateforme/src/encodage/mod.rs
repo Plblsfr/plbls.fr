@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Resultat;
 
-pub use disque::{disque_plein, masquer, ERREUR_DISQUE_PLEIN};
+pub use disque::{disque_plein, espace_libre, masquer, ERREUR_DISQUE_PLEIN};
 pub use factice::{EncodageFactice, PARAMETRES_FACTICES};
 
 pub const UNITE_TEMPS: i64 = 10_000_000;

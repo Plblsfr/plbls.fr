@@ -28,6 +28,28 @@ pub fn masquer(chemin: &Path) {
 #[cfg(not(windows))]
 pub fn masquer(_: &Path) {}
 
+#[cfg(windows)]
+pub fn espace_libre(dossier: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let large: Vec<u16> = dossier.as_os_str().encode_wide().chain([0]).collect();
+    let mut libre = 0u64;
+    let lu = unsafe {
+        GetDiskFreeSpaceExW(
+            large.as_ptr(),
+            &mut libre,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    (lu != 0).then_some(libre)
+}
+
+#[cfg(not(windows))]
+pub fn espace_libre(_: &Path) -> Option<u64> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

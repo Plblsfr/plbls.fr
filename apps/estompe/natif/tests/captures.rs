@@ -71,6 +71,10 @@ const ECRANS: &[Ecran] = ecrans![
     "clips-remplie-sombre", Sombre, clips_remplie;
     "clips-quota-clair", Clair, clips_quota;
     "clips-envoi-clair", Clair, clips_envoi;
+    "clips-montages-clair", Clair, clips_montages;
+    "editeur-clair", Clair, editeur;
+    "editeur-sombre", Sombre, editeur;
+    "editeur-export-clair", Clair, editeur_export;
     "demarrage-clair", Clair, demarrage;
     "connexion-clair", Clair, connexion;
     "connexion-sombre", Sombre, connexion;
@@ -1897,6 +1901,15 @@ fn remettre_a_zero(f: &Principale) {
     clips.set_jeux(slint::ModelRc::default());
     clips.set_travaux(slint::ModelRc::default());
     clips.set_decalage(0.0);
+    clips.set_modifier_disponible(false);
+    let editeur = f.global::<estompe_natif::DonneesEditeur>();
+    editeur.set_ouvert(false);
+    editeur.set_pret(false);
+    editeur.set_export_ouvert(false);
+    editeur.set_export_en_cours(false);
+    editeur.set_choix_clip(false);
+    editeur.set_message("".into());
+    editeur.set_projets(slint::ModelRc::default());
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
@@ -2456,6 +2469,143 @@ fn clips_quota(f: &Principale) {
             a_progression: true,
         },
     ])));
+}
+
+fn clips_montages(f: &Principale) {
+    clips_remplie(f);
+    let c = f.global::<estompe_natif::DonneesClips>();
+    c.set_modifier_disponible(true);
+    f.global::<estompe_natif::DonneesEditeur>()
+        .set_projets(slint::ModelRc::new(slint::VecModel::from(vec![
+            estompe_natif::ProjetMontage {
+                id: "2026-03-09-20-00-00-1".into(),
+                nom: "Ace au B".into(),
+                infos: "0:45,00 · 2 clips · 9 mars 2026 à 20:00".into(),
+                manquants: "".into(),
+            },
+            estompe_natif::ProjetMontage {
+                id: "2026-03-08-21-30-00-1".into(),
+                nom: "Soirée du 8".into(),
+                infos: "1:12,50 · 1 clip · 8 mars 2026 à 21:30".into(),
+                manquants: "Clip introuvable : Counter-Strike 2 2026-03-08 21-14-00.mp4".into(),
+            },
+        ])));
+}
+
+fn image_apercu() -> slint::Image {
+    let (l, h) = (640u32, 360u32);
+    let mut tampon = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(l, h);
+    for (i, p) in tampon.make_mut_slice().iter_mut().enumerate() {
+        let (x, y) = (i as u32 % l, i as u32 / l);
+        let ciel = y < h * 3 / 5;
+        *p = if ciel {
+            slint::Rgba8Pixel::new(60 + (y / 4) as u8, 110 + (y / 5) as u8, 190, 255)
+        } else {
+            slint::Rgba8Pixel::new(70 + (x / 10) as u8, 120, 60, 255)
+        };
+    }
+    slint::Image::from_rgba8(tampon)
+}
+
+fn onde(graine: usize) -> String {
+    let pics: Vec<f32> = (0..200)
+        .map(|i| {
+            (((i * 37 + graine * 11) % 23) as f32 / 23.0)
+                * if (i / 40 + graine).is_multiple_of(3) { 0.3 } else { 1.0 }
+        })
+        .collect();
+    estompe_client::replay::montage::trace_onde(&pics, 14.0)
+}
+
+fn editeur(f: &Principale) {
+    coquille_accueil(f);
+    let d = f.global::<estompe_natif::DonneesEditeur>();
+    let choix = |liste: &[&str], choisi: usize| {
+        slint::ModelRc::new(slint::VecModel::from(
+            liste
+                .iter()
+                .enumerate()
+                .map(|(i, l)| estompe_natif::ChoixEditeur {
+                    libelle: (*l).into(),
+                    choisi: i == choisi,
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    let segment =
+        |debut: f32, largeur: f32, garde: bool, choisi: bool, libelle: &str, muet: bool| {
+            estompe_natif::SegmentEditeur {
+                debut,
+                largeur,
+                garde,
+                choisi,
+                libelle: libelle.into(),
+                clip: "Valorant 2026-03-07 09-05-02".into(),
+                muet,
+            }
+        };
+    d.set_nom("Ace au B".into());
+    d.set_duree("0:41,50".into());
+    d.set_temps("0:12,25".into());
+    d.set_segments(slint::ModelRc::new(slint::VecModel::from(vec![
+        segment(0.0, 0.25, true, false, "", false),
+        segment(0.25, 0.15, false, false, "", false),
+        segment(0.4, 0.35, true, true, "0,5×", false),
+        segment(0.75, 0.25, true, false, "", true),
+    ])));
+    d.set_tete(0.52);
+    d.set_entree(0.0);
+    d.set_sortie(1.0);
+    d.set_pistes(slint::ModelRc::new(slint::VecModel::from(vec![
+        estompe_natif::PisteEditeur {
+            nom: "Jeu".into(),
+            volume: 100.0,
+            muet: false,
+            onde: onde(1).into(),
+        },
+        estompe_natif::PisteEditeur {
+            nom: "Micro".into(),
+            volume: 65.0,
+            muet: true,
+            onde: onde(2).into(),
+        },
+    ])));
+    d.set_clip_choisi("Valorant 2026-03-07 09-05-02".into());
+    d.set_garde(true);
+    d.set_vitesses(choix(&["0,25×", "0,5×", "1×", "1,5×", "2×", "4×"], 1));
+    d.set_saccade(true);
+    d.set_peut_annuler(true);
+    d.set_rapports(choix(&["Libre", "16:9", "1:1", "9:16", "4:5"], 0));
+    d.set_peut_reculer(true);
+    d.set_peut_avancer(true);
+    d.set_image(image_apercu());
+    d.set_a_image(true);
+    d.set_pret(true);
+    d.set_ouvert(true);
+}
+
+fn editeur_export(f: &Principale) {
+    editeur(f);
+    let d = f.global::<estompe_natif::DonneesEditeur>();
+    let choix = |liste: &[&str], choisi: usize| {
+        slint::ModelRc::new(slint::VecModel::from(
+            liste
+                .iter()
+                .enumerate()
+                .map(|(i, l)| estompe_natif::ChoixEditeur {
+                    libelle: (*l).into(),
+                    choisi: i == choisi,
+                })
+                .collect::<Vec<_>>(),
+        ))
+    };
+    d.set_hauteurs(choix(&["Cadre (1920 × 1080)", "720p", "480p"], 0));
+    d.set_cadences(choix(&["60 i/s", "30 i/s"], 0));
+    d.set_export_format("1920 × 1080, 60 i/s, 0:41,50".into());
+    d.set_export_en_cours(true);
+    d.set_export_libelle("Export de « Soirée du 8 » (encodeur logiciel)".into());
+    d.set_export_progression(0.37);
+    d.set_export_ouvert(true);
 }
 
 fn clips_envoi(f: &Principale) {

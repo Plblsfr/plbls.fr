@@ -60,6 +60,7 @@ pub struct Application {
     pub replay: std::sync::Arc<replay::ServiceReplay>,
     pub overlay_replay: std::sync::Arc<overlay::replay::ServiceOverlayReplay>,
     pub galerie: std::sync::Arc<replay::clips::Galerie>,
+    pub editeur: std::sync::Arc<replay::editeur::Editeur>,
 }
 
 #[cfg(feature = "livekit")]
@@ -231,6 +232,7 @@ pub fn demarrer(
     ));
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
+    let audio_editeur = audio_messages.clone();
     let fabrique = coquille::FabriqueReelle {
         client: reels.client.clone(),
         jeton: std::sync::Arc::new(jeton),
@@ -293,6 +295,27 @@ pub fn demarrer(
             messagerie: Some(coquille.source_pont()),
         },
         &entree.runtime(),
+    );
+    let editeur = replay::editeur::brancher(
+        fenetre,
+        replay::editeur::OutilsEditeur {
+            service: replay.clone(),
+            galerie: galerie.clone(),
+            ffmpeg: estompe_client::video::ffmpeg_du_systeme(),
+            sortie_son: Some(std::sync::Arc::new(
+                estompe_plateforme::SonPeripheriques::nouveau(audio_editeur, {
+                    let memoire = session.memoire.clone();
+                    std::sync::Arc::new(move |sens| {
+                        memoire.lire(|p| match sens {
+                            estompe_plateforme::SensAudio::Entree => p.micro.clone(),
+                            estompe_plateforme::SensAudio::Sortie => p.sortie_audio.clone(),
+                        })
+                    })
+                }),
+            )),
+            encodeurs: None,
+            horloge: None,
+        },
     );
     let dossier_maj = session
         .dossiers
@@ -383,6 +406,7 @@ pub fn demarrer(
         replay,
         overlay_replay,
         galerie,
+        editeur,
     })
 }
 

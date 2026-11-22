@@ -1,4 +1,5 @@
 pub mod clips;
+pub mod editeur;
 pub mod reglages;
 mod session;
 

@@ -1229,8 +1229,27 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
   trop long même réencodé : refus. La conversion (`preparer_fichier`, fichier temporaire de `<cache>/conversions/`) puis l'envoi en flux (`Client::envoyer_piece`)
   s'affichent dans la galerie avec leur pourcentage et « Annuler » ; la pièce part ensuite en message par `Store::envoyer` (échec visible et « Réessayer » dans
   la conversation). Fichier converti encore trop gros : la fenêtre se rouvre en mode réencodage.
-- Éditeur (#358) : `Galerie::definir_editeur(f, Some(ouvrir))` affiche le bouton « Modifier » (ciseaux) de chaque clip et appelle `ouvrir(f, &clip)` ; l'éditeur
-  protège le clip ouvert avec `Galerie::proteger` et relit la galerie après un export avec `Galerie::recharger`.
+- Éditeur de clips (#358, `apps/estompe/natif/src/replay/editeur/`, `apps/estompe/natif/ui/replay/editeur.slint`, `Application::editeur`) : branché par
+  `Galerie::definir_editeur` (bouton « Modifier » de chaque clip) ; fenêtre « Éditeur de clips » qui remplace la galerie le temps du montage, puis la rouvre.
+  Modèle et règles portés de `montage.ts` et `montage.rs` dans `estompe_client::replay::montage` : projets au même format que l'app Tauri
+  (`.estompe/projets/<id>.json`, version 2, reprise de la version 1, suivi du renommage d'un clip), ligne de temps (segments, points de coupe, blocs rognés à
+  l'image près, retirer et restaurer), vitesse et son coupé par segment, pistes « Jeu », « Micro » (volume 0 à 200 %, muet), plusieurs clips et leur ordre, rapport
+  du cadre, annuler et rétablir (200 états), limites (20 clips, 30 minutes), plan à l'image près et graphe ffmpeg de l'export, validation du montage reçu.
+  `SessionMontage` (état pur de l'éditeur ouvert, tête de lecture sur l'axe) applique les opérations et produit la vue ; chaque modification enregistre le projet
+  par un fil d'écriture (une écriture à la fois, la dernière gagne). Les clips du montage sont protégés (`Galerie::proteger`) tant que l'éditeur est ouvert et pendant
+  un export.
+- Aperçu de l'éditeur : sans lecteur vidéo dans l'app (lot 9), l'image et la lecture passent par ffmpeg avec le même plan et le même graphe que l'export
+  (`plan_apercu`, `arguments_apercu`) : image seule à la tête de lecture (`image_seule`, 360p au plus, recherche `-ss` par entrée puis `trim` en images),
+  image précédente et suivante (`pas`), lecture de la sélection depuis la tête (`extrait`, 30 i/s, images RGBA lues sur la sortie de ffmpeg et cadencées par
+  l'horloge ; son mixé par un second ffmpeg, joué par `SortieSon`). Formes d'onde tirées par ffmpeg (`onde`, 200 barres, `trace_onde` dans un `Path`).
+- Export : choix de la résolution (cadre ou hauteur plus petite) et de la cadence, puis `montage::exporter` dans un fil (encodeurs matériels de
+  `ffmpeg -encoders` puis `libopenh264`, `libx264`), fichier `<nom> (montage).mp4` avec son annexe (`origine`), clips d'origine ouverts en lecture seulement.
+  Progression et « Annuler » dans l'éditeur et dans la galerie (`Galerie::commencer_travail`, `avancer_travail`, `finir_travail`, qui relit la galerie) ;
+  l'annulation tue ffmpeg et supprime les fichiers partiels, purgés aussi au démarrage (`purger_partiels`). Liste « Montages » au-dessus des clips :
+  rouvrir, renommer, supprimer (confirmation ; les clips et les fichiers exportés restent), clip manquant signalé.
+- Écarts de l'éditeur avec l'app Tauri : pas d'édition des blocs de texte (gardés dans le projet, ni affichés ni incrustés à l'export, un message le dit) ni de
+  cadre déplaçable à la souris (rapport choisi, cadre centré) ; pas de fichiers dérivés (piste `.m4a`, aperçu H.264) puisque l'aperçu lit le clip par ffmpeg ;
+  aperçu à 30 i/s au plus en 360p ; glisser-déposer des segments remplacé par « vers le début », « vers la fin ».
 - Garde-fous : pas d'encodeur matériel ou garde déclenchée : `indisponible` avec la raison ; encodeur qui accepte des images sans rien rendre en 2 s : `encodeur-muet` ;
   plus d'une image sur cinq perdue sur 10 s : alerte selon la cause ; aucune image du jeu dans les 3 s qui suivent l'ouverture de la capture : `capture-refusee` ; disque plein ou quota atteint à
   l'écriture : erreur, aucun clip existant n'est supprimé.
@@ -1243,9 +1262,13 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
   `disque`) ; service (`replay::tests` : jeu détecté, tampon armé, clip par la touche puis par `sauvegarder_les_dernieres`, pause et fermeture, indisponible sans
   encodeur, touche prise refusée, encodeur muet ou arrêté, échec pendant un partage d'écran mis en pause) ; réglages (`replay::reglages::tests`, `tests/replay.rs` :
   valeurs hors bornes ramenées, touches refusées) ; indicateur (`overlay::replay::tests` : placement, clip sauvé, erreur, expiration ; captures `overlay-replay-*`) ;
-  captures de la fenêtre (`jeux-replay-*`) ; galerie (`replay::clips::tests` : vue vide, remplie, par jeu, quota presque atteint et dépassé, fenêtre d'envoi, destinations, préparation du fichier par ffmpeg ; `replay::galerie::tests` et `replay::clips::tests` de la crate client : chemins refusés, renommage et suppression avec les annexes, purge sans les clips protégés ni le `.part`, vignette ; `tests/clips.rs` : ouverture, purge confirmée, clip protégé refusé, renommage, suppression ; captures `clips-*`).
+  captures de la fenêtre (`jeux-replay-*`) ; galerie (`replay::clips::tests` : vue vide, remplie, par jeu, quota presque atteint et dépassé, fenêtre d'envoi, destinations, préparation du fichier par ffmpeg ; `replay::galerie::tests` et `replay::clips::tests` de la crate client : chemins refusés, renommage et suppression avec les annexes, purge sans les clips protégés ni le `.part`, vignette ; `tests/clips.rs` : ouverture, purge confirmée, clip protégé refusé, renommage, suppression ; captures `clips-*`) ; éditeur (`replay::montage::*::tests` de la crate client : équivalents des cas de `montage.test.ts` et de `montage.rs`, dont les exports réels par ffmpeg,
+  un export coupé à des instants donnés à une image près, l'annulation et l'aperçu à l'image près ; `replay::editeur::*::tests` : opérations de la session, vue,
+  format d'export, suivi des exports, touches ; `tests/editeur.rs` : ouverture depuis la galerie, coupe, retrait, muet, annuler et rétablir au clavier, export
+  puis montage listé et rouvert, clip d'origine inchangé ; captures `editeur-*` et `clips-montages-clair`).
 - Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3 de
-  #355) ; indicateur « clip sauvé » sur un vrai jeu après le raccourci (C3 de #356).
+  #355) ; indicateur « clip sauvé » sur un vrai jeu après le raccourci (C3 de #356) ; montage et export d'un clip réel de 2 minutes puis envoi (C4 de #358), son de
+  l'aperçu sur une vraie sortie audio.
 
 ## Capture d'écran et de fenêtre
 

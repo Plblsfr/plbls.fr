@@ -9,10 +9,10 @@ use estompe_client::replay::clips::{
     self, date_clip, decision_envoi, details_clip, jeu_de, jeux_de, part_utilisee, plan_envoi,
     presque_plein, taille_liberee, Envoi, PlanEnvoi,
 };
-use estompe_client::replay::galerie;
 use estompe_client::replay::types::{
     Clip, Codec, EtatReplay, EvenementReplay, ReglagesReplay, Stockage,
 };
+use estompe_client::replay::{galerie, montage};
 use estompe_client::store::messages::Brouillon;
 use estompe_client::store::{CleConversation, Etat, GenreSalon, Store};
 use estompe_client::televersement::{Progression, SourceEnvoi};
@@ -745,11 +745,14 @@ impl Galerie {
     pub fn renommer_en(self: &Arc<Self>, chemin: &Path, nom: String) {
         let chemin = chemin.to_path_buf();
         self.sur_un_fil("renommage", move |g| {
-            let resultat = g
-                .outils
-                .service
-                .dossier()
-                .and_then(|d| galerie::renommer(&d, &chemin, &nom).map(|_| ()));
+            let resultat = g.outils.service.dossier().and_then(|d| {
+                let nouveau = galerie::renommer(&d, &chemin, &nom)?;
+                let nom_de = |c: &Path| c.file_name().map(|n| n.to_string_lossy().into_owned());
+                if let (Some(ancien), Some(nouveau)) = (nom_de(&chemin), nom_de(&nouveau)) {
+                    montage::suivre_renommage(&d, &ancien, &nouveau);
+                }
+                Ok(())
+            });
             g.apres(resultat.map_err(|e| format!("Renommage impossible : {e}.")));
         });
     }
@@ -1151,6 +1154,44 @@ impl Galerie {
         if let Some(t) = self.verrou().travaux.iter().find(|t| t.id == id) {
             t.annule.store(true, Ordering::SeqCst);
         }
+    }
+
+    pub fn commencer_travail(
+        self: &Arc<Self>,
+        chemin: PathBuf,
+        libelle: String,
+        annule: Arc<AtomicBool>,
+    ) -> u64 {
+        let id = self.suivant();
+        {
+            let mut e = self.verrou();
+            e.erreur.clear();
+            e.travaux.push(Travail {
+                id,
+                chemin,
+                libelle,
+                progression: Some(0.0),
+                annule,
+            });
+        }
+        self.plus_tard(|g, f| g.afficher_travaux(f));
+        id
+    }
+
+    pub fn avancer_travail(self: &Arc<Self>, id: u64, libelle: Option<String>, part: f32) {
+        if self.progression(id, libelle, Some(part)) {
+            self.plus_tard(|g, f| g.afficher_travaux(f));
+        }
+    }
+
+    pub fn signaler_plus_tard(self: &Arc<Self>, message: String) {
+        self.plus_tard(move |g, f| g.signaler(f, message));
+    }
+
+    pub fn finir_travail(self: &Arc<Self>, id: u64, message: String) {
+        self.verrou().travaux.retain(|t| t.id != id);
+        self.plus_tard(move |g, f| g.signaler(f, message));
+        self.recharger();
     }
 
     pub fn travaux_en_cours(&self) -> Vec<PathBuf> {
