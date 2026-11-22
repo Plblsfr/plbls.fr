@@ -1,0 +1,152 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Chargement } from "../composants.slint";
+import { DonneesVocal } from "donnees.slint";
+import { ImageFlux } from "../video/flux.slint";
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+export component ApercuCamera inherits Rectangle {
+    height: self.width * 9 / 16;
+    border-radius: Rayon.l;
+    background: #0e0c0b;
+    clip: true;
+    accessible-role: image;
+    accessible-label: "Aperçu de la caméra (en miroir)";
+    flux := ImageFlux {
+        width: 100%;
+        height: 100%;
+        indice: DonneesVocal.camera.apercu;
+        rayon: Rayon.l;
+        coins: Theme.surface;
+    }
+    if !flux.pret && DonneesVocal.camera.erreur == "": HorizontalLayout {
+        alignment: center;
+        VerticalLayout {
+            alignment: center;
+            Chargement {
+                couleur: #ffffff;
+            }
+        }
+    }
+    Rectangle {
+        x: 10px;
+        y: 10px;
+        width: etiquette.preferred-width + 14px;
+        height: 20px;
+        border-radius: Rayon.xs;
+        background: #00000080;
+        etiquette := Text {
+            text: "Aperçu en miroir";
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: Typo.demi-gras;
+        }
+    }
+    if DonneesVocal.camera.erreur != "": Rectangle {
+        x: 10px;
+        y: parent.height - self.height - 10px;
+        width: parent.width - 20px;
+        height: erreur.preferred-height + 16px;
+        border-radius: Rayon.s;
+        background: Theme.danger-fond;
+        accessible-role: text;
+        accessible-label: DonneesVocal.camera.erreur;
+        erreur := Text {
+            x: 12px;
+            width: parent.width - 24px;
+            text: DonneesVocal.camera.erreur;
+            color: Theme.encre;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component ChoixCamera inherits Modal {
+    titre: "Activer la caméra";
+    ouvert: DonneesVocal.camera.ouvert;
+    largeur: 520px;
+    ferme => {
+        DonneesVocal.fermer-camera();
+    }
+    if DonneesVocal.camera.ouvert: VerticalLayout {
+        spacing: Espace.e4;
+        ApercuCamera { }
+        VerticalLayout {
+            spacing: Espace.e2;
+            Titre {
+                text: "CAMÉRA";
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Bouton {
+                    texte: "Par défaut";
+                    icone: DonneesVocal.camera.choisie == "" ? "check" : "";
+                    variante: DonneesVocal.camera.choisie == "" ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesVocal.choisir-camera("");
+                    }
+                }
+                for c in DonneesVocal.cameras: Bouton {
+                    texte: c.nom;
+                    icone: c.choisi ? "check" : "";
+                    variante: c.choisi ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesVocal.choisir-camera(c.id);
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: Espace.e2;
+            Titre {
+                text: "QUALITÉ";
+            }
+            HorizontalLayout {
+                spacing: Espace.e1;
+                for q[i] in DonneesVocal.camera.qualites: Bouton {
+                    texte: q;
+                    variante: i == DonneesVocal.camera.qualite ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                    calque: 1;
+                    clique => {
+                        DonneesVocal.choisir-qualite-camera(i);
+                    }
+                }
+            }
+            Text {
+                text: DonneesVocal.camera.debit;
+                color: Theme.gris;
+                font-size: Typo.petit;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Annuler";
+                variante: VarianteBouton.secondaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.fermer-camera();
+                }
+            }
+            Bouton {
+                texte: "Activer la caméra";
+                icone: "camera";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                clique => {
+                    DonneesVocal.activer-camera();
+                }
+            }
+        }
+    }
+}

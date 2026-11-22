@@ -2,12 +2,18 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::audio::ReglagesMicro;
 
+use super::camera::QualiteCamera;
 use super::erreurs::CauseMicro;
+use super::incrustation::ReglagesIncrustation;
 use super::mixage::Ecoute;
+use super::partage::{PartageLocal, PlafondPartage, ReglagesPartage};
 use super::salle::{est_partage, InfoParticipant, Qualite};
+use super::scene::{doit_recevoir, rassembler_spectateurs, SourcePiste, ATTRIBUT_SPECTATEUR};
+use super::video::{CleVideo, SourceVideo};
 
 pub const ATTRIBUT_MUET: &str = "muted";
 pub const ATTRIBUT_SOURD: &str = "deaf";
+pub const ATTRIBUT_INCRUSTATION: &str = "overlay";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Phase {
@@ -43,6 +49,24 @@ pub struct EtatVocal {
     pub sortie: Option<String>,
     pub traitement: ReglagesMicro,
     pub ecoute: Ecoute,
+    pub videos: BTreeSet<CleVideo>,
+    pub pistes: BTreeMap<CleVideo, String>,
+    pub sons_partage: BTreeSet<String>,
+    pub regardes: BTreeMap<String, bool>,
+    pub regarder_auto: bool,
+    pub vus: BTreeSet<String>,
+    pub camera_active: bool,
+    pub camera_demarrage: bool,
+    pub camera: Option<String>,
+    pub qualite_camera: QualiteCamera,
+    pub camera_erreur: Option<String>,
+    pub partage: Option<PartageLocal>,
+    pub partage_demarrage: bool,
+    pub partage_erreur: Option<String>,
+    pub reglages_partage: ReglagesPartage,
+    pub plafond_partage: PlafondPartage,
+    pub incrustation: bool,
+    pub reglages_incrustation: ReglagesIncrustation,
 }
 
 impl Default for EtatVocal {
@@ -65,6 +89,24 @@ impl Default for EtatVocal {
             sortie: None,
             traitement: ReglagesMicro::default(),
             ecoute: Ecoute::default(),
+            videos: BTreeSet::new(),
+            pistes: BTreeMap::new(),
+            sons_partage: BTreeSet::new(),
+            regardes: BTreeMap::new(),
+            regarder_auto: false,
+            vus: BTreeSet::new(),
+            camera_active: false,
+            camera_demarrage: false,
+            camera: None,
+            qualite_camera: QualiteCamera::default(),
+            camera_erreur: None,
+            partage: None,
+            partage_demarrage: false,
+            partage_erreur: None,
+            reglages_partage: ReglagesPartage::default(),
+            plafond_partage: PlafondPartage::default(),
+            incrustation: false,
+            reglages_incrustation: ReglagesIncrustation::default(),
         }
     }
 }
@@ -124,7 +166,76 @@ impl EtatVocal {
         BTreeMap::from([
             (ATTRIBUT_MUET.to_string(), drapeau(self.micro_coupe)),
             (ATTRIBUT_SOURD.to_string(), drapeau(self.casque_coupe)),
+            (
+                ATTRIBUT_INCRUSTATION.to_string(),
+                drapeau(self.incrustation),
+            ),
+            (ATTRIBUT_SPECTATEUR.to_string(), self.regardees()),
         ])
+    }
+
+    pub fn regardees(&self) -> String {
+        self.vus.iter().cloned().collect::<Vec<_>>().join(",")
+    }
+
+    pub fn propre(&self, proprietaire: &str) -> bool {
+        self.identite.as_deref() == Some(proprietaire)
+    }
+
+    pub fn regarde(&self, proprietaire: &str) -> bool {
+        doit_recevoir(
+            SourcePiste::Partage,
+            self.regardes.get(proprietaire).copied(),
+            self.regarder_auto,
+            self.propre(proprietaire),
+        )
+    }
+
+    pub fn ecoute_partage(&self, proprietaire: &str) -> bool {
+        doit_recevoir(
+            SourcePiste::SonPartage,
+            self.regardes.get(proprietaire).copied(),
+            self.regarder_auto,
+            self.propre(proprietaire),
+        )
+    }
+
+    pub fn camera_incrustee(&self, identite: &str) -> bool {
+        if self.propre(identite) {
+            return self.incrustation;
+        }
+        self.participants
+            .get(identite)
+            .and_then(|p| p.attributs.get(ATTRIBUT_INCRUSTATION))
+            .is_some_and(|v| !v.is_empty())
+    }
+
+    pub fn recoit(&self, cle: &CleVideo) -> bool {
+        match cle.source {
+            SourceVideo::Camera => !self.camera_incrustee(&cle.identite),
+            SourceVideo::Partage => self.regarde(&cle.identite),
+        }
+    }
+
+    pub fn spectateurs(&self) -> BTreeMap<CleVideo, Vec<(String, String)>> {
+        let personnes: Vec<(String, String, Option<String>)> = self
+            .participants
+            .values()
+            .filter(|p| !est_partage(&p.identite))
+            .map(|p| {
+                let regarde = if self.propre(&p.identite) {
+                    Some(self.regardees())
+                } else {
+                    p.attributs.get(ATTRIBUT_SPECTATEUR).cloned()
+                };
+                (p.identite.clone(), p.nom.clone(), regarde)
+            })
+            .collect();
+        let parpiste = rassembler_spectateurs(&personnes);
+        self.pistes
+            .iter()
+            .filter_map(|(cle, piste)| parpiste.get(piste).map(|s| (cle.clone(), s.clone())))
+            .collect()
     }
 
     pub fn basculer_micro(&mut self) -> bool {
@@ -180,6 +291,14 @@ impl EtatVocal {
             .map(|p| (p.identite.clone(), p))
             .collect();
         self.parlent.clear();
+        self.videos.clear();
+        self.pistes.clear();
+        self.sons_partage.clear();
+        self.vus.clear();
+    }
+
+    pub fn video(&self, cle: &CleVideo) -> bool {
+        self.videos.contains(cle)
     }
 
     pub fn reinitialiser(&mut self) {
@@ -189,6 +308,13 @@ impl EtatVocal {
             traitement: self.traitement,
             ecoute: std::mem::take(&mut self.ecoute),
             porte_ouverte: self.porte_ouverte,
+            camera: self.camera.take(),
+            qualite_camera: self.qualite_camera,
+            camera_erreur: self.camera_erreur.take(),
+            partage_erreur: self.partage_erreur.take(),
+            reglages_partage: self.reglages_partage,
+            reglages_incrustation: self.reglages_incrustation,
+            regarder_auto: self.regarder_auto,
             ..Self::default()
         };
     }
@@ -215,6 +341,29 @@ mod tests {
                 .collect(),
             ..InfoParticipant::default()
         }
+    }
+
+    #[test]
+    fn une_camera_incrustee_dans_le_partage_n_est_pas_recue() {
+        let mut e = connecte();
+        for p in [
+            participant("bob", &[(ATTRIBUT_INCRUSTATION, "1")]),
+            participant("carol", &[(ATTRIBUT_INCRUSTATION, "")]),
+        ] {
+            e.participants.insert(p.identite.clone(), p);
+        }
+        assert!(e.camera_incrustee("bob"));
+        assert!(!e.recoit(&CleVideo::camera("bob")));
+        assert!(e.recoit(&CleVideo::camera("carol")));
+        assert!(!e.camera_incrustee("moi"));
+        assert_eq!(e.attributs()[ATTRIBUT_INCRUSTATION], "");
+        e.incrustation = true;
+        assert!(e.camera_incrustee("moi"));
+        assert_eq!(e.attributs()[ATTRIBUT_INCRUSTATION], "1");
+        e.reglages_incrustation.taille = 40;
+        e.reinitialiser();
+        assert!(!e.incrustation);
+        assert_eq!(e.reglages_incrustation.taille, 40);
     }
 
     #[test]

@@ -1,0 +1,38 @@
+import { Coins } from "../composants/coins.slint";
+
+export struct FluxVideo {
+    cle: string,
+    image: image,
+    largeur: int,
+    hauteur: int,
+    pret: bool,
+}
+
+export global DonneesVideo {
+    in property <[FluxVideo]> flux;
+    callback zone-tuile(length, length);
+    callback zone-vedette(length, length);
+}
+
+export component ImageFlux inherits Rectangle {
+    in property <int> indice: -1;
+    in property <bool> contenir: false;
+    in property <length> rayon: 0;
+    in property <brush> coins: transparent;
+    out property <bool> pret: root.indice >= 0 && DonneesVideo.flux[root.indice].pret;
+    background: #0e0c0b;
+    clip: true;
+    if root.pret: Image {
+        width: 100%;
+        height: 100%;
+        source: DonneesVideo.flux[root.indice].image;
+        image-fit: root.contenir ? ImageFit.contain : ImageFit.cover;
+        accessible-role: image;
+    }
+    if root.pret && root.rayon > 0: Coins {
+        width: 100%;
+        height: 100%;
+        rayon: root.rayon;
+        couleur: root.coins;
+    }
+}

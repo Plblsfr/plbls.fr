@@ -45,14 +45,27 @@ export component CommandesVocal inherits HorizontalLayout {
         }
     }
     if !root.compact: BoutonVocal {
-        icone: "camera-off";
-        libelle: "Activer la caméra";
-        bientot: true;
+        icone: DonneesVocal.barre.camera-active ? "camera" : "camera-off";
+        libelle: DonneesVocal.barre.camera-active ? "Couper la caméra" : "Activer la caméra";
+        raccourci: "Alt+Maj+V";
+        actif: !DonneesVocal.barre.camera-demarrage;
+        clique => {
+            DonneesVocal.basculer-camera();
+        }
     }
     if !root.compact: BoutonVocal {
         icone: "monitor";
-        libelle: "Partager l'écran";
-        bientot: true;
+        libelle: DonneesVocal.barre.partage ? "Arrêter le partage" : "Partager l'écran";
+        raccourci: "Alt+Maj+S";
+        coupe: DonneesVocal.barre.partage;
+        actif: !DonneesVocal.barre.partage-demarrage;
+        clique => {
+            if (DonneesVocal.barre.partage) {
+                DonneesVocal.arreter-partage();
+            } else {
+                DonneesVocal.ouvrir-partage();
+            }
+        }
     }
     BoutonVocal {
         icone: "sliders";

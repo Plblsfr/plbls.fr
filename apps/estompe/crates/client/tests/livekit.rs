@@ -8,7 +8,11 @@ mod jeton_livekit;
 use estompe_client::audio::factice::SystemeFactice;
 use estompe_client::audio::{FormatAudio, SensAudio, ECHANTILLONS_PAR_TRAME};
 use estompe_client::vocal::livekit::ConnecteurLiveKit;
-use estompe_client::vocal::{Dependances, EtatVocal, Phase, Reglages, SessionVocale};
+use estompe_client::vocal::{
+    CamerasFactices, CleVideo, DemandeVideo, Dependances, EtatVocal, Phase, Reglages,
+    ReglagesPartage, ResolutionPartage, SessionVocale,
+};
+use estompe_plateforme::{CaptureEcran, EcransFactices, SourceCapture, TypeSource};
 use jeton_livekit::{base64url, hmac_sha256, jeton, ApiDeTest};
 use tokio::runtime::Handle;
 use tokio::time::Instant;
@@ -16,6 +20,47 @@ use tokio::time::Instant;
 const VARIABLE_URL: &str = "ESTOMPE_LIVEKIT_URL";
 
 fn poste(url: &str, identite: &str) -> (SessionVocale, SystemeFactice) {
+    let (session, audio, _) = poste_avec_camera(url, identite);
+    (session, audio)
+}
+
+fn poste_avec_camera(
+    url: &str,
+    identite: &str,
+) -> (SessionVocale, SystemeFactice, CamerasFactices) {
+    let (session, audio, cameras, _) = poste_complet(url, identite);
+    (session, audio, cameras)
+}
+
+fn source(id: &str, genre: TypeSource, largeur: u32, hauteur: u32) -> SourceCapture {
+    SourceCapture {
+        id: id.to_string(),
+        nom: id.to_string(),
+        application: String::new(),
+        genre,
+        largeur,
+        hauteur,
+        principale: false,
+        processus: None,
+        estompe: false,
+    }
+}
+
+fn poste_complet(
+    url: &str,
+    identite: &str,
+) -> (
+    SessionVocale,
+    SystemeFactice,
+    CamerasFactices,
+    EcransFactices,
+) {
+    let ecrans = EcransFactices::nouveaux();
+    ecrans.brancher(source("ecran:0", TypeSource::Ecran, 1920, 1080));
+    ecrans.brancher(source("fenetre:1", TypeSource::Fenetre, 1280, 720));
+    let cameras = CamerasFactices::nouvelles();
+    cameras.brancher("c1", "Caméra factice");
+    cameras.brancher("c2", "Seconde caméra factice");
     let audio = SystemeFactice::nouveau();
     audio.brancher(
         SensAudio::Entree,
@@ -46,11 +91,172 @@ fn poste(url: &str, identite: &str) -> (SessionVocale, SystemeFactice) {
             }),
             connecteur: Arc::new(ConnecteurLiveKit),
             audio: Arc::new(audio.clone()),
+            cameras: Arc::new(cameras.clone()),
+            ecrans: Arc::new(ecrans.clone()),
+            sons: Arc::new(estompe_plateforme::Indisponible),
             apm: Some(estompe_client::vocal::livekit::apm()),
             reglages: Reglages::default(),
         },
     );
-    (session, audio)
+    (session, audio, cameras, ecrans)
+}
+
+fn salle_d_essai(essai: &str) -> String {
+    format!(
+        "essai-{essai}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn la_camera_est_publiee_changee_puis_retiree() {
+    let Ok(url) = std::env::var(VARIABLE_URL) else {
+        eprintln!(
+            "ignoré : {VARIABLE_URL} absent (serveur LiveKit de deploy/docker-compose.dev.yml)"
+        );
+        return;
+    };
+    let salle = salle_d_essai("camera");
+    let (alice, _, cameras) = poste_avec_camera(&url, "alice");
+    let (bob, _, _) = poste_avec_camera(&url, "bob");
+    alice.rejoindre(&salle);
+    attendre(&alice, Duration::from_secs(30), |e| {
+        e.phase == Phase::Connecte
+    })
+    .await;
+    bob.rejoindre(&salle);
+    attendre(&bob, Duration::from_secs(30), |e| {
+        e.participants.contains_key("alice")
+    })
+    .await;
+    let cle = CleVideo::camera("alice");
+    bob.definir_affichage(
+        [(
+            cle.clone(),
+            DemandeVideo {
+                largeur: 640,
+                hauteur: 360,
+            },
+        )]
+        .into_iter()
+        .collect(),
+    );
+    alice.activer_camera(true);
+    attendre(&alice, Duration::from_secs(30), |e| e.camera_active).await;
+    assert_eq!(cameras.ouvertes(), vec!["c1".to_string()]);
+    attendre(&bob, Duration::from_secs(30), |e| e.video(&cle)).await;
+    let recepteur = bob.videos().recepteur(&cle);
+    let debut = Instant::now();
+    while recepteur.images_recues() == 0 && debut.elapsed() < Duration::from_secs(30) {
+        cameras.pousser(1);
+        tokio::time::sleep(Duration::from_millis(33)).await;
+    }
+    assert!(
+        recepteur.images_recues() > 0,
+        "bob n'a reçu aucune image d'alice en 30 s"
+    );
+    alice.choisir_camera(Some("c2".into()));
+    attendre(&alice, Duration::from_secs(30), |e| {
+        e.camera.as_deref() == Some("c2")
+    })
+    .await;
+    assert_eq!(cameras.ouvertes(), vec!["c2".to_string()]);
+    alice.activer_camera(false);
+    attendre(&alice, Duration::from_secs(30), |e| !e.camera_active).await;
+    assert!(cameras.ouvertes().is_empty());
+    attendre(&bob, Duration::from_secs(30), |e| !e.video(&cle)).await;
+    alice.fermer().await;
+    bob.fermer().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn le_partage_est_publie_change_de_source_et_de_qualite_puis_retire() {
+    let Ok(url) = std::env::var(VARIABLE_URL) else {
+        eprintln!(
+            "ignoré : {VARIABLE_URL} absent (serveur LiveKit de deploy/docker-compose.dev.yml)"
+        );
+        return;
+    };
+    let salle = salle_d_essai("partage");
+    let (alice, _, _, ecrans) = poste_complet(&url, "alice");
+    let (bob, _, _, _) = poste_complet(&url, "bob");
+    alice.rejoindre(&salle);
+    attendre(&alice, Duration::from_secs(30), |e| {
+        e.phase == Phase::Connecte
+    })
+    .await;
+    bob.rejoindre(&salle);
+    attendre(&bob, Duration::from_secs(30), |e| {
+        e.participants.contains_key("alice")
+    })
+    .await;
+    let cle = CleVideo::partage("alice");
+    bob.regarder("alice", Some(true));
+    bob.definir_affichage(
+        [(
+            cle.clone(),
+            DemandeVideo {
+                largeur: 1280,
+                hauteur: 720,
+            },
+        )]
+        .into_iter()
+        .collect(),
+    );
+    let sources = ecrans.sources().unwrap();
+    alice.partager(sources[0].clone());
+    let etat = attendre(&alice, Duration::from_secs(30), |e| e.partage.is_some()).await;
+    assert!(etat.pistes.contains_key(&cle), "piste du partage connue");
+    attendre(&bob, Duration::from_secs(30), |e| e.video(&cle)).await;
+    let recepteur = bob.videos().recepteur(&cle);
+    let pousser_jusqu_a = |cible: u64, source: &'static str| {
+        let ecrans = ecrans.clone();
+        let recepteur = recepteur.clone();
+        async move {
+            let debut = Instant::now();
+            while recepteur.images_recues() < cible && debut.elapsed() < Duration::from_secs(30) {
+                ecrans.pousser(source);
+                tokio::time::sleep(Duration::from_millis(33)).await;
+            }
+            assert!(
+                recepteur.images_recues() >= cible,
+                "bob n'a pas reçu le partage d'alice ({source}) en 30 s"
+            );
+        }
+    };
+    pousser_jusqu_a(1, "ecran:0").await;
+    alice.changer_source(sources[1].clone());
+    attendre(&alice, Duration::from_secs(30), |e| {
+        e.partage
+            .as_ref()
+            .is_some_and(|p| p.source.id == "fenetre:1")
+    })
+    .await;
+    assert_eq!(ecrans.ouverts(), vec![("fenetre:1".to_string(), 30)]);
+    let deja = recepteur.images_recues();
+    pousser_jusqu_a(deja + 5, "fenetre:1").await;
+    alice.regler_partage(ReglagesPartage {
+        resolution: ResolutionPartage::R720,
+        ips: 60,
+        ..ReglagesPartage::default()
+    });
+    attendre(&alice, Duration::from_secs(30), |e| {
+        e.partage.as_ref().is_some_and(|p| p.qualite.ips == 60)
+    })
+    .await;
+    assert_eq!(ecrans.ouverts(), vec![("fenetre:1".to_string(), 60)]);
+    let deja = recepteur.images_recues();
+    pousser_jusqu_a(deja + 5, "fenetre:1").await;
+    alice.arreter_partage();
+    attendre(&alice, Duration::from_secs(30), |e| e.partage.is_none()).await;
+    assert!(ecrans.ouverts().is_empty());
+    attendre(&bob, Duration::from_secs(30), |e| !e.video(&cle)).await;
+    alice.fermer().await;
+    bob.fermer().await;
 }
 
 async fn attendre(
@@ -69,7 +275,12 @@ async fn attendre(
         }
     })
     .await
-    .unwrap_or_else(|_| panic!("état attendu jamais atteint : {:?}", session.instantane()))
+    .unwrap_or_else(|_| {
+        panic!(
+            "état attendu jamais atteint en {delai:?} : {:?}",
+            session.instantane()
+        )
+    })
 }
 
 #[test]
@@ -96,13 +307,7 @@ async fn deux_clients_se_voient_s_entendent_et_la_fermeture_retire_le_participan
         );
         return;
     };
-    let salle = format!(
-        "essai-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-    );
+    let salle = salle_d_essai("voix");
     let (alice, micro_alice) = poste(&url, "alice");
     let (bob, sortie_bob) = poste(&url, "bob");
     alice.rejoindre(&salle);

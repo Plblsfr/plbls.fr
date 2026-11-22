@@ -14,6 +14,16 @@ export struct ParticipantVocal {
     qualite: string,
     portrait: image,
     deplacable: bool,
+    video: int,
+    libelle-video: string,
+    cle: string,
+    partage: bool,
+    regarde: bool,
+    vedette: bool,
+    rang: int,
+    spectateurs: string,
+    noms-spectateurs: string,
+    son-partage: bool,
 }
 
 export struct VueVocal {
@@ -30,6 +40,9 @@ export struct VueVocal {
     seul: bool,
     colonnes: int,
     rangees: int,
+    vedette: bool,
+    bande: int,
+    plein-ecran: string,
 }
 
 export struct BarreVocal {
@@ -49,6 +62,75 @@ export struct BarreVocal {
     son-impose: bool,
     peut-parler: bool,
     message: string,
+    camera-active: bool,
+    camera-demarrage: bool,
+    partage: bool,
+    partage-demarrage: bool,
+    partage-source: string,
+    spectateurs-partage: string,
+}
+
+export struct OptionPartage {
+    libelle: string,
+    indice: string,
+    choisi: bool,
+    actif: bool,
+}
+
+export struct SourcePartageVocal {
+    id: string,
+    nom: string,
+    detail: string,
+    miniature: image,
+    prete: bool,
+}
+
+export enum EtapePartage { source, apercu, qualite }
+
+export struct IncrustationVocal {
+    active: bool,
+    coin: int,
+    taille: float,
+    marge: float,
+    cercle: bool,
+    bordure: bool,
+    ombre: bool,
+    miroir: bool,
+    camera: bool,
+}
+
+export struct ChoixPartageVocal {
+    ouvert: bool,
+    etape: EtapePartage,
+    fenetres: bool,
+    chargement: bool,
+    erreur: string,
+    indisponible: bool,
+    vide: string,
+    source: string,
+    detail: string,
+    apercu: int,
+    prereglages: [OptionPartage],
+    resolutions: [OptionPartage],
+    cadences: [OptionPartage],
+    fluidite: bool,
+    auto: bool,
+    resume: string,
+    changer: bool,
+    son-disponible: bool,
+    son: bool,
+    libelle-son: string,
+    incrustation: IncrustationVocal,
+}
+
+export struct ChoixCameraVocal {
+    ouvert: bool,
+    choisie: string,
+    apercu: int,
+    erreur: string,
+    qualites: [string],
+    qualite: int,
+    debit: string,
 }
 
 export struct SalonDestination {
@@ -68,6 +150,11 @@ export struct MenuVocal {
     destinations: [SalonDestination],
     peut-deconnecter: bool,
     erreur: string,
+    partage: bool,
+    son-partage: bool,
+    spectateurs: [string],
+    qualites: [string],
+    qualite: int,
 }
 
 export struct PeripheriqueVocal {
@@ -127,6 +214,10 @@ export global DonneesVocal {
     in-out property <string> glisse-depuis;
     in property <string> erreur-depot-salon;
     in property <string> erreur-depot;
+    in property <ChoixCameraVocal> camera;
+    in property <[PeripheriqueVocal]> cameras;
+    in property <ChoixPartageVocal> partage;
+    in property <[SourcePartageVocal]> sources-partage;
     callback rejoindre(string);
     callback ouvrir-vocal(string);
     callback quitter();
@@ -137,11 +228,22 @@ export global DonneesVocal {
     callback choisir-micro-depuis-reglages(string);
     callback choisir-sortie-depuis-reglages(string);
     callback ouvrir-menu(string, string);
+    callback ouvrir-menu-partage(string);
+    callback regarder(string, bool);
+    callback epingler(string);
+    callback plein-ecran(string);
+    callback choisir-qualite-recue(int);
     public function ouvrir-menu-a(utilisateur: string, salon: string, au-pointeur: bool, x: length, y: length) {
         menu-au-pointeur = au-pointeur;
         menu-x = x;
         menu-y = y;
         ouvrir-menu(utilisateur, salon);
+    }
+    public function ouvrir-menu-partage-a(utilisateur: string, au-pointeur: bool, x: length, y: length) {
+        menu-au-pointeur = au-pointeur;
+        menu-x = x;
+        menu-y = y;
+        ouvrir-menu-partage(utilisateur);
     }
     callback muet-pour-moi(bool);
     callback volume(int, bool);
@@ -156,6 +258,35 @@ export global DonneesVocal {
     pure callback donnees-glisse(string, string) -> data-transfer;
     pure callback peut-deposer(data-transfer, string) -> bool;
     callback deposer(data-transfer, string);
+    callback basculer-camera();
+    callback fermer-camera();
+    callback choisir-camera(string);
+    callback choisir-qualite-camera(int);
+    callback activer-camera();
+    callback rejoindre-avec-camera(string);
+    callback ouvrir-partage();
+    callback fermer-partage();
+    callback onglet-partage(bool);
+    callback actualiser-partage();
+    callback choisir-source(string);
+    callback revenir-aux-sources();
+    callback prereglage-partage(int);
+    callback resolution-partage(int);
+    callback cadence-partage(int);
+    callback fluidite-partage(bool);
+    callback auto-partage(bool);
+    callback son-partage(bool);
+    callback partager();
+    callback arreter-partage();
+    callback qualite-partage();
+    callback changer-source-partage();
+    callback incrustation-active(bool);
+    callback coin-incrustation(int);
+    callback taille-incrustation(float, bool);
+    callback marge-incrustation(float, bool);
+    callback forme-incrustation(bool);
+    callback option-incrustation(int, bool);
+    callback deplacer-incrustation(float, float, bool);
     callback ouvrir-reglages();
     callback fermer-reglages();
     callback regler(ReglagesVocal, bool);

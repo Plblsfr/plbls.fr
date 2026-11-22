@@ -1102,6 +1102,10 @@ pub struct PostVoiceCidTokenReponse {
     pub room: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_participants: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub screen_max_fps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub screen_max_height: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

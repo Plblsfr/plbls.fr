@@ -4,13 +4,14 @@ targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 [advisories]
 version = 2
 ignore = [
-  # Avis « non maintenu », sans faille connue ni version corrigée, amenés par Slint 1.18.1 (figé) ou par keyring.
+  # Avis « non maintenu », sans faille connue ni version corrigée, amenés par Slint 1.18.1 (figé), par keyring ou par nokhwa.
   { id = "RUSTSEC-2026-0543", reason = "chrono non maintenu, amené par i-slint-core" },
   { id = "RUSTSEC-2026-0441", reason = "pin-utils non maintenu, amené par le moteur Skia de Slint (spin_on)" },
   { id = "RUSTSEC-2026-0192", reason = "ttf-parser non maintenu, amené par winit (décorations Wayland)" },
   { id = "RUSTSEC-2026-0370", reason = "zvariant non maintenu en crate séparée, amené par zbus (Slint et keyring)" },
   { id = "RUSTSEC-2026-0372", reason = "zvariant_derive non maintenu en crate séparée, amené par zbus (Slint et keyring)" },
   { id = "RUSTSEC-2026-0371", reason = "zbus_names 3 non maintenu, amené par keyring (Secret Service sous Linux)" },
+  { id = "RUSTSEC-2024-0436", reason = "paste non maintenu, macro de compilation amenée par nokhwa (capture de la caméra)" },
 ]
 
 [licenses]

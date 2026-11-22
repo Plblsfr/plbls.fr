@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
 import { DonneesVocal } from "donnees.slint";
 import { BarresQualite } from "commun.slint";
+import { Icone, Bouton, VarianteBouton } from "../composants.slint";
 import { CommandesVocal, AvisVocal } from "commandes.slint";
 
 export component BarreVocalPanneau inherits Rectangle {
@@ -63,6 +64,35 @@ export component BarreVocalPanneau inherits Rectangle {
                 BarresQualite {
                     barres: DonneesVocal.barre.barres;
                     libelle: DonneesVocal.barre.qualite;
+                }
+            }
+        }
+        if DonneesVocal.barre.partage: HorizontalLayout {
+            spacing: Espace.e2;
+            accessible-role: text;
+            accessible-label: "Tu partages ton écran : \{DonneesVocal.barre.partage-source}";
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "monitor";
+                    taille: 14px;
+                    couleur: Theme.rose;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: "Tu partages : " + DonneesVocal.barre.partage-source;
+                color: Theme.encre-2;
+                font-size: Typo.minuscule;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Bouton {
+                icone: "x";
+                description: "Arrêter le partage";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesVocal.arreter-partage();
                 }
             }
         }

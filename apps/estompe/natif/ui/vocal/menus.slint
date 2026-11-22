@@ -14,20 +14,25 @@ export component MenuParticipant inherits Modal {
     }
     if DonneesVocal.menu-ouvert: VerticalLayout {
         spacing: Espace.e4;
-        Interrupteur {
-            texte: "Muet pour moi";
+        if DonneesVocal.menu.partage && !DonneesVocal.menu.son-partage: Text {
+            text: "Ce partage n'a pas de son.";
+            color: Theme.gris;
+            font-size: Typo.petit;
+        }
+        if !DonneesVocal.menu.partage || DonneesVocal.menu.son-partage: Interrupteur {
+            texte: DonneesVocal.menu.partage ? "Couper le son du partage" : "Muet pour moi";
             allume: DonneesVocal.menu.muet;
             calque: 1;
             bascule(muet) => {
                 DonneesVocal.muet-pour-moi(muet);
             }
         }
-        VerticalLayout {
+        if !DonneesVocal.menu.partage || DonneesVocal.menu.son-partage: VerticalLayout {
             spacing: Espace.e1;
             HorizontalLayout {
                 Text {
                     horizontal-stretch: 1;
-                    text: "Volume";
+                    text: DonneesVocal.menu.partage ? "Volume du partage" : "Volume";
                     color: Theme.encre-2;
                     font-size: Typo.petit;
                 }
@@ -52,6 +57,66 @@ export component MenuParticipant inherits Modal {
                 fini(v) => {
                     DonneesVocal.volume(Math.round(v), true);
                 }
+            }
+        }
+        if DonneesVocal.menu.partage: VerticalLayout {
+            spacing: Espace.e1;
+            Text {
+                text: "Qualité reçue";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+            }
+            HorizontalLayout {
+                spacing: Espace.e1;
+                alignment: start;
+                for q[i] in DonneesVocal.menu.qualites: Bouton {
+                    texte: q;
+                    icone: i == DonneesVocal.menu.qualite ? "check" : "";
+                    variante: i == DonneesVocal.menu.qualite ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesVocal.choisir-qualite-recue(i);
+                    }
+                }
+            }
+            Text {
+                text: DonneesVocal.menu.qualite == 0 ? "Adaptée à la taille de l'image et à ta connexion." : "Plafonnée par la qualité envoyée et par ta connexion.";
+                color: Theme.gris;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+        }
+        if DonneesVocal.menu.partage: VerticalLayout {
+            spacing: Espace.e1;
+            Text {
+                text: DonneesVocal.menu.spectateurs.length == 0 ? "Aucun spectateur" : DonneesVocal.menu.spectateurs.length == 1 ? "1 spectateur" : "\{DonneesVocal.menu.spectateurs.length} spectateurs";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+            }
+            for nom in DonneesVocal.menu.spectateurs: HorizontalLayout {
+                spacing: Espace.e2;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "oeil";
+                        taille: 14px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    text: nom;
+                    color: Theme.encre;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+        if DonneesVocal.menu.partage: Bouton {
+            texte: "Arrêter de regarder";
+            icone: "oeil";
+            calque: 1;
+            clique => {
+                DonneesVocal.regarder(DonneesVocal.menu.utilisateur, false);
             }
         }
         if DonneesVocal.menu.peut-couper-micro || DonneesVocal.menu.peut-couper-son: VerticalLayout {
