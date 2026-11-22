@@ -29,6 +29,7 @@ use crate::coquille::avatars::{CleAvatar, Profils};
 use crate::coquille::modeles::synchroniser;
 use crate::coquille::pont::vec_de;
 use crate::messagerie::pont::SystemeFichiers;
+use crate::overlay::voix as overlay_voix;
 use crate::session::Memoire;
 use crate::video::{self, FluxVoulu, GestionVideo};
 use crate::{
@@ -94,6 +95,7 @@ pub struct OutilsVocaux {
     pub ecrans: Arc<dyn CaptureEcran>,
     pub sons: Arc<dyn CaptureSon>,
     pub apm: Option<Arc<Apm>>,
+    pub overlay: Option<Arc<crate::overlay::voix::ServiceOverlayVoix>>,
 }
 
 #[derive(Default)]
@@ -587,6 +589,9 @@ impl PontVocal {
         if let Some(ptt) = ptt {
             ptt.en_vocal(false);
         }
+        if let Some(overlay) = outils.as_ref().and_then(|o| o.overlay.as_ref()) {
+            overlay.definir_salon(None);
+        }
         if let Some(outils) = outils {
             if outils.session.instantane().actif() {
                 outils.session.quitter();
@@ -952,8 +957,18 @@ impl PontVocal {
             f.window().set_fullscreen(false);
         }
         let qualite_recue = self.preferences(|p| p.qualite_partage);
+        let overlay = i.outils.as_ref().and_then(|o| o.overlay.clone());
         self.store.lire(|etat| {
             let moi = etat.moi().to_string();
+            if let Some(overlay) = &overlay {
+                let salon = overlay_voix::participants_du_vocal(etat, &i.etat, &moi, je_parle).map(
+                    |mut liste| {
+                        marquer_portraits(&mut liste, profils, &mut manquants);
+                        overlay_voix::lignes(liste, profils)
+                    },
+                );
+                overlay.definir_salon(salon);
+            }
             let scene = salon_vue
                 .as_deref()
                 .map(|s| projection::scene(etat, &i.etat, s, &moi, je_parle, &mut i.epinglage));

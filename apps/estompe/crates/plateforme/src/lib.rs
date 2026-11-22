@@ -11,6 +11,7 @@ mod installation;
 pub mod instance;
 #[cfg(target_os = "linux")]
 mod notifications_linux;
+mod overlay;
 #[cfg(windows)]
 mod pastille_windows;
 mod premier_plan;
@@ -44,6 +45,7 @@ pub use erreur::{Erreur, Resultat};
 pub use fichiers::{FichiersSysteme, PressePapiersSysteme};
 pub use indisponible::Indisponible;
 pub use installation::{InstallationSysteme, ARGUMENTS_INSTALLEUR, CIBLE_WINDOWS};
+pub use overlay::{AffichageFactice, OverlayFactice, OverlaySysteme};
 pub use premier_plan::{
     application_de_chemin, nom_de_fichier, PremierPlanFactice, PremierPlanSysteme,
 };
@@ -54,12 +56,12 @@ pub use raccourcis::{
 };
 pub use raw_window_handle::RawWindowHandle;
 pub use traits::{
-    ActionNotification, ActionRaccourci, ApplicationPremierPlan, CaptureEcran, CaptureSon,
+    ActionNotification, ActionRaccourci, ApplicationPremierPlan, Calque, CaptureEcran, CaptureSon,
     CibleSon, Coffre, CompteursProcessus, ContenuPressePapiers, DemarrageSession, ErreurFluxAudio,
     EtatTouche, EvenementCapture, EvenementZone, Fichiers, FiltreFichiers, FluxAudio, FluxSon,
-    FormatAudio, FournisseurAudio, Image, InfosMachine, Installation, MesureProcessus, Micro,
-    Notification, Notifications, OptionsCapture, OuvertureUrl, Overlay, Pastille,
-    PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux,
+    FormatAudio, FournisseurAudio, Image, ImagePremultipliee, InfosMachine, Installation,
+    MesureProcessus, Micro, Notification, Notifications, OptionsCapture, OuvertureUrl, Overlay,
+    Pastille, PeripheriqueAudio, PremierPlan, PressePapiers, ProducteurSon, RaccourcisGlobaux,
     RecepteurActions, RecepteurAudio, RecepteurCapture, RecepteurSon, RecepteurSonCapture,
     RecepteurZone, SensAudio, SignalErreurAudio, SortieSon, SourceCapture, SystemeAudio,
     TypeSource, ZoneEcran, ZoneNotification,
@@ -87,7 +89,7 @@ pub struct Plateforme {
     pub capture_son: Arc<dyn CaptureSon>,
     pub audio: Arc<dyn SystemeAudio>,
     pub mesure: Arc<dyn MesureProcessus>,
-    pub overlay: Box<dyn Overlay>,
+    pub overlay: Arc<dyn Overlay>,
     pub premier_plan: Arc<dyn PremierPlan>,
     pub demarrage: Box<dyn DemarrageSession>,
 }
@@ -110,7 +112,7 @@ impl Plateforme {
             capture_ecran: capture_de_l_os(),
             capture_son: son_de_l_os(),
             premier_plan: premier_plan_de_l_os(),
-            ..Self::indisponible()
+            overlay: overlay_de_l_os(),
         }
     }
 
@@ -129,7 +131,7 @@ impl Plateforme {
             capture_son: Arc::new(Indisponible),
             audio: Arc::new(Indisponible),
             mesure: Arc::new(Indisponible),
-            overlay: Box::new(Indisponible),
+            overlay: Arc::new(Indisponible),
             premier_plan: Arc::new(Indisponible),
             demarrage: Box::new(Indisponible),
         }
@@ -198,6 +200,14 @@ fn premier_plan_de_l_os() -> std::sync::Arc<dyn PremierPlan> {
     }
 }
 
+fn overlay_de_l_os() -> std::sync::Arc<dyn Overlay> {
+    if OverlaySysteme.disponible() {
+        std::sync::Arc::new(OverlaySysteme)
+    } else {
+        std::sync::Arc::new(Indisponible)
+    }
+}
+
 fn demarrage_de_l_os() -> Box<dyn DemarrageSession> {
     match DemarrageSysteme::de_l_executable() {
         Some(demarrage) if demarrage.disponible() => Box::new(demarrage),
@@ -227,10 +237,7 @@ mod tests {
             cfg!(windows).then_some(CIBLE_WINDOWS)
         );
         assert_eq!(p.premier_plan.disponible(), cfg!(windows));
-        assert!(
-            !p.overlay.disponible(),
-            "overlay n'est pas encore implémenté"
-        );
+        assert_eq!(p.overlay.disponible(), cfg!(windows));
     }
 
     #[test]
@@ -272,10 +279,10 @@ mod tests {
             Err(Erreur::Indisponible(_))
         ));
         assert!(matches!(
-            p.overlay.afficher(&Image::default(), 0, 0),
+            p.overlay.calque().map(|_| ()),
             Err(Erreur::Indisponible(_))
         ));
-        assert!(matches!(p.overlay.masquer(), Err(Erreur::Indisponible(_))));
+        assert_eq!(p.overlay.ecran_principal(), None);
         assert!(matches!(
             p.premier_plan.application(),
             Err(Erreur::Indisponible(_))

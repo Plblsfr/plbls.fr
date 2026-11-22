@@ -1,5 +1,7 @@
 mod commun;
 
+use commun::references::{comparer, controler, VARIABLE};
+
 use chrono::NaiveDate;
 use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
@@ -33,15 +35,11 @@ use estompe_natif::{
 use estompe_plateforme::{Image, SourceCapture, TypeSource};
 use i_slint_backend_testing::{TestingBackend, TestingBackendOptions};
 use slint::{ComponentHandle, Model};
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 const LARGEUR: u32 = 1180;
 const HAUTEUR: u32 = 900;
-const ECART_PAR_CANAL: u8 = 24;
-const PART_TOLEREE: f64 = 0.001;
-const VARIABLE: &str = "ESTOMPE_CAPTURES";
 
 struct Ecran {
     nom: &'static str,
@@ -62,6 +60,8 @@ const ECRANS: &[Ecran] = ecrans![
     "modal-sombre", Sombre, modal;
     "a-propos-clair", Clair, a_propos;
     "a-propos-sombre", Sombre, a_propos;
+    "jeux-overlay-clair", Clair, jeux_overlay;
+    "jeux-overlay-sombre", Sombre, jeux_overlay;
     "demarrage-clair", Clair, demarrage;
     "connexion-clair", Clair, connexion;
     "connexion-sombre", Sombre, connexion;
@@ -241,6 +241,22 @@ fn modal(f: &Principale) {
 fn a_propos(f: &Principale) {
     coquille_accueil(f);
     f.set_a_propos_ouvert(true);
+}
+
+fn jeux_overlay(f: &Principale) {
+    coquille_accueil(f);
+    let j = f.global::<estompe_natif::DonneesJeux>();
+    j.set_disponible(true);
+    j.set_jeu_en_cours("Counter-Strike 2".into());
+    let o = f.global::<estompe_natif::DonneesOverlay>();
+    o.set_disponible(true);
+    o.set_actif(true);
+    o.set_en_jeu(true);
+    o.set_coin("tr".into());
+    o.set_taille(1);
+    o.set_parlent(false);
+    o.set_opacite(80);
+    j.set_ouvert(true);
 }
 
 fn demarrage(f: &Principale) {
@@ -1842,6 +1858,12 @@ fn remettre_a_zero(f: &Principale) {
     f.set_infobulle_forcee(false);
     f.set_modal_demo_ouvert(false);
     f.set_a_propos_ouvert(false);
+    let jeux = f.global::<estompe_natif::DonneesJeux>();
+    jeux.set_ouvert(false);
+    jeux.set_disponible(false);
+    jeux.set_jeu_en_cours("".into());
+    f.global::<estompe_natif::DonneesOverlay>()
+        .set_disponible(false);
     vider_modeles(f);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
@@ -1853,14 +1875,6 @@ fn remettre_a_zero(f: &Principale) {
     f.global::<estompe_natif::DonneesVocal>()
         .set_reglages_ouverts(false);
     mise_a_jour::afficher(f, &EtatMaj::default());
-}
-
-fn references() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/references")
-}
-
-fn sorties() -> PathBuf {
-    Path::new(env!("CARGO_TARGET_TMPDIR")).join("captures")
 }
 
 fn rendre(f: &Principale, ecran: &Ecran) -> image::RgbaImage {
@@ -1875,33 +1889,6 @@ fn rendre(f: &Principale, ecran: &Ecran) -> image::RgbaImage {
         capture.as_bytes().to_vec(),
     )
     .expect("tampon de la capture")
-}
-
-fn comparer(obtenu: &image::RgbaImage, reference: &image::RgbaImage) -> (f64, image::RgbaImage) {
-    let mut difference = image::RgbaImage::new(obtenu.width(), obtenu.height());
-    if obtenu.dimensions() != reference.dimensions() {
-        return (1.0, difference);
-    }
-    let mut ecarts = 0u64;
-    for ((o, r), d) in obtenu
-        .pixels()
-        .zip(reference.pixels())
-        .zip(difference.pixels_mut())
-    {
-        let ecart =
-            o.0.iter()
-                .zip(r.0)
-                .any(|(a, b)| a.abs_diff(b) > ECART_PAR_CANAL);
-        let gris = ((o.0[0] as u32 + o.0[1] as u32 + o.0[2] as u32) / 3 / 4 + 190) as u8;
-        *d = if ecart {
-            ecarts += 1;
-            image::Rgba([220, 0, 60, 255])
-        } else {
-            image::Rgba([gris, gris, gris, 255])
-        };
-    }
-    let total = u64::from(obtenu.width()) * u64::from(obtenu.height());
-    (ecarts as f64 / total as f64, difference)
 }
 
 #[test]
@@ -1929,41 +1916,8 @@ fn les_ecrans_correspondent_a_leurs_references() {
     let mut echecs = Vec::new();
     for ecran in ECRANS {
         let obtenu = rendre(&f, ecran);
-        let chemin = references().join(format!("{}.png", ecran.nom));
-        if regenerer {
-            std::fs::create_dir_all(references()).expect("dossier des références");
-            obtenu.save(&chemin).expect("écriture de la référence");
-            eprintln!("référence écrite : {}", chemin.display());
-            continue;
-        }
-        let Ok(reference) = image::open(&chemin).map(|i| i.into_rgba8()) else {
-            echecs.push(format!(
-                "{} : référence absente ({})",
-                ecran.nom,
-                chemin.display()
-            ));
-            continue;
-        };
-        let (part, difference) = comparer(&obtenu, &reference);
-        if part > PART_TOLEREE {
-            let dossier = sorties();
-            std::fs::create_dir_all(&dossier).expect("dossier des sorties");
-            obtenu
-                .save(dossier.join(format!("{}.obtenu.png", ecran.nom)))
-                .expect("écriture de la capture");
-            reference
-                .save(dossier.join(format!("{}.reference.png", ecran.nom)))
-                .expect("copie de la référence");
-            difference
-                .save(dossier.join(format!("{}.difference.png", ecran.nom)))
-                .expect("écriture de la différence");
-            echecs.push(format!(
-                "{} : {:.3} % de pixels différents (seuil {:.3} %), images dans {}",
-                ecran.nom,
-                part * 100.0,
-                PART_TOLEREE * 100.0,
-                dossier.display()
-            ));
+        if let Err(echec) = controler(ecran.nom, &obtenu, regenerer) {
+            echecs.push(echec);
         }
     }
     assert!(

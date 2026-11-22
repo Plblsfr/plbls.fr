@@ -1,0 +1,85 @@
+import { Typo } from "../jetons.slint";
+import { Icone } from "../composants.slint";
+
+export struct LigneOverlayVoix {
+    pseudo: string,
+    initiales: string,
+    portrait: image,
+    a-portrait: bool,
+    parle: bool,
+    muet: bool,
+    sourd: bool,
+}
+
+export component OverlayVoix inherits Window {
+    in property <[LigneOverlayVoix]> lignes;
+    in property <length> avatar: 40px;
+    property <color> vert: #4ade80;
+    background: transparent;
+    default-font-family: Typo.texte;
+    VerticalLayout {
+        alignment: start;
+        spacing: 8px;
+        for l in root.lignes: HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            height: root.avatar;
+            Rectangle {
+                width: root.avatar;
+                height: root.avatar;
+                border-radius: self.width / 2;
+                background: #444444;
+                border-width: 3px;
+                border-color: l.parle ? root.vert : #444444;
+                drop-shadow-blur: l.parle ? 10px : 0;
+                drop-shadow-color: root.vert;
+                if l.a-portrait: Image {
+                    x: 3px;
+                    y: 3px;
+                    width: parent.width - 6px;
+                    height: parent.height - 6px;
+                    source: l.portrait;
+                    image-fit: fill;
+                }
+                if !l.a-portrait: Text {
+                    text: l.initiales;
+                    color: white;
+                    font-size: 16px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            Rectangle {
+                background: #00000099;
+                border-radius: 6px;
+                height: 21px;
+                y: (parent.height - self.height) / 2;
+                horizontal-stretch: 0;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    Text {
+                        text: l.pseudo;
+                        color: white;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+            if l.sourd || l.muet: Rectangle {
+                width: 24px;
+                height: 21px;
+                y: (parent.height - self.height) / 2;
+                background: #00000099;
+                border-radius: 6px;
+                Icone {
+                    nom: l.sourd ? "headphones-off" : "mic-off";
+                    taille: 15px;
+                    couleur: #f87171;
+                }
+            }
+        }
+    }
+}

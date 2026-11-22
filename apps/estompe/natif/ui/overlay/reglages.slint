@@ -1,0 +1,136 @@
+import { Theme, Typo, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Interrupteur, Curseur } from "../composants.slint";
+
+export global DonneesOverlay {
+    in-out property <bool> disponible: false;
+    in-out property <bool> actif: true;
+    in-out property <bool> en-jeu: true;
+    in-out property <string> coin: "ml";
+    in-out property <int> taille: 1;
+    in-out property <bool> parlent: false;
+    in-out property <int> opacite: 100;
+    callback definir-actif(bool);
+    callback definir-en-jeu(bool);
+    callback definir-coin(string);
+    callback definir-taille(int);
+    callback definir-parlent(bool);
+    callback definir-opacite(float, bool);
+}
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+component Note inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Choix inherits HorizontalLayout {
+    in property <[string]> libelles;
+    in property <int> choisi;
+    callback choisir(int);
+    spacing: Espace.e1;
+    alignment: start;
+    for libelle[i] in root.libelles: Bouton {
+        texte: libelle;
+        variante: root.choisi == i ? VarianteBouton.primaire : VarianteBouton.secondaire;
+        calque: 1;
+        clique => {
+            root.choisir(i);
+        }
+    }
+}
+
+export component SectionOverlay inherits VerticalLayout {
+    property <[string]> coins: ["tl", "tr", "ml", "mr", "bl", "br"];
+    alignment: start;
+    spacing: Espace.e4;
+    Titre {
+        text: "OVERLAY DES PARTICIPANTS";
+    }
+    Interrupteur {
+        texte: "Montrer qui parle par-dessus le jeu pendant un vocal";
+        allume: DonneesOverlay.actif;
+        calque: 1;
+        bascule(allume) => {
+            DonneesOverlay.definir-actif(allume);
+        }
+    }
+    if DonneesOverlay.actif: Interrupteur {
+        texte: "Seulement quand un jeu est au premier plan";
+        allume: DonneesOverlay.en-jeu;
+        calque: 1;
+        bascule(allume) => {
+            DonneesOverlay.definir-en-jeu(allume);
+        }
+    }
+    if DonneesOverlay.actif: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Emplacement";
+        }
+        for rangee[r] in [["Haut gauche", "Haut droite"], ["Centre gauche", "Centre droit"], ["Bas gauche", "Bas droite"]]: Choix {
+            libelles: rangee;
+            choisi: root.coins[r * 2] == DonneesOverlay.coin ? 0 : root.coins[r * 2 + 1] == DonneesOverlay.coin ? 1 : -1;
+            choisir(i) => {
+                DonneesOverlay.definir-coin(root.coins[r * 2 + i]);
+            }
+        }
+    }
+    if DonneesOverlay.actif: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Taille";
+        }
+        Choix {
+            libelles: ["Petit", "Moyen", "Grand"];
+            choisi: DonneesOverlay.taille;
+            choisir(i) => {
+                DonneesOverlay.definir-taille(i);
+            }
+        }
+    }
+    if DonneesOverlay.actif: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Participants affichés";
+        }
+        Choix {
+            libelles: ["Tous", "Seulement ceux qui parlent"];
+            choisi: DonneesOverlay.parlent ? 1 : 0;
+            choisir(i) => {
+                DonneesOverlay.definir-parlent(i == 1);
+            }
+        }
+    }
+    if DonneesOverlay.actif: VerticalLayout {
+        spacing: 2px;
+        Note {
+            text: "Opacité : \{Math.round(opacite.valeur)} %";
+        }
+        opacite := Curseur {
+            libelle: "Opacité de l'overlay";
+            unite: " %";
+            minimum: 30;
+            maximum: 100;
+            pas: 5;
+            valeur: DonneesOverlay.opacite;
+            calque: 1;
+            change(v) => {
+                DonneesOverlay.definir-opacite(v, false);
+            }
+            fini(v) => {
+                DonneesOverlay.definir-opacite(v, true);
+            }
+        }
+    }
+    if DonneesOverlay.actif: Note {
+        text: "L'overlay suit l'écran du jeu. Il apparaît sur un jeu en fenêtre ou en plein écran sans bordure, pas en plein écran exclusif.";
+    }
+}

@@ -1868,3 +1868,83 @@ pub mod notifications {
         }
     }
 }
+
+pub mod references {
+    use std::path::{Path, PathBuf};
+
+    pub const ECART_PAR_CANAL: u8 = 24;
+    pub const PART_TOLEREE: f64 = 0.001;
+    pub const VARIABLE: &str = "ESTOMPE_CAPTURES";
+
+    pub fn dossier() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/references")
+    }
+
+    pub fn sorties() -> PathBuf {
+        Path::new(env!("CARGO_TARGET_TMPDIR")).join("captures")
+    }
+
+    pub fn comparer(
+        obtenu: &image::RgbaImage,
+        reference: &image::RgbaImage,
+    ) -> (f64, image::RgbaImage) {
+        let mut difference = image::RgbaImage::new(obtenu.width(), obtenu.height());
+        if obtenu.dimensions() != reference.dimensions() {
+            return (1.0, difference);
+        }
+        let mut ecarts = 0u64;
+        for ((o, r), d) in obtenu
+            .pixels()
+            .zip(reference.pixels())
+            .zip(difference.pixels_mut())
+        {
+            let ecart =
+                o.0.iter()
+                    .zip(r.0)
+                    .any(|(a, b)| a.abs_diff(b) > ECART_PAR_CANAL);
+            let gris = ((o.0[0] as u32 + o.0[1] as u32 + o.0[2] as u32) / 3 / 4 + 190) as u8;
+            *d = if ecart {
+                ecarts += 1;
+                image::Rgba([220, 0, 60, 255])
+            } else {
+                image::Rgba([gris, gris, gris, 255])
+            };
+        }
+        let total = u64::from(obtenu.width()) * u64::from(obtenu.height());
+        (ecarts as f64 / total as f64, difference)
+    }
+
+    pub fn controler(nom: &str, obtenu: &image::RgbaImage, regenerer: bool) -> Result<(), String> {
+        let chemin = dossier().join(format!("{nom}.png"));
+        if regenerer {
+            std::fs::create_dir_all(dossier()).expect("dossier des références");
+            obtenu.save(&chemin).expect("écriture de la référence");
+            eprintln!("référence écrite : {}", chemin.display());
+            return Ok(());
+        }
+        let Ok(reference) = image::open(&chemin).map(|i| i.into_rgba8()) else {
+            return Err(format!("{nom} : référence absente ({})", chemin.display()));
+        };
+        let (part, difference) = comparer(obtenu, &reference);
+        if part <= PART_TOLEREE {
+            return Ok(());
+        }
+        let sorties = sorties();
+        std::fs::create_dir_all(&sorties).expect("dossier des sorties");
+        obtenu
+            .save(sorties.join(format!("{nom}.obtenu.png")))
+            .expect("écriture de la capture");
+        reference
+            .save(sorties.join(format!("{nom}.reference.png")))
+            .expect("copie de la référence");
+        difference
+            .save(sorties.join(format!("{nom}.difference.png")))
+            .expect("écriture de la différence");
+        Err(format!(
+            "{nom} : {:.3} % de pixels différents (seuil {:.3} %), images dans {}",
+            part * 100.0,
+            PART_TOLEREE * 100.0,
+            sorties.display()
+        ))
+    }
+}

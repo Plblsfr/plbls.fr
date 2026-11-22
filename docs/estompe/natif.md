@@ -8,7 +8,7 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 
 | Dossier | Rôle |
 |---|---|
-| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
+| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia (logiciel pour les overlays, `src/overlay/`), branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) ; capture d'écran et de fenêtre (`capture/`) |
 
@@ -1097,6 +1097,45 @@ Savoir quel jeu tourne, pour l'activité montrée aux autres, puis pour les over
   Pas de « Écoute » (musique) dans l'activité avant le lot 10.
 - Non vérifié ici (machine Linux) : détection d'un vrai jeu sous Windows (connu et ajouté à la main), activité vue par un autre client, coût CPU réel du sondage sous Windows.
 
+## Overlay
+
+Fenêtres transparentes par-dessus le jeu, dessinées par Slint dans le processus de l'app. Porté de `overlay_natif/` de l'app Tauri (prototype de l'issue #56,
+voir [overlay-natif.md](overlay-natif.md)) et des composants `Overlay.svelte`, `overlay.ts` et `SettingsOverlay.svelte`. L'overlay des participants du vocal (#353)
+est la première scène ; celui des messages (#354) et l'indicateur du replay (#356) s'ajoutent comme d'autres scènes du même moteur.
+
+- Plateforme : trait `Overlay` (`apps/estompe/crates/plateforme/src/overlay/`), fabrique de `Calque`s. Un calque affiche une `ImagePremultipliee` (RGBA prémultiplié)
+  à une position en pixels physiques, avec une opacité globale, ou se masque. Sous Windows (`OverlaySysteme`, repris du prototype) : fenêtre
+  `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` mise à jour par `UpdateLayeredWindow` (transparence par pixel, opacité
+  par `SourceConstantAlpha`), jamais de focus, aucun clic capturé, absente de la barre des tâches. `pomper()` traite les messages des fenêtres du fil ;
+  `ecran_principal()` et `echelle()` (DPI effectif de l'écran, `GetDpiForMonitor`) servent au placement. Linux : indisponible, rien n'est créé et la section des réglages
+  est masquée. `OverlayFactice` retient chaque calque (image, position, opacité) pour les tests.
+- Moteur (`MoteurOverlay`, `apps/estompe/natif/src/overlay/mod.rs`) : un fil `estompe-overlay`, démarré au premier affichage, possède sa propre plateforme Slint
+  (la plateforme de Slint est propre à chaque fil) : une `MinimalSoftwareWindow` par composant, rendu logiciel, ni winit ni GPU. Une scène
+  (`MoteurOverlay::scene(Composant::new, appliquer)`) donne une `SceneOverlay<E>` : `afficher(etat, placement, opacite)` n'envoie rien si l'affichage est identique au
+  précédent ; sinon le fil applique l'état au composant, le rend à la taille demandée (facteur d'échelle de l'écran) et le passe à son calque. `masquer()` cache le calque.
+  Aucun rendu sans changement : `rendus()` compte les images rendues, `demandes()` les affichages envoyés. Le fil pompe les messages après chaque
+  commande, et toutes les 100 ms sans commande.
+- Participants du vocal (`overlay/voix.rs`, `ui/overlay/voix.slint`) : `PontVocal::projeter` calcule les participants du salon où je suis connecté
+  (`projection::participants`, mêmes états que les tuiles : je parle, micro et casque coupés) et les passe à `ServiceOverlayVoix` avec leur photo de profil (chargée
+  par `Profils` au besoin, recadrée en disque sur le fil de l'overlay car le moteur logiciel ne découpe pas une image par un `border-radius`). Le service suit aussi
+  `EtatJeux` (`ServiceJeux::abonner`) et les réglages, et calcule l'affichage (`voix::calculer`) : rien hors du vocal, hors jeu en mode « seulement en jeu », ou sans
+  personne à montrer ; sinon l'écran du jeu, à défaut le dernier écran d'une application au premier plan, à défaut l'écran principal. Rendu comme `Overlay.svelte` :
+  avatars de 28, 40 ou 56 px, contour et halo `#4ade80` du locuteur, initiales sur `#444`, pseudo dans une pastille `#00000099`, icône du micro ou du casque coupé.
+- Calculs (`apps/estompe/crates/client/src/overlay.rs`, repris de `overlay.ts`) : participants retenus (tous ou ceux qui parlent), visibilité, taille de la fenêtre
+  (largeur de l'avatar + 220, une ligne de l'avatar + 8 par participant), position dans l'un des six coins avec une marge de 16 px logiques, placement en pixels physiques.
+- Réglages (section « Overlay des participants » de « Jeux et activité », `ui/overlay/reglages.slint`, `overlay/reglages.rs`) : activer, seulement quand un jeu est au
+  premier plan, emplacement, taille, participants affichés, opacité (30 à 100 %). Préférence `overlay` (`ReglagesOverlay` : `quand` jeux, toujours ou jamais, `taille`,
+  `coin`, `mode`, `opacite`), mêmes valeurs par défaut que le front (seulement en jeu, centre gauche, moyen, tous) et opacité pleine.
+- Écarts : pas de raccourci global pour masquer ou réafficher l'overlay (`overlayKey` de l'app Tauri) ; opacité en plus. Comme dans l'app Tauri, une fenêtre « layered »
+  n'apparaît pas au-dessus d'un jeu en plein écran exclusif : seuls le fenêtré et le plein écran sans bordure sont pris en charge.
+- Tests : calculs de `overlay.test.ts` (`overlay::tests` de la crate client) ; moteur (`overlay::tests` : image transparente, halo, pas de rendu pour un état identique,
+  un calque par scène, rien sans overlay) ; service (`overlay::voix::tests`, dont `sans_changement_d_etat_aucun_rendu_pendant_dix_secondes`, temps de tokio simulé,
+  sondage du jeu toutes les 5 s et projections répétées) ; captures `tests/overlay.rs` comparées à `tests/references/overlay-voix-*.png` (1, 4 et 8 participants,
+  locuteurs, micro et casque coupés, chaque taille ; composées sur un fond sombre) ; parcours dans `tests/vocal.rs` (trois participants à l'arrivée dans le salon, overlay
+  masqué en raccrochant) et `tests/jeux.rs` (écran du jeu suivi, réglages appliqués, masqué hors jeu, « toujours », désactivé).
+- Non vérifié ici (machine Linux) : affichage réel sur un jeu fenêtré sans bordure sous Windows, absence de vol de focus, mémoire et CPU comparés à l'overlay de l'app Tauri
+  (protocole de [natif-mesures.md](natif-mesures.md)).
+
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
@@ -1150,7 +1189,7 @@ l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Ind
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour le micro et la sortie des messages vocaux), le lancement d'un processus d'arrière-plan
 (`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
-l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`) et l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)). Le reste arrive avec son lot, Windows d'abord.
+l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`), l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)) et l'overlay (`OverlaySysteme`, voir [Overlay](#overlay)). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
@@ -1188,6 +1227,7 @@ compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0
 référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
+  Les overlays ont leurs propres captures (`tests/overlay.rs`, régénérées par la même recette, mêmes seuils et même variable `ESTOMPE_CAPTURES`, fonctions communes dans `tests/commun/mod.rs`, module `references`).
 - Mises à jour : `mise-a-jour-bandeau`, `mise-a-jour-panneau-a-jour`, `mise-a-jour-telechargement` (40 %), `mise-a-jour-erreur` et `mise-a-jour-forcee`
   (installation en cours) sont préparés par `mise_a_jour::afficher` avec un `EtatMaj` fixe.
   Les écrans d'entrée sont préparés par `ecrans::afficher` avec un `Etat` fixe ; la coquille par un `Pont` sur un store rempli par `Store::installer`

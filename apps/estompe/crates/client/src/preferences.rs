@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use crate::audio::{ReglagesMicro, ReglagesSons};
 use crate::derniere_vue::DerniereVue;
 use crate::jeux::ReglagesJeux;
+use crate::overlay::ReglagesOverlay;
 use crate::vocal::{
     Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
 };
@@ -71,6 +72,7 @@ pub struct Preferences {
     pub partage: ReglagesPartage,
     pub incrustation: ReglagesIncrustation,
     pub jeux: ReglagesJeux,
+    pub overlay: ReglagesOverlay,
 }
 
 impl Default for Preferences {
@@ -104,6 +106,7 @@ impl Default for Preferences {
             partage: ReglagesPartage::default(),
             incrustation: ReglagesIncrustation::default(),
             jeux: ReglagesJeux::default(),
+            overlay: ReglagesOverlay::default(),
         }
     }
 }
@@ -192,6 +195,7 @@ impl Preferences {
             partage: champ(&objet, "partage", d.partage).borne(),
             incrustation: champ(&objet, "incrustation", d.incrustation).borne(),
             jeux: champ(&objet, "jeux", d.jeux).borne(),
+            overlay: champ(&objet, "overlay", d.overlay).borne(),
         })
     }
 
@@ -398,6 +402,13 @@ mod tests {
                 ajoutes: vec![r"D:\Jeux\jeu.exe".to_string()],
                 exclus: vec!["launcher.exe".to_string()],
             },
+            overlay: ReglagesOverlay {
+                quand: crate::overlay::QuandOverlay::Toujours,
+                taille: crate::overlay::TailleOverlay::Grande,
+                coin: crate::overlay::CoinOverlay::BasDroite,
+                mode: crate::overlay::ModeOverlay::Parlent,
+                opacite: 60,
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -430,6 +441,15 @@ mod tests {
         );
         let invalide = Preferences::depuis_json(r#"{"jeux": {"ajoutes": "x"}}"#).unwrap();
         assert_eq!(invalide.jeux, ReglagesJeux::default());
+    }
+
+    #[test]
+    fn les_reglages_de_l_overlay_relus_sont_bornes() {
+        let lu = Preferences::depuis_json(r#"{"overlay": {"coin": "tr", "opacite": 3}}"#).unwrap();
+        assert_eq!(lu.overlay.coin, crate::overlay::CoinOverlay::HautDroite);
+        assert_eq!(lu.overlay.opacite, crate::overlay::OPACITE_MIN);
+        let invalide = Preferences::depuis_json(r#"{"overlay": {"coin": "zz"}}"#).unwrap();
+        assert_eq!(invalide.overlay, ReglagesOverlay::default());
     }
 
     #[test]

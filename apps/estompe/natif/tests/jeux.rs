@@ -9,16 +9,22 @@ use commun::coquille::{FausseFabrique, ServeurMessages};
 use commun::{
     attendre, attendre_l_interface, sur_l_interface, FausseApi, FausseAuth, FauxNavigateur,
 };
+use estompe_client::overlay::{CoinOverlay, QuandOverlay, ReglagesOverlay, TailleOverlay};
 use estompe_client::preferences::Preferences;
 use estompe_client::temps_reel::EtatReseau;
 use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::jeux::{self, ServiceJeux};
+use estompe_natif::overlay::voix::{LigneVoix, ServiceOverlayVoix};
+use estompe_natif::overlay::{self, MoteurOverlay};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesCoquille, DonneesJeux, DonneesMenu, Page, Principale,
+    creer_fenetre, ecrans, DonneesCoquille, DonneesJeux, DonneesMenu, DonneesOverlay, Page,
+    Principale,
 };
-use estompe_plateforme::{application_de_chemin, ApplicationPremierPlan, PremierPlanFactice};
+use estompe_plateforme::{
+    application_de_chemin, ApplicationPremierPlan, OverlayFactice, PremierPlanFactice, ZoneEcran,
+};
 use serde_json::Value;
 use slint::{ComponentHandle, Model};
 
@@ -38,12 +44,29 @@ fn activites_publiees(serveur: &ServeurMessages) -> Vec<String> {
         .collect()
 }
 
+const ECRAN_DU_JEU: ZoneEcran = ZoneEcran {
+    x: 1920,
+    y: 0,
+    largeur: 1920,
+    hauteur: 1080,
+};
+
 fn application(chemin: &str, plein_ecran: bool) -> ApplicationPremierPlan {
     ApplicationPremierPlan {
         processus: 4242,
         plein_ecran,
+        ecran: Some(ECRAN_DU_JEU),
         ..application_de_chemin(chemin)
     }
+}
+
+fn overlay_affiche(overlay: &OverlayFactice) -> Option<(i32, i32, u8)> {
+    overlay
+        .calques()
+        .first()
+        .cloned()
+        .flatten()
+        .map(|a| (a.x, a.y, a.opacite))
 }
 
 fn statut(f: &Principale) -> String {
@@ -71,6 +94,8 @@ struct Faux {
     serveur: Arc<ServeurMessages>,
     detection: PremierPlanFactice,
     memoire: Memoire,
+    overlay: OverlayFactice,
+    overlay_voix: Arc<ServiceOverlayVoix>,
 }
 
 fn scenario(faible: slint::Weak<Principale>, faux: Faux) {
@@ -79,6 +104,8 @@ fn scenario(faible: slint::Weak<Principale>, faux: Faux) {
         serveur,
         detection,
         memoire,
+        overlay,
+        overlay_voix,
     } = faux;
     attendre_l_interface(
         &faible,
@@ -90,6 +117,19 @@ fn scenario(faible: slint::Weak<Principale>, faux: Faux) {
         &faible,
         |f| statut(f) == "Counter-Strike 2",
         "le jeu détecté s'affiche sous mon pseudo",
+    );
+    overlay_voix.definir_salon(Some(vec![LigneVoix {
+        id: "u1".into(),
+        pseudo: "bob".into(),
+        initiales: "BO".into(),
+        avatar: None,
+        parle: true,
+        muet: false,
+        sourd: false,
+    }]));
+    attendre(
+        || overlay_affiche(&overlay) == Some((1920 + 16, 540 - 24, 255)),
+        "c353 : l'overlay s'affiche au centre gauche de l'écran du jeu",
     );
     assert!(
         activites_publiees(&serveur).is_empty(),
@@ -119,6 +159,30 @@ fn scenario(faible: slint::Weak<Principale>, faux: Faux) {
         "« Jeux et activité » ouvre les réglages",
     );
     sur_l_interface(&faible, |f| {
+        let o = f.global::<DonneesOverlay>();
+        assert!(o.get_disponible() && o.get_actif() && o.get_en_jeu());
+        o.invoke_definir_coin("tr".into());
+        o.invoke_definir_taille(2);
+        o.invoke_definir_opacite(50.0, true);
+        assert_eq!(
+            (o.get_coin().as_str(), o.get_taille(), o.get_opacite()),
+            ("tr", 2, 50)
+        );
+    });
+    assert_eq!(
+        memoire.lire(|p| p.overlay),
+        ReglagesOverlay {
+            coin: CoinOverlay::HautDroite,
+            taille: TailleOverlay::Grande,
+            opacite: 50,
+            ..ReglagesOverlay::default()
+        }
+    );
+    attendre(
+        || overlay_affiche(&overlay) == Some((1920 + 1920 - 276 - 16, 16, 128)),
+        "c353 : coin, taille et opacité choisis s'appliquent à l'overlay",
+    );
+    sur_l_interface(&faible, |f| {
         f.global::<DonneesJeux>().invoke_definir_partage(true)
     });
     attendre(
@@ -139,6 +203,25 @@ fn scenario(faible: slint::Weak<Principale>, faux: Faux) {
         |f| statut(f) != "Counter-Strike 2" && exclus(f) == ["CS2.exe"],
         "un jeu exclu n'est plus affiché",
     );
+    attendre(
+        || overlay.calques() == vec![None],
+        "c353 : hors jeu, l'overlay réglé « seulement en jeu » se masque",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesOverlay>().invoke_definir_en_jeu(false)
+    });
+    attendre(
+        || overlay_affiche(&overlay).is_some_and(|(x, ..)| x == 1920 + 1920 - 276 - 16),
+        "c353 : « toujours », l'overlay reste sur le dernier écran vu",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<DonneesOverlay>().invoke_definir_actif(false)
+    });
+    attendre(
+        || overlay.calques() == vec![None],
+        "c353 : overlay désactivé",
+    );
+    assert_eq!(memoire.lire(|p| p.overlay.quand), QuandOverlay::Jamais);
 
     detection.mettre_au_premier_plan(Some(application(r"D:\Jeux\perso.exe", false)));
     attendre_l_interface(
@@ -252,6 +335,13 @@ fn c2_le_jeu_detecte_est_publie_selon_le_reglage_et_un_jeu_exclu_ne_l_est_jamais
         &entree.runtime(),
     );
     assert!(jeux::reglages::disponible(&fenetre));
+    let overlay = OverlayFactice::nouveau(None, 1.0);
+    let overlay_voix = ServiceOverlayVoix::nouveau(
+        &MoteurOverlay::nouveau(Arc::new(overlay.clone())),
+        memoire.lire(|p| p.overlay),
+    );
+    overlay_voix.suivre_les_jeux(&entree.runtime(), service.abonner());
+    overlay::reglages::brancher(&fenetre, overlay_voix.clone(), memoire.clone());
     let midi = NaiveDate::from_ymd_opt(2026, 11, 19)
         .unwrap()
         .and_hms_opt(12, 0, 0)
@@ -269,6 +359,8 @@ fn c2_le_jeu_detecte_est_publie_selon_le_reglage_et_un_jeu_exclu_ne_l_est_jamais
         serveur,
         detection,
         memoire,
+        overlay,
+        overlay_voix,
     };
     let faible = fenetre.as_weak();
     piloter(move || scenario(faible, faux));

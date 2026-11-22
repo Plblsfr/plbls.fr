@@ -10,6 +10,7 @@ pub mod menu;
 pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
+pub mod overlay;
 pub mod session;
 pub mod video;
 pub mod vocal;
@@ -52,6 +53,8 @@ pub struct Application {
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
     pub vocal: std::sync::Arc<estompe_client::vocal::SessionVocale>,
     pub jeux: std::sync::Arc<jeux::ServiceJeux>,
+    pub overlays: overlay::MoteurOverlay,
+    pub overlay_voix: std::sync::Arc<overlay::voix::ServiceOverlayVoix>,
 }
 
 #[cfg(feature = "livekit")]
@@ -136,6 +139,9 @@ pub fn demarrer(
         },
     ));
     let audio_messages = audio.clone();
+    let overlays = overlay::MoteurOverlay::nouveau(plateforme.overlay.clone());
+    let overlay_voix =
+        overlay::voix::ServiceOverlayVoix::nouveau(&overlays, session.memoire.lire(|p| p.overlay));
     let outils_vocaux = vocal::OutilsVocaux {
         session: vocal.clone(),
         audio,
@@ -144,6 +150,7 @@ pub fn demarrer(
         ecrans: plateforme.capture_ecran.clone(),
         sons: plateforme.capture_son.clone(),
         apm,
+        overlay: Some(overlay_voix.clone()),
     };
     let service_jeux = std::sync::Arc::new(jeux::ServiceJeux::demarrer(
         &entree.runtime(),
@@ -161,6 +168,8 @@ pub fn demarrer(
         std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
         &entree.runtime(),
     );
+    overlay_voix.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    overlay::reglages::brancher(fenetre, overlay_voix.clone(), session.memoire.clone());
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
     let fabrique = coquille::FabriqueReelle {
@@ -302,6 +311,8 @@ pub fn demarrer(
         auth: reels.auth,
         vocal,
         jeux: service_jeux,
+        overlays,
+        overlay_voix,
     })
 }
 

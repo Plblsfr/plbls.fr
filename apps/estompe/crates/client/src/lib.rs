@@ -28,6 +28,7 @@ pub mod mise_a_jour;
 pub mod notifications;
 pub mod nouveau_prive;
 pub mod ordre_serveurs;
+pub mod overlay;
 pub mod pastille;
 pub mod pieces;
 pub mod recherche;

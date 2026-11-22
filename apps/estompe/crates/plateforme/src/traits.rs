@@ -205,10 +205,25 @@ pub trait CaptureSon: Send + Sync {
     fn demarrer(&self, cible: CibleSon, echantillons: RecepteurSonCapture) -> Resultat<FluxSon>;
 }
 
-pub trait Overlay {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ImagePremultipliee {
+    pub largeur: u32,
+    pub hauteur: u32,
+    pub rgba: Vec<u8>,
+}
+
+pub trait Calque {
+    fn afficher(&mut self, image: &ImagePremultipliee, x: i32, y: i32, opacite: u8)
+        -> Resultat<()>;
+    fn masquer(&mut self) -> Resultat<()>;
+}
+
+pub trait Overlay: Send + Sync {
     fn disponible(&self) -> bool;
-    fn afficher(&self, image: &Image, x: i32, y: i32) -> Resultat<()>;
-    fn masquer(&self) -> Resultat<()>;
+    fn calque(&self) -> Resultat<Box<dyn Calque>>;
+    fn pomper(&self) {}
+    fn ecran_principal(&self) -> Option<ZoneEcran>;
+    fn echelle(&self, ecran: &ZoneEcran) -> f32;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

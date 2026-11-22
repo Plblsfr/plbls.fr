@@ -97,7 +97,7 @@ estompe-natif-mesures *ARGS:
 
 # Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
 estompe-natif-captures:
-    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures
+    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures --test overlay
 
 # Demande aussi ffmpeg et ffprobe dans le PATH
 test-entracte:

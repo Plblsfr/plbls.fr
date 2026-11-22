@@ -166,11 +166,14 @@ impl Overlay for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
-    fn afficher(&self, _: &Image, _: i32, _: i32) -> Resultat<()> {
+    fn calque(&self) -> Resultat<Box<dyn Calque>> {
         refus("overlay")
     }
-    fn masquer(&self) -> Resultat<()> {
-        refus("overlay")
+    fn ecran_principal(&self) -> Option<ZoneEcran> {
+        None
+    }
+    fn echelle(&self, _: &ZoneEcran) -> f32 {
+        1.0
     }
 }
 

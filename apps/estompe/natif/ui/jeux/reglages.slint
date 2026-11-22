@@ -1,5 +1,6 @@
 import { Theme, Typo, Espace } from "../jetons.slint";
 import { Bouton, VarianteBouton, Modal, Interrupteur, Champ, Defilement } from "../composants.slint";
+import { SectionOverlay, DonneesOverlay } from "../overlay/reglages.slint";
 
 export struct JeuAjoute {
     chemin: string,
@@ -96,6 +97,7 @@ export component FenetreJeux inherits Modal {
                     DonneesJeux.definir-partage(allume);
                 }
             }
+            if DonneesOverlay.disponible: SectionOverlay { }
             Titre {
                 text: "APPLICATION AU PREMIER PLAN";
             }
