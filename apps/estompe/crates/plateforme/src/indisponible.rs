@@ -1,3 +1,7 @@
+use crate::encodage::{
+    EncodageMateriel, EncodeurAudio, EncodeurVideo, MaterielEncodage, ParametresAudio,
+    ParametresVideo, RecepteurPaquets, SignalArret,
+};
 use crate::traits::*;
 use crate::{Erreur, Resultat};
 
@@ -166,11 +170,14 @@ impl Overlay for Indisponible {
     fn disponible(&self) -> bool {
         false
     }
-    fn afficher(&self, _: &Image, _: i32, _: i32) -> Resultat<()> {
+    fn calque(&self) -> Resultat<Box<dyn Calque>> {
         refus("overlay")
     }
-    fn masquer(&self) -> Resultat<()> {
-        refus("overlay")
+    fn ecran_principal(&self) -> Option<ZoneEcran> {
+        None
+    }
+    fn echelle(&self, _: &ZoneEcran) -> f32 {
+        1.0
     }
 }
 
@@ -180,6 +187,29 @@ impl PremierPlan for Indisponible {
     }
     fn application(&self) -> Resultat<Option<ApplicationPremierPlan>> {
         refus("application au premier plan")
+    }
+    fn fenetres(&self) -> Resultat<Vec<ApplicationPremierPlan>> {
+        refus("application au premier plan")
+    }
+}
+
+impl EncodageMateriel for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn materiel(&self, _: Option<u64>) -> Resultat<MaterielEncodage> {
+        refus("encodage vidéo matériel")
+    }
+    fn video(
+        &self,
+        _: ParametresVideo,
+        _: RecepteurPaquets,
+        _: SignalArret,
+    ) -> Resultat<Box<dyn EncodeurVideo>> {
+        refus("encodage vidéo matériel")
+    }
+    fn audio(&self, _: ParametresAudio, _: RecepteurPaquets) -> Resultat<Box<dyn EncodeurAudio>> {
+        refus("encodage vidéo matériel")
     }
 }
 

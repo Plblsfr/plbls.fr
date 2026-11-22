@@ -82,6 +82,9 @@ pub trait Fabrique: Send + Sync + 'static {
     fn sortie_son(&self) -> SortiePartagee {
         Arc::new(son_par_defaut())
     }
+    fn jeux(&self) -> Option<watch::Receiver<crate::jeux::EtatJeux>> {
+        None
+    }
 }
 
 pub struct FabriqueReelle {
@@ -94,6 +97,7 @@ pub struct FabriqueReelle {
     pub navigateur: Navigateur,
     pub dossier_donnees: Option<std::path::PathBuf>,
     pub vocal: Option<OutilsVocaux>,
+    pub jeux: Option<watch::Receiver<crate::jeux::EtatJeux>>,
     pub conversions: Arc<Conversions>,
     pub son: SonPeripheriques,
 }
@@ -204,6 +208,10 @@ impl Fabrique for FabriqueReelle {
 
     fn sortie_son(&self) -> SortiePartagee {
         Arc::new(self.son.clone())
+    }
+
+    fn jeux(&self) -> Option<watch::Receiver<crate::jeux::EtatJeux>> {
+        self.jeux.clone()
     }
 }
 
@@ -1017,6 +1025,8 @@ async fn session(
             pont.vocal().fenetre_active(false);
         }
     }
+    let mut jeux = contexte.fabrique.jeux();
+    let annonce = crate::jeux::Annonce::default();
     let mut etat_vocal = outils.as_ref().map(|o| o.session.etat());
     let mut avis_vocal = outils.as_ref().map(|o| o.session.abonner_avis());
     let mut mesure = tokio::time::interval(PERIODE_MESURE);
@@ -1044,6 +1054,15 @@ async fn session(
         o.ouverte(&store);
     }
     let reseau_initial = *reseau.borrow_and_update();
+    if let Some(jeux) = jeux.as_mut() {
+        let etat = jeux.borrow_and_update().clone();
+        annonce.appliquer(
+            &store,
+            &contexte.runtime,
+            reseau_initial == EtatReseau::Connecte,
+            &etat,
+        );
+    }
     let p = pont.clone();
     let etat_vocal_initial = etat_vocal.as_mut().map(|e| e.borrow_and_update().clone());
     contexte.sur_l_interface(move |f| {
@@ -1085,8 +1104,22 @@ async fn session(
                     continue;
                 }
                 let etat = *reseau.borrow_and_update();
+                if let Some(jeux) = jeux.as_ref() {
+                    let courant = jeux.borrow().clone();
+                    annonce.appliquer(&store, &contexte.runtime, etat == EtatReseau::Connecte, &courant);
+                }
                 let p = pont.clone();
                 contexte.sur_l_interface(move |f| p.definir_reseau(f, etat));
+            }
+            changement = async { jeux.as_mut().expect("suivi des jeux").changed().await }, if jeux.is_some() => {
+                match changement {
+                    Ok(()) => {
+                        let etat = jeux.as_mut().expect("suivi des jeux").borrow_and_update().clone();
+                        let connecte = *reseau.borrow() == EtatReseau::Connecte;
+                        annonce.appliquer(&store, &contexte.runtime, connecte, &etat);
+                    }
+                    Err(_) => jeux = None,
+                }
             }
             fin = &mut suivi => {
                 if let Some(evenement) = fin.ok().and_then(evenement_de_fin) {

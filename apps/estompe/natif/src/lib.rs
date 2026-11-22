@@ -3,12 +3,16 @@ slint::include_modules!();
 pub mod bureau;
 pub mod confirmation;
 pub mod coquille;
+pub mod ecran_mesures;
 pub mod ecrans;
 pub mod entree;
+pub mod jeux;
 pub mod menu;
 pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
+pub mod overlay;
+pub mod replay;
 pub mod session;
 pub mod video;
 pub mod vocal;
@@ -50,6 +54,16 @@ pub struct Application {
     pub client: estompe_client::http::Client,
     pub auth: std::sync::Arc<estompe_client::auth::Authentification>,
     pub vocal: std::sync::Arc<estompe_client::vocal::SessionVocale>,
+    pub jeux: std::sync::Arc<jeux::ServiceJeux>,
+    pub overlays: overlay::MoteurOverlay,
+    pub overlay_voix: std::sync::Arc<overlay::voix::ServiceOverlayVoix>,
+    pub overlay_messages: std::sync::Arc<overlay::messages::ServiceOverlayMessages>,
+    pub replay: std::sync::Arc<replay::ServiceReplay>,
+    pub overlay_replay: std::sync::Arc<overlay::replay::ServiceOverlayReplay>,
+    pub galerie: std::sync::Arc<replay::clips::Galerie>,
+    pub editeur: std::sync::Arc<replay::editeur::Editeur>,
+    pub mesures: std::sync::Arc<ecran_mesures::EcranMesures>,
+    _minuterie_mesures: slint::Timer,
 }
 
 #[cfg(feature = "livekit")]
@@ -134,6 +148,25 @@ pub fn demarrer(
         },
     ));
     let audio_messages = audio.clone();
+    let overlays = overlay::MoteurOverlay::nouveau(plateforme.overlay.clone());
+    let overlay_voix =
+        overlay::voix::ServiceOverlayVoix::nouveau(&overlays, session.memoire.lire(|p| p.overlay));
+    let overlay_messages = overlay::messages::ServiceOverlayMessages::nouveau(
+        &overlays,
+        session.memoire.lire(|p| p.overlay_messages.clone()),
+        overlay::messages::Options {
+            raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+            touches_prises: {
+                let memoire = session.memoire.clone();
+                std::sync::Arc::new(move || {
+                    memoire.lire(|p| {
+                        p.touches_prioritaires(estompe_client::preferences::UsageTouche::Messages)
+                    })
+                })
+            },
+            horloge: None,
+        },
+    );
     let outils_vocaux = vocal::OutilsVocaux {
         session: vocal.clone(),
         audio,
@@ -142,9 +175,67 @@ pub fn demarrer(
         ecrans: plateforme.capture_ecran.clone(),
         sons: plateforme.capture_son.clone(),
         apm,
+        overlay: Some(overlay_voix.clone()),
     };
+    let service_jeux = std::sync::Arc::new(jeux::ServiceJeux::demarrer(
+        &entree.runtime(),
+        plateforme.premier_plan.clone(),
+        {
+            let memoire = session.memoire.clone();
+            std::sync::Arc::new(move || memoire.lire(|p| p.jeux.clone()))
+        },
+        estompe_client::jeux::PERIODE_SONDAGE,
+    ));
+    jeux::reglages::brancher(
+        fenetre,
+        service_jeux.clone(),
+        session.memoire.clone(),
+        std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
+        &entree.runtime(),
+    );
+    overlay_voix.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    overlay::reglages::brancher(fenetre, overlay_voix.clone(), session.memoire.clone());
+    overlay_messages.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    overlay_messages.demarrer_minuterie(&entree.runtime());
+    overlay::reglages::brancher_messages(
+        fenetre,
+        overlay_messages.clone(),
+        session.memoire.clone(),
+    );
+    let replay = demarrer_replay(session, &plateforme, audio_messages.clone());
+    replay.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    replay.suivre_le_partage(&entree.runtime(), vocal.etat());
+    let overlay_replay = overlay::replay::ServiceOverlayReplay::nouveau(&overlays, None, {
+        let memoire = session.memoire.clone();
+        Some(std::sync::Arc::new(move || {
+            memoire.lire(overlay::replay::voisins)
+        }))
+    });
+    overlay_replay.suivre_les_jeux(&entree.runtime(), service_jeux.abonner());
+    overlay_replay.suivre_le_replay(&entree.runtime(), &replay);
+    overlay_replay.demarrer_minuterie(&entree.runtime());
+    replay::reglages::brancher(
+        fenetre,
+        replay::reglages::OutilsReglages {
+            service: replay.clone(),
+            memoire: session.memoire.clone(),
+            fichiers: std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
+            overlay: Some(overlay_replay.clone()),
+            touches_globales: estompe_plateforme::RaccourcisGlobaux::disponible(
+                &estompe_plateforme::RaccourcisSysteme,
+            ),
+        },
+        &entree.runtime(),
+    );
+    let conversions = std::sync::Arc::new(estompe_client::video::Conversions::du_systeme(
+        session
+            .dossiers
+            .cache
+            .join(estompe_client::video::DOSSIER_CONVERSIONS),
+    ));
     let jeton = reels.auth.fournisseur_jeton();
     let production = session.adresse.url == estompe_client::config::ADRESSE_PRODUCTION;
+    let audio_editeur = audio_messages.clone();
     let fabrique = coquille::FabriqueReelle {
         client: reels.client.clone(),
         jeton: std::sync::Arc::new(jeton),
@@ -156,6 +247,7 @@ pub fn demarrer(
         navigateur,
         dossier_donnees: Some(session.dossiers.donnees.clone()),
         vocal: Some(outils_vocaux),
+        jeux: Some(service_jeux.abonner()),
         son: estompe_plateforme::SonPeripheriques::nouveau(audio_messages, {
             let memoire = session.memoire.clone();
             std::sync::Arc::new(move |sens| {
@@ -165,12 +257,7 @@ pub fn demarrer(
                 })
             })
         }),
-        conversions: std::sync::Arc::new(estompe_client::video::Conversions::du_systeme(
-            session
-                .dossiers
-                .cache
-                .join(estompe_client::video::DOSSIER_CONVERSIONS),
-        )),
+        conversions: conversions.clone(),
         medias: messagerie::medias::Medias::nouveaux(
             std::sync::Arc::new(reels.client.clone()),
             estompe_client::cache::CacheDisque::ouvrir(
@@ -200,6 +287,38 @@ pub fn demarrer(
         std::sync::Arc::new(fabrique),
         session.memoire.clone(),
         coquille::horloge_locale(),
+    );
+    let galerie = replay::clips::brancher(
+        fenetre,
+        replay::clips::OutilsGalerie {
+            service: replay.clone(),
+            fichiers: std::sync::Arc::new(estompe_plateforme::FichiersSysteme),
+            conversions,
+            ffmpeg: Some(estompe_client::video::ffmpeg_du_systeme()),
+            messagerie: Some(coquille.source_pont()),
+        },
+        &entree.runtime(),
+    );
+    let editeur = replay::editeur::brancher(
+        fenetre,
+        replay::editeur::OutilsEditeur {
+            service: replay.clone(),
+            galerie: galerie.clone(),
+            ffmpeg: estompe_client::video::ffmpeg_du_systeme(),
+            sortie_son: Some(std::sync::Arc::new(
+                estompe_plateforme::SonPeripheriques::nouveau(audio_editeur, {
+                    let memoire = session.memoire.clone();
+                    std::sync::Arc::new(move |sens| {
+                        memoire.lire(|p| match sens {
+                            estompe_plateforme::SensAudio::Entree => p.micro.clone(),
+                            estompe_plateforme::SensAudio::Sortie => p.sortie_audio.clone(),
+                        })
+                    })
+                }),
+            )),
+            encodeurs: None,
+            horloge: None,
+        },
     );
     let dossier_maj = session
         .dossiers
@@ -272,8 +391,14 @@ pub fn demarrer(
             source: coquille.source_pont(),
             runtime: entree.runtime(),
             journal: Some(session.journal.clone()),
+            overlay: Some(overlay_messages.clone()),
         },
     ));
+    let mesures = ecran_mesures::EcranMesures::nouveau(
+        plateforme.mesure.clone(),
+        session.dossiers.donnees.join("mesures"),
+    );
+    let minuterie_mesures = ecran_mesures::brancher(fenetre, mesures.clone());
     Ok(Application {
         bureau,
         coquille,
@@ -282,7 +407,58 @@ pub fn demarrer(
         client: reels.client,
         auth: reels.auth,
         vocal,
+        jeux: service_jeux,
+        overlays,
+        overlay_voix,
+        overlay_messages,
+        replay,
+        overlay_replay,
+        galerie,
+        editeur,
+        mesures,
+        _minuterie_mesures: minuterie_mesures,
     })
+}
+
+pub fn reglages_replay(p: &estompe_client::preferences::Preferences) -> replay::ReglagesMoteur {
+    replay::ReglagesMoteur {
+        replay: p.replay.clone(),
+        debruiter: p.traitement_micro.bruit != estompe_client::audio::micro::ModeBruit::Aucun,
+        gain_micro: f32::from(p.traitement_micro.gain) / 100.0,
+    }
+}
+
+fn demarrer_replay(
+    session: &session::Session,
+    plateforme: &estompe_plateforme::Plateforme,
+    audio: std::sync::Arc<dyn estompe_client::audio::SystemeAudio>,
+) -> std::sync::Arc<replay::ServiceReplay> {
+    let memoire = session.memoire.clone();
+    let micro = estompe_plateforme::SonPeripheriques::nouveau(
+        audio,
+        std::sync::Arc::new(move |_| memoire.lire(|p| p.micro.clone())),
+    );
+    let memoire = session.memoire.clone();
+    replay::ServiceReplay::demarrer(
+        replay::Dependances {
+            encodage: plateforme.encodage.clone(),
+            ecrans: plateforme.capture_ecran.clone(),
+            sons: plateforme.capture_son.clone(),
+            micro: Some(std::sync::Arc::new(micro)),
+            premier_plan: plateforme.premier_plan.clone(),
+            raccourcis: std::sync::Arc::new(estompe_plateforme::RaccourcisSysteme),
+            touches_prises: std::sync::Arc::new(move || {
+                memoire.lire(|p| {
+                    p.touches_prioritaires(estompe_client::preferences::UsageTouche::Replay)
+                })
+            }),
+            videos: estompe_plateforme::dossier_videos(),
+            journaux: Some(session.dossiers.journaux.clone()),
+            version: VERSION.to_string(),
+            horloge: None,
+        },
+        session.memoire.lire(reglages_replay),
+    )
 }
 
 fn suivre_la_fenetre(

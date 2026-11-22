@@ -4,6 +4,8 @@ import { Anneau } from "../composants/focus.slint";
 import { DonneesCoquille, LigneServeur, LigneSection } from "donnees.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
 import { DonneesRecherche } from "recherche.slint";
+import { DonneesClips } from "../replay/galerie.slint";
+import { DonneesReplay } from "../replay/reglages.slint";
 
 component Pave {
     in property <string> libelle;
@@ -326,6 +328,17 @@ export component Rail inherits Rectangle {
                     libelle: "Recherche globale";
                     clique => {
                         DonneesRecherche.ouvrir();
+                    }
+                }
+            }
+            if DonneesClips.visible || DonneesReplay.actif: HorizontalLayout {
+                alignment: center;
+                Outil {
+                    icone: "clap";
+                    libelle: "Clips";
+                    actif: DonneesClips.ouvert;
+                    clique => {
+                        DonneesClips.ouvrir();
                     }
                 }
             }

@@ -1,0 +1,247 @@
+import { Theme, Typo, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Interrupteur, Champ, Defilement } from "../composants.slint";
+import { SectionOverlay, SectionMessages, DonneesOverlay, DonneesOverlayMessages } from "../overlay/reglages.slint";
+import { DonneesReplay } from "../replay/reglages.slint";
+import { DonneesMesures } from "../mesures/ecran.slint";
+
+export struct JeuAjoute {
+    chemin: string,
+    nom: string,
+}
+
+export global DonneesJeux {
+    in-out property <bool> disponible: false;
+    in-out property <bool> ouvert: false;
+    in-out property <bool> partager: false;
+    in-out property <string> jeu-en-cours;
+    in-out property <string> derniere-application;
+    in-out property <[JeuAjoute]> ajoutes;
+    in-out property <[string]> exclus;
+    in-out property <length> decalage;
+    callback ouvrir();
+    callback fermer();
+    callback definir-partage(bool);
+    callback ajouter-derniere();
+    callback exclure-derniere();
+    callback parcourir-ajout();
+    callback parcourir-exclu();
+    callback exclure(string);
+    callback retirer-ajoute(string);
+    callback retirer-exclu(string);
+}
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+component Note inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component LigneJeu inherits HorizontalLayout {
+    in property <string> nom;
+    in property <string> detail;
+    in property <string> action;
+    callback retirer();
+    spacing: Espace.e2;
+    Text {
+        horizontal-stretch: 1;
+        text: root.detail == "" ? root.nom : root.nom + "  " + root.detail;
+        color: Theme.encre;
+        font-size: Typo.petit;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+    Bouton {
+        icone: "x";
+        variante: VarianteBouton.fantome;
+        description: root.action + " " + root.nom;
+        calque: 1;
+        clique => {
+            root.retirer();
+        }
+    }
+}
+
+export component FenetreJeux inherits Modal {
+    titre: "Jeux et activité";
+    ouvert: DonneesJeux.ouvert;
+    largeur: 520px;
+    ferme => {
+        DonneesJeux.fermer();
+    }
+    if DonneesJeux.ouvert: Defilement {
+        decalage <=> DonneesJeux.decalage;
+        min-height: 320px;
+        preferred-height: 560px;
+        hauteur-contenu: contenu.preferred-height;
+        contenu := VerticalLayout {
+            alignment: start;
+            spacing: Espace.e4;
+            padding-right: Espace.e3;
+            Titre {
+                text: "ACTIVITÉ";
+            }
+            Note {
+                text: DonneesJeux.jeu-en-cours == "" ? "Aucun jeu détecté pour l'instant." : "Jeu en cours : " + DonneesJeux.jeu-en-cours;
+            }
+            Interrupteur {
+                texte: "Afficher le jeu en cours aux autres (toi seul le vois sinon)";
+                allume: DonneesJeux.partager;
+                calque: 1;
+                bascule(allume) => {
+                    DonneesJeux.definir-partage(allume);
+                }
+            }
+            if DonneesOverlay.disponible: SectionOverlay { }
+            if DonneesOverlayMessages.disponible: SectionMessages { }
+            Titre {
+                text: "INSTANT REPLAY";
+            }
+            Note {
+                text: DonneesReplay.resume;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Régler l'instant replay…";
+                    icone: "replay";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesReplay.ouvrir();
+                    }
+                }
+            }
+            Titre {
+                text: "MESURES";
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Mesures de performance…";
+                    icone: "chart";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesMesures.ouvrir();
+                    }
+                }
+            }
+            Titre {
+                text: "APPLICATION AU PREMIER PLAN";
+            }
+            Note {
+                text: DonneesJeux.derniere-application == "" ? "Passe sur ton jeu puis reviens ici : il sera proposé." : "Dernière application vue au premier plan : " + DonneesJeux.derniere-application;
+            }
+            HorizontalLayout {
+                alignment: start;
+                spacing: Espace.e2;
+                Bouton {
+                    texte: "Ajouter comme jeu";
+                    icone: "plus";
+                    calque: 1;
+                    actif: DonneesJeux.derniere-application != "";
+                    clique => {
+                        DonneesJeux.ajouter-derniere();
+                    }
+                }
+                Bouton {
+                    texte: "Exclure";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    actif: DonneesJeux.derniere-application != "";
+                    clique => {
+                        DonneesJeux.exclure-derniere();
+                    }
+                }
+            }
+            Titre {
+                text: "JEUX AJOUTÉS À LA MAIN";
+            }
+            Note {
+                text: "Ajoute un jeu qui n'est pas reconnu, ou exclus-en un pour qu'il ne soit jamais détecté ni montré.";
+            }
+            for jeu in DonneesJeux.ajoutes: LigneJeu {
+                nom: jeu.nom;
+                detail: jeu.chemin;
+                action: "Retirer";
+                retirer => {
+                    DonneesJeux.retirer-ajoute(jeu.chemin);
+                }
+            }
+            if DonneesJeux.ajoutes.length == 0: Note {
+                text: "Aucun jeu ajouté.";
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Ajouter un jeu…";
+                    icone: "plus";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    clique => {
+                        DonneesJeux.parcourir-ajout();
+                    }
+                }
+            }
+            Titre {
+                text: "JEUX EXCLUS";
+            }
+            for nom in DonneesJeux.exclus: LigneJeu {
+                nom: nom;
+                action: "Ne plus exclure";
+                retirer => {
+                    DonneesJeux.retirer-exclu(nom);
+                }
+            }
+            if DonneesJeux.exclus.length == 0: Note {
+                text: "Aucun jeu exclu.";
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                saisie := Champ {
+                    horizontal-stretch: 1;
+                    etiquette: "Nom de l'exécutable à exclure";
+                    indice: "jeu.exe";
+                    calque: 1;
+                    valide(texte) => {
+                        if (texte != "") {
+                            DonneesJeux.exclure(texte);
+                            self.valeur = "";
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: end;
+                    HorizontalLayout {
+                        spacing: Espace.e2;
+                        Bouton {
+                            texte: "Exclure";
+                            calque: 1;
+                            actif: saisie.valeur != "";
+                            clique => {
+                                DonneesJeux.exclure(saisie.valeur);
+                                saisie.valeur = "";
+                            }
+                        }
+                        Bouton {
+                            texte: "Parcourir…";
+                            variante: VarianteBouton.fantome;
+                            calque: 1;
+                            clique => {
+                                DonneesJeux.parcourir-exclu();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

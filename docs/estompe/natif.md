@@ -2,13 +2,13 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
 | Dossier | Rôle |
 |---|---|
-| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia, branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
+| `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia (logiciel pour les overlays, `src/overlay/`), branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
 | `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`) et mesures (`mesures.rs`) |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) ; capture d'écran et de fenêtre (`capture/`) |
 
@@ -870,7 +870,7 @@ Logique dans la crate client (`vocal/partage.rs` : qualités et plafonds ; `voca
     la caméra de l'aperçu du sélecteur ne bouge qu'aux réglages.
 - Écarts : le plafond de débit de l'encodeur est celui du début du partage (le SDK Rust 0.12 n'expose pas `setParameters` : changer la qualité règle la capture,
   pas le débit maximal) ; pas d'« Autre méthode » (sélecteur du système) ni de portail Wayland (lot 11) ; « Afficher le jeu en cours aux autres » (`SettingsShare` de l'app Windows)
-  arrive avec la détection du jeu (lot 7) ; pas d'avis « Le système limite la capture à … images/s ».
+  est dans les réglages « Jeux et activité » (voir [Jeu au premier plan](#jeu-au-premier-plan)) ; pas d'avis « Le système limite la capture à … images/s ».
 
 ### Appuyer pour parler
 
@@ -1069,6 +1069,207 @@ démarré par `src/mise_a_jour.rs` sur le runtime de l'entrée.
   - Écran forcé : voir [Mise à jour forcée](#mise-à-jour-forcée).
 - Non vérifié sur machine réelle : passage d'une version publiée à la suivante (deux tags), relance par l'installeur et session conservée.
 
+## Jeu au premier plan
+
+Savoir quel jeu tourne, pour l'activité montrée aux autres, puis pour les overlays et l'instant replay (lot 7). Copié de `foreground.rs` et `jeux/` de l'app Tauri, puis divergé.
+
+- Plateforme : trait `PremierPlan` (`apps/estompe/crates/plateforme/src/premier_plan/`). `application()` décrit la fenêtre au premier plan (`ApplicationPremierPlan` :
+  exécutable, chemin complet, titre, plein écran sans barre de titre, écran qui la contient, poignée de la fenêtre, processus) ; `fenetres()` les fenêtres
+  visibles, titrées, hors fenêtres d'outils, une par processus. Sous Windows : `GetForegroundWindow`, `QueryFullProcessImageNameW`, `MonitorFromWindow`, `EnumWindows`.
+  Linux : indisponible (`PremierPlanSysteme::disponible()` faux), les réglages et l'entrée du menu sont masqués. `PremierPlanFactice` sert aux tests.
+- Reconnaissance (`apps/estompe/crates/client/src/jeux/`) : liste intégrée `connus.json` (nom de l'exécutable ou morceau du chemin), dossier qui suit une bibliothèque
+  (Steam, Epic, GOG, Xbox), sinon une application plein écran sans bordure au premier plan ; jamais les outils de Windows, navigateurs, lecteurs, Estompe (`hors_jeu`).
+  Un jeu ajouté à la main (chemin complet) est toujours un jeu ; un jeu exclu (nom de l'exécutable) ne l'est jamais, ni au premier plan ni parmi les fenêtres ouvertes,
+  et n'est donc ni affiché ni publié. Sans jeu au premier plan, un jeu connu ou ajouté parmi les fenêtres ouvertes reste « en cours » (alt-tab).
+- Sondage (`ServiceJeux`, `apps/estompe/natif/src/jeux/`) : toutes les 5 s sur le runtime de l'app, et tout de suite après un changement de réglage. Il publie `EtatJeux`
+  dans un `watch` (`Application::jeux`, `ServiceJeux::abonner`) : jeu au premier plan (avec son écran et sa fenêtre, pour les overlays et le replay), activité,
+  dernière application vue au premier plan hors Estompe. Les fenêtres ne sont énumérées que si aucun jeu n'est au premier plan. Coût de la reconnaissance mesuré
+  (`cout_du_sondage`, crate client en release, machine de dev Linux, 30 fenêtres) : 33 µs par sondage, soit moins de 0,001 % d'un cœur ; les appels Windows
+  (une fenêtre, un processus ouvert, et `EnumWindows` hors jeu) ne sont pas mesurés ici.
+- Activité : le jeu détecté reste affiché une minute après sa disparition (`DELAI_DE_GRACE`, alt-tab ou redémarrage), comme `activity.svelte.ts` ; exclure le jeu en
+  cours l'efface tout de suite. Il est toujours visible sous mon pseudo (`activite_locale` du store) ; il n'est envoyé aux autres (`PUT /me/activity`, 64 caractères au plus)
+  que si « Afficher le jeu en cours aux autres » est actif (désactivé par défaut, préférence `jeux.partager`). L'envoi se fait à chaque changement et à chaque reconnexion
+  (le serveur oublie l'activité à la déconnexion) ; un échec est retenté au changement suivant (`Publication`, `Annonce` dans le cycle de la coquille).
+- Réglages « Jeux et activité » (`ui/jeux/reglages.slint`, entrée du menu de l'utilisateur) : interrupteur du partage, jeu en cours, dernière application vue au premier plan
+  avec « Ajouter comme jeu » et « Exclure » (passer sur le jeu puis revenir dans Estompe), jeux ajoutés (« Ajouter un jeu… » par le sélecteur de fichiers), jeux exclus
+  (nom saisi ou « Parcourir… »). Préférence `jeux` (`ReglagesJeux` : listes sans doublon à la casse près, 200 entrées et 260 caractères au plus).
+- Écarts : les jeux ajoutés et exclus étaient propres au replay dans l'app Tauri (`SettingsReplay`) ; ici ils servent à toute la détection (activité, overlays, replay).
+  Pas de « Écoute » (musique) dans l'activité avant le lot 10.
+- Non vérifié ici (machine Linux) : détection d'un vrai jeu sous Windows (connu et ajouté à la main), activité vue par un autre client, coût CPU réel du sondage sous Windows.
+
+## Overlay
+
+Fenêtres transparentes par-dessus le jeu, dessinées par Slint dans le processus de l'app. Porté de `overlay_natif/` de l'app Tauri (prototype de l'issue #56,
+voir [overlay-natif.md](overlay-natif.md)) et des composants `Overlay.svelte`, `overlay.ts` et `SettingsOverlay.svelte`. L'overlay des participants du vocal (#353)
+est la première scène ; celui des messages (#354) et l'indicateur du replay (#356) s'ajoutent comme d'autres scènes du même moteur.
+
+- Plateforme : trait `Overlay` (`apps/estompe/crates/plateforme/src/overlay/`), fabrique de `Calque`s. Un calque affiche une `ImagePremultipliee` (RGBA prémultiplié)
+  à une position en pixels physiques, avec une opacité globale, ou se masque. Sous Windows (`OverlaySysteme`, repris du prototype) : fenêtre
+  `WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE` mise à jour par `UpdateLayeredWindow` (transparence par pixel, opacité
+  par `SourceConstantAlpha`), jamais de focus, aucun clic capturé, absente de la barre des tâches. `pomper()` traite les messages des fenêtres du fil ;
+  `ecran_principal()` et `echelle()` (DPI effectif de l'écran, `GetDpiForMonitor`) servent au placement. Linux : indisponible, rien n'est créé et la section des réglages
+  est masquée. `OverlayFactice` retient chaque calque (image, position, opacité) pour les tests.
+- Moteur (`MoteurOverlay`, `apps/estompe/natif/src/overlay/mod.rs`) : un fil `estompe-overlay`, démarré au premier affichage, possède sa propre plateforme Slint
+  (la plateforme de Slint est propre à chaque fil) : une `MinimalSoftwareWindow` par composant, rendu logiciel, ni winit ni GPU. Une scène
+  (`MoteurOverlay::scene(Composant::new, appliquer)`) donne une `SceneOverlay<E>` : `afficher(etat, placement, opacite)` n'envoie rien si l'affichage est identique au
+  précédent ; sinon le fil applique l'état au composant, le rend à la taille demandée (facteur d'échelle de l'écran) et le passe à son calque. `masquer()` cache le calque.
+  Aucun rendu sans changement : `rendus()` compte les images rendues, `demandes()` les affichages envoyés. Le fil pompe les messages après chaque
+  commande, et toutes les 100 ms sans commande (10 ms pendant une saisie).
+- Participants du vocal (`overlay/voix.rs`, `ui/overlay/voix.slint`) : `PontVocal::projeter` calcule les participants du salon où je suis connecté
+  (`projection::participants`, mêmes états que les tuiles : je parle, micro et casque coupés) et les passe à `ServiceOverlayVoix` avec leur photo de profil (chargée
+  par `Profils` au besoin, recadrée en disque sur le fil de l'overlay car le moteur logiciel ne découpe pas une image par un `border-radius`). Le service suit aussi
+  `EtatJeux` (`ServiceJeux::abonner`) et les réglages, et calcule l'affichage (`voix::calculer`) : rien hors du vocal, hors jeu en mode « seulement en jeu », ou sans
+  personne à montrer ; sinon l'écran du jeu, à défaut le dernier écran d'une application au premier plan, à défaut l'écran principal. Rendu comme `Overlay.svelte` :
+  avatars de 28, 40 ou 56 px, contour et halo `#4ade80` du locuteur, initiales sur `#444`, pseudo dans une pastille `#00000099`, icône du micro ou du casque coupé.
+- Calculs (`apps/estompe/crates/client/src/overlay.rs`, repris de `overlay.ts`) : participants retenus (tous ou ceux qui parlent), visibilité, taille de la fenêtre
+  (largeur de l'avatar + 220, une ligne de l'avatar + 8 par participant), position dans l'un des six coins avec une marge de 16 px logiques, placement en pixels physiques.
+- Réglages (section « Overlay des participants » de « Jeux et activité », `ui/overlay/reglages.slint`, `overlay/reglages.rs`) : activer, seulement quand un jeu est au
+  premier plan, emplacement, taille, participants affichés, opacité (30 à 100 %). Préférence `overlay` (`ReglagesOverlay` : `quand` jeux, toujours ou jamais, `taille`,
+  `coin`, `mode`, `opacite`), mêmes valeurs par défaut que le front (seulement en jeu, centre gauche, moyen, tous) et opacité pleine.
+- Écarts : pas de raccourci global pour masquer ou réafficher l'overlay (`overlayKey` de l'app Tauri) ; opacité en plus. Comme dans l'app Tauri, une fenêtre « layered »
+  n'apparaît pas au-dessus d'un jeu en plein écran exclusif : seuls le fenêtré et le plein écran sans bordure sont pris en charge.
+- Tests : calculs de `overlay.test.ts` (`overlay::tests` de la crate client) ; moteur (`overlay::tests` : image transparente, halo, pas de rendu pour un état identique,
+  un calque par scène, rien sans overlay) ; service (`overlay::voix::tests`, dont `sans_changement_d_etat_aucun_rendu_pendant_dix_secondes`, temps de tokio simulé,
+  sondage du jeu toutes les 5 s et projections répétées) ; captures `tests/overlay.rs` comparées à `tests/references/overlay-voix-*.png` (1, 4 et 8 participants,
+  locuteurs, micro et casque coupés, chaque taille ; composées sur un fond sombre) ; parcours dans `tests/vocal.rs` (trois participants à l'arrivée dans le salon, overlay
+  masqué en raccrochant) et `tests/jeux.rs` (écran du jeu suivi, réglages appliqués, masqué hors jeu, « toujours », désactivé).
+- Messages privés et mentions (#354, `overlay/messages.rs`, `ui/overlay/messages.slint`, calculs dans `apps/estompe/crates/client/src/overlay_messages.rs`, repris
+  de `MsgOverlay.svelte`, `msg-overlay.svelte.ts` et `overlay.ts`) : le `Notifieur` du bureau passe chaque notification du serveur à `ServiceOverlayMessages`,
+  indépendamment des notifications du bureau. Retenues selon le choix (privés, mentions, les deux, aucun) et rien en « Ne pas déranger » si la sourdine est cochée
+  (`overlay_messages::voulu`). File comme l'app Tauri (`FileMessages`) : quatre bandeaux au plus, le même message remplacé, chacun retiré après sa durée (2 à 60 s,
+  8 par défaut) ; pendant une saisie, les bandeaux échus restent et leur durée repart. Une minuterie tokio (`demarrer_minuterie`) attend la prochaine échéance ; l'heure
+  vient d'une horloge injectable pour les tests. Rendu : bandeaux de 340 × 64 px `#000000bf`, photo de profil en disque ou initiales, titre en gras, corps sur une
+  ligne (masqué si « masquer le contenu ») ; champ de réponse de 36 px sous les bandeaux, avec curseur et la fin du texte visible. Placement dans le coin choisi
+  (haut droite par défaut) sur l'écran du jeu comme les participants ; affiché seulement en jeu par défaut.
+- Réponse rapide : deux touches globales (`RaccourcisGlobaux`, une touche seule : F8 pour répondre au dernier bandeau, F7 pour ouvrir sa conversation), enregistrées
+  seulement tant qu'un bandeau est affiché, jamais celle de l'appui pour parler. Répondre ouvre le champ puis demande le focus au calque (`SceneOverlay::saisir`,
+  `Calque::saisir`) ; le fil de l'overlay pompe alors toutes les 10 ms. Sous Windows, le calque mémorise la fenêtre au premier plan (le jeu), retire
+  `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE` et prend le premier plan (`AttachThreadInput` puis `SetForegroundWindow`) ; sa procédure transmet `WM_CHAR` (texte, paires
+  de substitution, Retour arrière, Entrée, Échap) et `WM_KILLFOCUS` (`EvenementSaisie`). Entrée envoie au dernier bandeau par la file d'envoi, marque la conversation
+  lue et retire ses bandeaux ; Échap ou la perte du focus annulent. Dans tous les cas `rendre_le_focus` remet les styles et rend le premier plan au jeu, sans
+  `ShowWindow` sur sa fenêtre (ni réduction ni restauration) ; si l'utilisateur est passé à une autre fenêtre (perte du focus), le premier plan n'est pas repris. « Ouvrir » ramène la fenêtre de l'app sur la conversation, comme le clic d'une notification. Linux :
+  l'overlay est indisponible (section masquée) ; un overlay sans saisie (`Overlay::saisie_disponible`) ne prend que la touche « ouvrir » et le dit dans les réglages.
+- Réglages des messages (section « Messages par-dessus le jeu » de « Jeux et activité ») : bandeaux affichés, seulement en jeu, sourdine en « Ne pas déranger »,
+  masquer le contenu, emplacement, durée, touches « répondre » et « ouvrir » (capturées comme celle de l'appui pour parler, refusées si déjà prises). Préférence
+  `overlay_messages` (`ReglagesMessages`), à côté de `overlay`.
+- Écarts des messages : les touches sont une touche seule (comme l'appui pour parler) au lieu de Ctrl+Maj+R et Ctrl+Maj+E, et le crochet du clavier ne les retire
+  pas au jeu ; emplacement et « seulement en jeu » propres aux messages (partagés avec les participants dans l'app Tauri) ; sourdine en « Ne pas déranger » vérifiée
+  aussi par l'app.
+- Tests des messages : `overlay_messages::tests` (genres, sourdine, file, durée, saisie, réponse, ouverture, taille, réglages) ; `overlay::messages::tests` (vue,
+  expiration, touches seulement pendant l'affichage, focus pris puis rendu, Échap et perte du focus, « ouvrir », sans saisie, touche de l'appui pour parler,
+  masqué hors jeu, minuterie en temps simulé) ; `plateforme::overlay::tests` (caractères de `WM_CHAR`, faux calque qui prend et rend le focus) ; captures
+  `tests/references/overlay-messages-*.png` (message privé, mention, saisie vide et en cours) ; parcours dans `tests/bureau.rs` (mentions reçues en bandeaux, réponse
+  par F8 envoyée au serveur et focus rendu, « ouvrir » par F7) et `tests/jeux.rs` (réglages des messages retenus et appliqués au bandeau).
+- Non vérifié ici (machine Linux) : affichage réel sur un jeu fenêtré sans bordure sous Windows, absence de vol de focus, mémoire et CPU comparés à l'overlay de l'app Tauri
+  (protocole de [natif-mesures.md](natif-mesures.md)) ; réponse depuis un vrai jeu (le message part, le jeu reprend le focus sans être réduit) et refus éventuel du
+  premier plan par Windows.
+
+## Instant replay
+
+Garder en permanence les dernières secondes du jeu au premier plan et les enregistrer en clip MP4 (#355). Porté de `replay/` de l'app Tauri
+(voir [instant-replay.md](instant-replay.md)), puis divergé : la capture et le son viennent des traits du lot 5, l'image est convertie par le processeur.
+
+- Parties pures (`apps/estompe/crates/client/src/replay/`) : `tampon` (unités compressées en RAM, éviction par groupe d'images entier, plafonds en durée et en octets,
+  instantané sans copie), `cadence` (une image par échéance, la dernière répétée, plus de 3 images de retard comptées perdues ; `encodeur_muet` ; alertes de perte ;
+  `Alignement` comble les silences du son), `automate` (`inactif`, `arme`, `pause`, `indisponible`), `garde` (fichier `estompe-encodeur.txt` du dossier des journaux :
+  une session d'encodeur ouverte puis un arrêt de l'app avant la première image désactive le replay jusqu'à la version suivante), `micro` (RNNoise et gain), `son`
+  (stéréo ou mono à 48 kHz), `image` (RGBA vers NV12 BT.709 16-235 avec réduction), `reglages` (résolution, cadence, codec, débit, durée selon la RAM, `options` pour les
+  réglages), `mp4` (`moov` en tête, pistes entrelacées par seconde), `ecriture` (fichier `.part` puis renommage, annexe JSON, disque plein, quota, file d'écriture sur un fil),
+  `galerie` (nom des clips, dossier par défaut `Vidéos/Estompe`, annexes `.estompe/`, liste). Préférence `replay` (`ReglagesReplay` : actif, résolution, cadence, durée de
+  15 à 300 s, qualité, micro, curseur, touche, dossier, quota), désactivée par défaut ; micro, réduction de bruit et gain viennent des réglages du vocal.
+- Plateforme : trait `EncodageMateriel` (`apps/estompe/crates/plateforme/src/encodage/`) : `materiel(fenetre)` (carte, encodeurs H.264 et HEVC avec leurs limites,
+  rafraîchissement de l'écran, RAM libre), `video(parametres, sortie, arret)` (images NV12 soumises avec leur horodatage, paquets Annex B rendus au récepteur, image clé
+  par groupe, refus si saturé), `audio(parametres, sortie)` (PCM 16 bits vers AAC). Sous Windows (`EncodageSysteme`) : MFT matériel de Media Foundation (NVENC,
+  QuickSync, AMD) sur la première carte « haute performance » qui en a un, débit constant, sans images B, entrée en mémoire vive ; AAC par le MFT de Windows.
+  Linux : `Indisponible`, l'état du replay est `indisponible` (« instant replay disponible sous Windows uniquement ») et rien n'est capturé. `EncodageFactice` pour les tests.
+  `disque_plein`, `masquer` (dossier caché) et `dossier_videos` sont aussi dans la crate plateforme.
+- Service (`apps/estompe/natif/src/replay/`, `ServiceReplay`, `Application::replay`) : un fil `replay` suit `EtatJeux` (donc les jeux ajoutés et exclus de `p.jeux`) ;
+  au jeu au premier plan il capture sa fenêtre (`CaptureEcran`, `fenetre:<n>`), attend la première image (3 s), choisit dimensions, cadence et codec, ouvre l'encodeur,
+  le son du jeu (`CaptureSon`, processus du jeu) et le micro si coché (`SonPeripheriques`), puis un fil `replay-rythme` émet les images à cadence fixe. Hors du premier
+  plan : pause, tout est fermé, le tampon est gardé ; fermeture du jeu (plus aucune fenêtre de son processus, vérifié toutes les 5 s) ou changement de jeu, de réglage
+  vidéo ou audio : tampon vidé. Image du jeu qui change de taille : la session redémarre.
+- API pour les réglages, l'indicateur, la galerie et l'éditeur : `configurer(ReglagesMoteur)`, `sauvegarder()` (durée des réglages), `sauvegarder_les_dernieres(n)`,
+  `partage(actif, suspendre)`, `disponibilite()`, `options(&ReglagesReplay)`, `dossier()`, `etat()` (`watch` d'`EtatReplay` : état, jeu, format, encodeur, touche
+  enregistrée) et `evenements()` (`broadcast` d'`EvenementReplay` : `Clip(ClipEnregistre)` ou `Erreur(ErreurReplay)` avec les codes de l'app Tauri : `tampon-vide`,
+  `quota`, `disque-plein`, `dossier-inaccessible`, `capture-refusee`, `encodeur-muet`, `encodeur-arrete`, `encodeur-sature`, `capture-en-retard`, `son-indisponible`,
+  `micro-indisponible`, `image-changee`).
+- Raccourci : une touche seule (F10 par défaut) enregistrée par `RaccourcisGlobaux` tant que le replay est actif et disponible, jamais une touche déjà prise (appui pour
+  parler, touches de l'overlay des messages).
+- Touches globales (appui pour parler, overlay des messages, replay) : `Preferences::touches_des_autres(usage)` refuse dans chaque réglage une touche déjà prise par un
+  autre usage actif (message « Cette touche sert déjà… ») ; à l'exécution, `touches_prioritaires(usage)` départage des préférences anciennes en conflit : l'appui pour
+  parler passe avant les messages, qui passent avant le replay.
+- Partage d'écran : `suivre_le_partage` suit `EtatVocal::partage` et appelle `partage(actif, false)`, comme `replay_partage` de l'app Tauri : le tampon continue pendant
+  un partage, mais un échec de capture ou d'encodage pendant le partage met le replay en pause (« le partage d'écran est prioritaire ») au lieu de l'arrêter ; il repart à
+  la fin du partage.
+- Réglages (#356, `apps/estompe/natif/src/replay/reglages.rs`, `apps/estompe/natif/ui/replay/reglages.slint`) : fenêtre « Instant replay » ouverte depuis « Jeux et
+  activité » (résumé de l'état et bouton « Régler l'instant replay… »). Activer (seulement si un encodeur est disponible), état du tampon et encodeur, touche (capturée
+  comme celle de l'appui pour parler), résolution et images par seconde (choix hors de portée du matériel grisés, raison affichée), qualité, durée (15 s à 5 min par pas de
+  15 s, plafonnée selon la mémoire libre), curseur, micro, rappel des jeux ajoutés et exclus (réglés dans « Jeux et activité »), dossier (choisir, par défaut, ouvrir avec
+  `Fichiers::ouvrir_dossier`) et quota (1 Go au moins). Le matériel (`disponibilite`, `options`) est lu sur un fil à l'ouverture, puis relu quand un réglage de capture ou le
+  jeu change. Toute valeur passe par `ReglagesReplay::borne` ; textes et bornes de l'interface dans `estompe_client::replay::affichage` (`duree_choisie`, `quota_choisi`).
+- Indicateur sur le jeu (#356, `apps/estompe/natif/src/overlay/replay.rs`, `apps/estompe/natif/ui/overlay/replay.slint`) : une scène du moteur d'overlay, comme les
+  participants et les messages. Pastille « Replay » tant que le tampon tourne, puis jusqu'à trois messages (vert : clip enregistré, jaune : pause ou reprise, rouge :
+  erreur ou indisponible) ; chaque message reste la durée d'affichage des messages (2 à 60 s). Logique de `replay.ts` portée dans `estompe_client::replay::affichage`
+  (`message_etat`, `message_clip`, `message_erreur`, `FileReplay`, `taille_fenetre`). Placé sur l'écran du jeu, dans le premier coin du haut puis du bas qui n'est pris ni
+  par l'overlay des participants ni par celui des messages (l'app Tauri prenait le coin opposé à celui des participants).
+- Galerie (#357, `apps/estompe/natif/src/replay/clips.rs`, `apps/estompe/natif/ui/replay/galerie.slint`, `Application::galerie`) : fenêtre « Clips » ouverte
+  depuis le rail (bouton visible quand le replay est actif ou que le dossier contient des clips, comme l'espace de l'app Tauri) et depuis « Voir les clips » de
+  la fenêtre « Instant replay ». Navigation : tous les clips ou un jeu (« Autres » sans jeu), place occupée et quota, ouvrir le dossier, réglages. Chaque clip :
+  vignette, durée, nom, jeu et date, taille, définition, cadence, HEVC, piste micro, montage d'origine ; « Envoyer », « Renommer », « Supprimer » (confirmés),
+  clic sur la vignette : lecture dans le lecteur du système (`Fichiers::ouvrir`) jusqu'au lecteur de l'app (lot 9). Lecture du dossier et vignettes sur un fil :
+  une vignette manquante est tirée du clip par ffmpeg (`galerie::creer_vignette`, `.estompe/<clip>.mp4.jpg`), une seule tentative par clip. La galerie se relit
+  à chaque `EvenementReplay::Clip` et à l'erreur `quota`. Règles portées de `galerie.rs` dans `estompe_client::replay::galerie` (`dans_dossier` : jamais hors du
+  dossier ni à travers un lien, `renommer` et `supprimer` avec les annexes, `stockage`, `plus_anciens`, `purger`) et `estompe_client::replay::clips` (tri,
+  jeux, textes, `decision_envoi`, `plan_envoi`). Quota : alerte à 90 %, puis « Quota du dossier atteint » avec « Supprimer les plus anciens… » : après
+  confirmation, les clips les plus anciens sont supprimés jusqu'à repasser sous le quota, sauf les clips protégés (`Galerie::proteger`, pris par un envoi en
+  cours et, demain, par l'éditeur) ; le clip en cours d'écriture est un `.part` des annexes, jamais listé ni supprimé. Rien n'est supprimé sans confirmation.
+- Envoi d'un clip (#357) : « Envoyer dans un salon » liste les salons texte où l'on a `send_messages` et `attach_files` et les messages privés (recherche).
+  Décision de l'app Tauri : MP4 H.264 à une piste envoyé tel quel ; deux pistes (jeu et micro) réunies par `amix` en copiant la vidéo ; HEVC converti en H.264
+  par les encodeurs matériels des pièces jointes ; plus gros que `max_video_size` : réencodage plus léger proposé (débit et définition pour tenir dans la limite) ;
+  trop long même réencodé : refus. La conversion (`preparer_fichier`, fichier temporaire de `<cache>/conversions/`) puis l'envoi en flux (`Client::envoyer_piece`)
+  s'affichent dans la galerie avec leur pourcentage et « Annuler » ; la pièce part ensuite en message par `Store::envoyer` (échec visible et « Réessayer » dans
+  la conversation). Fichier converti encore trop gros : la fenêtre se rouvre en mode réencodage.
+- Éditeur de clips (#358, `apps/estompe/natif/src/replay/editeur/`, `apps/estompe/natif/ui/replay/editeur.slint`, `Application::editeur`) : branché par
+  `Galerie::definir_editeur` (bouton « Modifier » de chaque clip) ; fenêtre « Éditeur de clips » qui remplace la galerie le temps du montage, puis la rouvre.
+  Modèle et règles portés de `montage.ts` et `montage.rs` dans `estompe_client::replay::montage` : projets au même format que l'app Tauri
+  (`.estompe/projets/<id>.json`, version 2, reprise de la version 1, suivi du renommage d'un clip), ligne de temps (segments, points de coupe, blocs rognés à
+  l'image près, retirer et restaurer), vitesse et son coupé par segment, pistes « Jeu », « Micro » (volume 0 à 200 %, muet), plusieurs clips et leur ordre, rapport
+  du cadre, annuler et rétablir (200 états), limites (20 clips, 30 minutes), plan à l'image près et graphe ffmpeg de l'export, validation du montage reçu.
+  `SessionMontage` (état pur de l'éditeur ouvert, tête de lecture sur l'axe) applique les opérations et produit la vue ; chaque modification enregistre le projet
+  par un fil d'écriture (une écriture à la fois, la dernière gagne). Les clips du montage sont protégés (`Galerie::proteger`) tant que l'éditeur est ouvert et pendant
+  un export.
+- Aperçu de l'éditeur : sans lecteur vidéo dans l'app (lot 9), l'image et la lecture passent par ffmpeg avec le même plan et le même graphe que l'export
+  (`plan_apercu`, `arguments_apercu`) : image seule à la tête de lecture (`image_seule`, 360p au plus, recherche `-ss` par entrée puis `trim` en images),
+  image précédente et suivante (`pas`), lecture de la sélection depuis la tête (`extrait`, 30 i/s, images RGBA lues sur la sortie de ffmpeg et cadencées par
+  l'horloge ; son mixé par un second ffmpeg, joué par `SortieSon`). Formes d'onde tirées par ffmpeg (`onde`, 200 barres, `trace_onde` dans un `Path`).
+- Export : choix de la résolution (cadre ou hauteur plus petite) et de la cadence, puis `montage::exporter` dans un fil (encodeurs matériels de
+  `ffmpeg -encoders` puis `libopenh264`, `libx264`), fichier `<nom> (montage).mp4` avec son annexe (`origine`), clips d'origine ouverts en lecture seulement.
+  Progression et « Annuler » dans l'éditeur et dans la galerie (`Galerie::commencer_travail`, `avancer_travail`, `finir_travail`, qui relit la galerie) ;
+  l'annulation tue ffmpeg et supprime les fichiers partiels, purgés aussi au démarrage (`purger_partiels`). Liste « Montages » au-dessus des clips :
+  rouvrir, renommer, supprimer (confirmation ; les clips et les fichiers exportés restent), clip manquant signalé.
+- Écarts de l'éditeur avec l'app Tauri : pas d'édition des blocs de texte (gardés dans le projet, ni affichés ni incrustés à l'export, un message le dit) ni de
+  cadre déplaçable à la souris (rapport choisi, cadre centré) ; pas de fichiers dérivés (piste `.m4a`, aperçu H.264) puisque l'aperçu lit le clip par ffmpeg ;
+  aperçu à 30 i/s au plus en 360p ; glisser-déposer des segments remplacé par « vers le début », « vers la fin ».
+- Garde-fous : pas d'encodeur matériel ou garde déclenchée : `indisponible` avec la raison ; encodeur qui accepte des images sans rien rendre en 2 s : `encodeur-muet` ;
+  plus d'une image sur cinq perdue sur 10 s : alerte selon la cause ; aucune image du jeu dans les 3 s qui suivent l'ouverture de la capture : `capture-refusee` ; disque plein ou quota atteint à
+  l'écriture : erreur, aucun clip existant n'est supprimé.
+- Écarts avec l'app Tauri : pas d'AMF appelé directement ni de son essai hors processus (une carte AMD passe par son MFT, que l'app Tauri jugeait muet : c'est alors
+  `encodeur-muet`) ; pas d'entrées D3D11 (réserve, textures) ni de conversion sur la carte graphique : l'image du jeu arrive en RGBA de la capture et passe en NV12 sur le
+  processeur, l'encodeur la reçoit en mémoire vive ; pas de conversion HDR vers SDR ; vignette tirée par la galerie à la première ouverture plutôt qu'à l'écriture ; fil d'écriture en priorité
+  normale.
+- Tests : modules purs (`replay::*::tests` de la crate client, dont `ecriture::tests::mp4_de_synthese_lu_par_ffmpeg` : H.264 et AAC produits par ffmpeg, MP4 écrit par
+  `ecriture`, relu par `ffmpeg -v error` sans erreur, trois pistes et 2 s ; sauté sans ffmpeg avec libx264) ; plateforme (`encodage::factice::tests`, `encodage::tests`,
+  `disque`) ; service (`replay::tests` : jeu détecté, tampon armé, clip par la touche puis par `sauvegarder_les_dernieres`, pause et fermeture, indisponible sans
+  encodeur, touche prise refusée, encodeur muet ou arrêté, échec pendant un partage d'écran mis en pause) ; réglages (`replay::reglages::tests`, `tests/replay.rs` :
+  valeurs hors bornes ramenées, touches refusées) ; indicateur (`overlay::replay::tests` : placement, clip sauvé, erreur, expiration ; captures `overlay-replay-*`) ;
+  captures de la fenêtre (`jeux-replay-*`) ; galerie (`replay::clips::tests` : vue vide, remplie, par jeu, quota presque atteint et dépassé, fenêtre d'envoi, destinations, préparation du fichier par ffmpeg ; `replay::galerie::tests` et `replay::clips::tests` de la crate client : chemins refusés, renommage et suppression avec les annexes, purge sans les clips protégés ni le `.part`, vignette ; `tests/clips.rs` : ouverture, purge confirmée, clip protégé refusé, renommage, suppression ; captures `clips-*`) ; éditeur (`replay::montage::*::tests` de la crate client : équivalents des cas de `montage.test.ts` et de `montage.rs`, dont les exports réels par ffmpeg,
+  un export coupé à des instants donnés à une image près, l'annulation et l'aperçu à l'image près ; `replay::editeur::*::tests` : opérations de la session, vue,
+  format d'export, suivi des exports, touches ; `tests/editeur.rs` : ouverture depuis la galerie, coupe, retrait, muet, annuler et rétablir au clavier, export
+  puis montage listé et rouvert, clip d'origine inchangé ; captures `editeur-*` et `clips-montages-clair`).
+- Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3 de
+  #355) ; indicateur « clip sauvé » sur un vrai jeu après le raccourci (C3 de #356) ; montage et export d'un clip réel de 2 minutes puis envoi (C4 de #358), son de
+  l'aperçu sur une vraie sortie audio.
+
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
@@ -1116,13 +1317,13 @@ Aucun `cfg(target_os)`, `cfg(windows)` ni `cfg(unix)` hors de `apps/estompe/crat
 
 La crate plateforme expose un trait par fonction : coffre de secrets, notifications, pastille de la barre des tâches, zone de notification,
 installation d'une mise à jour, raccourcis globaux, ouverture d'une URL, capture d'écran et de fenêtre, capture du son, overlay, application au
-premier plan, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
+premier plan, encodage vidéo matériel, démarrage avec la session. Chaque trait a une méthode `disponible()`, que
 l'interface consulte pour masquer ce qui n'existe pas, et l'implémentation `Indisponible`, qui répond `Erreur::Indisponible` sans paniquer.
 `Plateforme::de_l_os()` assemble ce que l'OS sait faire. Sont implémentés sur les deux OS : les raccourcis globaux de l'appuyer pour parler (`RaccourcisSysteme` : crochet clavier sous Windows, XInput 2 sous X11, indisponible sous Wayland), le coffre de secrets (`keyring` : Credential Manager
 sous Windows, Secret Service sous Linux) l'ouverture d'une URL `http` ou `https` dans le navigateur, le choix d'un dossier ou de fichiers et l'ouverture d'un fichier (`Fichiers` : `rfd` pour le
 sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et la lecture d'une image ou d'une liste de fichiers (`PressePapiers`, `arboard`), les périphériques audio (`SystemeAudio`, `cpal` : WASAPI sous Windows, ALSA sous Linux ; `SonPeripheriques` pour le micro et la sortie des messages vocaux), le lancement d'un processus d'arrière-plan
 (`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
-l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches et l'installation d'une mise à jour (`InstallationSysteme`). Le reste arrive avec son lot, Windows d'abord.
+l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`), l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)), l'overlay (`OverlaySysteme`, voir [Overlay](#overlay)) et l'encodage vidéo matériel (`EncodageSysteme`, voir [Instant replay](#instant-replay)). Le reste arrive avec son lot, Windows d'abord.
 
 Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
 De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
@@ -1160,6 +1361,7 @@ compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0
 référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
+  Les overlays ont leurs propres captures (`tests/overlay.rs`, régénérées par la même recette, mêmes seuils et même variable `ESTOMPE_CAPTURES`, fonctions communes dans `tests/commun/mod.rs`, module `references`).
 - Mises à jour : `mise-a-jour-bandeau`, `mise-a-jour-panneau-a-jour`, `mise-a-jour-telechargement` (40 %), `mise-a-jour-erreur` et `mise-a-jour-forcee`
   (installation en cours) sont préparés par `mise_a_jour::afficher` avec un `EtatMaj` fixe.
   Les écrans d'entrée sont préparés par `ecrans::afficher` avec un `Etat` fixe ; la coquille par un `Pont` sur un store rempli par `Store::installer`
@@ -1209,6 +1411,9 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
+`jeux.rs` (même backend, `ServeurMessages`, `PremierPlanFactice` sondé toutes les 20 ms) : jeu détecté affiché sous mon pseudo, rien publié hors ligne, activité vide
+  publiée sans le réglage, « Jeux et activité » ouvert depuis le menu de l'utilisateur, partage activé (`PUT /me/activity` avec le jeu), jeu exclu retiré de l'affichage et de
+  l'activité publiée, application fenêtrée non détectée puis ajoutée comme jeu, exécutable exclu par « Parcourir… ».
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

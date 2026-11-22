@@ -1,0 +1,343 @@
+import { Theme, Typo, Espace } from "../jetons.slint";
+import { Bouton, VarianteBouton, Modal, Interrupteur, Curseur, Defilement } from "../composants.slint";
+import { DonneesClips } from "galerie.slint";
+
+export struct ChoixReplay {
+    libelle: string,
+    disponible: bool,
+    choisi: bool,
+}
+
+export global DonneesReplay {
+    in-out property <bool> ouvert: false;
+    in-out property <bool> materiel-lu: false;
+    in-out property <bool> disponible: false;
+    in-out property <string> raison;
+    in-out property <string> resume;
+    in-out property <bool> actif: false;
+    in-out property <string> etat;
+    in-out property <bool> tourne: false;
+    in-out property <string> touche: "F10";
+    in-out property <bool> capture: false;
+    in-out property <string> erreur-touche;
+    in-out property <bool> touches-globales: true;
+    in-out property <[ChoixReplay]> resolutions;
+    in-out property <[ChoixReplay]> cadences;
+    in-out property <string> hors-portee;
+    in-out property <int> qualite: 2;
+    in-out property <int> duree: 30;
+    in-out property <int> duree-max: 300;
+    in-out property <string> plafond;
+    in-out property <bool> curseur: false;
+    in-out property <bool> micro: false;
+    in-out property <string> codec;
+    in-out property <string> jeux;
+    in-out property <string> dossier;
+    in-out property <bool> dossier-defaut: true;
+    in-out property <bool> choix-dossier: true;
+    in-out property <int> quota: 20;
+    in-out property <int> quota-max: 200;
+    in-out property <length> decalage;
+    callback ouvrir();
+    callback fermer();
+    callback definir-actif(bool);
+    callback definir-resolution(int);
+    callback definir-cadence(int);
+    callback definir-qualite(int);
+    callback definir-duree(float, bool);
+    callback definir-curseur(bool);
+    callback definir-micro(bool);
+    callback touche-choisie(string) -> bool;
+    callback changer-dossier();
+    callback dossier-par-defaut();
+    callback ouvrir-dossier();
+    callback definir-quota(float, bool);
+}
+
+component Titre inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.moyen;
+    letter-spacing: 0.8px;
+}
+
+component Note inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Alerte inherits Text {
+    color: Theme.danger;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Segments inherits HorizontalLayout {
+    in property <[ChoixReplay]> choix;
+    callback choisir(int);
+    spacing: Espace.e1;
+    alignment: start;
+    for c[i] in root.choix: Bouton {
+        texte: c.libelle;
+        variante: c.choisi ? VarianteBouton.primaire : VarianteBouton.secondaire;
+        actif: c.disponible;
+        calque: 2;
+        clique => {
+            root.choisir(i);
+        }
+    }
+}
+
+component ChoixToucheReplay inherits HorizontalLayout {
+    spacing: Espace.e3;
+    alignment: start;
+    Bouton {
+        texte: DonneesReplay.capture ? "Appuie sur une touche…" : "Raccourci de sauvegarde : " + DonneesReplay.touche;
+        icone: "commande";
+        calque: 2;
+        actif: DonneesReplay.touches-globales;
+        clique => {
+            DonneesReplay.capture = true;
+            capture.focus();
+        }
+    }
+    capture := FocusScope {
+        width: 0px;
+        enabled: DonneesReplay.capture;
+        key-pressed(e) => {
+            if (!DonneesReplay.capture) {
+                return reject;
+            }
+            if (e.text == Key.Escape) {
+                DonneesReplay.capture = false;
+                return accept;
+            }
+            if (DonneesReplay.touche-choisie(e.text)) {
+                DonneesReplay.capture = false;
+            }
+            return accept;
+        }
+    }
+}
+
+export component SectionReplay inherits VerticalLayout {
+    alignment: start;
+    spacing: Espace.e4;
+    Titre {
+        text: "ACTIVATION";
+    }
+    Note {
+        text: "Garde en mémoire les dernières secondes de ton jeu et les enregistre en clip sur un raccourci. Rien n'est écrit sur le disque tant que tu ne sauvegardes pas, et aucun clip ne quitte ton PC sans action de ta part.";
+    }
+    if DonneesReplay.materiel-lu && !DonneesReplay.disponible: Alerte {
+        text: "Instant replay indisponible sur cet appareil : " + DonneesReplay.raison + ". L'encodage par le processeur n'est pas proposé : il ferait chuter les images par seconde du jeu.";
+    }
+    Interrupteur {
+        texte: "Activer l'instant replay";
+        allume: DonneesReplay.actif;
+        actif: DonneesReplay.disponible || DonneesReplay.actif;
+        calque: 2;
+        bascule(allume) => {
+            DonneesReplay.definir-actif(allume);
+        }
+    }
+    Note {
+        text: DonneesReplay.materiel-lu ? DonneesReplay.etat : "Lecture du matériel…";
+    }
+    ChoixToucheReplay { }
+    if DonneesReplay.erreur-touche != "": Alerte {
+        text: DonneesReplay.erreur-touche;
+    }
+    Note {
+        text: DonneesReplay.touches-globales ? "Le raccourci fonctionne en jeu, seulement quand l'instant replay est activé. Deux appuis rapprochés donnent deux clips." : "Les raccourcis globaux ne sont pas disponibles sur ce système.";
+    }
+    if DonneesReplay.disponible: Titre {
+        text: "VIDÉO";
+    }
+    if DonneesReplay.disponible: Note {
+        text: DonneesReplay.tourne ? "Changer la résolution, les images par seconde, la durée, la qualité, le micro ou le curseur vide le tampon en cours : ce qui précède le changement est perdu." : "Changer la résolution, les images par seconde, la durée, la qualité, le micro ou le curseur vide le tampon : ce qui précède le changement est perdu.";
+        color: DonneesReplay.tourne ? Theme.danger : Theme.encre-2;
+    }
+    if DonneesReplay.disponible: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Résolution";
+        }
+        Segments {
+            choix: DonneesReplay.resolutions;
+            choisir(i) => {
+                DonneesReplay.definir-resolution(i);
+            }
+        }
+    }
+    if DonneesReplay.disponible: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Images par seconde";
+        }
+        Segments {
+            choix: DonneesReplay.cadences;
+            choisir(i) => {
+                DonneesReplay.definir-cadence(i);
+            }
+        }
+    }
+    if DonneesReplay.disponible && DonneesReplay.hors-portee != "": Note {
+        text: DonneesReplay.hors-portee;
+    }
+    if DonneesReplay.disponible: VerticalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Qualité";
+        }
+        Segments {
+            choix: [
+                { libelle: "Basse", disponible: true, choisi: DonneesReplay.qualite == 0 },
+                { libelle: "Moyenne", disponible: true, choisi: DonneesReplay.qualite == 1 },
+                { libelle: "Haute", disponible: true, choisi: DonneesReplay.qualite == 2 },
+            ];
+            choisir(i) => {
+                DonneesReplay.definir-qualite(i);
+            }
+        }
+    }
+    if DonneesReplay.disponible: VerticalLayout {
+        spacing: 2px;
+        Note {
+            text: "Durée gardée : " + (duree.valeur < 60 ? "\{Math.round(duree.valeur)} s" : Math.mod(Math.round(duree.valeur), 60) == 0 ? "\{Math.round(duree.valeur / 60)} min" : "\{Math.floor(duree.valeur / 60)} min \{Math.mod(Math.round(duree.valeur), 60)}");
+        }
+        duree := Curseur {
+            libelle: "Durée gardée";
+            unite: " s";
+            minimum: 15;
+            maximum: DonneesReplay.duree-max;
+            pas: 15;
+            valeur: DonneesReplay.duree;
+            calque: 2;
+            fini(v) => {
+                DonneesReplay.definir-duree(v, true);
+            }
+        }
+    }
+    if DonneesReplay.disponible && DonneesReplay.plafond != "": Note {
+        text: DonneesReplay.plafond;
+    }
+    if DonneesReplay.disponible: Interrupteur {
+        texte: "Afficher le curseur dans le clip";
+        allume: DonneesReplay.curseur;
+        calque: 2;
+        bascule(allume) => {
+            DonneesReplay.definir-curseur(allume);
+        }
+    }
+    if DonneesReplay.disponible && DonneesReplay.codec != "": Note {
+        text: DonneesReplay.codec;
+    }
+    if DonneesReplay.disponible: Titre {
+        text: "SON";
+    }
+    if DonneesReplay.disponible: Interrupteur {
+        texte: "Enregistrer mon micro";
+        allume: DonneesReplay.micro;
+        calque: 2;
+        bascule(allume) => {
+            DonneesReplay.definir-micro(allume);
+        }
+    }
+    if DonneesReplay.disponible: Note {
+        text: "Une fois allumé, ton micro est capté en continu dès que le tampon tourne, même quand tu es muet dans Estompe ou hors d'un salon vocal. Il part sur une piste séparée du son du jeu, avec le micro, la réduction de bruit et le volume choisis dans les réglages audio. La voix des autres participants n'est jamais enregistrée.";
+    }
+    if DonneesReplay.disponible: Titre {
+        text: "JEUX";
+    }
+    if DonneesReplay.disponible: Note {
+        text: "Le tampon ne tourne que sur un jeu détecté au premier plan. " + DonneesReplay.jeux;
+    }
+    Titre {
+        text: "CLIPS ET STOCKAGE";
+    }
+    Note {
+        text: "Dossier des clips : " + DonneesReplay.dossier + (DonneesReplay.dossier-defaut ? " (par défaut)" : "");
+        overflow: elide;
+    }
+    HorizontalLayout {
+        alignment: start;
+        spacing: Espace.e2;
+        Bouton {
+            texte: "Changer…";
+            calque: 2;
+            actif: DonneesReplay.choix-dossier;
+            clique => {
+                DonneesReplay.changer-dossier();
+            }
+        }
+        if !DonneesReplay.dossier-defaut: Bouton {
+            texte: "Par défaut";
+            variante: VarianteBouton.fantome;
+            calque: 2;
+            clique => {
+                DonneesReplay.dossier-par-defaut();
+            }
+        }
+        Bouton {
+            texte: "Ouvrir";
+            icone: "external";
+            variante: VarianteBouton.fantome;
+            calque: 2;
+            clique => {
+                DonneesReplay.ouvrir-dossier();
+            }
+        }
+        Bouton {
+            texte: "Voir les clips";
+            icone: "clap";
+            variante: VarianteBouton.fantome;
+            calque: 2;
+            clique => {
+                DonneesReplay.capture = false;
+                DonneesClips.ouvrir();
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: 2px;
+        Note {
+            text: "Quota du dossier : \{Math.round(quota.valeur)} Go";
+        }
+        quota := Curseur {
+            libelle: "Quota du dossier des clips";
+            unite: " Go";
+            minimum: 1;
+            maximum: DonneesReplay.quota-max;
+            pas: 1;
+            valeur: DonneesReplay.quota;
+            calque: 2;
+            fini(v) => {
+                DonneesReplay.definir-quota(v, true);
+            }
+        }
+    }
+}
+
+export component FenetreReplay inherits Modal {
+    titre: "Instant replay";
+    ouvert: DonneesReplay.ouvert;
+    largeur: 560px;
+    ferme => {
+        DonneesReplay.capture = false;
+        DonneesReplay.fermer();
+    }
+    if DonneesReplay.ouvert: Defilement {
+        decalage <=> DonneesReplay.decalage;
+        min-height: 320px;
+        preferred-height: 640px;
+        hauteur-contenu: contenu.preferred-height;
+        contenu := VerticalLayout {
+            alignment: start;
+            padding-right: Espace.e3;
+            SectionReplay { }
+        }
+    }
+}

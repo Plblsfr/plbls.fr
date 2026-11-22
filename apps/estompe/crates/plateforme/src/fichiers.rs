@@ -51,6 +51,16 @@ impl Fichiers for FichiersSysteme {
         }
         lancer_ouverture(chemin)
     }
+
+    fn ouvrir_dossier(&self, chemin: &Path) -> Resultat<()> {
+        if !chemin.is_dir() {
+            return Err(Erreur::Refuse(format!(
+                "{} n'est pas un dossier",
+                chemin.display()
+            )));
+        }
+        lancer_ouverture(chemin)
+    }
 }
 
 #[cfg(windows)]
@@ -140,6 +150,10 @@ mod tests {
         ));
         assert!(matches!(
             FichiersSysteme.ouvrir(&dossier.path().join("absent.txt")),
+            Err(Erreur::Refuse(_))
+        ));
+        assert!(matches!(
+            FichiersSysteme.ouvrir_dossier(&dossier.path().join("absent")),
             Err(Erreur::Refuse(_))
         ));
     }

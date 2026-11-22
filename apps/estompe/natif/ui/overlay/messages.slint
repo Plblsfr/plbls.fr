@@ -1,0 +1,106 @@
+import { Typo } from "../jetons.slint";
+
+export struct LigneOverlayMessage {
+    titre: string,
+    corps: string,
+    initiales: string,
+    portrait: image,
+    a-portrait: bool,
+}
+
+export component OverlayMessages inherits Window {
+    in property <[LigneOverlayMessage]> lignes;
+    in property <bool> en-saisie;
+    in property <string> texte;
+    background: transparent;
+    default-font-family: Typo.texte;
+    VerticalLayout {
+        alignment: start;
+        spacing: 8px;
+        for l in root.lignes: Rectangle {
+            height: 64px;
+            background: #000000bf;
+            border-radius: 10px;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 10px;
+                Rectangle {
+                    width: 40px;
+                    height: 40px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 20px;
+                    background: #444444;
+                    clip: true;
+                    if l.a-portrait: Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: l.portrait;
+                        image-fit: fill;
+                    }
+                    if !l.a-portrait: Text {
+                        text: l.initiales;
+                        color: white;
+                        font-size: 15px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: l.titre;
+                        color: white;
+                        font-size: 13px;
+                        font-weight: 700;
+                        overflow: elide;
+                    }
+                    if l.corps != "": Text {
+                        text: l.corps;
+                        color: #ffffffd9;
+                        font-size: 13px;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        if root.en-saisie: Rectangle {
+            height: 36px;
+            background: #000000d9;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #888888;
+            clip: true;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: 1px;
+                alignment: start;
+                if root.texte != "": Text {
+                    text: root.texte;
+                    color: white;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                }
+                Rectangle {
+                    width: 2px;
+                    height: 18px;
+                    y: (parent.height - self.height) / 2;
+                    background: white;
+                }
+                if root.texte == "": Text {
+                    text: "Répondre… (Entrée : envoyer, Échap : annuler)";
+                    color: #ffffff80;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,71 @@
+import { Typo } from "../jetons.slint";
+
+export struct LigneOverlayReplay {
+    texte: string,
+    genre: int,
+}
+
+export component OverlayReplay inherits Window {
+    in property <bool> indicateur;
+    in property <bool> a-gauche;
+    in property <[LigneOverlayReplay]> messages;
+    background: transparent;
+    default-font-family: Typo.texte;
+    VerticalLayout {
+        alignment: start;
+        spacing: 6px;
+        if root.indicateur: HorizontalLayout {
+            alignment: root.a-gauche ? start : end;
+            Rectangle {
+                height: 26px;
+                background: #00000073;
+                border-radius: 13px;
+                opacity: 0.8;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 4px;
+                        background: #ef4444;
+                    }
+                    Text {
+                        text: "Replay";
+                        color: white;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+        for m in root.messages: Rectangle {
+            height: 44px;
+            background: #000000c7;
+            border-radius: 10px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 10px;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 4px;
+                    background: m.genre == 0 ? #4ade80 : m.genre == 1 ? #facc15 : #ef4444;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: m.texte;
+                    color: white;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
