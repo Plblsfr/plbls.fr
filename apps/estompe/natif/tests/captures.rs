@@ -2511,7 +2511,11 @@ fn onde(graine: usize) -> String {
     let pics: Vec<f32> = (0..200)
         .map(|i| {
             (((i * 37 + graine * 11) % 23) as f32 / 23.0)
-                * if (i / 40 + graine).is_multiple_of(3) { 0.3 } else { 1.0 }
+                * if (i / 40 + graine).is_multiple_of(3) {
+                    0.3
+                } else {
+                    1.0
+                }
         })
         .collect();
     estompe_client::replay::montage::trace_onde(&pics, 14.0)
