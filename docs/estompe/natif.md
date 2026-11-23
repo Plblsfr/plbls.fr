@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -119,8 +119,8 @@ et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil,
 - Connexion : PKCE dans le navigateur du système et redirection sur `127.0.0.1` (crate client, `auth`), délai de 5 minutes, annulable depuis
   l'écran ; le refresh token est dans le coffre de secrets et la session reprend au lancement. Émetteur Keycloak : `https://auth.plbls.fr/realms/default`,
   ou `ESTOMPE_KEYCLOAK_ISSUER` pour un Keycloak de test (une adresse invalide est ignorée).
-- Invitation : `estompe-natif --invitation <lien ou code>` la rejoint dès le compte vérifié ; depuis la coquille, « Rejoindre un serveur » ouvre
-  la saisie. Le code est pris à la fin d'un lien (`ABCDE-23456`). Les liens `estompe://` ouverts par le système ne sont pas encore pris en charge.
+- Invitation : `estompe-natif --invitation <lien ou code>` la rejoint dès le compte vérifié (écran `invitation`) ; depuis la coquille, le « + » du rail ouvre
+  la fenêtre « Créer ou rejoindre un serveur » (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)). Le code est pris à la fin d'un lien (`ABCDE-23456`). Les liens `estompe://` ouverts par le système ne sont pas encore pris en charge.
 
 ### Mise à jour forcée
 
@@ -142,8 +142,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 
 | Élément | Interface (`ui/coquille/`) | Contenu |
 |---|---|---|
-| Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Rejoindre un serveur », entrées des sections ouvertes |
-| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
+| Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Créer ou rejoindre un serveur », entrées des sections ouvertes |
+| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`, « + » de création avec le droit de gérer les salons), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
 | Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper avec « Tout marquer lu », vocaux en cours, contacts en ligne) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
 | Marge | `marge.slint`, `membres.slint`, `carte-profil.slint`, `../messagerie/epingles.slint` | `EmplacementMarge` ; onglets « Membres » sur un serveur (voir [Membres](#membres)) et « Épinglés » dans une conversation (voir [Épinglés](#épinglés)), carte de profil |
 
@@ -253,6 +253,30 @@ actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estom
   (`menu_moi`) : « En ligne », « Absent », « Ne pas déranger » (statut actuel coché, `PUT /me/status` par `Store::definir_statut`, optimiste et rétabli en cas d'erreur, que la zone
   de saisie signale), puis « Voir mon profil », « Modifier mon profil » et « Signaler un bug » marqués « bientôt ». Le changement arrive aux autres par `status.updated`.
   Le statut « invisible » n'existe ni dans l'API ni dans le front.
+
+### Créer ou rejoindre un serveur, créer un salon
+
+Fenêtres de `ui/coquille/creation.slint` (globaux `DonneesCreerRejoindre` et `DonneesCreationSalon`), actions dans `src/coquille/pont/creation.rs`, règles sans
+interface dans `estompe_client::creation` (équivalent de `channel-create.svelte.ts`), appels par le store (`Store::creer_serveur`, `rejoindre_serveur`, `quitter_serveur`,
+`creer_salon`), comme `CreateJoinModal.svelte` et `CreateChannelModal.svelte` :
+
+- « Créer ou rejoindre un serveur » : ouverte par le « + » du rail, « Pour commencer » de l'accueil ou l'action de la palette ; la partie création n'apparaît qu'avec
+  `servers.create`, la partie invitation qu'avec `servers.join` (capacités de `GET /me`). Nom de 50 caractères au plus avec l'aperçu de ses initiales ; « Choisir une
+  icône » ouvre le sélecteur de fichiers puis le recadrage du profil (« Recadrer l'icône du serveur », même carré de 256 px) : l'icône part par `PUT /servers/{id}/icon`
+  juste après `POST /servers` (le front ne propose l'icône que dans les réglages du serveur) ; si elle échoue, le serveur est créé et ouvert et la fenêtre le signale.
+  Lien complet ou code seul (`code_d_invitation`), `POST /server-invites/{code}/join`, « Invitation invalide ou révoquée. » sur un 404. Le serveur créé ou rejoint est
+  rechargé (`GET /servers`, puis son détail) et ouvert.
+- « Quitter le serveur » : dans le menu d'un serveur du rail, avec confirmation, absent pour son créateur (l'API refuse `owner_cannot_leave`) ; `POST /servers/{id}/leave`,
+  puis le serveur est oublié sans attendre `member.left`. Le front le propose dans les réglages du serveur (lot 8, issue suivante).
+- « Créer un salon » : « + » de l'en-tête du panneau et de chaque groupe (texte, esquisses, vocaux), « Créer un salon » du menu d'un salon (même type, placé après lui
+  par `after`) ou d'un serveur. Rien de tout cela sans le droit `manage_channels` du serveur (`peut_creer_salon`), suivi en temps réel (`Changement::Roles` reprojette
+  l'en-tête). Types texte, vocal, vidéos et musique, cinéma seulement si Entracte est branché (`cinema` de `GET /me`) ; nom obligatoire, 30 caractères, sans caractère
+  de contrôle, unique pour son type sans casse (`erreur_nom_salon`), message affiché dès la première saisie, erreur du serveur à la place ; salon privé avec rôles
+  (sans le rôle par défaut) et membres (sans soi) ayant accès ; réglages avancés : sujet (200 caractères), mode lent pour un salon texte, limite de participants pour un
+  vocal ou un cinéma. La requête ne porte que les réglages du type (`NouveauSalon::requete`). Le salon créé est ajouté au store (comme `channel.created`) et ouvert ;
+  ceux des autres arrivent par `channel.created`.
+- Pas de catégories : ni le front ni l'API n'en ont, les salons sont groupés par type. La mise en avant passagère du salon créé (`channelCreate.fresh`) et la notification
+  « Tu as rejoint » du front ne sont pas reprises (pas de toast).
 
 ## Messagerie
 
@@ -1405,7 +1429,7 @@ Catégorie « Compte » (`ui/parametres/profil.slint`, global `DonneesProfil` ; 
   « Recadrer l'avatar » ; « Supprimer » (s'il y en a un) envoie `DELETE /me/avatar`. Mon avatar est aussi celui de la barre de l'utilisateur.
 - Photos par serveur : une ligne par serveur avec la photo qui s'y applique (la sienne, sinon la globale), « Changer » (même recadrage, `PUT /servers/{id}/me/avatar`)
   et « Retirer » si le serveur en a une (`DELETE /servers/{id}/me/avatar`).
-- Recadrage (`Recadrage`, `ui/composants/recadrage.slint`, réutilisable pour l'icône d'un serveur) : aperçu carré de 240 px aux coins de l'avatar (partie de l'image par
+- Recadrage (`Recadrage`, `ui/composants/recadrage.slint`, réutilisé pour l'icône d'un nouveau serveur) : aperçu carré de 240 px aux coins de l'avatar (partie de l'image par
   `source-clip`), glisser ou flèches pour déplacer (12 px), curseur de zoom de 1 à 4 (pas de 0,05) ou + et - (0,25). Mêmes calculs que `cropRect` du front : `zoom` réduit le
   carré source, `x` et `y` dans [-1, 1] le placent d'un bord à l'autre ; un glisser déplace l'image dans le sens du pointeur. « Valider » envoie un carré de 256 px en PNG,
   en JPEG (qualité 85) s'il dépasse 200 Ko, comme `squareAvatar` ; le front centre l'avatar sans recadrage, l'app native recadre l'avatar et les photos par serveur.
@@ -1489,6 +1513,11 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   (`PUT /me/avatar`) au faux serveur, qui la sert ensuite ; un autre client qui reçoit `avatar.updated` la télécharge et l'affiche dans sa liste des membres (pixel vérifié),
   ma page et ma barre aussi ; bannière envoyée puis reçue (`banner.updated`), photo d'un serveur retirée, « Modifier mon profil » de ma carte ouvre le compte. Le calcul du
   recadrage a ses tests unitaires (`estompe_client::profil`, `coquille::profil` : image en quadrants, pixel attendu).
+`creation.rs` (même backend que `coquille.rs`, `ServeurMessages` qui accepte aussi `POST /servers`, `POST /server-invites/{code}/join`, `GET /servers`,
+  `POST /servers/{id}/channels`) : sans `manage_channels` (droits changés dans le store), ni « + » ni « Créer un salon » dans les menus et la fenêtre ne s'ouvre pas,
+  le droit rendu les fait revenir ; nom déjà pris, vide puis refusé par le serveur affichés ; salon texte privé (rôle, membre), sujet et mode lent envoyés, ouvert et listé ;
+  un `channel.created` d'un autre membre l'ajoute au panneau en temps réel ; serveur créé avec une icône choisie et recadrée (`PUT /servers/s9/icon`) puis ouvert ;
+  code invalide signalé, lien complet rejoint ; serveur quitté après confirmation. Les règles de `channel-create.svelte.ts` ont leurs tests unitaires (`estompe_client::creation`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

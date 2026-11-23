@@ -395,7 +395,7 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
 
     let ancre = Ancre::Point { x: 300.0, y: 300.0 };
     assert!(pont.menu_salon(&f, "c4", ancre));
-    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien"]);
+    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien", "creer-salon"]);
     menu::choisir(&f, "sourdine");
     assert!(
         f.global::<DonneesMenu>().get_ouvert(),
@@ -452,7 +452,7 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
         "la sourdine de 15 minutes s'est levée seule"
     );
     pont.menu_salon(&f, "c4", ancre);
-    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien"]);
+    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien", "creer-salon"]);
     menu::fermer(&f);
 
     pont.definir_niveau_general(&f, 1);
@@ -490,7 +490,16 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
     );
 
     assert!(pont.menu_serveur(&f, "s2", ancre));
-    assert_eq!(ids_du_menu(&f), ["sourdine", "notifications", "lien"]);
+    assert_eq!(
+        ids_du_menu(&f),
+        [
+            "creer-salon",
+            "sourdine",
+            "notifications",
+            "lien",
+            "quitter"
+        ]
+    );
     menu::choisir(&f, "sourdine");
     assert_eq!(f.global::<DonneesMenu>().get_titre(), "Sourdine : Travail");
     menu::choisir(&f, DureeSourdine::Toujours.id());

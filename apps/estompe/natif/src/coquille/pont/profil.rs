@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use estompe_client::profil::{
     banniere_valide, deplacer, ma_banniere, photos_par_serveur, zoom_lisible, zoomer, Recadrage,
-    NUANCES_BANNIERE,
+    COTE_ENVOYE, NUANCES_BANNIERE,
 };
 use estompe_client::store::Changement;
 use estompe_plateforme::FiltreFichiers;
@@ -11,7 +11,9 @@ use image::RgbaImage;
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedPixelBuffer, VecModel};
 
 use super::super::avatars::CleAvatar;
-use super::super::profil::{avatar_recadre, decoupe, lire_image, EXTENSIONS_IMAGES};
+use super::super::profil::{
+    avatar_recadre, decoupe, encoder, lire_image, recadrer, EXTENSIONS_IMAGES,
+};
 use super::{couleur_slint, Pont};
 use crate::{DonneesCoquille, DonneesProfil, NuanceBanniere, PhotoServeurProfil, Principale};
 
@@ -25,10 +27,12 @@ pub const ERREUR_AVATAR: &str = "Image impossible à utiliser comme avatar.";
 pub const ERREUR_PHOTO: &str = "Image impossible à utiliser comme photo de serveur.";
 pub const ERREUR_SUPPRESSION: &str = "Photo non supprimée.";
 pub const ERREUR_BANNIERE: &str = "Couleur non enregistrée.";
+pub const TITRE_ICONE: &str = "Recadrer l'icône du serveur";
 
 #[derive(Clone)]
 struct EnCours {
     cible: Option<String>,
+    icone: bool,
     image: Arc<RgbaImage>,
     recadrage: Recadrage,
 }
@@ -254,12 +258,31 @@ impl Pont {
             }
             None => "Recadrer l'avatar".to_string(),
         };
+        self.montrer_recadrage(f, &titre, cible, false, image);
+    }
+
+    pub fn ouvrir_recadrage_icone(&self, f: &Principale, image: RgbaImage) {
+        if self.verrou().profil.recadrage.is_some() {
+            return;
+        }
+        self.montrer_recadrage(f, TITRE_ICONE, None, true, image);
+    }
+
+    fn montrer_recadrage(
+        &self,
+        f: &Principale,
+        titre: &str,
+        cible: Option<String>,
+        icone: bool,
+        image: RgbaImage,
+    ) {
         let g = f.global::<DonneesProfil>();
         g.set_source(image_slint(&image));
         g.set_recadrage_titre(titre.into());
         g.set_envoi(false);
         self.verrou().profil.recadrage = Some(EnCours {
             cible,
+            icone,
             image: Arc::new(image),
             recadrage: Recadrage::default(),
         });
@@ -318,6 +341,20 @@ impl Pont {
     }
 
     pub fn valider_recadrage(&self, f: &Principale) {
+        let icone = self
+            .verrou()
+            .profil
+            .recadrage
+            .as_ref()
+            .filter(|e| e.icone)
+            .cloned();
+        if let Some(en_cours) = icone {
+            let carre = recadrer(&en_cours.image, en_cours.recadrage, COTE_ENVOYE);
+            let encode = encoder(&carre).ok();
+            self.fermer_recadrage(f);
+            self.icone_recadree(f, encode.map(|(mime, octets)| (mime, octets, carre)));
+            return;
+        }
         let en_cours = {
             let mut guard = self.verrou();
             let Some(en_cours) = guard.profil.recadrage.clone() else {

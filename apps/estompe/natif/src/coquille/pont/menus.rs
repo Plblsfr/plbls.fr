@@ -1,5 +1,6 @@
+use estompe_client::creation::{peut_creer_salon, peut_quitter};
 use estompe_client::route::{adresse_web, lien_message_prive, lien_salon};
-use estompe_client::store::{CleConversation, Presence};
+use estompe_client::store::{CleConversation, GenreSalon, Presence};
 use estompe_client::temps_reel::evenements::StatutPresence;
 
 use super::super::membres::DonneesMembre;
@@ -21,6 +22,8 @@ pub const MODIFIER_MON_PROFIL: &str = "modifier-profil";
 pub const SIGNALER_UN_BUG: &str = "bug";
 pub const JEUX_ET_ACTIVITE: &str = "jeux";
 pub const PARAMETRES: &str = "parametres";
+pub const CREER_SALON: &str = "creer-salon";
+pub const QUITTER_SERVEUR: &str = "quitter";
 
 fn id_du_statut(statut: StatutPresence) -> &'static str {
     match statut {
@@ -63,23 +66,38 @@ fn lu(non_lus: i64, mentions: usize) -> Option<Entree> {
     (non_lus > 0 || mentions > 0).then(|| Entree::nouvelle(MARQUER_LU, "Marquer comme lu", "ok"))
 }
 
-pub fn entrees_du_salon(salon: &DonneesSalon, sourdine: Vec<Entree>) -> Vec<Entree> {
+fn creer_salon() -> Entree {
+    Entree::nouvelle(CREER_SALON, "Créer un salon", "plus")
+}
+
+pub fn entrees_du_salon(salon: &DonneesSalon, sourdine: Vec<Entree>, creer: bool) -> Vec<Entree> {
     let lu = lu(salon.non_lus, salon.mentions).filter(|_| !salon.bientot);
     let sourdine = if salon.vocal || salon.bientot {
         Vec::new()
     } else {
         sourdine
     };
-    lu.into_iter().chain(sourdine).chain([lien()]).collect()
+    lu.into_iter()
+        .chain(sourdine)
+        .chain([lien()])
+        .chain(creer.then(|| creer_salon().separee()))
+        .collect()
 }
 
-pub fn entrees_du_serveur(sourdine: Vec<Entree>) -> Vec<Entree> {
-    sourdine
+pub fn entrees_du_serveur(sourdine: Vec<Entree>, creer: bool, quitter: bool) -> Vec<Entree> {
+    creer
+        .then(creer_salon)
         .into_iter()
+        .chain(sourdine)
         .chain([
             Entree::nouvelle(REGLER_NOTIFICATIONS, "Paramètres de notification", "cloche"),
             lien().separee(),
         ])
+        .chain(quitter.then(|| {
+            Entree::nouvelle(QUITTER_SERVEUR, "Quitter le serveur", "sortie")
+                .danger()
+                .separee()
+        }))
         .collect()
 }
 
@@ -135,13 +153,28 @@ impl Pont {
         let pont = self.clone();
         let sourdine = self.entrees_de_sourdine_de(&salon.id);
         let titre = salon.nom.clone();
+        let (creer, genre) = self.store.lire(|e| {
+            (
+                peut_creer_salon(e, &serveur),
+                e.salon(&salon.id).and_then(|(_, s)| s.kind),
+            )
+        });
         menu::ouvrir(
             f,
             &titre,
             ancre,
-            entrees_du_salon(&salon, sourdine),
+            entrees_du_salon(&salon, sourdine, creer),
             move |f, action| {
                 match action {
+                    CREER_SALON => {
+                        pont.ouvrir_creation_salon(
+                            f,
+                            &serveur,
+                            genre.unwrap_or(GenreSalon::Text),
+                            Some(salon.id.clone()),
+                        );
+                        return true;
+                    }
                     MARQUER_LU => pont.lire(CleConversation::Salon(salon.id.clone())),
                     COPIER_LIEN => menu::copier_texte(
                         f,
@@ -172,12 +205,23 @@ impl Pont {
         let pont = self.clone();
         let id = id.to_string();
         let sourdine = self.entrees_de_sourdine_de(&id);
+        let (creer, quitter) = self
+            .store
+            .lire(|e| (peut_creer_salon(e, &id), peut_quitter(e, &id)));
         menu::ouvrir(
             f,
             &nom.clone(),
             ancre,
-            entrees_du_serveur(sourdine),
+            entrees_du_serveur(sourdine, creer, quitter),
             move |f, action| match action {
+                CREER_SALON => {
+                    pont.ouvrir_creation_salon(f, &id, GenreSalon::Text, None);
+                    true
+                }
+                QUITTER_SERVEUR => {
+                    pont.demander_quitter_serveur(f, &id);
+                    true
+                }
                 REGLER_NOTIFICATIONS => {
                     let g = f.global::<crate::DonneesParametres>();
                     g.set_serveur_notif(id.as_str().into());
@@ -349,6 +393,7 @@ mod tests {
             nom: "général".into(),
             icone: "hash",
             titre_groupe: "",
+            genre_groupe: "text",
             actif: false,
             non_lus,
             mentions: 0,
@@ -363,15 +408,15 @@ mod tests {
     #[test]
     fn marquer_comme_lu_n_apparait_que_pour_un_salon_texte_avec_des_non_lus() {
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, false), Vec::new())),
+            ids(&entrees_du_salon(&salon(3, false), Vec::new(), false)),
             [MARQUER_LU, COPIER_LIEN]
         );
         assert_eq!(
-            ids(&entrees_du_salon(&salon(0, false), Vec::new())),
-            [COPIER_LIEN]
+            ids(&entrees_du_salon(&salon(0, false), Vec::new(), true)),
+            [COPIER_LIEN, CREER_SALON]
         );
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, true), Vec::new())),
+            ids(&entrees_du_salon(&salon(3, true), Vec::new(), false)),
             [COPIER_LIEN]
         );
     }
@@ -380,13 +425,16 @@ mod tests {
     fn la_sourdine_se_propose_pour_un_salon_texte_et_pour_un_serveur() {
         let sourdine = || super::super::parametres::entrees_de_sourdine(None);
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, false), sourdine())),
+            ids(&entrees_du_salon(&salon(3, false), sourdine(), false)),
             [MARQUER_LU, super::super::parametres::SOURDINE, COPIER_LIEN]
         );
         let mut vocal = salon(0, false);
         vocal.vocal = true;
-        assert_eq!(ids(&entrees_du_salon(&vocal, sourdine())), [COPIER_LIEN]);
-        let serveur = entrees_du_serveur(sourdine());
+        assert_eq!(
+            ids(&entrees_du_salon(&vocal, sourdine(), false)),
+            [COPIER_LIEN]
+        );
+        let serveur = entrees_du_serveur(sourdine(), false, false);
         assert_eq!(
             ids(&serveur),
             [
@@ -396,6 +444,18 @@ mod tests {
             ]
         );
         assert!(serveur[2].separe);
+        let complet = entrees_du_serveur(sourdine(), true, true);
+        assert_eq!(
+            ids(&complet),
+            [
+                CREER_SALON,
+                super::super::parametres::SOURDINE,
+                REGLER_NOTIFICATIONS,
+                COPIER_LIEN,
+                QUITTER_SERVEUR
+            ]
+        );
+        assert!(complet[4].separe && complet[4].danger);
     }
 
     #[test]

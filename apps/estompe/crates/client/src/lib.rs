@@ -14,6 +14,7 @@ mod serveur_factice;
 pub mod apercu_liens;
 pub mod autocompletion;
 pub mod brouillons;
+pub mod creation;
 pub mod derniere_vue;
 pub mod emoji;
 pub mod fichiers;

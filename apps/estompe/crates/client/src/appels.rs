@@ -11,12 +11,13 @@ use crate::store::CleConversation;
 use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
-    Attachment, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement, GetMeReponse,
-    GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
-    MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
-    PostNotificationsReadRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
-    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
+    Attachment, Channel, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement,
+    GetMeReponse, GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview,
+    Mention, Message, MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person,
+    PostActivateRequete, PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
+    PostNotificationsReadRequete, PostServersIdChannelsRequete, PostVoiceCidTokenReponse,
+    PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server,
+    DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -337,6 +338,41 @@ impl Client {
             &Name50 {
                 name: nom.to_string(),
             },
+        )
+        .await
+    }
+
+    pub async fn quitter_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!("/servers/{}/leave", encoder_composant(serveur)),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
+    pub async fn creer_salon(
+        &self,
+        serveur: &str,
+        salon: &PostServersIdChannelsRequete,
+    ) -> Result<Channel, ErreurApi> {
+        self.post(
+            &format!("/servers/{}/channels", encoder_composant(serveur)),
+            salon,
+        )
+        .await
+    }
+
+    pub async fn definir_icone_de_serveur(
+        &self,
+        serveur: &str,
+        type_mime: &str,
+        image: impl Into<Bytes>,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer_image(
+            &format!("/servers/{}/icon", encoder_composant(serveur)),
+            type_mime,
+            image,
         )
         .await
     }
@@ -909,6 +945,46 @@ mod tests {
         assert_eq!(requete.ligne(), ("/server-invites/AB%2F12/join", "POST"));
         assert!(requete.corps.is_empty());
         assert_eq!(requete.entete("content-type"), None);
+    }
+
+    #[tokio::test]
+    async fn cree_un_salon_quitte_un_serveur_et_pose_son_icone() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(201, json!({"id": "c9", "name": "jeux", "kind": "voice"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+        ])
+        .await;
+        let client = serveur.client();
+        let salon = client
+            .creer_salon(
+                "s1",
+                &crate::creation::NouveauSalon {
+                    nom: "jeux".into(),
+                    genre: Some(crate::store::GenreSalon::Voice),
+                    limite: 3,
+                    ..Default::default()
+                }
+                .requete(&[]),
+            )
+            .await
+            .unwrap();
+        assert_eq!(salon.id.as_deref(), Some("c9"));
+        client.quitter_serveur("s1").await.unwrap();
+        client
+            .definir_icone_de_serveur("s1", "image/png", vec![1u8, 2, 3])
+            .await
+            .unwrap();
+        let requetes = serveur.requetes();
+        assert_eq!(requetes[0].ligne(), ("/servers/s1/channels", "POST"));
+        assert_eq!(
+            requetes[0].json(),
+            json!({"name": "jeux", "kind": "voice", "user_limit": 3})
+        );
+        assert_eq!(requetes[1].ligne(), ("/servers/s1/leave", "POST"));
+        assert_eq!(requetes[2].ligne(), ("/servers/s1/icon", "PUT"));
+        assert_eq!(requetes[2].entete("content-type"), Some("image/png"));
+        assert_eq!(requetes[2].corps, [1, 2, 3]);
     }
 
     #[tokio::test]

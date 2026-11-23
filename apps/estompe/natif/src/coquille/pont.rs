@@ -43,12 +43,14 @@ fn millisecondes(maintenant: NaiveDateTime) -> i64 {
         .unwrap_or_else(|| maintenant.and_utc().timestamp_millis())
 }
 
+mod creation;
 mod menus;
 mod nouveau_prive;
 mod parametres;
 mod profil;
 mod recherche;
 
+pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
 pub use nouveau_prive::EtatNouveauPrive;
 
 pub fn horloge_locale() -> Horloge {
@@ -277,6 +279,7 @@ struct Interne {
     recherche: Option<EtatRecherche>,
     nouveau_prive: Option<EtatNouveauPrive>,
     profil: profil::EtatProfil,
+    creation: creation::EtatCreation,
 }
 
 #[derive(Clone)]
@@ -375,6 +378,8 @@ pub fn vider_modeles(f: &Principale) {
     crate::vocal::pont::vider_modeles(f);
     f.global::<crate::DonneesRecherche>().set_ouvert(false);
     f.global::<crate::DonneesNouveauPrive>().set_ouvert(false);
+    f.global::<crate::DonneesCreerRejoindre>().set_ouvert(false);
+    f.global::<crate::DonneesCreationSalon>().set_ouvert(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -407,6 +412,7 @@ fn ligne_salon_slint(d: &DonneesSalon) -> LigneSalon {
         nom: d.nom.as_str().into(),
         icone: d.icone.into(),
         titre_groupe: d.titre_groupe.into(),
+        genre_groupe: d.genre_groupe.into(),
         actif: d.actif,
         non_lus: d.non_lus.min(i64::from(i32::MAX)) as i32,
         mentions: d.mentions.min(i32::MAX as usize) as i32,
@@ -474,6 +480,7 @@ fn panneau_slint(d: &DonneesPanneau, icones: &BTreeMap<String, (i64, Icone)>) ->
         initiales: d.initiales.as_str().into(),
         a_image: image.is_some(),
         image: image.unwrap_or_default(),
+        peut_creer_salon: d.peut_creer_salon,
     }
 }
 
@@ -566,6 +573,7 @@ impl Pont {
                 recherche: None,
                 nouveau_prive: None,
                 profil: profil::EtatProfil::default(),
+                creation: creation::EtatCreation::default(),
             })),
             store,
             fenetre,

@@ -350,7 +350,7 @@ export component VueAccueil {
                             font-weight: Typo.gras;
                         }
                         Text {
-                            text: "Tu n'es dans aucun serveur. Rejoins celui d'un ami avec son lien ou son code d'invitation.";
+                            text: "Tu n'es dans aucun serveur. Crée le tien, ou rejoins celui d'un ami avec son lien ou son code d'invitation.";
                             color: Theme.gris;
                             font-size: Typo.petit;
                             wrap: word-wrap;
@@ -359,8 +359,8 @@ export component VueAccueil {
                     VerticalLayout {
                         alignment: center;
                         Bouton {
-                            texte: "Rejoindre un serveur";
-                            icone: "lien";
+                            texte: "Créer ou rejoindre un serveur";
+                            icone: "plus";
                             variante: VarianteBouton.primaire;
                             clique => {
                                 root.rejoindre();

@@ -24,6 +24,7 @@ export struct LigneSalon {
     nom: string,
     icone: string,
     titre-groupe: string,
+    genre-groupe: string,
     actif: bool,
     non-lus: int,
     mentions: int,
@@ -86,6 +87,7 @@ export struct EnTetePanneau {
     initiales: string,
     image: image,
     a-image: bool,
+    peut-creer-salon: bool,
 }
 
 export struct VueContenu {
@@ -233,4 +235,5 @@ export global DonneesCoquille {
     callback tout-lire();
     callback menu-moi(length, length, length);
     callback nouveau-prive();
+    callback creer-salon(string);
 }

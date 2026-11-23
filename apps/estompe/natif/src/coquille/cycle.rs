@@ -742,6 +742,52 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .menu_moi(&f, Ancre::Element { x, haut, bas }));
     rappel!(on_tout_lire, |p, _f| p.tout_lire());
     rappel!(on_nouveau_prive, |p, f| p.ouvrir_nouveau_prive(&f));
+    rappel!(on_creer_salon, |p, f, genre| p.creer_salon_ici(&f, &genre));
+    let creer = f.global::<crate::DonneesCreerRejoindre>();
+    macro_rules! rappel_creer {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            creer.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_creer!(on_ouvrir, |p, f| p.ouvrir_creer_rejoindre(&f));
+    rappel_creer!(on_nom_modifie, |p, f, texte| p
+        .nom_de_serveur_modifie(&f, &texte));
+    rappel_creer!(on_code_modifie, |p, f, texte| p.code_modifie(&f, &texte));
+    rappel_creer!(on_choisir_icone, |p, f| p.choisir_icone_de_serveur(&f));
+    rappel_creer!(on_retirer_icone, |p, f| p.retirer_icone_de_serveur(&f));
+    rappel_creer!(on_creer, |p, f| p.creer_serveur(&f));
+    rappel_creer!(on_rejoindre, |p, f| p.rejoindre_serveur(&f));
+    rappel_creer!(on_fermer, |p, f| p.fermer_creer_rejoindre(&f));
+    let salon = f.global::<crate::DonneesCreationSalon>();
+    macro_rules! rappel_salon {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            salon.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_salon!(on_choisir_genre, |p, f, i| p.choisir_genre_de_salon(&f, i));
+    rappel_salon!(on_nom_modifie, |p, f, texte| p
+        .nom_de_salon_modifie(&f, &texte));
+    rappel_salon!(on_basculer_prive, |p, f, prive| p
+        .basculer_salon_prive(&f, prive));
+    rappel_salon!(on_basculer_role, |p, f, i| p.basculer_role_du_salon(&f, i));
+    rappel_salon!(on_basculer_membre, |p, f, i| p
+        .basculer_membre_du_salon(&f, i));
+    rappel_salon!(on_choisir_mode_lent, |p, f, i| p.choisir_mode_lent(&f, i));
+    rappel_salon!(on_choisir_limite, |p, f, i| p.choisir_limite(&f, i));
+    rappel_salon!(on_creer, |p, f| p.valider_creation_salon(&f));
+    rappel_salon!(on_fermer, |p, f| p.fermer_creation_salon(&f));
     let parametres = f.global::<crate::DonneesParametres>();
     macro_rules! rappel_parametres {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

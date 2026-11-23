@@ -892,6 +892,7 @@ pub mod coquille {
         pub refus_vocal: Mutex<Option<u16>>,
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
+        pub serveurs_ajoutes: Mutex<Vec<Value>>,
         envoyes: AtomicUsize,
     }
 
@@ -951,6 +952,7 @@ pub mod coquille {
                 refus_vocal: Mutex::new(None),
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
+                serveurs_ajoutes: Mutex::new(Vec::new()),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -1274,7 +1276,82 @@ pub mod coquille {
             if chemin.starts_with("/search?") {
                 return self.repondre_recherche(chemin);
             }
+            if let Some(reponse) = self.repondre_espaces(methode, chemin, corps) {
+                return reponse;
+            }
             self.repondre(methode, chemin)
+        }
+
+        fn repondre_espaces(
+            &self,
+            methode: &str,
+            chemin: &str,
+            corps: &str,
+        ) -> Option<(u16, String)> {
+            let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+            let noter = || {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"))
+            };
+            let nouveaux = || self.serveurs_ajoutes.lock().unwrap().clone();
+            match (methode, chemin) {
+                ("POST", "/servers") => {
+                    noter();
+                    let serveur = json!({"id": "s9", "name": recu["name"], "owner_id": "u1", "icon_version": 0});
+                    self.serveurs_ajoutes.lock().unwrap().push(serveur.clone());
+                    Some((201, serveur.to_string()))
+                }
+                ("POST", "/server-invites/ABCDE-23456/join") => {
+                    noter();
+                    let serveur = json!({"id": "s8", "name": "Club photo", "owner_id": "eve", "icon_version": 0});
+                    self.serveurs_ajoutes.lock().unwrap().push(serveur.clone());
+                    Some((200, serveur.to_string()))
+                }
+                ("POST", c) if c.starts_with("/server-invites/") => {
+                    noter();
+                    Some((
+                        404,
+                        r#"{"error":"not_found","message":"introuvable"}"#.into(),
+                    ))
+                }
+                ("GET", "/servers") => {
+                    noter();
+                    let mut liste: Vec<Value> = serde_json::to_value(&etat().serveurs)
+                        .unwrap()
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    liste.extend(nouveaux());
+                    Some((200, Value::Array(liste).to_string()))
+                }
+                ("GET", c) => {
+                    let id = c.strip_prefix("/servers/")?;
+                    let serveur = nouveaux().into_iter().find(|s| s["id"] == id)?;
+                    noter();
+                    Some((
+                        200,
+                        json!({"server": serveur, "channels": [{"id": format!("{id}-c1"), "name": "accueil", "kind": "text", "position": 1}], "members": [], "roles": [], "permissions": ["manage_channels"]}).to_string(),
+                    ))
+                }
+                ("POST", c) if c.starts_with("/servers/") && c.ends_with("/channels") => {
+                    noter();
+                    if recu["name"] == "refusé" {
+                        return Some((
+                            400,
+                            r#"{"error":"invalid_name","message":"Nom refusé par le serveur"}"#
+                                .into(),
+                        ));
+                    }
+                    let mut salon = json!({"id": "c9", "name": recu["name"], "kind": recu["kind"], "position": 9});
+                    if let Some(limite) = recu.get("user_limit") {
+                        salon["user_limit"] = limite.clone();
+                    }
+                    Some((201, salon.to_string()))
+                }
+                _ => None,
+            }
         }
 
         fn repondre_recherche(&self, chemin: &str) -> (u16, String) {

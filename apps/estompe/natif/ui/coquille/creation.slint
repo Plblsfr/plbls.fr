@@ -1,0 +1,732 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Modal, Champ, Bouton, VarianteBouton, Icone, Interrupteur, Defilement, Coins } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+
+export struct GenreSalonPropose {
+    id: string,
+    libelle: string,
+    indice: string,
+    icone: string,
+}
+
+export struct ChoixAcces {
+    id: string,
+    nom: string,
+    choisi: bool,
+}
+
+export global DonneesCreerRejoindre {
+    in property <bool> ouvert: false;
+    in property <bool> peut-creer: true;
+    in property <bool> peut-rejoindre: true;
+    in-out property <string> nom;
+    in-out property <string> code;
+    in property <string> initiales;
+    in property <image> icone;
+    in property <bool> a-icone: false;
+    in property <bool> en-cours: false;
+    in property <string> erreur;
+    in property <int> demande-focus: 0;
+    callback ouvrir();
+    callback nom-modifie(string);
+    callback code-modifie(string);
+    callback choisir-icone();
+    callback retirer-icone();
+    callback creer();
+    callback rejoindre();
+    callback fermer();
+}
+
+export global DonneesCreationSalon {
+    in property <bool> ouvert: false;
+    in property <string> serveur;
+    in property <[GenreSalonPropose]> genres;
+    in property <int> genre: 0;
+    in property <string> icone: "hash";
+    in-out property <string> nom;
+    in property <string> erreur;
+    in property <bool> en-faute: false;
+    in property <bool> prive: false;
+    in property <[ChoixAcces]> roles;
+    in property <[ChoixAcces]> membres;
+    in-out property <bool> avances: false;
+    in-out property <string> sujet;
+    in property <bool> texte: true;
+    in property <bool> vocal: false;
+    in property <[string]> modes-lents;
+    in property <int> mode-lent: 0;
+    in property <[string]> limites;
+    in property <int> limite: 0;
+    in property <bool> peut-creer: false;
+    in property <bool> en-cours: false;
+    in property <int> demande-focus: 0;
+    callback choisir-genre(int);
+    callback nom-modifie(string);
+    callback basculer-prive(bool);
+    callback basculer-role(int);
+    callback basculer-membre(int);
+    callback choisir-mode-lent(int);
+    callback choisir-limite(int);
+    callback creer();
+    callback fermer();
+}
+
+component Alerte inherits Rectangle {
+    in property <string> texte;
+    border-radius: Rayon.s;
+    background: Theme.danger-fond;
+    border-width: 1px;
+    border-color: Theme.danger;
+    accessible-role: text;
+    accessible-label: root.texte;
+    HorizontalLayout {
+        padding: Espace.e3;
+        Text {
+            text: root.texte;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component Pastille inherits HorizontalLayout {
+    in property <string> icone;
+    in property <color> couleur;
+    in property <color> encre;
+    alignment: start;
+    Rectangle {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        background: root.couleur;
+        Icone {
+            nom: root.icone;
+            taille: 22px;
+            couleur: root.encre;
+        }
+    }
+}
+
+component Bloc inherits Rectangle {
+    in property <string> titre;
+    border-radius: Rayon.m;
+    background: Theme.papier-2;
+    horizontal-stretch: 1;
+    preferred-width: 200px;
+    VerticalLayout {
+        padding: 18px;
+        spacing: Espace.e3;
+        @children
+    }
+}
+
+component TitreBloc inherits Text {
+    color: Theme.encre;
+    font-family: Typo.titre;
+    font-size: 18px;
+    font-weight: Typo.gras;
+    letter-spacing: -0.36px;
+    wrap: word-wrap;
+}
+
+component Puce inherits Rectangle {
+    in property <string> texte;
+    in property <bool> choisie;
+    in property <bool> coche: false;
+    callback choisir();
+    property <bool> utilisable: Calques.ouverts <= 1;
+    height: 32px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: root.choisie ? Theme.encre : zone.has-hover ? Theme.papier-2 : Theme.surface;
+    border-width: 1px;
+    border-color: root.choisie ? Theme.encre : Theme.trait-fort;
+    accessible-role: button;
+    accessible-label: root.texte;
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-action-default => {
+        root.choisir();
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    contenu := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 6px;
+        if root.coche && root.choisie: VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "ok";
+                taille: 14px;
+                couleur: Theme.papier;
+            }
+        }
+        Text {
+            text: root.texte;
+            color: root.choisie ? Theme.papier : Theme.encre;
+            font-size: 13px;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.choisir();
+        }
+    }
+}
+
+component CarteGenre inherits Rectangle {
+    in property <GenreSalonPropose> genre;
+    in property <int> index;
+    property <bool> choisie: DonneesCreationSalon.genre == root.index;
+    property <bool> utilisable: Calques.ouverts <= 1;
+    horizontal-stretch: 1;
+    preferred-width: 100px;
+    height: 90px;
+    border-radius: Rayon.m;
+    background: root.choisie ? Theme.rose-doux : zone.has-hover ? Theme.papier-2 : Theme.surface;
+    border-width: root.choisie ? 2px : 1px;
+    border-color: root.choisie ? Theme.encre : Theme.trait-fort;
+    accessible-role: button;
+    accessible-label: root.genre.libelle;
+    accessible-description: root.genre.indice;
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-action-default => {
+        DonneesCreationSalon.choisir-genre(root.index);
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.m;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesCreationSalon.choisir-genre(root.index);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    VerticalLayout {
+        padding: 14px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Icone {
+                nom: root.genre.icone;
+                taille: 22px;
+                couleur: Theme.encre;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.genre.libelle;
+                color: Theme.encre;
+                font-size: Typo.corps;
+                font-weight: Typo.gras;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: Theme.surface;
+                    border-width: root.choisie ? 5px : 1.5px;
+                    border-color: root.choisie ? Theme.encre : Theme.trait-fort;
+                }
+            }
+        }
+        Text {
+            text: root.genre.indice;
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesCreationSalon.choisir-genre(root.index);
+        }
+    }
+}
+
+component Etiquette inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    font-weight: Typo.demi-gras;
+}
+
+export component CreerRejoindre {
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: "Créer ou rejoindre un serveur";
+        ouvert: DonneesCreerRejoindre.ouvert;
+        largeur: 600px;
+        focus-croix: false;
+        ferme => {
+            DonneesCreerRejoindre.fermer();
+        }
+        if DonneesCreerRejoindre.erreur != "": Alerte {
+            texte: DonneesCreerRejoindre.erreur;
+        }
+        HorizontalLayout {
+            spacing: Espace.e4;
+            if DonneesCreerRejoindre.peut-creer: Bloc {
+                property <int> demande: DonneesCreerRejoindre.demande-focus;
+                changed demande => {
+                    nom.focus();
+                }
+                Pastille {
+                    icone: "plus";
+                    couleur: Theme.rose;
+                    encre: Theme.encre;
+                }
+                TitreBloc {
+                    text: "Créer un serveur";
+                }
+                nom := Champ {
+                    indice: "Nom du serveur";
+                    valeur <=> DonneesCreerRejoindre.nom;
+                    calque: 1;
+                    modifie(texte) => {
+                        DonneesCreerRejoindre.nom-modifie(texte);
+                    }
+                    valide => {
+                        DonneesCreerRejoindre.creer();
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 10px;
+                            background: Theme.encre;
+                            clip: true;
+                            accessible-role: image;
+                            accessible-label: "Aperçu dans la barre des serveurs";
+                            if DonneesCreerRejoindre.a-icone: Image {
+                                width: 100%;
+                                height: 100%;
+                                source: DonneesCreerRejoindre.icone;
+                                image-fit: cover;
+                            }
+                            if DonneesCreerRejoindre.a-icone: Coins {
+                                width: 100%;
+                                height: 100%;
+                                rayon: 10px;
+                                couleur: Theme.papier-2;
+                            }
+                            if !DonneesCreerRejoindre.a-icone: Text {
+                                text: DonneesCreerRejoindre.initiales;
+                                color: Theme.papier;
+                                font-family: Typo.titre;
+                                font-size: 11px;
+                                font-weight: Typo.gras;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "Aperçu dans la barre des serveurs";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    alignment: start;
+                    Bouton {
+                        texte: DonneesCreerRejoindre.a-icone ? "Changer l'icône" : "Choisir une icône";
+                        icone: "image";
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        actif: !DonneesCreerRejoindre.en-cours;
+                        clique => {
+                            DonneesCreerRejoindre.choisir-icone();
+                        }
+                    }
+                    if DonneesCreerRejoindre.a-icone: Bouton {
+                        icone: "x";
+                        description: "Retirer l'icône";
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        actif: !DonneesCreerRejoindre.en-cours;
+                        clique => {
+                            DonneesCreerRejoindre.retirer-icone();
+                        }
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+                Bouton {
+                    horizontal-stretch: 1;
+                    texte: "Créer";
+                    variante: VarianteBouton.primaire;
+                    calque: 1;
+                    actif: DonneesCreerRejoindre.nom != "" && !DonneesCreerRejoindre.en-cours;
+                    clique => {
+                        DonneesCreerRejoindre.creer();
+                    }
+                }
+            }
+            if DonneesCreerRejoindre.peut-rejoindre: Bloc {
+                property <int> demande: DonneesCreerRejoindre.demande-focus;
+                changed demande => {
+                    if (!DonneesCreerRejoindre.peut-creer) {
+                        code.focus();
+                    }
+                }
+                Pastille {
+                    icone: "lien";
+                    couleur: Theme.av-3;
+                    encre: Theme.av-3-t;
+                }
+                TitreBloc {
+                    text: "Rejoindre avec un lien ou un code";
+                }
+                code := Champ {
+                    indice: "ABCDE-23456";
+                    aide: "Colle un lien d'invitation complet, ou juste le code.";
+                    valeur <=> DonneesCreerRejoindre.code;
+                    calque: 1;
+                    modifie(texte) => {
+                        DonneesCreerRejoindre.code-modifie(texte);
+                    }
+                    valide => {
+                        DonneesCreerRejoindre.rejoindre();
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+                Bouton {
+                    horizontal-stretch: 1;
+                    texte: "Rejoindre";
+                    calque: 1;
+                    actif: DonneesCreerRejoindre.code != "" && !DonneesCreerRejoindre.en-cours;
+                    en-cours: DonneesCreerRejoindre.en-cours;
+                    clique => {
+                        DonneesCreerRejoindre.rejoindre();
+                    }
+                }
+            }
+        }
+        if !DonneesCreerRejoindre.peut-creer && !DonneesCreerRejoindre.peut-rejoindre: Text {
+            text: "Ton compte ne permet ni de créer ni de rejoindre un serveur.";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component CreationSalon {
+    property <int> demande: DonneesCreationSalon.demande-focus;
+    changed demande => {
+        nom.focus();
+    }
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: "Créer un salon";
+        ouvert: DonneesCreationSalon.ouvert;
+        largeur: 560px;
+        focus-croix: false;
+        ferme => {
+            DonneesCreationSalon.fermer();
+        }
+        Defilement {
+            height: Math.max(120px, Math.min(formulaire.preferred-height, root.height - 190px));
+            hauteur-contenu: formulaire.preferred-height;
+            formulaire := VerticalLayout {
+                spacing: Espace.e4;
+                padding-right: 4px;
+                if DonneesCreationSalon.serveur != "": Text {
+                    text: "dans " + DonneesCreationSalon.serveur;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                }
+                VerticalLayout {
+                    spacing: Espace.e2;
+                    accessible-role: groupbox;
+                    accessible-label: "Type de salon";
+                    for rangee in Math.ceil(DonneesCreationSalon.genres.length / 2): HorizontalLayout {
+                        spacing: Espace.e2;
+                        CarteGenre {
+                            genre: DonneesCreationSalon.genres[rangee * 2];
+                            index: rangee * 2;
+                        }
+                        if rangee * 2 + 1 < DonneesCreationSalon.genres.length: CarteGenre {
+                            genre: DonneesCreationSalon.genres[rangee * 2 + 1];
+                            index: rangee * 2 + 1;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: Espace.e1;
+                    nom := Champ {
+                        etiquette: "Nom du salon";
+                        valeur <=> DonneesCreationSalon.nom;
+                        en-faute: DonneesCreationSalon.en-faute;
+                        calque: 1;
+                        modifie(texte) => {
+                            DonneesCreationSalon.nom-modifie(texte);
+                        }
+                        valide => {
+                            DonneesCreationSalon.creer();
+                        }
+                    }
+                    HorizontalLayout {
+                        min-height: 18px;
+                        spacing: 6px;
+                        if DonneesCreationSalon.erreur != "": Icone {
+                            nom: "alerte";
+                            taille: 14px;
+                            couleur: Theme.danger;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: DonneesCreationSalon.erreur;
+                            color: Theme.danger;
+                            font-size: Typo.petit;
+                            wrap: word-wrap;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: Espace.e2;
+                        alignment: start;
+                        Text {
+                            text: "Aperçu :";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                            vertical-alignment: center;
+                        }
+                        Rectangle {
+                            width: 260px;
+                            height: 30px;
+                            border-radius: Rayon.s;
+                            background: Theme.papier-2;
+                            accessible-role: text;
+                            accessible-label: "Aperçu dans la barre latérale";
+                            accessible-value: apercu.text;
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                spacing: Espace.e2;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Icone {
+                                        nom: DonneesCreationSalon.prive ? "lock" : DonneesCreationSalon.icone;
+                                        taille: 16px;
+                                        couleur: Theme.gris;
+                                    }
+                                }
+                                apercu := Text {
+                                    horizontal-stretch: 1;
+                                    text: DonneesCreationSalon.nom != "" ? DonneesCreationSalon.nom : "nom-du-salon";
+                                    color: Theme.encre-2;
+                                    font-size: Typo.compact;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: Espace.e3;
+                    HorizontalLayout {
+                        spacing: Espace.e3;
+                        Interrupteur {
+                            texte: "Salon privé";
+                            allume: DonneesCreationSalon.prive;
+                            calque: 1;
+                            bascule(actif) => {
+                                DonneesCreationSalon.basculer-prive(actif);
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: "— visible seulement par les rôles et membres choisis";
+                            color: Theme.encre-2;
+                            font-size: Typo.petit;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                            accessible-role: none;
+                        }
+                    }
+                    if DonneesCreationSalon.prive: VerticalLayout {
+                        spacing: Espace.e2;
+                        accessible-role: groupbox;
+                        accessible-label: "Rôles ayant accès";
+                        Etiquette {
+                            text: "Rôles ayant accès";
+                        }
+                        FlexboxLayout {
+                            alignment: start;
+                            spacing: 6px;
+                            for r[i] in DonneesCreationSalon.roles: Puce {
+                                texte: r.nom;
+                                choisie: r.choisi;
+                                coche: true;
+                                choisir => {
+                                    DonneesCreationSalon.basculer-role(i);
+                                }
+                            }
+                        }
+                        if DonneesCreationSalon.roles.length == 0: Text {
+                            text: "Aucun rôle sur ce serveur.";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                        }
+                    }
+                    if DonneesCreationSalon.prive: VerticalLayout {
+                        spacing: Espace.e2;
+                        accessible-role: groupbox;
+                        accessible-label: "Membres ayant accès";
+                        Etiquette {
+                            text: "Membres ayant accès (tu y as toujours accès)";
+                        }
+                        FlexboxLayout {
+                            alignment: start;
+                            spacing: 6px;
+                            for m[i] in DonneesCreationSalon.membres: Puce {
+                                texte: m.nom;
+                                choisie: m.choisi;
+                                coche: true;
+                                choisir => {
+                                    DonneesCreationSalon.basculer-membre(i);
+                                }
+                            }
+                        }
+                        if DonneesCreationSalon.membres.length == 0: Text {
+                            text: "Aucun autre membre.";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                        }
+                    }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.trait;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    Bouton {
+                        texte: "Réglages avancés";
+                        icone: DonneesCreationSalon.avances ? "bas" : "droite";
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        clique => {
+                            DonneesCreationSalon.avances = !DonneesCreationSalon.avances;
+                        }
+                    }
+                }
+                if DonneesCreationSalon.avances: VerticalLayout {
+                    spacing: Espace.e3;
+                    Champ {
+                        etiquette: "Sujet du salon";
+                        valeur <=> DonneesCreationSalon.sujet;
+                        calque: 1;
+                    }
+                    if DonneesCreationSalon.texte: VerticalLayout {
+                        spacing: Espace.e2;
+                        accessible-role: groupbox;
+                        accessible-label: "Mode lent";
+                        Etiquette {
+                            text: "Mode lent";
+                        }
+                        FlexboxLayout {
+                            alignment: start;
+                            spacing: 6px;
+                            for libelle[i] in DonneesCreationSalon.modes-lents: Puce {
+                                texte: libelle;
+                                choisie: DonneesCreationSalon.mode-lent == i;
+                                choisir => {
+                                    DonneesCreationSalon.choisir-mode-lent(i);
+                                }
+                            }
+                        }
+                    }
+                    if DonneesCreationSalon.vocal: VerticalLayout {
+                        spacing: Espace.e2;
+                        accessible-role: groupbox;
+                        accessible-label: "Limite de participants";
+                        Etiquette {
+                            text: "Limite de participants";
+                        }
+                        FlexboxLayout {
+                            alignment: start;
+                            spacing: 6px;
+                            for libelle[i] in DonneesCreationSalon.limites: Puce {
+                                texte: libelle;
+                                choisie: DonneesCreationSalon.limite == i;
+                                choisir => {
+                                    DonneesCreationSalon.choisir-limite(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Annuler";
+                calque: 1;
+                clique => {
+                    DonneesCreationSalon.fermer();
+                }
+            }
+            Bouton {
+                texte: "Créer le salon";
+                variante: VarianteBouton.primaire;
+                calque: 1;
+                actif: DonneesCreationSalon.peut-creer;
+                en-cours: DonneesCreationSalon.en-cours;
+                clique => {
+                    DonneesCreationSalon.creer();
+                }
+            }
+        }
+    }
+}

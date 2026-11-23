@@ -246,6 +246,11 @@ const ECRANS: &[Ecran] = ecrans![
     "parametres-compte-profil-sombre", Sombre, parametres_compte_profil;
     "recadrage-avatar-clair", Clair, recadrage_avatar;
     "recadrage-avatar-sombre", Sombre, recadrage_avatar;
+    "creer-rejoindre-clair", Clair, creer_rejoindre;
+    "creer-rejoindre-sombre", Sombre, creer_rejoindre;
+    "creation-salon-clair", Clair, creation_salon;
+    "creation-salon-sombre", Sombre, creation_salon;
+    "creation-salon-erreur-clair", Clair, creation_salon_erreur;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
     "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
@@ -1458,6 +1463,58 @@ fn recadrage_avatar(f: &Principale) {
     pont.ouvrir_recadrage(f, None, paysage());
     pont.zoomer_recadrage(f, 1.6);
     pont.deplacer_recadrage(f, -60.0, 20.0);
+    stabiliser(f);
+}
+
+fn creer_rejoindre(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), Route::Accueil);
+    pont.ouvrir_creer_rejoindre(f);
+    let g = f.global::<estompe_natif::DonneesCreerRejoindre>();
+    g.set_nom("Atelier vélo".into());
+    pont.nom_de_serveur_modifie(f, "Atelier vélo");
+    let carre = image::imageops::resize(
+        &image::imageops::crop_imm(&paysage(), 300, 0, 600, 600).to_image(),
+        256,
+        256,
+        image::imageops::FilterType::Triangle,
+    );
+    pont.icone_recadree(f, Some(("image/png", Vec::new(), carre)));
+    g.set_code("ABCDE-23456".into());
+    pont.code_modifie(f, "ABCDE-23456");
+    stabiliser(f);
+}
+
+fn creation_salon_ouverte(f: &Principale) -> Pont {
+    let pont = coquille(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+    );
+    pont.ouvrir_creation_salon(f, "s1", estompe_client::store::GenreSalon::Text, None);
+    pont
+}
+
+fn creation_salon(f: &Principale) {
+    let pont = creation_salon_ouverte(f);
+    f.global::<estompe_natif::DonneesCreationSalon>()
+        .set_nom("jeux du soir".into());
+    pont.nom_de_salon_modifie(f, "jeux du soir");
+    pont.basculer_salon_prive(f, true);
+    pont.basculer_role_du_salon(f, 1);
+    pont.basculer_membre_du_salon(f, 1);
+    stabiliser(f);
+}
+
+fn creation_salon_erreur(f: &Principale) {
+    let pont = creation_salon_ouverte(f);
+    pont.choisir_genre_de_salon(f, 1);
+    pont.choisir_genre_de_salon(f, 0);
+    f.global::<estompe_natif::DonneesCreationSalon>()
+        .set_nom("Général".into());
+    pont.nom_de_salon_modifie(f, "Général");
+    pont.choisir_mode_lent(f, 4);
+    f.global::<estompe_natif::DonneesCreationSalon>()
+        .set_avances(true);
     stabiliser(f);
 }
 

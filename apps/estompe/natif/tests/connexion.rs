@@ -109,7 +109,29 @@ fn scenario(faible: slint::Weak<Principale>, auth: Arc<FausseAuth>, api: Arc<Fau
     );
     assert_eq!(api.appels.load(Ordering::SeqCst), 1, "un seul /me");
 
-    cliquer(&faible, "Rejoindre un serveur");
+    cliquer(&faible, "Créer ou rejoindre un serveur");
+    attendre_l_interface(
+        &faible,
+        |f| {
+            f.global::<estompe_natif::DonneesCreerRejoindre>()
+                .get_ouvert()
+        },
+        "fenêtre « Créer ou rejoindre un serveur »",
+    );
+    sur_l_interface(&faible, |f| {
+        f.global::<estompe_natif::DonneesCreerRejoindre>()
+            .invoke_fermer();
+        i_slint_backend_testing::mock_elapsed_time(std::time::Duration::ZERO);
+    });
+    attendre_l_interface(
+        &faible,
+        |f| {
+            !f.global::<estompe_natif::DonneesCreerRejoindre>()
+                .get_ouvert()
+        },
+        "fenêtre refermée",
+    );
+    sur_l_interface(&faible, |f| f.invoke_ouvrir_invitation());
     attendre_l_interface(
         &faible,
         |f| f.get_page() == Page::Invitation,
