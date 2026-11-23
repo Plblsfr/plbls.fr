@@ -45,6 +45,7 @@ fn millisecondes(maintenant: NaiveDateTime) -> i64 {
 
 mod menus;
 mod nouveau_prive;
+mod parametres;
 mod recherche;
 
 pub use nouveau_prive::EtatNouveauPrive;
@@ -303,6 +304,7 @@ pub fn onglet_effectif(voulu: OngletMarge, membres: bool, epingles: bool) -> Opt
 }
 
 pub fn vider_modeles(f: &Principale) {
+    f.global::<crate::DonneesParametres>().set_ouverte(false);
     let g = f.global::<DonneesCoquille>();
     vec_de(&g.get_serveurs()).set_vec(Vec::new());
     vec_de(&g.get_salons()).set_vec(Vec::new());
@@ -572,6 +574,7 @@ impl Pont {
 
     pub fn tout_projeter(&self, f: &Principale) {
         self.projeter(f, &tout(), true);
+        self.projeter_parametres(f);
         f.global::<DonneesCoquille>().set_pret(true);
     }
 
@@ -590,6 +593,9 @@ impl Pont {
             }
         }
         self.projeter(f, &c, false);
+        if changements.contains(&Changement::ReglagesNotification) {
+            self.projeter_parametres(f);
+        }
         if corrigee {
             self.suivre_conversation(f);
             self.ouvrir_conversation_courante(None);
@@ -831,6 +837,7 @@ impl Pont {
     }
 
     fn aller(&self, f: &Principale, route: Route, message: Option<String>) {
+        f.global::<crate::DonneesParametres>().set_ouverte(false);
         let adresse = self.store.lire(|etat| {
             let mut interne = self.verrou();
             interne.navigation.aller(route, etat);

@@ -135,6 +135,11 @@ impl Pont {
                 self.definir_statut(statut);
                 self.fermer_recherche(f);
             }
+            Some(Action::Parametres(onglet)) => {
+                self.fermer_recherche(f);
+                f.global::<crate::DonneesParametres>()
+                    .invoke_ouvrir(onglet.into());
+            }
             None => {}
         }
     }

@@ -7,6 +7,7 @@ import { LigneParticipant } from "../vocal/tuile.slint";
 import { BarreVocalPanneau } from "../vocal/barre.slint";
 import { BandeauMiseAJour } from "../mise-a-jour/bandeau.slint";
 import { DonneesMiseAJour } from "../mise-a-jour/donnees.slint";
+import { DonneesParametres } from "../parametres/page.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -134,6 +135,17 @@ component BarreMoi inherits Rectangle {
         padding-right: Espace.e2;
         spacing: 6px;
         BoutonMoi { }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                icone: "reglages";
+                description: "Paramètres";
+                variante: DonneesParametres.ouverte ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                clique => {
+                    DonneesParametres.ouvrir("");
+                }
+            }
+        }
         VerticalLayout {
             alignment: center;
             Bouton {

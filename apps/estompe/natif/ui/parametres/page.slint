@@ -1,0 +1,1091 @@
+import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Courbes, Calques, Affichage } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Interrupteur, Champ, Defilement, Avatar, Etiquette, EtatPresence } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { APropos } from "../a-propos.slint";
+import { DonneesCoquille } from "../coquille/donnees.slint";
+import { DonneesVocal } from "../vocal/donnees.slint";
+import { DonneesJeux } from "../jeux/reglages.slint";
+import { DonneesReplay } from "../replay/reglages.slint";
+import { DonneesMesures } from "../mesures/ecran.slint";
+
+export struct OngletParametres {
+    id: string,
+    libelle: string,
+    icone: string,
+    badge: string,
+    trouves: string,
+}
+
+export struct LigneJournal {
+    texte: string,
+    niveau: string,
+}
+
+export struct LigneRaccourci {
+    action: string,
+    touches: string,
+    reglage: string,
+}
+
+export global DonneesParametres {
+    in-out property <bool> ouverte: false;
+    in-out property <string> onglet: "compte";
+    in-out property <string> titre: "Compte";
+    in-out property <bool> focus-initial: false;
+    in-out property <[OngletParametres]> onglets;
+    in-out property <string> recherche;
+    in-out property <int> retour-focus: 0;
+    in-out property <string> version;
+    in-out property <bool> notifications-bureau: true;
+    in-out property <bool> type-prive: true;
+    in-out property <bool> type-mention: true;
+    in-out property <bool> type-salon: true;
+    in-out property <bool> type-vocal: true;
+    in-out property <string> erreur-notifications;
+    in-out property <bool> apercus: true;
+    in-out property <bool> demarrage-disponible: false;
+    in-out property <bool> demarrage-actif: false;
+    in-out property <string> annonce;
+    in-out property <bool> journal-actif: false;
+    in-out property <int> niveau: 0;
+    in-out property <string> filtre;
+    in-out property <[LigneJournal]> lignes;
+    in-out property <int> total-lignes: 0;
+    in-out property <string> message-journal;
+    in-out property <[LigneRaccourci]> raccourcis;
+    in-out property <[LigneRaccourci]> touches-globales;
+    callback ouvrir(string);
+    callback fermer();
+    callback choisir(string);
+    callback deplacer(int);
+    callback chercher(string);
+    callback theme-choisi(ModeTheme);
+    callback densite-choisie(bool);
+    callback apercus-change(bool);
+    callback animations-change(bool);
+    callback notifications-change(bool);
+    callback type-change(string, bool);
+    callback demarrage-change(bool);
+    callback version-cliquee();
+    callback journal-change(bool);
+    callback filtrer(int, string);
+    callback rafraichir-journal();
+    callback copier-journal();
+    callback exporter-journal();
+    callback vider-journal();
+    callback se-deconnecter();
+}
+
+component Titre inherits Text {
+    color: Theme.encre;
+    font-family: Typo.titre;
+    font-size: Typo.titre-section;
+    font-weight: Typo.gras;
+    letter-spacing: -0.4px;
+}
+
+component Note inherits Text {
+    color: Theme.gris;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Carte inherits Rectangle {
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    VerticalLayout {
+        padding-left: Espace.e5;
+        padding-right: Espace.e5;
+        padding-top: Espace.e4;
+        padding-bottom: Espace.e4;
+        spacing: Espace.e3;
+        @children
+    }
+}
+
+component Section inherits VerticalLayout {
+    in property <string> titre;
+    in property <string> note;
+    spacing: 10px;
+    Titre {
+        text: root.titre;
+    }
+    if root.note != "": Note {
+        text: root.note;
+    }
+    @children
+}
+
+component Touches inherits Rectangle {
+    in property <string> texte;
+    height: 24px;
+    width: libelle.preferred-width + 14px;
+    border-radius: Rayon.xs;
+    background: Theme.papier-2;
+    border-width: 1px;
+    border-color: Theme.trait-fort;
+    libelle := Text {
+        text: root.texte;
+        color: Theme.encre;
+        font-family: Typo.mono;
+        font-size: Typo.minuscule;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component OngletNav {
+    in property <OngletParametres> onglet;
+    in property <bool> actif;
+    property <int> retour: DonneesParametres.retour-focus;
+    property <bool> utilisable: Calques.ouverts == 0;
+    min-height: 36px;
+    horizontal-stretch: 1;
+    accessible-role: tab;
+    accessible-label: onglet.libelle;
+    accessible-description: onglet.trouves;
+    accessible-item-selected: actif;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        DonneesParametres.choisir(root.onglet.id);
+    }
+    forward-focus: portee;
+    init => {
+        if (root.actif && DonneesParametres.focus-initial) {
+            DonneesParametres.focus-initial = false;
+            portee.focus();
+        }
+    }
+    changed retour => {
+        if (root.actif) {
+            portee.focus();
+        }
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.actif ? Theme.surface : zone.has-hover ? Theme.surface.with-alpha(0.55) : transparent;
+        border-width: root.actif ? 1px : 0;
+        border-color: Theme.trait;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesParametres.choisir(root.onglet.id);
+                return accept;
+            }
+            if (e.text == Key.DownArrow) {
+                DonneesParametres.deplacer(1);
+                return accept;
+            }
+            if (e.text == Key.UpArrow) {
+                DonneesParametres.deplacer(-1);
+                return accept;
+            }
+            if (e.text == Key.Home) {
+                DonneesParametres.deplacer(-1000);
+                return accept;
+            }
+            if (e.text == Key.End) {
+                DonneesParametres.deplacer(1000);
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                portee.focus();
+                DonneesParametres.choisir(root.onglet.id);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.onglet.icone;
+                taille: 18px;
+                couleur: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: Espace.e2;
+                Text {
+                    text: root.onglet.libelle;
+                    color: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+                    font-size: 14.5px;
+                    font-weight: root.actif ? Typo.demi-gras : Typo.normal;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                if root.onglet.badge != "": VerticalLayout {
+                    alignment: center;
+                    Etiquette {
+                        texte: root.onglet.badge;
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            if root.onglet.trouves != "": Text {
+                text: root.onglet.trouves;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component CarteChoix {
+    in property <string> nom;
+    in property <string> note;
+    in property <bool> choisi;
+    callback choisir();
+    property <bool> utilisable: Calques.ouverts == 0;
+    horizontal-stretch: 1;
+    accessible-role: radio-button;
+    accessible-label: nom;
+    accessible-checkable: true;
+    accessible-checked: choisi;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        root.choisir();
+    }
+    forward-focus: portee;
+    Rectangle {
+        border-radius: Rayon.m;
+        background: Theme.surface;
+        border-width: root.choisi ? 2px : 1px;
+        border-color: root.choisi ? Theme.encre : zone.has-hover ? Theme.trait-fort : Theme.trait;
+        clip: true;
+        VerticalLayout {
+            @children
+            HorizontalLayout {
+                padding: Espace.e3;
+                spacing: Espace.e2;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 8px;
+                        border-width: root.choisi ? 5px : 1.5px;
+                        border-color: root.choisi ? Theme.encre : Theme.trait-fort;
+                        background: Theme.surface;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    Text {
+                        text: root.nom;
+                        color: Theme.encre;
+                        font-weight: Typo.demi-gras;
+                        overflow: elide;
+                    }
+                    if root.note != "": Text {
+                        text: root.note;
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.m;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.choisir();
+            }
+        }
+    }
+}
+
+component ApercuTheme inherits Rectangle {
+    in property <color> fond;
+    in property <color> cote;
+    in property <color> trait;
+    in property <color> encre;
+    in property <color> rose;
+    in property <bool> moitie: false;
+    height: 96px;
+    background: root.fond;
+    if root.moitie: Rectangle {
+        x: parent.width / 2;
+        width: parent.width / 2;
+        background: #131110;
+    }
+    if !root.moitie: Rectangle {
+        x: 18px;
+        width: 50px;
+        background: root.cote;
+        Rectangle {
+            x: 0;
+            width: 1px;
+            background: root.trait;
+        }
+    }
+    if !root.moitie: Rectangle {
+        x: 78px;
+        y: 16px;
+        width: (parent.width - 78px) * 0.6;
+        height: 6px;
+        background: root.encre;
+    }
+    if !root.moitie: Rectangle {
+        x: 78px;
+        y: 30px;
+        width: (parent.width - 78px) * 0.45;
+        height: 6px;
+        background: root.rose;
+    }
+    if !root.moitie: Rectangle {
+        x: 78px;
+        y: 44px;
+        width: (parent.width - 78px) * 0.55;
+        height: 6px;
+        background: root.trait;
+    }
+}
+
+component ApercuDensite inherits VerticalLayout {
+    in property <bool> serree;
+    height: 50px;
+    alignment: start;
+    padding: Espace.e3;
+    padding-bottom: 0;
+    spacing: root.serree ? 4px : 10px;
+    for i in 3: Rectangle {
+        height: 6px;
+        border-radius: 3px;
+        background: Theme.trait-fort;
+    }
+}
+
+component OngletCompte inherits VerticalLayout {
+    spacing: Espace.e6;
+    Carte {
+        HorizontalLayout {
+            spacing: Espace.e4;
+            Avatar {
+                nom: DonneesCoquille.pseudo;
+                initiales: DonneesCoquille.initiales;
+                taille: 64px;
+                teinte: 1;
+                presence: DonneesCoquille.presence;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Note {
+                    text: "Connecté en tant que";
+                }
+                Text {
+                    text: DonneesCoquille.pseudo;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: Typo.titre-section;
+                    font-weight: Typo.gras;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: Espace.e2;
+                    Bouton {
+                        texte: "Changer l'avatar";
+                        icone: "envoie";
+                        actif: false;
+                        description: "Arrive avec le profil";
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        Etiquette {
+                            texte: "bientôt";
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Section {
+        titre: "Photo de profil par serveur";
+        note: "Sans photo propre à un serveur, ta photo globale y est utilisée. Le choix d'une photo arrive avec le profil.";
+    }
+    HorizontalLayout {
+        spacing: Espace.e3;
+        Titre {
+            horizontal-stretch: 1;
+            text: "Session";
+            vertical-alignment: center;
+        }
+        Bouton {
+            texte: "Se déconnecter";
+            icone: "sortie";
+            variante: VarianteBouton.danger;
+            clique => {
+                DonneesParametres.se-deconnecter();
+            }
+        }
+    }
+}
+
+component OngletNotifications inherits VerticalLayout {
+    spacing: Espace.e6;
+    Section {
+        titre: "Notifications";
+        Carte {
+            Interrupteur {
+                texte: "Messages privés et mentions";
+                allume: DonneesParametres.notifications-bureau;
+                bascule(actif) => {
+                    DonneesParametres.notifications-change(actif);
+                }
+            }
+            Note {
+                text: "Notifications du système, propres à cet appareil.";
+            }
+        }
+    }
+    Section {
+        titre: "Types de notifications";
+        note: "Réglages enregistrés sur ton compte, identiques sur tous tes appareils.";
+        Carte {
+            Interrupteur {
+                texte: "Messages privés";
+                allume: DonneesParametres.type-prive;
+                bascule(actif) => {
+                    DonneesParametres.type-change("dm", actif);
+                }
+            }
+            Interrupteur {
+                texte: "Mentions";
+                allume: DonneesParametres.type-mention;
+                bascule(actif) => {
+                    DonneesParametres.type-change("mention", actif);
+                }
+            }
+            Interrupteur {
+                texte: "Messages de salon";
+                allume: DonneesParametres.type-salon;
+                bascule(actif) => {
+                    DonneesParametres.type-change("channel", actif);
+                }
+            }
+            Interrupteur {
+                texte: "Activité vocale";
+                allume: DonneesParametres.type-vocal;
+                bascule(actif) => {
+                    DonneesParametres.type-change("voice", actif);
+                }
+            }
+            if DonneesParametres.erreur-notifications != "": Text {
+                text: DonneesParametres.erreur-notifications;
+                color: Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+        }
+    }
+    Note {
+        text: "Ne pas déranger, aperçu, son et niveaux par serveur et par salon arrivent bientôt dans l'app native.";
+    }
+}
+
+component OngletVoix inherits VerticalLayout {
+    spacing: Espace.e6;
+    Section {
+        titre: "Micro, sortie et sons";
+        note: "Micro et sortie audio, test du micro, réduction du bruit, gain, détection de la voix, appuyer pour parler, volume général et sons d'arrivée et de départ.";
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Ouvrir les réglages audio…";
+                icone: "mic";
+                clique => {
+                    DonneesVocal.ouvrir-reglages();
+                }
+            }
+        }
+    }
+    if DonneesJeux.disponible: Section {
+        titre: "Jeux, overlay et activité";
+        note: "Jeu en cours montré aux autres, overlay des participants et des messages par-dessus le jeu, jeux ajoutés et exclus.";
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Jeux et activité…";
+                icone: "trophee";
+                clique => {
+                    DonneesJeux.ouvrir();
+                }
+            }
+        }
+    }
+    Section {
+        titre: "Caméra et partage d'écran";
+        note: "La caméra et le partage d'écran se choisissent et se règlent à leur ouverture, depuis le salon vocal.";
+    }
+}
+
+component OngletApparence inherits VerticalLayout {
+    spacing: Espace.e6;
+    Section {
+        titre: "Thème";
+        HorizontalLayout {
+            spacing: Espace.e3;
+            CarteChoix {
+                width: (parent.width - 2 * Espace.e3) / 3;
+                nom: "Système";
+                note: "suit l'appareil";
+                choisi: Theme.mode == ModeTheme.auto;
+                choisir => {
+                    Theme.mode = ModeTheme.auto;
+                    DonneesParametres.theme-choisi(ModeTheme.auto);
+                }
+                ApercuTheme {
+                    fond: #f7f3ee;
+                    moitie: true;
+                }
+            }
+            CarteChoix {
+                width: (parent.width - 2 * Espace.e3) / 3;
+                nom: "Clair";
+                note: "Papier";
+                choisi: Theme.mode == ModeTheme.clair;
+                choisir => {
+                    Theme.mode = ModeTheme.clair;
+                    DonneesParametres.theme-choisi(ModeTheme.clair);
+                }
+                ApercuTheme {
+                    fond: #f7f3ee;
+                    cote: #efe9e3;
+                    trait: #e2dad2;
+                    encre: #16130f;
+                    rose: #f6c6d6;
+                }
+            }
+            CarteChoix {
+                width: (parent.width - 2 * Espace.e3) / 3;
+                nom: "Sombre";
+                note: "Fusain";
+                choisi: Theme.mode == ModeTheme.sombre;
+                choisir => {
+                    Theme.mode = ModeTheme.sombre;
+                    DonneesParametres.theme-choisi(ModeTheme.sombre);
+                }
+                ApercuTheme {
+                    fond: #131110;
+                    cote: #1b1816;
+                    trait: #2f2b28;
+                    encre: #f1ece6;
+                    rose: #5e2b40;
+                }
+            }
+        }
+    }
+    Section {
+        titre: "Densité des messages";
+        HorizontalLayout {
+            spacing: Espace.e3;
+            CarteChoix {
+                width: (parent.width - Espace.e3) / 2;
+                nom: "Confortable";
+                choisi: !Affichage.compacte;
+                choisir => {
+                    Affichage.compacte = false;
+                    DonneesParametres.densite-choisie(false);
+                }
+                ApercuDensite {
+                    serree: false;
+                }
+            }
+            CarteChoix {
+                width: (parent.width - Espace.e3) / 2;
+                nom: "Compacte";
+                choisi: Affichage.compacte;
+                choisir => {
+                    Affichage.compacte = true;
+                    DonneesParametres.densite-choisie(true);
+                }
+                ApercuDensite {
+                    serree: true;
+                }
+            }
+        }
+    }
+    Carte {
+        Interrupteur {
+            texte: "Aperçu des liens";
+            allume: DonneesParametres.apercus;
+            bascule(actif) => {
+                DonneesParametres.apercus-change(actif);
+            }
+        }
+        Interrupteur {
+            texte: "Réduire les animations";
+            allume: Mouvement.reduit;
+            bascule(actif) => {
+                Mouvement.reduit = actif;
+                DonneesParametres.animations-change(actif);
+            }
+        }
+        Note {
+            text: Mouvement.reduit ? "Activé : animations réduites dans Estompe, quel que soit le réglage du système." : "Désactivé : suit le réglage du système.";
+        }
+    }
+}
+
+component OngletApplication inherits VerticalLayout {
+    spacing: Espace.e4;
+    if DonneesParametres.annonce != "": Text {
+        text: DonneesParametres.annonce;
+        color: Theme.rose-texte;
+        font-size: Typo.petit;
+        font-weight: Typo.demi-gras;
+        accessible-role: text;
+        accessible-label: self.text;
+    }
+    APropos {
+        version: DonneesParametres.version;
+        calque: 0;
+        avec-notifications: false;
+        demarrage-disponible: DonneesParametres.demarrage-disponible;
+        demarrage-actif: DonneesParametres.demarrage-actif;
+        demarrage-change(actif) => {
+            DonneesParametres.demarrage-change(actif);
+        }
+        version-cliquee => {
+            DonneesParametres.version-cliquee();
+        }
+    }
+}
+
+component BoutonNiveau inherits Bouton {
+    in property <int> rang;
+    variante: DonneesParametres.niveau == rang ? VarianteBouton.primaire : VarianteBouton.secondaire;
+    clique => {
+        DonneesParametres.filtrer(root.rang, DonneesParametres.filtre);
+    }
+}
+
+component OngletDebogage inherits VerticalLayout {
+    spacing: Espace.e4;
+    Carte {
+        Interrupteur {
+            texte: "Mode debug";
+            allume: DonneesParametres.journal-actif;
+            bascule(actif) => {
+                DonneesParametres.journal-change(actif);
+            }
+        }
+        Note {
+            text: "Enregistre les actions, erreurs et évènements internes (vocal, partage d'écran, réseau). Jamais de jetons, de mots de passe ni de contenu de message. À joindre à un ticket en cas de problème.";
+        }
+        if DonneesParametres.journal-actif && DonneesMesures.disponible: HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Mesures de performance…";
+                icone: "chart";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesMesures.ouvrir();
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            BoutonNiveau {
+                texte: "Tous";
+                rang: 0;
+            }
+            BoutonNiveau {
+                texte: "Info";
+                rang: 1;
+            }
+            BoutonNiveau {
+                texte: "Avertissement";
+                rang: 2;
+            }
+            BoutonNiveau {
+                texte: "Erreur";
+                rang: 3;
+            }
+        }
+        Champ {
+            indice: "Rechercher dans le journal";
+            etiquette: "";
+            valeur <=> DonneesParametres.filtre;
+            modifie(texte) => {
+                DonneesParametres.filtrer(DonneesParametres.niveau, texte);
+            }
+        }
+        Rectangle {
+            height: 256px;
+            border-radius: Rayon.m;
+            background: Theme.encre;
+            accessible-role: list;
+            accessible-label: "Journal";
+            if DonneesParametres.lignes.length == 0: Text {
+                x: Espace.e3;
+                y: Espace.e3;
+                text: DonneesParametres.journal-actif ? "Aucune ligne." : "Mode debug désactivé : rien n'est enregistré.";
+                color: Theme.papier;
+                opacity: 0.75;
+                font-family: Typo.mono;
+                font-size: 11.5px;
+            }
+            if DonneesParametres.lignes.length > 0: Defilement {
+                x: Espace.e3;
+                y: Espace.e2;
+                width: parent.width - Espace.e3 * 2;
+                height: parent.height - Espace.e2 * 2;
+                hauteur-contenu: lignes.preferred-height;
+                decalage: Math.min(0px, self.height - lignes.preferred-height);
+                lignes := VerticalLayout {
+                    alignment: start;
+                    padding-right: Espace.e3;
+                    for l in DonneesParametres.lignes: Text {
+                        text: l.texte;
+                        color: l.niveau == "error" ? Theme.danger-fond : l.niveau == "warn" ? Theme.attention-fond : Theme.papier;
+                        font-family: Typo.mono;
+                        font-size: 11.5px;
+                        font-weight: l.niveau == "error" ? Typo.gras : l.niveau == "warn" ? Typo.demi-gras : Typo.normal;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+        if DonneesParametres.total-lignes > DonneesParametres.lignes.length: Note {
+            text: "Seules les dernières lignes sont affichées ; la copie et l'export contiennent tout le journal.";
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Bouton {
+                texte: "Copier";
+                icone: "copie";
+                actif: DonneesParametres.total-lignes > 0;
+                clique => {
+                    DonneesParametres.copier-journal();
+                }
+            }
+            Bouton {
+                texte: "Exporter";
+                icone: "telecharge";
+                actif: DonneesParametres.total-lignes > 0;
+                clique => {
+                    DonneesParametres.exporter-journal();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Bouton {
+                texte: "Vider";
+                icone: "corbeille";
+                variante: VarianteBouton.fantome;
+                actif: DonneesParametres.total-lignes > 0;
+                clique => {
+                    DonneesParametres.vider-journal();
+                }
+            }
+        }
+        if DonneesParametres.message-journal != "": Text {
+            text: DonneesParametres.message-journal;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+            accessible-role: text;
+            accessible-label: self.text;
+        }
+    }
+}
+
+component LigneTouches inherits HorizontalLayout {
+    in property <LigneRaccourci> ligne;
+    spacing: Espace.e3;
+    min-height: 32px;
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Text {
+            text: root.ligne.action;
+            color: Theme.encre;
+            wrap: word-wrap;
+        }
+        if root.ligne.reglage != "": Note {
+            text: "Se règle dans « " + root.ligne.reglage + " »";
+        }
+    }
+    VerticalLayout {
+        alignment: center;
+        Touches {
+            texte: root.ligne.touches;
+        }
+    }
+}
+
+component OngletRaccourcis inherits VerticalLayout {
+    spacing: Espace.e6;
+    Section {
+        titre: "Dans l'app";
+        note: "Ces raccourcis marchent quand la fenêtre d'Estompe est active.";
+        Carte {
+            for r in DonneesParametres.raccourcis: LigneTouches {
+                ligne: r;
+            }
+        }
+    }
+    Section {
+        titre: "Touches globales";
+        note: "Ces touches marchent aussi quand Estompe n'est pas au premier plan, par exemple en jeu.";
+        Carte {
+            for r in DonneesParametres.touches-globales: LigneTouches {
+                ligne: r;
+            }
+        }
+    }
+}
+
+component OngletReplay inherits VerticalLayout {
+    spacing: Espace.e4;
+    Section {
+        titre: "Instant replay";
+        note: DonneesReplay.resume;
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Régler l'instant replay…";
+                icone: "replay";
+                clique => {
+                    DonneesReplay.ouvrir();
+                }
+            }
+        }
+    }
+}
+
+component OngletSignalements inherits VerticalLayout {
+    spacing: Espace.e4;
+    Section {
+        titre: "Mes signalements";
+        note: "Signaler un bug et suivre tes signalements arrivent bientôt dans l'app native.";
+    }
+}
+
+export component PageParametres inherits Rectangle {
+    background: Theme.papier;
+    property <int> calques: Calques.ouverts;
+    changed calques => {
+        if (root.calques == 0) {
+            DonneesParametres.retour-focus += 1;
+        }
+    }
+    accessible-role: groupbox;
+    accessible-label: "Paramètres";
+    clavier := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Escape && Calques.ouverts == 0) {
+                if (recherche.a-le-focus && DonneesParametres.recherche != "") {
+                    DonneesParametres.recherche = "";
+                    DonneesParametres.chercher("");
+                    return accept;
+                }
+                DonneesParametres.fermer();
+                return accept;
+            }
+            if (e.modifiers.control && !e.modifiers.alt && (e.text == "f" || e.text == "F")) {
+                recherche.focus();
+                return accept;
+            }
+            return reject;
+        }
+        HorizontalLayout {
+            Rectangle {
+                width: 240px;
+                background: Theme.papier-2;
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    background: Theme.trait;
+                }
+                VerticalLayout {
+                    Rectangle {
+                        height: 60px;
+                        HorizontalLayout {
+                            padding-left: 18px;
+                            padding-right: Espace.e3;
+                            Text {
+                                text: "Paramètres";
+                                color: Theme.encre;
+                                font-family: Typo.titre;
+                                font-size: 17px;
+                                font-weight: Typo.gras;
+                                letter-spacing: -0.3px;
+                                vertical-alignment: center;
+                                accessible-role: text;
+                            }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.trait;
+                        }
+                    }
+                    VerticalLayout {
+                        padding: Espace.e3;
+                        spacing: Espace.e2;
+                        vertical-stretch: 1;
+                        recherche := Champ {
+                            indice: "Chercher un réglage";
+                            etiquette: "";
+                            preferred-width: 200px;
+                            valeur <=> DonneesParametres.recherche;
+                            modifie(texte) => {
+                                DonneesParametres.chercher(texte);
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 2px;
+                            alignment: start;
+                            vertical-stretch: 1;
+                            accessible-role: tab-list;
+                            accessible-label: "Catégories de réglages";
+                            for o in DonneesParametres.onglets: OngletNav {
+                                onglet: o;
+                                actif: o.id == DonneesParametres.onglet;
+                            }
+                            if DonneesParametres.onglets.length == 0: Text {
+                                text: "Aucun réglage ne correspond.";
+                                color: Theme.gris;
+                                font-size: Typo.petit;
+                                wrap: word-wrap;
+                            }
+                        }
+                        Text {
+                            text: "Estompe natif " + DonneesParametres.version;
+                            color: Theme.gris;
+                            font-family: Typo.mono;
+                            font-size: 11px;
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Rectangle {
+                    height: 60px;
+                    HorizontalLayout {
+                        padding-left: Espace.e6;
+                        padding-right: Espace.e4;
+                        spacing: 10px;
+                        Text {
+                            horizontal-stretch: 1;
+                            text: DonneesParametres.titre;
+                            color: Theme.encre;
+                            font-family: Typo.titre;
+                            font-size: 18px;
+                            font-weight: Typo.gras;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            accessible-role: text;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Fermer";
+                                icone: "x";
+                                description: "Fermer les paramètres";
+                                clique => {
+                                    DonneesParametres.fermer();
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.trait;
+                    }
+                }
+                Defilement {
+                    vertical-stretch: 1;
+                    hauteur-contenu: corps.preferred-height;
+                    corps := VerticalLayout {
+                        alignment: start;
+                        padding-left: 40px;
+                        padding-right: 40px;
+                        padding-top: 28px;
+                        padding-bottom: 48px;
+                        accessible-role: tab-panel;
+                        if DonneesParametres.onglet == "compte": OngletCompte { }
+                        if DonneesParametres.onglet == "notifications": OngletNotifications { }
+                        if DonneesParametres.onglet == "voix": OngletVoix { }
+                        if DonneesParametres.onglet == "apparence": OngletApparence { }
+                        if DonneesParametres.onglet == "application": OngletApplication { }
+                        if DonneesParametres.onglet == "debogage": OngletDebogage { }
+                        if DonneesParametres.onglet == "signalements": OngletSignalements { }
+                        if DonneesParametres.onglet == "raccourcis": OngletRaccourcis { }
+                        if DonneesParametres.onglet == "replay": OngletReplay { }
+                    }
+                }
+            }
+        }
+    }
+    Timer {
+        interval: 3s;
+        running: DonneesParametres.onglet == "debogage" && DonneesParametres.journal-actif;
+        triggered => {
+            DonneesParametres.rafraichir-journal();
+        }
+    }
+}

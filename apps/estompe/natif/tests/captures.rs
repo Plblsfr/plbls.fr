@@ -235,6 +235,19 @@ const ECRANS: &[Ecran] = ecrans![
     "nouveau-prive-erreur-clair", Clair, nouveau_prive_erreur;
     "menu-statut-clair", Clair, menu_statut;
     "menu-statut-sombre", Sombre, menu_statut;
+    "parametres-compte-clair", Clair, parametres_compte;
+    "parametres-compte-sombre", Sombre, parametres_compte;
+    "parametres-notifications-clair", Clair, parametres_notifications;
+    "parametres-voix-clair", Clair, parametres_voix;
+    "parametres-apparence-clair", Clair, parametres_apparence;
+    "parametres-apparence-sombre", Sombre, parametres_apparence;
+    "parametres-application-clair", Clair, parametres_application;
+    "parametres-debogage-clair", Clair, parametres_debogage;
+    "parametres-debogage-sombre", Sombre, parametres_debogage;
+    "parametres-signalements-clair", Clair, parametres_signalements;
+    "parametres-raccourcis-clair", Clair, parametres_raccourcis;
+    "parametres-replay-clair", Clair, parametres_replay;
+    "parametres-recherche-clair", Clair, parametres_recherche;
 ];
 
 fn bob() -> Compte {
@@ -1925,6 +1938,17 @@ fn remettre_a_zero(f: &Principale) {
     mesures.set_message("".into());
     mesures.set_erreur("".into());
     vider_modeles(f);
+    f.global::<estompe_natif::DonneesOverlayMessages>()
+        .set_disponible(false);
+    let p = f.global::<estompe_natif::DonneesParametres>();
+    p.set_recherche("".into());
+    p.set_annonce("".into());
+    p.set_message_journal("".into());
+    p.set_lignes(slint::ModelRc::default());
+    p.set_total_lignes(0);
+    p.set_journal_actif(false);
+    p.set_type_salon(true);
+    p.set_demarrage_disponible(false);
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
     connecte(f);
@@ -1967,6 +1991,8 @@ fn les_ecrans_correspondent_a_leurs_references() {
     .expect("backend de test");
     let f = creer_fenetre().expect("fenêtre");
     f.set_version("0.0.0".into());
+    f.global::<estompe_natif::DonneesParametres>()
+        .set_version("0.0.0".into());
     f.set_debogage(true);
     f.global::<Mouvement>().set_reduit(true);
     f.window()
@@ -2686,4 +2712,103 @@ fn mesures_scenario(f: &Principale) {
     );
     g.set_reste(42);
     g.set_ouvert(true);
+}
+
+fn parametres(f: &Principale, onglet: estompe_client::parametres::Onglet) {
+    coquille_accueil(f);
+    let mut p = estompe_client::preferences::Preferences::default();
+    p.ptt.actif = true;
+    p.ptt.touche = "KeyV".into();
+    estompe_natif::parametres::afficher_onglets(f);
+    estompe_natif::parametres::afficher_preferences(f, &p);
+    estompe_natif::parametres::poser_onglet(f, onglet);
+    let g = f.global::<estompe_natif::DonneesParametres>();
+    g.set_demarrage_disponible(true);
+    g.set_ouverte(true);
+}
+
+fn parametres_compte(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Compte);
+}
+
+fn parametres_notifications(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Notifications);
+    let g = f.global::<estompe_natif::DonneesParametres>();
+    g.set_type_salon(false);
+}
+
+fn parametres_voix(f: &Principale) {
+    f.global::<estompe_natif::DonneesJeux>()
+        .set_disponible(true);
+    parametres(f, estompe_client::parametres::Onglet::Voix);
+}
+
+fn parametres_apparence(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Apparence);
+}
+
+fn parametres_application(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Application);
+    f.global::<estompe_natif::DonneesParametres>()
+        .set_annonce("Fonctions alpha débloquées.".into());
+}
+
+fn parametres_debogage(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Debogage);
+    let g = f.global::<estompe_natif::DonneesParametres>();
+    g.set_journal_actif(true);
+    let ligne = |texte: &str, niveau: &str| estompe_natif::LigneJournal {
+        texte: texte.into(),
+        niveau: niveau.into(),
+    };
+    g.set_lignes(slint::ModelRc::new(slint::VecModel::from(vec![
+        ligne(
+            "2026-11-19 09:30:00.123 [INFO] debug: mode debug activé",
+            "info",
+        ),
+        ligne(
+            "2026-11-19 09:30:02.481 [INFO] vocal: connexion au salon v1",
+            "info",
+        ),
+        ligne(
+            "2026-11-19 09:30:05.004 [WARN] réseau: reconnexion dans 2 s",
+            "warn",
+        ),
+        ligne(
+            "2026-11-19 09:30:07.950 [ERROR] partage: capture refusée par le système",
+            "error",
+        ),
+    ])));
+    g.set_total_lignes(4);
+    g.set_message_journal(
+        "Journal exporté : /home/bob/Téléchargements/estompe-debug-2026-11-19-09-30-10.log".into(),
+    );
+}
+
+fn parametres_signalements(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Signalements);
+}
+
+fn parametres_raccourcis(f: &Principale) {
+    f.global::<estompe_natif::DonneesOverlayMessages>()
+        .set_disponible(true);
+    f.global::<estompe_natif::DonneesReplay>()
+        .set_disponible(true);
+    parametres(f, estompe_client::parametres::Onglet::Raccourcis);
+}
+
+fn parametres_replay(f: &Principale) {
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    r.set_disponible(true);
+    r.set_resume(
+        "Activé : les 30 dernières secondes du jeu sont gardées, F10 enregistre un clip.".into(),
+    );
+    parametres(f, estompe_client::parametres::Onglet::Replay);
+}
+
+fn parametres_recherche(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Voix);
+    f.global::<estompe_natif::DonneesParametres>()
+        .set_recherche("micro".into());
+    estompe_natif::parametres::afficher_onglets(f);
 }

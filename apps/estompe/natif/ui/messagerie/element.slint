@@ -1,4 +1,4 @@
-import { Theme, Typo, Rayon, Espace, Mouvement, Courbes } from "../jetons.slint";
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Affichage } from "../jetons.slint";
 import { Icone, Avatar, BadgeRole, GenreBadgeRole, Chargement, Separateur, TexteRiche, DonneesMenu } from "../composants.slint";
 import { Medaille } from "../coquille/membres.slint";
 import { DonneesMessagerie, LigneMessage, GenreLigneMessage, AnnexesMessage, ReponseMessage, GenreCarte } from "donnees.slint";
@@ -319,8 +319,8 @@ component CorpsMessage inherits Rectangle {
                 return reject;
             }
             HorizontalLayout {
-                padding-top: root.ligne.suite ? 2px : root.ligne.systeme ? 6px : 14px;
-                padding-bottom: 2px;
+                padding-top: root.ligne.suite ? (Affichage.compacte ? 1px : 2px) : root.ligne.systeme || Affichage.compacte ? 6px : 14px;
+                padding-bottom: Affichage.compacte ? 1px : 2px;
                 padding-right: 24px;
                 Rectangle {
                     width: 72px;

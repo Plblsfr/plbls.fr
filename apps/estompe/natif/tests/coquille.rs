@@ -15,7 +15,8 @@ use estompe_natif::coquille::Coquille;
 use estompe_natif::entree::{self, Entree, Machine};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
-    creer_fenetre, ecrans, DonneesCoquille, EtatBandeau, GenreVue, LigneServeur, Page, Principale,
+    creer_fenetre, ecrans, DonneesCoquille, DonneesParametres, EtatBandeau, GenreVue, LigneServeur,
+    Page, Principale,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
@@ -225,6 +226,43 @@ fn scenario(
         &faible,
         |f| f.global::<DonneesCoquille>().get_vue().genre == GenreVue::Section,
         "section marquée bientôt",
+    );
+
+    sur_l_interface(&faible, |f| {
+        let g = f.global::<DonneesParametres>();
+        g.set_onglet("notifications".into());
+        g.set_ouverte(true);
+    });
+    assert!(sur_l_interface(&faible, |f| f
+        .global::<DonneesParametres>()
+        .get_type_prive()));
+    fabrique.envoyer(evenement(
+        "notify_settings.updated",
+        json!({"levels": {}, "types": {"dm": false, "mention": true, "channel": false, "voice": true}, "preview": true, "sound": true}),
+    ));
+    attendre_l_interface(
+        &faible,
+        |f| {
+            let g = f.global::<DonneesParametres>();
+            !g.get_type_prive() && g.get_type_mention() && !g.get_type_salon() && g.get_type_vocal()
+        },
+        "réglage changé sur un autre appareil reflété dans les paramètres ouverts",
+    );
+    let interrupteur = sur_l_interface(&faible, |f| {
+        ElementHandle::find_by_accessible_label(f, "Messages de salon")
+            .find(|e| e.accessible_role() == Some(AccessibleRole::Switch))
+            .and_then(|e| e.accessible_checked())
+    });
+    assert_eq!(
+        interrupteur,
+        Some(false),
+        "interrupteur à jour sans relancer"
+    );
+    cliquer(&faible, "Accueil");
+    attendre_l_interface(
+        &faible,
+        |f| !f.global::<DonneesParametres>().get_ouverte(),
+        "naviguer quitte les paramètres",
     );
 
     fabrique.envoyer(evenement("server.deleted", json!({"id": "s1"})));

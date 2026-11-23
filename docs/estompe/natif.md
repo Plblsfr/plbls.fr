@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -46,6 +46,7 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   variables (`polices/`, licence OFL) sont embarquées dans le binaire. Tout texte de l'app utilise l'une d'elles (le code en ligne compris, en
   JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
 - `emoji/twemoji.bin` : les emoji en couleur (voir [Emoji](#emoji)), licences `emoji/CC-BY-4.0-twemoji.txt` et `emoji/MIT-emoji-data.txt`, citées dans « À propos ».
+- `ui/jetons.slint` porte aussi `Affichage.compacte` (densité des messages), réglée par les [paramètres](#paramètres).
 - `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
   menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
@@ -1341,12 +1342,38 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | Instance unique | tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte>` | `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (sinon `<données>/instance.sock`) |
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
-- Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
+- Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, fonctions alpha débloquées, dernière catégorie des paramètres, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume ; les fichiers personnalisés sont à part, dans `<données>/sons/`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
-  paramètres secrets y sont masqués avant écriture.
+  paramètres secrets y sont masqués avant écriture. Il se consulte, s'exporte et se vide dans la catégorie « Débogage » des [paramètres](#paramètres).
+
+## Paramètres
+
+Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal) : `ui/parametres/page.slint` (global `DonneesParametres`), `src/parametres.rs`
+(préférences locales, journal, alpha), `src/coquille/pont/parametres.rs` (réglages enregistrés sur le compte, aperçu des liens), logique pure dans
+`estompe_client::parametres` (catégories, index de recherche, raccourcis, déblocage des fonctions alpha) et `estompe_client::journal` (lecture, filtre et format des lignes).
+
+- Ouverture : bouton « Paramètres » de la barre de l'utilisateur, entrée « Paramètres » de son menu ou action « Paramètres › <catégorie> » de la palette (`>`) ; la catégorie rouverte est la dernière choisie
+  (préférence `onglet_parametres`), sinon « Compte ». Comme le front, toute navigation (salon, accueil, palette) referme la page ; la marge est masquée tant qu'elle est ouverte.
+- Catégories : celles du front dans son ordre (compte, notifications, voix et vidéo, apparence, application, débogage, signalements), puis « Raccourcis »
+  (propre à l'app native) et « Instant replay » (bêta, seulement s'il est disponible, comme la page de l'app Windows). La recherche ignore accents et casse et
+  liste sous chaque catégorie les réglages trouvés (`chercher`, mêmes cas que `settings.test.ts`).
+- Clavier : la catégorie choisie a le focus à l'ouverture ; flèches haut et bas (en boucle), Origine et Fin passent d'une catégorie à l'autre, Tab entre dans la page,
+  Ctrl+F va à la recherche, Échap efface la recherche puis ferme la page et rend le focus à la coquille. Un modal ouvert depuis la page (réglages audio, jeux, replay, mesures)
+  la rend inactive ; à sa fermeture le focus revient à la catégorie.
+- Préférences synchronisées comme dans le front : seuls les types de notifications (messages privés, mentions, messages de salon, activité vocale) sont enregistrés
+  sur le compte (`PUT /me/notify-settings`, retour en arrière et message si l'envoi échoue) et suivis en temps réel (`notify_settings.updated`) ; tout le reste est local
+  (`preferences.json`) : thème, densité, aperçu des liens, réduction des animations, notifications du bureau, lancement avec la session, mode debug, fonctions alpha.
+- Apparence : le thème choisi s'applique tout de suite (`Theme.mode`), comme le bouton de l'en-tête ; la densité compacte resserre les messages (`Affichage.compacte`) ;
+  réduire les animations met les durées à zéro (`Mouvement.reduit`).
+- Débogage : 500 dernières lignes du journal (relu toutes les 3 s tant que la catégorie est ouverte), filtre par niveau et par texte, copie de tout le journal, export
+  dans le dossier des téléchargements (`estompe-debug-AAAA-MM-JJ-HH-MM-SS.log`, heure locale), vidage ; « Mesures de performance… » quand le mode debug est actif.
+- Application : « À propos », panneau des mises à jour, lancement à l'ouverture de la session ; 7 clics sur « Version installée » basculent les fonctions alpha
+  (préférence locale `alpha`, comme `UpdateSettings.svelte`).
+- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; avatar et photos par serveur (#362),
+  le reste des notifications (#361) et les signalements (#367) arrivent avec leurs issues.
 
 ## Types de l'API
 
@@ -1414,6 +1441,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `jeux.rs` (même backend, `ServeurMessages`, `PremierPlanFactice` sondé toutes les 20 ms) : jeu détecté affiché sous mon pseudo, rien publié hors ligne, activité vide
   publiée sans le réglage, « Jeux et activité » ouvert depuis le menu de l'utilisateur, partage activé (`PUT /me/activity` avec le jeu), jeu exclu retiré de l'affichage et de
   l'activité publiée, application fenêtrée non détectée puis ajoutée comme jeu, exécutable exclu par « Parcourir… ».
+`parametres.rs` (sans boucle d'évènements) : catégories dans l'ordre du front, flèches, Origine et Fin, thème, densité et animations réglés au clavier et enregistrés,
+  Échap qui ferme et rend le focus à la coquille, catégorie retrouvée à la réouverture, recherche par Ctrl+F effacée par Échap, journal activé, filtré, exporté et vidé
+  au clavier, déblocage des fonctions alpha. `coquille.rs` vérifie aussi qu'un type de notification changé sur un autre appareil (`notify_settings.updated`) est reflété
+  dans la page ouverte, et qu'une navigation la referme.
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

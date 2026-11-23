@@ -43,6 +43,7 @@ pub enum Action {
     Aller(Cible),
     NouveauPrive,
     Statut(StatutPresence),
+    Parametres(&'static str),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +174,17 @@ pub fn actions_de_la_palette(etat: &Etat) -> Vec<Destination<Action>> {
             if presence == actuel { "actuel" } else { "" },
             "perso",
             Action::Statut(statut),
+        ));
+    }
+    for onglet in estompe_client::parametres::ONGLETS
+        .into_iter()
+        .filter(|o| *o != estompe_client::parametres::Onglet::Replay)
+    {
+        sortie.push(action(
+            format!("Paramètres › {}", onglet.libelle()),
+            "",
+            "reglages",
+            Action::Parametres(onglet.id()),
         ));
     }
     sortie
@@ -629,8 +641,17 @@ mod tests {
                 ("", "Statut : En ligne"),
                 ("", "Statut : Absent"),
                 ("", "Statut : Ne pas déranger"),
+                ("", "Paramètres › Compte"),
+                ("", "Paramètres › Notifications"),
+                ("", "Paramètres › Voix et vidéo"),
+                ("", "Paramètres › Apparence"),
+                ("", "Paramètres › Application"),
+                ("", "Paramètres › Débogage"),
+                ("", "Paramètres › Signalements"),
+                ("", "Paramètres › Raccourcis"),
             ]
         );
+        assert_eq!(toutes[9].action, Action::Parametres("debogage"));
         assert_eq!(toutes[0].action, Action::NouveauPrive);
         assert_eq!(toutes[1].detail, "actuel");
         assert_eq!(toutes[3].action, Action::Statut(StatutPresence::Dnd));

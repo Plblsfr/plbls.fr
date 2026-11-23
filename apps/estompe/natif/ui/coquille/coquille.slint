@@ -8,6 +8,7 @@ import { Contenu } from "contenu.slint";
 import { EmplacementMarge } from "marge.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
 import { DonneesRecherche } from "recherche.slint";
+import { DonneesParametres } from "../parametres/page.slint";
 
 export component Coquille inherits Rectangle {
     callback ouvrir-invitation();
@@ -19,7 +20,7 @@ export component Coquille inherits Rectangle {
         clavier.focus();
     }
     changed calques => {
-        if (root.calques == 0) {
+        if (root.calques == 0 && !DonneesParametres.ouverte) {
             clavier.focus();
         }
     }
@@ -99,7 +100,7 @@ export component Coquille inherits Rectangle {
                     }
                 }
                 EmplacementMarge {
-                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre;
+                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre && !DonneesParametres.ouverte;
                     largeur: DonneesCoquille.largeur-marge;
                     @children
                 }

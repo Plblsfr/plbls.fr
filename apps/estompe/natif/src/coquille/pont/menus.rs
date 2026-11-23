@@ -8,6 +8,7 @@ use super::super::recherche::STATUTS;
 use super::Pont;
 use crate::menu::{self, Ancre, Entree};
 use crate::Principale;
+use slint::ComponentHandle;
 
 pub const MARQUER_LU: &str = "lu";
 pub const COPIER_LIEN: &str = "lien";
@@ -18,6 +19,7 @@ pub const VOIR_MON_PROFIL: &str = "mon-profil";
 pub const MODIFIER_MON_PROFIL: &str = "modifier-profil";
 pub const SIGNALER_UN_BUG: &str = "bug";
 pub const JEUX_ET_ACTIVITE: &str = "jeux";
+pub const PARAMETRES: &str = "parametres";
 
 fn id_du_statut(statut: StatutPresence) -> &'static str {
     match statut {
@@ -48,6 +50,7 @@ pub fn entrees_de_moi(actuel: Presence, jeux: bool) -> Vec<Entree> {
         ));
     }
     entrees.push(Entree::nouvelle(SIGNALER_UN_BUG, "Signaler un bug", "bug").bientot());
+    entrees.push(Entree::nouvelle(PARAMETRES, "Paramètres", "reglages").separee());
     entrees
 }
 
@@ -196,6 +199,11 @@ impl Pont {
                     crate::jeux::reglages::ouvrir(f);
                     return true;
                 }
+                if action == PARAMETRES {
+                    f.global::<crate::DonneesParametres>()
+                        .invoke_ouvrir("".into());
+                    return true;
+                }
                 if let Some((statut, _, _)) =
                     STATUTS.iter().find(|(s, _, _)| id_du_statut(*s) == action)
                 {
@@ -335,14 +343,19 @@ mod tests {
                 "dnd",
                 VOIR_MON_PROFIL,
                 MODIFIER_MON_PROFIL,
-                SIGNALER_UN_BUG
+                SIGNALER_UN_BUG,
+                PARAMETRES
             ]
         );
         let coches: Vec<bool> = entrees.iter().map(|e| e.coche).collect();
-        assert_eq!(coches, [false, true, false, false, false, false]);
+        assert_eq!(coches, [false, true, false, false, false, false, false]);
         assert!(entrees[3].separe && entrees[3].bientot);
+        assert!(entrees[6].separe && !entrees[6].bientot);
         let avec_jeux = entrees_de_moi(Presence::Absent, true);
-        assert_eq!(ids(&avec_jeux)[5..], [JEUX_ET_ACTIVITE, SIGNALER_UN_BUG]);
+        assert_eq!(
+            ids(&avec_jeux)[5..],
+            [JEUX_ET_ACTIVITE, SIGNALER_UN_BUG, PARAMETRES]
+        );
         assert!(!avec_jeux[5].bientot);
     }
 

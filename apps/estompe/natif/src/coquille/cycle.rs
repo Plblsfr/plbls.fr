@@ -737,6 +737,22 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .menu_moi(&f, Ancre::Element { x, haut, bas }));
     rappel!(on_tout_lire, |p, _f| p.tout_lire());
     rappel!(on_nouveau_prive, |p, f| p.ouvrir_nouveau_prive(&f));
+    let parametres = f.global::<crate::DonneesParametres>();
+    macro_rules! rappel_parametres {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            parametres.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_parametres!(on_apercus_change, |p, f, actif| p
+        .definir_apercus(&f, actif));
+    rappel_parametres!(on_type_change, |p, f, genre, actif| p
+        .definir_type_notification(&f, &genre, actif));
     let nouveau = f.global::<DonneesNouveauPrive>();
     macro_rules! rappel_nouveau {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
