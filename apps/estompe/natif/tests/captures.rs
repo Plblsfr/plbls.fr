@@ -260,6 +260,8 @@ const ECRANS: &[Ecran] = ecrans![
     "reglages-serveur-membres-clair", Clair, reglages_serveur_membres;
     "reglages-serveur-bannis-clair", Clair, reglages_serveur_bannis;
     "reglages-serveur-roles-clair", Clair, reglages_serveur_roles;
+    "reglages-serveur-roles-sombre", Sombre, reglages_serveur_roles;
+    "reglages-serveur-salon-permissions-clair", Clair, reglages_serveur_salon_permissions;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
     "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
@@ -1607,8 +1609,50 @@ fn reglages_serveur_bannis(f: &Principale) {
     stabiliser(f);
 }
 
+fn etat_des_roles() -> estompe_client::store::Etat {
+    let mut etat = commun::coquille::etat_avec_membres();
+    for role in etat
+        .details
+        .get_mut("s1")
+        .unwrap()
+        .roles
+        .as_mut()
+        .unwrap()
+        .iter_mut()
+    {
+        let permissions: &[&str] = match role.id.as_deref() {
+            Some("r0") => &[
+                "view_channel",
+                "send_messages",
+                "add_reactions",
+                "connect",
+                "speak",
+            ],
+            Some("rm") => &["manage_channels", "kick_members", "manage_messages"],
+            _ => &["attach_files", "create_polls", "share_screen"],
+        };
+        role.permissions = Some(permissions.iter().map(|p| p.to_string()).collect());
+    }
+    etat
+}
+
 fn reglages_serveur_roles(f: &Principale) {
-    reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "roles");
+    let pont = reglages_serveur(f, etat_des_roles(), "s1", "roles");
+    pont.choisir_role(f, "ra");
+    stabiliser(f);
+}
+
+fn reglages_serveur_salon_permissions(f: &Principale) {
+    let pont = reglages_serveur(f, etat_des_roles(), "s1", "salons");
+    pont.basculer_permissions_du_salon(f, "c1");
+    pont.poser_surcharges(
+        f,
+        "c1",
+        serde_json::from_value(serde_json::json!([
+            {"role_id": "r0", "allow": ["mention_everyone"], "deny": ["send_messages", "attach_files"]}
+        ]))
+        .unwrap(),
+    );
     stabiliser(f);
 }
 

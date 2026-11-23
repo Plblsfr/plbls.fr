@@ -832,6 +832,50 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel_reglages!(on_chercher_membres, |p, f, texte| p
         .chercher_membres_des_reglages(&f, &texte));
     rappel_reglages!(on_lever_ban, |p, f, i| p.lever_ban(&f, i));
+    let roles = f.global::<crate::DonneesRoles>();
+    macro_rules! rappel_roles {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            roles.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_roles!(on_choisir_role, |p, f, id| p.choisir_role(&f, &id));
+    rappel_roles!(on_creer_role, |p, f| p.creer_role(&f));
+    rappel_roles!(on_deplacer_role, |p, f, de, vers| p
+        .deplacer_role(&f, de, vers));
+    rappel_roles!(on_nom_modifie, |p, f, texte| p
+        .nom_de_role_modifie(&f, &texte));
+    rappel_roles!(on_couleur_choisie, |p, f, hex| p
+        .couleur_de_role_choisie(&f, &hex));
+    rappel_roles!(on_couleur_modifiee, |p, f, texte| p
+        .couleur_de_role_modifiee(&f, &texte));
+    rappel_roles!(on_icone_modifiee, |p, f, texte| p
+        .icone_de_role_modifiee(&f, &texte));
+    rappel_roles!(on_separe_change, |p, f, separe| p.separer_role(&f, separe));
+    rappel_roles!(on_basculer_permission, |p, f, cle, actif| p
+        .basculer_permission_du_role(&f, &cle, actif));
+    rappel_roles!(on_filtre_modifie, |p, f, texte| p
+        .filtrer_permissions_du_role(&f, &texte));
+    rappel_roles!(on_recherche_modifiee, |p, f, texte| p
+        .chercher_membre_du_role(&f, &texte));
+    rappel_roles!(on_ajouter_membre, |p, f, id| p
+        .ajouter_membre_au_role(&f, &id));
+    rappel_roles!(on_retirer_membre, |p, f, id| p
+        .retirer_membre_du_role(&f, &id));
+    rappel_roles!(on_enregistrer, |p, f| p.enregistrer_role(&f));
+    rappel_roles!(on_supprimer, |p, f| p.supprimer_role(&f));
+    rappel_roles!(on_creer_salon, |p, f| p.creer_salon_depuis_reglages(&f));
+    rappel_roles!(on_basculer_salon, |p, f, id| p
+        .basculer_permissions_du_salon(&f, &id));
+    rappel_roles!(on_menu_role_salon, |p, f, x, haut, bas| p
+        .menu_role_du_salon(&f, Ancre::Element { x, haut, bas }));
+    rappel_roles!(on_definir_permission_salon, |p, f, cle, rang| p
+        .definir_permission_du_salon(&f, &cle, rang));
     let parametres = f.global::<crate::DonneesParametres>();
     macro_rules! rappel_parametres {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

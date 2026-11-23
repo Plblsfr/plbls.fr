@@ -1,0 +1,914 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Etiquette, Avatar, Interrupteur } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+
+export struct RoleReglage {
+    id: string,
+    libelle: string,
+    a-couleur: bool,
+    couleur: color,
+    separe: bool,
+    deplacable: bool,
+    defaut: bool,
+}
+
+export struct NuanceRole {
+    hex: string,
+    couleur: color,
+}
+
+export struct PermissionRole {
+    cle: string,
+    libelle: string,
+    description: string,
+    allumee: bool,
+    modifiable: bool,
+}
+
+export struct GroupePermissionsRole {
+    titre: string,
+    permissions: [PermissionRole],
+}
+
+export struct MembreRole {
+    id: string,
+    nom: string,
+    initiales: string,
+    teinte: int,
+    gerable: bool,
+}
+
+export struct SalonReglage {
+    id: string,
+    nom: string,
+    icone: string,
+    groupe: string,
+    verrouille: bool,
+    limite: string,
+    ouvert: bool,
+}
+
+export struct PermissionSalon {
+    cle: string,
+    libelle: string,
+    etat: int,
+    modifiable: bool,
+}
+
+export global DonneesRoles {
+    in property <[RoleReglage]> roles;
+    in property <string> compte;
+    in property <string> choisi;
+    in property <bool> peut-creer: true;
+    in property <bool> modifiable: false;
+    in property <bool> defaut: false;
+    in-out property <string> nom;
+    in-out property <string> couleur-hex;
+    in property <bool> a-couleur: false;
+    in property <color> couleur;
+    in property <[NuanceRole]> palette;
+    in-out property <string> icone;
+    in property <bool> separe: false;
+    in-out property <string> filtre;
+    in property <[GroupePermissionsRole]> groupes;
+    in property <[MembreRole]> membres;
+    in-out property <string> recherche;
+    in property <[MembreRole]> proposes;
+    in property <string> erreur-brouillon;
+    in property <bool> modifie: false;
+    in property <bool> en-cours: false;
+    in property <[SalonReglage]> salons;
+    in property <string> role-salon;
+    in property <[PermissionSalon]> permissions-salon;
+    callback choisir-role(string);
+    callback creer-role();
+    callback deplacer-role(int, int);
+    callback nom-modifie(string);
+    callback couleur-choisie(string);
+    callback couleur-modifiee(string);
+    callback icone-modifiee(string);
+    callback separe-change(bool);
+    callback basculer-permission(string, bool);
+    callback filtre-modifie(string);
+    callback recherche-modifiee(string);
+    callback ajouter-membre(string);
+    callback retirer-membre(string);
+    callback enregistrer();
+    callback supprimer();
+    callback creer-salon();
+    callback basculer-salon(string);
+    callback menu-role-salon(length, length, length);
+    callback definir-permission-salon(string, int);
+}
+
+component TitreRole inherits Text {
+    color: Theme.encre;
+    font-family: Typo.titre;
+    font-size: Typo.titre-section;
+    font-weight: Typo.gras;
+    letter-spacing: -0.4px;
+}
+
+component NoteRole inherits Text {
+    color: Theme.gris;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Surtitre inherits Text {
+    color: Theme.gris;
+    font-size: Typo.minuscule;
+    font-weight: Typo.demi-gras;
+    letter-spacing: 0.6px;
+}
+
+component Legende inherits Text {
+    color: Theme.gris;
+    font-size: Typo.minuscule;
+    vertical-alignment: center;
+}
+
+component PastilleRole inherits Rectangle {
+    in property <bool> a-couleur;
+    in property <color> couleur;
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+    background: root.a-couleur ? root.couleur : Theme.trait-fort;
+}
+
+component LigneRole inherits Rectangle {
+    in property <RoleReglage> role;
+    in property <int> index;
+    in property <int> nombre;
+    in property <bool> actif;
+    in property <bool> precedent-deplacable;
+    property <bool> utilisable: Calques.ouverts == 0;
+    property <length> pas: 44px;
+    property <length> decalage: 0;
+    property <bool> glisse: false;
+    height: 42px;
+    z: root.glisse ? 10 : 0;
+    accessible-role: list-item;
+    accessible-label: "Rôle " + root.role.libelle;
+    accessible-item-selected: root.actif;
+    accessible-action-default => {
+        DonneesRoles.choisir-role(root.role.id);
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: root.role.deplacable ? (root.glisse ? MouseCursor.grabbing : MouseCursor.grab) : MouseCursor.pointer;
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.glisse = false;
+                root.decalage = 0;
+            }
+            if (e.kind == PointerEventKind.up && root.glisse) {
+                DonneesRoles.deplacer-role(root.index, root.index + Math.round(root.decalage / root.pas));
+                root.decalage = 0;
+            }
+        }
+        moved => {
+            if (self.pressed && root.role.deplacable) {
+                root.decalage = self.mouse-y - self.pressed-y;
+                if (Math.abs(root.decalage / 1px) > 4) {
+                    root.glisse = true;
+                }
+            }
+        }
+        clicked => {
+            if (!root.glisse) {
+                DonneesRoles.choisir-role(root.role.id);
+            }
+            root.glisse = false;
+        }
+    }
+    Rectangle {
+        y: root.glisse ? root.decalage : 0;
+        height: parent.height;
+        border-radius: Rayon.s;
+        background: root.glisse ? Theme.surface : root.actif ? Theme.surface : zone.has-hover ? Theme.papier-2 : transparent;
+        border-width: root.actif || root.glisse ? 1px : 0;
+        border-color: Theme.trait;
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 4px;
+            spacing: 10px;
+            VerticalLayout {
+                alignment: center;
+                PastilleRole {
+                    a-couleur: root.role.a-couleur;
+                    couleur: root.role.couleur;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.role.libelle;
+                color: root.role.defaut ? Theme.gris : root.actif ? Theme.encre : Theme.encre-2;
+                font-size: 14px;
+                font-weight: root.actif ? Typo.demi-gras : Typo.normal;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if root.role.separe: VerticalLayout {
+                alignment: center;
+                Etiquette {
+                    texte: "séparé";
+                }
+            }
+            if root.role.deplacable: VerticalLayout {
+                alignment: center;
+                Bouton {
+                    icone: "up";
+                    description: "Monter " + root.role.libelle;
+                    variante: VarianteBouton.fantome;
+                    actif: root.index > 0 && root.precedent-deplacable && !DonneesRoles.en-cours;
+                    clique => {
+                        DonneesRoles.deplacer-role(root.index, root.index - 1);
+                    }
+                }
+            }
+            if root.role.deplacable: VerticalLayout {
+                alignment: center;
+                Bouton {
+                    icone: "bas";
+                    description: "Descendre " + root.role.libelle;
+                    variante: VarianteBouton.fantome;
+                    actif: root.index < root.nombre - 1 && !DonneesRoles.en-cours;
+                    clique => {
+                        DonneesRoles.deplacer-role(root.index, root.index + 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Nuance inherits Rectangle {
+    in property <NuanceRole> nuance;
+    in property <bool> choisie;
+    in property <bool> actif;
+    width: 26px;
+    height: 26px;
+    border-radius: 13px;
+    background: root.nuance.couleur;
+    border-width: root.choisie ? 3px : 0;
+    border-color: Theme.encre;
+    opacity: root.actif ? 1 : 0.5;
+    accessible-role: button;
+    accessible-label: "Couleur " + root.nuance.hex;
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-action-default => {
+        if (root.actif) {
+            DonneesRoles.couleur-choisie(root.nuance.hex);
+        }
+    }
+    Anneau {
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        rayon: 16px;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.actif && Calques.ouverts == 0;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesRoles.couleur-choisie(root.nuance.hex);
+                return accept;
+            }
+            return reject;
+        }
+        TouchArea {
+            enabled: root.actif && Calques.ouverts == 0;
+            mouse-cursor: pointer;
+            clicked => {
+                DonneesRoles.couleur-choisie(root.nuance.hex);
+            }
+        }
+    }
+}
+
+component LigneMembreRole inherits Rectangle {
+    in property <MembreRole> membre;
+    in property <bool> ajout;
+    in property <bool> retirable;
+    height: 44px;
+    border-radius: Rayon.s;
+    background: zone.has-hover ? Theme.papier-2 : transparent;
+    accessible-role: list-item;
+    accessible-label: root.membre.nom;
+    zone := TouchArea { }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.membre.nom;
+                initiales: root.membre.initiales;
+                teinte: root.membre.teinte;
+                taille: 28px;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.membre.nom;
+            color: Theme.encre;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.ajout: VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Ajouter " + root.membre.nom;
+                icone: "plus";
+                variante: VarianteBouton.fantome;
+                actif: !DonneesRoles.en-cours;
+                clique => {
+                    DonneesRoles.ajouter-membre(root.membre.id);
+                }
+            }
+        }
+        if root.retirable: VerticalLayout {
+            alignment: center;
+            Bouton {
+                icone: "x";
+                description: "Retirer " + root.membre.nom + " du rôle";
+                variante: VarianteBouton.fantome;
+                actif: !DonneesRoles.en-cours;
+                clique => {
+                    DonneesRoles.retirer-membre(root.membre.id);
+                }
+            }
+        }
+    }
+}
+
+component EditeurRole inherits VerticalLayout {
+    spacing: Espace.e5;
+    if !DonneesRoles.modifiable: Rectangle {
+        border-radius: Rayon.s;
+        background: Theme.attention-fond;
+        border-width: 1px;
+        border-color: Theme.attention;
+        accessible-role: text;
+        accessible-label: "Ce rôle est au niveau du tien ou au-dessus : lecture seule.";
+        HorizontalLayout {
+            padding: Espace.e3;
+            spacing: Espace.e2;
+            Icone {
+                nom: "cadenas";
+                taille: 16px;
+                couleur: Theme.encre;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: "Ce rôle est au niveau du tien ou au-dessus : lecture seule.";
+                color: Theme.encre;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+        }
+    }
+    if !DonneesRoles.defaut: VerticalLayout {
+        spacing: Espace.e3;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Champ {
+                horizontal-stretch: 1;
+                etiquette: "Nom";
+                valeur <=> DonneesRoles.nom;
+                actif: DonneesRoles.modifiable;
+                modifie(texte) => {
+                    DonneesRoles.nom-modifie(texte);
+                }
+                valide => {
+                    DonneesRoles.enregistrer();
+                }
+            }
+            Champ {
+                width: 140px;
+                etiquette: "Icône (emoji)";
+                indice: "facultatif";
+                valeur <=> DonneesRoles.icone;
+                actif: DonneesRoles.modifiable;
+                modifie(texte) => {
+                    DonneesRoles.icone-modifiee(texte);
+                }
+            }
+        }
+        Text {
+            text: "Couleur";
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            accessible-role: groupbox;
+            accessible-label: "Couleur du rôle";
+            for n in DonneesRoles.palette: VerticalLayout {
+                alignment: center;
+                Nuance {
+                    nuance: n;
+                    choisie: n.hex == DonneesRoles.couleur-hex;
+                    actif: DonneesRoles.modifiable;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e3;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                PastilleRole {
+                    width: 26px;
+                    height: 26px;
+                    border-radius: 8px;
+                    a-couleur: DonneesRoles.a-couleur;
+                    couleur: DonneesRoles.couleur;
+                }
+            }
+            Champ {
+                width: 140px;
+                etiquette: "";
+                indice: "#rrggbb";
+                valeur <=> DonneesRoles.couleur-hex;
+                actif: DonneesRoles.modifiable;
+                modifie(texte) => {
+                    DonneesRoles.couleur-modifiee(texte);
+                }
+            }
+            if DonneesRoles.couleur-hex != "": VerticalLayout {
+                alignment: center;
+                Bouton {
+                    texte: "Aucune";
+                    variante: VarianteBouton.fantome;
+                    actif: DonneesRoles.modifiable;
+                    clique => {
+                        DonneesRoles.couleur-choisie("");
+                    }
+                }
+            }
+        }
+        Interrupteur {
+            texte: "Afficher séparément dans la liste des membres";
+            allume: DonneesRoles.separe;
+            actif: DonneesRoles.modifiable;
+            bascule(etat) => {
+                DonneesRoles.separe-change(etat);
+            }
+        }
+    }
+    if DonneesRoles.defaut: NoteRole {
+        text: "Appliqué à tous les membres, il ne se supprime pas. Les rôles s'ajoutent à ces permissions.";
+    }
+    if !DonneesRoles.defaut: VerticalLayout {
+        spacing: Espace.e2;
+        accessible-role: groupbox;
+        accessible-label: "Membres du rôle";
+        Surtitre {
+            text: "MEMBRES · " + DonneesRoles.membres.length;
+        }
+        for m in DonneesRoles.membres: LigneMembreRole {
+            membre: m;
+            ajout: false;
+            retirable: m.gerable && DonneesRoles.modifiable;
+        }
+        if DonneesRoles.membres.length == 0: NoteRole {
+            text: "Personne n'a ce rôle.";
+        }
+        if DonneesRoles.modifiable: Champ {
+            etiquette: "";
+            indice: "Ajouter un membre…";
+            valeur <=> DonneesRoles.recherche;
+            modifie(texte) => {
+                DonneesRoles.recherche-modifiee(texte);
+            }
+        }
+        for m in DonneesRoles.proposes: LigneMembreRole {
+            membre: m;
+            ajout: true;
+        }
+    }
+    VerticalLayout {
+        spacing: Espace.e3;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Surtitre {
+                horizontal-stretch: 1;
+                text: "PERMISSIONS";
+                vertical-alignment: center;
+            }
+            Champ {
+                width: 220px;
+                etiquette: "";
+                indice: "Filtrer les permissions";
+                valeur <=> DonneesRoles.filtre;
+                modifie(texte) => {
+                    DonneesRoles.filtre-modifie(texte);
+                }
+            }
+        }
+        for g in DonneesRoles.groupes: VerticalLayout {
+            spacing: Espace.e1;
+            Text {
+                text: g.titre;
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 15px;
+                font-weight: Typo.gras;
+            }
+            for p in g.permissions: Rectangle {
+                accessible-role: groupbox;
+                accessible-label: p.libelle;
+                VerticalLayout {
+                    padding-top: Espace.e2;
+                    padding-bottom: Espace.e2;
+                    spacing: 2px;
+                    Interrupteur {
+                        texte: p.libelle;
+                        allume: p.allumee;
+                        actif: p.modifiable && DonneesRoles.modifiable;
+                        bascule(etat) => {
+                            DonneesRoles.basculer-permission(p.cle, etat);
+                        }
+                    }
+                    NoteRole {
+                        text: p.description;
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.trait;
+                }
+            }
+        }
+        if DonneesRoles.groupes.length == 0: NoteRole {
+            text: "Aucune permission ne correspond.";
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Icone {
+                nom: "info";
+                taille: 14px;
+                couleur: Theme.gris;
+            }
+            NoteRole {
+                horizontal-stretch: 1;
+                text: "Tu ne peux accorder ou retirer que des permissions que tu as toi-même.";
+            }
+        }
+    }
+}
+
+export component BarreRole inherits Rectangle {
+    height: 64px;
+    background: Theme.surface;
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.trait;
+    }
+    HorizontalLayout {
+        padding-left: 40px;
+        padding-right: 40px;
+        spacing: Espace.e2;
+        Text {
+            horizontal-stretch: 1;
+            text: DonneesRoles.erreur-brouillon;
+            color: Theme.danger;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+            accessible-role: text;
+        }
+        if !DonneesRoles.defaut: VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Supprimer le rôle";
+                icone: "corbeille";
+                variante: VarianteBouton.danger;
+                actif: !DonneesRoles.en-cours;
+                clique => {
+                    DonneesRoles.supprimer();
+                }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Enregistrer";
+                variante: VarianteBouton.primaire;
+                actif: DonneesRoles.modifie && DonneesRoles.erreur-brouillon == "";
+                en-cours: DonneesRoles.en-cours;
+                clique => {
+                    DonneesRoles.enregistrer();
+                }
+            }
+        }
+    }
+}
+
+export component OngletRoles inherits VerticalLayout {
+    spacing: Espace.e4;
+    VerticalLayout {
+        spacing: 2px;
+        HorizontalLayout {
+            padding-bottom: Espace.e2;
+            spacing: Espace.e2;
+            Surtitre {
+                horizontal-stretch: 1;
+                text: DonneesRoles.compte;
+                vertical-alignment: center;
+            }
+            if DonneesRoles.peut-creer: Bouton {
+                texte: "Nouveau rôle";
+                icone: "plus";
+                actif: !DonneesRoles.en-cours;
+                clique => {
+                    DonneesRoles.creer-role();
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 2px;
+            accessible-role: list;
+            accessible-label: "Rôles du serveur";
+            for r[i] in DonneesRoles.roles: LigneRole {
+                role: r;
+                index: i;
+                nombre: DonneesRoles.roles.length - 1;
+                actif: r.id == DonneesRoles.choisi;
+                precedent-deplacable: i > 0 && DonneesRoles.roles[i - 1].deplacable;
+            }
+        }
+        NoteRole {
+            text: "Les rôles du haut l'emportent. On ne gère que les rôles situés sous le sien. Glisser-déposer ou flèches pour réordonner.";
+        }
+    }
+    Rectangle {
+        height: 1px;
+        background: Theme.trait;
+    }
+    if DonneesRoles.choisi != "": EditeurRole { }
+    if DonneesRoles.choisi == "": VerticalLayout {
+        padding-top: Espace.e5;
+        spacing: Espace.e3;
+        HorizontalLayout {
+            alignment: center;
+            Icone {
+                nom: "couronne";
+                taille: 28px;
+                couleur: Theme.gris;
+            }
+        }
+        NoteRole {
+            text: "Choisis un rôle pour le modifier, ou crées-en un.";
+            horizontal-alignment: center;
+        }
+    }
+}
+
+component TroisEtats inherits HorizontalLayout {
+    in property <PermissionSalon> permission;
+    spacing: 0;
+    accessible-role: groupbox;
+    accessible-label: root.permission.libelle + " pour ce rôle";
+    for libelle[i] in ["Hériter", "Autoriser", "Refuser"]: Rectangle {
+        property <bool> coche: root.permission.etat == i;
+        property <bool> utilisable: root.permission.modifiable && Calques.ouverts == 0;
+        width: 34px;
+        height: 28px;
+        border-radius: Rayon.xs;
+        background: !self.coche ? transparent : i == 1 ? Theme.ok-fond : i == 2 ? Theme.danger-fond : Theme.surface;
+        opacity: self.utilisable ? 1 : 0.5;
+        accessible-role: radio-button;
+        accessible-label: libelle;
+        accessible-checkable: true;
+        accessible-checked: self.coche;
+        accessible-enabled: self.utilisable;
+        accessible-action-default => {
+            if (self.utilisable) {
+                DonneesRoles.definir-permission-salon(root.permission.cle, i);
+            }
+        }
+        if i == 0: Rectangle {
+            width: 5px;
+            height: 5px;
+            border-radius: 2.5px;
+            background: parent.coche ? Theme.encre : Theme.gris;
+        }
+        if i > 0: Icone {
+            nom: i == 1 ? "ok" : "x";
+            taille: 14px;
+            couleur: !parent.coche ? Theme.gris : i == 1 ? Theme.ok : Theme.danger;
+        }
+        TouchArea {
+            enabled: parent.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                DonneesRoles.definir-permission-salon(root.permission.cle, i);
+            }
+        }
+    }
+}
+
+component PermissionsSalon inherits Rectangle {
+    border-radius: Rayon.m;
+    background: Theme.papier-2;
+    accessible-role: groupbox;
+    accessible-label: "Permissions du salon";
+    VerticalLayout {
+        padding: Espace.e4;
+        spacing: 2px;
+        HorizontalLayout {
+            padding-bottom: Espace.e2;
+            spacing: Espace.e3;
+            Text {
+                text: "Rôle";
+                color: Theme.encre-2;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+            }
+            Bouton {
+                texte: DonneesRoles.role-salon;
+                icone: "couronne";
+                description: "Choisir le rôle : " + DonneesRoles.role-salon;
+                clique => {
+                    DonneesRoles.menu-role-salon(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            HorizontalLayout {
+                spacing: 4px;
+                horizontal-stretch: 0;
+                accessible-role: text;
+                accessible-label: "hériter, autoriser, refuser";
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 5px;
+                        height: 5px;
+                        border-radius: 2.5px;
+                        background: Theme.gris;
+                    }
+                }
+                Legende {
+                    text: "hériter";
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "ok";
+                        taille: 13px;
+                        couleur: Theme.ok;
+                    }
+                }
+                Legende {
+                    text: "autoriser";
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "x";
+                        taille: 13px;
+                        couleur: Theme.danger;
+                    }
+                }
+                Legende {
+                    text: "refuser";
+                }
+            }
+        }
+        for p in DonneesRoles.permissions-salon: Rectangle {
+            min-height: 44px;
+            HorizontalLayout {
+                spacing: Espace.e3;
+                Text {
+                    horizontal-stretch: 1;
+                    text: p.libelle;
+                    color: Theme.encre;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        border-radius: Rayon.s;
+                        background: Theme.papier-3;
+                        HorizontalLayout {
+                            padding: 2px;
+                            TroisEtats {
+                                permission: p;
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.trait;
+            }
+        }
+        NoteRole {
+            text: "« Hériter » applique les permissions du rôle sur le serveur. Pour réserver un salon : refuse « Voir le salon » à « @tout le monde », puis autorise-le au rôle voulu.";
+        }
+    }
+}
+
+export component OngletSalons inherits VerticalLayout {
+    spacing: Espace.e2;
+    HorizontalLayout {
+        spacing: Espace.e3;
+        TitreRole {
+            horizontal-stretch: 1;
+            text: "Salons";
+            vertical-alignment: center;
+        }
+        Bouton {
+            texte: "Créer un salon";
+            icone: "plus";
+            clique => {
+                DonneesRoles.creer-salon();
+            }
+        }
+    }
+    for s in DonneesRoles.salons: VerticalLayout {
+        spacing: 2px;
+        if s.groupe != "": Surtitre {
+            text: s.groupe;
+            height: 28px;
+            vertical-alignment: bottom;
+        }
+        Rectangle {
+            height: 44px;
+            border-radius: Rayon.s;
+            background: s.ouvert ? Theme.surface : zone-salon.has-hover ? Theme.papier-2 : transparent;
+            border-width: s.ouvert ? 1px : 0;
+            border-color: Theme.trait;
+            accessible-role: list-item;
+            accessible-label: s.nom;
+            zone-salon := TouchArea { }
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e2;
+                spacing: Espace.e3;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: s.icone;
+                        taille: 18px;
+                        couleur: Theme.gris;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: s.nom;
+                    color: Theme.encre;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                if s.verrouille: VerticalLayout {
+                    alignment: center;
+                    Etiquette {
+                        texte: "verrouillé";
+                    }
+                }
+                if s.limite != "": Text {
+                    text: s.limite;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Permissions";
+                        icone: "cadenas";
+                        description: "Permissions de " + s.nom;
+                        variante: s.ouvert ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                        clique => {
+                            DonneesRoles.basculer-salon(s.id);
+                        }
+                    }
+                }
+            }
+        }
+        if s.ouvert: PermissionsSalon { }
+    }
+    NoteRole {
+        text: "L'ordre, le nom et la suppression des salons se règlent encore depuis l'app web.";
+    }
+}

@@ -896,6 +896,8 @@ pub mod coquille {
         pub emojis: Mutex<Vec<Value>>,
         pub invitations: Mutex<Vec<Value>>,
         pub bannis: Mutex<Vec<Value>>,
+        pub detail_s1: Mutex<Option<Value>>,
+        pub surcharges: Mutex<Vec<Value>>,
         envoyes: AtomicUsize,
     }
 
@@ -959,6 +961,8 @@ pub mod coquille {
                 emojis: Mutex::new(Vec::new()),
                 invitations: Mutex::new(Vec::new()),
                 bannis: Mutex::new(Vec::new()),
+                detail_s1: Mutex::new(None),
+                surcharges: Mutex::new(Vec::new()),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -1306,6 +1310,10 @@ pub mod coquille {
                 noter();
                 return Some(reponse);
             }
+            if let Some(reponse) = self.repondre_roles(methode, chemin, &recu) {
+                noter();
+                return Some(reponse);
+            }
             match (methode, chemin) {
                 ("POST", "/servers") => {
                     noter();
@@ -1359,6 +1367,95 @@ pub mod coquille {
                         salon["user_limit"] = limite.clone();
                     }
                     Some((201, salon.to_string()))
+                }
+                _ => None,
+            }
+        }
+
+        fn repondre_roles(
+            &self,
+            methode: &str,
+            chemin: &str,
+            recu: &Value,
+        ) -> Option<(u16, String)> {
+            let mut garde = self.detail_s1.lock().unwrap();
+            let detail = garde.as_mut()?;
+            let vide = || Some((204, String::new()));
+            let roles = detail["roles"].as_array_mut()?;
+            if let Some(suite) = chemin.strip_prefix("/servers/s1/channels/") {
+                let (salon, reste) = suite.split_once("/overrides")?;
+                let mut surcharges = self.surcharges.lock().unwrap();
+                return match (methode, reste.strip_prefix('/')) {
+                    ("GET", None) => {
+                        let liste: Vec<Value> = surcharges
+                            .iter()
+                            .filter(|o| o["channel_id"] == salon)
+                            .map(|o| json!({"role_id": o["role_id"], "allow": o["allow"], "deny": o["deny"]}))
+                            .collect();
+                        Some((200, Value::Array(liste).to_string()))
+                    }
+                    ("PUT", Some(role)) => {
+                        surcharges.retain(|o| !(o["channel_id"] == salon && o["role_id"] == role));
+                        let vides = |v: &Value| v.as_array().is_none_or(|l| l.is_empty());
+                        if !vides(&recu["allow"]) || !vides(&recu["deny"]) {
+                            surcharges.push(json!({"channel_id": salon, "role_id": role, "allow": recu["allow"], "deny": recu["deny"]}));
+                        }
+                        vide()
+                    }
+                    _ => None,
+                };
+            }
+            match (methode, chemin) {
+                ("GET", "/servers/s1") => Some((200, detail.to_string())),
+                ("POST", "/servers/s1/roles") => {
+                    for r in roles.iter_mut() {
+                        if r["is_default"] != true {
+                            r["position"] = json!(r["position"].as_i64().unwrap_or(0) + 1);
+                        }
+                    }
+                    let role = json!({"id": format!("rn{}", roles.len()), "name": recu["name"], "color": recu["color"], "icon": recu["icon"], "hoist": recu["hoist"], "permissions": recu["permissions"], "position": 1, "is_default": false});
+                    roles.push(role.clone());
+                    Some((201, role.to_string()))
+                }
+                ("PUT", "/servers/s1/roles-order") => {
+                    let ids: Vec<Value> = recu["ids"].as_array().cloned().unwrap_or_default();
+                    let n = ids.len() as i64;
+                    for r in roles.iter_mut() {
+                        if let Some(i) = ids.iter().position(|id| *id == r["id"]) {
+                            r["position"] = json!(n - i as i64);
+                        }
+                    }
+                    vide()
+                }
+                (_, c) if c.starts_with("/servers/s1/roles/") => {
+                    let id = &c["/servers/s1/roles/".len()..];
+                    if methode == "DELETE" {
+                        roles.retain(|r| r["id"] != id);
+                        for m in detail["members"].as_array_mut()?.iter_mut() {
+                            if let Some(l) = m["roles"].as_array_mut() {
+                                l.retain(|r| r != id);
+                            }
+                        }
+                        return vide();
+                    }
+                    let role = roles.iter_mut().find(|r| r["id"] == id)?;
+                    for champ in ["name", "color", "icon", "hoist", "permissions"] {
+                        role[champ] = recu[champ].clone();
+                    }
+                    Some((200, role.to_string()))
+                }
+                (_, c) if c.starts_with("/servers/s1/members/") => {
+                    let (membre, role) = c["/servers/s1/members/".len()..].split_once("/roles/")?;
+                    let m = detail["members"]
+                        .as_array_mut()?
+                        .iter_mut()
+                        .find(|m| m["id"] == membre)?;
+                    let liste = m["roles"].as_array_mut()?;
+                    liste.retain(|r| r != role);
+                    if methode == "PUT" {
+                        liste.push(json!(role));
+                    }
+                    vide()
                 }
                 _ => None,
             }

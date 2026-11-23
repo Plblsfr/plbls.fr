@@ -13,12 +13,13 @@ use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, Channel, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement,
     GetMeReponse, GetServersIdBansReponseElement, GetServersIdReponse, GetServersIdVoiceReponse,
-    GetUnreadReponse, LinkPreview, Mention, Message, MessagePage, Name50, NotifySettings,
+    GetUnreadReponse, LinkPreview, Mention, Message, MessagePage, Name50, NotifySettings, Override,
     PatchMessagesIdRequete, PatchServersIdEmojisEidRequete, Person, PostActivateRequete,
     PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
     PostNotificationsReadRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
     PostVoiceCidTokenReponse, PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete,
-    PutMessagesIdVoteRequete, Server, ServerInvite, DM,
+    PutMessagesIdVoteRequete, PutServersIdChannelsCidOverridesRidRequete,
+    PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -484,6 +485,107 @@ impl Client {
             encoder_composant(serveur),
             encoder_composant(emoji)
         ))
+        .await
+    }
+
+    pub async fn creer_role(&self, serveur: &str, role: &RoleInput) -> Result<Role, ErreurApi> {
+        self.post(
+            &format!("/servers/{}/roles", encoder_composant(serveur)),
+            role,
+        )
+        .await
+    }
+
+    pub async fn modifier_role(
+        &self,
+        serveur: &str,
+        id: &str,
+        role: &RoleInput,
+    ) -> Result<Role, ErreurApi> {
+        self.patch(
+            &format!(
+                "/servers/{}/roles/{}",
+                encoder_composant(serveur),
+                encoder_composant(id)
+            ),
+            role,
+        )
+        .await
+    }
+
+    pub async fn supprimer_role(&self, serveur: &str, id: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/roles/{}",
+            encoder_composant(serveur),
+            encoder_composant(id)
+        ))
+        .await
+    }
+
+    pub async fn ordonner_roles(&self, serveur: &str, ids: &[String]) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdRolesOrderRequete { ids: ids.to_vec() })?;
+        self.envoyer(
+            Method::PUT,
+            &format!("/servers/{}/roles-order", encoder_composant(serveur)),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn attribuer_role(
+        &self,
+        serveur: &str,
+        membre: &str,
+        role: &str,
+        attribue: bool,
+    ) -> Result<(), ErreurApi> {
+        let chemin = format!(
+            "/servers/{}/members/{}/roles/{}",
+            encoder_composant(serveur),
+            encoder_composant(membre),
+            encoder_composant(role)
+        );
+        let methode = if attribue {
+            Method::PUT
+        } else {
+            Method::DELETE
+        };
+        self.envoyer(methode, &chemin, &Corps::Aucun).await
+    }
+
+    pub async fn surcharges_du_salon(
+        &self,
+        serveur: &str,
+        salon: &str,
+    ) -> Result<Vec<Override>, ErreurApi> {
+        self.get(&format!(
+            "/servers/{}/channels/{}/overrides",
+            encoder_composant(serveur),
+            encoder_composant(salon)
+        ))
+        .await
+    }
+
+    pub async fn definir_surcharge(
+        &self,
+        serveur: &str,
+        salon: &str,
+        surcharge: &Override,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdChannelsCidOverridesRidRequete {
+            allow: Some(surcharge.allow.clone().unwrap_or_default()),
+            deny: Some(surcharge.deny.clone().unwrap_or_default()),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/servers/{}/channels/{}/overrides/{}",
+                encoder_composant(serveur),
+                encoder_composant(salon),
+                encoder_composant(surcharge.role_id.as_deref().unwrap_or_default())
+            ),
+            &corps,
+        )
         .await
     }
 
@@ -981,6 +1083,87 @@ mod tests {
         assert_eq!(r[4].entete("content-type"), Some("image/png"));
         assert_eq!(r[4].corps, [1, 2, 3]);
         assert_eq!(r[5].json(), json!({"name": "chat"}));
+    }
+
+    #[tokio::test]
+    async fn gere_les_roles_et_les_surcharges() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(
+                201,
+                json!({"id": "r1", "name": "Nouveau rôle", "position": 1}),
+            ),
+            Reponse::json(200, json!({"id": "r1", "name": "DJ", "position": 1})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(
+                200,
+                json!([{"role_id": "r0", "allow": [], "deny": ["speak"]}]),
+            ),
+            Reponse::vide(204),
+        ])
+        .await;
+        let c = serveur.client();
+        let entree = RoleInput {
+            name: "DJ".into(),
+            color: Some("#aabbcc".into()),
+            icon: Some(String::new()),
+            hoist: Some(true),
+            permissions: Some(vec!["speak".into()]),
+        };
+        assert_eq!(
+            c.creer_role("s1", &entree).await.unwrap().id.as_deref(),
+            Some("r1")
+        );
+        assert_eq!(
+            c.modifier_role("s1", "r1", &entree)
+                .await
+                .unwrap()
+                .name
+                .as_deref(),
+            Some("DJ")
+        );
+        c.ordonner_roles("s1", &["r2".into(), "r1".into()])
+            .await
+            .unwrap();
+        c.attribuer_role("s1", "u2", "r1", true).await.unwrap();
+        c.attribuer_role("s1", "u2", "r1", false).await.unwrap();
+        c.supprimer_role("s1", "r1").await.unwrap();
+        let surcharges = c.surcharges_du_salon("s1", "c1").await.unwrap();
+        assert_eq!(surcharges[0].deny, Some(vec!["speak".to_string()]));
+        c.definir_surcharge(
+            "s1",
+            "c1",
+            &Override {
+                role_id: Some("r0".into()),
+                allow: None,
+                deny: Some(vec!["video".into()]),
+            },
+        )
+        .await
+        .unwrap();
+        let r = serveur.requetes();
+        let lignes: Vec<(&str, &str)> = r.iter().map(|x| x.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/servers/s1/roles", "POST"),
+                ("/servers/s1/roles/r1", "PATCH"),
+                ("/servers/s1/roles-order", "PUT"),
+                ("/servers/s1/members/u2/roles/r1", "PUT"),
+                ("/servers/s1/members/u2/roles/r1", "DELETE"),
+                ("/servers/s1/roles/r1", "DELETE"),
+                ("/servers/s1/channels/c1/overrides", "GET"),
+                ("/servers/s1/channels/c1/overrides/r0", "PUT"),
+            ]
+        );
+        assert_eq!(
+            r[0].json(),
+            json!({"name": "DJ", "color": "#aabbcc", "icon": "", "hoist": true, "permissions": ["speak"]})
+        );
+        assert_eq!(r[2].json(), json!({"ids": ["r2", "r1"]}));
+        assert_eq!(r[7].json(), json!({"allow": [], "deny": ["video"]}));
     }
 
     #[tokio::test]

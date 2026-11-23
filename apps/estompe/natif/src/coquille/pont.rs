@@ -50,10 +50,12 @@ mod parametres;
 mod profil;
 mod recherche;
 mod reglages;
+mod roles;
 
 pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
 pub use nouveau_prive::EtatNouveauPrive;
 pub use reglages::{emoji_depuis, EmojiEnAttente, EtatReglages};
+pub use roles::EtatRoles;
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())

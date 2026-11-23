@@ -1,6 +1,7 @@
 import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton, Champ, Defilement, Etiquette, Avatar, Coins } from "../composants.slint";
 import { Anneau } from "../composants/focus.slint";
+import { OngletRoles, OngletSalons, BarreRole, DonneesRoles } from "reglages-roles.slint";
 
 export struct OngletServeur {
     id: string,
@@ -1192,17 +1193,14 @@ export component PageReglagesServeur inherits Rectangle {
                         if DonneesReglagesServeur.onglet == "emojis": OngletEmojis { }
                         if DonneesReglagesServeur.onglet == "membres": OngletMembres { }
                         if DonneesReglagesServeur.onglet == "bannis": OngletBannis { }
-                        if DonneesReglagesServeur.onglet == "salons": OngletBientot {
-                            texte: "L'ordre, le nom, la suppression et les permissions des salons arrivent bientôt dans l'app native. En attendant, « Créer un salon » reste dans le panneau.";
-                        }
-                        if DonneesReglagesServeur.onglet == "roles": OngletBientot {
-                            texte: "La gestion des rôles et des permissions arrive bientôt dans l'app native.";
-                        }
+                        if DonneesReglagesServeur.onglet == "salons": OngletSalons { }
+                        if DonneesReglagesServeur.onglet == "roles": OngletRoles { }
                         if DonneesReglagesServeur.onglet == "journal": OngletBientot {
                             texte: "Le journal d'administration arrive bientôt dans l'app native.";
                         }
                     }
                 }
+                if DonneesReglagesServeur.onglet == "roles" && DonneesRoles.choisi != "" && DonneesRoles.modifiable: BarreRole { }
             }
         }
     }

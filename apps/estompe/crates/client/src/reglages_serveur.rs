@@ -94,7 +94,7 @@ impl Onglet {
     }
 
     pub fn bientot(self) -> bool {
-        matches!(self, Self::Salons | Self::Roles | Self::Journal)
+        matches!(self, Self::Journal)
     }
 
     pub fn depuis_id(id: &str) -> Option<Self> {

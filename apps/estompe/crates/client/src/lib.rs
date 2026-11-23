@@ -19,6 +19,7 @@ pub mod derniere_vue;
 pub mod emoji;
 pub mod fichiers;
 pub mod format;
+pub mod gestion_roles;
 pub mod gifs;
 pub mod jeux;
 pub mod lru;

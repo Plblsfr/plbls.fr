@@ -61,6 +61,7 @@ pub struct EtatReglages {
     pub emojis: Vec<EmojiPersonnalise>,
     pub recherche: String,
     pub bannis: Vec<GetServersIdBansReponseElement>,
+    pub roles: super::roles::EtatRoles,
     images: HashSet<String>,
 }
 
@@ -83,6 +84,7 @@ impl EtatReglages {
             emojis: Vec::new(),
             recherche: String::new(),
             bannis: Vec::new(),
+            roles: super::roles::EtatRoles::default(),
             images: HashSet::new(),
         }
     }
@@ -115,11 +117,14 @@ impl Pont {
         self.verrou().reglages.clone()
     }
 
-    fn modifier_reglages<R>(&self, modification: impl FnOnce(&mut EtatReglages) -> R) -> Option<R> {
+    pub(super) fn modifier_reglages<R>(
+        &self,
+        modification: impl FnOnce(&mut EtatReglages) -> R,
+    ) -> Option<R> {
         self.verrou().reglages.as_mut().map(modification)
     }
 
-    fn serveur_des_reglages(&self) -> Option<String> {
+    pub(super) fn serveur_des_reglages(&self) -> Option<String> {
         self.verrou().reglages.as_ref().map(|e| e.serveur.clone())
     }
 
@@ -144,6 +149,9 @@ impl Pont {
         self.verrou().reglages = Some(EtatReglages::nouveau(&serveur, &nom, Onglet::VueEnsemble));
         let g = f.global::<DonneesReglagesServeur>();
         g.set_recherche(SharedString::new());
+        let roles = f.global::<crate::DonneesRoles>();
+        roles.set_filtre(SharedString::new());
+        roles.set_recherche(SharedString::new());
         g.set_nom(nom.as_str().into());
         g.set_nom_emoji(SharedString::new());
         g.set_expirations(modele(
@@ -339,7 +347,7 @@ impl Pont {
         self.projeter_reglages(f);
     }
 
-    fn executer<T: Send + 'static>(
+    pub(super) fn executer<T: Send + 'static>(
         &self,
         f: &Principale,
         tache: impl Future<Output = Result<T, ErreurApi>> + Send + 'static,
@@ -866,6 +874,12 @@ impl Pont {
         {
             self.charger_emojis_des_reglages(f);
         }
+        if changements
+            .iter()
+            .any(|c| matches!(c, Changement::Roles { serveur: s } if *s == serveur))
+        {
+            self.charger_surcharges(f);
+        }
         self.projeter_reglages(f);
     }
 
@@ -1061,6 +1075,7 @@ impl Pont {
                 x.images.insert(id.clone());
             }
         });
+        self.projeter_roles(f);
         for (_, cle) in a_charger {
             let medias = medias.clone();
             let pont = self.clone();

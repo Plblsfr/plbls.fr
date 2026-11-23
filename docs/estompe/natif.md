@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur (voir [Réglages d'un serveur](#réglages-dun-serveur)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur, ses rôles et les permissions des salons (voir [Réglages d'un serveur](#réglages-dun-serveur) et [Rôles et permissions](#rôles-et-permissions)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -288,8 +288,8 @@ membres, libellés des invitations et des bans), appels par `Client` (`renommer_
 - Ouverture : bouton « Paramètres du serveur » de l'en-tête du panneau d'un serveur ou entrée du menu d'un serveur du rail. Comme les paramètres, toute navigation
   la referme, la marge est masquée tant qu'elle est ouverte ; Échap ou « Fermer » rendent le focus à la coquille. Flèches, Origine et Fin passent d'un onglet à l'autre.
 - Onglets selon les droits du serveur (`droits`, suivis en temps réel) : « Vue d'ensemble », « Emojis » et « Membres » pour tous, « Invitations » avec `create_invites`,
-  « Bannis » avec `ban_members`, « Salons » (`manage_channels`), « Rôles » (`manage_roles`) et « Journal » (`view_audit_log`) marqués « bientôt » en attendant les
-  rôles (#365) et la modération (#366). L'en-tête dit « Tu es propriétaire », « Tu gères ce serveur » ou « Tu es membre ».
+  « Bannis » avec `ban_members`, « Salons » avec `manage_channels` et « Rôles » avec `manage_roles` (voir [Rôles et permissions](#rôles-et-permissions)), « Journal »
+  (`view_audit_log`) marqué « bientôt » en attendant la modération (#366). L'en-tête dit « Tu es propriétaire », « Tu gères ce serveur » ou « Tu es membre ».
 - Vue d'ensemble : nom (50 caractères, `manage_server`) avec compteur, icône (`manage_server` ou administrateur d'Estompe) choisie puis recadrée par le recadrage du profil
   (`PUT /servers/{id}/icon`) ou supprimée (`DELETE /servers/{id}/icon`), aperçu dans la liste des serveurs ; rien ne part avant « Enregistrer » de la barre
   « Modifications non enregistrées » (« Annuler » revient au serveur). Le créateur a « Supprimer le serveur… » : confirmation qui n'est validable qu'avec le nom exact
@@ -303,8 +303,32 @@ membres, libellés des invitations et des bans), appels par `Client` (`renommer_
 - Membres : liste du serveur, créateur en tête puis par nom, rôle le plus haut en couleur, date d'arrivée, recherche sans accents ni casse sur le nom affiché et le
   pseudo ; 200 lignes au plus (le compteur invite à affiner). Le front n'a pas cet onglet ; la modération d'un membre arrive avec #366.
 - Bannis : `GET /servers/{id}/bans`, auteur, date, durée (« définitif » ou « jusqu'au … »), raison, « Lever le ban » (`DELETE /servers/{id}/bans/{uid}`).
-- Écarts : pas de description du serveur (ni l'API ni le front n'en ont) ; le transfert de propriété, l'ordre, le renommage, la suppression et les permissions des salons,
-  les rôles et le journal restent à faire. Les messages de réussite et d'erreur s'affichent en tête de la page (pas de toast dans l'app native).
+- Écarts : pas de description du serveur (ni l'API ni le front n'en ont) ; le transfert de propriété, l'ordre, le renommage et la suppression des salons et le journal
+  restent à faire. Les messages de réussite et d'erreur s'affichent en tête de la page (pas de toast dans l'app native).
+
+### Rôles et permissions
+
+Onglets « Rôles » et « Salons » des réglages d'un serveur, comme `RolesSettings.svelte` et `ChannelPerms.svelte` : `ui/coquille/reglages-roles.slint` (global
+`DonneesRoles`), actions dans `src/coquille/pont/roles.rs` (état `EtatRoles` dans celui de la page), règles sans interface dans `estompe_client::gestion_roles`
+(`Contexte` : rang, rôle modifiable ou déplaçable, permission accordable, membre gérable, nouvel ordre, permissions perdues ; `BrouillonRole` ; trois états d'une
+surcharge), appels par `Client` (`creer_role`, `modifier_role`, `supprimer_role`, `ordonner_roles`, `attribuer_role`, `surcharges_du_salon`, `definir_surcharge`).
+Après chaque modification, le détail du serveur est rechargé (`Store::recharger_serveur`) sans attendre `roles.updated`, qui fait de même chez les autres membres.
+
+- Liste : rôles du plus haut au plus bas puis « @tout le monde », pastille de couleur, icône, « séparé » ; « Nouveau rôle » (50 rôles au plus) crée un rôle placé juste
+  au-dessus de « @tout le monde » et l'ouvre. Ordre par glisser-déposer d'une ligne ou par les flèches « Monter » et « Descendre » ; seuls les rôles sous le sien bougent
+  et aucun ne passe au-dessus d'un rôle figé (`PUT /servers/{id}/roles-order`).
+- Éditeur : nom (30 caractères), icône (8 caractères), couleur (palette, saisie `#rrggbb` ou « Aucune »), « Afficher séparément dans la liste des membres »,
+  membres du rôle (retrait, ajout par une recherche sans accents qui propose six membres gérables), puis les 25 permissions groupées comme le front avec un filtre sans
+  accents ; seules celles qu'on a soi-même sont modifiables. « @tout le monde » n'a que ses permissions. La barre du bas porte « Supprimer le rôle » (confirmé) et
+  « Enregistrer », actif dès qu'une valeur diffère et que le brouillon est valide (message sinon).
+- Garde-fous : un rôle au niveau du sien ou au-dessus est en lecture seule (le créateur gère tout) ; enregistrer un rôle qu'on a (ou « @tout le monde »), le supprimer
+  ou se le retirer, ou une surcharge de salon, qui feraient perdre une de ses propres permissions demandent une confirmation qui les nomme (le front ne le fait pas).
+- Salons : liste groupée par type comme le front (texte, esquisses, vocaux, cinéma), « verrouillé », limite de participants, « Créer un salon » ; « Permissions »
+  déplie sous le salon le choix du rôle (menu) et les permissions de son type en trois états (hériter, autoriser, refuser), modifiables seulement pour un rôle sous le
+  sien et une permission qu'on a (`PUT /servers/{id}/channels/{cid}/overrides/{rid}`), rechargées à chaque `roles.updated`.
+- Écarts : pas de surcharge par membre (ni route dans l'API, ni écran dans le front : `channel_member_overrides` n'est rempli qu'à la création d'un salon privé) ;
+  la liste est au-dessus de l'éditeur (la zone de contenu est trop étroite pour deux colonnes, comme le front sous 760 px), les membres passent avant les
+  permissions et les actions restent dans une barre fixe ; « Gérer les rôles » du menu d'un membre (carte de profil du front) n'est pas repris.
 
 ## Messagerie
 
@@ -1550,6 +1574,12 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   (`PATCH /servers/s1`), lien créé avec expiration et utilisations, copié puis révoqué, emoji trop grand ou trop lourd refusé sans aucun envoi, emoji valide ajouté avec
   son nom proposé, renommé puis supprimé, membres cherchés sans accents, ban levé, serveur supprimé après la saisie exacte de son nom et page refermée. Les règles ont
   leurs tests unitaires (`estompe_client::reglages_serveur`).
+`roles.rs` (même backend, `ServeurMessages` qui garde aussi le détail du serveur, ses rôles et les surcharges) : sans être créateur, un rôle au niveau du mien ou
+  au-dessus reste en lecture seule et rien n'est envoyé ; rôle renommé, coloré et doté d'une permission (`PATCH` vérifié), créé, déplacé par un vrai glisser-déposer puis par
+  une flèche, sans passer au-dessus du mien, supprimé après confirmation ; membre ajouté par la recherche puis retiré ; retirer « Rejoindre » à « @tout le monde » demande
+  une confirmation (refusée puis acceptée) ; surcharges d'un salon en trois états par rôle, confirmation avant de se retirer la vue du salon ; enfin un autre client change
+  les permissions : sur `roles.updated`, la zone de saisie passe en lecture seule et les onglets « Salons » et « Rôles » disparaissent. Les règles ont leurs tests unitaires
+  (`estompe_client::gestion_roles`, équivalents des cas de `roles.test.ts` sur la modification).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,
