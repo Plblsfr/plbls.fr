@@ -49,9 +49,11 @@ mod nouveau_prive;
 mod parametres;
 mod profil;
 mod recherche;
+mod reglages;
 
 pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
 pub use nouveau_prive::EtatNouveauPrive;
+pub use reglages::{emoji_depuis, EmojiEnAttente, EtatReglages};
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
@@ -280,6 +282,7 @@ struct Interne {
     nouveau_prive: Option<EtatNouveauPrive>,
     profil: profil::EtatProfil,
     creation: creation::EtatCreation,
+    reglages: Option<reglages::EtatReglages>,
 }
 
 #[derive(Clone)]
@@ -380,6 +383,8 @@ pub fn vider_modeles(f: &Principale) {
     f.global::<crate::DonneesNouveauPrive>().set_ouvert(false);
     f.global::<crate::DonneesCreerRejoindre>().set_ouvert(false);
     f.global::<crate::DonneesCreationSalon>().set_ouvert(false);
+    f.global::<crate::DonneesReglagesServeur>()
+        .set_ouverte(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -574,6 +579,7 @@ impl Pont {
                 nouveau_prive: None,
                 profil: profil::EtatProfil::default(),
                 creation: creation::EtatCreation::default(),
+                reglages: None,
             })),
             store,
             fenetre,
@@ -640,6 +646,7 @@ impl Pont {
         if profil::touche_le_profil(changements, &moi) {
             self.projeter_profil(f);
         }
+        self.changements_des_reglages(f, changements);
         if corrigee {
             self.suivre_conversation(f);
             self.ouvrir_conversation_courante(None);
@@ -874,6 +881,14 @@ impl Pont {
         {
             g.set_panneau(panneau_slint(panneau, &interne.icones));
         }
+        let reglages = interne
+            .reglages
+            .as_ref()
+            .is_some_and(|r| r.serveur == serveur);
+        drop(interne);
+        if reglages {
+            self.projeter_reglages(f);
+        }
     }
 
     pub fn naviguer(&self, f: &Principale, route: Route) {
@@ -882,6 +897,7 @@ impl Pont {
 
     fn aller(&self, f: &Principale, route: Route, message: Option<String>) {
         f.global::<crate::DonneesParametres>().set_ouverte(false);
+        self.oublier_reglages_serveur(f);
         let adresse = self.store.lire(|etat| {
             let mut interne = self.verrou();
             interne.navigation.aller(route, etat);

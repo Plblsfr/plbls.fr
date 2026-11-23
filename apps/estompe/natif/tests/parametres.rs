@@ -494,10 +494,10 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
         ids_du_menu(&f),
         [
             "creer-salon",
+            "reglages-serveur",
             "sourdine",
             "notifications",
-            "lien",
-            "quitter"
+            "lien"
         ]
     );
     menu::choisir(&f, "sourdine");

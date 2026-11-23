@@ -251,6 +251,15 @@ const ECRANS: &[Ecran] = ecrans![
     "creation-salon-clair", Clair, creation_salon;
     "creation-salon-sombre", Sombre, creation_salon;
     "creation-salon-erreur-clair", Clair, creation_salon_erreur;
+    "reglages-serveur-vue-clair", Clair, reglages_serveur_vue;
+    "reglages-serveur-vue-sombre", Sombre, reglages_serveur_vue;
+    "reglages-serveur-membre-clair", Clair, reglages_serveur_membre;
+    "reglages-serveur-invitations-clair", Clair, reglages_serveur_invitations;
+    "reglages-serveur-emojis-clair", Clair, reglages_serveur_emojis;
+    "reglages-serveur-emojis-sombre", Sombre, reglages_serveur_emojis;
+    "reglages-serveur-membres-clair", Clair, reglages_serveur_membres;
+    "reglages-serveur-bannis-clair", Clair, reglages_serveur_bannis;
+    "reglages-serveur-roles-clair", Clair, reglages_serveur_roles;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
     "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
@@ -1502,6 +1511,104 @@ fn creation_salon(f: &Principale) {
     pont.basculer_salon_prive(f, true);
     pont.basculer_role_du_salon(f, 1);
     pont.basculer_membre_du_salon(f, 1);
+    stabiliser(f);
+}
+
+fn reglages_serveur(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    serveur: &str,
+    onglet: &str,
+) -> Pont {
+    let pont = coquille_complete(
+        f,
+        etat,
+        salon(serveur, None),
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+        Some(medias_des_captures()),
+        |_| {},
+    );
+    pont.ouvrir_reglages_serveur(f, serveur);
+    pont.choisir_onglet_serveur(f, onglet);
+    pont
+}
+
+fn reglages_serveur_vue(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "vue");
+    f.global::<estompe_natif::DonneesReglagesServeur>()
+        .set_nom("Les copains".into());
+    pont.nom_des_reglages_modifie(f, "Les copains");
+    let carre = image::imageops::resize(
+        &image::imageops::crop_imm(&paysage(), 300, 0, 600, 600).to_image(),
+        256,
+        256,
+        image::imageops::FilterType::Triangle,
+    );
+    pont.icone_des_reglages_recadree(f, Some(("image/png", Vec::new(), carre)));
+    stabiliser(f);
+}
+
+fn reglages_serveur_membre(f: &Principale) {
+    let mut etat = commun::coquille::etat_avec_membres();
+    etat.details.get_mut("s2").unwrap().permissions =
+        Some(serde_json::from_value(serde_json::json!(["view_channel"])).unwrap());
+    reglages_serveur(f, etat, "s2", "vue");
+    stabiliser(f);
+}
+
+fn reglages_serveur_invitations(f: &Principale) {
+    let pont = reglages_serveur(
+        f,
+        commun::coquille::etat_avec_membres(),
+        "s1",
+        "invitations",
+    );
+    pont.choisir_expiration(f, 3);
+    pont.choisir_utilisation(f, 2);
+    pont.poser_invitations(
+        f,
+        "s1",
+        serde_json::from_value(serde_json::json!([
+            {"code": "ABCDE-23456", "created_by": "bob", "uses": 3},
+            {"code": "FGHIJ-78901", "created_by": "Ève", "uses": 1, "max_uses": 10, "expires_at": "2026-11-20T09:30:00Z"}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn reglages_serveur_emojis(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "emojis");
+    pont.emoji_choisi(
+        f,
+        estompe_natif::coquille::pont::emoji_depuis(&visage([120, 170, 220]), "Chat bleu.png"),
+    );
+    f.global::<estompe_natif::DonneesReglagesServeur>()
+        .set_nom_emoji("chat_bleu".into());
+    stabiliser(f);
+}
+
+fn reglages_serveur_membres(f: &Principale) {
+    reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "membres");
+    stabiliser(f);
+}
+
+fn reglages_serveur_bannis(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "bannis");
+    pont.poser_bannis(
+        f,
+        "s1",
+        serde_json::from_value(serde_json::json!([
+            {"user_id": "zed", "pseudo": "zed", "by": "bob", "at": "2026-11-18T10:00:00Z", "reason": "Spam répété dans #général"},
+            {"user_id": "yan", "pseudo": "Yan", "by": "Ève", "at": "2026-11-17T21:15:00Z", "expires_at": "2026-11-24T21:15:00Z"}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn reglages_serveur_roles(f: &Principale) {
+    reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "roles");
     stabiliser(f);
 }
 

@@ -8,6 +8,7 @@ import { BarreVocalPanneau } from "../vocal/barre.slint";
 import { BandeauMiseAJour } from "../mise-a-jour/bandeau.slint";
 import { DonneesMiseAJour } from "../mise-a-jour/donnees.slint";
 import { DonneesParametres } from "../parametres/page.slint";
+import { DonneesReglagesServeur } from "reglages-serveur.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -269,6 +270,17 @@ export component Panneau inherits Rectangle {
                         variante: VarianteBouton.fantome;
                         clique => {
                             DonneesCoquille.creer-salon("text");
+                        }
+                    }
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.serveur: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "sliders";
+                        description: "Paramètres du serveur";
+                        variante: DonneesReglagesServeur.ouverte ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                        clique => {
+                            DonneesReglagesServeur.ouvrir("");
                         }
                     }
                 }

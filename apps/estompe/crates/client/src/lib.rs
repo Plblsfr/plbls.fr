@@ -37,6 +37,7 @@ pub mod parametres;
 pub mod pastille;
 pub mod pieces;
 pub mod recherche;
+pub mod reglages_serveur;
 pub mod replay;
 pub mod roles;
 pub mod route;

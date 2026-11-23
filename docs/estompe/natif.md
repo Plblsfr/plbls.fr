@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur (voir [Réglages d'un serveur](#réglages-dun-serveur)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -266,8 +266,8 @@ interface dans `estompe_client::creation` (équivalent de `channel-create.svelte
   juste après `POST /servers` (le front ne propose l'icône que dans les réglages du serveur) ; si elle échoue, le serveur est créé et ouvert et la fenêtre le signale.
   Lien complet ou code seul (`code_d_invitation`), `POST /server-invites/{code}/join`, « Invitation invalide ou révoquée. » sur un 404. Le serveur créé ou rejoint est
   rechargé (`GET /servers`, puis son détail) et ouvert.
-- « Quitter le serveur » : dans le menu d'un serveur du rail, avec confirmation, absent pour son créateur (l'API refuse `owner_cannot_leave`) ; `POST /servers/{id}/leave`,
-  puis le serveur est oublié sans attendre `member.left`. Le front le propose dans les réglages du serveur (lot 8, issue suivante).
+- « Quitter le serveur » : dans la vue d'ensemble des réglages du serveur, comme le front, avec confirmation, absent pour son créateur (l'API refuse `owner_cannot_leave`) ;
+  `POST /servers/{id}/leave`, puis le serveur est oublié sans attendre `member.left` et la page se referme.
 - « Créer un salon » : « + » de l'en-tête du panneau et de chaque groupe (texte, esquisses, vocaux), « Créer un salon » du menu d'un salon (même type, placé après lui
   par `after`) ou d'un serveur. Rien de tout cela sans le droit `manage_channels` du serveur (`peut_creer_salon`), suivi en temps réel (`Changement::Roles` reprojette
   l'en-tête). Types texte, vocal, vidéos et musique, cinéma seulement si Entracte est branché (`cinema` de `GET /me`) ; nom obligatoire, 30 caractères, sans caractère
@@ -277,6 +277,34 @@ interface dans `estompe_client::creation` (équivalent de `channel-create.svelte
   ceux des autres arrivent par `channel.created`.
 - Pas de catégories : ni le front ni l'API n'en ont, les salons sont groupés par type. La mise en avant passagère du salon créé (`channelCreate.fresh`) et la notification
   « Tu as rejoint » du front ne sont pas reprises (pas de toast).
+
+### Réglages d'un serveur
+
+Page de la zone de contenu, comme `ServerSettingsModal.svelte` : `ui/coquille/reglages-serveur.slint` (global `DonneesReglagesServeur`), actions dans
+`src/coquille/pont/reglages.rs`, règles sans interface dans `estompe_client::reglages_serveur` (onglets selon les droits, limites des emoji, nom proposé, recherche des
+membres, libellés des invitations et des bans), appels par `Client` (`renommer_serveur`, `supprimer_icone_de_serveur`, `invitations_serveur`, `creer_invitation_serveur`,
+`bannis`, `lever_ban`, `ajouter_emoji`, `renommer_emoji`, `supprimer_emoji`) et le store (`Store::renommer_serveur`, `supprimer_serveur`, appliqués sans attendre l'évènement).
+
+- Ouverture : bouton « Paramètres du serveur » de l'en-tête du panneau d'un serveur ou entrée du menu d'un serveur du rail. Comme les paramètres, toute navigation
+  la referme, la marge est masquée tant qu'elle est ouverte ; Échap ou « Fermer » rendent le focus à la coquille. Flèches, Origine et Fin passent d'un onglet à l'autre.
+- Onglets selon les droits du serveur (`droits`, suivis en temps réel) : « Vue d'ensemble », « Emojis » et « Membres » pour tous, « Invitations » avec `create_invites`,
+  « Bannis » avec `ban_members`, « Salons » (`manage_channels`), « Rôles » (`manage_roles`) et « Journal » (`view_audit_log`) marqués « bientôt » en attendant les
+  rôles (#365) et la modération (#366). L'en-tête dit « Tu es propriétaire », « Tu gères ce serveur » ou « Tu es membre ».
+- Vue d'ensemble : nom (50 caractères, `manage_server`) avec compteur, icône (`manage_server` ou administrateur d'Estompe) choisie puis recadrée par le recadrage du profil
+  (`PUT /servers/{id}/icon`) ou supprimée (`DELETE /servers/{id}/icon`), aperçu dans la liste des serveurs ; rien ne part avant « Enregistrer » de la barre
+  « Modifications non enregistrées » (« Annuler » revient au serveur). Le créateur a « Supprimer le serveur… » : confirmation qui n'est validable qu'avec le nom exact
+  du serveur saisi, puis `DELETE /servers/{id}` ; les autres ont « Quitter le serveur ».
+- Invitations : expiration (sans, 30 min, 1 h, 24 h, 7 jours) et nombre d'utilisations (illimité, 1, 5, 10, 100) comme le front, « Créer un lien », liens actifs
+  (`GET /servers/{id}/invites`) avec auteur, utilisations, expiration, copie du lien complet (`<adresse>/#/join/<code>`) et « Révoquer ».
+- Emojis (`GET /emojis`, rechargés à chaque changement et sur `emoji.updated`) : « Ajouter un emoji » ouvre le sélecteur de fichiers (PNG, JPEG, GIF) ; le type (signature
+  du fichier), le poids (128 Ko) et les dimensions (256 px, lues dans l'en-tête comme l'API) sont vérifiés avant tout envoi (`verifier_emoji`), avec le message du front.
+  Le nom est proposé depuis le fichier (`nom_propose`) et doit suivre `^[a-z0-9_]{2,32}$` ; 50 emoji par serveur au plus (l'ajout disparaît à la limite). Renommer (fenêtre
+  de saisie, plutôt que le champ en place du front) et supprimer sont offerts à l'auteur et au créateur du serveur, comme l'API.
+- Membres : liste du serveur, créateur en tête puis par nom, rôle le plus haut en couleur, date d'arrivée, recherche sans accents ni casse sur le nom affiché et le
+  pseudo ; 200 lignes au plus (le compteur invite à affiner). Le front n'a pas cet onglet ; la modération d'un membre arrive avec #366.
+- Bannis : `GET /servers/{id}/bans`, auteur, date, durée (« définitif » ou « jusqu'au … »), raison, « Lever le ban » (`DELETE /servers/{id}/bans/{uid}`).
+- Écarts : pas de description du serveur (ni l'API ni le front n'en ont) ; le transfert de propriété, l'ordre, le renommage, la suppression et les permissions des salons,
+  les rôles et le journal restent à faire. Les messages de réussite et d'erreur s'affichent en tête de la page (pas de toast dans l'app native).
 
 ## Messagerie
 
@@ -1517,7 +1545,11 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   `POST /servers/{id}/channels`) : sans `manage_channels` (droits changés dans le store), ni « + » ni « Créer un salon » dans les menus et la fenêtre ne s'ouvre pas,
   le droit rendu les fait revenir ; nom déjà pris, vide puis refusé par le serveur affichés ; salon texte privé (rôle, membre), sujet et mode lent envoyés, ouvert et listé ;
   un `channel.created` d'un autre membre l'ajoute au panneau en temps réel ; serveur créé avec une icône choisie et recadrée (`PUT /servers/s9/icon`) puis ouvert ;
-  code invalide signalé, lien complet rejoint ; serveur quitté après confirmation. Les règles de `channel-create.svelte.ts` ont leurs tests unitaires (`estompe_client::creation`).
+  code invalide signalé, lien complet rejoint ; serveur quitté depuis ses réglages après confirmation. Les règles de `channel-create.svelte.ts` ont leurs tests unitaires (`estompe_client::creation`).
+`reglages_serveur.rs` (même backend, `ServeurMessages` qui garde aussi invitations, bannis et emoji) : onglets selon les droits changés dans le store, nom enregistré
+  (`PATCH /servers/s1`), lien créé avec expiration et utilisations, copié puis révoqué, emoji trop grand ou trop lourd refusé sans aucun envoi, emoji valide ajouté avec
+  son nom proposé, renommé puis supprimé, membres cherchés sans accents, ban levé, serveur supprimé après la saisie exacte de son nom et page refermée. Les règles ont
+  leurs tests unitaires (`estompe_client::reglages_serveur`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

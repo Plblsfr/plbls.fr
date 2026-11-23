@@ -32,7 +32,7 @@ use crate::ordre_serveurs::{deplacer_serveur, Sens};
 use crate::temps_reel::evenements::StatutPresence;
 use crate::temps_reel::{Evenement, FluxTempsReel, Signal};
 use crate::types::NotifySettings;
-use etat::id_de;
+pub(crate) use etat::id_de;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FinFlux {
@@ -271,6 +271,28 @@ impl Store {
 
     pub async fn quitter_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
         self.client().quitter_serveur(serveur).await?;
+        self.appliquer_application(|etat| {
+            let mut a = Application::default();
+            reducteur::oublier_serveur(etat, serveur, &mut a);
+            a
+        });
+        Ok(())
+    }
+
+    pub async fn renommer_serveur(&self, serveur: &str, nom: &str) -> Result<(), ErreurApi> {
+        let nom = nom.trim();
+        self.client().renommer_serveur(serveur, nom).await?;
+        self.appliquer(&Evenement::ServeurModifie(
+            crate::temps_reel::evenements::ServeurModifie {
+                id: serveur.to_string(),
+                name: nom.to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    pub async fn supprimer_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.client().supprimer_serveur(serveur).await?;
         self.appliquer_application(|etat| {
             let mut a = Application::default();
             reducteur::oublier_serveur(etat, serveur, &mut a);

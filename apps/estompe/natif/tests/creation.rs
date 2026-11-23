@@ -17,7 +17,8 @@ use estompe_natif::menu::{self, Ancre};
 use estompe_natif::session::Memoire;
 use estompe_natif::{
     confirmation, creer_fenetre, ecrans, DonneesConfirmation, DonneesCoquille,
-    DonneesCreationSalon, DonneesCreerRejoindre, DonneesMenu, DonneesProfil, Page, Principale,
+    DonneesCreationSalon, DonneesCreerRejoindre, DonneesMenu, DonneesProfil,
+    DonneesReglagesServeur, Page, Principale,
 };
 use i_slint_backend_testing::{AccessibleRole, ElementHandle};
 use serde_json::json;
@@ -411,10 +412,19 @@ fn quitter_un_serveur(faible: &slint::Weak<Principale>, serveur: &ServeurMessage
     let ids = sur_l_interface(faible, move |f| {
         p.menu_serveur(f, "s8", Ancre::Point { x: 30.0, y: 30.0 });
         let ids = menu_ids(f);
-        menu::choisir(f, "quitter");
+        menu::choisir(f, "reglages-serveur");
         ids
     });
-    assert_eq!(ids.last().map(String::as_str), Some("quitter"));
+    assert!(!ids.contains(&"quitter".to_string()));
+    attendre_l_interface(
+        faible,
+        |f| {
+            f.global::<DonneesReglagesServeur>().get_ouverte()
+                && boutons(f, "Quitter le serveur") == 1
+        },
+        "« Quitter le serveur » dans les réglages du serveur",
+    );
+    cliquer(faible, "Quitter le serveur", AccessibleRole::Button);
     attendre_l_interface(
         faible,
         |f| f.global::<DonneesConfirmation>().get_ouverte(),
@@ -427,10 +437,13 @@ fn quitter_un_serveur(faible: &slint::Weak<Principale>, serveur: &ServeurMessage
     );
     attendre_l_interface(
         faible,
-        |f| !serveurs(f).contains(&"s8".to_string()),
-        "serveur retiré du rail",
+        |f| {
+            !serveurs(f).contains(&"s8".to_string())
+                && !f.global::<DonneesReglagesServeur>().get_ouverte()
+        },
+        "serveur retiré du rail, réglages refermés",
     );
-    println!("363 : quitter un serveur après confirmation");
+    println!("363 : quitter un serveur depuis ses réglages, après confirmation");
 }
 
 fn scenario(

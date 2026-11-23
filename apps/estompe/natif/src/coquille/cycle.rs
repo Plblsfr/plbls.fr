@@ -788,6 +788,50 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel_salon!(on_choisir_limite, |p, f, i| p.choisir_limite(&f, i));
     rappel_salon!(on_creer, |p, f| p.valider_creation_salon(&f));
     rappel_salon!(on_fermer, |p, f| p.fermer_creation_salon(&f));
+    let reglages = f.global::<crate::DonneesReglagesServeur>();
+    macro_rules! rappel_reglages {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            reglages.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_reglages!(on_ouvrir, |p, f, serveur| p
+        .ouvrir_reglages_serveur(&f, &serveur));
+    rappel_reglages!(on_fermer, |p, f| p.fermer_reglages_serveur(&f));
+    rappel_reglages!(on_choisir, |p, f, id| p.choisir_onglet_serveur(&f, &id));
+    rappel_reglages!(on_deplacer, |p, f, pas| p.deplacer_onglet_serveur(&f, pas));
+    rappel_reglages!(on_nom_modifie, |p, f, texte| p
+        .nom_des_reglages_modifie(&f, &texte));
+    rappel_reglages!(on_choisir_icone, |p, f| p.choisir_icone_des_reglages(&f));
+    rappel_reglages!(on_supprimer_icone, |p, f| p
+        .supprimer_icone_des_reglages(&f));
+    rappel_reglages!(on_annuler, |p, f| p.annuler_reglages(&f));
+    rappel_reglages!(on_enregistrer, |p, f| p.enregistrer_reglages(&f));
+    rappel_reglages!(on_quitter, |p, f| p.quitter_depuis_reglages(&f));
+    rappel_reglages!(on_supprimer_serveur, |p, f| p
+        .demander_suppression_serveur(&f));
+    rappel_reglages!(on_choisir_expiration, |p, f, i| p.choisir_expiration(&f, i));
+    rappel_reglages!(on_choisir_utilisation, |p, f, i| p
+        .choisir_utilisation(&f, i));
+    rappel_reglages!(on_creer_invitation, |p, f| p.creer_invitation(&f));
+    rappel_reglages!(on_copier_invitation, |p, f, i| p.copier_invitation(&f, i));
+    rappel_reglages!(on_revoquer_invitation, |p, f, i| p
+        .revoquer_invitation(&f, i));
+    rappel_reglages!(on_choisir_emoji, |p, f| p.choisir_emoji_a_ajouter(&f));
+    rappel_reglages!(on_annuler_emoji, |p, f| p.annuler_emoji(&f));
+    rappel_reglages!(on_nom_emoji_modifie, |p, f, texte| p
+        .nom_d_emoji_modifie(&f, &texte));
+    rappel_reglages!(on_ajouter_emoji, |p, f| p.ajouter_emoji(&f));
+    rappel_reglages!(on_renommer_emoji, |p, f, i| p.renommer_emoji(&f, i));
+    rappel_reglages!(on_supprimer_emoji, |p, f, i| p.supprimer_emoji(&f, i));
+    rappel_reglages!(on_chercher_membres, |p, f, texte| p
+        .chercher_membres_des_reglages(&f, &texte));
+    rappel_reglages!(on_lever_ban, |p, f, i| p.lever_ban(&f, i));
     let parametres = f.global::<crate::DonneesParametres>();
     macro_rules! rappel_parametres {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

@@ -1,4 +1,4 @@
-use estompe_client::creation::{peut_creer_salon, peut_quitter};
+use estompe_client::creation::peut_creer_salon;
 use estompe_client::route::{adresse_web, lien_message_prive, lien_salon};
 use estompe_client::store::{CleConversation, GenreSalon, Presence};
 use estompe_client::temps_reel::evenements::StatutPresence;
@@ -23,7 +23,7 @@ pub const SIGNALER_UN_BUG: &str = "bug";
 pub const JEUX_ET_ACTIVITE: &str = "jeux";
 pub const PARAMETRES: &str = "parametres";
 pub const CREER_SALON: &str = "creer-salon";
-pub const QUITTER_SERVEUR: &str = "quitter";
+pub const REGLAGES_SERVEUR: &str = "reglages-serveur";
 
 fn id_du_statut(statut: StatutPresence) -> &'static str {
     match statut {
@@ -84,20 +84,20 @@ pub fn entrees_du_salon(salon: &DonneesSalon, sourdine: Vec<Entree>, creer: bool
         .collect()
 }
 
-pub fn entrees_du_serveur(sourdine: Vec<Entree>, creer: bool, quitter: bool) -> Vec<Entree> {
+pub fn entrees_du_serveur(sourdine: Vec<Entree>, creer: bool) -> Vec<Entree> {
     creer
         .then(creer_salon)
         .into_iter()
+        .chain([Entree::nouvelle(
+            REGLAGES_SERVEUR,
+            "Paramètres du serveur",
+            "sliders",
+        )])
         .chain(sourdine)
         .chain([
             Entree::nouvelle(REGLER_NOTIFICATIONS, "Paramètres de notification", "cloche"),
             lien().separee(),
         ])
-        .chain(quitter.then(|| {
-            Entree::nouvelle(QUITTER_SERVEUR, "Quitter le serveur", "sortie")
-                .danger()
-                .separee()
-        }))
         .collect()
 }
 
@@ -205,21 +205,19 @@ impl Pont {
         let pont = self.clone();
         let id = id.to_string();
         let sourdine = self.entrees_de_sourdine_de(&id);
-        let (creer, quitter) = self
-            .store
-            .lire(|e| (peut_creer_salon(e, &id), peut_quitter(e, &id)));
+        let creer = self.store.lire(|e| peut_creer_salon(e, &id));
         menu::ouvrir(
             f,
             &nom.clone(),
             ancre,
-            entrees_du_serveur(sourdine, creer, quitter),
+            entrees_du_serveur(sourdine, creer),
             move |f, action| match action {
                 CREER_SALON => {
                     pont.ouvrir_creation_salon(f, &id, GenreSalon::Text, None);
                     true
                 }
-                QUITTER_SERVEUR => {
-                    pont.demander_quitter_serveur(f, &id);
+                REGLAGES_SERVEUR => {
+                    pont.ouvrir_reglages_serveur(f, &id);
                     true
                 }
                 REGLER_NOTIFICATIONS => {
@@ -434,28 +432,28 @@ mod tests {
             ids(&entrees_du_salon(&vocal, sourdine(), false)),
             [COPIER_LIEN]
         );
-        let serveur = entrees_du_serveur(sourdine(), false, false);
+        let serveur = entrees_du_serveur(sourdine(), false);
         assert_eq!(
             ids(&serveur),
             [
+                REGLAGES_SERVEUR,
                 super::super::parametres::SOURDINE,
                 REGLER_NOTIFICATIONS,
                 COPIER_LIEN
             ]
         );
-        assert!(serveur[2].separe);
-        let complet = entrees_du_serveur(sourdine(), true, true);
+        assert!(serveur[3].separe);
+        let complet = entrees_du_serveur(sourdine(), true);
         assert_eq!(
             ids(&complet),
             [
                 CREER_SALON,
+                REGLAGES_SERVEUR,
                 super::super::parametres::SOURDINE,
                 REGLER_NOTIFICATIONS,
-                COPIER_LIEN,
-                QUITTER_SERVEUR
+                COPIER_LIEN
             ]
         );
-        assert!(complet[4].separe && complet[4].danger);
     }
 
     #[test]

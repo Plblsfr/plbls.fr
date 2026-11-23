@@ -1,0 +1,1209 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Defilement, Etiquette, Avatar, Coins } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+
+export struct OngletServeur {
+    id: string,
+    libelle: string,
+    icone: string,
+    compte: string,
+    bientot: bool,
+}
+
+export struct InvitationReglage {
+    code: string,
+    lien: string,
+    detail: string,
+}
+
+export struct EmojiReglage {
+    id: string,
+    nom: string,
+    auteur: string,
+    image: image,
+    a-image: bool,
+    modifiable: bool,
+}
+
+export struct MembreReglage {
+    id: string,
+    nom: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+    role: string,
+    a-couleur: bool,
+    couleur: color,
+    createur: bool,
+    arrivee: string,
+}
+
+export struct BanReglage {
+    id: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+    detail: string,
+    raison: string,
+}
+
+export global DonneesReglagesServeur {
+    in property <bool> ouverte: false;
+    in property <string> nom-serveur;
+    in property <string> initiales;
+    in property <image> icone;
+    in property <bool> a-icone: false;
+    in property <bool> gestionnaire: false;
+    in property <string> role;
+    in property <[OngletServeur]> onglets;
+    in property <string> onglet: "vue";
+    in property <string> titre: "Vue d'ensemble";
+    in-out property <bool> focus-initial: false;
+    in-out property <int> retour-focus: 0;
+    in property <string> erreur;
+    in property <string> annonce;
+    in property <bool> en-cours: false;
+    in property <bool> peut-renommer: false;
+    in property <bool> peut-icone: false;
+    in-out property <string> nom;
+    in property <string> compte-nom;
+    in property <image> apercu;
+    in property <bool> a-apercu: false;
+    in property <string> initiales-apercu;
+    in property <bool> peut-supprimer-icone: false;
+    in property <bool> modifie: false;
+    in property <bool> proprietaire: false;
+    in property <string> createur;
+    in property <[string]> expirations;
+    in property <int> expiration: 0;
+    in property <[string]> utilisations;
+    in property <int> utilisation: 0;
+    in property <[InvitationReglage]> invitations;
+    in property <[EmojiReglage]> emojis;
+    in property <string> compte-emojis;
+    in property <bool> peut-ajouter-emoji: true;
+    in property <bool> emoji-en-attente: false;
+    in property <image> apercu-emoji;
+    in-out property <string> nom-emoji;
+    in property <bool> nom-emoji-valide: false;
+    in-out property <string> recherche;
+    in property <[MembreReglage]> membres;
+    in property <string> compte-membres;
+    in property <[BanReglage]> bannis;
+    callback ouvrir(string);
+    callback fermer();
+    callback choisir(string);
+    callback deplacer(int);
+    callback nom-modifie(string);
+    callback choisir-icone();
+    callback supprimer-icone();
+    callback annuler();
+    callback enregistrer();
+    callback quitter();
+    callback supprimer-serveur();
+    callback choisir-expiration(int);
+    callback choisir-utilisation(int);
+    callback creer-invitation();
+    callback copier-invitation(int);
+    callback revoquer-invitation(int);
+    callback choisir-emoji();
+    callback annuler-emoji();
+    callback nom-emoji-modifie(string);
+    callback ajouter-emoji();
+    callback renommer-emoji(int);
+    callback supprimer-emoji(int);
+    callback chercher-membres(string);
+    callback lever-ban(int);
+}
+
+component Titre inherits Text {
+    color: Theme.encre;
+    font-family: Typo.titre;
+    font-size: Typo.titre-section;
+    font-weight: Typo.gras;
+    letter-spacing: -0.4px;
+}
+
+component Note inherits Text {
+    color: Theme.gris;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Carte inherits Rectangle {
+    border-radius: Rayon.l;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    VerticalLayout {
+        padding-left: Espace.e5;
+        padding-right: Espace.e5;
+        padding-top: Espace.e4;
+        padding-bottom: Espace.e4;
+        spacing: Espace.e3;
+        @children
+    }
+}
+
+component Section inherits VerticalLayout {
+    in property <string> titre;
+    in property <string> compte;
+    in property <string> note;
+    spacing: 10px;
+    HorizontalLayout {
+        spacing: Espace.e3;
+        Titre {
+            horizontal-stretch: 1;
+            text: root.titre;
+            vertical-alignment: center;
+        }
+        if root.compte != "": Text {
+            text: root.compte;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+    }
+    if root.note != "": Note {
+        text: root.note;
+    }
+    @children
+}
+
+component Alerte inherits Rectangle {
+    in property <string> texte;
+    in property <bool> ok: false;
+    border-radius: Rayon.s;
+    background: root.ok ? Theme.ok-fond : Theme.danger-fond;
+    border-width: 1px;
+    border-color: root.ok ? Theme.ok : Theme.danger;
+    accessible-role: text;
+    accessible-label: root.texte;
+    HorizontalLayout {
+        padding: Espace.e3;
+        Text {
+            text: root.texte;
+            color: root.ok ? Theme.encre : Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component IconeServeur inherits Rectangle {
+    in property <image> image;
+    in property <bool> a-image;
+    in property <string> initiales;
+    in property <length> cote: 36px;
+    in property <length> rayon: 11px;
+    in property <brush> fond-coins: Theme.papier-2;
+    width: root.cote;
+    height: root.cote;
+    border-radius: root.rayon;
+    background: root.a-image ? transparent : Theme.encre;
+    clip: true;
+    if root.a-image: Image {
+        width: 100%;
+        height: 100%;
+        source: root.image;
+        image-fit: cover;
+    }
+    if root.a-image: Coins {
+        width: 100%;
+        height: 100%;
+        rayon: root.rayon;
+        couleur: root.fond-coins;
+    }
+    if !root.a-image: Text {
+        text: root.initiales;
+        color: Theme.papier;
+        font-family: Typo.titre;
+        font-size: root.cote * 0.34;
+        font-weight: Typo.gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component Puce inherits Rectangle {
+    in property <string> texte;
+    in property <bool> choisie;
+    callback choisir();
+    property <bool> utilisable: Calques.ouverts == 0;
+    height: 32px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: root.choisie ? Theme.encre : zone.has-hover ? Theme.papier-2 : Theme.surface;
+    border-width: 1px;
+    border-color: root.choisie ? Theme.encre : Theme.trait-fort;
+    accessible-role: button;
+    accessible-label: root.texte;
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-action-default => {
+        root.choisir();
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    contenu := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        Text {
+            text: root.texte;
+            color: root.choisie ? Theme.papier : Theme.encre;
+            font-size: 12.5px;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.choisir();
+        }
+    }
+}
+
+component OngletNav {
+    in property <OngletServeur> onglet;
+    in property <bool> actif;
+    property <int> retour: DonneesReglagesServeur.retour-focus;
+    property <bool> utilisable: Calques.ouverts == 0;
+    min-height: 36px;
+    horizontal-stretch: 1;
+    accessible-role: tab;
+    accessible-label: onglet.libelle;
+    accessible-item-selected: actif;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        DonneesReglagesServeur.choisir(root.onglet.id);
+    }
+    forward-focus: portee;
+    init => {
+        if (root.actif && DonneesReglagesServeur.focus-initial) {
+            DonneesReglagesServeur.focus-initial = false;
+            portee.focus();
+        }
+    }
+    changed retour => {
+        if (root.actif) {
+            portee.focus();
+        }
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.actif ? Theme.surface : zone.has-hover ? Theme.surface.with-alpha(0.55) : transparent;
+        border-width: root.actif ? 1px : 0;
+        border-color: Theme.trait;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesReglagesServeur.choisir(root.onglet.id);
+                return accept;
+            }
+            if (e.text == Key.DownArrow) {
+                DonneesReglagesServeur.deplacer(1);
+                return accept;
+            }
+            if (e.text == Key.UpArrow) {
+                DonneesReglagesServeur.deplacer(-1);
+                return accept;
+            }
+            if (e.text == Key.Home) {
+                DonneesReglagesServeur.deplacer(-1000);
+                return accept;
+            }
+            if (e.text == Key.End) {
+                DonneesReglagesServeur.deplacer(1000);
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                portee.focus();
+                DonneesReglagesServeur.choisir(root.onglet.id);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.onglet.icone;
+                taille: 18px;
+                couleur: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.onglet.libelle;
+            color: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+            font-size: 14.5px;
+            font-weight: root.actif ? Typo.demi-gras : Typo.normal;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+        if root.onglet.bientot: VerticalLayout {
+            alignment: center;
+            Etiquette {
+                texte: "bientôt";
+            }
+        }
+        if root.onglet.compte != "": Text {
+            text: root.onglet.compte;
+            color: Theme.gris;
+            font-family: Typo.mono;
+            font-size: Typo.minuscule;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component OngletVue inherits VerticalLayout {
+    spacing: Espace.e6;
+    if DonneesReglagesServeur.peut-renommer || DonneesReglagesServeur.peut-icone: Section {
+        titre: "Identité";
+        HorizontalLayout {
+            spacing: Espace.e5;
+            VerticalLayout {
+                spacing: Espace.e2;
+                alignment: start;
+                HorizontalLayout {
+                    alignment: center;
+                    IconeServeur {
+                        cote: 88px;
+                        rayon: 26px;
+                        fond-coins: Theme.papier;
+                        image: DonneesReglagesServeur.apercu;
+                        a-image: DonneesReglagesServeur.a-apercu;
+                        initiales: DonneesReglagesServeur.initiales-apercu;
+                        accessible-role: image;
+                        accessible-label: "Icône du serveur";
+                    }
+                }
+                if DonneesReglagesServeur.peut-icone: Bouton {
+                    texte: "Changer l'icône";
+                    icone: "image";
+                    variante: VarianteBouton.fantome;
+                    actif: !DonneesReglagesServeur.en-cours;
+                    clique => {
+                        DonneesReglagesServeur.choisir-icone();
+                    }
+                }
+                if DonneesReglagesServeur.peut-supprimer-icone: Bouton {
+                    texte: "Supprimer l'icône";
+                    icone: "corbeille";
+                    variante: VarianteBouton.fantome;
+                    actif: !DonneesReglagesServeur.en-cours;
+                    clique => {
+                        DonneesReglagesServeur.supprimer-icone();
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: Espace.e3;
+                Champ {
+                    preferred-width: 200px;
+                    etiquette: "Nom du serveur";
+                    valeur <=> DonneesReglagesServeur.nom;
+                    actif: DonneesReglagesServeur.peut-renommer;
+                    aide: DonneesReglagesServeur.peut-renommer ? DonneesReglagesServeur.compte-nom : "";
+                    modifie(texte) => {
+                        DonneesReglagesServeur.nom-modifie(texte);
+                    }
+                    valide => {
+                        DonneesReglagesServeur.enregistrer();
+                    }
+                }
+                Rectangle {
+                    border-radius: Rayon.m;
+                    background: Theme.papier-2;
+                    accessible-role: groupbox;
+                    accessible-label: "Aperçu dans la liste des serveurs";
+                    VerticalLayout {
+                        padding: Espace.e3;
+                        spacing: Espace.e2;
+                        Text {
+                            text: "Aperçu dans la liste des serveurs";
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                        }
+                        HorizontalLayout {
+                            spacing: Espace.e3;
+                            IconeServeur {
+                                cote: 32px;
+                                rayon: 10px;
+                                image: DonneesReglagesServeur.apercu;
+                                a-image: DonneesReglagesServeur.a-apercu;
+                                initiales: DonneesReglagesServeur.initiales-apercu;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                min-width: 0;
+                                text: DonneesReglagesServeur.nom != "" ? DonneesReglagesServeur.nom : DonneesReglagesServeur.nom-serveur;
+                                color: Theme.encre;
+                                font-weight: Typo.demi-gras;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+                Note {
+                    text: "L'image est recadrée au carré. Sans icône, les initiales du serveur s'affichent.";
+                }
+            }
+        }
+    }
+    if DonneesReglagesServeur.modifie: Rectangle {
+        border-radius: Rayon.m;
+        background: Theme.attention-fond;
+        border-width: 1px;
+        border-color: Theme.attention;
+        accessible-role: groupbox;
+        accessible-label: "Modifications non enregistrées";
+        HorizontalLayout {
+            padding: Espace.e3;
+            spacing: Espace.e3;
+            VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: "alerte";
+                    taille: 18px;
+                    couleur: Theme.encre;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: "Modifications non enregistrées";
+                color: Theme.encre;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+            }
+            Bouton {
+                texte: "Annuler";
+                variante: VarianteBouton.fantome;
+                actif: !DonneesReglagesServeur.en-cours;
+                clique => {
+                    DonneesReglagesServeur.annuler();
+                }
+            }
+            Bouton {
+                texte: "Enregistrer";
+                variante: VarianteBouton.primaire;
+                actif: DonneesReglagesServeur.nom != "";
+                en-cours: DonneesReglagesServeur.en-cours;
+                clique => {
+                    DonneesReglagesServeur.enregistrer();
+                }
+            }
+        }
+    }
+    if DonneesReglagesServeur.proprietaire: Section {
+        titre: "Zone dangereuse";
+        note: "La suppression efface le serveur, ses salons et tous leurs messages. Il faudra saisir son nom pour confirmer.";
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Supprimer le serveur…";
+                icone: "corbeille";
+                variante: VarianteBouton.danger;
+                actif: !DonneesReglagesServeur.en-cours;
+                clique => {
+                    DonneesReglagesServeur.supprimer-serveur();
+                }
+            }
+        }
+    }
+    if !DonneesReglagesServeur.proprietaire: Section {
+        titre: "Quitter";
+        note: DonneesReglagesServeur.gestionnaire ? "" : "Créé par \{DonneesReglagesServeur.createur}. Seuls les rôles autorisés peuvent modifier le serveur.";
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Quitter le serveur";
+                icone: "sortie";
+                variante: VarianteBouton.danger;
+                actif: !DonneesReglagesServeur.en-cours;
+                clique => {
+                    DonneesReglagesServeur.quitter();
+                }
+            }
+        }
+    }
+}
+
+component OngletInvitations inherits VerticalLayout {
+    spacing: Espace.e6;
+    Section {
+        titre: "Nouveau lien";
+        Text {
+            text: "Expiration du lien";
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            accessible-role: groupbox;
+            accessible-label: "Expiration du lien";
+            for e[i] in DonneesReglagesServeur.expirations: Puce {
+                texte: e;
+                choisie: i == DonneesReglagesServeur.expiration;
+                choisir => {
+                    DonneesReglagesServeur.choisir-expiration(i);
+                }
+            }
+        }
+        Text {
+            text: "Nombre d'utilisations";
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            accessible-role: groupbox;
+            accessible-label: "Nombre d'utilisations";
+            for u[i] in DonneesReglagesServeur.utilisations: Puce {
+                texte: u;
+                choisie: i == DonneesReglagesServeur.utilisation;
+                choisir => {
+                    DonneesReglagesServeur.choisir-utilisation(i);
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Créer un lien";
+                icone: "lien";
+                variante: VarianteBouton.primaire;
+                en-cours: DonneesReglagesServeur.en-cours;
+                clique => {
+                    DonneesReglagesServeur.creer-invitation();
+                }
+            }
+        }
+    }
+    Section {
+        titre: "Liens actifs";
+        compte: DonneesReglagesServeur.invitations.length;
+        for inv[i] in DonneesReglagesServeur.invitations: Carte {
+            accessible-role: groupbox;
+            accessible-label: inv.lien;
+            HorizontalLayout {
+                spacing: Espace.e3;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: Espace.e1;
+                    Text {
+                        text: inv.lien;
+                        color: Theme.encre;
+                        font-family: Typo.mono;
+                        font-size: Typo.petit;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: inv.detail;
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: Typo.minuscule;
+                        wrap: word-wrap;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "copie";
+                        description: "Copier le lien \{inv.code}";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesReglagesServeur.copier-invitation(i);
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Révoquer";
+                        variante: VarianteBouton.fantome;
+                        actif: !DonneesReglagesServeur.en-cours;
+                        clique => {
+                            DonneesReglagesServeur.revoquer-invitation(i);
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesReglagesServeur.invitations.length == 0: Note {
+            text: "Aucun lien actif.";
+        }
+    }
+}
+
+component OngletEmojis inherits VerticalLayout {
+    spacing: Espace.e5;
+    Section {
+        titre: "Emojis du serveur";
+        compte: DonneesReglagesServeur.compte-emojis;
+        note: "Utilisables avec :nom: dans les messages. Image PNG, JPEG ou GIF de 256 px et 128 Ko au plus.";
+        if DonneesReglagesServeur.emoji-en-attente: Rectangle {
+            border-radius: Rayon.m;
+            background: Theme.papier-2;
+            HorizontalLayout {
+                padding: Espace.e4;
+                spacing: Espace.e4;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 56px;
+                        height: 56px;
+                        border-radius: Rayon.s;
+                        background: Theme.surface;
+                        Image {
+                            width: 48px;
+                            height: 48px;
+                            source: DonneesReglagesServeur.apercu-emoji;
+                            image-fit: contain;
+                            accessible-role: image;
+                            accessible-label: "Aperçu de l'emoji";
+                        }
+                    }
+                }
+                nom-emoji := Champ {
+                    etiquette: "Nom de l'emoji";
+                    indice: "mon_emoji";
+                    aide: "2 à 32 caractères : a-z, 0-9 et _";
+                    valeur <=> DonneesReglagesServeur.nom-emoji;
+                    modifie(texte) => {
+                        DonneesReglagesServeur.nom-emoji-modifie(texte);
+                    }
+                    valide => {
+                        if (DonneesReglagesServeur.nom-emoji-valide) {
+                            DonneesReglagesServeur.ajouter-emoji();
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: Espace.e2;
+                        Bouton {
+                            texte: "Annuler";
+                            variante: VarianteBouton.fantome;
+                            clique => {
+                                DonneesReglagesServeur.annuler-emoji();
+                            }
+                        }
+                        Bouton {
+                            texte: "Ajouter";
+                            variante: VarianteBouton.primaire;
+                            actif: DonneesReglagesServeur.nom-emoji-valide;
+                            en-cours: DonneesReglagesServeur.en-cours;
+                            clique => {
+                                DonneesReglagesServeur.ajouter-emoji();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !DonneesReglagesServeur.emoji-en-attente && DonneesReglagesServeur.peut-ajouter-emoji: Rectangle {
+            border-radius: Rayon.m;
+            border-width: 1.5px;
+            border-color: Theme.trait-fort;
+            HorizontalLayout {
+                padding: Espace.e4;
+                spacing: Espace.e4;
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "envoie";
+                        taille: 28px;
+                        couleur: Theme.gris;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: "Ajouter une image";
+                        color: Theme.encre;
+                        font-weight: Typo.demi-gras;
+                    }
+                    Note {
+                        text: "PNG, JPEG ou GIF · 256 px et 128 Ko au plus · utilisables avec :nom:";
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Ajouter un emoji";
+                        icone: "plus";
+                        actif: !DonneesReglagesServeur.en-cours;
+                        clique => {
+                            DonneesReglagesServeur.choisir-emoji();
+                        }
+                    }
+                }
+            }
+        }
+        for e[i] in DonneesReglagesServeur.emojis: Rectangle {
+            height: 52px;
+            border-radius: Rayon.s;
+            background: zone-emoji.has-hover ? Theme.papier-2 : transparent;
+            accessible-role: list-item;
+            accessible-label: ":\{e.nom}:";
+            zone-emoji := TouchArea { }
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e2;
+                spacing: Espace.e3;
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        if e.a-image: Image {
+                            width: 100%;
+                            height: 100%;
+                            source: e.image;
+                            image-fit: contain;
+                        }
+                        if !e.a-image: Rectangle {
+                            border-radius: Rayon.xs;
+                            background: Theme.papier-3;
+                        }
+                    }
+                }
+                Text {
+                    text: ":\{e.nom}:";
+                    color: Theme.encre;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: e.auteur;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                if e.modifiable: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "crayon";
+                        description: "Renommer :\{e.nom}:";
+                        variante: VarianteBouton.fantome;
+                        actif: !DonneesReglagesServeur.en-cours;
+                        clique => {
+                            DonneesReglagesServeur.renommer-emoji(i);
+                        }
+                    }
+                }
+                if e.modifiable: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "corbeille";
+                        description: "Supprimer :\{e.nom}:";
+                        variante: VarianteBouton.fantome;
+                        actif: !DonneesReglagesServeur.en-cours;
+                        clique => {
+                            DonneesReglagesServeur.supprimer-emoji(i);
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesReglagesServeur.emojis.length == 0: Note {
+            text: "Aucun emoji pour l'instant : ajoute le premier !";
+        }
+    }
+}
+
+component OngletMembres inherits VerticalLayout {
+    spacing: Espace.e4;
+    Section {
+        titre: "Membres";
+        compte: DonneesReglagesServeur.compte-membres;
+        Champ {
+            indice: "Chercher un membre";
+            etiquette: "";
+            valeur <=> DonneesReglagesServeur.recherche;
+            modifie(texte) => {
+                DonneesReglagesServeur.chercher-membres(texte);
+            }
+        }
+        for m in DonneesReglagesServeur.membres: Rectangle {
+            height: 52px;
+            border-radius: Rayon.s;
+            background: zone-membre.has-hover ? Theme.papier-2 : transparent;
+            accessible-role: list-item;
+            accessible-label: m.nom;
+            zone-membre := TouchArea { }
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e3;
+                spacing: Espace.e3;
+                VerticalLayout {
+                    alignment: center;
+                    Avatar {
+                        nom: m.nom;
+                        initiales: m.initiales;
+                        teinte: m.teinte;
+                        taille: 32px;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: Espace.e2;
+                        Text {
+                            text: m.nom;
+                            color: m.a-couleur ? m.couleur : Theme.encre;
+                            font-weight: Typo.demi-gras;
+                            overflow: elide;
+                        }
+                        if m.pseudo != "": Text {
+                            text: m.pseudo;
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        if m.createur: VerticalLayout {
+                            alignment: center;
+                            Etiquette {
+                                texte: "Créateur";
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    if m.role != "" || m.arrivee != "": Text {
+                        text: m.role != "" && m.arrivee != "" ? m.role + " · " + m.arrivee : m.role + m.arrivee;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        if DonneesReglagesServeur.membres.length == 0: Note {
+            text: "Aucun membre ne correspond.";
+        }
+    }
+}
+
+component OngletBannis inherits VerticalLayout {
+    spacing: Espace.e4;
+    Section {
+        titre: "Membres bannis";
+        compte: DonneesReglagesServeur.bannis.length;
+        for b[i] in DonneesReglagesServeur.bannis: Rectangle {
+            border-radius: Rayon.s;
+            background: zone-ban.has-hover ? Theme.papier-2 : transparent;
+            accessible-role: list-item;
+            accessible-label: b.pseudo;
+            zone-ban := TouchArea { }
+            HorizontalLayout {
+                padding: Espace.e3;
+                spacing: Espace.e3;
+                VerticalLayout {
+                    alignment: center;
+                    Avatar {
+                        nom: b.pseudo;
+                        initiales: b.initiales;
+                        teinte: b.teinte;
+                        taille: 32px;
+                    }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: b.pseudo;
+                        color: Theme.encre;
+                        font-weight: Typo.demi-gras;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: b.detail;
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        overflow: elide;
+                    }
+                    if b.raison != "": Text {
+                        text: "« \{b.raison} »";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        wrap: word-wrap;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Lever le ban";
+                        description: "Lever le ban de \{b.pseudo}";
+                        actif: !DonneesReglagesServeur.en-cours;
+                        clique => {
+                            DonneesReglagesServeur.lever-ban(i);
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesReglagesServeur.bannis.length == 0: Note {
+            text: "Aucun membre banni.";
+        }
+    }
+}
+
+component OngletBientot inherits VerticalLayout {
+    in property <string> texte;
+    spacing: Espace.e3;
+    alignment: start;
+    Carte {
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Etiquette {
+                texte: "bientôt";
+            }
+            Note {
+                horizontal-stretch: 1;
+                text: root.texte;
+            }
+        }
+    }
+}
+
+export component PageReglagesServeur inherits Rectangle {
+    background: Theme.papier;
+    property <int> calques: Calques.ouverts;
+    changed calques => {
+        if (root.calques == 0) {
+            DonneesReglagesServeur.retour-focus += 1;
+        }
+    }
+    accessible-role: groupbox;
+    accessible-label: "Paramètres du serveur";
+    clavier := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Escape && Calques.ouverts == 0) {
+                DonneesReglagesServeur.fermer();
+                return accept;
+            }
+            return reject;
+        }
+        HorizontalLayout {
+            Rectangle {
+                width: 240px;
+                background: Theme.papier-2;
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    background: Theme.trait;
+                }
+                VerticalLayout {
+                    Rectangle {
+                        height: 60px;
+                        HorizontalLayout {
+                            padding-left: Espace.e2;
+                            padding-right: Espace.e3;
+                            spacing: Espace.e2;
+                            VerticalLayout {
+                                alignment: center;
+                                Bouton {
+                                    icone: "gauche";
+                                    description: "Retour au serveur";
+                                    variante: VarianteBouton.fantome;
+                                    clique => {
+                                        DonneesReglagesServeur.fermer();
+                                    }
+                                }
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: DonneesReglagesServeur.gestionnaire ? "Paramètres du serveur" : "Serveur";
+                                color: Theme.encre;
+                                font-family: Typo.titre;
+                                font-size: 15px;
+                                font-weight: Typo.gras;
+                                letter-spacing: -0.3px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                accessible-role: text;
+                            }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.trait;
+                        }
+                    }
+                    VerticalLayout {
+                        padding: Espace.e3;
+                        spacing: Espace.e3;
+                        vertical-stretch: 1;
+                        HorizontalLayout {
+                            padding-left: Espace.e2;
+                            spacing: 10px;
+                            IconeServeur {
+                                image: DonneesReglagesServeur.icone;
+                                a-image: DonneesReglagesServeur.a-icone;
+                                initiales: DonneesReglagesServeur.initiales;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: DonneesReglagesServeur.nom-serveur;
+                                color: Theme.encre;
+                                font-weight: Typo.gras;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        VerticalLayout {
+                            spacing: 2px;
+                            alignment: start;
+                            vertical-stretch: 1;
+                            accessible-role: tab-list;
+                            accessible-label: "Sections du serveur";
+                            for o in DonneesReglagesServeur.onglets: OngletNav {
+                                onglet: o;
+                                actif: o.id == DonneesReglagesServeur.onglet;
+                            }
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Rectangle {
+                    height: 60px;
+                    HorizontalLayout {
+                        padding-left: Espace.e6;
+                        padding-right: Espace.e4;
+                        spacing: 10px;
+                        Text {
+                            horizontal-stretch: 1;
+                            text: DonneesReglagesServeur.titre;
+                            color: Theme.encre;
+                            font-family: Typo.titre;
+                            font-size: 18px;
+                            font-weight: Typo.gras;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            accessible-role: text;
+                        }
+                        Text {
+                            text: DonneesReglagesServeur.role;
+                            color: Theme.gris;
+                            font-size: Typo.petit;
+                            vertical-alignment: center;
+                            accessible-role: text;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Fermer";
+                                icone: "x";
+                                description: "Fermer les paramètres du serveur";
+                                clique => {
+                                    DonneesReglagesServeur.fermer();
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.trait;
+                    }
+                }
+                Defilement {
+                    vertical-stretch: 1;
+                    hauteur-contenu: corps.preferred-height;
+                    corps := VerticalLayout {
+                        alignment: start;
+                        padding-left: 40px;
+                        padding-right: 40px;
+                        padding-top: 28px;
+                        padding-bottom: 48px;
+                        spacing: Espace.e4;
+                        accessible-role: tab-panel;
+                        if DonneesReglagesServeur.erreur != "": Alerte {
+                            texte: DonneesReglagesServeur.erreur;
+                        }
+                        if DonneesReglagesServeur.annonce != "": Alerte {
+                            texte: DonneesReglagesServeur.annonce;
+                            ok: true;
+                        }
+                        if DonneesReglagesServeur.onglet == "vue": OngletVue { }
+                        if DonneesReglagesServeur.onglet == "invitations": OngletInvitations { }
+                        if DonneesReglagesServeur.onglet == "emojis": OngletEmojis { }
+                        if DonneesReglagesServeur.onglet == "membres": OngletMembres { }
+                        if DonneesReglagesServeur.onglet == "bannis": OngletBannis { }
+                        if DonneesReglagesServeur.onglet == "salons": OngletBientot {
+                            texte: "L'ordre, le nom, la suppression et les permissions des salons arrivent bientôt dans l'app native. En attendant, « Créer un salon » reste dans le panneau.";
+                        }
+                        if DonneesReglagesServeur.onglet == "roles": OngletBientot {
+                            texte: "La gestion des rôles et des permissions arrive bientôt dans l'app native.";
+                        }
+                        if DonneesReglagesServeur.onglet == "journal": OngletBientot {
+                            texte: "Le journal d'administration arrive bientôt dans l'app native.";
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

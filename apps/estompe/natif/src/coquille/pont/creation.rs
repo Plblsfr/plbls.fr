@@ -228,6 +228,10 @@ impl Pont {
         f: &Principale,
         icone: Option<(&'static str, Vec<u8>, RgbaImage)>,
     ) {
+        if self.verrou().creation.creer_rejoindre.is_none() {
+            self.icone_des_reglages_recadree(f, icone);
+            return;
+        }
         self.modifier_creer_rejoindre(|e| match icone {
             Some((type_mime, octets, apercu)) => {
                 e.icone = Some(IconeChoisie {

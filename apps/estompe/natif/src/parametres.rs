@@ -120,6 +120,8 @@ impl Parametres {
         g.set_message_journal(SharedString::new());
         self.rafraichir_journal(f);
         g.set_focus_initial(true);
+        f.global::<crate::DonneesReglagesServeur>()
+            .set_ouverte(false);
         g.set_ouverte(true);
     }
 

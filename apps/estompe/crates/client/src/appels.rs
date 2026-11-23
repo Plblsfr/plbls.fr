@@ -12,12 +12,13 @@ use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, Channel, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement,
-    GetMeReponse, GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview,
-    Mention, Message, MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person,
-    PostActivateRequete, PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
-    PostNotificationsReadRequete, PostServersIdChannelsRequete, PostVoiceCidTokenReponse,
-    PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server,
-    DM,
+    GetMeReponse, GetServersIdBansReponseElement, GetServersIdReponse, GetServersIdVoiceReponse,
+    GetUnreadReponse, LinkPreview, Mention, Message, MessagePage, Name50, NotifySettings,
+    PatchMessagesIdRequete, PatchServersIdEmojisEidRequete, Person, PostActivateRequete,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
+    PostNotificationsReadRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
+    PostVoiceCidTokenReponse, PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete,
+    PutMessagesIdVoteRequete, Server, ServerInvite, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -374,6 +375,115 @@ impl Client {
             type_mime,
             image,
         )
+        .await
+    }
+
+    pub async fn renommer_serveur(&self, serveur: &str, nom: &str) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&Name50 {
+            name: nom.to_string(),
+        })?;
+        self.envoyer(
+            Method::PATCH,
+            &format!("/servers/{}", encoder_composant(serveur)),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn supprimer_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/servers/{}", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn supprimer_icone_de_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/servers/{}/icon", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn invitations_serveur(&self, serveur: &str) -> Result<Vec<ServerInvite>, ErreurApi> {
+        self.get(&format!("/servers/{}/invites", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn creer_invitation_serveur(
+        &self,
+        serveur: &str,
+        utilisations: i64,
+        expiration: i64,
+    ) -> Result<ServerInvite, ErreurApi> {
+        self.post(
+            &format!("/servers/{}/invites", encoder_composant(serveur)),
+            &PostServersIdInvitesRequete {
+                max_uses: (utilisations > 0).then_some(utilisations),
+                expires_in: (expiration > 0).then_some(expiration),
+            },
+        )
+        .await
+    }
+
+    pub async fn bannis(
+        &self,
+        serveur: &str,
+    ) -> Result<Vec<GetServersIdBansReponseElement>, ErreurApi> {
+        self.get(&format!("/servers/{}/bans", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn lever_ban(&self, serveur: &str, utilisateur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/bans/{}",
+            encoder_composant(serveur),
+            encoder_composant(utilisateur)
+        ))
+        .await
+    }
+
+    pub async fn ajouter_emoji(
+        &self,
+        serveur: &str,
+        nom: &str,
+        type_mime: &str,
+        image: impl Into<Bytes>,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!(
+                "/servers/{}/emojis?name={}",
+                encoder_composant(serveur),
+                encoder_composant(nom)
+            ),
+            &Corps::brut(type_mime, image),
+        )
+        .await
+    }
+
+    pub async fn renommer_emoji(
+        &self,
+        serveur: &str,
+        emoji: &str,
+        nom: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PatchServersIdEmojisEidRequete {
+            name: Some(nom.to_string()),
+        })?;
+        self.envoyer(
+            Method::PATCH,
+            &format!(
+                "/servers/{}/emojis/{}",
+                encoder_composant(serveur),
+                encoder_composant(emoji)
+            ),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn supprimer_emoji(&self, serveur: &str, emoji: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/emojis/{}",
+            encoder_composant(serveur),
+            encoder_composant(emoji)
+        ))
         .await
     }
 
@@ -812,6 +922,65 @@ mod tests {
         assert_eq!(requete.entete("content-type"), Some("application/json"));
         assert_eq!(requete.json(), json!({"name": "Amis"}));
         assert_eq!(requete.entete("cookie"), None);
+    }
+
+    #[tokio::test]
+    async fn administre_un_serveur() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::vide(204),
+            Reponse::json(201, json!({"code": "abc", "uses": 0})),
+            Reponse::json(200, json!([{"code": "abc"}])),
+            Reponse::vide(204),
+            Reponse::json(201, json!({"id": "e1"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(200, json!([{"user_id": "u9", "pseudo": "zed"}])),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+        ])
+        .await;
+        let c = serveur.client();
+        c.renommer_serveur("s1", "Atelier").await.unwrap();
+        let cree = c.creer_invitation_serveur("s1", 5, 0).await.unwrap();
+        assert_eq!(cree.code.as_deref(), Some("abc"));
+        assert_eq!(c.invitations_serveur("s1").await.unwrap().len(), 1);
+        c.revoquer_invitation_serveur("s1", "abc").await.unwrap();
+        c.ajouter_emoji("s1", "chat_ok", "image/png", vec![1u8, 2, 3])
+            .await
+            .unwrap();
+        c.renommer_emoji("s1", "e1", "chat").await.unwrap();
+        c.supprimer_emoji("s1", "e1").await.unwrap();
+        assert_eq!(
+            c.bannis("s1").await.unwrap()[0].pseudo.as_deref(),
+            Some("zed")
+        );
+        c.lever_ban("s1", "u9").await.unwrap();
+        c.supprimer_icone_de_serveur("s1").await.unwrap();
+        c.supprimer_serveur("s1").await.unwrap();
+        let r = serveur.requetes();
+        let lignes: Vec<(&str, &str)> = r.iter().map(|x| x.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/servers/s1", "PATCH"),
+                ("/servers/s1/invites", "POST"),
+                ("/servers/s1/invites", "GET"),
+                ("/servers/s1/invites/abc", "DELETE"),
+                ("/servers/s1/emojis?name=chat_ok", "POST"),
+                ("/servers/s1/emojis/e1", "PATCH"),
+                ("/servers/s1/emojis/e1", "DELETE"),
+                ("/servers/s1/bans", "GET"),
+                ("/servers/s1/bans/u9", "DELETE"),
+                ("/servers/s1/icon", "DELETE"),
+                ("/servers/s1", "DELETE"),
+            ]
+        );
+        assert_eq!(r[0].json(), json!({"name": "Atelier"}));
+        assert_eq!(r[1].json(), json!({"max_uses": 5}));
+        assert_eq!(r[4].entete("content-type"), Some("image/png"));
+        assert_eq!(r[4].corps, [1, 2, 3]);
+        assert_eq!(r[5].json(), json!({"name": "chat"}));
     }
 
     #[tokio::test]

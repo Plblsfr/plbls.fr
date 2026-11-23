@@ -893,6 +893,9 @@ pub mod coquille {
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
         pub serveurs_ajoutes: Mutex<Vec<Value>>,
+        pub emojis: Mutex<Vec<Value>>,
+        pub invitations: Mutex<Vec<Value>>,
+        pub bannis: Mutex<Vec<Value>>,
         envoyes: AtomicUsize,
     }
 
@@ -953,6 +956,9 @@ pub mod coquille {
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
                 serveurs_ajoutes: Mutex::new(Vec::new()),
+                emojis: Mutex::new(Vec::new()),
+                invitations: Mutex::new(Vec::new()),
+                bannis: Mutex::new(Vec::new()),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -1229,7 +1235,7 @@ pub mod coquille {
                 }
                 return (201, m.to_string());
             }
-            if methode == "PATCH" {
+            if methode == "PATCH" && chemin.starts_with("/messages/") {
                 self.requetes
                     .lock()
                     .unwrap()
@@ -1296,6 +1302,10 @@ pub mod coquille {
                     .push(format!("{methode} {chemin}"))
             };
             let nouveaux = || self.serveurs_ajoutes.lock().unwrap().clone();
+            if let Some(reponse) = self.repondre_reglages(methode, chemin, &recu) {
+                noter();
+                return Some(reponse);
+            }
             match (methode, chemin) {
                 ("POST", "/servers") => {
                     noter();
@@ -1349,6 +1359,75 @@ pub mod coquille {
                         salon["user_limit"] = limite.clone();
                     }
                     Some((201, salon.to_string()))
+                }
+                _ => None,
+            }
+        }
+
+        fn repondre_reglages(
+            &self,
+            methode: &str,
+            chemin: &str,
+            recu: &Value,
+        ) -> Option<(u16, String)> {
+            let liste = |m: &Mutex<Vec<Value>>| Value::Array(m.lock().unwrap().clone()).to_string();
+            let retirer = |m: &Mutex<Vec<Value>>, champ: &str, valeur: &str| {
+                m.lock().unwrap().retain(|v| v[champ] != valeur);
+                Some((204, String::new()))
+            };
+            match (methode, chemin) {
+                ("GET", "/emojis") => Some((200, liste(&self.emojis))),
+                ("GET", "/servers/s1/invites") => Some((200, liste(&self.invitations))),
+                ("POST", "/servers/s1/invites") => {
+                    let mut invitations = self.invitations.lock().unwrap();
+                    let mut invitation = json!({"code": format!("code{}", invitations.len() + 1), "created_by": "bob", "uses": 0});
+                    if let Some(m) = recu.get("max_uses") {
+                        invitation["max_uses"] = m.clone();
+                    }
+                    if recu.get("expires_in").is_some() {
+                        invitation["expires_at"] = json!("2026-11-19T13:00:00Z");
+                    }
+                    invitations.push(invitation.clone());
+                    Some((201, invitation.to_string()))
+                }
+                ("DELETE", c) if c.starts_with("/servers/s1/invites/") => retirer(
+                    &self.invitations,
+                    "code",
+                    &c["/servers/s1/invites/".len()..],
+                ),
+                ("GET", "/servers/s1/bans") => Some((200, liste(&self.bannis))),
+                ("DELETE", c) if c.starts_with("/servers/s1/bans/") => {
+                    retirer(&self.bannis, "user_id", &c["/servers/s1/bans/".len()..])
+                }
+                ("POST", c) if c.starts_with("/servers/s1/emojis?name=") => {
+                    let nom = &c["/servers/s1/emojis?name=".len()..];
+                    let mut emojis = self.emojis.lock().unwrap();
+                    if emojis.iter().any(|e| e["name"] == nom) {
+                        return Some((
+                            409,
+                            r#"{"error":"emoji_taken","message":"Ce nom est déjà pris"}"#.into(),
+                        ));
+                    }
+                    let emoji = json!({"id": format!("e{}", emojis.len() + 10), "server_id": "s1", "name": nom, "created_by": "u1"});
+                    emojis.push(emoji.clone());
+                    Some((201, emoji.to_string()))
+                }
+                ("PATCH", c) if c.starts_with("/servers/s1/emojis/") => {
+                    let id = &c["/servers/s1/emojis/".len()..];
+                    for e in self.emojis.lock().unwrap().iter_mut() {
+                        if e["id"] == id {
+                            e["name"] = recu["name"].clone();
+                        }
+                    }
+                    Some((204, String::new()))
+                }
+                ("DELETE", c) if c.starts_with("/servers/s1/emojis/") => {
+                    retirer(&self.emojis, "id", &c["/servers/s1/emojis/".len()..])
+                }
+                ("PATCH", c)
+                    if c.starts_with("/servers/") && !c["/servers/".len()..].contains('/') =>
+                {
+                    Some((204, String::new()))
                 }
                 _ => None,
             }
