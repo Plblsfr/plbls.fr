@@ -25,6 +25,7 @@ pub mod mention;
 pub mod message_vocal;
 pub mod mesures;
 pub mod mise_a_jour;
+pub mod niveaux_notification;
 pub mod notifications;
 pub mod nouveau_prive;
 pub mod ordre_serveurs;

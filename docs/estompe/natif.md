@@ -61,6 +61,7 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   une icône et peut être séparée, dangereuse, cochée, porter un raccourci ou être marquée « bientôt » (affichée, sautée par les flèches, inactive).
 - Clavier : flèches (en boucle), Tab, Origine, Fin, Entrée ou Espace, Échap. Un clic hors du menu, la molette ou la perte du focus le ferment. L'élément qui l'a ouvert retient
   `a-ouvert-menu` et reprend le focus à la fermeture, sauf si l'action l'a donné ailleurs (l'action rend `true` : champ de saisie, sélecteur, confirmation ; `focus-ailleurs`).
+  Une action qui ouvre un autre menu (durées d'une sourdine) le remplace : `menu::choisir` ne referme pas un menu rouvert par l'action.
 - Ouverture : clic droit, touche Menu ou Maj+F10 sur l'élément qui a le focus. Un `FocusScope` qui prend le focus au clic avale l'appui : la ligne d'un message a
   `focus-on-click: false` et se donne le focus dans `pointer-event`, sinon le premier clic droit ne ferait que la sélectionner.
 - Une `TouchArea` imbriquée prend tout appui, clic droit compris, et la zone parente ne le reçoit plus : l'avatar et le nom de l'auteur d'un message relaient le clic droit
@@ -1001,8 +1002,8 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 
 Règles dans la crate client (`notifications.rs`, sans code d'OS), reprises du front (`showNotification` de `blocks/notifications/notify.ts` et de `store.svelte.ts`) :
 
-- L'app ne notifie que sur l'évènement temps réel `notification` (`Changement::Notification` du store), jamais sur `message.created` : sourdine
-  d'un salon ou d'un serveur, « ne pas déranger », mentions et types de notification sont décidés par le serveur (`blocks/notifications`).
+- L'app ne notifie que sur l'évènement temps réel `notification` (`Changement::Notification` du store), jamais sur `message.created` : niveaux,
+  sourdines, « ne pas déranger », mentions et types de notification sont décidés par le serveur (`blocks/notifications`) ; réglages : voir [Paramètres](#paramètres).
 - `decider` : rien pour l'activité vocale de mon propre salon ; rien si la conversation de la notification est affichée **et** la fenêtre active
   (focus de winit) ; sinon une notification du système si la préférence « Notifications du bureau » est active.
 - Regroupement : l'étiquette (`tag` du serveur) remplace une notification de même étiquette (toast de même `Tag`, `replaces_id` sous Linux).
@@ -1363,17 +1364,32 @@ Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal
 - Clavier : la catégorie choisie a le focus à l'ouverture ; flèches haut et bas (en boucle), Origine et Fin passent d'une catégorie à l'autre, Tab entre dans la page,
   Ctrl+F va à la recherche, Échap efface la recherche puis ferme la page et rend le focus à la coquille. Un modal ouvert depuis la page (réglages audio, jeux, replay, mesures)
   la rend inactive ; à sa fermeture le focus revient à la catégorie.
-- Préférences synchronisées comme dans le front : seuls les types de notifications (messages privés, mentions, messages de salon, activité vocale) sont enregistrés
-  sur le compte (`PUT /me/notify-settings`, retour en arrière et message si l'envoi échoue) et suivis en temps réel (`notify_settings.updated`) ; tout le reste est local
-  (`preferences.json`) : thème, densité, aperçu des liens, réduction des animations, notifications du bureau, lancement avec la session, mode debug, fonctions alpha.
+- Préférences synchronisées comme dans le front : les réglages de notification (voir ci-dessous) sont enregistrés sur le compte (`PUT /me/notify-settings`, retour en
+  arrière et message si l'envoi échoue) et suivis en temps réel (`notify_settings.updated`) ; tout le reste est local (`preferences.json`) : thème, densité, aperçu des liens,
+  réduction des animations, notifications du bureau, lancement avec la session, mode debug, fonctions alpha.
+- Notifications (`SettingsNotifications.svelte`, logique pure dans `estompe_client::niveaux_notification`) : notifications du bureau (local), « Ne pas déranger » (le statut,
+  comme le menu de la barre), niveau général, types, aperçu et son, puis un serveur (celui ouvert, sinon le premier ; « Changer de serveur… » ouvre un menu) : son niveau, sa
+  sourdine, « Ignorer @everyone et @here », ses salons texte réglés (niveau ou sourdine) et « Régler un autre salon… » (menu, le salon ajouté passe à « Tous »). Chaque choix
+  « Par défaut » ou « Comme le serveur », « Tous », « Mentions », « Rien » affiche le niveau qui s'applique et sa source (`niveau_effectif`, mêmes règles que le serveur).
+  Chaque changement est appliqué au store tout de suite (`Store::appliquer_reglages_notification`) puis envoyé : deux changements rapides se cumulent. La page est reprojetée
+  quand les réglages, mon statut, les serveurs ou les salons changent, à l'ouverture de la catégorie et toutes les 30 s tant qu'une sourdine existe.
+- Règles des niveaux (décidées par le serveur, `blocks/notifications/src/decision.rs`, reprises par le client pour l'affichage) : une sourdine active du salon, de la conversation
+  privée ou du serveur coupe tout ; sinon le niveau du salon, de la conversation privée, puis du serveur ; sinon le niveau général (`general`) ; sinon mentions seulement en salon
+  et tout en privé. En privé, le niveau général ne compte que s'il vaut « Rien ». Sourdine (`mutes` : identifiant → fin en millisecondes, 0 = jusqu'à réactivation) : 15 min, 1 h,
+  8 h, 24 h ou jusqu'à réactivation ; échue, elle ne compte plus (le serveur l'ignore et la retire au prochain enregistrement), sans action de l'app. Fin lue en heure locale
+  (« jusqu'à 10:15 », « demain 09:30 », « le 22/11 à 09:30 »).
+- Menus contextuels : « Mettre en sourdine… » d'un salon texte (panneau) ou d'un serveur (rail : clic droit, touche Menu ou Maj+F10, absent du front) ouvre à la place le menu
+  des durées (`menu::choisir` laisse ouvert le menu qu'une action vient d'ouvrir) ; en sourdine, l'entrée devient « Réactiver les notifications ». Le menu d'un serveur offre aussi
+  « Paramètres de notification » (la catégorie s'ouvre sur ce serveur) et « Copier le lien ».
 - Apparence : le thème choisi s'applique tout de suite (`Theme.mode`), comme le bouton de l'en-tête ; la densité compacte resserre les messages (`Affichage.compacte`) ;
   réduire les animations met les durées à zéro (`Mouvement.reduit`).
 - Débogage : 500 dernières lignes du journal (relu toutes les 3 s tant que la catégorie est ouverte), filtre par niveau et par texte, copie de tout le journal, export
   dans le dossier des téléchargements (`estompe-debug-AAAA-MM-JJ-HH-MM-SS.log`, heure locale), vidage ; « Mesures de performance… » quand le mode debug est actif.
 - Application : « À propos », panneau des mises à jour, lancement à l'ouverture de la session ; 7 clics sur « Version installée » basculent les fonctions alpha
   (préférence locale `alpha`, comme `UpdateSettings.svelte`).
-- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; avatar et photos par serveur (#362),
-  le reste des notifications (#361) et les signalements (#367) arrivent avec leurs issues.
+- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; avatar et photos par serveur (#362)
+  et les signalements (#367) arrivent avec leurs issues. Écarts des notifications : pas de notification push de test (push web : écart assumé), aucune marque de sourdine
+  dans la liste des salons ni sur le rail (le front n'en a pas).
 
 ## Types de l'API
 

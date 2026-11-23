@@ -119,6 +119,11 @@ impl Onglet {
                 "Par serveur et par salon",
                 "Ignorer @everyone et @here",
                 "Notifications du bureau",
+                "Réglage général",
+                "Tous les messages",
+                "Mentions seulement",
+                "Sourdine",
+                "Régler un autre salon",
             ],
             Self::Voix => &[
                 "Micro",
@@ -418,6 +423,10 @@ mod tests {
         assert_eq!(
             ids(&chercher("ne pas déranger", &ONGLETS_DU_FRONT)),
             ["notifications"]
+        );
+        assert_eq!(
+            chercher("sourdine", &ONGLETS_DU_FRONT)[0].trouves,
+            ["Sourdine"]
         );
     }
 

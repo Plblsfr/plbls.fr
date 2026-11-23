@@ -593,7 +593,8 @@ impl Pont {
             }
         }
         self.projeter(f, &c, false);
-        if changements.contains(&Changement::ReglagesNotification) {
+        let moi = self.store.lire(|e| e.moi().to_string());
+        if parametres::touche_les_notifications(changements, &moi) {
             self.projeter_parametres(f);
         }
         if corrigee {

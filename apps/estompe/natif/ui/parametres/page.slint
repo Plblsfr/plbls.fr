@@ -27,6 +27,14 @@ export struct LigneRaccourci {
     reglage: string,
 }
 
+export struct LigneNotifSalon {
+    id: string,
+    nom: string,
+    rang: int,
+    effectif: string,
+    sourdine: string,
+}
+
 export global DonneesParametres {
     in-out property <bool> ouverte: false;
     in-out property <string> onglet: "compte";
@@ -42,6 +50,21 @@ export global DonneesParametres {
     in-out property <bool> type-salon: true;
     in-out property <bool> type-vocal: true;
     in-out property <string> erreur-notifications;
+    in-out property <bool> ne-pas-deranger: false;
+    in-out property <bool> apercu-notifications: true;
+    in-out property <bool> son-notifications: true;
+    in-out property <int> niveau-general: 0;
+    in-out property <string> effectif-general;
+    in-out property <string> serveur-notif;
+    in-out property <string> nom-serveur-notif;
+    in-out property <bool> plusieurs-serveurs: false;
+    in-out property <int> niveau-serveur: 0;
+    in-out property <string> effectif-serveur;
+    in-out property <string> sourdine-serveur;
+    in-out property <bool> ignore-groupe: false;
+    in-out property <[LigneNotifSalon]> salons-notif;
+    in-out property <bool> autres-salons: false;
+    in-out property <bool> a-sourdines: false;
     in-out property <bool> apercus: true;
     in-out property <bool> demarrage-disponible: false;
     in-out property <bool> demarrage-actif: false;
@@ -65,6 +88,17 @@ export global DonneesParametres {
     callback animations-change(bool);
     callback notifications-change(bool);
     callback type-change(string, bool);
+    callback ne-pas-deranger-change(bool);
+    callback apercu-notifications-change(bool);
+    callback son-notifications-change(bool);
+    callback niveau-general-change(int);
+    callback niveau-change(string, int);
+    callback ignore-groupe-change(bool);
+    callback menu-serveur-notif(length, length, length);
+    callback menu-sourdine(string, length, length, length);
+    callback lever-sourdine(string);
+    callback menu-ajout-salon(length, length, length);
+    callback rafraichir-notifications();
     callback demarrage-change(bool);
     callback version-cliquee();
     callback journal-change(bool);
@@ -476,8 +510,86 @@ component OngletCompte inherits VerticalLayout {
     }
 }
 
+component ChoixNiveau inherits VerticalLayout {
+    in property <string> libelle;
+    in property <string> defaut;
+    in property <int> choisi;
+    in property <string> effectif;
+    callback choisir(int);
+    spacing: Espace.e2;
+    accessible-role: groupbox;
+    accessible-label: libelle;
+    if root.libelle != "": Text {
+        text: root.libelle;
+        color: Theme.encre;
+        font-weight: Typo.demi-gras;
+        overflow: elide;
+    }
+    HorizontalLayout {
+        spacing: Espace.e1;
+        alignment: start;
+        for texte[i] in [root.defaut, "Tous", "Mentions", "Rien"]: Bouton {
+            texte: texte;
+            description: root.libelle;
+            variante: root.choisi == i ? VarianteBouton.primaire : VarianteBouton.secondaire;
+            clique => {
+                root.choisir(i);
+            }
+        }
+    }
+    if root.effectif != "": Note {
+        text: root.effectif;
+    }
+}
+
+component Sourdine inherits HorizontalLayout {
+    in property <string> id;
+    in property <string> fin;
+    spacing: Espace.e2;
+    alignment: start;
+    if root.fin != "": VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
+            spacing: Espace.e1;
+            Icone {
+                nom: "volcoupe";
+                taille: 16px;
+                couleur: Theme.rose-texte;
+            }
+            Text {
+                text: root.fin;
+                color: Theme.rose-texte;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: self.text;
+            }
+        }
+    }
+    if root.fin != "": Bouton {
+        texte: "Réactiver";
+        icone: "cloche";
+        variante: VarianteBouton.fantome;
+        clique => {
+            DonneesParametres.lever-sourdine(root.id);
+        }
+    }
+    if root.fin == "": Bouton {
+        texte: "Mettre en sourdine…";
+        icone: "volcoupe";
+        variante: VarianteBouton.fantome;
+        clique => {
+            DonneesParametres.menu-sourdine(root.id, self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+        }
+    }
+}
+
 component OngletNotifications inherits VerticalLayout {
     spacing: Espace.e6;
+    init => {
+        DonneesParametres.rafraichir-notifications();
+    }
     Section {
         titre: "Notifications";
         Carte {
@@ -494,8 +606,34 @@ component OngletNotifications inherits VerticalLayout {
         }
     }
     Section {
+        titre: "Ne pas déranger";
+        Carte {
+            Interrupteur {
+                texte: "Couper toutes les notifications (statut « Ne pas déranger »)";
+                allume: DonneesParametres.ne-pas-deranger;
+                bascule(actif) => {
+                    DonneesParametres.ne-pas-deranger-change(actif);
+                }
+            }
+        }
+    }
+    Section {
+        titre: "Réglage général";
+        note: "Réglages enregistrés sur ton compte, identiques sur tous tes appareils. Les réglages d'un serveur, puis d'un salon, passent avant.";
+        Carte {
+            ChoixNiveau {
+                libelle: "Serveurs et salons";
+                defaut: "Par défaut";
+                choisi: DonneesParametres.niveau-general;
+                effectif: DonneesParametres.effectif-general + ". Par défaut : mentions seulement, tous les messages en privé ; « Rien » coupe aussi les messages privés.";
+                choisir(i) => {
+                    DonneesParametres.niveau-general-change(i);
+                }
+            }
+        }
+    }
+    Section {
         titre: "Types de notifications";
-        note: "Réglages enregistrés sur ton compte, identiques sur tous tes appareils.";
         Carte {
             Interrupteur {
                 texte: "Messages privés";
@@ -525,18 +663,119 @@ component OngletNotifications inherits VerticalLayout {
                     DonneesParametres.type-change("voice", actif);
                 }
             }
-            if DonneesParametres.erreur-notifications != "": Text {
-                text: DonneesParametres.erreur-notifications;
-                color: Theme.danger;
-                font-size: Typo.petit;
-                wrap: word-wrap;
-                accessible-role: text;
-                accessible-label: self.text;
+        }
+    }
+    Section {
+        titre: "Contenu et son";
+        Carte {
+            Interrupteur {
+                texte: "Afficher l'aperçu (auteur, salon, début du message) ; sinon « Nouveau message de … »";
+                allume: DonneesParametres.apercu-notifications;
+                bascule(actif) => {
+                    DonneesParametres.apercu-notifications-change(actif);
+                }
+            }
+            Interrupteur {
+                texte: "Son à la réception d'une notification";
+                allume: DonneesParametres.son-notifications;
+                bascule(actif) => {
+                    DonneesParametres.son-notifications-change(actif);
+                }
             }
         }
     }
-    Note {
-        text: "Ne pas déranger, aperçu, son et niveaux par serveur et par salon arrivent bientôt dans l'app native.";
+    Section {
+        titre: "Par serveur et par salon";
+        note: DonneesParametres.serveur-notif == "" ? "Rejoins un serveur pour régler ses notifications." : "Une sourdine coupe tout jusqu'à son terme, quels que soient les niveaux. Aussi depuis le menu contextuel d'un serveur ou d'un salon.";
+        if DonneesParametres.serveur-notif != "": Carte {
+            HorizontalLayout {
+                spacing: Espace.e3;
+                Text {
+                    horizontal-stretch: 1;
+                    text: DonneesParametres.nom-serveur-notif;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: Typo.titre-section;
+                    font-weight: Typo.gras;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-role: text;
+                    accessible-label: "Serveur : " + self.text;
+                }
+                if DonneesParametres.plusieurs-serveurs: Bouton {
+                    texte: "Changer de serveur…";
+                    icone: "globe";
+                    clique => {
+                        DonneesParametres.menu-serveur-notif(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                    }
+                }
+            }
+            ChoixNiveau {
+                libelle: "Tout le serveur";
+                defaut: "Par défaut";
+                choisi: DonneesParametres.niveau-serveur;
+                effectif: DonneesParametres.effectif-serveur;
+                choisir(i) => {
+                    DonneesParametres.niveau-change(DonneesParametres.serveur-notif, i);
+                }
+            }
+            Sourdine {
+                id: DonneesParametres.serveur-notif;
+                fin: DonneesParametres.sourdine-serveur;
+            }
+            Interrupteur {
+                texte: "Ignorer @everyone et @here sur ce serveur";
+                allume: DonneesParametres.ignore-groupe;
+                bascule(actif) => {
+                    DonneesParametres.ignore-groupe-change(actif);
+                }
+            }
+            for salon in DonneesParametres.salons-notif: VerticalLayout {
+                spacing: Espace.e2;
+                Rectangle {
+                    height: 1px;
+                    background: Theme.trait;
+                }
+                ChoixNiveau {
+                    libelle: salon.nom;
+                    defaut: "Comme le serveur";
+                    choisi: salon.rang;
+                    effectif: salon.effectif;
+                    choisir(i) => {
+                        DonneesParametres.niveau-change(salon.id, i);
+                    }
+                }
+                Sourdine {
+                    id: salon.id;
+                    fin: salon.sourdine;
+                }
+            }
+            if DonneesParametres.autres-salons: HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Régler un autre salon…";
+                    icone: "plus";
+                    clique => {
+                        DonneesParametres.menu-ajout-salon(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                    }
+                }
+            }
+        }
+    }
+    if DonneesParametres.erreur-notifications != "": Text {
+        text: DonneesParametres.erreur-notifications;
+        color: Theme.danger;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+        accessible-role: text;
+        accessible-label: self.text;
+    }
+    Timer {
+        interval: 30s;
+        running: DonneesParametres.a-sourdines;
+        triggered => {
+            DonneesParametres.rafraichir-notifications();
+        }
     }
 }
 

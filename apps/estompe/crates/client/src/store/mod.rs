@@ -358,11 +358,29 @@ impl Store {
         })
     }
 
-    pub async fn enregistrer_reglages_notification(
+    pub fn appliquer_reglages_notification(
+        &self,
+        modifier: impl FnOnce(&NotifySettings) -> Option<NotifySettings>,
+    ) -> Option<(NotifySettings, NotifySettings)> {
+        self.modifier(|etat| {
+            let Some(nouveaux) = modifier(&etat.reglages_notification) else {
+                return (None, Vec::new());
+            };
+            let avant = std::mem::replace(&mut etat.reglages_notification, nouveaux.clone());
+            let changements = if avant != nouveaux {
+                vec![Changement::ReglagesNotification]
+            } else {
+                Vec::new()
+            };
+            (Some((avant, nouveaux)), changements)
+        })
+    }
+
+    pub async fn envoyer_reglages_notification(
         &self,
         reglages: NotifySettings,
+        avant: NotifySettings,
     ) -> Result<(), ErreurApi> {
-        let avant = self.poser_reglages(reglages.clone());
         let resultat = self
             .client()
             .enregistrer_reglages_notification(&reglages)
@@ -371,6 +389,14 @@ impl Store {
             self.poser_reglages(avant);
         }
         resultat
+    }
+
+    pub async fn enregistrer_reglages_notification(
+        &self,
+        reglages: NotifySettings,
+    ) -> Result<(), ErreurApi> {
+        let avant = self.poser_reglages(reglages.clone());
+        self.envoyer_reglages_notification(reglages, avant).await
     }
 
     pub fn ordre_serveurs(&self) -> Vec<String> {
@@ -846,6 +872,31 @@ mod tests {
         sans_apercu.preview = Some(false);
         assert!(store
             .enregistrer_reglages_notification(sans_apercu)
+            .await
+            .is_err());
+        assert_eq!(store.lire(|e| e.reglages_notification.preview), Some(true));
+        let premier = store.appliquer_reglages_notification(|r| {
+            Some(NotifySettings {
+                sound: Some(true),
+                ..r.clone()
+            })
+        });
+        let second = store.appliquer_reglages_notification(|r| {
+            Some(NotifySettings {
+                preview: Some(false),
+                ..r.clone()
+            })
+        });
+        assert_eq!(
+            (premier.unwrap().1.sound, second.clone().unwrap().1.sound),
+            (Some(true), Some(true)),
+            "deux réglages changés coup sur coup se cumulent avant l'envoi"
+        );
+        assert!(store.appliquer_reglages_notification(|_| None).is_none());
+        serveur.programmer([Reponse::json(500, json!({"error": "x", "message": "x"}))]);
+        let (avant, apres) = second.unwrap();
+        assert!(store
+            .envoyer_reglages_notification(apres, avant)
             .await
             .is_err());
         assert_eq!(store.lire(|e| e.reglages_notification.preview), Some(true));

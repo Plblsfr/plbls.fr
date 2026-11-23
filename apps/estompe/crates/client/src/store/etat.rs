@@ -89,6 +89,8 @@ pub fn reglages_par_defaut() -> NotifySettings {
         preview: Some(true),
         sound: Some(true),
         ignore_group: None,
+        general: None,
+        mutes: None,
     }
 }
 

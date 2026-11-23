@@ -1,5 +1,18 @@
+mod commun;
+
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+
+use chrono::NaiveDate;
+use commun::attendre;
+use commun::coquille::{store_sur, ServeurMessages, SourceFactice};
+use estompe_client::niveaux_notification::{sourdine, DureeSourdine};
+use estompe_client::route::Route;
+use estompe_client::types::NotifySettingsGeneral;
+use estompe_natif::coquille::{Navigation, Pont, Profils};
+use estompe_natif::menu::{self, Ancre};
+use estompe_natif::DonneesMenu;
 
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::preferences::{self, Preferences};
@@ -275,4 +288,243 @@ fn sept_clics_sur_la_version_debloquent_les_fonctions_alpha() {
     g.invoke_version_cliquee();
     assert!(b.memoire.lire(|p| p.alpha));
     assert_eq!(g.get_annonce(), "Fonctions alpha débloquées.");
+}
+
+fn pont_de_notifications(f: &Principale, adresse: &str, minutes: Arc<AtomicI64>) -> Pont {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let execution = runtime.handle().clone();
+    std::thread::spawn(move || runtime.block_on(std::future::pending::<()>()));
+    let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
+        .unwrap()
+        .and_hms_opt(9, 30, 0)
+        .unwrap();
+    let pont = Pont::nouveau(
+        store_sur(commun::coquille::etat(), adresse),
+        f.as_weak(),
+        execution,
+        None,
+        Arc::new(move || matin + chrono::Duration::minutes(minutes.load(Ordering::SeqCst))),
+        Navigation::nouvelle(Route::Salon {
+            serveur: "s1".into(),
+            salon: Some("c1".into()),
+            message: None,
+        }),
+        Profils::nouveaux(Arc::new(SourceFactice::default()), None),
+    );
+    pont.demarrer(f);
+    pont
+}
+
+fn entrees_du_menu(f: &Principale) -> Vec<(String, String)> {
+    f.global::<DonneesMenu>()
+        .get_entrees()
+        .iter()
+        .map(|e| (e.id.to_string(), e.libelle.to_string()))
+        .collect()
+}
+
+fn ids_du_menu(f: &Principale) -> Vec<String> {
+    entrees_du_menu(f).into_iter().map(|(id, _)| id).collect()
+}
+
+fn salons_regles(f: &Principale) -> Vec<(String, i32, String, String)> {
+    f.global::<DonneesParametres>()
+        .get_salons_notif()
+        .iter()
+        .map(|l| {
+            (
+                l.nom.to_string(),
+                l.rang,
+                l.effectif.to_string(),
+                l.sourdine.to_string(),
+            )
+        })
+        .collect()
+}
+
+fn enregistre(serveur: &ServeurMessages, motif: &str) -> bool {
+    serveur
+        .corps
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|(requete, corps)| requete == "PUT /me/notify-settings" && corps.contains(motif))
+}
+
+#[test]
+fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
+    i_slint_backend_testing::init_no_event_loop();
+    let serveur = ServeurMessages::demarrer(10);
+    let f = creer_fenetre().unwrap();
+    f.window().set_size(slint::LogicalSize::new(1180.0, 900.0));
+    f.show().unwrap();
+    let dossier = tempfile::tempdir().unwrap();
+    brancher(
+        &f,
+        OutilsParametres {
+            memoire: Memoire::nouvelle(Preferences::default(), dossier.path().to_path_buf(), None),
+            journal: Arc::new(Journal::ouvrir(&dossier.path().join("journaux"))),
+            fuseau: Arc::new(|_| 60),
+            horloge: Arc::new(|| MAINTENANT_MS),
+            dossier_export: dossier.path().join("exports"),
+        },
+    );
+    let minutes = Arc::new(AtomicI64::new(0));
+    let pont = pont_de_notifications(&f, &serveur.adresse, minutes.clone());
+    let g = f.global::<DonneesParametres>();
+    let reglages = || pont.store().lire(|e| e.reglages_notification.clone());
+
+    assert_eq!(
+        (
+            g.get_serveur_notif().as_str(),
+            g.get_nom_serveur_notif().as_str()
+        ),
+        ("s1", "Les amis"),
+        "le serveur ouvert est réglé d'abord"
+    );
+    assert_eq!(g.get_niveau_serveur(), 0);
+    assert_eq!(
+        g.get_effectif_serveur(),
+        "Actuellement : mentions seulement (par défaut)"
+    );
+    assert!(g.get_plusieurs_serveurs() && g.get_autres_salons());
+    assert!(salons_regles(&f).is_empty());
+
+    let ancre = Ancre::Point { x: 300.0, y: 300.0 };
+    assert!(pont.menu_salon(&f, "c4", ancre));
+    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien"]);
+    menu::choisir(&f, "sourdine");
+    assert!(
+        f.global::<DonneesMenu>().get_ouvert(),
+        "le menu des durées s'ouvre à la place"
+    );
+    assert_eq!(f.global::<DonneesMenu>().get_titre(), "Sourdine : #photos");
+    assert_eq!(
+        entrees_du_menu(&f)
+            .into_iter()
+            .map(|(_, l)| l)
+            .collect::<Vec<_>>(),
+        [
+            "Pendant 15 minutes",
+            "Pendant 1 heure",
+            "Pendant 8 heures",
+            "Pendant 24 heures",
+            "Jusqu'à réactivation"
+        ]
+    );
+    menu::choisir(&f, DureeSourdine::QuinzeMinutes.id());
+    assert!(!f.global::<DonneesMenu>().get_ouvert());
+    attendre(
+        || enregistre(&serveur, "\"mutes\":{\"c4\":"),
+        "sourdine envoyée au serveur",
+    );
+    pont.projeter_parametres(&f);
+    assert_eq!(
+        salons_regles(&f),
+        [(
+            "#photos".to_string(),
+            0,
+            "En sourdine : aucune notification".to_string(),
+            "En sourdine jusqu'à 09:45".to_string()
+        )]
+    );
+    assert!(g.get_a_sourdines());
+    pont.menu_salon(&f, "c4", ancre);
+    assert_eq!(
+        entrees_du_menu(&f)[1],
+        (
+            "lever-sourdine".to_string(),
+            "Réactiver les notifications".to_string()
+        )
+    );
+    menu::fermer(&f);
+
+    minutes.store(14, Ordering::SeqCst);
+    pont.projeter_parametres(&f);
+    assert_eq!(salons_regles(&f).len(), 1, "toujours en sourdine à 09:44");
+    minutes.store(15, Ordering::SeqCst);
+    pont.projeter_parametres(&f);
+    assert!(
+        salons_regles(&f).is_empty(),
+        "la sourdine de 15 minutes s'est levée seule"
+    );
+    pont.menu_salon(&f, "c4", ancre);
+    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien"]);
+    menu::fermer(&f);
+
+    pont.definir_niveau_general(&f, 1);
+    attendre(
+        || reglages().general == Some(NotifySettingsGeneral::All),
+        "niveau général enregistré",
+    );
+    pont.projeter_parametres(&f);
+    assert_eq!(
+        (g.get_niveau_general(), g.get_effectif_serveur().to_string()),
+        (
+            1,
+            "Actuellement : tous les messages (réglage général)".to_string()
+        )
+    );
+    pont.definir_niveau(&f, "s1", 3);
+    pont.definir_niveau(&f, "c1", 2);
+    attendre(
+        || enregistre(&serveur, "\"c1\":\"mentions\""),
+        "niveau du salon enregistré",
+    );
+    pont.projeter_parametres(&f);
+    assert_eq!(
+        (g.get_niveau_serveur(), g.get_effectif_serveur().to_string()),
+        (3, "Actuellement : rien (réglage du serveur)".to_string())
+    );
+    assert_eq!(
+        salons_regles(&f),
+        [(
+            "#général".to_string(),
+            2,
+            "Actuellement : mentions seulement (réglage du salon)".to_string(),
+            String::new()
+        )]
+    );
+
+    assert!(pont.menu_serveur(&f, "s2", ancre));
+    assert_eq!(ids_du_menu(&f), ["sourdine", "notifications", "lien"]);
+    menu::choisir(&f, "sourdine");
+    assert_eq!(f.global::<DonneesMenu>().get_titre(), "Sourdine : Travail");
+    menu::choisir(&f, DureeSourdine::Toujours.id());
+    attendre(
+        || sourdine(&reglages(), "s2", i64::MAX - 1) == Some(0),
+        "serveur en sourdine jusqu'à réactivation",
+    );
+    pont.menu_serveur(&f, "s2", ancre);
+    menu::choisir(&f, "notifications");
+    assert!(g.get_ouverte() && g.get_onglet() == "notifications");
+    assert_eq!(
+        g.get_serveur_notif(),
+        "s2",
+        "les réglages s'ouvrent sur ce serveur"
+    );
+    assert_eq!(g.get_sourdine_serveur(), "En sourdine jusqu'à réactivation");
+    pont.mettre_en_sourdine(&f, "s2", None);
+    attendre(
+        || sourdine(&reglages(), "s2", 0).is_none(),
+        "sourdine du serveur levée",
+    );
+
+    pont.definir_apercu_notifications(&f, false);
+    pont.definir_son_notifications(&f, false);
+    pont.definir_ignore_groupe(&f, true);
+    attendre(
+        || {
+            let r = reglages();
+            r.preview == Some(false)
+                && r.sound == Some(false)
+                && r.ignore_group == Some(vec!["s2".to_string()])
+        },
+        "aperçu, son et @everyone enregistrés",
+    );
+    pont.projeter_parametres(&f);
+    assert!(!g.get_apercu_notifications() && !g.get_son_notifications() && g.get_ignore_groupe());
 }

@@ -1259,7 +1259,7 @@ fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages,
     });
     attendre_l_interface(
         faible,
-        |f| entrees_du_menu(f) == ["lu", "lien"],
+        |f| entrees_du_menu(f) == ["lu", "sourdine", "lien"],
         "menu contextuel du salon",
     );
     touche(faible, Key::Return);

@@ -5,6 +5,7 @@ use estompe_client::temps_reel::evenements::StatutPresence;
 use super::super::membres::DonneesMembre;
 use super::super::projection::{serveur_courant, DonneesPrive, DonneesSalon};
 use super::super::recherche::STATUTS;
+use super::parametres::REGLER_NOTIFICATIONS;
 use super::Pont;
 use crate::menu::{self, Ancre, Entree};
 use crate::Principale;
@@ -62,9 +63,24 @@ fn lu(non_lus: i64, mentions: usize) -> Option<Entree> {
     (non_lus > 0 || mentions > 0).then(|| Entree::nouvelle(MARQUER_LU, "Marquer comme lu", "ok"))
 }
 
-pub fn entrees_du_salon(salon: &DonneesSalon) -> Vec<Entree> {
+pub fn entrees_du_salon(salon: &DonneesSalon, sourdine: Vec<Entree>) -> Vec<Entree> {
     let lu = lu(salon.non_lus, salon.mentions).filter(|_| !salon.bientot);
-    lu.into_iter().chain([lien()]).collect()
+    let sourdine = if salon.vocal || salon.bientot {
+        Vec::new()
+    } else {
+        sourdine
+    };
+    lu.into_iter().chain(sourdine).chain([lien()]).collect()
+}
+
+pub fn entrees_du_serveur(sourdine: Vec<Entree>) -> Vec<Entree> {
+    sourdine
+        .into_iter()
+        .chain([
+            Entree::nouvelle(REGLER_NOTIFICATIONS, "Paramètres de notification", "cloche"),
+            lien().separee(),
+        ])
+        .collect()
 }
 
 pub fn entrees_du_prive(prive: &DonneesPrive) -> Vec<Entree> {
@@ -117,11 +133,13 @@ impl Pont {
             return false;
         };
         let pont = self.clone();
+        let sourdine = self.entrees_de_sourdine_de(&salon.id);
+        let titre = salon.nom.clone();
         menu::ouvrir(
             f,
-            &salon.nom,
+            &titre,
             ancre,
-            entrees_du_salon(&salon),
+            entrees_du_salon(&salon, sourdine),
             move |f, action| {
                 match action {
                     MARQUER_LU => pont.lire(CleConversation::Salon(salon.id.clone())),
@@ -129,9 +147,52 @@ impl Pont {
                         f,
                         &pont.lien_absolu(&lien_salon(&serveur, Some(&salon.id))),
                     ),
-                    _ => {}
+                    _ => {
+                        pont.action_de_sourdine(
+                            f,
+                            &salon.id,
+                            &format!("#{}", salon.nom),
+                            ancre,
+                            action,
+                        );
+                    }
                 }
                 false
+            },
+        )
+    }
+
+    pub fn menu_serveur(&self, f: &Principale, id: &str, ancre: Ancre) -> bool {
+        let Some(nom) = self
+            .store
+            .lire(|e| e.serveur(id).map(|s| s.name.clone().unwrap_or_default()))
+        else {
+            return false;
+        };
+        let pont = self.clone();
+        let id = id.to_string();
+        let sourdine = self.entrees_de_sourdine_de(&id);
+        menu::ouvrir(
+            f,
+            &nom.clone(),
+            ancre,
+            entrees_du_serveur(sourdine),
+            move |f, action| match action {
+                REGLER_NOTIFICATIONS => {
+                    let g = f.global::<crate::DonneesParametres>();
+                    g.set_serveur_notif(id.as_str().into());
+                    pont.projeter_parametres(f);
+                    g.invoke_ouvrir("notifications".into());
+                    true
+                }
+                COPIER_LIEN => {
+                    menu::copier_texte(f, &pont.lien_absolu(&lien_salon(&id, None)));
+                    false
+                }
+                _ => {
+                    pont.action_de_sourdine(f, &id, &nom, ancre, action);
+                    false
+                }
             },
         )
     }
@@ -302,11 +363,39 @@ mod tests {
     #[test]
     fn marquer_comme_lu_n_apparait_que_pour_un_salon_texte_avec_des_non_lus() {
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, false))),
+            ids(&entrees_du_salon(&salon(3, false), Vec::new())),
             [MARQUER_LU, COPIER_LIEN]
         );
-        assert_eq!(ids(&entrees_du_salon(&salon(0, false))), [COPIER_LIEN]);
-        assert_eq!(ids(&entrees_du_salon(&salon(3, true))), [COPIER_LIEN]);
+        assert_eq!(
+            ids(&entrees_du_salon(&salon(0, false), Vec::new())),
+            [COPIER_LIEN]
+        );
+        assert_eq!(
+            ids(&entrees_du_salon(&salon(3, true), Vec::new())),
+            [COPIER_LIEN]
+        );
+    }
+
+    #[test]
+    fn la_sourdine_se_propose_pour_un_salon_texte_et_pour_un_serveur() {
+        let sourdine = || super::super::parametres::entrees_de_sourdine(None);
+        assert_eq!(
+            ids(&entrees_du_salon(&salon(3, false), sourdine())),
+            [MARQUER_LU, super::super::parametres::SOURDINE, COPIER_LIEN]
+        );
+        let mut vocal = salon(0, false);
+        vocal.vocal = true;
+        assert_eq!(ids(&entrees_du_salon(&vocal, sourdine())), [COPIER_LIEN]);
+        let serveur = entrees_du_serveur(sourdine());
+        assert_eq!(
+            ids(&serveur),
+            [
+                super::super::parametres::SOURDINE,
+                REGLER_NOTIFICATIONS,
+                COPIER_LIEN
+            ]
+        );
+        assert!(serveur[2].separe);
     }
 
     #[test]

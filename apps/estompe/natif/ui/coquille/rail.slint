@@ -6,6 +6,7 @@ import { DonneesVocal } from "../vocal/donnees.slint";
 import { DonneesRecherche } from "recherche.slint";
 import { DonneesClips } from "../replay/galerie.slint";
 import { DonneesReplay } from "../replay/reglages.slint";
+import { DonneesMenu } from "../composants/menu.slint";
 
 component Pave {
     in property <string> libelle;
@@ -19,11 +20,29 @@ component Pave {
     in property <color> fond-survol: Theme.rose-doux;
     in property <bool> contour: true;
     in property <bool> deplacable: false;
+    in property <bool> avec-menu: false;
     out property <bool> glisse: false;
     out property <length> decalage: 0;
     callback clique();
     callback lache(length);
+    callback menu(length, length);
     property <bool> utilisable: Calques.ouverts == 0;
+    property <bool> menu-ouvert: DonneesMenu.ouvert;
+    property <bool> a-ouvert-menu: false;
+    changed menu-ouvert => {
+        if (!self.menu-ouvert && self.a-ouvert-menu) {
+            self.a-ouvert-menu = false;
+            if (!DonneesMenu.focus-ailleurs) {
+                portee.focus();
+            }
+        }
+    }
+    function ouvrir-menu(x: length, y: length) {
+        if (root.avec-menu && root.utilisable) {
+            root.a-ouvert-menu = true;
+            root.menu(x, y);
+        }
+    }
     width: 44px;
     height: 44px;
     accessible-role: button;
@@ -105,6 +124,10 @@ component Pave {
                 root.clique();
                 return accept;
             }
+            if (root.avec-menu && (e.text == Key.Menu || (e.modifiers.shift && e.text == Key.F10))) {
+                root.ouvrir-menu(root.absolute-position.x + root.width / 2, root.absolute-position.y + root.height);
+                return accept;
+            }
             return reject;
         }
         zone := TouchArea {
@@ -119,6 +142,9 @@ component Pave {
                 }
             }
             pointer-event(e) => {
+                if (root.avec-menu && e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                    root.ouvrir-menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
                 if (e.kind == PointerEventKind.up && root.glisse) {
                     root.lache(root.decalage);
                     root.glisse = false;
@@ -261,9 +287,13 @@ export component Rail inherits Rectangle {
                     compteur: serveur.mentions;
                     mention: true;
                     deplacable: true;
+                    avec-menu: true;
                     vocal: DonneesVocal.barre.visible && DonneesVocal.barre.serveur == serveur.id;
                     clique => {
                         DonneesCoquille.ouvrir-serveur(serveur.id);
+                    }
+                    menu(x, y) => {
+                        DonneesCoquille.menu-serveur(serveur.id, x, y);
                     }
                     lache(decalage) => {
                         let arrivee = Math.clamp(i + Math.round(decalage / root.pas), 0, DonneesCoquille.serveurs.length - 1);

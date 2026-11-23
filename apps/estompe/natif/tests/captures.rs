@@ -235,9 +235,14 @@ const ECRANS: &[Ecran] = ecrans![
     "nouveau-prive-erreur-clair", Clair, nouveau_prive_erreur;
     "menu-statut-clair", Clair, menu_statut;
     "menu-statut-sombre", Sombre, menu_statut;
+    "menu-sourdine-clair", Clair, menu_sourdine;
+    "menu-sourdine-sombre", Sombre, menu_sourdine;
+    "menu-sourdine-duree-clair", Clair, menu_sourdine_duree;
     "parametres-compte-clair", Clair, parametres_compte;
     "parametres-compte-sombre", Sombre, parametres_compte;
     "parametres-notifications-clair", Clair, parametres_notifications;
+    "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
+    "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
     "parametres-voix-clair", Clair, parametres_voix;
     "parametres-apparence-clair", Clair, parametres_apparence;
     "parametres-apparence-sombre", Sombre, parametres_apparence;
@@ -1866,6 +1871,32 @@ fn menu_statut(f: &Principale) {
     stabiliser(f);
 }
 
+fn ancre_du_salon(f: &Principale, nom: &str) -> estompe_natif::menu::Ancre {
+    let salon = i_slint_backend_testing::ElementHandle::find_by_accessible_label(f, nom)
+        .next()
+        .expect("salon du panneau");
+    let position = salon.absolute_position();
+    estompe_natif::menu::Ancre::Point {
+        x: position.x + 40.0,
+        y: position.y + salon.size().height,
+    }
+}
+
+fn menu_sourdine(f: &Principale) {
+    let pont = coquille(f, etat_notifications(), salon("s1", Some("c1")));
+    let ancre = ancre_du_salon(f, "organisation-des-vacances-d-ete");
+    pont.menu_salon(f, "c3", ancre);
+    stabiliser(f);
+}
+
+fn menu_sourdine_duree(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    let ancre = ancre_du_salon(f, "photos");
+    pont.menu_salon(f, "c4", ancre);
+    estompe_natif::menu::choisir(f, "sourdine");
+    stabiliser(f);
+}
+
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
     f.global::<DonneesCreationSondage>().set_ouvert(false);
@@ -1949,6 +1980,7 @@ fn remettre_a_zero(f: &Principale) {
     p.set_journal_actif(false);
     p.set_type_salon(true);
     p.set_demarrage_disponible(false);
+    p.set_serveur_notif("".into());
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
     connecte(f);
@@ -2716,6 +2748,10 @@ fn mesures_scenario(f: &Principale) {
 
 fn parametres(f: &Principale, onglet: estompe_client::parametres::Onglet) {
     coquille_accueil(f);
+    afficher_parametres(f, onglet);
+}
+
+fn afficher_parametres(f: &Principale, onglet: estompe_client::parametres::Onglet) {
     let mut p = estompe_client::preferences::Preferences::default();
     p.ptt.actif = true;
     p.ptt.touche = "KeyV".into();
@@ -2731,10 +2767,54 @@ fn parametres_compte(f: &Principale) {
     parametres(f, estompe_client::parametres::Onglet::Compte);
 }
 
+fn maintenant_de_la_coquille() -> i64 {
+    use chrono::TimeZone;
+    let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
+        .unwrap()
+        .and_hms_opt(9, 30, 0)
+        .unwrap();
+    chrono::Local
+        .from_local_datetime(&matin)
+        .earliest()
+        .unwrap()
+        .timestamp_millis()
+}
+
+fn etat_notifications() -> estompe_client::store::Etat {
+    let mut etat = commun::coquille::etat();
+    etat.statuts.insert(
+        "u1".into(),
+        estompe_client::temps_reel::evenements::StatutPresence::Dnd,
+    );
+    etat.reglages_notification = serde_json::from_value(serde_json::json!({
+        "levels": {"s1": "all", "c2": "none"},
+        "types": {"dm": true, "mention": true, "channel": false, "voice": true},
+        "preview": true,
+        "sound": false,
+        "general": "mentions",
+        "ignore_group": ["s1"],
+        "mutes": {"c3": maintenant_de_la_coquille() + 45 * 60_000}
+    }))
+    .unwrap();
+    etat
+}
+
 fn parametres_notifications(f: &Principale) {
-    parametres(f, estompe_client::parametres::Onglet::Notifications);
-    let g = f.global::<estompe_natif::DonneesParametres>();
-    g.set_type_salon(false);
+    let pont = coquille(f, etat_notifications(), Route::Accueil);
+    afficher_parametres(f, estompe_client::parametres::Onglet::Notifications);
+    pont.projeter_parametres(f);
+    stabiliser(f);
+}
+
+fn parametres_notifications_serveur(f: &Principale) {
+    parametres_notifications(f);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+            position: slint::LogicalPosition::new(760.0, 500.0),
+            delta_x: 0.0,
+            delta_y: -5000.0,
+        });
+    stabiliser(f);
 }
 
 fn parametres_voix(f: &Principale) {

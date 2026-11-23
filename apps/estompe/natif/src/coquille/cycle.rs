@@ -723,6 +723,11 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         &id,
         Ancre::Point { x, y }
     ));
+    rappel!(on_menu_serveur, |p, f, id, x, y| p.menu_serveur(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
     rappel!(on_menu_prive, |p, f, id, x, y| p.menu_prive(
         &f,
         &id,
@@ -753,6 +758,28 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .definir_apercus(&f, actif));
     rappel_parametres!(on_type_change, |p, f, genre, actif| p
         .definir_type_notification(&f, &genre, actif));
+    rappel_parametres!(on_niveau_general_change, |p, f, rang| p
+        .definir_niveau_general(&f, rang));
+    rappel_parametres!(on_niveau_change, |p, f, id, rang| p
+        .definir_niveau(&f, &id, rang));
+    rappel_parametres!(on_apercu_notifications_change, |p, f, actif| p
+        .definir_apercu_notifications(&f, actif));
+    rappel_parametres!(on_son_notifications_change, |p, f, actif| p
+        .definir_son_notifications(&f, actif));
+    rappel_parametres!(on_ignore_groupe_change, |p, f, actif| p
+        .definir_ignore_groupe(&f, actif));
+    rappel_parametres!(on_ne_pas_deranger_change, |p, f, actif| p
+        .definir_ne_pas_deranger(&f, actif));
+    rappel_parametres!(on_lever_sourdine, |p, f, id| p
+        .mettre_en_sourdine(&f, &id, None));
+    rappel_parametres!(on_menu_sourdine, |p, f, id, x, haut, bas| p
+        .menu_sourdine_parametres(&f, &id, Ancre::Element { x, haut, bas }));
+    rappel_parametres!(on_menu_serveur_notif, |p, f, x, haut, bas| p
+        .menu_serveur_notif(&f, Ancre::Element { x, haut, bas }));
+    rappel_parametres!(on_menu_ajout_salon, |p, f, x, haut, bas| p
+        .menu_ajout_salon(&f, Ancre::Element { x, haut, bas }));
+    rappel_parametres!(on_rafraichir_notifications, |p, f| p
+        .projeter_parametres(&f));
     let nouveau = f.global::<DonneesNouveauPrive>();
     macro_rules! rappel_nouveau {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
