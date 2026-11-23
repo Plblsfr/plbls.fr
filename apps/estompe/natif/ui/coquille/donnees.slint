@@ -110,7 +110,10 @@ export struct Accueil {
 
 export struct LigneBadge {
     nom: string,
+    description: string,
     couleur: color,
+    image: image,
+    a-image: bool,
 }
 
 export struct LigneMembre {
@@ -191,6 +194,7 @@ export global DonneesCoquille {
     in property <EtatBandeau> bandeau: EtatBandeau.aucun;
     in property <string> pseudo;
     in property <string> initiales;
+    in property <image> portrait;
     in property <EtatPresence> presence: EtatPresence.en-ligne;
     in property <string> statut: "En ligne";
     in-out property <bool> panneau-replie: false;

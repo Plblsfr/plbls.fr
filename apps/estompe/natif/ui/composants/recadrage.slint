@@ -1,0 +1,154 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone } from "icone.slint";
+import { Curseur } from "curseur.slint";
+import { Coins } from "coins.slint";
+import { Anneau } from "focus.slint";
+
+export component Recadrage inherits VerticalLayout {
+    in property <image> source;
+    in property <int> clip-x;
+    in property <int> clip-y;
+    in property <int> clip-cote;
+    in-out property <float> zoom: 1;
+    in property <float> zoom-max: 4;
+    in property <float> pas-zoom: 0.05;
+    in property <string> zoom-lisible;
+    in property <length> pas-clavier: 12px;
+    in property <length> cote: 240px;
+    in property <int> calque: 0;
+    in property <color> fond: Theme.surface;
+    in property <string> libelle: "Aperçu du recadrage : faire glisser ou utiliser les flèches pour déplacer, + et - pour zoomer";
+    callback deplace(length, length);
+    callback zoom-change(float);
+    property <bool> utilisable: calque >= Calques.ouverts;
+    forward-focus: portee;
+    spacing: Espace.e4;
+    alignment: start;
+    HorizontalLayout {
+        alignment: center;
+        Rectangle {
+            width: root.cote;
+            height: root.cote;
+            background: Theme.papier-2;
+            accessible-role: image;
+            accessible-label: root.libelle;
+            Image {
+                width: 100%;
+                height: 100%;
+                source: root.source;
+                source-clip-x: root.clip-x;
+                source-clip-y: root.clip-y;
+                source-clip-width: root.clip-cote;
+                source-clip-height: root.clip-cote;
+                image-fit: fill;
+            }
+            Coins {
+                width: 100%;
+                height: 100%;
+                rayon: root.cote * 0.3;
+                couleur: root.fond;
+            }
+            Rectangle {
+                border-radius: root.cote * 0.3;
+                border-width: 1px;
+                border-color: Theme.encre;
+            }
+            Anneau {
+                width: parent.width + 8px;
+                height: parent.height + 8px;
+                rayon: root.cote * 0.3;
+                actif: portee.has-focus;
+            }
+            zone := TouchArea {
+                property <length> dernier-x;
+                property <length> dernier-y;
+                enabled: root.utilisable;
+                mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        self.dernier-x = self.mouse-x;
+                        self.dernier-y = self.mouse-y;
+                        portee.focus();
+                    }
+                }
+                moved => {
+                    if (self.pressed) {
+                        root.deplace(self.mouse-x - self.dernier-x, self.mouse-y - self.dernier-y);
+                        self.dernier-x = self.mouse-x;
+                        self.dernier-y = self.mouse-y;
+                    }
+                }
+            }
+            portee := FocusScope {
+                enabled: root.utilisable;
+                focus-on-click: false;
+                key-pressed(e) => {
+                    if (e.text == Key.LeftArrow) {
+                        root.deplace(root.pas-clavier, 0);
+                        return accept;
+                    }
+                    if (e.text == Key.RightArrow) {
+                        root.deplace(-root.pas-clavier, 0);
+                        return accept;
+                    }
+                    if (e.text == Key.UpArrow) {
+                        root.deplace(0, root.pas-clavier);
+                        return accept;
+                    }
+                    if (e.text == Key.DownArrow) {
+                        root.deplace(0, -root.pas-clavier);
+                        return accept;
+                    }
+                    if (e.text == "+" || e.text == "=") {
+                        root.zoom-change(root.zoom + 0.25);
+                        return accept;
+                    }
+                    if (e.text == "-") {
+                        root.zoom-change(root.zoom - 0.25);
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e2;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: "cherche";
+                taille: 16px;
+                couleur: Theme.gris;
+            }
+        }
+        Text {
+            text: "Zoom";
+            color: Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.moyen;
+            vertical-alignment: center;
+        }
+        Curseur {
+            minimum: 1;
+            maximum: root.zoom-max;
+            pas: root.pas-zoom;
+            valeur <=> root.zoom;
+            libelle: "Zoom";
+            unite: "×";
+            calque: root.calque;
+            change(v) => {
+                root.zoom-change(v);
+            }
+        }
+        Text {
+            min-width: 40px;
+            text: root.zoom-lisible;
+            color: Theme.encre;
+            font-family: Typo.mono;
+            font-size: Typo.petit;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}

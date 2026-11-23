@@ -169,6 +169,8 @@ const ECRANS: &[Ecran] = ecrans![
     "carte-profil-clair", Clair, carte_profil;
     "carte-profil-sombre", Sombre, carte_profil;
     "carte-profil-moi-clair", Clair, carte_profil_moi;
+    "carte-profil-badges-clair", Clair, carte_profil_badges;
+    "carte-profil-badges-sombre", Sombre, carte_profil_badges;
     "messagerie-variantes-clair", Clair, messagerie_variantes;
     "messagerie-variantes-sombre", Sombre, messagerie_variantes;
     "messagerie-lecteurs-clair", Clair, messagerie_lecteurs;
@@ -240,6 +242,10 @@ const ECRANS: &[Ecran] = ecrans![
     "menu-sourdine-duree-clair", Clair, menu_sourdine_duree;
     "parametres-compte-clair", Clair, parametres_compte;
     "parametres-compte-sombre", Sombre, parametres_compte;
+    "parametres-compte-profil-clair", Clair, parametres_compte_profil;
+    "parametres-compte-profil-sombre", Sombre, parametres_compte_profil;
+    "recadrage-avatar-clair", Clair, recadrage_avatar;
+    "recadrage-avatar-sombre", Sombre, recadrage_avatar;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
     "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
@@ -1320,6 +1326,139 @@ fn carte_profil(f: &Principale) {
 fn carte_profil_moi(f: &Principale) {
     let pont = membres_ouverts(f);
     pont.ouvrir_membre(f, "u1");
+}
+
+fn carte_profil_badges(f: &Principale) {
+    let profils = profils_des_membres();
+    let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#2f5d8a"/><path d="M7 12l3 3 7-7" stroke="#ffffff" stroke-width="2.5" fill="none"/></svg>"##;
+    let etoile = image::RgbaImage::from_fn(48, 48, |x, y| {
+        let (dx, dy) = (x as f32 - 23.5, y as f32 - 23.5);
+        if dx.abs() + dy.abs() < 22.0 {
+            image::Rgba([242, 166, 90, 255])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        }
+    });
+    let mut png = std::io::Cursor::new(Vec::new());
+    etoile.write_to(&mut png, image::ImageFormat::Png).unwrap();
+    profils.installer_icone_badge("verifie", 1, svg.to_vec());
+    profils.installer_icone_badge("pionniere", 2, png.into_inner());
+    let badge = |id: &str, nom: &str, description: &str, icone: &str, version: i64| {
+        estompe_client::appels::Badge {
+            id: id.into(),
+            name: nom.into(),
+            description: description.into(),
+            icon: icone.into(),
+            icon_version: version,
+            color: "#d0688a".into(),
+            ..Default::default()
+        }
+    };
+    profils.installer_badges(
+        "carol",
+        vec![
+            badge(
+                "verifie",
+                "Vérifiée",
+                "Compte vérifié par l'équipe d'Estompe.",
+                "",
+                1,
+            ),
+            badge("pionniere", "Pionnière", "", "", 2),
+            badge("artiste", "Artiste", "", "🎨", 0),
+        ],
+    );
+    f.global::<DonneesCoquille>().set_marge_ouverte(true);
+    let pont = coquille_avec(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils,
+    );
+    pont.ouvrir_membre(f, "carol");
+    stabiliser(f);
+    let badge = i_slint_backend_testing::ElementHandle::find_by_element_type_name(f, "BadgeCarte")
+        .next()
+        .expect("badge de la carte");
+    let p = badge.absolute_position();
+    let taille = badge.size();
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(
+                p.x + taille.width / 2.0,
+                p.y + taille.height / 2.0,
+            ),
+        });
+    stabiliser(f);
+}
+
+fn etat_profil() -> estompe_client::store::Etat {
+    let mut etat = commun::coquille::etat_avec_membres();
+    etat.avatars.insert("u1".into(), 3);
+    etat.avatars_serveur
+        .insert("s2".into(), [("u1".to_string(), 2)].into());
+    if let Some(m) = etat
+        .details
+        .get_mut("s1")
+        .and_then(|d| d.members.as_mut())
+        .and_then(|m| m.iter_mut().find(|m| m.id.as_deref() == Some("u1")))
+    {
+        m.banner_color = Some("#2f5d8a".into());
+    }
+    etat
+}
+
+fn profils_du_compte() -> Arc<Profils> {
+    let profils = profils_des_membres();
+    for (serveur, version, fond, motif) in [
+        (None, 3, [208, 104, 138], [250, 230, 236]),
+        (Some("s2"), 2, [61, 140, 90], [230, 245, 235]),
+    ] {
+        profils.installer_avatar(
+            CleAvatar {
+                utilisateur: "u1".into(),
+                version,
+                serveur: serveur.map(str::to_string),
+            },
+            avatars::arrondir(portrait(fond, motif)),
+        );
+    }
+    profils
+}
+
+fn parametres_compte_profil(f: &Principale) {
+    let pont = coquille_avec(f, etat_profil(), Route::Accueil, profils_du_compte());
+    afficher_parametres(f, estompe_client::parametres::Onglet::Compte);
+    pont.projeter_profil(f);
+    stabiliser(f);
+}
+
+fn paysage() -> image::RgbaImage {
+    image::RgbaImage::from_fn(900, 600, |x, y| {
+        let ciel = y < 330;
+        let soleil = ((x as f32 - 620.0).powi(2) + (y as f32 - 190.0).powi(2)).sqrt() < 70.0;
+        let colline = (y as f32) > 330.0 + 60.0 * ((x as f32) / 140.0).sin();
+        let [r, v, b] = if soleil {
+            [242, 166, 90]
+        } else if ciel {
+            [(150 + y / 6) as u8, (190 + y / 8) as u8, 230]
+        } else if colline {
+            [61, 140, 90]
+        } else {
+            [120, 170, 110]
+        };
+        image::Rgba([r, v, b, 255])
+    })
+}
+
+fn recadrage_avatar(f: &Principale) {
+    let pont = coquille_avec(f, etat_profil(), Route::Accueil, profils_du_compte());
+    afficher_parametres(f, estompe_client::parametres::Onglet::Compte);
+    pont.projeter_profil(f);
+    pont.ouvrir_recadrage(f, None, paysage());
+    pont.zoomer_recadrage(f, 1.6);
+    pont.deplacer_recadrage(f, -60.0, 20.0);
+    stabiliser(f);
 }
 
 fn salon_c1() -> CleConversation {

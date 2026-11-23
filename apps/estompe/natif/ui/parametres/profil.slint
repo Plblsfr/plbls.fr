@@ -1,0 +1,357 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Bouton, VarianteBouton, Avatar, Modal } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { Recadrage } from "../composants/recadrage.slint";
+import { DonneesCoquille } from "../coquille/donnees.slint";
+
+export struct PhotoServeurProfil {
+    id: string,
+    nom: string,
+    portrait: image,
+    propre: bool,
+}
+
+export struct NuanceBanniere {
+    code: string,
+    couleur: color,
+    choisie: bool,
+}
+
+export global DonneesProfil {
+    in-out property <image> portrait;
+    in-out property <bool> a-avatar: false;
+    in-out property <string> occupe;
+    in-out property <string> erreur;
+    in-out property <[PhotoServeurProfil]> serveurs;
+    in-out property <[NuanceBanniere]> nuances;
+    in-out property <bool> banniere-du-role: true;
+    in-out property <bool> recadrage-ouvert: false;
+    in-out property <string> recadrage-titre: "Recadrer l'avatar";
+    in-out property <image> source;
+    in-out property <int> clip-x: 0;
+    in-out property <int> clip-y: 0;
+    in-out property <int> clip-cote: 1;
+    in-out property <float> zoom: 1;
+    in-out property <string> zoom-lisible: "1,0×";
+    in-out property <bool> envoi: false;
+    callback changer-avatar(string);
+    callback retirer-avatar(string);
+    callback choisir-banniere(string);
+    callback deplacer(length, length);
+    callback zoomer(float);
+    callback valider-recadrage();
+    callback fermer-recadrage();
+}
+
+component Nuance inherits Rectangle {
+    in property <string> nom;
+    in property <color> couleur;
+    in property <bool> choisie;
+    in property <bool> role: false;
+    callback choisir();
+    property <bool> utilisable: Calques.ouverts == 0;
+    width: root.role ? libelle.preferred-width + 24px : 28px;
+    height: 28px;
+    border-radius: 14px;
+    background: root.role ? Theme.papier-2 : root.couleur;
+    border-width: root.choisie ? 2px : 1px;
+    border-color: root.choisie ? Theme.encre : root.role ? Theme.trait : root.couleur.darker(0.15);
+    accessible-role: radio-button;
+    accessible-label: root.nom;
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        root.choisir();
+    }
+    forward-focus: portee;
+    if root.choisie && !root.role: Rectangle {
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: Theme.surface;
+    }
+    libelle := Text {
+        visible: root.role;
+        text: root.nom;
+        color: Theme.encre;
+        font-size: Typo.petit;
+        font-weight: root.choisie ? Typo.demi-gras : Typo.moyen;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: 14px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+        TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                root.choisir();
+            }
+        }
+    }
+}
+
+export component CompteProfil inherits VerticalLayout {
+    spacing: Espace.e6;
+    Rectangle {
+        border-radius: Rayon.l;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.trait;
+        HorizontalLayout {
+            padding-left: Espace.e5;
+            padding-right: Espace.e5;
+            padding-top: Espace.e4;
+            padding-bottom: Espace.e4;
+            spacing: Espace.e4;
+            Avatar {
+                nom: DonneesCoquille.pseudo;
+                initiales: DonneesCoquille.initiales;
+                portrait: DonneesProfil.portrait;
+                taille: 64px;
+                teinte: 1;
+                presence: DonneesCoquille.presence;
+                fond: Theme.surface;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: "Connecté en tant que";
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                }
+                Text {
+                    text: DonneesCoquille.pseudo;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: Typo.titre-section;
+                    font-weight: Typo.gras;
+                    overflow: elide;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    spacing: Espace.e2;
+                    padding-top: Espace.e1;
+                    Bouton {
+                        texte: "Changer l'avatar";
+                        icone: "envoie";
+                        variante: VarianteBouton.primaire;
+                        en-cours: DonneesProfil.occupe == "moi";
+                        actif: DonneesProfil.occupe == "";
+                        clique => {
+                            DonneesProfil.changer-avatar("");
+                        }
+                    }
+                    if DonneesProfil.a-avatar: Bouton {
+                        texte: "Supprimer";
+                        variante: VarianteBouton.fantome;
+                        actif: DonneesProfil.occupe == "";
+                        description: "Supprimer l'avatar";
+                        clique => {
+                            DonneesProfil.retirer-avatar("");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if DonneesProfil.erreur != "": Text {
+        text: DonneesProfil.erreur;
+        color: Theme.danger;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+        accessible-role: text;
+        accessible-label: self.text;
+    }
+    VerticalLayout {
+        spacing: 10px;
+        Text {
+            text: "Bannière du profil";
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: Typo.titre-section;
+            font-weight: Typo.gras;
+            letter-spacing: -0.4px;
+        }
+        Text {
+            text: "Couleur du haut de ta carte de profil. Sans couleur choisie, celle de ton rôle le plus élevé est utilisée.";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: start;
+            spacing: Espace.e2;
+            accessible-role: list;
+            accessible-label: "Couleur de la bannière";
+            Nuance {
+                role: true;
+                nom: "Couleur du rôle";
+                choisie: DonneesProfil.banniere-du-role;
+                choisir => {
+                    DonneesProfil.choisir-banniere("");
+                }
+            }
+            for n in DonneesProfil.nuances: Nuance {
+                nom: n.code;
+                couleur: n.couleur;
+                choisie: n.choisie;
+                choisir => {
+                    DonneesProfil.choisir-banniere(n.code);
+                }
+            }
+        }
+    }
+    if DonneesProfil.serveurs.length > 0: VerticalLayout {
+        spacing: 10px;
+        Text {
+            text: "Photo de profil par serveur";
+            color: Theme.encre;
+            font-family: Typo.titre;
+            font-size: Typo.titre-section;
+            font-weight: Typo.gras;
+            letter-spacing: -0.4px;
+        }
+        Text {
+            text: "Sans photo propre à un serveur, ta photo globale y est utilisée.";
+            color: Theme.gris;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            border-radius: Rayon.l;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.trait;
+            VerticalLayout {
+                padding-left: Espace.e4;
+                padding-right: Espace.e4;
+                padding-top: Espace.e2;
+                padding-bottom: Espace.e2;
+                for s[i] in DonneesProfil.serveurs: Rectangle {
+                    height: 52px;
+                    if i > 0: Rectangle {
+                        y: 0;
+                        height: 1px;
+                        background: Theme.trait;
+                    }
+                    HorizontalLayout {
+                        spacing: Espace.e3;
+                        VerticalLayout {
+                            alignment: center;
+                            Avatar {
+                                nom: DonneesCoquille.pseudo;
+                                initiales: DonneesCoquille.initiales;
+                                portrait: s.portrait;
+                                taille: 32px;
+                                teinte: 1;
+                                fond: Theme.surface;
+                            }
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: s.nom;
+                            color: Theme.encre;
+                            font-weight: Typo.demi-gras;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Changer";
+                                description: "Changer la photo pour " + s.nom;
+                                en-cours: DonneesProfil.occupe == s.id;
+                                actif: DonneesProfil.occupe == "";
+                                clique => {
+                                    DonneesProfil.changer-avatar(s.id);
+                                }
+                            }
+                        }
+                        if s.propre: VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Retirer";
+                                variante: VarianteBouton.fantome;
+                                description: "Retirer la photo pour " + s.nom;
+                                actif: DonneesProfil.occupe == "";
+                                clique => {
+                                    DonneesProfil.retirer-avatar(s.id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component FenetreRecadrage inherits Modal {
+    titre: DonneesProfil.recadrage-titre;
+    ouvert: DonneesProfil.recadrage-ouvert;
+    largeur: 400px;
+    focus-croix: false;
+    ferme => {
+        DonneesProfil.fermer-recadrage();
+    }
+    ouverture => {
+        cadre.focus();
+    }
+    cadre := Recadrage {
+        source: DonneesProfil.source;
+        clip-x: DonneesProfil.clip-x;
+        clip-y: DonneesProfil.clip-y;
+        clip-cote: DonneesProfil.clip-cote;
+        zoom <=> DonneesProfil.zoom;
+        zoom-lisible: DonneesProfil.zoom-lisible;
+        calque: Calques.ouverts;
+        deplace(dx, dy) => {
+            DonneesProfil.deplacer(dx, dy);
+        }
+        zoom-change(z) => {
+            DonneesProfil.zoomer(z);
+        }
+    }
+    HorizontalLayout {
+        alignment: end;
+        spacing: Espace.e2;
+        Bouton {
+            texte: "Annuler";
+            calque: Calques.ouverts;
+            clique => {
+                DonneesProfil.fermer-recadrage();
+            }
+        }
+        Bouton {
+            texte: "Valider";
+            variante: VarianteBouton.primaire;
+            calque: Calques.ouverts;
+            en-cours: DonneesProfil.envoi;
+            actif: !DonneesProfil.envoi;
+            clique => {
+                DonneesProfil.valider-recadrage();
+            }
+        }
+    }
+}

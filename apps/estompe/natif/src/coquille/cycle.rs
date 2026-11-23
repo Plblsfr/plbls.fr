@@ -780,6 +780,28 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .menu_ajout_salon(&f, Ancre::Element { x, haut, bas }));
     rappel_parametres!(on_rafraichir_notifications, |p, f| p
         .projeter_parametres(&f));
+    let profil = f.global::<crate::DonneesProfil>();
+    macro_rules! rappel_profil {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            profil.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_profil!(on_changer_avatar, |p, f, cible| p
+        .changer_avatar(&f, &cible));
+    rappel_profil!(on_retirer_avatar, |p, f, cible| p
+        .retirer_avatar(&f, &cible));
+    rappel_profil!(on_choisir_banniere, |p, f, couleur| p
+        .choisir_banniere(&f, &couleur));
+    rappel_profil!(on_deplacer, |p, f, dx, dy| p.deplacer_recadrage(&f, dx, dy));
+    rappel_profil!(on_zoomer, |p, f, zoom| p.zoomer_recadrage(&f, zoom));
+    rappel_profil!(on_valider_recadrage, |p, f| p.valider_recadrage(&f));
+    rappel_profil!(on_fermer_recadrage, |p, f| p.fermer_recadrage(&f));
     let nouveau = f.global::<DonneesNouveauPrive>();
     macro_rules! rappel_nouveau {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{

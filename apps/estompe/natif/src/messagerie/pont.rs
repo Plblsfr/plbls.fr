@@ -860,8 +860,16 @@ fn ligne_slint(
         a_couleur: couleur.is_some(),
         couleur: couleur.unwrap_or_default(),
         bot: m.bot,
-        badge_1: l.badges.first().map(badge_slint).unwrap_or_default(),
-        badge_2: l.badges.get(1).map(badge_slint).unwrap_or_default(),
+        badge_1: l
+            .badges
+            .first()
+            .map(|b| badge_slint(b, profils))
+            .unwrap_or_default(),
+        badge_2: l
+            .badges
+            .get(1)
+            .map(|b| badge_slint(b, profils))
+            .unwrap_or_default(),
         nombre_badges: l.badges.len().min(i32::MAX as usize) as i32,
         heure: m.heure.as_str().into(),
         date_complete: m.date_complete.as_str().into(),
@@ -1371,6 +1379,13 @@ impl PontMessagerie {
 
     pub fn definir_horloge(&self, horloge: HorlogeMs) {
         *self.horloge.lock().unwrap_or_else(|e| e.into_inner()) = horloge;
+    }
+
+    pub fn fichiers(&self) -> SystemeFichiers {
+        self.fichiers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn definir_fichiers(&self, fichiers: SystemeFichiers) {

@@ -1012,6 +1012,15 @@ pub mod coquille {
                                 .unwrap()
                                 .push((format!("{methode} {chemin}"), corps_recu.clone()));
                         }
+                        if methode == "PUT" {
+                            if let Some(prefixe) = chemin.strip_suffix("/me/avatar") {
+                                s.servir_fichier(
+                                    &format!("{prefixe}/users/u1/avatar"),
+                                    "image/png",
+                                    octets.clone(),
+                                );
+                            }
+                        }
                         let (statut, type_mime, corps) = match s.fichier(&chemin) {
                             Some((type_mime, octets)) => (200, type_mime, octets),
                             None => {

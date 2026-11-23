@@ -16,7 +16,7 @@ use crate::types::{
     MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
     PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
     PostNotificationsReadRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
-    PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
+    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -584,6 +584,26 @@ impl Client {
         image: impl Into<Bytes>,
     ) -> Result<(), ErreurApi> {
         self.envoyer_image(&format!("/servers/{serveur}/me/avatar"), type_mime, image)
+            .await
+    }
+
+    pub async fn supprimer_avatar(&self) -> Result<(), ErreurApi> {
+        self.delete("/me/avatar").await
+    }
+
+    pub async fn supprimer_avatar_de_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/servers/{serveur}/me/avatar")).await
+    }
+
+    pub async fn definir_banniere(&self, couleur: &str) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutMeBannerRequete {
+            color: Some(couleur.to_string()),
+        })?;
+        self.envoyer(Method::PUT, "/me/banner", &corps).await
+    }
+
+    pub async fn icone_de_badge(&self, badge: &str) -> Result<Bytes, ErreurApi> {
+        self.octets(&format!("/badges/{}/icon", encoder_composant(badge)))
             .await
     }
 
@@ -1311,6 +1331,9 @@ mod tests {
             })
             .await
             .unwrap();
+        client.definir_banniere("#aa00ff").await.unwrap();
+        client.supprimer_avatar().await.unwrap();
+        client.supprimer_avatar_de_serveur("s1").await.unwrap();
         assert_eq!(
             lignes(&serveur),
             [
@@ -1320,6 +1343,9 @@ mod tests {
                 ligne("/me/status", "PUT"),
                 ligne("/me/activity", "PUT"),
                 ligne("/me/notify-settings", "PUT"),
+                ligne("/me/banner", "PUT"),
+                ligne("/me/avatar", "DELETE"),
+                ligne("/servers/s1/me/avatar", "DELETE"),
             ]
         );
         let requetes = serveur.requetes();
@@ -1327,6 +1353,7 @@ mod tests {
         assert_eq!(requetes[3].json(), json!({"status": "dnd"}));
         assert_eq!(requetes[4].json(), json!({"name": "Hades"}));
         assert_eq!(requetes[5].json(), json!({"sound": false}));
+        assert_eq!(requetes[6].json(), json!({"color": "#aa00ff"}));
         serveur.programmer([Reponse::json(
             200,
             json!({"u1": "idle", "u2": "dnd", "u3": "invisible"}),
@@ -1349,5 +1376,8 @@ mod tests {
         let client = serveur.client();
         assert_eq!(&client.avatar("u1", None).await.unwrap()[..], b"\x89PNG");
         assert_eq!(serveur.requetes()[0].ligne(), ("/users/u1/avatar", "GET"));
+        serveur.programmer([Reponse::brute(200, "image/svg+xml", b"<svg/>")]);
+        assert_eq!(&client.icone_de_badge("b 1").await.unwrap()[..], b"<svg/>");
+        assert_eq!(serveur.requetes()[1].ligne(), ("/badges/b%201/icon", "GET"));
     }
 }

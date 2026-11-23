@@ -7,6 +7,7 @@ mod genere;
 pub mod http;
 pub mod journal;
 pub mod preferences;
+pub mod profil;
 #[cfg(test)]
 mod serveur_factice;
 

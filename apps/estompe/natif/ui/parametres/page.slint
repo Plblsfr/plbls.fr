@@ -1,5 +1,5 @@
 import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Courbes, Calques, Affichage } from "../jetons.slint";
-import { Icone, Bouton, VarianteBouton, Interrupteur, Champ, Defilement, Avatar, Etiquette, EtatPresence } from "../composants.slint";
+import { Icone, Bouton, VarianteBouton, Interrupteur, Champ, Defilement, Etiquette, EtatPresence } from "../composants.slint";
 import { Anneau } from "../composants/focus.slint";
 import { APropos } from "../a-propos.slint";
 import { DonneesCoquille } from "../coquille/donnees.slint";
@@ -7,6 +7,7 @@ import { DonneesVocal } from "../vocal/donnees.slint";
 import { DonneesJeux } from "../jeux/reglages.slint";
 import { DonneesReplay } from "../replay/reglages.slint";
 import { DonneesMesures } from "../mesures/ecran.slint";
+import { CompteProfil } from "profil.slint";
 
 export struct OngletParametres {
     id: string,
@@ -445,53 +446,7 @@ component ApercuDensite inherits VerticalLayout {
 
 component OngletCompte inherits VerticalLayout {
     spacing: Espace.e6;
-    Carte {
-        HorizontalLayout {
-            spacing: Espace.e4;
-            Avatar {
-                nom: DonneesCoquille.pseudo;
-                initiales: DonneesCoquille.initiales;
-                taille: 64px;
-                teinte: 1;
-                presence: DonneesCoquille.presence;
-            }
-            VerticalLayout {
-                alignment: center;
-                spacing: 2px;
-                Note {
-                    text: "Connecté en tant que";
-                }
-                Text {
-                    text: DonneesCoquille.pseudo;
-                    color: Theme.encre;
-                    font-family: Typo.titre;
-                    font-size: Typo.titre-section;
-                    font-weight: Typo.gras;
-                    overflow: elide;
-                }
-                HorizontalLayout {
-                    alignment: start;
-                    spacing: Espace.e2;
-                    Bouton {
-                        texte: "Changer l'avatar";
-                        icone: "envoie";
-                        actif: false;
-                        description: "Arrive avec le profil";
-                    }
-                    VerticalLayout {
-                        alignment: center;
-                        Etiquette {
-                            texte: "bientôt";
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Section {
-        titre: "Photo de profil par serveur";
-        note: "Sans photo propre à un serveur, ta photo globale y est utilisée. Le choix d'une photo arrive avec le profil.";
-    }
+    CompteProfil { }
     HorizontalLayout {
         spacing: Espace.e3;
         Titre {

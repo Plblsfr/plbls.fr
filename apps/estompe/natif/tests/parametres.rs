@@ -528,3 +528,353 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
     pont.projeter_parametres(&f);
     assert!(!g.get_apercu_notifications() && !g.get_son_notifications() && g.get_ignore_groupe());
 }
+
+fn execution() -> tokio::runtime::Handle {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let execution = runtime.handle().clone();
+    std::thread::spawn(move || runtime.block_on(std::future::pending::<()>()));
+    execution
+}
+
+fn fenetre_de_test() -> Principale {
+    let f = creer_fenetre().unwrap();
+    f.window().set_size(slint::LogicalSize::new(1180.0, 900.0));
+    f.set_page(Page::Coquille);
+    f.show().unwrap();
+    f.window()
+        .dispatch_event(WindowEvent::WindowActiveChanged(true));
+    f
+}
+
+fn client_de(store: &estompe_client::store::Store) -> Arc<Profils> {
+    Profils::nouveaux(Arc::new(store.client().clone()), None)
+}
+
+fn pont_profil(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    adresse: &str,
+    route: Route,
+) -> Pont {
+    let store = store_sur(etat, adresse);
+    let profils = client_de(&store);
+    let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
+        .unwrap()
+        .and_hms_opt(9, 30, 0)
+        .unwrap();
+    let pont = Pont::nouveau(
+        store,
+        f.as_weak(),
+        execution(),
+        None,
+        Arc::new(move || matin),
+        Navigation::nouvelle(route),
+        profils,
+    );
+    pont.demarrer(f);
+    pont.tout_projeter(f);
+    rendre(f);
+    pont
+}
+
+fn quadrants() -> image::RgbaImage {
+    image::RgbaImage::from_fn(800, 400, |x, y| {
+        image::Rgba(match (x < 400, y < 200) {
+            (true, true) => [220, 30, 40, 255],
+            (false, true) => [30, 200, 60, 255],
+            (true, false) => [30, 60, 220, 255],
+            (false, false) => [240, 210, 20, 255],
+        })
+    })
+}
+
+fn pixel_central(image: &slint::Image) -> [u8; 3] {
+    let tampon = image.to_rgba8().expect("image en pixels");
+    let p = tampon.as_slice()[(tampon.height() / 2 * tampon.width() + tampon.width() / 2) as usize];
+    [p.r, p.g, p.b]
+}
+
+fn vert(c: [u8; 3]) -> bool {
+    c[0].abs_diff(30) < 12 && c[1].abs_diff(200) < 12 && c[2].abs_diff(60) < 12
+}
+
+fn diffuser(pont: &Pont, f: &Principale, type_evenement: &str, data: serde_json::Value) {
+    let mut abonne = pont.store().abonner();
+    let estompe_client::temps_reel::Signal::Evenement(e) =
+        commun::coquille::evenement(type_evenement, data)
+    else {
+        unreachable!()
+    };
+    pont.store().appliquer(&e);
+    while let Ok(changements) = abonne.try_recv() {
+        pont.appliquer(f, &changements);
+    }
+    rendre(f);
+}
+
+fn requete_vue(serveur: &ServeurMessages, ligne: &str) -> bool {
+    serveur.requetes.lock().unwrap().iter().any(|r| r == ligne)
+        || serveur
+            .corps
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(r, _)| r == ligne)
+}
+
+#[test]
+fn un_avatar_recadre_est_envoye_et_vu_en_temps_reel_par_un_autre_client() {
+    use estompe_natif::coquille::CleAvatar;
+    use estompe_natif::DonneesProfil;
+    use i_slint_backend_testing::{AccessibleRole, ElementHandle};
+    i_slint_backend_testing::init_no_event_loop();
+    let serveur = ServeurMessages::demarrer(10);
+    let a = fenetre_de_test();
+    let dossier = tempfile::tempdir().unwrap();
+    brancher(
+        &a,
+        OutilsParametres {
+            memoire: Memoire::nouvelle(Preferences::default(), dossier.path().to_path_buf(), None),
+            journal: Arc::new(Journal::ouvrir(&dossier.path().join("journaux"))),
+            fuseau: Arc::new(|_| 60),
+            horloge: Arc::new(|| MAINTENANT_MS),
+            dossier_export: dossier.path().join("exports"),
+        },
+    );
+    let pont_a = pont_profil(
+        &a,
+        commun::coquille::etat_avec_membres(),
+        &serveur.adresse,
+        Route::Accueil,
+    );
+    a.global::<DonneesParametres>()
+        .invoke_ouvrir("compte".into());
+    rendre(&a);
+    let g = a.global::<DonneesProfil>();
+    let serveurs: Vec<(String, bool)> = g
+        .get_serveurs()
+        .iter()
+        .map(|s| (s.nom.to_string(), s.propre))
+        .collect();
+    assert_eq!(serveurs.len(), 4);
+    assert_eq!(serveurs[0], ("Les amis".to_string(), false));
+    assert_eq!(g.get_nuances().row_count(), 10);
+    assert!(g.get_banniere_du_role() && !g.get_a_avatar());
+    assert!(
+        ElementHandle::find_by_accessible_label(&a, "Changer l'avatar")
+            .any(|e| e.accessible_role() == Some(AccessibleRole::Button))
+    );
+
+    let p = pont_a.clone();
+    let faible = a.as_weak();
+    g.on_deplacer(move |dx, dy| p.deplacer_recadrage(&faible.upgrade().unwrap(), dx, dy));
+    let p = pont_a.clone();
+    let faible = a.as_weak();
+    g.on_zoomer(move |z| p.zoomer_recadrage(&faible.upgrade().unwrap(), z));
+    let p = pont_a.clone();
+    let faible = a.as_weak();
+    g.on_valider_recadrage(move || p.valider_recadrage(&faible.upgrade().unwrap()));
+
+    pont_a.ouvrir_recadrage(&a, None, quadrants());
+    rendre(&a);
+    assert!(g.get_recadrage_ouvert());
+    assert_eq!(g.get_recadrage_titre(), "Recadrer l'avatar");
+    assert_eq!(
+        (g.get_clip_x(), g.get_clip_y(), g.get_clip_cote()),
+        (200, 0, 400)
+    );
+    touches(&a, "+", 4);
+    assert_eq!(
+        pont_a.recadrage_en_cours().unwrap().zoom,
+        2.0,
+        "+ zoome au clavier"
+    );
+    assert_eq!(g.get_zoom_lisible(), "2,0×");
+    assert_eq!(g.get_clip_cote(), 200);
+    touches(&a, SharedString::from(Key::UpArrow), 12);
+    assert_eq!(
+        pont_a.recadrage_en_cours().unwrap().y,
+        -1.0,
+        "les flèches déplacent"
+    );
+    let apercu = ElementHandle::find_by_accessible_label(
+        &a,
+        "Aperçu du recadrage : faire glisser ou utiliser les flèches pour déplacer, + et - pour zoomer",
+    )
+    .next()
+    .expect("aperçu du recadrage");
+    let position = apercu.absolute_position();
+    let taille = apercu.size();
+    let centre = slint::LogicalPosition::new(
+        position.x + taille.width / 2.0,
+        position.y + taille.height / 2.0,
+    );
+    a.window().dispatch_event(WindowEvent::PointerPressed {
+        position: centre,
+        button: slint::platform::PointerEventButton::Left,
+    });
+    for pas in 1..=6 {
+        a.window().dispatch_event(WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(centre.x - 100.0 * pas as f32, centre.y),
+        });
+    }
+    a.window().dispatch_event(WindowEvent::PointerReleased {
+        position: slint::LogicalPosition::new(centre.x - 600.0, centre.y),
+        button: slint::platform::PointerEventButton::Left,
+    });
+    rendre(&a);
+    assert_eq!(
+        pont_a.recadrage_en_cours().unwrap().x,
+        1.0,
+        "glisser vers la gauche montre la droite"
+    );
+    assert_eq!(
+        (g.get_clip_x(), g.get_clip_y(), g.get_clip_cote()),
+        (600, 0, 200)
+    );
+
+    ElementHandle::find_by_accessible_label(&a, "Valider")
+        .find(|e| e.accessible_role() == Some(AccessibleRole::Button))
+        .expect("bouton Valider")
+        .mock_single_click(slint::platform::PointerEventButton::Left);
+    attendre(|| requete_vue(&serveur, "PUT /me/avatar"), "avatar envoyé");
+    attendre(|| pont_a.recadrage_en_cours().is_none(), "envoi terminé");
+
+    let b = fenetre_de_test();
+    b.global::<DonneesCoquille>().set_marge_ouverte(true);
+    let mut etat_b = commun::coquille::etat_avec_membres();
+    etat_b.compte = serde_json::from_value(
+        serde_json::json!({"activated": true, "allowed": true, "id": "carol", "pseudo": "carol"}),
+    )
+    .unwrap();
+    let pont_b = pont_profil(
+        &b,
+        etat_b,
+        &serveur.adresse,
+        Route::Salon {
+            serveur: "s1".into(),
+            salon: Some("c1".into()),
+            message: None,
+        },
+    );
+    pont_b.membres_defiles(&b, 0.0, 800.0);
+    let portrait_de_bob = |f: &Principale| {
+        f.global::<DonneesCoquille>()
+            .get_membres()
+            .iter()
+            .find(|l| l.utilisateur == "u1")
+            .map(|l| l.portrait)
+            .unwrap()
+    };
+    assert_eq!(portrait_de_bob(&b).size().width, 0, "pas encore d'avatar");
+
+    let cle = CleAvatar {
+        utilisateur: "u1".into(),
+        version: 1,
+        serveur: None,
+    };
+    diffuser(
+        &pont_b,
+        &b,
+        "avatar.updated",
+        serde_json::json!({"user_id": "u1", "version": 1}),
+    );
+    attendre(
+        || pont_b.profils().avatar(&cle).is_some(),
+        "nouvel avatar téléchargé par l'autre client",
+    );
+    pont_b.membres_defiles(&b, 0.0, 800.0);
+    let portrait = portrait_de_bob(&b);
+    assert_eq!(portrait.size().width, 96);
+    assert!(
+        vert(pixel_central(&portrait)),
+        "{:?}",
+        pixel_central(&portrait)
+    );
+
+    brancher(
+        &b,
+        OutilsParametres {
+            memoire: Memoire::nouvelle(Preferences::default(), dossier.path().join("b"), None),
+            journal: Arc::new(Journal::ouvrir(&dossier.path().join("journaux-b"))),
+            fuseau: Arc::new(|_| 60),
+            horloge: Arc::new(|| MAINTENANT_MS),
+            dossier_export: dossier.path().join("exports-b"),
+        },
+    );
+    let p = pont_b.clone();
+    let faible = b.as_weak();
+    b.global::<DonneesCoquille>()
+        .on_fermer_carte(move || p.fermer_carte(&faible.upgrade().unwrap()));
+    pont_b.ouvrir_membre(&b, "carol");
+    rendre(&b);
+    ElementHandle::find_by_accessible_label(&b, "Modifier mon profil")
+        .find(|e| e.accessible_role() == Some(AccessibleRole::Button))
+        .expect("« Modifier mon profil » sur ma carte")
+        .mock_single_click(slint::platform::PointerEventButton::Left);
+    rendre(&b);
+    let pb = b.global::<DonneesParametres>();
+    assert!(
+        pb.get_ouverte() && pb.get_onglet() == "compte",
+        "la carte ouvre le compte"
+    );
+    assert!(!b.global::<DonneesCoquille>().get_carte_ouverte());
+
+    diffuser(
+        &pont_a,
+        &a,
+        "avatar.updated",
+        serde_json::json!({"user_id": "u1", "version": 1}),
+    );
+    attendre(
+        || pont_a.profils().avatar(&cle).is_some(),
+        "mon avatar rechargé",
+    );
+    pont_a.projeter_profil(&a);
+    assert!(g.get_a_avatar());
+    assert!(vert(pixel_central(&g.get_portrait())));
+    assert!(
+        vert(pixel_central(&a.global::<DonneesCoquille>().get_portrait())),
+        "barre de l'utilisateur"
+    );
+
+    pont_a.choisir_banniere(&a, "#2F5D8A");
+    attendre(
+        || {
+            serveur
+                .corps
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(r, c)| r == "PUT /me/banner" && c == r##"{"color":"#2f5d8a"}"##)
+        },
+        "bannière envoyée",
+    );
+    diffuser(
+        &pont_a,
+        &a,
+        "banner.updated",
+        serde_json::json!({"user_id": "u1", "color": "#2f5d8a"}),
+    );
+    attendre(
+        || {
+            pont_a.projeter_profil(&a);
+            !g.get_banniere_du_role()
+        },
+        "bannière reçue",
+    );
+    assert!(g
+        .get_nuances()
+        .iter()
+        .any(|n| n.code == "#2f5d8a" && n.choisie));
+    attendre(
+        || {
+            pont_a.retirer_avatar(&a, "s2");
+            requete_vue(&serveur, "DELETE /servers/s2/me/avatar")
+        },
+        "photo du serveur retirée",
+    );
+}

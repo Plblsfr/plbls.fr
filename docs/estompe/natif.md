@@ -47,7 +47,7 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
 - `emoji/twemoji.bin` : les emoji en couleur (voir [Emoji](#emoji)), licences `emoji/CC-BY-4.0-twemoji.txt` et `emoji/MIT-emoji-data.txt`, citées dans « À propos ».
 - `ui/jetons.slint` porte aussi `Affichage.compacte` (densité des messages), réglée par les [paramètres](#paramètres).
-- `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
+- `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, recadrage d'image (`Recadrage`), indicateur de chargement, zone défilante,
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
   menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
@@ -187,8 +187,10 @@ bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préfé
   `MembreAjoute`, `MembreRetire`, `Membre`, `Roles`, `Presence` et `Avatar` du serveur courant visent la liste (`Cibles::membres`) ; `synchroniser` n'en touche
   que les lignes qui diffèrent : un changement de statut remplace une ligne, un passage en ligne retire et insère la seule ligne du membre et met à jour les deux compteurs.
 - Carte de profil (`ui/coquille/carte-profil.slint`), en lecture : bannière (`banner_color`, sinon couleur du rôle), avatar et présence, pseudo de serveur et
-  d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. « Envoyer un message » et
-  « Modifier mon profil » sont marqués « bientôt » ; modification, modération et historique ne sont pas dans l'app native.
+  d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. Sur ma carte,
+  « Modifier mon profil » la ferme et ouvre le compte des paramètres (voir [Profil](#profil)) ; « Envoyer un message » est marqué « bientôt » ; modification des rôles,
+  modération et historique ne sont pas dans l'app native.
+- Badges de la carte (`BadgeCarte`) : 24 px dans une case de 32, infobulle du nom (gras) et de la description au survol ou au focus (Tab), au-dessus du badge.
 
 #### Avatars et badges
 
@@ -206,7 +208,10 @@ un avatar en échec n'est pas redemandé pendant la session.
 - Le cache disque garde les octets reçus ; l'ordre des lectures est la date de modification des fichiers, relue au redémarrage. Écriture dans un fichier
   temporaire renommé ; un fichier temporaire restant est supprimé à l'ouverture, un fichier qui ne se décode pas est supprimé et redemandé, un nom de fichier invalide est ignoré.
 - Une image est recadrée en carré, réduite à 96 px et arrondie dans ses pixels (`arrondir`) : les deux moteurs de rendu l'affichent de la même façon.
-- Sans image, les initiales restent affichées. Les images et emojis des badges ne sont pas encore chargés : une médaille de la couleur du badge les remplace.
+- Sans image, les initiales restent affichées.
+- Badges (`Medaille`, membres, messages et carte) : image du badge si `icon_version` > 0 (`GET /badges/{id}/icon`, SVG rendu par Slint, WebP, PNG ou JPEG réduits à 64 px),
+  sinon son emoji en Twemoji embarqué, sinon une médaille de la couleur du badge. Les icônes sont demandées avec la liste des badges de la personne, une fois par badge et
+  par version (`CAPACITE_ICONES_BADGES`, 256 en mémoire, un échec n'est pas redemandé) ; les images décodées sont gardées par le fil de l'interface.
 
 ### Recherche et palette
 
@@ -1387,9 +1392,29 @@ Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal
   dans le dossier des téléchargements (`estompe-debug-AAAA-MM-JJ-HH-MM-SS.log`, heure locale), vidage ; « Mesures de performance… » quand le mode debug est actif.
 - Application : « À propos », panneau des mises à jour, lancement à l'ouverture de la session ; 7 clics sur « Version installée » basculent les fonctions alpha
   (préférence locale `alpha`, comme `UpdateSettings.svelte`).
-- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; avatar et photos par serveur (#362)
-  et les signalements (#367) arrivent avec leurs issues. Écarts des notifications : pas de notification push de test (push web : écart assumé), aucune marque de sourdine
+- Compte : voir [Profil](#profil).
+- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; les signalements (#367) arrivent avec leur issue. Écarts des notifications : pas de notification push de test (push web : écart assumé), aucune marque de sourdine
   dans la liste des salons ni sur le rail (le front n'en a pas).
+
+### Profil
+
+Catégorie « Compte » (`ui/parametres/profil.slint`, global `DonneesProfil` ; `src/coquille/pont/profil.rs` ; images dans `src/coquille/profil.rs` ; calculs purs dans
+`estompe_client::profil`), comme le compte de `SettingsModal.svelte` et le menu de `ProfileModal.svelte` :
+
+- Avatar : « Changer l'avatar » ouvre le sélecteur de fichiers de l'OS (PNG, JPEG, WebP, GIF ; 32 Mo au plus, réduite à 2 048 px à l'ouverture), puis la fenêtre
+  « Recadrer l'avatar » ; « Supprimer » (s'il y en a un) envoie `DELETE /me/avatar`. Mon avatar est aussi celui de la barre de l'utilisateur.
+- Photos par serveur : une ligne par serveur avec la photo qui s'y applique (la sienne, sinon la globale), « Changer » (même recadrage, `PUT /servers/{id}/me/avatar`)
+  et « Retirer » si le serveur en a une (`DELETE /servers/{id}/me/avatar`).
+- Recadrage (`Recadrage`, `ui/composants/recadrage.slint`, réutilisable pour l'icône d'un serveur) : aperçu carré de 240 px aux coins de l'avatar (partie de l'image par
+  `source-clip`), glisser ou flèches pour déplacer (12 px), curseur de zoom de 1 à 4 (pas de 0,05) ou + et - (0,25). Mêmes calculs que `cropRect` du front : `zoom` réduit le
+  carré source, `x` et `y` dans [-1, 1] le placent d'un bord à l'autre ; un glisser déplace l'image dans le sens du pointeur. « Valider » envoie un carré de 256 px en PNG,
+  en JPEG (qualité 85) s'il dépasse 200 Ko, comme `squareAvatar` ; le front centre l'avatar sans recadrage, l'app native recadre l'avatar et les photos par serveur.
+- Bannière : « Couleur du rôle » ou une des dix nuances (`NUANCES_BANNIERE`), `PUT /me/banner` ; le front propose un sélecteur de couleur libre dans le menu de la carte,
+  l'app native une palette fixe (pas de sélecteur de couleur dans Slint).
+- Rien n'est appliqué d'avance : `avatar.updated`, `server_avatar.updated` et `banner.updated` mettent la page, la barre, la liste des membres et la carte à jour, chez soi
+  comme chez les autres. Un échec affiche « Image impossible à utiliser comme avatar. » (ou « … comme photo de serveur. »), « Photo non supprimée. » ou « Couleur non enregistrée. ».
+- Pas dans le front, donc pas dans l'app native : pseudo par serveur choisi par soi-même (seulement par la modération, `PUT /servers/{id}/members/{uid}/nickname`), bio,
+  statut personnalisé, choix des badges affichés (aucune route).
 
 ## Types de l'API
 
@@ -1460,7 +1485,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `parametres.rs` (sans boucle d'évènements) : catégories dans l'ordre du front, flèches, Origine et Fin, thème, densité et animations réglés au clavier et enregistrés,
   Échap qui ferme et rend le focus à la coquille, catégorie retrouvée à la réouverture, recherche par Ctrl+F effacée par Échap, journal activé, filtré, exporté et vidé
   au clavier, déblocage des fonctions alpha. `coquille.rs` vérifie aussi qu'un type de notification changé sur un autre appareil (`notify_settings.updated`) est reflété
-  dans la page ouverte, et qu'une navigation la referme.
+  dans la page ouverte, et qu'une navigation la referme. Profil : une image de synthèse recadrée au clavier (+, flèches) et à la souris (glisser) est envoyée
+  (`PUT /me/avatar`) au faux serveur, qui la sert ensuite ; un autre client qui reçoit `avatar.updated` la télécharge et l'affiche dans sa liste des membres (pixel vérifié),
+  ma page et ma barre aussi ; bannière envoyée puis reçue (`banner.updated`), photo d'un serveur retirée, « Modifier mon profil » de ma carte ouvre le compte. Le calcul du
+  recadrage a ses tests unitaires (`estompe_client::profil`, `coquille::profil` : image en quadrants, pixel attendu).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

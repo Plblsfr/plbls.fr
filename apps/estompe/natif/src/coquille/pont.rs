@@ -11,7 +11,7 @@ use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::temps_reel::EtatReseau;
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 
-use super::avatars::{decoder_image, CleAvatar, Profils};
+use super::avatars::{self, decoder_image, CleAvatar, Profils};
 use super::membres::{
     analyser_couleur, donnees_carte, donnees_marge, fenetre_des_membres, libelle_presence,
     lignes_membres, DonneesCarte, DonneesMarge, DonneesMembre, Fenetre,
@@ -46,6 +46,7 @@ fn millisecondes(maintenant: NaiveDateTime) -> i64 {
 mod menus;
 mod nouveau_prive;
 mod parametres;
+mod profil;
 mod recherche;
 
 pub use nouveau_prive::EtatNouveauPrive;
@@ -120,20 +121,24 @@ pub(crate) fn presence_slint(presence: Presence) -> EtatPresence {
     }
 }
 
-pub(crate) fn badge_slint(badge: &Badge) -> LigneBadge {
+pub(crate) fn badge_slint(badge: &Badge, profils: &Profils) -> LigneBadge {
+    let image = avatars::image_de_badge(profils, badge);
     LigneBadge {
         nom: badge.name.as_str().into(),
+        description: badge.description.as_str().into(),
         couleur: couleur_slint(Some(&badge.color))
             .unwrap_or_else(|| slint::Color::from_rgb_u8(0xd0, 0x68, 0x8a)),
+        a_image: image.is_some(),
+        image: image.unwrap_or_default(),
     }
 }
 
 fn ligne_membre_slint(
     d: &DonneesMembre,
     portrait: Option<Icone>,
-    badges: Option<&[Badge]>,
+    profils: &Profils,
 ) -> LigneMembre {
-    let badges = badges.unwrap_or_default();
+    let badges = profils.badges(&d.utilisateur).unwrap_or_default();
     let couleur_titre = couleur_slint(d.couleur_titre.as_deref());
     let couleur = couleur_slint(d.couleur.as_deref());
     LigneMembre {
@@ -160,13 +165,24 @@ fn ligne_membre_slint(
         createur: d.createur,
         bot: d.bot,
         exclu: d.exclu,
-        badge_1: badges.first().map(badge_slint).unwrap_or_default(),
-        badge_2: badges.get(1).map(badge_slint).unwrap_or_default(),
+        badge_1: badges
+            .first()
+            .map(|b| badge_slint(b, profils))
+            .unwrap_or_default(),
+        badge_2: badges
+            .get(1)
+            .map(|b| badge_slint(b, profils))
+            .unwrap_or_default(),
         nombre_badges: badges.len().min(i32::MAX as usize) as i32,
     }
 }
 
-fn carte_slint(d: &DonneesCarte, portrait: Option<Icone>, badges: Option<&[Badge]>) -> CarteProfil {
+fn carte_slint(
+    d: &DonneesCarte,
+    portrait: Option<Icone>,
+    badges: Option<&[Badge]>,
+    profils: &Profils,
+) -> CarteProfil {
     let couleur = couleur_slint(d.couleur.as_deref());
     let roles: Vec<RoleProfil> = d
         .roles
@@ -180,7 +196,11 @@ fn carte_slint(d: &DonneesCarte, portrait: Option<Icone>, badges: Option<&[Badge
             }
         })
         .collect();
-    let badges: Vec<LigneBadge> = badges.unwrap_or_default().iter().map(badge_slint).collect();
+    let badges: Vec<LigneBadge> = badges
+        .unwrap_or_default()
+        .iter()
+        .map(|b| badge_slint(b, profils))
+        .collect();
     CarteProfil {
         utilisateur: d.utilisateur.as_str().into(),
         nom: d.nom.as_str().into(),
@@ -256,6 +276,7 @@ struct Interne {
     avant_epingles: Option<(bool, OngletMarge)>,
     recherche: Option<EtatRecherche>,
     nouveau_prive: Option<EtatNouveauPrive>,
+    profil: profil::EtatProfil,
 }
 
 #[derive(Clone)]
@@ -328,6 +349,15 @@ pub fn vider_modeles(f: &Principale) {
     g.set_pret(false);
     g.set_pseudo("".into());
     g.set_initiales("".into());
+    g.set_portrait(Image::default());
+    let profil = f.global::<crate::DonneesProfil>();
+    profil.set_recadrage_ouvert(false);
+    profil.set_source(Image::default());
+    profil.set_portrait(Image::default());
+    profil.set_a_avatar(false);
+    profil.set_occupe("".into());
+    profil.set_erreur("".into());
+    profil.set_serveurs(ModelRc::new(VecModel::from(Vec::new())));
     g.set_presence(EtatPresence::EnLigne);
     g.set_statut("En ligne".into());
     crate::messagerie::pont::liberer_modele();
@@ -535,6 +565,7 @@ impl Pont {
                 avant_epingles: None,
                 recherche: None,
                 nouveau_prive: None,
+                profil: profil::EtatProfil::default(),
             })),
             store,
             fenetre,
@@ -575,6 +606,7 @@ impl Pont {
     pub fn tout_projeter(&self, f: &Principale) {
         self.projeter(f, &tout(), true);
         self.projeter_parametres(f);
+        self.projeter_profil(f);
         f.global::<DonneesCoquille>().set_pret(true);
     }
 
@@ -596,6 +628,9 @@ impl Pont {
         let moi = self.store.lire(|e| e.moi().to_string());
         if parametres::touche_les_notifications(changements, &moi) {
             self.projeter_parametres(f);
+        }
+        if profil::touche_le_profil(changements, &moi) {
+            self.projeter_profil(f);
         }
         if corrigee {
             self.suivre_conversation(f);
@@ -1107,7 +1142,7 @@ impl Pont {
                 } else {
                     None
                 };
-                ligne_membre_slint(d, portrait, profils.badges(&d.utilisateur).as_deref())
+                ligne_membre_slint(d, portrait, profils)
             },
         );
         if faites.iter().any(|o| !matches!(o, Operation::Remplacer(_)))
@@ -1229,10 +1264,7 @@ impl Pont {
                 .and_then(|&i| m.ombre.get(i).map(|d| (i, d)))
             {
                 let (i, d) = d;
-                modele.set_row_data(
-                    i,
-                    ligne_membre_slint(d, None, self.profils.badges(&d.utilisateur).as_deref()),
-                );
+                modele.set_row_data(i, ligne_membre_slint(d, None, &self.profils));
             }
         }
         if !ouverte {
@@ -1249,14 +1281,8 @@ impl Pont {
                 if !m.avec_portrait.contains(&d.cle) {
                     match self.profils.avatar(cle) {
                         Some(image) => {
-                            modele.set_row_data(
-                                i,
-                                ligne_membre_slint(
-                                    d,
-                                    Some(image),
-                                    self.profils.badges(&d.utilisateur).as_deref(),
-                                ),
-                            );
+                            modele
+                                .set_row_data(i, ligne_membre_slint(d, Some(image), &self.profils));
                             m.avec_portrait.insert(d.cle.clone());
                         }
                         None => {
@@ -1335,14 +1361,8 @@ impl Pont {
                     } else {
                         None
                     };
-                    vec_de(&g.get_membres()).set_row_data(
-                        i,
-                        ligne_membre_slint(
-                            d,
-                            portrait,
-                            self.profils.badges(utilisateur).as_deref(),
-                        ),
-                    );
+                    vec_de(&g.get_membres())
+                        .set_row_data(i, ligne_membre_slint(d, portrait, &self.profils));
                 }
             }
         }
@@ -1413,7 +1433,12 @@ impl Pont {
             }
         }
         let demander_badges = badges.is_none() && m.demandes_badges.insert(utilisateur.clone());
-        g.set_carte(carte_slint(&donnees, portrait, badges.as_deref()));
+        g.set_carte(carte_slint(
+            &donnees,
+            portrait,
+            badges.as_deref(),
+            &self.profils,
+        ));
         m.ombre_carte = Some(donnees);
         drop(guard);
         if !g.get_carte_ouverte() {
