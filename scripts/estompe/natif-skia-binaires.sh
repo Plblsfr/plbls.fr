@@ -9,17 +9,21 @@ profil=$1
 archives=$2
 
 sortie=""
-for fichier in "$profil"/build/skia-bindings-*/output; do
+skia=""
+for fichier in "$profil"/build/skia-bindings-*/output "$profil"/build/skia-bindings/*/run/stdout; do
   [ -f "$fichier" ] || continue
   if [ -z "$sortie" ] || [ "$fichier" -nt "$sortie" ]; then
     sortie=$fichier
+    case "$fichier" in
+      */run/stdout) skia=$(dirname "$(dirname "$fichier")")/out/skia ;;
+      *) skia=$(dirname "$fichier")/out/skia ;;
+    esac
   fi
 done
 if [ -z "$sortie" ]; then
   echo "::error::sortie du script de build de skia-bindings introuvable sous $profil/build"
   exit 1
 fi
-skia=$(dirname "$sortie")/out/skia
 
 nouvelle=false
 if grep -q '^STARTING A FULL BUILD' "$sortie"; then
