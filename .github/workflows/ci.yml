@@ -372,7 +372,8 @@ jobs:
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
   # Cible Windows MSVC (imposée par le SDK Rust LiveKit du lot vocal) : build et tests sur un runner Windows.
-  # CRT statique (apps/estompe/natif/.cargo/config.toml) : Skia n'a pas de binaires précompilés pour lui et se compile depuis ses sources.
+  # CRT statique (apps/estompe/natif/.cargo/config.toml) : Skia n'a pas de binaires précompilés pour lui et se compile depuis ses sources,
+  # une fois par version de skia-bindings : ses binaires sont gardés dans un petit cache à part (skia-windows-v1-), relu par SKIA_BINARIES_URL.
   # Les captures de rendu ne sont comparées que sous Linux.
   estompe-natif-windows:
     needs: changements
@@ -406,27 +407,49 @@ jobs:
           "LLVM_HOME=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "LIBCLANG_PATH=$(Join-Path $dossier 'bin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Join-Path $dossier 'bin' | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - id: skia
+        name: Binaires de Skia (version de skia-bindings, SKIA_BINARIES_URL)
+        shell: bash
+        run: |
+          echo "version=$(sed -n '/^name = "skia-bindings"$/{n;s/^version = "\(.*\)"$/\1/p;}' apps/estompe/natif/Cargo.lock)" >> "$GITHUB_OUTPUT"
+          echo "SKIA_BINARIES_URL=file://$(cygpath -m "$HOME/skia-binaires")/skia-binaries-{key}.tar.gz" >> "$GITHUB_ENV"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/skia-binaires
+          key: skia-windows-v1-${{ steps.skia.outputs.version }}-${{ github.run_id }}
+          restore-keys: skia-windows-v1-${{ steps.skia.outputs.version }}-
       - id: cargo
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
             apps/estompe/natif/target
-          key: natif-windows-v1-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
-          restore-keys: natif-windows-v1-
+          key: natif-windows-v2-${{ hashFiles('apps/estompe/natif/Cargo.lock') }}
+          restore-keys: natif-windows-v2-
       - name: Build (x86_64-pc-windows-msvc)
         working-directory: apps/estompe/natif
         run: cargo build --locked --target x86_64-pc-windows-msvc
       - name: Tests, dont le coffre de secrets (Credential Manager)
         working-directory: apps/estompe/natif
         run: cargo test --workspace --locked --target x86_64-pc-windows-msvc
+      - id: skia-archive
+        name: Binaires de Skia archivés s'ils viennent d'être compilés, sorties intermédiaires de Skia retirées
+        shell: bash
+        run: scripts/estompe/natif-skia-binaires.sh apps/estompe/natif/target/x86_64-pc-windows-msvc/debug "$HOME/skia-binaires"
+      - if: steps.skia-archive.outputs.nouvelle == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/skia-binaires
+          key: skia-windows-v1-${{ steps.skia.outputs.version }}-${{ github.run_id }}
       - if: steps.cargo.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
             apps/estompe/natif/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 

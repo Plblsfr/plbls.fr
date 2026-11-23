@@ -355,6 +355,10 @@ mod tests {
                 EvenementCapture::Fermee,
             ]
         );
+        let depart = Instant::now();
+        while flux.actif() && depart.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
         assert!(!flux.actif());
     }
 

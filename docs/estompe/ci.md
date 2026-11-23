@@ -74,7 +74,8 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   l'app sous Xvfb (`--essai-de-lancement`). En cas d'échec, l'artefact `estompe-natif-captures` contient captures, références et différences.
 - `estompe-natif-windows` : runner Windows, cible `x86_64-pc-windows-msvc` : build et tests (coffre de secrets : Credential Manager), sans
   comparaison des captures. CRT statique (libwebrtc) : Skia y est compilé depuis ses sources (`ninja` installé par pip, LLVM 22.1.8 installé depuis sa release GitHub, empreinte SHA-256 vérifiée,
-  désigné par `LLVM_HOME` et `LIBCLANG_PATH` car le STL de MSVC refuse le clang 20 du runner, `core.longpaths` pour le clonage de ses dépendances), long au premier build puis en cache ;
+  désigné par `LLVM_HOME` et `LIBCLANG_PATH` car le STL de MSVC refuse le clang 20 du runner, `core.longpaths` pour le clonage de ses dépendances),
+  une vingtaine de minutes, une fois par version de `skia-bindings` : ses binaires sont gardés dans le cache `skia-windows-v1-` (voir « Caches ») ;
   `estompe-livraison-natif.yml` fait de même.
 - `estompe-api-image` : construit l'image de l'API sans la publier (cache `:buildcache` du registre en lecture), la démarre à côté d'un
   PostgreSQL et attend `GET /readyz` (60 s au plus). Conteneurs et tag portent l'identifiant du run.
@@ -105,7 +106,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   Une seule PR de version à la fois : des fusions rapprochées, ou un run annulé par la file d'attente, ne perdent aucune montée.
   Fusionner cette PR avant de poser un tag `estompe-api-v*` / `estompe-app-v*` / `estompe-natif-v*`. Relancé, il ne fait rien de plus. Ignoré si le message du commit contient `[skip ci]`.
 - `estompe-ci-image` : image de job `ghcr.io/plblsfr/estompe-ci` ; incrémenter `:4` dans `livraison.yml`, `deploy/estompe/ci/Dockerfile` et `estompe-livraison-app.yml`.
-- `cache-rust`, `cache-npm` : écrivent sur `main` les caches lus par les PR (voir plus bas).
+- `cache-rust`, `cache-npm`, `cache-skia-windows` : écrivent sur `main` les caches lus par les PR (voir plus bas).
 
 Un tag ne déclenche que son composant. Lancé à la main sur `main`, tout est republié (images `:edge`, version, caches).
 
@@ -147,7 +148,14 @@ peut pas publier ; les autres jobs se rabattent sur `GITHUB_TOKEN`, qui n'écrit
   `rust-toolchain.toml`, repli sur le préfixe. `actions/cache/restore` puis `save` explicites ; une PR n'écrit que si la clé exacte manque.
   `CARGO_INCREMENTAL=0` et sans infos de débogage pour réduire la taille. `cargo-deny` a son propre cache par version.
 - Cargo (apps Tauri) : `tauri-test-v1-`, clé sur leurs `Cargo.lock`, écrit par les PR seulement.
-- Cargo (app native) : `natif-windows-v1-` (job `estompe-natif-windows`, débogage) et `natif-windows-release-v1-` (`estompe-livraison-natif.yml`), clé sur `apps/estompe/natif/Cargo.lock`.
+- Cargo (app native) : `natif-windows-v2-` (job `estompe-natif-windows`, débogage) et `natif-windows-release-v2-` (`estompe-livraison-natif.yml`), clé sur `apps/estompe/natif/Cargo.lock`.
+  Sans `~/.cargo/registry/src` (Cargo réextrait les sources depuis `registry/cache`), ni les sorties intermédiaires de Skia (`out/skia/*/`, retirées
+  par `scripts/estompe/natif-skia-binaires.sh` : seuls les `.lib` et `bindings.rs` servent à l'édition de liens).
+- Binaires de Skia pour Windows (CRT statique, sans binaire précompilé) : `skia-windows-v1-<version de skia-bindings>-<run>`, bien plus petit que le cache Cargo,
+  à part du cache Cargo pour survivre à son éviction (quota de 10 Go du dépôt). Restauré par préfixe dans `~/skia-binaires` ; `SKIA_BINARIES_URL`
+  (`file://…/skia-binaries-{key}.tar.gz`) y fait lire à `skia-bindings` l'archive de sa clé (cible, features, CRT) au lieu de compiler. Après une
+  compilation depuis les sources (version ou features nouvelles), `scripts/estompe/natif-skia-binaires.sh` archive les binaires et le job écrit une
+  nouvelle entrée. `cache-skia-windows` (`livraison.yml`) l'écrit sur `main` quand aucune n'existe pour la version (`cargo build -p skia-bindings`).
 - npm : `actions/setup-node` avec `node-version-file: .nvmrc` et `cache: npm` (un seul `package-lock.json`).
 - Docker : `type=gha` par image pour `_image.yml`, `:buildcache` dans le registre pour l'API Estompe. Le `Dockerfile` Rust compile les
   dépendances dans leur couche (`cargo-chef`).
