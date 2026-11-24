@@ -12,13 +12,17 @@ use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
     Attachment, Channel, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement,
-    GetMeReponse, GetServersIdBansReponseElement, GetServersIdReponse, GetServersIdVoiceReponse,
-    GetUnreadReponse, LinkPreview, Mention, Message, MessagePage, Name50, NotifySettings, Override,
-    PatchMessagesIdRequete, PatchServersIdEmojisEidRequete, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
+    GetMeReponse, GetServersIdAuditLogReponseElement, GetServersIdBansReponseElement,
+    GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
+    MessagePage, Name50, NotifySettings, Override, PatchMessagesIdRequete,
+    PatchServersIdEmojisEidRequete, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
+    PostAdminBadgesRequete, PostChannelsCidMessagesBulkDeleteRequete, PostDmsRequete,
     PostNotificationsReadRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
-    PostVoiceCidTokenReponse, PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete,
-    PutMessagesIdVoteRequete, PutServersIdChannelsCidOverridesRidRequete,
+    PostServersIdMembersUidBanRequete, PostServersIdMembersUidKickRequete,
+    PostServersIdMembersUidWarnRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
+    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete,
+    PutServersIdChannelsCidModerationRequete, PutServersIdChannelsCidOverridesRidRequete,
+    PutServersIdMembersUidNicknameRequete, PutServersIdMembersUidTimeoutRequete,
     PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, DM,
 };
 
@@ -437,6 +441,200 @@ impl Client {
             encoder_composant(utilisateur)
         ))
         .await
+    }
+
+    fn chemin_membre(serveur: &str, membre: &str, suite: &str) -> String {
+        format!(
+            "/servers/{}/members/{}/{suite}",
+            encoder_composant(serveur),
+            encoder_composant(membre)
+        )
+    }
+
+    pub async fn expulser_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        raison: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PostServersIdMembersUidKickRequete {
+            reason: Some(raison.to_string()),
+        })?;
+        self.envoyer(
+            Method::POST,
+            &Self::chemin_membre(serveur, membre, "kick"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn bannir_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        ban: &PostServersIdMembersUidBanRequete,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &Self::chemin_membre(serveur, membre, "ban"),
+            &Corps::json(ban)?,
+        )
+        .await
+    }
+
+    pub async fn exclure_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        duree: i64,
+        raison: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdMembersUidTimeoutRequete {
+            duration: duree,
+            reason: Some(raison.to_string()),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &Self::chemin_membre(serveur, membre, "timeout"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn lever_exclusion(&self, serveur: &str, membre: &str) -> Result<(), ErreurApi> {
+        self.delete(&Self::chemin_membre(serveur, membre, "timeout"))
+            .await
+    }
+
+    pub async fn avertir_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        raison: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PostServersIdMembersUidWarnRequete {
+            reason: raison.to_string(),
+        })?;
+        self.envoyer(
+            Method::POST,
+            &Self::chemin_membre(serveur, membre, "warn"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn renommer_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        pseudo: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdMembersUidNicknameRequete {
+            nickname: Some(pseudo.to_string()),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &Self::chemin_membre(serveur, membre, "nickname"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn journal_du_serveur(
+        &self,
+        serveur: &str,
+        action: &str,
+    ) -> Result<Vec<GetServersIdAuditLogReponseElement>, ErreurApi> {
+        let filtre = if action.is_empty() {
+            String::new()
+        } else {
+            format!("?action={}", encoder_composant(action))
+        };
+        self.get(&format!(
+            "/servers/{}/audit-log{filtre}",
+            encoder_composant(serveur)
+        ))
+        .await
+    }
+
+    pub async fn moderer_salon(
+        &self,
+        serveur: &str,
+        salon: &str,
+        mode_lent: i64,
+        verrouille: bool,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdChannelsCidModerationRequete {
+            slowmode: Some(mode_lent),
+            locked: Some(verrouille),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/servers/{}/channels/{}/moderation",
+                encoder_composant(serveur),
+                encoder_composant(salon)
+            ),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn renommer_salon(
+        &self,
+        serveur: &str,
+        salon: &str,
+        nom: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&Name50 {
+            name: nom.to_string(),
+        })?;
+        self.envoyer(
+            Method::PATCH,
+            &format!(
+                "/servers/{}/channels/{}",
+                encoder_composant(serveur),
+                encoder_composant(salon)
+            ),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn supprimer_salon(&self, serveur: &str, salon: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/channels/{}",
+            encoder_composant(serveur),
+            encoder_composant(salon)
+        ))
+        .await
+    }
+
+    pub async fn supprimer_derniers_messages(
+        &self,
+        salon: &str,
+        nombre: i64,
+        auteur: Option<&str>,
+    ) -> Result<usize, ErreurApi> {
+        #[derive(serde::Deserialize)]
+        struct Supprimes {
+            #[serde(default)]
+            deleted: Vec<String>,
+        }
+        let r: Supprimes = self
+            .post(
+                &format!(
+                    "/channels/{}/messages/bulk-delete",
+                    encoder_composant(salon)
+                ),
+                &PostChannelsCidMessagesBulkDeleteRequete {
+                    ids: None,
+                    last: Some(nombre),
+                    author: auteur.map(str::to_string),
+                },
+            )
+            .await?;
+        Ok(r.deleted.len())
     }
 
     pub async fn ajouter_emoji(
@@ -1164,6 +1362,75 @@ mod tests {
         );
         assert_eq!(r[2].json(), json!({"ids": ["r2", "r1"]}));
         assert_eq!(r[7].json(), json!({"allow": [], "deny": ["video"]}));
+    }
+
+    #[tokio::test]
+    async fn modere_les_membres_et_les_salons() {
+        let mut reponses: Vec<Reponse> = (0..6).map(|_| Reponse::vide(204)).collect();
+        reponses.push(Reponse::json(
+            200,
+            json!([{"at": "2026-03-04T10:20:00Z", "actor": "alice", "action": "member.ban", "target": "bob"}]),
+        ));
+        reponses.extend((0..3).map(|_| Reponse::vide(204)));
+        reponses.push(Reponse::json(200, json!({"deleted": ["m1", "m2"]})));
+        let serveur = ServeurFactice::demarrer(reponses).await;
+        let c = serveur.client();
+        c.expulser_membre("s1", "u2", "spam").await.unwrap();
+        c.bannir_membre(
+            "s1",
+            "u2",
+            &PostServersIdMembersUidBanRequete {
+                reason: Some(String::new()),
+                duration: Some(3600),
+                delete_messages: Some(86_400),
+            },
+        )
+        .await
+        .unwrap();
+        c.exclure_membre("s1", "u2", 600, "calme").await.unwrap();
+        c.lever_exclusion("s1", "u2").await.unwrap();
+        c.avertir_membre("s1", "u2", "dernier").await.unwrap();
+        c.renommer_membre("s1", "u2", "Bobby").await.unwrap();
+        let journal = c.journal_du_serveur("s1", "member").await.unwrap();
+        assert_eq!(journal[0].actor.as_deref(), Some("alice"));
+        c.moderer_salon("s1", "c1", 30, true).await.unwrap();
+        c.renommer_salon("s1", "c1", "annonces").await.unwrap();
+        c.supprimer_salon("s1", "c1").await.unwrap();
+        assert_eq!(
+            c.supprimer_derniers_messages("c1", 10, Some("u2"))
+                .await
+                .unwrap(),
+            2
+        );
+        let r = serveur.requetes();
+        let lignes: Vec<(&str, &str)> = r.iter().map(|x| x.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/servers/s1/members/u2/kick", "POST"),
+                ("/servers/s1/members/u2/ban", "POST"),
+                ("/servers/s1/members/u2/timeout", "PUT"),
+                ("/servers/s1/members/u2/timeout", "DELETE"),
+                ("/servers/s1/members/u2/warn", "POST"),
+                ("/servers/s1/members/u2/nickname", "PUT"),
+                ("/servers/s1/audit-log?action=member", "GET"),
+                ("/servers/s1/channels/c1/moderation", "PUT"),
+                ("/servers/s1/channels/c1", "PATCH"),
+                ("/servers/s1/channels/c1", "DELETE"),
+                ("/channels/c1/messages/bulk-delete", "POST"),
+            ]
+        );
+        assert_eq!(r[0].json(), json!({"reason": "spam"}));
+        assert_eq!(
+            r[1].json(),
+            json!({"reason": "", "duration": 3600, "delete_messages": 86400})
+        );
+        assert_eq!(r[2].json(), json!({"duration": 600, "reason": "calme"}));
+        assert_eq!(r[4].json(), json!({"reason": "dernier"}));
+        assert_eq!(r[5].json(), json!({"nickname": "Bobby"}));
+        assert_eq!(r[7].json(), json!({"slowmode": 30, "locked": true}));
+        assert_eq!(r[8].json(), json!({"name": "annonces"}));
+        assert_eq!(r[10].json(), json!({"last": 10, "author": "u2"}));
     }
 
     #[tokio::test]

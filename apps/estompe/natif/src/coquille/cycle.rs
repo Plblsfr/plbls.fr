@@ -743,6 +743,61 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel!(on_tout_lire, |p, _f| p.tout_lire());
     rappel!(on_nouveau_prive, |p, f| p.ouvrir_nouveau_prive(&f));
     rappel!(on_creer_salon, |p, f, genre| p.creer_salon_ici(&f, &genre));
+    rappel!(on_menu_moderation, |p, f, id, x, haut, bas| p
+        .menu_moderation_du_membre(
+            &f,
+            &id,
+            Ancre::Element { x, haut, bas }
+        ));
+    let moderation = f.global::<crate::DonneesModeration>();
+    macro_rules! rappel_moderation {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            moderation.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_moderation!(on_choisir_duree, |p, f, i| p
+        .choisir_duree_de_moderation(&f, i));
+    rappel_moderation!(on_heures_modifiees, |p, f, texte| p
+        .heures_de_moderation_modifiees(&f, &texte));
+    rappel_moderation!(on_choisir_purge, |p, f, i| p.choisir_purge(&f, i));
+    rappel_moderation!(on_raison_modifiee, |p, f, texte| p
+        .raison_de_moderation_modifiee(&f, &texte));
+    rappel_moderation!(on_surnom_modifie, |p, f, texte| p
+        .surnom_de_moderation_modifie(&f, &texte));
+    rappel_moderation!(on_valider, |p, f| p.valider_moderation(&f));
+    rappel_moderation!(on_fermer, |p, f| p.fermer_moderation(&f));
+    let moderation_salon = f.global::<crate::DonneesModerationSalon>();
+    macro_rules! rappel_moderation_salon {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            moderation_salon.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_moderation_salon!(on_nom_modifie, |p, f, texte| p
+        .nom_de_moderation_modifie(&f, &texte));
+    rappel_moderation_salon!(on_choisir_mode_lent, |p, f, i| p
+        .choisir_mode_lent_du_salon(&f, i));
+    rappel_moderation_salon!(on_verrouiller, |p, f, actif| p.verrouiller_salon(&f, actif));
+    rappel_moderation_salon!(on_nombre_modifie, |p, f, texte| p
+        .nombre_a_supprimer_modifie(&f, &texte));
+    rappel_moderation_salon!(on_menu_auteur, |p, f, x, haut, bas| p
+        .menu_auteur_a_supprimer(&f, Ancre::Element { x, haut, bas }));
+    rappel_moderation_salon!(on_enregistrer, |p, f| p.enregistrer_moderation_salon(&f));
+    rappel_moderation_salon!(on_supprimer_messages, |p, f| p
+        .supprimer_messages_du_salon(&f));
+    rappel_moderation_salon!(on_supprimer_salon, |p, f| p.supprimer_salon_moderation(&f));
+    rappel_moderation_salon!(on_fermer, |p, f| p.fermer_moderation_salon(&f));
     let creer = f.global::<crate::DonneesCreerRejoindre>();
     macro_rules! rappel_creer {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -832,6 +887,8 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
     rappel_reglages!(on_chercher_membres, |p, f, texte| p
         .chercher_membres_des_reglages(&f, &texte));
     rappel_reglages!(on_lever_ban, |p, f, i| p.lever_ban(&f, i));
+    rappel_reglages!(on_menu_filtre_journal, |p, f, x, haut, bas| p
+        .menu_filtre_journal(&f, Ancre::Element { x, haut, bas }));
     let roles = f.global::<crate::DonneesRoles>();
     macro_rules! rappel_roles {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -874,6 +931,10 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .basculer_permissions_du_salon(&f, &id));
     rappel_roles!(on_menu_role_salon, |p, f, x, haut, bas| p
         .menu_role_du_salon(&f, Ancre::Element { x, haut, bas }));
+    rappel_roles!(on_renommer_salon, |p, f, id| p
+        .renommer_salon_des_reglages(&f, &id));
+    rappel_roles!(on_supprimer_salon, |p, f, id| p
+        .supprimer_salon_des_reglages(&f, &id));
     rappel_roles!(on_definir_permission_salon, |p, f, cle, rang| p
         .definir_permission_du_salon(&f, &cle, rang));
     let parametres = f.global::<crate::DonneesParametres>();

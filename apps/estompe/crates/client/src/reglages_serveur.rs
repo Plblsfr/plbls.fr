@@ -93,10 +93,6 @@ impl Onglet {
         }
     }
 
-    pub fn bientot(self) -> bool {
-        matches!(self, Self::Journal)
-    }
-
     pub fn depuis_id(id: &str) -> Option<Self> {
         ONGLETS.into_iter().find(|o| o.id() == id)
     }

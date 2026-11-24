@@ -1314,6 +1314,10 @@ pub mod coquille {
                 noter();
                 return Some(reponse);
             }
+            if let Some(reponse) = self.repondre_moderation(methode, chemin, &recu) {
+                noter();
+                return Some(reponse);
+            }
             match (methode, chemin) {
                 ("POST", "/servers") => {
                     noter();
@@ -1370,6 +1374,79 @@ pub mod coquille {
                 }
                 _ => None,
             }
+        }
+
+        fn repondre_moderation(
+            &self,
+            methode: &str,
+            chemin: &str,
+            recu: &Value,
+        ) -> Option<(u16, String)> {
+            let vide = || Some((204, String::new()));
+            if let Some(salon) = chemin
+                .strip_prefix("/channels/")
+                .and_then(|c| c.strip_suffix("/messages/bulk-delete"))
+            {
+                let n = recu["last"].as_u64().unwrap_or(0).min(3);
+                let ids: Vec<String> = (0..n).map(|i| format!("{salon}-{i}")).collect();
+                return Some((200, json!({ "deleted": ids }).to_string()));
+            }
+            if let Some(requete) = chemin.strip_prefix("/servers/s1/audit-log") {
+                let filtre = requete.strip_prefix("?action=").unwrap_or_default();
+                let journal = [
+                    json!({"at": "2026-11-19T10:20:00Z", "actor": "bob", "actor_id": "u1", "action": "member.ban", "target": "hugo", "reason": "spam"}),
+                    json!({"at": "2026-11-19T09:05:00Z", "actor": "bob", "actor_id": "u1", "action": "member.timeout", "target": "frank", "reason": ""}),
+                    json!({"at": "2026-11-18T18:40:00Z", "actor": "Ève", "actor_id": "eve", "action": "role.create", "target": "Artistes", "reason": ""}),
+                    json!({"at": "2026-11-18T17:00:00Z", "actor": "bob", "actor_id": "u1", "action": "channel.moderation", "target": "annonces", "reason": ""}),
+                    json!({"at": "2026-11-17T08:30:00Z", "actor": "Ève", "actor_id": "eve", "action": "message.bulk_delete", "target": "général", "reason": ""}),
+                ];
+                let liste: Vec<&Value> = journal
+                    .iter()
+                    .filter(|e| e["action"].as_str().unwrap_or_default().starts_with(filtre))
+                    .collect();
+                return Some((200, json!(liste).to_string()));
+            }
+            let mut garde = self.detail_s1.lock().unwrap();
+            let detail = garde.as_mut()?;
+            if let Some(suite) = chemin.strip_prefix("/servers/s1/members/") {
+                let (membre, action) = suite.split_once('/')?;
+                let membres = detail["members"].as_array_mut()?;
+                match (methode, action) {
+                    ("POST", "kick" | "ban") => membres.retain(|m| m["id"] != membre),
+                    ("POST", "warn") => {}
+                    ("PUT", "timeout") => {
+                        let m = membres.iter_mut().find(|m| m["id"] == membre)?;
+                        m["timeout_until"] = json!("2099-01-01T00:00:00Z");
+                    }
+                    ("DELETE", "timeout") => {
+                        let m = membres.iter_mut().find(|m| m["id"] == membre)?;
+                        m["timeout_until"] = Value::Null;
+                    }
+                    ("PUT", "nickname") => {
+                        let m = membres.iter_mut().find(|m| m["id"] == membre)?;
+                        m["nickname"] = recu["nickname"].clone();
+                    }
+                    _ => return None,
+                }
+                return vide();
+            }
+            let suite = chemin.strip_prefix("/servers/s1/channels/")?;
+            let (salon, reste) = suite.split_once('/').unwrap_or((suite, ""));
+            let salons = detail["channels"].as_array_mut()?;
+            match (methode, reste) {
+                ("PUT", "moderation") => {
+                    let c = salons.iter_mut().find(|c| c["id"] == salon)?;
+                    c["slowmode"] = recu["slowmode"].clone();
+                    c["locked"] = recu["locked"].clone();
+                }
+                ("PATCH", "") => {
+                    let c = salons.iter_mut().find(|c| c["id"] == salon)?;
+                    c["name"] = recu["name"].clone();
+                }
+                ("DELETE", "") => salons.retain(|c| c["id"] != salon),
+                _ => return None,
+            }
+            vide()
         }
 
         fn repondre_roles(

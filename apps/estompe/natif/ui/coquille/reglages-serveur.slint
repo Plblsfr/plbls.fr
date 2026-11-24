@@ -8,7 +8,6 @@ export struct OngletServeur {
     libelle: string,
     icone: string,
     compte: string,
-    bientot: bool,
 }
 
 export struct InvitationReglage {
@@ -46,6 +45,22 @@ export struct BanReglage {
     teinte: int,
     detail: string,
     raison: string,
+}
+
+export enum TonJournal {
+    neutre,
+    attention,
+    danger,
+}
+
+export struct EntreeJournal {
+    date: string,
+    acteur: string,
+    initiales: string,
+    teinte: int,
+    phrase: string,
+    icone: string,
+    ton: TonJournal,
 }
 
 export global DonneesReglagesServeur {
@@ -91,6 +106,9 @@ export global DonneesReglagesServeur {
     in property <[MembreReglage]> membres;
     in property <string> compte-membres;
     in property <[BanReglage]> bannis;
+    in property <[EntreeJournal]> journal;
+    in property <string> filtre-journal;
+    in property <string> journal-vide;
     callback ouvrir(string);
     callback fermer();
     callback choisir(string);
@@ -115,6 +133,7 @@ export global DonneesReglagesServeur {
     callback supprimer-emoji(int);
     callback chercher-membres(string);
     callback lever-ban(int);
+    callback menu-filtre-journal(length, length, length);
 }
 
 component Titre inherits Text {
@@ -381,12 +400,6 @@ component OngletNav {
             font-weight: root.actif ? Typo.demi-gras : Typo.normal;
             overflow: elide;
             vertical-alignment: center;
-        }
-        if root.onglet.bientot: VerticalLayout {
-            alignment: center;
-            Etiquette {
-                texte: "bientôt";
-            }
         }
         if root.onglet.compte != "": Text {
             text: root.onglet.compte;
@@ -1008,20 +1021,70 @@ component OngletBannis inherits VerticalLayout {
     }
 }
 
-component OngletBientot inherits VerticalLayout {
-    in property <string> texte;
-    spacing: Espace.e3;
-    alignment: start;
-    Carte {
+component OngletJournal inherits VerticalLayout {
+    spacing: Espace.e4;
+    Section {
+        titre: "Journal d'administration";
         HorizontalLayout {
-            spacing: Espace.e3;
-            Etiquette {
-                texte: "bientôt";
+            alignment: start;
+            Bouton {
+                texte: DonneesReglagesServeur.filtre-journal;
+                icone: "filtre";
+                description: "Filtrer par type d'action : " + DonneesReglagesServeur.filtre-journal;
+                clique => {
+                    DonneesReglagesServeur.menu-filtre-journal(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                }
             }
-            Note {
-                horizontal-stretch: 1;
-                text: root.texte;
+        }
+        for e in DonneesReglagesServeur.journal: Rectangle {
+            accessible-role: list-item;
+            accessible-label: e.acteur + " " + e.phrase;
+            HorizontalLayout {
+                padding-top: 10px;
+                padding-bottom: 10px;
+                spacing: Espace.e3;
+                Text {
+                    width: 150px;
+                    text: e.date;
+                    color: Theme.gris;
+                    font-family: Typo.mono;
+                    font-size: Typo.petit;
+                    vertical-alignment: center;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: e.icone;
+                        taille: 16px;
+                        couleur: e.ton == TonJournal.danger ? Theme.danger : e.ton == TonJournal.attention ? Theme.attention : Theme.gris;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Avatar {
+                        nom: e.acteur;
+                        initiales: e.initiales;
+                        teinte: e.teinte;
+                        taille: 24px;
+                    }
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: e.acteur + " " + e.phrase;
+                    color: Theme.encre;
+                    font-size: Typo.compact;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
             }
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.trait;
+            }
+        }
+        if DonneesReglagesServeur.journal.length == 0: Note {
+            text: DonneesReglagesServeur.journal-vide;
         }
     }
 }
@@ -1195,9 +1258,7 @@ export component PageReglagesServeur inherits Rectangle {
                         if DonneesReglagesServeur.onglet == "bannis": OngletBannis { }
                         if DonneesReglagesServeur.onglet == "salons": OngletSalons { }
                         if DonneesReglagesServeur.onglet == "roles": OngletRoles { }
-                        if DonneesReglagesServeur.onglet == "journal": OngletBientot {
-                            texte: "Le journal d'administration arrive bientôt dans l'app native.";
-                        }
+                        if DonneesReglagesServeur.onglet == "journal": OngletJournal { }
                     }
                 }
                 if DonneesReglagesServeur.onglet == "roles" && DonneesRoles.choisi != "" && DonneesRoles.modifiable: BarreRole { }

@@ -98,6 +98,8 @@ export global DonneesRoles {
     callback creer-salon();
     callback basculer-salon(string);
     callback menu-role-salon(length, length, length);
+    callback renommer-salon(string);
+    callback supprimer-salon(string);
     callback definir-permission-salon(string, int);
 }
 
@@ -901,6 +903,28 @@ export component OngletSalons inherits VerticalLayout {
                         variante: s.ouvert ? VarianteBouton.secondaire : VarianteBouton.fantome;
                         clique => {
                             DonneesRoles.basculer-salon(s.id);
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "crayon";
+                        description: "Renommer " + s.nom;
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesRoles.renommer-salon(s.id);
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "corbeille";
+                        description: "Supprimer " + s.nom;
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesRoles.supprimer-salon(s.id);
                         }
                     }
                 }

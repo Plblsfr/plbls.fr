@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{NaiveDateTime, TimeZone};
 use estompe_client::appels::Badge;
+use estompe_client::moderation::actions_de_moderation;
 use estompe_client::ordre_serveurs::Sens;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
@@ -45,6 +46,7 @@ fn millisecondes(maintenant: NaiveDateTime) -> i64 {
 
 mod creation;
 mod menus;
+mod moderation;
 mod nouveau_prive;
 mod parametres;
 mod profil;
@@ -53,6 +55,7 @@ mod reglages;
 mod roles;
 
 pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
+pub use moderation::{EtatModerationMembre, EtatModerationSalon};
 pub use nouveau_prive::EtatNouveauPrive;
 pub use reglages::{emoji_depuis, EmojiEnAttente, EtatReglages};
 pub use roles::EtatRoles;
@@ -188,6 +191,7 @@ fn carte_slint(
     portrait: Option<Icone>,
     badges: Option<&[Badge]>,
     profils: &Profils,
+    moderable: bool,
 ) -> CarteProfil {
     let couleur = couleur_slint(d.couleur.as_deref());
     let roles: Vec<RoleProfil> = d
@@ -229,6 +233,7 @@ fn carte_slint(
         creation: d.creation.as_str().into(),
         bot: d.bot,
         moi: d.moi,
+        moderable,
     }
 }
 
@@ -285,6 +290,7 @@ struct Interne {
     profil: profil::EtatProfil,
     creation: creation::EtatCreation,
     reglages: Option<reglages::EtatReglages>,
+    moderation: moderation::EtatModeration,
 }
 
 #[derive(Clone)]
@@ -582,6 +588,7 @@ impl Pont {
                 profil: profil::EtatProfil::default(),
                 creation: creation::EtatCreation::default(),
                 reglages: None,
+                moderation: moderation::EtatModeration::default(),
             })),
             store,
             fenetre,
@@ -1440,10 +1447,13 @@ impl Pont {
         let (Some(utilisateur), Some(serveur)) = (m.carte.clone(), m.serveur.clone()) else {
             return;
         };
-        let Some(donnees) = self
-            .store
-            .lire(|etat| donnees_carte(etat, &serveur, &utilisateur, maintenant))
-        else {
+        let Some((donnees, moderable)) = self.store.lire(|etat| {
+            donnees_carte(etat, &serveur, &utilisateur, maintenant).map(|d| {
+                let moderable =
+                    !actions_de_moderation(etat, &serveur, &utilisateur, maintenant).is_empty();
+                (d, moderable)
+            })
+        }) else {
             m.carte = None;
             m.ombre_carte = None;
             drop(guard);
@@ -1464,6 +1474,7 @@ impl Pont {
             portrait,
             badges.as_deref(),
             &self.profils,
+            moderable,
         ));
         m.ombre_carte = Some(donnees);
         drop(guard);

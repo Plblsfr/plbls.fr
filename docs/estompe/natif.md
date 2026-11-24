@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur, ses rôles et les permissions des salons (voir [Réglages d'un serveur](#réglages-dun-serveur) et [Rôles et permissions](#rôles-et-permissions)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur, ses rôles et les permissions des salons (voir [Réglages d'un serveur](#réglages-dun-serveur) et [Rôles et permissions](#rôles-et-permissions)), la modération des membres et des salons (voir [Modération](#modération)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -188,8 +188,8 @@ bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préfé
   que les lignes qui diffèrent : un changement de statut remplace une ligne, un passage en ligne retire et insère la seule ligne du membre et met à jour les deux compteurs.
 - Carte de profil (`ui/coquille/carte-profil.slint`), en lecture : bannière (`banner_color`, sinon couleur du rôle), avatar et présence, pseudo de serveur et
   d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. Sur ma carte,
-  « Modifier mon profil » la ferme et ouvre le compte des paramètres (voir [Profil](#profil)) ; « Envoyer un message » est marqué « bientôt » ; modification des rôles,
-  modération et historique ne sont pas dans l'app native.
+  « Modifier mon profil » la ferme et ouvre le compte des paramètres (voir [Profil](#profil)) ; « Envoyer un message » est marqué « bientôt » ; « Modérer » ouvre
+  les actions de modération permises (voir [Modération](#modération)) ; modification des rôles et historique ne sont pas dans l'app native.
 - Badges de la carte (`BadgeCarte`) : 24 px dans une case de 32, infobulle du nom (gras) et de la description au survol ou au focus (Tab), au-dessus du badge.
 
 #### Avatars et badges
@@ -289,7 +289,7 @@ membres, libellés des invitations et des bans), appels par `Client` (`renommer_
   la referme, la marge est masquée tant qu'elle est ouverte ; Échap ou « Fermer » rendent le focus à la coquille. Flèches, Origine et Fin passent d'un onglet à l'autre.
 - Onglets selon les droits du serveur (`droits`, suivis en temps réel) : « Vue d'ensemble », « Emojis » et « Membres » pour tous, « Invitations » avec `create_invites`,
   « Bannis » avec `ban_members`, « Salons » avec `manage_channels` et « Rôles » avec `manage_roles` (voir [Rôles et permissions](#rôles-et-permissions)), « Journal »
-  (`view_audit_log`) marqué « bientôt » en attendant la modération (#366). L'en-tête dit « Tu es propriétaire », « Tu gères ce serveur » ou « Tu es membre ».
+  (`view_audit_log`, voir [Modération](#modération)). L'en-tête dit « Tu es propriétaire », « Tu gères ce serveur » ou « Tu es membre ».
 - Vue d'ensemble : nom (50 caractères, `manage_server`) avec compteur, icône (`manage_server` ou administrateur d'Estompe) choisie puis recadrée par le recadrage du profil
   (`PUT /servers/{id}/icon`) ou supprimée (`DELETE /servers/{id}/icon`), aperçu dans la liste des serveurs ; rien ne part avant « Enregistrer » de la barre
   « Modifications non enregistrées » (« Annuler » revient au serveur). Le créateur a « Supprimer le serveur… » : confirmation qui n'est validable qu'avec le nom exact
@@ -301,10 +301,9 @@ membres, libellés des invitations et des bans), appels par `Client` (`renommer_
   Le nom est proposé depuis le fichier (`nom_propose`) et doit suivre `^[a-z0-9_]{2,32}$` ; 50 emoji par serveur au plus (l'ajout disparaît à la limite). Renommer (fenêtre
   de saisie, plutôt que le champ en place du front) et supprimer sont offerts à l'auteur et au créateur du serveur, comme l'API.
 - Membres : liste du serveur, créateur en tête puis par nom, rôle le plus haut en couleur, date d'arrivée, recherche sans accents ni casse sur le nom affiché et le
-  pseudo ; 200 lignes au plus (le compteur invite à affiner). Le front n'a pas cet onglet ; la modération d'un membre arrive avec #366.
+  pseudo ; 200 lignes au plus (le compteur invite à affiner). Le front n'a pas cet onglet ; un membre se modère depuis son menu ou sa carte (voir [Modération](#modération)).
 - Bannis : `GET /servers/{id}/bans`, auteur, date, durée (« définitif » ou « jusqu'au … »), raison, « Lever le ban » (`DELETE /servers/{id}/bans/{uid}`).
-- Écarts : pas de description du serveur (ni l'API ni le front n'en ont) ; le transfert de propriété, l'ordre, le renommage et la suppression des salons et le journal
-  restent à faire. Les messages de réussite et d'erreur s'affichent en tête de la page (pas de toast dans l'app native).
+- Écarts : pas de description du serveur (ni l'API ni le front n'en ont) ; le transfert de propriété et l'ordre des salons restent à faire. Les messages de réussite et d'erreur s'affichent en tête de la page (pas de toast dans l'app native).
 
 ### Rôles et permissions
 
@@ -329,6 +328,37 @@ Après chaque modification, le détail du serveur est rechargé (`Store::recharg
 - Écarts : pas de surcharge par membre (ni route dans l'API, ni écran dans le front : `channel_member_overrides` n'est rempli qu'à la création d'un salon privé) ;
   la liste est au-dessus de l'éditeur (la zone de contenu est trop étroite pour deux colonnes, comme le front sous 760 px), les membres passent avant les
   permissions et les actions restent dans une barre fixe ; « Gérer les rôles » du menu d'un membre (carte de profil du front) n'est pas repris.
+
+### Modération
+
+Comme `ModerationModal.svelte`, `ChannelModModal.svelte`, `lib/moderation.svelte.ts` et le journal de `ServerSettingsModal.svelte` : fenêtres
+`ui/coquille/moderation.slint` (globals `DonneesModeration` et `DonneesModerationSalon`), actions dans `src/coquille/pont/moderation.rs`, règles sans interface
+dans `estompe_client::moderation` (actions permises, durées, purges, validation, libellés, phrases, icônes et tons du journal, texte d'exclusion), appels par `Client`
+(`expulser_membre`, `bannir_membre`, `exclure_membre`, `lever_exclusion`, `avertir_membre`, `renommer_membre`, `journal_du_serveur`, `moderer_salon`, `renommer_salon`,
+`supprimer_salon`, `supprimer_derniers_messages`).
+
+- Membre : le menu d'un membre (liste des membres) et le bouton « Modérer » de sa carte de profil proposent, dans l'ordre du front, « Exclure temporairement… » ou
+  « Lever l'exclusion temporaire » (`timeout_members`), « Avertir… » (`timeout_members`), « Changer le pseudo… » (`manage_nicknames`), « Expulser… »
+  (`kick_members`) et « Bannir… » (`ban_members`), ces deux derniers en rouge ; seulement sur un membre de rang strictement inférieur au sien (`roles::domine` :
+  le créateur domine tout le monde, personne ne le modère, ni soi-même). « Lever l'exclusion » part aussitôt (`DELETE /servers/{id}/members/{uid}/timeout`), une
+  erreur s'affiche sous la zone de saisie.
+- Fenêtre de modération d'un membre : avatar et explication du front, durée en puces (exclusion : 60 s à 1 semaine, bannissement : définitif à 7 jours) et
+  « Personnalisé… » en heures (28 jours au plus pour une exclusion, 10 ans pour un ban), purge des messages récents pour un ban, raison de 200 caractères (obligatoire
+  pour avertir), pseudo de serveur de 32 caractères pour le renommage (vide : pseudo d'origine). Le bouton est rouge et nommé (« Bannir dave ») pour expulser et
+  bannir, « Confirmer » sinon ; la réussite (« Membre banni »…) ou l'erreur s'affiche dans la fenêtre, qui ne garde alors que « Fermer ».
+- Salon : « Modération du salon… » du menu d'un salon texte, avec `manage_channels` ou `manage_messages` sur ce salon. Avec `manage_channels` : nom (30 caractères,
+  mêmes règles qu'à la création, son propre nom ignoré), mode lent, verrouillage, « Enregistrer » (`PATCH` du nom s'il change puis
+  `PUT /servers/{id}/channels/{cid}/moderation`, détail du serveur rechargé) et « Supprimer le salon… » (confirmation). Avec `manage_messages` : suppression des N
+  derniers messages (1 à 100) de tout le monde ou d'un auteur choisi par un menu, confirmée, puis le nombre supprimé est affiché (`POST /channels/{cid}/messages/bulk-delete`).
+- Onglet « Salons » des réglages : chaque salon a aussi « Renommer » (fenêtre de saisie) et « Supprimer » (confirmation), comme le menu du front.
+- Onglet « Journal » des réglages (`view_audit_log`) : `GET /servers/{id}/audit-log`, rechargé à l'ouverture de l'onglet et à chaque changement du filtre (menu :
+  toutes les actions, modération des membres, rôles, salons, vocal, messages, serveur) ; chaque ligne : date, icône et ton du front (rouge pour ban, expulsion et
+  messages, orange pour exclusion et avertissement), auteur et phrase (« a banni « hugo » — spam »), « Aucune action enregistrée. » sinon.
+- Membre exclu : la carte de profil affiche « Exclu temporairement jusqu'au … » ; pour soi, la zone de saisie passe en lecture seule avec
+  « Tu es exclu temporairement de ce serveur jusqu'au … » au lieu du texte d'absence de permission (le serveur retire `send_messages` ; `member.timeout` me visant
+  recharge le détail du serveur).
+- Écarts : le sujet d'un salon ne se modifie pas (ni l'API ni le front ne le permettent après la création) ; la raison est un champ d'une ligne (zone de texte dans le
+  front) ; la réussite s'affiche dans la fenêtre au lieu d'un toast.
 
 ## Messagerie
 
@@ -1580,6 +1610,11 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   une confirmation (refusée puis acceptée) ; surcharges d'un salon en trois états par rôle, confirmation avant de se retirer la vue du salon ; enfin un autre client change
   les permissions : sur `roles.updated`, la zone de saisie passe en lecture seule et les onglets « Salons » et « Rôles » disparaissent. Les règles ont leurs tests unitaires
   (`estompe_client::gestion_roles`, équivalents des cas de `roles.test.ts` sur la modification).
+`moderation.rs` (même backend, `ServeurMessages` qui répond aussi aux routes de modération) : menu d'un membre selon les permissions et le rang (rien sur la
+  créatrice ni sur un rang égal), exclusion levée directement, avertissement (raison obligatoire), bannissement d'une durée personnalisée avec purge, pseudo borné à
+  32 caractères puis envoyé, expulsion depuis la carte de profil ; salon renommé (nom déjà pris refusé), mode lent et verrouillage enregistrés, 5 derniers messages
+  supprimés après confirmation et nombre affiché ; journal chargé puis filtré ; salon supprimé depuis les réglages ; enfin `member.timeout` me visant recharge le détail
+  sans `send_messages` et la zone de saisie passe en lecture seule avec la fin de l'exclusion (#366 C2). Les règles ont leurs tests unitaires (`estompe_client::moderation`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

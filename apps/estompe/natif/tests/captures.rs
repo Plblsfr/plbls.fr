@@ -262,6 +262,10 @@ const ECRANS: &[Ecran] = ecrans![
     "reglages-serveur-roles-clair", Clair, reglages_serveur_roles;
     "reglages-serveur-roles-sombre", Sombre, reglages_serveur_roles;
     "reglages-serveur-salon-permissions-clair", Clair, reglages_serveur_salon_permissions;
+    "reglages-serveur-journal-clair", Clair, reglages_serveur_journal;
+    "moderation-membre-clair", Clair, moderation_membre;
+    "moderation-membre-sombre", Sombre, moderation_membre;
+    "moderation-salon-clair", Clair, moderation_salon;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
     "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
@@ -1642,6 +1646,58 @@ fn reglages_serveur_roles(f: &Principale) {
     stabiliser(f);
 }
 
+fn reglages_serveur_journal(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "journal");
+    pont.poser_journal(
+        f,
+        "s1",
+        "",
+        serde_json::from_value(serde_json::json!([
+            {"at": "2026-11-19T10:20:00Z", "actor": "bob", "actor_id": "u1", "action": "member.ban", "target": "hugo", "reason": "spam"},
+            {"at": "2026-11-19T09:05:00Z", "actor": "bob", "actor_id": "u1", "action": "member.timeout", "target": "frank", "reason": "insultes"},
+            {"at": "2026-11-18T21:12:00Z", "actor": "Ève", "actor_id": "eve", "action": "member.warn", "target": "dave", "reason": "hors sujet"},
+            {"at": "2026-11-18T18:40:00Z", "actor": "Ève", "actor_id": "eve", "action": "role.create", "target": "Artistes"},
+            {"at": "2026-11-18T17:00:00Z", "actor": "bob", "actor_id": "u1", "action": "channel.moderation", "target": "annonces"},
+            {"at": "2026-11-17T08:30:00Z", "actor": "Ève", "actor_id": "eve", "action": "message.bulk_delete", "target": "général"},
+            {"at": "2026-11-16T20:02:00Z", "actor": "bob", "actor_id": "u1", "action": "voice.move", "target": "carol"}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn moderation_membre(f: &Principale) {
+    let pont = coquille(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+    );
+    pont.menu_membre(
+        f,
+        "dave",
+        estompe_natif::menu::Ancre::Point { x: 900.0, y: 200.0 },
+    );
+    estompe_natif::menu::choisir(f, "ban");
+    let g = f.global::<estompe_natif::DonneesModeration>();
+    g.set_raison("Spam répété dans #général".into());
+    pont.raison_de_moderation_modifiee(f, "Spam répété dans #général");
+    pont.choisir_duree_de_moderation(f, 2);
+    pont.choisir_purge(f, 2);
+    stabiliser(f);
+}
+
+fn moderation_salon(f: &Principale) {
+    let pont = coquille(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+    );
+    pont.ouvrir_moderation_salon(f, "s1", "c1");
+    pont.choisir_mode_lent_du_salon(f, 3);
+    pont.verrouiller_salon(f, true);
+    stabiliser(f);
+}
+
 fn reglages_serveur_salon_permissions(f: &Principale) {
     let pont = reglages_serveur(f, etat_des_roles(), "s1", "salons");
     pont.basculer_permissions_du_salon(f, "c1");
@@ -2251,6 +2307,10 @@ fn remettre_a_zero(f: &Principale) {
     f.global::<estompe_natif::DonneesRecherche>()
         .set_ouvert(false);
     f.global::<estompe_natif::DonneesNouveauPrive>()
+        .set_ouvert(false);
+    f.global::<estompe_natif::DonneesModeration>()
+        .set_ouvert(false);
+    f.global::<estompe_natif::DonneesModerationSalon>()
         .set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);

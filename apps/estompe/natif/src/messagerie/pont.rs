@@ -8,6 +8,7 @@ use estompe_client::appels::Badge;
 use estompe_client::lru::Lru;
 use estompe_client::markdown::{analyser, texte_brut};
 use estompe_client::mention::Mentionnables;
+use estompe_client::moderation::texte_d_exclusion;
 use estompe_client::store::messages::{
     auteur, ChangementMessages, Conversation, EtatEnvoi, PREFIXE_LOCAL,
 };
@@ -1027,18 +1028,25 @@ impl PontMessagerie {
         }
     }
 
-    fn raison_lecture_seule(&self) -> Option<&'static str> {
+    fn raison_lecture_seule(&self) -> Option<String> {
         let (cle, estompe) = {
             let i = self.verrou();
             (i.cle.clone()?, i.compte_estompe)
         };
         if estompe {
-            return Some(TEXTE_LECTURE_SEULE_ESTOMPE);
+            return Some(TEXTE_LECTURE_SEULE_ESTOMPE.to_string());
         }
-        (!self
-            .store
-            .lire(|etat| etat.peut_dans(Some(&cle), "send_messages")))
-        .then_some(TEXTE_SANS_DROIT_D_ECRIRE)
+        let (maintenant, decalage) = (self.maintenant(), self.decalage_minutes());
+        self.store.lire(|etat| {
+            if etat.peut_dans(Some(&cle), "send_messages") {
+                return None;
+            }
+            Some(
+                cle.salon()
+                    .and_then(|salon| texte_d_exclusion(etat, salon, maintenant, decalage))
+                    .unwrap_or_else(|| TEXTE_SANS_DROIT_D_ECRIRE.to_string()),
+            )
+        })
     }
 
     fn droits_conversation(&self) -> DroitsConversation {
@@ -2123,7 +2131,7 @@ impl PontMessagerie {
         let (fenetre, lignes_fenetre) = {
             let mut i = self.verrou();
             i.lecture_seule = raison.is_some();
-            i.lecture_seule_texte = raison.unwrap_or_default().to_string();
+            i.lecture_seule_texte = raison.unwrap_or_default();
             let fenetre = i.defilement.fenetre();
             let fin = fenetre.fin.min(i.lignes.len());
             let debut = fenetre.debut.min(fin);

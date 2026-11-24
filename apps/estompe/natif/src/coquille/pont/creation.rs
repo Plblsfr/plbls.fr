@@ -118,7 +118,7 @@ impl Pont {
         self.verrou().creation.salon.as_mut().map(modification)
     }
 
-    fn rendre_le_focus(&self, f: &Principale) {
+    pub(super) fn rendre_le_focus(&self, f: &Principale) {
         if self.messagerie.peut_ecrire() {
             self.messagerie.saisie().demander_focus(f);
         } else {

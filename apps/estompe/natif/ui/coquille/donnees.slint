@@ -178,6 +178,7 @@ export struct CarteProfil {
     creation: string,
     bot: bool,
     moi: bool,
+    moderable: bool,
 }
 
 export global DonneesCoquille {
@@ -228,6 +229,7 @@ export global DonneesCoquille {
     callback menu-serveur(string, length, length);
     callback menu-prive(string, length, length);
     callback menu-membre(string, length, length);
+    callback menu-moderation(string, length, length, length);
     callback membres-defiles(length, length);
     callback filtrer-membres(string);
     callback ouvrir-membre(string);

@@ -6,6 +6,7 @@ use estompe_client::temps_reel::evenements::StatutPresence;
 use super::super::membres::DonneesMembre;
 use super::super::projection::{serveur_courant, DonneesPrive, DonneesSalon};
 use super::super::recherche::STATUTS;
+use super::moderation::{entrees_de_moderation, MODERER_SALON};
 use super::parametres::REGLER_NOTIFICATIONS;
 use super::Pont;
 use crate::menu::{self, Ancre, Entree};
@@ -70,7 +71,12 @@ fn creer_salon() -> Entree {
     Entree::nouvelle(CREER_SALON, "Créer un salon", "plus")
 }
 
-pub fn entrees_du_salon(salon: &DonneesSalon, sourdine: Vec<Entree>, creer: bool) -> Vec<Entree> {
+pub fn entrees_du_salon(
+    salon: &DonneesSalon,
+    sourdine: Vec<Entree>,
+    creer: bool,
+    moderer: Option<Entree>,
+) -> Vec<Entree> {
     let lu = lu(salon.non_lus, salon.mentions).filter(|_| !salon.bientot);
     let sourdine = if salon.vocal || salon.bientot {
         Vec::new()
@@ -81,6 +87,7 @@ pub fn entrees_du_salon(salon: &DonneesSalon, sourdine: Vec<Entree>, creer: bool
         .chain(sourdine)
         .chain([lien()])
         .chain(creer.then(|| creer_salon().separee()))
+        .chain(moderer)
         .collect()
 }
 
@@ -111,12 +118,18 @@ pub fn entrees_du_prive(prive: &DonneesPrive) -> Vec<Entree> {
         .collect()
 }
 
-pub fn entrees_du_membre(mentionner: bool) -> Vec<Entree> {
+pub fn entrees_du_membre(mentionner: bool, moderation: Vec<Entree>) -> Vec<Entree> {
     let mut entrees = vec![Entree::nouvelle(PROFIL, "Profil", "perso")];
     if mentionner {
         entrees.push(Entree::nouvelle(MENTIONNER, "Mentionner", "arobase"));
     }
     entrees.push(Entree::nouvelle(COPIER_PSEUDO, "Copier le pseudo", "copie"));
+    entrees.extend(
+        moderation
+            .into_iter()
+            .enumerate()
+            .map(|(i, e)| if i == 0 { e.separee() } else { e }),
+    );
     entrees
 }
 
@@ -159,13 +172,18 @@ impl Pont {
                 e.salon(&salon.id).and_then(|(_, s)| s.kind),
             )
         });
+        let moderer = self.entree_moderation_salon(&serveur, &salon.id);
         menu::ouvrir(
             f,
             &titre,
             ancre,
-            entrees_du_salon(&salon, sourdine, creer),
+            entrees_du_salon(&salon, sourdine, creer, moderer),
             move |f, action| {
                 match action {
+                    MODERER_SALON => {
+                        pont.ouvrir_moderation_salon(f, &serveur, &salon.id);
+                        return true;
+                    }
                     CREER_SALON => {
                         pont.ouvrir_creation_salon(
                             f,
@@ -333,46 +351,46 @@ impl Pont {
         du_serveur && self.messagerie().ecriture_permise()
     }
 
+    pub(super) fn donnees_du_membre(&self, utilisateur: &str) -> Option<DonneesMembre> {
+        self.verrou()
+            .membres
+            .ombre
+            .iter()
+            .find(|m| !m.en_tete && m.utilisateur == utilisateur)
+            .cloned()
+    }
+
     pub fn menu_membre(&self, f: &Principale, utilisateur: &str, ancre: Ancre) -> bool {
-        let membre: Option<DonneesMembre> = {
-            let i = self.verrou();
-            i.membres
-                .ombre
-                .iter()
-                .find(|m| !m.en_tete && m.utilisateur == utilisateur)
-                .cloned()
-        };
-        let Some(membre) = membre else {
+        let Some(membre) = self.donnees_du_membre(utilisateur) else {
             return false;
         };
+        let serveur = self.verrou().membres.serveur.clone();
+        let moderation = serveur
+            .as_deref()
+            .map(|s| entrees_de_moderation(&self.actions_sur(s, utilisateur)))
+            .unwrap_or_default();
         let pont = self.clone();
-        let entrees = entrees_du_membre(self.mention_possible());
-        menu::ouvrir(
-            f,
-            &membre.nom,
-            ancre,
-            entrees,
-            move |f, action| match action {
-                PROFIL => {
-                    pont.ouvrir_membre(f, &membre.utilisateur);
-                    true
-                }
-                MENTIONNER => {
-                    pont.messagerie().inserer_dans_la_saisie(
-                        f,
-                        &format!("@{} ", membre.pseudo),
-                        true,
-                    );
-                    pont.rafraichir_brouillons(f);
-                    true
-                }
-                COPIER_PSEUDO => {
-                    menu::copier_texte(f, &membre.pseudo);
-                    false
-                }
-                _ => false,
-            },
-        )
+        let entrees = entrees_du_membre(self.mention_possible(), moderation);
+        let titre = membre.nom.clone();
+        menu::ouvrir(f, &titre, ancre, entrees, move |f, action| match action {
+            PROFIL => {
+                pont.ouvrir_membre(f, &membre.utilisateur);
+                true
+            }
+            MENTIONNER => {
+                pont.messagerie()
+                    .inserer_dans_la_saisie(f, &format!("@{} ", membre.pseudo), true);
+                pont.rafraichir_brouillons(f);
+                true
+            }
+            COPIER_PSEUDO => {
+                menu::copier_texte(f, &membre.pseudo);
+                false
+            }
+            action => serveur
+                .as_deref()
+                .is_some_and(|s| pont.agir_sur_membre(f, s, &membre, action)),
+        })
     }
 }
 
@@ -406,15 +424,15 @@ mod tests {
     #[test]
     fn marquer_comme_lu_n_apparait_que_pour_un_salon_texte_avec_des_non_lus() {
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, false), Vec::new(), false)),
+            ids(&entrees_du_salon(&salon(3, false), Vec::new(), false, None)),
             [MARQUER_LU, COPIER_LIEN]
         );
         assert_eq!(
-            ids(&entrees_du_salon(&salon(0, false), Vec::new(), true)),
+            ids(&entrees_du_salon(&salon(0, false), Vec::new(), true, None)),
             [COPIER_LIEN, CREER_SALON]
         );
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, true), Vec::new(), false)),
+            ids(&entrees_du_salon(&salon(3, true), Vec::new(), false, None)),
             [COPIER_LIEN]
         );
     }
@@ -423,13 +441,13 @@ mod tests {
     fn la_sourdine_se_propose_pour_un_salon_texte_et_pour_un_serveur() {
         let sourdine = || super::super::parametres::entrees_de_sourdine(None);
         assert_eq!(
-            ids(&entrees_du_salon(&salon(3, false), sourdine(), false)),
+            ids(&entrees_du_salon(&salon(3, false), sourdine(), false, None)),
             [MARQUER_LU, super::super::parametres::SOURDINE, COPIER_LIEN]
         );
         let mut vocal = salon(0, false);
         vocal.vocal = true;
         assert_eq!(
-            ids(&entrees_du_salon(&vocal, sourdine(), false)),
+            ids(&entrees_du_salon(&vocal, sourdine(), false, None)),
             [COPIER_LIEN]
         );
         let serveur = entrees_du_serveur(sourdine(), false);
@@ -509,9 +527,33 @@ mod tests {
     #[test]
     fn mentionner_un_membre_demande_une_conversation_de_son_serveur_ouverte_en_ecriture() {
         assert_eq!(
-            ids(&entrees_du_membre(true)),
+            ids(&entrees_du_membre(true, Vec::new())),
             [PROFIL, MENTIONNER, COPIER_PSEUDO]
         );
-        assert_eq!(ids(&entrees_du_membre(false)), [PROFIL, COPIER_PSEUDO]);
+        assert_eq!(
+            ids(&entrees_du_membre(false, Vec::new())),
+            [PROFIL, COPIER_PSEUDO]
+        );
+    }
+
+    #[test]
+    fn la_moderation_suit_les_entrees_du_membre_et_du_salon() {
+        let moderation = vec![
+            Entree::nouvelle("warn", "Avertir…", "alerte"),
+            Entree::nouvelle("kick", "Expulser…", "sortie").danger(),
+        ];
+        let entrees = entrees_du_membre(false, moderation);
+        assert_eq!(ids(&entrees), [PROFIL, COPIER_PSEUDO, "warn", "kick"]);
+        assert!(entrees[2].separe && !entrees[3].separe);
+        let moderer = Entree::nouvelle(MODERER_SALON, "Modération du salon…", "bouclier");
+        assert_eq!(
+            ids(&entrees_du_salon(
+                &salon(0, false),
+                Vec::new(),
+                true,
+                Some(moderer)
+            )),
+            [COPIER_LIEN, CREER_SALON, MODERER_SALON]
+        );
     }
 }

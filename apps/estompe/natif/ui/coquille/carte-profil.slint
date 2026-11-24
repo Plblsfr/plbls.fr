@@ -352,6 +352,16 @@ export component CarteProfilVue {
                             valeur: DonneesCoquille.carte.creation;
                         }
                     }
+                    if DonneesCoquille.carte.moderable: Bouton {
+                        texte: "Modérer";
+                        icone: "bouclier";
+                        variante: VarianteBouton.secondaire;
+                        description: "Modérer " + DonneesCoquille.carte.nom;
+                        calque: Calques.ouverts;
+                        clique => {
+                            DonneesCoquille.menu-moderation(DonneesCoquille.carte.utilisateur, self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                        }
+                    }
                     if DonneesCoquille.carte.moi: Bouton {
                         texte: "Modifier mon profil";
                         icone: "crayon";

@@ -11,7 +11,9 @@ use estompe_client::reglages_serveur::{
     EXPIRATIONS, MAX_EMOJIS, NOM_INVALIDE, OCTETS_EMOJI_MAX, UTILISATIONS,
 };
 use estompe_client::store::Changement;
-use estompe_client::types::{GetServersIdBansReponseElement, ServerInvite};
+use estompe_client::types::{
+    GetServersIdAuditLogReponseElement, GetServersIdBansReponseElement, ServerInvite,
+};
 use estompe_plateforme::FiltreFichiers;
 use image::RgbaImage;
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
@@ -62,6 +64,8 @@ pub struct EtatReglages {
     pub recherche: String,
     pub bannis: Vec<GetServersIdBansReponseElement>,
     pub roles: super::roles::EtatRoles,
+    pub journal: Vec<GetServersIdAuditLogReponseElement>,
+    pub filtre_journal: String,
     images: HashSet<String>,
 }
 
@@ -85,6 +89,8 @@ impl EtatReglages {
             recherche: String::new(),
             bannis: Vec::new(),
             roles: super::roles::EtatRoles::default(),
+            journal: Vec::new(),
+            filtre_journal: String::new(),
             images: HashSet::new(),
         }
     }
@@ -211,6 +217,7 @@ impl Pont {
             Onglet::Invitations => self.charger_invitations(f),
             Onglet::Bannis => self.charger_bannis(f),
             Onglet::Emojis => self.charger_emojis_des_reglages(f),
+            Onglet::Journal => self.charger_journal(f),
             _ => {}
         }
     }
@@ -946,7 +953,6 @@ impl Pont {
                     } else {
                         SharedString::new()
                     },
-                    bientot: o.bientot(),
                 })
                 .collect(),
         ));
@@ -1076,6 +1082,7 @@ impl Pont {
             }
         });
         self.projeter_roles(f);
+        self.projeter_journal(f);
         for (_, cle) in a_charger {
             let medias = medias.clone();
             let pont = self.clone();
