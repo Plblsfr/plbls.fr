@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+[ -n "${ESTOMPE_NATIF_VERROU:-}" ] || exec scripts/estompe/natif-verrou.sh scripts/estompe/natif-check.sh "$@"
 
 scripts/estompe/natif-portabilite.sh
 node scripts/estompe/natif-da.mjs --check
