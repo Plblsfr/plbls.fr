@@ -76,7 +76,7 @@ estompe-natif-check:
 
 # Aperçu en direct : un .slint enregistré recharge l'interface sans recompiler, sans le vocal (voir docs/estompe/natif.md, « Aperçu en direct »)
 estompe-natif-apercu *ARGS:
-    cd apps/estompe/natif && SLINT_LIVE_PREVIEW=1 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/apercu" cargo run --locked --no-default-features --features apercu -- {{ARGS}}
+    cd apps/estompe/natif && SLINT_LIVE_PREVIEW=1 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/apercu" {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo build --locked --no-default-features --features apercu && SLINT_LIVE_PREVIEW=1 CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}/apercu" cargo run --locked --no-default-features --features apercu -- {{ARGS}}
 
 # Régénère les jetons de couleur et les icônes Slint (depuis le CSS et Icon.svelte) et les types de l'API (depuis openapi.yaml)
 estompe-natif-generer:
