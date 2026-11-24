@@ -17,5 +17,4 @@ if cargo tree --locked -e normal --target all | grep -E ' (tauri|wry|webview2-co
 fi
 cargo test --workspace --locked --no-run --lib
 cargo test --workspace --locked
-cargo build --locked
 echo "natif-check.sh : tout passe"

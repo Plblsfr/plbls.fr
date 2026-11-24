@@ -357,7 +357,7 @@ jobs:
           restore-keys: natif-linux-v1-
       - name: cargo-deny
         run: command -v cargo-deny || cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
-      - name: Portabilité, fichiers générés, fmt, clippy, cargo deny, tests (coffre de secrets réel, captures de rendu) et build
+      - name: Portabilité, fichiers générés, fmt, clippy, cargo deny, tests (coffre de secrets réel, captures de rendu ; le binaire de l'app en sort)
         run: dbus-run-session -- bash -c 'echo -n ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && scripts/estompe/natif-check.sh'
       - name: Lancement de l'app (fenêtre réelle sous Xvfb, moteur Skia)
         working-directory: apps/estompe/natif
