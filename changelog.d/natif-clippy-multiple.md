@@ -1,1 +1,1 @@
-- [x] App native : clippy 1.100 (`manual_is_multiple_of`) ne bloque plus la CI. `is_multiple_of` dans le formatage des nombres de l'administration, seul endroit signalé.
+- [x] App native : CI réparée sur `main`. Clippy 1.100 (`manual_is_multiple_of`) ne bloque plus le build. Les tests de menus et de palette suivent les entrées ajoutées par la modération et les signalements (« Modération du salon… », actions de modération, « Signaler », « Signaler un bug »). La référence de capture `admin-acces-comptes-clair` manquante est ajoutée.

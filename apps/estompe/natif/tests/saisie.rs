@@ -1259,7 +1259,7 @@ fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages,
     });
     attendre_l_interface(
         faible,
-        |f| entrees_du_menu(f) == ["lu", "sourdine", "lien", "creer-salon"],
+        |f| entrees_du_menu(f) == ["lu", "sourdine", "lien", "creer-salon", "moderer-salon"],
         "menu contextuel du salon",
     );
     touche(faible, Key::Return);
@@ -1323,7 +1323,20 @@ fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages,
     });
     attendre_l_interface(
         faible,
-        |f| entrees_du_menu(f) == ["profil", "mentionner", "pseudo"],
+        |f| {
+            entrees_du_menu(f)
+                == [
+                    "profil",
+                    "mentionner",
+                    "pseudo",
+                    "timeout",
+                    "warn",
+                    "nickname",
+                    "kick",
+                    "ban",
+                    "signaler",
+                ]
+        },
         "menu contextuel d'un membre",
     );
     choisir_au_clavier(faible, "mentionner");
@@ -2043,6 +2056,7 @@ fn nouveau_prive_statut_et_tout_lu(
                     "Statut : En ligne",
                     "Statut : Absent",
                     "Statut : Ne pas déranger",
+                    "Signaler un bug",
                     "Paramètres › Compte",
                     "Paramètres › Notifications",
                     "Paramètres › Voix et vidéo",
