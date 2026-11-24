@@ -136,7 +136,7 @@ export global DonneesReglagesServeur {
     callback menu-filtre-journal(length, length, length);
 }
 
-component Titre inherits Text {
+export component Titre inherits Text {
     color: Theme.encre;
     font-family: Typo.titre;
     font-size: Typo.titre-section;
@@ -144,13 +144,13 @@ component Titre inherits Text {
     letter-spacing: -0.4px;
 }
 
-component Note inherits Text {
+export component Note inherits Text {
     color: Theme.gris;
     font-size: Typo.petit;
     wrap: word-wrap;
 }
 
-component Carte inherits Rectangle {
+export component Carte inherits Rectangle {
     border-radius: Rayon.l;
     background: Theme.surface;
     border-width: 1px;
@@ -165,7 +165,7 @@ component Carte inherits Rectangle {
     }
 }
 
-component Section inherits VerticalLayout {
+export component Section inherits VerticalLayout {
     in property <string> titre;
     in property <string> compte;
     in property <string> note;
@@ -191,7 +191,7 @@ component Section inherits VerticalLayout {
     @children
 }
 
-component Alerte inherits Rectangle {
+export component Alerte inherits Rectangle {
     in property <string> texte;
     in property <bool> ok: false;
     border-radius: Rayon.s;
@@ -211,7 +211,7 @@ component Alerte inherits Rectangle {
     }
 }
 
-component IconeServeur inherits Rectangle {
+export component IconeServeur inherits Rectangle {
     in property <image> image;
     in property <bool> a-image;
     in property <string> initiales;
@@ -246,7 +246,7 @@ component IconeServeur inherits Rectangle {
     }
 }
 
-component Puce inherits Rectangle {
+export component Puce inherits Rectangle {
     in property <string> texte;
     in property <bool> choisie;
     callback choisir();
@@ -1017,6 +1017,24 @@ component OngletBannis inherits VerticalLayout {
         }
         if DonneesReglagesServeur.bannis.length == 0: Note {
             text: "Aucun membre banni.";
+        }
+    }
+}
+
+export component OngletBientot inherits VerticalLayout {
+    in property <string> texte;
+    spacing: Espace.e3;
+    alignment: start;
+    Carte {
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Etiquette {
+                texte: "bientôt";
+            }
+            Note {
+                horizontal-stretch: 1;
+                text: root.texte;
+            }
         }
     }
 }

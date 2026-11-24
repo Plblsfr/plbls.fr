@@ -861,6 +861,78 @@ pub mod coquille {
         etat
     }
 
+    pub fn reponses_admin() -> BTreeMap<&'static str, Value> {
+        let mut reponses = BTreeMap::new();
+        let mut json = |chemin: &'static str, valeur: Value| {
+            reponses.insert(chemin, valeur);
+        };
+        json(
+            "/admin/users",
+            json!([
+                {"id": "u2", "pseudo": "alice", "created_at": "2026-02-03T10:00:00Z", "suspended": false, "servers": 3, "messages": 1520},
+                {"id": "u3", "pseudo": "marc", "created_at": "2026-05-14T10:00:00Z", "suspended": true, "servers": 1, "messages": 12}
+            ]),
+        );
+        json(
+            "/admin/overview",
+            json!({
+                "version": "0.9.2",
+                "servers": [
+                    {"id": "s1", "name": "Les amis", "members": 12, "channels": 5, "messages": 48211, "last_message_at": "2026-11-19T11:42:00Z"},
+                    {"id": "s9", "name": "Atelier", "members": 3, "channels": 2, "messages": 0, "last_message_at": null}
+                ],
+                "config": {
+                    "settings": {"push_web": true, "push_android": false, "giphy": true, "metrics": false, "allow_video": true, "livekit_url": "wss://voix.example", "max_storage": 21474836480u64, "origins": ["https://chat.example"]},
+                    "max_file_size": 52428800, "max_participants": 25, "screen_max_fps": 30, "screen_max_height": 1080
+                }
+            }),
+        );
+        json(
+            "/admin/badges",
+            json!([
+                {"id": "b1", "name": "Fondateur", "icon": "🏅", "color": "#d0688a", "description": "Présent depuis le premier jour", "icon_version": 0, "sort_order": 1, "created_at": "2026-01-01T00:00:00Z", "holders": [{"id": "u2", "pseudo": "alice"}, {"id": "u1", "pseudo": "bob"}]},
+                {"id": "b2", "name": "Étoile", "icon": "⭐", "color": "#e0a030", "description": "", "icon_version": 0, "sort_order": 2, "created_at": "2026-03-01T00:00:00Z", "holders": []},
+                {"id": "b3", "name": "Artiste", "icon": "🎨", "color": "#2f5d8a", "description": "Dessins et musique", "icon_version": 0, "sort_order": 3, "created_at": "2026-02-01T00:00:00Z", "holders": [{"id": "u3", "pseudo": "marc"}]}
+            ]),
+        );
+        json(
+            "/admin/bot",
+            json!({"pseudo": "Estompe", "releases": ["0.9.0", "0.9.1"]}),
+        );
+        json(
+            "/admin/stats",
+            json!({"users": 1284, "new_users_7d": 31, "suspended": 2, "servers": 87, "messages": 412350, "messages_24h": 2311, "files": 5120, "storage_bytes": 7516192768u64, "errors_24h": 3}),
+        );
+        json(
+            "/admin/live",
+            json!({"connections": 42, "online": [{"pseudo": "alice", "platform": "windows", "version": "0.9.2"}, {"pseudo": "bob", "platform": "", "version": "0.9.1"}], "voice": [{"server": "Les amis", "channel": "Salon vocal", "participants": [{"user_id": "u2", "pseudo": "alice", "screen": true}, {"user_id": "u1", "pseudo": "bob", "camera": true}]}]}),
+        );
+        json(
+            "/admin/log",
+            json!([
+                {"at": "2026-11-19T10:00:00Z", "actor": "eve", "action": "badge.grant", "target": "Fondateur"},
+                {"at": "2026-11-18T09:30:00Z", "actor": "eve", "action": "user.suspend", "target": ""}
+            ]),
+        );
+        json(
+            "/admin/errors",
+            json!([{"at": "2026-11-19T08:00:00Z", "method": "GET", "path": "/servers/s1", "status": 502}]),
+        );
+        reponses
+    }
+
+    pub fn servir_l_administration(serveur: &ServeurMessages) {
+        for (chemin, valeur) in reponses_admin() {
+            serveur.servir_fichier(chemin, "application/json", valeur.to_string().into_bytes());
+        }
+    }
+
+    pub fn etat_administrateur() -> Etat {
+        let mut etat = etat();
+        etat.compte.admin = Some(true);
+        etat
+    }
+
     pub fn store(etat: Etat) -> Store {
         store_sur(etat, "http://127.0.0.1:9")
     }
@@ -1033,7 +1105,12 @@ pub mod coquille {
                                 );
                             }
                         }
-                        let (statut, type_mime, corps) = match s.fichier(&chemin) {
+                        let servi = if methode == "GET" {
+                            s.fichier(&chemin)
+                        } else {
+                            None
+                        };
+                        let (statut, type_mime, corps) = match servi {
                             Some((type_mime, octets)) => (200, type_mime, octets),
                             None => {
                                 let (statut, corps) =
@@ -2055,6 +2132,10 @@ pub mod coquille {
 
         fn jeux(&self) -> Option<watch::Receiver<estompe_natif::jeux::EtatJeux>> {
             self.jeux.lock().unwrap().clone()
+        }
+
+        fn client(&self) -> Option<Client> {
+            Some(store_sur(Etat::default(), &self.adresse).client().clone())
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

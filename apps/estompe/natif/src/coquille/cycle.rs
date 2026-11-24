@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use estompe_client::admin::SectionAdmin;
 use estompe_client::http::{Client, ErreurApi};
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::sections::{sections_ouvertes, Section};
@@ -15,7 +16,7 @@ use tokio::task::JoinHandle;
 
 use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
-use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
+use super::pont::{installer_modeles, vider_modeles, Horloge, Pont, PontAdmin};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
 use crate::menu::Ancre;
 use crate::messagerie::medias::Medias;
@@ -83,6 +84,9 @@ pub trait Fabrique: Send + Sync + 'static {
         Arc::new(son_par_defaut())
     }
     fn jeux(&self) -> Option<watch::Receiver<crate::jeux::EtatJeux>> {
+        None
+    }
+    fn client(&self) -> Option<Client> {
         None
     }
 }
@@ -213,6 +217,10 @@ impl Fabrique for FabriqueReelle {
     fn jeux(&self) -> Option<watch::Receiver<crate::jeux::EtatJeux>> {
         self.jeux.clone()
     }
+
+    fn client(&self) -> Option<Client> {
+        Some(self.client.clone())
+    }
 }
 
 pub trait ObservateurSession: Send + Sync {
@@ -232,6 +240,13 @@ fn observateur(contexte: &Contexte) -> Option<Arc<dyn ObservateurSession>> {
 }
 
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
+type EmplacementAdmin = Arc<Mutex<Option<PontAdmin>>>;
+
+fn admin_courant(emplacement: &Emplacement, seule: &EmplacementAdmin) -> Option<PontAdmin> {
+    pont_courant(emplacement)
+        .map(|p| p.admin().clone())
+        .or_else(|| seule.lock().unwrap_or_else(|e| e.into_inner()).clone())
+}
 
 fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
     emplacement
@@ -293,6 +308,8 @@ impl Coquille {
         let focus = Arc::new(AtomicBool::new(true));
         let observateur: Observateur = Arc::new(Mutex::new(None));
         brancher_rappels(f, &emplacement, &memoire);
+        let admin: EmplacementAdmin = Arc::new(Mutex::new(None));
+        brancher_admin(f, &emplacement, &admin);
         let contexte = Contexte {
             emetteur: entree.emetteur(),
             fabrique,
@@ -303,6 +320,7 @@ impl Coquille {
             runtime: entree.runtime(),
             focus: focus.clone(),
             observateur: observateur.clone(),
+            admin,
         };
         let (envoi_arret, arret) = oneshot::channel();
         let (envoi_fini, fini) = std::sync::mpsc::channel();
@@ -679,6 +697,71 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
         .choisir_cloture(&f, index));
     rappel_creation!(on_publier, |p, f| p.messagerie().publier_sondage(&f));
     rappel_creation!(on_fermer, |p, f| p.messagerie().fermer_creation_sondage(&f));
+}
+
+fn brancher_admin(f: &Principale, emplacement: &Emplacement, seule: &EmplacementAdmin) {
+    let g = f.global::<crate::DonneesAdmin>();
+    macro_rules! rappel_admin {
+        ($methode:ident, |$admin:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let seule = seule.clone();
+            let faible = f.as_weak();
+            g.$methode(move |$($arg),*| {
+                if let (Some($admin), Some($f)) = (admin_courant(&emplacement, &seule), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    {
+        let emplacement = emplacement.clone();
+        let seule = seule.clone();
+        let faible = f.as_weak();
+        g.on_ouvrir(move || {
+            let Some(f) = faible.upgrade() else {
+                return;
+            };
+            match pont_courant(&emplacement) {
+                Some(p) => p.ouvrir_administration(&f),
+                None => {
+                    if let Some(a) = admin_courant(&emplacement, &seule) {
+                        a.ouvrir(&f);
+                    }
+                }
+            }
+        });
+    }
+    rappel_admin!(on_fermer, |a, f| a.fermer(&f));
+    rappel_admin!(on_choisir, |a, f, id| a.choisir(&f, &id));
+    rappel_admin!(on_deplacer, |a, f, pas| a.deplacer(&f, pas));
+    rappel_admin!(on_chercher_comptes, |a, f| a.chercher_comptes(&f));
+    rappel_admin!(on_basculer_suspension, |a, f, i| a
+        .basculer_suspension(&f, i.max(0) as usize));
+    rappel_admin!(on_supprimer_serveur, |a, f, i| a
+        .supprimer_serveur(&f, i.max(0) as usize));
+    rappel_admin!(on_chercher_badges, |a, f, texte| a
+        .chercher_badges(&f, &texte));
+    rappel_admin!(on_choisir_tri, |a, f, i| a
+        .choisir_tri(&f, i.max(0) as usize));
+    rappel_admin!(on_nouveau_badge, |a, f| a.nouveau_badge(&f));
+    rappel_admin!(on_ouvrir_badge, |a, f, i| a
+        .ouvrir_badge(&f, i.max(0) as usize));
+    rappel_admin!(on_fermer_badge, |a, f| a.fermer_badge(&f));
+    rappel_admin!(on_badge_modifie, |a, f| a.badge_modifie(&f));
+    rappel_admin!(on_choisir_image_badge, |a, f| a.choisir_image_badge(&f));
+    rappel_admin!(on_retirer_image_badge, |a, f| a.retirer_image_badge(&f));
+    rappel_admin!(on_enregistrer_badge, |a, f| a.enregistrer_badge(&f));
+    rappel_admin!(on_supprimer_badge, |a, f| a.supprimer_badge(&f));
+    rappel_admin!(on_retirer_detenteur, |a, f, i| a
+        .retirer_detenteur(&f, i.max(0) as usize));
+    rappel_admin!(on_chercher_detenteurs, |a, f, texte| a
+        .chercher_detenteurs(&f, &texte));
+    rappel_admin!(on_choisir_detenteur, |a, f, i| a
+        .choisir_detenteur(&f, i.max(0) as usize));
+    rappel_admin!(on_ne_pas_ajouter, |a, f, i| a
+        .ne_pas_ajouter(&f, i.max(0) as usize));
+    rappel_admin!(on_attribuer_badge, |a, f| a.attribuer_badge(&f));
+    rappel_admin!(on_envoyer_bot, |a, f| a.envoyer_bot(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -1089,6 +1172,7 @@ struct Contexte {
     runtime: tokio::runtime::Handle,
     focus: Arc<AtomicBool>,
     observateur: Observateur,
+    admin: EmplacementAdmin,
 }
 
 impl Contexte {
@@ -1147,12 +1231,22 @@ async fn cycle(
                 }
             }
             Etat::Invitation { .. } => dernier_rejoint = None,
+            Etat::Administration { sections } => {
+                dernier_rejoint = None;
+                if let Some(ancienne) = session.take() {
+                    drop(ancienne.arreter(&contexte));
+                }
+                ouvrir_administration_seule(&contexte, sections.clone());
+            }
             _ => {
                 dernier_rejoint = None;
                 if let Some(ancienne) = session.take() {
                     drop(ancienne.arreter(&contexte));
                 }
             }
+        }
+        if !matches!(etat, Etat::Administration { .. }) {
+            fermer_administration_seule(&contexte);
         }
         tokio::select! {
             changement = etats.changed() => if changement.is_err() {
@@ -1165,6 +1259,36 @@ async fn cycle(
         let _ = ancienne.arreter(&contexte).await;
     }
     let _ = fini.send(());
+}
+
+fn ouvrir_administration_seule(contexte: &Contexte, sections: Vec<SectionAdmin>) {
+    let mut seule = contexte.admin.lock().unwrap_or_else(|e| e.into_inner());
+    if seule.is_some() {
+        return;
+    }
+    let Some(client) = contexte.fabrique.client() else {
+        return;
+    };
+    let admin = PontAdmin::nouveau(
+        client,
+        contexte.fenetre.clone(),
+        contexte.runtime.clone(),
+        Arc::new(|| chrono::Local::now().offset().local_minus_utc() / 60),
+    );
+    admin.definir_fichiers(contexte.fabrique.fichiers());
+    *seule = Some(admin.clone());
+    contexte.sur_l_interface(move |f| admin.ouvrir_seule(f, sections));
+}
+
+fn fermer_administration_seule(contexte: &Contexte) {
+    let ancienne = contexte
+        .admin
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
+    if let Some(admin) = ancienne {
+        contexte.sur_l_interface(move |f| admin.oublier(f));
+    }
 }
 
 fn demarrer_session(contexte: &Contexte, compte: String) -> SessionActive {
@@ -1278,6 +1402,7 @@ async fn session(
         pont.messagerie().fenetre_active(false);
     }
     pont.vocal().definir_fichiers(contexte.fabrique.fichiers());
+    pont.admin().definir_fichiers(contexte.fabrique.fichiers());
     let outils = contexte.fabrique.vocal();
     if let Some(outils) = &outils {
         pont.vocal().brancher(outils.clone());

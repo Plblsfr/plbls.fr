@@ -44,6 +44,7 @@ fn millisecondes(maintenant: NaiveDateTime) -> i64 {
         .unwrap_or_else(|| maintenant.and_utc().timestamp_millis())
 }
 
+mod admin;
 mod creation;
 mod menus;
 mod moderation;
@@ -54,6 +55,7 @@ mod recherche;
 mod reglages;
 mod roles;
 
+pub use admin::{Decalage, DonneesAdminChargees, PontAdmin};
 pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
 pub use moderation::{EtatModerationMembre, EtatModerationSalon};
 pub use nouveau_prive::EtatNouveauPrive;
@@ -304,6 +306,7 @@ pub struct Pont {
     profils: Arc<Profils>,
     messagerie: PontMessagerie,
     vocal: PontVocal,
+    admin: PontAdmin,
 }
 
 pub(crate) fn vec_de<S: Clone + 'static>(modele: &ModelRc<S>) -> &VecModel<S> {
@@ -393,6 +396,10 @@ pub fn vider_modeles(f: &Principale) {
     f.global::<crate::DonneesCreationSalon>().set_ouvert(false);
     f.global::<crate::DonneesReglagesServeur>()
         .set_ouverte(false);
+    let admin = f.global::<crate::DonneesAdmin>();
+    admin.set_ouverte(false);
+    admin.set_disponible(false);
+    admin.set_badge_ouvert(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -571,6 +578,13 @@ impl Pont {
             Arc::new(move || millisecondes(horloge_vocal())),
             profils.clone(),
         );
+        let decalage_messagerie = messagerie.clone();
+        let admin = PontAdmin::nouveau(
+            store.client().clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            Arc::new(move || decalage_messagerie.decalage_minutes()),
+        );
         Self {
             interne: Arc::new(Mutex::new(Interne {
                 navigation,
@@ -598,7 +612,25 @@ impl Pont {
             profils,
             messagerie,
             vocal,
+            admin,
         }
+    }
+
+    pub fn admin(&self) -> &PontAdmin {
+        &self.admin
+    }
+
+    pub fn ouvrir_administration(&self, f: &Principale) {
+        f.global::<crate::DonneesParametres>().set_ouverte(false);
+        self.oublier_reglages_serveur(f);
+        self.admin.ouvrir(f);
+    }
+
+    fn projeter_administration(&self, f: &Principale) {
+        let sections = self
+            .store
+            .lire(|etat| estompe_client::admin::sections_du_compte(&etat.compte));
+        self.admin.definir_sections(f, sections);
     }
 
     pub fn messagerie(&self) -> &PontMessagerie {
@@ -630,6 +662,7 @@ impl Pont {
         self.projeter(f, &tout(), true);
         self.projeter_parametres(f);
         self.projeter_profil(f);
+        self.projeter_administration(f);
         f.global::<DonneesCoquille>().set_pret(true);
     }
 
@@ -656,6 +689,9 @@ impl Pont {
             self.projeter_profil(f);
         }
         self.changements_des_reglages(f, changements);
+        if changements.iter().any(|c| matches!(c, Changement::Compte)) {
+            self.projeter_administration(f);
+        }
         if corrigee {
             self.suivre_conversation(f);
             self.ouvrir_conversation_courante(None);
@@ -907,6 +943,7 @@ impl Pont {
     fn aller(&self, f: &Principale, route: Route, message: Option<String>) {
         f.global::<crate::DonneesParametres>().set_ouverte(false);
         self.oublier_reglages_serveur(f);
+        self.admin.fermer(f);
         let adresse = self.store.lire(|etat| {
             let mut interne = self.verrou();
             interne.navigation.aller(route, etat);

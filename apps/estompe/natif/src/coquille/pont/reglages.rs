@@ -152,6 +152,7 @@ impl Pont {
             return;
         };
         f.global::<crate::DonneesParametres>().set_ouverte(false);
+        self.admin().fermer(f);
         self.verrou().reglages = Some(EtatReglages::nouveau(&serveur, &nom, Onglet::VueEnsemble));
         let g = f.global::<DonneesReglagesServeur>();
         g.set_recherche(SharedString::new());

@@ -11,6 +11,7 @@ import { DonneesRecherche } from "recherche.slint";
 import { DonneesParametres } from "../parametres/page.slint";
 import { DonneesCreerRejoindre } from "creation.slint";
 import { DonneesReglagesServeur } from "reglages-serveur.slint";
+import { DonneesAdmin } from "../admin/donnees.slint";
 
 export component Coquille inherits Rectangle {
     callback se-deconnecter();
@@ -21,7 +22,7 @@ export component Coquille inherits Rectangle {
         clavier.focus();
     }
     changed calques => {
-        if (root.calques == 0 && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte) {
+        if (root.calques == 0 && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte && !DonneesAdmin.ouverte) {
             clavier.focus();
         }
     }
@@ -101,7 +102,7 @@ export component Coquille inherits Rectangle {
                     }
                 }
                 EmplacementMarge {
-                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte;
+                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte && !DonneesAdmin.ouverte;
                     largeur: DonneesCoquille.largeur-marge;
                     @children
                 }

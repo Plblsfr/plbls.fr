@@ -1,0 +1,158 @@
+export struct OngletAdmin {
+    id: string,
+    libelle: string,
+    icone: string,
+}
+
+export struct CompteAdminLigne {
+    id: string,
+    pseudo: string,
+    inscrit: string,
+    activite: string,
+    suspendu: bool,
+}
+
+export struct ServeurAdminLigne {
+    id: string,
+    nom: string,
+    initiales: string,
+    membres: string,
+    messages: string,
+    dernier: string,
+}
+
+export struct BadgeAdminCarte {
+    id: string,
+    nom: string,
+    description: string,
+    detenteurs: string,
+    couleur: color,
+    image: image,
+    a-image: bool,
+}
+
+export struct DetenteurAdmin {
+    id: string,
+    pseudo: string,
+    initiales: string,
+    teinte: int,
+}
+
+export struct TuileAdmin {
+    titre: string,
+    valeur: string,
+    note: string,
+    danger: bool,
+    lien: bool,
+    a-jauge: bool,
+    jauge: float,
+}
+
+export struct AppareilAdmin {
+    pseudo: string,
+    plateforme: string,
+    version: string,
+}
+
+export struct VocalAdmin {
+    titre: string,
+    compte: string,
+    participants: [string],
+}
+
+export struct CleValeurAdmin {
+    cle: string,
+    valeur: string,
+    etiquette: bool,
+    ok: bool,
+}
+
+export struct ActionAdmin {
+    date: string,
+    acteur: string,
+    action: string,
+    cible: string,
+}
+
+export struct ErreurAdmin {
+    date: string,
+    statut: string,
+    requete: string,
+}
+
+export global DonneesAdmin {
+    in property <bool> disponible: false;
+    in property <bool> ouverte: false;
+    in property <bool> seule: false;
+    in property <[OngletAdmin]> onglets;
+    in property <string> onglet;
+    in property <string> titre;
+    in-out property <bool> focus-initial: false;
+    in-out property <int> retour-focus: 0;
+    in property <string> erreur;
+    in property <string> info;
+    in property <bool> en-cours: false;
+    in-out property <string> recherche;
+    in property <[CompteAdminLigne]> comptes;
+    in property <[ServeurAdminLigne]> serveurs;
+    in-out property <string> recherche-badges;
+    in property <[string]> tris;
+    in property <int> tri: 0;
+    in property <[BadgeAdminCarte]> badges;
+    in property <string> vide-badges;
+    in property <bool> badge-ouvert: false;
+    in property <bool> badge-existant: false;
+    in-out property <string> badge-nom;
+    in-out property <string> badge-description;
+    in-out property <string> badge-couleur;
+    in-out property <string> badge-ordre;
+    in property <color> badge-accent;
+    in property <image> badge-apercu;
+    in property <bool> badge-a-apercu: false;
+    in property <bool> badge-peut-retirer-image: false;
+    in property <string> badge-message;
+    in property <bool> badge-valide: false;
+    in property <[DetenteurAdmin]> detenteurs;
+    in property <string> compte-detenteurs;
+    in-out property <string> recherche-detenteurs;
+    in property <[DetenteurAdmin]> propositions;
+    in property <[DetenteurAdmin]> choisis;
+    in property <string> attribuer;
+    in-out property <string> bot-destinataire;
+    in-out property <string> bot-message;
+    in property <[string]> versions-envoyees;
+    in property <[TuileAdmin]> tuiles;
+    in property <bool> a-direct: false;
+    in property <string> connexions;
+    in property <string> appareils;
+    in property <[AppareilAdmin]> en-ligne;
+    in property <[VocalAdmin]> vocaux;
+    in property <bool> a-vue: false;
+    in property <[CleValeurAdmin]> configuration;
+    in property <[CleValeurAdmin]> versions;
+    in property <[ActionAdmin]> actions;
+    in property <[ErreurAdmin]> erreurs;
+    callback ouvrir();
+    callback fermer();
+    callback choisir(string);
+    callback deplacer(int);
+    callback chercher-comptes();
+    callback basculer-suspension(int);
+    callback supprimer-serveur(int);
+    callback chercher-badges(string);
+    callback choisir-tri(int);
+    callback nouveau-badge();
+    callback ouvrir-badge(int);
+    callback fermer-badge();
+    callback badge-modifie();
+    callback choisir-image-badge();
+    callback retirer-image-badge();
+    callback enregistrer-badge();
+    callback supprimer-badge();
+    callback retirer-detenteur(int);
+    callback chercher-detenteurs(string);
+    callback choisir-detenteur(int);
+    callback ne-pas-ajouter(int);
+    callback attribuer-badge();
+    callback envoyer-bot();
+}

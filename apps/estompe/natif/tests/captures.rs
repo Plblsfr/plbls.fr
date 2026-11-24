@@ -3,6 +3,7 @@ mod commun;
 use commun::references::{comparer, controler, VARIABLE};
 
 use chrono::NaiveDate;
+use estompe_client::admin::{sections_admin, Droit};
 use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
 use estompe_client::mise_a_jour::{ErreurMiseAJour, EtatMaj, Phase};
@@ -18,7 +19,7 @@ use estompe_client::vocal::{
     PartageLocal, Phase as PhaseVocal, Qualite, QualitePartage, ReglagesIncrustation,
     ResolutionPartage, TrameVideo,
 };
-use estompe_natif::coquille::pont::vider_modeles;
+use estompe_natif::coquille::pont::{vider_modeles, DonneesAdminChargees, PontAdmin};
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
 };
@@ -266,6 +267,17 @@ const ECRANS: &[Ecran] = ecrans![
     "moderation-membre-clair", Clair, moderation_membre;
     "moderation-membre-sombre", Sombre, moderation_membre;
     "moderation-salon-clair", Clair, moderation_salon;
+    "admin-utilisateurs-clair", Clair, admin_utilisateurs;
+    "admin-serveurs-clair", Clair, admin_serveurs;
+    "admin-badges-clair", Clair, admin_badges;
+    "admin-badge-clair", Clair, admin_badge;
+    "admin-signalements-clair", Clair, admin_signalements;
+    "admin-bot-clair", Clair, admin_bot;
+    "admin-statistiques-clair", Clair, admin_statistiques;
+    "admin-statistiques-sombre", Sombre, admin_statistiques;
+    "admin-journaux-clair", Clair, admin_journaux;
+    "admin-acces-clair", Clair, admin_acces;
+    "admin-seule-clair", Clair, admin_seule;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
     "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
@@ -1698,6 +1710,101 @@ fn moderation_salon(f: &Principale) {
     stabiliser(f);
 }
 
+fn donnees_admin() -> DonneesAdminChargees {
+    let r = commun::coquille::reponses_admin();
+    let lire = |chemin: &str| r.get(chemin).cloned().unwrap();
+    DonneesAdminChargees {
+        comptes: serde_json::from_value(lire("/admin/users")).unwrap(),
+        vue: serde_json::from_value(lire("/admin/overview")).ok(),
+        badges: serde_json::from_value(lire("/admin/badges")).unwrap(),
+        bot: serde_json::from_value(lire("/admin/bot")).unwrap(),
+        stats: serde_json::from_value(lire("/admin/stats")).ok(),
+        direct: serde_json::from_value(lire("/admin/live")).ok(),
+        actions: serde_json::from_value(lire("/admin/log")).unwrap(),
+        erreurs: serde_json::from_value(lire("/admin/errors")).unwrap(),
+    }
+}
+
+fn administration(f: &Principale, onglet: &str) -> Pont {
+    let mut etat = commun::coquille::etat_administrateur();
+    etat.compte.rights = Some(vec![Droit::Access, Droit::Admin, Droit::Acces]);
+    let pont = coquille_complete(
+        f,
+        etat,
+        salon("s1", Some("c1")),
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+        None,
+        |_| {},
+    );
+    pont.ouvrir_administration(f);
+    pont.admin().choisir(f, onglet);
+    pont.admin().installer(f, donnees_admin());
+    stabiliser(f);
+    pont
+}
+
+fn admin_utilisateurs(f: &Principale) {
+    administration(f, "utilisateurs");
+}
+
+fn admin_serveurs(f: &Principale) {
+    administration(f, "serveurs");
+}
+
+fn admin_badges(f: &Principale) {
+    administration(f, "badges");
+}
+
+fn admin_badge(f: &Principale) {
+    let pont = administration(f, "badges");
+    pont.admin().ouvrir_badge(f, 0);
+    stabiliser(f);
+}
+
+fn admin_signalements(f: &Principale) {
+    administration(f, "signalements");
+}
+
+fn admin_bot(f: &Principale) {
+    administration(f, "bot");
+    f.global::<estompe_natif::DonneesAdmin>().set_bot_message(
+        "Maintenance ce soir à 22 h : Estompe sera indisponible quelques minutes.".into(),
+    );
+    stabiliser(f);
+}
+
+fn admin_statistiques(f: &Principale) {
+    administration(f, "statistiques");
+}
+
+fn admin_journaux(f: &Principale) {
+    administration(f, "journaux");
+}
+
+fn admin_acces(f: &Principale) {
+    administration(f, "acces");
+}
+
+fn admin_seule(f: &Principale) {
+    let sections = sections_admin(&[Droit::Admin, Droit::Acces], None);
+    afficher(
+        f,
+        &Etat::Administration {
+            sections: sections.clone(),
+        },
+    );
+    let admin = PontAdmin::nouveau(
+        commun::coquille::store(Default::default()).client().clone(),
+        f.as_weak(),
+        runtime(),
+        Arc::new(|| 60),
+    );
+    admin.ouvrir_seule(f, sections);
+    admin.choisir(f, "utilisateurs");
+    admin.installer(f, donnees_admin());
+    stabiliser(f);
+}
+
 fn reglages_serveur_salon_permissions(f: &Principale) {
     let pont = reglages_serveur(f, etat_des_roles(), "s1", "salons");
     pont.basculer_permissions_du_salon(f, "c1");
@@ -2302,6 +2409,10 @@ fn menu_sourdine_duree(f: &Principale) {
 
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
+    let admin = f.global::<estompe_natif::DonneesAdmin>();
+    admin.set_ouverte(false);
+    admin.set_seule(false);
+    admin.set_badge_ouvert(false);
     f.global::<DonneesCreationSondage>().set_ouvert(false);
     f.global::<estompe_natif::DonneesGifs>().set_ouvert(false);
     f.global::<estompe_natif::DonneesRecherche>()

@@ -7,6 +7,7 @@ import { DonneesRecherche } from "recherche.slint";
 import { DonneesClips } from "../replay/galerie.slint";
 import { DonneesReplay } from "../replay/reglages.slint";
 import { DonneesMenu } from "../composants/menu.slint";
+import { DonneesAdmin } from "../admin/donnees.slint";
 
 component Pave {
     in property <string> libelle;
@@ -380,6 +381,17 @@ export component Rail inherits Rectangle {
                     actif: section.actif;
                     clique => {
                         DonneesCoquille.ouvrir-section(section.id);
+                    }
+                }
+            }
+            if DonneesAdmin.disponible: HorizontalLayout {
+                alignment: center;
+                Outil {
+                    icone: "bouclier";
+                    libelle: "Administration d'Estompe";
+                    actif: DonneesAdmin.ouverte;
+                    clique => {
+                        DonneesAdmin.ouvrir();
                     }
                 }
             }

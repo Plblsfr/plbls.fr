@@ -5,6 +5,10 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::admin::{
+    ActionJournal, Attribution, BadgeAdmin, Bot, CompteAdmin, Direct, ErreurServeur, Statistiques,
+    VueEnsemble,
+};
 use crate::fichiers::est_une_video;
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
 use crate::store::CleConversation;
@@ -16,14 +20,15 @@ use crate::types::{
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
     MessagePage, Name50, NotifySettings, Override, PatchMessagesIdRequete,
     PatchServersIdEmojisEidRequete, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
-    PostAdminBadgesRequete, PostChannelsCidMessagesBulkDeleteRequete, PostDmsRequete,
-    PostNotificationsReadRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
-    PostServersIdMembersUidBanRequete, PostServersIdMembersUidKickRequete,
-    PostServersIdMembersUidWarnRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
-    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete,
-    PutServersIdChannelsCidModerationRequete, PutServersIdChannelsCidOverridesRidRequete,
-    PutServersIdMembersUidNicknameRequete, PutServersIdMembersUidTimeoutRequete,
-    PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, DM,
+    PostAdminBadgesRequete, PostAdminBotMessagesRequete, PostChannelsCidMessagesBulkDeleteRequete,
+    PostDmsRequete, PostNotificationsReadRequete, PostServersIdChannelsRequete,
+    PostServersIdInvitesRequete, PostServersIdMembersUidBanRequete,
+    PostServersIdMembersUidKickRequete, PostServersIdMembersUidWarnRequete,
+    PostVoiceCidTokenReponse, PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete,
+    PutMessagesIdVoteRequete, PutServersIdChannelsCidModerationRequete,
+    PutServersIdChannelsCidOverridesRidRequete, PutServersIdMembersUidNicknameRequete,
+    PutServersIdMembersUidTimeoutRequete, PutServersIdRolesOrderRequete, Role, RoleInput, Server,
+    ServerInvite, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -1143,7 +1148,7 @@ impl Client {
         &self,
         badge: &str,
         pseudos: &[String],
-    ) -> Result<Option<Value>, ErreurApi> {
+    ) -> Result<Attribution, ErreurApi> {
         let corps = Corps::json(&PostAdminBadgesIdUsersRequete {
             pseudos: pseudos.to_vec(),
         })?;
@@ -1154,16 +1159,85 @@ impl Client {
             Default::default(),
         )
         .await
+        .map(Option::unwrap_or_default)
+    }
+
+    pub async fn badges_admin(&self) -> Result<Vec<BadgeAdmin>, ErreurApi> {
+        self.get("/admin/badges").await
+    }
+
+    pub async fn creer_badge(
+        &self,
+        valeurs: &PostAdminBadgesRequete,
+    ) -> Result<BadgeAdmin, ErreurApi> {
+        self.post("/admin/badges", valeurs).await
+    }
+
+    pub async fn supprimer_badge(&self, badge: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/admin/badges/{badge}")).await
+    }
+
+    pub async fn definir_icone_de_badge(
+        &self,
+        badge: &str,
+        type_mime: &str,
+        image: impl Into<Bytes>,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer_image(&format!("/admin/badges/{badge}/icon"), type_mime, image)
+            .await
+    }
+
+    pub async fn vue_d_ensemble_admin(&self) -> Result<VueEnsemble, ErreurApi> {
+        self.get("/admin/overview").await
+    }
+
+    pub async fn statistiques_admin(&self) -> Result<Statistiques, ErreurApi> {
+        self.get("/admin/stats").await
+    }
+
+    pub async fn direct_admin(&self) -> Result<Direct, ErreurApi> {
+        self.get("/admin/live").await
+    }
+
+    pub async fn journal_admin(&self) -> Result<Vec<ActionJournal>, ErreurApi> {
+        self.get("/admin/log").await
+    }
+
+    pub async fn erreurs_admin(&self) -> Result<Vec<ErreurServeur>, ErreurApi> {
+        self.get("/admin/errors").await
+    }
+
+    pub async fn bot_admin(&self) -> Result<Bot, ErreurApi> {
+        self.get("/admin/bot").await
+    }
+
+    pub async fn message_du_bot(&self, contenu: &str, a: &str) -> Result<i64, ErreurApi> {
+        let corps = Corps::json(&PostAdminBotMessagesRequete {
+            content: contenu.to_string(),
+            to: Some(a.to_string()),
+        })?;
+        let reponse: Option<Value> = self
+            .requete(
+                Method::POST,
+                "/admin/bot/messages",
+                &corps,
+                Default::default(),
+            )
+            .await?;
+        Ok(reponse
+            .and_then(|r| r.get("sent").and_then(Value::as_i64))
+            .unwrap_or(0))
     }
 
     pub async fn supprimer_icone_de_badge(&self, badge: &str) -> Result<(), ErreurApi> {
         self.delete(&format!("/admin/badges/{badge}/icon")).await
     }
 
-    pub async fn comptes(&self, recherche: &str) -> Result<Option<Value>, ErreurApi> {
+    pub async fn comptes(&self, recherche: &str) -> Result<Vec<CompteAdmin>, ErreurApi> {
         let chemin = format!("/admin/users?q={}", encoder_composant(recherche));
         self.requete(Method::GET, &chemin, &Corps::Aucun, Default::default())
             .await
+            .map(Option::unwrap_or_default)
     }
 
     pub async fn suspendre_compte(&self, compte: &str, suspendu: bool) -> Result<(), ErreurApi> {
@@ -1921,6 +1995,83 @@ mod tests {
                 ligne("/admin/servers/s1", "DELETE"),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn lit_et_ecrit_l_espace_d_administration() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(200, json!([{"id": "b1", "name": "Fondateur", "holders": [{"id": "u1", "pseudo": "bob"}]}])),
+            Reponse::json(201, json!({"id": "b2", "name": "Nouveau"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(200, json!({"granted": 1, "missing": ["zoe"]})),
+            Reponse::json(200, json!({"version": "1.2.3", "servers": [{"id": "s1", "name": "Club", "members": 3, "last_message_at": null}], "config": {"settings": {"livekit_url": "wss://lk", "origins": null}, "max_participants": 25}})),
+            Reponse::json(200, json!({"users": 12, "storage_bytes": 2048})),
+            Reponse::json(200, json!({"connections": 2, "online": [{"pseudo": "bob", "platform": "windows", "version": "0.4.0"}], "voice": [{"server": "Club", "channel": "Vocal", "participants": [{"user_id": "u1", "pseudo": "bob", "screen": true}]}]})),
+            Reponse::json(200, json!([{"at": "2026-01-01T00:00:00Z", "actor": "eve", "action": "badge.create", "target": "Fondateur"}])),
+            Reponse::json(200, json!([{"at": "2026-01-01T00:00:00Z", "method": "GET", "path": "/x", "status": 500}])),
+            Reponse::json(200, json!({"pseudo": "Estompe", "releases": ["0.3.0"]})),
+            Reponse::json(200, json!({"sent": 4})),
+        ])
+        .await;
+        let client = serveur.client();
+        let badges = client.badges_admin().await.unwrap();
+        assert_eq!(badges[0].holders[0].pseudo, "bob");
+        let cree = client
+            .creer_badge(&PostAdminBadgesRequete {
+                name: "Nouveau".into(),
+                color: "#3b82f6".into(),
+                ..PostAdminBadgesRequete::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(cree.id, "b2");
+        client
+            .definir_icone_de_badge("b2", "image/png", vec![1u8, 2])
+            .await
+            .unwrap();
+        client.supprimer_badge("b2").await.unwrap();
+        let attribution = client.accorder_badges("b1", &["zoe".into()]).await.unwrap();
+        assert_eq!(attribution.missing, ["zoe"]);
+        let vue = client.vue_d_ensemble_admin().await.unwrap();
+        assert_eq!(
+            (
+                vue.version.as_str(),
+                vue.servers[0].members,
+                vue.config.max_participants
+            ),
+            ("1.2.3", 3, 25)
+        );
+        assert_eq!(client.statistiques_admin().await.unwrap().users, 12);
+        let direct = client.direct_admin().await.unwrap();
+        assert!(direct.voice[0].participants[0].screen);
+        assert_eq!(client.journal_admin().await.unwrap()[0].actor, "eve");
+        assert_eq!(client.erreurs_admin().await.unwrap()[0].status, 500);
+        assert_eq!(client.bot_admin().await.unwrap().releases, ["0.3.0"]);
+        assert_eq!(client.message_du_bot("Salut", "").await.unwrap(), 4);
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/admin/badges", "GET"),
+                ligne("/admin/badges", "POST"),
+                ligne("/admin/badges/b2/icon", "PUT"),
+                ligne("/admin/badges/b2", "DELETE"),
+                ligne("/admin/badges/b1/users", "POST"),
+                ligne("/admin/overview", "GET"),
+                ligne("/admin/stats", "GET"),
+                ligne("/admin/live", "GET"),
+                ligne("/admin/log", "GET"),
+                ligne("/admin/errors", "GET"),
+                ligne("/admin/bot", "GET"),
+                ligne("/admin/bot/messages", "POST"),
+            ]
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(
+            requetes[1].json(),
+            json!({"name": "Nouveau", "color": "#3b82f6"})
+        );
+        assert_eq!(requetes[11].json(), json!({"content": "Salut", "to": ""}));
     }
 
     #[tokio::test]

@@ -122,6 +122,7 @@ impl Parametres {
         g.set_focus_initial(true);
         f.global::<crate::DonneesReglagesServeur>()
             .set_ouverte(false);
+        f.global::<crate::DonneesAdmin>().set_ouverte(false);
         g.set_ouverte(true);
     }
 

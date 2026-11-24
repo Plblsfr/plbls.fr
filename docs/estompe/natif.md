@@ -359,6 +359,37 @@ dans `estompe_client::moderation` (actions permises, durées, purges, validation
   recharge le détail du serveur).
 - Écarts : le sujet d'un salon ne se modifie pas (ni l'API ni le front ne le permettent après la création) ; la raison est un champ d'une ligne (zone de texte dans le
   front) ; la réussite s'affiche dans la fenêtre au lieu d'un toast.
+### Administration d'Estompe
+
+Espace d'administration de l'instance, comme `AdminSpace.svelte` : page dans la zone de contenu (`ui/admin/page.slint`, global `DonneesAdmin` de
+`ui/admin/donnees.slint`), ouverte par l'entrée « Administration d'Estompe » (bouclier) en bas du rail, refermée par « Fermer », Échap ou toute navigation, comme
+« Paramètres » et « Paramètres du serveur ». Pont `PontAdmin` (`src/coquille/pont/admin.rs`), propre à chaque session (`Pont::admin`) ; règles sans interface et types
+des réponses dans `estompe_client::admin` (équivalents des cas de `admin.test.ts` et de `badges.test.ts`), appels par `Client` (`comptes`, `suspendre_compte`,
+`supprimer_serveur_en_administrateur`, `badges_admin`, `creer_badge`, `modifier_badge`, `supprimer_badge`, `definir_icone_de_badge`, `supprimer_icone_de_badge`,
+`accorder_badges`, `retirer_badge`, `vue_d_ensemble_admin`, `statistiques_admin`, `direct_admin`, `journal_admin`, `erreurs_admin`, `bot_admin`, `message_du_bot`).
+
+- Droits : les sections viennent de `GET /me` comme dans le front (`rights`, sinon `allowed` et `admin`, puis les capacités fines `estompe:admin.*`, le refus
+  l'emporte) : utilisateurs, serveurs, badges, signalements, bot, statistiques, logs pour le droit `admin`, accès pour le droit `acces`. Sans section, ni
+  l'entrée du rail ni aucun appel `/admin/…` ; une section retirée en cours de route (`Changement::Compte`) ramène à la première permise ou referme l'espace.
+- Onglets (identifiants stables) : `utilisateurs` (recherche par pseudo, inscription, activité, « Suspendre » confirmé, « Rétablir »), `serveurs` (membres, salons,
+  messages, dernier message, « Supprimer » après saisie exacte du nom), `badges`, `signalements`, `bot` (destinataire ou tous les comptes, message, envoi confirmé,
+  nombre de messages envoyés, notes de version déjà envoyées), `statistiques` (comptes, serveurs et messages, stockage avec jauge, erreurs des 24 h vers les logs ;
+  en direct rafraîchi toutes les 5 s tant que l'onglet est ouvert : connexions, appareils, salons vocaux et leurs participants ; configuration et versions),
+  `journaux` (libellé « logs » : actions d'administration et erreurs serveur des 30 jours), `acces`.
+- Badges (`BadgeAdmin.svelte`) : recherche sans accents dans le nom et la description, tri (ordre d'affichage, nom, détenteurs, date de création), cartes à la
+  couleur du badge ; fenêtre « Nouveau badge » ou « Modifier le badge » (`ui/admin/badges.slint`, `FenetreBadge`) : image SVG, WebP, PNG ou JPEG (64 Ko pour un
+  SVG, 5 Mo sinon, vérifiés avant l'envoi), recadrée au carré au centre et réduite à 256 px comme `squareAvatar` du front (le SVG part tel quel), aperçus en grand et
+  à la taille réelle, « Retirer l'image » ; nom (2 à 32), description, couleur `#rrggbb` avec pastille, ordre (0 à 9999), « Supprimer » confirmé ; détenteurs
+  retirés d'un clic, ajoutés par une recherche de pseudos (200 ms après la frappe, sans ceux qui l'ont déjà) puis « Attribuer à N comptes », comptes introuvables signalés.
+- Brancher un onglet (#367, #369) : son contenu est un composant de `ui/admin/` inséré par `PageAdmin` sous `if DonneesAdmin.onglet == "<id>"`
+  (`OngletSignalementsAdmin` de `ui/admin/signalements.slint`, `OngletAccesAdmin` de `ui/admin/acces.slint`, aujourd'hui « bientôt ») ; la section est déclarée
+  dans `estompe_client::admin::SECTIONS` (identifiant, libellé, icône, droit, capacité) et son chargement dans le `match` de `PontAdmin::choisir`.
+- Compte limité à l'administration (`AdminView.svelte`) : si `GET /me` refuse la messagerie (`allowed` faux) mais ouvre au moins une section, l'entrée passe à
+  `Etat::Administration` au lieu de « accès refusé » : page `Page::Administration` avec la même page sans « Fermer », la liste « Sections », la note « Ton compte n'a pas
+  accès à la messagerie d'Estompe : seule l'administration est ouverte. » et « Se déconnecter » ; le `PontAdmin` est alors créé par la coquille sur le client de la
+  fabrique (`Fabrique::client`), sans store ni temps réel.
+- Écarts : les versions de l'installeur Windows et de l'application Android (lues par le front sur `estompe.plbls.fr/updates`) ne sont pas reprises, la ligne
+  « Front » devient « App native » ; les tableaux sont des listes de lignes ; les signalements (#367) et les accès (#369) arrivent par leurs issues.
 
 ## Messagerie
 
@@ -1615,6 +1646,11 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   32 caractères puis envoyé, expulsion depuis la carte de profil ; salon renommé (nom déjà pris refusé), mode lent et verrouillage enregistrés, 5 derniers messages
   supprimés après confirmation et nombre affiché ; journal chargé puis filtré ; salon supprimé depuis les réglages ; enfin `member.timeout` me visant recharge le détail
   sans `send_messages` et la zone de saisie passe en lecture seule avec la fin de l'exclusion (#366 C2). Les règles ont leurs tests unitaires (`estompe_client::moderation`).
+`administration.rs` (même backend, la boucle lancée trois fois) : un compte sans le droit n'a ni l'entrée du rail ni l'espace, et aucun `/admin/…` n'est appelé ;
+  un compte limité à l'administration ouvre `Page::Administration` et s'en déconnecte ; un administrateur ouvre l'espace par le rail : comptes cherchés, suspendus
+  après confirmation et rétablis, serveur supprimé après saisie de son nom, badges triés et cherchés, détenteur ajouté par la recherche puis retiré, image choisie et
+  recadrée puis envoyée avec la couleur modifiée, badge créé puis un autre supprimé après confirmation, message du bot confirmé, statistiques et direct, journaux,
+  et une navigation ou les réglages d'un serveur referment l'espace. Les règles ont leurs tests unitaires (`estompe_client::admin`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,
