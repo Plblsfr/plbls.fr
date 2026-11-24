@@ -28,6 +28,7 @@ pub struct DonneesSalon {
     pub nom: String,
     pub icone: &'static str,
     pub titre_groupe: &'static str,
+    pub genre_groupe: &'static str,
     pub actif: bool,
     pub non_lus: i64,
     pub mentions: usize,
@@ -100,6 +101,7 @@ pub struct DonneesPanneau {
     pub initiales: String,
     pub serveur: Option<String>,
     pub version_icone: i64,
+    pub peut_creer_salon: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -309,7 +311,7 @@ fn ligne_de_salon(
     etat: &Etat,
     salon: &Salon,
     actif: Option<&str>,
-    titre: &'static str,
+    (titre, genre_groupe): (&'static str, &'static str),
     maintenant_ms: i64,
 ) -> DonneesSalon {
     let identifiant = id(&salon.id).to_string();
@@ -319,6 +321,7 @@ fn ligne_de_salon(
         nom: id(&salon.name).to_string(),
         icone: icone_du_salon(salon),
         titre_groupe: titre,
+        genre_groupe,
         actif: actif == Some(identifiant.as_str()),
         non_lus: if lisible { etat.non_lus_de(&cle) } else { 0 },
         mentions: if lisible {
@@ -347,14 +350,14 @@ pub fn lignes_salons(etat: &Etat, route: &Route, maintenant_ms: i64) -> Vec<Donn
     };
     let actif = salon_de_la_route(etat, route).map(|s| id(&s.id));
     let salons = etat.salons(serveur);
-    let groupes: [(&'static str, GardeDeGroupe); 3] = [
-        ("SALONS TEXTE", |g| g == Some(GenreSalon::Text)),
-        ("ESQUISSES", est_esquisse),
-        ("SALONS VOCAUX", est_vocal),
+    let groupes: [(&'static str, &'static str, GardeDeGroupe); 3] = [
+        ("SALONS TEXTE", "text", |g| g == Some(GenreSalon::Text)),
+        ("ESQUISSES", "videos", est_esquisse),
+        ("SALONS VOCAUX", "voice", est_vocal),
     ];
     groupes
         .iter()
-        .flat_map(|(titre, garde)| {
+        .flat_map(|(titre, genre, garde)| {
             salons
                 .iter()
                 .filter(|s| garde(s.kind))
@@ -364,7 +367,7 @@ pub fn lignes_salons(etat: &Etat, route: &Route, maintenant_ms: i64) -> Vec<Donn
                         etat,
                         s,
                         actif,
-                        if i == 0 { titre } else { "" },
+                        (if i == 0 { titre } else { "" }, genre),
                         maintenant_ms,
                     )
                 })
@@ -661,6 +664,7 @@ pub fn donnees_panneau(etat: &Etat, route: &Route) -> DonneesPanneau {
             titre,
             serveur: Some(serveur.to_string()),
             version_icone: s.and_then(|s| s.icon_version).unwrap_or(0),
+            peut_creer_salon: estompe_client::creation::peut_creer_salon(etat, serveur),
         };
     }
     let (genre, titre) = match section_de_la_route(route) {
@@ -673,6 +677,7 @@ pub fn donnees_panneau(etat: &Etat, route: &Route) -> DonneesPanneau {
         initiales: String::new(),
         serveur: None,
         version_icone: 0,
+        peut_creer_salon: false,
     }
 }
 

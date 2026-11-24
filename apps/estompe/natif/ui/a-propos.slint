@@ -8,8 +8,11 @@ export component APropos {
     in property <bool> demarrage-disponible: false;
     in-out property <bool> demarrage-actif: false;
     in-out property <bool> notifications-bureau: true;
+    in property <int> calque: 1;
+    in property <bool> avec-notifications: true;
     callback demarrage-change(bool);
     callback notifications-change(bool);
+    callback version-cliquee();
     VerticalLayout {
         spacing: Espace.e3;
         alignment: start;
@@ -75,9 +78,9 @@ export component APropos {
             font-size: Typo.corps;
             font-weight: Typo.demi-gras;
         }
-        Interrupteur {
+        if root.avec-notifications: Interrupteur {
             texte: "Notifications du bureau";
-            calque: 1;
+            calque: root.calque;
             allume <=> root.notifications-bureau;
             bascule(actif) => {
                 root.notifications-change(actif);
@@ -85,13 +88,18 @@ export component APropos {
         }
         if root.demarrage-disponible: Interrupteur {
             texte: "Lancer Estompe natif à l'ouverture de la session";
-            calque: 1;
+            calque: root.calque;
             allume <=> root.demarrage-actif;
             bascule(actif) => {
                 root.demarrage-change(actif);
             }
         }
-        PanneauMiseAJour { }
+        PanneauMiseAJour {
+            calque: root.calque;
+            version-cliquee => {
+                root.version-cliquee();
+            }
+        }
         Rectangle {
             height: 128px;
             border-radius: 10px;

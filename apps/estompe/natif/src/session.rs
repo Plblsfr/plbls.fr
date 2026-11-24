@@ -1,5 +1,5 @@
 use crate::entree::{self, AuthReelle, Emetteur, Services};
-use crate::{ModeTheme, Mouvement, Principale, Theme};
+use crate::{Affichage, ModeTheme, Mouvement, Principale, Theme};
 use estompe_client::auth::{Authentification, ConfigAuth};
 use estompe_client::config::{self, AdresseServeur};
 use estompe_client::http::{Client, Reglages};
@@ -211,6 +211,9 @@ pub fn appliquer(fenetre: &Principale, preferences: &Preferences) {
     fenetre
         .global::<Mouvement>()
         .set_reduit(preferences.reduire_animations);
+    fenetre
+        .global::<Affichage>()
+        .set_compacte(preferences.densite == preferences::Densite::Compacte);
     if let Some(f) = preferences.fenetre.filter(geometrie_valide) {
         fenetre
             .window()

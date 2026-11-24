@@ -32,7 +32,7 @@ use crate::ordre_serveurs::{deplacer_serveur, Sens};
 use crate::temps_reel::evenements::StatutPresence;
 use crate::temps_reel::{Evenement, FluxTempsReel, Signal};
 use crate::types::NotifySettings;
-use etat::id_de;
+pub(crate) use etat::id_de;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FinFlux {
@@ -244,6 +244,82 @@ impl Store {
         Ok(())
     }
 
+    pub async fn creer_serveur(
+        &self,
+        nom: &str,
+        icone: Option<(&str, Vec<u8>)>,
+    ) -> Result<(String, bool), ErreurApi> {
+        let serveur = self.client().creer_serveur(nom.trim()).await?;
+        let id = id_de(&serveur.id).to_string();
+        let icone_posee = match icone {
+            Some((type_mime, octets)) => self
+                .client()
+                .definir_icone_de_serveur(&id, type_mime, octets)
+                .await
+                .is_ok(),
+            None => true,
+        };
+        let _ = self.rafraichir_serveurs().await;
+        Ok((id, icone_posee))
+    }
+
+    pub async fn rejoindre_serveur(&self, code: &str) -> Result<crate::types::Server, ErreurApi> {
+        let serveur = self.client().rejoindre_serveur(code).await?;
+        let _ = self.rafraichir_serveurs().await;
+        Ok(serveur)
+    }
+
+    pub async fn quitter_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.client().quitter_serveur(serveur).await?;
+        self.appliquer_application(|etat| {
+            let mut a = Application::default();
+            reducteur::oublier_serveur(etat, serveur, &mut a);
+            a
+        });
+        Ok(())
+    }
+
+    pub async fn renommer_serveur(&self, serveur: &str, nom: &str) -> Result<(), ErreurApi> {
+        let nom = nom.trim();
+        self.client().renommer_serveur(serveur, nom).await?;
+        self.appliquer(&Evenement::ServeurModifie(
+            crate::temps_reel::evenements::ServeurModifie {
+                id: serveur.to_string(),
+                name: nom.to_string(),
+            },
+        ));
+        Ok(())
+    }
+
+    pub async fn supprimer_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.client().supprimer_serveur(serveur).await?;
+        self.appliquer_application(|etat| {
+            let mut a = Application::default();
+            reducteur::oublier_serveur(etat, serveur, &mut a);
+            a
+        });
+        Ok(())
+    }
+
+    pub async fn creer_salon(
+        &self,
+        serveur: &str,
+        salon: &crate::creation::NouveauSalon,
+    ) -> Result<String, ErreurApi> {
+        let requete = self.lire(|etat| salon.requete(etat.salons(serveur)));
+        let apres = requete.after.clone();
+        let cree = self.client().creer_salon(serveur, &requete).await?;
+        let id = id_de(&cree.id).to_string();
+        self.appliquer(&Evenement::SalonCree(
+            crate::temps_reel::evenements::SalonCree {
+                server_id: serveur.to_string(),
+                channel: cree,
+                after: apres,
+            },
+        ));
+        Ok(id)
+    }
+
     pub async fn rafraichir_messages_prives(&self) -> Result<(), ErreurApi> {
         let messages_prives = self.client().conversations_privees().await?;
         self.remplacer(|etat| {
@@ -358,11 +434,29 @@ impl Store {
         })
     }
 
-    pub async fn enregistrer_reglages_notification(
+    pub fn appliquer_reglages_notification(
+        &self,
+        modifier: impl FnOnce(&NotifySettings) -> Option<NotifySettings>,
+    ) -> Option<(NotifySettings, NotifySettings)> {
+        self.modifier(|etat| {
+            let Some(nouveaux) = modifier(&etat.reglages_notification) else {
+                return (None, Vec::new());
+            };
+            let avant = std::mem::replace(&mut etat.reglages_notification, nouveaux.clone());
+            let changements = if avant != nouveaux {
+                vec![Changement::ReglagesNotification]
+            } else {
+                Vec::new()
+            };
+            (Some((avant, nouveaux)), changements)
+        })
+    }
+
+    pub async fn envoyer_reglages_notification(
         &self,
         reglages: NotifySettings,
+        avant: NotifySettings,
     ) -> Result<(), ErreurApi> {
-        let avant = self.poser_reglages(reglages.clone());
         let resultat = self
             .client()
             .enregistrer_reglages_notification(&reglages)
@@ -371,6 +465,14 @@ impl Store {
             self.poser_reglages(avant);
         }
         resultat
+    }
+
+    pub async fn enregistrer_reglages_notification(
+        &self,
+        reglages: NotifySettings,
+    ) -> Result<(), ErreurApi> {
+        let avant = self.poser_reglages(reglages.clone());
+        self.envoyer_reglages_notification(reglages, avant).await
     }
 
     pub fn ordre_serveurs(&self) -> Vec<String> {
@@ -849,6 +951,31 @@ mod tests {
             .await
             .is_err());
         assert_eq!(store.lire(|e| e.reglages_notification.preview), Some(true));
+        let premier = store.appliquer_reglages_notification(|r| {
+            Some(NotifySettings {
+                sound: Some(true),
+                ..r.clone()
+            })
+        });
+        let second = store.appliquer_reglages_notification(|r| {
+            Some(NotifySettings {
+                preview: Some(false),
+                ..r.clone()
+            })
+        });
+        assert_eq!(
+            (premier.unwrap().1.sound, second.clone().unwrap().1.sound),
+            (Some(true), Some(true)),
+            "deux réglages changés coup sur coup se cumulent avant l'envoi"
+        );
+        assert!(store.appliquer_reglages_notification(|_| None).is_none());
+        serveur.programmer([Reponse::json(500, json!({"error": "x", "message": "x"}))]);
+        let (avant, apres) = second.unwrap();
+        assert!(store
+            .envoyer_reglages_notification(apres, avant)
+            .await
+            .is_err());
+        assert_eq!(store.lire(|e| e.reglages_notification.preview), Some(true));
     }
 
     #[tokio::test]
@@ -1039,6 +1166,92 @@ mod tests {
             "Aucun utilisateur avec ce pseudo."
         );
         assert_eq!(store.lire(|e| e.messages_prives.len()), 2);
+    }
+
+    #[tokio::test]
+    async fn creer_rejoindre_et_quitter_mettent_le_store_a_jour() {
+        let serveur = monde(monde_a()).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        store.charger().await.unwrap();
+        serveur.router(
+            "POST",
+            "/servers/s1/channels",
+            Reponse::json(
+                201,
+                json!({"id": "c9", "name": "nouveau", "kind": "text", "position": 9}),
+            ),
+        );
+        let salon = crate::creation::NouveauSalon {
+            nom: "nouveau".into(),
+            apres: Some("c1".into()),
+            ..Default::default()
+        };
+        let mut abonne = store.abonner();
+        assert_eq!(store.creer_salon("s1", &salon).await.unwrap(), "c9");
+        let ordre: Vec<String> = store.lire(|e| {
+            e.salons("s1")
+                .iter()
+                .filter(|c| c.kind == Some(GenreSalon::Text))
+                .map(|c| id_de(&c.id).to_string())
+                .collect()
+        });
+        assert_eq!(ordre, ["c1", "c9", "c3"], "placé après le salon choisi");
+        assert!(abonne
+            .try_recv()
+            .unwrap()
+            .contains(&Changement::SalonAjoute {
+                serveur: "s1".into(),
+                salon: "c9".into()
+            }));
+        assert_eq!(
+            serveur.requetes().last().unwrap().json(),
+            json!({"name": "nouveau", "kind": "text", "after": "c1"})
+        );
+
+        serveur.router(
+            "POST",
+            "/server-invites/ABCDE-23456/join",
+            Reponse::json(200, json!({"id": "s2", "name": "Club"})),
+        );
+        programmer(
+            &serveur,
+            vec![
+                (
+                    "/servers",
+                    json!([
+                        {"id": "s1", "name": "Amis", "owner_id": "me", "icon_version": 0},
+                        {"id": "s2", "name": "Club", "owner_id": "eve", "icon_version": 0}
+                    ]),
+                ),
+                (
+                    "/servers/s2",
+                    json!({"server": {"id": "s2", "name": "Club", "owner_id": "eve"}, "channels": [{"id": "k1", "name": "accueil", "kind": "text", "position": 1}], "members": [], "roles": []}),
+                ),
+            ],
+        );
+        let rejoint = store.rejoindre_serveur("ABCDE-23456").await.unwrap();
+        assert_eq!(rejoint.id.as_deref(), Some("s2"));
+        assert!(store.lire(|e| e.serveur("s2").is_some() && e.salons("s2").len() == 1));
+
+        serveur.router("POST", "/servers/s2/leave", Reponse::vide(204));
+        store.quitter_serveur("s2").await.unwrap();
+        assert!(store.lire(|e| e.serveur("s2").is_none() && !e.details.contains_key("s2")));
+
+        serveur.router(
+            "POST",
+            "/servers",
+            Reponse::json(201, json!({"id": "s3", "name": "Neuf", "owner_id": "me"})),
+        );
+        serveur.router("PUT", "/servers/s3/icon", Reponse::vide(500));
+        let (id, icone) = store
+            .creer_serveur("  Neuf ", Some(("image/png", vec![1, 2])))
+            .await
+            .unwrap();
+        assert_eq!((id.as_str(), icone), ("s3", false));
+        assert!(serveur
+            .requetes()
+            .iter()
+            .any(|r| r.ligne() == ("/servers", "POST") && r.json() == json!({"name": "Neuf"})));
     }
 
     #[tokio::test]

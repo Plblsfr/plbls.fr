@@ -92,6 +92,13 @@ impl Envoyeur for EnvoyeurFcm {
     }
 }
 
+fn maintenant_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}
+
 fn bd(e: sqlx::Error) -> Response {
     tracing::warn!("base : {e}");
     internal()
@@ -256,7 +263,7 @@ impl Service {
                 continue;
             }
             let reglages = match reglages(pool, &id).await {
-                Ok(r) => r,
+                Ok(r) => r.a_l_instant(maintenant_ms()),
                 Err(err) => {
                     tracing::warn!("notify : réglages de {id} : {err}");
                     continue;
@@ -791,7 +798,13 @@ async fn ecrire_reglages(
     let Ok(nouveaux) = Reglages::depuis_objet(objet) else {
         return json_invalide();
     };
-    if nouveaux.levels.len() > NIVEAUX_MAX {
+    if nouveaux.levels.len() > NIVEAUX_MAX
+        || nouveaux.mutes.len() > NIVEAUX_MAX
+        || nouveaux
+            .mutes
+            .iter()
+            .any(|(id, fin)| id.len() > 64 || *fin < 0)
+    {
         return write_err(
             StatusCode::BAD_REQUEST,
             "invalid_settings",
@@ -811,6 +824,7 @@ async fn ecrire_reglages(
         .levels
         .iter()
         .any(|(id, n)| id.len() > 64 || !matches!(n.as_str(), "all" | "mentions" | "none"))
+        || !matches!(nouveaux.general.as_str(), "" | "all" | "mentions" | "none")
     {
         return write_err(
             StatusCode::BAD_REQUEST,
@@ -818,6 +832,7 @@ async fn ecrire_reglages(
             "niveau : all, mentions ou none",
         );
     }
+    let nouveaux = nouveaux.a_l_instant(maintenant_ms());
     let Ok(pool) = etat.pool() else {
         return internal();
     };
@@ -1021,7 +1036,12 @@ mod tests {
             v,
             json!({ "levels": {}, "types": { "dm": true, "mention": true, "channel": true, "voice": true }, "preview": true, "sound": true })
         );
-        for corps in [r#"{"levels":{"x":"loud"}}"#, r#"{"sound":"oui"}"#] {
+        for corps in [
+            r#"{"levels":{"x":"loud"}}"#,
+            r#"{"sound":"oui"}"#,
+            r#"{"general":"loud"}"#,
+            r#"{"mutes":{"s":-1}}"#,
+        ] {
             assert_eq!(
                 appel(&e.app, "bob", "PUT", "/me/notify-settings", corps)
                     .await
@@ -1051,7 +1071,7 @@ mod tests {
                 cookie: false,
             },
         );
-        let corps = r#"{"levels":{"srv":"none"},"types":{"dm":true,"mention":true,"channel":false,"voice":false},"preview":false,"sound":false}"#;
+        let corps = r#"{"levels":{"srv":"none"},"types":{"dm":true,"mention":true,"channel":false,"voice":false},"preview":false,"sound":false,"general":"all","mutes":{"srv":0,"fini":1}}"#;
         assert_eq!(
             appel(&e.app, "bob", "PUT", "/me/notify-settings", corps)
                 .await
@@ -1062,6 +1082,11 @@ mod tests {
         assert_eq!(evenement["type"], "notify_settings.updated");
         let (_, v) = appel(&e.app, "bob", "GET", "/me/notify-settings", "").await;
         assert_eq!(v["levels"]["srv"], "none");
+        assert_eq!(
+            (&v["general"], &v["mutes"]),
+            (&json!("all"), &json!({ "srv": 0 })),
+            "sourdine échue retirée à l'enregistrement"
+        );
         assert_eq!(
             (
                 v["types"]["channel"].as_bool(),

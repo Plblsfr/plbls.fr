@@ -1,0 +1,362 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ } from "../composants.slint";
+import { Titre, Note, Carte, Alerte } from "../coquille/reglages-serveur.slint";
+import { DonneesSignalements, ChoixSignalement } from "../signalements/donnees.slint";
+import { Puce, EtiquetteStatut, ZoneTexte } from "../signalements/fenetre.slint";
+
+component Filtre inherits VerticalLayout {
+    in property <string> nom;
+    in property <string> tous;
+    in property <[ChoixSignalement]> choix;
+    in property <int> choisi;
+    alignment: center;
+    Bouton {
+        texte: root.choisi == 0 ? root.tous : root.choix[root.choisi - 1].libelle;
+        icone: "chevron";
+        description: "Filtrer par " + root.nom;
+        clique => {
+            DonneesSignalements.ouvrir-filtre(root.nom, self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+        }
+    }
+}
+
+component Section inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.demi-gras;
+    letter-spacing: 0.8px;
+}
+
+component Detail inherits VerticalLayout {
+    spacing: 14px;
+    alignment: start;
+    HorizontalLayout {
+        spacing: Espace.e2;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Espace.e1;
+            Text {
+                text: DonneesSignalements.detail-titre;
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 22px;
+                font-weight: Typo.gras;
+                wrap: word-wrap;
+                accessible-role: text;
+            }
+            Text {
+                text: DonneesSignalements.detail-meta;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: start;
+            Bouton {
+                icone: "x";
+                description: "Fermer le signalement";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesSignalements.fermer-signalement();
+                }
+            }
+        }
+    }
+    Text {
+        text: DonneesSignalements.detail-description;
+        color: Theme.encre;
+        font-size: 14px;
+        wrap: word-wrap;
+    }
+    if DonneesSignalements.detail-captures.length > 0: HorizontalLayout {
+        spacing: Espace.e2;
+        alignment: start;
+        for c in DonneesSignalements.detail-captures: Image {
+            height: 160px;
+            source: c;
+            image-fit: contain;
+            accessible-role: image;
+            accessible-label: "Capture jointe";
+        }
+    }
+    if DonneesSignalements.detail-tech.length > 0: VerticalLayout {
+        spacing: 0;
+        Section {
+            text: "INFORMATIONS TECHNIQUES";
+            height: 22px;
+        }
+        for kv in DonneesSignalements.detail-tech: Rectangle {
+            min-height: 30px;
+            Rectangle {
+                y: parent.height - 1px;
+                height: 1px;
+                background: Theme.trait;
+            }
+            HorizontalLayout {
+                spacing: 10px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                Text {
+                    width: 120px;
+                    text: kv.cle;
+                    color: Theme.gris;
+                    font-size: 13px;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    min-width: 0px;
+                    text: kv.valeur;
+                    color: Theme.encre;
+                    font-family: Typo.mono;
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+    if DonneesSignalements.detail-logs != "": VerticalLayout {
+        spacing: Espace.e2;
+        Section {
+            text: "LOGS";
+        }
+        Rectangle {
+            border-radius: Rayon.m;
+            background: Theme.encre;
+            clip: true;
+            max-height: 220px;
+            VerticalLayout {
+                padding: Espace.e3;
+                Text {
+                    text: DonneesSignalements.detail-logs;
+                    color: Theme.papier;
+                    font-family: Typo.mono;
+                    font-size: 11.5px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: "Télécharger les logs";
+                icone: "telecharge";
+                clique => {
+                    DonneesSignalements.telecharger-logs();
+                }
+            }
+        }
+    }
+    Rectangle {
+        height: 1px;
+        background: Theme.trait;
+    }
+    Section {
+        text: "TRAITEMENT";
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        accessible-role: groupbox;
+        accessible-label: "Statut";
+        for s in DonneesSignalements.statuts: Puce {
+            texte: s.libelle;
+            choisie: DonneesSignalements.statut-choisi == s.id;
+            choisir => {
+                DonneesSignalements.choisir-statut(s.id);
+            }
+        }
+    }
+    if DonneesSignalements.statut-choisi == "duplicate": HorizontalLayout {
+        spacing: Espace.e2;
+        alignment: start;
+        Bouton {
+            texte: DonneesSignalements.origine != "" ? DonneesSignalements.origine : "Signalement d'origine…";
+            icone: "chevron";
+            clique => {
+                DonneesSignalements.ouvrir-origines(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+            }
+        }
+        if DonneesSignalements.a-original: Bouton {
+            texte: "Voir l'original";
+            clique => {
+                DonneesSignalements.voir-original();
+            }
+        }
+    }
+    ZoneTexte {
+        etiquette: "Notes internes (invisibles de l'utilisateur)";
+        hauteur: 84px;
+        valeur <=> DonneesSignalements.notes;
+    }
+    HorizontalLayout {
+        spacing: Espace.e2;
+        Bouton {
+            texte: "Supprimer";
+            variante: VarianteBouton.fantome;
+            clique => {
+                DonneesSignalements.supprimer();
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+        Bouton {
+            texte: "Copier";
+            icone: "copie";
+            clique => {
+                DonneesSignalements.copier();
+            }
+        }
+        Bouton {
+            texte: "Enregistrer";
+            variante: VarianteBouton.primaire;
+            en-cours: DonneesSignalements.en-cours-admin;
+            clique => {
+                DonneesSignalements.enregistrer();
+            }
+        }
+    }
+}
+
+export component OngletSignalementsAdmin inherits VerticalLayout {
+    spacing: Espace.e4;
+    if DonneesSignalements.erreur-admin != "": Alerte {
+        texte: DonneesSignalements.erreur-admin;
+    }
+    if DonneesSignalements.info-admin != "": Alerte {
+        texte: DonneesSignalements.info-admin;
+        ok: true;
+    }
+    Carte {
+        Titre {
+            text: "Signalements";
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            alignment: start;
+            Filtre {
+                nom: "statut";
+                tous: "Tous statuts";
+                choix: DonneesSignalements.statuts;
+                choisi: DonneesSignalements.filtre-statut;
+            }
+            Filtre {
+                nom: "categorie";
+                tous: "Toutes catégories";
+                choix: DonneesSignalements.categories;
+                choisi: DonneesSignalements.filtre-categorie;
+            }
+            Filtre {
+                nom: "plateforme";
+                tous: "Toutes plateformes";
+                choix: DonneesSignalements.plateformes;
+                choisi: DonneesSignalements.filtre-plateforme;
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Champ {
+                indice: "Auteur";
+                valeur <=> DonneesSignalements.filtre-auteur;
+                valide => {
+                    DonneesSignalements.filtrer();
+                }
+            }
+            Champ {
+                indice: "Rechercher";
+                valeur <=> DonneesSignalements.filtre-recherche;
+                valide => {
+                    DonneesSignalements.filtrer();
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Bouton {
+                    texte: "Filtrer";
+                    icone: "filtre";
+                    clique => {
+                        DonneesSignalements.filtrer();
+                    }
+                }
+            }
+        }
+    }
+    Carte {
+        accessible-role: list;
+        accessible-label: "Signalements";
+        for r[i] in DonneesSignalements.liste: Rectangle {
+            height: 58px;
+            border-radius: Rayon.s;
+            background: r.actif ? Theme.rose-doux : zone.has-hover ? Theme.papier-2 : transparent;
+            accessible-role: list-item;
+            accessible-label: r.titre;
+            accessible-item-selected: r.actif;
+            accessible-action-default => {
+                DonneesSignalements.ouvrir-signalement(i);
+            }
+            zone := TouchArea {
+                mouse-cursor: pointer;
+                enabled: Calques.ouverts == 0;
+                clicked => {
+                    DonneesSignalements.ouvrir-signalement(i);
+                }
+            }
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                spacing: Espace.e3;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 4px;
+                    Text {
+                        min-width: 0px;
+                        text: r.titre;
+                        color: Theme.encre;
+                        font-weight: Typo.gras;
+                        font-size: 13.5px;
+                        overflow: elide;
+                    }
+                    Text {
+                        min-width: 0px;
+                        text: r.resume;
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: 11px;
+                        overflow: elide;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    HorizontalLayout {
+                        spacing: 4px;
+                        EtiquetteStatut {
+                            texte: r.plateforme;
+                        }
+                        if r.nouveau: EtiquetteStatut {
+                            texte: "nouveau";
+                            ton: "rose";
+                        }
+                        EtiquetteStatut {
+                            texte: r.statut;
+                            ton: r.ton;
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesSignalements.liste.length == 0: Note {
+            text: "Aucun signalement";
+        }
+    }
+    if DonneesSignalements.detail-ouvert: Carte {
+        Detail { }
+    }
+    if !DonneesSignalements.detail-ouvert: Note {
+        text: "Choisis un signalement pour le traiter.";
+        horizontal-alignment: center;
+    }
+}

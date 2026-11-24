@@ -7,7 +7,7 @@ pub use fermeture::{EtapeFermeture, Fermeture};
 
 use crate::entree::Evenement;
 use crate::session::{retenir_geometrie, Memoire};
-use crate::Principale;
+use crate::{DonneesParametres, Principale};
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::pastille::{description_pastille, icone_avec_pastille, image_pastille};
 use estompe_plateforme::instance::{MessageInstance, RecepteurInstance};
@@ -164,13 +164,11 @@ impl Bureau {
 
     fn brancher_reglages(&self, fenetre: &Principale) {
         let demarrage = self.interne.demarrage.disponible();
-        fenetre.set_demarrage_disponible(demarrage);
-        if demarrage {
-            fenetre.set_demarrage_actif(self.interne.demarrage.actif().unwrap_or(false));
-        }
-        fenetre.set_notifications_bureau(self.interne.memoire.lire(|p| p.notifications));
+        let actif = demarrage && self.interne.demarrage.actif().unwrap_or(false);
+        let notifications = self.interne.memoire.lire(|p| p.notifications);
+        afficher_reglages(fenetre, demarrage, actif, notifications);
         let faible = Rc::downgrade(&self.interne);
-        fenetre.on_demarrage_change(move |actif| {
+        let changer_demarrage = Rc::new(move |actif: bool| {
             let Some(interne) = faible.upgrade() else {
                 return;
             };
@@ -181,12 +179,26 @@ impl Bureau {
             let reel = bureau.interne.demarrage.actif().unwrap_or(false);
             if let Some(f) = bureau.interne.fenetre.upgrade() {
                 f.set_demarrage_actif(reel);
+                f.global::<DonneesParametres>().set_demarrage_actif(reel);
             }
         });
         let memoire = self.interne.memoire.clone();
-        fenetre.on_notifications_change(move |actif| {
+        let fenetre_faible = self.interne.fenetre.clone();
+        let changer_notifications = Rc::new(move |actif: bool| {
             memoire.modifier(|p| p.notifications = actif);
+            if let Some(f) = fenetre_faible.upgrade() {
+                f.set_notifications_bureau(actif);
+                f.global::<DonneesParametres>()
+                    .set_notifications_bureau(actif);
+            }
         });
+        let d = changer_demarrage.clone();
+        fenetre.on_demarrage_change(move |actif| d(actif));
+        let n = changer_notifications.clone();
+        fenetre.on_notifications_change(move |actif| n(actif));
+        let g = fenetre.global::<DonneesParametres>();
+        g.on_demarrage_change(move |actif| changer_demarrage(actif));
+        g.on_notifications_change(move |actif| changer_notifications(actif));
     }
 
     pub fn fermeture(&self) -> Fermeture {
@@ -258,4 +270,14 @@ impl Bureau {
     pub fn recepteur_instance(&self) -> RecepteurInstance {
         Box::new(|message| sur_le_bureau(move |bureau| bureau.recevoir(message)))
     }
+}
+
+pub fn afficher_reglages(f: &Principale, demarrage: bool, actif: bool, notifications: bool) {
+    f.set_demarrage_disponible(demarrage);
+    f.set_demarrage_actif(actif);
+    f.set_notifications_bureau(notifications);
+    let g = f.global::<DonneesParametres>();
+    g.set_demarrage_disponible(demarrage);
+    g.set_demarrage_actif(actif);
+    g.set_notifications_bureau(notifications);
 }

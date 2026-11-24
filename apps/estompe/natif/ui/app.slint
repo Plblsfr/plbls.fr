@@ -1,4 +1,4 @@
-import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Calques } from "jetons.slint";
+import { Theme, ModeTheme, Typo, Rayon, Espace, Mouvement, Calques, Affichage } from "jetons.slint";
 import { Icone, Bouton, VarianteBouton, Modal, MenuContextuel, DonneesMenu, EntreeMenu, Confirmation, DonneesConfirmation, DemandeConfirmation, CopieTexte, DonneesCopie } from "composants.slint";
 import { APropos } from "a-propos.slint";
 import { Demonstration } from "demonstration.slint";
@@ -15,6 +15,15 @@ import { CreationSondage, DonneesCreationSondage } from "messagerie/creation-son
 import { DonneesGifs, CelluleGif, RangeeGif } from "messagerie/gifs.slint";
 import { Recherche, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche } from "coquille/recherche.slint";
 import { NouveauPrive, DonneesNouveauPrive, PersonneProposee } from "coquille/nouveau-prive.slint";
+import { DonneesAdmin, OngletAdmin, CompteAdminLigne, ServeurAdminLigne, BadgeAdminCarte, DetenteurAdmin, TuileAdmin, AppareilAdmin, VocalAdmin, CleValeurAdmin, ActionAdmin, ErreurAdmin } from "admin/donnees.slint";
+import { PageAdmin } from "admin/page.slint";
+import { FenetreBadge } from "admin/badges.slint";
+import { DonneesSignalements, ChoixSignalement, CaptureSignalement, InfoSignalement, LigneSignalement, CleValeurSignalement } from "signalements/donnees.slint";
+import { FenetreSignalement } from "signalements/fenetre.slint";
+import { DonneesReglagesServeur, OngletServeur, InvitationReglage, EmojiReglage, MembreReglage, BanReglage, EntreeJournal, TonJournal } from "coquille/reglages-serveur.slint";
+import { ModerationMembre, ModerationSalon, DonneesModeration, DonneesModerationSalon } from "coquille/moderation.slint";
+import { DonneesRoles, RoleReglage, NuanceRole, PermissionRole, GroupePermissionsRole, MembreRole, SalonReglage, PermissionSalon } from "coquille/reglages-roles.slint";
+import { CreerRejoindre, CreationSalon, DonneesCreerRejoindre, DonneesCreationSalon, GenreSalonPropose, ChoixAcces } from "coquille/creation.slint";
 import { Attente } from "entree/commun.slint";
 import { Connexion } from "entree/connexion.slint";
 import { Refus, Activation, Invitation, Injoignable } from "entree/acces.slint";
@@ -36,10 +45,14 @@ import { ChoixPartage } from "vocal/partage.slint";
 import { DonneesVideo, FluxVideo } from "video/flux.slint";
 
 import { DonneesMiseAJour } from "mise-a-jour/donnees.slint";
+import { DonneesParametres, OngletParametres, LigneJournal, LigneRaccourci, LigneNotifSalon } from "parametres/page.slint";
+import { FenetreRecadrage, DonneesProfil, PhotoServeurProfil, NuanceBanniere } from "parametres/profil.slint";
 
-export { Theme, ModeTheme, Mouvement, Calques, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, LigneContact, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesMessageVocal, EtapeVocal, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage, DonneesGifs, CelluleGif, RangeeGif, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche, DonneesNouveauPrive, PersonneProposee, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal, ChoixCameraVocal, DonneesVideo, FluxVideo, DonneesMiseAJour, DonneesJeux, JeuAjoute, DonneesOverlay, DonneesOverlayMessages, OverlayVoix, LigneOverlayVoix, OverlayMessages, LigneOverlayMessage, OverlayReplay, LigneOverlayReplay, DonneesReplay, ChoixReplay, DonneesMesures, LigneScenario, DonneesClips, LigneClip, JeuClips, TravailClip, DestinationClip, DonneesEditeur, SegmentEditeur, PisteEditeur, ChoixEditeur, ProjetMontage, ClipAjoutable }
+export { Theme, ModeTheme, Mouvement, Calques, Affichage, DonneesParametres, OngletParametres, LigneJournal, LigneRaccourci, LigneNotifSalon, DonneesProfil, PhotoServeurProfil, NuanceBanniere, DonneesMenu, EntreeMenu, DonneesConfirmation, DemandeConfirmation, DonneesCopie, DonneesCoquille, GenreVue, EtatBandeau, GenrePanneau, LigneServeur, LigneSalon, LignePrive, LigneSection, LigneRattrapage, LigneVocal, LigneContact, EnTetePanneau, VueContenu, Accueil, LigneMembre, LigneBadge, EnTeteMarge, OngletMarge, RoleProfil, CarteProfil, EtatPresence, DonneesMessagerie, LigneMessage, GenreLigneMessage, ReactionMessage, LecteurMessage, EpingleMessage, EtatEpingles, AnnexesMessage, ReponseMessage, DroitsLigne, EtatConversation, BlocTexte, GenreBloc, SegmentTexte, GenreSegment, PieceJointe, GenrePieceJointe, EtatTelechargement, OptionSondage, SondageMessage, GenreCarte, CarteLien, Visionneuse, DonneesSaisie, BandeauSaisie, GenreBandeau, GenreProposition, PropositionSaisie, PieceSaisie, DonneesMessageVocal, EtapeVocal, DonneesSelecteur, CelluleEmoji, RangeeEmoji, OngletEmoji, DonneesCreationSondage, DonneesGifs, CelluleGif, RangeeGif, DonneesRecherche, EntreePalette, MorceauExtrait, ResultatRecherche, PorteeRecherche, DonneesNouveauPrive, PersonneProposee, DonneesCreerRejoindre, DonneesCreationSalon, GenreSalonPropose, ChoixAcces, DonneesReglagesServeur, OngletServeur, InvitationReglage, EmojiReglage, MembreReglage, BanReglage, EntreeJournal, TonJournal, DonneesModeration, DonneesModerationSalon, DonneesRoles, RoleReglage, NuanceRole, PermissionRole, GroupePermissionsRole, MembreRole, SalonReglage, PermissionSalon, DonneesVocal, ParticipantVocal, VueVocal, BarreVocal, MenuVocal, PeripheriqueVocal, ListePeripheriques, ReglagesVocal, ChoixCameraVocal, DonneesVideo, FluxVideo, DonneesMiseAJour, DonneesJeux, JeuAjoute, DonneesOverlay, DonneesOverlayMessages, OverlayVoix, LigneOverlayVoix, OverlayMessages, LigneOverlayMessage, OverlayReplay, LigneOverlayReplay, DonneesReplay, ChoixReplay, DonneesMesures, LigneScenario, DonneesClips, LigneClip, JeuClips, TravailClip, DestinationClip, DonneesEditeur, SegmentEditeur, PisteEditeur, ChoixEditeur, ProjetMontage, ClipAjoutable, DonneesAdmin, OngletAdmin, CompteAdminLigne, ServeurAdminLigne, BadgeAdminCarte, DetenteurAdmin, TuileAdmin, AppareilAdmin, VocalAdmin, CleValeurAdmin, ActionAdmin, ErreurAdmin }
+export { DonneesAcces, ChargementAcces, OptionAcces, LigneCompteAcces, PuceAcces, RangeePucesAcces, MaillonAcces, LigneDroitAcces, ColonneRoleAcces, CaseRoleAcces, LigneGrilleAcces, ExceptionAcces, LigneRegleRoleAcces, LigneQuiAcces, LigneMembreAcces, LigneLiaisonAcces, LigneRegleAcces, LigneCatalogueAcces, DetenteurAcces, LigneJournalAcces } from "admin/acces-donnees.slint";
+export { DonneesSignalements, ChoixSignalement, CaptureSignalement, InfoSignalement, LigneSignalement, CleValeurSignalement }
 
-export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille }
+export enum Page { demarrage, connexion, verification, refuse, activation, invitation, injoignable, mise-a-jour, coquille, administration }
 
 export component Principale inherits Window {
     in property <string> version;
@@ -242,10 +255,12 @@ export component Principale inherits Window {
                         root.ouvrir-page-mise-a-jour();
                     }
                 }
-                if root.page == Page.coquille: Coquille {
-                    ouvrir-invitation => {
-                        root.ouvrir-invitation();
+                if root.page == Page.administration: PageAdmin {
+                    se-deconnecter => {
+                        root.se-deconnecter();
                     }
+                }
+                if root.page == Page.coquille: Coquille {
                     se-deconnecter => {
                         root.se-deconnecter();
                     }
@@ -341,6 +356,13 @@ export component Principale inherits Window {
     CreationSondage { }
     Recherche { }
     NouveauPrive { }
+    CreerRejoindre { }
+    CreationSalon { }
+    ModerationMembre { }
+    ModerationSalon { }
+    FenetreRecadrage { }
+    FenetreBadge { }
+    FenetreSignalement { }
     Confirmation { }
     MenuContextuel { }
     CopieTexte { }

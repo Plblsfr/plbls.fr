@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use chrono::{NaiveDateTime, TimeZone};
 use estompe_client::appels::Badge;
+use estompe_client::moderation::actions_de_moderation;
 use estompe_client::ordre_serveurs::Sens;
 use estompe_client::route::Route;
 use estompe_client::sections::Section;
@@ -11,7 +12,7 @@ use estompe_client::store::{Changement, CleConversation, Store};
 use estompe_client::temps_reel::EtatReseau;
 use slint::{ComponentHandle, Image, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, VecModel};
 
-use super::avatars::{decoder_image, CleAvatar, Profils};
+use super::avatars::{self, decoder_image, CleAvatar, Profils};
 use super::membres::{
     analyser_couleur, donnees_carte, donnees_marge, fenetre_des_membres, libelle_presence,
     lignes_membres, DonneesCarte, DonneesMarge, DonneesMembre, Fenetre,
@@ -43,11 +44,26 @@ fn millisecondes(maintenant: NaiveDateTime) -> i64 {
         .unwrap_or_else(|| maintenant.and_utc().timestamp_millis())
 }
 
+pub mod acces;
+mod admin;
+mod creation;
 mod menus;
+mod moderation;
 mod nouveau_prive;
+mod parametres;
+mod profil;
 mod recherche;
+mod reglages;
+mod roles;
+mod signalements;
 
+pub use admin::{Decalage, DonneesAdminChargees, PontAdmin};
+pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
+pub use moderation::{EtatModerationMembre, EtatModerationSalon};
 pub use nouveau_prive::EtatNouveauPrive;
+pub use reglages::{emoji_depuis, EmojiEnAttente, EtatReglages};
+pub use roles::EtatRoles;
+pub use signalements::{jpeg_de_la_capture, PontSignalements, TITRE_FENETRE};
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
@@ -119,20 +135,24 @@ pub(crate) fn presence_slint(presence: Presence) -> EtatPresence {
     }
 }
 
-pub(crate) fn badge_slint(badge: &Badge) -> LigneBadge {
+pub(crate) fn badge_slint(badge: &Badge, profils: &Profils) -> LigneBadge {
+    let image = avatars::image_de_badge(profils, badge);
     LigneBadge {
         nom: badge.name.as_str().into(),
+        description: badge.description.as_str().into(),
         couleur: couleur_slint(Some(&badge.color))
             .unwrap_or_else(|| slint::Color::from_rgb_u8(0xd0, 0x68, 0x8a)),
+        a_image: image.is_some(),
+        image: image.unwrap_or_default(),
     }
 }
 
 fn ligne_membre_slint(
     d: &DonneesMembre,
     portrait: Option<Icone>,
-    badges: Option<&[Badge]>,
+    profils: &Profils,
 ) -> LigneMembre {
-    let badges = badges.unwrap_or_default();
+    let badges = profils.badges(&d.utilisateur).unwrap_or_default();
     let couleur_titre = couleur_slint(d.couleur_titre.as_deref());
     let couleur = couleur_slint(d.couleur.as_deref());
     LigneMembre {
@@ -159,13 +179,25 @@ fn ligne_membre_slint(
         createur: d.createur,
         bot: d.bot,
         exclu: d.exclu,
-        badge_1: badges.first().map(badge_slint).unwrap_or_default(),
-        badge_2: badges.get(1).map(badge_slint).unwrap_or_default(),
+        badge_1: badges
+            .first()
+            .map(|b| badge_slint(b, profils))
+            .unwrap_or_default(),
+        badge_2: badges
+            .get(1)
+            .map(|b| badge_slint(b, profils))
+            .unwrap_or_default(),
         nombre_badges: badges.len().min(i32::MAX as usize) as i32,
     }
 }
 
-fn carte_slint(d: &DonneesCarte, portrait: Option<Icone>, badges: Option<&[Badge]>) -> CarteProfil {
+fn carte_slint(
+    d: &DonneesCarte,
+    portrait: Option<Icone>,
+    badges: Option<&[Badge]>,
+    profils: &Profils,
+    moderable: bool,
+) -> CarteProfil {
     let couleur = couleur_slint(d.couleur.as_deref());
     let roles: Vec<RoleProfil> = d
         .roles
@@ -179,7 +211,11 @@ fn carte_slint(d: &DonneesCarte, portrait: Option<Icone>, badges: Option<&[Badge
             }
         })
         .collect();
-    let badges: Vec<LigneBadge> = badges.unwrap_or_default().iter().map(badge_slint).collect();
+    let badges: Vec<LigneBadge> = badges
+        .unwrap_or_default()
+        .iter()
+        .map(|b| badge_slint(b, profils))
+        .collect();
     CarteProfil {
         utilisateur: d.utilisateur.as_str().into(),
         nom: d.nom.as_str().into(),
@@ -202,6 +238,7 @@ fn carte_slint(d: &DonneesCarte, portrait: Option<Icone>, badges: Option<&[Badge
         creation: d.creation.as_str().into(),
         bot: d.bot,
         moi: d.moi,
+        moderable,
     }
 }
 
@@ -255,6 +292,10 @@ struct Interne {
     avant_epingles: Option<(bool, OngletMarge)>,
     recherche: Option<EtatRecherche>,
     nouveau_prive: Option<EtatNouveauPrive>,
+    profil: profil::EtatProfil,
+    creation: creation::EtatCreation,
+    reglages: Option<reglages::EtatReglages>,
+    moderation: moderation::EtatModeration,
 }
 
 #[derive(Clone)]
@@ -268,6 +309,7 @@ pub struct Pont {
     profils: Arc<Profils>,
     messagerie: PontMessagerie,
     vocal: PontVocal,
+    admin: PontAdmin,
 }
 
 pub(crate) fn vec_de<S: Clone + 'static>(modele: &ModelRc<S>) -> &VecModel<S> {
@@ -303,6 +345,7 @@ pub fn onglet_effectif(voulu: OngletMarge, membres: bool, epingles: bool) -> Opt
 }
 
 pub fn vider_modeles(f: &Principale) {
+    f.global::<crate::DonneesParametres>().set_ouverte(false);
     let g = f.global::<DonneesCoquille>();
     vec_de(&g.get_serveurs()).set_vec(Vec::new());
     vec_de(&g.get_salons()).set_vec(Vec::new());
@@ -326,6 +369,15 @@ pub fn vider_modeles(f: &Principale) {
     g.set_pret(false);
     g.set_pseudo("".into());
     g.set_initiales("".into());
+    g.set_portrait(Image::default());
+    let profil = f.global::<crate::DonneesProfil>();
+    profil.set_recadrage_ouvert(false);
+    profil.set_source(Image::default());
+    profil.set_portrait(Image::default());
+    profil.set_a_avatar(false);
+    profil.set_occupe("".into());
+    profil.set_erreur("".into());
+    profil.set_serveurs(ModelRc::new(VecModel::from(Vec::new())));
     g.set_presence(EtatPresence::EnLigne);
     g.set_statut("En ligne".into());
     crate::messagerie::pont::liberer_modele();
@@ -343,6 +395,17 @@ pub fn vider_modeles(f: &Principale) {
     crate::vocal::pont::vider_modeles(f);
     f.global::<crate::DonneesRecherche>().set_ouvert(false);
     f.global::<crate::DonneesNouveauPrive>().set_ouvert(false);
+    f.global::<crate::DonneesCreerRejoindre>().set_ouvert(false);
+    f.global::<crate::DonneesCreationSalon>().set_ouvert(false);
+    f.global::<crate::DonneesReglagesServeur>()
+        .set_ouverte(false);
+    let admin = f.global::<crate::DonneesAdmin>();
+    admin.set_ouverte(false);
+    admin.set_disponible(false);
+    admin.set_badge_ouvert(false);
+    let signalements = f.global::<crate::DonneesSignalements>();
+    signalements.set_ouverte(false);
+    signalements.set_detail_ouvert(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {
@@ -375,6 +438,7 @@ fn ligne_salon_slint(d: &DonneesSalon) -> LigneSalon {
         nom: d.nom.as_str().into(),
         icone: d.icone.into(),
         titre_groupe: d.titre_groupe.into(),
+        genre_groupe: d.genre_groupe.into(),
         actif: d.actif,
         non_lus: d.non_lus.min(i64::from(i32::MAX)) as i32,
         mentions: d.mentions.min(i32::MAX as usize) as i32,
@@ -442,6 +506,7 @@ fn panneau_slint(d: &DonneesPanneau, icones: &BTreeMap<String, (i64, Icone)>) ->
         initiales: d.initiales.as_str().into(),
         a_image: image.is_some(),
         image: image.unwrap_or_default(),
+        peut_creer_salon: d.peut_creer_salon,
     }
 }
 
@@ -519,6 +584,13 @@ impl Pont {
             Arc::new(move || millisecondes(horloge_vocal())),
             profils.clone(),
         );
+        let decalage_messagerie = messagerie.clone();
+        let admin = PontAdmin::nouveau(
+            store.client().clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            Arc::new(move || decalage_messagerie.decalage_minutes()),
+        );
         Self {
             interne: Arc::new(Mutex::new(Interne {
                 navigation,
@@ -533,6 +605,10 @@ impl Pont {
                 avant_epingles: None,
                 recherche: None,
                 nouveau_prive: None,
+                profil: profil::EtatProfil::default(),
+                creation: creation::EtatCreation::default(),
+                reglages: None,
+                moderation: moderation::EtatModeration::default(),
             })),
             store,
             fenetre,
@@ -542,7 +618,25 @@ impl Pont {
             profils,
             messagerie,
             vocal,
+            admin,
         }
+    }
+
+    pub fn admin(&self) -> &PontAdmin {
+        &self.admin
+    }
+
+    pub fn ouvrir_administration(&self, f: &Principale) {
+        f.global::<crate::DonneesParametres>().set_ouverte(false);
+        self.oublier_reglages_serveur(f);
+        self.admin.ouvrir(f);
+    }
+
+    fn projeter_administration(&self, f: &Principale) {
+        let sections = self
+            .store
+            .lire(|etat| estompe_client::admin::sections_du_compte(&etat.compte));
+        self.admin.definir_sections(f, sections);
     }
 
     pub fn messagerie(&self) -> &PontMessagerie {
@@ -572,6 +666,9 @@ impl Pont {
 
     pub fn tout_projeter(&self, f: &Principale) {
         self.projeter(f, &tout(), true);
+        self.projeter_parametres(f);
+        self.projeter_profil(f);
+        self.projeter_administration(f);
         f.global::<DonneesCoquille>().set_pret(true);
     }
 
@@ -590,6 +687,17 @@ impl Pont {
             }
         }
         self.projeter(f, &c, false);
+        let moi = self.store.lire(|e| e.moi().to_string());
+        if parametres::touche_les_notifications(changements, &moi) {
+            self.projeter_parametres(f);
+        }
+        if profil::touche_le_profil(changements, &moi) {
+            self.projeter_profil(f);
+        }
+        self.changements_des_reglages(f, changements);
+        if changements.iter().any(|c| matches!(c, Changement::Compte)) {
+            self.projeter_administration(f);
+        }
         if corrigee {
             self.suivre_conversation(f);
             self.ouvrir_conversation_courante(None);
@@ -824,6 +932,14 @@ impl Pont {
         {
             g.set_panneau(panneau_slint(panneau, &interne.icones));
         }
+        let reglages = interne
+            .reglages
+            .as_ref()
+            .is_some_and(|r| r.serveur == serveur);
+        drop(interne);
+        if reglages {
+            self.projeter_reglages(f);
+        }
     }
 
     pub fn naviguer(&self, f: &Principale, route: Route) {
@@ -831,6 +947,9 @@ impl Pont {
     }
 
     fn aller(&self, f: &Principale, route: Route, message: Option<String>) {
+        f.global::<crate::DonneesParametres>().set_ouverte(false);
+        self.oublier_reglages_serveur(f);
+        self.admin.fermer(f);
         let adresse = self.store.lire(|etat| {
             let mut interne = self.verrou();
             interne.navigation.aller(route, etat);
@@ -1099,7 +1218,7 @@ impl Pont {
                 } else {
                     None
                 };
-                ligne_membre_slint(d, portrait, profils.badges(&d.utilisateur).as_deref())
+                ligne_membre_slint(d, portrait, profils)
             },
         );
         if faites.iter().any(|o| !matches!(o, Operation::Remplacer(_)))
@@ -1221,10 +1340,7 @@ impl Pont {
                 .and_then(|&i| m.ombre.get(i).map(|d| (i, d)))
             {
                 let (i, d) = d;
-                modele.set_row_data(
-                    i,
-                    ligne_membre_slint(d, None, self.profils.badges(&d.utilisateur).as_deref()),
-                );
+                modele.set_row_data(i, ligne_membre_slint(d, None, &self.profils));
             }
         }
         if !ouverte {
@@ -1241,14 +1357,8 @@ impl Pont {
                 if !m.avec_portrait.contains(&d.cle) {
                     match self.profils.avatar(cle) {
                         Some(image) => {
-                            modele.set_row_data(
-                                i,
-                                ligne_membre_slint(
-                                    d,
-                                    Some(image),
-                                    self.profils.badges(&d.utilisateur).as_deref(),
-                                ),
-                            );
+                            modele
+                                .set_row_data(i, ligne_membre_slint(d, Some(image), &self.profils));
                             m.avec_portrait.insert(d.cle.clone());
                         }
                         None => {
@@ -1327,14 +1437,8 @@ impl Pont {
                     } else {
                         None
                     };
-                    vec_de(&g.get_membres()).set_row_data(
-                        i,
-                        ligne_membre_slint(
-                            d,
-                            portrait,
-                            self.profils.badges(utilisateur).as_deref(),
-                        ),
-                    );
+                    vec_de(&g.get_membres())
+                        .set_row_data(i, ligne_membre_slint(d, portrait, &self.profils));
                 }
             }
         }
@@ -1386,10 +1490,13 @@ impl Pont {
         let (Some(utilisateur), Some(serveur)) = (m.carte.clone(), m.serveur.clone()) else {
             return;
         };
-        let Some(donnees) = self
-            .store
-            .lire(|etat| donnees_carte(etat, &serveur, &utilisateur, maintenant))
-        else {
+        let Some((donnees, moderable)) = self.store.lire(|etat| {
+            donnees_carte(etat, &serveur, &utilisateur, maintenant).map(|d| {
+                let moderable =
+                    !actions_de_moderation(etat, &serveur, &utilisateur, maintenant).is_empty();
+                (d, moderable)
+            })
+        }) else {
             m.carte = None;
             m.ombre_carte = None;
             drop(guard);
@@ -1405,7 +1512,13 @@ impl Pont {
             }
         }
         let demander_badges = badges.is_none() && m.demandes_badges.insert(utilisateur.clone());
-        g.set_carte(carte_slint(&donnees, portrait, badges.as_deref()));
+        g.set_carte(carte_slint(
+            &donnees,
+            portrait,
+            badges.as_deref(),
+            &self.profils,
+            moderable,
+        ));
         m.ombre_carte = Some(donnees);
         drop(guard);
         if !g.get_carte_ouverte() {

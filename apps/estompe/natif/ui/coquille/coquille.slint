@@ -8,9 +8,12 @@ import { Contenu } from "contenu.slint";
 import { EmplacementMarge } from "marge.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
 import { DonneesRecherche } from "recherche.slint";
+import { DonneesParametres } from "../parametres/page.slint";
+import { DonneesCreerRejoindre } from "creation.slint";
+import { DonneesReglagesServeur } from "reglages-serveur.slint";
+import { DonneesAdmin } from "../admin/donnees.slint";
 
 export component Coquille inherits Rectangle {
-    callback ouvrir-invitation();
     callback se-deconnecter();
     property <int> demande-focus: DonneesCoquille.demande-focus;
     background: Theme.papier;
@@ -19,7 +22,7 @@ export component Coquille inherits Rectangle {
         clavier.focus();
     }
     changed calques => {
-        if (root.calques == 0) {
+        if (root.calques == 0 && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte && !DonneesAdmin.ouverte) {
             clavier.focus();
         }
     }
@@ -84,7 +87,7 @@ export component Coquille inherits Rectangle {
             HorizontalLayout {
                 if !DonneesVocal.plein-cadre: Rail {
                     rejoindre => {
-                        root.ouvrir-invitation();
+                        DonneesCreerRejoindre.ouvrir();
                     }
                 }
                 if !DonneesCoquille.panneau-replie && !DonneesVocal.plein-cadre: Panneau {
@@ -95,11 +98,11 @@ export component Coquille inherits Rectangle {
                 Contenu {
                     horizontal-stretch: 1;
                     rejoindre => {
-                        root.ouvrir-invitation();
+                        DonneesCreerRejoindre.ouvrir();
                     }
                 }
                 EmplacementMarge {
-                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre;
+                    ouverte: DonneesCoquille.marge-disponible && DonneesCoquille.marge-ouverte && !DonneesVocal.plein-cadre && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte && !DonneesAdmin.ouverte;
                     largeur: DonneesCoquille.largeur-marge;
                     @children
                 }

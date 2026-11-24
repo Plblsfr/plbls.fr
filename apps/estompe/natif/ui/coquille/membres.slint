@@ -11,7 +11,13 @@ export component Medaille {
     height: taille;
     accessible-role: image;
     accessible-label: badge.nom;
-    Icone {
+    if root.badge.a-image: Image {
+        width: root.taille;
+        height: root.taille;
+        source: root.badge.image;
+        image-fit: contain;
+    }
+    if !root.badge.a-image: Icone {
         nom: "medaille";
         taille: root.taille;
         couleur: root.badge.couleur;

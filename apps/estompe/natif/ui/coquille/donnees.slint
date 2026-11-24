@@ -24,6 +24,7 @@ export struct LigneSalon {
     nom: string,
     icone: string,
     titre-groupe: string,
+    genre-groupe: string,
     actif: bool,
     non-lus: int,
     mentions: int,
@@ -86,6 +87,7 @@ export struct EnTetePanneau {
     initiales: string,
     image: image,
     a-image: bool,
+    peut-creer-salon: bool,
 }
 
 export struct VueContenu {
@@ -110,7 +112,10 @@ export struct Accueil {
 
 export struct LigneBadge {
     nom: string,
+    description: string,
     couleur: color,
+    image: image,
+    a-image: bool,
 }
 
 export struct LigneMembre {
@@ -173,6 +178,7 @@ export struct CarteProfil {
     creation: string,
     bot: bool,
     moi: bool,
+    moderable: bool,
 }
 
 export global DonneesCoquille {
@@ -191,6 +197,7 @@ export global DonneesCoquille {
     in property <EtatBandeau> bandeau: EtatBandeau.aucun;
     in property <string> pseudo;
     in property <string> initiales;
+    in property <image> portrait;
     in property <EtatPresence> presence: EtatPresence.en-ligne;
     in property <string> statut: "En ligne";
     in-out property <bool> panneau-replie: false;
@@ -219,8 +226,10 @@ export global DonneesCoquille {
     callback onglet-marge-choisi(OngletMarge);
     callback epingles-bascule();
     callback menu-salon(string, length, length);
+    callback menu-serveur(string, length, length);
     callback menu-prive(string, length, length);
     callback menu-membre(string, length, length);
+    callback menu-moderation(string, length, length, length);
     callback membres-defiles(length, length);
     callback filtrer-membres(string);
     callback ouvrir-membre(string);
@@ -228,4 +237,5 @@ export global DonneesCoquille {
     callback tout-lire();
     callback menu-moi(length, length, length);
     callback nouveau-prive();
+    callback creer-salon(string);
 }

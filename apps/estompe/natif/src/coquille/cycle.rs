@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use estompe_client::admin::SectionAdmin;
 use estompe_client::http::{Client, ErreurApi};
 use estompe_client::journal::{Journal, Niveau};
 use estompe_client::sections::{sections_ouvertes, Section};
@@ -15,7 +16,7 @@ use tokio::task::JoinHandle;
 
 use super::avatars::Profils;
 use super::navigation::{route_de_demarrage, Navigation};
-use super::pont::{installer_modeles, vider_modeles, Horloge, Pont};
+use super::pont::{installer_modeles, vider_modeles, Horloge, Pont, PontAdmin};
 use crate::entree::{Emetteur, Entree, Etat, Evenement, Futur};
 use crate::menu::Ancre;
 use crate::messagerie::medias::Medias;
@@ -83,6 +84,15 @@ pub trait Fabrique: Send + Sync + 'static {
         Arc::new(son_par_defaut())
     }
     fn jeux(&self) -> Option<watch::Receiver<crate::jeux::EtatJeux>> {
+        None
+    }
+    fn client(&self) -> Option<Client> {
+        None
+    }
+    fn ecrans(&self) -> Option<Arc<dyn estompe_plateforme::CaptureEcran>> {
+        self.vocal().map(|o| o.ecrans)
+    }
+    fn journal(&self) -> Option<Arc<Journal>> {
         None
     }
 }
@@ -213,6 +223,14 @@ impl Fabrique for FabriqueReelle {
     fn jeux(&self) -> Option<watch::Receiver<crate::jeux::EtatJeux>> {
         self.jeux.clone()
     }
+
+    fn client(&self) -> Option<Client> {
+        Some(self.client.clone())
+    }
+
+    fn journal(&self) -> Option<Arc<Journal>> {
+        self.journal.clone()
+    }
 }
 
 pub trait ObservateurSession: Send + Sync {
@@ -232,6 +250,13 @@ fn observateur(contexte: &Contexte) -> Option<Arc<dyn ObservateurSession>> {
 }
 
 type Emplacement = Arc<Mutex<(u64, Option<Pont>)>>;
+type EmplacementAdmin = Arc<Mutex<Option<PontAdmin>>>;
+
+fn admin_courant(emplacement: &Emplacement, seule: &EmplacementAdmin) -> Option<PontAdmin> {
+    pont_courant(emplacement)
+        .map(|p| p.admin().clone())
+        .or_else(|| seule.lock().unwrap_or_else(|e| e.into_inner()).clone())
+}
 
 fn pont_courant(emplacement: &Emplacement) -> Option<Pont> {
     emplacement
@@ -293,6 +318,9 @@ impl Coquille {
         let focus = Arc::new(AtomicBool::new(true));
         let observateur: Observateur = Arc::new(Mutex::new(None));
         brancher_rappels(f, &emplacement, &memoire);
+        let admin: EmplacementAdmin = Arc::new(Mutex::new(None));
+        brancher_admin(f, &emplacement, &admin);
+        brancher_signalements(f, &emplacement, &admin);
         let contexte = Contexte {
             emetteur: entree.emetteur(),
             fabrique,
@@ -303,6 +331,7 @@ impl Coquille {
             runtime: entree.runtime(),
             focus: focus.clone(),
             observateur: observateur.clone(),
+            admin,
         };
         let (envoi_arret, arret) = oneshot::channel();
         let (envoi_fini, fini) = std::sync::mpsc::channel();
@@ -681,6 +710,156 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_creation!(on_fermer, |p, f| p.messagerie().fermer_creation_sondage(&f));
 }
 
+fn brancher_admin(f: &Principale, emplacement: &Emplacement, seule: &EmplacementAdmin) {
+    let g = f.global::<crate::DonneesAdmin>();
+    macro_rules! rappel_admin {
+        ($methode:ident, |$admin:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let seule = seule.clone();
+            let faible = f.as_weak();
+            g.$methode(move |$($arg),*| {
+                if let (Some($admin), Some($f)) = (admin_courant(&emplacement, &seule), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    {
+        let emplacement = emplacement.clone();
+        let seule = seule.clone();
+        let faible = f.as_weak();
+        g.on_ouvrir(move || {
+            let Some(f) = faible.upgrade() else {
+                return;
+            };
+            match pont_courant(&emplacement) {
+                Some(p) => p.ouvrir_administration(&f),
+                None => {
+                    if let Some(a) = admin_courant(&emplacement, &seule) {
+                        a.ouvrir(&f);
+                    }
+                }
+            }
+        });
+    }
+    rappel_admin!(on_fermer, |a, f| a.fermer(&f));
+    rappel_admin!(on_choisir, |a, f, id| a.choisir(&f, &id));
+    rappel_admin!(on_deplacer, |a, f, pas| a.deplacer(&f, pas));
+    rappel_admin!(on_chercher_comptes, |a, f| a.chercher_comptes(&f));
+    rappel_admin!(on_basculer_suspension, |a, f, i| a
+        .basculer_suspension(&f, i.max(0) as usize));
+    rappel_admin!(on_supprimer_serveur, |a, f, i| a
+        .supprimer_serveur(&f, i.max(0) as usize));
+    rappel_admin!(on_chercher_badges, |a, f, texte| a
+        .chercher_badges(&f, &texte));
+    rappel_admin!(on_choisir_tri, |a, f, i| a
+        .choisir_tri(&f, i.max(0) as usize));
+    rappel_admin!(on_nouveau_badge, |a, f| a.nouveau_badge(&f));
+    rappel_admin!(on_ouvrir_badge, |a, f, i| a
+        .ouvrir_badge(&f, i.max(0) as usize));
+    rappel_admin!(on_fermer_badge, |a, f| a.fermer_badge(&f));
+    rappel_admin!(on_badge_modifie, |a, f| a.badge_modifie(&f));
+    rappel_admin!(on_choisir_image_badge, |a, f| a.choisir_image_badge(&f));
+    rappel_admin!(on_retirer_image_badge, |a, f| a.retirer_image_badge(&f));
+    rappel_admin!(on_enregistrer_badge, |a, f| a.enregistrer_badge(&f));
+    rappel_admin!(on_supprimer_badge, |a, f| a.supprimer_badge(&f));
+    rappel_admin!(on_retirer_detenteur, |a, f, i| a
+        .retirer_detenteur(&f, i.max(0) as usize));
+    rappel_admin!(on_chercher_detenteurs, |a, f, texte| a
+        .chercher_detenteurs(&f, &texte));
+    rappel_admin!(on_choisir_detenteur, |a, f, i| a
+        .choisir_detenteur(&f, i.max(0) as usize));
+    rappel_admin!(on_ne_pas_ajouter, |a, f, i| a
+        .ne_pas_ajouter(&f, i.max(0) as usize));
+    rappel_admin!(on_attribuer_badge, |a, f| a.attribuer_badge(&f));
+    rappel_admin!(on_envoyer_bot, |a, f| a.envoyer_bot(&f));
+    let (emplacement, seule) = (emplacement.clone(), seule.clone());
+    super::pont::acces::brancher(f, move || {
+        admin_courant(&emplacement, &seule).map(|a| a.acces().clone())
+    });
+}
+
+fn brancher_signalements(f: &Principale, emplacement: &Emplacement, seule: &EmplacementAdmin) {
+    use estompe_client::signalements::Cible;
+    let g = f.global::<crate::DonneesSignalements>();
+    macro_rules! rappel_pont {
+        ($methode:ident, |$p:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            g.$methode(move |$($arg),*| {
+                if let (Some($p), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    macro_rules! rappel_signalements {
+        ($methode:ident, |$s:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let seule = seule.clone();
+            let faible = f.as_weak();
+            g.$methode(move |$($arg),*| {
+                if let (Some(admin), Some($f)) = (admin_courant(&emplacement, &seule), faible.upgrade()) {
+                    let $s = admin.signalements();
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_pont!(on_signaler_bug, |p, f| p.signaler(&f, Cible::Bug));
+    rappel_pont!(on_signaler_message, |p, f, id, auteur, extrait| p.signaler(
+        &f,
+        Cible::Message {
+            id: id.to_string(),
+            auteur: auteur.to_string(),
+            extrait: extrait.to_string(),
+        }
+    ));
+    rappel_pont!(on_signaler_personne, |p, f, id, pseudo| p.signaler(
+        &f,
+        Cible::Personne {
+            id: id.to_string(),
+            pseudo: pseudo.to_string(),
+        }
+    ));
+    rappel_signalements!(on_fermer, |s, f| s.fermer(&f));
+    rappel_signalements!(on_modifie, |s, f| s.modifie(&f));
+    rappel_signalements!(on_choisir_categorie, |s, f, id| s
+        .choisir_categorie(&f, &id));
+    rappel_signalements!(on_capturer, |s, f| s.capturer(&f));
+    rappel_signalements!(on_ajouter_images, |s, f| s.ajouter_images(&f));
+    rappel_signalements!(on_retirer_capture, |s, f, i| s
+        .retirer_capture(&f, i.max(0) as usize));
+    rappel_signalements!(on_basculer_information, |s, f, i| s
+        .basculer_information(&f, i.max(0) as usize));
+    rappel_signalements!(on_envoyer, |s, f| s.envoyer(&f));
+    rappel_signalements!(on_charger_mes, |s, f| s.charger_mes(&f));
+    rappel_signalements!(on_charger_admin, |s, f| s.charger_admin(&f));
+    rappel_signalements!(on_filtrer, |s, f| s.charger_admin(&f));
+    rappel_signalements!(on_choisir_filtre, |s, f, nom, i| s.choisir_filtre(
+        &f,
+        &nom,
+        i.max(0) as usize
+    ));
+    rappel_signalements!(on_ouvrir_filtre, |s, f, nom, x, haut, bas| s.ouvrir_filtre(
+        &f,
+        &nom,
+        Ancre::Element { x, haut, bas }
+    ));
+    rappel_signalements!(on_ouvrir_signalement, |s, f, i| s
+        .ouvrir_signalement(&f, i.max(0) as usize));
+    rappel_signalements!(on_fermer_signalement, |s, f| s.fermer_signalement(&f));
+    rappel_signalements!(on_choisir_statut, |s, f, statut| s
+        .choisir_statut(&f, &statut));
+    rappel_signalements!(on_ouvrir_origines, |s, f, x, haut, bas| s
+        .ouvrir_origines(&f, Ancre::Element { x, haut, bas }));
+    rappel_signalements!(on_voir_original, |s, f| s.voir_original(&f));
+    rappel_signalements!(on_enregistrer, |s, f| s.enregistrer(&f));
+    rappel_signalements!(on_supprimer, |s, f| s.supprimer(&f));
+    rappel_signalements!(on_copier, |s, f| s.copier(&f));
+    rappel_signalements!(on_telecharger_logs, |s, f| s.telecharger_logs(&f));
+}
+
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
     installer_modeles(f);
     let g = f.global::<DonneesCoquille>();
@@ -723,6 +902,11 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         &id,
         Ancre::Point { x, y }
     ));
+    rappel!(on_menu_serveur, |p, f, id, x, y| p.menu_serveur(
+        &f,
+        &id,
+        Ancre::Point { x, y }
+    ));
     rappel!(on_menu_prive, |p, f, id, x, y| p.menu_prive(
         &f,
         &id,
@@ -737,6 +921,261 @@ fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire
         .menu_moi(&f, Ancre::Element { x, haut, bas }));
     rappel!(on_tout_lire, |p, _f| p.tout_lire());
     rappel!(on_nouveau_prive, |p, f| p.ouvrir_nouveau_prive(&f));
+    rappel!(on_creer_salon, |p, f, genre| p.creer_salon_ici(&f, &genre));
+    rappel!(on_menu_moderation, |p, f, id, x, haut, bas| p
+        .menu_moderation_du_membre(
+            &f,
+            &id,
+            Ancre::Element { x, haut, bas }
+        ));
+    let moderation = f.global::<crate::DonneesModeration>();
+    macro_rules! rappel_moderation {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            moderation.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_moderation!(on_choisir_duree, |p, f, i| p
+        .choisir_duree_de_moderation(&f, i));
+    rappel_moderation!(on_heures_modifiees, |p, f, texte| p
+        .heures_de_moderation_modifiees(&f, &texte));
+    rappel_moderation!(on_choisir_purge, |p, f, i| p.choisir_purge(&f, i));
+    rappel_moderation!(on_raison_modifiee, |p, f, texte| p
+        .raison_de_moderation_modifiee(&f, &texte));
+    rappel_moderation!(on_surnom_modifie, |p, f, texte| p
+        .surnom_de_moderation_modifie(&f, &texte));
+    rappel_moderation!(on_valider, |p, f| p.valider_moderation(&f));
+    rappel_moderation!(on_fermer, |p, f| p.fermer_moderation(&f));
+    let moderation_salon = f.global::<crate::DonneesModerationSalon>();
+    macro_rules! rappel_moderation_salon {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            moderation_salon.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_moderation_salon!(on_nom_modifie, |p, f, texte| p
+        .nom_de_moderation_modifie(&f, &texte));
+    rappel_moderation_salon!(on_choisir_mode_lent, |p, f, i| p
+        .choisir_mode_lent_du_salon(&f, i));
+    rappel_moderation_salon!(on_verrouiller, |p, f, actif| p.verrouiller_salon(&f, actif));
+    rappel_moderation_salon!(on_nombre_modifie, |p, f, texte| p
+        .nombre_a_supprimer_modifie(&f, &texte));
+    rappel_moderation_salon!(on_menu_auteur, |p, f, x, haut, bas| p
+        .menu_auteur_a_supprimer(&f, Ancre::Element { x, haut, bas }));
+    rappel_moderation_salon!(on_enregistrer, |p, f| p.enregistrer_moderation_salon(&f));
+    rappel_moderation_salon!(on_supprimer_messages, |p, f| p
+        .supprimer_messages_du_salon(&f));
+    rappel_moderation_salon!(on_supprimer_salon, |p, f| p.supprimer_salon_moderation(&f));
+    rappel_moderation_salon!(on_fermer, |p, f| p.fermer_moderation_salon(&f));
+    let creer = f.global::<crate::DonneesCreerRejoindre>();
+    macro_rules! rappel_creer {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            creer.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_creer!(on_ouvrir, |p, f| p.ouvrir_creer_rejoindre(&f));
+    rappel_creer!(on_nom_modifie, |p, f, texte| p
+        .nom_de_serveur_modifie(&f, &texte));
+    rappel_creer!(on_code_modifie, |p, f, texte| p.code_modifie(&f, &texte));
+    rappel_creer!(on_choisir_icone, |p, f| p.choisir_icone_de_serveur(&f));
+    rappel_creer!(on_retirer_icone, |p, f| p.retirer_icone_de_serveur(&f));
+    rappel_creer!(on_creer, |p, f| p.creer_serveur(&f));
+    rappel_creer!(on_rejoindre, |p, f| p.rejoindre_serveur(&f));
+    rappel_creer!(on_fermer, |p, f| p.fermer_creer_rejoindre(&f));
+    let salon = f.global::<crate::DonneesCreationSalon>();
+    macro_rules! rappel_salon {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            salon.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_salon!(on_choisir_genre, |p, f, i| p.choisir_genre_de_salon(&f, i));
+    rappel_salon!(on_nom_modifie, |p, f, texte| p
+        .nom_de_salon_modifie(&f, &texte));
+    rappel_salon!(on_basculer_prive, |p, f, prive| p
+        .basculer_salon_prive(&f, prive));
+    rappel_salon!(on_basculer_role, |p, f, i| p.basculer_role_du_salon(&f, i));
+    rappel_salon!(on_basculer_membre, |p, f, i| p
+        .basculer_membre_du_salon(&f, i));
+    rappel_salon!(on_choisir_mode_lent, |p, f, i| p.choisir_mode_lent(&f, i));
+    rappel_salon!(on_choisir_limite, |p, f, i| p.choisir_limite(&f, i));
+    rappel_salon!(on_creer, |p, f| p.valider_creation_salon(&f));
+    rappel_salon!(on_fermer, |p, f| p.fermer_creation_salon(&f));
+    let reglages = f.global::<crate::DonneesReglagesServeur>();
+    macro_rules! rappel_reglages {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            reglages.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_reglages!(on_ouvrir, |p, f, serveur| p
+        .ouvrir_reglages_serveur(&f, &serveur));
+    rappel_reglages!(on_fermer, |p, f| p.fermer_reglages_serveur(&f));
+    rappel_reglages!(on_choisir, |p, f, id| p.choisir_onglet_serveur(&f, &id));
+    rappel_reglages!(on_deplacer, |p, f, pas| p.deplacer_onglet_serveur(&f, pas));
+    rappel_reglages!(on_nom_modifie, |p, f, texte| p
+        .nom_des_reglages_modifie(&f, &texte));
+    rappel_reglages!(on_choisir_icone, |p, f| p.choisir_icone_des_reglages(&f));
+    rappel_reglages!(on_supprimer_icone, |p, f| p
+        .supprimer_icone_des_reglages(&f));
+    rappel_reglages!(on_annuler, |p, f| p.annuler_reglages(&f));
+    rappel_reglages!(on_enregistrer, |p, f| p.enregistrer_reglages(&f));
+    rappel_reglages!(on_quitter, |p, f| p.quitter_depuis_reglages(&f));
+    rappel_reglages!(on_supprimer_serveur, |p, f| p
+        .demander_suppression_serveur(&f));
+    rappel_reglages!(on_choisir_expiration, |p, f, i| p.choisir_expiration(&f, i));
+    rappel_reglages!(on_choisir_utilisation, |p, f, i| p
+        .choisir_utilisation(&f, i));
+    rappel_reglages!(on_creer_invitation, |p, f| p.creer_invitation(&f));
+    rappel_reglages!(on_copier_invitation, |p, f, i| p.copier_invitation(&f, i));
+    rappel_reglages!(on_revoquer_invitation, |p, f, i| p
+        .revoquer_invitation(&f, i));
+    rappel_reglages!(on_choisir_emoji, |p, f| p.choisir_emoji_a_ajouter(&f));
+    rappel_reglages!(on_annuler_emoji, |p, f| p.annuler_emoji(&f));
+    rappel_reglages!(on_nom_emoji_modifie, |p, f, texte| p
+        .nom_d_emoji_modifie(&f, &texte));
+    rappel_reglages!(on_ajouter_emoji, |p, f| p.ajouter_emoji(&f));
+    rappel_reglages!(on_renommer_emoji, |p, f, i| p.renommer_emoji(&f, i));
+    rappel_reglages!(on_supprimer_emoji, |p, f, i| p.supprimer_emoji(&f, i));
+    rappel_reglages!(on_chercher_membres, |p, f, texte| p
+        .chercher_membres_des_reglages(&f, &texte));
+    rappel_reglages!(on_lever_ban, |p, f, i| p.lever_ban(&f, i));
+    rappel_reglages!(on_menu_filtre_journal, |p, f, x, haut, bas| p
+        .menu_filtre_journal(&f, Ancre::Element { x, haut, bas }));
+    let roles = f.global::<crate::DonneesRoles>();
+    macro_rules! rappel_roles {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            roles.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_roles!(on_choisir_role, |p, f, id| p.choisir_role(&f, &id));
+    rappel_roles!(on_creer_role, |p, f| p.creer_role(&f));
+    rappel_roles!(on_deplacer_role, |p, f, de, vers| p
+        .deplacer_role(&f, de, vers));
+    rappel_roles!(on_nom_modifie, |p, f, texte| p
+        .nom_de_role_modifie(&f, &texte));
+    rappel_roles!(on_couleur_choisie, |p, f, hex| p
+        .couleur_de_role_choisie(&f, &hex));
+    rappel_roles!(on_couleur_modifiee, |p, f, texte| p
+        .couleur_de_role_modifiee(&f, &texte));
+    rappel_roles!(on_icone_modifiee, |p, f, texte| p
+        .icone_de_role_modifiee(&f, &texte));
+    rappel_roles!(on_separe_change, |p, f, separe| p.separer_role(&f, separe));
+    rappel_roles!(on_basculer_permission, |p, f, cle, actif| p
+        .basculer_permission_du_role(&f, &cle, actif));
+    rappel_roles!(on_filtre_modifie, |p, f, texte| p
+        .filtrer_permissions_du_role(&f, &texte));
+    rappel_roles!(on_recherche_modifiee, |p, f, texte| p
+        .chercher_membre_du_role(&f, &texte));
+    rappel_roles!(on_ajouter_membre, |p, f, id| p
+        .ajouter_membre_au_role(&f, &id));
+    rappel_roles!(on_retirer_membre, |p, f, id| p
+        .retirer_membre_du_role(&f, &id));
+    rappel_roles!(on_enregistrer, |p, f| p.enregistrer_role(&f));
+    rappel_roles!(on_supprimer, |p, f| p.supprimer_role(&f));
+    rappel_roles!(on_creer_salon, |p, f| p.creer_salon_depuis_reglages(&f));
+    rappel_roles!(on_basculer_salon, |p, f, id| p
+        .basculer_permissions_du_salon(&f, &id));
+    rappel_roles!(on_menu_role_salon, |p, f, x, haut, bas| p
+        .menu_role_du_salon(&f, Ancre::Element { x, haut, bas }));
+    rappel_roles!(on_renommer_salon, |p, f, id| p
+        .renommer_salon_des_reglages(&f, &id));
+    rappel_roles!(on_supprimer_salon, |p, f, id| p
+        .supprimer_salon_des_reglages(&f, &id));
+    rappel_roles!(on_definir_permission_salon, |p, f, cle, rang| p
+        .definir_permission_du_salon(&f, &cle, rang));
+    let parametres = f.global::<crate::DonneesParametres>();
+    macro_rules! rappel_parametres {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            parametres.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_parametres!(on_apercus_change, |p, f, actif| p
+        .definir_apercus(&f, actif));
+    rappel_parametres!(on_type_change, |p, f, genre, actif| p
+        .definir_type_notification(&f, &genre, actif));
+    rappel_parametres!(on_niveau_general_change, |p, f, rang| p
+        .definir_niveau_general(&f, rang));
+    rappel_parametres!(on_niveau_change, |p, f, id, rang| p
+        .definir_niveau(&f, &id, rang));
+    rappel_parametres!(on_apercu_notifications_change, |p, f, actif| p
+        .definir_apercu_notifications(&f, actif));
+    rappel_parametres!(on_son_notifications_change, |p, f, actif| p
+        .definir_son_notifications(&f, actif));
+    rappel_parametres!(on_ignore_groupe_change, |p, f, actif| p
+        .definir_ignore_groupe(&f, actif));
+    rappel_parametres!(on_ne_pas_deranger_change, |p, f, actif| p
+        .definir_ne_pas_deranger(&f, actif));
+    rappel_parametres!(on_lever_sourdine, |p, f, id| p
+        .mettre_en_sourdine(&f, &id, None));
+    rappel_parametres!(on_menu_sourdine, |p, f, id, x, haut, bas| p
+        .menu_sourdine_parametres(&f, &id, Ancre::Element { x, haut, bas }));
+    rappel_parametres!(on_menu_serveur_notif, |p, f, x, haut, bas| p
+        .menu_serveur_notif(&f, Ancre::Element { x, haut, bas }));
+    rappel_parametres!(on_menu_ajout_salon, |p, f, x, haut, bas| p
+        .menu_ajout_salon(&f, Ancre::Element { x, haut, bas }));
+    rappel_parametres!(on_rafraichir_notifications, |p, f| p
+        .projeter_parametres(&f));
+    let profil = f.global::<crate::DonneesProfil>();
+    macro_rules! rappel_profil {
+        ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            profil.$methode(move |$($arg),*| {
+                if let (Some($pont), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_profil!(on_changer_avatar, |p, f, cible| p
+        .changer_avatar(&f, &cible));
+    rappel_profil!(on_retirer_avatar, |p, f, cible| p
+        .retirer_avatar(&f, &cible));
+    rappel_profil!(on_choisir_banniere, |p, f, couleur| p
+        .choisir_banniere(&f, &couleur));
+    rappel_profil!(on_deplacer, |p, f, dx, dy| p.deplacer_recadrage(&f, dx, dy));
+    rappel_profil!(on_zoomer, |p, f, zoom| p.zoomer_recadrage(&f, zoom));
+    rappel_profil!(on_valider_recadrage, |p, f| p.valider_recadrage(&f));
+    rappel_profil!(on_fermer_recadrage, |p, f| p.fermer_recadrage(&f));
     let nouveau = f.global::<DonneesNouveauPrive>();
     macro_rules! rappel_nouveau {
         ($methode:ident, |$pont:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
@@ -829,6 +1268,7 @@ struct Contexte {
     runtime: tokio::runtime::Handle,
     focus: Arc<AtomicBool>,
     observateur: Observateur,
+    admin: EmplacementAdmin,
 }
 
 impl Contexte {
@@ -887,12 +1327,22 @@ async fn cycle(
                 }
             }
             Etat::Invitation { .. } => dernier_rejoint = None,
+            Etat::Administration { sections } => {
+                dernier_rejoint = None;
+                if let Some(ancienne) = session.take() {
+                    drop(ancienne.arreter(&contexte));
+                }
+                ouvrir_administration_seule(&contexte, sections.clone());
+            }
             _ => {
                 dernier_rejoint = None;
                 if let Some(ancienne) = session.take() {
                     drop(ancienne.arreter(&contexte));
                 }
             }
+        }
+        if !matches!(etat, Etat::Administration { .. }) {
+            fermer_administration_seule(&contexte);
         }
         tokio::select! {
             changement = etats.changed() => if changement.is_err() {
@@ -905,6 +1355,36 @@ async fn cycle(
         let _ = ancienne.arreter(&contexte).await;
     }
     let _ = fini.send(());
+}
+
+fn ouvrir_administration_seule(contexte: &Contexte, sections: Vec<SectionAdmin>) {
+    let mut seule = contexte.admin.lock().unwrap_or_else(|e| e.into_inner());
+    if seule.is_some() {
+        return;
+    }
+    let Some(client) = contexte.fabrique.client() else {
+        return;
+    };
+    let admin = PontAdmin::nouveau(
+        client,
+        contexte.fenetre.clone(),
+        contexte.runtime.clone(),
+        Arc::new(|| chrono::Local::now().offset().local_minus_utc() / 60),
+    );
+    admin.definir_fichiers(contexte.fabrique.fichiers());
+    *seule = Some(admin.clone());
+    contexte.sur_l_interface(move |f| admin.ouvrir_seule(f, sections));
+}
+
+fn fermer_administration_seule(contexte: &Contexte) {
+    let ancienne = contexte
+        .admin
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take();
+    if let Some(admin) = ancienne {
+        contexte.sur_l_interface(move |f| admin.oublier(f));
+    }
 }
 
 fn demarrer_session(contexte: &Contexte, compte: String) -> SessionActive {
@@ -1018,6 +1498,13 @@ async fn session(
         pont.messagerie().fenetre_active(false);
     }
     pont.vocal().definir_fichiers(contexte.fabrique.fichiers());
+    pont.admin().definir_fichiers(contexte.fabrique.fichiers());
+    pont.signalements()
+        .definir_capture(contexte.fabrique.ecrans());
+    pont.signalements()
+        .definir_journal(contexte.fabrique.journal());
+    pont.signalements()
+        .definir_dossier(Some(contexte.memoire.dossier().to_path_buf()));
     let outils = contexte.fabrique.vocal();
     if let Some(outils) = &outils {
         pont.vocal().brancher(outils.clone());

@@ -2225,6 +2225,8 @@ components:
         preview: {type: boolean, description: "false : « Nouveau message de X » sans contenu"}
         sound: {type: boolean}
         ignore_group: {type: array, items: {type: string, format: uuid}, description: "serveurs dont @everyone et @here sont ignorés (ni notification, ni compteur) ; absent = aucun"}
+        general: {type: string, enum: [all, mentions, none], description: "niveau général, après ceux du salon, de la conversation privée et du serveur ; absent = défaut ; en privé, seul none s'applique (sinon tout)"}
+        mutes: {type: object, additionalProperties: {type: integer}, description: "sourdines : serveur, salon ou conversation privée → fin en millisecondes depuis l'époque Unix (0 = jusqu'à réactivation) ; une sourdine active coupe tout, avant les niveaux ; les sourdines échues sont ignorées et retirées à l'enregistrement"}
     Error:
       type: object
       properties: {error: {type: string}, message: {type: string}}

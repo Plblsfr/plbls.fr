@@ -8,6 +8,10 @@ import { DonneesRecherche } from "recherche.slint";
 import { VueMessages } from "../messagerie/vue.slint";
 import { DonneesVocal } from "../vocal/donnees.slint";
 import { VueSalonVocal } from "../vocal/vue.slint";
+import { PageParametres, DonneesParametres } from "../parametres/page.slint";
+import { PageReglagesServeur, DonneesReglagesServeur } from "reglages-serveur.slint";
+import { PageAdmin } from "../admin/page.slint";
+import { DonneesAdmin } from "../admin/donnees.slint";
 
 export component Contenu inherits Rectangle {
     callback rejoindre();
@@ -16,7 +20,7 @@ export component Contenu inherits Rectangle {
         Bandeau {
             etat: DonneesCoquille.bandeau;
         }
-        if !DonneesVocal.plein-cadre: Rectangle {
+        if !DonneesVocal.plein-cadre && !(DonneesParametres.ouverte || DonneesReglagesServeur.ouverte || DonneesAdmin.ouverte): Rectangle {
             height: 60px;
             HorizontalLayout {
                 padding-left: DonneesCoquille.panneau-replie ? Espace.e3 : Espace.e6;
@@ -124,19 +128,28 @@ export component Contenu inherits Rectangle {
                 background: Theme.trait;
             }
         }
-        if DonneesCoquille.vue.genre == GenreVue.accueil: VueAccueil {
+        if DonneesParametres.ouverte: PageParametres {
+            vertical-stretch: 1;
+        }
+        if DonneesReglagesServeur.ouverte && !DonneesParametres.ouverte: PageReglagesServeur {
+            vertical-stretch: 1;
+        }
+        if DonneesAdmin.ouverte && !DonneesParametres.ouverte && !DonneesReglagesServeur.ouverte: PageAdmin {
+            vertical-stretch: 1;
+        }
+        if !(DonneesParametres.ouverte || DonneesReglagesServeur.ouverte || DonneesAdmin.ouverte) && DonneesCoquille.vue.genre == GenreVue.accueil: VueAccueil {
             vertical-stretch: 1;
             rejoindre => {
                 root.rejoindre();
             }
         }
-        if (DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active: VueMessages {
+        if !(DonneesParametres.ouverte || DonneesReglagesServeur.ouverte || DonneesAdmin.ouverte) && (DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active: VueMessages {
             vertical-stretch: 1;
         }
-        if DonneesCoquille.vue.genre == GenreVue.vocal: VueSalonVocal {
+        if !(DonneesParametres.ouverte || DonneesReglagesServeur.ouverte || DonneesAdmin.ouverte) && DonneesCoquille.vue.genre == GenreVue.vocal: VueSalonVocal {
             vertical-stretch: 1;
         }
-        if DonneesCoquille.vue.genre != GenreVue.accueil && DonneesCoquille.vue.genre != GenreVue.vocal && !((DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active): VerticalLayout {
+        if !(DonneesParametres.ouverte || DonneesReglagesServeur.ouverte || DonneesAdmin.ouverte) && DonneesCoquille.vue.genre != GenreVue.accueil && DonneesCoquille.vue.genre != GenreVue.vocal && !((DonneesCoquille.vue.genre == GenreVue.salon || DonneesCoquille.vue.genre == GenreVue.prive) && DonneesMessagerie.active): VerticalLayout {
             vertical-stretch: 1;
             alignment: center;
             padding: Espace.e8;

@@ -1,0 +1,944 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Defilement, Etiquette } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { Titre, Note, Carte, Alerte, IconeServeur } from "../coquille/reglages-serveur.slint";
+import { DonneesAdmin, OngletAdmin, CleValeurAdmin } from "donnees.slint";
+import { OngletBadgesAdmin } from "badges.slint";
+import { OngletSignalementsAdmin } from "signalements.slint";
+import { OngletAccesAdmin } from "acces.slint";
+
+component Entete inherits Text {
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    overflow: elide;
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.demi-gras;
+    letter-spacing: 0.8px;
+}
+
+component Ligne inherits Rectangle {
+    in property <bool> derniere: false;
+    in property <bool> alerte: false;
+    min-height: 44px;
+    background: root.alerte ? Theme.danger-fond : transparent;
+    if !root.derniere: Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.trait;
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: Espace.e3;
+        @children
+    }
+}
+
+component Cellule inherits Text {
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    vertical-alignment: center;
+    overflow: elide;
+    font-size: 13.5px;
+    color: Theme.encre;
+}
+
+component Mono inherits Cellule {
+    font-family: Typo.mono;
+    font-size: Typo.minuscule;
+}
+
+component ListeCles inherits VerticalLayout {
+    in property <[CleValeurAdmin]> lignes;
+    for l[i] in root.lignes: Ligne {
+        derniere: i == root.lignes.length - 1;
+        Cellule {
+            horizontal-stretch: 1;
+            text: l.cle;
+            color: Theme.encre-2;
+        }
+        if l.etiquette: VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 22px;
+                width: libelle.preferred-width + 16px;
+                border-radius: Rayon.pilule;
+                background: l.ok ? Theme.ok-fond : Theme.papier-3;
+                libelle := Text {
+                    text: l.valeur;
+                    color: l.ok ? Theme.ok : Theme.gris;
+                    font-size: Typo.minuscule;
+                    font-weight: Typo.demi-gras;
+                }
+            }
+        }
+        if !l.etiquette: Mono {
+            horizontal-stretch: 1.6;
+            text: l.valeur;
+            horizontal-alignment: right;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component OngletNavAdmin {
+    in property <OngletAdmin> onglet;
+    in property <bool> actif;
+    property <int> retour: DonneesAdmin.retour-focus;
+    property <bool> utilisable: Calques.ouverts == 0;
+    min-height: 36px;
+    horizontal-stretch: 1;
+    accessible-role: tab;
+    accessible-label: onglet.libelle;
+    accessible-item-selected: actif;
+    accessible-enabled: utilisable;
+    accessible-action-default => {
+        DonneesAdmin.choisir(root.onglet.id);
+    }
+    forward-focus: portee;
+    init => {
+        if (root.actif && DonneesAdmin.focus-initial) {
+            DonneesAdmin.focus-initial = false;
+            portee.focus();
+        }
+    }
+    changed retour => {
+        if (root.actif) {
+            portee.focus();
+        }
+    }
+    Rectangle {
+        border-radius: Rayon.s;
+        background: root.actif ? Theme.surface : zone.has-hover ? Theme.surface.with-alpha(0.55) : transparent;
+        border-width: root.actif ? 1px : 0;
+        border-color: Theme.trait;
+        animate background { duration: Mouvement.d; easing: Courbes.sortie; }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        actif: portee.has-focus && portee.clavier;
+    }
+    portee := FocusScope {
+        property <bool> clavier: false;
+        enabled: root.utilisable;
+        focus-on-click: false;
+        focus-gained(raison) => {
+            self.clavier = raison != FocusReason.pointer-click;
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesAdmin.choisir(root.onglet.id);
+                return accept;
+            }
+            if (e.text == Key.DownArrow) {
+                DonneesAdmin.deplacer(1);
+                return accept;
+            }
+            if (e.text == Key.UpArrow) {
+                DonneesAdmin.deplacer(-1);
+                return accept;
+            }
+            return reject;
+        }
+        zone := TouchArea {
+            enabled: root.utilisable;
+            mouse-cursor: pointer;
+            clicked => {
+                portee.focus();
+                DonneesAdmin.choisir(root.onglet.id);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.onglet.icone;
+                taille: 16px;
+                couleur: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+            }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.onglet.libelle;
+            color: root.actif || zone.has-hover ? Theme.encre : Theme.gris;
+            font-size: 14.5px;
+            font-weight: root.actif ? Typo.demi-gras : Typo.normal;
+            overflow: elide;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component OngletUtilisateurs inherits Carte {
+    HorizontalLayout {
+        spacing: Espace.e3;
+        Titre {
+            text: "Utilisateurs";
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        Champ {
+            preferred-width: 240px;
+            horizontal-stretch: 0;
+            indice: "Rechercher un pseudo";
+            valeur <=> DonneesAdmin.recherche;
+            valide => {
+                DonneesAdmin.chercher-comptes();
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Rechercher";
+                clique => {
+                    DonneesAdmin.chercher-comptes();
+                }
+            }
+        }
+    }
+    VerticalLayout {
+        accessible-role: table;
+        accessible-label: "Utilisateurs";
+        Ligne {
+            Entete {
+                text: "PSEUDO";
+                horizontal-stretch: 2;
+            }
+            Entete {
+                text: "INSCRIT";
+                horizontal-stretch: 3;
+            }
+            Entete {
+                text: "ACTIVITÉ";
+                horizontal-stretch: 3;
+            }
+            Rectangle {
+                width: 110px;
+            }
+        }
+        for u[i] in DonneesAdmin.comptes: Ligne {
+            derniere: i == DonneesAdmin.comptes.length - 1;
+            alerte: u.suspendu;
+            accessible-role: list-item;
+            accessible-label: u.pseudo;
+            HorizontalLayout {
+                horizontal-stretch: 2;
+                spacing: Espace.e2;
+                Cellule {
+                    text: u.pseudo;
+                    font-weight: Typo.gras;
+                }
+                if u.suspendu: VerticalLayout {
+                    alignment: center;
+                    Etiquette {
+                        texte: "suspendu";
+                    }
+                }
+            }
+            Mono {
+                horizontal-stretch: 3;
+                text: u.inscrit;
+            }
+            Cellule {
+                horizontal-stretch: 3;
+                text: u.activite;
+                color: Theme.gris;
+                font-size: Typo.petit;
+            }
+            HorizontalLayout {
+                width: 110px;
+                alignment: end;
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: u.suspendu ? "Rétablir" : "Suspendre";
+                        description: (u.suspendu ? "Rétablir " : "Suspendre ") + u.pseudo;
+                        variante: u.suspendu ? VarianteBouton.primaire : VarianteBouton.secondaire;
+                        clique => {
+                            DonneesAdmin.basculer-suspension(i);
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesAdmin.comptes.length == 0: Ligne {
+            derniere: true;
+            Note {
+                text: "Aucun résultat";
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component OngletServeurs inherits Carte {
+    Titre {
+        text: "Serveurs";
+    }
+    VerticalLayout {
+        accessible-role: table;
+        accessible-label: "Serveurs";
+        Ligne {
+            Entete {
+                text: "SERVEUR";
+                horizontal-stretch: 3;
+            }
+            Entete {
+                text: "MEMBRES";
+                horizontal-stretch: 2;
+            }
+            Entete {
+                text: "MESSAGES";
+                horizontal-stretch: 2;
+            }
+            Entete {
+                text: "DERNIER MESSAGE";
+                horizontal-stretch: 3;
+            }
+            Rectangle {
+                width: 100px;
+            }
+        }
+        for s[i] in DonneesAdmin.serveurs: Ligne {
+            derniere: i == DonneesAdmin.serveurs.length - 1;
+            accessible-role: list-item;
+            accessible-label: s.nom;
+            HorizontalLayout {
+                horizontal-stretch: 3;
+                spacing: Espace.e2;
+                VerticalLayout {
+                    alignment: center;
+                    IconeServeur {
+                        cote: 28px;
+                        rayon: 9px;
+                        a-image: false;
+                        initiales: s.initiales;
+                    }
+                }
+                Cellule {
+                    text: s.nom;
+                    font-weight: Typo.gras;
+                }
+            }
+            Mono {
+                horizontal-stretch: 2;
+                text: s.membres;
+            }
+            Mono {
+                horizontal-stretch: 2;
+                text: s.messages;
+            }
+            Mono {
+                horizontal-stretch: 3;
+                text: s.dernier;
+                color: Theme.gris;
+            }
+            HorizontalLayout {
+                width: 100px;
+                alignment: end;
+                VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        texte: "Supprimer";
+                        description: "Supprimer le serveur " + s.nom;
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesAdmin.supprimer-serveur(i);
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesAdmin.serveurs.length == 0: Ligne {
+            derniere: true;
+            Note {
+                text: "Aucun serveur";
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component OngletBot inherits Carte {
+    max-width: 720px;
+    Titre {
+        text: "Bot « Estompe »";
+    }
+    Note {
+        text: "Messages privés envoyés par le compte « Estompe » (lecture seule pour les utilisateurs).";
+    }
+    Champ {
+        etiquette: "Destinataire";
+        indice: "Pseudo du destinataire (vide : tous les comptes)";
+        valeur <=> DonneesAdmin.bot-destinataire;
+    }
+    VerticalLayout {
+        spacing: Espace.e1;
+        Text {
+            text: "Message";
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        Rectangle {
+            height: 104px;
+            border-radius: Rayon.s;
+            background: Theme.surface;
+            border-width: message.has-focus ? 2px : 1px;
+            border-color: message.has-focus ? Theme.encre : Theme.trait-fort;
+            accessible-role: text-input;
+            accessible-label: "Message";
+            accessible-value: DonneesAdmin.bot-message;
+            if DonneesAdmin.bot-message == "": Text {
+                x: Espace.e3;
+                y: 10px;
+                text: "Message";
+                color: Theme.gris-2;
+            }
+            message := TextInput {
+                x: Espace.e3;
+                y: 10px;
+                width: parent.width - 2 * Espace.e3;
+                height: parent.height - 20px;
+                single-line: false;
+                wrap: word-wrap;
+                enabled: Calques.ouverts == 0;
+                text <=> DonneesAdmin.bot-message;
+                color: Theme.encre;
+                font-size: Typo.corps;
+                selection-background-color: Theme.rose;
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Espace.e2;
+        Note {
+            text: "Confirmation avant envoi";
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        Bouton {
+            texte: "Envoyer";
+            icone: "envoi";
+            variante: VarianteBouton.primaire;
+            actif: DonneesAdmin.bot-message != "";
+            en-cours: DonneesAdmin.en-cours;
+            clique => {
+                DonneesAdmin.envoyer-bot();
+            }
+        }
+    }
+    Rectangle {
+        height: 1px;
+        background: Theme.trait;
+    }
+    Entete {
+        text: "NOTES DE VERSION ENVOYÉES";
+    }
+    for v in DonneesAdmin.versions-envoyees: Mono {
+        text: v;
+    }
+    if DonneesAdmin.versions-envoyees.length == 0: Note {
+        text: "Aucune";
+    }
+}
+
+component OngletStatistiques inherits VerticalLayout {
+    spacing: Espace.e5;
+    for rangee in Math.ceil(DonneesAdmin.tuiles.length / 2): HorizontalLayout {
+        spacing: 14px;
+        for t in [DonneesAdmin.tuiles[rangee * 2], DonneesAdmin.tuiles[rangee * 2 + 1]]: Rectangle {
+            horizontal-stretch: 1;
+            border-radius: Rayon.l;
+            background: Theme.surface;
+            border-width: t.danger ? 1.5px : 1px;
+            border-color: t.danger ? Theme.danger : Theme.trait;
+            accessible-role: groupbox;
+            accessible-label: t.titre;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 4px;
+                Entete {
+                    text: t.titre;
+                    color: t.danger ? Theme.danger : Theme.gris;
+                }
+                Text {
+                    text: t.valeur;
+                    color: t.danger ? Theme.danger : Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 30px;
+                    font-weight: Typo.gras;
+                    letter-spacing: -1px;
+                    overflow: elide;
+                }
+                if t.a-jauge: Rectangle {
+                    height: 6px;
+                    border-radius: 3px;
+                    background: Theme.papier-3;
+                    accessible-role: progress-indicator;
+                    accessible-label: "Stockage utilisé";
+                    accessible-value: Math.round(t.jauge);
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * t.jauge / 100;
+                        border-radius: 3px;
+                        background: Theme.encre;
+                    }
+                }
+                if !t.lien: Note {
+                    text: t.note;
+                }
+                if t.lien: Text {
+                    text: t.note;
+                    color: Theme.encre;
+                    font-size: Typo.petit;
+                    accessible-role: button;
+                    accessible-label: t.note;
+                    accessible-action-default => {
+                        DonneesAdmin.choisir("journaux");
+                    }
+                    TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            DonneesAdmin.choisir("journaux");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: Espace.e5;
+        VerticalLayout {
+            horizontal-stretch: 6;
+            alignment: start;
+            Carte {
+                HorizontalLayout {
+                    Titre {
+                        text: "En direct";
+                        horizontal-stretch: 1;
+                    }
+                    if DonneesAdmin.a-direct: Text {
+                        text: DonneesAdmin.connexions;
+                        color: Theme.gris;
+                        font-family: Typo.mono;
+                        font-size: Typo.minuscule;
+                        vertical-alignment: center;
+                    }
+                }
+                if !DonneesAdmin.a-direct: Note {
+                    text: "Chargement…";
+                }
+                if DonneesAdmin.a-direct: Note {
+                    text: DonneesAdmin.appareils;
+                }
+                if DonneesAdmin.a-direct: VerticalLayout {
+                    for o[i] in DonneesAdmin.en-ligne: Ligne {
+                        derniere: i == DonneesAdmin.en-ligne.length - 1;
+                        Cellule {
+                            horizontal-stretch: 1;
+                            text: o.pseudo;
+                            font-weight: Typo.gras;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Etiquette {
+                                texte: o.plateforme;
+                            }
+                        }
+                        Text {
+                            text: o.version;
+                            color: Theme.gris;
+                            font-family: Typo.mono;
+                            font-size: Typo.minuscule;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if DonneesAdmin.en-ligne.length == 0: Note {
+                        text: "Personne";
+                    }
+                }
+                if DonneesAdmin.a-direct: Text {
+                    text: "Salons vocaux actifs";
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 17px;
+                    font-weight: Typo.gras;
+                }
+                if DonneesAdmin.a-direct: VerticalLayout {
+                    spacing: Espace.e2;
+                    for v in DonneesAdmin.vocaux: VerticalLayout {
+                        spacing: 2px;
+                        HorizontalLayout {
+                            spacing: Espace.e2;
+                            VerticalLayout {
+                                alignment: center;
+                                Icone {
+                                    nom: "vol";
+                                    taille: 16px;
+                                }
+                            }
+                            Cellule {
+                                horizontal-stretch: 1;
+                                text: v.titre;
+                            }
+                            Text {
+                                text: v.compte;
+                                font-family: Typo.mono;
+                                font-size: Typo.minuscule;
+                                color: Theme.encre;
+                                vertical-alignment: center;
+                            }
+                        }
+                        for p in v.participants: Text {
+                            x: 24px;
+                            text: p;
+                            color: Theme.encre-2;
+                            font-size: Typo.petit;
+                        }
+                    }
+                    if DonneesAdmin.vocaux.length == 0: Note {
+                        text: "Aucun";
+                    }
+                }
+            }
+        }
+        if DonneesAdmin.a-vue: VerticalLayout {
+            horizontal-stretch: 5;
+            spacing: Espace.e5;
+            alignment: start;
+            Carte {
+                Titre {
+                    text: "Configuration";
+                }
+                ListeCles {
+                    lignes: DonneesAdmin.configuration;
+                }
+            }
+            Carte {
+                Titre {
+                    text: "Versions";
+                }
+                ListeCles {
+                    lignes: DonneesAdmin.versions;
+                }
+            }
+        }
+    }
+}
+
+component OngletJournaux inherits VerticalLayout {
+    spacing: Espace.e5;
+    Carte {
+        Titre {
+            text: "Actions d'administration";
+        }
+        VerticalLayout {
+            accessible-role: table;
+            accessible-label: "Actions d'administration";
+            Ligne {
+                Entete {
+                    text: "DATE";
+                    horizontal-stretch: 2;
+                }
+                Entete {
+                    text: "PAR";
+                    horizontal-stretch: 1;
+                }
+                Entete {
+                    text: "ACTION";
+                    horizontal-stretch: 2;
+                }
+                Entete {
+                    text: "CIBLE";
+                    horizontal-stretch: 2;
+                }
+            }
+            for l[i] in DonneesAdmin.actions: Ligne {
+                derniere: i == DonneesAdmin.actions.length - 1;
+                Mono {
+                    horizontal-stretch: 2;
+                    text: l.date;
+                    color: Theme.gris;
+                }
+                Cellule {
+                    horizontal-stretch: 1;
+                    text: l.acteur;
+                    font-weight: Typo.gras;
+                }
+                Cellule {
+                    horizontal-stretch: 2;
+                    text: l.action;
+                }
+                Cellule {
+                    horizontal-stretch: 2;
+                    text: l.cible;
+                    color: Theme.gris;
+                    font-size: Typo.petit;
+                }
+            }
+            if DonneesAdmin.actions.length == 0: Ligne {
+                derniere: true;
+                Note {
+                    text: "Aucune";
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    Carte {
+        Titre {
+            text: "Erreurs serveur (30 jours)";
+        }
+        if DonneesAdmin.erreurs.length == 0: Note {
+            text: "Aucune";
+        }
+        if DonneesAdmin.erreurs.length > 0: Rectangle {
+            border-radius: Rayon.s;
+            background: Theme.encre;
+            accessible-role: list;
+            accessible-label: "Erreurs serveur";
+            VerticalLayout {
+                padding: Espace.e3;
+                spacing: 2px;
+                for e in DonneesAdmin.erreurs: HorizontalLayout {
+                    spacing: Espace.e3;
+                    Text {
+                        text: e.date;
+                        color: Theme.papier.with-alpha(0.65);
+                        font-family: Typo.mono;
+                        font-size: 11.5px;
+                    }
+                    Text {
+                        text: e.statut;
+                        color: Theme.papier;
+                        font-family: Typo.mono;
+                        font-size: 11.5px;
+                        font-weight: Typo.gras;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: e.requete;
+                        color: Theme.papier;
+                        font-family: Typo.mono;
+                        font-size: 11.5px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component PageAdmin inherits Rectangle {
+    callback se-deconnecter();
+    background: Theme.papier;
+    property <int> calques: Calques.ouverts;
+    changed calques => {
+        if (root.calques == 0) {
+            DonneesAdmin.retour-focus += 1;
+        }
+    }
+    accessible-role: groupbox;
+    accessible-label: "Administration d'Estompe";
+    FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Escape && Calques.ouverts == 0 && !DonneesAdmin.seule) {
+                DonneesAdmin.fermer();
+                return accept;
+            }
+            return reject;
+        }
+        HorizontalLayout {
+            Rectangle {
+                width: DonneesAdmin.seule ? 272px : 240px;
+                background: Theme.papier-2;
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    background: Theme.trait;
+                }
+                VerticalLayout {
+                    Rectangle {
+                        height: 60px;
+                        HorizontalLayout {
+                            padding-left: DonneesAdmin.seule ? Espace.e5 : Espace.e2;
+                            padding-right: Espace.e3;
+                            spacing: Espace.e2;
+                            if !DonneesAdmin.seule: VerticalLayout {
+                                alignment: center;
+                                Bouton {
+                                    icone: "gauche";
+                                    description: "Retour";
+                                    variante: VarianteBouton.fantome;
+                                    clique => {
+                                        DonneesAdmin.fermer();
+                                    }
+                                }
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: "Administration";
+                                color: Theme.encre;
+                                font-family: Typo.titre;
+                                font-size: 15px;
+                                font-weight: Typo.gras;
+                                vertical-alignment: center;
+                                accessible-role: text;
+                            }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.trait;
+                        }
+                    }
+                    VerticalLayout {
+                        padding: Espace.e3;
+                        spacing: 2px;
+                        alignment: start;
+                        vertical-stretch: 1;
+                        accessible-role: tab-list;
+                        accessible-label: "Sections";
+                        Entete {
+                            text: "SECTIONS";
+                            height: 24px;
+                            x: Espace.e2;
+                        }
+                        for o in DonneesAdmin.onglets: OngletNavAdmin {
+                            onglet: o;
+                            actif: o.id == DonneesAdmin.onglet;
+                        }
+                    }
+                    if DonneesAdmin.seule: Rectangle {
+                        Rectangle {
+                            y: 0;
+                            height: 1px;
+                            background: Theme.trait;
+                        }
+                        VerticalLayout {
+                            padding-left: 18px;
+                            padding-right: 18px;
+                            padding-top: Espace.e3;
+                            padding-bottom: 18px;
+                            spacing: Espace.e2;
+                            Note {
+                                text: "Ton compte n'a pas accès à la messagerie d'Estompe : seule l'administration est ouverte.";
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                Bouton {
+                                    texte: "Se déconnecter";
+                                    icone: "sortie";
+                                    variante: VarianteBouton.fantome;
+                                    clique => {
+                                        root.se-deconnecter();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Rectangle {
+                    height: 60px;
+                    HorizontalLayout {
+                        padding-left: Espace.e6;
+                        padding-right: Espace.e4;
+                        spacing: 10px;
+                        Text {
+                            text: "Estompe ›";
+                            color: Theme.gris;
+                            font-size: 14px;
+                            font-weight: Typo.moyen;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: DonneesAdmin.titre;
+                            color: Theme.encre;
+                            font-family: Typo.titre;
+                            font-size: 20px;
+                            font-weight: Typo.gras;
+                            letter-spacing: -0.4px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            accessible-role: text;
+                        }
+                        if DonneesAdmin.onglet == "statistiques": HorizontalLayout {
+                            spacing: 6px;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle {
+                                    width: 8px;
+                                    height: 8px;
+                                    border-radius: 4px;
+                                    background: Theme.ok;
+                                }
+                            }
+                            Note {
+                                text: "actualisé toutes les 5 s";
+                                vertical-alignment: center;
+                            }
+                        }
+                        if !DonneesAdmin.seule: VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Fermer";
+                                icone: "x";
+                                description: "Fermer l'administration";
+                                clique => {
+                                    DonneesAdmin.fermer();
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        background: Theme.trait;
+                    }
+                }
+                Defilement {
+                    vertical-stretch: 1;
+                    hauteur-contenu: corps.preferred-height;
+                    corps := VerticalLayout {
+                        alignment: start;
+                        padding: Espace.e6;
+                        spacing: Espace.e5;
+                        accessible-role: tab-panel;
+                        if DonneesAdmin.erreur != "": Alerte {
+                            texte: DonneesAdmin.erreur;
+                        }
+                        if DonneesAdmin.info != "": Alerte {
+                            texte: DonneesAdmin.info;
+                            ok: true;
+                        }
+                        if DonneesAdmin.onglet == "utilisateurs": OngletUtilisateurs { }
+                        if DonneesAdmin.onglet == "serveurs": OngletServeurs { }
+                        if DonneesAdmin.onglet == "badges": OngletBadgesAdmin { }
+                        if DonneesAdmin.onglet == "signalements": OngletSignalementsAdmin { }
+                        if DonneesAdmin.onglet == "bot": OngletBot { }
+                        if DonneesAdmin.onglet == "statistiques": OngletStatistiques { }
+                        if DonneesAdmin.onglet == "journaux": OngletJournaux { }
+                        if DonneesAdmin.onglet == "acces": OngletAccesAdmin { }
+                    }
+                }
+            }
+        }
+    }
+}

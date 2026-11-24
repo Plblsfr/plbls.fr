@@ -218,6 +218,8 @@ pub fn video_hevc(dossier: &std::path::Path) -> Option<std::path::PathBuf> {
     Some(chemin)
 }
 
+pub mod acces;
+
 pub mod coquille {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -861,6 +863,111 @@ pub mod coquille {
         etat
     }
 
+    pub fn reponses_admin() -> BTreeMap<&'static str, Value> {
+        let mut reponses = BTreeMap::new();
+        let mut json = |chemin: &'static str, valeur: Value| {
+            reponses.insert(chemin, valeur);
+        };
+        json(
+            "/admin/users",
+            json!([
+                {"id": "u2", "pseudo": "alice", "created_at": "2026-02-03T10:00:00Z", "suspended": false, "servers": 3, "messages": 1520},
+                {"id": "u3", "pseudo": "marc", "created_at": "2026-05-14T10:00:00Z", "suspended": true, "servers": 1, "messages": 12}
+            ]),
+        );
+        json(
+            "/admin/overview",
+            json!({
+                "version": "0.9.2",
+                "servers": [
+                    {"id": "s1", "name": "Les amis", "members": 12, "channels": 5, "messages": 48211, "last_message_at": "2026-11-19T11:42:00Z"},
+                    {"id": "s9", "name": "Atelier", "members": 3, "channels": 2, "messages": 0, "last_message_at": null}
+                ],
+                "config": {
+                    "settings": {"push_web": true, "push_android": false, "giphy": true, "metrics": false, "allow_video": true, "livekit_url": "wss://voix.example", "max_storage": 21474836480u64, "origins": ["https://chat.example"]},
+                    "max_file_size": 52428800, "max_participants": 25, "screen_max_fps": 30, "screen_max_height": 1080
+                }
+            }),
+        );
+        json(
+            "/admin/badges",
+            json!([
+                {"id": "b1", "name": "Fondateur", "icon": "🏅", "color": "#d0688a", "description": "Présent depuis le premier jour", "icon_version": 0, "sort_order": 1, "created_at": "2026-01-01T00:00:00Z", "holders": [{"id": "u2", "pseudo": "alice"}, {"id": "u1", "pseudo": "bob"}]},
+                {"id": "b2", "name": "Étoile", "icon": "⭐", "color": "#e0a030", "description": "", "icon_version": 0, "sort_order": 2, "created_at": "2026-03-01T00:00:00Z", "holders": []},
+                {"id": "b3", "name": "Artiste", "icon": "🎨", "color": "#2f5d8a", "description": "Dessins et musique", "icon_version": 0, "sort_order": 3, "created_at": "2026-02-01T00:00:00Z", "holders": [{"id": "u3", "pseudo": "marc"}]}
+            ]),
+        );
+        json(
+            "/admin/bot",
+            json!({"pseudo": "Estompe", "releases": ["0.9.0", "0.9.1"]}),
+        );
+        json(
+            "/admin/stats",
+            json!({"users": 1284, "new_users_7d": 31, "suspended": 2, "servers": 87, "messages": 412350, "messages_24h": 2311, "files": 5120, "storage_bytes": 7516192768u64, "errors_24h": 3}),
+        );
+        json(
+            "/admin/live",
+            json!({"connections": 42, "online": [{"pseudo": "alice", "platform": "windows", "version": "0.9.2"}, {"pseudo": "bob", "platform": "", "version": "0.9.1"}], "voice": [{"server": "Les amis", "channel": "Salon vocal", "participants": [{"user_id": "u2", "pseudo": "alice", "screen": true}, {"user_id": "u1", "pseudo": "bob", "camera": true}]}]}),
+        );
+        json(
+            "/admin/log",
+            json!([
+                {"at": "2026-11-19T10:00:00Z", "actor": "eve", "action": "badge.grant", "target": "Fondateur"},
+                {"at": "2026-11-18T09:30:00Z", "actor": "eve", "action": "user.suspend", "target": ""}
+            ]),
+        );
+        json(
+            "/admin/errors",
+            json!([{"at": "2026-11-19T08:00:00Z", "method": "GET", "path": "/servers/s1", "status": 502}]),
+        );
+        reponses
+    }
+
+    pub fn reponses_signalements() -> BTreeMap<&'static str, Value> {
+        let mut reponses = BTreeMap::new();
+        let liste = json!([
+            {"id": "r1", "author": "alice", "created_at": "2026-11-19T09:12:00Z", "title": "Le vocal coupe après cinq minutes", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null, "seen": false},
+            {"id": "r2", "author": "marc", "created_at": "2026-11-18T17:40:00Z", "title": "Notifications en double", "category": "notifications", "platform": "android", "status": "in_progress", "duplicate_of": null, "seen": true},
+            {"id": "r3", "author": "bob", "created_at": "2026-11-17T08:05:00Z", "title": "Partage d'écran noir", "category": "ecran", "platform": "web", "status": "resolved", "duplicate_of": null, "seen": true}
+        ]);
+        reponses.insert("/admin/reports", liste);
+        reponses.insert(
+            "/admin/reports/r1",
+            json!({"id": "r1", "author": "alice", "created_at": "2026-11-19T09:12:00Z", "title": "Le vocal coupe après cinq minutes", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null, "seen": true,
+                "description": "Dans le salon vocal des amis, le son se coupe au bout de cinq minutes. Je dois quitter puis revenir.",
+                "tech": {"Plateforme": "desktop", "Version": "0.9.2", "Système": "windows x86_64", "Écran": "serveur « Les amis », salon « Salon vocal »", "Vocal": "connecte dans « Salon vocal »"},
+                "logs": "2026-11-19 09:10:02.481 [INFO] vocal: connexion au salon v1\n2026-11-19 09:15:03.004 [WARN] vocal: reconnexion",
+                "notes": "", "attachments": [{"id": "fr1", "expired": false}]}),
+        );
+        reponses.insert(
+            "/reports",
+            json!([
+                {"id": "m1", "created_at": "2026-11-19T09:12:00Z", "title": "Le vocal coupe après cinq minutes", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null},
+                {"id": "m2", "created_at": "2026-11-02T14:00:00Z", "title": "Emoji illisible en mode sombre", "category": "", "platform": "desktop", "status": "resolved", "duplicate_of": null}
+            ]),
+        );
+        reponses
+    }
+
+    pub fn servir_les_signalements(serveur: &ServeurMessages) {
+        for (chemin, valeur) in reponses_signalements() {
+            serveur.servir_fichier(chemin, "application/json", valeur.to_string().into_bytes());
+        }
+        serveur.servir_fichier("/files/fr1", "image/png", png([210, 120, 150]));
+    }
+
+    pub fn servir_l_administration(serveur: &ServeurMessages) {
+        for (chemin, valeur) in reponses_admin() {
+            serveur.servir_fichier(chemin, "application/json", valeur.to_string().into_bytes());
+        }
+    }
+
+    pub fn etat_administrateur() -> Etat {
+        let mut etat = etat();
+        etat.compte.admin = Some(true);
+        etat
+    }
+
     pub fn store(etat: Etat) -> Store {
         store_sur(etat, "http://127.0.0.1:9")
     }
@@ -892,8 +999,17 @@ pub mod coquille {
         pub refus_vocal: Mutex<Option<u16>>,
         pieces: Mutex<BTreeMap<String, Value>>,
         pub contenus: Mutex<BTreeMap<String, Vec<u8>>>,
+        pub serveurs_ajoutes: Mutex<Vec<Value>>,
+        pub emojis: Mutex<Vec<Value>>,
+        pub invitations: Mutex<Vec<Value>>,
+        pub bannis: Mutex<Vec<Value>>,
+        pub detail_s1: Mutex<Option<Value>>,
+        pub surcharges: Mutex<Vec<Value>>,
+        pub repondeur: Mutex<Option<Repondeur>>,
         envoyes: AtomicUsize,
     }
+
+    pub type Repondeur = Arc<dyn Fn(&str, &str, &str) -> Option<(u16, String)> + Send + Sync>;
 
     pub fn contenu_de(n: u64) -> String {
         if n.is_multiple_of(7) {
@@ -951,6 +1067,13 @@ pub mod coquille {
                 refus_vocal: Mutex::new(None),
                 pieces: Mutex::new(BTreeMap::new()),
                 contenus: Mutex::new(BTreeMap::new()),
+                serveurs_ajoutes: Mutex::new(Vec::new()),
+                emojis: Mutex::new(Vec::new()),
+                invitations: Mutex::new(Vec::new()),
+                bannis: Mutex::new(Vec::new()),
+                detail_s1: Mutex::new(None),
+                surcharges: Mutex::new(Vec::new()),
+                repondeur: Mutex::new(None),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -1012,9 +1135,34 @@ pub mod coquille {
                                 .unwrap()
                                 .push((format!("{methode} {chemin}"), corps_recu.clone()));
                         }
-                        let (statut, type_mime, corps) = match s.fichier(&chemin) {
-                            Some((type_mime, octets)) => (200, type_mime, octets),
-                            None => {
+                        if methode == "PUT" {
+                            if let Some(prefixe) = chemin.strip_suffix("/me/avatar") {
+                                s.servir_fichier(
+                                    &format!("{prefixe}/users/u1/avatar"),
+                                    "image/png",
+                                    octets.clone(),
+                                );
+                            }
+                        }
+                        let servi = if methode == "GET" {
+                            s.fichier(&chemin)
+                        } else {
+                            None
+                        };
+                        let repondeur = s.repondeur.lock().unwrap().clone();
+                        let repondu = repondeur.and_then(|r| r(&methode, &chemin, &corps_recu));
+                        if repondu.is_some() {
+                            s.requetes
+                                .lock()
+                                .unwrap()
+                                .push(format!("{methode} {chemin}"));
+                        }
+                        let (statut, type_mime, corps) = match (repondu, servi) {
+                            (Some((statut, corps)), _) => {
+                                (statut, "application/json".to_string(), corps.into_bytes())
+                            }
+                            (None, Some((type_mime, octets))) => (200, type_mime, octets),
+                            (None, None) => {
                                 let (statut, corps) =
                                     s.repondre_avec(&methode, &chemin, &corps_recu);
                                 (statut, "application/json".to_string(), corps.into_bytes())
@@ -1218,7 +1366,22 @@ pub mod coquille {
                 }
                 return (201, m.to_string());
             }
-            if methode == "PATCH" {
+            if methode == "PATCH" && chemin.starts_with("/admin/reports/") {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"));
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let id = chemin.trim_start_matches("/admin/reports/");
+                let mut s = reponses_signalements()
+                    .remove(chemin)
+                    .unwrap_or_else(|| json!({"id": id}));
+                s["status"] = recu["status"].clone();
+                s["duplicate_of"] = recu["duplicate_of"].clone();
+                s["notes"] = recu["notes"].clone();
+                return (200, s.to_string());
+            }
+            if methode == "PATCH" && chemin.starts_with("/messages/") {
                 self.requetes
                     .lock()
                     .unwrap()
@@ -1265,7 +1428,325 @@ pub mod coquille {
             if chemin.starts_with("/search?") {
                 return self.repondre_recherche(chemin);
             }
+            if let Some(reponse) = self.repondre_espaces(methode, chemin, corps) {
+                return reponse;
+            }
             self.repondre(methode, chemin)
+        }
+
+        fn repondre_espaces(
+            &self,
+            methode: &str,
+            chemin: &str,
+            corps: &str,
+        ) -> Option<(u16, String)> {
+            let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+            let noter = || {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"))
+            };
+            let nouveaux = || self.serveurs_ajoutes.lock().unwrap().clone();
+            if let Some(reponse) = self.repondre_reglages(methode, chemin, &recu) {
+                noter();
+                return Some(reponse);
+            }
+            if let Some(reponse) = self.repondre_roles(methode, chemin, &recu) {
+                noter();
+                return Some(reponse);
+            }
+            if let Some(reponse) = self.repondre_moderation(methode, chemin, &recu) {
+                noter();
+                return Some(reponse);
+            }
+            match (methode, chemin) {
+                ("POST", "/servers") => {
+                    noter();
+                    let serveur = json!({"id": "s9", "name": recu["name"], "owner_id": "u1", "icon_version": 0});
+                    self.serveurs_ajoutes.lock().unwrap().push(serveur.clone());
+                    Some((201, serveur.to_string()))
+                }
+                ("POST", "/server-invites/ABCDE-23456/join") => {
+                    noter();
+                    let serveur = json!({"id": "s8", "name": "Club photo", "owner_id": "eve", "icon_version": 0});
+                    self.serveurs_ajoutes.lock().unwrap().push(serveur.clone());
+                    Some((200, serveur.to_string()))
+                }
+                ("POST", c) if c.starts_with("/server-invites/") => {
+                    noter();
+                    Some((
+                        404,
+                        r#"{"error":"not_found","message":"introuvable"}"#.into(),
+                    ))
+                }
+                ("GET", "/servers") => {
+                    noter();
+                    let mut liste: Vec<Value> = serde_json::to_value(&etat().serveurs)
+                        .unwrap()
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    liste.extend(nouveaux());
+                    Some((200, Value::Array(liste).to_string()))
+                }
+                ("GET", c) => {
+                    let id = c.strip_prefix("/servers/")?;
+                    let serveur = nouveaux().into_iter().find(|s| s["id"] == id)?;
+                    noter();
+                    Some((
+                        200,
+                        json!({"server": serveur, "channels": [{"id": format!("{id}-c1"), "name": "accueil", "kind": "text", "position": 1}], "members": [], "roles": [], "permissions": ["manage_channels"]}).to_string(),
+                    ))
+                }
+                ("POST", c) if c.starts_with("/servers/") && c.ends_with("/channels") => {
+                    noter();
+                    if recu["name"] == "refusé" {
+                        return Some((
+                            400,
+                            r#"{"error":"invalid_name","message":"Nom refusé par le serveur"}"#
+                                .into(),
+                        ));
+                    }
+                    let mut salon = json!({"id": "c9", "name": recu["name"], "kind": recu["kind"], "position": 9});
+                    if let Some(limite) = recu.get("user_limit") {
+                        salon["user_limit"] = limite.clone();
+                    }
+                    Some((201, salon.to_string()))
+                }
+                _ => None,
+            }
+        }
+
+        fn repondre_moderation(
+            &self,
+            methode: &str,
+            chemin: &str,
+            recu: &Value,
+        ) -> Option<(u16, String)> {
+            let vide = || Some((204, String::new()));
+            if let Some(salon) = chemin
+                .strip_prefix("/channels/")
+                .and_then(|c| c.strip_suffix("/messages/bulk-delete"))
+            {
+                let n = recu["last"].as_u64().unwrap_or(0).min(3);
+                let ids: Vec<String> = (0..n).map(|i| format!("{salon}-{i}")).collect();
+                return Some((200, json!({ "deleted": ids }).to_string()));
+            }
+            if let Some(requete) = chemin.strip_prefix("/servers/s1/audit-log") {
+                let filtre = requete.strip_prefix("?action=").unwrap_or_default();
+                let journal = [
+                    json!({"at": "2026-11-19T10:20:00Z", "actor": "bob", "actor_id": "u1", "action": "member.ban", "target": "hugo", "reason": "spam"}),
+                    json!({"at": "2026-11-19T09:05:00Z", "actor": "bob", "actor_id": "u1", "action": "member.timeout", "target": "frank", "reason": ""}),
+                    json!({"at": "2026-11-18T18:40:00Z", "actor": "Ève", "actor_id": "eve", "action": "role.create", "target": "Artistes", "reason": ""}),
+                    json!({"at": "2026-11-18T17:00:00Z", "actor": "bob", "actor_id": "u1", "action": "channel.moderation", "target": "annonces", "reason": ""}),
+                    json!({"at": "2026-11-17T08:30:00Z", "actor": "Ève", "actor_id": "eve", "action": "message.bulk_delete", "target": "général", "reason": ""}),
+                ];
+                let liste: Vec<&Value> = journal
+                    .iter()
+                    .filter(|e| e["action"].as_str().unwrap_or_default().starts_with(filtre))
+                    .collect();
+                return Some((200, json!(liste).to_string()));
+            }
+            let mut garde = self.detail_s1.lock().unwrap();
+            let detail = garde.as_mut()?;
+            if let Some(suite) = chemin.strip_prefix("/servers/s1/members/") {
+                let (membre, action) = suite.split_once('/')?;
+                let membres = detail["members"].as_array_mut()?;
+                match (methode, action) {
+                    ("POST", "kick" | "ban") => membres.retain(|m| m["id"] != membre),
+                    ("POST", "warn") => {}
+                    ("PUT", "timeout") => {
+                        let m = membres.iter_mut().find(|m| m["id"] == membre)?;
+                        m["timeout_until"] = json!("2099-01-01T00:00:00Z");
+                    }
+                    ("DELETE", "timeout") => {
+                        let m = membres.iter_mut().find(|m| m["id"] == membre)?;
+                        m["timeout_until"] = Value::Null;
+                    }
+                    ("PUT", "nickname") => {
+                        let m = membres.iter_mut().find(|m| m["id"] == membre)?;
+                        m["nickname"] = recu["nickname"].clone();
+                    }
+                    _ => return None,
+                }
+                return vide();
+            }
+            let suite = chemin.strip_prefix("/servers/s1/channels/")?;
+            let (salon, reste) = suite.split_once('/').unwrap_or((suite, ""));
+            let salons = detail["channels"].as_array_mut()?;
+            match (methode, reste) {
+                ("PUT", "moderation") => {
+                    let c = salons.iter_mut().find(|c| c["id"] == salon)?;
+                    c["slowmode"] = recu["slowmode"].clone();
+                    c["locked"] = recu["locked"].clone();
+                }
+                ("PATCH", "") => {
+                    let c = salons.iter_mut().find(|c| c["id"] == salon)?;
+                    c["name"] = recu["name"].clone();
+                }
+                ("DELETE", "") => salons.retain(|c| c["id"] != salon),
+                _ => return None,
+            }
+            vide()
+        }
+
+        fn repondre_roles(
+            &self,
+            methode: &str,
+            chemin: &str,
+            recu: &Value,
+        ) -> Option<(u16, String)> {
+            let mut garde = self.detail_s1.lock().unwrap();
+            let detail = garde.as_mut()?;
+            let vide = || Some((204, String::new()));
+            let roles = detail["roles"].as_array_mut()?;
+            if let Some(suite) = chemin.strip_prefix("/servers/s1/channels/") {
+                let (salon, reste) = suite.split_once("/overrides")?;
+                let mut surcharges = self.surcharges.lock().unwrap();
+                return match (methode, reste.strip_prefix('/')) {
+                    ("GET", None) => {
+                        let liste: Vec<Value> = surcharges
+                            .iter()
+                            .filter(|o| o["channel_id"] == salon)
+                            .map(|o| json!({"role_id": o["role_id"], "allow": o["allow"], "deny": o["deny"]}))
+                            .collect();
+                        Some((200, Value::Array(liste).to_string()))
+                    }
+                    ("PUT", Some(role)) => {
+                        surcharges.retain(|o| !(o["channel_id"] == salon && o["role_id"] == role));
+                        let vides = |v: &Value| v.as_array().is_none_or(|l| l.is_empty());
+                        if !vides(&recu["allow"]) || !vides(&recu["deny"]) {
+                            surcharges.push(json!({"channel_id": salon, "role_id": role, "allow": recu["allow"], "deny": recu["deny"]}));
+                        }
+                        vide()
+                    }
+                    _ => None,
+                };
+            }
+            match (methode, chemin) {
+                ("GET", "/servers/s1") => Some((200, detail.to_string())),
+                ("POST", "/servers/s1/roles") => {
+                    for r in roles.iter_mut() {
+                        if r["is_default"] != true {
+                            r["position"] = json!(r["position"].as_i64().unwrap_or(0) + 1);
+                        }
+                    }
+                    let role = json!({"id": format!("rn{}", roles.len()), "name": recu["name"], "color": recu["color"], "icon": recu["icon"], "hoist": recu["hoist"], "permissions": recu["permissions"], "position": 1, "is_default": false});
+                    roles.push(role.clone());
+                    Some((201, role.to_string()))
+                }
+                ("PUT", "/servers/s1/roles-order") => {
+                    let ids: Vec<Value> = recu["ids"].as_array().cloned().unwrap_or_default();
+                    let n = ids.len() as i64;
+                    for r in roles.iter_mut() {
+                        if let Some(i) = ids.iter().position(|id| *id == r["id"]) {
+                            r["position"] = json!(n - i as i64);
+                        }
+                    }
+                    vide()
+                }
+                (_, c) if c.starts_with("/servers/s1/roles/") => {
+                    let id = &c["/servers/s1/roles/".len()..];
+                    if methode == "DELETE" {
+                        roles.retain(|r| r["id"] != id);
+                        for m in detail["members"].as_array_mut()?.iter_mut() {
+                            if let Some(l) = m["roles"].as_array_mut() {
+                                l.retain(|r| r != id);
+                            }
+                        }
+                        return vide();
+                    }
+                    let role = roles.iter_mut().find(|r| r["id"] == id)?;
+                    for champ in ["name", "color", "icon", "hoist", "permissions"] {
+                        role[champ] = recu[champ].clone();
+                    }
+                    Some((200, role.to_string()))
+                }
+                (_, c) if c.starts_with("/servers/s1/members/") => {
+                    let (membre, role) = c["/servers/s1/members/".len()..].split_once("/roles/")?;
+                    let m = detail["members"]
+                        .as_array_mut()?
+                        .iter_mut()
+                        .find(|m| m["id"] == membre)?;
+                    let liste = m["roles"].as_array_mut()?;
+                    liste.retain(|r| r != role);
+                    if methode == "PUT" {
+                        liste.push(json!(role));
+                    }
+                    vide()
+                }
+                _ => None,
+            }
+        }
+
+        fn repondre_reglages(
+            &self,
+            methode: &str,
+            chemin: &str,
+            recu: &Value,
+        ) -> Option<(u16, String)> {
+            let liste = |m: &Mutex<Vec<Value>>| Value::Array(m.lock().unwrap().clone()).to_string();
+            let retirer = |m: &Mutex<Vec<Value>>, champ: &str, valeur: &str| {
+                m.lock().unwrap().retain(|v| v[champ] != valeur);
+                Some((204, String::new()))
+            };
+            match (methode, chemin) {
+                ("GET", "/emojis") => Some((200, liste(&self.emojis))),
+                ("GET", "/servers/s1/invites") => Some((200, liste(&self.invitations))),
+                ("POST", "/servers/s1/invites") => {
+                    let mut invitations = self.invitations.lock().unwrap();
+                    let mut invitation = json!({"code": format!("code{}", invitations.len() + 1), "created_by": "bob", "uses": 0});
+                    if let Some(m) = recu.get("max_uses") {
+                        invitation["max_uses"] = m.clone();
+                    }
+                    if recu.get("expires_in").is_some() {
+                        invitation["expires_at"] = json!("2026-11-19T13:00:00Z");
+                    }
+                    invitations.push(invitation.clone());
+                    Some((201, invitation.to_string()))
+                }
+                ("DELETE", c) if c.starts_with("/servers/s1/invites/") => retirer(
+                    &self.invitations,
+                    "code",
+                    &c["/servers/s1/invites/".len()..],
+                ),
+                ("GET", "/servers/s1/bans") => Some((200, liste(&self.bannis))),
+                ("DELETE", c) if c.starts_with("/servers/s1/bans/") => {
+                    retirer(&self.bannis, "user_id", &c["/servers/s1/bans/".len()..])
+                }
+                ("POST", c) if c.starts_with("/servers/s1/emojis?name=") => {
+                    let nom = &c["/servers/s1/emojis?name=".len()..];
+                    let mut emojis = self.emojis.lock().unwrap();
+                    if emojis.iter().any(|e| e["name"] == nom) {
+                        return Some((
+                            409,
+                            r#"{"error":"emoji_taken","message":"Ce nom est déjà pris"}"#.into(),
+                        ));
+                    }
+                    let emoji = json!({"id": format!("e{}", emojis.len() + 10), "server_id": "s1", "name": nom, "created_by": "u1"});
+                    emojis.push(emoji.clone());
+                    Some((201, emoji.to_string()))
+                }
+                ("PATCH", c) if c.starts_with("/servers/s1/emojis/") => {
+                    let id = &c["/servers/s1/emojis/".len()..];
+                    for e in self.emojis.lock().unwrap().iter_mut() {
+                        if e["id"] == id {
+                            e["name"] = recu["name"].clone();
+                        }
+                    }
+                    Some((204, String::new()))
+                }
+                ("DELETE", c) if c.starts_with("/servers/s1/emojis/") => {
+                    retirer(&self.emojis, "id", &c["/servers/s1/emojis/".len()..])
+                }
+                ("PATCH", c)
+                    if c.starts_with("/servers/") && !c["/servers/".len()..].contains('/') =>
+                {
+                    Some((204, String::new()))
+                }
+                _ => None,
+            }
         }
 
         fn repondre_recherche(&self, chemin: &str) -> (u16, String) {
@@ -1431,6 +1912,7 @@ pub mod coquille {
         pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
         pub vocal: Mutex<Option<estompe_natif::vocal::OutilsVocaux>>,
+        pub ecrans: Mutex<Option<Arc<dyn estompe_plateforme::CaptureEcran>>>,
         pub conversions: Mutex<Option<Arc<estompe_client::video::Conversions>>>,
         pub micro: Arc<FauxMicro>,
         pub sortie: Arc<FausseSortie>,
@@ -1617,6 +2099,7 @@ pub mod coquille {
                 presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
                 vocal: Mutex::new(None),
+                ecrans: Mutex::new(None),
                 conversions: Mutex::new(None),
                 micro: Arc::new(FauxMicro::default()),
                 sortie: Arc::new(FausseSortie::default()),
@@ -1716,6 +2199,14 @@ pub mod coquille {
 
         fn jeux(&self) -> Option<watch::Receiver<estompe_natif::jeux::EtatJeux>> {
             self.jeux.lock().unwrap().clone()
+        }
+
+        fn ecrans(&self) -> Option<Arc<dyn estompe_plateforme::CaptureEcran>> {
+            self.ecrans.lock().unwrap().clone()
+        }
+
+        fn client(&self) -> Option<Client> {
+            Some(store_sur(Etat::default(), &self.adresse).client().clone())
         }
 
         fn brouillons(&self) -> estompe_client::brouillons::Brouillons {

@@ -1259,7 +1259,7 @@ fn actions_et_menus(faible: &slint::Weak<Principale>, serveur: &ServeurMessages,
     });
     attendre_l_interface(
         faible,
-        |f| entrees_du_menu(f) == ["lu", "lien"],
+        |f| entrees_du_menu(f) == ["lu", "sourdine", "lien", "creer-salon"],
         "menu contextuel du salon",
     );
     touche(faible, Key::Return);
@@ -2039,14 +2039,23 @@ fn nouveau_prive_statut_et_tout_lu(
             entrees_de_la_palette(f)
                 == [
                     "Nouveau message privé",
+                    "Créer ou rejoindre un serveur",
                     "Statut : En ligne",
                     "Statut : Absent",
                     "Statut : Ne pas déranger",
+                    "Paramètres › Compte",
+                    "Paramètres › Notifications",
+                    "Paramètres › Voix et vidéo",
+                    "Paramètres › Apparence",
+                    "Paramètres › Application",
+                    "Paramètres › Débogage",
+                    "Paramètres › Signalements",
+                    "Paramètres › Raccourcis",
                 ]
         },
         "actions de la palette",
     );
-    for _ in 0..4 {
+    for _ in 0..5 {
         touche(faible, Key::DownArrow);
     }
     touche(faible, Key::Return);

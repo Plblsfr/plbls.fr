@@ -2,7 +2,7 @@
 
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
-En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
+En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur, ses rôles et les permissions des salons (voir [Réglages d'un serveur](#réglages-dun-serveur) et [Rôles et permissions](#rôles-et-permissions)), la modération des membres et des salons (voir [Modération](#modération)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
 
 ## Architecture
 
@@ -46,7 +46,8 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   variables (`polices/`, licence OFL) sont embarquées dans le binaire. Tout texte de l'app utilise l'une d'elles (le code en ligne compris, en
   JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
 - `emoji/twemoji.bin` : les emoji en couleur (voir [Emoji](#emoji)), licences `emoji/CC-BY-4.0-twemoji.txt` et `emoji/MIT-emoji-data.txt`, citées dans « À propos ».
-- `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, indicateur de chargement, zone défilante,
+- `ui/jetons.slint` porte aussi `Affichage.compacte` (densité des messages), réglée par les [paramètres](#paramètres).
+- `ui/composants/` : texte riche (`TexteRiche`, blocs de markdown), séparateur de date ou de non-lus (`Separateur`), bouton, champ de saisie, case, interrupteur, modal, infobulle, icône, avatar et pastille de présence, recadrage d'image (`Recadrage`), indicateur de chargement, zone défilante,
   liste virtualisée (`ListeVirtuelle`), compteur (pastille de non-lus ou de mentions), étiquette (« bientôt »), badge de rôle (« Bot », « Créateur »), élément de liste, état vide, coins arrondis d'une image,
   menu contextuel et confirmation (voir [Menus contextuels et confirmation](#menus-contextuels-et-confirmation)).
 - Un composant interactif placé dans un modal reçoit `calque: 1` : tant qu'un modal est ouvert, ceux du dessous n'acceptent ni focus ni clic.
@@ -60,6 +61,7 @@ voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résu
   une icône et peut être séparée, dangereuse, cochée, porter un raccourci ou être marquée « bientôt » (affichée, sautée par les flèches, inactive).
 - Clavier : flèches (en boucle), Tab, Origine, Fin, Entrée ou Espace, Échap. Un clic hors du menu, la molette ou la perte du focus le ferment. L'élément qui l'a ouvert retient
   `a-ouvert-menu` et reprend le focus à la fermeture, sauf si l'action l'a donné ailleurs (l'action rend `true` : champ de saisie, sélecteur, confirmation ; `focus-ailleurs`).
+  Une action qui ouvre un autre menu (durées d'une sourdine) le remplace : `menu::choisir` ne referme pas un menu rouvert par l'action.
 - Ouverture : clic droit, touche Menu ou Maj+F10 sur l'élément qui a le focus. Un `FocusScope` qui prend le focus au clic avale l'appui : la ligne d'un message a
   `focus-on-click: false` et se donne le focus dans `pointer-event`, sinon le premier clic droit ne ferait que la sélectionner.
 - Une `TouchArea` imbriquée prend tout appui, clic droit compris, et la zone parente ne le reçoit plus : l'avatar et le nom de l'auteur d'un message relaient le clic droit
@@ -117,8 +119,8 @@ et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil,
 - Connexion : PKCE dans le navigateur du système et redirection sur `127.0.0.1` (crate client, `auth`), délai de 5 minutes, annulable depuis
   l'écran ; le refresh token est dans le coffre de secrets et la session reprend au lancement. Émetteur Keycloak : `https://auth.plbls.fr/realms/default`,
   ou `ESTOMPE_KEYCLOAK_ISSUER` pour un Keycloak de test (une adresse invalide est ignorée).
-- Invitation : `estompe-natif --invitation <lien ou code>` la rejoint dès le compte vérifié ; depuis la coquille, « Rejoindre un serveur » ouvre
-  la saisie. Le code est pris à la fin d'un lien (`ABCDE-23456`). Les liens `estompe://` ouverts par le système ne sont pas encore pris en charge.
+- Invitation : `estompe-natif --invitation <lien ou code>` la rejoint dès le compte vérifié (écran `invitation`) ; depuis la coquille, le « + » du rail ouvre
+  la fenêtre « Créer ou rejoindre un serveur » (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)). Le code est pris à la fin d'un lien (`ABCDE-23456`). Les liens `estompe://` ouverts par le système ne sont pas encore pris en charge.
 
 ### Mise à jour forcée
 
@@ -140,8 +142,8 @@ Une fois l'entrée à `Connecte`, la coquille remplace les écrans d'entrée : r
 
 | Élément | Interface (`ui/coquille/`) | Contenu |
 |---|---|---|
-| Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Rejoindre un serveur », entrées des sections ouvertes |
-| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
+| Rail | `rail.slint` | accueil (non-lus et mentions des messages privés), serveurs dans l'ordre choisi (image du serveur, sinon initiales ; trait de non-lus, pastille de mentions), « Créer ou rejoindre un serveur », entrées des sections ouvertes |
+| Panneau | `panneau.slint` | salons du serveur courant (texte, esquisses, vocaux, liste simple comme `SidePanel.svelte`, « + » de création avec le droit de gérer les salons), ou accueil et messages privés (bouton « Nouveau message privé »), ou section ; barre du compte (statut ou jeu, menu de statut) avec « Se déconnecter » ; repliable |
 | Contenu | `contenu.slint`, `accueil.slint`, `bandeau.slint` | en-tête (nom du salon, sujet) ; accueil (salut, à rattraper avec « Tout marquer lu », vocaux en cours, contacts en ligne) ; état vide qui annonce le lot du contenu ; bandeau « Reconnexion en cours… » ou hors ligne |
 | Marge | `marge.slint`, `membres.slint`, `carte-profil.slint`, `../messagerie/epingles.slint` | `EmplacementMarge` ; onglets « Membres » sur un serveur (voir [Membres](#membres)) et « Épinglés » dans une conversation (voir [Épinglés](#épinglés)), carte de profil |
 
@@ -185,8 +187,10 @@ bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préfé
   `MembreAjoute`, `MembreRetire`, `Membre`, `Roles`, `Presence` et `Avatar` du serveur courant visent la liste (`Cibles::membres`) ; `synchroniser` n'en touche
   que les lignes qui diffèrent : un changement de statut remplace une ligne, un passage en ligne retire et insère la seule ligne du membre et met à jour les deux compteurs.
 - Carte de profil (`ui/coquille/carte-profil.slint`), en lecture : bannière (`banner_color`, sinon couleur du rôle), avatar et présence, pseudo de serveur et
-  d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. « Envoyer un message » et
-  « Modifier mon profil » sont marqués « bientôt » ; modification, modération et historique ne sont pas dans l'app native.
+  d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. Sur ma carte,
+  « Modifier mon profil » la ferme et ouvre le compte des paramètres (voir [Profil](#profil)) ; « Envoyer un message » est marqué « bientôt » ; « Modérer » ouvre
+  les actions de modération permises (voir [Modération](#modération)) ; modification des rôles et historique ne sont pas dans l'app native.
+- Badges de la carte (`BadgeCarte`) : 24 px dans une case de 32, infobulle du nom (gras) et de la description au survol ou au focus (Tab), au-dessus du badge.
 
 #### Avatars et badges
 
@@ -204,7 +208,10 @@ un avatar en échec n'est pas redemandé pendant la session.
 - Le cache disque garde les octets reçus ; l'ordre des lectures est la date de modification des fichiers, relue au redémarrage. Écriture dans un fichier
   temporaire renommé ; un fichier temporaire restant est supprimé à l'ouverture, un fichier qui ne se décode pas est supprimé et redemandé, un nom de fichier invalide est ignoré.
 - Une image est recadrée en carré, réduite à 96 px et arrondie dans ses pixels (`arrondir`) : les deux moteurs de rendu l'affichent de la même façon.
-- Sans image, les initiales restent affichées. Les images et emojis des badges ne sont pas encore chargés : une médaille de la couleur du badge les remplace.
+- Sans image, les initiales restent affichées.
+- Badges (`Medaille`, membres, messages et carte) : image du badge si `icon_version` > 0 (`GET /badges/{id}/icon`, SVG rendu par Slint, WebP, PNG ou JPEG réduits à 64 px),
+  sinon son emoji en Twemoji embarqué, sinon une médaille de la couleur du badge. Les icônes sont demandées avec la liste des badges de la personne, une fois par badge et
+  par version (`CAPACITE_ICONES_BADGES`, 256 en mémoire, un échec n'est pas redemandé) ; les images décodées sont gardées par le fil de l'interface.
 
 ### Recherche et palette
 
@@ -244,8 +251,204 @@ actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estom
   un clic ouvre la conversation.
 - Barre de l'utilisateur : pastille de présence et statut (ou jeu en cours) sous le pseudo (`donnees_compte`) ; un clic, Entrée, la touche Menu ou Maj+F10 ouvrent le menu
   (`menu_moi`) : « En ligne », « Absent », « Ne pas déranger » (statut actuel coché, `PUT /me/status` par `Store::definir_statut`, optimiste et rétabli en cas d'erreur, que la zone
-  de saisie signale), puis « Voir mon profil », « Modifier mon profil » et « Signaler un bug » marqués « bientôt ». Le changement arrive aux autres par `status.updated`.
+  de saisie signale), puis « Voir mon profil » et « Modifier mon profil » marqués « bientôt », et « Signaler un bug » (voir [Signalements](#signalements)). Le changement arrive aux autres par `status.updated`.
   Le statut « invisible » n'existe ni dans l'API ni dans le front.
+
+### Créer ou rejoindre un serveur, créer un salon
+
+Fenêtres de `ui/coquille/creation.slint` (globaux `DonneesCreerRejoindre` et `DonneesCreationSalon`), actions dans `src/coquille/pont/creation.rs`, règles sans
+interface dans `estompe_client::creation` (équivalent de `channel-create.svelte.ts`), appels par le store (`Store::creer_serveur`, `rejoindre_serveur`, `quitter_serveur`,
+`creer_salon`), comme `CreateJoinModal.svelte` et `CreateChannelModal.svelte` :
+
+- « Créer ou rejoindre un serveur » : ouverte par le « + » du rail, « Pour commencer » de l'accueil ou l'action de la palette ; la partie création n'apparaît qu'avec
+  `servers.create`, la partie invitation qu'avec `servers.join` (capacités de `GET /me`). Nom de 50 caractères au plus avec l'aperçu de ses initiales ; « Choisir une
+  icône » ouvre le sélecteur de fichiers puis le recadrage du profil (« Recadrer l'icône du serveur », même carré de 256 px) : l'icône part par `PUT /servers/{id}/icon`
+  juste après `POST /servers` (le front ne propose l'icône que dans les réglages du serveur) ; si elle échoue, le serveur est créé et ouvert et la fenêtre le signale.
+  Lien complet ou code seul (`code_d_invitation`), `POST /server-invites/{code}/join`, « Invitation invalide ou révoquée. » sur un 404. Le serveur créé ou rejoint est
+  rechargé (`GET /servers`, puis son détail) et ouvert.
+- « Quitter le serveur » : dans la vue d'ensemble des réglages du serveur, comme le front, avec confirmation, absent pour son créateur (l'API refuse `owner_cannot_leave`) ;
+  `POST /servers/{id}/leave`, puis le serveur est oublié sans attendre `member.left` et la page se referme.
+- « Créer un salon » : « + » de l'en-tête du panneau et de chaque groupe (texte, esquisses, vocaux), « Créer un salon » du menu d'un salon (même type, placé après lui
+  par `after`) ou d'un serveur. Rien de tout cela sans le droit `manage_channels` du serveur (`peut_creer_salon`), suivi en temps réel (`Changement::Roles` reprojette
+  l'en-tête). Types texte, vocal, vidéos et musique, cinéma seulement si Entracte est branché (`cinema` de `GET /me`) ; nom obligatoire, 30 caractères, sans caractère
+  de contrôle, unique pour son type sans casse (`erreur_nom_salon`), message affiché dès la première saisie, erreur du serveur à la place ; salon privé avec rôles
+  (sans le rôle par défaut) et membres (sans soi) ayant accès ; réglages avancés : sujet (200 caractères), mode lent pour un salon texte, limite de participants pour un
+  vocal ou un cinéma. La requête ne porte que les réglages du type (`NouveauSalon::requete`). Le salon créé est ajouté au store (comme `channel.created`) et ouvert ;
+  ceux des autres arrivent par `channel.created`.
+- Pas de catégories : ni le front ni l'API n'en ont, les salons sont groupés par type. La mise en avant passagère du salon créé (`channelCreate.fresh`) et la notification
+  « Tu as rejoint » du front ne sont pas reprises (pas de toast).
+
+### Réglages d'un serveur
+
+Page de la zone de contenu, comme `ServerSettingsModal.svelte` : `ui/coquille/reglages-serveur.slint` (global `DonneesReglagesServeur`), actions dans
+`src/coquille/pont/reglages.rs`, règles sans interface dans `estompe_client::reglages_serveur` (onglets selon les droits, limites des emoji, nom proposé, recherche des
+membres, libellés des invitations et des bans), appels par `Client` (`renommer_serveur`, `supprimer_icone_de_serveur`, `invitations_serveur`, `creer_invitation_serveur`,
+`bannis`, `lever_ban`, `ajouter_emoji`, `renommer_emoji`, `supprimer_emoji`) et le store (`Store::renommer_serveur`, `supprimer_serveur`, appliqués sans attendre l'évènement).
+
+- Ouverture : bouton « Paramètres du serveur » de l'en-tête du panneau d'un serveur ou entrée du menu d'un serveur du rail. Comme les paramètres, toute navigation
+  la referme, la marge est masquée tant qu'elle est ouverte ; Échap ou « Fermer » rendent le focus à la coquille. Flèches, Origine et Fin passent d'un onglet à l'autre.
+- Onglets selon les droits du serveur (`droits`, suivis en temps réel) : « Vue d'ensemble », « Emojis » et « Membres » pour tous, « Invitations » avec `create_invites`,
+  « Bannis » avec `ban_members`, « Salons » avec `manage_channels` et « Rôles » avec `manage_roles` (voir [Rôles et permissions](#rôles-et-permissions)), « Journal »
+  (`view_audit_log`, voir [Modération](#modération)). L'en-tête dit « Tu es propriétaire », « Tu gères ce serveur » ou « Tu es membre ».
+- Vue d'ensemble : nom (50 caractères, `manage_server`) avec compteur, icône (`manage_server` ou administrateur d'Estompe) choisie puis recadrée par le recadrage du profil
+  (`PUT /servers/{id}/icon`) ou supprimée (`DELETE /servers/{id}/icon`), aperçu dans la liste des serveurs ; rien ne part avant « Enregistrer » de la barre
+  « Modifications non enregistrées » (« Annuler » revient au serveur). Le créateur a « Supprimer le serveur… » : confirmation qui n'est validable qu'avec le nom exact
+  du serveur saisi, puis `DELETE /servers/{id}` ; les autres ont « Quitter le serveur ».
+- Invitations : expiration (sans, 30 min, 1 h, 24 h, 7 jours) et nombre d'utilisations (illimité, 1, 5, 10, 100) comme le front, « Créer un lien », liens actifs
+  (`GET /servers/{id}/invites`) avec auteur, utilisations, expiration, copie du lien complet (`<adresse>/#/join/<code>`) et « Révoquer ».
+- Emojis (`GET /emojis`, rechargés à chaque changement et sur `emoji.updated`) : « Ajouter un emoji » ouvre le sélecteur de fichiers (PNG, JPEG, GIF) ; le type (signature
+  du fichier), le poids (128 Ko) et les dimensions (256 px, lues dans l'en-tête comme l'API) sont vérifiés avant tout envoi (`verifier_emoji`), avec le message du front.
+  Le nom est proposé depuis le fichier (`nom_propose`) et doit suivre `^[a-z0-9_]{2,32}$` ; 50 emoji par serveur au plus (l'ajout disparaît à la limite). Renommer (fenêtre
+  de saisie, plutôt que le champ en place du front) et supprimer sont offerts à l'auteur et au créateur du serveur, comme l'API.
+- Membres : liste du serveur, créateur en tête puis par nom, rôle le plus haut en couleur, date d'arrivée, recherche sans accents ni casse sur le nom affiché et le
+  pseudo ; 200 lignes au plus (le compteur invite à affiner). Le front n'a pas cet onglet ; un membre se modère depuis son menu ou sa carte (voir [Modération](#modération)).
+- Bannis : `GET /servers/{id}/bans`, auteur, date, durée (« définitif » ou « jusqu'au … »), raison, « Lever le ban » (`DELETE /servers/{id}/bans/{uid}`).
+- Écarts : pas de description du serveur (ni l'API ni le front n'en ont) ; le transfert de propriété et l'ordre des salons restent à faire. Les messages de réussite et d'erreur s'affichent en tête de la page (pas de toast dans l'app native).
+
+### Rôles et permissions
+
+Onglets « Rôles » et « Salons » des réglages d'un serveur, comme `RolesSettings.svelte` et `ChannelPerms.svelte` : `ui/coquille/reglages-roles.slint` (global
+`DonneesRoles`), actions dans `src/coquille/pont/roles.rs` (état `EtatRoles` dans celui de la page), règles sans interface dans `estompe_client::gestion_roles`
+(`Contexte` : rang, rôle modifiable ou déplaçable, permission accordable, membre gérable, nouvel ordre, permissions perdues ; `BrouillonRole` ; trois états d'une
+surcharge), appels par `Client` (`creer_role`, `modifier_role`, `supprimer_role`, `ordonner_roles`, `attribuer_role`, `surcharges_du_salon`, `definir_surcharge`).
+Après chaque modification, le détail du serveur est rechargé (`Store::recharger_serveur`) sans attendre `roles.updated`, qui fait de même chez les autres membres.
+
+- Liste : rôles du plus haut au plus bas puis « @tout le monde », pastille de couleur, icône, « séparé » ; « Nouveau rôle » (50 rôles au plus) crée un rôle placé juste
+  au-dessus de « @tout le monde » et l'ouvre. Ordre par glisser-déposer d'une ligne ou par les flèches « Monter » et « Descendre » ; seuls les rôles sous le sien bougent
+  et aucun ne passe au-dessus d'un rôle figé (`PUT /servers/{id}/roles-order`).
+- Éditeur : nom (30 caractères), icône (8 caractères), couleur (palette, saisie `#rrggbb` ou « Aucune »), « Afficher séparément dans la liste des membres »,
+  membres du rôle (retrait, ajout par une recherche sans accents qui propose six membres gérables), puis les 25 permissions groupées comme le front avec un filtre sans
+  accents ; seules celles qu'on a soi-même sont modifiables. « @tout le monde » n'a que ses permissions. La barre du bas porte « Supprimer le rôle » (confirmé) et
+  « Enregistrer », actif dès qu'une valeur diffère et que le brouillon est valide (message sinon).
+- Garde-fous : un rôle au niveau du sien ou au-dessus est en lecture seule (le créateur gère tout) ; enregistrer un rôle qu'on a (ou « @tout le monde »), le supprimer
+  ou se le retirer, ou une surcharge de salon, qui feraient perdre une de ses propres permissions demandent une confirmation qui les nomme (le front ne le fait pas).
+- Salons : liste groupée par type comme le front (texte, esquisses, vocaux, cinéma), « verrouillé », limite de participants, « Créer un salon » ; « Permissions »
+  déplie sous le salon le choix du rôle (menu) et les permissions de son type en trois états (hériter, autoriser, refuser), modifiables seulement pour un rôle sous le
+  sien et une permission qu'on a (`PUT /servers/{id}/channels/{cid}/overrides/{rid}`), rechargées à chaque `roles.updated`.
+- Écarts : pas de surcharge par membre (ni route dans l'API, ni écran dans le front : `channel_member_overrides` n'est rempli qu'à la création d'un salon privé) ;
+  la liste est au-dessus de l'éditeur (la zone de contenu est trop étroite pour deux colonnes, comme le front sous 760 px), les membres passent avant les
+  permissions et les actions restent dans une barre fixe ; « Gérer les rôles » du menu d'un membre (carte de profil du front) n'est pas repris.
+
+### Modération
+
+Comme `ModerationModal.svelte`, `ChannelModModal.svelte`, `lib/moderation.svelte.ts` et le journal de `ServerSettingsModal.svelte` : fenêtres
+`ui/coquille/moderation.slint` (globals `DonneesModeration` et `DonneesModerationSalon`), actions dans `src/coquille/pont/moderation.rs`, règles sans interface
+dans `estompe_client::moderation` (actions permises, durées, purges, validation, libellés, phrases, icônes et tons du journal, texte d'exclusion), appels par `Client`
+(`expulser_membre`, `bannir_membre`, `exclure_membre`, `lever_exclusion`, `avertir_membre`, `renommer_membre`, `journal_du_serveur`, `moderer_salon`, `renommer_salon`,
+`supprimer_salon`, `supprimer_derniers_messages`).
+
+- Membre : le menu d'un membre (liste des membres) et le bouton « Modérer » de sa carte de profil proposent, dans l'ordre du front, « Exclure temporairement… » ou
+  « Lever l'exclusion temporaire » (`timeout_members`), « Avertir… » (`timeout_members`), « Changer le pseudo… » (`manage_nicknames`), « Expulser… »
+  (`kick_members`) et « Bannir… » (`ban_members`), ces deux derniers en rouge ; seulement sur un membre de rang strictement inférieur au sien (`roles::domine` :
+  le créateur domine tout le monde, personne ne le modère, ni soi-même). « Lever l'exclusion » part aussitôt (`DELETE /servers/{id}/members/{uid}/timeout`), une
+  erreur s'affiche sous la zone de saisie.
+- Fenêtre de modération d'un membre : avatar et explication du front, durée en puces (exclusion : 60 s à 1 semaine, bannissement : définitif à 7 jours) et
+  « Personnalisé… » en heures (28 jours au plus pour une exclusion, 10 ans pour un ban), purge des messages récents pour un ban, raison de 200 caractères (obligatoire
+  pour avertir), pseudo de serveur de 32 caractères pour le renommage (vide : pseudo d'origine). Le bouton est rouge et nommé (« Bannir dave ») pour expulser et
+  bannir, « Confirmer » sinon ; la réussite (« Membre banni »…) ou l'erreur s'affiche dans la fenêtre, qui ne garde alors que « Fermer ».
+- Salon : « Modération du salon… » du menu d'un salon texte, avec `manage_channels` ou `manage_messages` sur ce salon. Avec `manage_channels` : nom (30 caractères,
+  mêmes règles qu'à la création, son propre nom ignoré), mode lent, verrouillage, « Enregistrer » (`PATCH` du nom s'il change puis
+  `PUT /servers/{id}/channels/{cid}/moderation`, détail du serveur rechargé) et « Supprimer le salon… » (confirmation). Avec `manage_messages` : suppression des N
+  derniers messages (1 à 100) de tout le monde ou d'un auteur choisi par un menu, confirmée, puis le nombre supprimé est affiché (`POST /channels/{cid}/messages/bulk-delete`).
+- Onglet « Salons » des réglages : chaque salon a aussi « Renommer » (fenêtre de saisie) et « Supprimer » (confirmation), comme le menu du front.
+- Onglet « Journal » des réglages (`view_audit_log`) : `GET /servers/{id}/audit-log`, rechargé à l'ouverture de l'onglet et à chaque changement du filtre (menu :
+  toutes les actions, modération des membres, rôles, salons, vocal, messages, serveur) ; chaque ligne : date, icône et ton du front (rouge pour ban, expulsion et
+  messages, orange pour exclusion et avertissement), auteur et phrase (« a banni « hugo » — spam »), « Aucune action enregistrée. » sinon.
+- Membre exclu : la carte de profil affiche « Exclu temporairement jusqu'au … » ; pour soi, la zone de saisie passe en lecture seule avec
+  « Tu es exclu temporairement de ce serveur jusqu'au … » au lieu du texte d'absence de permission (le serveur retire `send_messages` ; `member.timeout` me visant
+  recharge le détail du serveur).
+- Écarts : le sujet d'un salon ne se modifie pas (ni l'API ni le front ne le permettent après la création) ; la raison est un champ d'une ligne (zone de texte dans le
+  front) ; la réussite s'affiche dans la fenêtre au lieu d'un toast.
+### Administration d'Estompe
+
+Espace d'administration de l'instance, comme `AdminSpace.svelte` : page dans la zone de contenu (`ui/admin/page.slint`, global `DonneesAdmin` de
+`ui/admin/donnees.slint`), ouverte par l'entrée « Administration d'Estompe » (bouclier) en bas du rail, refermée par « Fermer », Échap ou toute navigation, comme
+« Paramètres » et « Paramètres du serveur ». Pont `PontAdmin` (`src/coquille/pont/admin.rs`), propre à chaque session (`Pont::admin`) ; règles sans interface et types
+des réponses dans `estompe_client::admin` (équivalents des cas de `admin.test.ts` et de `badges.test.ts`), appels par `Client` (`comptes`, `suspendre_compte`,
+`supprimer_serveur_en_administrateur`, `badges_admin`, `creer_badge`, `modifier_badge`, `supprimer_badge`, `definir_icone_de_badge`, `supprimer_icone_de_badge`,
+`accorder_badges`, `retirer_badge`, `vue_d_ensemble_admin`, `statistiques_admin`, `direct_admin`, `journal_admin`, `erreurs_admin`, `bot_admin`, `message_du_bot`).
+
+- Droits : les sections viennent de `GET /me` comme dans le front (`rights`, sinon `allowed` et `admin`, puis les capacités fines `estompe:admin.*`, le refus
+  l'emporte) : utilisateurs, serveurs, badges, signalements, bot, statistiques, logs pour le droit `admin`, accès pour le droit `acces`. Sans section, ni
+  l'entrée du rail ni aucun appel `/admin/…` ; une section retirée en cours de route (`Changement::Compte`) ramène à la première permise ou referme l'espace.
+- Onglets (identifiants stables) : `utilisateurs` (recherche par pseudo, inscription, activité, « Suspendre » confirmé, « Rétablir »), `serveurs` (membres, salons,
+  messages, dernier message, « Supprimer » après saisie exacte du nom), `badges`, `signalements`, `bot` (destinataire ou tous les comptes, message, envoi confirmé,
+  nombre de messages envoyés, notes de version déjà envoyées), `statistiques` (comptes, serveurs et messages, stockage avec jauge, erreurs des 24 h vers les logs ;
+  en direct rafraîchi toutes les 5 s tant que l'onglet est ouvert : connexions, appareils, salons vocaux et leurs participants ; configuration et versions),
+  `journaux` (libellé « logs » : actions d'administration et erreurs serveur des 30 jours), `acces`.
+- Badges (`BadgeAdmin.svelte`) : recherche sans accents dans le nom et la description, tri (ordre d'affichage, nom, détenteurs, date de création), cartes à la
+  couleur du badge ; fenêtre « Nouveau badge » ou « Modifier le badge » (`ui/admin/badges.slint`, `FenetreBadge`) : image SVG, WebP, PNG ou JPEG (64 Ko pour un
+  SVG, 5 Mo sinon, vérifiés avant l'envoi), recadrée au carré au centre et réduite à 256 px comme `squareAvatar` du front (le SVG part tel quel), aperçus en grand et
+  à la taille réelle, « Retirer l'image » ; nom (2 à 32), description, couleur `#rrggbb` avec pastille, ordre (0 à 9999), « Supprimer » confirmé ; détenteurs
+  retirés d'un clic, ajoutés par une recherche de pseudos (200 ms après la frappe, sans ceux qui l'ont déjà) puis « Attribuer à N comptes », comptes introuvables signalés.
+- Brancher un onglet (#367, #369) : son contenu est un composant de `ui/admin/` inséré par `PageAdmin` sous `if DonneesAdmin.onglet == "<id>"`
+  (`OngletSignalementsAdmin` de `ui/admin/signalements.slint`, voir [Signalements](#signalements) ; `OngletAccesAdmin` de `ui/admin/acces.slint`, voir [Administration des accès](#administration-des-accès)) ; la section est déclarée
+  dans `estompe_client::admin::SECTIONS` (identifiant, libellé, icône, droit, capacité) et son chargement dans le `match` de `PontAdmin::choisir`.
+- Compte limité à l'administration (`AdminView.svelte`) : si `GET /me` refuse la messagerie (`allowed` faux) mais ouvre au moins une section, l'entrée passe à
+  `Etat::Administration` au lieu de « accès refusé » : page `Page::Administration` avec la même page sans « Fermer », la liste « Sections », la note « Ton compte n'a pas
+  accès à la messagerie d'Estompe : seule l'administration est ouverte. » et « Se déconnecter » ; le `PontAdmin` est alors créé par la coquille sur le client de la
+  fabrique (`Fabrique::client`), sans store ni temps réel.
+- Écarts : les versions de l'installeur Windows et de l'application Android (lues par le front sur `estompe.plbls.fr/updates`) ne sont pas reprises, la ligne
+  « Front » devient « App native » ; les tableaux sont des listes de lignes.
+
+### Administration des accès
+
+Onglet « Accès » de l'administration (droit `acces`), comme `AccesAdmin.svelte` : `OngletAccesAdmin` (`ui/admin/acces.slint`), global `DonneesAcces`
+(`ui/admin/acces-donnees.slint`), pont `PontAcces` (`src/coquille/pont/acces.rs`) tenu par `PontAdmin` (`PontAdmin::acces`, ouvert par `PontAdmin::choisir("acces")`,
+rappels branchés par `acces::brancher` depuis `brancher_admin`). Types des réponses d'aegis, règles sans interface et appels (`/admin/acces/…`, `catalogue_acces`,
+`comptes_acces`, `compte_acces`, `effectifs_acces`, `journal_acces`, `simuler_acces`, `copier_droits`, `retirer_droits`, rôles, groupes, liaisons, règles, détenteurs,
+ressources) dans `estompe_client::acces`.
+
+- Sous-onglets `comptes`, `roles`, `groupes`, `catalogue`, `journal` (flèches gauche et droite), après le catalogue ; chaque liste a son état (`ChargementAcces` :
+  « Chargement… », ou l'erreur d'aegis et « Réessayer », qui rappelle `recharger(<liste>)`).
+- Comptes : annuaire dans une `ListeVirtuelle` de lignes de 52 px, recherche après 250 ms, pages de 200 (le maximum d'aegis) chargées quand le défilement approche
+  de la fin ; le modèle est prolongé sans être recréé. La fiche d'un compte remplace la liste : origines des droits (puces rangées selon la largeur mesurée,
+  retrait confirmé), formulaires de rôle (`FormLiaison`), de groupe et de règle directe (`FormRegle`), copie des droits (essai `dry_run` puis confirmation),
+  historique, menu « Copier l'identifiant » et « Tout retirer… », droits effectifs par application avec filtres, « Pourquoi ? » (chaîne des règles et simulation,
+  sur une ressource choisie si la permission en a une).
+- Choix : rôle, portée, effet, mode de copie, groupe et action du journal par le menu contextuel (`ouvrir-choix`) ; compte (`ChoixCompte`) et ressource
+  (`ChoixRessource`) par une recherche partagée, rattachée au formulaire ouvert. Les noms des ressources sont demandés par lots (`?ids=`) puis retenus.
+- Rôles : grille rôles × permissions de l'application choisie, éditeur (trois états, exceptions par ressource, barre des modifications comme
+  `permissionsModifiees` et `resumeModifications`, « Qui a ce rôle »). Groupes : liste puis détail (membres, rôles et règles). Catalogue : obsolètes, purge, détenteurs.
+  Journal : 300 lignes, filtre par action.
+- Écarts : la fiche d'un compte et le détail d'un groupe s'affichent sous la liste ou à sa place (zone de contenu trop étroite pour deux colonnes) ; les dates
+  d'expiration se saisissent en `JJ/MM/AAAA HH:MM` ; la permission se cherche au lieu d'une liste déroulante ; succès et erreurs s'affichent en bandeau dans l'onglet
+  (pas de toast) ; la permission visée depuis la grille est encadrée, sans défilement automatique.
+- Tests : cas de `catalogue.test.ts` en Rust (`estompe_client::acces`, le catalogue de `api/estompe/core/src/catalogue.rs` lu par `include_str!`, permissions
+  `capacite("…")` et `"estompe:…"` du code natif et capacités des sections) ; `tests/acces.rs` contre un aegis factice à état (`tests/commun/acces.rs`, branché
+  par le crochet `ServeurMessages::repondeur`) ; captures `admin-acces-*`.
+
+### Signalements
+
+Signaler un bug, un message ou une personne, suivre ses signalements et les traiter, comme `blocks/signalements/` du front (`ReportModal.svelte`, `SettingsReports.svelte`,
+`AdminReports.svelte`) : interface dans `ui/signalements/` (global `DonneesSignalements` de `donnees.slint` ; `FenetreSignalement` et `MesSignalements` de `fenetre.slint`)
+et `ui/admin/signalements.slint` (`OngletSignalementsAdmin`) ; pont `PontSignalements` (`src/coquille/pont/signalements.rs`), porté par `PontAdmin` pour servir aussi le
+compte limité à l'administration (`Pont::signalements`) ; règles sans interface dans `estompe_client::signalements` (catégories, plateformes, statuts, brouillon,
+informations techniques, requêtes, filtres, texte copié : équivalents des cas de `report.test.ts`), appels par `Client` (`envoyer_signalement`, `mes_signalements`,
+`signalements_admin`, `signalement_admin`, `modifier_signalement`, `supprimer_signalement`).
+
+- Ouverture : « Signaler un bug » du menu de l'utilisateur, de la palette (`>`) et de la catégorie « Signalements » des paramètres ; « Signaler » du menu d'un message et
+  du menu d'un membre (pas pour soi ni pour un bot). Le front ne signale que des bugs : un message ou une personne partent par la même route (`POST /reports`), titre et
+  catégorie préremplis (« Message de … », « messages » ; « Comportement de … », « autre ») et l'identifiant, l'auteur et un extrait (200 caractères) ou la personne en tête
+  des informations techniques ; sans brouillon.
+- Capture : la fenêtre est d'abord masquée, la fenêtre d'Estompe capturée 150 ms plus tard (le menu ou la palette ont disparu) puis le formulaire s'affiche avec l'image,
+  comme la capture automatique des apps Windows et Android du front ; « Capturer la fenêtre » masque le formulaire le temps d'une nouvelle capture. La source vient de
+  `Fabrique::ecrans` (le `CaptureEcran` des outils vocaux) et `estompe_plateforme::capturer_fenetre_d_estompe` ne prend que la fenêtre du processus d'Estompe qui porte le titre
+  de la fenêtre principale (sinon la plus grande), jamais un écran ni une autre application ; l'image part en JPEG (qualité 80, 1440 px de large au plus). « Ajouter des images »
+  ouvre le sélecteur de fichiers (PNG, JPEG, GIF, WebP) ; 5 images au plus, chacune retirée par sa croix. Les images sont envoyées par `POST /files` (une seule fois, même
+  après un échec) puis jointes par `file_ids`.
+- Formulaire : titre (120), description (4 000), catégorie facultative ; brouillon d'un bug gardé à chaque frappe dans `brouillon-signalement.json` du dossier des données
+  et vidé après l'envoi ; informations jointes décochables une à une (plateforme `desktop`, version, système, « native (Slint) », écran ouvert, état du vocal) ; « Joindre les
+  logs » (300 dernières lignes du journal, déjà expurgées) seulement en mode debug avec un journal non vide. Un échec garde le texte : « … Ton texte est conservé : tu peux
+  réessayer. » ; un envoi réussi referme la fenêtre et affiche « Signalement envoyé, merci ! » au-dessus de mes signalements.
+- Mes signalements : catégorie « Signalements » des paramètres, chargés à son ouverture (`GET /reports`) : titre, statut coloré, date et catégorie.
+- Traitement (onglet `signalements` de l'administration, chargé par `PontAdmin::choisir`) : filtres statut, catégorie et plateforme (menus), auteur et recherche (`GET /admin/reports?…`
+  sans les filtres vides) ; liste avec plateforme, « nouveau » (pas encore consulté) et statut ; détail (`GET /admin/reports/{id}`, qui le marque consulté) avec description,
+  captures non expirées, informations techniques, logs (« Télécharger les logs » les écrit dans le dossier choisi, `signalement-<id>.log`) ; statut, signalement d'origine
+  d'un doublon (menu des autres signalements, obligatoire), « Voir l'original », notes internes, « Enregistrer » (`PATCH`), « Copier » (texte de `formater_signalement`),
+  « Supprimer » confirmé (`DELETE`).
+- Écarts : pas de raccourci Ctrl+Alt+B ; ni glisser-déposer ni collage d'images dans la fenêtre ; l'original d'un doublon se choisit dans un menu (pas de liste
+  déroulante dans Slint) ; pas de toast : les messages s'affichent dans la page. Non vérifié : capture sur une vraie machine Windows (C2), rendu Skia à l'écran.
 
 ## Messagerie
 
@@ -510,7 +713,7 @@ deux moteurs et sur les deux OS :
 - Barre au survol (`BarreActions`, `ui/messagerie/element.slint`) : trois réactions rapides (👍, ❤️, 😂, en images), répondre, ajouter une réaction, modifier, épingler ou
   désépingler, copier le message, supprimer, « Plus d'actions » (menu sous le bouton). Placée à cheval sur le haut de la ligne (16 px au-dessus, comme le front), elle reste affichée tant qu'elle est survolée.
 - Menu du message (clic droit, touche Menu ou Maj+F10 sur le message qui a le focus) : répondre, modifier, épingler ou désépingler, ajouter une réaction, copier le texte,
-  copier le lien (`https://<serveur>/#/s/<serveur>/<salon>/<message>` ou `#/dm/<conversation>/<message>`), marquer comme non lu, « Signaler » (« bientôt », lot 8),
+  copier le lien (`https://<serveur>/#/s/<serveur>/<salon>/<message>` ou `#/dm/<conversation>/<message>`), marquer comme non lu, « Signaler » (voir [Signalements](#signalements)),
   supprimer (après confirmation « Supprimer ce message ? »). `PontMessagerie::action_message` exécute l'entrée choisie (`src/messagerie/pont/actions.rs`).
 - Réactions : un clic ou Entrée sur une réaction (focusable si `add_reactions`) l'ajoute ou la retire ; un bouton après les réactions ouvre le sélecteur.
   `Store::basculer_reaction` applique le changement tout de suite (même chemin que `reaction.updated`, qui ne compte pas deux fois la mienne) puis appelle
@@ -1000,8 +1203,8 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 
 Règles dans la crate client (`notifications.rs`, sans code d'OS), reprises du front (`showNotification` de `blocks/notifications/notify.ts` et de `store.svelte.ts`) :
 
-- L'app ne notifie que sur l'évènement temps réel `notification` (`Changement::Notification` du store), jamais sur `message.created` : sourdine
-  d'un salon ou d'un serveur, « ne pas déranger », mentions et types de notification sont décidés par le serveur (`blocks/notifications`).
+- L'app ne notifie que sur l'évènement temps réel `notification` (`Changement::Notification` du store), jamais sur `message.created` : niveaux,
+  sourdines, « ne pas déranger », mentions et types de notification sont décidés par le serveur (`blocks/notifications`) ; réglages : voir [Paramètres](#paramètres).
 - `decider` : rien pour l'activité vocale de mon propre salon ; rien si la conversation de la notification est affichée **et** la fenêtre active
   (focus de winit) ; sinon une notification du système si la préférence « Notifications du bureau » est active.
 - Regroupement : l'étiquette (`tag` du serveur) remplace une notification de même étiquette (toast de même `Tag`, `replaces_id` sous Linux).
@@ -1273,7 +1476,7 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
-publication dans le salon (voir [Partage d'écran](#partage-décran)), incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (lot 8).
+publication dans le salon (voir [Partage d'écran](#partage-décran)), incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (`capturer_fenetre_d_estompe`, voir [Signalements](#signalements)).
 `EcransFactices` (même module) donne des sources factices aux tests : images poussées à la demande, fenêtre réduite, fermée ou en échec. Il ne fait ni interface
 ni publication, ni son : celui du partage a son propre trait (`CaptureSon`, voir [Partage d'écran](#partage-décran)), qui reçoit le processus de la fenêtre (`SourceCapture::processus`).
 
@@ -1341,12 +1544,73 @@ Identifiant `fr.plbls.estompe.natif`, distinct de `fr.plbls.estompe` et `fr.plbl
 | Instance unique | tube nommé `\\.\pipe\fr.plbls.estompe.natif-<empreinte>` | `$XDG_RUNTIME_DIR/fr.plbls.estompe.natif/instance.sock` (sinon `<données>/instance.sock`) |
 
 - `ESTOMPE_NATIF_DOSSIER=<dossier>` place tout sous `<dossier>/{donnees,cache,journaux}` : une seconde instance, ou un essai sans toucher au profil.
-- Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, ordre des serveurs, géométrie de la
+- Préférences : thème, densité, réduction des animations, notifications, aperçus, journal de débogage, fonctions alpha débloquées, dernière catégorie des paramètres, ordre des serveurs, géométrie de la
   fenêtre (retenue à la demande de fermeture et en quittant, tant que la fenêtre est visible et pas réduite : une fois masquée, sa position n'est plus connue ; une position hors de ±16 384 px, comme celle d'une fenêtre réduite sous Windows, n'est pas réappliquée), adresse du serveur, dernière vue (compte et adresse `#/s/…` ou `#/dm/…`), panneau replié, marge ouverte, micro et sortie audio choisis (`micro`, `sortie_audio` : identifiant `cpal`, absent = périphérique par défaut), chaîne du micro (`traitement_micro`), écoute du vocal (`ecoute`), appuyer pour parler (`ptt` : actif, touche, délai) et sons du vocal (`sons_vocal`, `sons` : son d'arrivée, son de départ, volume ; les fichiers personnalisés sont à part, dans `<données>/sons/`), bornés à la lecture, smileys récents (`emoji_recents`), dernières recherches (`recherches_recentes`), messages vocaux écoutés (`vocaux_ecoutes`, 500 au plus). Écriture atomique ; un fichier illisible est mis de côté (`preferences.json.corrompu`) et recréé avec les valeurs par défaut.
 - Adresse du serveur : `https://chat.plbls.fr` par défaut. Pour un serveur de test, la variable `ESTOMPE_API_URL`, sinon la préférence
   `adresse_serveur` ; une adresse invalide est écartée et notée dans le journal.
 - Journal de débogage : écrit seulement si la préférence `journal_debogage` est activée, tournant à 512 Ko, exportable. Jetons, `Bearer` et
-  paramètres secrets y sont masqués avant écriture.
+  paramètres secrets y sont masqués avant écriture. Il se consulte, s'exporte et se vide dans la catégorie « Débogage » des [paramètres](#paramètres).
+
+## Paramètres
+
+Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal) : `ui/parametres/page.slint` (global `DonneesParametres`), `src/parametres.rs`
+(préférences locales, journal, alpha), `src/coquille/pont/parametres.rs` (réglages enregistrés sur le compte, aperçu des liens), logique pure dans
+`estompe_client::parametres` (catégories, index de recherche, raccourcis, déblocage des fonctions alpha) et `estompe_client::journal` (lecture, filtre et format des lignes).
+
+- Ouverture : bouton « Paramètres » de la barre de l'utilisateur, entrée « Paramètres » de son menu ou action « Paramètres › <catégorie> » de la palette (`>`) ; la catégorie rouverte est la dernière choisie
+  (préférence `onglet_parametres`), sinon « Compte ». Comme le front, toute navigation (salon, accueil, palette) referme la page ; la marge est masquée tant qu'elle est ouverte.
+- Catégories : celles du front dans son ordre (compte, notifications, voix et vidéo, apparence, application, débogage, signalements), puis « Raccourcis »
+  (propre à l'app native) et « Instant replay » (bêta, seulement s'il est disponible, comme la page de l'app Windows). La recherche ignore accents et casse et
+  liste sous chaque catégorie les réglages trouvés (`chercher`, mêmes cas que `settings.test.ts`).
+- Clavier : la catégorie choisie a le focus à l'ouverture ; flèches haut et bas (en boucle), Origine et Fin passent d'une catégorie à l'autre, Tab entre dans la page,
+  Ctrl+F va à la recherche, Échap efface la recherche puis ferme la page et rend le focus à la coquille. Un modal ouvert depuis la page (réglages audio, jeux, replay, mesures)
+  la rend inactive ; à sa fermeture le focus revient à la catégorie.
+- Préférences synchronisées comme dans le front : les réglages de notification (voir ci-dessous) sont enregistrés sur le compte (`PUT /me/notify-settings`, retour en
+  arrière et message si l'envoi échoue) et suivis en temps réel (`notify_settings.updated`) ; tout le reste est local (`preferences.json`) : thème, densité, aperçu des liens,
+  réduction des animations, notifications du bureau, lancement avec la session, mode debug, fonctions alpha.
+- Notifications (`SettingsNotifications.svelte`, logique pure dans `estompe_client::niveaux_notification`) : notifications du bureau (local), « Ne pas déranger » (le statut,
+  comme le menu de la barre), niveau général, types, aperçu et son, puis un serveur (celui ouvert, sinon le premier ; « Changer de serveur… » ouvre un menu) : son niveau, sa
+  sourdine, « Ignorer @everyone et @here », ses salons texte réglés (niveau ou sourdine) et « Régler un autre salon… » (menu, le salon ajouté passe à « Tous »). Chaque choix
+  « Par défaut » ou « Comme le serveur », « Tous », « Mentions », « Rien » affiche le niveau qui s'applique et sa source (`niveau_effectif`, mêmes règles que le serveur).
+  Chaque changement est appliqué au store tout de suite (`Store::appliquer_reglages_notification`) puis envoyé : deux changements rapides se cumulent. La page est reprojetée
+  quand les réglages, mon statut, les serveurs ou les salons changent, à l'ouverture de la catégorie et toutes les 30 s tant qu'une sourdine existe.
+- Règles des niveaux (décidées par le serveur, `blocks/notifications/src/decision.rs`, reprises par le client pour l'affichage) : une sourdine active du salon, de la conversation
+  privée ou du serveur coupe tout ; sinon le niveau du salon, de la conversation privée, puis du serveur ; sinon le niveau général (`general`) ; sinon mentions seulement en salon
+  et tout en privé. En privé, le niveau général ne compte que s'il vaut « Rien ». Sourdine (`mutes` : identifiant → fin en millisecondes, 0 = jusqu'à réactivation) : 15 min, 1 h,
+  8 h, 24 h ou jusqu'à réactivation ; échue, elle ne compte plus (le serveur l'ignore et la retire au prochain enregistrement), sans action de l'app. Fin lue en heure locale
+  (« jusqu'à 10:15 », « demain 09:30 », « le 22/11 à 09:30 »).
+- Menus contextuels : « Mettre en sourdine… » d'un salon texte (panneau) ou d'un serveur (rail : clic droit, touche Menu ou Maj+F10, absent du front) ouvre à la place le menu
+  des durées (`menu::choisir` laisse ouvert le menu qu'une action vient d'ouvrir) ; en sourdine, l'entrée devient « Réactiver les notifications ». Le menu d'un serveur offre aussi
+  « Paramètres de notification » (la catégorie s'ouvre sur ce serveur) et « Copier le lien ».
+- Apparence : le thème choisi s'applique tout de suite (`Theme.mode`), comme le bouton de l'en-tête ; la densité compacte resserre les messages (`Affichage.compacte`) ;
+  réduire les animations met les durées à zéro (`Mouvement.reduit`).
+- Débogage : 500 dernières lignes du journal (relu toutes les 3 s tant que la catégorie est ouverte), filtre par niveau et par texte, copie de tout le journal, export
+  dans le dossier des téléchargements (`estompe-debug-AAAA-MM-JJ-HH-MM-SS.log`, heure locale), vidage ; « Mesures de performance… » quand le mode debug est actif.
+- Application : « À propos », panneau des mises à jour, lancement à l'ouverture de la session ; 7 clics sur « Version installée » basculent les fonctions alpha
+  (préférence locale `alpha`, comme `UpdateSettings.svelte`).
+- Compte : voir [Profil](#profil).
+- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; « Signalements » : voir [Signalements](#signalements). Écarts des notifications : pas de notification push de test (push web : écart assumé), aucune marque de sourdine
+  dans la liste des salons ni sur le rail (le front n'en a pas).
+
+### Profil
+
+Catégorie « Compte » (`ui/parametres/profil.slint`, global `DonneesProfil` ; `src/coquille/pont/profil.rs` ; images dans `src/coquille/profil.rs` ; calculs purs dans
+`estompe_client::profil`), comme le compte de `SettingsModal.svelte` et le menu de `ProfileModal.svelte` :
+
+- Avatar : « Changer l'avatar » ouvre le sélecteur de fichiers de l'OS (PNG, JPEG, WebP, GIF ; 32 Mo au plus, réduite à 2 048 px à l'ouverture), puis la fenêtre
+  « Recadrer l'avatar » ; « Supprimer » (s'il y en a un) envoie `DELETE /me/avatar`. Mon avatar est aussi celui de la barre de l'utilisateur.
+- Photos par serveur : une ligne par serveur avec la photo qui s'y applique (la sienne, sinon la globale), « Changer » (même recadrage, `PUT /servers/{id}/me/avatar`)
+  et « Retirer » si le serveur en a une (`DELETE /servers/{id}/me/avatar`).
+- Recadrage (`Recadrage`, `ui/composants/recadrage.slint`, réutilisé pour l'icône d'un nouveau serveur) : aperçu carré de 240 px aux coins de l'avatar (partie de l'image par
+  `source-clip`), glisser ou flèches pour déplacer (12 px), curseur de zoom de 1 à 4 (pas de 0,05) ou + et - (0,25). Mêmes calculs que `cropRect` du front : `zoom` réduit le
+  carré source, `x` et `y` dans [-1, 1] le placent d'un bord à l'autre ; un glisser déplace l'image dans le sens du pointeur. « Valider » envoie un carré de 256 px en PNG,
+  en JPEG (qualité 85) s'il dépasse 200 Ko, comme `squareAvatar` ; le front centre l'avatar sans recadrage, l'app native recadre l'avatar et les photos par serveur.
+- Bannière : « Couleur du rôle » ou une des dix nuances (`NUANCES_BANNIERE`), `PUT /me/banner` ; le front propose un sélecteur de couleur libre dans le menu de la carte,
+  l'app native une palette fixe (pas de sélecteur de couleur dans Slint).
+- Rien n'est appliqué d'avance : `avatar.updated`, `server_avatar.updated` et `banner.updated` mettent la page, la barre, la liste des membres et la carte à jour, chez soi
+  comme chez les autres. Un échec affiche « Image impossible à utiliser comme avatar. » (ou « … comme photo de serveur. »), « Photo non supprimée. » ou « Couleur non enregistrée. ».
+- Pas dans le front, donc pas dans l'app native : pseudo par serveur choisi par soi-même (seulement par la modération, `PUT /servers/{id}/members/{uid}/nickname`), bio,
+  statut personnalisé, choix des badges affichés (aucune route).
 
 ## Types de l'API
 
@@ -1414,6 +1678,47 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 `jeux.rs` (même backend, `ServeurMessages`, `PremierPlanFactice` sondé toutes les 20 ms) : jeu détecté affiché sous mon pseudo, rien publié hors ligne, activité vide
   publiée sans le réglage, « Jeux et activité » ouvert depuis le menu de l'utilisateur, partage activé (`PUT /me/activity` avec le jeu), jeu exclu retiré de l'affichage et de
   l'activité publiée, application fenêtrée non détectée puis ajoutée comme jeu, exécutable exclu par « Parcourir… ».
+`parametres.rs` (sans boucle d'évènements) : catégories dans l'ordre du front, flèches, Origine et Fin, thème, densité et animations réglés au clavier et enregistrés,
+  Échap qui ferme et rend le focus à la coquille, catégorie retrouvée à la réouverture, recherche par Ctrl+F effacée par Échap, journal activé, filtré, exporté et vidé
+  au clavier, déblocage des fonctions alpha. `coquille.rs` vérifie aussi qu'un type de notification changé sur un autre appareil (`notify_settings.updated`) est reflété
+  dans la page ouverte, et qu'une navigation la referme. Profil : une image de synthèse recadrée au clavier (+, flèches) et à la souris (glisser) est envoyée
+  (`PUT /me/avatar`) au faux serveur, qui la sert ensuite ; un autre client qui reçoit `avatar.updated` la télécharge et l'affiche dans sa liste des membres (pixel vérifié),
+  ma page et ma barre aussi ; bannière envoyée puis reçue (`banner.updated`), photo d'un serveur retirée, « Modifier mon profil » de ma carte ouvre le compte. Le calcul du
+  recadrage a ses tests unitaires (`estompe_client::profil`, `coquille::profil` : image en quadrants, pixel attendu).
+`creation.rs` (même backend que `coquille.rs`, `ServeurMessages` qui accepte aussi `POST /servers`, `POST /server-invites/{code}/join`, `GET /servers`,
+  `POST /servers/{id}/channels`) : sans `manage_channels` (droits changés dans le store), ni « + » ni « Créer un salon » dans les menus et la fenêtre ne s'ouvre pas,
+  le droit rendu les fait revenir ; nom déjà pris, vide puis refusé par le serveur affichés ; salon texte privé (rôle, membre), sujet et mode lent envoyés, ouvert et listé ;
+  un `channel.created` d'un autre membre l'ajoute au panneau en temps réel ; serveur créé avec une icône choisie et recadrée (`PUT /servers/s9/icon`) puis ouvert ;
+  code invalide signalé, lien complet rejoint ; serveur quitté depuis ses réglages après confirmation. Les règles de `channel-create.svelte.ts` ont leurs tests unitaires (`estompe_client::creation`).
+`reglages_serveur.rs` (même backend, `ServeurMessages` qui garde aussi invitations, bannis et emoji) : onglets selon les droits changés dans le store, nom enregistré
+  (`PATCH /servers/s1`), lien créé avec expiration et utilisations, copié puis révoqué, emoji trop grand ou trop lourd refusé sans aucun envoi, emoji valide ajouté avec
+  son nom proposé, renommé puis supprimé, membres cherchés sans accents, ban levé, serveur supprimé après la saisie exacte de son nom et page refermée. Les règles ont
+  leurs tests unitaires (`estompe_client::reglages_serveur`).
+`roles.rs` (même backend, `ServeurMessages` qui garde aussi le détail du serveur, ses rôles et les surcharges) : sans être créateur, un rôle au niveau du mien ou
+  au-dessus reste en lecture seule et rien n'est envoyé ; rôle renommé, coloré et doté d'une permission (`PATCH` vérifié), créé, déplacé par un vrai glisser-déposer puis par
+  une flèche, sans passer au-dessus du mien, supprimé après confirmation ; membre ajouté par la recherche puis retiré ; retirer « Rejoindre » à « @tout le monde » demande
+  une confirmation (refusée puis acceptée) ; surcharges d'un salon en trois états par rôle, confirmation avant de se retirer la vue du salon ; enfin un autre client change
+  les permissions : sur `roles.updated`, la zone de saisie passe en lecture seule et les onglets « Salons » et « Rôles » disparaissent. Les règles ont leurs tests unitaires
+  (`estompe_client::gestion_roles`, équivalents des cas de `roles.test.ts` sur la modification).
+`moderation.rs` (même backend, `ServeurMessages` qui répond aussi aux routes de modération) : menu d'un membre selon les permissions et le rang (rien sur la
+  créatrice ni sur un rang égal), exclusion levée directement, avertissement (raison obligatoire), bannissement d'une durée personnalisée avec purge, pseudo borné à
+  32 caractères puis envoyé, expulsion depuis la carte de profil ; salon renommé (nom déjà pris refusé), mode lent et verrouillage enregistrés, 5 derniers messages
+  supprimés après confirmation et nombre affiché ; journal chargé puis filtré ; salon supprimé depuis les réglages ; enfin `member.timeout` me visant recharge le détail
+  sans `send_messages` et la zone de saisie passe en lecture seule avec la fin de l'exclusion (#366 C2). Les règles ont leurs tests unitaires (`estompe_client::moderation`).
+`administration.rs` (même backend, la boucle lancée trois fois) : un compte sans le droit n'a ni l'entrée du rail ni l'espace, et aucun `/admin/…` n'est appelé ;
+  un compte limité à l'administration ouvre `Page::Administration` et s'en déconnecte ; un administrateur ouvre l'espace par le rail : comptes cherchés, suspendus
+  après confirmation et rétablis, serveur supprimé après saisie de son nom, badges triés et cherchés, détenteur ajouté par la recherche puis retiré, image choisie et
+  recadrée puis envoyée avec la couleur modifiée, badge créé puis un autre supprimé après confirmation, message du bot confirmé, statistiques et direct, journaux,
+  et une navigation ou les réglages d'un serveur referment l'espace. Les règles ont leurs tests unitaires (`estompe_client::admin`).
+`acces.rs` (même backend, la boucle lancée deux fois) contre l'aegis factice : fiche d'un compte, « Pourquoi ? » et simulation, règle directe ajoutée (permission
+  cherchée, portée, expiration, note) qui apparaît en tête du journal, filtre du journal par action, historique, retrait confirmé, erreur puis « Réessayer » sur les
+  rôles, grille et enregistrement d'un rôle, membre ajouté à un groupe, catalogue et détenteurs ; puis 10 000 comptes chargés par pages au défilement, en mesurant
+  les lignes instanciées (au plus 40), la latence de l'interface et la durée d'une étape (moins de 400 ms).
+`signalements.rs` (même backend, fausses sources de capture : un écran, une autre fenêtre, la fenêtre d'Estompe) : « Signaler un bug » masque la fenêtre, joint la
+  capture de la seule fenêtre d'Estompe (le JPEG envoyé fait 1180 × 900) puis s'affiche ; brouillon gardé, repris à la réouverture et vidé après l'envoi, seconde capture
+  retirée, information décochée absente de `POST /reports` ; message et personne signalés avec leur contexte sans toucher au brouillon ; mes signalements ; traitement :
+  filtres envoyés, détail avec sa capture, doublon refusé sans original puis enregistré avec, copie, suppression confirmée. Les règles ont leurs tests unitaires
+  (`estompe_client::signalements`, cas de `report.test.ts`) et la capture le sien sur `EcransFactices` (`estompe_plateforme::capture`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,
