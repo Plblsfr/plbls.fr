@@ -31,6 +31,34 @@ just estompe-natif-test
 just estompe-natif-check          # tous les contrôles de la CI Linux
 ```
 
+### Verrou des builds et mémoire
+
+Compiler l'app native demande plusieurs Go de mémoire par `rustc` (code généré par Slint), et deux compilations en même temps peuvent
+saturer la mémoire de la machine (WSL redémarre alors). `scripts/estompe/natif-check.sh` et les recettes `estompe-natif-…` du `justfile`
+qui compilent passent donc par `scripts/estompe/natif-verrou.sh` : un seul build lourd à la fois sur la machine, quel que soit le worktree.
+Les autres attendent en l'annonçant (« un autre build de l'app native tourne sur cette machine, attente de sa fin »). Le verrou est
+`/tmp/estompe-natif-build.lock` (`ESTOMPE_NATIF_VERROU_FICHIER` pour un autre fichier) ; sans `flock` (macOS), le build part sans verrou.
+Une commande cargo lancée à la main ne le prend pas : `scripts/estompe/natif-verrou.sh cargo …` depuis `apps/estompe/natif`.
+`just estompe-natif-run` ne garde le verrou que pendant la compilation, pas pendant que l'app tourne.
+
+Sous WSL, réglage conseillé de `%UserProfile%\.wslconfig` (puis `wsl --shutdown`) :
+
+```ini
+[wsl2]
+# laisser quelques Go à Windows
+memory=20GB
+# un pic de rustc passe en swap au lieu de faire redémarrer WSL
+swap=16GB
+[experimental]
+# rend à Windows la mémoire libérée après un build
+autoMemoryReclaim=gradual
+```
+
+Chaque worktree a son propre `apps/estompe/natif/target` et recompile donc tout la première fois (plusieurs dizaines de Go par dossier).
+Pour partager les artefacts entre worktrees, `CARGO_TARGET_DIR` pointe vers un dossier commun (par exemple `~/.cache/estompe-natif-target`) :
+le verrou garantit qu'un seul build l'utilise à la fois, mais passer d'une branche à l'autre recompile ce qui diffère. Un dossier par
+worktree évite ces recompilations au prix du disque.
+
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
 `estompe-natif --mesures <fichier.json>` relève la mémoire et le CPU de l'app pendant un scénario et écrit un export au format de l'app Tauri :
 voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résultats du point de contrôle du lot 4).
