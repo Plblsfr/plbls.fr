@@ -70,7 +70,7 @@ estompe-natif-build PROFIL="release":
 estompe-natif-test:
     cd apps/estompe/natif && cargo test --workspace --locked
 
-# Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests, build
+# Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests (qui construisent aussi le binaire)
 estompe-natif-check:
     scripts/estompe/natif-check.sh
 
