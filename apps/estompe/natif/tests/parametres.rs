@@ -395,7 +395,10 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
 
     let ancre = Ancre::Point { x: 300.0, y: 300.0 };
     assert!(pont.menu_salon(&f, "c4", ancre));
-    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien", "creer-salon"]);
+    assert_eq!(
+        ids_du_menu(&f),
+        ["lu", "sourdine", "lien", "creer-salon", "moderer-salon"]
+    );
     menu::choisir(&f, "sourdine");
     assert!(
         f.global::<DonneesMenu>().get_ouvert(),
@@ -452,7 +455,10 @@ fn les_niveaux_et_les_sourdines_s_enregistrent_et_une_sourdine_se_leve_seule() {
         "la sourdine de 15 minutes s'est levée seule"
     );
     pont.menu_salon(&f, "c4", ancre);
-    assert_eq!(ids_du_menu(&f), ["lu", "sourdine", "lien", "creer-salon"]);
+    assert_eq!(
+        ids_du_menu(&f),
+        ["lu", "sourdine", "lien", "creer-salon", "moderer-salon"]
+    );
     menu::fermer(&f);
 
     pont.definir_niveau_general(&f, 1);
