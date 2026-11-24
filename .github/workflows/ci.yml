@@ -79,7 +79,7 @@ jobs:
         run: |
           node scripts/check-node.mjs
           npm run ui:check
-          node --test "scripts/*.test.mjs"
+          node --test "scripts/*.test.mjs" "scripts/estompe/*.test.mjs"
           node scripts/check-links.mjs
       - name: just, shellcheck et ruff
         if: needs.changements.outputs.lint == 'true'
@@ -332,6 +332,14 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
           echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list >/dev/null
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang-21
+      - name: Swap de 16 Go (rustc monte à 14 Go sur la crate de l'app, voir docs/estompe/ci.md)
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 16G /mnt/swap-natif
+          sudo chmod 600 /mnt/swap-natif
+          sudo mkswap -q /mnt/swap-natif
+          sudo swapon /mnt/swap-natif
+          free -g
       - name: Serveur LiveKit de dev (test d'intégration du vocal)
         run: docker compose -f deploy/docker-compose.dev.yml up -d livekit
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable

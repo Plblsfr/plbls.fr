@@ -72,6 +72,8 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
   `libasound2-dev` pour le son par `cpal`, sans périphérique audio : micro et sortie sont simulés ; zone de notification et notifications
   sur le bus de session, rendues obligatoires par `ESTOMPE_DBUS_EXIGE=1`), build. Puis il lance
   l'app sous Xvfb (`--essai-de-lancement`). En cas d'échec, l'artefact `estompe-natif-captures` contient captures, références et différences.
+  Le runner (16 Go) reçoit 16 Go de swap avant les contrôles : un rustc sur la crate de l'app monte à 14,2 Go en pointe (code généré par Slint
+  analysé, puis passage vers LLVM ; mesuré avec `-Z time-passes`), et sans swap le runner perdait parfois la connexion en pleine compilation.
 - `estompe-natif-windows` : runner Windows, cible `x86_64-pc-windows-msvc` : build et tests (coffre de secrets : Credential Manager), sans
   comparaison des captures. CRT statique (libwebrtc) : Skia y est compilé depuis ses sources (`ninja` installé par pip, LLVM 22.1.8 installé depuis sa release GitHub, empreinte SHA-256 vérifiée,
   désigné par `LLVM_HOME` et `LIBCLANG_PATH` car le STL de MSVC refuse le clang 20 du runner, `core.longpaths` pour le clonage de ses dépendances),

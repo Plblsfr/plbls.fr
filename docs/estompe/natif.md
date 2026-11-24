@@ -31,11 +31,65 @@ just estompe-natif-test
 just estompe-natif-check          # tous les contrôles de la CI Linux
 ```
 
+### Verrou des builds et mémoire
+
+Compiler l'app native demande plusieurs Go de mémoire par `rustc` (code généré par Slint), et deux compilations en même temps peuvent
+saturer la mémoire de la machine (WSL redémarre alors). `scripts/estompe/natif-check.sh` et les recettes `estompe-natif-…` du `justfile`
+qui compilent passent donc par `scripts/estompe/natif-verrou.sh` : un seul build lourd à la fois sur la machine, quel que soit le worktree.
+Les autres attendent en l'annonçant (« un autre build de l'app native tourne sur cette machine, attente de sa fin »). Le verrou est
+`/tmp/estompe-natif-build.lock` (`ESTOMPE_NATIF_VERROU_FICHIER` pour un autre fichier) ; sans `flock` (macOS), le build part sans verrou.
+Une commande cargo lancée à la main ne le prend pas : `scripts/estompe/natif-verrou.sh cargo …` depuis `apps/estompe/natif`.
+`just estompe-natif-run` ne garde le verrou que pendant la compilation, pas pendant que l'app tourne.
+
+Sous WSL, réglage conseillé de `%UserProfile%\.wslconfig` (puis `wsl --shutdown`) :
+
+```ini
+[wsl2]
+# laisser quelques Go à Windows
+memory=20GB
+# un pic de rustc passe en swap au lieu de faire redémarrer WSL
+swap=16GB
+[experimental]
+# rend à Windows la mémoire libérée après un build
+autoMemoryReclaim=gradual
+```
+
+Chaque worktree a son propre `apps/estompe/natif/target` et recompile donc tout la première fois (plusieurs dizaines de Go par dossier).
+Pour partager les artefacts entre worktrees, `CARGO_TARGET_DIR` pointe vers un dossier commun (par exemple `~/.cache/estompe-natif-target`) :
+le verrou garantit qu'un seul build l'utilise à la fois, mais passer d'une branche à l'autre recompile ce qui diffère. Un dossier par
+worktree évite ces recompilations au prix du disque.
+
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
 `estompe-natif --mesures <fichier.json>` relève la mémoire et le CPU de l'app pendant un scénario et écrit un export au format de l'app Tauri :
 voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résultats du point de contrôle du lot 4).
 
 `estompe-natif --arriere-plan` démarre sans montrer la fenêtre si l'icône de la zone de notification est en place (lancement à l'ouverture de la session), sinon la montre.
+
+### Aperçu en direct
+
+`just estompe-natif-apercu` lance l'app en aperçu en direct de Slint : enregistrer un `.slint` (`ui/app.slint` ou tout fichier qu'il importe)
+recharge l'interface dans la fenêtre ouverte, sans recompiler. La feature `apercu` (`slint/live-preview`) et `SLINT_LIVE_PREVIEW=1` à la compilation
+remplacent le code généré par Slint par un interpréteur de même API, qui compile `ui/app.slint` au démarrage puis à chaque modification. La recette
+compile dans `target/apercu` (ou `$CARGO_TARGET_DIR/apercu`) pour ne pas invalider le build normal.
+
+Mesuré sous WSL (8 cœurs, sans le vocal) :
+
+| | Aperçu en direct | Build normal |
+|---|---|---|
+| Une modification de `.slint` jusqu'au rechargement | 5,4 à 5,9 s | 3 min 53 s (script de build Slint 14 s, crate de l'app 219 s) |
+| Recompilation après une modification du Rust seul | 3,7 s | crate de l'app recompilée |
+| Code Rust généré par Slint | 1,4 Mo | 78 Mo |
+| Mémoire maximale de la compilation | 2,1 Go | 18 Go |
+| Démarrage de l'app (compilation de l'interface) | 6,5 s, 1,5 Go | |
+
+Limites :
+- Sans le vocal (`--no-default-features`) : l'aperçu sert à l'interface, et toucher au Rust n'y recompile jamais `webrtc-sys`.
+- Un rechargement recrée l'interface : les propriétés et rappels posés par le Rust sont rendus, mais l'état propre à l'interface (page ouverte, texte saisi,
+  défilement) repart de zéro.
+- Une erreur dans un `.slint` est affichée dans le terminal et l'interface précédente reste. Une propriété, un rappel ou un global nouveaux appelés depuis
+  le Rust demandent de relancer la recette (les accesseurs sont générés à la compilation).
+- Polices, images et emoji sont lus sur le disque pendant que l'app tourne, pas embarqués : le binaire de l'aperçu ne se distribue pas.
+- Jamais utilisé par les tests, les captures de rendu, `scripts/estompe/natif-check.sh` ni la CI, qui compilent le code généré.
 
 ## Interface
 

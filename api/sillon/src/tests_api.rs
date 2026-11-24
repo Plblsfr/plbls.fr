@@ -619,15 +619,16 @@ impl Bibliotheque {
             "lastWrite",
             self.lidarr.url.as_str(),
             "cle-lidarr",
-            "9870",
-            "9871",
-            "9872",
-            "9873",
-            "9874",
         ] {
             assert!(
                 !texte.contains(interdit),
                 "{contexte} : « {interdit} » dans {texte}"
+            );
+        }
+        for id in ["9870", "9871", "9872", "9873", "9874"] {
+            assert!(
+                !commence_un_mot(texte, id),
+                "{contexte} : id Lidarr « {id}… » dans {texte}"
             );
         }
     }
@@ -648,6 +649,26 @@ impl Bibliotheque {
             .to_string();
         self.get("alice", &format!("/albums/{id}")).await.json()
     }
+}
+
+fn commence_un_mot(texte: &str, motif: &str) -> bool {
+    texte.match_indices(motif).any(|(i, _)| {
+        !texte[..i]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_ascii_alphanumeric())
+    })
+}
+
+#[test]
+fn un_id_lidarr_ne_se_confond_pas_avec_une_empreinte() {
+    assert!(!commence_un_mot(
+        r#"{"image":"5544a9ad456987274bafa9bf08e49f4c"}"#,
+        "9872"
+    ));
+    assert!(commence_un_mot(r#"{"id":987201}"#, "9872"));
+    assert!(commence_un_mot("/MediaCover/987201/poster.jpg", "9872"));
+    assert!(commence_un_mot("987201", "9872"));
 }
 
 pub(crate) fn encode(t: &str) -> String {
