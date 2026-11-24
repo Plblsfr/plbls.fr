@@ -709,7 +709,7 @@ deux moteurs et sur les deux OS :
   `estompe_plateforme::commande_d_arriere_plan` (sous Windows, sans fenêtre de console et en priorité basse). Sous Windows, l'installeur
   (`installeur/estompe-natif.nsi`) le copie à côté d'`estompe-natif.exe` : c'est le binaire de l'app Tauri, téléchargé par
   `apps/estompe/windows/scripts/fetch-ffmpeg.mjs` (build `win64-lgpl` de [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), autobuild épinglé
-  `autobuild-2026-11-09-12-42`, FFmpeg `N-128718-gb2b543c079`, archive vérifiée par sa somme SHA-256 épinglée dans le script), sous licence LGPL version 3 ou
+  `autobuild-2026-11-24-12-41`, FFmpeg `N-129267-g9ec5cf1aac`, archive vérifiée par sa somme SHA-256 épinglée dans le script), sous licence LGPL version 3 ou
   ultérieure (`--enable-version3`, sans `libx264`), cité dans « À propos » : 130 Mo installé, 41 Mo dans l'installeur compressé en LZMA. Sous Linux, celui du `PATH`.
   La détection n'a lieu qu'à la première vidéo, hors du fil d'interface.
 - Pendant la conversion, la pièce affiche « conversion… 42 % » et sa barre (`EtatPiece::Conversion`, lu dans `-progress pipe:1` rapporté à la durée de `ffmpeg -i`). La croix
