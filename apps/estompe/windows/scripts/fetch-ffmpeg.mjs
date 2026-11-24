@@ -8,9 +8,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // Version épinglée : pour la changer, mettre à jour TAG, ARCHIVE et SHA256 (sha256sum de l'archive).
-const TAG = 'autobuild-2026-11-09-12-42'
-const ARCHIVE = 'ffmpeg-N-128718-gb2b543c079-win64-lgpl.zip'
-const SHA256 = '26036901ed393400cf797514b7d840b35ed785108eaf4ff346b317b67445e1c8'
+const TAG = 'autobuild-2026-11-24-12-41'
+const ARCHIVE = 'ffmpeg-N-129267-g9ec5cf1aac-win64-lgpl.zip'
+const SHA256 = '8999af4dc2f4d102ae0df23396b81f02bd5700f25555372abf91cc957f9d1ded'
 const URL = `https://github.com/BtbN/FFmpeg-Builds/releases/download/${TAG}/${ARCHIVE}`
 const dest = join(import.meta.dirname, '..', 'src-tauri', 'binaries', 'ffmpeg.exe')
 
