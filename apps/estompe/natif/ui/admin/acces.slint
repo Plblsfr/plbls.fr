@@ -1,7 +1,2404 @@
-import { OngletBientot } from "../coquille/reglages-serveur.slint";
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Avatar, Chargement, Case, ListeVirtuelle } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { Note, Carte, Alerte, Puce } from "../coquille/reglages-serveur.slint";
+import {
+    DonneesAcces, ChargementAcces, OptionAcces, LigneCompteAcces, PuceAcces, LigneDroitAcces, ColonneRoleAcces, CaseRoleAcces,
+    LigneGrilleAcces, LigneRegleRoleAcces, LigneQuiAcces, LigneMembreAcces, LigneLiaisonAcces, LigneRegleAcces,
+    LigneCatalogueAcces, DetenteurAcces, LigneJournalAcces, ExceptionAcces, RangeePucesAcces,
+} from "acces-donnees.slint";
 
-export component OngletAccesAdmin inherits VerticalLayout {
-    OngletBientot {
-        texte: "L'administration des accès arrive bientôt dans l'app native.";
+component Mono inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: Typo.minuscule;
+    overflow: elide;
+}
+
+component Sur inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.demi-gras;
+    letter-spacing: 0.8px;
+}
+
+component SousTitre inherits Text {
+    color: Theme.encre;
+    font-family: Typo.titre;
+    font-size: 15px;
+    font-weight: Typo.gras;
+}
+
+export component TagAcces inherits Rectangle {
+    in property <string> texte;
+    in property <string> ton;
+    in property <string> icone;
+    property <color> encre: ton == "ok" ? Theme.ok : ton == "dgr" ? Theme.danger : ton == "att" ? Theme.attention : ton == "info" ? Theme.info : ton == "rose" ? Theme.rose-texte : Theme.gris;
+    height: 22px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: ton == "ok" ? Theme.ok-fond : ton == "dgr" ? Theme.danger-fond : ton == "att" ? Theme.attention-fond : ton == "info" ? Theme.info-fond : ton == "rose" ? Theme.rose-doux : Theme.papier-3;
+    accessible-role: text;
+    accessible-label: texte;
+    contenu := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+        if root.icone != "": VerticalLayout {
+            alignment: center;
+            Icone {
+                nom: root.icone;
+                taille: 12px;
+                couleur: root.encre;
+            }
+        }
+        Text {
+            text: root.texte;
+            color: root.encre;
+            font-size: Typo.minuscule;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+        }
     }
 }
+
+component Lien inherits Rectangle {
+    in property <string> texte;
+    in property <string> description;
+    in property <bool> danger: false;
+    callback clique();
+    property <bool> utilisable: Calques.ouverts == 0;
+    height: 26px;
+    width: libelle.preferred-width + 8px;
+    border-radius: Rayon.xs;
+    background: zone.has-hover ? Theme.rose : transparent;
+    accessible-role: button;
+    accessible-label: description != "" ? description : texte;
+    accessible-action-default => {
+        root.clique();
+    }
+    Anneau {
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        rayon: Rayon.xs;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+    libelle := Text {
+        text: root.texte;
+        color: root.danger ? Theme.danger : Theme.rose-texte;
+        font-size: Typo.petit;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component AttenteAcces inherits VerticalLayout {
+    in property <ChargementAcces> etat;
+    in property <string> cle;
+    alignment: start;
+    if root.etat.erreur == "": HorizontalLayout {
+        spacing: Espace.e2;
+        padding: Espace.e2;
+        Chargement {
+            taille: 18px;
+        }
+        Note {
+            text: "Chargement…";
+            vertical-alignment: center;
+        }
+    }
+    if root.etat.erreur != "": Rectangle {
+        border-radius: Rayon.s;
+        background: Theme.danger-fond;
+        border-width: 1px;
+        border-color: Theme.danger;
+        accessible-role: text;
+        accessible-label: root.etat.erreur;
+        HorizontalLayout {
+            padding: Espace.e3;
+            spacing: Espace.e3;
+            Icone {
+                nom: "alerte";
+                couleur: Theme.danger;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.etat.erreur;
+                color: Theme.danger;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                Lien {
+                    texte: "Réessayer";
+                    clique => {
+                        DonneesAcces.recharger(root.cle);
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Selecteur {
+    in property <string> etiquette;
+    in property <string> valeur;
+    in property <string> quel;
+    property <bool> utilisable: Calques.ouverts == 0;
+    horizontal-stretch: 1;
+    min-width: 160px;
+    accessible-role: combobox;
+    accessible-label: etiquette;
+    accessible-value: valeur;
+    accessible-action-default => {
+        root.ouvrir();
+    }
+    function ouvrir() {
+        DonneesAcces.ouvrir-choix(root.quel, champ.absolute-position.x, champ.absolute-position.y, champ.absolute-position.y + champ.height);
+    }
+    VerticalLayout {
+        spacing: Espace.e1;
+        alignment: start;
+        if root.etiquette != "": Text {
+            text: root.etiquette;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        champ := Rectangle {
+            height: 40px;
+            border-radius: Rayon.s;
+            background: zone.has-hover ? Theme.surface-2 : Theme.surface;
+            border-width: portee.has-focus ? 2px : 1px;
+            border-color: portee.has-focus ? Theme.encre : Theme.trait-fort;
+            portee := FocusScope {
+                enabled: root.utilisable;
+                focus-on-click: false;
+                key-pressed(e) => {
+                    if (e.text == Key.Return || e.text == " " || e.text == Key.DownArrow) {
+                        root.ouvrir();
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+            zone := TouchArea {
+                enabled: root.utilisable;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.ouvrir();
+                }
+            }
+            HorizontalLayout {
+                padding-left: Espace.e3;
+                padding-right: Espace.e2;
+                spacing: Espace.e2;
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.valeur;
+                    color: Theme.encre;
+                    font-size: Typo.corps;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Icone {
+                        nom: "down";
+                        taille: 16px;
+                        couleur: Theme.gris;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component LigneChoix inherits Rectangle {
+    in property <OptionAcces> choix;
+    callback choisir();
+    property <bool> utilisable: Calques.ouverts == 0;
+    min-height: 40px;
+    border-radius: Rayon.xs;
+    background: zone.has-hover || portee.has-focus ? Theme.rose : transparent;
+    accessible-role: button;
+    accessible-label: choix.libelle;
+    accessible-description: choix.note;
+    accessible-action-default => {
+        root.choisir();
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.choisir();
+        }
+    }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        spacing: Espace.e2;
+        Text {
+            text: root.choix.libelle;
+            color: Theme.encre;
+            font-weight: Typo.demi-gras;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Mono {
+            horizontal-stretch: 1;
+            text: root.choix.note;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component ChoixCompte inherits VerticalLayout {
+    in property <string> etiquette;
+    spacing: Espace.e1;
+    Champ {
+        etiquette: root.etiquette;
+        indice: "e-mail, nom ou sub";
+        valeur <=> DonneesAcces.recherche-compte;
+        modifie(t) => {
+            DonneesAcces.chercher-compte(t);
+        }
+    }
+    if DonneesAcces.comptes-trouves-vide: Note {
+        text: "Aucun compte, ni dans l'annuaire ni dans Keycloak.";
+    }
+    for c[i] in DonneesAcces.comptes-trouves: LigneChoix {
+        choix: c;
+        choisir => {
+            DonneesAcces.choisir-compte(i);
+        }
+    }
+}
+
+component ChoixRessource inherits VerticalLayout {
+    in property <string> etiquette;
+    spacing: Espace.e1;
+    Champ {
+        etiquette: root.etiquette;
+        indice: "nom ou identifiant";
+        valeur <=> DonneesAcces.recherche-ressource;
+        modifie(t) => {
+            DonneesAcces.chercher-ressource(t);
+        }
+    }
+    if DonneesAcces.ressources-chargees && DonneesAcces.ressources-trouvees.length == 0: Note {
+        text: "Aucune ressource.";
+    }
+    for r[i] in DonneesAcces.ressources-trouvees: LigneChoix {
+        choix: r;
+        choisir => {
+            DonneesAcces.choisir-ressource(i);
+        }
+    }
+}
+
+component EnLigne inherits HorizontalLayout {
+    in property <string> texte;
+    in property <string> lien;
+    callback clique();
+    spacing: Espace.e2;
+    alignment: start;
+    Text {
+        text: root.texte;
+        color: Theme.encre;
+        font-weight: Typo.gras;
+        vertical-alignment: center;
+    }
+    if root.lien != "": Lien {
+        texte: root.lien;
+        clique => {
+            root.clique();
+        }
+    }
+}
+
+component OngletsAcces inherits Rectangle {
+    property <[{id: string, libelle: string}]> onglets: [
+        { id: "comptes", libelle: "Comptes" },
+        { id: "roles", libelle: "Rôles" },
+        { id: "groupes", libelle: "Groupes" },
+        { id: "catalogue", libelle: "Catalogue" },
+        { id: "journal", libelle: "Journal" },
+    ];
+    property <bool> utilisable: Calques.ouverts == 0;
+    height: 38px;
+    width: rangee.preferred-width;
+    border-radius: Rayon.s;
+    background: Theme.papier-2;
+    accessible-role: tab-list;
+    accessible-label: "Gestion des accès";
+    portee := FocusScope {
+        enabled: root.utilisable;
+        key-pressed(e) => {
+            if (e.text == Key.RightArrow) {
+                DonneesAcces.deplacer-onglet(1);
+                return accept;
+            }
+            if (e.text == Key.LeftArrow) {
+                DonneesAcces.deplacer-onglet(-1);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.s;
+        actif: portee.has-focus;
+    }
+    rangee := HorizontalLayout {
+        padding: 3px;
+        spacing: 2px;
+        for o in root.onglets: Rectangle {
+            property <bool> actif: DonneesAcces.onglet == o.id;
+            width: libelle.preferred-width + 28px;
+            border-radius: Rayon.xs;
+            background: self.actif ? Theme.surface : zone.has-hover ? Theme.surface.with-alpha(0.55) : transparent;
+            border-width: self.actif ? 1px : 0;
+            border-color: Theme.trait;
+            accessible-role: tab;
+            accessible-label: o.libelle;
+            accessible-item-selected: self.actif;
+            accessible-action-default => {
+                DonneesAcces.choisir-onglet(o.id);
+            }
+            zone := TouchArea {
+                enabled: root.utilisable;
+                mouse-cursor: pointer;
+                clicked => {
+                    portee.focus();
+                    DonneesAcces.choisir-onglet(o.id);
+                }
+            }
+            libelle := Text {
+                text: o.libelle;
+                color: DonneesAcces.onglet == o.id ? Theme.encre : Theme.gris;
+                font-size: Typo.petit;
+                font-weight: Typo.demi-gras;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component Segments inherits HorizontalLayout {
+    in property <[string]> libelles;
+    in property <int> actif;
+    in property <string> nom;
+    callback choisir(int);
+    spacing: Espace.e2;
+    alignment: start;
+    accessible-role: groupbox;
+    accessible-label: root.nom;
+    for l[i] in root.libelles: Puce {
+        texte: l;
+        choisie: i == root.actif;
+        choisir => {
+            root.choisir(i);
+        }
+    }
+}
+
+component LigneCompte inherits Rectangle {
+    in property <LigneCompteAcces> compte;
+    property <bool> utilisable: Calques.ouverts == 0;
+    border-radius: Rayon.s;
+    background: compte.choisi ? Theme.rose-doux : zone.has-hover ? Theme.papier-2 : transparent;
+    accessible-role: button;
+    accessible-label: compte.nom;
+    accessible-description: compte.resume;
+    accessible-item-selected: compte.choisi;
+    accessible-action-default => {
+        DonneesAcces.ouvrir-compte(root.compte.sub);
+    }
+    Anneau {
+        width: parent.width - 4px;
+        height: parent.height - 4px;
+        rayon: Rayon.s;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                DonneesAcces.ouvrir-compte(root.compte.sub);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            DonneesAcces.ouvrir-compte(root.compte.sub);
+        }
+    }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e3;
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.compte.nom;
+                initiales: root.compte.initiales;
+                teinte: root.compte.teinte;
+                taille: 32px;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: root.compte.nom;
+                color: Theme.encre;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                Text {
+                    text: root.compte.resume;
+                    color: Theme.gris;
+                    font-size: Typo.minuscule;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                if root.compte.supprime: TagAcces {
+                    texte: "supprimé de Keycloak";
+                    ton: "dgr";
+                }
+            }
+        }
+    }
+}
+
+component PuceOrigine inherits Rectangle {
+    in property <PuceAcces> puce;
+    callback retirer();
+    height: 30px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: puce.genre == "role" ? Theme.rose-doux : puce.genre == "groupe" ? Theme.info-fond : puce.genre == "refus" ? Theme.danger-fond : puce.genre == "accord" ? Theme.ok-fond : Theme.papier-2;
+    border-width: puce.genre == "herite" ? 1px : 0;
+    border-color: Theme.trait-fort;
+    opacity: puce.obsolete ? 0.55 : 1;
+    accessible-role: list-item;
+    accessible-label: puce.cle != "" ? "\{puce.cle} \{puce.nom}" : puce.nom;
+    accessible-description: puce.details;
+    contenu := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: root.puce.retirable ? 2px : 10px;
+        spacing: 6px;
+        if root.puce.cle != "": Text {
+            text: root.puce.cle;
+            color: Theme.gris;
+            font-size: Typo.minuscule;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.puce.nom;
+            color: root.puce.genre == "refus" ? Theme.danger : Theme.encre;
+            font-size: Typo.petit;
+            font-weight: Typo.gras;
+            vertical-alignment: center;
+        }
+        if root.puce.details != "": Text {
+            text: root.puce.details;
+            color: Theme.gris;
+            font-size: Typo.minuscule;
+            vertical-alignment: center;
+        }
+        if root.puce.retirable: VerticalLayout {
+            alignment: center;
+            Bouton {
+                icone: "x";
+                description: "Retirer \{root.puce.nom}";
+                variante: VarianteBouton.fantome;
+                min-height: 26px;
+                min-width: 26px;
+                clique => {
+                    root.retirer();
+                }
+            }
+        }
+    }
+}
+
+component Rangees inherits VerticalLayout {
+    in property <length> largeur;
+    spacing: Espace.e2;
+    init => {
+        DonneesAcces.puces-mesurees(root.largeur);
+    }
+    changed largeur => {
+        DonneesAcces.puces-mesurees(root.largeur);
+    }
+    for rangee in DonneesAcces.rangees-puces: HorizontalLayout {
+        spacing: Espace.e2;
+        alignment: start;
+        for p in rangee.puces: PuceOrigine {
+            puce: p;
+            retirer => {
+                DonneesAcces.retirer-puce(p.index);
+            }
+        }
+    }
+}
+
+component FormLiaison inherits VerticalLayout {
+    spacing: Espace.e3;
+    HorizontalLayout {
+        spacing: Espace.e3;
+        alignment: stretch;
+        Selecteur {
+            etiquette: "Rôle";
+            valeur: DonneesAcces.liaison-role;
+            quel: "liaison-role";
+        }
+        Selecteur {
+            etiquette: "Portée";
+            valeur: DonneesAcces.liaison-portee;
+            quel: "liaison-portee";
+        }
+        Champ {
+            etiquette: "Expire le (facultatif)";
+            indice: "JJ/MM/AAAA HH:MM";
+            valeur <=> DonneesAcces.liaison-expire;
+        }
+    }
+    if DonneesAcces.liaison-a-portee && DonneesAcces.liaison-ressource != "": EnLigne {
+        texte: DonneesAcces.liaison-ressource;
+        lien: "Changer";
+        clique => {
+            DonneesAcces.changer-ressource-liaison();
+        }
+    }
+    if DonneesAcces.liaison-a-portee && DonneesAcces.liaison-ressource == "": ChoixRessource {
+        etiquette: "Ressource";
+    }
+    HorizontalLayout {
+        alignment: start;
+        Bouton {
+            texte: "Donner le rôle";
+            variante: VarianteBouton.primaire;
+            actif: DonneesAcces.liaison-valide;
+            en-cours: DonneesAcces.en-cours;
+            clique => {
+                DonneesAcces.donner-liaison();
+            }
+        }
+    }
+    if DonneesAcces.liaison-a-portee: Note {
+        text: "Avec une portée, seules les permissions du rôle qui se restreignent à ce type de ressource s'appliquent, et seulement sur cette ressource.";
+    }
+}
+
+component FormRegle inherits VerticalLayout {
+    spacing: Espace.e3;
+    if DonneesAcces.regle-permission == "": VerticalLayout {
+        spacing: Espace.e1;
+        Champ {
+            etiquette: "Permission";
+            indice: "chercher une permission";
+            valeur <=> DonneesAcces.regle-recherche;
+            modifie(t) => {
+                DonneesAcces.chercher-permissions(t);
+            }
+        }
+        for p[i] in DonneesAcces.permissions-trouvees: LigneChoix {
+            choix: p;
+            choisir => {
+                DonneesAcces.choisir-permission(i);
+            }
+        }
+    }
+    if DonneesAcces.regle-permission != "": VerticalLayout {
+        spacing: Espace.e3;
+        EnLigne {
+            texte: DonneesAcces.regle-permission;
+            lien: "Changer";
+            clique => {
+                DonneesAcces.choisir-permission(-1);
+            }
+        }
+        Note {
+            text: DonneesAcces.regle-description;
+        }
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Selecteur {
+                etiquette: "Effet";
+                valeur: DonneesAcces.regle-effet;
+                quel: "regle-effet";
+            }
+            Champ {
+                etiquette: "Expire le (facultatif)";
+                indice: "JJ/MM/AAAA HH:MM";
+                valeur <=> DonneesAcces.regle-expire;
+            }
+            Champ {
+                etiquette: "Note";
+                indice: "raison, ticket…";
+                valeur <=> DonneesAcces.regle-note;
+            }
+        }
+        if DonneesAcces.regle-a-type: VerticalLayout {
+            spacing: Espace.e1;
+            EnLigne {
+                texte: "Portée : \{DonneesAcces.regle-ressource}";
+                lien: DonneesAcces.regle-ressource == "partout" ? "" : "Partout";
+                clique => {
+                    DonneesAcces.regle-partout();
+                }
+            }
+            if DonneesAcces.regle-ressource == "partout": ChoixRessource {
+                etiquette: "Restreindre à une ressource";
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Bouton {
+                texte: DonneesAcces.regle-accorder ? "Accorder" : "Refuser";
+                variante: DonneesAcces.regle-accorder ? VarianteBouton.primaire : VarianteBouton.danger;
+                en-cours: DonneesAcces.en-cours;
+                clique => {
+                    DonneesAcces.ajouter-regle();
+                }
+            }
+        }
+    }
+}
+
+component Maillon inherits HorizontalLayout {
+    in property <bool> refus;
+    in property <string> texte;
+    spacing: Espace.e2;
+    TagAcces {
+        texte: root.refus ? "refuse" : "accorde";
+        ton: root.refus ? "dgr" : "ok";
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: root.texte;
+        color: Theme.encre;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+        vertical-alignment: center;
+    }
+}
+
+component LigneDroit inherits Rectangle {
+    in property <LigneDroitAcces> droit;
+    background: droit.ouvert ? Theme.papier-2 : transparent;
+    border-radius: Rayon.s;
+    accessible-role: list-item;
+    accessible-label: droit.libelle;
+    accessible-description: "\{droit.etat} · \{droit.phrase}";
+    VerticalLayout {
+        padding: Espace.e2;
+        spacing: 3px;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Text {
+                horizontal-stretch: 1;
+                text: root.droit.libelle;
+                color: Theme.encre;
+                font-weight: Typo.gras;
+                overflow: elide;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                TagAcces {
+                    texte: root.droit.etat;
+                    ton: root.droit.ton;
+                    icone: root.droit.icone;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Lien {
+                    texte: root.droit.ouvert ? "Fermer" : "Pourquoi ?";
+                    description: root.droit.ouvert ? "Fermer \{root.droit.libelle}" : "Pourquoi : \{root.droit.libelle}";
+                    clique => {
+                        DonneesAcces.pourquoi(root.droit.permission);
+                    }
+                }
+            }
+        }
+        Mono {
+            text: root.droit.permission;
+        }
+        Text {
+            text: root.droit.phrase;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+        if root.droit.ouvert: VerticalLayout {
+            spacing: Espace.e2;
+            padding-left: Espace.e2;
+            for m in DonneesAcces.chaine: Maillon {
+                refus: m.refus;
+                texte: m.texte;
+            }
+            if DonneesAcces.chaine.length == 0: Note {
+                text: "Aucune règle ne mentionne cette permission : elle est refusée.";
+            }
+            Note {
+                text: "Le refus l'emporte toujours, d'où qu'il vienne. Pour lever un refus, on le supprime.";
+            }
+            if DonneesAcces.essai-type && DonneesAcces.essai-ressource != "": EnLigne {
+                texte: "Tester sur : \{DonneesAcces.essai-ressource}";
+                lien: "Partout";
+                clique => {
+                    DonneesAcces.essai-partout();
+                }
+            }
+            if DonneesAcces.essai-type && DonneesAcces.essai-ressource == "": ChoixRessource {
+                etiquette: "Tester sur une ressource";
+            }
+            if DonneesAcces.a-verdict: HorizontalLayout {
+                spacing: Espace.e2;
+                accessible-role: text;
+                accessible-label: DonneesAcces.verdict;
+                Icone {
+                    nom: DonneesAcces.verdict-autorise ? "ok" : "x";
+                    couleur: DonneesAcces.verdict-autorise ? Theme.ok : Theme.danger;
+                }
+                Text {
+                    text: DonneesAcces.verdict;
+                    color: DonneesAcces.verdict-autorise ? Theme.ok : Theme.danger;
+                    font-weight: Typo.gras;
+                    vertical-alignment: center;
+                }
+            }
+            if DonneesAcces.a-verdict: Note {
+                text: DonneesAcces.verdict-raison;
+            }
+        }
+    }
+}
+
+component LigneJournal inherits Rectangle {
+    in property <LigneJournalAcces> ligne;
+    in property <bool> derniere: false;
+    accessible-role: list-item;
+    accessible-label: "\{ligne.acteur} · \{ligne.action} · \{ligne.cible}";
+    accessible-description: ligne.pour;
+    if !root.derniere: Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.trait;
+    }
+    VerticalLayout {
+        padding-top: 8px;
+        padding-bottom: 8px;
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        spacing: 3px;
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Mono {
+                text: root.ligne.date;
+                vertical-alignment: center;
+                width: 118px;
+            }
+            Text {
+                text: root.ligne.acteur;
+                color: Theme.encre;
+                font-weight: Typo.gras;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+                overflow: elide;
+                max-width: 220px;
+            }
+            VerticalLayout {
+                alignment: center;
+                TagAcces {
+                    texte: root.ligne.action;
+                    ton: root.ligne.ton;
+                }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.ligne.pour != "" ? "\{root.ligne.cible} pour \{root.ligne.pour}" : root.ligne.cible;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        if root.ligne.ressource != "" || root.ligne.extra != "": HorizontalLayout {
+          padding-left: 126px;
+          Text {
+            text: root.ligne.ressource != "" && root.ligne.extra != "" ? "\{root.ligne.ressource} · \{root.ligne.extra}" : root.ligne.ressource != "" ? root.ligne.ressource : root.ligne.extra;
+            color: Theme.gris;
+            font-size: Typo.minuscule;
+            overflow: elide;
+          }
+        }
+    }
+}
+
+component JournalVirtuel inherits Rectangle {
+    in property <[LigneJournalAcces]> lignes;
+    in property <string> nom;
+    height: Math.min(560px, Math.max(1, root.lignes.length) * 56px + 4px);
+    border-radius: Rayon.s;
+    border-width: 1px;
+    border-color: Theme.trait;
+    liste := ListeVirtuelle {
+        accessible-label: root.nom;
+        for l[i] in root.lignes: LigneJournal {
+            width: liste.visible-width;
+            height: 56px;
+            ligne: l;
+            derniere: i == root.lignes.length - 1;
+        }
+    }
+}
+
+component FicheCompte inherits Carte {
+    accessible-role: groupbox;
+    accessible-label: "Fiche de \{DonneesAcces.fiche-nom}";
+    if !DonneesAcces.fiche-etat.charge: AttenteAcces {
+        etat: DonneesAcces.fiche-etat;
+        cle: "fiche";
+    }
+    if DonneesAcces.fiche-etat.charge: VerticalLayout {
+        spacing: Espace.e4;
+        alignment: start;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            VerticalLayout {
+                alignment: center;
+                Bouton {
+                    icone: "gauche";
+                    description: "Retour aux comptes";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        DonneesAcces.fermer-compte();
+                    }
+                }
+            }
+            Avatar {
+                nom: DonneesAcces.fiche-nom;
+                initiales: DonneesAcces.fiche-initiales;
+                teinte: DonneesAcces.fiche-teinte;
+                taille: 44px;
+            }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: DonneesAcces.fiche-nom;
+                    color: Theme.encre;
+                    font-family: Typo.titre;
+                    font-size: 18px;
+                    font-weight: Typo.gras;
+                    overflow: elide;
+                    accessible-role: text;
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    Note {
+                        text: DonneesAcces.fiche-note;
+                        vertical-alignment: center;
+                    }
+                    if DonneesAcces.fiche-supprime: TagAcces {
+                        texte: "supprimé de Keycloak";
+                        ton: "dgr";
+                    }
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                Bouton {
+                    icone: "more";
+                    description: "Autres actions";
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        DonneesAcces.menu-compte(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            alignment: start;
+            Bouton {
+                texte: "Copier les droits d'un autre compte";
+                icone: "copie";
+                clique => {
+                    DonneesAcces.basculer-formulaire("copie");
+                }
+            }
+            Bouton {
+                texte: DonneesAcces.historique ? "Revenir aux droits" : "Historique";
+                icone: "histoire";
+                variante: VarianteBouton.fantome;
+                clique => {
+                    DonneesAcces.basculer-historique();
+                }
+            }
+        }
+        if DonneesAcces.formulaire == "copie": Rectangle {
+            border-radius: Rayon.m;
+            background: Theme.papier-2;
+            VerticalLayout {
+                padding: Espace.e4;
+                spacing: Espace.e3;
+                Sur {
+                    text: "COPIER LES DROITS D'UN AUTRE COMPTE";
+                }
+                if DonneesAcces.copie-source == "": ChoixCompte {
+                    etiquette: "Compte source";
+                }
+                if DonneesAcces.copie-source != "": VerticalLayout {
+                    spacing: Espace.e3;
+                    EnLigne {
+                        texte: "Depuis \{DonneesAcces.copie-source}";
+                        lien: "Changer";
+                        clique => {
+                            DonneesAcces.changer-source();
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: Espace.e3;
+                        alignment: start;
+                        Selecteur {
+                            etiquette: "Mode";
+                            valeur: DonneesAcces.copie-mode;
+                            quel: "copie-mode";
+                            max-width: 280px;
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            Bouton {
+                                texte: "Copier…";
+                                variante: VarianteBouton.primaire;
+                                en-cours: DonneesAcces.en-cours;
+                                clique => {
+                                    DonneesAcces.copier();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if DonneesAcces.historique: VerticalLayout {
+            spacing: Espace.e3;
+            SousTitre {
+                text: "Historique";
+            }
+            if !DonneesAcces.historique-etat.charge: AttenteAcces {
+                etat: DonneesAcces.historique-etat;
+                cle: "historique";
+            }
+            if DonneesAcces.historique-etat.charge && DonneesAcces.historique-lignes.length == 0: Note {
+                text: "Aucune modification pour ce compte.";
+            }
+            if DonneesAcces.historique-etat.charge && DonneesAcces.historique-lignes.length > 0: JournalVirtuel {
+                lignes: DonneesAcces.historique-lignes;
+                nom: "Historique du compte";
+            }
+        }
+        if !DonneesAcces.historique: Rectangle {
+            border-radius: Rayon.m;
+            background: Theme.papier-2;
+            accessible-role: groupbox;
+            accessible-label: "D'où viennent ses droits";
+            origines := VerticalLayout {
+                padding: Espace.e4;
+                spacing: Espace.e3;
+                Sur {
+                    text: "D'OÙ VIENNENT SES DROITS";
+                }
+                Rangees {
+                    largeur: origines.width - 2 * Espace.e4;
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    alignment: start;
+                    Puce {
+                        texte: "+ Rôle";
+                        choisie: DonneesAcces.formulaire == "role";
+                        choisir => {
+                            DonneesAcces.basculer-formulaire("role");
+                        }
+                    }
+                    Puce {
+                        texte: "+ Groupe";
+                        choisie: DonneesAcces.formulaire == "groupe";
+                        choisir => {
+                            DonneesAcces.basculer-formulaire("groupe");
+                        }
+                    }
+                    Puce {
+                        texte: "+ Règle directe";
+                        choisie: DonneesAcces.formulaire == "regle";
+                        choisir => {
+                            DonneesAcces.basculer-formulaire("regle");
+                        }
+                    }
+                }
+                if DonneesAcces.formulaire == "role": FormLiaison { }
+                if DonneesAcces.formulaire == "regle": FormRegle { }
+                if DonneesAcces.formulaire == "groupe": VerticalLayout {
+                    spacing: Espace.e3;
+                    if !DonneesAcces.groupes-libres-etat.charge: AttenteAcces {
+                        etat: DonneesAcces.groupes-libres-etat;
+                        cle: "groupes-libres";
+                    }
+                    if DonneesAcces.groupes-libres-etat.charge && DonneesAcces.groupes-libres.length == 0: Note {
+                        text: "Aucun autre groupe : ils se créent dans l'onglet Groupes.";
+                    }
+                    if DonneesAcces.groupes-libres-etat.charge && DonneesAcces.groupes-libres.length > 0: HorizontalLayout {
+                        spacing: Espace.e3;
+                        Selecteur {
+                            etiquette: "Groupe";
+                            valeur: DonneesAcces.groupe-libre != "" ? DonneesAcces.groupe-libre : "Choisir…";
+                            quel: "groupe-libre";
+                        }
+                        Champ {
+                            etiquette: "Jusqu'au (facultatif)";
+                            indice: "JJ/MM/AAAA HH:MM";
+                            valeur <=> DonneesAcces.groupe-expire;
+                        }
+                        VerticalLayout {
+                            alignment: end;
+                            Bouton {
+                                texte: "Ajouter au groupe";
+                                variante: VarianteBouton.primaire;
+                                actif: DonneesAcces.groupe-libre != "";
+                                en-cours: DonneesAcces.en-cours;
+                                clique => {
+                                    DonneesAcces.rejoindre-groupe();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !DonneesAcces.historique: VerticalLayout {
+            spacing: Espace.e3;
+            SousTitre {
+                text: "Ce qu'il peut faire";
+            }
+            if DonneesAcces.effectifs-etat.charge: Segments {
+                nom: "Filtrer les permissions";
+                libelles: DonneesAcces.filtres;
+                actif: DonneesAcces.filtre;
+                choisir(i) => {
+                    DonneesAcces.choisir-filtre(i);
+                }
+            }
+            if !DonneesAcces.effectifs-etat.charge: AttenteAcces {
+                etat: DonneesAcces.effectifs-etat;
+                cle: "effectifs";
+            }
+            if DonneesAcces.effectifs-etat.charge && DonneesAcces.droits.length == 0: Note {
+                text: DonneesAcces.vide-droits;
+            }
+            if DonneesAcces.effectifs-etat.charge: VerticalLayout {
+                spacing: 2px;
+                accessible-role: list;
+                accessible-label: "Permissions effectives";
+                for d[i] in DonneesAcces.droits: VerticalLayout {
+                    if d.en-tete: Sur {
+                        text: d.titre;
+                        height: 28px;
+                        vertical-alignment: bottom;
+                    }
+                    if !d.en-tete: LigneDroit {
+                        droit: d;
+                    }
+                }
+            }
+            if DonneesAcces.effectifs-etat.charge && DonneesAcces.heritees != "": HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: DonneesAcces.heritees;
+                    variante: VarianteBouton.fantome;
+                    clique => {
+                        DonneesAcces.afficher-heritees();
+                    }
+                }
+            }
+        }
+    }
+}
+
+component OngletComptes inherits VerticalLayout {
+    alignment: start;
+    if DonneesAcces.fiche-ouverte: FicheCompte { }
+    if !DonneesAcces.fiche-ouverte: Carte {
+        accessible-role: groupbox;
+        accessible-label: "Comptes";
+        Champ {
+            etiquette: "Rechercher un compte";
+            indice: "E-mail, nom ou sub";
+            valeur <=> DonneesAcces.recherche-comptes;
+            modifie(t) => {
+                DonneesAcces.chercher-comptes(t);
+            }
+        }
+        if !DonneesAcces.comptes-etat.charge: AttenteAcces {
+            etat: DonneesAcces.comptes-etat;
+            cle: "comptes";
+        }
+        if DonneesAcces.comptes-etat.charge && DonneesAcces.note-comptes != "": Note {
+            text: DonneesAcces.note-comptes;
+        }
+        if DonneesAcces.comptes-etat.charge && DonneesAcces.comptes.length == 0: Note {
+            text: DonneesAcces.vide-comptes;
+        }
+        if DonneesAcces.comptes-etat.charge && DonneesAcces.comptes.length > 0: liste := ListeVirtuelle {
+            height: 560px;
+            accessible-label: "Annuaire des comptes";
+            content-y <=> DonneesAcces.defilement-comptes;
+            init => {
+                DonneesAcces.comptes-defiles(-self.content-y, self.visible-height);
+            }
+            changed content-y => {
+                DonneesAcces.comptes-defiles(-self.content-y, self.visible-height);
+            }
+            for c in DonneesAcces.comptes: LigneCompte {
+                width: liste.visible-width - 12px;
+                height: 52px;
+                compte: c;
+            }
+        }
+        if DonneesAcces.comptes-etat.charge && DonneesAcces.suite-comptes != "": Note {
+            text: DonneesAcces.suite-comptes;
+        }
+        if DonneesAcces.comptes-etat.charge && DonneesAcces.comptes.length > 0: Note {
+            text: "Choisissez un compte pour voir et régler ses droits.";
+        }
+    }
+}
+
+component CaseGrille inherits Rectangle {
+    in property <CaseRoleAcces> case;
+    callback ouvrir();
+    property <bool> utilisable: Calques.ouverts == 0;
+    width: 28px;
+    height: 28px;
+    border-radius: Rayon.xs;
+    background: case.effet == "allow" ? Theme.ok-fond : case.effet == "deny" ? Theme.danger-fond : zone.has-hover ? Theme.papier-2 : transparent;
+    border-width: 1px;
+    border-color: case.effet == "allow" ? Theme.ok : case.effet == "deny" ? Theme.danger : Theme.trait;
+    accessible-role: button;
+    accessible-label: case.description;
+    accessible-action-default => {
+        root.ouvrir();
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.ouvrir();
+        }
+    }
+    Icone {
+        nom: root.case.effet == "allow" ? "ok" : root.case.effet == "deny" ? "x" : "minus";
+        taille: 14px;
+        couleur: root.case.effet == "allow" ? Theme.ok : root.case.effet == "deny" ? Theme.danger : Theme.gris-2;
+    }
+}
+
+component OngletRoles inherits VerticalLayout {
+    spacing: Espace.e4;
+    alignment: start;
+    HorizontalLayout {
+        spacing: Espace.e4;
+        Segments {
+            nom: "Application";
+            libelles: DonneesAcces.apps;
+            actif: DonneesAcces.app;
+            choisir(i) => {
+                DonneesAcces.choisir-app(i);
+            }
+        }
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            alignment: end;
+            spacing: Espace.e3;
+            accessible-role: groupbox;
+            accessible-label: "Légende";
+            for l in [{ e: "allow", t: "autorise" }, { e: "deny", t: "refuse" }, { e: "", t: "ne dit rien" }]: HorizontalLayout {
+                spacing: 6px;
+                VerticalLayout {
+                    alignment: center;
+                    CaseGrille {
+                        case: { effet: l.e, exceptions: "", description: l.t };
+                        width: 20px;
+                        height: 20px;
+                    }
+                }
+                Note {
+                    text: l.t;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+    Carte {
+        accessible-role: table;
+        accessible-label: "Grille des rôles";
+        HorizontalLayout {
+            spacing: 0;
+            Rectangle {
+                width: 200px;
+            }
+            for c in DonneesAcces.colonnes: Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                height: 54px;
+                border-radius: Rayon.s;
+                background: zone-c.has-hover ? Theme.papier-2 : transparent;
+                accessible-role: button;
+                accessible-label: "Modifier le rôle \{c.nom}";
+                accessible-action-default => {
+                    DonneesAcces.ouvrir-role(c.id, "");
+                }
+                zone-c := TouchArea {
+                    enabled: Calques.ouverts == 0;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        DonneesAcces.ouvrir-role(c.id, "");
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    padding: 4px;
+                    Text {
+                        text: c.nom;
+                        color: Theme.encre;
+                        font-weight: Typo.gras;
+                        font-size: Typo.petit;
+                        horizontal-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: c.qui;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                        horizontal-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+        for l in DonneesAcces.grille: Rectangle {
+            height: l.categorie ? 32px : 48px;
+            if !l.categorie: Rectangle {
+                y: 0;
+                height: 1px;
+                background: Theme.trait;
+            }
+            if l.categorie: Sur {
+                x: 0;
+                text: l.titre;
+                vertical-alignment: bottom;
+                height: parent.height - 6px;
+            }
+            if !l.categorie: HorizontalLayout {
+                VerticalLayout {
+                    width: 200px;
+                    alignment: center;
+                    Text {
+                        text: l.libelle;
+                        color: Theme.encre;
+                        font-size: Typo.petit;
+                        overflow: elide;
+                    }
+                    Mono {
+                        text: l.permission;
+                    }
+                }
+                for c[j] in l.cases: VerticalLayout {
+                    horizontal-stretch: 1;
+                    min-width: 80px;
+                    alignment: center;
+                    HorizontalLayout {
+                        alignment: center;
+                        CaseGrille {
+                            case: c;
+                            ouvrir => {
+                                DonneesAcces.ouvrir-role(DonneesAcces.colonnes[j].id, l.permission);
+                            }
+                        }
+                    }
+                    if c.exceptions != "": Text {
+                        text: c.exceptions;
+                        color: Theme.gris;
+                        font-size: 10.5px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+        if DonneesAcces.grille.length == 0: Note {
+            text: "Cette application ne déclare aucune permission.";
+        }
+    }
+    Note {
+        text: "Une case ouvre l'éditeur du rôle sur cette permission. « Tout le monde » s'applique à chaque compte connecté, les autres rôles s'y ajoutent ; un refus l'emporte toujours sur un accord.";
+    }
+    Carte {
+        SousTitre {
+            text: "Nouveau rôle";
+        }
+        HorizontalLayout {
+            spacing: Espace.e3;
+            Champ {
+                etiquette: "Nom";
+                valeur <=> DonneesAcces.nom-role;
+                valide => {
+                    DonneesAcces.creer-role();
+                }
+            }
+            VerticalLayout {
+                alignment: end;
+                Bouton {
+                    texte: "Créer";
+                    variante: VarianteBouton.primaire;
+                    actif: DonneesAcces.nom-role != "";
+                    en-cours: DonneesAcces.en-cours;
+                    clique => {
+                        DonneesAcces.creer-role();
+                    }
+                }
+            }
+        }
+    }
+}
+
+component TriEtat inherits HorizontalLayout {
+    in property <int> choix;
+    in property <string> nom;
+    callback regler(int);
+    spacing: 0;
+    accessible-role: groupbox;
+    accessible-label: root.nom;
+    for o[i] in [{ t: "Ne dit rien", ic: "" }, { t: "Autorise", ic: "ok" }, { t: "Refuse", ic: "x" }]: Rectangle {
+        property <bool> actif: root.choix == i;
+        height: 30px;
+        width: rang.preferred-width;
+        border-radius: Rayon.xs;
+        background: self.actif ? (i == 1 ? Theme.ok-fond : i == 2 ? Theme.danger-fond : Theme.papier-3) : zone-t.has-hover ? Theme.papier-2 : transparent;
+        border-width: self.actif ? 1px : 0;
+        border-color: i == 1 ? Theme.ok : i == 2 ? Theme.danger : Theme.trait-fort;
+        accessible-role: radio-button;
+        accessible-label: "\{root.nom} : \{o.t}";
+        accessible-checkable: true;
+        accessible-checked: self.actif;
+        accessible-action-default => {
+            root.regler(i);
+        }
+        zone-t := TouchArea {
+            enabled: Calques.ouverts == 0;
+            mouse-cursor: pointer;
+            clicked => {
+                root.regler(i);
+            }
+        }
+        rang := HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 4px;
+            if o.ic != "": VerticalLayout {
+                alignment: center;
+                Icone {
+                    nom: o.ic;
+                    taille: 12px;
+                    couleur: i == 1 ? Theme.ok : Theme.danger;
+                }
+            }
+            Text {
+                text: o.t;
+                color: root.choix == i ? Theme.encre : Theme.gris;
+                font-size: Typo.minuscule;
+                font-weight: Typo.demi-gras;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component LigneRegleRole inherits Rectangle {
+    in property <LigneRegleRoleAcces> ligne;
+    in property <bool> visee: false;
+    background: ligne.modifie ? Theme.rose-doux : transparent;
+    border-width: visee ? 2px : 0;
+    border-color: Theme.rose-fonce;
+    border-radius: Rayon.s;
+    accessible-role: list-item;
+    accessible-label: ligne.libelle;
+    VerticalLayout {
+        padding: Espace.e2;
+        spacing: Espace.e2;
+        HorizontalLayout {
+            spacing: Espace.e3;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    Text {
+                        text: root.ligne.libelle;
+                        color: Theme.encre;
+                        font-weight: Typo.gras;
+                        overflow: elide;
+                        vertical-alignment: center;
+                    }
+                    if root.ligne.modifie: TagAcces {
+                        texte: "modifié";
+                        ton: "rose";
+                    }
+                }
+                Text {
+                    text: root.ligne.note;
+                    color: Theme.gris;
+                    font-size: Typo.minuscule;
+                    wrap: word-wrap;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                TriEtat {
+                    nom: root.ligne.libelle;
+                    choix: root.ligne.choix;
+                    regler(i) => {
+                        DonneesAcces.regler(root.ligne.permission, i);
+                    }
+                }
+            }
+        }
+        if root.ligne.a-ressource: HorizontalLayout {
+            spacing: Espace.e2;
+            alignment: start;
+            for x[i] in root.ligne.exceptions: Rectangle {
+                height: 26px;
+                width: rangee-x.preferred-width;
+                border-radius: Rayon.pilule;
+                background: x.refus ? Theme.danger-fond : Theme.ok-fond;
+                rangee-x := HorizontalLayout {
+                    padding-left: 8px;
+                    spacing: 2px;
+                    Text {
+                        text: x.libelle;
+                        color: x.refus ? Theme.danger : Theme.ok;
+                        font-size: Typo.minuscule;
+                        vertical-alignment: center;
+                    }
+                    Bouton {
+                        icone: "x";
+                        description: "Retirer l'exception \{x.libelle}";
+                        variante: VarianteBouton.fantome;
+                        min-height: 24px;
+                        min-width: 24px;
+                        clique => {
+                            DonneesAcces.retirer-exception(root.ligne.permission, i);
+                        }
+                    }
+                }
+            }
+            if !root.ligne.ajout: Lien {
+                texte: "+ exception";
+                description: "Ajouter une exception à \{root.ligne.libelle}";
+                clique => {
+                    DonneesAcces.ouvrir-exception(root.ligne.permission);
+                }
+            }
+        }
+        if root.ligne.ajout: HorizontalLayout {
+            spacing: Espace.e3;
+            Selecteur {
+                etiquette: "Effet";
+                valeur: DonneesAcces.exception-effet;
+                quel: "exception-effet";
+                max-width: 220px;
+            }
+            ChoixRessource {
+                etiquette: "Ressource";
+            }
+        }
+    }
+}
+
+component EditeurRole inherits VerticalLayout {
+    spacing: Espace.e4;
+    alignment: start;
+    if !DonneesAcces.role-etat.charge: Carte {
+        AttenteAcces {
+            etat: DonneesAcces.role-etat;
+            cle: "role";
+        }
+    }
+    if DonneesAcces.role-etat.charge: HorizontalLayout {
+        spacing: Espace.e3;
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Rôles";
+                icone: "gauche";
+                clique => {
+                    DonneesAcces.fermer-role();
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text {
+                text: DonneesAcces.role-titre;
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 18px;
+                font-weight: Typo.gras;
+                accessible-role: text;
+            }
+            Note {
+                text: DonneesAcces.role-note;
+            }
+        }
+        if !DonneesAcces.role-systeme: VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Supprimer le rôle";
+                variante: VarianteBouton.danger;
+                clique => {
+                    DonneesAcces.supprimer-role();
+                }
+            }
+        }
+    }
+    if DonneesAcces.role-etat.charge && DonneesAcces.role-alerte != "": Rectangle {
+        border-radius: Rayon.s;
+        background: DonneesAcces.role-alerte-danger ? Theme.danger-fond : Theme.info-fond;
+        border-width: 1px;
+        border-color: DonneesAcces.role-alerte-danger ? Theme.danger : Theme.info;
+        HorizontalLayout {
+            padding: Espace.e3;
+            Text {
+                text: DonneesAcces.role-alerte;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+        }
+    }
+    if DonneesAcces.role-etat.charge: VerticalLayout {
+        spacing: Espace.e5;
+        alignment: start;
+        VerticalLayout {
+            spacing: Espace.e3;
+            HorizontalLayout {
+                spacing: Espace.e3;
+                Champ {
+                    etiquette: "Nom";
+                    actif: !DonneesAcces.role-systeme;
+                    valeur <=> DonneesAcces.role-nom;
+                    modifie => {
+                        DonneesAcces.role-edite();
+                    }
+                }
+                Champ {
+                    etiquette: "Description";
+                    valeur <=> DonneesAcces.role-description;
+                    modifie => {
+                        DonneesAcces.role-edite();
+                    }
+                }
+                Champ {
+                    etiquette: "Filtrer";
+                    indice: "permission, catégorie";
+                    valeur <=> DonneesAcces.role-filtre;
+                    modifie => {
+                        DonneesAcces.role-edite();
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: Espace.e4;
+                Segments {
+                    nom: "Application";
+                    libelles: DonneesAcces.role-apps;
+                    actif: DonneesAcces.app;
+                    choisir(i) => {
+                        DonneesAcces.choisir-app-role(i);
+                    }
+                }
+                Case {
+                    texte: "Seulement ce que ce rôle définit";
+                    cochee <=> DonneesAcces.role-seulement-defini;
+                    bascule => {
+                        DonneesAcces.role-edite();
+                    }
+                }
+            }
+            Carte {
+                accessible-role: list;
+                accessible-label: "Règles du rôle";
+                for l[i] in DonneesAcces.role-regles: VerticalLayout {
+                    if l.categorie: HorizontalLayout {
+                        padding-top: Espace.e2;
+                        spacing: Espace.e2;
+                        Sur {
+                            horizontal-stretch: 1;
+                            text: l.titre;
+                            vertical-alignment: center;
+                        }
+                        Lien {
+                            texte: "Tout autoriser";
+                            description: "Tout autoriser : \{l.titre}";
+                            clique => {
+                                DonneesAcces.tout-regler(l.titre, 1);
+                            }
+                        }
+                        Lien {
+                            texte: "Tout effacer";
+                            description: "Tout effacer : \{l.titre}";
+                            clique => {
+                                DonneesAcces.tout-regler(l.titre, 0);
+                            }
+                        }
+                    }
+                    if !l.categorie: LigneRegleRole {
+                        ligne: l;
+                        visee: i == DonneesAcces.role-cible;
+                    }
+                }
+                if DonneesAcces.role-regles.length == 0: Note {
+                    text: DonneesAcces.role-vide;
+                }
+            }
+            Rectangle {
+                border-radius: Rayon.m;
+                background: DonneesAcces.role-modifie ? Theme.rose-doux : Theme.papier-2;
+                accessible-role: text;
+                accessible-label: DonneesAcces.role-resume;
+                HorizontalLayout {
+                    padding: Espace.e3;
+                    spacing: Espace.e3;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: DonneesAcces.role-resume;
+                        color: Theme.encre;
+                        font-size: Typo.petit;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                    }
+                    Bouton {
+                        texte: "Annuler";
+                        actif: DonneesAcces.role-modifie;
+                        clique => {
+                            DonneesAcces.annuler-role();
+                        }
+                    }
+                    Bouton {
+                        texte: "Enregistrer";
+                        variante: VarianteBouton.primaire;
+                        actif: DonneesAcces.role-modifie;
+                        en-cours: DonneesAcces.en-cours;
+                        clique => {
+                            DonneesAcces.enregistrer-role();
+                        }
+                    }
+                }
+            }
+        }
+        Rectangle {
+            border-radius: Rayon.m;
+            background: Theme.papier-2;
+            accessible-role: groupbox;
+            accessible-label: "Qui a ce rôle";
+            VerticalLayout {
+                padding: Espace.e4;
+                spacing: Espace.e3;
+                alignment: start;
+                SousTitre {
+                    text: "Qui a ce rôle";
+                }
+                if DonneesAcces.role-tout-le-monde: Note {
+                    text: DonneesAcces.role-tous;
+                }
+                if !DonneesAcces.role-tout-le-monde: VerticalLayout {
+                    spacing: Espace.e2;
+                    Sur {
+                        text: "GROUPES · \{DonneesAcces.role-groupes.length}";
+                    }
+                    for q in DonneesAcces.role-groupes: HorizontalLayout {
+                        spacing: Espace.e2;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            Text {
+                                text: q.nom;
+                                color: Theme.encre;
+                                font-weight: Typo.gras;
+                                overflow: elide;
+                            }
+                            Note {
+                                text: q.details;
+                            }
+                        }
+                        Lien {
+                            texte: "Retirer";
+                            description: "Retirer le rôle à \{q.nom}";
+                            danger: true;
+                            clique => {
+                                DonneesAcces.retirer-qui(q.id);
+                            }
+                        }
+                    }
+                    if DonneesAcces.role-groupes.length == 0: Note {
+                        text: "Aucun.";
+                    }
+                    Sur {
+                        text: "COMPTES · \{DonneesAcces.role-comptes.length}";
+                    }
+                    for q in DonneesAcces.role-comptes: HorizontalLayout {
+                        spacing: Espace.e2;
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            Text {
+                                text: q.nom;
+                                color: Theme.encre;
+                                font-weight: Typo.gras;
+                                overflow: elide;
+                            }
+                            Note {
+                                text: q.details;
+                            }
+                        }
+                        Lien {
+                            texte: "Retirer";
+                            description: "Retirer le rôle à \{q.nom}";
+                            danger: true;
+                            clique => {
+                                DonneesAcces.retirer-qui(q.id);
+                            }
+                        }
+                    }
+                    if DonneesAcces.role-comptes.length == 0: Note {
+                        text: "Aucun.";
+                    }
+                    if DonneesAcces.formulaire == "donner": VerticalLayout {
+                        spacing: Espace.e2;
+                        ChoixCompte {
+                            etiquette: "Donner ce rôle à un compte, partout";
+                        }
+                        Note {
+                            text: "Pour une portée, une expiration ou un groupe : fiche du compte ou onglet Groupes.";
+                        }
+                    }
+                    if DonneesAcces.formulaire != "donner": HorizontalLayout {
+                        alignment: start;
+                        Bouton {
+                            texte: "+ Donner ce rôle";
+                            clique => {
+                                DonneesAcces.basculer-formulaire("donner");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component Cellule inherits Text {
+    min-width: 0px;
+    preferred-width: 0px;
+    color: Theme.encre;
+    font-size: Typo.petit;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+component RangeeTableau inherits Rectangle {
+    in property <bool> obsolete: false;
+    min-height: 44px;
+    opacity: obsolete ? 0.55 : 1;
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.trait;
+    }
+    HorizontalLayout {
+        padding-left: Espace.e2;
+        padding-right: Espace.e2;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        spacing: Espace.e3;
+        @children
+    }
+}
+
+component LigneCompacte inherits Rectangle {
+    in property <string> titre;
+    in property <string> details;
+    in property <string> tag;
+    in property <string> ton;
+    in property <string> action;
+    in property <string> description;
+    in property <bool> obsolete: false;
+    in property <bool> supprime: false;
+    callback agir();
+    min-height: 48px;
+    opacity: obsolete ? 0.55 : 1;
+    accessible-role: list-item;
+    accessible-label: titre;
+    accessible-description: details;
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Theme.trait;
+    }
+    HorizontalLayout {
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: Espace.e3;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            HorizontalLayout {
+                spacing: Espace.e2;
+                alignment: start;
+                Text {
+                    text: root.titre;
+                    color: Theme.encre;
+                    font-weight: Typo.gras;
+                    font-size: Typo.petit;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                if root.tag != "": TagAcces {
+                    texte: root.tag;
+                    ton: root.ton;
+                }
+                if root.supprime: TagAcces {
+                    texte: "supprimé de Keycloak";
+                    ton: "dgr";
+                }
+            }
+            Text {
+                text: root.details;
+                color: Theme.gris;
+                font-size: Typo.minuscule;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Lien {
+                texte: root.action;
+                description: root.description;
+                danger: true;
+                clique => {
+                    root.agir();
+                }
+            }
+        }
+    }
+}
+
+component OngletGroupes inherits VerticalLayout {
+    spacing: Espace.e4;
+    alignment: start;
+    Carte {
+        accessible-role: groupbox;
+        accessible-label: "Groupes";
+        SousTitre {
+            text: "Groupes";
+        }
+        if !DonneesAcces.groupes-etat.charge: AttenteAcces {
+            etat: DonneesAcces.groupes-etat;
+            cle: "groupes";
+        }
+        if DonneesAcces.groupes-etat.charge && DonneesAcces.groupes.length == 0: Note {
+            text: "Aucun groupe. Un groupe reçoit des rôles et des règles une fois pour toutes ses membres.";
+        }
+        if DonneesAcces.groupes-etat.charge: VerticalLayout {
+            spacing: 2px;
+            for g[i] in DonneesAcces.groupes: Rectangle {
+                height: 48px;
+                border-radius: Rayon.s;
+                background: i == DonneesAcces.groupe-choisi ? Theme.rose-doux : zone-g.has-hover ? Theme.papier-2 : transparent;
+                accessible-role: button;
+                accessible-label: g.libelle;
+                accessible-description: g.note;
+                accessible-item-selected: i == DonneesAcces.groupe-choisi;
+                accessible-action-default => {
+                    DonneesAcces.choisir-groupe(i);
+                }
+                zone-g := TouchArea {
+                    enabled: Calques.ouverts == 0;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        DonneesAcces.choisir-groupe(i);
+                    }
+                }
+                VerticalLayout {
+                    padding-left: Espace.e3;
+                    alignment: center;
+                    Text {
+                        text: g.libelle;
+                        color: Theme.encre;
+                        font-weight: Typo.gras;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: g.note;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e2;
+            Champ {
+                etiquette: "Nouveau groupe";
+                indice: "Nom";
+                valeur <=> DonneesAcces.nom-groupe;
+                valide => {
+                    DonneesAcces.creer-groupe();
+                }
+            }
+            VerticalLayout {
+                alignment: end;
+                Bouton {
+                    texte: "Créer";
+                    variante: VarianteBouton.primaire;
+                    actif: DonneesAcces.nom-groupe != "";
+                    clique => {
+                        DonneesAcces.creer-groupe();
+                    }
+                }
+            }
+        }
+    }
+    if DonneesAcces.groupe-choisi < 0: Note {
+        text: "Choisissez un groupe.";
+    }
+    if DonneesAcces.groupe-choisi >= 0 && !DonneesAcces.groupe-etat.charge: Carte {
+        AttenteAcces {
+            etat: DonneesAcces.groupe-etat;
+            cle: "groupe";
+        }
+    }
+    if DonneesAcces.groupe-choisi >= 0 && DonneesAcces.groupe-etat.charge: Carte {
+        accessible-role: groupbox;
+        accessible-label: "Groupe \{DonneesAcces.groupe-nom}";
+        HorizontalLayout {
+            Text {
+                horizontal-stretch: 1;
+                text: DonneesAcces.groupe-nom;
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 18px;
+                font-weight: Typo.gras;
+                vertical-alignment: center;
+            }
+            Bouton {
+                texte: "Supprimer";
+                variante: VarianteBouton.danger;
+                clique => {
+                    DonneesAcces.supprimer-groupe();
+                }
+            }
+        }
+        SousTitre {
+            text: "Membres";
+        }
+        if DonneesAcces.membres.length == 0: Note {
+            text: "Aucun membre.";
+        }
+        VerticalLayout {
+            accessible-role: list;
+            accessible-label: "Membres";
+            for m[i] in DonneesAcces.membres: LigneCompacte {
+                titre: m.nom;
+                supprime: m.supprime;
+                details: "expire : \{m.expire} · ajouté le \{m.ajoute}";
+                action: "Retirer";
+                description: "Retirer \{m.nom} du groupe";
+                agir => {
+                    DonneesAcces.retirer-membre(i);
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: Espace.e3;
+            ChoixCompte {
+                etiquette: "Ajouter un compte";
+                horizontal-stretch: 2;
+            }
+            Champ {
+                etiquette: "Jusqu'au (facultatif)";
+                indice: "JJ/MM/AAAA HH:MM";
+                valeur <=> DonneesAcces.membre-expire;
+            }
+        }
+        SousTitre {
+            text: "Rôles du groupe";
+        }
+        if DonneesAcces.liaisons.length == 0: Note {
+            text: "Aucun rôle.";
+        }
+        VerticalLayout {
+            accessible-role: list;
+            accessible-label: "Rôles du groupe";
+            for l[i] in DonneesAcces.liaisons: LigneCompacte {
+                titre: l.titre;
+                details: "portée : \{l.portee} · expire : \{l.expire} · depuis le \{l.depuis}";
+                action: "Retirer";
+                description: "Retirer le rôle \{l.titre}";
+                agir => {
+                    DonneesAcces.retirer-liaison(i);
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Puce {
+                texte: "Donner un rôle au groupe";
+                choisie: DonneesAcces.formulaire == "role";
+                choisir => {
+                    DonneesAcces.basculer-formulaire("role");
+                }
+            }
+        }
+        if DonneesAcces.formulaire == "role": FormLiaison { }
+        SousTitre {
+            text: "Règles du groupe";
+        }
+        if DonneesAcces.regles.length == 0: Note {
+            text: "Aucune règle propre au groupe.";
+        }
+        VerticalLayout {
+            accessible-role: list;
+            accessible-label: "Règles du groupe";
+            for r[i] in DonneesAcces.regles: LigneCompacte {
+                titre: r.libelle;
+                tag: r.accordee ? "Accordée" : "Refusée";
+                ton: r.accordee ? "ok" : "dgr";
+                obsolete: r.obsolete;
+                details: "\{r.permission} · portée : \{r.portee} · expire : \{r.expire} · note : \{r.note} · par \{r.par}";
+                action: "Supprimer";
+                description: "Supprimer la règle \{r.libelle}";
+                agir => {
+                    DonneesAcces.retirer-regle(i);
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Puce {
+                texte: "Accorder ou refuser une permission au groupe";
+                choisie: DonneesAcces.formulaire == "regle";
+                choisir => {
+                    DonneesAcces.basculer-formulaire("regle");
+                }
+            }
+        }
+        if DonneesAcces.formulaire == "regle": FormRegle { }
+    }
+}
+
+component OngletCatalogue inherits VerticalLayout {
+    spacing: Espace.e4;
+    alignment: start;
+    if DonneesAcces.obsoletes != "": Rectangle {
+        border-radius: Rayon.s;
+        background: Theme.info-fond;
+        border-width: 1px;
+        border-color: Theme.info;
+        HorizontalLayout {
+            padding: Espace.e3;
+            spacing: Espace.e3;
+            Text {
+                horizontal-stretch: 1;
+                text: DonneesAcces.obsoletes;
+                color: Theme.encre;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+            Lien {
+                texte: "Purger";
+                clique => {
+                    DonneesAcces.purger();
+                }
+            }
+        }
+    }
+    Carte {
+        accessible-role: table;
+        accessible-label: "Catalogue des permissions";
+        for l in DonneesAcces.lignes-catalogue: VerticalLayout {
+            if l.en-tete: VerticalLayout {
+                padding-top: Espace.e3;
+                padding-bottom: Espace.e2;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    alignment: start;
+                    SousTitre {
+                        text: l.titre;
+                    }
+                    Mono {
+                        text: l.cle;
+                        vertical-alignment: center;
+                    }
+                }
+                Note {
+                    text: l.note;
+                }
+                HorizontalLayout {
+                    padding-left: Espace.e2;
+                    padding-right: Espace.e2;
+                    spacing: Espace.e3;
+                    height: 26px;
+                    Sur {
+                        horizontal-stretch: 3;
+                        text: "PERMISSION";
+                        vertical-alignment: center;
+                    }
+                    Sur {
+                        horizontal-stretch: 1;
+                        text: "CATÉGORIE";
+                        vertical-alignment: center;
+                    }
+                    Sur {
+                        horizontal-stretch: 1;
+                        text: "RESSOURCE";
+                        vertical-alignment: center;
+                    }
+                    Sur {
+                        horizontal-stretch: 0.8;
+                        text: "DÉFAUT";
+                        vertical-alignment: center;
+                    }
+                    Sur {
+                        horizontal-stretch: 0.5;
+                        text: "RÈGLES";
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            if !l.en-tete: RangeeTableau {
+                obsolete: l.obsolete;
+                accessible-role: list-item;
+                accessible-label: l.libelle;
+                VerticalLayout {
+                    horizontal-stretch: 3;
+                    min-width: 0;
+                    preferred-width: 0;
+                    spacing: 1px;
+                    HorizontalLayout {
+                        alignment: start;
+                        Lien {
+                            texte: l.libelle;
+                            description: l.depliee ? "Replier \{l.libelle}" : "Qui a \{l.libelle}";
+                            clique => {
+                                DonneesAcces.deplier(l.permission);
+                            }
+                        }
+                    }
+                    Mono {
+                        text: l.permission;
+                    }
+                    Text {
+                        text: l.description;
+                        color: Theme.gris;
+                        font-size: Typo.minuscule;
+                        wrap: word-wrap;
+                    }
+                    if l.depliee: VerticalLayout {
+                        padding-top: Espace.e2;
+                        spacing: Espace.e1;
+                        if !DonneesAcces.detenteurs-etat.charge: AttenteAcces {
+                            etat: DonneesAcces.detenteurs-etat;
+                            cle: "detenteurs";
+                        }
+                        if DonneesAcces.detenteurs-etat.charge && DonneesAcces.detenteurs.length == 0: Note {
+                            text: "Aucune règle ne mentionne cette permission : refusée à tous.";
+                        }
+                        for d in DonneesAcces.detenteurs: HorizontalLayout {
+                            spacing: Espace.e2;
+                            TagAcces {
+                                texte: d.accorde ? "accorde" : "refuse";
+                                ton: d.accorde ? "ok" : "dgr";
+                            }
+                            Text {
+                                text: d.sujet;
+                                color: Theme.gris;
+                                font-size: Typo.petit;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: d.nom;
+                                color: Theme.encre;
+                                font-size: Typo.petit;
+                                font-weight: Typo.gras;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                horizontal-stretch: 1;
+                                text: d.details;
+                                color: Theme.gris;
+                                font-size: Typo.petit;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                }
+                Cellule {
+                    horizontal-stretch: 1;
+                    text: l.categorie;
+                    vertical-alignment: top;
+                }
+                Cellule {
+                    horizontal-stretch: 1;
+                    text: l.ressource;
+                    vertical-alignment: top;
+                }
+                HorizontalLayout {
+                    horizontal-stretch: 0.8;
+                    min-width: 0;
+                    preferred-width: 0;
+                    alignment: start;
+                    VerticalLayout {
+                        alignment: start;
+                        TagAcces {
+                            texte: l.ouverte ? "ouverte" : "fermée";
+                            ton: l.ouverte ? "ok" : "";
+                        }
+                    }
+                }
+                Cellule {
+                    horizontal-stretch: 0.5;
+                    text: l.regles;
+                    vertical-alignment: top;
+                }
+            }
+        }
+    }
+}
+
+component OngletJournal inherits Carte {
+    accessible-role: groupbox;
+    accessible-label: "Journal des accès";
+    HorizontalLayout {
+        spacing: Espace.e3;
+        SousTitre {
+            horizontal-stretch: 1;
+            text: "Journal des accès";
+            vertical-alignment: center;
+        }
+        Selecteur {
+            etiquette: "Action";
+            valeur: DonneesAcces.action;
+            quel: "action";
+            max-width: 280px;
+        }
+    }
+    if !DonneesAcces.journal-etat.charge: AttenteAcces {
+        etat: DonneesAcces.journal-etat;
+        cle: "journal";
+    }
+    if DonneesAcces.journal-etat.charge && DonneesAcces.journal.length == 0: Note {
+        text: "Aucune modification.";
+    }
+    if DonneesAcces.journal-etat.charge && DonneesAcces.journal.length > 0: JournalVirtuel {
+        lignes: DonneesAcces.journal;
+        nom: "Journal des accès";
+    }
+}
+
+component OngletRolesOuAttente inherits VerticalLayout {
+    alignment: start;
+    if !DonneesAcces.roles-etat.charge: AttenteAcces {
+        etat: DonneesAcces.roles-etat;
+        cle: "roles";
+    }
+    if DonneesAcces.roles-etat.charge: OngletRoles { }
+}
+
+export component OngletAccesAdmin inherits VerticalLayout {
+    spacing: Espace.e4;
+    alignment: start;
+    OngletsAcces { }
+    if DonneesAcces.erreur != "": Alerte {
+        texte: DonneesAcces.erreur;
+    }
+    if DonneesAcces.message != "": Alerte {
+        texte: DonneesAcces.message;
+        ok: true;
+    }
+    if !DonneesAcces.catalogue.charge: AttenteAcces {
+        etat: DonneesAcces.catalogue;
+        cle: "catalogue";
+    }
+    if DonneesAcces.catalogue.charge && DonneesAcces.onglet == "comptes": OngletComptes { }
+    if DonneesAcces.catalogue.charge && DonneesAcces.onglet == "roles" && !DonneesAcces.role-ouvert: OngletRolesOuAttente { }
+    if DonneesAcces.catalogue.charge && DonneesAcces.onglet == "roles" && DonneesAcces.role-ouvert: EditeurRole { }
+    if DonneesAcces.catalogue.charge && DonneesAcces.onglet == "groupes": OngletGroupes { }
+    if DonneesAcces.catalogue.charge && DonneesAcces.onglet == "catalogue": OngletCatalogue { }
+    if DonneesAcces.catalogue.charge && DonneesAcces.onglet == "journal": OngletJournal { }
+}
+

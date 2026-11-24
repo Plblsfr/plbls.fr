@@ -22,6 +22,7 @@ use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 use super::super::avatars::decoder_icone_badge;
 use super::super::profil::{avatar_recadre, ouvrir_image};
 use super::super::projection::{initiales, teinte};
+use super::acces::PontAcces;
 use super::couleur_slint;
 use crate::confirmation::{self, Demande, Saisie};
 use crate::messagerie::pont::SystemeFichiers;
@@ -125,6 +126,7 @@ pub struct PontAdmin {
     fenetre: slint::Weak<Principale>,
     runtime: tokio::runtime::Handle,
     decalage: Decalage,
+    acces: PontAcces,
 }
 
 fn modele<T: Clone + 'static>(lignes: Vec<T>) -> ModelRc<T> {
@@ -162,6 +164,12 @@ impl PontAdmin {
     ) -> Self {
         Self {
             interne: Arc::new(Mutex::new(EtatAdmin::default())),
+            acces: PontAcces::nouveau(
+                client.clone(),
+                fenetre.clone(),
+                runtime.clone(),
+                decalage.clone(),
+            ),
             client,
             fichiers: Arc::new(Mutex::new(None)),
             fenetre,
@@ -180,6 +188,10 @@ impl PontAdmin {
 
     pub fn onglet(&self) -> &'static str {
         self.verrou().onglet
+    }
+
+    pub fn acces(&self) -> &PontAcces {
+        &self.acces
     }
 
     pub fn definir_sections(&self, f: &Principale, sections: Vec<SectionAdmin>) {
@@ -267,6 +279,7 @@ impl PontAdmin {
             "bot" => self.charger_bot(),
             "journaux" => self.charger_journaux(),
             "statistiques" => self.charger_statistiques(generation),
+            "acces" => self.acces.ouvrir(f),
             _ => {}
         }
     }

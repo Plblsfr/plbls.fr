@@ -382,14 +382,41 @@ des réponses dans `estompe_client::admin` (équivalents des cas de `admin.test.
   à la taille réelle, « Retirer l'image » ; nom (2 à 32), description, couleur `#rrggbb` avec pastille, ordre (0 à 9999), « Supprimer » confirmé ; détenteurs
   retirés d'un clic, ajoutés par une recherche de pseudos (200 ms après la frappe, sans ceux qui l'ont déjà) puis « Attribuer à N comptes », comptes introuvables signalés.
 - Brancher un onglet (#367, #369) : son contenu est un composant de `ui/admin/` inséré par `PageAdmin` sous `if DonneesAdmin.onglet == "<id>"`
-  (`OngletSignalementsAdmin` de `ui/admin/signalements.slint`, `OngletAccesAdmin` de `ui/admin/acces.slint`, aujourd'hui « bientôt ») ; la section est déclarée
+  (`OngletSignalementsAdmin` de `ui/admin/signalements.slint`, `OngletAccesAdmin` de `ui/admin/acces.slint`) ; la section est déclarée
   dans `estompe_client::admin::SECTIONS` (identifiant, libellé, icône, droit, capacité) et son chargement dans le `match` de `PontAdmin::choisir`.
 - Compte limité à l'administration (`AdminView.svelte`) : si `GET /me` refuse la messagerie (`allowed` faux) mais ouvre au moins une section, l'entrée passe à
   `Etat::Administration` au lieu de « accès refusé » : page `Page::Administration` avec la même page sans « Fermer », la liste « Sections », la note « Ton compte n'a pas
   accès à la messagerie d'Estompe : seule l'administration est ouverte. » et « Se déconnecter » ; le `PontAdmin` est alors créé par la coquille sur le client de la
   fabrique (`Fabrique::client`), sans store ni temps réel.
 - Écarts : les versions de l'installeur Windows et de l'application Android (lues par le front sur `estompe.plbls.fr/updates`) ne sont pas reprises, la ligne
-  « Front » devient « App native » ; les tableaux sont des listes de lignes ; les signalements (#367) et les accès (#369) arrivent par leurs issues.
+  « Front » devient « App native » ; les tableaux sont des listes de lignes ; les signalements (#367) arrivent par leur issue.
+
+### Administration des accès
+
+Onglet « Accès » de l'administration (droit `acces`), comme `AccesAdmin.svelte` : `OngletAccesAdmin` (`ui/admin/acces.slint`), global `DonneesAcces`
+(`ui/admin/acces-donnees.slint`), pont `PontAcces` (`src/coquille/pont/acces.rs`) tenu par `PontAdmin` (`PontAdmin::acces`, ouvert par `PontAdmin::choisir("acces")`,
+rappels branchés par `acces::brancher` depuis `brancher_admin`). Types des réponses d'aegis, règles sans interface et appels (`/admin/acces/…`, `catalogue_acces`,
+`comptes_acces`, `compte_acces`, `effectifs_acces`, `journal_acces`, `simuler_acces`, `copier_droits`, `retirer_droits`, rôles, groupes, liaisons, règles, détenteurs,
+ressources) dans `estompe_client::acces`.
+
+- Sous-onglets `comptes`, `roles`, `groupes`, `catalogue`, `journal` (flèches gauche et droite), après le catalogue ; chaque liste a son état (`ChargementAcces` :
+  « Chargement… », ou l'erreur d'aegis et « Réessayer », qui rappelle `recharger(<liste>)`).
+- Comptes : annuaire dans une `ListeVirtuelle` de lignes de 52 px, recherche après 250 ms, pages de 200 (le maximum d'aegis) chargées quand le défilement approche
+  de la fin ; le modèle est prolongé sans être recréé. La fiche d'un compte remplace la liste : origines des droits (puces rangées selon la largeur mesurée,
+  retrait confirmé), formulaires de rôle (`FormLiaison`), de groupe et de règle directe (`FormRegle`), copie des droits (essai `dry_run` puis confirmation),
+  historique, menu « Copier l'identifiant » et « Tout retirer… », droits effectifs par application avec filtres, « Pourquoi ? » (chaîne des règles et simulation,
+  sur une ressource choisie si la permission en a une).
+- Choix : rôle, portée, effet, mode de copie, groupe et action du journal par le menu contextuel (`ouvrir-choix`) ; compte (`ChoixCompte`) et ressource
+  (`ChoixRessource`) par une recherche partagée, rattachée au formulaire ouvert. Les noms des ressources sont demandés par lots (`?ids=`) puis retenus.
+- Rôles : grille rôles × permissions de l'application choisie, éditeur (trois états, exceptions par ressource, barre des modifications comme
+  `permissionsModifiees` et `resumeModifications`, « Qui a ce rôle »). Groupes : liste puis détail (membres, rôles et règles). Catalogue : obsolètes, purge, détenteurs.
+  Journal : 300 lignes, filtre par action.
+- Écarts : la fiche d'un compte et le détail d'un groupe s'affichent sous la liste ou à sa place (zone de contenu trop étroite pour deux colonnes) ; les dates
+  d'expiration se saisissent en `JJ/MM/AAAA HH:MM` ; la permission se cherche au lieu d'une liste déroulante ; succès et erreurs s'affichent en bandeau dans l'onglet
+  (pas de toast) ; la permission visée depuis la grille est encadrée, sans défilement automatique.
+- Tests : cas de `catalogue.test.ts` en Rust (`estompe_client::acces`, le catalogue de `api/estompe/core/src/catalogue.rs` lu par `include_str!`, permissions
+  `capacite("…")` et `"estompe:…"` du code natif et capacités des sections) ; `tests/acces.rs` contre un aegis factice à état (`tests/commun/acces.rs`, branché
+  par le crochet `ServeurMessages::repondeur`) ; captures `admin-acces-*`.
 
 ## Messagerie
 
@@ -1651,6 +1678,10 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   après confirmation et rétablis, serveur supprimé après saisie de son nom, badges triés et cherchés, détenteur ajouté par la recherche puis retiré, image choisie et
   recadrée puis envoyée avec la couleur modifiée, badge créé puis un autre supprimé après confirmation, message du bot confirmé, statistiques et direct, journaux,
   et une navigation ou les réglages d'un serveur referment l'espace. Les règles ont leurs tests unitaires (`estompe_client::admin`).
+`acces.rs` (même backend, la boucle lancée deux fois) contre l'aegis factice : fiche d'un compte, « Pourquoi ? » et simulation, règle directe ajoutée (permission
+  cherchée, portée, expiration, note) qui apparaît en tête du journal, filtre du journal par action, historique, retrait confirmé, erreur puis « Réessayer » sur les
+  rôles, grille et enregistrement d'un rôle, membre ajouté à un groupe, catalogue et détenteurs ; puis 10 000 comptes chargés par pages au défilement, en mesurant
+  les lignes instanciées (au plus 40), la latence de l'interface et la durée d'une étape (moins de 400 ms).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

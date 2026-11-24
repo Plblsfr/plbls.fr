@@ -762,6 +762,10 @@ fn brancher_admin(f: &Principale, emplacement: &Emplacement, seule: &Emplacement
         .ne_pas_ajouter(&f, i.max(0) as usize));
     rappel_admin!(on_attribuer_badge, |a, f| a.attribuer_badge(&f));
     rappel_admin!(on_envoyer_bot, |a, f| a.envoyer_bot(&f));
+    let (emplacement, seule) = (emplacement.clone(), seule.clone());
+    super::pont::acces::brancher(f, move || {
+        admin_courant(&emplacement, &seule).map(|a| a.acces().clone())
+    });
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {

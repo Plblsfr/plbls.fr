@@ -218,6 +218,8 @@ pub fn video_hevc(dossier: &std::path::Path) -> Option<std::path::PathBuf> {
     Some(chemin)
 }
 
+pub mod acces;
+
 pub mod coquille {
     use std::collections::BTreeMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -970,8 +972,11 @@ pub mod coquille {
         pub bannis: Mutex<Vec<Value>>,
         pub detail_s1: Mutex<Option<Value>>,
         pub surcharges: Mutex<Vec<Value>>,
+        pub repondeur: Mutex<Option<Repondeur>>,
         envoyes: AtomicUsize,
     }
+
+    pub type Repondeur = Arc<dyn Fn(&str, &str, &str) -> Option<(u16, String)> + Send + Sync>;
 
     pub fn contenu_de(n: u64) -> String {
         if n.is_multiple_of(7) {
@@ -1035,6 +1040,7 @@ pub mod coquille {
                 bannis: Mutex::new(Vec::new()),
                 detail_s1: Mutex::new(None),
                 surcharges: Mutex::new(Vec::new()),
+                repondeur: Mutex::new(None),
                 envoyes: AtomicUsize::new(0),
             });
             let s = serveur.clone();
@@ -1110,9 +1116,20 @@ pub mod coquille {
                         } else {
                             None
                         };
-                        let (statut, type_mime, corps) = match servi {
-                            Some((type_mime, octets)) => (200, type_mime, octets),
-                            None => {
+                        let repondeur = s.repondeur.lock().unwrap().clone();
+                        let repondu = repondeur.and_then(|r| r(&methode, &chemin, &corps_recu));
+                        if repondu.is_some() {
+                            s.requetes
+                                .lock()
+                                .unwrap()
+                                .push(format!("{methode} {chemin}"));
+                        }
+                        let (statut, type_mime, corps) = match (repondu, servi) {
+                            (Some((statut, corps)), _) => {
+                                (statut, "application/json".to_string(), corps.into_bytes())
+                            }
+                            (None, Some((type_mime, octets))) => (200, type_mime, octets),
+                            (None, None) => {
                                 let (statut, corps) =
                                     s.repondre_avec(&methode, &chemin, &corps_recu);
                                 (statut, "application/json".to_string(), corps.into_bytes())

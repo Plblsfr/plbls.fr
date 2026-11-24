@@ -1,0 +1,343 @@
+export struct ChargementAcces {
+    charge: bool,
+    erreur: string,
+}
+
+export struct OptionAcces {
+    id: string,
+    libelle: string,
+    note: string,
+}
+
+export struct LigneCompteAcces {
+    sub: string,
+    nom: string,
+    resume: string,
+    initiales: string,
+    teinte: int,
+    supprime: bool,
+    choisi: bool,
+}
+
+export struct PuceAcces {
+    genre: string,
+    cle: string,
+    nom: string,
+    details: string,
+    note: string,
+    retirable: bool,
+    obsolete: bool,
+    index: int,
+}
+
+export struct RangeePucesAcces {
+    puces: [PuceAcces],
+}
+
+export struct MaillonAcces {
+    refus: bool,
+    texte: string,
+}
+
+export struct LigneDroitAcces {
+    en-tete: bool,
+    titre: string,
+    permission: string,
+    libelle: string,
+    etat: string,
+    ton: string,
+    icone: string,
+    phrase: string,
+    ouvert: bool,
+}
+
+export struct ColonneRoleAcces {
+    id: string,
+    nom: string,
+    qui: string,
+}
+
+export struct CaseRoleAcces {
+    effet: string,
+    exceptions: string,
+    description: string,
+}
+
+export struct LigneGrilleAcces {
+    categorie: bool,
+    titre: string,
+    permission: string,
+    libelle: string,
+    cases: [CaseRoleAcces],
+}
+
+export struct ExceptionAcces {
+    libelle: string,
+    refus: bool,
+}
+
+export struct LigneRegleRoleAcces {
+    categorie: bool,
+    titre: string,
+    permission: string,
+    libelle: string,
+    note: string,
+    choix: int,
+    modifie: bool,
+    a-ressource: bool,
+    exceptions: [ExceptionAcces],
+    ajout: bool,
+}
+
+export struct LigneQuiAcces {
+    id: string,
+    nom: string,
+    details: string,
+}
+
+export struct LigneMembreAcces {
+    sub: string,
+    nom: string,
+    supprime: bool,
+    expire: string,
+    ajoute: string,
+}
+
+export struct LigneLiaisonAcces {
+    id: string,
+    titre: string,
+    genre: string,
+    portee: string,
+    expire: string,
+    depuis: string,
+}
+
+export struct LigneRegleAcces {
+    id: string,
+    libelle: string,
+    permission: string,
+    accordee: bool,
+    portee: string,
+    expire: string,
+    note: string,
+    par: string,
+    obsolete: bool,
+}
+
+export struct LigneCatalogueAcces {
+    en-tete: bool,
+    titre: string,
+    cle: string,
+    note: string,
+    permission: string,
+    libelle: string,
+    description: string,
+    categorie: string,
+    ressource: string,
+    ouverte: bool,
+    regles: string,
+    obsolete: bool,
+    depliee: bool,
+}
+
+export struct DetenteurAcces {
+    accorde: bool,
+    sujet: string,
+    nom: string,
+    details: string,
+}
+
+export struct LigneJournalAcces {
+    date: string,
+    acteur: string,
+    action: string,
+    ton: string,
+    cible: string,
+    pour: string,
+    ressource: string,
+    extra: string,
+}
+
+export global DonneesAcces {
+    in property <string> onglet: "comptes";
+    in property <ChargementAcces> catalogue;
+    in property <bool> en-cours: false;
+    in property <string> message;
+    in property <string> erreur;
+
+    in-out property <string> recherche-comptes;
+    in property <ChargementAcces> comptes-etat;
+    in property <[LigneCompteAcces]> comptes;
+    in property <string> note-comptes;
+    in property <string> vide-comptes;
+    in property <string> suite-comptes;
+    in-out property <length> defilement-comptes;
+
+    in property <bool> fiche-ouverte: false;
+    in property <ChargementAcces> fiche-etat;
+    in property <string> fiche-nom;
+    in property <string> fiche-note;
+    in property <string> fiche-initiales;
+    in property <int> fiche-teinte: 1;
+    in property <bool> fiche-supprime: false;
+    in property <bool> historique: false;
+    in property <[RangeePucesAcces]> rangees-puces;
+    in property <string> formulaire;
+    in property <ChargementAcces> effectifs-etat;
+    in property <[string]> filtres;
+    in property <int> filtre: 0;
+    in property <[LigneDroitAcces]> droits;
+    in property <string> vide-droits;
+    in property <string> heritees;
+    in property <[MaillonAcces]> chaine;
+    in property <bool> essai-type: false;
+    in property <string> essai-ressource;
+    in property <bool> a-verdict: false;
+    in property <bool> verdict-autorise: false;
+    in property <string> verdict;
+    in property <string> verdict-raison;
+    in property <ChargementAcces> historique-etat;
+    in property <[LigneJournalAcces]> historique-lignes;
+
+    in property <string> copie-source;
+    in property <string> copie-mode;
+
+    in property <string> liaison-role;
+    in property <string> liaison-portee;
+    in property <bool> liaison-a-portee: false;
+    in property <string> liaison-ressource;
+    in property <bool> liaison-valide: false;
+    in-out property <string> liaison-expire;
+
+    in property <string> regle-permission;
+    in property <string> regle-description;
+    in-out property <string> regle-recherche;
+    in property <[OptionAcces]> permissions-trouvees;
+    in property <string> regle-effet;
+    in property <bool> regle-accorder: true;
+    in property <bool> regle-a-type: false;
+    in property <string> regle-ressource;
+    in-out property <string> regle-expire;
+    in-out property <string> regle-note;
+
+    in property <ChargementAcces> groupes-libres-etat;
+    in property <[OptionAcces]> groupes-libres;
+    in property <string> groupe-libre;
+    in-out property <string> groupe-expire;
+
+    in-out property <string> recherche-compte;
+    in property <[OptionAcces]> comptes-trouves;
+    in property <bool> comptes-trouves-vide: false;
+    in property <string> contexte-ressource;
+    in-out property <string> recherche-ressource;
+    in property <[OptionAcces]> ressources-trouvees;
+    in property <bool> ressources-chargees: false;
+
+    in property <ChargementAcces> roles-etat;
+    in property <[string]> apps;
+    in property <int> app: 0;
+    in property <[ColonneRoleAcces]> colonnes;
+    in property <[LigneGrilleAcces]> grille;
+    in-out property <string> nom-role;
+
+    in property <bool> role-ouvert: false;
+    in property <ChargementAcces> role-etat;
+    in property <string> role-titre;
+    in property <string> role-note;
+    in property <string> role-alerte;
+    in property <bool> role-alerte-danger: false;
+    in property <bool> role-systeme: false;
+    in property <bool> role-tout-le-monde: false;
+    in-out property <string> role-nom;
+    in-out property <string> role-description;
+    in-out property <string> role-filtre;
+    in-out property <bool> role-seulement-defini: false;
+    in property <[string]> role-apps;
+    in property <[LigneRegleRoleAcces]> role-regles;
+    in property <string> role-vide;
+    in property <bool> role-modifie: false;
+    in property <string> role-resume;
+    in property <string> exception-effet;
+    in property <[LigneQuiAcces]> role-groupes;
+    in property <[LigneQuiAcces]> role-comptes;
+    in property <string> role-tous;
+    in property <int> role-cible: -1;
+
+    in property <ChargementAcces> groupes-etat;
+    in property <[OptionAcces]> groupes;
+    in property <int> groupe-choisi: -1;
+    in-out property <string> nom-groupe;
+    in property <ChargementAcces> groupe-etat;
+    in property <string> groupe-nom;
+    in property <[LigneMembreAcces]> membres;
+    in-out property <string> membre-expire;
+    in property <[LigneLiaisonAcces]> liaisons;
+    in property <[LigneRegleAcces]> regles;
+
+    in property <string> obsoletes;
+    in property <[LigneCatalogueAcces]> lignes-catalogue;
+    in property <ChargementAcces> detenteurs-etat;
+    in property <[DetenteurAcces]> detenteurs;
+
+    in property <string> action;
+    in property <ChargementAcces> journal-etat;
+    in property <[LigneJournalAcces]> journal;
+
+    callback choisir-onglet(string);
+    callback deplacer-onglet(int);
+    callback recharger(string);
+    callback ouvrir-choix(string, length, length, length);
+
+    callback chercher-comptes(string);
+    callback comptes-defiles(length, length);
+    callback ouvrir-compte(string);
+    callback fermer-compte();
+    callback basculer-historique();
+    callback basculer-formulaire(string);
+    callback menu-compte(length, length, length);
+    callback retirer-puce(int);
+    callback puces-mesurees(length);
+    callback choisir-filtre(int);
+    callback pourquoi(string);
+    callback afficher-heritees();
+    callback essai-partout();
+    callback copier();
+    callback changer-source();
+    callback donner-liaison();
+    callback changer-ressource-liaison();
+    callback chercher-permissions(string);
+    callback choisir-permission(int);
+    callback regle-partout();
+    callback ajouter-regle();
+    callback rejoindre-groupe();
+
+    callback chercher-compte(string);
+    callback choisir-compte(int);
+    callback chercher-ressource(string);
+    callback choisir-ressource(int);
+
+    callback choisir-app(int);
+    callback ouvrir-role(string, string);
+    callback creer-role();
+    callback fermer-role();
+    callback role-edite();
+    callback choisir-app-role(int);
+    callback regler(string, int);
+    callback tout-regler(string, int);
+    callback ouvrir-exception(string);
+    callback retirer-exception(string, int);
+    callback annuler-role();
+    callback enregistrer-role();
+    callback supprimer-role();
+    callback retirer-qui(string);
+
+    callback choisir-groupe(int);
+    callback creer-groupe();
+    callback supprimer-groupe();
+    callback retirer-membre(int);
+    callback retirer-liaison(int);
+    callback retirer-regle(int);
+
+    callback purger();
+    callback deplier(string);
+}

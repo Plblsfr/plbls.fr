@@ -19,6 +19,7 @@ use estompe_client::vocal::{
     PartageLocal, Phase as PhaseVocal, Qualite, QualitePartage, ReglagesIncrustation,
     ResolutionPartage, TrameVideo,
 };
+use estompe_natif::coquille::pont::acces::DonneesAccesChargees;
 use estompe_natif::coquille::pont::{vider_modeles, DonneesAdminChargees, PontAdmin};
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
@@ -277,6 +278,15 @@ const ECRANS: &[Ecran] = ecrans![
     "admin-statistiques-sombre", Sombre, admin_statistiques;
     "admin-journaux-clair", Clair, admin_journaux;
     "admin-acces-clair", Clair, admin_acces;
+    "admin-acces-sombre", Sombre, admin_acces;
+    "admin-acces-comptes-clair", Clair, admin_acces_comptes;
+    "admin-acces-chargement-clair", Clair, admin_acces_chargement;
+    "admin-acces-erreur-clair", Clair, admin_acces_erreur;
+    "admin-acces-roles-clair", Clair, admin_acces_roles;
+    "admin-acces-role-clair", Clair, admin_acces_role;
+    "admin-acces-groupes-clair", Clair, admin_acces_groupes;
+    "admin-acces-catalogue-clair", Clair, admin_acces_catalogue;
+    "admin-acces-journal-clair", Clair, admin_acces_journal;
     "admin-seule-clair", Clair, admin_seule;
     "parametres-notifications-clair", Clair, parametres_notifications;
     "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
@@ -1781,8 +1791,94 @@ fn admin_journaux(f: &Principale) {
     administration(f, "journaux");
 }
 
+fn donnees_acces(onglet: &'static str) -> DonneesAccesChargees {
+    use commun::acces as a;
+    let aegis = a::AegisFactice::nouveau(a::comptes_de_base());
+    let comptes = a::comptes_de_base();
+    DonneesAccesChargees {
+        onglet,
+        catalogue: serde_json::from_value(a::catalogue()).ok(),
+        comptes: serde_json::from_value(
+            serde_json::json!({"accounts": comptes, "total": 3, "from_keycloak": 0}),
+        )
+        .ok(),
+        compte: Some((
+            serde_json::from_value(aegis.detail("s-alice")).unwrap(),
+            serde_json::from_value(aegis.effectifs("s-alice")).unwrap(),
+        )),
+        roles: serde_json::from_value(serde_json::Value::Array(a::roles())).ok(),
+        groupes: serde_json::from_value(a::groupes()).ok(),
+        groupe: serde_json::from_value(a::groupe_equipe()).ok(),
+        journal: serde_json::from_value(serde_json::Value::Array(a::journal_initial())).ok(),
+        ressources: vec![
+            ("estompe:server".into(), "s1".into(), "Les amis".into()),
+            ("estompe:server".into(), "s9".into(), "Atelier".into()),
+        ],
+        ..DonneesAccesChargees::default()
+    }
+}
+
+fn acces(f: &Principale, d: DonneesAccesChargees) -> Pont {
+    let pont = administration(f, "acces");
+    pont.admin().acces().installer(f, d);
+    stabiliser(f);
+    pont
+}
+
 fn admin_acces(f: &Principale) {
-    administration(f, "acces");
+    acces(f, donnees_acces("comptes"));
+}
+
+fn admin_acces_comptes(f: &Principale) {
+    acces(
+        f,
+        DonneesAccesChargees {
+            compte: None,
+            ..donnees_acces("comptes")
+        },
+    );
+}
+
+fn admin_acces_chargement(f: &Principale) {
+    acces(f, DonneesAccesChargees::default());
+}
+
+fn admin_acces_erreur(f: &Principale) {
+    acces(
+        f,
+        DonneesAccesChargees {
+            comptes: None,
+            compte: None,
+            erreur_comptes: Some("aegis est injoignable".into()),
+            ..donnees_acces("comptes")
+        },
+    );
+}
+
+fn admin_acces_roles(f: &Principale) {
+    acces(f, donnees_acces("roles"));
+}
+
+fn admin_acces_role(f: &Principale) {
+    acces(
+        f,
+        DonneesAccesChargees {
+            role: Some("r-modo".into()),
+            ..donnees_acces("roles")
+        },
+    );
+}
+
+fn admin_acces_groupes(f: &Principale) {
+    acces(f, donnees_acces("groupes"));
+}
+
+fn admin_acces_catalogue(f: &Principale) {
+    acces(f, donnees_acces("catalogue"));
+}
+
+fn admin_acces_journal(f: &Principale) {
+    acces(f, donnees_acces("journal"));
 }
 
 fn admin_seule(f: &Principale) {
