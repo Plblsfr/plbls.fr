@@ -251,7 +251,7 @@ actions dans `src/coquille/pont/recherche.rs` ; texte sans interface dans `estom
   un clic ouvre la conversation.
 - Barre de l'utilisateur : pastille de présence et statut (ou jeu en cours) sous le pseudo (`donnees_compte`) ; un clic, Entrée, la touche Menu ou Maj+F10 ouvrent le menu
   (`menu_moi`) : « En ligne », « Absent », « Ne pas déranger » (statut actuel coché, `PUT /me/status` par `Store::definir_statut`, optimiste et rétabli en cas d'erreur, que la zone
-  de saisie signale), puis « Voir mon profil », « Modifier mon profil » et « Signaler un bug » marqués « bientôt ». Le changement arrive aux autres par `status.updated`.
+  de saisie signale), puis « Voir mon profil » et « Modifier mon profil » marqués « bientôt », et « Signaler un bug » (voir [Signalements](#signalements)). Le changement arrive aux autres par `status.updated`.
   Le statut « invisible » n'existe ni dans l'API ni dans le front.
 
 ### Créer ou rejoindre un serveur, créer un salon
@@ -382,14 +382,14 @@ des réponses dans `estompe_client::admin` (équivalents des cas de `admin.test.
   à la taille réelle, « Retirer l'image » ; nom (2 à 32), description, couleur `#rrggbb` avec pastille, ordre (0 à 9999), « Supprimer » confirmé ; détenteurs
   retirés d'un clic, ajoutés par une recherche de pseudos (200 ms après la frappe, sans ceux qui l'ont déjà) puis « Attribuer à N comptes », comptes introuvables signalés.
 - Brancher un onglet (#367, #369) : son contenu est un composant de `ui/admin/` inséré par `PageAdmin` sous `if DonneesAdmin.onglet == "<id>"`
-  (`OngletSignalementsAdmin` de `ui/admin/signalements.slint`, `OngletAccesAdmin` de `ui/admin/acces.slint`) ; la section est déclarée
+  (`OngletSignalementsAdmin` de `ui/admin/signalements.slint`, voir [Signalements](#signalements) ; `OngletAccesAdmin` de `ui/admin/acces.slint`, voir [Administration des accès](#administration-des-accès)) ; la section est déclarée
   dans `estompe_client::admin::SECTIONS` (identifiant, libellé, icône, droit, capacité) et son chargement dans le `match` de `PontAdmin::choisir`.
 - Compte limité à l'administration (`AdminView.svelte`) : si `GET /me` refuse la messagerie (`allowed` faux) mais ouvre au moins une section, l'entrée passe à
   `Etat::Administration` au lieu de « accès refusé » : page `Page::Administration` avec la même page sans « Fermer », la liste « Sections », la note « Ton compte n'a pas
   accès à la messagerie d'Estompe : seule l'administration est ouverte. » et « Se déconnecter » ; le `PontAdmin` est alors créé par la coquille sur le client de la
   fabrique (`Fabrique::client`), sans store ni temps réel.
 - Écarts : les versions de l'installeur Windows et de l'application Android (lues par le front sur `estompe.plbls.fr/updates`) ne sont pas reprises, la ligne
-  « Front » devient « App native » ; les tableaux sont des listes de lignes ; les signalements (#367) arrivent par leur issue.
+  « Front » devient « App native » ; les tableaux sont des listes de lignes.
 
 ### Administration des accès
 
@@ -417,6 +417,38 @@ ressources) dans `estompe_client::acces`.
 - Tests : cas de `catalogue.test.ts` en Rust (`estompe_client::acces`, le catalogue de `api/estompe/core/src/catalogue.rs` lu par `include_str!`, permissions
   `capacite("…")` et `"estompe:…"` du code natif et capacités des sections) ; `tests/acces.rs` contre un aegis factice à état (`tests/commun/acces.rs`, branché
   par le crochet `ServeurMessages::repondeur`) ; captures `admin-acces-*`.
+
+### Signalements
+
+Signaler un bug, un message ou une personne, suivre ses signalements et les traiter, comme `blocks/signalements/` du front (`ReportModal.svelte`, `SettingsReports.svelte`,
+`AdminReports.svelte`) : interface dans `ui/signalements/` (global `DonneesSignalements` de `donnees.slint` ; `FenetreSignalement` et `MesSignalements` de `fenetre.slint`)
+et `ui/admin/signalements.slint` (`OngletSignalementsAdmin`) ; pont `PontSignalements` (`src/coquille/pont/signalements.rs`), porté par `PontAdmin` pour servir aussi le
+compte limité à l'administration (`Pont::signalements`) ; règles sans interface dans `estompe_client::signalements` (catégories, plateformes, statuts, brouillon,
+informations techniques, requêtes, filtres, texte copié : équivalents des cas de `report.test.ts`), appels par `Client` (`envoyer_signalement`, `mes_signalements`,
+`signalements_admin`, `signalement_admin`, `modifier_signalement`, `supprimer_signalement`).
+
+- Ouverture : « Signaler un bug » du menu de l'utilisateur, de la palette (`>`) et de la catégorie « Signalements » des paramètres ; « Signaler » du menu d'un message et
+  du menu d'un membre (pas pour soi ni pour un bot). Le front ne signale que des bugs : un message ou une personne partent par la même route (`POST /reports`), titre et
+  catégorie préremplis (« Message de … », « messages » ; « Comportement de … », « autre ») et l'identifiant, l'auteur et un extrait (200 caractères) ou la personne en tête
+  des informations techniques ; sans brouillon.
+- Capture : la fenêtre est d'abord masquée, la fenêtre d'Estompe capturée 150 ms plus tard (le menu ou la palette ont disparu) puis le formulaire s'affiche avec l'image,
+  comme la capture automatique des apps Windows et Android du front ; « Capturer la fenêtre » masque le formulaire le temps d'une nouvelle capture. La source vient de
+  `Fabrique::ecrans` (le `CaptureEcran` des outils vocaux) et `estompe_plateforme::capturer_fenetre_d_estompe` ne prend que la fenêtre du processus d'Estompe qui porte le titre
+  de la fenêtre principale (sinon la plus grande), jamais un écran ni une autre application ; l'image part en JPEG (qualité 80, 1440 px de large au plus). « Ajouter des images »
+  ouvre le sélecteur de fichiers (PNG, JPEG, GIF, WebP) ; 5 images au plus, chacune retirée par sa croix. Les images sont envoyées par `POST /files` (une seule fois, même
+  après un échec) puis jointes par `file_ids`.
+- Formulaire : titre (120), description (4 000), catégorie facultative ; brouillon d'un bug gardé à chaque frappe dans `brouillon-signalement.json` du dossier des données
+  et vidé après l'envoi ; informations jointes décochables une à une (plateforme `desktop`, version, système, « native (Slint) », écran ouvert, état du vocal) ; « Joindre les
+  logs » (300 dernières lignes du journal, déjà expurgées) seulement en mode debug avec un journal non vide. Un échec garde le texte : « … Ton texte est conservé : tu peux
+  réessayer. » ; un envoi réussi referme la fenêtre et affiche « Signalement envoyé, merci ! » au-dessus de mes signalements.
+- Mes signalements : catégorie « Signalements » des paramètres, chargés à son ouverture (`GET /reports`) : titre, statut coloré, date et catégorie.
+- Traitement (onglet `signalements` de l'administration, chargé par `PontAdmin::choisir`) : filtres statut, catégorie et plateforme (menus), auteur et recherche (`GET /admin/reports?…`
+  sans les filtres vides) ; liste avec plateforme, « nouveau » (pas encore consulté) et statut ; détail (`GET /admin/reports/{id}`, qui le marque consulté) avec description,
+  captures non expirées, informations techniques, logs (« Télécharger les logs » les écrit dans le dossier choisi, `signalement-<id>.log`) ; statut, signalement d'origine
+  d'un doublon (menu des autres signalements, obligatoire), « Voir l'original », notes internes, « Enregistrer » (`PATCH`), « Copier » (texte de `formater_signalement`),
+  « Supprimer » confirmé (`DELETE`).
+- Écarts : pas de raccourci Ctrl+Alt+B ; ni glisser-déposer ni collage d'images dans la fenêtre ; l'original d'un doublon se choisit dans un menu (pas de liste
+  déroulante dans Slint) ; pas de toast : les messages s'affichent dans la page. Non vérifié : capture sur une vraie machine Windows (C2), rendu Skia à l'écran.
 
 ## Messagerie
 
@@ -681,7 +713,7 @@ deux moteurs et sur les deux OS :
 - Barre au survol (`BarreActions`, `ui/messagerie/element.slint`) : trois réactions rapides (👍, ❤️, 😂, en images), répondre, ajouter une réaction, modifier, épingler ou
   désépingler, copier le message, supprimer, « Plus d'actions » (menu sous le bouton). Placée à cheval sur le haut de la ligne (16 px au-dessus, comme le front), elle reste affichée tant qu'elle est survolée.
 - Menu du message (clic droit, touche Menu ou Maj+F10 sur le message qui a le focus) : répondre, modifier, épingler ou désépingler, ajouter une réaction, copier le texte,
-  copier le lien (`https://<serveur>/#/s/<serveur>/<salon>/<message>` ou `#/dm/<conversation>/<message>`), marquer comme non lu, « Signaler » (« bientôt », lot 8),
+  copier le lien (`https://<serveur>/#/s/<serveur>/<salon>/<message>` ou `#/dm/<conversation>/<message>`), marquer comme non lu, « Signaler » (voir [Signalements](#signalements)),
   supprimer (après confirmation « Supprimer ce message ? »). `PontMessagerie::action_message` exécute l'entrée choisie (`src/messagerie/pont/actions.rs`).
 - Réactions : un clic ou Entrée sur une réaction (focusable si `add_reactions`) l'ajoute ou la retire ; un bouton après les réactions ouvre le sélecteur.
   `Store::basculer_reaction` applique le changement tout de suite (même chemin que `reaction.updated`, qui ne compte pas deux fois la mienne) puis appelle
@@ -1444,7 +1476,7 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
 ## Capture d'écran et de fenêtre
 
 Le trait `CaptureEcran` de la crate plateforme (`apps/estompe/crates/plateforme/src/capture/`) sert au partage d'écran : sélecteur de source et
-publication dans le salon (voir [Partage d'écran](#partage-décran)), incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (lot 8).
+publication dans le salon (voir [Partage d'écran](#partage-décran)), incrustation de la caméra (lot 5), capture de la fenêtre d'Estompe pour un signalement (`capturer_fenetre_d_estompe`, voir [Signalements](#signalements)).
 `EcransFactices` (même module) donne des sources factices aux tests : images poussées à la demande, fenêtre réduite, fermée ou en échec. Il ne fait ni interface
 ni publication, ni son : celui du partage a son propre trait (`CaptureSon`, voir [Partage d'écran](#partage-décran)), qui reçoit le processus de la fenêtre (`SourceCapture::processus`).
 
@@ -1557,7 +1589,7 @@ Page de la zone de contenu, comme `SettingsModal.svelte` (une page, pas un modal
 - Application : « À propos », panneau des mises à jour, lancement à l'ouverture de la session ; 7 clics sur « Version installée » basculent les fonctions alpha
   (préférence locale `alpha`, comme `UpdateSettings.svelte`).
 - Compte : voir [Profil](#profil).
-- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; les signalements (#367) arrivent avec leur issue. Écarts des notifications : pas de notification push de test (push web : écart assumé), aucune marque de sourdine
+- Encore ailleurs : réglages audio, « Jeux et activité » et instant replay restent des fenêtres ouvertes depuis leur catégorie (#402) ; « Signalements » : voir [Signalements](#signalements). Écarts des notifications : pas de notification push de test (push web : écart assumé), aucune marque de sourdine
   dans la liste des salons ni sur le rail (le front n'en a pas).
 
 ### Profil
@@ -1682,6 +1714,11 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   cherchée, portée, expiration, note) qui apparaît en tête du journal, filtre du journal par action, historique, retrait confirmé, erreur puis « Réessayer » sur les
   rôles, grille et enregistrement d'un rôle, membre ajouté à un groupe, catalogue et détenteurs ; puis 10 000 comptes chargés par pages au défilement, en mesurant
   les lignes instanciées (au plus 40), la latence de l'interface et la durée d'une étape (moins de 400 ms).
+`signalements.rs` (même backend, fausses sources de capture : un écran, une autre fenêtre, la fenêtre d'Estompe) : « Signaler un bug » masque la fenêtre, joint la
+  capture de la seule fenêtre d'Estompe (le JPEG envoyé fait 1180 × 900) puis s'affiche ; brouillon gardé, repris à la réouverture et vidé après l'envoi, seconde capture
+  retirée, information décochée absente de `POST /reports` ; message et personne signalés avec leur contexte sans toucher au brouillon ; mes signalements ; traitement :
+  filtres envoyés, détail avec sa capture, doublon refusé sans original puis enregistré avec, copie, suppression confirmée. Les règles ont leurs tests unitaires
+  (`estompe_client::signalements`, cas de `report.test.ts`) et la capture le sien sur `EcransFactices` (`estompe_plateforme::capture`).
 `mise_a_jour.rs` vérifie l'entrée sans interface contre un faux serveur qui compte les requêtes.
 `mises_a_jour.rs` (même backend, la boucle lancée deux fois) : vrai service de mise à jour sur une fausse source (`SourceMaj`) et une fausse installation ;
   le bandeau apparaît avec les notes, « Plus tard » le masque pour cette version (une version suivante le réaffiche), « Mettre à jour » affiche 40 %,

@@ -44,6 +44,7 @@ pub enum Action {
     NouveauPrive,
     CreerRejoindre,
     Statut(StatutPresence),
+    SignalerBug,
     Parametres(&'static str),
 }
 
@@ -185,6 +186,12 @@ pub fn actions_de_la_palette(etat: &Etat) -> Vec<Destination<Action>> {
             Action::Statut(statut),
         ));
     }
+    sortie.push(action(
+        "Signaler un bug".into(),
+        "",
+        "bug",
+        Action::SignalerBug,
+    ));
     for onglet in estompe_client::parametres::ONGLETS
         .into_iter()
         .filter(|o| *o != estompe_client::parametres::Onglet::Replay)
@@ -651,6 +658,7 @@ mod tests {
                 ("", "Statut : En ligne"),
                 ("", "Statut : Absent"),
                 ("", "Statut : Ne pas déranger"),
+                ("", "Signaler un bug"),
                 ("", "Paramètres › Compte"),
                 ("", "Paramètres › Notifications"),
                 ("", "Paramètres › Voix et vidéo"),
@@ -661,7 +669,8 @@ mod tests {
                 ("", "Paramètres › Raccourcis"),
             ]
         );
-        assert_eq!(toutes[10].action, Action::Parametres("debogage"));
+        assert_eq!(toutes[5].action, Action::SignalerBug);
+        assert_eq!(toutes[11].action, Action::Parametres("debogage"));
         assert_eq!(toutes[0].action, Action::NouveauPrive);
         assert_eq!(toutes[1].action, Action::CreerRejoindre);
         assert_eq!(toutes[2].detail, "actuel");

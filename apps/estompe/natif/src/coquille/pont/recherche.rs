@@ -140,6 +140,10 @@ impl Pont {
                 self.definir_statut(statut);
                 self.fermer_recherche(f);
             }
+            Some(Action::SignalerBug) => {
+                self.fermer_recherche(f);
+                self.signaler(f, estompe_client::signalements::Cible::Bug);
+            }
             Some(Action::Parametres(onglet)) => {
                 self.fermer_recherche(f);
                 f.global::<crate::DonneesParametres>()

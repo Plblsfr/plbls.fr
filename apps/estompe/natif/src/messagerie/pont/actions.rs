@@ -4,7 +4,7 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 
 use super::super::actions::{
     entrees_du_message, COPIER_LIEN, COPIER_TEXTE, DESEPINGLER, EPINGLER, MODIFIER, NON_LU,
-    REACTIONS_RAPIDES, REAGIR, REPONDRE, SUPPRIMER,
+    REACTIONS_RAPIDES, REAGIR, REPONDRE, SIGNALER, SUPPRIMER,
 };
 use super::super::emoji;
 use super::super::lignes::DonneesMessage;
@@ -12,7 +12,7 @@ use super::super::selecteur::Cible as CibleSelecteur;
 use super::PontMessagerie;
 use crate::confirmation::{self, Demande};
 use crate::menu::{self, Ancre};
-use crate::{DonneesMessagerie, Principale, ReactionMessage};
+use crate::{DonneesMessagerie, DonneesSignalements, Principale, ReactionMessage};
 
 pub const TITRE_MENU_MESSAGE: &str = "Actions sur le message";
 
@@ -97,6 +97,17 @@ impl PontMessagerie {
             NON_LU => {
                 self.marquer_non_lu(f, id);
                 false
+            }
+            SIGNALER => {
+                if let Some(m) = self.message_affiche(id) {
+                    let extrait = self.rendus_de(&m).texte_brut.clone();
+                    f.global::<DonneesSignalements>().invoke_signaler_message(
+                        id.into(),
+                        m.auteur.as_str().into(),
+                        extrait.as_str().into(),
+                    );
+                }
+                true
             }
             SUPPRIMER => {
                 let pont = self.clone();

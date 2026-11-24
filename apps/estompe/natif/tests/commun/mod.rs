@@ -923,6 +923,39 @@ pub mod coquille {
         reponses
     }
 
+    pub fn reponses_signalements() -> BTreeMap<&'static str, Value> {
+        let mut reponses = BTreeMap::new();
+        let liste = json!([
+            {"id": "r1", "author": "alice", "created_at": "2026-11-19T09:12:00Z", "title": "Le vocal coupe après cinq minutes", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null, "seen": false},
+            {"id": "r2", "author": "marc", "created_at": "2026-11-18T17:40:00Z", "title": "Notifications en double", "category": "notifications", "platform": "android", "status": "in_progress", "duplicate_of": null, "seen": true},
+            {"id": "r3", "author": "bob", "created_at": "2026-11-17T08:05:00Z", "title": "Partage d'écran noir", "category": "ecran", "platform": "web", "status": "resolved", "duplicate_of": null, "seen": true}
+        ]);
+        reponses.insert("/admin/reports", liste);
+        reponses.insert(
+            "/admin/reports/r1",
+            json!({"id": "r1", "author": "alice", "created_at": "2026-11-19T09:12:00Z", "title": "Le vocal coupe après cinq minutes", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null, "seen": true,
+                "description": "Dans le salon vocal des amis, le son se coupe au bout de cinq minutes. Je dois quitter puis revenir.",
+                "tech": {"Plateforme": "desktop", "Version": "0.9.2", "Système": "windows x86_64", "Écran": "serveur « Les amis », salon « Salon vocal »", "Vocal": "connecte dans « Salon vocal »"},
+                "logs": "2026-11-19 09:10:02.481 [INFO] vocal: connexion au salon v1\n2026-11-19 09:15:03.004 [WARN] vocal: reconnexion",
+                "notes": "", "attachments": [{"id": "fr1", "expired": false}]}),
+        );
+        reponses.insert(
+            "/reports",
+            json!([
+                {"id": "m1", "created_at": "2026-11-19T09:12:00Z", "title": "Le vocal coupe après cinq minutes", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null},
+                {"id": "m2", "created_at": "2026-11-02T14:00:00Z", "title": "Emoji illisible en mode sombre", "category": "", "platform": "desktop", "status": "resolved", "duplicate_of": null}
+            ]),
+        );
+        reponses
+    }
+
+    pub fn servir_les_signalements(serveur: &ServeurMessages) {
+        for (chemin, valeur) in reponses_signalements() {
+            serveur.servir_fichier(chemin, "application/json", valeur.to_string().into_bytes());
+        }
+        serveur.servir_fichier("/files/fr1", "image/png", png([210, 120, 150]));
+    }
+
     pub fn servir_l_administration(serveur: &ServeurMessages) {
         for (chemin, valeur) in reponses_admin() {
             serveur.servir_fichier(chemin, "application/json", valeur.to_string().into_bytes());
@@ -1332,6 +1365,21 @@ pub mod coquille {
                     m["poll"] = json!({"multiple": recu["poll"]["multiple"], "closes_at": recu["poll"]["closes_at"], "created_by": {"id": "u1", "pseudo": "moi"}, "options": options});
                 }
                 return (201, m.to_string());
+            }
+            if methode == "PATCH" && chemin.starts_with("/admin/reports/") {
+                self.requetes
+                    .lock()
+                    .unwrap()
+                    .push(format!("{methode} {chemin}"));
+                let recu: Value = serde_json::from_str(corps).unwrap_or_default();
+                let id = chemin.trim_start_matches("/admin/reports/");
+                let mut s = reponses_signalements()
+                    .remove(chemin)
+                    .unwrap_or_else(|| json!({"id": id}));
+                s["status"] = recu["status"].clone();
+                s["duplicate_of"] = recu["duplicate_of"].clone();
+                s["notes"] = recu["notes"].clone();
+                return (200, s.to_string());
             }
             if methode == "PATCH" && chemin.starts_with("/messages/") {
                 self.requetes
@@ -1864,6 +1912,7 @@ pub mod coquille {
         pub presse_papiers: Arc<FauxPressePapiers>,
         pub dossier_brouillons: Mutex<Option<std::path::PathBuf>>,
         pub vocal: Mutex<Option<estompe_natif::vocal::OutilsVocaux>>,
+        pub ecrans: Mutex<Option<Arc<dyn estompe_plateforme::CaptureEcran>>>,
         pub conversions: Mutex<Option<Arc<estompe_client::video::Conversions>>>,
         pub micro: Arc<FauxMicro>,
         pub sortie: Arc<FausseSortie>,
@@ -2050,6 +2099,7 @@ pub mod coquille {
                 presse_papiers: Arc::new(FauxPressePapiers::default()),
                 dossier_brouillons: Mutex::new(None),
                 vocal: Mutex::new(None),
+                ecrans: Mutex::new(None),
                 conversions: Mutex::new(None),
                 micro: Arc::new(FauxMicro::default()),
                 sortie: Arc::new(FausseSortie::default()),
@@ -2149,6 +2199,10 @@ pub mod coquille {
 
         fn jeux(&self) -> Option<watch::Receiver<estompe_natif::jeux::EtatJeux>> {
             self.jeux.lock().unwrap().clone()
+        }
+
+        fn ecrans(&self) -> Option<Arc<dyn estompe_plateforme::CaptureEcran>> {
+            self.ecrans.lock().unwrap().clone()
         }
 
         fn client(&self) -> Option<Client> {

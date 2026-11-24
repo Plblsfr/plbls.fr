@@ -33,7 +33,8 @@ pub use camera::{
     FormatPixels, ImageCamera, InfoCamera, RappelCamera, SystemeCamera,
 };
 pub use capture::{
-    cible_du_son, CaptureSysteme, EcransFactices, FluxCapture, IdSource, SonSysteme, SonsFactices,
+    capturer_fenetre_d_estompe, cible_du_son, fenetre_d_estompe, CaptureSysteme, EcransFactices,
+    FluxCapture, IdSource, SonSysteme, SonsFactices,
 };
 pub use coffre::{CoffreMemoire, CoffreSysteme};
 pub use demarrage::{

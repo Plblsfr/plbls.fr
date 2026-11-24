@@ -101,6 +101,13 @@ pub fn afficher_preferences(f: &Principale, p: &Preferences) {
     )));
 }
 
+fn charger_signalements(f: &Principale, onglet: Onglet) {
+    if onglet == Onglet::Signalements {
+        f.global::<crate::DonneesSignalements>()
+            .invoke_charger_mes();
+    }
+}
+
 pub fn poser_onglet(f: &Principale, onglet: Onglet) {
     let g = f.global::<DonneesParametres>();
     g.set_onglet(onglet.id().into());
@@ -124,6 +131,7 @@ impl Parametres {
             .set_ouverte(false);
         f.global::<crate::DonneesAdmin>().set_ouverte(false);
         g.set_ouverte(true);
+        charger_signalements(f, onglet);
     }
 
     pub fn fermer(&self, f: &Principale) {
@@ -144,6 +152,7 @@ impl Parametres {
         if onglet == Onglet::Debogage {
             self.rafraichir_journal(f);
         }
+        charger_signalements(f, onglet);
     }
 
     pub fn deplacer(&self, f: &Principale, pas: i32) {

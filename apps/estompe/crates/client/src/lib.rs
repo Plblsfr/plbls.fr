@@ -46,6 +46,7 @@ pub mod replay;
 pub mod roles;
 pub mod route;
 pub mod sections;
+pub mod signalements;
 pub mod sondage;
 pub mod store;
 pub mod televersement;

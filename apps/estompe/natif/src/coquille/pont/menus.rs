@@ -1,5 +1,6 @@
 use estompe_client::creation::peut_creer_salon;
 use estompe_client::route::{adresse_web, lien_message_prive, lien_salon};
+use estompe_client::signalements::Cible;
 use estompe_client::store::{CleConversation, GenreSalon, Presence};
 use estompe_client::temps_reel::evenements::StatutPresence;
 
@@ -21,6 +22,7 @@ pub const COPIER_PSEUDO: &str = "pseudo";
 pub const VOIR_MON_PROFIL: &str = "mon-profil";
 pub const MODIFIER_MON_PROFIL: &str = "modifier-profil";
 pub const SIGNALER_UN_BUG: &str = "bug";
+pub const SIGNALER_MEMBRE: &str = "signaler";
 pub const JEUX_ET_ACTIVITE: &str = "jeux";
 pub const PARAMETRES: &str = "parametres";
 pub const CREER_SALON: &str = "creer-salon";
@@ -54,7 +56,7 @@ pub fn entrees_de_moi(actuel: Presence, jeux: bool) -> Vec<Entree> {
             "trophee",
         ));
     }
-    entrees.push(Entree::nouvelle(SIGNALER_UN_BUG, "Signaler un bug", "bug").bientot());
+    entrees.push(Entree::nouvelle(SIGNALER_UN_BUG, "Signaler un bug", "bug"));
     entrees.push(Entree::nouvelle(PARAMETRES, "Paramètres", "reglages").separee());
     entrees
 }
@@ -118,7 +120,7 @@ pub fn entrees_du_prive(prive: &DonneesPrive) -> Vec<Entree> {
         .collect()
 }
 
-pub fn entrees_du_membre(mentionner: bool, moderation: Vec<Entree>) -> Vec<Entree> {
+pub fn entrees_du_membre(mentionner: bool, signaler: bool, moderation: Vec<Entree>) -> Vec<Entree> {
     let mut entrees = vec![Entree::nouvelle(PROFIL, "Profil", "perso")];
     if mentionner {
         entrees.push(Entree::nouvelle(MENTIONNER, "Mentionner", "arobase"));
@@ -130,6 +132,9 @@ pub fn entrees_du_membre(mentionner: bool, moderation: Vec<Entree>) -> Vec<Entre
             .enumerate()
             .map(|(i, e)| if i == 0 { e.separee() } else { e }),
     );
+    if signaler {
+        entrees.push(Entree::nouvelle(SIGNALER_MEMBRE, "Signaler", "drapeau").separee());
+    }
     entrees
 }
 
@@ -320,6 +325,10 @@ impl Pont {
                     crate::jeux::reglages::ouvrir(f);
                     return true;
                 }
+                if action == SIGNALER_UN_BUG {
+                    pont.signaler(f, Cible::Bug);
+                    return true;
+                }
                 if action == PARAMETRES {
                     f.global::<crate::DonneesParametres>()
                         .invoke_ouvrir("".into());
@@ -370,7 +379,12 @@ impl Pont {
             .map(|s| entrees_de_moderation(&self.actions_sur(s, utilisateur)))
             .unwrap_or_default();
         let pont = self.clone();
-        let entrees = entrees_du_membre(self.mention_possible(), moderation);
+        let moi = self.store.lire(|e| e.moi().to_string());
+        let entrees = entrees_du_membre(
+            self.mention_possible(),
+            !membre.bot && membre.utilisateur != moi,
+            moderation,
+        );
         let titre = membre.nom.clone();
         menu::ouvrir(f, &titre, ancre, entrees, move |f, action| match action {
             PROFIL => {
@@ -386,6 +400,16 @@ impl Pont {
             COPIER_PSEUDO => {
                 menu::copier_texte(f, &membre.pseudo);
                 false
+            }
+            SIGNALER_MEMBRE => {
+                pont.signaler(
+                    f,
+                    Cible::Personne {
+                        id: membre.utilisateur.clone(),
+                        pseudo: membre.pseudo.clone(),
+                    },
+                );
+                true
             }
             action => serveur
                 .as_deref()
@@ -515,6 +539,7 @@ mod tests {
         let coches: Vec<bool> = entrees.iter().map(|e| e.coche).collect();
         assert_eq!(coches, [false, true, false, false, false, false, false]);
         assert!(entrees[3].separe && entrees[3].bientot);
+        assert!(!entrees[5].bientot);
         assert!(entrees[6].separe && !entrees[6].bientot);
         let avec_jeux = entrees_de_moi(Presence::Absent, true);
         assert_eq!(
@@ -527,13 +552,16 @@ mod tests {
     #[test]
     fn mentionner_un_membre_demande_une_conversation_de_son_serveur_ouverte_en_ecriture() {
         assert_eq!(
-            ids(&entrees_du_membre(true, Vec::new())),
+            ids(&entrees_du_membre(true, false, Vec::new())),
             [PROFIL, MENTIONNER, COPIER_PSEUDO]
         );
         assert_eq!(
-            ids(&entrees_du_membre(false, Vec::new())),
+            ids(&entrees_du_membre(false, false, Vec::new())),
             [PROFIL, COPIER_PSEUDO]
         );
+        let autre = entrees_du_membre(false, true, Vec::new());
+        assert_eq!(ids(&autre), [PROFIL, COPIER_PSEUDO, SIGNALER_MEMBRE]);
+        assert!(autre[2].separe && !autre[2].bientot);
     }
 
     #[test]
@@ -542,7 +570,7 @@ mod tests {
             Entree::nouvelle("warn", "Avertir…", "alerte"),
             Entree::nouvelle("kick", "Expulser…", "sortie").danger(),
         ];
-        let entrees = entrees_du_membre(false, moderation);
+        let entrees = entrees_du_membre(false, false, moderation);
         assert_eq!(ids(&entrees), [PROFIL, COPIER_PSEUDO, "warn", "kick"]);
         assert!(entrees[2].separe && !entrees[3].separe);
         let moderer = Entree::nouvelle(MODERER_SALON, "Modération du salon…", "bouclier");

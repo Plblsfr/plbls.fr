@@ -24,6 +24,7 @@ use super::super::profil::{avatar_recadre, ouvrir_image};
 use super::super::projection::{initiales, teinte};
 use super::acces::PontAcces;
 use super::couleur_slint;
+use super::signalements::PontSignalements;
 use crate::confirmation::{self, Demande, Saisie};
 use crate::messagerie::pont::SystemeFichiers;
 use crate::{
@@ -127,6 +128,7 @@ pub struct PontAdmin {
     runtime: tokio::runtime::Handle,
     decalage: Decalage,
     acces: PontAcces,
+    signalements: PontSignalements,
 }
 
 fn modele<T: Clone + 'static>(lignes: Vec<T>) -> ModelRc<T> {
@@ -162,6 +164,12 @@ impl PontAdmin {
         runtime: tokio::runtime::Handle,
         decalage: Decalage,
     ) -> Self {
+        let signalements = PontSignalements::nouveau(
+            client.clone(),
+            fenetre.clone(),
+            runtime.clone(),
+            decalage.clone(),
+        );
         Self {
             interne: Arc::new(Mutex::new(EtatAdmin::default())),
             acces: PontAcces::nouveau(
@@ -175,10 +183,16 @@ impl PontAdmin {
             fenetre,
             runtime,
             decalage,
+            signalements,
         }
     }
 
+    pub fn signalements(&self) -> &PontSignalements {
+        &self.signalements
+    }
+
     pub fn definir_fichiers(&self, fichiers: SystemeFichiers) {
+        self.signalements.definir_fichiers(fichiers.clone());
         *self.fichiers.lock().unwrap_or_else(|e| e.into_inner()) = Some(fichiers);
     }
 
@@ -256,6 +270,7 @@ impl PontAdmin {
         g.set_seule(false);
         g.set_disponible(false);
         g.set_badge_ouvert(false);
+        self.signalements.oublier(f);
     }
 
     pub fn choisir(&self, f: &Principale, id: &str) {
@@ -278,6 +293,7 @@ impl PontAdmin {
             "badges" => self.charger_badges(),
             "bot" => self.charger_bot(),
             "journaux" => self.charger_journaux(),
+            "signalements" => self.signalements.charger_admin(f),
             "statistiques" => self.charger_statistiques(generation),
             "acces" => self.acces.ouvrir(f),
             _ => {}

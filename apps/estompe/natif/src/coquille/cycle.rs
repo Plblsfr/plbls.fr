@@ -89,6 +89,12 @@ pub trait Fabrique: Send + Sync + 'static {
     fn client(&self) -> Option<Client> {
         None
     }
+    fn ecrans(&self) -> Option<Arc<dyn estompe_plateforme::CaptureEcran>> {
+        self.vocal().map(|o| o.ecrans)
+    }
+    fn journal(&self) -> Option<Arc<Journal>> {
+        None
+    }
 }
 
 pub struct FabriqueReelle {
@@ -221,6 +227,10 @@ impl Fabrique for FabriqueReelle {
     fn client(&self) -> Option<Client> {
         Some(self.client.clone())
     }
+
+    fn journal(&self) -> Option<Arc<Journal>> {
+        self.journal.clone()
+    }
 }
 
 pub trait ObservateurSession: Send + Sync {
@@ -310,6 +320,7 @@ impl Coquille {
         brancher_rappels(f, &emplacement, &memoire);
         let admin: EmplacementAdmin = Arc::new(Mutex::new(None));
         brancher_admin(f, &emplacement, &admin);
+        brancher_signalements(f, &emplacement, &admin);
         let contexte = Contexte {
             emetteur: entree.emetteur(),
             fabrique,
@@ -766,6 +777,87 @@ fn brancher_admin(f: &Principale, emplacement: &Emplacement, seule: &Emplacement
     super::pont::acces::brancher(f, move || {
         admin_courant(&emplacement, &seule).map(|a| a.acces().clone())
     });
+}
+
+fn brancher_signalements(f: &Principale, emplacement: &Emplacement, seule: &EmplacementAdmin) {
+    use estompe_client::signalements::Cible;
+    let g = f.global::<crate::DonneesSignalements>();
+    macro_rules! rappel_pont {
+        ($methode:ident, |$p:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let faible = f.as_weak();
+            g.$methode(move |$($arg),*| {
+                if let (Some($p), Some($f)) = (pont_courant(&emplacement), faible.upgrade()) {
+                    $corps;
+                }
+            });
+        }};
+    }
+    macro_rules! rappel_signalements {
+        ($methode:ident, |$s:ident, $f:ident $(, $arg:ident)*| $corps:expr) => {{
+            let emplacement = emplacement.clone();
+            let seule = seule.clone();
+            let faible = f.as_weak();
+            g.$methode(move |$($arg),*| {
+                if let (Some(admin), Some($f)) = (admin_courant(&emplacement, &seule), faible.upgrade()) {
+                    let $s = admin.signalements();
+                    $corps;
+                }
+            });
+        }};
+    }
+    rappel_pont!(on_signaler_bug, |p, f| p.signaler(&f, Cible::Bug));
+    rappel_pont!(on_signaler_message, |p, f, id, auteur, extrait| p.signaler(
+        &f,
+        Cible::Message {
+            id: id.to_string(),
+            auteur: auteur.to_string(),
+            extrait: extrait.to_string(),
+        }
+    ));
+    rappel_pont!(on_signaler_personne, |p, f, id, pseudo| p.signaler(
+        &f,
+        Cible::Personne {
+            id: id.to_string(),
+            pseudo: pseudo.to_string(),
+        }
+    ));
+    rappel_signalements!(on_fermer, |s, f| s.fermer(&f));
+    rappel_signalements!(on_modifie, |s, f| s.modifie(&f));
+    rappel_signalements!(on_choisir_categorie, |s, f, id| s
+        .choisir_categorie(&f, &id));
+    rappel_signalements!(on_capturer, |s, f| s.capturer(&f));
+    rappel_signalements!(on_ajouter_images, |s, f| s.ajouter_images(&f));
+    rappel_signalements!(on_retirer_capture, |s, f, i| s
+        .retirer_capture(&f, i.max(0) as usize));
+    rappel_signalements!(on_basculer_information, |s, f, i| s
+        .basculer_information(&f, i.max(0) as usize));
+    rappel_signalements!(on_envoyer, |s, f| s.envoyer(&f));
+    rappel_signalements!(on_charger_mes, |s, f| s.charger_mes(&f));
+    rappel_signalements!(on_charger_admin, |s, f| s.charger_admin(&f));
+    rappel_signalements!(on_filtrer, |s, f| s.charger_admin(&f));
+    rappel_signalements!(on_choisir_filtre, |s, f, nom, i| s.choisir_filtre(
+        &f,
+        &nom,
+        i.max(0) as usize
+    ));
+    rappel_signalements!(on_ouvrir_filtre, |s, f, nom, x, haut, bas| s.ouvrir_filtre(
+        &f,
+        &nom,
+        Ancre::Element { x, haut, bas }
+    ));
+    rappel_signalements!(on_ouvrir_signalement, |s, f, i| s
+        .ouvrir_signalement(&f, i.max(0) as usize));
+    rappel_signalements!(on_fermer_signalement, |s, f| s.fermer_signalement(&f));
+    rappel_signalements!(on_choisir_statut, |s, f, statut| s
+        .choisir_statut(&f, &statut));
+    rappel_signalements!(on_ouvrir_origines, |s, f, x, haut, bas| s
+        .ouvrir_origines(&f, Ancre::Element { x, haut, bas }));
+    rappel_signalements!(on_voir_original, |s, f| s.voir_original(&f));
+    rappel_signalements!(on_enregistrer, |s, f| s.enregistrer(&f));
+    rappel_signalements!(on_supprimer, |s, f| s.supprimer(&f));
+    rappel_signalements!(on_copier, |s, f| s.copier(&f));
+    rappel_signalements!(on_telecharger_logs, |s, f| s.telecharger_logs(&f));
 }
 
 fn brancher_rappels(f: &Principale, emplacement: &Emplacement, memoire: &Memoire) {
@@ -1407,6 +1499,12 @@ async fn session(
     }
     pont.vocal().definir_fichiers(contexte.fabrique.fichiers());
     pont.admin().definir_fichiers(contexte.fabrique.fichiers());
+    pont.signalements()
+        .definir_capture(contexte.fabrique.ecrans());
+    pont.signalements()
+        .definir_journal(contexte.fabrique.journal());
+    pont.signalements()
+        .definir_dossier(Some(contexte.memoire.dossier().to_path_buf()));
     let outils = contexte.fabrique.vocal();
     if let Some(outils) = &outils {
         pont.vocal().brancher(outils.clone());

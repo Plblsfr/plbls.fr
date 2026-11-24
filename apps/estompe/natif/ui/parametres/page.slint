@@ -8,6 +8,7 @@ import { DonneesJeux } from "../jeux/reglages.slint";
 import { DonneesReplay } from "../replay/reglages.slint";
 import { DonneesMesures } from "../mesures/ecran.slint";
 import { CompteProfil } from "profil.slint";
+import { MesSignalements } from "../signalements/fenetre.slint";
 
 export struct OngletParametres {
     id: string,
@@ -1108,11 +1109,7 @@ component OngletReplay inherits VerticalLayout {
 }
 
 component OngletSignalements inherits VerticalLayout {
-    spacing: Espace.e4;
-    Section {
-        titre: "Mes signalements";
-        note: "Signaler un bug et suivre tes signalements arrivent bientôt dans l'app native.";
-    }
+    MesSignalements { }
 }
 
 export component PageParametres inherits Rectangle {

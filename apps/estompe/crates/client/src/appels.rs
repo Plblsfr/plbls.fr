@@ -11,6 +11,7 @@ use crate::admin::{
 };
 use crate::fichiers::est_une_video;
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
+use crate::signalements::{Filtres, Signalement};
 use crate::store::CleConversation;
 use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
@@ -18,17 +19,17 @@ use crate::types::{
     Attachment, Channel, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement,
     GetMeReponse, GetServersIdAuditLogReponseElement, GetServersIdBansReponseElement,
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
-    MessagePage, Name50, NotifySettings, Override, PatchMessagesIdRequete,
-    PatchServersIdEmojisEidRequete, Person, PostActivateRequete, PostAdminBadgesIdUsersRequete,
-    PostAdminBadgesRequete, PostAdminBotMessagesRequete, PostChannelsCidMessagesBulkDeleteRequete,
-    PostDmsRequete, PostNotificationsReadRequete, PostServersIdChannelsRequete,
-    PostServersIdInvitesRequete, PostServersIdMembersUidBanRequete,
-    PostServersIdMembersUidKickRequete, PostServersIdMembersUidWarnRequete,
-    PostVoiceCidTokenReponse, PutMeActivityRequete, PutMeBannerRequete, PutMeStatusRequete,
-    PutMessagesIdVoteRequete, PutServersIdChannelsCidModerationRequete,
-    PutServersIdChannelsCidOverridesRidRequete, PutServersIdMembersUidNicknameRequete,
-    PutServersIdMembersUidTimeoutRequete, PutServersIdRolesOrderRequete, Role, RoleInput, Server,
-    ServerInvite, DM,
+    MessagePage, Name50, NotifySettings, Override, PatchAdminReportsIdRequete,
+    PatchMessagesIdRequete, PatchServersIdEmojisEidRequete, Person, PostActivateRequete,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostAdminBotMessagesRequete,
+    PostChannelsCidMessagesBulkDeleteRequete, PostDmsRequete, PostNotificationsReadRequete,
+    PostReportsRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
+    PostServersIdMembersUidBanRequete, PostServersIdMembersUidKickRequete,
+    PostServersIdMembersUidWarnRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
+    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete,
+    PutServersIdChannelsCidModerationRequete, PutServersIdChannelsCidOverridesRidRequete,
+    PutServersIdMembersUidNicknameRequete, PutServersIdMembersUidTimeoutRequete,
+    PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -1260,6 +1261,54 @@ impl Client {
     ) -> Result<(), ErreurApi> {
         self.delete(&format!("/admin/servers/{serveur}")).await
     }
+
+    pub async fn envoyer_signalement(
+        &self,
+        signalement: &PostReportsRequete,
+    ) -> Result<(), ErreurApi> {
+        let _: Option<Value> = self
+            .requete(
+                Method::POST,
+                "/reports",
+                &Corps::json(signalement)?,
+                Default::default(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn mes_signalements(&self) -> Result<Vec<Signalement>, ErreurApi> {
+        self.get("/reports").await
+    }
+
+    pub async fn signalements_admin(
+        &self,
+        filtres: &Filtres,
+    ) -> Result<Vec<Signalement>, ErreurApi> {
+        self.get(&filtres.chemin()).await
+    }
+
+    pub async fn signalement_admin(&self, id: &str) -> Result<Signalement, ErreurApi> {
+        self.get(&format!("/admin/reports/{}", encoder_composant(id)))
+            .await
+    }
+
+    pub async fn modifier_signalement(
+        &self,
+        id: &str,
+        modification: &PatchAdminReportsIdRequete,
+    ) -> Result<Signalement, ErreurApi> {
+        self.patch(
+            &format!("/admin/reports/{}", encoder_composant(id)),
+            modification,
+        )
+        .await
+    }
+
+    pub async fn supprimer_signalement(&self, id: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/admin/reports/{}", encoder_composant(id)))
+            .await
+    }
 }
 
 #[cfg(test)]
@@ -2072,6 +2121,71 @@ mod tests {
             json!({"name": "Nouveau", "color": "#3b82f6"})
         );
         assert_eq!(requetes[11].json(), json!({"content": "Salut", "to": ""}));
+    }
+
+    #[tokio::test]
+    async fn construit_les_routes_des_signalements() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(201, json!({"id": "r1", "status": "new"})),
+            Reponse::json(200, json!([{"id": "r1", "created_at": "2026-10-26T10:00:00Z", "title": "Bug", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null}])),
+            Reponse::json(200, json!([{"id": "r1", "author": "alice", "title": "Bug", "status": "in_progress", "seen": true}])),
+            Reponse::json(200, json!({"id": "r1", "title": "Bug", "status": "new", "tech": {"Version": "1.0"}, "attachments": [{"id": "f1", "expired": false}]})),
+            Reponse::json(200, json!({"id": "r1", "title": "Bug", "status": "resolved", "notes": "ok"})),
+            Reponse::vide(204),
+        ])
+        .await;
+        let client = serveur.client();
+        client
+            .envoyer_signalement(&PostReportsRequete {
+                title: "Bug".into(),
+                description: "d".into(),
+                ..PostReportsRequete::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            client.mes_signalements().await.unwrap()[0].category,
+            "vocal"
+        );
+        let filtres = Filtres {
+            statut: "in_progress".into(),
+            ..Filtres::default()
+        };
+        assert_eq!(
+            client.signalements_admin(&filtres).await.unwrap()[0].author,
+            "alice"
+        );
+        let detail = client.signalement_admin("r1").await.unwrap();
+        assert_eq!(detail.attachments[0].id, "f1");
+        let modifie = client
+            .modifier_signalement(
+                "r1",
+                &crate::signalements::modification("resolved", "", "ok").unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(modifie.status, "resolved");
+        client.supprimer_signalement("r1").await.unwrap();
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/reports", "POST"),
+                ligne("/reports", "GET"),
+                ligne("/admin/reports?status=in_progress", "GET"),
+                ligne("/admin/reports/r1", "GET"),
+                ligne("/admin/reports/r1", "PATCH"),
+                ligne("/admin/reports/r1", "DELETE"),
+            ]
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(
+            requetes[0].json(),
+            json!({"title": "Bug", "description": "d"})
+        );
+        assert_eq!(
+            requetes[4].json(),
+            json!({"status": "resolved", "notes": "ok"})
+        );
     }
 
     #[tokio::test]

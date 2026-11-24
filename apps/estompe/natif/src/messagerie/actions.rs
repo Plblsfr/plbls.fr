@@ -80,7 +80,7 @@ pub fn entrees_du_message(droits: DroitsMessage, epingle: bool, texte: bool) -> 
     }
     entrees.push(Entree::nouvelle(COPIER_LIEN, "Copier le lien", "lien"));
     entrees.push(Entree::nouvelle(NON_LU, "Marquer comme non lu", "oeil"));
-    entrees.push(Entree::nouvelle(SIGNALER, "Signaler", "drapeau").bientot());
+    entrees.push(Entree::nouvelle(SIGNALER, "Signaler", "drapeau"));
     if copie > 0 {
         entrees[copie] = entrees[copie].clone().separee();
     }
@@ -210,7 +210,7 @@ mod tests {
     fn signaler_est_visible_mais_marque_bientot_et_supprimer_est_dangereux_et_separe() {
         let entrees = entrees_du_message(droits_du_message(&sujet("moi"), MEMBRE), false, true);
         let signaler = entrees.iter().find(|e| e.id == SIGNALER).unwrap();
-        assert!(signaler.bientot && !signaler.danger);
+        assert!(!signaler.bientot && !signaler.danger);
         let supprimer = entrees.last().unwrap();
         assert!(supprimer.danger && supprimer.separe);
         assert!(

@@ -1,0 +1,105 @@
+export struct ChoixSignalement {
+    id: string,
+    libelle: string,
+}
+
+export struct CaptureSignalement {
+    image: image,
+    nom: string,
+}
+
+export struct InfoSignalement {
+    cle: string,
+    valeur: string,
+    incluse: bool,
+}
+
+export struct LigneSignalement {
+    id: string,
+    titre: string,
+    resume: string,
+    statut: string,
+    ton: string,
+    plateforme: string,
+    nouveau: bool,
+    actif: bool,
+}
+
+export struct CleValeurSignalement {
+    cle: string,
+    valeur: string,
+}
+
+export global DonneesSignalements {
+    in property <bool> ouverte: false;
+    in property <bool> masquee: false;
+    in property <string> titre-fenetre;
+    in property <bool> brouillon: false;
+    in-out property <string> titre;
+    in-out property <string> description;
+    in property <string> categorie;
+    in property <[ChoixSignalement]> categories;
+    in property <[CaptureSignalement]> captures;
+    in property <int> max-captures: 5;
+    in property <bool> capture-disponible: false;
+    in property <[InfoSignalement]> informations;
+    in property <int> informations-incluses;
+    in-out property <bool> avec-journal: false;
+    in property <bool> journal-disponible: false;
+    in property <string> erreur;
+    in property <bool> en-cours: false;
+    in property <bool> envoyable: false;
+    callback signaler-bug();
+    callback signaler-message(string, string, string);
+    callback signaler-personne(string, string);
+    callback fermer();
+    callback modifie();
+    callback choisir-categorie(string);
+    callback capturer();
+    callback ajouter-images();
+    callback retirer-capture(int);
+    callback basculer-information(int);
+    callback envoyer();
+
+    in property <[LigneSignalement]> mes;
+    in property <bool> mes-charges: false;
+    in property <string> erreur-mes;
+    in property <string> info-mes;
+    callback charger-mes();
+
+    in property <[ChoixSignalement]> statuts;
+    in property <[ChoixSignalement]> plateformes;
+    in property <int> filtre-statut: 0;
+    in property <int> filtre-categorie: 0;
+    in property <int> filtre-plateforme: 0;
+    in-out property <string> filtre-auteur;
+    in-out property <string> filtre-recherche;
+    in property <[LigneSignalement]> liste;
+    in property <bool> detail-ouvert: false;
+    in property <string> detail-titre;
+    in property <string> detail-meta;
+    in property <string> detail-description;
+    in property <[image]> detail-captures;
+    in property <[CleValeurSignalement]> detail-tech;
+    in property <string> detail-logs;
+    in property <string> statut-choisi;
+    in-out property <string> notes;
+    in property <string> origine;
+    in property <bool> a-original: false;
+    in property <string> erreur-admin;
+    in property <string> info-admin;
+    in property <bool> en-cours-admin: false;
+    callback charger-admin();
+    callback filtrer();
+    callback choisir-filtre(string, int);
+    callback ouvrir-filtre(string, length, length, length);
+    callback ouvrir-signalement(int);
+    callback fermer-signalement();
+    callback choisir-statut(string);
+    callback ouvrir-origines(length, length, length);
+    callback voir-original();
+    callback enregistrer();
+    callback supprimer();
+    callback copier();
+    callback telecharger-logs();
+}

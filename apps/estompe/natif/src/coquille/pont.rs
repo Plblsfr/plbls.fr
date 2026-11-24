@@ -55,6 +55,7 @@ mod profil;
 mod recherche;
 mod reglages;
 mod roles;
+mod signalements;
 
 pub use admin::{Decalage, DonneesAdminChargees, PontAdmin};
 pub use creation::{EtatCreationSalon, EtatCreerRejoindre};
@@ -62,6 +63,7 @@ pub use moderation::{EtatModerationMembre, EtatModerationSalon};
 pub use nouveau_prive::EtatNouveauPrive;
 pub use reglages::{emoji_depuis, EmojiEnAttente, EtatReglages};
 pub use roles::EtatRoles;
+pub use signalements::{jpeg_de_la_capture, PontSignalements, TITRE_FENETRE};
 
 pub fn horloge_locale() -> Horloge {
     Arc::new(|| chrono::Local::now().naive_local())
@@ -401,6 +403,9 @@ pub fn vider_modeles(f: &Principale) {
     admin.set_ouverte(false);
     admin.set_disponible(false);
     admin.set_badge_ouvert(false);
+    let signalements = f.global::<crate::DonneesSignalements>();
+    signalements.set_ouverte(false);
+    signalements.set_detail_ouvert(false);
 }
 
 fn image_de(icones: &BTreeMap<String, (i64, Icone)>, serveur: &str, version: i64) -> Option<Image> {

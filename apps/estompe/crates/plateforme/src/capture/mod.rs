@@ -25,7 +25,9 @@ pub use son::{
 };
 pub use source::IdSource;
 
-use crate::traits::{CaptureEcran, Image, OptionsCapture, RecepteurCapture, SourceCapture};
+use crate::traits::{
+    CaptureEcran, Image, OptionsCapture, RecepteurCapture, SourceCapture, TypeSource,
+};
 use crate::{Erreur, Resultat};
 
 pub const HAUTEUR_MINIATURE: u32 = 180;
@@ -37,6 +39,23 @@ pub(crate) fn fenetre_retenue(titre: &str, largeur: u32, hauteur: u32, reduite: 
         && largeur >= LARGEUR_MIN_FENETRE
         && hauteur >= HAUTEUR_MIN_FENETRE
         && !reduite
+}
+
+pub fn fenetre_d_estompe<'a>(
+    sources: &'a [SourceCapture],
+    titre: &str,
+) -> Option<&'a SourceCapture> {
+    sources
+        .iter()
+        .filter(|s| s.estompe && s.genre == TypeSource::Fenetre)
+        .max_by_key(|s| (s.nom == titre, u64::from(s.largeur) * u64::from(s.hauteur)))
+}
+
+pub fn capturer_fenetre_d_estompe(capture: &dyn CaptureEcran, titre: &str) -> Resultat<Image> {
+    let sources = capture.sources()?;
+    let fenetre = fenetre_d_estompe(&sources, titre)
+        .ok_or_else(|| Erreur::Echec("fenêtre d'Estompe introuvable".into()))?;
+    capture.capturer(&fenetre.id)
 }
 
 pub(crate) fn source_inconnue(source: &str) -> Erreur {
@@ -96,6 +115,78 @@ mod tests {
         assert!(!fenetre_retenue("Info-bulle", 119, 600, false));
         assert!(!fenetre_retenue("Barre", 800, 79, false));
         assert!(!fenetre_retenue("Navigateur", 800, 600, true));
+    }
+
+    fn source(
+        id: &str,
+        nom: &str,
+        genre: TypeSource,
+        taille: (u32, u32),
+        estompe: bool,
+    ) -> SourceCapture {
+        SourceCapture {
+            id: id.into(),
+            nom: nom.into(),
+            application: String::new(),
+            genre,
+            largeur: taille.0,
+            hauteur: taille.1,
+            principale: genre == TypeSource::Ecran,
+            processus: estompe.then_some(std::process::id()),
+            estompe,
+        }
+    }
+
+    #[test]
+    fn la_capture_d_un_signalement_ne_contient_que_la_fenetre_d_estompe() {
+        let ecrans = EcransFactices::nouveaux();
+        assert!(matches!(
+            capturer_fenetre_d_estompe(&ecrans, "Estompe"),
+            Err(Erreur::Echec(_))
+        ));
+        ecrans.brancher(source(
+            "ecran:0",
+            "Écran 1",
+            TypeSource::Ecran,
+            (2560, 1440),
+            false,
+        ));
+        ecrans.brancher(source(
+            "fenetre:1",
+            "Navigateur",
+            TypeSource::Fenetre,
+            (1920, 1080),
+            false,
+        ));
+        ecrans.brancher(source(
+            "fenetre:2",
+            "Estompe — overlay",
+            TypeSource::Fenetre,
+            (2560, 1440),
+            true,
+        ));
+        ecrans.brancher(source(
+            "fenetre:3",
+            "Estompe",
+            TypeSource::Fenetre,
+            (1180, 900),
+            true,
+        ));
+        let sources = ecrans.sources().unwrap();
+        assert_eq!(
+            fenetre_d_estompe(&sources, "Estompe").unwrap().id,
+            "fenetre:3"
+        );
+        assert_eq!(
+            fenetre_d_estompe(&sources, "Autre titre").unwrap().id,
+            "fenetre:2"
+        );
+        let image = capturer_fenetre_d_estompe(&ecrans, "Estompe").unwrap();
+        assert_eq!((image.largeur, image.hauteur), (1180, 900));
+        assert_eq!(image, ecrans.capturer("fenetre:3").unwrap());
+        ecrans.retirer("fenetre:2");
+        ecrans.retirer("fenetre:3");
+        assert!(capturer_fenetre_d_estompe(&ecrans, "Estompe").is_err());
     }
 
     #[test]

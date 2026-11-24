@@ -273,6 +273,10 @@ const ECRANS: &[Ecran] = ecrans![
     "admin-badges-clair", Clair, admin_badges;
     "admin-badge-clair", Clair, admin_badge;
     "admin-signalements-clair", Clair, admin_signalements;
+    "admin-signalements-sombre", Sombre, admin_signalements;
+    "signalement-clair", Clair, signalement_bug;
+    "signalement-sombre", Sombre, signalement_bug;
+    "signalement-message-clair", Clair, signalement_message;
     "admin-bot-clair", Clair, admin_bot;
     "admin-statistiques-clair", Clair, admin_statistiques;
     "admin-statistiques-sombre", Sombre, admin_statistiques;
@@ -298,6 +302,7 @@ const ECRANS: &[Ecran] = ecrans![
     "parametres-debogage-clair", Clair, parametres_debogage;
     "parametres-debogage-sombre", Sombre, parametres_debogage;
     "parametres-signalements-clair", Clair, parametres_signalements;
+    "parametres-signalements-sombre", Sombre, parametres_signalements;
     "parametres-raccourcis-clair", Clair, parametres_raccourcis;
     "parametres-replay-clair", Clair, parametres_replay;
     "parametres-recherche-clair", Clair, parametres_recherche;
@@ -1771,8 +1776,69 @@ fn admin_badge(f: &Principale) {
     stabiliser(f);
 }
 
+fn signalements_de_test(chemin: &str) -> serde_json::Value {
+    commun::coquille::reponses_signalements()
+        .remove(chemin)
+        .unwrap()
+}
+
 fn admin_signalements(f: &Principale) {
-    administration(f, "signalements");
+    let pont = administration(f, "signalements");
+    let capture = image::load_from_memory(&commun::coquille::png([210, 120, 150]))
+        .unwrap()
+        .resize_exact(320, 200, image::imageops::FilterType::Nearest)
+        .to_rgba8();
+    pont.signalements().installer_admin(
+        f,
+        serde_json::from_value(signalements_de_test("/admin/reports")).unwrap(),
+        Some((
+            serde_json::from_value(signalements_de_test("/admin/reports/r1")).unwrap(),
+            vec![capture],
+        )),
+    );
+    stabiliser(f);
+}
+
+fn ouvrir_signalement(f: &Principale, cible: estompe_client::signalements::Cible) -> Pont {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    stabiliser(f);
+    let instantane = f.window().take_snapshot().unwrap();
+    let image = Image {
+        largeur: instantane.width(),
+        hauteur: instantane.height(),
+        rgba: instantane.as_bytes().to_vec(),
+    };
+    let environnement = estompe_client::signalements::Environnement {
+        version: "0.9.2",
+        systeme: "windows x86_64",
+        ecran: "serveur « Les amis », salon « général »",
+        vocal: "inactif",
+    };
+    pont.signalements().ouvrir(f, cible, &environnement, false);
+    pont.signalements().ajouter_capture(f, &image);
+    pont
+}
+
+fn signalement_bug(f: &Principale) {
+    let pont = ouvrir_signalement(f, estompe_client::signalements::Cible::Bug);
+    let g = f.global::<estompe_natif::DonneesSignalements>();
+    g.set_titre("Le vocal coupe après cinq minutes".into());
+    g.set_description("Dans le salon vocal, le son se coupe au bout de cinq minutes. Je dois quitter puis revenir pour réentendre les autres.".into());
+    pont.signalements().choisir_categorie(f, "vocal");
+    pont.signalements().basculer_information(f, 5);
+    stabiliser(f);
+}
+
+fn signalement_message(f: &Principale) {
+    ouvrir_signalement(
+        f,
+        estompe_client::signalements::Cible::Message {
+            id: "5".into(),
+            auteur: "carol".into(),
+            extrait: "Le texte du message signalé".into(),
+        },
+    );
+    stabiliser(f);
 }
 
 fn admin_bot(f: &Principale) {
@@ -3480,7 +3546,13 @@ fn parametres_debogage(f: &Principale) {
 }
 
 fn parametres_signalements(f: &Principale) {
-    parametres(f, estompe_client::parametres::Onglet::Signalements);
+    let pont = coquille(f, commun::coquille::etat(), Route::Accueil);
+    afficher_parametres(f, estompe_client::parametres::Onglet::Signalements);
+    pont.signalements().installer_mes(
+        f,
+        serde_json::from_value(signalements_de_test("/reports")).unwrap(),
+    );
+    stabiliser(f);
 }
 
 fn parametres_raccourcis(f: &Principale) {

@@ -1,0 +1,479 @@
+import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Case, Defilement, Modal } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { DonneesSignalements, ChoixSignalement, LigneSignalement } from "donnees.slint";
+
+export component Puce inherits Rectangle {
+    in property <string> texte;
+    in property <bool> choisie: false;
+    in property <int> calque: 0;
+    callback choisir();
+    property <bool> utilisable: root.calque >= Calques.ouverts;
+    height: 30px;
+    width: libelle.preferred-width + 18px;
+    border-radius: Rayon.pilule;
+    background: root.choisie ? Theme.encre : zone.has-hover ? Theme.papier-2 : Theme.surface;
+    border-width: 1px;
+    border-color: root.choisie ? Theme.encre : Theme.trait-fort;
+    accessible-role: button;
+    accessible-label: root.texte;
+    accessible-checkable: true;
+    accessible-checked: root.choisie;
+    accessible-enabled: root.utilisable;
+    accessible-action-default => {
+        root.choisir();
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: parent.height / 2;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    libelle := Text {
+        text: root.texte;
+        color: root.choisie ? Theme.papier : Theme.encre;
+        font-size: 13px;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.choisir();
+        }
+    }
+}
+
+export component EtiquetteStatut inherits Rectangle {
+    in property <string> texte;
+    in property <string> ton;
+    height: 20px;
+    width: libelle.preferred-width + 14px;
+    border-radius: Rayon.pilule;
+    background: root.ton == "info" ? Theme.info-fond : root.ton == "att" ? Theme.attention-fond : root.ton == "ok" ? Theme.ok-fond : root.ton == "dgr" ? Theme.danger-fond : root.ton == "rose" ? Theme.rose : Theme.papier-3;
+    libelle := Text {
+        text: root.texte;
+        color: root.ton == "info" ? Theme.info : root.ton == "att" ? Theme.attention : root.ton == "ok" ? Theme.ok : root.ton == "dgr" ? Theme.danger : root.ton == "rose" ? Theme.encre : Theme.gris;
+        font-family: Typo.mono;
+        font-size: 10.5px;
+        font-weight: Typo.demi-gras;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component ZoneTexte {
+    in property <string> etiquette;
+    in property <length> hauteur: 104px;
+    in property <int> calque: 0;
+    in-out property <string> valeur;
+    callback modifie();
+    VerticalLayout {
+        spacing: Espace.e1;
+        Text {
+            text: root.etiquette;
+            color: Theme.encre-2;
+            font-size: Typo.petit;
+            font-weight: Typo.demi-gras;
+        }
+        Rectangle {
+            height: root.hauteur;
+            border-radius: Rayon.s;
+            background: Theme.surface;
+            border-width: saisie.has-focus ? 2px : 1px;
+            border-color: saisie.has-focus ? Theme.encre : Theme.trait-fort;
+            accessible-role: text-input;
+            accessible-label: root.etiquette;
+            accessible-value: root.valeur;
+            clip: true;
+            saisie := TextInput {
+                x: Espace.e3;
+                y: 10px;
+                width: parent.width - 2 * Espace.e3;
+                height: parent.height - 20px;
+                single-line: false;
+                wrap: word-wrap;
+                enabled: root.calque >= Calques.ouverts;
+                text <=> root.valeur;
+                color: Theme.encre;
+                font-size: Typo.corps;
+                selection-background-color: Theme.rose;
+                edited => {
+                    root.modifie();
+                }
+            }
+        }
+    }
+}
+
+component Vignette inherits Rectangle {
+    in property <image> source;
+    in property <string> nom;
+    callback retirer();
+    width: Math.max(54px, apercu.preferred-width);
+    height: 54px;
+    apercu := Image {
+        height: 54px;
+        source: root.source;
+        image-fit: contain;
+        accessible-role: image;
+        accessible-label: root.nom;
+    }
+    Rectangle {
+        x: parent.width - 18px;
+        y: -8px;
+        width: 26px;
+        height: 26px;
+        border-radius: 13px;
+        background: Theme.surface;
+        drop-shadow-blur: 6px;
+        drop-shadow-color: #16130f33;
+        Bouton {
+            min-height: 26px;
+            min-width: 26px;
+            preferred-height: 26px;
+            preferred-width: 26px;
+            icone: "x";
+            variante: VarianteBouton.fantome;
+            calque: 1;
+            description: "Retirer " + root.nom;
+            clique => {
+                root.retirer();
+            }
+        }
+    }
+}
+
+component Etiquette inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: 10.5px;
+    font-weight: Typo.demi-gras;
+    letter-spacing: 0.8px;
+}
+
+export component FenetreSignalement {
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: DonneesSignalements.titre-fenetre;
+        ouvert: DonneesSignalements.ouverte && !DonneesSignalements.masquee;
+        largeur: 620px;
+        focus-croix: false;
+        ferme => {
+            DonneesSignalements.fermer();
+        }
+        Defilement {
+            height: Math.max(160px, Math.min(formulaire.preferred-height, root.height - 160px));
+            hauteur-contenu: formulaire.preferred-height;
+            formulaire := VerticalLayout {
+                spacing: 14px;
+                padding-right: 4px;
+                HorizontalLayout {
+                    spacing: 10px;
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 12px;
+                        background: Theme.rose;
+                        Icone {
+                            nom: "bug";
+                            taille: 20px;
+                        }
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        text: DonneesSignalements.brouillon ? "Ton brouillon est gardé si tu fermes." : "Les administrateurs verront ton signalement.";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        wrap: word-wrap;
+                    }
+                }
+                if DonneesSignalements.erreur != "": Rectangle {
+                    border-radius: Rayon.s;
+                    background: Theme.danger-fond;
+                    border-width: 1px;
+                    border-color: Theme.danger;
+                    accessible-role: text;
+                    accessible-label: DonneesSignalements.erreur;
+                    HorizontalLayout {
+                        padding: Espace.e3;
+                        spacing: Espace.e2;
+                        Icone {
+                            nom: "alerte";
+                            couleur: Theme.danger;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: DonneesSignalements.erreur;
+                            color: Theme.danger;
+                            font-size: Typo.petit;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                Champ {
+                    etiquette: "Titre";
+                    calque: 1;
+                    valeur <=> DonneesSignalements.titre;
+                    modifie => {
+                        DonneesSignalements.modifie();
+                    }
+                }
+                ZoneTexte {
+                    etiquette: "Ce qui s'est passé et ce qui était attendu";
+                    calque: 1;
+                    valeur <=> DonneesSignalements.description;
+                    modifie => {
+                        DonneesSignalements.modifie();
+                    }
+                }
+                VerticalLayout {
+                    spacing: Espace.e2;
+                    Text {
+                        text: "Catégorie (facultatif)";
+                        color: Theme.encre-2;
+                        font-size: Typo.petit;
+                        font-weight: Typo.demi-gras;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        accessible-role: groupbox;
+                        accessible-label: "Catégorie";
+                        for c in DonneesSignalements.categories: Puce {
+                            texte: c.libelle;
+                            calque: 1;
+                            choisie: DonneesSignalements.categorie == c.id;
+                            choisir => {
+                                DonneesSignalements.choisir-categorie(c.id);
+                            }
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: Espace.e2;
+                    Etiquette {
+                        text: "IMAGES · " + DonneesSignalements.captures.length + "/" + DonneesSignalements.max-captures;
+                    }
+                    HorizontalLayout {
+                        spacing: Espace.e3;
+                        alignment: start;
+                        padding-top: 8px;
+                        for c[i] in DonneesSignalements.captures: Vignette {
+                            source: c.image;
+                            nom: c.nom;
+                            retirer => {
+                                DonneesSignalements.retirer-capture(i);
+                            }
+                        }
+                        if DonneesSignalements.capture-disponible: VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Capturer la fenêtre";
+                                icone: "ecran";
+                                calque: 1;
+                                actif: DonneesSignalements.captures.length < DonneesSignalements.max-captures;
+                                clique => {
+                                    DonneesSignalements.capturer();
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            Bouton {
+                                texte: "Ajouter des images";
+                                icone: "plus";
+                                variante: VarianteBouton.fantome;
+                                calque: 1;
+                                actif: DonneesSignalements.captures.length < DonneesSignalements.max-captures;
+                                clique => {
+                                    DonneesSignalements.ajouter-images();
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        text: "La capture ne montre que la fenêtre d'Estompe, sans ce formulaire. Retire une image avec sa croix.";
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        wrap: word-wrap;
+                    }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.trait;
+                }
+                Etiquette {
+                    text: "INFORMATIONS JOINTES · " + DonneesSignalements.informations-incluses;
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    for info[i] in DonneesSignalements.informations: Case {
+                        texte: info.cle + " : " + info.valeur;
+                        cochee: info.incluse;
+                        calque: 1;
+                        horizontal-stretch: 1;
+                        bascule => {
+                            DonneesSignalements.basculer-information(i);
+                        }
+                    }
+                }
+                Case {
+                    texte: DonneesSignalements.journal-disponible ? "Joindre les logs du mode debug (sans jeton ni contenu de message)" : "Joindre les logs : active d'abord le mode debug";
+                    actif: DonneesSignalements.journal-disponible;
+                    calque: 1;
+                    horizontal-stretch: 1;
+                    cochee <=> DonneesSignalements.avec-journal;
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    alignment: end;
+                    Bouton {
+                        texte: "Annuler";
+                        calque: 1;
+                        clique => {
+                            DonneesSignalements.fermer();
+                        }
+                    }
+                    Bouton {
+                        texte: DonneesSignalements.en-cours ? "Envoi…" : "Envoyer";
+                        variante: VarianteBouton.primaire;
+                        calque: 1;
+                        actif: DonneesSignalements.envoyable && !DonneesSignalements.en-cours;
+                        clique => {
+                            DonneesSignalements.envoyer();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component MesSignalements inherits VerticalLayout {
+    in property <length> rayon: Rayon.l;
+    spacing: Espace.e4;
+    Rectangle {
+        border-radius: root.rayon;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.trait;
+        VerticalLayout {
+            padding-left: Espace.e5;
+            padding-right: Espace.e5;
+            padding-top: Espace.e4;
+            padding-bottom: Espace.e4;
+            spacing: Espace.e3;
+            Text {
+                text: "Un problème ? Décris-le, joins une capture de la fenêtre : les administrateurs le verront.";
+                color: Theme.gris;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                alignment: start;
+                Bouton {
+                    texte: "Signaler un bug";
+                    icone: "bug";
+                    variante: VarianteBouton.primaire;
+                    clique => {
+                        DonneesSignalements.signaler-bug();
+                    }
+                }
+            }
+        }
+    }
+    Text {
+        text: "Mes signalements";
+        color: Theme.encre;
+        font-family: Typo.titre;
+        font-size: Typo.titre-section;
+        font-weight: Typo.gras;
+        letter-spacing: -0.4px;
+    }
+    if DonneesSignalements.info-mes != "": Text {
+        text: DonneesSignalements.info-mes;
+        color: Theme.ok;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    if DonneesSignalements.erreur-mes != "": Text {
+        text: DonneesSignalements.erreur-mes;
+        color: Theme.danger;
+        font-size: Typo.petit;
+        wrap: word-wrap;
+    }
+    Rectangle {
+        border-radius: root.rayon;
+        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.trait;
+        VerticalLayout {
+            padding-left: Espace.e5;
+            padding-right: Espace.e5;
+            padding-top: Espace.e2;
+            padding-bottom: Espace.e2;
+            accessible-role: list;
+            accessible-label: "Mes signalements";
+            for r[i] in DonneesSignalements.mes: Rectangle {
+                min-height: 48px;
+                accessible-role: list-item;
+                accessible-label: r.titre + ", " + r.statut;
+                if i < DonneesSignalements.mes.length - 1: Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.trait;
+                }
+                HorizontalLayout {
+                    spacing: Espace.e3;
+                    padding-top: Espace.e2;
+                    padding-bottom: Espace.e2;
+                    Text {
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                        text: r.titre;
+                        color: Theme.encre;
+                        font-weight: Typo.gras;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        EtiquetteStatut {
+                            texte: r.statut;
+                            ton: r.ton;
+                        }
+                    }
+                    Text {
+                        text: r.resume;
+                        color: Theme.gris;
+                        font-size: Typo.petit;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+            if DonneesSignalements.mes.length == 0: Text {
+                height: 44px;
+                vertical-alignment: center;
+                text: DonneesSignalements.mes-charges ? "Aucun signalement envoyé." : "Chargement…";
+                color: Theme.gris;
+                font-size: Typo.petit;
+            }
+        }
+    }
+}
