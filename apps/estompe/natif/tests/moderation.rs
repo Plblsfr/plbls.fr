@@ -115,6 +115,7 @@ fn membres(faible: &slint::Weak<Principale>, pont: &Pont, serveur: &ServeurMessa
         "nickname",
         "kick",
         "ban",
+        "signaler",
     ];
     assert_eq!(menu_du_membre(faible, pont, "carol"), attendu);
     let libelles: Vec<(String, bool, bool)> = sur_l_interface(faible, |f| {
@@ -133,12 +134,13 @@ fn membres(faible: &slint::Weak<Principale>, pont: &Pont, serveur: &ServeurMessa
             ("Changer le pseudo…".to_string(), false, false),
             ("Expulser…".to_string(), true, false),
             ("Bannir…".to_string(), true, false),
+            ("Signaler".to_string(), false, true),
         ]
     );
     sur_l_interface(faible, menu::fermer);
     assert_eq!(
         menu_du_membre(faible, pont, "eve"),
-        ["profil", "mentionner", "pseudo"]
+        ["profil", "mentionner", "pseudo", "signaler"]
     );
     sur_l_interface(faible, menu::fermer);
     assert_eq!(menu_du_membre(faible, pont, "frank")[3], "untimeout");
