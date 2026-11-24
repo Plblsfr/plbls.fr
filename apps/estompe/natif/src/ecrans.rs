@@ -12,6 +12,7 @@ pub fn afficher(f: &Principale, etat: &Etat) {
         Etat::Verification => Page::Verification,
         Etat::Injoignable(_) => Page::Injoignable,
         Etat::Refuse => Page::Refuse,
+        Etat::Administration { .. } => Page::Administration,
         Etat::AActiver { .. } => Page::Activation,
         Etat::Invitation { .. } => Page::Invitation,
         Etat::Connecte { .. } => Page::Coquille,

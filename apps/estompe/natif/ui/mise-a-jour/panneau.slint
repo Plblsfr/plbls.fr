@@ -5,6 +5,8 @@ import { DonneesMiseAJour, BarreProgression } from "donnees.slint";
 export component PanneauMiseAJour inherits VerticalLayout {
     property <bool> proposee: DonneesMiseAJour.automatique && DonneesMiseAJour.disponible;
     property <bool> a-verifier: DonneesMiseAJour.automatique && !DonneesMiseAJour.disponible;
+    in property <int> calque: 1;
+    callback version-cliquee();
     spacing: Espace.e2;
     Text {
         text: "Mises à jour";
@@ -17,6 +19,11 @@ export component PanneauMiseAJour inherits VerticalLayout {
         text: "Version installée : " + (DonneesMiseAJour.version-installee != "" ? DonneesMiseAJour.version-installee : "…");
         color: Theme.gris;
         font-size: Typo.petit;
+        TouchArea {
+            clicked => {
+                root.version-cliquee();
+            }
+        }
     }
     if !DonneesMiseAJour.automatique: Text {
         text: "Les mises à jour automatiques arriveront avec le paquet Linux.";
@@ -43,7 +50,7 @@ export component PanneauMiseAJour inherits VerticalLayout {
             icone: "telecharge";
             variante: VarianteBouton.primaire;
             en-cours: DonneesMiseAJour.en-cours;
-            calque: 1;
+            calque: root.calque;
             clique => {
                 if (DonneesMiseAJour.attente-appel) {
                     DonneesMiseAJour.confirmer();
@@ -64,7 +71,7 @@ export component PanneauMiseAJour inherits VerticalLayout {
             texte: "Rechercher une mise à jour";
             icone: "actualise";
             en-cours: DonneesMiseAJour.verification;
-            calque: 1;
+            calque: root.calque;
             clique => {
                 DonneesMiseAJour.verifier();
             }

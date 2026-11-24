@@ -158,6 +158,9 @@ pub fn choisir(f: &Principale, id: &str) {
         return;
     };
     let ailleurs = action(f, id);
+    if ACTION.with(|a| a.borrow().is_some()) {
+        return;
+    }
     let g = f.global::<DonneesMenu>();
     g.set_focus_ailleurs(ailleurs);
     g.set_ouvert(false);

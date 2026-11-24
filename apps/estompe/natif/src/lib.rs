@@ -12,6 +12,7 @@ pub mod messagerie;
 pub mod mesures;
 pub mod mise_a_jour;
 pub mod overlay;
+pub mod parametres;
 pub mod replay;
 pub mod session;
 pub mod video;
@@ -26,6 +27,9 @@ pub fn creer_fenetre() -> Result<Principale, slint::PlatformError> {
     menu::brancher(&fenetre);
     confirmation::brancher(&fenetre);
     fenetre.set_version(VERSION.into());
+    fenetre
+        .global::<DonneesParametres>()
+        .set_version(VERSION.into());
     fenetre
         .global::<DonneesMiseAJour>()
         .set_version_installee(VERSION.into());
@@ -63,6 +67,7 @@ pub struct Application {
     pub galerie: std::sync::Arc<replay::clips::Galerie>,
     pub editeur: std::sync::Arc<replay::editeur::Editeur>,
     pub mesures: std::sync::Arc<ecran_mesures::EcranMesures>,
+    pub parametres: std::rc::Rc<parametres::Parametres>,
     _minuterie_mesures: slint::Timer,
 }
 
@@ -399,6 +404,17 @@ pub fn demarrer(
         session.dossiers.donnees.join("mesures"),
     );
     let minuterie_mesures = ecran_mesures::brancher(fenetre, mesures.clone());
+    let parametres = parametres::brancher(
+        fenetre,
+        parametres::OutilsParametres {
+            memoire: session.memoire.clone(),
+            journal: session.journal.clone(),
+            fuseau: messagerie::pont::fuseau_local(),
+            horloge: std::sync::Arc::new(|| chrono::Utc::now().timestamp_millis()),
+            dossier_export: estompe_plateforme::dossier_telechargements()
+                .unwrap_or_else(|| session.dossiers.journaux.clone()),
+        },
+    );
     Ok(Application {
         bureau,
         coquille,
@@ -416,6 +432,7 @@ pub fn demarrer(
         galerie,
         editeur,
         mesures,
+        parametres,
         _minuterie_mesures: minuterie_mesures,
     })
 }

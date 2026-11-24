@@ -3,6 +3,7 @@ mod commun;
 use commun::references::{comparer, controler, VARIABLE};
 
 use chrono::NaiveDate;
+use estompe_client::admin::{sections_admin, Droit};
 use estompe_client::appels::EmojiPersonnalise;
 use estompe_client::auth::ErreurAuth;
 use estompe_client::mise_a_jour::{ErreurMiseAJour, EtatMaj, Phase};
@@ -18,7 +19,8 @@ use estompe_client::vocal::{
     PartageLocal, Phase as PhaseVocal, Qualite, QualitePartage, ReglagesIncrustation,
     ResolutionPartage, TrameVideo,
 };
-use estompe_natif::coquille::pont::vider_modeles;
+use estompe_natif::coquille::pont::acces::DonneesAccesChargees;
+use estompe_natif::coquille::pont::{vider_modeles, DonneesAdminChargees, PontAdmin};
 use estompe_natif::coquille::{
     avatars, brancher_messagerie, CleAvatar, Icone, Navigation, Pont, Profils,
 };
@@ -169,6 +171,8 @@ const ECRANS: &[Ecran] = ecrans![
     "carte-profil-clair", Clair, carte_profil;
     "carte-profil-sombre", Sombre, carte_profil;
     "carte-profil-moi-clair", Clair, carte_profil_moi;
+    "carte-profil-badges-clair", Clair, carte_profil_badges;
+    "carte-profil-badges-sombre", Sombre, carte_profil_badges;
     "messagerie-variantes-clair", Clair, messagerie_variantes;
     "messagerie-variantes-sombre", Sombre, messagerie_variantes;
     "messagerie-lecteurs-clair", Clair, messagerie_lecteurs;
@@ -235,6 +239,73 @@ const ECRANS: &[Ecran] = ecrans![
     "nouveau-prive-erreur-clair", Clair, nouveau_prive_erreur;
     "menu-statut-clair", Clair, menu_statut;
     "menu-statut-sombre", Sombre, menu_statut;
+    "menu-sourdine-clair", Clair, menu_sourdine;
+    "menu-sourdine-sombre", Sombre, menu_sourdine;
+    "menu-sourdine-duree-clair", Clair, menu_sourdine_duree;
+    "parametres-compte-clair", Clair, parametres_compte;
+    "parametres-compte-sombre", Sombre, parametres_compte;
+    "parametres-compte-profil-clair", Clair, parametres_compte_profil;
+    "parametres-compte-profil-sombre", Sombre, parametres_compte_profil;
+    "recadrage-avatar-clair", Clair, recadrage_avatar;
+    "recadrage-avatar-sombre", Sombre, recadrage_avatar;
+    "creer-rejoindre-clair", Clair, creer_rejoindre;
+    "creer-rejoindre-sombre", Sombre, creer_rejoindre;
+    "creation-salon-clair", Clair, creation_salon;
+    "creation-salon-sombre", Sombre, creation_salon;
+    "creation-salon-erreur-clair", Clair, creation_salon_erreur;
+    "reglages-serveur-vue-clair", Clair, reglages_serveur_vue;
+    "reglages-serveur-vue-sombre", Sombre, reglages_serveur_vue;
+    "reglages-serveur-membre-clair", Clair, reglages_serveur_membre;
+    "reglages-serveur-invitations-clair", Clair, reglages_serveur_invitations;
+    "reglages-serveur-emojis-clair", Clair, reglages_serveur_emojis;
+    "reglages-serveur-emojis-sombre", Sombre, reglages_serveur_emojis;
+    "reglages-serveur-membres-clair", Clair, reglages_serveur_membres;
+    "reglages-serveur-bannis-clair", Clair, reglages_serveur_bannis;
+    "reglages-serveur-roles-clair", Clair, reglages_serveur_roles;
+    "reglages-serveur-roles-sombre", Sombre, reglages_serveur_roles;
+    "reglages-serveur-salon-permissions-clair", Clair, reglages_serveur_salon_permissions;
+    "reglages-serveur-journal-clair", Clair, reglages_serveur_journal;
+    "moderation-membre-clair", Clair, moderation_membre;
+    "moderation-membre-sombre", Sombre, moderation_membre;
+    "moderation-salon-clair", Clair, moderation_salon;
+    "admin-utilisateurs-clair", Clair, admin_utilisateurs;
+    "admin-serveurs-clair", Clair, admin_serveurs;
+    "admin-badges-clair", Clair, admin_badges;
+    "admin-badge-clair", Clair, admin_badge;
+    "admin-signalements-clair", Clair, admin_signalements;
+    "admin-signalements-sombre", Sombre, admin_signalements;
+    "signalement-clair", Clair, signalement_bug;
+    "signalement-sombre", Sombre, signalement_bug;
+    "signalement-message-clair", Clair, signalement_message;
+    "admin-bot-clair", Clair, admin_bot;
+    "admin-statistiques-clair", Clair, admin_statistiques;
+    "admin-statistiques-sombre", Sombre, admin_statistiques;
+    "admin-journaux-clair", Clair, admin_journaux;
+    "admin-acces-clair", Clair, admin_acces;
+    "admin-acces-sombre", Sombre, admin_acces;
+    "admin-acces-comptes-clair", Clair, admin_acces_comptes;
+    "admin-acces-chargement-clair", Clair, admin_acces_chargement;
+    "admin-acces-erreur-clair", Clair, admin_acces_erreur;
+    "admin-acces-roles-clair", Clair, admin_acces_roles;
+    "admin-acces-role-clair", Clair, admin_acces_role;
+    "admin-acces-groupes-clair", Clair, admin_acces_groupes;
+    "admin-acces-catalogue-clair", Clair, admin_acces_catalogue;
+    "admin-acces-journal-clair", Clair, admin_acces_journal;
+    "admin-seule-clair", Clair, admin_seule;
+    "parametres-notifications-clair", Clair, parametres_notifications;
+    "parametres-notifications-serveur-clair", Clair, parametres_notifications_serveur;
+    "parametres-notifications-serveur-sombre", Sombre, parametres_notifications_serveur;
+    "parametres-voix-clair", Clair, parametres_voix;
+    "parametres-apparence-clair", Clair, parametres_apparence;
+    "parametres-apparence-sombre", Sombre, parametres_apparence;
+    "parametres-application-clair", Clair, parametres_application;
+    "parametres-debogage-clair", Clair, parametres_debogage;
+    "parametres-debogage-sombre", Sombre, parametres_debogage;
+    "parametres-signalements-clair", Clair, parametres_signalements;
+    "parametres-signalements-sombre", Sombre, parametres_signalements;
+    "parametres-raccourcis-clair", Clair, parametres_raccourcis;
+    "parametres-replay-clair", Clair, parametres_replay;
+    "parametres-recherche-clair", Clair, parametres_recherche;
 ];
 
 fn bob() -> Compte {
@@ -1304,6 +1375,625 @@ fn carte_profil_moi(f: &Principale) {
     pont.ouvrir_membre(f, "u1");
 }
 
+fn carte_profil_badges(f: &Principale) {
+    let profils = profils_des_membres();
+    let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#2f5d8a"/><path d="M7 12l3 3 7-7" stroke="#ffffff" stroke-width="2.5" fill="none"/></svg>"##;
+    let etoile = image::RgbaImage::from_fn(48, 48, |x, y| {
+        let (dx, dy) = (x as f32 - 23.5, y as f32 - 23.5);
+        if dx.abs() + dy.abs() < 22.0 {
+            image::Rgba([242, 166, 90, 255])
+        } else {
+            image::Rgba([0, 0, 0, 0])
+        }
+    });
+    let mut png = std::io::Cursor::new(Vec::new());
+    etoile.write_to(&mut png, image::ImageFormat::Png).unwrap();
+    profils.installer_icone_badge("verifie", 1, svg.to_vec());
+    profils.installer_icone_badge("pionniere", 2, png.into_inner());
+    let badge = |id: &str, nom: &str, description: &str, icone: &str, version: i64| {
+        estompe_client::appels::Badge {
+            id: id.into(),
+            name: nom.into(),
+            description: description.into(),
+            icon: icone.into(),
+            icon_version: version,
+            color: "#d0688a".into(),
+            ..Default::default()
+        }
+    };
+    profils.installer_badges(
+        "carol",
+        vec![
+            badge(
+                "verifie",
+                "Vérifiée",
+                "Compte vérifié par l'équipe d'Estompe.",
+                "",
+                1,
+            ),
+            badge("pionniere", "Pionnière", "", "", 2),
+            badge("artiste", "Artiste", "", "🎨", 0),
+        ],
+    );
+    f.global::<DonneesCoquille>().set_marge_ouverte(true);
+    let pont = coquille_avec(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+        profils,
+    );
+    pont.ouvrir_membre(f, "carol");
+    stabiliser(f);
+    let badge = i_slint_backend_testing::ElementHandle::find_by_element_type_name(f, "BadgeCarte")
+        .next()
+        .expect("badge de la carte");
+    let p = badge.absolute_position();
+    let taille = badge.size();
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerMoved {
+            position: slint::LogicalPosition::new(
+                p.x + taille.width / 2.0,
+                p.y + taille.height / 2.0,
+            ),
+        });
+    stabiliser(f);
+}
+
+fn etat_profil() -> estompe_client::store::Etat {
+    let mut etat = commun::coquille::etat_avec_membres();
+    etat.avatars.insert("u1".into(), 3);
+    etat.avatars_serveur
+        .insert("s2".into(), [("u1".to_string(), 2)].into());
+    if let Some(m) = etat
+        .details
+        .get_mut("s1")
+        .and_then(|d| d.members.as_mut())
+        .and_then(|m| m.iter_mut().find(|m| m.id.as_deref() == Some("u1")))
+    {
+        m.banner_color = Some("#2f5d8a".into());
+    }
+    etat
+}
+
+fn profils_du_compte() -> Arc<Profils> {
+    let profils = profils_des_membres();
+    for (serveur, version, fond, motif) in [
+        (None, 3, [208, 104, 138], [250, 230, 236]),
+        (Some("s2"), 2, [61, 140, 90], [230, 245, 235]),
+    ] {
+        profils.installer_avatar(
+            CleAvatar {
+                utilisateur: "u1".into(),
+                version,
+                serveur: serveur.map(str::to_string),
+            },
+            avatars::arrondir(portrait(fond, motif)),
+        );
+    }
+    profils
+}
+
+fn parametres_compte_profil(f: &Principale) {
+    let pont = coquille_avec(f, etat_profil(), Route::Accueil, profils_du_compte());
+    afficher_parametres(f, estompe_client::parametres::Onglet::Compte);
+    pont.projeter_profil(f);
+    stabiliser(f);
+}
+
+fn paysage() -> image::RgbaImage {
+    image::RgbaImage::from_fn(900, 600, |x, y| {
+        let ciel = y < 330;
+        let soleil = ((x as f32 - 620.0).powi(2) + (y as f32 - 190.0).powi(2)).sqrt() < 70.0;
+        let colline = (y as f32) > 330.0 + 60.0 * ((x as f32) / 140.0).sin();
+        let [r, v, b] = if soleil {
+            [242, 166, 90]
+        } else if ciel {
+            [(150 + y / 6) as u8, (190 + y / 8) as u8, 230]
+        } else if colline {
+            [61, 140, 90]
+        } else {
+            [120, 170, 110]
+        };
+        image::Rgba([r, v, b, 255])
+    })
+}
+
+fn recadrage_avatar(f: &Principale) {
+    let pont = coquille_avec(f, etat_profil(), Route::Accueil, profils_du_compte());
+    afficher_parametres(f, estompe_client::parametres::Onglet::Compte);
+    pont.projeter_profil(f);
+    pont.ouvrir_recadrage(f, None, paysage());
+    pont.zoomer_recadrage(f, 1.6);
+    pont.deplacer_recadrage(f, -60.0, 20.0);
+    stabiliser(f);
+}
+
+fn creer_rejoindre(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), Route::Accueil);
+    pont.ouvrir_creer_rejoindre(f);
+    let g = f.global::<estompe_natif::DonneesCreerRejoindre>();
+    g.set_nom("Atelier vélo".into());
+    pont.nom_de_serveur_modifie(f, "Atelier vélo");
+    let carre = image::imageops::resize(
+        &image::imageops::crop_imm(&paysage(), 300, 0, 600, 600).to_image(),
+        256,
+        256,
+        image::imageops::FilterType::Triangle,
+    );
+    pont.icone_recadree(f, Some(("image/png", Vec::new(), carre)));
+    g.set_code("ABCDE-23456".into());
+    pont.code_modifie(f, "ABCDE-23456");
+    stabiliser(f);
+}
+
+fn creation_salon_ouverte(f: &Principale) -> Pont {
+    let pont = coquille(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+    );
+    pont.ouvrir_creation_salon(f, "s1", estompe_client::store::GenreSalon::Text, None);
+    pont
+}
+
+fn creation_salon(f: &Principale) {
+    let pont = creation_salon_ouverte(f);
+    f.global::<estompe_natif::DonneesCreationSalon>()
+        .set_nom("jeux du soir".into());
+    pont.nom_de_salon_modifie(f, "jeux du soir");
+    pont.basculer_salon_prive(f, true);
+    pont.basculer_role_du_salon(f, 1);
+    pont.basculer_membre_du_salon(f, 1);
+    stabiliser(f);
+}
+
+fn reglages_serveur(
+    f: &Principale,
+    etat: estompe_client::store::Etat,
+    serveur: &str,
+    onglet: &str,
+) -> Pont {
+    let pont = coquille_complete(
+        f,
+        etat,
+        salon(serveur, None),
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+        Some(medias_des_captures()),
+        |_| {},
+    );
+    pont.ouvrir_reglages_serveur(f, serveur);
+    pont.choisir_onglet_serveur(f, onglet);
+    pont
+}
+
+fn reglages_serveur_vue(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "vue");
+    f.global::<estompe_natif::DonneesReglagesServeur>()
+        .set_nom("Les copains".into());
+    pont.nom_des_reglages_modifie(f, "Les copains");
+    let carre = image::imageops::resize(
+        &image::imageops::crop_imm(&paysage(), 300, 0, 600, 600).to_image(),
+        256,
+        256,
+        image::imageops::FilterType::Triangle,
+    );
+    pont.icone_des_reglages_recadree(f, Some(("image/png", Vec::new(), carre)));
+    stabiliser(f);
+}
+
+fn reglages_serveur_membre(f: &Principale) {
+    let mut etat = commun::coquille::etat_avec_membres();
+    etat.details.get_mut("s2").unwrap().permissions =
+        Some(serde_json::from_value(serde_json::json!(["view_channel"])).unwrap());
+    reglages_serveur(f, etat, "s2", "vue");
+    stabiliser(f);
+}
+
+fn reglages_serveur_invitations(f: &Principale) {
+    let pont = reglages_serveur(
+        f,
+        commun::coquille::etat_avec_membres(),
+        "s1",
+        "invitations",
+    );
+    pont.choisir_expiration(f, 3);
+    pont.choisir_utilisation(f, 2);
+    pont.poser_invitations(
+        f,
+        "s1",
+        serde_json::from_value(serde_json::json!([
+            {"code": "ABCDE-23456", "created_by": "bob", "uses": 3},
+            {"code": "FGHIJ-78901", "created_by": "Ève", "uses": 1, "max_uses": 10, "expires_at": "2026-11-20T09:30:00Z"}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn reglages_serveur_emojis(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "emojis");
+    pont.emoji_choisi(
+        f,
+        estompe_natif::coquille::pont::emoji_depuis(&visage([120, 170, 220]), "Chat bleu.png"),
+    );
+    f.global::<estompe_natif::DonneesReglagesServeur>()
+        .set_nom_emoji("chat_bleu".into());
+    stabiliser(f);
+}
+
+fn reglages_serveur_membres(f: &Principale) {
+    reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "membres");
+    stabiliser(f);
+}
+
+fn reglages_serveur_bannis(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "bannis");
+    pont.poser_bannis(
+        f,
+        "s1",
+        serde_json::from_value(serde_json::json!([
+            {"user_id": "zed", "pseudo": "zed", "by": "bob", "at": "2026-11-18T10:00:00Z", "reason": "Spam répété dans #général"},
+            {"user_id": "yan", "pseudo": "Yan", "by": "Ève", "at": "2026-11-17T21:15:00Z", "expires_at": "2026-11-24T21:15:00Z"}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn etat_des_roles() -> estompe_client::store::Etat {
+    let mut etat = commun::coquille::etat_avec_membres();
+    for role in etat
+        .details
+        .get_mut("s1")
+        .unwrap()
+        .roles
+        .as_mut()
+        .unwrap()
+        .iter_mut()
+    {
+        let permissions: &[&str] = match role.id.as_deref() {
+            Some("r0") => &[
+                "view_channel",
+                "send_messages",
+                "add_reactions",
+                "connect",
+                "speak",
+            ],
+            Some("rm") => &["manage_channels", "kick_members", "manage_messages"],
+            _ => &["attach_files", "create_polls", "share_screen"],
+        };
+        role.permissions = Some(permissions.iter().map(|p| p.to_string()).collect());
+    }
+    etat
+}
+
+fn reglages_serveur_roles(f: &Principale) {
+    let pont = reglages_serveur(f, etat_des_roles(), "s1", "roles");
+    pont.choisir_role(f, "ra");
+    stabiliser(f);
+}
+
+fn reglages_serveur_journal(f: &Principale) {
+    let pont = reglages_serveur(f, commun::coquille::etat_avec_membres(), "s1", "journal");
+    pont.poser_journal(
+        f,
+        "s1",
+        "",
+        serde_json::from_value(serde_json::json!([
+            {"at": "2026-11-19T10:20:00Z", "actor": "bob", "actor_id": "u1", "action": "member.ban", "target": "hugo", "reason": "spam"},
+            {"at": "2026-11-19T09:05:00Z", "actor": "bob", "actor_id": "u1", "action": "member.timeout", "target": "frank", "reason": "insultes"},
+            {"at": "2026-11-18T21:12:00Z", "actor": "Ève", "actor_id": "eve", "action": "member.warn", "target": "dave", "reason": "hors sujet"},
+            {"at": "2026-11-18T18:40:00Z", "actor": "Ève", "actor_id": "eve", "action": "role.create", "target": "Artistes"},
+            {"at": "2026-11-18T17:00:00Z", "actor": "bob", "actor_id": "u1", "action": "channel.moderation", "target": "annonces"},
+            {"at": "2026-11-17T08:30:00Z", "actor": "Ève", "actor_id": "eve", "action": "message.bulk_delete", "target": "général"},
+            {"at": "2026-11-16T20:02:00Z", "actor": "bob", "actor_id": "u1", "action": "voice.move", "target": "carol"}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn moderation_membre(f: &Principale) {
+    let pont = coquille(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+    );
+    pont.menu_membre(
+        f,
+        "dave",
+        estompe_natif::menu::Ancre::Point { x: 900.0, y: 200.0 },
+    );
+    estompe_natif::menu::choisir(f, "ban");
+    let g = f.global::<estompe_natif::DonneesModeration>();
+    g.set_raison("Spam répété dans #général".into());
+    pont.raison_de_moderation_modifiee(f, "Spam répété dans #général");
+    pont.choisir_duree_de_moderation(f, 2);
+    pont.choisir_purge(f, 2);
+    stabiliser(f);
+}
+
+fn moderation_salon(f: &Principale) {
+    let pont = coquille(
+        f,
+        commun::coquille::etat_avec_membres(),
+        salon("s1", Some("c1")),
+    );
+    pont.ouvrir_moderation_salon(f, "s1", "c1");
+    pont.choisir_mode_lent_du_salon(f, 3);
+    pont.verrouiller_salon(f, true);
+    stabiliser(f);
+}
+
+fn donnees_admin() -> DonneesAdminChargees {
+    let r = commun::coquille::reponses_admin();
+    let lire = |chemin: &str| r.get(chemin).cloned().unwrap();
+    DonneesAdminChargees {
+        comptes: serde_json::from_value(lire("/admin/users")).unwrap(),
+        vue: serde_json::from_value(lire("/admin/overview")).ok(),
+        badges: serde_json::from_value(lire("/admin/badges")).unwrap(),
+        bot: serde_json::from_value(lire("/admin/bot")).unwrap(),
+        stats: serde_json::from_value(lire("/admin/stats")).ok(),
+        direct: serde_json::from_value(lire("/admin/live")).ok(),
+        actions: serde_json::from_value(lire("/admin/log")).unwrap(),
+        erreurs: serde_json::from_value(lire("/admin/errors")).unwrap(),
+    }
+}
+
+fn administration(f: &Principale, onglet: &str) -> Pont {
+    let mut etat = commun::coquille::etat_administrateur();
+    etat.compte.rights = Some(vec![Droit::Access, Droit::Admin, Droit::Acces]);
+    let pont = coquille_complete(
+        f,
+        etat,
+        salon("s1", Some("c1")),
+        Profils::nouveaux(Arc::new(commun::coquille::SourceFactice::default()), None),
+        None,
+        |_| {},
+    );
+    pont.ouvrir_administration(f);
+    pont.admin().choisir(f, onglet);
+    pont.admin().installer(f, donnees_admin());
+    stabiliser(f);
+    pont
+}
+
+fn admin_utilisateurs(f: &Principale) {
+    administration(f, "utilisateurs");
+}
+
+fn admin_serveurs(f: &Principale) {
+    administration(f, "serveurs");
+}
+
+fn admin_badges(f: &Principale) {
+    administration(f, "badges");
+}
+
+fn admin_badge(f: &Principale) {
+    let pont = administration(f, "badges");
+    pont.admin().ouvrir_badge(f, 0);
+    stabiliser(f);
+}
+
+fn signalements_de_test(chemin: &str) -> serde_json::Value {
+    commun::coquille::reponses_signalements()
+        .remove(chemin)
+        .unwrap()
+}
+
+fn admin_signalements(f: &Principale) {
+    let pont = administration(f, "signalements");
+    let capture = image::load_from_memory(&commun::coquille::png([210, 120, 150]))
+        .unwrap()
+        .resize_exact(320, 200, image::imageops::FilterType::Nearest)
+        .to_rgba8();
+    pont.signalements().installer_admin(
+        f,
+        serde_json::from_value(signalements_de_test("/admin/reports")).unwrap(),
+        Some((
+            serde_json::from_value(signalements_de_test("/admin/reports/r1")).unwrap(),
+            vec![capture],
+        )),
+    );
+    stabiliser(f);
+}
+
+fn ouvrir_signalement(f: &Principale, cible: estompe_client::signalements::Cible) -> Pont {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    stabiliser(f);
+    let instantane = f.window().take_snapshot().unwrap();
+    let image = Image {
+        largeur: instantane.width(),
+        hauteur: instantane.height(),
+        rgba: instantane.as_bytes().to_vec(),
+    };
+    let environnement = estompe_client::signalements::Environnement {
+        version: "0.9.2",
+        systeme: "windows x86_64",
+        ecran: "serveur « Les amis », salon « général »",
+        vocal: "inactif",
+    };
+    pont.signalements().ouvrir(f, cible, &environnement, false);
+    pont.signalements().ajouter_capture(f, &image);
+    pont
+}
+
+fn signalement_bug(f: &Principale) {
+    let pont = ouvrir_signalement(f, estompe_client::signalements::Cible::Bug);
+    let g = f.global::<estompe_natif::DonneesSignalements>();
+    g.set_titre("Le vocal coupe après cinq minutes".into());
+    g.set_description("Dans le salon vocal, le son se coupe au bout de cinq minutes. Je dois quitter puis revenir pour réentendre les autres.".into());
+    pont.signalements().choisir_categorie(f, "vocal");
+    pont.signalements().basculer_information(f, 5);
+    stabiliser(f);
+}
+
+fn signalement_message(f: &Principale) {
+    ouvrir_signalement(
+        f,
+        estompe_client::signalements::Cible::Message {
+            id: "5".into(),
+            auteur: "carol".into(),
+            extrait: "Le texte du message signalé".into(),
+        },
+    );
+    stabiliser(f);
+}
+
+fn admin_bot(f: &Principale) {
+    administration(f, "bot");
+    f.global::<estompe_natif::DonneesAdmin>().set_bot_message(
+        "Maintenance ce soir à 22 h : Estompe sera indisponible quelques minutes.".into(),
+    );
+    stabiliser(f);
+}
+
+fn admin_statistiques(f: &Principale) {
+    administration(f, "statistiques");
+}
+
+fn admin_journaux(f: &Principale) {
+    administration(f, "journaux");
+}
+
+fn donnees_acces(onglet: &'static str) -> DonneesAccesChargees {
+    use commun::acces as a;
+    let aegis = a::AegisFactice::nouveau(a::comptes_de_base());
+    let comptes = a::comptes_de_base();
+    DonneesAccesChargees {
+        onglet,
+        catalogue: serde_json::from_value(a::catalogue()).ok(),
+        comptes: serde_json::from_value(
+            serde_json::json!({"accounts": comptes, "total": 3, "from_keycloak": 0}),
+        )
+        .ok(),
+        compte: Some((
+            serde_json::from_value(aegis.detail("s-alice")).unwrap(),
+            serde_json::from_value(aegis.effectifs("s-alice")).unwrap(),
+        )),
+        roles: serde_json::from_value(serde_json::Value::Array(a::roles())).ok(),
+        groupes: serde_json::from_value(a::groupes()).ok(),
+        groupe: serde_json::from_value(a::groupe_equipe()).ok(),
+        journal: serde_json::from_value(serde_json::Value::Array(a::journal_initial())).ok(),
+        ressources: vec![
+            ("estompe:server".into(), "s1".into(), "Les amis".into()),
+            ("estompe:server".into(), "s9".into(), "Atelier".into()),
+        ],
+        ..DonneesAccesChargees::default()
+    }
+}
+
+fn acces(f: &Principale, d: DonneesAccesChargees) -> Pont {
+    let pont = administration(f, "acces");
+    pont.admin().acces().installer(f, d);
+    stabiliser(f);
+    pont
+}
+
+fn admin_acces(f: &Principale) {
+    acces(f, donnees_acces("comptes"));
+}
+
+fn admin_acces_comptes(f: &Principale) {
+    acces(
+        f,
+        DonneesAccesChargees {
+            compte: None,
+            ..donnees_acces("comptes")
+        },
+    );
+}
+
+fn admin_acces_chargement(f: &Principale) {
+    acces(f, DonneesAccesChargees::default());
+}
+
+fn admin_acces_erreur(f: &Principale) {
+    acces(
+        f,
+        DonneesAccesChargees {
+            comptes: None,
+            compte: None,
+            erreur_comptes: Some("aegis est injoignable".into()),
+            ..donnees_acces("comptes")
+        },
+    );
+}
+
+fn admin_acces_roles(f: &Principale) {
+    acces(f, donnees_acces("roles"));
+}
+
+fn admin_acces_role(f: &Principale) {
+    acces(
+        f,
+        DonneesAccesChargees {
+            role: Some("r-modo".into()),
+            ..donnees_acces("roles")
+        },
+    );
+}
+
+fn admin_acces_groupes(f: &Principale) {
+    acces(f, donnees_acces("groupes"));
+}
+
+fn admin_acces_catalogue(f: &Principale) {
+    acces(f, donnees_acces("catalogue"));
+}
+
+fn admin_acces_journal(f: &Principale) {
+    acces(f, donnees_acces("journal"));
+}
+
+fn admin_seule(f: &Principale) {
+    let sections = sections_admin(&[Droit::Admin, Droit::Acces], None);
+    afficher(
+        f,
+        &Etat::Administration {
+            sections: sections.clone(),
+        },
+    );
+    let admin = PontAdmin::nouveau(
+        commun::coquille::store(Default::default()).client().clone(),
+        f.as_weak(),
+        runtime(),
+        Arc::new(|| 60),
+    );
+    admin.ouvrir_seule(f, sections);
+    admin.choisir(f, "utilisateurs");
+    admin.installer(f, donnees_admin());
+    stabiliser(f);
+}
+
+fn reglages_serveur_salon_permissions(f: &Principale) {
+    let pont = reglages_serveur(f, etat_des_roles(), "s1", "salons");
+    pont.basculer_permissions_du_salon(f, "c1");
+    pont.poser_surcharges(
+        f,
+        "c1",
+        serde_json::from_value(serde_json::json!([
+            {"role_id": "r0", "allow": ["mention_everyone"], "deny": ["send_messages", "attach_files"]}
+        ]))
+        .unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn creation_salon_erreur(f: &Principale) {
+    let pont = creation_salon_ouverte(f);
+    pont.choisir_genre_de_salon(f, 1);
+    pont.choisir_genre_de_salon(f, 0);
+    f.global::<estompe_natif::DonneesCreationSalon>()
+        .set_nom("Général".into());
+    pont.nom_de_salon_modifie(f, "Général");
+    pont.choisir_mode_lent(f, 4);
+    f.global::<estompe_natif::DonneesCreationSalon>()
+        .set_avances(true);
+    stabiliser(f);
+}
+
 fn salon_c1() -> CleConversation {
     CleConversation::Salon("c1".into())
 }
@@ -1853,13 +2543,47 @@ fn menu_statut(f: &Principale) {
     stabiliser(f);
 }
 
+fn ancre_du_salon(f: &Principale, nom: &str) -> estompe_natif::menu::Ancre {
+    let salon = i_slint_backend_testing::ElementHandle::find_by_accessible_label(f, nom)
+        .next()
+        .expect("salon du panneau");
+    let position = salon.absolute_position();
+    estompe_natif::menu::Ancre::Point {
+        x: position.x + 40.0,
+        y: position.y + salon.size().height,
+    }
+}
+
+fn menu_sourdine(f: &Principale) {
+    let pont = coquille(f, etat_notifications(), salon("s1", Some("c1")));
+    let ancre = ancre_du_salon(f, "organisation-des-vacances-d-ete");
+    pont.menu_salon(f, "c3", ancre);
+    stabiliser(f);
+}
+
+fn menu_sourdine_duree(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), salon("s1", Some("c1")));
+    let ancre = ancre_du_salon(f, "photos");
+    pont.menu_salon(f, "c4", ancre);
+    estompe_natif::menu::choisir(f, "sourdine");
+    stabiliser(f);
+}
+
 fn remettre_a_zero(f: &Principale) {
     estompe_natif::menu::fermer(f);
+    let admin = f.global::<estompe_natif::DonneesAdmin>();
+    admin.set_ouverte(false);
+    admin.set_seule(false);
+    admin.set_badge_ouvert(false);
     f.global::<DonneesCreationSondage>().set_ouvert(false);
     f.global::<estompe_natif::DonneesGifs>().set_ouvert(false);
     f.global::<estompe_natif::DonneesRecherche>()
         .set_ouvert(false);
     f.global::<estompe_natif::DonneesNouveauPrive>()
+        .set_ouvert(false);
+    f.global::<estompe_natif::DonneesModeration>()
+        .set_ouvert(false);
+    f.global::<estompe_natif::DonneesModerationSalon>()
         .set_ouvert(false);
     estompe_natif::confirmation::repondre(f, false);
     f.global::<DonneesSaisie>().set_depot_survole(false);
@@ -1925,6 +2649,18 @@ fn remettre_a_zero(f: &Principale) {
     mesures.set_message("".into());
     mesures.set_erreur("".into());
     vider_modeles(f);
+    f.global::<estompe_natif::DonneesOverlayMessages>()
+        .set_disponible(false);
+    let p = f.global::<estompe_natif::DonneesParametres>();
+    p.set_recherche("".into());
+    p.set_annonce("".into());
+    p.set_message_journal("".into());
+    p.set_lignes(slint::ModelRc::default());
+    p.set_total_lignes(0);
+    p.set_journal_actif(false);
+    p.set_type_salon(true);
+    p.set_demarrage_disponible(false);
+    p.set_serveur_notif("".into());
     f.global::<DonneesCoquille>().set_panneau_replie(false);
     f.global::<DonneesCoquille>().set_marge_ouverte(false);
     connecte(f);
@@ -1967,6 +2703,8 @@ fn les_ecrans_correspondent_a_leurs_references() {
     .expect("backend de test");
     let f = creer_fenetre().expect("fenêtre");
     f.set_version("0.0.0".into());
+    f.global::<estompe_natif::DonneesParametres>()
+        .set_version("0.0.0".into());
     f.set_debogage(true);
     f.global::<Mouvement>().set_reduit(true);
     f.window()
@@ -2686,4 +3424,157 @@ fn mesures_scenario(f: &Principale) {
     );
     g.set_reste(42);
     g.set_ouvert(true);
+}
+
+fn parametres(f: &Principale, onglet: estompe_client::parametres::Onglet) {
+    coquille_accueil(f);
+    afficher_parametres(f, onglet);
+}
+
+fn afficher_parametres(f: &Principale, onglet: estompe_client::parametres::Onglet) {
+    let mut p = estompe_client::preferences::Preferences::default();
+    p.ptt.actif = true;
+    p.ptt.touche = "KeyV".into();
+    estompe_natif::parametres::afficher_onglets(f);
+    estompe_natif::parametres::afficher_preferences(f, &p);
+    estompe_natif::parametres::poser_onglet(f, onglet);
+    let g = f.global::<estompe_natif::DonneesParametres>();
+    g.set_demarrage_disponible(true);
+    g.set_ouverte(true);
+}
+
+fn parametres_compte(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Compte);
+}
+
+fn maintenant_de_la_coquille() -> i64 {
+    use chrono::TimeZone;
+    let matin = NaiveDate::from_ymd_opt(2026, 11, 19)
+        .unwrap()
+        .and_hms_opt(9, 30, 0)
+        .unwrap();
+    chrono::Local
+        .from_local_datetime(&matin)
+        .earliest()
+        .unwrap()
+        .timestamp_millis()
+}
+
+fn etat_notifications() -> estompe_client::store::Etat {
+    let mut etat = commun::coquille::etat();
+    etat.statuts.insert(
+        "u1".into(),
+        estompe_client::temps_reel::evenements::StatutPresence::Dnd,
+    );
+    etat.reglages_notification = serde_json::from_value(serde_json::json!({
+        "levels": {"s1": "all", "c2": "none"},
+        "types": {"dm": true, "mention": true, "channel": false, "voice": true},
+        "preview": true,
+        "sound": false,
+        "general": "mentions",
+        "ignore_group": ["s1"],
+        "mutes": {"c3": maintenant_de_la_coquille() + 45 * 60_000}
+    }))
+    .unwrap();
+    etat
+}
+
+fn parametres_notifications(f: &Principale) {
+    let pont = coquille(f, etat_notifications(), Route::Accueil);
+    afficher_parametres(f, estompe_client::parametres::Onglet::Notifications);
+    pont.projeter_parametres(f);
+    stabiliser(f);
+}
+
+fn parametres_notifications_serveur(f: &Principale) {
+    parametres_notifications(f);
+    f.window()
+        .dispatch_event(slint::platform::WindowEvent::PointerScrolled {
+            position: slint::LogicalPosition::new(760.0, 500.0),
+            delta_x: 0.0,
+            delta_y: -5000.0,
+        });
+    stabiliser(f);
+}
+
+fn parametres_voix(f: &Principale) {
+    f.global::<estompe_natif::DonneesJeux>()
+        .set_disponible(true);
+    parametres(f, estompe_client::parametres::Onglet::Voix);
+}
+
+fn parametres_apparence(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Apparence);
+}
+
+fn parametres_application(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Application);
+    f.global::<estompe_natif::DonneesParametres>()
+        .set_annonce("Fonctions alpha débloquées.".into());
+}
+
+fn parametres_debogage(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Debogage);
+    let g = f.global::<estompe_natif::DonneesParametres>();
+    g.set_journal_actif(true);
+    let ligne = |texte: &str, niveau: &str| estompe_natif::LigneJournal {
+        texte: texte.into(),
+        niveau: niveau.into(),
+    };
+    g.set_lignes(slint::ModelRc::new(slint::VecModel::from(vec![
+        ligne(
+            "2026-11-19 09:30:00.123 [INFO] debug: mode debug activé",
+            "info",
+        ),
+        ligne(
+            "2026-11-19 09:30:02.481 [INFO] vocal: connexion au salon v1",
+            "info",
+        ),
+        ligne(
+            "2026-11-19 09:30:05.004 [WARN] réseau: reconnexion dans 2 s",
+            "warn",
+        ),
+        ligne(
+            "2026-11-19 09:30:07.950 [ERROR] partage: capture refusée par le système",
+            "error",
+        ),
+    ])));
+    g.set_total_lignes(4);
+    g.set_message_journal(
+        "Journal exporté : /home/bob/Téléchargements/estompe-debug-2026-11-19-09-30-10.log".into(),
+    );
+}
+
+fn parametres_signalements(f: &Principale) {
+    let pont = coquille(f, commun::coquille::etat(), Route::Accueil);
+    afficher_parametres(f, estompe_client::parametres::Onglet::Signalements);
+    pont.signalements().installer_mes(
+        f,
+        serde_json::from_value(signalements_de_test("/reports")).unwrap(),
+    );
+    stabiliser(f);
+}
+
+fn parametres_raccourcis(f: &Principale) {
+    f.global::<estompe_natif::DonneesOverlayMessages>()
+        .set_disponible(true);
+    f.global::<estompe_natif::DonneesReplay>()
+        .set_disponible(true);
+    parametres(f, estompe_client::parametres::Onglet::Raccourcis);
+}
+
+fn parametres_replay(f: &Principale) {
+    let r = f.global::<estompe_natif::DonneesReplay>();
+    r.set_disponible(true);
+    r.set_resume(
+        "Activé : les 30 dernières secondes du jeu sont gardées, F10 enregistre un clip.".into(),
+    );
+    parametres(f, estompe_client::parametres::Onglet::Replay);
+}
+
+fn parametres_recherche(f: &Principale) {
+    parametres(f, estompe_client::parametres::Onglet::Voix);
+    f.global::<estompe_natif::DonneesParametres>()
+        .set_recherche("micro".into());
+    estompe_natif::parametres::afficher_onglets(f);
 }

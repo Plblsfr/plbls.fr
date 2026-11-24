@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use estompe_client::appels::Badge;
@@ -14,6 +15,8 @@ pub const COTE_AVATAR: u32 = 96;
 pub const BORNE_DISQUE: u64 = 64 * 1024 * 1024;
 pub const CAPACITE_AVATARS: usize = 256;
 pub const CAPACITE_BADGES: usize = 1024;
+pub const CAPACITE_ICONES_BADGES: usize = 256;
+pub const COTE_ICONE_BADGE: u32 = 64;
 pub const DOSSIER_AVATARS: &str = "avatars";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -36,6 +39,9 @@ impl CleAvatar {
 pub trait SourceProfils: Send + Sync + 'static {
     fn avatar(&self, cle: &CleAvatar) -> Futur<Result<Vec<u8>, ErreurApi>>;
     fn badges(&self, utilisateur: &str) -> Futur<Result<Vec<Badge>, ErreurApi>>;
+    fn icone_badge(&self, _badge: &str) -> Futur<Result<Vec<u8>, ErreurApi>> {
+        Box::pin(async { Err(ErreurApi::DelaiDepasse) })
+    }
 }
 
 impl SourceProfils for Client {
@@ -55,6 +61,63 @@ impl SourceProfils for Client {
         let utilisateur = utilisateur.to_string();
         Box::pin(async move { client.badges_de(&utilisateur).await })
     }
+
+    fn icone_badge(&self, badge: &str) -> Futur<Result<Vec<u8>, ErreurApi>> {
+        let client = self.clone();
+        let badge = badge.to_string();
+        Box::pin(async move {
+            client
+                .icone_de_badge(&badge)
+                .await
+                .map(|octets| octets.to_vec())
+        })
+    }
+}
+
+pub fn est_un_svg(octets: &[u8]) -> bool {
+    let debut = &octets[..octets.len().min(512)];
+    let texte = String::from_utf8_lossy(debut);
+    let texte = texte.trim_start_matches('\u{feff}').trim_start();
+    texte.starts_with("<svg") || (texte.starts_with("<?xml") && texte.contains("<svg"))
+}
+
+pub fn decoder_icone_badge(octets: &[u8]) -> Option<slint::Image> {
+    if octets.is_empty() {
+        return None;
+    }
+    if est_un_svg(octets) {
+        return slint::Image::load_from_svg_data(octets).ok();
+    }
+    decoder_image(octets, COTE_ICONE_BADGE).map(slint::Image::from_rgba8)
+}
+
+thread_local! {
+    static IMAGES_BADGES: RefCell<Lru<(String, i64), Option<slint::Image>>> =
+        RefCell::new(Lru::nouveau(CAPACITE_ICONES_BADGES));
+}
+
+pub fn image_de_badge(profils: &Profils, badge: &Badge) -> Option<slint::Image> {
+    if badge.icon_version > 0 {
+        let cle = (badge.id.clone(), badge.icon_version);
+        let image = IMAGES_BADGES.with(|images| {
+            let mut images = images.borrow_mut();
+            if let Some(image) = images.lire(&cle) {
+                return Some(image.clone());
+            }
+            let octets = profils.icone_badge(&badge.id, badge.icon_version)?;
+            let image = decoder_icone_badge(&octets);
+            images.inserer(cle, image.clone());
+            Some(image)
+        });
+        if let Some(Some(image)) = image {
+            return Some(image);
+        }
+    }
+    let emoji = badge.icon.trim();
+    if emoji.is_empty() {
+        return None;
+    }
+    crate::messagerie::emoji::image(emoji)
 }
 
 pub fn decoder_image(octets: &[u8], cote: u32) -> Option<Image> {
@@ -112,11 +175,14 @@ pub fn decoder_avatar(octets: &[u8]) -> Option<Image> {
     )))
 }
 
+type IconesBadges = Lru<(String, i64), Arc<Vec<u8>>>;
+
 pub struct Profils {
     source: Arc<dyn SourceProfils>,
     disque: Option<CacheDisque>,
     avatars: Mutex<Lru<CleAvatar, Image>>,
     badges: Mutex<Lru<String, Vec<Badge>>>,
+    icones_badges: Mutex<IconesBadges>,
 }
 
 fn verrou<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -139,6 +205,7 @@ impl Profils {
             disque,
             avatars: Mutex::new(Lru::nouveau(avatars)),
             badges: Mutex::new(Lru::nouveau(badges)),
+            icones_badges: Mutex::new(Lru::nouveau(CAPACITE_ICONES_BADGES)),
         })
     }
 
@@ -197,8 +264,24 @@ impl Profils {
         }
         let mut badges = self.source.badges(&utilisateur).await.unwrap_or_default();
         badges.sort_by(|a, b| a.sort_order.cmp(&b.sort_order).then(a.name.cmp(&b.name)));
+        for badge in badges.iter().filter(|b| b.icon_version > 0) {
+            if self.icone_badge(&badge.id, badge.icon_version).is_none() {
+                let octets = self.source.icone_badge(&badge.id).await.unwrap_or_default();
+                self.installer_icone_badge(&badge.id, badge.icon_version, octets);
+            }
+        }
         self.installer_badges(&utilisateur, badges.clone());
         badges
+    }
+
+    pub fn icone_badge(&self, badge: &str, version: i64) -> Option<Arc<Vec<u8>>> {
+        verrou(&self.icones_badges)
+            .lire(&(badge.to_string(), version))
+            .cloned()
+    }
+
+    pub fn installer_icone_badge(&self, badge: &str, version: i64, octets: Vec<u8>) {
+        verrou(&self.icones_badges).inserer((badge.to_string(), version), Arc::new(octets));
     }
 }
 
@@ -220,6 +303,7 @@ mod tests {
     struct Source {
         avatars: AtomicUsize,
         badges: AtomicUsize,
+        icones: AtomicUsize,
     }
 
     impl SourceProfils for Source {
@@ -241,18 +325,28 @@ mod tests {
                         id: "b2".into(),
                         name: "Zèbre".into(),
                         sort_order: 1,
+                        icon_version: 1,
                         ..Badge::default()
                     },
                     Badge {
                         id: "b1".into(),
                         name: "Abeille".into(),
                         sort_order: 1,
+                        icon_version: 2,
                         ..Badge::default()
                     },
                     Badge {
                         id: "b0".into(),
                         name: "Premier".into(),
                         sort_order: 0,
+                        icon: "🏅".into(),
+                        ..Badge::default()
+                    },
+                    Badge {
+                        id: "b3".into(),
+                        name: "Perdu".into(),
+                        sort_order: 2,
+                        icon_version: 4,
                         ..Badge::default()
                     },
                 ])
@@ -260,6 +354,16 @@ mod tests {
                 Err(ErreurApi::DelaiDepasse)
             };
             Box::pin(async move { badges })
+        }
+
+        fn icone_badge(&self, badge: &str) -> Futur<Result<Vec<u8>, ErreurApi>> {
+            self.icones.fetch_add(1, Ordering::SeqCst);
+            let octets = match badge {
+                "b2" => Ok(br##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#2f5d8a"/></svg>"##.to_vec()),
+                "b1" => Ok(png(80)),
+                _ => Err(ErreurApi::DelaiDepasse),
+            };
+            Box::pin(async move { octets })
         }
     }
 
@@ -375,10 +479,32 @@ mod tests {
             .into_iter()
             .map(|b| b.name)
             .collect();
-        assert_eq!(noms, ["Premier", "Abeille", "Zèbre"]);
+        assert_eq!(noms, ["Premier", "Abeille", "Zèbre", "Perdu"]);
         profils.charger_badges("carol".into()).await;
         assert!(profils.charger_badges("dave".into()).await.is_empty());
         profils.charger_badges("dave".into()).await;
         assert_eq!(source.badges.load(Ordering::SeqCst), 2);
+        assert_eq!(source.icones.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn les_badges_montrent_leur_image_sinon_leur_emoji() {
+        let source = Arc::new(Source::default());
+        let profils = Profils::nouveaux(source.clone(), None);
+        let badges = profils.charger_badges("carol".into()).await;
+        let taille = |b: &Badge| image_de_badge(&profils, b).map(|i| i.size());
+        assert_eq!(taille(&badges[0]).map(|t| t.width > 0), Some(true), "emoji");
+        assert_eq!(
+            taille(&badges[1]).map(|t| (t.width, t.height)),
+            Some((64, 64)),
+            "png réduit"
+        );
+        assert!(taille(&badges[2]).is_some_and(|t| t.width > 0), "svg");
+        assert_eq!(taille(&badges[3]), None, "icône en échec, sans emoji");
+        assert!(est_un_svg(b"\xef\xbb\xbf <?xml version=\"1.0\"?><svg/>"));
+        assert!(!est_un_svg(&png(4)));
+        assert!(decoder_icone_badge(b"").is_none());
+        profils.charger_badges("carol".into()).await;
+        assert_eq!(source.icones.load(Ordering::SeqCst), 3);
     }
 }

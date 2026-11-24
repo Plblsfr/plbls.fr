@@ -1,0 +1,436 @@
+import { Theme, Typo, Rayon, Espace } from "../jetons.slint";
+import { Modal, Champ, Bouton, VarianteBouton, Icone, Interrupteur, Avatar } from "../composants.slint";
+import { Puce } from "creation.slint";
+
+export global DonneesModeration {
+    in property <bool> ouvert: false;
+    in property <string> titre;
+    in property <string> pseudo;
+    in property <string> initiales;
+    in property <int> teinte: 1;
+    in property <image> portrait;
+    in property <string> explication;
+    in property <[string]> durees;
+    in property <int> duree: -1;
+    in property <bool> personnalise: false;
+    in-out property <string> heures;
+    in property <string> heures-max;
+    in property <bool> avec-purge: false;
+    in property <[string]> purges;
+    in property <int> purge: 0;
+    in property <bool> avec-pseudo: false;
+    in property <bool> raison-obligatoire: false;
+    in-out property <string> raison;
+    in property <string> compte-raison;
+    in-out property <string> surnom;
+    in property <string> compte-surnom;
+    in property <string> bouton;
+    in property <bool> danger: false;
+    in property <bool> peut-valider: false;
+    in property <bool> en-cours: false;
+    in property <string> erreur;
+    in property <string> annonce;
+    in property <int> demande-focus: 0;
+    callback choisir-duree(int);
+    callback heures-modifiees(string);
+    callback choisir-purge(int);
+    callback raison-modifiee(string);
+    callback surnom-modifie(string);
+    callback valider();
+    callback fermer();
+}
+
+export global DonneesModerationSalon {
+    in property <bool> ouvert: false;
+    in property <string> titre;
+    in property <bool> gerer: false;
+    in property <bool> nettoyer: false;
+    in-out property <string> nom;
+    in property <string> erreur-nom;
+    in property <string> compte-nom;
+    in property <[string]> modes-lents;
+    in property <int> mode-lent: 0;
+    in property <bool> verrouille: false;
+    in-out property <string> nombre;
+    in property <string> auteur;
+    in property <bool> peut-enregistrer: false;
+    in property <bool> peut-supprimer: false;
+    in property <bool> en-cours: false;
+    in property <string> erreur;
+    in property <string> annonce;
+    in property <int> demande-focus: 0;
+    callback nom-modifie(string);
+    callback choisir-mode-lent(int);
+    callback verrouiller(bool);
+    callback nombre-modifie(string);
+    callback menu-auteur(length, length, length);
+    callback enregistrer();
+    callback supprimer-messages();
+    callback supprimer-salon();
+    callback fermer();
+}
+
+component Alerte inherits Rectangle {
+    in property <string> texte;
+    in property <bool> ok: false;
+    border-radius: Rayon.s;
+    background: root.ok ? Theme.ok-fond : Theme.danger-fond;
+    border-width: 1px;
+    border-color: root.ok ? Theme.ok : Theme.danger;
+    accessible-role: text;
+    accessible-label: root.texte;
+    HorizontalLayout {
+        padding: Espace.e3;
+        Text {
+            text: root.texte;
+            color: root.ok ? Theme.encre : Theme.danger;
+            font-size: Typo.petit;
+            wrap: word-wrap;
+        }
+    }
+}
+
+component Etiquette inherits Text {
+    color: Theme.encre-2;
+    font-size: Typo.petit;
+    font-weight: Typo.demi-gras;
+}
+
+component Note inherits Text {
+    color: Theme.gris;
+    font-size: Typo.petit;
+    wrap: word-wrap;
+}
+
+component Compteur inherits Text {
+    color: Theme.gris;
+    font-family: Typo.mono;
+    font-size: Typo.minuscule;
+    horizontal-alignment: right;
+}
+
+export component ModerationMembre {
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: DonneesModeration.titre;
+        ouvert: DonneesModeration.ouvert;
+        largeur: 480px;
+        focus-croix: false;
+        ferme => {
+            DonneesModeration.fermer();
+        }
+        HorizontalLayout {
+            spacing: Espace.e3;
+            VerticalLayout {
+                alignment: start;
+                Avatar {
+                    nom: DonneesModeration.pseudo;
+                    initiales: DonneesModeration.initiales;
+                    teinte: DonneesModeration.teinte;
+                    portrait: DonneesModeration.portrait;
+                    taille: 32px;
+                }
+            }
+            Note {
+                horizontal-stretch: 1;
+                text: DonneesModeration.explication;
+                vertical-alignment: center;
+            }
+        }
+        if DonneesModeration.durees.length > 0: VerticalLayout {
+            spacing: Espace.e2;
+            accessible-role: groupbox;
+            accessible-label: "Durée";
+            Etiquette {
+                text: "Durée";
+            }
+            FlexboxLayout {
+                alignment: start;
+                spacing: 6px;
+                for libelle[i] in DonneesModeration.durees: Puce {
+                    texte: libelle;
+                    choisie: DonneesModeration.duree == i;
+                    choisir => {
+                        DonneesModeration.choisir-duree(i);
+                    }
+                }
+            }
+        }
+        if DonneesModeration.personnalise: Champ {
+            etiquette: "Durée personnalisée (heures, " + DonneesModeration.heures-max + " au plus)";
+            valeur <=> DonneesModeration.heures;
+            en-faute: !DonneesModeration.peut-valider && !DonneesModeration.en-cours && DonneesModeration.annonce == "";
+            calque: 1;
+            modifie(texte) => {
+                DonneesModeration.heures-modifiees(texte);
+            }
+        }
+        if DonneesModeration.avec-purge: VerticalLayout {
+            spacing: Espace.e2;
+            accessible-role: groupbox;
+            accessible-label: "Supprimer ses messages récents";
+            Etiquette {
+                text: "Supprimer ses messages récents";
+            }
+            FlexboxLayout {
+                alignment: start;
+                spacing: 6px;
+                for libelle[i] in DonneesModeration.purges: Puce {
+                    texte: libelle;
+                    choisie: DonneesModeration.purge == i;
+                    choisir => {
+                        DonneesModeration.choisir-purge(i);
+                    }
+                }
+            }
+        }
+        if DonneesModeration.avec-pseudo: VerticalLayout {
+            spacing: Espace.e1;
+            Champ {
+                property <int> demande: DonneesModeration.demande-focus;
+                changed demande => {
+                    self.focus();
+                }
+                etiquette: "Pseudo sur ce serveur (vide : pseudo d'origine)";
+                valeur <=> DonneesModeration.surnom;
+                calque: 1;
+                modifie(texte) => {
+                    DonneesModeration.surnom-modifie(texte);
+                }
+                valide => {
+                    DonneesModeration.valider();
+                }
+            }
+            Compteur {
+                text: DonneesModeration.compte-surnom;
+            }
+        }
+        if !DonneesModeration.avec-pseudo: VerticalLayout {
+            spacing: Espace.e1;
+            Champ {
+                property <int> demande: DonneesModeration.demande-focus;
+                changed demande => {
+                    self.focus();
+                }
+                etiquette: DonneesModeration.raison-obligatoire ? "Raison" : "Raison (facultative)";
+                valeur <=> DonneesModeration.raison;
+                calque: 1;
+                modifie(texte) => {
+                    DonneesModeration.raison-modifiee(texte);
+                }
+                valide => {
+                    DonneesModeration.valider();
+                }
+            }
+            Compteur {
+                text: DonneesModeration.compte-raison;
+            }
+        }
+        if DonneesModeration.erreur != "": Alerte {
+            texte: DonneesModeration.erreur;
+        }
+        if DonneesModeration.annonce != "": Alerte {
+            texte: DonneesModeration.annonce;
+            ok: true;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Espace.e2;
+            Bouton {
+                texte: DonneesModeration.annonce != "" ? "Fermer" : "Annuler";
+                calque: 1;
+                clique => {
+                    DonneesModeration.fermer();
+                }
+            }
+            if DonneesModeration.annonce == "": Bouton {
+                texte: DonneesModeration.bouton;
+                variante: DonneesModeration.danger ? VarianteBouton.danger : VarianteBouton.primaire;
+                calque: 1;
+                actif: DonneesModeration.peut-valider;
+                en-cours: DonneesModeration.en-cours;
+                clique => {
+                    DonneesModeration.valider();
+                }
+            }
+        }
+    }
+}
+
+export component ModerationSalon {
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: DonneesModerationSalon.titre;
+        ouvert: DonneesModerationSalon.ouvert;
+        largeur: 520px;
+        focus-croix: !DonneesModerationSalon.gerer;
+        ferme => {
+            DonneesModerationSalon.fermer();
+        }
+        if DonneesModerationSalon.gerer: VerticalLayout {
+            spacing: Espace.e3;
+            VerticalLayout {
+                spacing: Espace.e1;
+                Champ {
+                    property <int> demande: DonneesModerationSalon.demande-focus;
+                    changed demande => {
+                        self.focus();
+                    }
+                    etiquette: "Nom du salon";
+                    valeur <=> DonneesModerationSalon.nom;
+                    erreur: DonneesModerationSalon.erreur-nom;
+                    calque: 1;
+                    modifie(texte) => {
+                        DonneesModerationSalon.nom-modifie(texte);
+                    }
+                    valide => {
+                        DonneesModerationSalon.enregistrer();
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: DonneesModerationSalon.erreur-nom;
+                        color: Theme.danger;
+                        font-size: Typo.petit;
+                        wrap: word-wrap;
+                    }
+                    Compteur {
+                        text: DonneesModerationSalon.compte-nom;
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: Espace.e2;
+                accessible-role: groupbox;
+                accessible-label: "Mode lent";
+                Etiquette {
+                    text: "Mode lent";
+                }
+                FlexboxLayout {
+                    alignment: start;
+                    spacing: 6px;
+                    for libelle[i] in DonneesModerationSalon.modes-lents: Puce {
+                        texte: libelle;
+                        choisie: DonneesModerationSalon.mode-lent == i;
+                        choisir => {
+                            DonneesModerationSalon.choisir-mode-lent(i);
+                        }
+                    }
+                }
+                Note {
+                    text: "Délai minimum entre deux messages d'un même membre, sauf pour ceux qui peuvent gérer les messages.";
+                }
+            }
+            VerticalLayout {
+                spacing: Espace.e1;
+                Interrupteur {
+                    texte: "Verrouiller le salon";
+                    allume: DonneesModerationSalon.verrouille;
+                    calque: 1;
+                    bascule(actif) => {
+                        DonneesModerationSalon.verrouiller(actif);
+                    }
+                }
+                Note {
+                    text: "Lecture seule pour les membres sans « Gérer les messages ».";
+                }
+            }
+            HorizontalLayout {
+                spacing: Espace.e2;
+                Bouton {
+                    texte: "Supprimer le salon…";
+                    icone: "corbeille";
+                    variante: VarianteBouton.fantome;
+                    calque: 1;
+                    actif: !DonneesModerationSalon.en-cours;
+                    clique => {
+                        DonneesModerationSalon.supprimer-salon();
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+                Bouton {
+                    texte: "Enregistrer";
+                    variante: VarianteBouton.primaire;
+                    calque: 1;
+                    actif: DonneesModerationSalon.peut-enregistrer;
+                    en-cours: DonneesModerationSalon.en-cours;
+                    clique => {
+                        DonneesModerationSalon.enregistrer();
+                    }
+                }
+            }
+        }
+        if DonneesModerationSalon.gerer && DonneesModerationSalon.nettoyer: Rectangle {
+            height: 1px;
+            background: Theme.trait;
+        }
+        if DonneesModerationSalon.nettoyer: VerticalLayout {
+            spacing: Espace.e3;
+            Text {
+                text: "Supprimer des messages";
+                color: Theme.encre;
+                font-family: Typo.titre;
+                font-size: 16px;
+                font-weight: Typo.gras;
+            }
+            HorizontalLayout {
+                spacing: Espace.e3;
+                Champ {
+                    width: 150px;
+                    etiquette: "Les N derniers (1 à 100)";
+                    valeur <=> DonneesModerationSalon.nombre;
+                    en-faute: !DonneesModerationSalon.peut-supprimer && !DonneesModerationSalon.en-cours;
+                    calque: 1;
+                    modifie(texte) => {
+                        DonneesModerationSalon.nombre-modifie(texte);
+                    }
+                }
+                VerticalLayout {
+                    spacing: Espace.e1;
+                    alignment: start;
+                    Etiquette {
+                        text: "Auteur";
+                    }
+                    Bouton {
+                        texte: DonneesModerationSalon.auteur;
+                        icone: "perso";
+                        description: "Auteur : " + DonneesModerationSalon.auteur;
+                        calque: 1;
+                        clique => {
+                            DonneesModerationSalon.menu-auteur(self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                        }
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                Bouton {
+                    texte: "Supprimer";
+                    icone: "corbeille";
+                    variante: VarianteBouton.danger;
+                    calque: 1;
+                    actif: DonneesModerationSalon.peut-supprimer;
+                    clique => {
+                        DonneesModerationSalon.supprimer-messages();
+                    }
+                }
+            }
+        }
+        if DonneesModerationSalon.erreur != "": Alerte {
+            texte: DonneesModerationSalon.erreur;
+        }
+        if DonneesModerationSalon.annonce != "": Alerte {
+            texte: DonneesModerationSalon.annonce;
+            ok: true;
+        }
+    }
+}

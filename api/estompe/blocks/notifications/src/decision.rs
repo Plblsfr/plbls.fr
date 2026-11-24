@@ -32,6 +32,10 @@ pub struct Reglages {
     pub sound: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ignore_group: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub general: String,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub mutes: BTreeMap<String, i64>,
 }
 
 impl Default for Reglages {
@@ -42,6 +46,8 @@ impl Default for Reglages {
             preview: true,
             sound: true,
             ignore_group: Vec::new(),
+            general: String::new(),
+            mutes: BTreeMap::new(),
         }
     }
 }
@@ -55,6 +61,11 @@ impl Reglages {
             t.retain(|_, v| !v.is_null());
         }
         serde_json::from_value(Value::Object(objet))
+    }
+
+    pub fn a_l_instant(mut self, maintenant: i64) -> Self {
+        self.mutes.retain(|_, fin| *fin == 0 || *fin > maintenant);
+        self
     }
 }
 
@@ -107,12 +118,26 @@ impl Evenement {
 }
 
 pub fn niveau(reglages: &Reglages, lieu: &Lieu) -> String {
-    for id in [&lieu.salon, &lieu.dm, &lieu.serveur].into_iter().flatten() {
+    let ids = [&lieu.salon, &lieu.dm, &lieu.serveur];
+    if ids
+        .into_iter()
+        .flatten()
+        .any(|id| reglages.mutes.contains_key(id))
+    {
+        return "none".into();
+    }
+    for id in ids.into_iter().flatten() {
         if let Some(n) = reglages.levels.get(id) {
             return n.clone();
         }
     }
-    if lieu.dm.is_some() { "all" } else { "mentions" }.to_string()
+    match (lieu.dm.is_some(), reglages.general.as_str()) {
+        (_, "none") => "none",
+        (true, _) => "all",
+        (false, "") => "mentions",
+        (false, g) => g,
+    }
+    .to_string()
 }
 
 fn tronquer(texte: &str, max: usize) -> String {
@@ -412,6 +437,81 @@ mod tests {
             (n.tag.as_str(), n.msg.as_str(), n.conv.as_str()),
             ("msg-7", "7", "d:d1")
         );
+    }
+
+    #[test]
+    fn priorite_salon_puis_serveur_puis_general() {
+        let lieu = salon().lieu;
+        let prive = mp().lieu;
+        let r = |levels: &[(&str, &str)], general: &str| {
+            avec(|s| {
+                s.levels = levels
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect();
+                s.general = general.into();
+            })
+        };
+        let cas = [
+            ("défaut", r(&[], ""), "mentions", "all"),
+            ("général", r(&[], "all"), "all", "all"),
+            (
+                "général mentions, privé en tout",
+                r(&[], "mentions"),
+                "mentions",
+                "all",
+            ),
+            ("général rien", r(&[], "none"), "none", "none"),
+            (
+                "serveur avant général",
+                r(&[("s1", "none")], "all"),
+                "none",
+                "all",
+            ),
+            (
+                "salon avant serveur",
+                r(&[("s1", "none"), ("c1", "all")], "none"),
+                "all",
+                "none",
+            ),
+            (
+                "conversation privée réglée",
+                r(&[("d1", "mentions")], "none"),
+                "none",
+                "mentions",
+            ),
+        ];
+        for (nom, reglages, en_salon, en_prive) in cas {
+            assert_eq!(niveau(&reglages, &lieu), en_salon, "{nom} (salon)");
+            assert_eq!(niveau(&reglages, &prive), en_prive, "{nom} (privé)");
+        }
+    }
+
+    #[test]
+    fn sourdine_coupe_tout_puis_se_leve_a_son_terme() {
+        let r = avec(|s| {
+            s.levels.insert("c1".into(), "all".into());
+            s.mutes.insert("s1".into(), 1_000);
+            s.mutes.insert("d1".into(), 0);
+        });
+        let e = mentionne(salon());
+        assert!(decider(&r.clone().a_l_instant(999), &e, "u", "").is_none());
+        assert!(decider(&r.clone().a_l_instant(999), &mp(), "u", "").is_none());
+        let apres = r.a_l_instant(1_000);
+        assert_eq!(apres.mutes.keys().collect::<Vec<_>>(), ["d1"]);
+        assert!(decider(&apres, &e, "u", "").is_some());
+        assert!(
+            decider(&apres, &mp(), "u", "").is_none(),
+            "sans durée : jusqu'à réactivation"
+        );
+        let vocal_surveille = Evenement {
+            rappel: "regarde".into(),
+            ..salon()
+        };
+        let en_sourdine = avec(|s| {
+            s.mutes.insert("c1".into(), 0);
+        });
+        assert!(decider(&en_sourdine, &vocal_surveille, "u", "").is_none());
     }
 
     #[test]

@@ -1,7 +1,65 @@
 import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
 import { Icone, Bouton, VarianteBouton, Avatar, Pastille, BadgeRole, GenreBadgeRole, Etiquette } from "../composants.slint";
-import { DonneesCoquille, RoleProfil } from "donnees.slint";
+import { DonneesCoquille, RoleProfil, LigneBadge } from "donnees.slint";
 import { Medaille } from "membres.slint";
+import { Anneau } from "../composants/focus.slint";
+import { DonneesParametres } from "../parametres/page.slint";
+
+component BadgeCarte inherits Rectangle {
+    in property <LigneBadge> badge;
+    property <bool> montre: zone.has-hover || portee.has-focus;
+    width: 32px;
+    height: 32px;
+    border-radius: Rayon.xs;
+    background: zone.has-hover ? Theme.surface : transparent;
+    accessible-role: image;
+    accessible-label: badge.nom;
+    accessible-description: badge.description;
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.xs;
+        actif: portee.has-focus;
+    }
+    Medaille {
+        badge: root.badge;
+        taille: 24px;
+    }
+    zone := TouchArea { }
+    portee := FocusScope { }
+    if root.montre: Rectangle {
+        property <length> largeur-texte: Math.min(216px, Math.max(nom.preferred-width, root.badge.description != "" ? texte.preferred-width : 0));
+        x: 0;
+        y: -self.height - 6px;
+        width: self.largeur-texte + 24px;
+        height: root.badge.description != "" ? texte.y + texte.height + 8px : nom.y + nom.height + 8px;
+        border-radius: Rayon.s;
+        background: Theme.encre;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000040;
+        accessible-role: none;
+        nom := Text {
+            x: 12px;
+            y: 8px;
+            width: parent.largeur-texte;
+            text: root.badge.nom;
+            color: Theme.papier;
+            font-size: 12px;
+            font-weight: Typo.gras;
+            overflow: elide;
+        }
+        texte := Text {
+            x: 12px;
+            y: nom.y + nom.height + 2px;
+            width: parent.largeur-texte;
+            visible: root.badge.description != "";
+            text: root.badge.description;
+            color: Theme.papier;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+}
 
 component Surtitre inherits Text {
     color: Theme.gris;
@@ -190,14 +248,13 @@ export component CarteProfilVue {
                             accessible-role: list;
                             accessible-label: "Badges";
                             rangee := HorizontalLayout {
-                                padding-left: 10px;
-                                padding-right: 10px;
-                                spacing: 8px;
+                                padding-left: 6px;
+                                padding-right: 6px;
+                                spacing: 6px;
                                 for badge in DonneesCoquille.carte.badges: VerticalLayout {
                                     alignment: center;
-                                    Medaille {
+                                    BadgeCarte {
                                         badge: badge;
-                                        taille: 22px;
                                     }
                                 }
                             }
@@ -295,12 +352,32 @@ export component CarteProfilVue {
                             valeur: DonneesCoquille.carte.creation;
                         }
                     }
-                    if !DonneesCoquille.carte.bot: HorizontalLayout {
+                    if DonneesCoquille.carte.moderable: Bouton {
+                        texte: "Modérer";
+                        icone: "bouclier";
+                        variante: VarianteBouton.secondaire;
+                        description: "Modérer " + DonneesCoquille.carte.nom;
+                        calque: Calques.ouverts;
+                        clique => {
+                            DonneesCoquille.menu-moderation(DonneesCoquille.carte.utilisateur, self.absolute-position.x, self.absolute-position.y, self.absolute-position.y + self.height);
+                        }
+                    }
+                    if DonneesCoquille.carte.moi: Bouton {
+                        texte: "Modifier mon profil";
+                        icone: "crayon";
+                        variante: VarianteBouton.secondaire;
+                        calque: Calques.ouverts;
+                        clique => {
+                            DonneesCoquille.fermer-carte();
+                            DonneesParametres.ouvrir("compte");
+                        }
+                    }
+                    if !DonneesCoquille.carte.bot && !DonneesCoquille.carte.moi: HorizontalLayout {
                         spacing: Espace.e2;
                         Bouton {
                             horizontal-stretch: 1;
-                            texte: DonneesCoquille.carte.moi ? "Modifier mon profil" : "Envoyer un message";
-                            icone: DonneesCoquille.carte.moi ? "crayon" : "bulle";
+                            texte: "Envoyer un message";
+                            icone: "bulle";
                             variante: VarianteBouton.secondaire;
                             description: "bientôt dans l'app native";
                             actif: false;

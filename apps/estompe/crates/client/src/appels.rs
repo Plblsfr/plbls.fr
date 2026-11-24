@@ -5,18 +5,31 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::admin::{
+    ActionJournal, Attribution, BadgeAdmin, Bot, CompteAdmin, Direct, ErreurServeur, Statistiques,
+    VueEnsemble,
+};
 use crate::fichiers::est_une_video;
 use crate::http::{encoder_composant, Client, Corps, ErreurApi, OptionsAppel, Partie};
+use crate::signalements::{Filtres, Signalement};
 use crate::store::CleConversation;
 use crate::televersement::{Progression, SourceEnvoi, Televersement};
 use crate::temps_reel::evenements::{Lecture, StatutPresence};
 use crate::types::{
-    Attachment, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement, GetMeReponse,
+    Attachment, Channel, DeleteMessagesIdVoteRequete, GetChannelsCidReadsReponseElement,
+    GetMeReponse, GetServersIdAuditLogReponseElement, GetServersIdBansReponseElement,
     GetServersIdReponse, GetServersIdVoiceReponse, GetUnreadReponse, LinkPreview, Mention, Message,
-    MessagePage, Name50, NotifySettings, PatchMessagesIdRequete, Person, PostActivateRequete,
-    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostDmsRequete,
-    PostNotificationsReadRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
-    PutMeStatusRequete, PutMessagesIdVoteRequete, Server, DM,
+    MessagePage, Name50, NotifySettings, Override, PatchAdminReportsIdRequete,
+    PatchMessagesIdRequete, PatchServersIdEmojisEidRequete, Person, PostActivateRequete,
+    PostAdminBadgesIdUsersRequete, PostAdminBadgesRequete, PostAdminBotMessagesRequete,
+    PostChannelsCidMessagesBulkDeleteRequete, PostDmsRequete, PostNotificationsReadRequete,
+    PostReportsRequete, PostServersIdChannelsRequete, PostServersIdInvitesRequete,
+    PostServersIdMembersUidBanRequete, PostServersIdMembersUidKickRequete,
+    PostServersIdMembersUidWarnRequete, PostVoiceCidTokenReponse, PutMeActivityRequete,
+    PutMeBannerRequete, PutMeStatusRequete, PutMessagesIdVoteRequete,
+    PutServersIdChannelsCidModerationRequete, PutServersIdChannelsCidOverridesRidRequete,
+    PutServersIdMembersUidNicknameRequete, PutServersIdMembersUidTimeoutRequete,
+    PutServersIdRolesOrderRequete, Role, RoleInput, Server, ServerInvite, DM,
 };
 
 pub const LIMITE_MESSAGES: u32 = 50;
@@ -341,6 +354,445 @@ impl Client {
         .await
     }
 
+    pub async fn quitter_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!("/servers/{}/leave", encoder_composant(serveur)),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
+    pub async fn creer_salon(
+        &self,
+        serveur: &str,
+        salon: &PostServersIdChannelsRequete,
+    ) -> Result<Channel, ErreurApi> {
+        self.post(
+            &format!("/servers/{}/channels", encoder_composant(serveur)),
+            salon,
+        )
+        .await
+    }
+
+    pub async fn definir_icone_de_serveur(
+        &self,
+        serveur: &str,
+        type_mime: &str,
+        image: impl Into<Bytes>,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer_image(
+            &format!("/servers/{}/icon", encoder_composant(serveur)),
+            type_mime,
+            image,
+        )
+        .await
+    }
+
+    pub async fn renommer_serveur(&self, serveur: &str, nom: &str) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&Name50 {
+            name: nom.to_string(),
+        })?;
+        self.envoyer(
+            Method::PATCH,
+            &format!("/servers/{}", encoder_composant(serveur)),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn supprimer_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/servers/{}", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn supprimer_icone_de_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/servers/{}/icon", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn invitations_serveur(&self, serveur: &str) -> Result<Vec<ServerInvite>, ErreurApi> {
+        self.get(&format!("/servers/{}/invites", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn creer_invitation_serveur(
+        &self,
+        serveur: &str,
+        utilisations: i64,
+        expiration: i64,
+    ) -> Result<ServerInvite, ErreurApi> {
+        self.post(
+            &format!("/servers/{}/invites", encoder_composant(serveur)),
+            &PostServersIdInvitesRequete {
+                max_uses: (utilisations > 0).then_some(utilisations),
+                expires_in: (expiration > 0).then_some(expiration),
+            },
+        )
+        .await
+    }
+
+    pub async fn bannis(
+        &self,
+        serveur: &str,
+    ) -> Result<Vec<GetServersIdBansReponseElement>, ErreurApi> {
+        self.get(&format!("/servers/{}/bans", encoder_composant(serveur)))
+            .await
+    }
+
+    pub async fn lever_ban(&self, serveur: &str, utilisateur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/bans/{}",
+            encoder_composant(serveur),
+            encoder_composant(utilisateur)
+        ))
+        .await
+    }
+
+    fn chemin_membre(serveur: &str, membre: &str, suite: &str) -> String {
+        format!(
+            "/servers/{}/members/{}/{suite}",
+            encoder_composant(serveur),
+            encoder_composant(membre)
+        )
+    }
+
+    pub async fn expulser_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        raison: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PostServersIdMembersUidKickRequete {
+            reason: Some(raison.to_string()),
+        })?;
+        self.envoyer(
+            Method::POST,
+            &Self::chemin_membre(serveur, membre, "kick"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn bannir_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        ban: &PostServersIdMembersUidBanRequete,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &Self::chemin_membre(serveur, membre, "ban"),
+            &Corps::json(ban)?,
+        )
+        .await
+    }
+
+    pub async fn exclure_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        duree: i64,
+        raison: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdMembersUidTimeoutRequete {
+            duration: duree,
+            reason: Some(raison.to_string()),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &Self::chemin_membre(serveur, membre, "timeout"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn lever_exclusion(&self, serveur: &str, membre: &str) -> Result<(), ErreurApi> {
+        self.delete(&Self::chemin_membre(serveur, membre, "timeout"))
+            .await
+    }
+
+    pub async fn avertir_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        raison: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PostServersIdMembersUidWarnRequete {
+            reason: raison.to_string(),
+        })?;
+        self.envoyer(
+            Method::POST,
+            &Self::chemin_membre(serveur, membre, "warn"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn renommer_membre(
+        &self,
+        serveur: &str,
+        membre: &str,
+        pseudo: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdMembersUidNicknameRequete {
+            nickname: Some(pseudo.to_string()),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &Self::chemin_membre(serveur, membre, "nickname"),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn journal_du_serveur(
+        &self,
+        serveur: &str,
+        action: &str,
+    ) -> Result<Vec<GetServersIdAuditLogReponseElement>, ErreurApi> {
+        let filtre = if action.is_empty() {
+            String::new()
+        } else {
+            format!("?action={}", encoder_composant(action))
+        };
+        self.get(&format!(
+            "/servers/{}/audit-log{filtre}",
+            encoder_composant(serveur)
+        ))
+        .await
+    }
+
+    pub async fn moderer_salon(
+        &self,
+        serveur: &str,
+        salon: &str,
+        mode_lent: i64,
+        verrouille: bool,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdChannelsCidModerationRequete {
+            slowmode: Some(mode_lent),
+            locked: Some(verrouille),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/servers/{}/channels/{}/moderation",
+                encoder_composant(serveur),
+                encoder_composant(salon)
+            ),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn renommer_salon(
+        &self,
+        serveur: &str,
+        salon: &str,
+        nom: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&Name50 {
+            name: nom.to_string(),
+        })?;
+        self.envoyer(
+            Method::PATCH,
+            &format!(
+                "/servers/{}/channels/{}",
+                encoder_composant(serveur),
+                encoder_composant(salon)
+            ),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn supprimer_salon(&self, serveur: &str, salon: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/channels/{}",
+            encoder_composant(serveur),
+            encoder_composant(salon)
+        ))
+        .await
+    }
+
+    pub async fn supprimer_derniers_messages(
+        &self,
+        salon: &str,
+        nombre: i64,
+        auteur: Option<&str>,
+    ) -> Result<usize, ErreurApi> {
+        #[derive(serde::Deserialize)]
+        struct Supprimes {
+            #[serde(default)]
+            deleted: Vec<String>,
+        }
+        let r: Supprimes = self
+            .post(
+                &format!(
+                    "/channels/{}/messages/bulk-delete",
+                    encoder_composant(salon)
+                ),
+                &PostChannelsCidMessagesBulkDeleteRequete {
+                    ids: None,
+                    last: Some(nombre),
+                    author: auteur.map(str::to_string),
+                },
+            )
+            .await?;
+        Ok(r.deleted.len())
+    }
+
+    pub async fn ajouter_emoji(
+        &self,
+        serveur: &str,
+        nom: &str,
+        type_mime: &str,
+        image: impl Into<Bytes>,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!(
+                "/servers/{}/emojis?name={}",
+                encoder_composant(serveur),
+                encoder_composant(nom)
+            ),
+            &Corps::brut(type_mime, image),
+        )
+        .await
+    }
+
+    pub async fn renommer_emoji(
+        &self,
+        serveur: &str,
+        emoji: &str,
+        nom: &str,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PatchServersIdEmojisEidRequete {
+            name: Some(nom.to_string()),
+        })?;
+        self.envoyer(
+            Method::PATCH,
+            &format!(
+                "/servers/{}/emojis/{}",
+                encoder_composant(serveur),
+                encoder_composant(emoji)
+            ),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn supprimer_emoji(&self, serveur: &str, emoji: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/emojis/{}",
+            encoder_composant(serveur),
+            encoder_composant(emoji)
+        ))
+        .await
+    }
+
+    pub async fn creer_role(&self, serveur: &str, role: &RoleInput) -> Result<Role, ErreurApi> {
+        self.post(
+            &format!("/servers/{}/roles", encoder_composant(serveur)),
+            role,
+        )
+        .await
+    }
+
+    pub async fn modifier_role(
+        &self,
+        serveur: &str,
+        id: &str,
+        role: &RoleInput,
+    ) -> Result<Role, ErreurApi> {
+        self.patch(
+            &format!(
+                "/servers/{}/roles/{}",
+                encoder_composant(serveur),
+                encoder_composant(id)
+            ),
+            role,
+        )
+        .await
+    }
+
+    pub async fn supprimer_role(&self, serveur: &str, id: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!(
+            "/servers/{}/roles/{}",
+            encoder_composant(serveur),
+            encoder_composant(id)
+        ))
+        .await
+    }
+
+    pub async fn ordonner_roles(&self, serveur: &str, ids: &[String]) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdRolesOrderRequete { ids: ids.to_vec() })?;
+        self.envoyer(
+            Method::PUT,
+            &format!("/servers/{}/roles-order", encoder_composant(serveur)),
+            &corps,
+        )
+        .await
+    }
+
+    pub async fn attribuer_role(
+        &self,
+        serveur: &str,
+        membre: &str,
+        role: &str,
+        attribue: bool,
+    ) -> Result<(), ErreurApi> {
+        let chemin = format!(
+            "/servers/{}/members/{}/roles/{}",
+            encoder_composant(serveur),
+            encoder_composant(membre),
+            encoder_composant(role)
+        );
+        let methode = if attribue {
+            Method::PUT
+        } else {
+            Method::DELETE
+        };
+        self.envoyer(methode, &chemin, &Corps::Aucun).await
+    }
+
+    pub async fn surcharges_du_salon(
+        &self,
+        serveur: &str,
+        salon: &str,
+    ) -> Result<Vec<Override>, ErreurApi> {
+        self.get(&format!(
+            "/servers/{}/channels/{}/overrides",
+            encoder_composant(serveur),
+            encoder_composant(salon)
+        ))
+        .await
+    }
+
+    pub async fn definir_surcharge(
+        &self,
+        serveur: &str,
+        salon: &str,
+        surcharge: &Override,
+    ) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutServersIdChannelsCidOverridesRidRequete {
+            allow: Some(surcharge.allow.clone().unwrap_or_default()),
+            deny: Some(surcharge.deny.clone().unwrap_or_default()),
+        })?;
+        self.envoyer(
+            Method::PUT,
+            &format!(
+                "/servers/{}/channels/{}/overrides/{}",
+                encoder_composant(serveur),
+                encoder_composant(salon),
+                encoder_composant(surcharge.role_id.as_deref().unwrap_or_default())
+            ),
+            &corps,
+        )
+        .await
+    }
+
     pub async fn revoquer_invitation_serveur(
         &self,
         serveur: &str,
@@ -587,6 +1039,26 @@ impl Client {
             .await
     }
 
+    pub async fn supprimer_avatar(&self) -> Result<(), ErreurApi> {
+        self.delete("/me/avatar").await
+    }
+
+    pub async fn supprimer_avatar_de_serveur(&self, serveur: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/servers/{serveur}/me/avatar")).await
+    }
+
+    pub async fn definir_banniere(&self, couleur: &str) -> Result<(), ErreurApi> {
+        let corps = Corps::json(&PutMeBannerRequete {
+            color: Some(couleur.to_string()),
+        })?;
+        self.envoyer(Method::PUT, "/me/banner", &corps).await
+    }
+
+    pub async fn icone_de_badge(&self, badge: &str) -> Result<Bytes, ErreurApi> {
+        self.octets(&format!("/badges/{}/icon", encoder_composant(badge)))
+            .await
+    }
+
     pub async fn definir_fond_de_camera(
         &self,
         type_mime: &str,
@@ -677,7 +1149,7 @@ impl Client {
         &self,
         badge: &str,
         pseudos: &[String],
-    ) -> Result<Option<Value>, ErreurApi> {
+    ) -> Result<Attribution, ErreurApi> {
         let corps = Corps::json(&PostAdminBadgesIdUsersRequete {
             pseudos: pseudos.to_vec(),
         })?;
@@ -688,16 +1160,85 @@ impl Client {
             Default::default(),
         )
         .await
+        .map(Option::unwrap_or_default)
+    }
+
+    pub async fn badges_admin(&self) -> Result<Vec<BadgeAdmin>, ErreurApi> {
+        self.get("/admin/badges").await
+    }
+
+    pub async fn creer_badge(
+        &self,
+        valeurs: &PostAdminBadgesRequete,
+    ) -> Result<BadgeAdmin, ErreurApi> {
+        self.post("/admin/badges", valeurs).await
+    }
+
+    pub async fn supprimer_badge(&self, badge: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/admin/badges/{badge}")).await
+    }
+
+    pub async fn definir_icone_de_badge(
+        &self,
+        badge: &str,
+        type_mime: &str,
+        image: impl Into<Bytes>,
+    ) -> Result<(), ErreurApi> {
+        self.envoyer_image(&format!("/admin/badges/{badge}/icon"), type_mime, image)
+            .await
+    }
+
+    pub async fn vue_d_ensemble_admin(&self) -> Result<VueEnsemble, ErreurApi> {
+        self.get("/admin/overview").await
+    }
+
+    pub async fn statistiques_admin(&self) -> Result<Statistiques, ErreurApi> {
+        self.get("/admin/stats").await
+    }
+
+    pub async fn direct_admin(&self) -> Result<Direct, ErreurApi> {
+        self.get("/admin/live").await
+    }
+
+    pub async fn journal_admin(&self) -> Result<Vec<ActionJournal>, ErreurApi> {
+        self.get("/admin/log").await
+    }
+
+    pub async fn erreurs_admin(&self) -> Result<Vec<ErreurServeur>, ErreurApi> {
+        self.get("/admin/errors").await
+    }
+
+    pub async fn bot_admin(&self) -> Result<Bot, ErreurApi> {
+        self.get("/admin/bot").await
+    }
+
+    pub async fn message_du_bot(&self, contenu: &str, a: &str) -> Result<i64, ErreurApi> {
+        let corps = Corps::json(&PostAdminBotMessagesRequete {
+            content: contenu.to_string(),
+            to: Some(a.to_string()),
+        })?;
+        let reponse: Option<Value> = self
+            .requete(
+                Method::POST,
+                "/admin/bot/messages",
+                &corps,
+                Default::default(),
+            )
+            .await?;
+        Ok(reponse
+            .and_then(|r| r.get("sent").and_then(Value::as_i64))
+            .unwrap_or(0))
     }
 
     pub async fn supprimer_icone_de_badge(&self, badge: &str) -> Result<(), ErreurApi> {
         self.delete(&format!("/admin/badges/{badge}/icon")).await
     }
 
-    pub async fn comptes(&self, recherche: &str) -> Result<Option<Value>, ErreurApi> {
+    pub async fn comptes(&self, recherche: &str) -> Result<Vec<CompteAdmin>, ErreurApi> {
         let chemin = format!("/admin/users?q={}", encoder_composant(recherche));
         self.requete(Method::GET, &chemin, &Corps::Aucun, Default::default())
             .await
+            .map(Option::unwrap_or_default)
     }
 
     pub async fn suspendre_compte(&self, compte: &str, suspendu: bool) -> Result<(), ErreurApi> {
@@ -719,6 +1260,54 @@ impl Client {
         serveur: &str,
     ) -> Result<(), ErreurApi> {
         self.delete(&format!("/admin/servers/{serveur}")).await
+    }
+
+    pub async fn envoyer_signalement(
+        &self,
+        signalement: &PostReportsRequete,
+    ) -> Result<(), ErreurApi> {
+        let _: Option<Value> = self
+            .requete(
+                Method::POST,
+                "/reports",
+                &Corps::json(signalement)?,
+                Default::default(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn mes_signalements(&self) -> Result<Vec<Signalement>, ErreurApi> {
+        self.get("/reports").await
+    }
+
+    pub async fn signalements_admin(
+        &self,
+        filtres: &Filtres,
+    ) -> Result<Vec<Signalement>, ErreurApi> {
+        self.get(&filtres.chemin()).await
+    }
+
+    pub async fn signalement_admin(&self, id: &str) -> Result<Signalement, ErreurApi> {
+        self.get(&format!("/admin/reports/{}", encoder_composant(id)))
+            .await
+    }
+
+    pub async fn modifier_signalement(
+        &self,
+        id: &str,
+        modification: &PatchAdminReportsIdRequete,
+    ) -> Result<Signalement, ErreurApi> {
+        self.patch(
+            &format!("/admin/reports/{}", encoder_composant(id)),
+            modification,
+        )
+        .await
+    }
+
+    pub async fn supprimer_signalement(&self, id: &str) -> Result<(), ErreurApi> {
+        self.delete(&format!("/admin/reports/{}", encoder_composant(id)))
+            .await
     }
 }
 
@@ -756,6 +1345,215 @@ mod tests {
         assert_eq!(requete.entete("content-type"), Some("application/json"));
         assert_eq!(requete.json(), json!({"name": "Amis"}));
         assert_eq!(requete.entete("cookie"), None);
+    }
+
+    #[tokio::test]
+    async fn administre_un_serveur() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::vide(204),
+            Reponse::json(201, json!({"code": "abc", "uses": 0})),
+            Reponse::json(200, json!([{"code": "abc"}])),
+            Reponse::vide(204),
+            Reponse::json(201, json!({"id": "e1"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(200, json!([{"user_id": "u9", "pseudo": "zed"}])),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+        ])
+        .await;
+        let c = serveur.client();
+        c.renommer_serveur("s1", "Atelier").await.unwrap();
+        let cree = c.creer_invitation_serveur("s1", 5, 0).await.unwrap();
+        assert_eq!(cree.code.as_deref(), Some("abc"));
+        assert_eq!(c.invitations_serveur("s1").await.unwrap().len(), 1);
+        c.revoquer_invitation_serveur("s1", "abc").await.unwrap();
+        c.ajouter_emoji("s1", "chat_ok", "image/png", vec![1u8, 2, 3])
+            .await
+            .unwrap();
+        c.renommer_emoji("s1", "e1", "chat").await.unwrap();
+        c.supprimer_emoji("s1", "e1").await.unwrap();
+        assert_eq!(
+            c.bannis("s1").await.unwrap()[0].pseudo.as_deref(),
+            Some("zed")
+        );
+        c.lever_ban("s1", "u9").await.unwrap();
+        c.supprimer_icone_de_serveur("s1").await.unwrap();
+        c.supprimer_serveur("s1").await.unwrap();
+        let r = serveur.requetes();
+        let lignes: Vec<(&str, &str)> = r.iter().map(|x| x.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/servers/s1", "PATCH"),
+                ("/servers/s1/invites", "POST"),
+                ("/servers/s1/invites", "GET"),
+                ("/servers/s1/invites/abc", "DELETE"),
+                ("/servers/s1/emojis?name=chat_ok", "POST"),
+                ("/servers/s1/emojis/e1", "PATCH"),
+                ("/servers/s1/emojis/e1", "DELETE"),
+                ("/servers/s1/bans", "GET"),
+                ("/servers/s1/bans/u9", "DELETE"),
+                ("/servers/s1/icon", "DELETE"),
+                ("/servers/s1", "DELETE"),
+            ]
+        );
+        assert_eq!(r[0].json(), json!({"name": "Atelier"}));
+        assert_eq!(r[1].json(), json!({"max_uses": 5}));
+        assert_eq!(r[4].entete("content-type"), Some("image/png"));
+        assert_eq!(r[4].corps, [1, 2, 3]);
+        assert_eq!(r[5].json(), json!({"name": "chat"}));
+    }
+
+    #[tokio::test]
+    async fn gere_les_roles_et_les_surcharges() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(
+                201,
+                json!({"id": "r1", "name": "Nouveau rôle", "position": 1}),
+            ),
+            Reponse::json(200, json!({"id": "r1", "name": "DJ", "position": 1})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(
+                200,
+                json!([{"role_id": "r0", "allow": [], "deny": ["speak"]}]),
+            ),
+            Reponse::vide(204),
+        ])
+        .await;
+        let c = serveur.client();
+        let entree = RoleInput {
+            name: "DJ".into(),
+            color: Some("#aabbcc".into()),
+            icon: Some(String::new()),
+            hoist: Some(true),
+            permissions: Some(vec!["speak".into()]),
+        };
+        assert_eq!(
+            c.creer_role("s1", &entree).await.unwrap().id.as_deref(),
+            Some("r1")
+        );
+        assert_eq!(
+            c.modifier_role("s1", "r1", &entree)
+                .await
+                .unwrap()
+                .name
+                .as_deref(),
+            Some("DJ")
+        );
+        c.ordonner_roles("s1", &["r2".into(), "r1".into()])
+            .await
+            .unwrap();
+        c.attribuer_role("s1", "u2", "r1", true).await.unwrap();
+        c.attribuer_role("s1", "u2", "r1", false).await.unwrap();
+        c.supprimer_role("s1", "r1").await.unwrap();
+        let surcharges = c.surcharges_du_salon("s1", "c1").await.unwrap();
+        assert_eq!(surcharges[0].deny, Some(vec!["speak".to_string()]));
+        c.definir_surcharge(
+            "s1",
+            "c1",
+            &Override {
+                role_id: Some("r0".into()),
+                allow: None,
+                deny: Some(vec!["video".into()]),
+            },
+        )
+        .await
+        .unwrap();
+        let r = serveur.requetes();
+        let lignes: Vec<(&str, &str)> = r.iter().map(|x| x.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/servers/s1/roles", "POST"),
+                ("/servers/s1/roles/r1", "PATCH"),
+                ("/servers/s1/roles-order", "PUT"),
+                ("/servers/s1/members/u2/roles/r1", "PUT"),
+                ("/servers/s1/members/u2/roles/r1", "DELETE"),
+                ("/servers/s1/roles/r1", "DELETE"),
+                ("/servers/s1/channels/c1/overrides", "GET"),
+                ("/servers/s1/channels/c1/overrides/r0", "PUT"),
+            ]
+        );
+        assert_eq!(
+            r[0].json(),
+            json!({"name": "DJ", "color": "#aabbcc", "icon": "", "hoist": true, "permissions": ["speak"]})
+        );
+        assert_eq!(r[2].json(), json!({"ids": ["r2", "r1"]}));
+        assert_eq!(r[7].json(), json!({"allow": [], "deny": ["video"]}));
+    }
+
+    #[tokio::test]
+    async fn modere_les_membres_et_les_salons() {
+        let mut reponses: Vec<Reponse> = (0..6).map(|_| Reponse::vide(204)).collect();
+        reponses.push(Reponse::json(
+            200,
+            json!([{"at": "2026-03-04T10:20:00Z", "actor": "alice", "action": "member.ban", "target": "bob"}]),
+        ));
+        reponses.extend((0..3).map(|_| Reponse::vide(204)));
+        reponses.push(Reponse::json(200, json!({"deleted": ["m1", "m2"]})));
+        let serveur = ServeurFactice::demarrer(reponses).await;
+        let c = serveur.client();
+        c.expulser_membre("s1", "u2", "spam").await.unwrap();
+        c.bannir_membre(
+            "s1",
+            "u2",
+            &PostServersIdMembersUidBanRequete {
+                reason: Some(String::new()),
+                duration: Some(3600),
+                delete_messages: Some(86_400),
+            },
+        )
+        .await
+        .unwrap();
+        c.exclure_membre("s1", "u2", 600, "calme").await.unwrap();
+        c.lever_exclusion("s1", "u2").await.unwrap();
+        c.avertir_membre("s1", "u2", "dernier").await.unwrap();
+        c.renommer_membre("s1", "u2", "Bobby").await.unwrap();
+        let journal = c.journal_du_serveur("s1", "member").await.unwrap();
+        assert_eq!(journal[0].actor.as_deref(), Some("alice"));
+        c.moderer_salon("s1", "c1", 30, true).await.unwrap();
+        c.renommer_salon("s1", "c1", "annonces").await.unwrap();
+        c.supprimer_salon("s1", "c1").await.unwrap();
+        assert_eq!(
+            c.supprimer_derniers_messages("c1", 10, Some("u2"))
+                .await
+                .unwrap(),
+            2
+        );
+        let r = serveur.requetes();
+        let lignes: Vec<(&str, &str)> = r.iter().map(|x| x.ligne()).collect();
+        assert_eq!(
+            lignes,
+            [
+                ("/servers/s1/members/u2/kick", "POST"),
+                ("/servers/s1/members/u2/ban", "POST"),
+                ("/servers/s1/members/u2/timeout", "PUT"),
+                ("/servers/s1/members/u2/timeout", "DELETE"),
+                ("/servers/s1/members/u2/warn", "POST"),
+                ("/servers/s1/members/u2/nickname", "PUT"),
+                ("/servers/s1/audit-log?action=member", "GET"),
+                ("/servers/s1/channels/c1/moderation", "PUT"),
+                ("/servers/s1/channels/c1", "PATCH"),
+                ("/servers/s1/channels/c1", "DELETE"),
+                ("/channels/c1/messages/bulk-delete", "POST"),
+            ]
+        );
+        assert_eq!(r[0].json(), json!({"reason": "spam"}));
+        assert_eq!(
+            r[1].json(),
+            json!({"reason": "", "duration": 3600, "delete_messages": 86400})
+        );
+        assert_eq!(r[2].json(), json!({"duration": 600, "reason": "calme"}));
+        assert_eq!(r[4].json(), json!({"reason": "dernier"}));
+        assert_eq!(r[5].json(), json!({"nickname": "Bobby"}));
+        assert_eq!(r[7].json(), json!({"slowmode": 30, "locked": true}));
+        assert_eq!(r[8].json(), json!({"name": "annonces"}));
+        assert_eq!(r[10].json(), json!({"last": 10, "author": "u2"}));
     }
 
     #[tokio::test]
@@ -889,6 +1687,46 @@ mod tests {
         assert_eq!(requete.ligne(), ("/server-invites/AB%2F12/join", "POST"));
         assert!(requete.corps.is_empty());
         assert_eq!(requete.entete("content-type"), None);
+    }
+
+    #[tokio::test]
+    async fn cree_un_salon_quitte_un_serveur_et_pose_son_icone() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(201, json!({"id": "c9", "name": "jeux", "kind": "voice"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+        ])
+        .await;
+        let client = serveur.client();
+        let salon = client
+            .creer_salon(
+                "s1",
+                &crate::creation::NouveauSalon {
+                    nom: "jeux".into(),
+                    genre: Some(crate::store::GenreSalon::Voice),
+                    limite: 3,
+                    ..Default::default()
+                }
+                .requete(&[]),
+            )
+            .await
+            .unwrap();
+        assert_eq!(salon.id.as_deref(), Some("c9"));
+        client.quitter_serveur("s1").await.unwrap();
+        client
+            .definir_icone_de_serveur("s1", "image/png", vec![1u8, 2, 3])
+            .await
+            .unwrap();
+        let requetes = serveur.requetes();
+        assert_eq!(requetes[0].ligne(), ("/servers/s1/channels", "POST"));
+        assert_eq!(
+            requetes[0].json(),
+            json!({"name": "jeux", "kind": "voice", "user_limit": 3})
+        );
+        assert_eq!(requetes[1].ligne(), ("/servers/s1/leave", "POST"));
+        assert_eq!(requetes[2].ligne(), ("/servers/s1/icon", "PUT"));
+        assert_eq!(requetes[2].entete("content-type"), Some("image/png"));
+        assert_eq!(requetes[2].corps, [1, 2, 3]);
     }
 
     #[tokio::test]
@@ -1209,6 +2047,148 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn lit_et_ecrit_l_espace_d_administration() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(200, json!([{"id": "b1", "name": "Fondateur", "holders": [{"id": "u1", "pseudo": "bob"}]}])),
+            Reponse::json(201, json!({"id": "b2", "name": "Nouveau"})),
+            Reponse::vide(204),
+            Reponse::vide(204),
+            Reponse::json(200, json!({"granted": 1, "missing": ["zoe"]})),
+            Reponse::json(200, json!({"version": "1.2.3", "servers": [{"id": "s1", "name": "Club", "members": 3, "last_message_at": null}], "config": {"settings": {"livekit_url": "wss://lk", "origins": null}, "max_participants": 25}})),
+            Reponse::json(200, json!({"users": 12, "storage_bytes": 2048})),
+            Reponse::json(200, json!({"connections": 2, "online": [{"pseudo": "bob", "platform": "windows", "version": "0.4.0"}], "voice": [{"server": "Club", "channel": "Vocal", "participants": [{"user_id": "u1", "pseudo": "bob", "screen": true}]}]})),
+            Reponse::json(200, json!([{"at": "2026-01-01T00:00:00Z", "actor": "eve", "action": "badge.create", "target": "Fondateur"}])),
+            Reponse::json(200, json!([{"at": "2026-01-01T00:00:00Z", "method": "GET", "path": "/x", "status": 500}])),
+            Reponse::json(200, json!({"pseudo": "Estompe", "releases": ["0.3.0"]})),
+            Reponse::json(200, json!({"sent": 4})),
+        ])
+        .await;
+        let client = serveur.client();
+        let badges = client.badges_admin().await.unwrap();
+        assert_eq!(badges[0].holders[0].pseudo, "bob");
+        let cree = client
+            .creer_badge(&PostAdminBadgesRequete {
+                name: "Nouveau".into(),
+                color: "#3b82f6".into(),
+                ..PostAdminBadgesRequete::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(cree.id, "b2");
+        client
+            .definir_icone_de_badge("b2", "image/png", vec![1u8, 2])
+            .await
+            .unwrap();
+        client.supprimer_badge("b2").await.unwrap();
+        let attribution = client.accorder_badges("b1", &["zoe".into()]).await.unwrap();
+        assert_eq!(attribution.missing, ["zoe"]);
+        let vue = client.vue_d_ensemble_admin().await.unwrap();
+        assert_eq!(
+            (
+                vue.version.as_str(),
+                vue.servers[0].members,
+                vue.config.max_participants
+            ),
+            ("1.2.3", 3, 25)
+        );
+        assert_eq!(client.statistiques_admin().await.unwrap().users, 12);
+        let direct = client.direct_admin().await.unwrap();
+        assert!(direct.voice[0].participants[0].screen);
+        assert_eq!(client.journal_admin().await.unwrap()[0].actor, "eve");
+        assert_eq!(client.erreurs_admin().await.unwrap()[0].status, 500);
+        assert_eq!(client.bot_admin().await.unwrap().releases, ["0.3.0"]);
+        assert_eq!(client.message_du_bot("Salut", "").await.unwrap(), 4);
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/admin/badges", "GET"),
+                ligne("/admin/badges", "POST"),
+                ligne("/admin/badges/b2/icon", "PUT"),
+                ligne("/admin/badges/b2", "DELETE"),
+                ligne("/admin/badges/b1/users", "POST"),
+                ligne("/admin/overview", "GET"),
+                ligne("/admin/stats", "GET"),
+                ligne("/admin/live", "GET"),
+                ligne("/admin/log", "GET"),
+                ligne("/admin/errors", "GET"),
+                ligne("/admin/bot", "GET"),
+                ligne("/admin/bot/messages", "POST"),
+            ]
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(
+            requetes[1].json(),
+            json!({"name": "Nouveau", "color": "#3b82f6"})
+        );
+        assert_eq!(requetes[11].json(), json!({"content": "Salut", "to": ""}));
+    }
+
+    #[tokio::test]
+    async fn construit_les_routes_des_signalements() {
+        let serveur = ServeurFactice::demarrer([
+            Reponse::json(201, json!({"id": "r1", "status": "new"})),
+            Reponse::json(200, json!([{"id": "r1", "created_at": "2026-10-26T10:00:00Z", "title": "Bug", "category": "vocal", "platform": "desktop", "status": "new", "duplicate_of": null}])),
+            Reponse::json(200, json!([{"id": "r1", "author": "alice", "title": "Bug", "status": "in_progress", "seen": true}])),
+            Reponse::json(200, json!({"id": "r1", "title": "Bug", "status": "new", "tech": {"Version": "1.0"}, "attachments": [{"id": "f1", "expired": false}]})),
+            Reponse::json(200, json!({"id": "r1", "title": "Bug", "status": "resolved", "notes": "ok"})),
+            Reponse::vide(204),
+        ])
+        .await;
+        let client = serveur.client();
+        client
+            .envoyer_signalement(&PostReportsRequete {
+                title: "Bug".into(),
+                description: "d".into(),
+                ..PostReportsRequete::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            client.mes_signalements().await.unwrap()[0].category,
+            "vocal"
+        );
+        let filtres = Filtres {
+            statut: "in_progress".into(),
+            ..Filtres::default()
+        };
+        assert_eq!(
+            client.signalements_admin(&filtres).await.unwrap()[0].author,
+            "alice"
+        );
+        let detail = client.signalement_admin("r1").await.unwrap();
+        assert_eq!(detail.attachments[0].id, "f1");
+        let modifie = client
+            .modifier_signalement(
+                "r1",
+                &crate::signalements::modification("resolved", "", "ok").unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(modifie.status, "resolved");
+        client.supprimer_signalement("r1").await.unwrap();
+        assert_eq!(
+            lignes(&serveur),
+            [
+                ligne("/reports", "POST"),
+                ligne("/reports", "GET"),
+                ligne("/admin/reports?status=in_progress", "GET"),
+                ligne("/admin/reports/r1", "GET"),
+                ligne("/admin/reports/r1", "PATCH"),
+                ligne("/admin/reports/r1", "DELETE"),
+            ]
+        );
+        let requetes = serveur.requetes();
+        assert_eq!(
+            requetes[0].json(),
+            json!({"title": "Bug", "description": "d"})
+        );
+        assert_eq!(
+            requetes[4].json(),
+            json!({"status": "resolved", "notes": "ok"})
+        );
+    }
+
+    #[tokio::test]
     async fn envoie_les_images_par_le_meme_chemin_que_les_autres_requetes() {
         let non_autorise = || Reponse::json(401, json!({"error": "unauthorized", "message": "x"}));
         let serveur = ServeurFactice::demarrer([non_autorise(), Reponse::vide(204)]).await;
@@ -1311,6 +2291,9 @@ mod tests {
             })
             .await
             .unwrap();
+        client.definir_banniere("#aa00ff").await.unwrap();
+        client.supprimer_avatar().await.unwrap();
+        client.supprimer_avatar_de_serveur("s1").await.unwrap();
         assert_eq!(
             lignes(&serveur),
             [
@@ -1320,6 +2303,9 @@ mod tests {
                 ligne("/me/status", "PUT"),
                 ligne("/me/activity", "PUT"),
                 ligne("/me/notify-settings", "PUT"),
+                ligne("/me/banner", "PUT"),
+                ligne("/me/avatar", "DELETE"),
+                ligne("/servers/s1/me/avatar", "DELETE"),
             ]
         );
         let requetes = serveur.requetes();
@@ -1327,6 +2313,7 @@ mod tests {
         assert_eq!(requetes[3].json(), json!({"status": "dnd"}));
         assert_eq!(requetes[4].json(), json!({"name": "Hades"}));
         assert_eq!(requetes[5].json(), json!({"sound": false}));
+        assert_eq!(requetes[6].json(), json!({"color": "#aa00ff"}));
         serveur.programmer([Reponse::json(
             200,
             json!({"u1": "idle", "u2": "dnd", "u3": "invisible"}),
@@ -1349,5 +2336,8 @@ mod tests {
         let client = serveur.client();
         assert_eq!(&client.avatar("u1", None).await.unwrap()[..], b"\x89PNG");
         assert_eq!(serveur.requetes()[0].ligne(), ("/users/u1/avatar", "GET"));
+        serveur.programmer([Reponse::brute(200, "image/svg+xml", b"<svg/>")]);
+        assert_eq!(&client.icone_de_badge("b 1").await.unwrap()[..], b"<svg/>");
+        assert_eq!(serveur.requetes()[1].ligne(), ("/badges/b%201/icon", "GET"));
     }
 }

@@ -42,7 +42,10 @@ pub enum Action {
     Completer(String),
     Aller(Cible),
     NouveauPrive,
+    CreerRejoindre,
     Statut(StatutPresence),
+    SignalerBug,
+    Parametres(&'static str),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,18 +164,43 @@ pub fn actions_de_la_palette(etat: &Etat) -> Vec<Destination<Action>> {
         icone,
         cible,
     };
-    let mut sortie = vec![action(
-        "Nouveau message privé".into(),
-        "",
-        "bulle",
-        Action::NouveauPrive,
-    )];
+    let mut sortie = vec![
+        action(
+            "Nouveau message privé".into(),
+            "",
+            "bulle",
+            Action::NouveauPrive,
+        ),
+        action(
+            "Créer ou rejoindre un serveur".into(),
+            "",
+            "plus",
+            Action::CreerRejoindre,
+        ),
+    ];
     for (statut, presence, libelle) in STATUTS {
         sortie.push(action(
             format!("Statut : {libelle}"),
             if presence == actuel { "actuel" } else { "" },
             "perso",
             Action::Statut(statut),
+        ));
+    }
+    sortie.push(action(
+        "Signaler un bug".into(),
+        "",
+        "bug",
+        Action::SignalerBug,
+    ));
+    for onglet in estompe_client::parametres::ONGLETS
+        .into_iter()
+        .filter(|o| *o != estompe_client::parametres::Onglet::Replay)
+    {
+        sortie.push(action(
+            format!("Paramètres › {}", onglet.libelle()),
+            "",
+            "reglages",
+            Action::Parametres(onglet.id()),
         ));
     }
     sortie
@@ -626,14 +654,27 @@ mod tests {
             libelles(&toutes),
             [
                 (ACTIONS, "Nouveau message privé"),
+                ("", "Créer ou rejoindre un serveur"),
                 ("", "Statut : En ligne"),
                 ("", "Statut : Absent"),
                 ("", "Statut : Ne pas déranger"),
+                ("", "Signaler un bug"),
+                ("", "Paramètres › Compte"),
+                ("", "Paramètres › Notifications"),
+                ("", "Paramètres › Voix et vidéo"),
+                ("", "Paramètres › Apparence"),
+                ("", "Paramètres › Application"),
+                ("", "Paramètres › Débogage"),
+                ("", "Paramètres › Signalements"),
+                ("", "Paramètres › Raccourcis"),
             ]
         );
+        assert_eq!(toutes[5].action, Action::SignalerBug);
+        assert_eq!(toutes[11].action, Action::Parametres("debogage"));
         assert_eq!(toutes[0].action, Action::NouveauPrive);
-        assert_eq!(toutes[1].detail, "actuel");
-        assert_eq!(toutes[3].action, Action::Statut(StatutPresence::Dnd));
+        assert_eq!(toutes[1].action, Action::CreerRejoindre);
+        assert_eq!(toutes[2].detail, "actuel");
+        assert_eq!(toutes[4].action, Action::Statut(StatutPresence::Dnd));
         let message = entrees("message", &ctx, &destinations(&etat, &[]), &possibles);
         assert_eq!(message.last().unwrap().action, Action::NouveauPrive);
         assert!(entrees("", &ctx, &[], &possibles).is_empty());

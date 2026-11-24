@@ -14,6 +14,10 @@ pub struct NotifySettings {
     pub sound: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ignore_group: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub general: Option<NotifySettingsGeneral>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mutes: Option<BTreeMap<String, i64>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -38,6 +42,18 @@ pub struct NotifySettingsTypes {
     pub channel: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum NotifySettingsGeneral {
+    #[serde(rename = "all")]
+    All,
+    #[serde(rename = "mentions")]
+    Mentions,
+    #[serde(rename = "none")]
+    None,
+    #[serde(other)]
+    Inconnu,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

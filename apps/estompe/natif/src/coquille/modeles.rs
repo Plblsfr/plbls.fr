@@ -239,8 +239,11 @@ pub fn cibles(changements: &[Changement], route: &Route) -> Cibles {
                 c.compte = true;
                 c.membres |= courant.is_some();
             }
-            Changement::Roles { serveur }
-            | Changement::MembreAjoute { serveur, .. }
+            Changement::Roles { serveur } => {
+                c.membres |= est_courant(serveur);
+                c.panneau |= est_courant(serveur);
+            }
+            Changement::MembreAjoute { serveur, .. }
             | Changement::MembreRetire { serveur, .. }
             | Changement::Membre { serveur, .. } => c.membres |= est_courant(serveur),
             Changement::Avatar { serveur, .. } => {
@@ -450,9 +453,6 @@ mod tests {
                 serveur: "s1".into(),
                 utilisateur: "u".into(),
             },
-            Changement::Roles {
-                serveur: "s1".into(),
-            },
             Changement::Avatar {
                 utilisateur: "u".into(),
                 serveur: Some("s1".into()),
@@ -474,6 +474,19 @@ mod tests {
             );
             assert!(!cibles(&[changement], &Route::Accueil).membres);
         }
+        let roles = Changement::Roles {
+            serveur: "s1".into(),
+        };
+        assert_eq!(
+            cibles(std::slice::from_ref(&roles), &salon("s1")),
+            Cibles {
+                membres: true,
+                panneau: true,
+                ..Cibles::default()
+            },
+            "les droits changent l'en-tête du panneau (création de salon)"
+        );
+        assert_eq!(cibles(&[roles], &salon("s2")), Cibles::default());
         let presence = cibles(
             &[Changement::Presence {
                 utilisateur: "u".into(),

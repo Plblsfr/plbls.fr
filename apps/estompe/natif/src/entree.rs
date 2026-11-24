@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use estompe_client::admin::{sections_du_compte, SectionAdmin};
 use estompe_client::appels::code_d_invitation;
 use estompe_client::auth::{Authentification, ErreurAuth, Parcours};
 use estompe_client::http::{Client, ErreurApi, Reglages};
@@ -145,6 +146,9 @@ pub enum Etat {
     Verification,
     Injoignable(String),
     Refuse,
+    Administration {
+        sections: Vec<SectionAdmin>,
+    },
     AActiver {
         erreur: String,
         champ_en_faute: bool,
@@ -419,6 +423,7 @@ impl Machine {
             (
                 Evenement::SeDeconnecter,
                 Etat::Refuse
+                | Etat::Administration { .. }
                 | Etat::AActiver { .. }
                 | Etat::Invitation { .. }
                 | Etat::Connecte { .. }
@@ -544,7 +549,12 @@ impl Machine {
 
     fn accueillir(&mut self, moi: GetMeReponse) -> Option<Effet> {
         if moi.allowed != Some(true) {
-            self.etat = Etat::Refuse;
+            let sections = sections_du_compte(&moi);
+            self.etat = if sections.is_empty() {
+                Etat::Refuse
+            } else {
+                Etat::Administration { sections }
+            };
             return None;
         }
         if moi.activated != Some(true) {
@@ -709,6 +719,7 @@ fn nom_de_l_etat(etat: &Etat) -> &'static str {
         Etat::Verification => "vérification du compte",
         Etat::Injoignable(_) => "serveur injoignable",
         Etat::Refuse => "accès refusé",
+        Etat::Administration { .. } => "administration seule",
         Etat::AActiver { .. } => "activation du compte",
         Etat::Invitation { .. } => "invitation",
         Etat::Connecte { .. } => "connecté",
@@ -979,6 +990,23 @@ mod tests {
         assert!(matches!(m.etat(), Etat::Injoignable(_)));
         assert_eq!(m.traiter(Evenement::Reessayer), Some(Effet::Reprendre));
         assert_eq!(*m.etat(), Etat::Demarrage);
+    }
+
+    #[test]
+    fn un_compte_limite_a_l_administration_ouvre_l_administration_seule() {
+        let mut m = connectee(None);
+        let mut limite = moi(false, false);
+        limite.rights = Some(vec![estompe_client::admin::Droit::Acces]);
+        m.traiter(Evenement::CompteVerifie(Ok(limite)));
+        let Etat::Administration { sections } = m.etat().clone() else {
+            panic!("administration seule attendue : {:?}", m.etat());
+        };
+        assert_eq!(sections.iter().map(|s| s.id).collect::<Vec<_>>(), ["acces"]);
+        assert_eq!(
+            m.traiter(Evenement::SeDeconnecter),
+            Some(Effet::Deconnecter)
+        );
+        assert_eq!(*m.etat(), Etat::Deconnecte);
     }
 
     #[test]

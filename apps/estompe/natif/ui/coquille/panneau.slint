@@ -7,6 +7,8 @@ import { LigneParticipant } from "../vocal/tuile.slint";
 import { BarreVocalPanneau } from "../vocal/barre.slint";
 import { BandeauMiseAJour } from "../mise-a-jour/bandeau.slint";
 import { DonneesMiseAJour } from "../mise-a-jour/donnees.slint";
+import { DonneesParametres } from "../parametres/page.slint";
+import { DonneesReglagesServeur } from "reglages-serveur.slint";
 
 component TitreGroupe {
     in property <string> texte;
@@ -23,6 +25,49 @@ component TitreGroupe {
             letter-spacing: 0.8px;
             vertical-alignment: bottom;
             overflow: elide;
+        }
+    }
+}
+
+component BoutonAjout inherits Rectangle {
+    in property <string> description;
+    callback clique();
+    property <bool> utilisable: Calques.ouverts == 0;
+    width: 24px;
+    height: 24px;
+    border-radius: Rayon.xs;
+    background: zone.has-hover ? Theme.papier-3 : transparent;
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-action-default => {
+        root.clique();
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.xs;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.clique();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    Icone {
+        nom: "plus";
+        taille: 14px;
+        couleur: zone.has-hover ? Theme.encre : Theme.gris;
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
         }
     }
 }
@@ -95,6 +140,7 @@ component BoutonMoi {
             Avatar {
                 nom: DonneesCoquille.pseudo;
                 initiales: DonneesCoquille.initiales;
+                portrait: DonneesCoquille.portrait;
                 taille: 32px;
                 teinte: 1;
                 presence: root.hors-ligne ? EtatPresence.hors-ligne : DonneesCoquille.presence;
@@ -134,6 +180,17 @@ component BarreMoi inherits Rectangle {
         padding-right: Espace.e2;
         spacing: 6px;
         BoutonMoi { }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                icone: "reglages";
+                description: "Paramètres";
+                variante: DonneesParametres.ouverte ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                clique => {
+                    DonneesParametres.ouvrir("");
+                }
+            }
+        }
         VerticalLayout {
             alignment: center;
             Bouton {
@@ -204,6 +261,28 @@ export component Panneau inherits Rectangle {
                     font-weight: Typo.gras;
                     vertical-alignment: center;
                     overflow: elide;
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.serveur && DonneesCoquille.panneau.peut-creer-salon: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "plus";
+                        description: "Créer un salon";
+                        variante: VarianteBouton.fantome;
+                        clique => {
+                            DonneesCoquille.creer-salon("text");
+                        }
+                    }
+                }
+                if DonneesCoquille.panneau.genre == GenrePanneau.serveur: VerticalLayout {
+                    alignment: center;
+                    Bouton {
+                        icone: "sliders";
+                        description: "Paramètres du serveur";
+                        variante: DonneesReglagesServeur.ouverte ? VarianteBouton.secondaire : VarianteBouton.fantome;
+                        clique => {
+                            DonneesReglagesServeur.ouvrir("");
+                        }
+                    }
                 }
                 VerticalLayout {
                     alignment: center;
@@ -306,8 +385,22 @@ export component Panneau inherits Rectangle {
                     spacing: 1px;
                     for salon in DonneesCoquille.salons: VerticalLayout {
                         spacing: 1px;
-                        if salon.titre-groupe != "": TitreGroupe {
-                            texte: salon.titre-groupe;
+                        if salon.titre-groupe != "": HorizontalLayout {
+                            TitreGroupe {
+                                horizontal-stretch: 1;
+                                texte: salon.titre-groupe;
+                            }
+                            if DonneesCoquille.panneau.peut-creer-salon: VerticalLayout {
+                                alignment: end;
+                                padding-bottom: 3px;
+                                padding-right: 4px;
+                                BoutonAjout {
+                                    description: salon.genre-groupe == "voice" ? "Créer un salon vocal" : salon.genre-groupe == "videos" ? "Créer un salon vidéos ou musique" : "Créer un salon texte";
+                                    clique => {
+                                        DonneesCoquille.creer-salon(salon.genre-groupe);
+                                    }
+                                }
+                            }
                         }
                         ElementListe {
                             texte: salon.nom;

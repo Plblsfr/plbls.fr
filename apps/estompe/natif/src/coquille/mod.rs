@@ -4,6 +4,7 @@ pub mod membres;
 pub mod modeles;
 pub mod navigation;
 pub mod pont;
+pub mod profil;
 pub mod projection;
 pub mod recherche;
 

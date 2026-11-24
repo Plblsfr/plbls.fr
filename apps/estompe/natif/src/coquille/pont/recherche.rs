@@ -131,9 +131,23 @@ impl Pont {
                 f.global::<DonneesRecherche>().set_ouvert(false);
                 self.ouvrir_nouveau_prive(f);
             }
+            Some(Action::CreerRejoindre) => {
+                self.verrou().recherche = None;
+                f.global::<DonneesRecherche>().set_ouvert(false);
+                self.ouvrir_creer_rejoindre(f);
+            }
             Some(Action::Statut(statut)) => {
                 self.definir_statut(statut);
                 self.fermer_recherche(f);
+            }
+            Some(Action::SignalerBug) => {
+                self.fermer_recherche(f);
+                self.signaler(f, estompe_client::signalements::Cible::Bug);
+            }
+            Some(Action::Parametres(onglet)) => {
+                self.fermer_recherche(f);
+                f.global::<crate::DonneesParametres>()
+                    .invoke_ouvrir(onglet.into());
             }
             None => {}
         }

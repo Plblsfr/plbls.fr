@@ -1,0 +1,462 @@
+import { Theme, Typo, Rayon, Espace, Mouvement, Courbes, Calques } from "../jetons.slint";
+import { Icone, Bouton, VarianteBouton, Champ, Defilement, Avatar, Modal } from "../composants.slint";
+import { Anneau } from "../composants/focus.slint";
+import { Note, Puce, Alerte } from "../coquille/reglages-serveur.slint";
+import { DonneesAdmin, BadgeAdminCarte, DetenteurAdmin } from "donnees.slint";
+
+component IconeBadge inherits Rectangle {
+    in property <image> image;
+    in property <bool> a-image;
+    in property <color> couleur;
+    in property <length> cote: 44px;
+    width: root.cote;
+    height: root.cote;
+    border-radius: root.cote * 0.32;
+    background: root.couleur.mix(Theme.surface, 0.18);
+    if root.a-image: Image {
+        width: root.cote * 0.6;
+        height: root.cote * 0.6;
+        source: root.image;
+        image-fit: contain;
+    }
+    if !root.a-image: Icone {
+        nom: "medaille";
+        taille: root.cote * 0.55;
+        couleur: root.couleur.mix(Theme.encre, 0.7);
+    }
+}
+
+component CarteBadge inherits Rectangle {
+    in property <BadgeAdminCarte> badge;
+    callback choisir();
+    property <bool> utilisable: Calques.ouverts == 0;
+    min-height: 84px;
+    border-radius: Rayon.l;
+    background: zone.has-hover ? Theme.surface-2 : Theme.surface;
+    border-width: 1px;
+    border-color: Theme.trait;
+    accessible-role: button;
+    accessible-label: "Modifier le badge \{root.badge.nom}";
+    accessible-action-default => {
+        root.choisir();
+    }
+    Rectangle {
+        x: 0;
+        width: 3px;
+        background: root.badge.couleur;
+    }
+    Anneau {
+        width: parent.width + 8px;
+        height: parent.height + 8px;
+        rayon: Rayon.l;
+        actif: portee.has-focus;
+    }
+    portee := FocusScope {
+        enabled: root.utilisable;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == " ") {
+                root.choisir();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    zone := TouchArea {
+        enabled: root.utilisable;
+        mouse-cursor: pointer;
+        clicked => {
+            root.choisir();
+        }
+    }
+    HorizontalLayout {
+        padding: Espace.e4;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: start;
+            IconeBadge {
+                image: root.badge.image;
+                a-image: root.badge.a-image;
+                couleur: root.badge.couleur;
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 2px;
+            alignment: start;
+            Text {
+                text: root.badge.nom;
+                color: Theme.encre;
+                font-weight: Typo.gras;
+                overflow: elide;
+            }
+            if root.badge.description != "": Text {
+                text: root.badge.description;
+                color: Theme.gris;
+                font-size: Typo.petit;
+                wrap: word-wrap;
+                overflow: elide;
+                max-height: 36px;
+            }
+            Text {
+                text: root.badge.detenteurs;
+                color: Theme.gris;
+                font-family: Typo.mono;
+                font-size: Typo.minuscule;
+            }
+        }
+    }
+}
+
+component PuceDetenteur inherits Rectangle {
+    in property <DetenteurAdmin> compte;
+    in property <bool> choisi: false;
+    in property <string> action;
+    callback retirer();
+    height: 28px;
+    width: contenu.preferred-width;
+    border-radius: Rayon.pilule;
+    background: root.choisi ? Theme.rose-doux : Theme.papier-2;
+    contenu := HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 2px;
+        spacing: 6px;
+        VerticalLayout {
+            alignment: center;
+            Avatar {
+                nom: root.compte.pseudo;
+                initiales: root.compte.initiales;
+                teinte: root.compte.teinte;
+                taille: 20px;
+            }
+        }
+        Text {
+            text: root.compte.pseudo;
+            color: Theme.encre;
+            font-size: Typo.petit;
+            vertical-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                icone: "x";
+                description: root.action;
+                variante: VarianteBouton.fantome;
+                calque: 1;
+                clique => {
+                    root.retirer();
+                }
+            }
+        }
+    }
+}
+
+export component OngletBadgesAdmin inherits VerticalLayout {
+    spacing: Espace.e4;
+    HorizontalLayout {
+        spacing: Espace.e2;
+        Champ {
+            indice: "Rechercher un badge";
+            valeur <=> DonneesAdmin.recherche-badges;
+            modifie(texte) => {
+                DonneesAdmin.chercher-badges(texte);
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Bouton {
+                texte: "Nouveau badge";
+                icone: "plus";
+                variante: VarianteBouton.primaire;
+                clique => {
+                    DonneesAdmin.nouveau-badge();
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: start;
+        accessible-role: groupbox;
+        accessible-label: "Trier par";
+        for t[i] in DonneesAdmin.tris: Puce {
+            texte: t;
+            choisie: i == DonneesAdmin.tri;
+            choisir => {
+                DonneesAdmin.choisir-tri(i);
+            }
+        }
+    }
+    for rangee in Math.ceil(DonneesAdmin.badges.length / 2): HorizontalLayout {
+        spacing: Espace.e3;
+        CarteBadge {
+            horizontal-stretch: 1;
+            width: (parent.width - Espace.e3) / 2;
+            badge: DonneesAdmin.badges[rangee * 2];
+            choisir => {
+                DonneesAdmin.ouvrir-badge(rangee * 2);
+            }
+        }
+        if rangee * 2 + 1 < DonneesAdmin.badges.length: CarteBadge {
+            horizontal-stretch: 1;
+            width: (parent.width - Espace.e3) / 2;
+            badge: DonneesAdmin.badges[rangee * 2 + 1];
+            choisir => {
+                DonneesAdmin.ouvrir-badge(rangee * 2 + 1);
+            }
+        }
+        if rangee * 2 + 1 >= DonneesAdmin.badges.length: Rectangle {
+            horizontal-stretch: 1;
+        }
+    }
+    if DonneesAdmin.badges.length == 0: Note {
+        text: DonneesAdmin.vide-badges;
+    }
+}
+
+export component FenetreBadge {
+    width: 100%;
+    height: 100%;
+    Modal {
+        titre: DonneesAdmin.badge-existant ? "Modifier le badge" : "Nouveau badge";
+        ouvert: DonneesAdmin.badge-ouvert;
+        largeur: 620px;
+        focus-croix: false;
+        ferme => {
+            DonneesAdmin.fermer-badge();
+        }
+        Defilement {
+            height: Math.max(160px, Math.min(formulaire.preferred-height, root.height - 160px));
+            hauteur-contenu: formulaire.preferred-height;
+            formulaire := VerticalLayout {
+                spacing: Espace.e4;
+                padding-right: 4px;
+                HorizontalLayout {
+                    spacing: Espace.e4;
+                    VerticalLayout {
+                        alignment: center;
+                        IconeBadge {
+                            cote: 72px;
+                            image: DonneesAdmin.badge-apercu;
+                            a-image: DonneesAdmin.badge-a-apercu;
+                            couleur: DonneesAdmin.badge-accent;
+                            accessible-role: image;
+                            accessible-label: "Aperçu";
+                        }
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        IconeBadge {
+                            cote: 18px;
+                            image: DonneesAdmin.badge-apercu;
+                            a-image: DonneesAdmin.badge-a-apercu;
+                            couleur: DonneesAdmin.badge-accent;
+                            accessible-role: image;
+                            accessible-label: "Aperçu à la taille réelle";
+                        }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 6px;
+                        alignment: center;
+                        Note {
+                            text: "Icône : SVG, WebP, PNG ou JPEG (carrée, 512 px au plus)";
+                        }
+                        HorizontalLayout {
+                            spacing: Espace.e2;
+                            alignment: start;
+                            Bouton {
+                                texte: "Choisir une image";
+                                calque: 1;
+                                actif: !DonneesAdmin.en-cours;
+                                clique => {
+                                    DonneesAdmin.choisir-image-badge();
+                                }
+                            }
+                            if DonneesAdmin.badge-peut-retirer-image: Bouton {
+                                texte: "Retirer l'image";
+                                variante: VarianteBouton.fantome;
+                                calque: 1;
+                                clique => {
+                                    DonneesAdmin.retirer-image-badge();
+                                }
+                            }
+                        }
+                    }
+                }
+                Champ {
+                    etiquette: "Nom";
+                    calque: 1;
+                    valeur <=> DonneesAdmin.badge-nom;
+                    modifie => {
+                        DonneesAdmin.badge-modifie();
+                    }
+                }
+                Champ {
+                    etiquette: "Description";
+                    calque: 1;
+                    valeur <=> DonneesAdmin.badge-description;
+                    modifie => {
+                        DonneesAdmin.badge-modifie();
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Espace.e3;
+                    VerticalLayout {
+                        alignment: end;
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: Rayon.s;
+                            background: DonneesAdmin.badge-accent;
+                            border-width: 1px;
+                            border-color: Theme.trait-fort;
+                        }
+                    }
+                    Champ {
+                        etiquette: "Couleur d'accent";
+                        indice: "#3b82f6";
+                        calque: 1;
+                        valeur <=> DonneesAdmin.badge-couleur;
+                        modifie => {
+                            DonneesAdmin.badge-modifie();
+                        }
+                    }
+                    Champ {
+                        etiquette: "Ordre d'affichage";
+                        preferred-width: 120px;
+                        horizontal-stretch: 0;
+                        calque: 1;
+                        valeur <=> DonneesAdmin.badge-ordre;
+                    }
+                }
+                if DonneesAdmin.badge-message != "": Alerte {
+                    texte: DonneesAdmin.badge-message;
+                }
+                HorizontalLayout {
+                    spacing: Espace.e2;
+                    if DonneesAdmin.badge-existant: Bouton {
+                        texte: "Supprimer";
+                        variante: VarianteBouton.fantome;
+                        calque: 1;
+                        clique => {
+                            DonneesAdmin.supprimer-badge();
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                    Bouton {
+                        texte: "Annuler";
+                        calque: 1;
+                        clique => {
+                            DonneesAdmin.fermer-badge();
+                        }
+                    }
+                    Bouton {
+                        texte: DonneesAdmin.badge-existant ? "Enregistrer" : "Créer";
+                        variante: VarianteBouton.primaire;
+                        calque: 1;
+                        actif: DonneesAdmin.badge-valide;
+                        en-cours: DonneesAdmin.en-cours;
+                        clique => {
+                            DonneesAdmin.enregistrer-badge();
+                        }
+                    }
+                }
+                if DonneesAdmin.badge-existant: Rectangle {
+                    height: 1px;
+                    background: Theme.trait;
+                }
+                if DonneesAdmin.badge-existant: VerticalLayout {
+                    spacing: Espace.e3;
+                    accessible-role: groupbox;
+                    accessible-label: "Détenteurs";
+                    Text {
+                        text: DonneesAdmin.compte-detenteurs;
+                        color: Theme.encre-2;
+                        font-size: Typo.petit;
+                        font-weight: Typo.demi-gras;
+                    }
+                    for rangee in Math.ceil(DonneesAdmin.detenteurs.length / 4): HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for j in Math.min(4, DonneesAdmin.detenteurs.length - rangee * 4): PuceDetenteur {
+                            compte: DonneesAdmin.detenteurs[rangee * 4 + j];
+                            action: "Retirer à \{DonneesAdmin.detenteurs[rangee * 4 + j].pseudo}";
+                            retirer => {
+                                DonneesAdmin.retirer-detenteur(rangee * 4 + j);
+                            }
+                        }
+                    }
+                    Champ {
+                        indice: "Ajouter des détenteurs : chercher un pseudo";
+                        calque: 1;
+                        valeur <=> DonneesAdmin.recherche-detenteurs;
+                        modifie(texte) => {
+                            DonneesAdmin.chercher-detenteurs(texte);
+                        }
+                    }
+                    if DonneesAdmin.propositions.length > 0: VerticalLayout {
+                        accessible-role: list;
+                        accessible-label: "Comptes trouvés";
+                        for p[i] in DonneesAdmin.propositions: Rectangle {
+                            height: 36px;
+                            border-radius: Rayon.s;
+                            background: zone-p.has-hover ? Theme.papier-2 : transparent;
+                            accessible-role: button;
+                            accessible-label: "Ajouter \{p.pseudo}";
+                            accessible-action-default => {
+                                DonneesAdmin.choisir-detenteur(i);
+                            }
+                            zone-p := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    DonneesAdmin.choisir-detenteur(i);
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: Espace.e2;
+                                spacing: Espace.e2;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Avatar {
+                                        nom: p.pseudo;
+                                        initiales: p.initiales;
+                                        teinte: p.teinte;
+                                        taille: 22px;
+                                    }
+                                }
+                                Text {
+                                    text: p.pseudo;
+                                    color: Theme.encre;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                    if DonneesAdmin.choisis.length > 0: HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for c[i] in DonneesAdmin.choisis: PuceDetenteur {
+                            compte: c;
+                            choisi: true;
+                            action: "Ne pas ajouter \{c.pseudo}";
+                            retirer => {
+                                DonneesAdmin.ne-pas-ajouter(i);
+                            }
+                        }
+                        Bouton {
+                            texte: DonneesAdmin.attribuer;
+                            variante: VarianteBouton.primaire;
+                            calque: 1;
+                            clique => {
+                                DonneesAdmin.attribuer-badge();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

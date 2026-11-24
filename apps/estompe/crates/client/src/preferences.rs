@@ -63,6 +63,8 @@ pub struct Preferences {
     pub notifications: bool,
     pub apercus: bool,
     pub journal_debogage: bool,
+    pub alpha: bool,
+    pub onglet_parametres: String,
     pub ordre_serveurs: Vec<String>,
     pub fenetre: Option<Fenetre>,
     pub adresse_serveur: Option<String>,
@@ -99,6 +101,8 @@ impl Default for Preferences {
             notifications: true,
             apercus: true,
             journal_debogage: false,
+            alpha: false,
+            onglet_parametres: String::new(),
             ordre_serveurs: Vec::new(),
             fenetre: None,
             adresse_serveur: None,
@@ -172,6 +176,8 @@ impl Preferences {
             notifications: champ(&objet, "notifications", d.notifications),
             apercus: champ(&objet, "apercus", d.apercus),
             journal_debogage: champ(&objet, "journal_debogage", d.journal_debogage),
+            alpha: champ(&objet, "alpha", d.alpha),
+            onglet_parametres: champ(&objet, "onglet_parametres", d.onglet_parametres),
             ordre_serveurs: champ(&objet, "ordre_serveurs", d.ordre_serveurs),
             fenetre: champ(&objet, "fenetre", d.fenetre)
                 .filter(|f: &Fenetre| f.largeur > 0 && f.hauteur > 0),
@@ -411,6 +417,8 @@ mod tests {
             notifications: false,
             apercus: false,
             journal_debogage: true,
+            alpha: true,
+            onglet_parametres: "debogage".to_string(),
             ordre_serveurs: vec!["s2".to_string(), "s1".to_string()],
             fenetre: Some(Fenetre {
                 x: -1200,
@@ -639,6 +647,48 @@ mod tests {
         )
         .unwrap();
         assert_eq!(negatif.fenetre, None);
+    }
+
+    #[test]
+    fn reduire_les_animations_suit_le_systeme_par_defaut_puis_est_enregistre_et_retire() {
+        let dossier = tempfile::tempdir().unwrap();
+        let mut p = Preferences::charger(dossier.path()).preferences;
+        assert!(!p.reduire_animations);
+        p.reduire_animations = true;
+        p.enregistrer(dossier.path()).unwrap();
+        let valeur: Value =
+            serde_json::from_slice(&fs::read(Preferences::chemin(dossier.path())).unwrap())
+                .unwrap();
+        assert_eq!(valeur["reduire_animations"], true);
+        assert!(
+            Preferences::charger(dossier.path())
+                .preferences
+                .reduire_animations
+        );
+        p.reduire_animations = false;
+        p.enregistrer(dossier.path()).unwrap();
+        assert!(
+            !Preferences::charger(dossier.path())
+                .preferences
+                .reduire_animations
+        );
+    }
+
+    #[test]
+    fn alpha_et_dernier_onglet_des_parametres_sont_locaux_et_relus() {
+        let lu =
+            Preferences::depuis_json(r#"{"alpha": true, "onglet_parametres": "voix"}"#).unwrap();
+        assert!(lu.alpha);
+        assert_eq!(lu.onglet_parametres, "voix");
+        let d = Preferences::default();
+        assert!(!d.alpha);
+        assert_eq!(d.onglet_parametres, "");
+        let invalide =
+            Preferences::depuis_json(r#"{"alpha": "oui", "onglet_parametres": 3}"#).unwrap();
+        assert_eq!(
+            (invalide.alpha, invalide.onglet_parametres),
+            (false, String::new())
+        );
     }
 
     #[test]

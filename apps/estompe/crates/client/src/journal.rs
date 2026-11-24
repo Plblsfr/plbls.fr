@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const NOM_FICHIER: &str = "estompe-debug.log";
 pub const NOM_FICHIER_PRECEDENT: &str = "estompe-debug.1.log";
@@ -148,6 +148,62 @@ impl Journal {
             let _ = writeln!(fichier, "{ligne}");
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct EntreeJournal {
+    pub t: u64,
+    #[serde(default)]
+    pub l: String,
+    #[serde(default)]
+    pub s: String,
+    pub m: String,
+}
+
+pub fn lire_entrees(texte: &str) -> Vec<EntreeJournal> {
+    texte
+        .lines()
+        .filter_map(|ligne| serde_json::from_str(ligne).ok())
+        .collect()
+}
+
+pub fn filtrer<'a>(
+    entrees: &'a [EntreeJournal],
+    niveau: Option<Niveau>,
+    requete: &str,
+) -> Vec<&'a EntreeJournal> {
+    let q = requete.trim().to_lowercase();
+    entrees
+        .iter()
+        .filter(|e| niveau.is_none_or(|n| e.l == n.code()))
+        .filter(|e| q.is_empty() || format!("{} {}", e.s, e.m).to_lowercase().contains(&q))
+        .collect()
+}
+
+pub fn formater(e: &EntreeJournal, decalage_minutes: i32) -> String {
+    let ms = i64::try_from(e.t).unwrap_or(i64::MAX);
+    let d = crate::format::date_locale_de_ms(ms, decalage_minutes);
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} [{}] {}: {}",
+        d.annee,
+        d.mois,
+        d.jour,
+        d.heure,
+        d.minute,
+        d.seconde,
+        ms.rem_euclid(1000),
+        e.l.to_uppercase(),
+        e.s,
+        e.m
+    )
+}
+
+pub fn nom_d_export(maintenant_ms: i64, decalage_minutes: i32) -> String {
+    let d = crate::format::date_locale_de_ms(maintenant_ms, decalage_minutes);
+    format!(
+        "estompe-debug-{:04}-{:02}-{:02}-{:02}-{:02}-{:02}.log",
+        d.annee, d.mois, d.jour, d.heure, d.minute, d.seconde
+    )
 }
 
 pub fn expurger(texte: &str) -> String {
@@ -402,6 +458,36 @@ mod tests {
         journal.vider();
         assert_eq!(journal.exporter(), "");
         assert!(!dossier.path().join(NOM_FICHIER).exists());
+    }
+
+    #[test]
+    fn lit_filtre_et_formate_les_lignes_comme_le_journal_web() {
+        let texte = concat!(
+            r#"{"t":1795077000123,"l":"info","s":"vocal","m":"connexion"}"#,
+            "\n",
+            r#"{"t":1795077001000,"l":"warn","s":"réseau","m":"Reconnexion"}"#,
+            "\nligne tronquée {\"t\n\n",
+            r#"{"t":1795077002000,"l":"error","s":"partage","m":"échec"}"#,
+            "\n",
+            r#"{"l":"info","s":"x","m":"sans heure"}"#,
+        );
+        let entrees = lire_entrees(texte);
+        assert_eq!(entrees.len(), 3);
+        assert_eq!(filtrer(&entrees, None, "  ").len(), 3);
+        let avert = filtrer(&entrees, Some(Niveau::Avertissement), "");
+        assert_eq!(avert.len(), 1);
+        assert_eq!(avert[0].m, "Reconnexion");
+        let cherche = filtrer(&entrees, None, "RÉSEAU reco");
+        assert_eq!(cherche.len(), 1);
+        assert!(filtrer(&entrees, Some(Niveau::Erreur), "vocal").is_empty());
+        assert_eq!(
+            formater(&entrees[0], 60),
+            "2026-11-19 09:30:00.123 [INFO] vocal: connexion"
+        );
+        assert_eq!(
+            nom_d_export(1_795_077_000_123, 60),
+            "estompe-debug-2026-11-19-09-30-00.log"
+        );
     }
 
     #[test]
