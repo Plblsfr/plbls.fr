@@ -402,7 +402,7 @@ pub fn nombre(n: i64) -> String {
     let chiffres = n.unsigned_abs().to_string();
     let mut sortie = String::new();
     for (i, c) in chiffres.chars().enumerate() {
-        if i > 0 && (chiffres.len() - i) % 3 == 0 {
+        if i > 0 && (chiffres.len() - i).is_multiple_of(3) {
             sortie.push('\u{202f}');
         }
         sortie.push(c);

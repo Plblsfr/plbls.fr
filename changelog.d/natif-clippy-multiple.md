@@ -1,0 +1,1 @@
+- [x] App native : clippy 1.100 (`manual_is_multiple_of`) ne bloque plus la CI. `is_multiple_of` dans le formatage des nombres de l'administration, seul endroit signalé.
