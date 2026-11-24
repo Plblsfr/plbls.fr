@@ -62,13 +62,13 @@ estompe-natif-parite:
 
 # Estompe natif (apps/estompe/natif, workspace Cargo à part, toolchain stable) : voir docs/estompe/natif.md
 estompe-natif-run *ARGS:
-    cd apps/estompe/natif && cargo run -- {{ARGS}}
+    cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo build --locked && cargo run --locked -- {{ARGS}}
 
 estompe-natif-build PROFIL="release":
-    cd apps/estompe/natif && cargo build --locked --profile {{PROFIL}}
+    cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo build --locked --profile {{PROFIL}}
 
 estompe-natif-test:
-    cd apps/estompe/natif && cargo test --workspace --locked
+    cd apps/estompe/natif && {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --workspace --locked
 
 # Tous les contrôles de la CI Linux : portabilité, fichiers générés, fmt, clippy, cargo deny, tests, build
 estompe-natif-check:
@@ -89,11 +89,11 @@ estompe-natif-emoji DOSSIER="":
 
 # Parcours long du test de volume de la messagerie (50 000 messages, 2 minutes simulées)
 estompe-natif-volume:
-    cd apps/estompe/natif && ESTOMPE_VOLUME=long cargo test --locked --test messagerie_volume -- --nocapture
+    cd apps/estompe/natif && ESTOMPE_VOLUME=long {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --locked --test messagerie_volume -- --nocapture
 
 # Test d'intégration du vocal contre le LiveKit de dev-up (docker compose -f deploy/docker-compose.dev.yml up -d --wait livekit)
 estompe-natif-vocal:
-    cd apps/estompe/natif && ESTOMPE_LIVEKIT_URL=ws://127.0.0.1:7880 cargo test --locked -p estompe-client --features livekit --test livekit -- --nocapture
+    cd apps/estompe/natif && ESTOMPE_LIVEKIT_URL=ws://127.0.0.1:7880 {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --locked -p estompe-client --features livekit --test livekit -- --nocapture
 
 # Mesure mémoire et CPU de l'app native (export au format de l'app Tauri) : voir docs/estompe/natif-mesures.md
 estompe-natif-mesures *ARGS:
@@ -101,7 +101,7 @@ estompe-natif-mesures *ARGS:
 
 # Réécrit les images de référence des captures de rendu (apps/estompe/natif/tests/references)
 estompe-natif-captures:
-    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer cargo test --locked --test captures --test overlay
+    cd apps/estompe/natif && ESTOMPE_CAPTURES=regenerer {{justfile_directory()}}/scripts/estompe/natif-verrou.sh cargo test --locked --test captures --test overlay
 
 # Demande aussi ffmpeg et ffprobe dans le PATH
 test-entracte:

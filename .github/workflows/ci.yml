@@ -79,7 +79,7 @@ jobs:
         run: |
           node scripts/check-node.mjs
           npm run ui:check
-          node --test "scripts/*.test.mjs"
+          node --test "scripts/*.test.mjs" "scripts/estompe/*.test.mjs"
           node scripts/check-links.mjs
       - name: just, shellcheck et ruff
         if: needs.changements.outputs.lint == 'true'
