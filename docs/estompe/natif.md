@@ -619,7 +619,8 @@ deux moteurs et sur les deux OS :
 | image (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, comme `AttachmentView.svelte` ; AVIF non affiché par le front, donc pas pris en charge) | vignette dans 360 × 300, coins arrondis dans ses pixels ; clic : visionneuse |
 | fichier | puce : nom, taille ; clic : téléchargement avec progression, puis « Ouvrir » |
 | message vocal | lecteur (voir [Messages vocaux](#messages-vocaux)) ; « illisible sur cet appareil » avec « Télécharger » si le fichier ne se décode pas |
-| vidéo, replay | puce « bientôt dans l'app native » (lot 9) |
+| vidéo (`video/mp4`, `video/webm`), replay (`kind: video`) | carte de 360 × 203 : affiche (`GET /files/{id}/thumb` si `thumb`, recadrée en 16:9), bouton de lecture, étiquette « Replay », durée ; dessous le nom (le jeu pour un replay, `jeu_du_nom` comme `gameOfName`), la taille, « Agrandir la vidéo » et « Télécharger » ; clic : lecture dans le message (voir [Lecture des vidéos et des sons joints](#lecture-des-vidéos-et-des-sons-joints)) |
+| son (`audio/*` hors message vocal) | mini-lecteur : lecture et pause, nom, position, temps, son coupé ; « Télécharger » à côté |
 | expiré | puce barrée « (fichier expiré) » |
 
 - Avant le chargement, la vignette a sa taille définitive si les dimensions d'origine sont connues (mémorisées au premier décodage, 4 096 sources,
@@ -632,7 +633,7 @@ deux moteurs et sur les deux OS :
   mémoire au plus), délai minimal de 20 ms (en dessous : 100 ms, comme les navigateurs). Une seule minuterie pour toute la liste, armée sur la
   prochaine image due, et seulement tant qu'une image animée est **à l'écran** (`Defilement::visible`, pas seulement dans la fenêtre de 600 px) :
   hors de l'écran, ni minuterie ni réveil. Une image change par `set_row_data` du modèle de pièces (ou de segments) de la ligne, sans la remplacer.
-- Visionneuse (`ui/messagerie/visionneuse.slint`) : image décodée dans 2048 × 2048 (fixe pour un GIF), zoom de 100 % à 800 % (boutons, + et -, 0,
+- Visionneuse (`ui/messagerie/visionneuse.slint`) des images : image décodée dans 2048 × 2048 (fixe pour un GIF), zoom de 100 % à 800 % (boutons, + et -, 0,
   double clic), déplacement quand elle dépasse, image précédente et suivante du message (flèches), copie (Ctrl+C, image d'origine décodée à la
   demande, `PressePapiers` de la crate plateforme), enregistrement (comme un fichier), Échap ou le fond pour fermer.
 - Enregistrement : `Fichiers::choisir_dossier` (crate plateforme, `rfd` : sélecteur de Windows, portail XDG sous Linux) ; sans sélecteur ou en
@@ -640,9 +641,27 @@ deux moteurs et sur les deux OS :
   `ESTOMPE_NATIF_DOSSIER`, `<dossier>/telechargements`). Nom = `fichiers::nom_de_fichier_sur`, suffixe « (n) » si le fichier existe (`chemin_libre`) ;
   écriture dans `<nom>.partiel` renommé à la fin (`Client::telecharger`, `GET /files/{id}?download=1` en flux) ; « Ouvrir » passe par `Fichiers::ouvrir`.
 
+#### Lecture des vidéos et des sons joints
+
+- Un seul lecteur libmpv pour toute la fenêtre (`GestionLecteur`, créé au démarrage par `lib.rs`, passé à la messagerie par `Fabrique::lecteur` et à la galerie des
+  clips) et une seule lecture à la fois : `LectureUnique` (`apps/estompe/crates/client/src/lecteur/pieces.rs`) garde le média actif (pièce d'un message ou autre
+  source) ; lancer une pièce remplace la précédente, relancer la même la met en pause ou la reprend. Les messages vocaux gardent leur lecteur (`SortieSon`) mais
+  s'excluent avec lui : lancer une vidéo ou un son arrête le message vocal, lancer ou enregistrer un message vocal arrête la vidéo ou le son.
+- Source : `GET /files/{id}` avec le jeton en en-tête `Authorization: Bearer` (`source_de_piece`, `Client::jeton`), lu en flux par mpv (requêtes `Range`) :
+  pas de lien signé `?t=` comme le front, qui en a besoin parce que `<video>` n'envoie pas d'en-tête.
+- Dans le message, la carte devient `LecteurMedia` (même composant que le lecteur plein, image de mpv à la taille de la carte) tant que la pièce est active
+  (`DonneesLecteur.piece`) ; double clic, `f` ou « Agrandir la vidéo » ouvrent la visionneuse : `LecteurPlein` sur toute la fenêtre, avec le nom et
+  « Télécharger », sans recharger la vidéo ; la fermer arrête la lecture. Un son joint se lit dans son mini-lecteur (`MiniLecteur`, `ui/composants/lecteur.slint`),
+  piste vidéo coupée.
+- Une vidéo qui sort de l'écran (`Defilement::visible` de sa ligne, vérifié à chaque rafraîchissement de la liste) s'arrête et libère son décodeur
+  (`stop` de mpv, piste vidéo coupée) ; un son continue hors de l'écran et s'arrête quand son message quitte la conversation affichée. Une vidéo agrandie ne
+  dépend plus de sa ligne.
+- Écarts : pas de lien de téléchargement de secours sous une vidéo illisible (le lecteur affiche « La lecture n’a pas pu démarrer. », « Télécharger » reste
+  sous la carte) ; la sortie son de mpv est celle choisie au démarrage (`sortie_audio`), pas suivie si elle change ensuite.
+
 | Cache | Clé | Borne |
 |---|---|---|
-| disque, `<cache>/medias/` (`CacheDisque`) | `f.<pièce>`, `e.<emoji>`, `x.<empreinte de l'URL>` | 256 Mo (`BORNE_DISQUE_MEDIAS`), moins récemment lu évincé |
+| disque, `<cache>/medias/` (`CacheDisque`) | `f.<pièce>`, `a.<affiche d'une vidéo>`, `e.<emoji>`, `x.<empreinte de l'URL>` | 256 Mo (`BORNE_DISQUE_MEDIAS`), moins récemment lu évincé |
 | mémoire, images décodées (vignettes, visionneuse, emoji de serveur, images d'aperçu, toutes les images d'une animation) | source et format | 96 Mo (`PLAFOND_MEMOIRE_IMAGES`), en octets, LRU ; une image plus grosse que le plafond n'est pas gardée |
 | mémoire, aperçus de liens | message et lien (`cle_de_cache`) | 200 (`TAILLE_DU_CACHE`), LRU, réponse vide comprise |
 | images des emoji Unicode | séquence | 512 images rendues, 4 blocs décompressés |
@@ -853,7 +872,7 @@ deux moteurs et sur les deux OS :
 - Lecture (`MessageVocal`, `ui/messagerie/vocal.slint`) : bouton lecture et pause, forme d'onde du message avec la position (un clic s'y place), temps écoulé
   pendant la lecture et durée sinon, vitesse 1×, 1,5×, 2× (`Lecture` : WSOLA, la hauteur ne change pas), point « non écouté » (500 derniers messages écoutés
   dans `vocaux_ecoutes` des préférences), téléchargement comme un fichier. Le fichier est demandé à la première lecture et décodé hors du fil d'interface
-  (8 messages décodés gardés) ; un seul message joue à la fois (`Lecteur`), la position est suivie toutes les 100 ms par un `slint::Timer` qui ne tourne que
+  (8 messages décodés gardés) ; un seul message joue à la fois (`Lecteur`), et jamais en même temps qu'une vidéo ou un son joint, la position est suivie toutes les 100 ms par un `slint::Timer` qui ne tourne que
   pendant la lecture ; à la fin, retour au début.
 - Écarts : pas d'enchaînement automatique sur le message vocal suivant, une vitesse commune à tous les messages, position oubliée quand un autre message est
   lancé ; pas de geste « maintenir pour enregistrer » (tactile) ; pas d'annulation d'écho ni de réduction de bruit à l'enregistrement (le navigateur les fait ;
@@ -1286,8 +1305,9 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
   plein écran. Raccourcis du front (`raccourci`) : espace et `k` lecture ou pause, ← et `j` reculer, → et `l` avancer, ↑ et ↓ volume, `m` son, `f` plein écran,
   Échap quitte le plein écran ; `s` (passer l'intro) est rendu à l'écran qui le gère ; aucun avec Ctrl, Alt ou Méta. Les menus de vitesse et de pistes passent par
   le menu contextuel commun. `LecteurPlein` (`ui/video/lecteur.slint`, global `DonneesLecteur`) l'ouvre sur toute la fenêtre ; `natif/src/video/lecteur.rs`
-  (`GestionLecteur::nouvelle`, `ouvrir(titre, source)`, `fermer`) branche le global, suit l'état et pose les images. Aucun écran ne l'ouvre encore : ce sont les
-  issues suivantes (pièces jointes, salon vidéos, cinéma, musique).
+  (`GestionLecteur::nouvelle`, `ouvrir(titre, source)`, `lire_piece`, `agrandir`, `suivre`, `arreter`, `fermer`) branche le global, suit l'état et pose les images.
+  `LecteurPlein` prend le niveau de calque du moment où il s'ouvre (il passe au-dessus de la fenêtre « Clips ») et ne règle la zone de l'image que tant qu'il est ouvert.
+  Écrans qui l'ouvrent : pièces jointes et visionneuse de la messagerie, galerie des clips ; restent le salon vidéos, le cinéma et la musique.
 - Livraison : sous Linux, la libmpv du système (`libmpv2`) ; sous Windows, `libmpv-2.dll` dans l'installeur (voir [Livraison](#livraison)). La crate client
   trouve la bibliothèque d'import par `ESTOMPE_MPV_DIR` (`build.rs`). libmpv refuse de démarrer si `LC_NUMERIC` n'est pas `C` (`Lecteur::mpv` rend alors
   `ErreurLecteur::Indisponible`).
@@ -1593,7 +1613,8 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
   depuis le rail (bouton visible quand le replay est actif ou que le dossier contient des clips, comme l'espace de l'app Tauri) et depuis « Voir les clips » de
   la fenêtre « Instant replay ». Navigation : tous les clips ou un jeu (« Autres » sans jeu), place occupée et quota, ouvrir le dossier, réglages. Chaque clip :
   vignette, durée, nom, jeu et date, taille, définition, cadence, HEVC, piste micro, montage d'origine ; « Envoyer », « Renommer », « Supprimer » (confirmés),
-  clic sur la vignette : lecture dans le lecteur du système (`Fichiers::ouvrir`) jusqu'au lecteur de l'app (lot 9). Lecture du dossier et vignettes sur un fil :
+  clic sur la vignette : lecture dans le lecteur de l'app (`LecteurPlein`, par-dessus la fenêtre « Clips », qui reste ouverte dessous ; lecteur du système
+  par `Fichiers::ouvrir` seulement si libmpv n'a pas démarré). Lecture du dossier et vignettes sur un fil :
   une vignette manquante est tirée du clip par ffmpeg (`galerie::creer_vignette`, `.estompe/<clip>.mp4.jpg`), une seule tentative par clip. La galerie se relit
   à chaque `EvenementReplay::Clip` et à l'erreur `quota`. Règles portées de `galerie.rs` dans `estompe_client::replay::galerie` (`dans_dossier` : jamais hors du
   dossier ni à travers un lien, `renommer` et `supprimer` avec les annexes, `stockage`, `plus_anciens`, `purger`) et `estompe_client::replay::clips` (tri,

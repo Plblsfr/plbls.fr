@@ -239,6 +239,8 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   les en-têtes HTTP avant le jeton ; vider par `change-list http-header-fields clr ""` puis `append`. Avec `keep-open`, `time-pos` peut arriver après `eof-reached` :
   un test vérifie la fin par `fin`, pas par la position. Une image rendue en pause n'arrive qu'après la taille (`dwidth`, `dheight`) : le rendu est relancé quand elle change.
   Le rendu logiciel écrit du `rgb0` : l'octet « 0 » n'est pas un alpha, l'image est rendue opaque à la conversion. Toute commande passe en asynchrone : le fil de l'interface n'attend jamais mpv.
+  Un seul lecteur par fenêtre (`GestionLecteur`) : toute lecture passe par lui (`ouvrir`, `lire_piece`), jamais par `Lecteur::charger` directement, sinon
+  `LectureUnique` et `DonneesLecteur.piece` désignent encore l'ancienne pièce, qui afficherait l'image de la nouvelle source.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements. Le moteur de séance (`regarder_ensemble::MoteurSynchro`) n'a aucun minuteur : le temps lui est passé
   à chaque appel et `prochaine_echeance()` dit quand le rappeler. `Lecteur::position()` extrapole avec l'horloge réelle (`Instant::now()`) : un test en
