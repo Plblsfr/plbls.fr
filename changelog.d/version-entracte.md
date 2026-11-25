@@ -1,1 +1,0 @@
-- [x] Entracte : version 0.7.1. Livre le correctif de charge du processeur pendant le réencodage. Non fait : tag `entracte-v0.7.1` (après fusion). Non vérifié : déploiement.

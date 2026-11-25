@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.112.1",
+    "date": "2026-11-25",
+    "new": [
+      "Entracte : un bouton Épisode suivant apparaît à la fin d'un épisode, seul ou au salon cinéma."
+    ],
+    "fixes": [
+      "Salon cinéma : le mode cinéma est utilisable sur téléphone.",
+      "Entracte : le réglage de sous-titres Forcés seulement est respecté dès l'ouverture d'un titre.",
+      "Les photos de profil, statuts et bannières se mettent à jour sans recharger."
+    ]
+  },
+  {
     "version": "0.109.0",
     "date": "2026-11-19",
     "new": [
