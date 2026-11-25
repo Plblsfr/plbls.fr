@@ -14,7 +14,10 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
 hors du workspace racine comme les apps Tauri. Slint est figé en `=1.18.1`, comme dans l'overlay natif de l'app Tauri.
-L'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` : `deny.toml` les interdit.
+Seule exception à « sans webview » : le lecteur YouTube (voir [Lecteur YouTube](#lecteur-youtube)), derrière la feature cargo `youtube`, activée dans
+l'installeur. Sans elle, l'arbre de dépendances ne contient ni `tauri`, ni `wry`, ni `webview2-com` (contrôle `cargo tree` de `scripts/estompe/natif-check.sh`) ;
+avec elle, `wry` n'arrive que par la crate plateforme et seulement sous Windows (`deny.toml` : `tauri` interdit, `wry` permis par `estompe-plateforme` seul,
+`webview2-com` par `wry` seul ; graphe vérifié avec la feature).
 
 ## Construire et lancer
 
@@ -24,6 +27,7 @@ que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sy
 `ninja`, LLVM 22 ou plus récent (voir [Vocal](#vocal), « CRT statique sous Windows »), et libmpv : `just estompe-natif-mpv` puis
 `ESTOMPE_MPV_DIR` vers `apps/estompe/natif/target/mpv` (bibliothèque d'import) et ce dossier dans le `PATH` (DLL) ; voir [Lecteur vidéo et audio](#lecteur-vidéo-et-audio). Les binaires de Skia (Linux) et de libwebrtc sont téléchargés à la première compilation.
 `cargo build --no-default-features` construit l'app sans le SDK LiveKit (vocal indisponible). ffmpeg, s'il est présent, lit les messages vocaux en AAC.
+`--features youtube` ajoute le lecteur YouTube (vue WebView2, Windows seulement ; sans effet sous Linux) : l'installeur et la CI Windows le construisent ainsi.
 
 ```sh
 just estompe-natif-run            # build de débogage : le bouton « Composants » ouvre la page de démonstration
@@ -670,7 +674,8 @@ deux moteurs et sur les deux OS :
 
 - Le premier lien du message (si la préférence « aperçus » est active) est demandé à `GET /link-preview?url=&message=` (`Client::apercu_de_lien`,
   404 = pas d'aperçu) ; la carte suit `choisir_carte` : lien (site, titre, description sur deux lignes, image à droite recadrée en carré), YouTube
-  (miniature `img.youtube.com` et titre de l'aperçu ; le clic ouvre le lien dans le navigateur, le lecteur arrive au lot 9), Sillon (genre, titre,
+  (miniature `img.youtube.com` et titre de l'aperçu ; le clic ouvre le lecteur YouTube dans une visionneuse, voir [Lecteur YouTube](#lecteur-youtube), ou
+  le navigateur sans la vue), Sillon (genre, titre,
   artiste ; ni pochette ni « Écouter » avant la section Sillon du lot 10). Les images d'aperçu viennent de leur site (`Client::octets_externes`,
   sans jeton, 8 Mo au plus).
 - Sondage : question (markdown), « Sondage lancé par », choix avec barre, pourcentage et votes, mon choix (coche), gagnants (trophée) une fois clos,
@@ -1339,7 +1344,8 @@ personne en produisent.
   la dernière valeur de chaque réglage gardée, abandon au bout de 3 s), `Fin`, `Pret`, `Attente` (salon cinéma : pause commune demandée après 1 s de chargement),
   `Refus`, `Journal`. Coupe-circuit au-delà de 20 états par seconde (5 s de pause), chargement lent signalé après 15 s, lecture automatique refusée après 3 s.
 - `fournisseurs.rs` : trait `LecteurSeance` (portage de `Adapter`), `LecteurFichier` (fichiers hébergés, sur `lecteur::Lecteur`, jeton seulement vers le préfixe donné),
-  `fournisseur` : `file`, `page` → libmpv ; `film` → `LecteurFilm` ; YouTube → vue `wry` (#375), le lien s'ouvre dans le navigateur d'ici là ; Vimeo, Twitch,
+  `fournisseur` : `file`, `page` → libmpv ; `film` → `LecteurFilm` ; YouTube → `LecteurYoutube` (voir [Lecteur YouTube](#lecteur-youtube)), le navigateur
+  sans la vue ; Vimeo, Twitch,
   Dailymotion → navigateur au moment de la séance (`adresse_navigateur`, écart assumé) ; le reste : « Cette source de vidéo n’est pas prise en charge par cette version. ».
 - `film.rs` : `LecteurFilm` (portage du lecteur de films) : flux d'Entracte demandé par `POST /titles/{id}/playback` (codecs que libmpv lit moins ceux que l'appareil
   a refusés), piste audio et sous-titres choisis par les préférences (`PreferencesFilm` : VF, VFF, VFQ, anglais ; aucun, forcés, français, anglais), palier mémorisé
@@ -1380,9 +1386,42 @@ personne en produisent.
   serveur) ; choisir un autre salon l'ouvre, le rejoint, puis lance la séance une fois connecté (le serveur exige d'être dans le vocal). La lecture passe par
   `GestionLecteur::reserver` (origine `seance`) : la pièce jointe en cours s'arrête ; si une autre lecture prend le lecteur, la séance s'arrête ici (« Un autre
   média joue sur cet appareil », « Recharger » la reprend). Le lien d'un film se lance depuis la bibliothèque d'Entracte (site ou app web, lot 10).
-- Écarts : pas de diffusion sur une télé (API Remote Playback du navigateur) ; Vimeo, Twitch, Dailymotion dans le navigateur ; YouTube dans le navigateur jusqu'à
-  #375 (`FabriqueLecteur` rend `None`) ; pas de « Wi-Fi seulement » (réseau inconnu sur le bureau) ; pas de lancement automatique quand un seul salon convient
+- Écarts : pas de diffusion sur une télé (API Remote Playback du navigateur) ; Vimeo, Twitch, Dailymotion dans le navigateur ; YouTube dans le navigateur sous
+  Linux et sans la feature `youtube` (`FabriqueLecteur` rend `None`) ; pas de « Wi-Fi seulement » (réseau inconnu sur le bureau) ; pas de lancement automatique quand un seul salon convient
   (le lien est demandé d'abord) ; pas de mode plein cadre propre à la séance (celui du vocal s'applique).
+
+## Lecteur YouTube
+
+Seule webview de l'app (#375) : une vue `wry` créée à l'ouverture d'un lecteur YouTube et détruite à sa fermeture, derrière la feature cargo `youtube`
+(`estompe-natif` → `estompe-plateforme/youtube`). Rien de la webview n'est chargé au lancement ni hors d'un lecteur YouTube.
+
+- Plateforme (`apps/estompe/crates/plateforme/src/webview.rs`) : traits `VuesWeb` (`disponible`, `origine`, `ouvrir`) et `VueWeb` (`executer`, `placer`, `montrer`),
+  `VuesWebSysteme`. Sous Windows avec la feature : vue enfant WebView2 (`WebViewBuilder::build_as_child`) dans la fenêtre winit de Slint, placée en pixels
+  logiques sur la zone du lecteur, page servie par le protocole `estompe` à `https://estompe.localhost/lecteur`, navigation privée (`with_incognito`),
+  dossier de données à part (`<cache>/vue-web`), sans outils de développement, presse-papiers, zoom au clavier ni téléchargement, permissions refusées sauf
+  la lecture automatique, nouvelles fenêtres refusées (un lien YouTube s'ouvre alors dans le navigateur). Le chargeur WebView2 est lié statiquement
+  (`WebView2LoaderStatic`, aucune DLL de plus) ; le runtime est celui de Windows. Sous Linux et sans la feature : `Indisponible`, la vidéo s'ouvre dans
+  le navigateur (décision de l'issue : l'intégration de WebKitGTK à la fenêtre winit demanderait une boucle GTK à côté de celle de Slint).
+- Client (`apps/estompe/crates/client/src/regarder_ensemble/youtube.rs`) : page hôte (`PageLecteur::html` : l'iframe officielle `youtube-nocookie.com` avec
+  `referrerpolicy="strict-origin-when-cross-origin"` et `origin` de la page, CSP `default-src 'none'; frame-src https://www.youtube-nocookie.com`, un script
+  qui ne relaie que les messages de l'origine et de la fenêtre du lecteur), filtre de navigation (`navigation_permise` : la page elle-même et
+  `https://www.youtube-nocookie.com`), messages acceptés seulement de la page (`message_accepte`), lecture des messages du lecteur (`lire_message`, portage de
+  `readYouTube`), `LecteurYoutube` (`LecteurSeance` piloté par le protocole `postMessage` de l'API IFrame, sans son script : `listening` après le chargement,
+  commandes gardées jusqu'à `onReady`, `loadVideoById`/`cueVideoById`, `seekTo`, `setPlaybackRate`, `setVolume`) et `LienVue`, file partagée entre ce lecteur
+  (fil de la séance) et la vue (fil de l'interface) : page à ouvrir, messages à envoyer, messages reçus, runtime absent, fermeture.
+- App (`apps/estompe/natif/src/video/youtube.rs`) : vues tenues par le fil de l'interface (une pour la séance, une pour la visionneuse), placées par
+  `ZoneVueWeb` (`ui/composants/vue-web.slint`, qui signale sa position, sa taille et sa visibilité, et se rappelle toutes les 200 ms : une zone qui ne se signale
+  plus depuis 600 ms, page quittée ou scène masquée, cache la vue). Une vue native passe par-dessus l'interface Slint : elle est masquée dès qu'une fenêtre ou
+  un menu s'ouvre au-dessus (`Calques`), tant que la page du lecteur n'a pas fini de charger (le chargement de la séance reste visible) et sur une erreur.
+- Séance : `PontSeance` crée un `LecteurYoutube` par vidéo YouTube, ouvre la vue quand le lecteur demande sa page, lui passe les messages à chaque projection
+  et rend à la séance chaque message reçu (`lecteur_change`) ; le volume de la barre de la séance est envoyé au lecteur. Si la vue ne peut pas être créée
+  (runtime WebView2 absent), la séance passe au navigateur avec le message « Le lecteur YouTube n’a pas pu démarrer sur cet appareil : la vidéo s’ouvre
+  dans le navigateur. », sans réessayer jusqu'à « Recharger ».
+- Messagerie : le clic sur une carte YouTube ouvre `VisionneuseYoutube` (`ui/video/youtube.slint` : lecteur YouTube avec ses commandes, titre, « Ouvrir dans
+  le navigateur », Échap ou « Fermer » détruisent la vue) ; le front lit la vidéo dans la carte puis l'agrandit, l'app l'ouvre directement en grand (une vue
+  native ne se découpe pas au bord de la liste des messages).
+- La première ouverture démarre le runtime WebView2 (création synchrone de l'environnement, quelques centaines de millisecondes, non mesurée) ; à la fermeture,
+  la vue et son environnement sont libérés, les processus `msedgewebview2` du runtime s'arrêtent ensuite.
 
 ## Intégration au bureau
 
@@ -1959,7 +1998,7 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 - Version : clé `natif` de `.version`, montée par la CI à la fusion d'une PR qui touche `apps/estompe/natif/`, `crates/client` ou
   `crates/plateforme` (`scripts/estompe/version.mjs`) ; `bump-version.mjs --apply` la recopie dans `Cargo.toml` et `Cargo.lock`, d'où
   `VERSION` (« À propos », en-tête `X-Estompe-Version`) et la version de l'installeur.
-- Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)).
+- Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)), build avec `--features youtube`.
 - Installeur NSIS `apps/estompe/natif/installeur/estompe-natif.nsi` → `Estompe-natif-beta-X.Y.Z-setup.exe` :
   - « Estompe natif (bêta) », par utilisateur sans droits d'administrateur (`RequestExecutionLevel user`), dans `%LOCALAPPDATA%\Programs\Estompe natif` :
     `estompe-natif.exe`, `ffmpeg.exe` (conversion des vidéos et lecture des messages vocaux AAC, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)), `libmpv-2.dll` (lecteur, voir [Lecteur vidéo et audio](#lecteur-vidéo-et-audio)), `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
@@ -1984,7 +2023,8 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   version 2 ou ultérieure (feature `gpl` de mpv), cité dans « À propos ».
 - Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 125 Mo : 41 Mo pour
   ffmpeg compressé et 33 Mo pour libmpv, mesurés, plus les 45 Mo prévus pour l'app, pas encore mesurée sur un build release), contenu
-  listé par `7z` (exe, `ffmpeg.exe`, `libmpv-2.dll`, icône, désinstalleur), exe sans référence à `WebView2Loader` ni `EmbeddedBrowserWebView`.
+  listé par `7z` (exe, `ffmpeg.exe`, `libmpv-2.dll`, icône, désinstalleur), aucune `WebView2Loader.dll` (chargeur lié statiquement) ; présence de la vue
+  WebView2 du lecteur YouTube (feature `youtube`) signalée, son absence en avertissement.
 - Manifeste de mise à jour `natif.json` (`scripts/estompe/natif-manifeste.mjs`), servi par la release fixe `estompe-natif-beta` :
   `https://github.com/Plblsfr/plbls.fr/releases/download/estompe-natif-beta/natif.json`. Format de `latest.json` de Tauri plus la taille :
   `{ version, notes, pub_date, mandatory, force, minVersion, message, platforms: { "windows-x86_64": { url, signature, taille } } }` ;

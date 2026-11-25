@@ -154,7 +154,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
 - Une plateforme = un dossier : `web/estompe/plateforme/` (image nginx, `docker/`), `apps/estompe/windows/` et `apps/estompe/android/` (coques Tauri : `src/platform.ts`,
   `src-tauri/`, `scripts/`). `apps/estompe/crates/core/` : code Rust et TS commun aux deux apps Tauri. Le frontend ne teste jamais la plateforme
   (`isDesktop`, agent) : il appelle `platform` ; un comportement propre à une plateforme s'ajoute dans son dossier (voir `web/estompe/README.md`).
-- `apps/estompe/natif/` : app de bureau native en Slint, sans webview, en beta à côté de l'app Tauri ; `apps/estompe/crates/client/` (logique sans
+- `apps/estompe/natif/` : app de bureau native en Slint, sans webview hors du lecteur YouTube (feature `youtube`), en beta à côté de l'app Tauri ; `apps/estompe/crates/client/` (logique sans
   interface) et `apps/estompe/crates/plateforme/` (seul endroit où du code propre à un OS est permis). Workspace Cargo à part. Voir `docs/estompe/natif.md`.
 - `.version` (racine du dépôt) : version de chaque élément (api, web, windows, android, natif).
 - `docs/estompe/` : `openapi.yaml` (REST) et `realtime.md` (évènements WebSocket). **Toute nouvelle route ou nouvel évènement est documenté ici.**
@@ -242,6 +242,10 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   Un seul lecteur par fenêtre (`GestionLecteur`) : toute lecture passe par lui (`ouvrir`, `lire_piece`, ou `reserver` pour une séance qui charge elle-même
   sa source), jamais par `Lecteur::charger` directement, sinon `LectureUnique` et `DonneesLecteur.piece` désignent encore l'ancienne pièce, qui afficherait
   l'image de la nouvelle source. Une séance vérifie qu'elle tient encore le lecteur (`reservee_par`) avant de le piloter.
+- **Lecteur YouTube de l'app native (vue WebView2)** (`docs/estompe/natif.md`, « Lecteur YouTube ») : la vue est une fenêtre enfant par-dessus le rendu
+  Slint, qui ne peut ni la découper ni dessiner dessus : elle est masquée dès qu'un calque s'ouvre, et cachée quand sa `ZoneVueWeb` ne se signale plus (Slint
+  n'a pas de rappel de destruction d'un élément). La création de la vue fait tourner la boucle de messages de Windows : aucun emprunt de l'état des vues
+  ni verrou de la séance n'est tenu pendant `VuesWeb::ouvrir`, et une ouverture n'est jamais relancée pendant une autre.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
   passer par des états explicites et des évènements. Le moteur de séance (`regarder_ensemble::MoteurSynchro`) n'a aucun minuteur : le temps lui est passé
   à chaque appel et `prochaine_echeance()` dit quand le rappeler. `Lecteur::position()` extrapole avec l'horloge réelle (`Instant::now()`) : un test en
