@@ -134,6 +134,10 @@ impl Lecteur {
         self.moteur.regler_volume(volume, muet);
     }
 
+    pub fn definir_son(&self, volume: u8, muet: bool) {
+        self.moteur.regler_volume(volume.min(VOLUME_MAX), muet);
+    }
+
     pub fn ajuster_volume(&self, ecart: i16) {
         let (volume, muet) = {
             let e = self.etat.borrow();

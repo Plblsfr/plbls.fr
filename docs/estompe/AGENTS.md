@@ -240,4 +240,6 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
   un test vérifie la fin par `fin`, pas par la position. Une image rendue en pause n'arrive qu'après la taille (`dwidth`, `dheight`) : le rendu est relancé quand elle change.
   Le rendu logiciel écrit du `rgb0` : l'octet « 0 » n'est pas un alpha, l'image est rendue opaque à la conversion. Toute commande passe en asynchrone : le fil de l'interface n'attend jamais mpv.
 - **Synchronisation (regarder ensemble, musique, vocal)** : aucun comportement ne dépend d'un délai fixe (`setTimeout`, pause supposée suffisante) ;
-  passer par des états explicites et des évènements.
+  passer par des états explicites et des évènements. Le moteur de séance (`regarder_ensemble::MoteurSynchro`) n'a aucun minuteur : le temps lui est passé
+  à chaque appel et `prochaine_echeance()` dit quand le rappeler. `Lecteur::position()` extrapole avec l'horloge réelle (`Instant::now()`) : un test en
+  temps simulé fait avancer `MoteurFactice::avancer`, qui émet la position, au lieu de compter sur l'extrapolation.

@@ -496,6 +496,11 @@ impl MoteurLecture for MoteurMpv {
         };
         self.propriete_texte(c"start", &depart);
         self.propriete_drapeau(c"pause", source.en_pause);
+        self.commande(&["change-list", "sub-files", "clr", ""]);
+        for sous_titres in &source.sous_titres {
+            self.commande(&["change-list", "sub-files", "append", sous_titres]);
+        }
+        self.propriete_reel(c"sub-delay", -source.decalage_sous_titres);
         self.commande(&["loadfile", &source.adresse, "replace"]);
     }
 

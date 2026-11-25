@@ -12,6 +12,8 @@ pub struct Source {
     pub jeton: Option<String>,
     pub depart: f64,
     pub en_pause: bool,
+    pub sous_titres: Vec<String>,
+    pub decalage_sous_titres: f64,
 }
 
 impl Source {
@@ -21,6 +23,8 @@ impl Source {
             jeton: None,
             depart: 0.0,
             en_pause: false,
+            sous_titres: Vec::new(),
+            decalage_sous_titres: 0.0,
         }
     }
 
@@ -44,6 +48,12 @@ impl Source {
 
     pub fn en_pause(mut self) -> Self {
         self.en_pause = true;
+        self
+    }
+
+    pub fn avec_sous_titres(mut self, adresses: Vec<String>, decalage: f64) -> Self {
+        self.sous_titres = adresses;
+        self.decalage_sous_titres = if decalage.is_finite() { decalage } else { 0.0 };
         self
     }
 

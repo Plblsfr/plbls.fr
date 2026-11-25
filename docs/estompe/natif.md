@@ -9,7 +9,7 @@ En place : la fenêtre, l'écran « À propos », la page de démonstration des 
 | Dossier | Rôle |
 |---|---|
 | `apps/estompe/natif` | binaire `estompe-natif` : interface Slint (`ui/`), moteur de rendu Skia (logiciel pour les overlays, `src/overlay/`), branchement des préférences et du journal (`src/session.rs`), écrans d'entrée (`src/entree.rs`, `src/ecrans.rs`), coquille (`src/coquille/`), intégration au bureau (`src/bureau/`) |
-| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`), lecteur vidéo et audio (`lecteur/`) et mesures (`mesures.rs`) |
+| `apps/estompe/crates/client` | logique sans interface : types de l'API générés depuis `openapi.yaml`, client HTTP, adresse du serveur, préférences, journal, store, temps réel, routes, accès aux sections, vocal (`vocal/`), audio (`audio/`), messages vocaux (`message_vocal/`), lecteur vidéo et audio (`lecteur/`), synchronisation de « regarder ensemble » (`regarder_ensemble/`) et mesures (`mesures.rs`) |
 | `apps/estompe/crates/plateforme` | tout le code propre à un OS, derrière des traits ; dossiers de l'utilisateur ; périphériques audio (`audio.rs`) ; caméras (`camera.rs`) ; compteurs du processus pour les mesures (`processus/`) ; capture d'écran et de fenêtre (`capture/`) |
 
 Les trois paquets forment un workspace Cargo à part (`apps/estompe/natif/Cargo.toml`, un `Cargo.lock`, toolchain stable, `deny.toml` propre),
@@ -1258,7 +1258,7 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
   `EtatLecteur` (phase `Vide`, `Chargement`, `Pret`, `Erreur` ; pause, attente du réseau ou d'un déplacement, fin, position et son horodatage, durée, cache,
   volume, muet, vitesse, pistes, piste audio et sous-titres choisis, taille de l'image, plein écran, visibilité) mis à jour par les `Evenement` du moteur
   (`EtatLecteur::appliquer`), `position_a(instant)` qui extrapole la position en lecture (vitesse comprise, jamais au-delà de la durée, figée en pause,
-  en attente et à la fin), `Source` (adresse ou fichier, jeton, départ, en pause), `Piste` (`pistes_de_mpv` lit `track-list`, `libelle()` : titre, langue
+  en attente et à la fin), `Source` (adresse ou fichier, jeton, départ, en pause, sous-titres externes et leur décalage), `Piste` (`pistes_de_mpv` lit `track-list`, `libelle()` : titre, langue
   en clair, « forcés »), réglages (`reglages.rs` : vitesses 0,5× à 2×, bornes 0,25× à 4×, volume 0 à 100 par pas de 5, déplacement de 5 s comme `VideoPlayer.svelte`
   ou 10 s comme `FilmPlayer.svelte` par `definir_pas`, `taille_de_rendu` qui contient l'image dans la zone sans l'agrandir, `peripherique_mpv` qui passe
   l'identifiant de sortie de cpal à `audio-device` de mpv : `wasapi:{0.0.0.00000000}.{…}` → `wasapi/{…}`, `alsa:x` → `alsa/x`, sinon `auto`).
@@ -1272,7 +1272,7 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
   (`pause`, `time-pos`, `duration`, `paused-for-cache`, `seeking`, `demuxer-cache-time`, `volume`, `mute`, `speed`, `track-list`, `aid`, `sid`, `dwidth`,
   `dheight`, `eof-reached`) ; un échec de chargement donne `Phase::Erreur` avec le message de mpv et sa dernière ligne de journal (niveau `error`).
 - Sources : fichier local, HTTP(S) avec le jeton en en-tête `Authorization: Bearer` (jamais vers un fichier local ; liste `http-header-fields` vidée par
-  `change-list … clr` puis complétée par `append`, que mpv passe à chaque requête, segments HLS compris), HLS (démultiplexeur de FFmpeg dans libmpv).
+  `change-list … clr` puis complétée par `append`, que mpv passe à chaque requête, segments HLS compris), HLS (démultiplexeur de FFmpeg dans libmpv) ; sous-titres externes par `sub-files` (même en-tête) et `sub-delay` (décalage d'un flux HLS d'Entracte qui commence en cours de titre).
 - Image : rendu logiciel de mpv (`MPV_RENDER_API_TYPE_SW`, format `rgb0`, pas aligné sur 64 octets) à la taille de la zone du lecteur (`definir_zone`, en pixels
   physiques), dans une `ImageLecteur` poussée dans un `RecepteurVideo` ; l'app l'affiche par le chemin des flux vidéo (`natif/src/video/` : `Afficheur`, une image en
   route à la fois, 60 images par seconde au plus, `SharedPixelBuffer`). La conversion en RGBA opaque se fait sur le fil de l'`Afficheur`, seulement pour les images affichées.
@@ -1301,6 +1301,45 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
   d'un poste avec décodage matériel.
 - Écarts : rendu logiciel seulement (pas de texture partagée avec Skia, que Slint 1.18 n'expose pas pour une image de modèle) ; les sous-titres sont dessinés
   par mpv dans l'image ; pas de masquage de la barre après un délai sans geste (visible au survol) ; pas de diffusion sur une télé.
+
+## Regarder ensemble
+
+Synchronisation des séances (« Regarder ensemble », Music2gether, salon cinéma) dans `apps/estompe/crates/client/src/regarder_ensemble/`, portage de
+`watch.ts`, `watchsync.ts`, `watch.svelte.ts`, `providers.ts`, `avance.ts` et `depot.ts` ; aucune interface (#374). Le serveur fait foi : l'état reçu
+est appliqué au lecteur sans produire de commande, seules les actions de la personne en produisent.
+
+- `seance.rs` : `GenreSeance` (`watch`, `music`, `cinema` ; salon cinéma ou vocal), `position_attendue` (position + temps écoulé depuis `at`, à la vitesse,
+  corrigé du décalage d'horloge `decalage_horloge(now)`), `correction` (au-delà d'1 s : saut ; de 0,15 à 1 s : un cran de vitesse de 0,25 le temps de combler
+  l'écart, saut si la vitesse sort de 0,25 à 2), `perime` (révision plus ancienne), `RegistreSeances` (état et décalage par salon, état croisé ignoré sauf au
+  rafraîchissement), `derniere_action`, `texte_attente`, `salon_auto`, messages d'erreur de YouTube.
+- `synchro.rs` : `MoteurSynchro`, machine à états sans entrée-sortie (phases `Chargement`, `Synchro`, `Attente`, `Tampon`, `Erreur`) ; le temps est passé à chaque
+  appel (millisecondes), aucun minuteur : `prochaine_echeance()` dit quand rappeler `echeances`. Entrées : `recevoir` (état du serveur), `observer` (état du
+  lecteur), `commande`, `reponse`, `tick` (toutes les 500 ms) ; sorties (`sorties()`) : `Envoyer` (une commande à la fois, la suivante après confirmation,
+  la dernière valeur de chaque réglage gardée, abandon au bout de 3 s), `Fin`, `Pret`, `Attente` (salon cinéma : pause commune demandée après 1 s de chargement),
+  `Refus`, `Journal`. Coupe-circuit au-delà de 20 états par seconde (5 s de pause), chargement lent signalé après 15 s, lecture automatique refusée après 3 s.
+- `fournisseurs.rs` : trait `LecteurSeance` (portage de `Adapter`), `LecteurFichier` (fichiers hébergés, sur `lecteur::Lecteur`, jeton seulement vers le préfixe donné),
+  `fournisseur` : `file`, `page` → libmpv ; `film` → `LecteurFilm` ; YouTube → vue `wry` (#375), le lien s'ouvre dans le navigateur d'ici là ; Vimeo, Twitch,
+  Dailymotion → navigateur au moment de la séance (`adresse_navigateur`, écart assumé) ; le reste : « Cette source de vidéo n’est pas prise en charge par cette version. ».
+- `film.rs` : `LecteurFilm` (portage du lecteur de films) : flux d'Entracte demandé par `POST /titles/{id}/playback` (codecs que libmpv lit moins ceux que l'appareil
+  a refusés), piste audio et sous-titres choisis par les préférences (`PreferencesFilm` : VF, VFF, VFQ, anglais ; aucun, forcés, français, anglais), palier mémorisé
+  (repli sur l'original si le serveur le refuse), flux rouvert pour une autre piste audio, un autre palier ou un saut hors du flux HLS, position réelle d'un flux
+  qui commence en cours de titre, repli unique en transcodage (erreur, lecture directe sans piste vidéo ou sans image après 10 s), codec recopié illisible refusé
+  ensuite, progression enregistrée à la pause, toutes les 15 s et en quittant, flux fermé (`DELETE /streams/{id}`). Les appels sont des `DemandeFilm` que l'app
+  exécute (`Client::executer_demande_film`) et dont elle rend la réponse (`ReponseFilm`).
+- `avance.rs` et `depot.rs` : préchargement des segments HLS avec les limites du front (normal : rien de plus, long : 15 min et 2 Gio, tout le film : 16 Gio ;
+  3 téléchargements en parallèle après le premier, 30 s gardées derrière la position, 3 échecs au plus, segment pas encore transcodé attendu 5 s), segments reconnus
+  par leur nom d'un flux à l'autre, dépôt en mémoire ou sur le disque (`entracte-avance/<clé>`, marqueur `.vu`, restes de plus de 24 h purgés, repli en mémoire si
+  l'écriture échoue). `relais.rs` : relais HTTP local (`127.0.0.1`) par lequel libmpv lit un flux HLS d'Entracte : la liste passe telle quelle (adresses absolues
+  ramenées au relais) et donne les segments au préchargement, chaque segment est servi par l'avance ou demandé à Entracte avec le jeton.
+- `pilote.rs` : `PiloteSeance` (portage de `WatchPlayer`) : lecteur choisi selon la source, seul l'hôte pilote quand la séance le demande, morceau illisible de
+  Music2gether passé après 1 s, `reconnecte()` redemande l'état (`GET /voice/{salon}/{genre}`) après une reconnexion ; ses `ActionPilote` sont des appels
+  (`Client::executer_appel_seance` : `action`, `ready`, état), des demandes du lecteur de films et des messages. `VuePilote` donne à l'interface erreur, blocage,
+  suspension, chargement, position, durée, plages chargées et lien à ouvrir dans le navigateur.
+- Tests : les cas des huit fichiers de tests du front (correspondance dans la PR), deux clients (un lecteur simulé comme le lecteur HTML du front, avec chargement
+  et attente après un saut, horloge en avance de 1,5 s ; l'autre sur `Lecteur::factice()`, horloge en retard de 0,7 s, latence de 80 ms) restent à moins de 500 ms
+  l'un de l'autre après chacune de dix commandes, et une coupure du réseau de 30 s d'un client, pendant laquelle l'autre met en pause, déplace, relance et
+  accélère, est rattrapée à la reconnexion sans action de la personne.
+- Écarts : pas de diffusion sur une télé (API Remote Playback du navigateur) ; Vimeo, Twitch, Dailymotion dans le navigateur ; YouTube dans le navigateur jusqu'à #375.
 
 ## Intégration au bureau
 

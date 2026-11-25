@@ -196,6 +196,20 @@ impl MoteurLecture for MoteurFactice {
                 Some(Ok(media)) => {
                     i.position = position_bornee(source.depart, media.duree);
                     i.pause = source.en_pause;
+                    let mut pistes = media.pistes.clone();
+                    let premier = pistes
+                        .iter()
+                        .filter(|p| p.genre == GenrePiste::SousTitres)
+                        .map(|p| p.id)
+                        .max()
+                        .unwrap_or(0);
+                    for (i, _) in source.sous_titres.iter().enumerate() {
+                        let mut externe =
+                            piste(premier + 1 + i as i64, GenrePiste::SousTitres, None);
+                        externe.externe = true;
+                        externe.defaut = false;
+                        pistes.push(externe);
+                    }
                     let audio = media
                         .pistes
                         .iter()
@@ -203,7 +217,7 @@ impl MoteurLecture for MoteurFactice {
                         .map(|p| p.id);
                     ev.extend([
                         Evenement::Duree(media.duree),
-                        Evenement::Pistes(media.pistes.clone()),
+                        Evenement::Pistes(pistes),
                         Evenement::PisteAudio(audio),
                         Evenement::SousTitres(None),
                         Evenement::LargeurVideo(media.taille.0),
