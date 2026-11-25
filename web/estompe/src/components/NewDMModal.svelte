@@ -61,8 +61,7 @@
     error = ''
     try {
       const dm = await api.openDM(pseudo.trim())
-      if (dm.online) app.online[dm.other.id] = true
-      if (!app.dms.some((d) => d.id === dm.id)) app.dms.unshift(dm)
+      app.addDm(dm)
       onclose()
       router.go(hrefs.dm(dm.id))
     } catch (err) {
