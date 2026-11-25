@@ -766,6 +766,24 @@ fn scenario(
         || banc.cameras.ouvertes() == ["c2".to_string()],
         "c335 : l'aperçu passe sur la caméra choisie",
     );
+    let cameras = banc.cameras.clone();
+    attendre_l_interface(
+        &faible,
+        move |f| {
+            cameras.pousser(1);
+            let c = f.global::<DonneesVocal>().get_camera();
+            c.apercu >= 0
+                && f.global::<DonneesVideo>()
+                    .get_flux()
+                    .row_data(c.apercu as usize)
+                    .is_some_and(|l| l.pret)
+        },
+        "c335 : l'aperçu de la caméra choisie s'affiche",
+    );
+    attendre(
+        || banc.cameras.ouvertes() == ["c2".to_string()],
+        "c335 : seul l'aperçu de la caméra choisie reste ouvert",
+    );
     assert_eq!(
         memoire.lire(|p| (p.camera.clone(), p.qualite_camera)),
         (

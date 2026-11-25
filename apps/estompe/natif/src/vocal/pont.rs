@@ -1268,6 +1268,13 @@ impl PontVocal {
         let recepteur = self.videos_hors_session.recepteur(&cle_apercu());
         let fenetre = self.fenetre.clone();
         self.runtime.spawn_blocking(move || {
+            let perime = |pont: &PontVocal| {
+                let i = pont.verrou();
+                i.camera.generation != generation || !i.camera.ouvert
+            };
+            if perime(&pont) {
+                return;
+            }
             let cameras = outils.cameras.cameras().unwrap_or_default();
             let alerte = {
                 let pont = pont.clone();
@@ -1293,6 +1300,10 @@ impl PontVocal {
                 recepteur,
                 Some(alerte),
             );
+            if perime(&pont) {
+                drop(resultat);
+                return;
+            }
             let _ = fenetre.upgrade_in_event_loop(move |f| {
                 {
                     let mut i = pont.verrou();

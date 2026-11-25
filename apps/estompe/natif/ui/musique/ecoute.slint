@@ -5,6 +5,7 @@ import { DonneesVueWeb, ZoneVueWeb } from "../composants/vue-web.slint";
 import { ParticipantSeance } from "../regarder-ensemble/donnees.slint";
 import { DonneesMusique, ElementMusique, ResultatMusique, VoisinMusique } from "donnees.slint";
 import { Pochette } from "mini.slint";
+import { PetitBouton } from "../videos/vue.slint";
 
 component Carte inherits Rectangle {
     in property <string> titre;
@@ -95,18 +96,11 @@ component LigneMorceau inherits HorizontalLayout {
             overflow: elide;
         }
         Text {
-            text: root.details;
+            text: root.duree == "" ? root.details : root.details == "" ? root.duree : root.details + " · " + root.duree;
             color: Theme.gris;
             font-size: 11.5px;
             overflow: elide;
         }
-    }
-    if root.duree != "": Text {
-        text: root.duree;
-        color: Theme.gris;
-        font-family: Typo.mono;
-        font-size: 10.5px;
-        vertical-alignment: center;
     }
     @children
 }
@@ -492,28 +486,28 @@ export component EnEcoute inherits Rectangle {
                     titre: e.titre;
                     details: e.details;
                     duree: e.duree;
-                    if e.monter || e.descendre: Bouton {
+                    if e.monter || e.descendre: PetitBouton {
+                        y: (parent.height - self.height) / 2;
                         icone: "up";
                         description: "Monter";
-                        variante: VarianteBouton.fantome;
                         actif: e.monter;
                         clique => {
                             DonneesMusique.monter(i);
                         }
                     }
-                    if e.monter || e.descendre: Bouton {
+                    if e.monter || e.descendre: PetitBouton {
+                        y: (parent.height - self.height) / 2;
                         icone: "down";
                         description: "Descendre";
-                        variante: VarianteBouton.fantome;
                         actif: e.descendre;
                         clique => {
                             DonneesMusique.descendre(i);
                         }
                     }
-                    if e.retirer: Bouton {
+                    if e.retirer: PetitBouton {
+                        y: (parent.height - self.height) / 2;
                         icone: "x";
                         description: "Retirer de la file";
-                        variante: VarianteBouton.fantome;
                         clique => {
                             DonneesMusique.retirer(e.id);
                         }
