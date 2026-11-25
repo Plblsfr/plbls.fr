@@ -59,8 +59,8 @@ Pour partager les artefacts entre worktrees, `CARGO_TARGET_DIR` pointe vers un d
 le verrou garantit qu'un seul build l'utilise à la fois, mais passer d'une branche à l'autre recompile ce qui diffère. Un dossier par
 worktree évite ces recompilations au prix du disque.
 
-Les tests passent par [cargo-nextest](https://nexte.st) (`cargo install cargo-nextest --version 0.9.152 --locked`, version de `CARGO_NEXTEST_VERSION`
-dans `ci.yml`) : les tests d'intégration forment un seul binaire, `tests/natif/main.rs` (un module par fichier, `commun` partagé), et nextest lance
+Les tests passent par [cargo-nextest](https://nexte.st) (`scripts/estompe/installer-nextest.sh`, binaire de la release
+à la version et aux sommes SHA-256 épinglées dans le script, celui de la CI) : les tests d'intégration forment un seul binaire, `tests/natif/main.rs` (un module par fichier, `commun` partagé), et nextest lance
 chaque test dans son propre processus, car le backend de test de Slint ne s'installe qu'une fois par processus. Un test se cible par son nom
 (`cargo nextest run --test natif moderation::`). Regroupés, les 28 binaires d'avant ne se lient plus qu'une fois : 4 s au lieu de 165 s après une
 modification de la bibliothèque (mesuré sous WSL, sans le vocal), et 0,8 Go sur le disque au lieu d'autant par binaire.

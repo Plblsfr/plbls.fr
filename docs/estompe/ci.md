@@ -67,7 +67,7 @@ documentation seule ne lance que `conventions`, ce `front` léger (et `changelog
 - `estompe-natif-linux` : app native ([natif.md](natif.md)). Installe clang 21 (dépôt `apt.llvm.org`, `CXX=clang++-21`, exigé par libwebrtc du SDK LiveKit) et démarre le
   serveur LiveKit de `deploy/docker-compose.dev.yml` pour le test d'intégration du vocal (`ESTOMPE_LIVEKIT_URL`). Lance `scripts/estompe/natif-check.sh` dans une session D-Bus avec un trousseau
   GNOME déverrouillé (le coffre de secrets est testé pour de vrai) : portabilité, fichiers générés à jour, `cargo fmt --check`,
-  `clippy -D warnings`, `cargo deny check`, absence de `tauri`, `wry` et `webview2-com`, tests par cargo-nextest, installé par `taiki-e/install-action` à la version `CARGO_NEXTEST_VERSION` (dont les captures de rendu, et la conversion d'une
+  `clippy -D warnings`, `cargo deny check`, absence de `tauri`, `wry` et `webview2-com`, tests par cargo-nextest, installé par `scripts/estompe/installer-nextest.sh` (binaire de la release, somme SHA-256 vérifiée) (dont les captures de rendu, et la conversion d'une
   vidéo HEVC en H.264 par le ffmpeg installé par apt, rendue obligatoire par `ESTOMPE_FFMPEG_EXIGE=1`, comme le décodage d'un message vocal AAC ;
   `libasound2-dev` pour le son par `cpal`, sans périphérique audio : micro et sortie sont simulés ; zone de notification et notifications
   sur le bus de session, rendues obligatoires par `ESTOMPE_DBUS_EXIGE=1`), build. Puis il lance
