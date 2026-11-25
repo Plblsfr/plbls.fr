@@ -1,4 +1,4 @@
-mod commun;
+use crate::commun;
 
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
@@ -663,7 +663,7 @@ fn conversion_video(
 }
 
 const VOCAL_DU_WEB: &[u8] =
-    include_bytes!("../../crates/client/src/message_vocal/essais/chrome.webm");
+    include_bytes!("../../../crates/client/src/message_vocal/essais/chrome.webm");
 
 fn sinus(taux: u32, duree_ms: u64) -> Vec<f32> {
     let n = (u64::from(taux) * duree_ms / 1000) as usize;
