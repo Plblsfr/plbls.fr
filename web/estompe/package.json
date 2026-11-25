@@ -15,6 +15,7 @@
     "preview": "vite preview",
     "e2e": "playwright test",
     "e2e:entracte": "playwright test --config playwright.entracte.config.ts",
+    "e2e:cinema": "playwright test --config playwright.cinema.config.ts",
     "e2e:sillon": "playwright test --config playwright.sillon.config.ts",
     "e2e:regie": "playwright test --config playwright.regie.config.ts",
     "e2e:sablier": "playwright test --config playwright.sablier.config.ts",
