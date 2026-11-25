@@ -242,14 +242,14 @@ bouton « Fermer la marge » la ferme ; l'ouverture est retenue dans les préfé
   En tête, l'onglet « Membres », le compteur `MEMBRES · en ligne/total` et, au-delà de 8 membres, le filtre (pseudo et pseudo de serveur, sans casse ni accents).
 - Liste : groupes des rôles affichés séparément (`hoist`, du plus haut au plus bas, comme `grouper_membres`), puis « EN LIGNE » et « HORS LIGNE » pour les autres ;
   dans chaque groupe, en ligne d'abord puis par pseudo. Une ligne : avatar avec pastille de présence, pseudo de serveur à la couleur du rôle (atténué hors ligne),
-  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours. Un clic ou Entrée ouvre la carte de profil ; clic droit, touche Menu ou Maj+F10 ouvrent le menu du membre : « Profil », « Mentionner »
+  cadenas d'exclusion, « Bot », « Créateur », deux badges puis « +N » (médaille à la couleur du badge), jeu en cours ou, sans jeu, « Écoute titre – artiste » (musique du salon vocal où il est). Un clic ou Entrée ouvre la carte de profil ; clic droit, touche Menu ou Maj+F10 ouvrent le menu du membre : « Profil », « Mentionner »
   (si une conversation de ce serveur est ouverte en écriture : `@pseudo ` inséré au curseur), « Copier le pseudo ».
 - Présence par formes, lisible sans couleur (`Pastille`, `ui/composants/avatar.slint`) : disque plein (en ligne), demi-lune (absent), disque barré (ne pas déranger), anneau (hors ligne).
 - Virtualisation : la liste est une `ListeVirtuelle`, réimplémentation de `ListView` aux couleurs de la DA (le compilateur Slint ne virtualise que les enfants d'un
   composant nommé `ListView`) ; toutes les lignes font 44 px, seules les lignes visibles sont instanciées (16 pour 5 000 membres dans une fenêtre de 900 px).
   La liste signale son défilement et sa hauteur (`membres-defiles`) ; `fenetre_des_membres` (`src/coquille/membres.rs`) en déduit les lignes visibles, plus 5 lignes au-dessus et au-dessous.
 - Projection pure : `lignes_membres` (état du store, serveur, filtre → lignes, en-têtes de groupe compris), `donnees_marge`, `donnees_carte`. Les `Changement`
-  `MembreAjoute`, `MembreRetire`, `Membre`, `Roles`, `Presence` et `Avatar` du serveur courant visent la liste (`Cibles::membres`) ; `synchroniser` n'en touche
+  `MembreAjoute`, `MembreRetire`, `Membre`, `Roles`, `Presence` et `Avatar` du serveur courant, `Vocal` et `Seance` de la musique (« Écoute … ») visent la liste (`Cibles::membres`) ; `synchroniser` n'en touche
   que les lignes qui diffèrent : un changement de statut remplace une ligne, un passage en ligne retire et insère la seule ligne du membre et met à jour les deux compteurs.
 - Carte de profil (`ui/coquille/carte-profil.slint`), en lecture : bannière (`banner_color`, sinon couleur du rôle), avatar et présence, pseudo de serveur et
   d'origine, badges, statut et jeu, exclusion, rôles, dates d'arrivée sur le serveur et sur Estompe. Échap, le fond ou la croix la ferment. Sur ma carte,
@@ -1312,7 +1312,7 @@ Lecture d'une vidéo ou d'un son dans l'app, sans webview, par libmpv (décision
   le menu contextuel commun. `LecteurPlein` (`ui/video/lecteur.slint`, global `DonneesLecteur`) l'ouvre sur toute la fenêtre ; `natif/src/video/lecteur.rs`
   (`GestionLecteur::nouvelle`, `ouvrir(titre, source)`, `lire_piece`, `agrandir`, `suivre`, `arreter`, `fermer`) branche le global, suit l'état et pose les images.
   `LecteurPlein` prend le niveau de calque du moment où il s'ouvre (il passe au-dessus de la fenêtre « Clips ») et ne règle la zone de l'image que tant qu'il est ouvert.
-  Écrans qui l'ouvrent : pièces jointes et visionneuse de la messagerie, galerie des clips, lecture en solo du salon vidéos (lecteur ancré) ; restent le cinéma et la musique.
+  Écrans qui l'ouvrent : pièces jointes et visionneuse de la messagerie, galerie des clips, lecture en solo du salon vidéos (lecteur ancré), séances de Regarder ensemble et du salon cinéma ; la musique du salon passe par la vue YouTube.
 - Livraison : sous Linux, la libmpv du système (`libmpv2`) ; sous Windows, `libmpv-2.dll` dans l'installeur (voir [Livraison](#livraison)). La crate client
   trouve la bibliothèque d'import par `ESTOMPE_MPV_DIR` (`build.rs`). libmpv refuse de démarrer si `LC_NUMERIC` n'est pas `C` (`Lecteur::mpv` rend alors
   `ErreurLecteur::Indisponible`).
@@ -1409,7 +1409,7 @@ Seule webview de l'app (#375) : une vue `wry` créée à l'ouverture d'un lecteu
   `readYouTube`), `LecteurYoutube` (`LecteurSeance` piloté par le protocole `postMessage` de l'API IFrame, sans son script : `listening` après le chargement,
   commandes gardées jusqu'à `onReady`, `loadVideoById`/`cueVideoById`, `seekTo`, `setPlaybackRate`, `setVolume`) et `LienVue`, file partagée entre ce lecteur
   (fil de la séance) et la vue (fil de l'interface) : page à ouvrir, messages à envoyer, messages reçus, runtime absent, fermeture.
-- App (`apps/estompe/natif/src/video/youtube.rs`) : vues tenues par le fil de l'interface (une pour la séance, une pour la visionneuse, une pour la lecture en solo), placées par
+- App (`apps/estompe/natif/src/video/youtube.rs`) : vues tenues par le fil de l'interface (une pour la séance, une pour la visionneuse, une pour la lecture en solo, une pour la musique du salon), placées par
   `ZoneVueWeb` (`ui/composants/vue-web.slint`, qui signale sa position, sa taille et sa visibilité, et se rappelle toutes les 200 ms : une zone qui ne se signale
   plus depuis 600 ms, page quittée ou scène masquée, cache la vue). Une vue native passe par-dessus l'interface Slint : elle est masquée dès qu'une fenêtre ou
   un menu s'ouvre au-dessus (`Calques`), tant que la page du lecteur n'a pas fini de charger (le chargement de la séance reste visible) et sur une erreur.
@@ -1422,6 +1422,42 @@ Seule webview de l'app (#375) : une vue `wry` créée à l'ouverture d'un lecteu
   native ne se découpe pas au bord de la liste des messages).
 - La première ouverture démarre le runtime WebView2 (création synchrone de l'environnement, quelques centaines de millisecondes, non mesurée) ; à la fermeture,
   la vue et son environnement sont libérés, les processus `msedgewebview2` du runtime s'arrêtent ensuite.
+
+## Musique du salon vocal
+
+Music2gether dans l'app (#376), portage de `blocks/musique/` (`MusicDock`, `MusicMini`, `music.ts`) et de `components/NowPlaying.svelte` ; la session elle-même
+(`music.state`, commandes, file) est celle de [Regarder ensemble](#regarder-ensemble), genre `music`. Le son vient du lecteur officiel YouTube : la vue de la
+[lecture YouTube](#lecteur-youtube) (place `musique`) sous Windows avec la feature `youtube`, le navigateur sinon (Linux, version sans la feature).
+
+- Client (`apps/estompe/crates/client/src/musique.rs`) : portage de `music.ts` (`horloge_morceau` = `clock`, `chemin_pochette` = `coverUrl`, `cadrage_pochette` =
+  `coverCrop`, `couleur_moyenne` = `averageColor`), `position_musique` (position attendue de la session bornée à la durée du morceau, durée du lecteur à défaut),
+  `Repetition` (cycle « non », « le morceau », « la file »), `vue_musique` (« En écoute » : titre, artiste et album, pochette, morceaux précédent et suivant,
+  commandes selon les droits, mélange dès deux morceaux en file, « Suivant » si la file n'est pas vide ou se répète, auditeurs prêts ou en chargement, file avec
+  monter, descendre et retirer pour qui pilote, retirer aussi pour qui a ajouté le morceau), `vue_mini` et `minis_du_serveur` (portage de `MusicMini` : un
+  mini-lecteur sous chaque salon vocal du serveur où joue une musique, celui du salon où l'on est en bas du panneau avec « Écoute ensemble · salon »),
+  `ecoute_de` (portage de `listeningOf`), `Client::rechercher_musique` (`GET /music/search`) et `Client::repetition_seance` (`PUT /voice/{salon}/music/options`).
+- App (`apps/estompe/natif/src/musique.rs`, `PontMusique` tenu par le pont du vocal) : dans le salon vocal où l'on est connecté, une session Music2gether démarre
+  une `SeanceActive` (genre `music`, `LecteurYoutube` par la vue, navigateur sinon) qui continue quand on change de page, comme `MusicDock` ; elle s'arrête en
+  quittant le vocal ou à la fin de la session. Les séances `music` du serveur affiché et du salon où l'on est sont relues (`Store::charger_seances`).
+  Lecture, pause et déplacement passent par le moteur de synchronisation quand le lecteur existe, sinon par `POST /voice/{salon}/music/action` ; précédent,
+  suivant (`ended` avec la révision), mélange, répétition, « Seul l'hôte pilote », arrêt et file passent par l'API.
+- Interface (`ui/musique/`) : `EnEcoute` (`ecoute.slint`) prend la scène du salon vocal à la place des tuiles ; avec une séance de Regarder ensemble en même
+  temps, le bouton « Vidéo » ou « Musique » de la scène bascule de l'une à l'autre. Barre du haut (répétition, mélange, volume, « Seul l'hôte pilote »,
+  « Arrêter la session », « File d'attente (n) »), pochettes du morceau précédent et suivant (clic : précédent, suivant), lecteur YouTube à la place de la
+  pochette quand la vue existe, titre, barre `MiniProgression`, précédent, lecture, suivant, dernière action ; à droite, auditeurs, ajout (lien YouTube Music
+  ajouté à la file, recherche par Entrée, six résultats) et file. « Écouter ensemble » sur la scène ouvre le choix du salon de Regarder ensemble (genre
+  `music`). `MiniMusiqueVue` (`mini.slint`) dans le panneau. Pochettes (`GET /music/cover/{id}`, servie par Estompe) décodées hors du fil de l'interface,
+  recadrées sans les bandes noires de la miniature YouTube, couleur moyenne en fond.
+- Volume de la musique propre à chacun et séparé des voix : préférence `volume_musique` (80 par défaut), envoyé au lecteur YouTube ; le son des voix reste
+  celui de LiveKit.
+- Activité : « Écoute titre – artiste » dans la liste des membres et sous mon pseudo (sans jeu en cours) pour qui est dans un salon vocal où joue une musique ;
+  comme le front, c'est déduit de la session, rien n'est envoyé au serveur.
+- Tests : `musique::tests` (cas Music2gether de `watch.test.ts` : `clock`, `coverCrop`, `averageColor` ; position, vue, mini-lecteurs, écoute, appels),
+  `regarder_ensemble::pilote::tests::deux_clients_factices_restent_synchronises_sur_un_changement_de_titre` (deux clients sur un serveur simulé : fin naturelle
+  d'un morceau comptée une fois, « Suivant » des deux à la fois compté une fois, déplacement, précédent ; écart sous 500 ms), captures `musique-*`.
+- Écarts : recherche lancée par Entrée et non pendant la frappe ; pas de glisser-déposer dans la file (boutons monter et descendre) ; pas d'animation de
+  glissement des pochettes ; pas de bouton « Activer le son » (lecture automatique refusée) hors navigateur ; sous Linux et sans la feature `youtube`, la musique
+  s'écoute dans le navigateur, sans synchronisation.
 
 ## Salon vidéos et lecture en solo
 
@@ -1593,7 +1629,7 @@ Savoir quel jeu tourne, pour l'activité montrée aux autres, puis pour les over
   avec « Ajouter comme jeu » et « Exclure » (passer sur le jeu puis revenir dans Estompe), jeux ajoutés (« Ajouter un jeu… » par le sélecteur de fichiers), jeux exclus
   (nom saisi ou « Parcourir… »). Préférence `jeux` (`ReglagesJeux` : listes sans doublon à la casse près, 200 entrées et 260 caractères au plus).
 - Écarts : les jeux ajoutés et exclus étaient propres au replay dans l'app Tauri (`SettingsReplay`) ; ici ils servent à toute la détection (activité, overlays, replay).
-  Pas de « Écoute » (musique) dans l'activité avant le lot 10.
+  « Écoute … » de la musique du salon vocal : voir [Musique du salon vocal](#musique-du-salon-vocal) ; celle de Sillon arrive au lot 10.
 - Non vérifié ici (machine Linux) : détection d'un vrai jeu sous Windows (connu et ajouté à la main), activité vue par un autre client, coût CPU réel du sondage sous Windows.
 
 ## Overlay
