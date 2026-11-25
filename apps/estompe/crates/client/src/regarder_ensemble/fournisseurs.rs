@@ -4,7 +4,7 @@ use std::time::Instant;
 use crate::http::encoder_composant;
 use crate::lecteur::{EtatLecteur, Lecteur, Phase, Source};
 
-use super::film::{DemandeFilm, PrefTampon, Qualite, ReponseFilm};
+use super::film::{DemandeFilm, PistesFilm, PrefTampon, Qualite, ReponseFilm};
 
 pub type Plage = (f64, f64);
 
@@ -49,6 +49,9 @@ pub trait LecteurSeance: Send {
     }
     fn plages(&self) -> Vec<Plage> {
         Vec::new()
+    }
+    fn pistes_film(&self) -> Option<PistesFilm> {
+        None
     }
     fn regler_volume(&mut self, _volume: u8) {}
     fn choisir_audio(&mut self, _piste: i64) {}

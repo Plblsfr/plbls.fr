@@ -155,7 +155,7 @@ pub struct SeanceEnCours {
     pub decalage: i64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct RegistreSeances {
     seances: HashMap<(GenreSeance, String), SeanceEnCours>,
 }

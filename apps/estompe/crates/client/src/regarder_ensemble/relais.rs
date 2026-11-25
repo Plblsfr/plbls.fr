@@ -75,10 +75,25 @@ pub struct Relais {
 impl Relais {
     pub async fn demarrer(client: Client) -> std::io::Result<Self> {
         let ecoute = TcpListener::bind("127.0.0.1:0").await?;
+        Self::ecouter(ecoute, client, &tokio::runtime::Handle::current())
+    }
+
+    pub fn demarrer_sur(runtime: &tokio::runtime::Handle, client: Client) -> std::io::Result<Self> {
+        let ecoute = std::net::TcpListener::bind("127.0.0.1:0")?;
+        ecoute.set_nonblocking(true)?;
+        let _contexte = runtime.enter();
+        Self::ecouter(TcpListener::from_std(ecoute)?, client, runtime)
+    }
+
+    fn ecouter(
+        ecoute: TcpListener,
+        client: Client,
+        runtime: &tokio::runtime::Handle,
+    ) -> std::io::Result<Self> {
         let adresse = format!("http://{}", ecoute.local_addr()?);
         let avance: AvancePartagee = Arc::default();
         let partagee = avance.clone();
-        let tache = tokio::spawn(async move {
+        let tache = runtime.spawn(async move {
             while let Ok((flux, _)) = ecoute.accept().await {
                 tokio::spawn(servir(flux, client.clone(), partagee.clone()));
             }

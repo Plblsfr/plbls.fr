@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use super::etat::{id_de, salon_depuis, trier_salons, CleConversation, Etat, ParticipantVocal};
 use super::messages::ChangementMessages;
+use crate::regarder_ensemble::GenreSeance;
 use crate::temps_reel::evenements::{
     Evenement, GenreDepart, MentionRecue, NotificationServeur, SourcePartage, StatutPresence,
 };
@@ -85,6 +86,10 @@ pub enum Changement {
     Messages(ChangementMessages),
     Emojis {
         serveur: String,
+    },
+    Seance {
+        genre: GenreSeance,
+        salon: String,
     },
 }
 
@@ -854,6 +859,17 @@ pub(crate) fn oublier_salon(
     serveur: Option<&str>,
     a: &mut Application,
 ) {
+    let genres: Vec<GenreSeance> = GenreSeance::TOUS
+        .into_iter()
+        .filter(|g| etat.seances.seance(*g, salon).is_some())
+        .collect();
+    etat.seances.retirer_salon(salon);
+    for genre in genres {
+        a.changer(Changement::Seance {
+            genre,
+            salon: salon.to_string(),
+        });
+    }
     let cle = CleConversation::Salon(salon.to_string());
     if etat.non_lus.remove(&cle).is_some() {
         a.changer(Changement::NonLus {

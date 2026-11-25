@@ -29,7 +29,8 @@ pub use reducteur::{
 use crate::derniere_vue::{adresse_a_rouvrir, conversation_de_la_derniere_vue, DerniereVue};
 use crate::http::{Client, ErreurApi};
 use crate::ordre_serveurs::{deplacer_serveur, Sens};
-use crate::temps_reel::evenements::StatutPresence;
+use crate::regarder_ensemble::GenreSeance;
+use crate::temps_reel::evenements::{Seance, StatutPresence};
 use crate::temps_reel::{Evenement, FluxTempsReel, Signal};
 use crate::types::NotifySettings;
 pub(crate) use etat::id_de;
@@ -164,7 +165,60 @@ impl Store {
         Ok(())
     }
 
+    pub fn appliquer_seance(&self, genre: GenreSeance, vue: &Seance, frais: bool) {
+        let maintenant = self
+            .maintenant_ms()
+            .unwrap_or_else(|| crate::mesures::maintenant_ms() as i64);
+        self.modifier(|etat| {
+            let change = etat.seances.appliquer(genre, vue, frais, maintenant);
+            let changements = if change {
+                vec![Changement::Seance {
+                    genre,
+                    salon: vue.channel_id.clone(),
+                }]
+            } else {
+                Vec::new()
+            };
+            ((), changements)
+        });
+    }
+
+    pub async fn charger_seances(&self, serveur: &str, genres: &[GenreSeance]) {
+        for &genre in genres {
+            let Ok(vues) = self.client().seances_du_serveur(serveur, genre).await else {
+                continue;
+            };
+            let absents: Vec<String> = self.lire(|etat| {
+                etat.salons(serveur)
+                    .iter()
+                    .map(|c| id_de(&c.id).to_string())
+                    .filter(|s| {
+                        etat.seances.seance(genre, s).is_some()
+                            && !vues.iter().any(|v| &v.channel_id == s && v.state.is_some())
+                    })
+                    .collect()
+            });
+            for vue in &vues {
+                self.appliquer_seance(genre, vue, true);
+            }
+            for salon in absents {
+                let vide = Seance {
+                    server_id: serveur.to_string(),
+                    channel_id: salon,
+                    ..Seance::default()
+                };
+                self.appliquer_seance(genre, &vide, true);
+            }
+        }
+    }
+
     pub fn appliquer(&self, evenement: &Evenement) -> Vec<Effet> {
+        match evenement {
+            Evenement::SeanceRegarder(v) => self.appliquer_seance(GenreSeance::Regarder, v, false),
+            Evenement::SeanceCinema(v) => self.appliquer_seance(GenreSeance::Cinema, v, false),
+            Evenement::SeanceMusique(v) => self.appliquer_seance(GenreSeance::Musique, v, false),
+            _ => {}
+        }
         let effets = self.appliquer_application(|etat| appliquer_avec_effets(etat, evenement));
         self.appliquer_aux_messages(evenement);
         effets
@@ -649,6 +703,70 @@ mod tests {
         assert!(!etat.capacite("videos.use"));
         assert!(!etat.capacite("vocal.screen"));
         assert!(!etat.capacite("admin.users"));
+    }
+
+    #[tokio::test]
+    async fn les_seances_suivent_le_temps_reel_et_le_rechargement_du_serveur() {
+        let serveur = ServeurFactice::demarrer([Reponse::vide(500)]).await;
+        let store = Store::nouveau(serveur.client(), &[]);
+        let mut etat = essais::etat_de_depart();
+        etat.details.get_mut("s1").unwrap().channels = Some(
+            serde_json::from_value(json!([
+                {"id": "v1", "name": "Vocal", "kind": "voice", "position": 1},
+                {"id": "k1", "name": "Cinéma", "kind": "cinema", "position": 2}
+            ]))
+            .unwrap(),
+        );
+        store.installer(etat);
+        store.definir_horloge(Arc::new(|| 1_000));
+        let mut abonne = store.abonner();
+        let seance = |rev: i64| {
+            json!({"server_id": "s1", "channel_id": "k1", "now": "1970-01-01T00:00:03Z",
+                "state": {"rev": rev, "provider": "film", "video": "f1", "playing": true, "pos": 10.0, "rate": 1.0, "at": "1970-01-01T00:00:02Z", "host": "bob"}})
+        };
+        store.appliquer(&evenement("cinema.state", seance(4)));
+        let s = store.lire(|e| e.seances.seance(GenreSeance::Cinema, "k1").cloned());
+        assert_eq!(
+            s.as_ref().map(|s| (s.etat.rev, s.decalage)),
+            Some((4, 2_000))
+        );
+        assert!(store.lire(|e| e.seances.seance(GenreSeance::Regarder, "k1").is_none()));
+        assert_eq!(
+            abonne.try_recv().unwrap(),
+            [Changement::Seance {
+                genre: GenreSeance::Cinema,
+                salon: "k1".into()
+            }]
+        );
+        store.appliquer(&evenement("cinema.state", seance(3)));
+        assert!(abonne.try_recv().is_err());
+        assert_eq!(
+            store.lire(|e| e
+                .seances
+                .seance(GenreSeance::Cinema, "k1")
+                .map(|s| s.etat.rev)),
+            Some(4)
+        );
+        serveur.router("GET", "/servers/s1/watch", Reponse::json(200, json!({"v1": {"state": {"rev": 1, "provider": "file", "video": "https://x.test/v.mp4"}, "now": "1970-01-01T00:00:01Z"}})));
+        serveur.router("GET", "/servers/s1/cinema", Reponse::json(200, json!({})));
+        store
+            .charger_seances("s1", &[GenreSeance::Regarder, GenreSeance::Cinema])
+            .await;
+        assert!(store.lire(|e| e.seances.seance(GenreSeance::Regarder, "v1").is_some()));
+        assert!(store.lire(|e| e.seances.seance(GenreSeance::Cinema, "k1").is_none()));
+        let mut recus = Vec::new();
+        while let Ok(lot) = abonne.try_recv() {
+            recus.extend(lot);
+        }
+        assert!(recus.contains(&Changement::Seance {
+            genre: GenreSeance::Cinema,
+            salon: "k1".into()
+        }));
+        store.appliquer(&evenement(
+            "channel.deleted",
+            json!({"server_id": "s1", "id": "v1"}),
+        ));
+        assert!(store.lire(|e| e.seances.seance(GenreSeance::Regarder, "v1").is_none()));
     }
 
     #[tokio::test]

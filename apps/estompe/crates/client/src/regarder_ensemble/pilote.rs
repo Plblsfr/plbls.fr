@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use crate::http::{encoder_composant, Client, Corps, ErreurApi};
 use crate::temps_reel::evenements::{EtatSeance, Seance};
 
-use super::film::{DemandeFilm, PrefTampon, Qualite, ReponseFilm};
+use super::film::{DemandeFilm, Intro, PistesFilm, PrefTampon, Qualite, ReponseFilm};
 use super::fournisseurs::{
     adresse_navigateur, fournisseur, EtatLecture, Fournisseur, LecteurSeance, Plage,
     MESSAGE_NON_PRIS_EN_CHARGE,
@@ -17,6 +17,10 @@ pub const SEUL_L_HOTE: &str = "Seul l’hôte pilote la lecture";
 pub const SANS_REPONSE: &str = "Le serveur n’a pas répondu";
 pub const PASSER_ILLISIBLE_MS: i64 = 1000;
 pub const TICK_MS: i64 = 500;
+
+pub fn touche_passer_intro(texte: &str, ctrl: bool, meta: bool, alt: bool) -> bool {
+    !(ctrl || meta || alt) && texte.eq_ignore_ascii_case("s")
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppelSeance {
@@ -151,6 +155,49 @@ impl PiloteSeance {
 
     fn etat(&self) -> Option<&EtatSeance> {
         self.seance.as_ref().map(|s| &s.etat)
+    }
+
+    pub fn seance(&self) -> Option<&SeanceEnCours> {
+        self.seance.as_ref()
+    }
+
+    pub fn pistes(&self) -> Option<PistesFilm> {
+        self.lecteur.as_ref().and_then(|l| l.pistes_film())
+    }
+
+    pub fn intro(&self) -> Option<Intro> {
+        if self.fournisseur.as_deref() != Some("film") {
+            return None;
+        }
+        self.pistes().and_then(|p| p.intro)
+    }
+
+    pub fn intro_passable(&self, maintenant: i64) -> bool {
+        let v = self.vue(maintenant);
+        v.peut_piloter
+            && v.erreur.is_empty()
+            && !v.chargement
+            && self.lecteur.is_some()
+            && self.intro().is_some_and(|i| i.contient(v.position))
+    }
+
+    pub fn passer_intro(&mut self, maintenant: i64) -> bool {
+        if !self.intro_passable(maintenant) {
+            return false;
+        }
+        let (Some(intro), Some(titre)) = (self.intro(), self.etat().map(|e| e.video.clone()))
+        else {
+            return false;
+        };
+        if self
+            .commande(Commande::aller(intro.fin), maintenant)
+            .is_err()
+        {
+            return false;
+        }
+        self.actions
+            .push(ActionPilote::Film(DemandeFilm::IntroPassee(titre)));
+        true
     }
 
     fn utiliser(&mut self, provider: &str, maintenant: i64) {
@@ -1177,6 +1224,191 @@ mod tests {
                 video: None
             })]
         );
+    }
+
+    type Journal = Arc<std::sync::Mutex<Vec<String>>>;
+
+    struct Enregistreur {
+        journal: Journal,
+        n: usize,
+        t: f64,
+        st: EtatLecture,
+    }
+
+    impl LecteurSeance for Enregistreur {
+        fn charger(&mut self, reference: &str, depart: f64, lecture: bool) {
+            self.t = depart;
+            self.st = if lecture {
+                EtatLecture::Lecture
+            } else {
+                EtatLecture::Pause
+            };
+            self.journal
+                .lock()
+                .unwrap()
+                .push(format!("{} load {reference} {depart} {lecture}", self.n));
+        }
+        fn lire(&mut self) {
+            self.st = EtatLecture::Lecture;
+        }
+        fn pause(&mut self) {
+            self.st = EtatLecture::Pause;
+        }
+        fn aller(&mut self, position: f64) {
+            self.t = position;
+        }
+        fn temps(&self) -> f64 {
+            self.t
+        }
+        fn vitesse(&self) -> f64 {
+            1.0
+        }
+        fn regler_vitesse(&mut self, _vitesse: f64) {}
+        fn etat(&self) -> EtatLecture {
+            self.st
+        }
+        fn detruire(&mut self) {
+            self.journal
+                .lock()
+                .unwrap()
+                .push(format!("{} destroy", self.n));
+        }
+    }
+
+    #[test]
+    fn recharger_recree_le_lecteur_et_recharge_le_film_a_la_position_de_la_seance() {
+        let journal: Journal = Arc::default();
+        let j = journal.clone();
+        let mut n = 0;
+        let fabrique: FabriqueLecteur = Box::new(move |f| {
+            assert_eq!(f, Fournisseur::Film);
+            n += 1;
+            Some(Box::new(Enregistreur {
+                journal: j.clone(),
+                n,
+                t: 0.0,
+                st: EtatLecture::NonDemarre,
+            }) as Box<dyn LecteurSeance>)
+        });
+        let mut p = PiloteSeance::nouveau(GenreSeance::Cinema, "u", fabrique);
+        let mut e = etat("film", "f1");
+        e.playing = false;
+        e.pos = 600.0;
+        e.host = "u".into();
+        e.host_only = false;
+        p.recevoir(Some(&seance(e)), base());
+        assert_eq!(*journal.lock().unwrap(), ["1 load f1 600 false"]);
+        p.recharger(base() + 1000);
+        assert_eq!(
+            *journal.lock().unwrap(),
+            ["1 load f1 600 false", "1 destroy", "2 load f1 600 false"]
+        );
+        p.detruire();
+        assert_eq!(journal.lock().unwrap().last().unwrap(), "2 destroy");
+    }
+
+    const ENTRACTE: &str = "https://entracte.test";
+
+    fn seance_film(host: &str, host_only: bool) -> (PiloteSeance, MoteurFactice) {
+        let (lecteur, moteur) = Lecteur::factice();
+        let lecteur = Arc::new(lecteur);
+        let fabrique: FabriqueLecteur = Box::new(move |_| {
+            Some(
+                Box::new(crate::regarder_ensemble::film::LecteurFilm::nouveau(
+                    lecteur.clone(),
+                    ENTRACTE,
+                    crate::regarder_ensemble::film::PreferencesFilm::default(),
+                )) as Box<dyn LecteurSeance>,
+            )
+        });
+        let mut p = PiloteSeance::nouveau(GenreSeance::Cinema, "u", fabrique);
+        let mut e = etat("film", "f1");
+        e.pos = 45.0;
+        e.host = host.into();
+        e.host_only = host_only;
+        p.recevoir(Some(&seance(e)), base());
+        let tour = p
+            .actions()
+            .into_iter()
+            .find_map(|a| match a {
+                ActionPilote::Film(DemandeFilm::Ouvrir { tour, .. }) => Some(tour),
+                _ => None,
+            })
+            .expect("flux demandé");
+        assert!(p.intro().is_none());
+        assert!(!p.passer_intro(base()));
+        let flux = crate::regarder_ensemble::film::FluxFilm {
+            stream_id: "s1".into(),
+            url: "/stream/j1/direct".into(),
+            duration: 3000.0,
+            intro: Some(Intro {
+                debut: 30.0,
+                fin: 90.0,
+            }),
+            ..Default::default()
+        };
+        moteur.ajouter_media(
+            &format!("{ENTRACTE}/stream/j1/direct"),
+            MediaFactice::video(3000.0),
+        );
+        p.reponse_film(
+            ReponseFilm::Flux {
+                tour,
+                resultat: Ok(Box::new(flux)),
+            },
+            base(),
+        );
+        p.tick(base() + TICK_MS);
+        p.actions();
+        (p, moteur)
+    }
+
+    #[test]
+    fn passer_l_intro_deplace_la_seance_de_tous_au_bouton_comme_a_la_touche_s() {
+        let (mut p, moteur) = seance_film("u", false);
+        let maintenant = base() + TICK_MS;
+        assert_eq!(
+            p.intro(),
+            Some(Intro {
+                debut: 30.0,
+                fin: 90.0
+            })
+        );
+        assert!(p.intro_passable(maintenant));
+        assert!(touche_passer_intro("S", false, false, false));
+        assert!(!touche_passer_intro("s", true, false, false));
+        assert!(p.passer_intro(maintenant));
+        let actions = p.actions();
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            ActionPilote::Appel(AppelSeance::Action { action, position: Some(pos), video: Some(v), .. })
+                if action == "seek" && (*pos - 90.0).abs() < 1e-6 && v == "f1"
+        )));
+        assert!(actions.contains(&ActionPilote::Film(DemandeFilm::IntroPassee("f1".into()))));
+        assert!(moteur.commandes().iter().any(
+            |c| matches!(c, crate::lecteur::CommandeMoteur::Aller(t) if (*t - 90.0).abs() < 1.0)
+        ));
+        assert!(!p.intro_passable(maintenant));
+        assert!(!p.passer_intro(maintenant));
+    }
+
+    #[test]
+    fn sans_le_droit_de_piloter_une_intro_connue_ne_fait_ni_bouton_ni_saut() {
+        let (mut p, moteur) = seance_film("autre", true);
+        let maintenant = base() + TICK_MS;
+        assert!(p.intro().is_some());
+        assert!(!p.intro_passable(maintenant));
+        assert!(!p.passer_intro(maintenant));
+        assert!(!p.actions().iter().any(|a| matches!(
+            a,
+            ActionPilote::Appel(AppelSeance::Action { action, .. }) if action == "seek"
+        ) || matches!(
+            a,
+            ActionPilote::Film(DemandeFilm::IntroPassee(_))
+        )));
+        assert!(!moteur.commandes().iter().any(
+            |c| matches!(c, crate::lecteur::CommandeMoteur::Aller(t) if (*t - 90.0).abs() < 1.0)
+        ));
     }
 
     #[tokio::test]

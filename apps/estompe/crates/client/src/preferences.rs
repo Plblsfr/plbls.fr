@@ -11,6 +11,7 @@ use crate::derniere_vue::DerniereVue;
 use crate::jeux::ReglagesJeux;
 use crate::overlay::ReglagesOverlay;
 use crate::overlay_messages::ReglagesMessages;
+use crate::regarder_ensemble::PreferencesFilm;
 use crate::replay::types::ReglagesReplay;
 use crate::vocal::{
     Ecoute, QualiteCamera, QualiteRecue, ReglagesIncrustation, ReglagesPartage, ReglagesPtt,
@@ -91,6 +92,7 @@ pub struct Preferences {
     pub overlay: ReglagesOverlay,
     pub overlay_messages: ReglagesMessages,
     pub replay: ReglagesReplay,
+    pub film: PreferencesFilm,
 }
 
 impl Default for Preferences {
@@ -130,6 +132,7 @@ impl Default for Preferences {
             overlay: ReglagesOverlay::default(),
             overlay_messages: ReglagesMessages::default(),
             replay: ReglagesReplay::default(),
+            film: PreferencesFilm::default(),
         }
     }
 }
@@ -224,6 +227,7 @@ impl Preferences {
             overlay: champ(&objet, "overlay", d.overlay).borne(),
             overlay_messages: champ(&objet, "overlay_messages", d.overlay_messages).borne(),
             replay: champ(&objet, "replay", d.replay).borne(),
+            film: champ(&objet, "film", d.film),
         })
     }
 
@@ -512,6 +516,10 @@ mod tests {
                 dossier: Some(racine.path().join("clips").to_string_lossy().into_owned()),
                 ..ReglagesReplay::default()
             },
+            film: PreferencesFilm {
+                wifi_seulement: true,
+                ..PreferencesFilm::default()
+            },
         };
         preferences.enregistrer(&dossier).unwrap();
         assert_eq!(fichiers(&dossier), [NOM_FICHIER]);
@@ -559,6 +567,19 @@ mod tests {
         );
         let invalide = Preferences::depuis_json(r#"{"replay": {"ips": "x"}}"#).unwrap();
         assert_eq!(invalide.replay, ReglagesReplay::default());
+    }
+
+    #[test]
+    fn les_preferences_de_film_sont_relues_et_un_champ_invalide_revient_au_defaut() {
+        use crate::regarder_ensemble::{PrefAudio, PrefTampon};
+        let mut p = Preferences::default();
+        p.film.audio = PrefAudio::En;
+        p.film.tampon = PrefTampon::Tout;
+        p.film.codecs_refuses = vec!["hevc".into()];
+        let relu = Preferences::depuis_json(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(relu.film, p.film);
+        let invalide = Preferences::depuis_json(r#"{"film": {"tampon": "x"}}"#).unwrap();
+        assert_eq!(invalide.film, PreferencesFilm::default());
     }
 
     #[test]

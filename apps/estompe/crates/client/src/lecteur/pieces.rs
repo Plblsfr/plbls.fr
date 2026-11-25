@@ -88,6 +88,23 @@ impl LectureUnique {
         self.lecteur.charger(source);
     }
 
+    pub fn reserver(&self, origine: Origine, genre: GenreMedia) {
+        *self.verrou() = Some(MediaActif {
+            origine,
+            genre,
+            agrandi: true,
+        });
+        self.lecteur.definir_visible(genre == GenreMedia::Video);
+    }
+
+    pub fn liberer(&self, origine: &Origine) -> bool {
+        let a_moi = self
+            .verrou()
+            .as_ref()
+            .is_some_and(|a| &a.origine == origine);
+        a_moi && self.arreter()
+    }
+
     pub fn lire_piece(&self, message: &str, piece: &str, genre: GenreMedia, source: Source) {
         if self.piece_active().as_deref() == Some(piece) {
             self.lecteur.basculer();
@@ -288,6 +305,27 @@ mod tests {
         assert!(moteur.commandes().is_empty());
         assert!(l.arreter());
         assert!(!l.lecteur().etat().visible);
+    }
+
+    #[test]
+    fn une_seance_reserve_le_lecteur_et_ne_le_libere_que_si_elle_l_a_encore() {
+        let (l, moteur) = lecture();
+        l.lire_piece("m1", "v1", GenreMedia::Video, Source::adresse(VIDEO));
+        let seance = Origine::Autre("seance".into());
+        l.reserver(seance.clone(), GenreMedia::Video);
+        assert_eq!(l.piece_active(), None);
+        assert!(l.lecteur().etat().visible);
+        moteur.vider_commandes();
+        assert!(!l.suivre(presence(&[], &[])));
+        assert!(moteur.commandes().is_empty());
+        l.lire_piece("m2", "s1", GenreMedia::Audio, Source::adresse(SON));
+        assert!(!l.liberer(&seance));
+        assert_eq!(l.piece_active().as_deref(), Some("s1"));
+        l.reserver(seance.clone(), GenreMedia::Video);
+        moteur.vider_commandes();
+        assert!(l.liberer(&seance));
+        assert_eq!(moteur.commandes()[0], CommandeMoteur::Arreter);
+        assert_eq!(l.actif(), None);
     }
 
     #[test]

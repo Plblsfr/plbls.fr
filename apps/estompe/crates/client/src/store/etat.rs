@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::ordre_serveurs::{ordonner_serveurs, voisin, Sens};
+use crate::regarder_ensemble::RegistreSeances;
 use crate::roles::{date_en_millisecondes, Detail, Membre};
 use crate::temps_reel::evenements::StatutPresence;
 use crate::types::{
@@ -163,6 +164,7 @@ pub struct Etat {
     pub en_bas: bool,
     pub activite_locale: String,
     pub ordre_serveurs: Vec<String>,
+    pub seances: RegistreSeances,
 }
 
 impl Default for Etat {
@@ -186,6 +188,7 @@ impl Default for Etat {
             en_bas: true,
             activite_locale: String::new(),
             ordre_serveurs: Vec::new(),
+            seances: RegistreSeances::default(),
         }
     }
 }

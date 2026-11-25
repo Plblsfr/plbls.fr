@@ -441,6 +441,7 @@ pub enum DemandeFilm {
     FermerDepot,
     Preferences(PreferencesFilm),
     Reveiller,
+    IntroPassee(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -735,6 +736,10 @@ impl LecteurFilm {
 }
 
 impl LecteurSeance for LecteurFilm {
+    fn pistes_film(&self) -> Option<PistesFilm> {
+        self.pistes.clone()
+    }
+
     fn charger(&mut self, reference: &str, depart: f64, lecture: bool) {
         self.enregistrer();
         self.reference = reference.to_string();
@@ -1029,6 +1034,15 @@ impl Client {
         .map(|_| ())
     }
 
+    pub async fn intro_passee(&self, titre: &str) -> Result<(), ErreurApi> {
+        self.envoyer(
+            Method::POST,
+            &format!("/titles/{}/intro-skipped", encoder_composant(titre)),
+            &Corps::Aucun,
+        )
+        .await
+    }
+
     pub async fn executer_demande_film(&self, demande: DemandeFilm) -> Option<ReponseFilm> {
         match demande {
             DemandeFilm::Detail { tour, reference } => Some(ReponseFilm::Detail {
@@ -1053,6 +1067,10 @@ impl Client {
                 duree,
             } => {
                 let _ = self.progression_film(&reference, position, duree).await;
+                None
+            }
+            DemandeFilm::IntroPassee(titre) => {
+                let _ = self.intro_passee(&titre).await;
                 None
             }
             DemandeFilm::Depot(_)
