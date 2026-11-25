@@ -2,6 +2,7 @@
   import Icon from '../../components/Icon.svelte'
   import FilmDetail from './FilmDetail.svelte'
   import FilmPlayer from './FilmPlayer.svelte'
+  import FilmHistory from './FilmHistory.svelte'
   import FilmsLibrary from './FilmsLibrary.svelte'
   import EntracteSearch from './EntracteSearch.svelte'
   import EntracteAdmin from './EntracteAdmin.svelte'
@@ -53,6 +54,8 @@
     <EntracteSearch />
   {:else if section === 'admin' && droits?.admin}
     <EntracteAdmin />
+  {:else if section === 'seen'}
+    <FilmHistory />
   {:else}
     <FilmsLibrary {section} />
   {/if}

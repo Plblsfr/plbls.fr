@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, effectiveBuffer, refuseCodec, refusedCodecs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeAfter, episodeLabel, fullTitle, nearEnd, seasonAfter, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
+import { absolute, bufferedAhead, clock, inIntro, mergeRanges, seekTrack, isForced, pickAudio, pickSubtitle, playPrefs, savePlayPrefs, effectiveBuffer, refuseCodec, refusedCodecs, shortcut, needsReopen, shiftCues, savedQuality, saveQuality, support, episodeAfter, episodeLabel, episodesLabel, dayLabel, historyDays, fullTitle, nearEnd, seasonAfter, percent, pickEpisode, reasonLabel, remaining, resumeAt, saveDue, shortDuration, tint, trackName, yearOptions, type FilmItem } from './films'
 
 const item = (over: Partial<FilmItem> = {}): FilmItem => ({
   id: 'a', kind: 'episode', title: 'La Combe', year: 2024, overview: null, duration: 3000, genres: [], season: 2, episode: 4,
@@ -279,5 +279,44 @@ describe('préchargement sur la barre de position', () => {
   it('compte la durée chargée après la position, dans la plage qui la contient', () => {
     expect(bufferedAhead(50, [[40, 100], [100.3, 130], [300, 400]])).toBe(80)
     expect(bufferedAhead(200, [[40, 100], [300, 400]])).toBe(0)
+  })
+})
+
+describe('historique', () => {
+  const maintenant = new Date(2026, 10, 25, 22, 0)
+  const le = (jour: number, heure: number) => new Date(2026, 10, jour, heure, 0).toISOString()
+
+  it('libellé du jour', () => {
+    expect(dayLabel(new Date(2026, 10, 25, 0, 5), maintenant)).toBe('Aujourd’hui')
+    expect(dayLabel(new Date(2026, 10, 24, 23, 59), maintenant)).toBe('Hier')
+    expect(dayLabel(new Date(2026, 10, 23, 12, 0), maintenant)).toBe('Lundi 23 novembre')
+    expect(dayLabel(new Date(2025, 11, 31, 12, 0), maintenant)).toBe('Mercredi 31 décembre 2025')
+  })
+
+  it('épisodes en plages', () => {
+    const ep = (season: number, episode: number) => ({ season, episode })
+    expect(episodesLabel([ep(1, 8), ep(1, 7), ep(1, 6), ep(1, 5)])).toBe('S1 · E5 à E8')
+    expect(episodesLabel([ep(1, 10), ep(1, 9)])).toBe('S1 · E9, E10')
+    expect(episodesLabel([ep(1, 3), ep(1, 5), ep(1, 6), ep(1, 7), ep(1, 3)])).toBe('S1 · E3, E5 à E7')
+    expect(episodesLabel([ep(2, 1), ep(1, 13)])).toBe('S1 · E13 ; S2 · E1')
+    expect(episodesLabel([{ season: null, episode: null }])).toBe('')
+  })
+
+  it('regroupe par jour puis par série', () => {
+    const jours = historyDays([
+      item({ id: 'p9', series_id: 'pun', episode: 9, seen_at: le(25, 21) }),
+      item({ id: 'd10', series_id: 'dar', episode: 10, seen_at: le(25, 20) }),
+      item({ id: 'p8', series_id: 'pun', episode: 8, seen_at: le(25, 19) }),
+      item({ id: 'f', kind: 'movie', series_id: null, series_title: null, season: null, episode: null, seen_at: le(25, 15) }),
+      item({ id: 'p7', series_id: 'pun', episode: 7, seen_at: le(24, 21) }),
+      item({ id: 'sans-date', seen_at: null }),
+      item({ id: 'illisible', seen_at: 'pas une date' }),
+    ], maintenant)
+    expect(jours.map((j) => [j.label, j.entries.map((e) => [e.item.id, e.episodes.map((x) => x.id)])])).toEqual([
+      ['Aujourd’hui', [['p9', ['p9', 'p8']], ['d10', ['d10']], ['f', ['f']]]],
+      ['Hier', [['p7', ['p7']]]],
+    ])
+    expect(jours[0].entries[0].seen_at).toBe(le(25, 21))
+    expect(historyDays([], maintenant)).toEqual([])
   })
 })

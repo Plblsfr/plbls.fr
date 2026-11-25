@@ -276,6 +276,63 @@ export function episodeLabel(i: Pick<FilmItem, 'season' | 'episode'>): string {
   return i.season != null && i.episode != null ? `S${i.season} · E${i.episode}` : ''
 }
 
+export interface HistoryEntry { key: string; item: FilmItem; episodes: FilmItem[]; seen_at: string }
+export interface HistoryDay { key: string; label: string; entries: HistoryEntry[] }
+
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+export function dayLabel(day: Date, now: Date): string {
+  const ecart = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()) / 86_400_000)
+  if (ecart === 0) return 'Aujourd’hui'
+  if (ecart === 1) return 'Hier'
+  const texte = day.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', ...(day.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })
+  return texte.charAt(0).toUpperCase() + texte.slice(1)
+}
+
+export function episodesLabel(episodes: Pick<FilmItem, 'season' | 'episode'>[]): string {
+  const saisons = new Map<number, number[]>()
+  for (const e of episodes) {
+    if (e.season == null || e.episode == null) continue
+    saisons.set(e.season, [...(saisons.get(e.season) ?? []), e.episode])
+  }
+  return [...saisons.entries()].sort((a, b) => a[0] - b[0]).map(([saison, numeros]) => {
+    const tries = [...new Set(numeros)].sort((a, b) => a - b)
+    const plages: string[] = []
+    for (let i = 0; i < tries.length; i++) {
+      let fin = i
+      while (fin + 1 < tries.length && tries[fin + 1] === tries[fin] + 1) fin++
+      plages.push(fin === i ? `E${tries[i]}` : fin === i + 1 ? `E${tries[i]}, E${tries[fin]}` : `E${tries[i]} à E${tries[fin]}`)
+      i = fin
+    }
+    return `S${saison} · ${plages.join(', ')}`
+  }).join(' ; ')
+}
+
+export function historyDays(items: FilmItem[], now: Date): HistoryDay[] {
+  const jours: HistoryDay[] = []
+  const parCle = new Map<string, HistoryEntry>()
+  for (const item of items) {
+    if (!item.seen_at) continue
+    const date = new Date(item.seen_at)
+    if (Number.isNaN(date.getTime())) continue
+    const cle = dayKey(date)
+    let jour = jours.find((j) => j.key === cle)
+    if (!jour) {
+      jour = { key: cle, label: dayLabel(date, now), entries: [] }
+      jours.push(jour)
+    }
+    const groupe = item.kind === 'episode' && item.series_id ? `${cle}:${item.series_id}` : `${cle}:${item.id}`
+    const entree = parCle.get(groupe)
+    if (entree) entree.episodes.push(item)
+    else {
+      const nouvelle = { key: groupe, item, episodes: [item], seen_at: item.seen_at }
+      parCle.set(groupe, nouvelle)
+      jour.entries.push(nouvelle)
+    }
+  }
+  return jours
+}
+
 export function fullTitle(i: FilmItem): string {
   const ep = episodeLabel(i)
   return i.series_title && ep ? `${i.series_title} · ${ep}, ${i.title}` : i.title

@@ -382,7 +382,7 @@ export const filmsApi = {
   library: (f: Record<string, string>) => liste(eget(`/library?${new URLSearchParams(f)}`)),
   genres: () => eget<{ genres: string[] }>('/genres'),
   resume: () => liste(eget('/continue')),
-  seen: () => liste(eget('/history?limit=100')),
+  seen: (start = 0) => liste(eget(`/history?start=${start}&limit=100`)),
   item: async (id: string) => normalise(await eget<FilmDetail>(`/titles/${enc(id)}`)) as FilmDetail,
   seasons: async (id: string) => {
     const r = await eget<{ items: SaisonEntracte[] }>(`/titles/${enc(id)}/seasons`)
