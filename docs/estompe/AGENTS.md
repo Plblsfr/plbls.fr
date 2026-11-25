@@ -85,12 +85,12 @@ Détails :
 
 ## Release et livraison
 
-Branche `release/…`, `changelog.json`, forçage de mise à jour, tags `estompe-api-v*`, `estompe-app-v*` et `estompe-natif-v*` (app native) : voir `docs/estompe/release.md` (lu par `/estompe-release`).
+Branche `release/…`, `changelog.json`, forçage de mise à jour, tags `estompe-api-v*` et `estompe-app-v*` : voir `docs/estompe/release.md` (lu par `/estompe-release`).
 Ne jamais écraser ni supprimer un tag existant ; pousser un tag seul (`push origin <tag>`), jamais `--tags`.
 
 ## Git et GitHub
 
-- Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe est réparti entre `api/estompe/`, `web/estompe/`, `apps/estompe/`, `docs/estompe/`, `deploy/estompe/` et `scripts/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`, `estompe-natif-v*`.
+- Dépôt : monorepo `https://github.com/Plblsfr/plbls.fr`, Estompe est réparti entre `api/estompe/`, `web/estompe/`, `apps/estompe/`, `docs/estompe/`, `deploy/estompe/` et `scripts/estompe/`. Les tags sont préfixés : `estompe-api-v*`, `estompe-app-v*`.
 - **Seul `gh` parle à GitHub** (PR, issues, releases…), ou à défaut les outils MCP GitHub de la session pour lire et commenter une issue (`issue_read`, `add_issue_comment`). Interdits : `curl`/`wget` vers `api.github.com`, appel à l'API à la main,
   bibliothèque HTTP. Les règles `deny` de `.claude/settings.json` le font respecter.
 - `gh` doit être connecté : `gh auth status` doit répondre. Sinon, s'arrêter et le dire à l'utilisateur.
@@ -164,7 +164,7 @@ Pendant le développement, du plus rapide au plus complet : `cargo check $(scrip
   `estompe-api-image` (build et démarrage de l'image), `front` (audit, types, tests, build), `estompe-tauri` (tests Rust des apps) et `changelog`
   (entrée `changelog.d/` exigée), chacun seulement si la PR touche ses chemins. Après fusion, `livraison.yml` calcule `.version` (`estompe-version`),
   publie l'image `:edge` de l'API si `api/estompe/` a changé et l'image de job de `deploy/estompe/ci/` ; tag `estompe-api-v*` : image versionnée de l'API.
-  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK. `estompe-livraison-natif.yml` (tag `estompe-natif-v*` ou lancement manuel) : installeur de l'app native.
+  `estompe-livraison-app.yml` (tag `estompe-app-v*` ou lancement manuel) : web, installeur Windows, APK. L'app native (`apps/estompe/natif/`) n'est ni construite, ni testée, ni livrée par la CI.
 
 ## Conventions
 
@@ -227,7 +227,7 @@ Quand un ticket révèle un piège, la PR l'ajoute ici.
 - **Plein écran dans l'app Android** : le `WebChromeClient` de wry (`RustWebChromeClient`) annule tout passage en plein écran (`onShowCustomView` rend la main aussitôt) et wry l'installe après `onWebViewCreate`. `FullscreenChrome` (`Fullscreen.kt`) l'enveloppe au tour suivant de la boucle principale : il affiche la vue plein écran, masque les barres système et délègue au client de wry les méthodes que celui-ci redéfinit. À chaque montée de wry, vérifier que cette liste de méthodes déléguées est toujours complète.
 - **App native** (`docs/estompe/natif.md`) : `ui/genere/*.slint` et `crates/client/src/genere/types.rs` sont générés (`just estompe-natif-generer`), ne pas
   les modifier à la main. Un changement visuel voulu régénère les captures de référence (`just estompe-natif-captures`). Le backend de test de Slint
-  ne s'installe qu'une fois par processus : les tests d'intégration forment un seul binaire (`tests/natif/main.rs`, un module par fichier) lancé par `cargo nextest run`, un processus par test ; `cargo test` sur ce binaire les ferait tourner dans le même processus et échouerait. cargo-nextest s'installe avec `scripts/estompe/installer-nextest.sh` (version et sommes SHA-256 épinglées dans le script, celui de la CI).
+  ne s'installe qu'une fois par processus : les tests d'intégration forment un seul binaire (`tests/natif/main.rs`, un module par fichier) lancé par `cargo nextest run`, un processus par test ; `cargo test` sur ce binaire les ferait tourner dans le même processus et échouerait. cargo-nextest s'installe avec `scripts/estompe/installer-nextest.sh` (version et sommes SHA-256 épinglées dans le script).
   Une tabulation qui arrive sur un champ sélectionne tout son texte. Lancer l'app sous Linux demande `libxkbcommon-x11-0`.
   Slint ne virtualise un `for` que dans un composant nommé `ListView` (`ui/composants/liste-virtuelle.slint`, exporté en `ListeVirtuelle`) ; avec le temps simulé du backend de test,
   les gestionnaires `changed` ne tournent que si le test appelle `slint::platform::update_timers_and_animations()`.

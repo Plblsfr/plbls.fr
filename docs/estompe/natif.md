@@ -1,5 +1,8 @@
 # App native (Slint, sans webview)
 
+Projet abandonné : le code reste dans le dépôt, mais la CI ne construit, ne teste ni ne livre plus l'app (aucun job dans `ci.yml`, aucun tag de livraison).
+Les contrôles se lancent à la main (`just estompe-natif-check`).
+
 « Estompe natif (beta) » est l'app de bureau écrite entièrement en Rust, sans webview, à côté de l'app Tauri qui reste la version stable.
 Elle s'installe et tourne en même temps qu'elle. Ce qui lui manque encore est dans la [matrice de parité](natif-parite.md).
 En place : la fenêtre, l'écran « À propos », la page de démonstration des composants, les écrans d'entrée (connexion, accès refusé, activation, invitation, mise à jour forcée) la coquille (rail des serveurs, salons, messages privés, accueil, navigation), la marge « Membres » (liste des membres, présence, activité, carte de profil) et la messagerie en lecture (messages des salons texte et des conversations privées, emoji, pièces jointes, aperçus de liens, sondages, réactions, temps réel, marquage comme lu) et le début de l'écriture (zone de saisie, envoi, modification, brouillons, mentions et emoji, pièces jointes, conversion d'une vidéo en H.264, actions sur un message et menus contextuels, sondages, GIF, messages vocaux, voir [Écriture](#écriture)), la recherche de messages et la palette (voir [Recherche et palette](#recherche-et-palette)), la nouvelle conversation privée, « Tout marquer lu », les contacts en ligne et le menu de statut (voir [Nouvelle conversation, accueil et statut](#nouvelle-conversation-accueil-et-statut)), la création d'un serveur ou d'un salon, rejoindre et quitter un serveur (voir [Créer ou rejoindre un serveur, créer un salon](#créer-ou-rejoindre-un-serveur-créer-un-salon)), les réglages d'un serveur, ses rôles et les permissions des salons (voir [Réglages d'un serveur](#réglages-dun-serveur) et [Rôles et permissions](#rôles-et-permissions)), la modération des membres et des salons (voir [Modération](#modération)), l'intégration au bureau (instance unique, zone de notification, voir [Intégration au bureau](#intégration-au-bureau) ; notifications du système et pastille de mentions, voir [Notifications](#notifications)), les mises à jour signées avec leur interface (voir [Mises à jour](#mises-à-jour)), la détection du jeu au premier plan et l'activité montrée aux autres sous Windows (voir [Jeu au premier plan](#jeu-au-premier-plan)), la page des paramètres (voir [Paramètres](#paramètres)) ; le reste de l'écriture arrive avec le lot 3. Le vocal est en place : salon vocal, commandes, réglages audio et appuyer pour parler par raccourci global (voir [Vocal](#vocal)), ainsi que l'affichage des flux vidéo, la scène vidéo avec le visionnage des partages d'écran des autres, la caméra et son propre partage d'écran (voir [Vidéo](#vidéo), [Scène vidéo et partages](#scène-vidéo-et-partages), [Caméra](#caméra) et [Partage d'écran](#partage-décran)).
@@ -28,7 +31,7 @@ que GCC et les clang plus anciens ne savent pas utiliser (le build de `webrtc-sy
 just estompe-natif-run            # build de débogage : le bouton « Composants » ouvre la page de démonstration
 just estompe-natif-build          # profil release (taille, LTO) ; `just estompe-natif-build ci` pour le profil sans LTO
 just estompe-natif-test
-just estompe-natif-check          # tous les contrôles de la CI Linux
+just estompe-natif-check          # tous les contrôles : portabilité, fichiers générés, fmt, clippy, cargo deny, tests
 ```
 
 ### Verrou des builds et mémoire
@@ -60,12 +63,12 @@ le verrou garantit qu'un seul build l'utilise à la fois, mais passer d'une bran
 worktree évite ces recompilations au prix du disque.
 
 Les tests passent par [cargo-nextest](https://nexte.st) (`scripts/estompe/installer-nextest.sh`, binaire de la release
-à la version et aux sommes SHA-256 épinglées dans le script, celui de la CI) : les tests d'intégration forment un seul binaire, `tests/natif/main.rs` (un module par fichier, `commun` partagé), et nextest lance
+à la version et aux sommes SHA-256 épinglées dans le script) : les tests d'intégration forment un seul binaire, `tests/natif/main.rs` (un module par fichier, `commun` partagé), et nextest lance
 chaque test dans son propre processus, car le backend de test de Slint ne s'installe qu'une fois par processus. Un test se cible par son nom
 (`cargo nextest run --test natif moderation::`). Regroupés, les 28 binaires d'avant ne se lient plus qu'une fois : 4 s au lieu de 165 s après une
 modification de la bibliothèque (mesuré sous WSL, sans le vocal), et 0,8 Go sur le disque au lieu d'autant par binaire.
 
-`estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
+`estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte (essai de lancement, par exemple sous Xvfb).
 `estompe-natif --mesures <fichier.json>` relève la mémoire et le CPU de l'app pendant un scénario et écrit un export au format de l'app Tauri :
 voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résultats du point de contrôle du lot 4).
 
@@ -101,7 +104,7 @@ Limites :
 
 - `ui/genere/couleurs.slint` et `ui/genere/icones.slint` sont générés par `scripts/estompe/natif-da.mjs` depuis
   `web/estompe/src/styles/v3-jetons.css` (thèmes « Papier » et « Fusain ») et `web/estompe/src/components/Icon.svelte`. Après un changement de
-  l'un ou de l'autre : `just estompe-natif-generer`. La CI échoue si les fichiers versionnés ne correspondent plus (`--check`).
+  l'un ou de l'autre : `just estompe-natif-generer`. `just estompe-natif-check` échoue si les fichiers versionnés ne correspondent plus (`--check`).
 - `ui/jetons.slint` : typographie, rayons, espacements et durées de [la direction artistique](direction-artistique.md) ; les trois polices
   variables (`polices/`, licence OFL) sont embarquées dans le binaire. Tout texte de l'app utilise l'une d'elles (le code en ligne compris, en
   JetBrains Mono) ; seuls les caractères absents des trois polices (écritures non latines, emoji hors du corps d'un message : pseudo, citation de réponse) passent par une police du système.
@@ -1168,7 +1171,7 @@ et la referme au relâchement plus le délai choisi (0 à 2 s, préférence `ptt
 
 libwebrtc est précompilé avec la bibliothèque standard de MSVC en `/MT` (`RuntimeLibrary=MT_StaticRelease`), les binaires précompilés de Skia en `/MD` :
 l'éditeur de liens refuse de les réunir. `apps/estompe/natif/.cargo/config.toml` passe tout le binaire en CRT statique (`+crt-static`, comme l'app Tauri) ;
-Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, une vingtaine de minutes ; en CI, binaires gardés en cache par version, voir `docs/estompe/ci.md`, « Caches »).
+Skia n'existe pas en binaire précompilé pour ce CRT et `skia-bindings` le compile alors depuis ses sources (LLVM, Python 3 et `ninja`, une vingtaine de minutes).
 Le STL de MSVC récent (Visual Studio 18) refuse un clang plus ancien que 22 : `LLVM_HOME` et `LIBCLANG_PATH` désignent un LLVM 22 ou plus récent (sinon `skia-bindings`
 prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` évite « Filename too long » au clonage des dépendances de Skia.
 
@@ -1186,7 +1189,7 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
 - `vocal::livekit::tests` (feature `livekit`) : l'annulation d'écho de l'APM retire le son joué repris par le micro.
 - `crates/client/tests/livekit.rs` (feature `livekit`) : contre le serveur LiveKit de `deploy/docker-compose.dev.yml` (`ESTOMPE_LIVEKIT_URL`, clé `devkey` du mode `--dev`),
   deux clients se voient, s'entendent, et la fermeture de l'un le retire de la salle chez l'autre en moins de 5 s. Sans la variable, il est ignoré et le dit.
-  `just estompe-natif-vocal` le lance ; la CI Linux démarre ce serveur.
+  `just estompe-natif-vocal` le lance.
 - `vocal::video::tests` : conversions (taille, couleurs, formats de caméra, miroir), mire, récepteur (dernière image, compteur, fermeture), un récepteur par flux ;
   `vocal::tests::seules_les_videos_affichees_sont_recues` (faux serveur) : abonnement à la demande avec la taille de la tuile, images reçues, désabonnement sans plus
   aucune image reçue, piste retirée, départ de son auteur ; `natif/src/video/` : conversion à la taille et en miroir, une seule image en route vers l'interface.
@@ -1588,8 +1591,8 @@ sélecteur, `explorer` ou `xdg-open` pour l'ouverture), la copie d'une image et 
 (`commande_d_arriere_plan`, utilisé pour ffmpeg), les compteurs du processus (`MesureProcessus` : mémoire et temps CPU, processeur, mémoire de la machine, système), la zone de notification (`ZoneNotification`, `tray-icon`), les notifications (`Notifications` : toasts sous Windows, `notify-rust` sous Linux) et
 l'instance unique (fonctions de `instance.rs`, `interprocess`). La capture d'écran et de fenêtre (`CaptureSysteme`, voir [Capture d'écran et de fenêtre](#capture-décran-et-de-fenêtre)) l'est sous Windows et sous X11. Sous Windows seulement : le démarrage avec la session, la pastille de la barre des tâches, l'installation d'une mise à jour (`InstallationSysteme`), l'application au premier plan (`PremierPlanSysteme`, voir [Jeu au premier plan](#jeu-au-premier-plan)), l'overlay (`OverlaySysteme`, voir [Overlay](#overlay)) et l'encodage vidéo matériel (`EncodageSysteme`, voir [Instant replay](#instant-replay)). Le reste arrive avec son lot, Windows d'abord.
 
-Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires, comme en CI.
-De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1` (job `estompe-natif-linux`).
+Les tests du coffre du système sont ignorés (et le disent) sur une machine sans coffre ; `ESTOMPE_COFFRE_EXIGE=1` les rend obligatoires.
+De même, les tests qui ont besoin du bus de session D-Bus (zone de notification, faux serveur de notifications sous Linux) sont ignorés sans bus, et obligatoires avec `ESTOMPE_DBUS_EXIGE=1`.
 
 ## Données locales
 
@@ -1675,14 +1678,14 @@ Catégorie « Compte » (`ui/parametres/profil.slint`, global `DonneesProfil` ; 
 ## Types de l'API
 
 `apps/estompe/crates/client/src/genere/types.rs` est généré depuis `docs/estompe/openapi.yaml` par `scripts/estompe/gen-types-client.mjs`.
-Après un changement du contrat : `just estompe-natif-generer`. La CI échoue si le fichier versionné ne correspond plus (`--check`).
+Après un changement du contrat : `just estompe-natif-generer`. `just estompe-natif-check` échoue si le fichier versionné ne correspond plus (`--check`).
 
 ## Captures de rendu
 
 `apps/estompe/natif/tests/natif/captures.rs` rend chaque écran hors écran avec le moteur logiciel de Slint (backend de test, rendu en Rust pur,
 identique d'une machine à l'autre), à 1180 × 900, avec des données fixes, le temps figé et les animations coupées, puis le compare à `tests/references/<écran>.png`. Un pixel
 compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0,1 % de pixels différents. En cas d'échec, la capture obtenue, la
-référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
+référence et l'image des différences sont dans `target/tmp/captures/`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
   Les overlays ont leurs propres captures (`tests/natif/overlay.rs`, régénérées par la même recette, mêmes seuils et même variable `ESTOMPE_CAPTURES`, fonctions communes dans `tests/natif/commun/mod.rs`, module `references`).
@@ -1732,7 +1735,7 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   le décodeur, puis lecture d'un WebM du web et du message envoyé, vitesse, position, un seul à la fois, fin, fichier illisible) ; puis, si ffmpeg (avec `libx264` et `libx265`) est installé, une vidéo HEVC de synthèse
   jointe, envoyée en `kind=video` et reçue en H.264, fichier converti supprimé après l'envoi, puis une conversion (ou son envoi bloqué) annulée sans laisser de fichier.
   Les tests de `estompe_client::video` convertissent aussi une vidéo HEVC (`libx264` à la place des encodeurs matériels, absents du runner) et l'annulent pendant l'encodage.
-  Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires, comme en CI Linux.
+  Sans ffmpeg, ces tests disent « ignoré » ; `ESTOMPE_FFMPEG_EXIGE=1` les rend obligatoires.
 `messagerie_volume.rs` : salon de 50 000 messages remonté pas à pas (lignes instanciées, modèles et mémoire bornés) ; un message repère garde sa position à l'écran quand une page plus ancienne arrive.
   Par défaut 8 pas de 1 400 px (8 s simulées, au moins 3 pages anciennes après le premier quart, environ 22 s en debug) ; `ESTOMPE_VOLUME=long` (ou `just estompe-natif-volume`) rejoue le parcours long de 120 pas de 1 400 px (2 minutes simulées, au moins 10 pages).
 `jeux.rs` (même backend, `ServeurMessages`, `PremierPlanFactice` sondé toutes les 20 ms) : jeu détecté affiché sous mon pseudo, rien publié hors ligne, activité vide
@@ -1798,7 +1801,7 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 - Version : clé `natif` de `.version`, montée par la CI à la fusion d'une PR qui touche `apps/estompe/natif/`, `crates/client` ou
   `crates/plateforme` (`scripts/estompe/version.mjs`) ; `bump-version.mjs --apply` la recopie dans `Cargo.toml` et `Cargo.lock`, d'où
   `VERSION` (« À propos », en-tête `X-Estompe-Version`) et la version de l'installeur.
-- Tag `estompe-natif-vX.Y.Z` : `.github/workflows/estompe-livraison-natif.yml` (détail dans [release.md](release.md)).
+- Aucun tag ni workflow de livraison : l'installeur se construit à la main (ci-dessous), la signature et `natif.json` ne sont plus publiés.
 - Installeur NSIS `apps/estompe/natif/installeur/estompe-natif.nsi` → `Estompe-natif-beta-X.Y.Z-setup.exe` :
   - « Estompe natif (bêta) », par utilisateur sans droits d'administrateur (`RequestExecutionLevel user`), dans `%LOCALAPPDATA%\Programs\Estompe natif` :
     `estompe-natif.exe`, `ffmpeg.exe` (conversion des vidéos et lecture des messages vocaux AAC, voir [Pièces jointes à l'envoi](#pièces-jointes-à-lenvoi)), `estompe.ico` (icône des raccourcis et `IconUri` des toasts), `desinstaller.exe` ;
@@ -1812,7 +1815,7 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
     avec la session) et cache `%LOCALAPPDATA%\fr.plbls.estompe.natif\cache` (mises à jour téléchargées comprises) ; garde les préférences et
     brouillons (`%APPDATA%\fr.plbls.estompe.natif`), les journaux et le coffre de secrets.
   - non signé Authenticode pendant la bêta : SmartScreen avertit à la première installation.
-- ffmpeg : le workflow lance `fetch-ffmpeg.mjs` (`TAURI_ENV_PLATFORM=windows`) avant `makensis`, qui prend
+- ffmpeg : lancer `fetch-ffmpeg.mjs` (`TAURI_ENV_PLATFORM=windows`) avant `makensis`, qui prend
   `apps/estompe/windows/src-tauri/binaries/ffmpeg.exe` (autre chemin : `-DFFMPEG=<chemin>`). Sous Windows, le script lit l'archive avec le `tar`
   du système (bsdtar), `unzip` n'y étant pas garanti.
 - Contrôle (`scripts/estompe/natif-installeur-check.sh <installeur> <exe>`) : taille affichée et plafonnée (`TAILLE_MAX_MO`, 90 Mo : 41 Mo pour
@@ -1827,7 +1830,3 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
 - Essai local de l'installeur sous Linux : `apt-get install nsis p7zip-full`, puis dans `apps/estompe/natif/installeur/`
   `makensis -DVERSION=0.1.0 -DEXE=<un exe quelconque> estompe-natif.nsi` (après `TAURI_ENV_PLATFORM=windows node ../../windows/scripts/fetch-ffmpeg.mjs`)
   et le contrôle sur le résultat.
-
-## CI
-
-Jobs `estompe-natif-linux` et `estompe-natif-windows` de `ci.yml` : voir [ci.md](ci.md).
