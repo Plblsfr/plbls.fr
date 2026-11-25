@@ -1,4 +1,4 @@
-mod commun;
+use crate::commun;
 
 use std::collections::BTreeSet;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};

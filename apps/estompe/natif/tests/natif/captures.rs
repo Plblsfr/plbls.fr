@@ -1,4 +1,4 @@
-mod commun;
+use crate::commun;
 
 use commun::references::{comparer, controler, VARIABLE};
 

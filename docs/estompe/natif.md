@@ -59,6 +59,12 @@ Pour partager les artefacts entre worktrees, `CARGO_TARGET_DIR` pointe vers un d
 le verrou garantit qu'un seul build l'utilise à la fois, mais passer d'une branche à l'autre recompile ce qui diffère. Un dossier par
 worktree évite ces recompilations au prix du disque.
 
+Les tests passent par [cargo-nextest](https://nexte.st) (`scripts/estompe/installer-nextest.sh`, binaire de la release
+à la version et aux sommes SHA-256 épinglées dans le script, celui de la CI) : les tests d'intégration forment un seul binaire, `tests/natif/main.rs` (un module par fichier, `commun` partagé), et nextest lance
+chaque test dans son propre processus, car le backend de test de Slint ne s'installe qu'une fois par processus. Un test se cible par son nom
+(`cargo nextest run --test natif moderation::`). Regroupés, les 28 binaires d'avant ne se lient plus qu'une fois : 4 s au lieu de 165 s après une
+modification de la bibliothèque (mesuré sous WSL, sans le vocal), et 0,8 Go sur le disque au lieu d'autant par binaire.
+
 `estompe-natif --essai-de-lancement` ouvre la fenêtre, attend sa première image puis quitte : c'est le lancement fait par la CI sous Xvfb.
 `estompe-natif --mesures <fichier.json>` relève la mémoire et le CPU de l'app pendant un scénario et écrit un export au format de l'app Tauri :
 voir [natif-mesures.md](natif-mesures.md) (mesure intégrée, protocole et résultats du point de contrôle du lot 4).
@@ -166,7 +172,7 @@ et une boucle (`Entree`) qui exécute ses effets sur un runtime tokio à un fil,
 | `MiseAJourRequise { message, version_minimale }` | `mise-a-jour` |
 
 - L'authentification et l'API sont injectées (traits `Authentifieur` et `ApiEntree`) : `AuthReelle` (crate client, `Authentification`) et
-  `Client` en production, des faux dans `tests/commun/`. `src/ecrans.rs` traduit un `Etat` en propriétés de la fenêtre (`afficher`) et les
+  `Client` en production, des faux dans `tests/natif/commun/`. `src/ecrans.rs` traduit un `Etat` en propriétés de la fenêtre (`afficher`) et les
   rappels de la fenêtre en `Evenement` (`brancher`) ; l'état revient à l'interface par `upgrade_in_event_loop`.
 - `lib.rs` (`demarrer`) assemble le tout et rend `Application { entree, client, auth }` : la coquille et le store se branchent sur ce client
   (jeton, plateforme et version déjà posés), sur `entree.runtime()` pour leurs tâches et sur `entree.emetteur()` pour revenir à l'entrée (déconnexion, mise à jour).
@@ -469,7 +475,7 @@ ressources) dans `estompe_client::acces`.
   d'expiration se saisissent en `JJ/MM/AAAA HH:MM` ; la permission se cherche au lieu d'une liste déroulante ; succès et erreurs s'affichent en bandeau dans l'onglet
   (pas de toast) ; la permission visée depuis la grille est encadrée, sans défilement automatique.
 - Tests : cas de `catalogue.test.ts` en Rust (`estompe_client::acces`, le catalogue de `api/estompe/core/src/catalogue.rs` lu par `include_str!`, permissions
-  `capacite("…")` et `"estompe:…"` du code natif et capacités des sections) ; `tests/acces.rs` contre un aegis factice à état (`tests/commun/acces.rs`, branché
+  `capacite("…")` et `"estompe:…"` du code natif et capacités des sections) ; `tests/natif/acces.rs` contre un aegis factice à état (`tests/natif/commun/acces.rs`, branché
   par le crochet `ServeurMessages::repondeur`) ; captures `admin-acces-*`.
 
 ### Signalements
@@ -1043,7 +1049,7 @@ Disposition de la scène et visionnage d'un partage d'écran d'un autre particip
   leur taille réelle (`DonneesVideo.zone-vedette`), la bande 192 × 108.
 - Tests : `scene::tests` (un test par cas de `stage.test.ts`), `vocal::tests::sans_regarder_aucune_image_ni_son_du_partage_n_est_recu`,
   `le_son_d_un_partage_regarde_est_mixe_avec_son_volume_propre`, `regarder_automatiquement_et_ne_jamais_rejouer_son_propre_partage` (serveur factice, mire),
-  tests d'interface de `natif/tests/vocal.rs` et captures `vocal-partage-*`.
+  tests d'interface de `natif/tests/natif/vocal.rs` et captures `vocal-partage-*`.
 - Écarts : la résolution reçue (« · 720p ») n'est pas affichée.
 
 ### Caméra
@@ -1197,7 +1203,7 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
   `natif/src/vocal/pont/partage.rs` : option du son masquée sans capture du son, pointeur de l'aperçu ramené dans la source, projection de l'incrustation ;
   `vocal::incrustation::tests` (calculs de `overlayRect` et du glisser, pixels attendus dans et hors du médaillon sur des images de synthèse, cercle, miroir, bordure,
   ombre, caméra coupée, aperçu recomposé) ; `crates/client/tests/livekit.rs::le_partage_est_publie_change_de_source_et_de_qualite_puis_retire` (feature `livekit`, `ESTOMPE_LIVEKIT_URL`) ;
-  `natif/tests/vocal.rs` : sélecteur (écrans, fenêtres sans celles d'Estompe, miniatures), aperçu, qualité grisée au-delà de la source, publication, bandeau et rappel de la barre,
+  `natif/tests/natif/vocal.rs` : sélecteur (écrans, fenêtres sans celles d'Estompe, miniatures), aperçu, qualité grisée au-delà de la source, publication, bandeau et rappel de la barre,
   ma tuile en grand, changement de source et de qualité pendant le partage, source perdue, Alt+Maj+S, « Arrêter », incrustation réglée dans le sélecteur
   (interrupteur, coin, médaillon visible dans l'aperçu, préférence retenue).
 - `vocal::ptt::tests` (trait factice, temps simulé) : porte ouverte à l'appui, fermée au relâchement plus le délai, nouvel appui pendant le délai, raccourci ignoré fenêtre active,
@@ -1206,7 +1212,7 @@ prend `C:\Program Files\LLVM`), et `git config --global core.longpaths true` év
   et parvient toujours à la fenêtre active.
 - `natif/src/vocal/projection.rs` : grille, soi-même affiché dès la connexion, halo jamais micro coupé, coupures du serveur, vue, barre, menu selon le rang (coupures,
   destinations du déplacement, déconnexion), clé de l'avatar, jauge ; `coquille/projection.rs` : durée du salon depuis le plus ancien participant ; `audio::tonalite::tests` : sons du front, volume.
-- `natif/tests/vocal.rs` (backend de test Slint, faux serveur vocal, périphériques factices) : rejoindre depuis le panneau, tuiles et participants du panneau, indicateur de parole
+- `natif/tests/natif/vocal.rs` (backend de test Slint, faux serveur vocal, périphériques factices) : rejoindre depuis le panneau, tuiles et participants du panneau, indicateur de parole
   (mesuré : voir ci-dessous), photo de profil dans la tuile et le panneau, durée du salon, mode plein cadre (bouton, Échap, bouton de sortie), couper le micro, Alt+Maj+M et Alt+Maj+D,
   menu d'un participant (volume, muet, « Déplacer vers » et « Déconnecter du vocal » envoyés au faux serveur HTTP), coupure d'un modérateur, appuyer pour parler sans raccourci global,
   caméra d'un participant (piste factice 1080p) affichée dans sa tuile à la taille de la tuile, fenêtre réduite : désabonnement et plus aucune image reçue,
@@ -1387,9 +1393,9 @@ est la première scène ; celui des messages (#354) et l'indicateur du replay (#
   n'apparaît pas au-dessus d'un jeu en plein écran exclusif : seuls le fenêtré et le plein écran sans bordure sont pris en charge.
 - Tests : calculs de `overlay.test.ts` (`overlay::tests` de la crate client) ; moteur (`overlay::tests` : image transparente, halo, pas de rendu pour un état identique,
   un calque par scène, rien sans overlay) ; service (`overlay::voix::tests`, dont `sans_changement_d_etat_aucun_rendu_pendant_dix_secondes`, temps de tokio simulé,
-  sondage du jeu toutes les 5 s et projections répétées) ; captures `tests/overlay.rs` comparées à `tests/references/overlay-voix-*.png` (1, 4 et 8 participants,
-  locuteurs, micro et casque coupés, chaque taille ; composées sur un fond sombre) ; parcours dans `tests/vocal.rs` (trois participants à l'arrivée dans le salon, overlay
-  masqué en raccrochant) et `tests/jeux.rs` (écran du jeu suivi, réglages appliqués, masqué hors jeu, « toujours », désactivé).
+  sondage du jeu toutes les 5 s et projections répétées) ; captures `tests/natif/overlay.rs` comparées à `tests/references/overlay-voix-*.png` (1, 4 et 8 participants,
+  locuteurs, micro et casque coupés, chaque taille ; composées sur un fond sombre) ; parcours dans `tests/natif/vocal.rs` (trois participants à l'arrivée dans le salon, overlay
+  masqué en raccrochant) et `tests/natif/jeux.rs` (écran du jeu suivi, réglages appliqués, masqué hors jeu, « toujours », désactivé).
 - Messages privés et mentions (#354, `overlay/messages.rs`, `ui/overlay/messages.slint`, calculs dans `apps/estompe/crates/client/src/overlay_messages.rs`, repris
   de `MsgOverlay.svelte`, `msg-overlay.svelte.ts` et `overlay.ts`) : le `Notifieur` du bureau passe chaque notification du serveur à `ServiceOverlayMessages`,
   indépendamment des notifications du bureau. Retenues selon le choix (privés, mentions, les deux, aucun) et rien en « Ne pas déranger » si la sourdine est cochée
@@ -1415,8 +1421,8 @@ est la première scène ; celui des messages (#354) et l'indicateur du replay (#
 - Tests des messages : `overlay_messages::tests` (genres, sourdine, file, durée, saisie, réponse, ouverture, taille, réglages) ; `overlay::messages::tests` (vue,
   expiration, touches seulement pendant l'affichage, focus pris puis rendu, Échap et perte du focus, « ouvrir », sans saisie, touche de l'appui pour parler,
   masqué hors jeu, minuterie en temps simulé) ; `plateforme::overlay::tests` (caractères de `WM_CHAR`, faux calque qui prend et rend le focus) ; captures
-  `tests/references/overlay-messages-*.png` (message privé, mention, saisie vide et en cours) ; parcours dans `tests/bureau.rs` (mentions reçues en bandeaux, réponse
-  par F8 envoyée au serveur et focus rendu, « ouvrir » par F7) et `tests/jeux.rs` (réglages des messages retenus et appliqués au bandeau).
+  `tests/references/overlay-messages-*.png` (message privé, mention, saisie vide et en cours) ; parcours dans `tests/natif/bureau.rs` (mentions reçues en bandeaux, réponse
+  par F8 envoyée au serveur et focus rendu, « ouvrir » par F7) et `tests/natif/jeux.rs` (réglages des messages retenus et appliqués au bandeau).
 - Non vérifié ici (machine Linux) : affichage réel sur un jeu fenêtré sans bordure sous Windows, absence de vol de focus, mémoire et CPU comparés à l'overlay de l'app Tauri
   (protocole de [natif-mesures.md](natif-mesures.md)) ; réponse depuis un vrai jeu (le message part, le jeu reprend le focus sans être réduit) et refus éventuel du
   premier plan par Windows.
@@ -1517,11 +1523,11 @@ Garder en permanence les dernières secondes du jeu au premier plan et les enreg
 - Tests : modules purs (`replay::*::tests` de la crate client, dont `ecriture::tests::mp4_de_synthese_lu_par_ffmpeg` : H.264 et AAC produits par ffmpeg, MP4 écrit par
   `ecriture`, relu par `ffmpeg -v error` sans erreur, trois pistes et 2 s ; sauté sans ffmpeg avec libx264) ; plateforme (`encodage::factice::tests`, `encodage::tests`,
   `disque`) ; service (`replay::tests` : jeu détecté, tampon armé, clip par la touche puis par `sauvegarder_les_dernieres`, pause et fermeture, indisponible sans
-  encodeur, touche prise refusée, encodeur muet ou arrêté, échec pendant un partage d'écran mis en pause) ; réglages (`replay::reglages::tests`, `tests/replay.rs` :
+  encodeur, touche prise refusée, encodeur muet ou arrêté, échec pendant un partage d'écran mis en pause) ; réglages (`replay::reglages::tests`, `tests/natif/replay.rs` :
   valeurs hors bornes ramenées, touches refusées) ; indicateur (`overlay::replay::tests` : placement, clip sauvé, erreur, expiration ; captures `overlay-replay-*`) ;
-  captures de la fenêtre (`jeux-replay-*`) ; galerie (`replay::clips::tests` : vue vide, remplie, par jeu, quota presque atteint et dépassé, fenêtre d'envoi, destinations, préparation du fichier par ffmpeg ; `replay::galerie::tests` et `replay::clips::tests` de la crate client : chemins refusés, renommage et suppression avec les annexes, purge sans les clips protégés ni le `.part`, vignette ; `tests/clips.rs` : ouverture, purge confirmée, clip protégé refusé, renommage, suppression ; captures `clips-*`) ; éditeur (`replay::montage::*::tests` de la crate client : équivalents des cas de `montage.test.ts` et de `montage.rs`, dont les exports réels par ffmpeg,
+  captures de la fenêtre (`jeux-replay-*`) ; galerie (`replay::clips::tests` : vue vide, remplie, par jeu, quota presque atteint et dépassé, fenêtre d'envoi, destinations, préparation du fichier par ffmpeg ; `replay::galerie::tests` et `replay::clips::tests` de la crate client : chemins refusés, renommage et suppression avec les annexes, purge sans les clips protégés ni le `.part`, vignette ; `tests/natif/clips.rs` : ouverture, purge confirmée, clip protégé refusé, renommage, suppression ; captures `clips-*`) ; éditeur (`replay::montage::*::tests` de la crate client : équivalents des cas de `montage.test.ts` et de `montage.rs`, dont les exports réels par ffmpeg,
   un export coupé à des instants donnés à une image près, l'annulation et l'aperçu à l'image près ; `replay::editeur::*::tests` : opérations de la session, vue,
-  format d'export, suivi des exports, touches ; `tests/editeur.rs` : ouverture depuis la galerie, coupe, retrait, muet, annuler et rétablir au clavier, export
+  format d'export, suivi des exports, touches ; `tests/natif/editeur.rs` : ouverture depuis la galerie, coupe, retrait, muet, annuler et rétablir au clavier, export
   puis montage listé et rouvert, clip d'origine inchangé ; captures `editeur-*` et `clips-montages-clair`).
 - Non vérifié ici (machine Linux) : encodage Media Foundation réel, 30 minutes de jeu avec le tampon, images par seconde du jeu et CPU comparés à l'app Tauri (C3 de
   #355) ; indicateur « clip sauvé » sur un vrai jeu après le raccourci (C3 de #356) ; montage et export d'un clip réel de 2 minutes puis envoi (C4 de #358), son de
@@ -1673,17 +1679,17 @@ Après un changement du contrat : `just estompe-natif-generer`. La CI échoue si
 
 ## Captures de rendu
 
-`apps/estompe/natif/tests/captures.rs` rend chaque écran hors écran avec le moteur logiciel de Slint (backend de test, rendu en Rust pur,
+`apps/estompe/natif/tests/natif/captures.rs` rend chaque écran hors écran avec le moteur logiciel de Slint (backend de test, rendu en Rust pur,
 identique d'une machine à l'autre), à 1180 × 900, avec des données fixes, le temps figé et les animations coupées, puis le compare à `tests/references/<écran>.png`. Un pixel
 compte s'il s'écarte de plus de 24 sur un canal ; le test échoue au-delà de 0,1 % de pixels différents. En cas d'échec, la capture obtenue, la
 référence et l'image des différences sont dans `target/tmp/captures/`, publiées par la CI dans l'artefact `estompe-natif-captures`.
 
 - Ajouter un écran : une entrée dans `ECRANS` (nom, thème, fonction qui prépare la fenêtre), puis `just estompe-natif-captures` et versionner l'image.
-  Les overlays ont leurs propres captures (`tests/overlay.rs`, régénérées par la même recette, mêmes seuils et même variable `ESTOMPE_CAPTURES`, fonctions communes dans `tests/commun/mod.rs`, module `references`).
+  Les overlays ont leurs propres captures (`tests/natif/overlay.rs`, régénérées par la même recette, mêmes seuils et même variable `ESTOMPE_CAPTURES`, fonctions communes dans `tests/natif/commun/mod.rs`, module `references`).
 - Mises à jour : `mise-a-jour-bandeau`, `mise-a-jour-panneau-a-jour`, `mise-a-jour-telechargement` (40 %), `mise-a-jour-erreur` et `mise-a-jour-forcee`
   (installation en cours) sont préparés par `mise_a_jour::afficher` avec un `EtatMaj` fixe.
   Les écrans d'entrée sont préparés par `ecrans::afficher` avec un `Etat` fixe ; la coquille par un `Pont` sur un store rempli par `Store::installer`
-  (`tests/commun/mod.rs`, module `coquille`), l'heure figée et une icône de serveur dessinée dans le test.
+  (`tests/natif/commun/mod.rs`, module `coquille`), l'heure figée et une icône de serveur dessinée dans le test.
 - Régénérer après un changement voulu : `just estompe-natif-captures`, relire les images, les versionner dans la même PR.
 - Les captures ne sont comparées que sous Linux (`ESTOMPE_CAPTURES=ignorer` sur le runner Windows).
 - Le moteur Skia n'est pas utilisé ici : son rendu du texte dépend des bibliothèques du système, et les mêmes écrans diffèrent d'environ 1 % de
@@ -1697,12 +1703,12 @@ référence et l'image des différences sont dans `target/tmp/captures/`, publi�
 Backend de test de Slint, un par fichier de `tests/` : `clavier.rs` et `connexion_clavier.rs` sans boucle d'évènements (`init_no_event_loop`),
 `connexion.rs` et `coquille.rs` avec la boucle (`init_integration_test_with_mock_time`, un seul `#[test]` par fichier) : un fil pilote clique par `ElementHandle` et attend
 chaque état. En temps simulé, la boucle du backend de test ne lance pas les gestionnaires `changed` (la boucle winit le fait à chaque tour) : `sur_l_interface`
-(`tests/commun/`) les lance après chaque action (`mock_elapsed_time` d'une durée nulle), sinon un compteur comme `Calques.ouverts` resterait en retard d'une fenêtre. `coquille.rs` branche la coquille sur une fausse fabrique (store réel rempli par `Store::installer`, `FluxTempsReel::factice`) :
+(`tests/natif/commun/`) les lance après chaque action (`mock_elapsed_time` d'une durée nulle), sinon un compteur comme `Calques.ouverts` resterait en retard d'une fenêtre. `coquille.rs` branche la coquille sur une fausse fabrique (store réel rempli par `Store::installer`, `FluxTempsReel::factice`) :
 un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans action, puis navigation, préférences, bandeau du réseau, section et fin de session. `ElementHandle` exige les informations de débogage de l'interface, que `build.rs` n'ajoute qu'au profil de débogage.
 `membres.rs` (même backend) ouvre un serveur de 5 000 membres sur une fausse source de profils qui compte les requêtes : seules les lignes de la fenêtre
   sont instanciées et demandent leur avatar, un défilement ne demande que les nouvelles, un retour en arrière aucune ; un statut ou un passage en ligne reçus en temps réel
   ne remplacent ou ne déplacent que la ligne du membre. Sans rendu, le test fait tourner lui-même les gestionnaires `changed` (`update_timers_and_animations`).
-`messagerie.rs` (même backend, faux serveur HTTP de 300 messages, `ServeurMessages` de `tests/commun/`, qui sert aussi des fichiers) : ouverture sur le premier non-lu, saisie, message reçu en lisant l'historique sans défilement, modification, épinglage et suppression par une seule opération sur le modèle, liens refusés, saut vers un message cité non chargé, non-lu fenêtre inactive puis lu au retour, lecture sur un autre appareil ;
+`messagerie.rs` (même backend, faux serveur HTTP de 300 messages, `ServeurMessages` de `tests/natif/commun/`, qui sert aussi des fichiers) : ouverture sur le premier non-lu, saisie, message reçu en lisant l'historique sans défilement, modification, épinglage et suppression par une seule opération sur le modèle, liens refusés, saut vers un message cité non chargé, non-lu fenêtre inactive puis lu au retour, lecture sur un autre appareil ;
   puis une image de 8 000 × 8 000 (décodée hors du fil d'interface, qui répond pendant ce temps, plafond mémoire respecté), un GIF animé à l'écran puis
   hors de l'écran (aucun réveil ni image en 10 s simulées), le téléchargement d'un fichier au nom hostile dans un dossier temporaire puis son ouverture, la
   visionneuse (navigation, zoom), un vote et une réaction reçus en temps réel.
@@ -1779,7 +1785,7 @@ un non-lu ou une mention reçus en temps réel apparaissent sur le rail sans act
   rien n'est lancé avant la fin du téléchargement, puis l'installeur est lancé une fois et l'app quitte par `Fermeture` ; ensuite l'erreur d'une
   vérification manuelle dans le panneau, une mise à jour imposée qui mène à l'écran bloquant, un échec d'installation qui propose la page de
   téléchargement, et « Réessayer » qui installe sans ouvrir le navigateur.
-`bureau.rs` (même backend, la boucle lancée deux fois) : fausse zone de notification (`tests/commun/`, module `bureau`) ; un message d'instance ramène la fenêtre masquée et
+`bureau.rs` (même backend, la boucle lancée deux fois) : fausse zone de notification (`tests/natif/commun/`, module `bureau`) ; un message d'instance ramène la fenêtre masquée et
   transmet l'invitation, fermer masque la fenêtre en gardant la connexion temps réel (un message reçu arrive encore), clic et « Ouvrir » la ramènent,
   « Quitter » arrête la coquille, ferme le flux et retire l'icône ; sans zone, la demande de fermeture quitte. Entre les deux, avec de fausses
   notifications et une fausse pastille : une mention reçue met la pastille à 1 (barre des tâches et icône de la zone), une notification est affichée

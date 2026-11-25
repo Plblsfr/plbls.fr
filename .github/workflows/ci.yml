@@ -357,6 +357,9 @@ jobs:
           restore-keys: natif-linux-v1-
       - name: cargo-deny
         run: command -v cargo-deny || cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
+      - name: cargo-nextest (binaire de la release, somme SHA-256 vérifiée)
+        shell: bash
+        run: scripts/estompe/installer-nextest.sh
       - name: Portabilité, fichiers générés, fmt, clippy, cargo deny, tests (coffre de secrets réel, captures de rendu ; le binaire de l'app en sort)
         run: dbus-run-session -- bash -c 'echo -n ci | gnome-keyring-daemon --unlock --components=secrets >/dev/null && scripts/estompe/natif-check.sh'
       - name: Lancement de l'app (fenêtre réelle sous Xvfb, moteur Skia)
@@ -439,9 +442,12 @@ jobs:
       - name: Build (x86_64-pc-windows-msvc)
         working-directory: apps/estompe/natif
         run: cargo build --locked --target x86_64-pc-windows-msvc
+      - name: cargo-nextest (binaire de la release, somme SHA-256 vérifiée)
+        shell: bash
+        run: scripts/estompe/installer-nextest.sh
       - name: Tests, dont le coffre de secrets (Credential Manager)
         working-directory: apps/estompe/natif
-        run: cargo test --workspace --locked --target x86_64-pc-windows-msvc
+        run: cargo nextest run --workspace --locked --target x86_64-pc-windows-msvc
       - id: skia-archive
         name: Binaires de Skia archivés s'ils viennent d'être compilés, sorties intermédiaires de Skia retirées
         shell: bash

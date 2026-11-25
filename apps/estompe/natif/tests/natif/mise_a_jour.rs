@@ -1,4 +1,4 @@
-mod commun;
+use crate::commun;
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
