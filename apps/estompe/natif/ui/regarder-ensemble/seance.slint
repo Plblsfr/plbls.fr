@@ -2,6 +2,7 @@ import { Theme, Typo, Rayon, Espace, Calques } from "../jetons.slint";
 import { Bouton, VarianteBouton, Icone, Avatar, Chargement, Case, Etiquette, Champ } from "../composants.slint";
 import { BoutonLecteur, BarreLecteur } from "../composants/lecteur.slint";
 import { DonneesLecteur } from "../video/lecteur.slint";
+import { DonneesVueWeb, ZoneVueWeb } from "../composants/vue-web.slint";
 import { DonneesSeance, GenreMessageSeance, ParticipantSeance, ElementFileSeance } from "donnees.slint";
 
 component Pilule inherits Rectangle {
@@ -193,6 +194,14 @@ component Lecteur inherits Rectangle {
     }
     changed height => {
         DonneesLecteur.zone-image(self.width, self.height);
+    }
+    if DonneesVueWeb.seance: ZoneVueWeb {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height - (DonneesSeance.vue.barre ? 52px : 0);
+        nom: "seance";
+        montree: root.utilisable && DonneesSeance.vue.genre-message != GenreMessageSeance.erreur && DonneesSeance.vue.genre-message != GenreMessageSeance.lent;
     }
     if DonneesLecteur.etat.video && DonneesLecteur.etat.image-prete: Image {
         width: 100%;

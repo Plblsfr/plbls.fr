@@ -87,7 +87,7 @@ jobs:
           echo "ESTOMPE_MPV_DIR=$(cygpath -w "$RUNNER_TEMP/mpv")" >> "$GITHUB_ENV"
       - name: Build release (x86_64-pc-windows-msvc)
         working-directory: apps/estompe/natif
-        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc --features youtube
       - id: skia-archive
         name: Binaires de Skia archivés s'ils viennent d'être compilés, sorties intermédiaires de Skia retirées
         shell: bash

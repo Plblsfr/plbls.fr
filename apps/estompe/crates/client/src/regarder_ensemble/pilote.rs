@@ -12,6 +12,7 @@ use super::fournisseurs::{
 };
 use super::seance::{message_erreur_youtube, position_attendue, GenreSeance, SeanceEnCours};
 use super::synchro::{Commande, MoteurSynchro, SortieSynchro};
+use super::youtube::RUNTIME_ABSENT;
 
 pub const SEUL_L_HOTE: &str = "Seul l’hôte pilote la lecture";
 pub const SANS_REPONSE: &str = "Le serveur n’a pas répondu";
@@ -78,6 +79,7 @@ pub struct PiloteSeance {
     passer: Option<(i64, i64)>,
     actions: Vec<ActionPilote>,
     position: f64,
+    youtube_indisponible: bool,
 }
 
 impl PiloteSeance {
@@ -96,6 +98,7 @@ impl PiloteSeance {
             passer: None,
             actions: Vec::new(),
             position: 0.0,
+            youtube_indisponible: false,
         }
     }
 
@@ -212,8 +215,8 @@ impl PiloteSeance {
         self.erreur.clear();
         let f = fournisseur(provider);
         let lecteur = match f {
-            Fournisseur::NonPrisEnCharge => None,
-            Fournisseur::Navigateur => None,
+            Fournisseur::NonPrisEnCharge | Fournisseur::Navigateur => None,
+            Fournisseur::YouTube if self.youtube_indisponible => None,
             autre => (self.fabrique)(autre),
         };
         match lecteur {
@@ -223,6 +226,9 @@ impl PiloteSeance {
             }
             None if matches!(f, Fournisseur::Navigateur | Fournisseur::YouTube) => {
                 self.majour_navigateur(maintenant);
+                if f == Fournisseur::YouTube && self.youtube_indisponible {
+                    self.actions.push(ActionPilote::Info(RUNTIME_ABSENT.into()));
+                }
             }
             None if f == Fournisseur::NonPrisEnCharge => {
                 self.erreur = MESSAGE_NON_PRIS_EN_CHARGE.into();
@@ -312,10 +318,29 @@ impl PiloteSeance {
                 break;
             }
         }
+        if let Some(raison) = l.repli() {
+            self.repli_navigateur(raison, maintenant);
+            return;
+        }
         if let Some(message) = l.erreur() {
             self.signaler_erreur(message, maintenant);
         }
         self.drainer();
+    }
+
+    fn repli_navigateur(&mut self, raison: String, maintenant: i64) {
+        self.actions.push(ActionPilote::Journal(format!(
+            "lecteur YouTube indisponible : {raison}"
+        )));
+        if let Some(l) = &mut self.lecteur {
+            l.detruire();
+        }
+        self.drainer_film();
+        self.lecteur = None;
+        self.moteur = None;
+        self.youtube_indisponible = true;
+        self.majour_navigateur(maintenant);
+        self.actions.push(ActionPilote::Info(RUNTIME_ABSENT.into()));
     }
 
     fn signaler_erreur(&mut self, message: String, maintenant: i64) {
@@ -449,6 +474,7 @@ impl PiloteSeance {
         self.erreur.clear();
         self.fournisseur = None;
         self.video.clear();
+        self.youtube_indisponible = false;
         let seance = self.seance.clone();
         self.recevoir(seance.as_ref(), maintenant);
     }
@@ -1574,5 +1600,115 @@ mod tests {
         assert_eq!(r[8].json(), json!({"ids": ["b", "a"]}));
         assert_eq!(r[9].ligne(), ("/voice/v1/watch/queue/a%20b", "DELETE"));
         assert_eq!(r[10].ligne(), ("/titles/t%201/intro-skipped", "POST"));
+    }
+
+    fn fabrique_youtube(
+        liens: Arc<std::sync::Mutex<Vec<crate::regarder_ensemble::youtube::LienVue>>>,
+    ) -> FabriqueLecteur {
+        Box::new(move |f| {
+            if f != Fournisseur::YouTube {
+                return None;
+            }
+            let lien = crate::regarder_ensemble::youtube::LienVue::nouveau();
+            liens.lock().unwrap().push(lien.clone());
+            Some(
+                Box::new(crate::regarder_ensemble::youtube::LecteurYoutube::nouveau(
+                    lien,
+                )) as Box<dyn LecteurSeance>,
+            )
+        })
+    }
+
+    const PAGE_VUE: &str = "https://estompe.localhost";
+    const SOURCE_VUE: &str = "https://estompe.localhost/lecteur";
+
+    fn commandes_youtube(lien: &crate::regarder_ensemble::youtube::LienVue) -> Vec<String> {
+        lien.sortants()
+            .iter()
+            .filter_map(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .filter_map(|m| m["func"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    #[test]
+    fn une_seance_youtube_ouvre_la_vue_a_la_bonne_position_et_la_pilote_par_messages() {
+        let liens = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut p = PiloteSeance::nouveau(
+            GenreSeance::Regarder,
+            "hote",
+            fabrique_youtube(liens.clone()),
+        );
+        let t = base() + 10_000;
+        p.recevoir(Some(&seance(etat("youtube", "dQw4w9WgXcQ"))), t);
+        assert!(p.vue(t).navigateur.is_none());
+        let lien = liens.lock().unwrap()[0].clone();
+        let page = lien.page_a_ouvrir().expect("vue demandée");
+        assert_eq!(
+            (page.video.as_str(), page.depart.round(), page.lecture),
+            ("dQw4w9WgXcQ", 70.0, true)
+        );
+        lien.recevoir(SOURCE_VUE, PAGE_VUE, r#"{"estompe":"charge"}"#);
+        lien.recevoir(SOURCE_VUE, PAGE_VUE, r#"{"event":"onReady"}"#);
+        lien.recevoir(
+            SOURCE_VUE,
+            PAGE_VUE,
+            r#"{"event":"infoDelivery","info":{"currentTime":70,"duration":212,"playerState":1}}"#,
+        );
+        p.lecteur_change(t);
+        assert_eq!(p.vue(t).duree, 212.0);
+        assert!(!p.vue(t).chargement);
+        p.actions();
+        lien.sortants();
+        p.commande(Commande::pause(70.5), t + 500).unwrap();
+        assert_eq!(commandes_youtube(&lien), vec!["pauseVideo"]);
+        assert!(p.actions().iter().any(|a| matches!(
+            a,
+            ActionPilote::Appel(AppelSeance::Action { action, .. }) if action == "pause"
+        )));
+        let mut suivant = etat("youtube", "aaaaaaaaaaa");
+        suivant.rev = 2;
+        suivant.playing = false;
+        p.recevoir(Some(&seance(suivant)), t + 1000);
+        assert_eq!(liens.lock().unwrap().len(), 1);
+        assert_eq!(lien.page_a_ouvrir(), None);
+        assert!(commandes_youtube(&lien).contains(&"cueVideoById".to_string()));
+        p.recevoir(Some(&seance(etat("file", VIDEO))), t + 2000);
+        assert!(lien.ferme());
+    }
+
+    #[test]
+    fn sans_runtime_la_seance_youtube_passe_au_navigateur_avec_un_message() {
+        let liens = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut p = PiloteSeance::nouveau(
+            GenreSeance::Regarder,
+            "moi",
+            fabrique_youtube(liens.clone()),
+        );
+        p.recevoir(Some(&seance(etat("youtube", "dQw4w9WgXcQ"))), base());
+        let lien = liens.lock().unwrap()[0].clone();
+        assert!(lien.page_a_ouvrir().is_some());
+        p.actions();
+        lien.signaler_indisponible("WebView2 absent");
+        p.lecteur_change(base() + 300);
+        let v = p.vue(base() + 300);
+        assert!(p.lecteur().is_none());
+        assert!(lien.ferme());
+        assert_eq!(
+            v.navigateur.as_deref(),
+            Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=60s")
+        );
+        let actions = p.actions();
+        assert!(actions.contains(&ActionPilote::Info(RUNTIME_ABSENT.into())));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a, ActionPilote::Journal(j) if j.contains("WebView2 absent"))));
+        let mut suivant = etat("youtube", "aaaaaaaaaaa");
+        suivant.rev = 2;
+        p.recevoir(Some(&seance(suivant)), base() + 1000);
+        assert_eq!(liens.lock().unwrap().len(), 1);
+        assert!(p.vue(base()).navigateur.unwrap().contains("aaaaaaaaaaa"));
+        p.recharger(base() + 2000);
+        assert_eq!(liens.lock().unwrap().len(), 2);
+        assert!(p.lecteur().is_some());
     }
 }

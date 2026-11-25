@@ -65,6 +65,9 @@ pub trait LecteurSeance: Send {
     fn erreur(&mut self) -> Option<String> {
         None
     }
+    fn repli(&mut self) -> Option<String> {
+        None
+    }
     fn demandes(&mut self) -> Vec<DemandeFilm> {
         Vec::new()
     }

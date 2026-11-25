@@ -25,6 +25,7 @@ pub mod toast;
 mod toast_windows;
 mod traits;
 mod url;
+mod webview;
 mod zone;
 
 pub use audio::{AudioSysteme, ChoixPeripherique, SonPeripheriques};
@@ -76,6 +77,10 @@ pub use traits::{
     SourceCapture, SystemeAudio, TypeSource, ZoneEcran, ZoneNotification,
 };
 pub use url::NavigateurSysteme;
+pub use webview::{
+    CadreVue, OptionsVueWeb, RappelFenetre, RappelMessage, RappelNavigation, VueWeb, VuesWeb,
+    VuesWebSysteme,
+};
 pub use zone::{zone_presente, ZoneSysteme, LIBELLE_OUVRIR, LIBELLE_QUITTER};
 
 pub const NOM_EXECUTABLE: &str = "estompe-natif.exe";

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -11,8 +12,8 @@ use estompe_client::regarder_ensemble::fournisseurs::avance_chargee;
 use estompe_client::regarder_ensemble::salon::{self as vue_salon, ContexteVue, MessageSeance};
 use estompe_client::regarder_ensemble::{
     touche_passer_intro, AppelSeance, Commande, FabriqueLecteur, Fournisseur, GenreSeance,
-    LecteurFichier, LecteurFilm, LecteurSeance, OutilsSeance, PiloteSeance, PistesFilm, Relais,
-    SeanceActive, SeanceEnCours, SignalSeance, VuePilote,
+    LecteurFichier, LecteurFilm, LecteurSeance, LecteurYoutube, LienVue, OutilsSeance,
+    PiloteSeance, PistesFilm, Relais, SeanceActive, SeanceEnCours, SignalSeance, VuePilote,
 };
 use estompe_client::signalements::{requete, Brouillon};
 use estompe_client::store::{GenreSalon, Store};
@@ -23,6 +24,7 @@ use crate::menu::{self, Ancre, Entree};
 use crate::messagerie::pont::Navigateur;
 use crate::session::Memoire;
 use crate::video::lecteur::GestionLecteur;
+use crate::video::youtube;
 use crate::{
     ChoixSeance, DonneesCoquille, DonneesLecteur, DonneesSeance, ElementFileSeance,
     GenreMessageSeance, ParticipantSeance, Principale, SalonChoixSeance, SansAcces, VueSeance,
@@ -73,6 +75,7 @@ struct Interne {
     demande_en_cours: bool,
     participants: Vec<vue_salon::ParticipantSeance>,
     file: Vec<vue_salon::ElementFileVue>,
+    volume_youtube: Option<(LienVue, u8)>,
 }
 
 #[derive(Clone)]
@@ -83,6 +86,7 @@ pub struct PontSeance {
     runtime: tokio::runtime::Handle,
     memoire: Option<Memoire>,
     en_vol: Arc<AtomicBool>,
+    lien_youtube: Arc<Mutex<Option<LienVue>>>,
 }
 
 fn origine() -> Origine {
@@ -205,11 +209,16 @@ impl PontSeance {
             runtime,
             memoire,
             en_vol: Arc::new(AtomicBool::new(false)),
+            lien_youtube: Arc::new(Mutex::new(None)),
         }
     }
 
     fn verrou(&self) -> MutexGuard<'_, Interne> {
         self.interne.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn lien_youtube(&self) -> MutexGuard<'_, Option<LienVue>> {
+        self.lien_youtube.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn maintenant(&self) -> i64 {
@@ -440,7 +449,18 @@ impl PontSeance {
         let base_entracte = entracte.as_ref().map(|e| e.adresse().to_string());
         let client_entracte = entracte.clone();
         let l = lecteur.clone();
+        let vue_youtube = youtube::disponible();
+        *self.lien_youtube() = None;
+        let lien_youtube = self.lien_youtube.clone();
         let fabrique: FabriqueLecteur = Box::new(move |f| {
+            if f == Fournisseur::YouTube {
+                if !vue_youtube {
+                    return None;
+                }
+                let lien = LienVue::nouveau();
+                *lien_youtube.lock().unwrap_or_else(|e| e.into_inner()) = Some(lien.clone());
+                return Some(Box::new(LecteurYoutube::nouveau(lien)) as Box<dyn LecteurSeance>);
+            }
             let lecteur = l.clone()?;
             match f {
                 Fournisseur::Fichier => {
@@ -892,7 +912,46 @@ impl PontSeance {
         }
     }
 
+    fn pomper_youtube(&self, f: &Principale) {
+        let lien = if self.verrou().active.is_some() {
+            self.lien_youtube().clone()
+        } else {
+            None
+        };
+        let moi = self.clone();
+        youtube::pomper_seance(
+            f,
+            lien.as_ref(),
+            Rc::new(move || {
+                moi.avec_active(|p, t| p.lecteur_change(t));
+            }),
+        );
+        let Some(lien) = lien.filter(|l| !l.ferme()) else {
+            self.verrou().volume_youtube = None;
+            return;
+        };
+        let e = f.global::<DonneesLecteur>().get_etat();
+        let volume = if e.muet {
+            0
+        } else {
+            e.volume.clamp(0, 100) as u8
+        };
+        let changer = {
+            let mut i = self.verrou();
+            let meme = i
+                .volume_youtube
+                .as_ref()
+                .is_some_and(|(l, v)| l.meme(&lien) && *v == volume);
+            i.volume_youtube = Some((lien, volume));
+            !meme
+        };
+        if changer {
+            self.avec_active(|p, _| p.regler_volume(volume));
+        }
+    }
+
     pub fn projeter(&self, f: &Principale) {
+        self.pomper_youtube(f);
         let g = f.global::<DonneesSeance>();
         let Lieu { salon, ici, .. } = self.verrou().lieu.clone();
         let seance = salon.as_deref().and_then(|s| self.seance_de(s));

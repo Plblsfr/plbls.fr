@@ -1,0 +1,104 @@
+import { Typo, Espace, Calques } from "../jetons.slint";
+import { Icone } from "../composants/icone.slint";
+import { DonneesVueWeb, ZoneVueWeb } from "../composants/vue-web.slint";
+
+export { DonneesVueWeb }
+
+component BoutonYoutube inherits Rectangle {
+    in property <string> icone;
+    in property <string> description;
+    callback clique();
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: zone.has-hover ? #ffffff24 : #0e0c0b99;
+    accessible-role: button;
+    accessible-label: root.description;
+    accessible-action-default => {
+        root.clique();
+    }
+    Icone {
+        nom: root.icone;
+        taille: 20px;
+        couleur: #f1ece6;
+    }
+    zone := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clique();
+        }
+    }
+}
+
+export component VisionneuseYoutube {
+    in property <bool> ouverte: DonneesVueWeb.visionneuse != "";
+    property <int> niveau: 1;
+    width: 100%;
+    height: 100%;
+    visible: root.ouverte;
+    accessible-role: none;
+    changed ouverte => {
+        Calques.ouverts = Math.max(0, Calques.ouverts + (root.ouverte ? 1 : -1));
+        if (root.ouverte) {
+            root.niveau = Calques.ouverts;
+            portee.focus();
+        }
+    }
+    Rectangle {
+        background: #0e0c0b;
+        TouchArea { }
+    }
+    portee := FocusScope {
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                DonneesVueWeb.fermer-visionneuse();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if root.ouverte: ZoneVueWeb {
+        x: Espace.e3;
+        y: Espace.e3 + 40px + Espace.e3;
+        width: parent.width - 2 * Espace.e3;
+        height: parent.height - self.y - Espace.e3;
+        nom: "visionneuse";
+        montree: Calques.ouverts == root.niveau;
+    }
+    if root.ouverte: HorizontalLayout {
+        x: Espace.e3;
+        y: Espace.e3;
+        width: parent.width - 2 * Espace.e3;
+        height: 40px;
+        spacing: Espace.e2;
+        BoutonYoutube {
+            icone: "x";
+            description: "Fermer le lecteur";
+            clique => {
+                DonneesVueWeb.fermer-visionneuse();
+            }
+        }
+        Rectangle {
+            horizontal-stretch: 1;
+            Text {
+                x: 0;
+                width: Math.min(parent.width, self.preferred-width);
+                height: parent.height;
+                text: DonneesVueWeb.visionneuse;
+                color: #f1ece6;
+                font-family: Typo.texte;
+                font-size: Typo.compact;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: text;
+            }
+        }
+        BoutonYoutube {
+            icone: "external";
+            description: "Ouvrir dans le navigateur";
+            clique => {
+                DonneesVueWeb.navigateur-visionneuse();
+            }
+        }
+    }
+}

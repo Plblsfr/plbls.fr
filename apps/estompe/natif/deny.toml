@@ -1,5 +1,6 @@
 [graph]
 targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+features = ["youtube"]
 
 [advisories]
 version = 2
@@ -23,6 +24,7 @@ exceptions = [
   { crate = "doctest-file", allow = ["0BSD"] },
   { crate = "recvmsg", allow = ["0BSD"] },
   { crate = "libmpv2-sys", allow = ["LGPL-2.1"] },
+  { crate = "option-ext", allow = ["MPL-2.0"] },
 ]
 
 [bans]
@@ -31,8 +33,8 @@ wildcards = "deny"
 allow-wildcard-paths = true
 deny = [
   { crate = "tauri", reason = "l'app native n'embarque aucune webview" },
-  { crate = "wry", reason = "l'app native n'embarque aucune webview" },
-  { crate = "webview2-com", reason = "l'app native n'embarque aucune webview" },
+  { crate = "wry", wrappers = ["estompe-plateforme"], reason = "seule la vue du lecteur YouTube (feature youtube, crate plateforme) embarque une webview" },
+  { crate = "webview2-com", wrappers = ["wry"], reason = "WebView2 n'arrive que par wry, derrière la feature youtube" },
 ]
 
 [sources]

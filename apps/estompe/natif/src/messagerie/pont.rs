@@ -3371,7 +3371,12 @@ impl PontMessagerie {
         }
     }
 
-    pub fn carte_cliquee(&self, url: &str) {
+    pub fn carte_cliquee(&self, f: &Principale, url: &str) {
+        if let Some(video) = estompe_client::apercu_liens::video_youtube(url) {
+            if crate::video::youtube::ouvrir_visionneuse(f, &video) {
+                return;
+            }
+        }
         if let Some(url) = estompe_client::markdown::lien_ouvrable(url) {
             let _ = verrou_de(&self.navigateur).ouvrir(&url);
         }

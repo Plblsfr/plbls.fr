@@ -257,6 +257,15 @@ pub fn demarrer(
             None
         }
     };
+    video::youtube::installer(
+        fenetre,
+        video::youtube::OutilsVueWeb {
+            vues: std::rc::Rc::new(estompe_plateforme::VuesWebSysteme),
+            dossier: session.dossiers.cache.join(video::youtube::DOSSIER_VUE_WEB),
+            navigateur: navigateur.clone(),
+            journal: Some(session.journal.clone()),
+        },
+    );
     let fabrique = coquille::FabriqueReelle {
         client: reels.client.clone(),
         jeton: std::sync::Arc::new(jeton),

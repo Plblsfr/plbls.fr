@@ -519,9 +519,9 @@ pub fn brancher_messagerie(f: &Principale, source: SourcePont) {
     rappel_messagerie!(on_ouvrir_fichier, |p, f, _message, piece| p
         .messagerie()
         .ouvrir_fichier(&f, &piece));
-    rappel_messagerie!(on_carte_cliquee, |p, _f, _message, url| p
+    rappel_messagerie!(on_carte_cliquee, |p, f, _message, url| p
         .messagerie()
-        .carte_cliquee(&url));
+        .carte_cliquee(&f, &url));
     rappel_messagerie!(on_visionneuse_voisine, |p, f, sens| p
         .messagerie()
         .visionneuse_voisine(&f, sens));

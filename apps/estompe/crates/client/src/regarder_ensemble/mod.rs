@@ -8,6 +8,7 @@ pub mod relais;
 pub mod salon;
 pub mod seance;
 pub mod synchro;
+pub mod youtube;
 
 pub use avance::{
     budget, nom_de_segment, Avance, Budget, ErreurSegment, Fragment, OptionsAvance, Telechargement,
@@ -32,3 +33,4 @@ pub use seance::{
     RegistreSeances, SeanceEnCours,
 };
 pub use synchro::{ActionSeance, Commande, MoteurSynchro, PhaseSynchro, SortieSynchro};
+pub use youtube::{LecteurYoutube, LienVue, PageLecteur};

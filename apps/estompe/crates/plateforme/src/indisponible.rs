@@ -3,6 +3,7 @@ use crate::encodage::{
     ParametresVideo, RecepteurPaquets, SignalArret,
 };
 use crate::traits::*;
+use crate::webview::{OptionsVueWeb, VueWeb, VuesWeb};
 use crate::{Erreur, Resultat};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -10,6 +11,22 @@ pub struct Indisponible;
 
 fn refus<T>(fonction: &'static str) -> Resultat<T> {
     Err(Erreur::Indisponible(fonction))
+}
+
+impl VuesWeb for Indisponible {
+    fn disponible(&self) -> bool {
+        false
+    }
+    fn origine(&self) -> &'static str {
+        ""
+    }
+    fn ouvrir(
+        &self,
+        _: raw_window_handle::RawWindowHandle,
+        _: OptionsVueWeb,
+    ) -> Resultat<Box<dyn VueWeb>> {
+        refus("vue web du lecteur YouTube")
+    }
 }
 
 impl Coffre for Indisponible {

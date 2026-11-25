@@ -37,6 +37,7 @@ path = "src/main.rs"
 default = ["livekit"]
 livekit = ["estompe-client/livekit"]
 apercu = ["slint/live-preview"]
+youtube = ["estompe-plateforme/youtube"]
 
 [dependencies]
 estompe-client = { workspace = true, features = ["mpv"] }

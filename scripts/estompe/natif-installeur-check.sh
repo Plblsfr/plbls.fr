@@ -29,10 +29,13 @@ for fichier in estompe-natif.exe ffmpeg.exe libmpv-2.dll estompe.ico desinstalle
   fi
 done
 
-for motif in WebView2Loader EmbeddedBrowserWebView; do
-  if grep -aq "$motif" "$exe"; then
-    echo "::error::$exe référence $motif"
-    exit 1
-  fi
-done
+if grep -qiE "(^|[[:space:]/])WebView2Loader\.dll\$" <<< "$contenu"; then
+  echo "::error::WebView2Loader.dll dans l'installeur : le chargeur de WebView2 doit être lié statiquement (feature youtube)"
+  exit 1
+fi
+if LC_ALL=C grep -aqP 'CoreWebView2|E\x00m\x00b\x00e\x00d\x00d\x00e\x00d\x00B\x00r\x00o\x00w\x00s\x00e\x00r' "$exe"; then
+  echo "Lecteur YouTube : vue WebView2 présente (feature youtube), créée seulement à l'ouverture d'un lecteur"
+else
+  echo "::warning::$exe sans vue WebView2 : l'installeur est construit sans la feature youtube, YouTube s'ouvrira dans le navigateur"
+fi
 echo "Contenu et dépendances de l'installeur conformes"

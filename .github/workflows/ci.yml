@@ -305,7 +305,7 @@ jobs:
             apps/estompe/android/src-tauri/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
-  # App native (Slint, sans webview) : workspace Cargo à part (apps/estompe/natif), toolchain stable. Mêmes contrôles que
+  # App native (Slint, sans webview hors du lecteur YouTube de la feature youtube) : workspace Cargo à part (apps/estompe/natif), toolchain stable. Mêmes contrôles que
   # scripts/estompe/natif-check.sh, puis lancement réel de l'app sous Xvfb.
   estompe-natif-linux:
     needs: changements
@@ -385,7 +385,7 @@ jobs:
   # Cible Windows MSVC (imposée par le SDK Rust LiveKit du lot vocal) : build et tests sur un runner Windows.
   # CRT statique (apps/estompe/natif/.cargo/config.toml) : Skia n'a pas de binaires précompilés pour lui et se compile depuis ses sources,
   # une fois par version de skia-bindings : ses binaires sont gardés dans un petit cache à part (skia-windows-v1-), relu par SKIA_BINARIES_URL.
-  # Les captures de rendu ne sont comparées que sous Linux.
+  # Les captures de rendu ne sont comparées que sous Linux. Feature youtube activée comme dans l'installeur (vue WebView2, Windows seulement).
   estompe-natif-windows:
     needs: changements
     if: needs.changements.outputs.estompe_natif == 'true'
@@ -447,13 +447,13 @@ jobs:
           restore-keys: natif-windows-v2-
       - name: Build (x86_64-pc-windows-msvc)
         working-directory: apps/estompe/natif
-        run: cargo build --locked --target x86_64-pc-windows-msvc
+        run: cargo build --locked --target x86_64-pc-windows-msvc --features youtube
       - name: cargo-nextest (binaire de la release, somme SHA-256 vérifiée)
         shell: bash
         run: scripts/estompe/installer-nextest.sh
       - name: Tests, dont le coffre de secrets (Credential Manager)
         working-directory: apps/estompe/natif
-        run: cargo nextest run --workspace --locked --target x86_64-pc-windows-msvc
+        run: cargo nextest run --workspace --locked --target x86_64-pc-windows-msvc --features youtube
       - id: skia-archive
         name: Binaires de Skia archivés s'ils viennent d'être compilés, sorties intermédiaires de Skia retirées
         shell: bash

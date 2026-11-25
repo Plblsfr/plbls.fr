@@ -1,0 +1,41 @@
+export global DonneesVueWeb {
+    in property <bool> seance: false;
+    in property <string> visionneuse;
+    callback cadre(string, length, length, length, length, bool);
+    callback fermer-visionneuse();
+    callback navigateur-visionneuse();
+}
+
+export component ZoneVueWeb inherits Rectangle {
+    in property <string> nom;
+    in property <bool> montree: true;
+    property <Point> position: self.absolute-position;
+    background: #000000;
+    accessible-role: groupbox;
+    accessible-label: "Lecteur YouTube";
+    function signaler() {
+        DonneesVueWeb.cadre(root.nom, root.position.x, root.position.y, root.width, root.height, root.montree);
+    }
+    init => {
+        root.signaler();
+    }
+    changed position => {
+        root.signaler();
+    }
+    changed width => {
+        root.signaler();
+    }
+    changed height => {
+        root.signaler();
+    }
+    changed montree => {
+        root.signaler();
+    }
+    Timer {
+        interval: 200ms;
+        running: true;
+        triggered => {
+            root.signaler();
+        }
+    }
+}
